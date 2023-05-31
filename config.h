@@ -40,6 +40,7 @@ static const Rule rules[] = {
 	/* class     instance  title           tags mask  isfloating  isterminal  noswallow  monitor */
 	{ "Gimp",    NULL,     NULL,           0,         1,          0,           0,        -1 },
 	{ "Firefox", NULL,     NULL,           1 << 8,    0,          0,          -1,        -1 },
+  { "steam",   NULL,     NULL,           1 << 8,    0,          0,           0,	       -1 },
 	{ "St",      NULL,     NULL,           0,         0,          1,           0,        -1 },
 	{ "kitty",   NULL,     NULL,           0,         0,          1,           0,        -1 },
 	{ NULL,      NULL,     "Event Tester", 0,         0,          0,           1,        -1 }, /* xev */
@@ -115,6 +116,8 @@ static Key keys[] = {
 	TAGKEYS(                        XK_8,                      7)
 	TAGKEYS(                        XK_9,                      8)
 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
+  { MODKEY|ControlMask|ShiftMask,    XK_s,    spawn,          SHCMD("shutdown now")},
+  { MODKEY|ControlMask|ShiftMask,    XK_r,    spawn,          SHCMD("reboot") },
 };
 
 /* button definitions */
