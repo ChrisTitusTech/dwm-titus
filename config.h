@@ -78,7 +78,7 @@ static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{ MODKEY,                       XK_r,      spawn,          {.v = dmenucmd } },
   { MODKEY,                       XK_x,      spawn,          {.v = termcmd } },
-  { MODKEY,                       XK_b,      spawn,          SHCMD ("brave-browser")},
+  { MODKEY,                       XK_b,      spawn,          SHCMD ("brave")},
   { 0,                            0x1008ff02, spawn,         SHCMD ("xbacklight -inc 10")},
   { 0,                            0x1008ff03, spawn,         SHCMD ("xbacklight -dec 10")},
   { 0,                            0x1008ff11, spawn,         SHCMD ("amixer sset Master 5%- unmute")},
@@ -115,6 +115,8 @@ static Key keys[] = {
 	TAGKEYS(                        XK_8,                      7)
 	TAGKEYS(                        XK_9,                      8)
 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
+	{ MODKEY|ControlMask|ShiftMask, XK_r,      spawn,          SHCMD("reboot")},
+	{ MODKEY|ControlMask|ShiftMask, XK_s,      spawn,          SHCMD("shutdown now")},
 };
 
 /* button definitions */
