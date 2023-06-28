@@ -80,6 +80,7 @@ static Key keys[] = {
 	{ MODKEY,                       XK_r,      spawn,          {.v = dmenucmd } },
   { MODKEY,                       XK_x,      spawn,          {.v = termcmd } },
   { MODKEY,                       XK_b,      spawn,          SHCMD ("brave")},
+  { MODKEY,                       XK_e,      spawn,          SHCMD ("thunar")},
   { 0,                            0x1008ff02, spawn,         SHCMD ("xbacklight -inc 10")},
   { 0,                            0x1008ff03, spawn,         SHCMD ("xbacklight -dec 10")},
   { 0,                            0x1008ff11, spawn,         SHCMD ("amixer sset Master 5%- unmute")},
@@ -99,17 +100,12 @@ static Key keys[] = {
 	{ MODKEY,                       XK_f,      setlayout,      {.v = &layouts[1]} },
   { MODKEY,                       XK_m,      fullscreen,     {0} },
 	{ MODKEY,                       XK_space,  setlayout,      {0} },
-	{ MODKEY|ShiftMask,             XK_space,  togglefloating, {0} },
+	{ MODKEY|ShiftMask,             XK_m,      togglefloating, {0} },
 	{ MODKEY,                       XK_0,      view,           {.ui = ~0 } },
 	{ MODKEY|ShiftMask,             XK_0,      tag,            {.ui = ~0 } },
 	{ MODKEY,                       XK_comma,  focusmon,       {.i = -1 } },
 	{ MODKEY,                       XK_period, focusmon,       {.i = +1 } },
 	{ MODKEY|ShiftMask,             XK_comma,  tagmon,         {.i = -1 } },
-
-
-
-
-
 	{ MODKEY|ShiftMask,             XK_period, tagmon,         {.i = +1 } },
 	TAGKEYS(                        XK_1,                      0)
 	TAGKEYS(                        XK_2,                      1)
