@@ -8,9 +8,9 @@ static const unsigned int systraypinning = 0;   /* 0: sloppy systray follows sel
 static const unsigned int systrayonleft = 0;   	/* 0: systray in the right corner, >0: systray on left of status text */
 static const unsigned int systrayspacing = 2;   /* systray spacing */
 static const int systraypinningfailfirst = 1;   /* 1: if pinning fails, display systray on the first monitor, False: display systray on the last monitor*/
-static const int showsystray        = 1;     /* 0 means no systray */
-static const int showbar            = 1;     /* 0 means no bar */
-static const int topbar             = 1;     /* 0 means bottom bar */
+static const int showsystray        = 1;        /* 0 means no systray */
+static const int showbar            = 1;        /* 0 means no bar */
+static const int topbar             = 1;        /* 0 means bottom bar */
 static const Bool viewontag         = True;     /* Switch view on tag switch */
 static const char *fonts[]          = { "MesloLGS Nerd Font Mono:size=12" };
 static const char dmenufont[]       = "MesloLGS Nerd Font Mono:size=12";
@@ -40,7 +40,7 @@ static const Rule rules[] = {
 	/* class     instance  title           tags mask  isfloating  isterminal  noswallow  monitor */
 	{ "Gimp",    NULL,     NULL,           0,         1,          0,           0,        -1 },
 	{ "Firefox", NULL,     NULL,           1 << 8,    0,          0,          -1,        -1 },
-  { "steam",   NULL,     NULL,           1 << 8,    0,          0,           0,	       -1 },
+  	{ "steam",   NULL,     NULL,           1 << 8,    0,          0,           0,	     -1 },
 	{ "St",      NULL,     NULL,           0,         0,          1,           0,        -1 },
 	{ "kitty",   NULL,     NULL,           0,         0,          1,           0,        -1 },
 	{ NULL,      NULL,     "Event Tester", 0,         0,          0,           1,        -1 }, /* xev */
@@ -78,13 +78,13 @@ static const char *termcmd[]  = { "kitty", NULL };
 static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{ MODKEY,                       XK_r,      spawn,          {.v = dmenucmd } },
-  { MODKEY,                       XK_x,      spawn,          {.v = termcmd } },
-  { MODKEY,                       XK_b,      spawn,          SHCMD ("brave")},
-  { MODKEY,                       XK_e,      spawn,          SHCMD ("thunar")},
-  { 0,                            0x1008ff02, spawn,         SHCMD ("xbacklight -inc 10")},
-  { 0,                            0x1008ff03, spawn,         SHCMD ("xbacklight -dec 10")},
-  { 0,                            0x1008ff11, spawn,         SHCMD ("amixer sset Master 5%- unmute")},
-  { 0,                            0x1008ff12, spawn,         SHCMD ("amixer sset Master mute ")},
+	{ MODKEY,                       XK_x,      spawn,          {.v = termcmd } },
+	{ MODKEY,                       XK_b,      spawn,          SHCMD ("brave")},
+	{ MODKEY,                       XK_e,      spawn,          SHCMD ("thunar")},
+	{ 0,                            0x1008ff02, spawn,         SHCMD ("xbacklight -inc 10")},
+	{ 0,                            0x1008ff03, spawn,         SHCMD ("xbacklight -dec 10")},
+	{ 0,                            0x1008ff11, spawn,         SHCMD ("amixer sset Master 5%- unmute")},
+	{ 0,                            0x1008ff12, spawn,         SHCMD ("amixer sset Master mute ")},
 	{ 0,                            0x1008ff13, spawn,         SHCMD ("amixer sset Master 5%+ unmute")},
 	{ MODKEY|ShiftMask,             XK_b,      togglebar,      {0} },
 	{ MODKEY,                       XK_j,      focusstack,     {.i = +1 } },
@@ -98,7 +98,7 @@ static Key keys[] = {
 	{ MODKEY,                       XK_q,      killclient,     {0} },
 	{ MODKEY,                       XK_t,      setlayout,      {.v = &layouts[0]} },
 	{ MODKEY,                       XK_f,      setlayout,      {.v = &layouts[1]} },
-  { MODKEY,                       XK_m,      fullscreen,     {0} },
+  	{ MODKEY,                       XK_m,      fullscreen,     {0} },
 	{ MODKEY,                       XK_space,  setlayout,      {0} },
 	{ MODKEY|ShiftMask,             XK_m,      togglefloating, {0} },
 	{ MODKEY,                       XK_0,      view,           {.ui = ~0 } },
@@ -129,7 +129,7 @@ static Button buttons[] = {
 	{ ClkTagBar,            MODKEY,         Button3,        toggletag,      {0} },
 	{ ClkWinTitle,          0,              Button2,        zoom,           {0} },
 	{ ClkStatusText,        0,              Button2,        spawn,          {.v = termcmd } },
-/* placemouse options, choose which feels more natural:
+	/* placemouse options, choose which feels more natural:
 	 *    0 - tiled position is relative to mouse cursor
 	 *    1 - tiled postiion is relative to window center
 	 *    2 - mouse pointer warps to window center
