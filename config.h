@@ -12,8 +12,8 @@ static const int showsystray        = 1;        /* 0 means no systray */
 static const int showbar            = 1;        /* 0 means no bar */
 static const int topbar             = 1;        /* 0 means bottom bar */
 static const Bool viewontag         = True;     /* Switch view on tag switch */
-static const char *fonts[]          = { "MesloLGS Nerd Font Mono:size=12" };
-static const char dmenufont[]       = "MesloLGS Nerd Font Mono:size=12";
+static const char *fonts[]          = { "MesloLGS Nerd Font Mono:size=16" };
+static const char dmenufont[]       = "MesloLGS Nerd Font Mono:size=16";
 static const char col_gray1[]       = "#2E3440";
 static const char col_gray2[]       = "#3B4252";
 static const char col_gray3[]       = "#D8DEE9";
@@ -23,6 +23,19 @@ static const char *colors[][3]      = {
 	/*               fg         bg         border   */
 	[SchemeNorm] = { col_gray3, col_gray1, col_gray2 },
 	[SchemeSel]  = { col_gray4, col_cyan,  col_cyan  },
+};
+
+static const char *const autostart[] = {
+	"xsetroot", "-cursor_name", "left_ptr", NULL,
+  "kitty", NULL,
+  "flameshot", NULL,
+  "lxpolkit", NULL,
+  "dunst", NULL,
+	"picom", NULL,
+  "sh", "-c", "$HOME/dwm-titus/scripts/status", NULL,
+  "sh", "-c", "$HOME/dwm-titus/scripts/dbus", NULL,
+  "feh", "--bg-max", "$HOME/Pictures/background.jpg", NULL,
+	NULL /* terminate */
 };
 
 /* tagging */
@@ -80,6 +93,9 @@ static Key keys[] = {
 	{ MODKEY,                       XK_r,      spawn,          {.v = dmenucmd } },
 	{ MODKEY,                       XK_x,      spawn,          {.v = termcmd } },
 	{ MODKEY,                       XK_b,      spawn,          SHCMD ("brave")},
+	{ MODKEY,                       XK_p,      spawn,          SHCMD ("flameshot full -p $HOME/SynologyDrive/Screenshots/")},
+	{ MODKEY|ShiftMask,             XK_p,      spawn,          SHCMD ("flameshot gui -p $HOME/SynologyDrive/Screenshots/")},
+	{ MODKEY|ControlMask,           XK_p,      spawn,          SHCMD ("flameshot gui --clipboard")},
 	{ MODKEY,                       XK_e,      spawn,          SHCMD ("thunar")},
 	{ 0,                            0x1008ff02, spawn,         SHCMD ("xbacklight -inc 10")},
 	{ 0,                            0x1008ff03, spawn,         SHCMD ("xbacklight -dec 10")},
