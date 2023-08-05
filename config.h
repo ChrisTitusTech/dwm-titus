@@ -100,7 +100,7 @@ static Key keys[] = {
 	{ 0,                            0x1008ff02, spawn,         SHCMD ("xbacklight -inc 10")},
 	{ 0,                            0x1008ff03, spawn,         SHCMD ("xbacklight -dec 10")},
 	{ 0,                            0x1008ff11, spawn,         SHCMD ("amixer sset Master 5%- unmute")},
-	{ 0,                            0x1008ff12, spawn,         SHCMD ("amixer sset Master mute ")},
+	{ 0,                            0x1008ff12, spawn,         SHCMD ("amixer sset Master $(amixer get Master | grep -q '\\[on\\]' && echo 'mute' || echo 'unmute')")},
 	{ 0,                            0x1008ff13, spawn,         SHCMD ("amixer sset Master 5%+ unmute")},
 	{ MODKEY|ShiftMask,             XK_b,      togglebar,      {0} },
 	{ MODKEY,                       XK_j,      focusstack,     {.i = +1 } },
