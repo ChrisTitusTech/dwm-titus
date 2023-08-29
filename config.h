@@ -6,14 +6,14 @@ static const unsigned int snap      = 32;       /* snap pixel */
 static const int swallowfloating    = 1;        /* 1 means swallow floating windows by default */
 static const unsigned int systraypinning = 0;   /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor X */
 static const unsigned int systrayonleft = 0;   	/* 0: systray in the right corner, >0: systray on left of status text */
-static const unsigned int systrayspacing = 2;   /* systray spacing */
+static const unsigned int systrayspacing = 1;   /* systray spacing */
 static const int systraypinningfailfirst = 1;   /* 1: if pinning fails, display systray on the first monitor, False: display systray on the last monitor*/
 static const int showsystray        = 1;     /* 0 means no systray */
 static const int showbar            = 1;     /* 0 means no bar */
 static const int topbar             = 1;     /* 0 means bottom bar */
 static const Bool viewontag         = True;     /* Switch view on tag switch */
-static const char *fonts[]          = { "MesloLGS Nerd Font Mono:size=12" };
-static const char dmenufont[]       = "MesloLGS Nerd Font Mono:size=12";
+static const char *fonts[]          = { "MesloLGS Nerd Font Mono:size=16" };
+static const char dmenufont[]       = "MesloLGS Nerd Font Mono:size=16";
 static const char col_gray1[]       = "#2E3440";
 static const char col_gray2[]       = "#3B4252";
 static const char col_gray3[]       = "#D8DEE9";
@@ -77,9 +77,10 @@ static const char *termcmd[]  = { "kitty", NULL };
 
 static Key keys[] = {
 	/* modifier                     key        function        argument */
-	{ MODKEY,                       XK_r,      spawn,          {.v = dmenucmd } },
+	{ MODKEY,                       XK_r,      spawn,          SHCMD ("rofi -show drun")},
   { MODKEY,                       XK_x,      spawn,          {.v = termcmd } },
-  { MODKEY,                       XK_b,      spawn,          SHCMD ("brave")},
+  { MODKEY,                       XK_b,      spawn,          SHCMD ("brave-browser")},
+  { MODKEY,                       XK_e,      spawn,          SHCMD ("thunar")},
   { 0,                            0x1008ff02, spawn,         SHCMD ("xbacklight -inc 10")},
   { 0,                            0x1008ff03, spawn,         SHCMD ("xbacklight -dec 10")},
   { 0,                            0x1008ff11, spawn,         SHCMD ("amixer sset Master 5%- unmute")},
@@ -121,8 +122,8 @@ static Key keys[] = {
 	TAGKEYS(                        XK_8,                      7)
 	TAGKEYS(                        XK_9,                      8)
 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
-	{ MODKEY|ControlMask|ShiftMask, XK_r,      spawn,          SHCMD("reboot")},
-	{ MODKEY|ControlMask|ShiftMask, XK_s,      spawn,          SHCMD("shutdown now")},
+	{ MODKEY|ControlMask|ShiftMask, XK_r,      spawn,          SHCMD("systemctl reboot")},
+	{ MODKEY|ControlMask|ShiftMask, XK_s,      spawn,          SHCMD("systemctl shutdown now")},
 };
 
 /* button definitions */

@@ -30,6 +30,14 @@ top left corner.  The tags which are applied to one or more windows are
 indicated with an empty square in the top left corner.
 .P
 dwm draws a small border around windows to indicate the focus state.
+.P
+On start, dwm can start additional programs that may be specified in two special
+shell scripts (see the FILES section below), autostart_blocking.sh and
+autostart.sh.  The former is executed first and dwm will wait for its
+termination before starting.  The latter is executed in the background before
+dwm enters its handler loop.
+.P
+Either of these files may be omitted.
 .SH OPTIONS
 .TP
 .B \-v
@@ -152,6 +160,21 @@ Toggles focused window between floating and tiled state.
 .TP
 .B Mod1\-Button3
 Resize focused window while dragging. Tiled windows will be toggled to the floating state.
+.SH FILES
+The files containing programs to be started along with dwm are searched for in
+the following directories:
+.IP "1. $XDG_DATA_HOME/dwm"
+.IP "2. $HOME/.local/share/dwm"
+.IP "3. $HOME/.dwm"
+.P
+The first existing directory is scanned for any of the autostart files below.
+.TP 15
+autostart.sh
+This file is started as a shell background process before dwm enters its handler
+loop.
+.TP 15
+autostart_blocking.sh
+This file is started before any autostart.sh; dwm waits for its termination.
 .SH CUSTOMIZATION
 dwm is customized by creating a custom config.h and (re)compiling the source
 code. This keeps it fast, secure and simple.
