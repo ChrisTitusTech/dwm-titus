@@ -1,42 +1,82 @@
-#!/usr/bin/env bash
+#!/bin/env sh
 
-# Change this depending on your battery in /sys/class/power_supply/
-battery="BAT0";
+# INIT
+printf "$$" > ~/.cache/pidofbar
+sec=0
 
-has_battery() {
-    if [ -d /sys/class/power_supply/$battery ]; then
-        return 0;
-    fi
-    return 1;
-}
-get_battery_status() {
-    charge="$(get_charge)"
-    echo ""$icon" "$charge"%"
+# MODULES
+update_cpu () { 
+	cpu="$(grep -o "^[^ ]*" /proc/loadavg )" 
 }
 
-get_charging_status() {
-    cat "/sys/class/power_supply/$battery/status"
+update_memory () { 
+	memory="$(free -h | sed -n "2s/\([^ ]* *\)\{2\}\([^ ]*\).*/\2/p")"
 }
 
-get_charge() {
-    cat "/sys/class/power_supply/$battery/capacity"
+update_time () { 
+	time="$(date "+%a %d %b %I:%M %P")" 
 }
 
-get_datetime() {
-    date +"%a %d %b %Y | %I:%M %p %Z"
+update_weather () { 
+	weather="$(curl -s "wttr.in/dallas?format=1"| sed -E "s/^(.).*\+/\1/")" 
 }
 
-get_status() {
-    battery_status="";
-    if $(has_battery); then
-        battery_status=" $(get_battery_status) |";
-    fi
-
-    echo "${battery_status} $(get_datetime)";
+update_bat () { 
+	# you might need to change the path depending on your device
+	read -r bat_status </sys/class/power_supply/BAT0/status
+	read -r bat_capacity </sys/class/power_supply/BAT0/capacity
+	bat="$bat_status $bat_capacity%"
 }
+
+update_vol () { 
+	vol="$(amixer sget Master | tail -n1 | sed -r 's/.*\[(.*)%\].*/\1/')"
+}
+
+update_backlight () { 
+	# you might need to change the path depending on your device
+	read -r actual_brightness </sys/class/backlight/intel_backlight/actual_brightness
+	read -r max_brightness </sys/class/backlight/intel_backlight/max_brightness
+	backlight="☀$((actual_brightness*100/max_brightness))%"
+}
+
+# For calcurse users, refer https://github.com/pystardust/automeet
+#update_event () { 
+#	event="$(calcurse -n | sed 1d | \
+#		sed -E "s_^ *\[(.*):(.*)\] ([^\t]*)\t?.*_[\1h \2m->\3]_")" 
+#	[ "[]" = "$event" ] && event=""
+#}
+
+
+# modules that don't update on their own need to be run at the start for getting their initial value
+update_vol
+update_backlight
+
+display () { 
+	#printf "%s\n" " $event [$weather] [$memory $cpu] [$bat] [$backlight] [$vol] $time "
+	xsetroot -name " $bat $backlight $vol $time "
+}
+
+# SIGNALLING
+# trap	"<function>;display"		"RTMIN+n"
+trap	"update_vol;display"		"RTMIN"
+trap	"update_backlight;display" 	"RTMIN+1"
+trap	"update_bat;display" 		"RTMIN+2"
+# to update it from external commands
+## kill -m "$(cat ~/.cache/pidofbar)"
+# where m = 34 + n
 
 while true
 do
-    xsetroot -name "$(get_status)";
-    sleep 1m;
-done
+	sleep 1 & wait && { 
+		# to update item ever n seconds with a offset of m
+		## [ $((sec % n)) -eq m ] && udpate_item
+		[ $((sec % 5 )) -eq 0 ] && update_time 	# update time every 5 seconds
+		[ $((sec % 5 )) -eq 0 ] && update_vol # update time every 5 seconds
+		[ $((sec % 60)) -eq 0 ] && update_bat
+		[ $((sec % 5 )) -eq 0 ] && display
+		sec=$((sec + 1))
+	}
+done 
+
+
+
