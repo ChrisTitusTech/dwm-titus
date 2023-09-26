@@ -26,16 +26,19 @@ static const char *colors[][3]      = {
 };
 
 static const char *const autostart[] = {
-	"xsetroot", "-cursor_name", "left_ptr", NULL,
+  "xsetroot", "-cursor_name", "left_ptr", NULL,
+  "xset", "s", "off", NULL,
+  "xset", "s", "noblank", NULL,
+  "xset", "-dkms", NULL,
   "kitty", NULL,
   "flameshot", NULL,
   "lxpolkit", NULL,
   "dunst", NULL,
-	"picom", NULL,
-  "sh", "-c", "$HOME/dwm-titus/scripts/status", NULL,
-  "sh", "-c", "$HOME/dwm-titus/scripts/dbus", NULL,
+  "picom", NULL,
+  "sh", "-c", "$HOME/github/dwm-titus/scripts/status", NULL,
+  "sh", "-c", "$HOME/github/dwm-titus/scripts/dbus", NULL,
   "feh", "--bg-max", "$HOME/Pictures/background.jpg", NULL,
-	NULL /* terminate */
+  NULL /* terminate */
 };
 
 /* tagging */

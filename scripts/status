@@ -22,21 +22,30 @@ update_weather () {
 }
 
 update_bat () { 
-	# you might need to change the path depending on your device
-	read -r bat_status </sys/class/power_supply/BAT0/status
-	read -r bat_capacity </sys/class/power_supply/BAT0/capacity
-	bat="$bat_status $bat_capacity%"
+
+	if [[ -e /sys/class/power_supply/BAT0/status ]]; then
+        read -r bat_status < /sys/class/power_supply/BAT0/status
+	fi
+
+	if [[ -e /sys/class/power_supply/BAT0/capacity ]]; then
+				read -r bat_capacity < /sys/class/power_supply/BAT0/capacity
+				bat="$bat_status $bat_capacity%"
+	fi
+
 }
 
 update_vol () { 
-	vol="$(amixer sget Master | tail -n1 | sed -r 's/.*\[(.*)%\].*/\1/')"
+	vol="奄$(pactl list sinks | grep '^[[:space:]]Volume:' | head -n $(( $SINK + 1 )) | tail -n 1 | sed -e 's,.* \([0-9][0-9]*\)%.*,\1,')%"
 }
 
 update_backlight () { 
 	# you might need to change the path depending on your device
+if [[ -e /sys/class/backlight/intel_backlight/actual_brightness ]]; then
+
 	read -r actual_brightness </sys/class/backlight/intel_backlight/actual_brightness
 	read -r max_brightness </sys/class/backlight/intel_backlight/max_brightness
 	backlight="☀$((actual_brightness*100/max_brightness))%"
+fi
 }
 
 # For calcurse users, refer https://github.com/pystardust/automeet
@@ -49,8 +58,9 @@ update_backlight () {
 
 # modules that don't update on their own need to be run at the start for getting their initial value
 update_vol
-update_backlight
-
+if [[ -e /sys/class/backlight/intel_backlight/actual_brightness ]]; then
+  update_backlight
+fi
 display () { 
 	#printf "%s\n" " $event [$weather] [$memory $cpu] [$bat] [$backlight] [$vol] $time "
 	xsetroot -name " $bat $backlight $vol $time "
