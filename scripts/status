@@ -1,92 +1,92 @@
 #!/bin/env sh
 
-# INIT
+# Initialize variables
 printf "$$" > ~/.cache/pidofbar
 sec=0
 
-# MODULES
-update_cpu () { 
-	cpu="$(grep -o "^[^ ]*" /proc/loadavg )" 
+# Function to update CPU load
+update_cpu() {
+  cpu="$(grep -o "^[^ ]*" /proc/loadavg)"
 }
 
-update_memory () { 
-	memory="$(free -h | sed -n "2s/\([^ ]* *\)\{2\}\([^ ]*\).*/\2/p")"
+# Function to update memory usage
+update_memory() {
+  memory="$(free -h | awk 'NR==2 {print $3}')"
 }
 
-update_time () { 
-	time="$(date "+%a %d %b %I:%M %P")" 
+# Function to update time
+update_time() {
+  time="$(date "+%b %d %H:%M ")"
 }
 
-update_weather () { 
-	weather="$(curl -s "wttr.in/dallas?format=1"| sed -E "s/^(.).*\+/\1/")" 
+# Function to update weather
+update_weather() {
+  weather="$(curl -s "wttr.in/dallas?format=1" | sed -E "s/^(.).*\+/\1/")"
 }
 
-update_bat () { 
+# Function to update battery status and capacity
+update_bat() {
+  if [[ -e /sys/class/power_supply/BAT0/status ]]; then
+    read -r bat_status < /sys/class/power_supply/BAT0/status
+  else
+    return  # Exit the function early if battery info is not available
+  fi
 
-	if [[ -e /sys/class/power_supply/BAT0/status ]]; then
-        read -r bat_status < /sys/class/power_supply/BAT0/status
-	fi
-
-	if [[ -e /sys/class/power_supply/BAT0/capacity ]]; then
-				read -r bat_capacity < /sys/class/power_supply/BAT0/capacity
-				bat="$bat_status $bat_capacity%"
-	fi
-
+  if [[ -e /sys/class/power_supply/BAT0/capacity ]]; then
+    read -r bat_capacity < /sys/class/power_supply/BAT0/capacity
+    bat="$bat_status $bat_capacity%"
+  else
+    bat="$bat_status (capacity not available)"
+  fi
 }
 
-update_vol () { 
-	vol="奄$(pactl list sinks | grep '^[[:space:]]Volume:' | head -n $(( $SINK + 1 )) | tail -n 1 | sed -e 's,.* \([0-9][0-9]*\)%.*,\1,')%"
+# Function to update volume
+update_vol() {
+  vol="奄 $(pactl list sinks | awk '/Volume:/ {print $5}' | head -n 1 | tr -d '%')%"
 }
 
-update_backlight () { 
-	# you might need to change the path depending on your device
-if [[ -e /sys/class/backlight/intel_backlight/actual_brightness ]]; then
-
-	read -r actual_brightness </sys/class/backlight/intel_backlight/actual_brightness
-	read -r max_brightness </sys/class/backlight/intel_backlight/max_brightness
-	backlight="☀$((actual_brightness*100/max_brightness))%"
-fi
+# Function to update backlight
+update_backlight() {
+  if [[ -e /sys/class/backlight/intel_backlight/actual_brightness ]]; then
+    read -r actual_brightness </sys/class/backlight/intel_backlight/actual_brightness
+    read -r max_brightness </sys/class/backlight/intel_backlight/max_brightness
+    backlight="☀$((actual_brightness * 100 / max_brightness))%"
+  else
+    backlight="Backlight not available"
+  fi
 }
 
-# For calcurse users, refer https://github.com/pystardust/automeet
-#update_event () { 
-#	event="$(calcurse -n | sed 1d | \
-#		sed -E "s_^ *\[(.*):(.*)\] ([^\t]*)\t?.*_[\1h \2m->\3]_")" 
-#	[ "[]" = "$event" ] && event=""
-#}
+# Function to display the status
+display() {
+  status=""
 
+  [ -n "$bat" ] && status="$status $bat"
+  [ -n "$backlight" ] && status="$status $backlight"
+  [ -n "$vol" ] && status="$status $vol"
+  [ -n "$time" ] && status="$status $time"
 
-# modules that don't update on their own need to be run at the start for getting their initial value
+  xsetroot -name "$status"
+}
+
+# Set up signal handlers
+trap "update_vol; display" "RTMIN"
+trap "update_backlight; display" "RTMIN+1"
+trap "update_bat; display" "RTMIN+2"
+
+# Initial updates for modules that don't update on their own
 update_vol
+
 if [[ -e /sys/class/backlight/intel_backlight/actual_brightness ]]; then
   update_backlight
 fi
-display () { 
-	#printf "%s\n" " $event [$weather] [$memory $cpu] [$bat] [$backlight] [$vol] $time "
-	xsetroot -name " $bat $backlight $vol $time "
-}
 
-# SIGNALLING
-# trap	"<function>;display"		"RTMIN+n"
-trap	"update_vol;display"		"RTMIN"
-trap	"update_backlight;display" 	"RTMIN+1"
-trap	"update_bat;display" 		"RTMIN+2"
-# to update it from external commands
-## kill -m "$(cat ~/.cache/pidofbar)"
-# where m = 34 + n
-
-while true
-do
-	sleep 1 & wait && { 
-		# to update item ever n seconds with a offset of m
-		## [ $((sec % n)) -eq m ] && udpate_item
-		[ $((sec % 5 )) -eq 0 ] && update_time 	# update time every 5 seconds
-		[ $((sec % 5 )) -eq 0 ] && update_vol # update time every 5 seconds
-		[ $((sec % 60)) -eq 0 ] && update_bat
-		[ $((sec % 5 )) -eq 0 ] && display
-		sec=$((sec + 1))
-	}
-done 
-
-
+while true; do
+  sleep 1 && {
+    [ $((sec % 5)) -eq 0 ] && update_time
+    [ $((sec % 5)) -eq 0 ] && update_vol
+    [ $((sec % 60)) -eq 0 ] && update_bat
+    [ $((sec % 5)) -eq 0 ] && display
+    sec=$((sec + 1))
+  }
+done
 
