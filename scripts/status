@@ -1,70 +1,59 @@
-#!/bin/env sh
+#!/bin/bash
 
-# Initialize variables
+# Initialize
 printf "$$" > ~/.cache/pidofbar
 sec=0
 
-# Function to update CPU load
+# Update functions
 update_cpu() {
-  cpu="$(grep -o "^[^ ]*" /proc/loadavg)"
+  cpu=$(awk '{print $1}' /proc/loadavg)
 }
 
-# Function to update memory usage
 update_memory() {
-  memory="$(free -h | awk 'NR==2 {print $3}')"
+  memory=$(free -h | awk 'NR==2 {print $3}')
 }
 
-# Function to update time
 update_time() {
-  time="$(date "+%b %d %H:%M ")"
+  time=$(date "+%b %d %H:%M ")
 }
 
-# Function to update weather
 update_weather() {
-  weather="$(curl -s "wttr.in/dallas?format=1" | sed -E "s/^(.).*\+/\1/")"
+  weather=$(curl -s "wttr.in/dallas?format=1" | cut -c1)
 }
 
-# Function to update battery status and capacity
 update_bat() {
   if [[ -e /sys/class/power_supply/BAT0/status ]]; then
-    read -r bat_status < /sys/class/power_supply/BAT0/status
-  else
-    return  # Exit the function early if battery info is not available
-  fi
-
-  if [[ -e /sys/class/power_supply/BAT0/capacity ]]; then
-    read -r bat_capacity < /sys/class/power_supply/BAT0/capacity
-    bat="$bat_status $bat_capacity%"
-  else
-    bat="$bat_status (capacity not available)"
+    bat_status=$(< /sys/class/power_supply/BAT0/status)
+    if [[ -e /sys/class/power_supply/BAT0/capacity ]]; then
+      bat_capacity=$(< /sys/class/power_supply/BAT0/capacity)
+      bat="$bat_status $bat_capacity%"
+    else
+      bat="$bat_status (capacity not available)"
+    fi
   fi
 }
 
-# Function to update volume
 update_vol() {
   vol="奄 $(pactl list sinks | awk '/Volume:/ {print $5}' | head -n 1 | tr -d '%')%"
 }
 
-# Function to update backlight
 update_backlight() {
   if [[ -e /sys/class/backlight/intel_backlight/actual_brightness ]]; then
-    read -r actual_brightness </sys/class/backlight/intel_backlight/actual_brightness
-    read -r max_brightness </sys/class/backlight/intel_backlight/max_brightness
+    actual_brightness=$(< /sys/class/backlight/intel_backlight/actual_brightness)
+    max_brightness=$(< /sys/class/backlight/intel_backlight/max_brightness)
     backlight="☀$((actual_brightness * 100 / max_brightness))%"
   else
     backlight="Backlight not available"
   fi
 }
 
-# Function to display the status
+# Display function
 display() {
   status=""
-
-  [ -n "$bat" ] && status="$status $bat"
-  [ -n "$backlight" ] && status="$status $backlight"
-  [ -n "$vol" ] && status="$status $vol"
-  [ -n "$time" ] && status="$status $time"
-
+  [[ -n "$bat" ]] && status+="$bat "
+  [[ -n "$backlight" ]] && status+="$backlight "
+  [[ -n "$vol" ]] && status+="$vol "
+  [[ -n "$time" ]] && status+="$time"
   xsetroot -name "$status"
 }
 
@@ -73,20 +62,21 @@ trap "update_vol; display" "RTMIN"
 trap "update_backlight; display" "RTMIN+1"
 trap "update_bat; display" "RTMIN+2"
 
-# Initial updates for modules that don't update on their own
+# Initial updates
 update_vol
+update_backlight
 
-if [[ -e /sys/class/backlight/intel_backlight/actual_brightness ]]; then
-  update_backlight
-fi
-
+# Main loop
 while true; do
-  sleep 1 && {
-    [ $((sec % 5)) -eq 0 ] && update_time
-    [ $((sec % 5)) -eq 0 ] && update_vol
-    [ $((sec % 60)) -eq 0 ] && update_bat
-    [ $((sec % 5)) -eq 0 ] && display
-    sec=$((sec + 1))
-  }
+  sleep 1
+  sec=$((sec + 1))
+  case $((sec % 60)) in
+    0) update_bat;;
+    [1-5]) 
+      update_time
+      update_vol
+      display
+      ;;
+  esac
 done
 
