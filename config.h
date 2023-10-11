@@ -30,13 +30,12 @@ static const char *const autostart[] = {
   "xset", "s", "off", NULL,
   "xset", "s", "noblank", NULL,
   "xset", "-dkms", NULL,
-  "kitty", NULL,
+  "dbus-update-activation-environment", "--systemd", "--all", NULL,
   "flameshot", NULL,
   "lxpolkit", NULL,
   "dunst", NULL,
   "picom", NULL,
   "sh", "-c", "$HOME/github/dwm-titus/scripts/status", NULL,
-  "sh", "-c", "$HOME/github/dwm-titus/scripts/dbus", NULL,
   "feh", "--bg-max", "$HOME/Pictures/background.jpg", NULL,
   NULL /* terminate */
 };
@@ -54,9 +53,6 @@ static const Rule rules[] = {
 	 *	WM_NAME(STRING) = title
 	 */
 	/* class     instance  title           tags mask  isfloating  isterminal  noswallow  monitor */
-	{ "Gimp",    NULL,     NULL,           0,         1,          0,           0,        -1 },
-	{ "Firefox", NULL,     NULL,           1 << 8,    0,          0,          -1,        -1 },
-	{ "steam",   NULL,     NULL,           1 << 8,    0,          0,           0,        -1 },
 	{ "St",      NULL,     NULL,           0,         0,          1,           0,        -1 },
 	{ "kitty",   NULL,     NULL,           0,         0,          1,           0,        -1 },
 	{ NULL,      NULL,     "Event Tester", 0,         0,          0,           1,        -1 }, /* xev */
