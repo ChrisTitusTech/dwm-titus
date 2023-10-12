@@ -962,6 +962,8 @@ drawbar(Monitor *m)
 
 	resizebarwin(m);
 	for (c = m->clients; c; c = c->next) {
+		if(c->tags == ((1 << LENGTH(tags)) - 1))
+			continue;
 		occ |= c->tags == 255 ? 0 : c->tags;
 		if (c->isurgent)
 			urg |= c->tags;
