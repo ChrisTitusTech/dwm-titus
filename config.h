@@ -91,7 +91,7 @@ static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{ MODKEY,                       XK_r,      spawn,          {.v = dmenucmd } },
 	{ MODKEY,                       XK_x,      spawn,          {.v = termcmd } },
-	{ MODKEY,                       XK_b,      spawn,          SHCMD ("brave")},
+	{ MODKEY,                       XK_b,      spawn,          SHCMD ("xdg-open https:")},
 	{ MODKEY,                       XK_p,      spawn,          SHCMD ("flameshot full -p $HOME/SynologyDrive/Screenshots/")},
 	{ MODKEY|ShiftMask,             XK_p,      spawn,          SHCMD ("flameshot gui -p $HOME/SynologyDrive/Screenshots/")},
 	{ MODKEY|ControlMask,           XK_p,      spawn,          SHCMD ("flameshot gui --clipboard")},
