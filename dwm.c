@@ -119,7 +119,7 @@ struct Client {
 	int bw, oldbw;
 	unsigned int tags;
 	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, noswallow;
-  int beingmoved;
+    int beingmoved;
 	pid_t pid;
 	Client *next;
 	Client *snext;
@@ -519,12 +519,30 @@ attach(Client *c)
 }
 
 void
-attachbottom(Client *c)
-{
-	Client **tc;
-	c->next = NULL;
-	for (tc = &c->mon->clients; *tc; tc = &(*tc)->next);
-	*tc = c;
+attachbottom(Client *c) {
+    Client **tc, *lastNonChatterino = NULL;
+
+    // Iterate through the clients to find the last window that is not "chatterino"
+    for (tc = &c->mon->clients; *tc; tc = &(*tc)->next) {
+        XClassHint ch = { NULL, NULL };
+        if (XGetClassHint(dpy, (*tc)->win, &ch)) {
+            if (!(ch.res_class && strstr(ch.res_class, "chatterino"))) {
+                lastNonChatterino = *tc; // Update last non-"chatterino" window
+            }
+            if (ch.res_class) XFree(ch.res_class);
+            if (ch.res_name) XFree(ch.res_name);
+        }
+    }
+
+    if (lastNonChatterino) {
+        // If found, insert the new client after the last non-"chatterino" window
+        c->next = lastNonChatterino->next;
+        lastNonChatterino->next = c;
+    } else {
+        // If no non-"chatterino" windows are found, attach at the beginning
+        c->next = c->mon->clients;
+        c->mon->clients = c;
+    }
 }
 
 void
