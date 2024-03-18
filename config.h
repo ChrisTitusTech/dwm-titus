@@ -31,6 +31,7 @@ static const char *const autostart[] = {
   "xset", "s", "noblank", NULL,
   "xset", "-dkms", NULL,
   "dbus-update-activation-environment", "--systemd", "--all", NULL,
+  "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
   "flameshot", NULL,
   "dunst", NULL,
   "picom", NULL,

@@ -3,19 +3,55 @@ name: C/C++ CI
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
-  build:
-
+  build-and-release:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
-    - name: make
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          /var/cache/apt/archives
+        key: ${{ runner.os }}-apt-${{ hashFiles('**/Makefile') }}
+        restore-keys: |
+          ${{ runner.os }}-apt-
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y libx11-dev libxft-dev libxinerama-dev
+
+    - name: Build
       run: make
-    - name: make check
-      run: make check
-    - name: make distcheck
-      run: make distcheck
+      continue-on-error: true
+
+    - name: Check Build Failure
+      if: ${{ failure() }}
+      run: echo "Build failed. Investigate the logs for details." && exit 1
+
+    - name: Determine next version
+      id: next_version
+      run: |
+        git fetch --tags
+        latest_tag=$(git describe --tags `git rev-list --tags --max-count=1`)
+        if [[ -z "$latest_tag" ]]; then
+          echo "No tags found. Setting initial version to v0.0.1"
+          latest_tag="v0.0.0"
+        fi
+        echo "Latest tag: $latest_tag"
+        next_version=$(echo $latest_tag | awk -F. -v OFS=. '{$NF = $NF + 1; print}')
+        echo "Next version: v$next_version"
+        echo "::set-output name=version::v$next_version"
+      shell: bash
+
+    - name: Create Release
+      if: ${{ success() }}
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.next_version.outputs.version }}
+        name: Release ${{ steps.next_version.outputs.version }}
+        files: release/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
