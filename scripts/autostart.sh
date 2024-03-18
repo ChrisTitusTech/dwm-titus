@@ -1,7 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 /home/titus/github/dwm-titus/scripts/status &
-/usr/bin/lxpolkit &
 /usr/bin/synergy &
 feh --bg-fill --randomize --recursive $HOME/Pictures/backgrounds/ &
 picom --config "$HOME/.config/picom.conf" &

@@ -1,1 +1,1 @@
-exec dbus-update-activation-environment --systemd --all
+exec dbus-update-activation-environment --all

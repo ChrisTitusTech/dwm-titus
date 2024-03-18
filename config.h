@@ -32,11 +32,11 @@ static const char *const autostart[] = {
   "xset", "-dkms", NULL,
   "dbus-update-activation-environment", "--systemd", "--all", NULL,
   "flameshot", NULL,
-  "lxpolkit", NULL,
   "dunst", NULL,
   "picom", NULL,
   "sh", "-c", "$HOME/github/dwm-titus/scripts/status", NULL,
-  "feh", "--bg-max", "$HOME/Pictures/background.jpg", NULL,
+  "feh", "--bg-max", "$HOME/Pictures/backgrounds", NULL,
+  "synergy", NULL,
   NULL /* terminate */
 };
 
@@ -84,14 +84,14 @@ static const Layout layouts[] = {
 
 /* commands */
 static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() */
-static const char *dmenucmd[] = { "dmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_gray3, "-sb", col_cyan, "-sf", col_gray4, NULL };
+static const char *dmenucmd[] = { "rofi", "-show", "drun", NULL };
 static const char *termcmd[]  = { "kitty", NULL };
 
 static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{ MODKEY,                       XK_r,      spawn,          {.v = dmenucmd } },
 	{ MODKEY,                       XK_x,      spawn,          {.v = termcmd } },
-	{ MODKEY,                       XK_b,      spawn,          SHCMD ("brave")},
+	{ MODKEY,                       XK_b,      spawn,          SHCMD ("thorium-browser")},
 	{ MODKEY,                       XK_p,      spawn,          SHCMD ("flameshot full -p $HOME/SynologyDrive/Screenshots/")},
 	{ MODKEY|ShiftMask,             XK_p,      spawn,          SHCMD ("flameshot gui -p $HOME/SynologyDrive/Screenshots/")},
 	{ MODKEY|ControlMask,           XK_p,      spawn,          SHCMD ("flameshot gui --clipboard")},
@@ -131,8 +131,8 @@ static Key keys[] = {
 	TAGKEYS(                        XK_4,                      3)
 	TAGKEYS(                        XK_5,                      4)
 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
-	{ MODKEY|ControlMask|ShiftMask, XK_r,      spawn,          SHCMD("systemctl reboot")},
-	{ MODKEY|ControlMask|ShiftMask, XK_s,      spawn,          SHCMD("systemctl shutdown now")},
+	{ MODKEY|ControlMask|ShiftMask, XK_r,      spawn,          SHCMD("/usr/sbin/shutdown -r now")},
+	{ MODKEY|ControlMask|ShiftMask, XK_s,      spawn,          SHCMD("/usr/sbin/shutdown -P now")},
 };
 
 /* button definitions */
