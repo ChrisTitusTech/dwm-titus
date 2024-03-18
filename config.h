@@ -93,8 +93,8 @@ static Key keys[] = {
 	{ MODKEY,                       XK_r,      spawn,          {.v = dmenucmd } },
 	{ MODKEY,                       XK_x,      spawn,          {.v = termcmd } },
 	{ MODKEY,                       XK_b,      spawn,          SHCMD ("thorium-browser")},
-	{ MODKEY,                       XK_p,      spawn,          SHCMD ("flameshot full -p $HOME/SynologyDrive/Screenshots/")},
-	{ MODKEY|ShiftMask,             XK_p,      spawn,          SHCMD ("flameshot gui -p $HOME/SynologyDrive/Screenshots/")},
+	{ MODKEY,                       XK_p,      spawn,          SHCMD ("flameshot full -p /media/drive/Screenshots/")},
+	{ MODKEY|ShiftMask,             XK_p,      spawn,          SHCMD ("flameshot gui -p /media/drive/Screenshots/")},
 	{ MODKEY|ControlMask,           XK_p,      spawn,          SHCMD ("flameshot gui --clipboard")},
 	{ MODKEY,                       XK_e,      spawn,          SHCMD ("thunar")},
 	{ 0,                            0x1008ff02, spawn,         SHCMD ("xbacklight -inc 10")},
@@ -132,8 +132,8 @@ static Key keys[] = {
 	TAGKEYS(                        XK_4,                      3)
 	TAGKEYS(                        XK_5,                      4)
 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
-	{ MODKEY|ControlMask|ShiftMask, XK_r,      spawn,          SHCMD("/usr/sbin/shutdown -r now")},
-	{ MODKEY|ControlMask|ShiftMask, XK_s,      spawn,          SHCMD("/usr/sbin/shutdown -P now")},
+	{ MODKEY|ControlMask|ShiftMask, XK_r,      spawn,          SHCMD("systemctl reboot")},
+	{ MODKEY|ControlMask|ShiftMask, XK_s,      spawn,          SHCMD("systemctl suspend")},
 };
 
 /* button definitions */
