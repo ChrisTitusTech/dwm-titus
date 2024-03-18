@@ -45,8 +45,8 @@ jobs:
           echo "Latest tag: $latest_tag"
         fi
         next_version=$(echo $latest_tag | awk -F. -v OFS=. '{$NF = $NF + 1; print}')
-        echo "Next version: v$next_version"
-        echo "::set-output name=version::v$next_version"
+        echo "Next version: $next_version"
+        echo "::set-output name=version::$next_version"
       shell: bash
 
     - name: Create Release
