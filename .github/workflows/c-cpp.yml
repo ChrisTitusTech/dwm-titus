@@ -35,12 +35,13 @@ jobs:
       id: next_version
       run: |
         git fetch --tags
-        latest_tag=$(git describe --tags `git rev-list --tags --max-count=1`)
+        latest_tag=$(git describe --tags `git rev-list --tags --max-count=1` 2>/dev/null)
         if [[ -z "$latest_tag" ]]; then
           echo "No tags found. Setting initial version to v0.0.1"
           latest_tag="v0.0.0"
+        else
+          echo "Latest tag: $latest_tag"
         fi
-        echo "Latest tag: $latest_tag"
         next_version=$(echo $latest_tag | awk -F. -v OFS=. '{$NF = $NF + 1; print}')
         echo "Next version: v$next_version"
         echo "::set-output name=version::v$next_version"
