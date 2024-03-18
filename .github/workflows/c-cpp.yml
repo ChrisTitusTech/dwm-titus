@@ -56,5 +56,6 @@ jobs:
         tag_name: ${{ steps.next_version.outputs.version }}
         name: Release ${{ steps.next_version.outputs.version }}
         files: release/*
+        prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
