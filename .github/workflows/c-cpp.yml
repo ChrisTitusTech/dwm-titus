@@ -34,8 +34,10 @@ jobs:
     - name: Determine next version
       id: next_version
       run: |
+        set +e  # Temporarily disable immediate exit on error
         git fetch --tags
         latest_tag=$(git describe --tags `git rev-list --tags --max-count=1` 2>/dev/null)
+        set -e  # Re-enable immediate exit on error
         if [[ -z "$latest_tag" ]]; then
           echo "No tags found. Setting initial version to v0.0.1"
           latest_tag="v0.0.0"
@@ -45,7 +47,7 @@ jobs:
         next_version=$(echo $latest_tag | awk -F. -v OFS=. '{$NF = $NF + 1; print}')
         echo "Next version: v$next_version"
         echo "::set-output name=version::v$next_version"
-      shell: bash
+      shell: /usr/bin/bash --noprofile --norc -e -o pipefail
 
     - name: Create Release
       if: ${{ success() }}
