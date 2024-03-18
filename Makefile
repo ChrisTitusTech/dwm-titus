@@ -43,6 +43,10 @@ install: all
 	mkdir -p ${DESTDIR}${MANPREFIX}/man1
 	sed "s/VERSION/${VERSION}/g" < dwm.1 > ${DESTDIR}${MANPREFIX}/man1/dwm.1
 	chmod 644 ${DESTDIR}${MANPREFIX}/man1/dwm.1
+	mkdir -p release
+	cp -f dwm release/
+	tar -czf release/dwm-${VERSION}.tar.gz -C release dwm
+	@echo "Release archive created in release/dwm-${VERSION}.tar.gz"
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm\

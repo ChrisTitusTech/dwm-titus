@@ -97,6 +97,7 @@ static Key keys[] = {
 	{ MODKEY|ShiftMask,             XK_p,      spawn,          SHCMD ("flameshot gui -p /media/drive/Screenshots/")},
 	{ MODKEY|ControlMask,           XK_p,      spawn,          SHCMD ("flameshot gui --clipboard")},
 	{ MODKEY,                       XK_e,      spawn,          SHCMD ("thunar")},
+	{ MODKEY,                       XK_w,      spawn,          SHCMD ("looking-glass-client -F")},
 	{ 0,                            0x1008ff02, spawn,         SHCMD ("xbacklight -inc 10")},
 	{ 0,                            0x1008ff03, spawn,         SHCMD ("xbacklight -dec 10")},
 	{ 0,                            0x1008ff11, spawn,         SHCMD ("amixer sset Master 5%- unmute")},
