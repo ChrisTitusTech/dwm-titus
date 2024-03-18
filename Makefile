@@ -48,4 +48,10 @@ uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm\
 		${DESTDIR}${MANPREFIX}/man1/dwm.1
 
-.PHONY: all options clean dist install uninstall
+release: dwm
+	mkdir -p release
+	cp -f dwm release/
+	tar -czf release/dwm-${VERSION}.tar.gz -C release dwm
+	@echo "Release archive created in release/dwm-${VERSION}.tar.gz"
+
+.PHONY: all options clean dist install uninstall release
