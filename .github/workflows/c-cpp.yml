@@ -47,7 +47,7 @@ jobs:
         next_version=$(echo $latest_tag | awk -F. -v OFS=. '{$NF = $NF + 1; print}')
         echo "Next version: v$next_version"
         echo "::set-output name=version::v$next_version"
-      shell: /usr/bin/bash --noprofile --norc -e -o pipefail
+      shell: bash
 
     - name: Create Release
       if: ${{ success() }}
