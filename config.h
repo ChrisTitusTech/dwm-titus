@@ -2,7 +2,7 @@
 
 /* appearance */
 static const unsigned int borderpx  = 1;        /* border pixel of windows */
-static const unsigned int snap      = 32;       /* snap pixel */
+static const unsigned int snap      = 26;       /* snap pixel */
 static const int swallowfloating    = 1;        /* 1 means swallow floating windows by default */
 static const unsigned int systraypinning = 0;   /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor X */
 static const unsigned int systrayonleft = 0;   	/* 0: systray in the right corner, >0: systray on left of status text */
@@ -35,14 +35,13 @@ static const char *const autostart[] = {
   "flameshot", NULL,
   "dunst", NULL,
   "picom", NULL,
-  "sh", "-c", "$HOME/github/dwm-titus/scripts/status", NULL,
   "feh", "--bg-max", "$HOME/Pictures/backgrounds", NULL,
   "synergy", NULL,
   NULL /* terminate */
 };
 
 /* tagging */
-static const char *tags[] = { "1", "2", "3", "4", "5" };
+static const char *tags[] = { "", "", "", "", "" };
 
 static const char ptagf[] = "[%s %s]";	/* format of a tag label */
 static const char etagf[] = "[%s]";	/* format of an empty tag */
@@ -67,9 +66,9 @@ static const int lockfullscreen = 0; /* 1 will force focus on the fullscreen win
 
 static const Layout layouts[] = {
 	/* symbol     arrange function */
-	{ "[]=",      tile },    /* first entry is default */
-	{ "><>",      NULL },    /* no layout function means floating behavior */
-	{ "[M]",      monocle },
+	{ "",      tile },    /* first entry is default */
+	{ "",      NULL },    /* no layout function means floating behavior */
+	{ "",      monocle },
 };
 
 /* key definitions */
@@ -82,7 +81,7 @@ static const Layout layouts[] = {
 
 /* helper for spawning shell commands in the pre dwm-5.0 fashion */
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
-
+#define STATUSBAR "dwmblocks"
 /* commands */
 static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() */
 static const char *dmenucmd[] = { "rofi", "-show", "drun", NULL };
@@ -144,17 +143,9 @@ static Button buttons[] = {
 	{ ClkTagBar,            MODKEY,         Button1,        tag,            {0} },
 	{ ClkTagBar,            MODKEY,         Button3,        toggletag,      {0} },
 	{ ClkWinTitle,          0,              Button2,        zoom,           {0} },
-	{ ClkStatusText,        0,              Button2,        spawn,          {.v = termcmd } },
-	/* placemouse options, choose which feels more natural:
-	 *    0 - tiled position is relative to mouse cursor
-	 *    1 - tiled postiion is relative to window center
-	 *    2 - mouse pointer warps to window center
-	 *
-	 * The moveorplace uses movemouse or placemouse depending on the floating state
-	 * of the selected client. Set up individual keybindings for the two if you want
-	 * to control these separately (i.e. to retain the feature to move a tiled window
-	 * into a floating position).
-	 */
+	{ ClkStatusText,        0,              Button1,        sigstatusbar,   {.i = 1} },
+	{ ClkStatusText,        0,              Button2,        sigstatusbar,   {.i = 2} },
+	{ ClkStatusText,        0,              Button3,        sigstatusbar,   {.i = 3} },
 	{ ClkClientWin,         MODKEY,         Button1,        moveorplace,    {.i = 2} },
 	{ ClkClientWin,         MODKEY,         Button2,        togglefloating, {0} },
 	{ ClkClientWin,         MODKEY,         Button3,        resizemouse,    {0} },
