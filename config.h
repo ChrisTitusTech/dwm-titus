@@ -35,7 +35,7 @@ static const char *const autostart[] = {
   "flameshot", NULL,
   "dunst", NULL,
   "picom", NULL,
-  "feh", "--bg-max", "$HOME/Pictures/backgrounds", NULL,
+  "feh", "--bg-max", "/home/titus/Pictures/backgrounds", NULL,
   "synergy", NULL,
   NULL /* terminate */
 };
