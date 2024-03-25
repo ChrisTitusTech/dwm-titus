@@ -12,8 +12,8 @@ static const int showsystray        = 1;        /* 0 means no systray */
 static const int showbar            = 1;        /* 0 means no bar */
 static const int topbar             = 1;        /* 0 means bottom bar */
 static const Bool viewontag         = True;     /* Switch view on tag switch */
-static const char *fonts[]          = { "MesloLGS Nerd Font Mono:size=16" };
-static const char dmenufont[]       = "MesloLGS Nerd Font Mono:size=16";
+static const char *fonts[]          = { "MesloLGS Nerd Font Mono:size=14" };
+static const char dmenufont[]       = "MesloLGS Nerd Font Mono:size=14";
 static const char col_gray1[]       = "#2E3440";
 static const char col_gray2[]       = "#3B4252";
 static const char col_gray3[]       = "#D8DEE9";
@@ -29,7 +29,7 @@ static const char *const autostart[] = {
   "xsetroot", "-cursor_name", "left_ptr", NULL,
   "xset", "s", "off", NULL,
   "xset", "s", "noblank", NULL,
-  "xset", "-dkms", NULL,
+  "xset", "-dpms", NULL,
   "dbus-update-activation-environment", "--systemd", "--all", NULL,
   "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
   "flameshot", NULL,
