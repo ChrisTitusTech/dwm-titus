@@ -13,7 +13,6 @@ static const int showbar            = 1;        /* 0 means no bar */
 static const int topbar             = 1;        /* 0 means bottom bar */
 static const Bool viewontag         = True;     /* Switch view on tag switch */
 static const char *fonts[]          = { "MesloLGS Nerd Font Mono:size=14" };
-static const char dmenufont[]       = "MesloLGS Nerd Font Mono:size=14";
 static const char col_gray1[]       = "#2E3440";
 static const char col_gray2[]       = "#3B4252";
 static const char col_gray3[]       = "#D8DEE9";
@@ -83,7 +82,6 @@ static const Layout layouts[] = {
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
 #define STATUSBAR "dwmblocks"
 /* commands */
-static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() */
 static const char *dmenucmd[] = { "rofi", "-show", "drun", NULL };
 static const char *termcmd[]  = { "kitty", NULL };
 
