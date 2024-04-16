@@ -977,23 +977,34 @@ dirtomon(int dir)
 	return m;
 }
 
+/**
+ * drawbar - Draws the status bar for a given monitor.
+ * This function is responsible for drawing the entire status bar for a given monitor, including
+ * the tags, the layout symbol, the window title, and the status text. It handles different
+ * elements based on the monitor's state and the selected window.
+ * 
+ * @param m: A pointer to the Monitor structure for which the status bar is to be drawn.
+ */
 void
 drawbar(Monitor *m)
 {
-	int x, w, tw = 0, stw = 0;
-	int boxs = drw->fonts->h / 9;
-	int boxw = drw->fonts->h / 6 + 2;
-	unsigned int i, occ = 0, urg = 0;
+    // Initialize variables for drawing.
+	int x, w, tw = 0, stw = 0; // x: current x position, w: width, tw: text width, stw: systray width
+	int boxs = drw->fonts->h / 9; // boxs: size of the indicator box
+	int boxw = drw->fonts->h / 6 + 2; // boxw: width of the indicator box
+	unsigned int i, occ = 0, urg = 0; // i: iterator, occ: occupied tags, urg: urgent tags
 	Client *c;
 
+    // Return immediately if the monitor's showbar flag is not set.
 	if (!m->showbar)
 		return;
 
+    // Calculate the systray width if the systray is enabled, on the current monitor, and not on the left.
 	if(showsystray && m == systraytomon(m) && !systrayonleft)
 		stw = getsystraywidth();
 
-	/* draw status first so it can be overdrawn by tags later */
-	if (m == selmon) { /* status is only drawn on selected monitor */
+	// Draw the status text on the selected monitor.
+	if (m == selmon) {
 		char *text, *s, ch;
 		drw_setscheme(drw, scheme[SchemeNorm]);
 		x = 0;
@@ -1013,12 +1024,17 @@ drawbar(Monitor *m)
 		tw = statusw;
 	}
 
+    // Resize the bar window to fit the new content.
 	resizebarwin(m);
+
+    // Determine which tags are occupied and urgent.
 	for (c = m->clients; c; c = c->next) {
 		occ |= c->tags;
 		if (c->isurgent)
 			urg |= c->tags;
 	}
+
+    // Draw tags, indicating the selected, occupied, and urgent tags.
 	x = 0;
 	for (i = 0; i < LENGTH(tags); i++) {
 		w = TEXTW(tags[i]);
@@ -1031,10 +1047,13 @@ drawbar(Monitor *m)
 
 		x += w;
 	}
+
+    // Draw the layout symbol.
 	w = blw = TEXTW(m->ltsymbol);
 	drw_setscheme(drw, scheme[SchemeNorm]);
 	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0);
 
+    // Draw the window title or a blank space if no window is selected.
 	if ((w = m->ww - tw - stw - x) > bh) {
 		if (m->sel) {
 			drw_setscheme(drw, scheme[m == selmon ? SchemeSel : SchemeNorm]);
@@ -1046,6 +1065,8 @@ drawbar(Monitor *m)
 			drw_rect(drw, x, 0, w, bh, 1, 1);
 		}
 	}
+
+    // Map the drawn content to the bar window.
 	drw_map(drw, m->barwin, 0, 0, m->ww - stw, bh);
 }
 
