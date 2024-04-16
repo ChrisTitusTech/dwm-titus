@@ -345,6 +345,8 @@ static Window root, wmcheckwin;
 
 static xcb_connection_t *xcon;
 
+extern char **environ;
+
 /* configuration, allows nested code to access above variables */
 #include "config.h"
 
