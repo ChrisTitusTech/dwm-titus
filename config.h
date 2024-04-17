@@ -1,7 +1,7 @@
 /* See LICENSE file for copyright and license details. */
 
 /* appearance */
-static const unsigned int borderpx  = 1;        /* border pixel of windows */
+static const unsigned int borderpx  = 0;        /* border pixel of windows */
 static const unsigned int snap      = 26;       /* snap pixel */
 static const int swallowfloating    = 1;        /* 1 means swallow floating windows by default */
 static const unsigned int systraypinning = 0;   /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor X */
@@ -34,7 +34,7 @@ static const char *const autostart[] = {
   "flameshot", NULL,
   "dunst", NULL,
   "picom", NULL,
-  "feh", "--bg-max", "/home/titus/Pictures/backgrounds", NULL,
+  "sh", "-c", "feh --randomize --bg-max /home/titus/Pictures/backgrounds/*", NULL,
   "synergy", NULL,
   NULL /* terminate */
 };
