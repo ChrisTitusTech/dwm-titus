@@ -25,7 +25,6 @@ static const char *colors[][3]      = {
 };
 
 static const char *const autostart[] = {
-  "xsetroot", "-cursor_name", "left_ptr", NULL,
   "xset", "s", "off", NULL,
   "xset", "s", "noblank", NULL,
   "xset", "-dpms", NULL,
@@ -82,12 +81,12 @@ static const Layout layouts[] = {
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
 #define STATUSBAR "dwmblocks"
 /* commands */
-static const char *dmenucmd[] = { "rofi", "-show", "drun", NULL };
+static const char *launchercmd[] = { "rofi", "-show", "drun", NULL };
 static const char *termcmd[]  = { "kitty", NULL };
 
 static Key keys[] = {
 	/* modifier                     key        function        argument */
-	{ MODKEY,                       XK_r,      spawn,          {.v = dmenucmd } },
+	{ MODKEY,                       XK_r,      spawn,          {.v = launchercmd} },
 	{ MODKEY,                       XK_x,      spawn,          {.v = termcmd } },
 	{ MODKEY,                       XK_b,      spawn,          SHCMD ("thorium-browser")},
 	{ MODKEY,                       XK_p,      spawn,          SHCMD ("flameshot full -p /media/drive/Screenshots/")},
