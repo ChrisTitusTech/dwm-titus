@@ -1,6 +1,7 @@
 /* See LICENSE file for copyright and license details. */
 
 /* appearance */
+static const unsigned int refresh_rate = 60;    /* Matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions. */
 static const unsigned int borderpx  = 0;        /* border pixel of windows */
 static const unsigned int snap      = 26;       /* snap pixel */
 static const int swallowfloating    = 1;        /* 1 means swallow floating windows by default */
