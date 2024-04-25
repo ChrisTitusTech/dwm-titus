@@ -229,6 +229,7 @@ static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
 static void moveorplace(const Arg *arg);
 static Client *nexttiled(Client *c);
+static int noborder(Client *c);
 static void placemouse(const Arg *arg);
 static void pop(Client *c);
 static void propertynotify(XEvent *e);
@@ -806,6 +807,13 @@ configure(Client *c)
 	ce.width = c->w;
 	ce.height = c->h;
 	ce.border_width = c->bw;
+
+	if (noborder(c) && enable_noborder) {
+		ce.width += c->bw * 2;
+		ce.height += c->bw * 2;
+		ce.border_width = 0;
+	}
+
 	ce.above = None;
 	ce.override_redirect = False;
 	XSendEvent(dpy, c->win, False, StructureNotifyMask, (XEvent *)&ce);
@@ -1588,6 +1596,23 @@ nexttiled(Client *c)
 	return c;
 }
 
+int
+noborder(Client *c)
+{
+	int monocle_layout = 0;
+
+	if (!monocle_layout && (nexttiled(c->mon->clients) != c || nexttiled(c->next)))
+		return 0;
+
+	if (c->isfloating)
+		return 0;
+
+	if (!c->mon->lt[c->mon->sellt]->arrange)
+		return 0;
+
+	return 1;
+}
+
 void
 placemouse(const Arg *arg)
 {
@@ -1865,6 +1890,11 @@ resizeclient(Client *c, int x, int y, int w, int h)
 		return;
 
 	wc.border_width = c->bw;
+	if (noborder(c) && enable_noborder) {
+		wc.width += c->bw * 2;
+		wc.height += c->bw * 2;
+		wc.border_width = 0;
+	}
 	XConfigureWindow(dpy, c->win, CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
 	configure(c);
 	XSync(dpy, False);
