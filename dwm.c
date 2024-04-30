@@ -1012,7 +1012,7 @@ drawbar(Monitor *m)
 	if(showsystray && m == systraytomon(m) && !systrayonleft)
 		stw = getsystraywidth();
 
-	// Draw the status text on the selected monitor.
+	/* Draw the status text on the selected monitor.
 	if (m == selmon) {
 		char *text, *s, ch;
 		drw_setscheme(drw, scheme[SchemeNorm]);
@@ -1031,7 +1031,7 @@ drawbar(Monitor *m)
 		tw = TEXTW(text) - lrpad + 2;
 		drw_text(drw, m->ww - statusw - stw + x, 0, tw, bh, 0, text, 0);
 		tw = statusw;
-	}
+	}*/
 
     // Resize the bar window to fit the new content.
 	resizebarwin(m);
