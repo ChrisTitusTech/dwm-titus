@@ -119,7 +119,7 @@ struct Client {
 	int bw, oldbw;
 	unsigned int tags;
 	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, noswallow;
-    int beingmoved;
+	int beingmoved;
 	int fakefullscreen;
 	pid_t pid;
 	Client *next;
@@ -678,12 +678,18 @@ checkotherwm(void)
 void
 cleanup(void)
 {
-	Arg a = {.ui = ~0};
-	Layout foo = { "", NULL };
 	Monitor *m;
+	Layout foo = { "", NULL };
 	size_t i;
 
-	view(&a);
+	/* kill child processes */
+	for (i = 0; i < autostart_len; i++) {
+		if (0 < autostart_pids[i]) {
+			kill(autostart_pids[i], SIGTERM);
+			waitpid(autostart_pids[i], NULL, 0);
+		}
+	}
+
 	selmon->lt[selmon->sellt] = &foo;
 	for (m = mons; m; m = m->next)
 		while (m->stack)
@@ -691,13 +697,15 @@ cleanup(void)
 	XUngrabKey(dpy, AnyKey, AnyModifier, root);
 	while (mons)
 		cleanupmon(mons);
-
-	if (showsystray) {
-		XUnmapWindow(dpy, systray->win);
-		XDestroyWindow(dpy, systray->win);
+	if (showsystray && systray) {
+		while (systray->icons)
+			removesystrayicon(systray->icons);
+		if (systray->win) {
+			XUnmapWindow(dpy, systray->win);
+			XDestroyWindow(dpy, systray->win);
+		}
 		free(systray);
 	}
-
 	for (i = 0; i < CurLast; i++)
 		drw_cur_free(drw, cursor[i]);
 	for (i = 0; i < LENGTH(colors); i++)
@@ -830,7 +838,6 @@ configurenotify(XEvent *e)
 	Client *c;
 	XConfigureEvent *ev = &e->xconfigure;
 	int dirty;
-
 	/* TODO: updategeom handling sucks, needs to be simplified */
 	if (ev->window == root) {
 		dirty = (sw != ev->width || sh != ev->height);
@@ -845,8 +852,8 @@ configurenotify(XEvent *e)
            resizeclient(c, m->mx, m->my, m->mw, m->mh);
 				resizebarwin(m);
 			}
-			focus(NULL);
 			arrange(NULL);
+			focus(NULL);
 		}
 	}
 }
@@ -1118,8 +1125,6 @@ expose(XEvent *e)
 
 	if (ev->count == 0 && (m = wintomon(ev->window))) {
 		drawbar(m);
-		if (m == selmon)
-			updatesystray();
 	}
 }
 
@@ -1547,8 +1552,8 @@ movemouse(const Arg *arg)
 	if (c->isfullscreen && c->fakefullscreen != 1) /* no support moving fullscreen windows by mouse */
 		return;
 	restack(selmon);
-	ocx = c->x;
-	ocy = c->y;
+	nx = ocx = c->x;
+	ny = ocy = c->y;
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
 		return;
@@ -1715,12 +1720,11 @@ placemouse(const Arg *arg)
 			if (!r || r == c)
 				break;
 
-			attachmode = 0; // below
-			if (((float)(r->y + r->h - py) / r->h) > ((float)(r->x + r->w - px) / r->w)) {
-				if (abs(r->y - py) < r->h / 2)
-					attachmode = 1; // above
-			} else if (abs(r->x - px) < r->w / 2)
+			if ((((float)(r->y + r->h - py) / r->h) > ((float)(r->x + r->w - px) / r->w)
+			    	&& (abs(r->y - py) < r->h / 2)) || (abs(r->x - px) < r->w / 2))
 				attachmode = 1; // above
+			else
+				attachmode = 0; // below
 
 			if ((r && r != prevr) || (attachmode != prevattachmode)) {
 				detachstack(c);
@@ -1835,16 +1839,6 @@ propertynotify(XEvent *e)
 void
 quit(const Arg *arg)
 {
-	size_t i;
-
-	/* kill child processes */
-	for (i = 0; i < autostart_len; i++) {
-		if (0 < autostart_pids[i]) {
-			kill(autostart_pids[i], SIGTERM);
-			waitpid(autostart_pids[i], NULL, 0);
-		}
-	}
-
 	running = 0;
 }
 
@@ -2296,6 +2290,7 @@ setfullscreen(Client *c, int fullscreen)
 }
 
 Layout *last_layout;
+
 void
 fullscreen(const Arg *arg)
 {
@@ -2322,19 +2317,26 @@ setlayout(const Arg *arg)
 		drawbar(selmon);
 }
 
-void setcfact(const Arg *arg) {
+void
+setcfact(const Arg *arg)
+{
 	float f;
 	Client *c;
 
 	c = selmon->sel;
 
-	if(!arg || !c || !selmon->lt[selmon->sellt]->arrange)
+	if (!arg || !c || !selmon->lt[selmon->sellt]->arrange)
 		return;
-	f = arg->f + c->cfact;
-	if(arg->f == 0.0)
+	if (!arg->f)
 		f = 1.0;
-	else if(f < 0.25 || f > 4.0)
-		return;
+	else if (arg->f > 4.0) // set fact absolutely
+		f = arg->f - 4.0;
+	else
+		f = arg->f + c->cfact;
+	if (f < 0.25)
+		f = 0.25;
+	else if (f > 4.0)
+		f = 4.0;
 	c->cfact = f;
 	arrange(selmon);
 }
@@ -2602,20 +2604,18 @@ toggletag(const Arg *arg)
 void
 toggleview(const Arg *arg)
 {
-	unsigned int newtagset = selmon->tagset[selmon->seltags] ^ (arg->ui & TAGMASK);
+	unsigned int newtagset = selmon->tagset[selmon->seltags] ^ (arg->ui & TAGMASK);;
 	int i;
 
 	if (newtagset) {
 		selmon->tagset[selmon->seltags] = newtagset;
 
-		if (newtagset == ~0) {
-			selmon->pertag->prevtag = selmon->pertag->curtag;
+		if (newtagset == ~0)
+		{
 			selmon->pertag->curtag = 0;
 		}
-
 		/* test if the user did not select the same tag */
 		if (!(newtagset & 1 << (selmon->pertag->curtag - 1))) {
-			selmon->pertag->prevtag = selmon->pertag->curtag;
 			for (i = 0; !(newtagset & 1 << i); i++) ;
 			selmon->pertag->curtag = i + 1;
 		}
@@ -2626,12 +2626,8 @@ toggleview(const Arg *arg)
 		selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
 		selmon->lt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
-
-		if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->curtag])
-			togglebar(NULL);
-
-		focus(NULL);
 		arrange(selmon);
+		focus(NULL);
 	}
 }
 
@@ -2923,27 +2919,11 @@ updatesizehints(Client *c)
 void
 updatestatus(void)
 {
-	if (!gettextprop(root, XA_WM_NAME, stext, sizeof(stext))) {
+	Monitor *m;
+	if (!gettextprop(root, XA_WM_NAME, stext, sizeof(stext)))
 		strcpy(stext, "dwm-"VERSION);
-		statusw = TEXTW(stext) - lrpad + 2;
-	} else {
-		char *text, *s, ch;
-
-		statusw  = 0;
-		for (text = s = stext; *s; s++) {
-			if ((unsigned char)(*s) < ' ') {
-				ch = *s;
-				*s = '\0';
-				statusw += TEXTW(text) - lrpad;
-				*s = ch;
-				text = s + 1;
-			}
-		}
-		statusw += TEXTW(text) - lrpad + 2;
-
-	}
-	drawbar(selmon);
-	updatesystray();
+	for (m = mons; m; m = m->next)
+		drawbar(m);
 }
 
 void
