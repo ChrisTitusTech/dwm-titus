@@ -13,7 +13,6 @@ static const int systraypinningfailfirst  = 1;      /* 1: if pinning fails, disp
 static const int showsystray              = 1;      /* 0 means no systray */
 static const int showbar                  = 1;      /* 0 means no bar */
 static const int topbar                   = 1;      /* 0 means bottom bar */
-static const Bool viewontag               = True;   /* Switch view on tag switch */
 static const char *fonts[]                = { "MesloLGS Nerd Font Mono:size=16", "NotoColorEmoji:pixelsize=16:antialias=true:autohint=true"  };
 static const char normbordercolor[]       = "#3B4252";
 static const char normbgcolor[]           = "#2E3440";
@@ -63,8 +62,8 @@ static const Rule rules[] = {
 /* layout(s) */
 static const float mfact     = 0.75; /* factor of master area size [0.05..0.95] */
 static const int nmaster     = 1;    /* number of clients in master area */
-static const int resizehints = 1;    /* 1 means respect size hints in tiled resizals */
-static const int lockfullscreen = 0; /* 1 will force focus on the fullscreen window */
+static const int resizehints = 0;    /* 1 means respect size hints in tiled resizals */
+static const int lockfullscreen = 1; /* 1 will force focus on the fullscreen window */
 
 static const Layout layouts[] = {
 	/* symbol     arrange function */
@@ -121,6 +120,7 @@ static Key keys[] = {
 	{ MODKEY,                       XK_m,          fullscreen,             {0} },
 	{ MODKEY,                       XK_space,      setlayout,              {0} },
 	{ MODKEY|ShiftMask,             XK_m,          togglefloating,         {0} },
+	{ MODKEY|ShiftMask,             XK_y,          togglefakefullscreen,   {0} },
 	{ MODKEY,                       XK_0,          view,                   {.ui = ~0 } },
 	{ MODKEY|ShiftMask,             XK_0,          tag,                    {.ui = ~0 } },
 	{ MODKEY,                       XK_comma,      focusmon,               {.i = -1 } },
