@@ -38,6 +38,7 @@ static const char *const autostart[] = {
   "picom", NULL,
   "sh", "-c", "feh --randomize --bg-fill /home/titus/Pictures/backgrounds/*", NULL,
   "synergy", NULL,
+  "slstatus", NULL,
   NULL /* terminate */
 };
 
