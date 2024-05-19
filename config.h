@@ -92,7 +92,7 @@ static Key keys[] = {
 	/* modifier                     key            function                argument */
 	{ MODKEY,                       XK_r,          spawn,                  {.v = launchercmd} },
 	{ MODKEY,                       XK_x,          spawn,                  {.v = termcmd } },
-	{ MODKEY,                       XK_b,          spawn,                  SHCMD ("thorium-browser")},
+	{ MODKEY,                       XK_b,          spawn,                  SHCMD ("xdg-open https://")},
 	{ MODKEY,                       XK_p,          spawn,                  SHCMD ("flameshot full -p /media/drive/Screenshots/")},
 	{ MODKEY|ShiftMask,             XK_p,          spawn,                  SHCMD ("flameshot gui -p /media/drive/Screenshots/")},
 	{ MODKEY|ControlMask,           XK_p,          spawn,                  SHCMD ("flameshot gui --clipboard")},
