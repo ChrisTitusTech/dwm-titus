@@ -91,6 +91,7 @@ static const char *termcmd[]  = { "kitty", NULL };
 static Key keys[] = {
 	/* modifier                     key            function                argument */
 	{ MODKEY,                       XK_r,          spawn,                  {.v = launchercmd} },
+	{ MODKEY|ControlMask,           XK_r,          spawn,                  SHCMD ("protonrestart")},
 	{ MODKEY,                       XK_x,          spawn,                  {.v = termcmd } },
 	{ MODKEY,                       XK_b,          spawn,                  SHCMD ("thorium-browser")},
 	{ MODKEY,                       XK_p,          spawn,                  SHCMD ("flameshot full -p /media/drive/Screenshots/")},
