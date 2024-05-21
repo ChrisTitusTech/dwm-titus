@@ -3,19 +3,19 @@
 # Function to install dependencies for Debian-based distributions
 install_debian() {
     sudo apt update
-    sudo apt install -y libconfig-dev libdbus-1-dev libegl-dev libev-dev libgl-dev libepoxy-dev libpcre2-dev libpixman-1-dev libx11-xcb-dev libxcb1-dev libxcb-composite0-dev libxcb-damage0-dev libxcb-dpms0-dev libxcb-glx0-dev libxcb-image0-dev libxcb-present-dev libxcb-randr0-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-shape0-dev libxcb-util-dev libxcb-xfixes0-dev libxext-dev meson ninja-build uthash-dev
+    sudo apt install -y libconfig-dev libdbus-1-dev libegl-dev libev-dev libgl-dev libepoxy-dev libpcre2-dev libpixman-1-dev libx11-xcb-dev libxcb1-dev libxcb-composite0-dev libxcb-damage0-dev libxcb-dpms0-dev libxcb-glx0-dev libxcb-image0-dev libxcb-present-dev libxcb-randr0-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-shape0-dev libxcb-util-dev libxcb-xfixes0-dev libxext-dev meson ninja-build uthash-dev cmake
 }
 
 # Function to install dependencies for Red Hat-based distributions
 install_redhat() {
     sudo yum groupinstall -y "Development Tools"
-    sudo yum install -y dbus-devel gcc git libconfig-devel libdrm-devel libev-devel libX11-devel libX11-xcb libXext-devel libxcb-devel libGL-devel libEGL-devel libepoxy-devel meson ninja-build pcre2-devel pixman-devel uthash-devel xcb-util-image-devel xcb-util-renderutil-devel xorg-x11-proto-devel xcb-util-devel
+    sudo yum install -y dbus-devel gcc git libconfig-devel libdrm-devel libev-devel libX11-devel libX11-xcb libXext-devel libxcb-devel libGL-devel libEGL-devel libepoxy-devel meson ninja-build pcre2-devel pixman-devel uthash-devel xcb-util-image-devel xcb-util-renderutil-devel xorg-x11-proto-devel xcb-util-devel cmake
 }
 
 # Function to install dependencies for Arch-based distributions
 install_arch() {
     sudo pacman -Syu --noconfirm
-    sudo pacman -S --noconfirm base-devel libconfig dbus libev libx11 libxcb libxext libgl libegl libepoxy meson pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto
+    sudo pacman -S --noconfirm base-devel libconfig dbus libev libx11 libxcb libxext libgl libegl libepoxy meson pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto cmake
 }
 
 # Detect the distribution and install the appropriate packages
@@ -77,6 +77,28 @@ picom_animations() {
 
     echo "Picom animations installed successfully"
 }
+
+clone_config_folders() {
+    # Ensure the target directory exists
+    [ ! -d ~/.config ] && mkdir -p ~/.config
+
+    # Iterate over all directories in config/*
+    for dir in config/*/; do
+        # Extract the directory name
+        dir_name=$(basename "$dir")
+
+        # Clone the directory to ~/.config/
+        if [ -d "$dir" ]; then
+            cp -r "$dir" ~/.config/
+            echo "Cloned $dir_name to ~/.config/"
+        else
+            echo "Directory $dir_name does not exist, skipping"
+        fi
+    done
+}
+
+# Call the function
+clone_config_folders
 
 # Call the function
 picom_animations
