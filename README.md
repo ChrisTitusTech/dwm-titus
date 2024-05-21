@@ -25,6 +25,8 @@ This is my personal fork with following patches:
 + warp v2
 
 Some patches are rewritten or modified to work together.
+
+
 Requirements
 ------------
 In order to build dwm you need the Xlib header files.
