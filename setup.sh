@@ -9,13 +9,13 @@ install_debian() {
 # Function to install dependencies for Red Hat-based distributions
 install_redhat() {
     sudo yum groupinstall -y "Development Tools"
-    sudo yum install -y dbus-devel gcc git libconfig-devel libdrm-devel libev-devel libX11-devel libX11-xcb libXext-devel libxcb-devel libGL-devel libEGL-devel libepoxy-devel meson pcre2-devel pixman-devel uthash-devel xcb-util-image-devel xcb-util-renderutil-devel xorg-x11-proto-devel xcb-util-devel
+    sudo yum install -y dbus-devel gcc git libconfig-devel libdrm-devel libev-devel libX11-devel libX11-xcb libXext-devel libxcb-devel libGL-devel libEGL-devel libepoxy-devel meson ninja-build pcre2-devel pixman-devel uthash-devel xcb-util-image-devel xcb-util-renderutil-devel xorg-x11-proto-devel xcb-util-devel
 }
 
 # Function to install dependencies for Arch-based distributions
 install_arch() {
     sudo pacman -Syu --noconfirm
-    sudo pacman -S --noconfirm base-devel libconfig dbus libev libx11 libx11-xcb libxext libxcb libgl libegl libepoxy meson pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto
+    sudo pacman -S --noconfirm base-devel libconfig dbus libev libx11 libx11-xcb libxext libxcb libgl libegl libepoxy meson ninja pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto
 }
 
 # Detect the distribution and install the appropriate packages
