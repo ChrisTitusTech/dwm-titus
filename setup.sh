@@ -47,9 +47,13 @@ fi
 picom_animations() {
     # Clone the repository in the home/build directory
     mkdir -p ~/build
-    if ! git clone https://github.com/FT-Labs/picom.git ~/build/picom; then
-        echo "Failed to clone the repository"
-        return 1
+    if [ ! -d ~/build/picom ]; then
+        if ! git clone https://github.com/FT-Labs/picom.git ~/build/picom; then
+            echo "Failed to clone the repository"
+            return 1
+        fi
+    else
+        echo "Repository already exists, skipping clone"
     fi
 
     cd ~/build/picom || { echo "Failed to change directory to picom"; return 1; }
