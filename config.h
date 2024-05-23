@@ -46,7 +46,7 @@ static const char *const autostart[] = {
 };
 
 /* tagging */
-static const char *tags[] = { "", "", "󰙯", "", "", "", "󰇮", "󰝚", "󰵆" };
+static const char *tags[] = { "", "", "󰙯", "", "", "", "󰇮", "󰝚", "󰵆" };
 
 static const char ptagf[] = "[%s %s]";	/* format of a tag label */
 static const char etagf[] = "[%s]";	/* format of an empty tag */
