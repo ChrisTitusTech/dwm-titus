@@ -24,6 +24,7 @@ else
     echo "dwmblocks is not installed"
     echo "Installing dwmblocks..."
     cd "$RUNDIR" || exit
+    sudo cp cpuu /bin/
     git submodule init dwmblocks
     git submodule update dwmblocks
     cd dwmblocks || exit
@@ -44,6 +45,9 @@ fi
 
 echo "Copying wallpaper"
 cp chicken.jpg ~
+
+echo "Installing sddm"
+sudo systemctl enable sddm
 
 make
 sudo make install
