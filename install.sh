@@ -6,17 +6,6 @@ echo "Installing dependencies..."
 
 ./setup_depends.sh
 
-if fc-list : family | grep -q "MesloLGS Nerd Font"; then
-    echo "MesloLGS Nerd Font is installed"
-else
-    echo "MesloLGS Nerd Font is not installed"
-    echo "Installing MesloLGS Nerd Font..."
-    cd /tmp || exit
-    curl -fLo "MesloLGS Nerd Font Complete.otf" \
-    https://github.com/ryanoasis/nerd-fonts/raw/HEAD/patched-fonts/MesloLGS/complete/MesloLGS%20Nerd%20Font%20Complete.otf
-    sudo cp "MesloLGS Nerd Font Complete.otf" /usr/share/fonts/
-fi
-
 echo "Installing dwmblocks..."
 if [ -d "$RUNDIR/dwmblocks/config.h" ]; then
     echo "dwmblocks is installed"
@@ -25,6 +14,7 @@ else
     echo "Installing dwmblocks..."
     cd "$RUNDIR" || exit
     sudo cp cpuu /bin/
+    sudo chmod +x /bin/cpuu
     git submodule init dwmblocks
     git submodule update dwmblocks
     cd dwmblocks || exit

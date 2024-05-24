@@ -15,7 +15,7 @@ install_redhat() {
 # Function to install dependencies for Arch-based distributions
 install_arch() {
     sudo pacman -Syu --noconfirm
-    sudo pacman -S --noconfirm --needed sddm base-devel libconfig dbus libev libx11 libxcb libxext libgl libegl libepoxy meson pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto cmake wget flameshot kitty rofi mate-polkit
+    sudo pacman -S --noconfirm --needed ttf-meslo-nerd feh sddm base-devel libconfig dbus libev libx11 libxcb libxext libgl libegl libepoxy meson pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto cmake wget flameshot kitty rofi mate-polkit
 }
 
 # Detect the distribution and install the appropriate packages
