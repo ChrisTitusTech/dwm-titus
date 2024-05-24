@@ -1,0 +1,3 @@
+[submodule "dwmblocks"]
+	path = dwmblocks
+	url = https://github.com/Tifeko/dwmblocks.git
