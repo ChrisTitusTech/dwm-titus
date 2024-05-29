@@ -35,7 +35,7 @@ static const char *const autostart[] = {
   "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
   "flameshot", NULL,
   "dunst", NULL,
-  "picom", NULL,
+  "picom", "--animations", "-b", NULL,
   "sh", "-c", "feh --randomize --bg-fill /home/titus/Pictures/backgrounds/*", NULL,
   "synergy", NULL,
   "slstatus", NULL,
@@ -91,6 +91,7 @@ static const char *termcmd[]  = { "kitty", NULL };
 static Key keys[] = {
 	/* modifier                     key            function                argument */
 	{ MODKEY,                       XK_r,          spawn,                  {.v = launchercmd} },
+	{ MODKEY|ControlMask,           XK_r,          spawn,                  SHCMD ("protonrestart")},
 	{ MODKEY,                       XK_x,          spawn,                  {.v = termcmd } },
 	{ MODKEY,                       XK_b,          spawn,                  SHCMD ("thorium-browser")},
 	{ MODKEY,                       XK_p,          spawn,                  SHCMD ("flameshot full -p /media/drive/Screenshots/")},
