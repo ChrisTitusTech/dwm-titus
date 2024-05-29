@@ -100,6 +100,8 @@ static Key keys[] = {
 	{ MODKEY,                       XK_w,          spawn,                  SHCMD ("looking-glass-client -F")},
 	{ 0,                            0x1008ff02,    spawn,                  SHCMD ("xbacklight -inc 10")},
 	{ 0,                            0x1008ff03,    spawn,                  SHCMD ("xbacklight -dec 10")},
+	{ 0,                            0x1008ff1b,    spawn,                  SHCMD ("xbacklight -inc 10")},
+	{ 0,                            0x1008ff8e,    spawn,                  SHCMD ("xbacklight -dec 10")},
 	{ 0,                            0x1008ff11,    spawn,                  SHCMD ("amixer sset Master 5%- unmute")},
 	{ 0,                            0x1008ff12,    spawn,                  SHCMD ("amixer sset Master $(amixer get Master | grep -q '\\[on\\]' && echo 'mute' || echo 'unmute')")},
 	{ 0,                            0x1008ff13,    spawn,                  SHCMD ("amixer sset Master 5%+ unmute")},
