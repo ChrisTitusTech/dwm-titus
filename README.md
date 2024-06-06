@@ -2,7 +2,29 @@ dwm - dynamic window manager
 ============================
 dwm is an extremely fast, small, and dynamic window manager for X.
 
-These are my configuration changes with everything pre-patched using all the patches in the `/patches` directory
+This is my personal fork with following patches:
+
++ alwayscenter
++ alwaysfullscreen
++ auto start
++ cfacts
++ chatterino bottom
++ cool autostart
++ fakefullscreen client (with resize fix for chrome-based browsers + noborder fix)
++ multikeycode
++ noborder (floating + border flicker fix)
++ pertag
++ placemouse
++ resizepoint
++ statuscmd
++ swallow
++ switchtag
++ systray
++ true fullscreen
++ hide vacant tags
++ warp v2
+
+Some patches are rewritten or modified to work together.
 
 
 Requirements
