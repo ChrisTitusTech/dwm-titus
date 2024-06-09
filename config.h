@@ -41,7 +41,7 @@ static const char *const autostart[] = {
   "pipewire", NULL,
   "pipewire-pulse", NULL,
   "pipewire-media-session", NULL,
-  "dwmblocks", NULL,
+  "/home/tijnk/SSD/build/dwm-bar/dwm_bar.sh", NULL,
   "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
   NULL /* terminate */
 };
