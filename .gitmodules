@@ -1,3 +1,6 @@
 [submodule "dwmblocks"]
 	path = dwmblocks
 	url = https://github.com/Tifeko/dwmblocks.git
+[submodule "dwm-bar"]
+	path = dwm-bar
+	url = https://github.com/Tifeko/dwm-bar
