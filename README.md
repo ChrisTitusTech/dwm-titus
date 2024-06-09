@@ -12,6 +12,7 @@ This is my personal fork with following patches:
 + cool autostart
 + fakefullscreen client (with resize fix for chrome-based browsers + noborder fix)
 + multikeycode
++ movestack
 + noborder (floating + border flicker fix)
 + pertag
 + placemouse
