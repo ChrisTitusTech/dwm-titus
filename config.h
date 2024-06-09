@@ -13,7 +13,7 @@ static const int systraypinningfailfirst  = 1;      /* 1: if pinning fails, disp
 static const int showsystray              = 1;      /* 0 means no systray */
 static const int showbar                  = 1;      /* 0 means no bar */
 static const int topbar                   = 1;      /* 0 means bottom bar */
-static const char *fonts[]                = { "MesloLGS Nerd Font Mono:size=16", "NotoColorEmoji:pixelsize=16:antialias=true:autohint=true"  };
+static const char *fonts[]                = { "FiraCode Nerd Font promo Med:size=16", "NotoColorEmoji:pixelsize=16:antialias=true:autohint=true"  };
 static const char normbordercolor[]       = "#3B4252";
 static const char normbgcolor[]           = "#2E3440";
 static const char normfgcolor[]           = "#D8DEE9";
@@ -33,11 +33,8 @@ static const char *const autostart[] = {
   "xset", "-dpms", NULL,
   "dbus-update-activation-environment", "--systemd", "--all", NULL,
   "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
-  "flameshot", NULL,
   "dunst", NULL,
   "picom", "--animations", "-b", NULL,
-  "sh", "-c", "feh --randomize --bg-fill /home/titus/Pictures/backgrounds/*", NULL,
-  "synergy", NULL,
   "slstatus", NULL,
   NULL /* terminate */
 };
@@ -57,6 +54,7 @@ static const Rule rules[] = {
 	/* class     instance  title           tags mask  isfloating  isterminal  noswallow  monitor */
 	{ "St",      NULL,     NULL,           0,         0,          1,           0,        -1 },
 	{ "kitty",   NULL,     NULL,           0,         0,          1,           0,        -1 },
+  { "terminator", NULL,  NULL,           0,         0,          1,           0,        -1 },
 	{ NULL,      NULL,     "Event Tester", 0,         0,          0,           1,        -1 }, /* xev */
 };
 
@@ -86,19 +84,14 @@ static const Layout layouts[] = {
 #define STATUSBAR "dwmblocks"
 /* commands */
 static const char *launchercmd[] = { "rofi", "-show", "drun", NULL };
-static const char *termcmd[]  = { "kitty", NULL };
+static const char *termcmd[]  = { "terminator", NULL };
 
 static Key keys[] = {
 	/* modifier                     key            function                argument */
 	{ MODKEY,                       XK_r,          spawn,                  {.v = launchercmd} },
-	{ MODKEY|ControlMask,           XK_r,          spawn,                  SHCMD ("protonrestart")},
 	{ MODKEY,                       XK_x,          spawn,                  {.v = termcmd } },
 	{ MODKEY,                       XK_b,          spawn,                  SHCMD ("xdg-open https://")},
-	{ MODKEY,                       XK_p,          spawn,                  SHCMD ("flameshot full -p /media/drive/Screenshots/")},
-	{ MODKEY|ShiftMask,             XK_p,          spawn,                  SHCMD ("flameshot gui -p /media/drive/Screenshots/")},
-	{ MODKEY|ControlMask,           XK_p,          spawn,                  SHCMD ("flameshot gui --clipboard")},
 	{ MODKEY,                       XK_e,          spawn,                  SHCMD ("thunar")},
-	{ MODKEY,                       XK_w,          spawn,                  SHCMD ("looking-glass-client -F")},
 	{ 0,                            0x1008ff02,    spawn,                  SHCMD ("xbacklight -inc 10")},
 	{ 0,                            0x1008ff03,    spawn,                  SHCMD ("xbacklight -dec 10")},
 	{ 0,                            0x1008ff1b,    spawn,                  SHCMD ("xbacklight -inc 10")},
