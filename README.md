@@ -24,6 +24,7 @@ This is my personal fork with following patches:
 + true fullscreen
 + hide vacant tags
 + warp v2
++ winicon
 
 Some patches are rewritten or modified to work together.
 
