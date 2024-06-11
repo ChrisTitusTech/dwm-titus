@@ -28,6 +28,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
+#include <stdint.h>
 #include <spawn.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -81,11 +83,11 @@
 #define XEMBED_EMBEDDED_VERSION (VERSION_MAJOR << 16) | VERSION_MINOR
 
 /* enums */
-enum { CurResizeBR, CurResizeBL, CurResizeTR, CurResizeTL, CurNormal, CurMove, CurLast }; /* cursor */
+enum { CurResizeBR, CurResizeBL, CurResizeTR, CurResizeTL, CurNormal, CurResize, CurMove, CurLast }; /* cursor */
 enum { SchemeNorm, SchemeSel }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
-       NetWMFullscreen, NetActiveWindow, NetWMWindowType,
+       NetWMFullscreen, NetActiveWindow, NetWMWindowType, NetWMIcon,
        NetWMWindowTypeDialog, NetClientList, NetLast }; /* EWMH atoms */
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
@@ -127,6 +129,8 @@ struct Client {
 	Client *swallowing;
 	Monitor *mon;
 	Window win;
+	unsigned int icw, ich;
+	Picture icon;
 };
 
 typedef struct {
@@ -211,6 +215,7 @@ static void focusin(XEvent *e);
 static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
 static Atom getatomprop(Client *c, Atom prop);
+static pid_t getparentprocess(pid_t p);
 static int getrootptr(int *x, int *y);
 static long getstate(Window w);
 static pid_t getstatusbarpid();
@@ -219,6 +224,7 @@ static int gettextprop(Window w, Atom atom, char *text, unsigned int size);
 static void grabbuttons(Client *c, int focused);
 static void grabkeys(void);
 static void incnmaster(const Arg *arg);
+static int isdescprocess(pid_t p, pid_t c);
 static void keypress(XEvent *e);
 static void killclient(const Arg *arg);
 static void manage(Window w, XWindowAttributes *wa);
@@ -263,8 +269,11 @@ static void showhide(Client *c);
 static void sigstatusbar(const Arg *arg);
 static void spawn(const Arg *arg);
 static Monitor *systraytomon(Monitor *m);
+static int swallow(Client *p, Client *c);
+static Client *swallowingclient(Window w);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
+static Client *termforwin(const Client *c);
 static void tile(Monitor *m);
 static void togglebar(const Arg *arg);
 static void togglefakefullscreen(const Arg *arg);
@@ -274,6 +283,7 @@ static void toggleview(const Arg *arg);
 static void unfocus(Client *c, int setfocus);
 static void unmanage(Client *c, int destroyed);
 static void unmapnotify(XEvent *e);
+static void unswallow(Client *c);
 static void updatebarpos(Monitor *m);
 static void updatebars(void);
 static void updateclientlist(void);
@@ -288,6 +298,7 @@ static void updatetitle(Client *c);
 static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
 static void view(const Arg *arg);
+static pid_t winpid(Window w);
 static void warp(Client *c);
 static Client *wintoclient(Window w);
 static Monitor *wintomon(Window w);
@@ -297,12 +308,6 @@ static int xerrordummy(Display *dpy, XErrorEvent *ee);
 static int xerrorstart(Display *dpy, XErrorEvent *ee);
 static void zoom(const Arg *arg);
 static void autostart_exec(void);
-
-static pid_t getparentprocess(pid_t p);
-static int isdescprocess(pid_t p, pid_t c);
-static Client *swallowingclient(Window w);
-static Client *termforwin(const Client *c);
-static pid_t winpid(Window w);
 
 /* variables */
 static const char autostartblocksh[] = "autostart_blocking.sh";
@@ -351,6 +356,12 @@ static xcb_connection_t *xcon;
 
 /* configuration, allows nested code to access above variables */
 #include "config.h"
+
+#if SHOWWINICON
+static void freeicon(Client *c);
+static Picture geticonprop(Window w, unsigned int *icw, unsigned int *ich);
+static void updateicon(Client *c);
+#endif
 
 struct Pertag {
 	unsigned int curtag, prevtag; /* current and previous tag */
@@ -569,53 +580,6 @@ attachstack(Client *c)
 {
 	c->snext = c->mon->stack;
 	c->mon->stack = c;
-}
-
-void
-swallow(Client *p, Client *c)
-{
-
-	if (c->noswallow || c->isterminal)
-		return;
-	if (c->noswallow && !swallowfloating && c->isfloating)
-		return;
-
-	detach(c);
-	detachstack(c);
-
-	setclientstate(c, WithdrawnState);
-	XUnmapWindow(dpy, p->win);
-
-	p->swallowing = c;
-	c->mon = p->mon;
-
-	Window w = p->win;
-	p->win = c->win;
-	c->win = w;
-	updatetitle(p);
-	XMoveResizeWindow(dpy, p->win, p->x, p->y, p->w, p->h);
-	arrange(p->mon);
-	configure(p);
-	updateclientlist();
-}
-
-void
-unswallow(Client *c)
-{
-	c->win = c->swallowing->win;
-
-	free(c->swallowing);
-	c->swallowing = NULL;
-
-	/* unfullscreen the client */
-	setfullscreen(c, 0);
-	updatetitle(c);
-	arrange(c->mon);
-	XMapWindow(dpy, c->win);
-	XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w, c->h);
-	setclientstate(c, NormalState);
-	focus(NULL);
-	arrange(c->mon);
 }
 
 void
@@ -1006,14 +970,6 @@ dirtomon(int dir)
 	return m;
 }
 
-/**
- * drawbar - Draws the status bar for a given monitor.
- * This function is responsible for drawing the entire status bar for a given monitor, including
- * the tags, the layout symbol, the window title, and the status text. It handles different
- * elements based on the monitor's state and the selected window.
- *
- * @param m: A pointer to the Monitor structure for which the status bar is to be drawn.
- */
 void
 drawbar(Monitor *m)
 {
@@ -1084,7 +1040,12 @@ drawbar(Monitor *m)
 	if ((w = m->ww - tw - stw - x) > bh) {
 		if (m->sel) {
 			drw_setscheme(drw, scheme[m == selmon ? SchemeSel : SchemeNorm]);
+			#if SHOWWINICON
+			drw_text(drw, x, 0, w, bh, lrpad / 2 + (m->sel->icon ? m->sel->icw + ICONSPACING : 0), m->sel->name, 0);
+			if (m->sel->icon) drw_pic(drw, x + lrpad / 2, (bh - m->sel->ich) / 2, m->sel->icw, m->sel->ich, m->sel->icon);
+			#else
 			drw_text(drw, x, 0, w, bh, lrpad / 2, m->sel->name, 0);
+			#endif
 			if (m->sel->isfloating)
 				drw_rect(drw, x + boxs, boxs, boxw, boxw, m->sel->isfixed, 0);
 		} else {
@@ -1215,6 +1176,17 @@ focusstack(const Arg *arg)
 	}
 }
 
+#if SHOWWINICON
+void
+freeicon(Client *c)
+{
+	if (c->icon) {
+		XRenderFreePicture(dpy, c->icon);
+		c->icon = None;
+	}
+}
+#endif
+
 Atom
 getatomprop(Client *c, Atom prop)
 {
@@ -1231,6 +1203,103 @@ getatomprop(Client *c, Atom prop)
 		XFree(p);
 	}
 	return atom;
+}
+
+#if SHOWWINICON
+static uint32_t prealpha(uint32_t p) {
+	uint8_t a = p >> 24u;
+	uint32_t rb = (a * (p & 0xFF00FFu)) >> 8u;
+	uint32_t g = (a * (p & 0x00FF00u)) >> 8u;
+	return (rb & 0xFF00FFu) | (g & 0x00FF00u) | (a << 24u);
+}
+
+Picture
+geticonprop(Window win, unsigned int *picw, unsigned int *pich)
+{
+	int format;
+	unsigned long n, extra, *p = NULL;
+	Atom real;
+
+	if (XGetWindowProperty(dpy, win, netatom[NetWMIcon], 0L, LONG_MAX, False, AnyPropertyType, 
+						   &real, &format, &n, &extra, (unsigned char **)&p) != Success)
+		return None; 
+	if (n == 0 || format != 32) { XFree(p); return None; }
+
+	unsigned long *bstp = NULL;
+	uint32_t w, h, sz;
+	{
+		unsigned long *i; const unsigned long *end = p + n;
+		uint32_t bstd = UINT32_MAX, d, m;
+		for (i = p; i < end - 1; i += sz) {
+			if ((w = *i++) >= 16384 || (h = *i++) >= 16384) { XFree(p); return None; }
+			if ((sz = w * h) > end - i) break;
+			if ((m = w > h ? w : h) >= ICONSIZE && (d = m - ICONSIZE) < bstd) { bstd = d; bstp = i; }
+		}
+		if (!bstp) {
+			for (i = p; i < end - 1; i += sz) {
+				if ((w = *i++) >= 16384 || (h = *i++) >= 16384) { XFree(p); return None; }
+				if ((sz = w * h) > end - i) break;
+				if ((d = ICONSIZE - (w > h ? w : h)) < bstd) { bstd = d; bstp = i; }
+			}
+		}
+		if (!bstp) { XFree(p); return None; }
+	}
+
+	if ((w = *(bstp - 2)) == 0 || (h = *(bstp - 1)) == 0) { XFree(p); return None; }
+
+	uint32_t icw, ich;
+	if (w <= h) {
+		ich = ICONSIZE; icw = w * ICONSIZE / h;
+		if (icw == 0) icw = 1;
+	}
+	else {
+		icw = ICONSIZE; ich = h * ICONSIZE / w;
+		if (ich == 0) ich = 1;
+	}
+	*picw = icw; *pich = ich;
+
+	uint32_t i, *bstp32 = (uint32_t *)bstp;
+	for (sz = w * h, i = 0; i < sz; ++i) bstp32[i] = prealpha(bstp[i]);
+
+	Picture ret = drw_picture_create_resized(drw, (char *)bstp, w, h, icw, ich);
+	XFree(p);
+
+	return ret;
+}
+
+#endif
+
+pid_t
+getparentprocess(pid_t p)
+{
+	unsigned int v = 0;
+
+#ifdef __linux__
+	FILE *f;
+	char buf[256];
+	snprintf(buf, sizeof(buf) - 1, "/proc/%u/stat", (unsigned)p);
+
+	if (!(f = fopen(buf, "r")))
+		return 0;
+
+	fscanf(f, "%*u %*s %*c %u", &v);
+	fclose(f);
+#endif /* __linux__*/
+
+#ifdef __OpenBSD__
+	int n;
+	kvm_t *kd;
+	struct kinfo_proc *kp;
+
+	kd = kvm_openfiles(NULL, NULL, NULL, KVM_NO_FILES, NULL);
+	if (!kd)
+		return 0;
+
+	kp = kvm_getprocs(kd, KERN_PROC_PID, p, sizeof(*kp), &n);
+	v = kp->p_ppid;
+#endif /* __OpenBSD__ */
+
+	return (pid_t)v;
 }
 
 pid_t
@@ -1374,6 +1443,15 @@ incnmaster(const Arg *arg)
 	arrange(selmon);
 }
 
+int
+isdescprocess(pid_t p, pid_t c)
+{
+	while (p != c && c != 0)
+		c = getparentprocess(c);
+
+	return (int)c;
+}
+
 #ifdef XINERAMA
 static int
 isuniquegeom(XineramaScreenInfo *unique, size_t n, XineramaScreenInfo *info)
@@ -1437,6 +1515,9 @@ manage(Window w, XWindowAttributes *wa)
 	c->oldbw = wa->border_width;
 	c->cfact = 1.0;
 
+	#if SHOWWINICON
+	updateicon(c);
+	#endif
 	updatetitle(c);
 	if (XGetTransientForHint(dpy, w, &trans) && (t = wintoclient(trans))) {
 		c->mon = t->mon;
@@ -1882,6 +1963,13 @@ propertynotify(XEvent *e)
 			if (c == c->mon->sel)
 				drawbar(c->mon);
 		}
+		#if SHOWWINICON
+		else if (ev->atom == netatom[NetWMIcon]) {
+			updateicon(c);
+			if (c == c->mon->sel)
+				drawbar(c->mon);
+		}
+		#endif
 		if (ev->atom == netatom[NetWMWindowType])
 			updatewindowtype(c);
 	}
@@ -2450,6 +2538,9 @@ setup(void)
 	netatom[NetSystemTrayOrientation] = XInternAtom(dpy, "_NET_SYSTEM_TRAY_ORIENTATION", False);
 	netatom[NetSystemTrayOrientationHorz] = XInternAtom(dpy, "_NET_SYSTEM_TRAY_ORIENTATION_HORZ", False);
 	netatom[NetWMName] = XInternAtom(dpy, "_NET_WM_NAME", False);
+	#if SHOWWINICON
+	netatom[NetWMIcon] = XInternAtom(dpy, "_NET_WM_ICON", False);
+	#endif
 	netatom[NetWMState] = XInternAtom(dpy, "_NET_WM_STATE", False);
 	netatom[NetWMCheck] = XInternAtom(dpy, "_NET_SUPPORTING_WM_CHECK", False);
 	netatom[NetWMFullscreen] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
@@ -2461,6 +2552,7 @@ setup(void)
 	xatom[XembedInfo] = XInternAtom(dpy, "_XEMBED_INFO", False);
 	/* init cursors */
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
+	cursor[CurResize] = drw_cur_create(drw, XC_sizing);
 	cursor[CurResizeBR] = drw_cur_create(drw, XC_bottom_right_corner);
 	cursor[CurResizeBL] = drw_cur_create(drw, XC_bottom_left_corner);
 	cursor[CurResizeTR] = drw_cur_create(drw, XC_top_right_corner);
@@ -2567,6 +2659,67 @@ sigstatusbar(const Arg *arg)
 	sigqueue(statuspid, SIGRTMIN+statussig, sv);
 }
 
+int
+swallow(Client *p, Client *c)
+{
+	if (c->noswallow > 0 || c->isterminal)
+		return 0;
+	if (c->noswallow < 0 && !swallowfloating && c->isfloating)
+		return 0;
+
+	detach(c);
+	detachstack(c);
+
+	setclientstate(c, WithdrawnState);
+	XUnmapWindow(dpy, p->win);
+
+	p->swallowing = c;
+	c->mon = p->mon;
+
+	Window w = p->win;
+	p->win = c->win;
+	c->win = w;
+
+	#if SHOWWINICON
+	Window icon = p->icon;
+	p->icon = c->icon;
+	c->icon = icon;
+	int icw = p->icw;
+	p->icw = c->icw;
+	c->icw = icw;
+	int ich = p->ich;
+	p->ich = c->ich;
+	c->ich = ich;
+	#endif
+
+	XChangeProperty(dpy, c->win, netatom[NetClientList], XA_WINDOW, 32, PropModeReplace,
+		(unsigned char *) &(p->win), 1);
+
+	updatetitle(p);
+	XMoveResizeWindow(dpy, p->win, p->x, p->y, p->w, p->h);
+	arrange(p->mon);
+	configure(p);
+	XMapWindow(dpy, p->win);
+	updateclientlist();
+	return 1;
+}
+
+Client *
+swallowingclient(Window w)
+{
+	Client *c;
+	Monitor *m;
+
+	for (m = mons; m; m = m->next) {
+		for (c = m->clients; c; c = c->next) {
+			if (c->swallowing && c->swallowing->win == w)
+				return c;
+		}
+	}
+
+	return NULL;
+}
+
 extern char **environ;
 
 void
@@ -2600,6 +2753,25 @@ tagmon(const Arg *arg)
 		}
 	} else
 		sendmon(c, dirtomon(arg->i));
+}
+
+Client *
+termforwin(const Client *w)
+{
+	Client *c;
+	Monitor *m;
+
+	if (!w->pid || w->isterminal)
+		return NULL;
+
+	for (m = mons; m; m = m->next) {
+		for (c = m->clients; c; c = c->next) {
+			if (c->isterminal && !c->swallowing && c->pid && isdescprocess(c->pid, w->pid))
+				return c;
+		}
+	}
+
+	return NULL;
 }
 
 void
@@ -2793,6 +2965,9 @@ unmanage(Client *c, int destroyed)
 
 	Client *s = swallowingclient(c->win);
 	if (s) {
+		#if SHOWWINICON
+		freeicon(s->swallowing);
+		#endif
 		free(s->swallowing);
 		s->swallowing = NULL;
 		arrange(m);
@@ -2802,6 +2977,9 @@ unmanage(Client *c, int destroyed)
 
 	detach(c);
 	detachstack(c);
+	#if SHOWWINICON
+	freeicon(c);
+	#endif
 	if (!destroyed) {
 		wc.border_width = c->oldbw;
 		XGrabServer(dpy); /* avoid race conditions */
@@ -2858,6 +3036,36 @@ unmapnotify(XEvent *e)
 }
 
 void
+unswallow(Client *c)
+{
+	c->win = c->swallowing->win;
+
+	#if SHOWWINICON
+	freeicon(c);
+	c->icon = c->swallowing->icon;
+	c->icw = c->swallowing->icw;
+	c->ich = c->swallowing->ich;
+	#endif
+
+	free(c->swallowing);
+	c->swallowing = NULL;
+
+	XDeleteProperty(dpy, c->win, netatom[NetClientList]);
+
+	/* unfullscreen the client */
+	setfullscreen(c, 0);
+	updatetitle(c);
+	arrange(c->mon);
+	XMapWindow(dpy, c->win);
+	XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w, c->h);
+	setclientstate(c, NormalState);
+	focus(NULL);
+	arrange(c->mon);
+	configure(c);
+	updateclientlist();
+}
+
+void
 updatebars(void)
 {
 	unsigned int w;
@@ -2911,6 +3119,15 @@ updateclientlist()
 				XA_WINDOW, 32, PropModeAppend,
 				(unsigned char *) &(c->win), 1);
 }
+
+#if SHOWWINICON
+void
+updateicon(Client *c)
+{
+	freeicon(c);
+	c->icon = geticonprop(c->win, &c->icw, &c->ich);
+}
+#endif
 
 int
 updategeom(void)
@@ -3334,83 +3551,6 @@ winpid(Window w)
 
 #endif /* __OpenBSD__ */
 	return result;
-}
-
-pid_t
-getparentprocess(pid_t p)
-{
-	unsigned int v = 0;
-
-#ifdef __linux__
-	FILE *f;
-	char buf[256];
-	snprintf(buf, sizeof(buf) - 1, "/proc/%u/stat", (unsigned)p);
-
-	if (!(f = fopen(buf, "r")))
-		return 0;
-
-	fscanf(f, "%*u %*s %*c %u", &v);
-	fclose(f);
-#endif /* __linux__*/
-
-#ifdef __OpenBSD__
-	int n;
-	kvm_t *kd;
-	struct kinfo_proc *kp;
-
-	kd = kvm_openfiles(NULL, NULL, NULL, KVM_NO_FILES, NULL);
-	if (!kd)
-		return 0;
-
-	kp = kvm_getprocs(kd, KERN_PROC_PID, p, sizeof(*kp), &n);
-	v = kp->p_ppid;
-#endif /* __OpenBSD__ */
-
-	return (pid_t)v;
-}
-
-int
-isdescprocess(pid_t p, pid_t c)
-{
-	while (p != c && c != 0)
-		c = getparentprocess(c);
-
-	return (int)c;
-}
-
-Client *
-termforwin(const Client *w)
-{
-	Client *c;
-	Monitor *m;
-
-	if (!w->pid || w->isterminal)
-		return NULL;
-
-	for (m = mons; m; m = m->next) {
-		for (c = m->clients; c; c = c->next) {
-			if (c->isterminal && !c->swallowing && c->pid && isdescprocess(c->pid, w->pid))
-				return c;
-		}
-	}
-
-	return NULL;
-}
-
-Client *
-swallowingclient(Window w)
-{
-	Client *c;
-	Monitor *m;
-
-	for (m = mons; m; m = m->next) {
-		for (c = m->clients; c; c = c->next) {
-			if (c->swallowing && c->swallowing->win == w)
-				return c;
-		}
-	}
-
-	return NULL;
 }
 
 Client *
