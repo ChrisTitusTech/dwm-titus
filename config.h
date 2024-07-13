@@ -141,6 +141,7 @@ static Key keys[] = {
 	TAGKEYS(                        XK_4,                                  3)
 	TAGKEYS(                        XK_5,                                  4)
 	{ MODKEY|ShiftMask,             XK_q,          quit,                   {0} }, // exit dwm
+	{ MODKEY|ControlMask,           XK_q,          spawn,                  SHCMD ("$HOME/.config/rofi/powermenu.sh")}, // exit dwm
 	{ MODKEY|ControlMask|ShiftMask, XK_r,          spawn,                  SHCMD("systemctl reboot")}, // reboot system
 	{ MODKEY|ControlMask|ShiftMask, XK_s,          spawn,                  SHCMD("systemctl suspend")}, // suspend system
 };
