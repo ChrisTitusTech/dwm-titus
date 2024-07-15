@@ -1,0 +1,33 @@
+[keyboard]
+bindings = [ 
+  # switch tabs
+  { key = "1", mods = "Control", chars = "\u00021" },
+  { key = "2", mods = "Control", chars = "\u00022" },
+  { key = "3", mods = "Control", chars = "\u00023" },
+  { key = "4", mods = "Control", chars = "\u00024" },
+  { key = "5", mods = "Control", chars = "\u00025" },
+  { key = "6", mods = "Control", chars = "\u00026" },
+  { key = "7", mods = "Control", chars = "\u00027" },
+  { key = "8", mods = "Control", chars = "\u00028" },
+  { key = "9", mods = "Control", chars = "\u00029" },
+
+  { key = "T", mods = "Control", chars = "\u0002c" },        # create new window(aka tab)
+  { key = "T", mods = "Control|Shift", chars = "\u0002!" },  # break pane into new window
+
+  { key = "Z", mods = "Control", chars = "\u0002z" },        # detach tmux session
+  { key = "W", mods = "Control", chars = "\u0002x" },        # close window/pane
+  { key = "N", mods = "Control|Shift", chars = "\u0002N" },        # open Floax
+  { key = "W", mods = "Control|Shift", chars = "\u0002w" },  # list windows
+  { key = "Q", mods = "Control|Shift", chars = "\u0002Q" },  # Quit Session
+
+  { key = "S", mods = "Control", chars = "\u0002%" },        # split window/pane vertically
+  { key = "S", mods = "Control|Shift", chars = "\u0002\"" }, # split window/pane horizontally
+
+  { key = "R", mods = "Control|Shift", chars = "\u0002r" },  # source config file
+  { key = "D", mods = "Control|Shift", chars = "\u0002d" },  # detach tmux session
+
+  { key = ";", mods = "Control|Shift", chars = "\u0002;" },  # navigate over to last pane
+  { key = ",", mods = "Control", chars = "\u0002," },        # rename the window 
+  { key = "]", mods = "Control", chars = "\u0002]" },        # open sesh
+  { key = "f", mods = "Control", chars = "zi\n" },             # open zi
+]
