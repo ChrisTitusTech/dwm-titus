@@ -33,6 +33,19 @@ Requirements
 ------------
 In order to build dwm you need the Xlib header files.
 
+### Build Dependencies
+
+- For Arch-Based Distros
+
+```bash
+sudo pacman -S --needed base-devel libx11 libxinerama libxft imlib2
+```
+
+- For Debian/Ubuntu-Based Distros
+
+```bash
+sudo apt install -y build-essential libx11-dev libxinerama-dev libxft-dev libimblib2-dev
+```
 
 Installation
 ------------
@@ -72,3 +85,10 @@ Configuration
 -------------
 The configuration of dwm is done by creating a custom config.h
 and (re)compiling the source code.
+
+>[!TIP]
+> Create a convenient alias for recompiling dwm. This alias will clean up your build directory by removing unnecessary files if the build command succeeds
+> ```bash
+> alias smci="sudo make clean install && rm *.o && rm *.orig"
+> ```
+
