@@ -33,6 +33,19 @@ Requirements
 ------------
 In order to build dwm you need the Xlib header files.
 
+### Build Dependencies
+
+- For Arch-Based Distros
+
+```bash
+sudo pacman -S --needed base-devel libx11 libxinerama libxft imlib2
+```
+
+- For Debian/Ubuntu-Based Distros
+
+```bash
+sudo apt install -y build-essential libx11-dev libxinerama-dev libxft-dev libimblib2-dev
+```
 
 Installation
 ------------
