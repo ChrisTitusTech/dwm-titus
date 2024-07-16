@@ -85,3 +85,10 @@ Configuration
 -------------
 The configuration of dwm is done by creating a custom config.h
 and (re)compiling the source code.
+
+>[!TIP]
+> Create a convenient alias for recompiling dwm. This alias will clean up your build directory by removing unnecessary files if the build command succeeds
+> ```bash
+> alias smci="sudo make clean install && rm *.o && rm *.orig"
+> ```
+
