@@ -104,7 +104,7 @@ static Key keys[] = {
 	{ MODKEY,                       XK_b,          spawn,                  SHCMD ("xdg-open https://")}, // open default browser
 	{ MODKEY,                       XK_p,          spawn,                  SHCMD ("flameshot full -p /media/drive/Screenshots/")}, // capture full screen screenshot
 	{ MODKEY|ShiftMask,             XK_p,          spawn,                  SHCMD ("flameshot gui -p /media/drive/Screenshots/")}, // open flameshot gui for screenshot selection
-	{ MODKEY|ControlMask,           XK_p,          spawn,                  SHCMD ("flameshot gui --clipboard")}, // copy screenshot to clipboard
+	{ 0,           XK_Print,          spawn,                  SHCMD ("flameshot gui --clipboard")}, // copy screenshot to clipboard
 	{ MODKEY,                       XK_e,          spawn,                  SHCMD ("thunar")}, // open thunar file manager
 	{ MODKEY,                       XK_w,          spawn,                  SHCMD ("looking-glass-client -F")}, // start Looking glass
 	{ 0,                            0x1008ff02,    spawn,                  SHCMD ("xbacklight -inc 10")}, // increase backlight brightness

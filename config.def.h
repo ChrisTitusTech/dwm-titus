@@ -1,7 +1,7 @@
 /* See LICENSE file for copyright and license details. */
 
 /* appearance */
-static const unsigned int refresh_rate = 60;    /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
+static const unsigned int refresh_rate = 144;    /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
 static const unsigned int enable_noborder = 1;  /* toggles noborder feature (0=disabled, 1=enabled) */
 static const unsigned int borderpx  = 1;        /* border pixel of windows */
 static const unsigned int snap      = 32;       /* snap pixel */
@@ -16,8 +16,8 @@ static const int topbar             = 1;        /* 0 means bottom bar */
 #define ICONSIZE                      17        /* icon size */
 #define ICONSPACING                   5         /* space between icon and title */
 #define SHOWWINICON                   1         /* 0 means no winicon */
-static const char *fonts[]          = { "monospace:size=10" };
-static const char dmenufont[]       = "monospace:size=10";
+static const char *fonts[]          = { "monospace:size=12" };
+static const char dmenufont[]       = "monospace:size=12";
 static const char col_gray1[]       = "#222222";
 static const char col_gray2[]       = "#444444";
 static const char col_gray3[]       = "#bbbbbb";
