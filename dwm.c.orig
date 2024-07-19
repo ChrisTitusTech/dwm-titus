@@ -2308,7 +2308,6 @@ sendmon(Client *c, Monitor *m)
 	} else
 		focus(NULL);
 }
-
 void
 setclientstate(Client *c, long state)
 {
