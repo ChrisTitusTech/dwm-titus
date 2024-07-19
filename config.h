@@ -16,7 +16,7 @@ static const int topbar                   = 1;      /* 0 means bottom bar */
 #define ICONSIZE                            17      /* icon size */
 #define ICONSPACING                         5       /* space between icon and title */
 #define SHOWWINICON                         1       /* 0 means no winicon */
-static const char *fonts[]                = { "MesloLGS Nerd Font Mono:size=16", "NotoColorEmoji:pixelsize=16:antialias=true:autohint=true"  };
+static const char *fonts[]                = { "MesloLGS Nerd Font Mono:size=14", "NotoColorEmoji:pixelsize=14:antialias=true:autohint=true"  };
 static const char normbordercolor[]       = "#3B4252";
 static const char normbgcolor[]           = "#2E3440";
 static const char normfgcolor[]           = "#D8DEE9";
@@ -35,18 +35,22 @@ static const char *const autostart[] = {
   "xset", "s", "noblank", NULL,
   "xset", "-dpms", NULL,
   "dbus-update-activation-environment", "--systemd", "--all", NULL,
-  "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
+  "/usr/lib/polkit-kde-authentication-agent-1", NULL,
   "flameshot", NULL,
+  "copyq --start-server", NULL,
   "dunst", NULL,
   "picom", "--animations", "-b", NULL,
-  "sh", "-c", "feh --randomize --bg-fill /home/titus/Pictures/backgrounds/*", NULL,
-  "synergy", NULL,
-  "slstatus", NULL,
+  "sh", "-c", "feh --randomize --bg-fill /media/LinuxData/Wallpapers/*", NULL,
+  "nm-applet", NULL,
+  "megasync", NULL,
+  "flatpak run dev.vencord.Vesktop", NULL,
+  // "synergy", NULL,
+  // "slstatus", NULL,
   NULL /* terminate */
 };
 
 /* tagging */
-static const char *tags[] = { "", "", "", "", "" };
+static const char *tags[] = { "1", "2", "3", "4", "5" };
 
 static const char ptagf[] = "[%s %s]";  /* format of a tag label */
 static const char etagf[] = "[%s]";     /* format of an empty tag */
@@ -94,9 +98,9 @@ static const char *termcmd[]  = { "alacritty", NULL };
 
 static Key keys[] = {
 	/* modifier                     key            function                argument */
-	{ MODKEY,                       XK_r,          spawn,                  {.v = launchercmd} }, // spawn rofi for launching other programs
+	{ Mod1Mask,                     XK_space,      spawn,                  {.v = launchercmd} }, // spawn rofi for launching other programs
 	{ MODKEY|ControlMask,           XK_r,          spawn,                  SHCMD ("protonrestart")}, // restart protonvpn
-	{ MODKEY,                       XK_x,          spawn,                  {.v = termcmd } }, // spawn a terminal
+	{ MODKEY,                       XK_t,          spawn,                  {.v = termcmd } }, // spawn a terminal
 	{ MODKEY,                       XK_b,          spawn,                  SHCMD ("xdg-open https://")}, // open default browser
 	{ MODKEY,                       XK_p,          spawn,                  SHCMD ("flameshot full -p /media/drive/Screenshots/")}, // capture full screen screenshot
 	{ MODKEY|ShiftMask,             XK_p,          spawn,                  SHCMD ("flameshot gui -p /media/drive/Screenshots/")}, // open flameshot gui for screenshot selection
@@ -125,7 +129,7 @@ static Key keys[] = {
 	{ MODKEY,                       XK_Return,     zoom,                   {0} }, // moves the currently focused window to/from the master area (for tiled layouts)
 	{ MODKEY,                       XK_Tab,        view,                   {0} }, // view last focused tag
 	{ MODKEY,                       XK_q,          killclient,             {0} }, // close the currently focused window
-	{ MODKEY,                       XK_t,          setlayout,              {.v = &layouts[0]} }, // set tile layout
+	{ MODKEY|ShiftMask,             XK_t,          setlayout,              {.v = &layouts[0]} }, // set tile layout
 	{ MODKEY,                       XK_f,          setlayout,              {.v = &layouts[1]} }, // set floating layout
 	{ MODKEY,                       XK_m,          fullscreen,             {0} }, // toggles fullscreen for the currently selected client
 	{ MODKEY,                       XK_space,      setlayout,              {-1} }, // toggles between current and previous layout
@@ -143,8 +147,8 @@ static Key keys[] = {
 	TAGKEYS(                        XK_5,                                  4)
 	{ MODKEY|ShiftMask,             XK_q,          quit,                   {0} }, // exit dwm
 	{ MODKEY|ControlMask,           XK_q,          spawn,                  SHCMD("$HOME/.config/rofi/powermenu.sh")}, // exit dwm
-	{ MODKEY|ControlMask|ShiftMask, XK_r,          spawn,                  SHCMD("systemctl reboot")}, // reboot system
-	{ MODKEY|ControlMask|ShiftMask, XK_s,          spawn,                  SHCMD("systemctl suspend")}, // suspend system
+	// { MODKEY|ControlMask|ShiftMask, XK_r,          spawn,                  SHCMD("systemctl reboot")}, // reboot system
+	// { MODKEY|ControlMask|ShiftMask, XK_s,          spawn,                  SHCMD("systemctl suspend")}, // suspend system
 };
 
 /* button definitions */
