@@ -18,27 +18,64 @@ install_arch() {
     sudo pacman -S --noconfirm base-devel libconfig dbus libev libx11 libxcb libxext libgl libegl libepoxy meson pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto cmake libxft libimlib2 libxinerama libxcb-res xorg-xev xorg-xbacklight alsa-utils
 }
 
+
 # Detect the distribution and install the appropriate packages
+dtype="unknown"
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     case "$ID" in
         debian|ubuntu)
+            dtype="debian"
+            # echo "Detected Debian-based distribution"
+            # install_debian
+            ;;
+        rhel|centos|fedora)
+            dtype="redhat"
+            # echo "Detected Red Hat-based distribution"
+            # install_redhat
+            ;;
+        arch)
+            # echo "Detected Arch-based distribution"
+            # install_arch
+            dtype="arch"
+            ;;
+        *)
+        if [ -n "$ID_LIKE" ]; then
+            case $ID_LIKE in
+                *fedora*|*rhel*|*centos*)
+                    dtype="redhat"
+                    ;;
+                *ubuntu*|*debian*)
+                    dtype="debian"
+                    ;;
+                *arch*)
+                    dtype="arch"
+                    ;;
+            esac
+        fi
+         # If ID or ID_LIKE is not recognized, keep dtype as unknown
+        ;;
+    esac
+
+    case "$dtype" in
+        "debian")
             echo "Detected Debian-based distribution"
             install_debian
             ;;
-        rhel|centos|fedora)
+        "redhat")
             echo "Detected Red Hat-based distribution"
             install_redhat
             ;;
-        arch)
+        "arch")
             echo "Detected Arch-based distribution"
             install_arch
             ;;
         *)
-            echo "Unsupported distribution"
-            exit 1
-            ;;
+          echo "Unsupported distribution"
+          exit 1
+          ;;    
     esac
+
 else
     echo "/etc/os-release not found. Unsupported distribution"
     exit 1
