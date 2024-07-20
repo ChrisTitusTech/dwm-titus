@@ -34,7 +34,7 @@ static const char *const autostart[] = {
   "xset", "s", "off", NULL,
   "xset", "s", "noblank", NULL,
   "xset", "-dpms", NULL,
-  "arandr", "$HOME/.screenlayout/default.sh", NULL,
+  "sh", "$HOME/.screenlayout/default.sh", NULL,
   "dbus-update-activation-environment", "--systemd", "--all", NULL,
   "/usr/lib/polkit-kde-authentication-agent-1", NULL,
   "flameshot", NULL,
@@ -97,6 +97,13 @@ static const Layout layouts[] = {
 static const char *launchercmd[] = { "$HOME/.local/bin/run-rofi.sh", NULL };
 static const char *termcmd[]  = { "alacritty", NULL };
 
+
+
+#include <X11/XF86keysym.h>
+static const char *volumeUp[] = { "wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+", NULL };
+static const char *volumeDown[] = { "wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-", NULL };
+static const char *volumeMute[] = { "pactl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle", NULL };
+
 static Key keys[] = {
 	/* modifier                     key            function                argument */
 	{ Mod1Mask,                     XK_space,      spawn,                  {.v = launchercmd} }, // spawn rofi for launching other programs
@@ -108,11 +115,10 @@ static Key keys[] = {
 	{ 0,           XK_Print,          spawn,                  SHCMD ("flameshot gui")}, // copy screenshot to clipboard
 	{ MODKEY,                       XK_e,          spawn,                  SHCMD ("thunar")}, // open thunar file manager
 	// { MODKEY,                       XK_w,          spawn,                  SHCMD ("looking-glass-client -F")}, // start Looking glass
-	{ 0,                            0x1008ff02,    spawn,                  SHCMD ("xbacklight -inc 10")}, // increase backlight brightness
-	{ 0,                            0x1008ff03,    spawn,                  SHCMD ("xbacklight -dec 10")}, // decrease backlight brightness
-	{ 0,                            0x1008ff1b,    spawn,                  SHCMD ("xbacklight -inc 10")}, // increase backlight brightness
-	{ 0,                            0x1008ff8e,    spawn,                  SHCMD ("xbacklight -dec 10")}, // decrease backlight brightness
-	{ 0,                            0x1008ff11,    spawn,                  SHCMD ("amixer sset Master 5%- unmute")}, // unmute volume
+	{ 0,                            XF86XK_AudioRaiseVolume,    spawn,                  {.v = volumeUp}}, // raise volume
+	{ 0,                            XF86XK_AudioLowerVolume,    spawn,                  {.v = volumeDown}}, // lower volume
+	{ 0,                            XF86XK_AudioMute,    spawn,                  {.v = volumeMute}}, // raise volume
+
 	{ 0,                            0x1008ff12,    spawn,                  SHCMD ("amixer sset Master $(amixer get Master | grep -q '\\[on\\]' && echo 'mute' || echo 'unmute')")}, // toggle mute/unmute
 	{ 0,                            0x1008ff13,    spawn,                  SHCMD ("amixer sset Master 5%+ unmute")}, // unmute volume
 	{ MODKEY|ShiftMask,             XK_b,          togglebar,              {0} }, // toggle bar visibility
