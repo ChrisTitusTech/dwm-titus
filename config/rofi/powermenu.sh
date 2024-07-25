@@ -48,6 +48,9 @@ run_cmd() {
 				bspwm)
 					bspc quit
 					;;
+				dwm)
+					pkill dwm
+					;;
 				i3)
 					i3-msg exit
 					;;
