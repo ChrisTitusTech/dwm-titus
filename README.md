@@ -20,7 +20,6 @@ dwm is an extremely fast, small, and dynamic window manager for X.
   - resizepoint
   - statuscmd
   - swallow
-  - switchtag
   - systray
   - true fullscreen
   - hide vacant tags
