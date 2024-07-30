@@ -2,93 +2,94 @@ dwm - dynamic window manager
 ============================
 dwm is an extremely fast, small, and dynamic window manager for X.
 
-This is my personal fork with following patches:
+<details>
+  <summary>This is my personal fork with following patches:</summary>
 
-+ alwayscenter
-+ alwaysfullscreen
-+ auto start
-+ cfacts
-+ chatterino bottom
-+ cool autostart
-+ fakefullscreen client (with resize fix for chrome-based browsers + noborder fix)
-+ multikeycode
-+ movestack
-+ noborder (floating + border flicker fix)
-+ pertag
-+ placemouse
-+ resizepoint
-+ statuscmd
-+ swallow
-+ switchtag
-+ systray
-+ true fullscreen
-+ hide vacant tags
-+ warp v2
-+ winicon
+  - alwayscenter
+  - alwaysfullscreen
+  - auto start
+  - cfacts
+  - chatterino bottom
+  - cool autostart
+  - fakefullscreen client (with resize fix for chrome-based browsers + noborder fix)
+  - multikeycode
+  - movestack
+  - noborder (floating + border flicker fix)
+  - pertag
+  - placemouse
+  - resizepoint
+  - statuscmd
+  - swallow
+  - systray
+  - true fullscreen
+  - hide vacant tags
+  - warp v2
+  - winicon
 
-Some patches are rewritten or modified to work together.
+❕ Some patches are rewritten or modified to work together.
+</details>
 
+Prerequisites
+-------------
+This guide assumes your system has the latest updates before going ahead with the installation.
 
-Requirements
-------------
-In order to build dwm you need the Xlib header files.
+Note that you may want to keep the source directories of the tools you download in a suitable location for future reference as you may need to recompile them to apply configuration changes.
 
-### Build Dependencies
-
-- For Arch-Based Distros
-
-```bash
-sudo pacman -S --needed base-devel libx11 libxinerama libxft imlib2
+## arch
+```sh
+sudo pacman -S --needed base-devel extra/git extra/libx11 extra/libxcb extra/libxinerama extra/libxft extra/imlib2
 ```
 
-- For Debian/Ubuntu-Based Distros
+If you find yourself missing a library then this can usually be found by searching for the file name using pacman:
+```sh
+$ pacman -F Xlib-xcb.h
+extra/libx11 1.6.12-1 [installed: 1.7.2-1]
+    usr/include/X11/Xlib-xcb.h
 
-```bash
-sudo apt install -y build-essential libx11-dev libxinerama-dev libxft-dev libimlib2-dev
+```
+
+## Debian/Ubuntu
+```sh
+sudo apt install build-essential git libx11-dev libx11-xcb-dev libxcb-res0-dev libxinerama-dev libxft-dev libimlib2-dev
+```
+
+It is worth checking the version of gcc on debian based systems as they may come with older implementations that can result in compilation errors.
+```sh
+gcc --version
+```
+You would expect at least v8.x or above here.
+
+If you find yourself missing a library then this can usually be found by searching for the file name using apt-file, a tool that have to be installed separately:
+```sh
+$ sudo apt install apt-file
+$ sudo apt-file update
+$ apt-file search xcb/res.h
+libxcb-res0-dev: /usr/include/xcb/res.h
+```
+
+## Void Linux
+```sh
+sudo xbps-install -Su base-devel libX11-devel libXft-devel libXinerama-devel freetype-devel fontconfig-devel libxcb-devel imlib2-devel
+```
+
+If you find yourself missing a library then this can usually be found by searching for the file name using xlocate, a tool that have to be installed separately via the xtools package:
+```sh
+$ xlocate yajl/yajl_gen.h
+yajl-devel-2.1.0._4      /usr/include/yajl/yajl_gen.h
 ```
 
 Installation
 ------------
-Edit config.mk to match your local setup (dwm is installed into
-the /usr/local namespace by default).
+Clone the repository, then compile and install.
+```sh
+$ git clone https://github.com/ChrisTitusTech/dwm-titus.git
+$ cd dwm-titus
+$ make
+$ sudo make install
+```
 
-Afterwards enter the following command to build and install dwm (if
-necessary as root):
+A dwm.desktop file will be placed in /usr/share/xsessions/ so if you are using a login manager you should now be able to select dwm as the window manager when logging in.
 
-    make clean install
+If you do not use a login manager then you already know what you are doing. Add exec dwm at the end of your ~/.xinitrc file.
 
-
-Running dwm
------------
-Add the following line to your .xinitrc to start dwm using startx:
-
-    exec dwm
-
-In order to connect dwm to a specific display, make sure that
-the DISPLAY environment variable is set correctly, e.g.:
-
-    DISPLAY=foo.bar:1 exec dwm
-
-(This will start dwm on display :1 of the host foo.bar.)
-
-In order to display status info in the bar, you can do something
-like this in your .xinitrc:
-
-    while xsetroot -name "`date` `uptime | sed 's/.*,//'`"
-    do
-    	sleep 1
-    done &
-    exec dwm
-
-
-Configuration
--------------
-The configuration of dwm is done by creating a custom config.h
-and (re)compiling the source code.
-
->[!TIP]
-> Create a convenient alias for recompiling dwm. This alias will clean up your build directory by removing unnecessary files if the build command succeeds
-> ```bash
-> alias smci="sudo make clean install && rm *.o && rm *.orig"
-> ```
-
+By default new terminals are opened by using the keyboard shortcut of Super+x while rofi is started using Super+r.
