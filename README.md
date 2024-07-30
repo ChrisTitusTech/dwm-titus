@@ -45,6 +45,7 @@ If you find yourself missing a library then this can usually be found by searchi
 $ pacman -F Xlib-xcb.h
 extra/libx11 1.6.12-1 [installed: 1.7.2-1]
     usr/include/X11/Xlib-xcb.h
+
 ```
 
 ## Debian/Ubuntu

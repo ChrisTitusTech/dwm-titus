@@ -130,7 +130,7 @@ static Key keys[] = {
 	{ MODKEY,                       XK_t,          setlayout,              {.v = &layouts[0]} }, // set tile layout
 	{ MODKEY,                       XK_f,          setlayout,              {.v = &layouts[1]} }, // set floating layout
 	{ MODKEY,                       XK_m,          fullscreen,             {0} }, // toggles fullscreen for the currently selected client
-	{ MODKEY,                       XK_space,      setlayout,              {-1} }, // toggles between current and previous layout
+	{ MODKEY,                       XK_space,      setlayout,              {0} }, // toggles between current and previous layout
 	{ MODKEY|ShiftMask,             XK_m,          togglefloating,         {0} }, // toggles between tiled and floating arrangement for the currently focused client
 	{ MODKEY|ShiftMask,             XK_y,          togglefakefullscreen,   {0} }, // toggles "fake" fullscreen for the selected window
 	{ MODKEY,                       XK_0,          view,                   {.ui = ~0 } }, // view all tags on the current monitor
