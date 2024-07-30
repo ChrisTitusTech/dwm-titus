@@ -3,7 +3,7 @@
 configuration {
   show-icons: true;
   icon-theme: "Papirus";
-  display-drun: "";
+  display-drun: "  ";
   display-window: "﩯 ";
   display-combi: "  ";
 }
