@@ -44,7 +44,7 @@ sudo pacman -S --needed base-devel libx11 libxinerama libxft imlib2
 - For Debian/Ubuntu-Based Distros
 
 ```bash
-sudo apt install -y build-essential libx11-dev libxinerama-dev libxft-dev libimblib2-dev
+sudo apt install -y build-essential libx11-dev libxinerama-dev libxft-dev libimlib2-dev
 ```
 
 Installation
