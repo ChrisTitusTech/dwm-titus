@@ -3,14 +3,8 @@ working_directory = "None"
 
 # Themes --
 import = [ 
-  # -- Themes --
-  #"~/.config/alacritty/catppuccin-macchiato.toml", 
-  "~/.config/alacritty/nordic.toml", 
-  # "~/.config/alacritty/xcad.toml",
-  # "~/.config/alacritty/dracula.toml",
-  # "~/.config/alacritty/catppuccin-mocha.toml",
-  # "~/.config/alacritty/solarized_dark.toml",
-  # "~/.config/alacritty/solarized-osaka.toml",
+  "~/.config/alacritty/nordic.toml",
+  "~/.config/alacritty/keybinds.toml"
 ]
 
 [window]
