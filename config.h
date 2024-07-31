@@ -1,22 +1,25 @@
 /* See LICENSE file for copyright and license details. */
 
 /* appearance */
-static const unsigned int refresh_rate    = 60;     /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
-static const unsigned int enable_noborder = 1;      /* toggles noborder feature (0=disabled, 1=enabled) */
-static const unsigned int borderpx        = 1;      /* border pixel of windows */
-static const unsigned int snap            = 26;     /* snap pixel */
-static const int swallowfloating          = 1;      /* 1 means swallow floating windows by default */
-static const unsigned int systraypinning  = 0;      /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor X */
-static const unsigned int systrayonleft   = 0;      /* 0: systray in the right corner, >0: systray on left of status text */
-static const unsigned int systrayspacing  = 5;      /* systray spacing */
-static const int systraypinningfailfirst  = 1;      /* 1: if pinning fails, display systray on the first monitor, False: display systray on the last monitor*/
-static const int showsystray              = 1;      /* 0 means no systray */
-static const int showbar                  = 1;      /* 0 means no bar */
-static const int topbar                   = 1;      /* 0 means bottom bar */
-#define ICONSIZE                            17      /* icon size */
-#define ICONSPACING                         5       /* space between icon and title */
-#define SHOWWINICON                         1       /* 0 means no winicon */
-static const char *fonts[]                = { "MesloLGS Nerd Font Mono:size=16", "NotoColorEmoji:pixelsize=16:antialias=true:autohint=true"  };
+static const unsigned int refresh_rate    = 60;         /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
+static const unsigned int enable_noborder = 1;          /* toggles noborder feature (0=disabled, 1=enabled) */
+static const unsigned int borderpx        = 1;          /* border pixel of windows */
+static const unsigned int snap            = 26;         /* snap pixel */
+static const int swallowfloating          = 1;          /* 1 means swallow floating windows by default */
+static const unsigned int systraypinning  = 0;          /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor X */
+static const unsigned int systrayonleft   = 0;          /* 0: systray in the right corner, >0: systray on left of status text */
+static const unsigned int systrayspacing  = 5;          /* systray spacing */
+static const int systraypinningfailfirst  = 1;          /* 1: if pinning fails, display systray on the first monitor, False: display systray on the last monitor*/
+static const int showsystray              = 1;          /* 0 means no systray */
+static const int showbar                  = 1;          /* 0 means no bar */
+static const int topbar                   = 1;          /* 0 means bottom bar */
+#define ICONSIZE                            18          /* icon size */
+#define ICONSPACING                         5           /* space between icon and title */
+#define SHOWWINICON                         1           /* 0 means no winicon */
+static const char ptagf[]                 = "[%s %s]";  /* format of a tag label */
+static const char etagf[]                 = "[%s]";     /* format of an empty tag */
+static const int lcaselbl                 = 0;          /* 1 means make tag label lowercase */
+static const char *fonts[]                = { "MesloLGS Nerd Font Mono:size=16", "NotoColorEmoji:pixelsize=16:antialias=true:autohint=true" };
 static const char normbordercolor[]       = "#3B4252";
 static const char normbgcolor[]           = "#2E3440";
 static const char normfgcolor[]           = "#D8DEE9";
@@ -48,21 +51,17 @@ static const char *const autostart[] = {
 /* tagging */
 static const char *tags[] = { "", "", "", "", "" };
 
-static const char ptagf[] = "[%s %s]";  /* format of a tag label */
-static const char etagf[] = "[%s]";     /* format of an empty tag */
-static const int lcaselbl = 0;          /* 1 means make tag label lowercase */
-
 static const Rule rules[] = {
 	/* xprop(1):
 	 *	WM_CLASS(STRING) = instance, class
 	 *	WM_NAME(STRING) = title
 	 */
-	/* class     instance  title           tags mask  isfloating  isterminal  noswallow  monitor */
-	{ "St",      NULL,     NULL,           0,         0,          1,           0,        -1 },
-	{ "kitty",   NULL,     NULL,           0,         0,          1,           0,        -1 },
-	{ "alacritty",   NULL,     NULL,       0,         0,          1,           0,        -1 },
-	{ "terminator",	 NULL,     NULL,       0,         0,          1,           0,        -1 },
-	{ NULL,      NULL,     "Event Tester", 0,         0,          0,           1,        -1 }, /* xev */
+	/* class        instance  title           tags mask  isfloating  isterminal  noswallow  monitor */
+	{ "St",         NULL,     NULL,           0,         0,          1,          0,         -1 },
+	{ "kitty",      NULL,     NULL,           0,         0,          1,          0,         -1 },
+	{ "alacritty",  NULL,     NULL,           0,         0,          1,          0,         -1 },
+	{ "terminator", NULL,     NULL,           0,         0,          1,          0,         -1 },
+	{ NULL,         NULL,     "Event Tester", 0,         0,          0,          1,         -1 }, /* xev */
 };
 
 /* layout(s) */
@@ -73,9 +72,9 @@ static const int lockfullscreen = 1; /* 1 will force focus on the fullscreen win
 
 static const Layout layouts[] = {
 	/* symbol     arrange function */
-	{ "",      tile },    /* first entry is default */
-	{ "",      NULL },    /* no layout function means floating behavior */
-	{ "",      monocle },
+	{ "",        tile },    /* first entry is default */
+	{ "",        NULL },    /* no layout function means floating behavior */
+	{ "",        monocle },
 };
 
 /* key definitions */
@@ -86,18 +85,20 @@ static const Layout layouts[] = {
 	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = 1 << TAG} }, \
 	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
 
-/* helper for spawning shell commands in the pre dwm-5.0 fashion */
+/* Helper macros for spawning commands */
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
+#define CMD(...)   { .v = (const char*[]){ __VA_ARGS__, NULL } }
+
 #define STATUSBAR "dwmblocks"
+
 /* commands */
 static const char *launchercmd[] = { "rofi", "-show", "drun", NULL };
-static const char *termcmd[]  = { "alacritty", NULL };
 
 static Key keys[] = {
 	/* modifier                     key            function                argument */
 	{ MODKEY,                       XK_r,          spawn,                  {.v = launchercmd} }, // spawn rofi for launching other programs
 	{ MODKEY|ControlMask,           XK_r,          spawn,                  SHCMD ("protonrestart")}, // restart protonvpn
-	{ MODKEY,                       XK_x,          spawn,                  {.v = termcmd } }, // spawn a terminal
+	{ MODKEY,                       XK_x,          spawn,                  CMD("alacritty") }, // spawn a terminal
 	{ MODKEY,                       XK_b,          spawn,                  SHCMD ("xdg-open https://")}, // open default browser
 	{ MODKEY,                       XK_p,          spawn,                  SHCMD ("flameshot full -p /media/drive/Screenshots/")}, // capture full screen screenshot
 	{ MODKEY|ShiftMask,             XK_p,          spawn,                  SHCMD ("flameshot gui -p /media/drive/Screenshots/")}, // open flameshot gui for screenshot selection
