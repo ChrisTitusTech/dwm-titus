@@ -109,8 +109,6 @@ static Key keys[] = {
 	{ MODKEY,                       XK_w,                      spawn,                  SHCMD ("looking-glass-client -F")}, // start Looking glass
 	{ 0,                            XF86XK_MonBrightnessUp,    spawn,                  SHCMD ("xbacklight -inc 10")}, // increase backlight brightness
 	{ 0,                            XF86XK_MonBrightnessDown,  spawn,                  SHCMD ("xbacklight -dec 10")}, // decrease backlight brightness
-	{ 0,                            0x1008ff1b,                spawn,                  SHCMD ("xbacklight -inc 10")}, // increase backlight brightness
-	{ 0,                            0x1008ff8e,                spawn,                  SHCMD ("xbacklight -dec 10")}, // decrease backlight brightness
 	{ 0,                            XF86XK_AudioLowerVolume,   spawn,                  SHCMD ("amixer sset Master 5%- unmute")}, // decrease volume and unmute
 	{ 0,                            XF86XK_AudioMute,          spawn,                  SHCMD ("amixer sset Master $(amixer get Master | grep -q '\\[on\\]' && echo 'mute' || echo 'unmute')")}, // toggle mute/unmute
 	{ 0,                            XF86XK_AudioRaiseVolume,   spawn,                  SHCMD ("amixer sset Master 5%+ unmute")}, // increase volume and unmute
