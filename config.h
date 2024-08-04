@@ -93,9 +93,6 @@ static const Layout layouts[] = {
 static const char *launchercmd[] = { "rofi", "-show", "drun", NULL };
 static const char *termcmd[]  = { "alacritty", NULL };
 
-/* for media keys */
-#include <X11/XF86keysym.h>
-
 static Key keys[] = {
 	/* modifier                     key                        function                argument */
 	{ MODKEY,                       XK_r,                      spawn,                  {.v = launchercmd} }, // spawn rofi for launching other programs
