@@ -39,7 +39,7 @@ static const char *const autostart[] = {
   "flameshot", NULL,
   "dunst", NULL,
   "picom", "--animations", "-b", NULL,
-  "sh", "-c", "feh --randomize --bg-fill /home/titus/Pictures/backgrounds/*", NULL,
+  "sh", "-c", "feh --randomize --bg-fill $HOME/Pictures/backgrounds/*", NULL,
   "synergy", NULL,
   "slstatus", NULL,
   NULL /* terminate */
@@ -91,7 +91,7 @@ static const Layout layouts[] = {
 #define STATUSBAR "dwmblocks"
 /* commands */
 static const char *launchercmd[] = { "rofi", "-show", "drun", NULL };
-static const char *termcmd[]  = { "alacritty", NULL };
+static const char *termcmd[]  = { "/usr/bin/env", "sh", "-c", "exec $TERMINAL", NULL };
 
 static Key keys[] = {
 	/* modifier                     key            function                argument */
