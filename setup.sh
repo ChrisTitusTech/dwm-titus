@@ -15,7 +15,31 @@ install_redhat() {
 # Function to install dependencies for Arch-based distributions
 install_arch() {
     sudo pacman -Syu --noconfirm
-    sudo pacman -S --noconfirm base-devel libconfig dbus libev libx11 libxcb libxext libgl libegl libepoxy meson pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto cmake libxft libimlib2 libxinerama libxcb-res xorg-xev xorg-xbacklight alsa-utils
+    sudo pacman -S --noconfirm base-devel libconfig dbus libev libx11 libxcb libxext libgl libegl libepoxy meson pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto cmake libxft libimlib2 libxinerama libxcb-res xorg-xev alsa-utils pulseaudio-alsa
+
+    # Define AUR helper variable
+    aur_helper=""
+
+    # Check if yay or paru is installed
+    if command -v yay &> /dev/null; then
+        aur_helper="yay"
+    elif command -v paru &> /dev/null; then
+        aur_helper="paru"
+    fi
+
+    if [ -n "$aur_helper" ]; then
+        echo "AUR helper ($aur_helper) found. Installing brillo..."
+        $aur_helper -S --noconfirm brillo
+    else
+        echo "No AUR helper found. Installing yay..."
+        git clone https://aur.archlinux.org/yay.git
+        cd yay
+        makepkg -si --noconfirm
+        cd ..
+        rm -rf yay
+        echo "Installing brillo..."
+        yay -S --noconfirm brillo
+    fi
 }
 
 # Detect the distribution and install the appropriate packages
