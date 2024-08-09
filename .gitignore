@@ -1,9 +1,4 @@
-# binaries
-/dwm
-
-# Patch Fail
-*.rej
-*.orig
-
-# Object Files
 *.o
+*.orig
+*.rej
+dwm

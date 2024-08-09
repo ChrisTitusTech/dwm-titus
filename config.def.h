@@ -1,45 +1,46 @@
 /* See LICENSE file for copyright and license details. */
 
 /* appearance */
-static const unsigned int refresh_rate = 60;    /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
-static const unsigned int enable_noborder = 1;  /* toggles noborder feature (0=disabled, 1=enabled) */
-static const unsigned int borderpx  = 1;        /* border pixel of windows */
-static const unsigned int snap      = 32;       /* snap pixel */
-static const int swallowfloating    = 0;        /* 1 means swallow floating windows by default */
-static const unsigned int systraypinning = 0;   /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor X */
-static const unsigned int systrayonleft = 0;    /* 0: systray in the right corner, >0: systray on left of status text */
-static const unsigned int systrayspacing = 2;   /* systray spacing */
-static const int systraypinningfailfirst = 1;   /* 1: if pinning fails, display systray on the first monitor, False: display systray on the last monitor*/
-static const int showsystray        = 1;        /* 0 means no systray */
-static const int showbar            = 1;        /* 0 means no bar */
-static const int topbar             = 1;        /* 0 means bottom bar */
-#define ICONSIZE                      17        /* icon size */
-#define ICONSPACING                   5         /* space between icon and title */
-#define SHOWWINICON                   1         /* 0 means no winicon */
-static const char *fonts[]          = { "monospace:size=10" };
-static const char dmenufont[]       = "monospace:size=10";
-static const char col_gray1[]       = "#222222";
-static const char col_gray2[]       = "#444444";
-static const char col_gray3[]       = "#bbbbbb";
-static const char col_gray4[]       = "#eeeeee";
-static const char col_cyan[]        = "#005577";
+static const unsigned int refresh_rate    = 60;        /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
+static const unsigned int enable_noborder = 1;         /* toggles noborder feature (0=disabled, 1=enabled) */
+static const unsigned int borderpx        = 1;         /* border pixel of windows */
+static const unsigned int snap            = 32;        /* snap pixel */
+static const int swallowfloating          = 0;         /* 1 means swallow floating windows by default */
+static const unsigned int systraypinning  = 0;         /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor X */
+static const unsigned int systrayonleft   = 0;         /* 0: systray in the right corner, >0: systray on left of status text */
+static const unsigned int systrayspacing  = 2;         /* systray spacing */
+static const int systraypinningfailfirst  = 1;         /* 1: if pinning fails, display systray on the first monitor, False: display systray on the last monitor*/
+static const int showsystray              = 1;         /* 0 means no systray */
+static const int showbar                  = 1;         /* 0 means no bar */
+static const int topbar                   = 1;         /* 0 means bottom bar */
+#define ICONSIZE                            20         /* icon size */
+#define ICONSPACING                         5          /* space between icon and title */
+#define SHOWWINICON                         1          /* 0 means no winicon */
+static const char ptagf[]                 = "[%s %s]"; /* format of a tag label */
+static const char etagf[]                 = "[%s]";    /* format of an empty tag */
+static const int lcaselbl                 = 0;         /* 1 means make tag label lowercase */
+static const char *fonts[]                = { "monospace:size=10" };
+static const char dmenufont[]             = "monospace:size=10";
+static const char normbordercolor[]       = "#444444";
+static const char normbgcolor[]           = "#222222";
+static const char normfgcolor[]           = "#bbbbbb";
+static const char selbordercolor[]        = "#770000";
+static const char selbgcolor[]            = "#005577";
+static const char selfgcolor[]            = "#eeeeee";
+
 static const char *colors[][3]      = {
-	/*               fg         bg         border   */
-	[SchemeNorm] = { col_gray3, col_gray1, col_gray2 },
-	[SchemeSel]  = { col_gray4, col_cyan,  col_cyan  },
+	/*               fg           bg           border   */
+	[SchemeNorm] = { normfgcolor, normbgcolor, normbordercolor },
+	[SchemeSel] =  { selfgcolor,  selbgcolor,  selbordercolor },
 };
 
 static const char *const autostart[] = {
-	"st", NULL,
+//	"st", NULL,
 	NULL /* terminate */
 };
 
 /* tagging */
 static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
-
-static const char ptagf[] = "[%s %s]";	/* format of a tag label */
-static const char etagf[] = "[%s]";	/* format of an empty tag */
-static const int lcaselbl = 0;		/* 1 means make tag label lowercase */	
 
 static const Rule rules[] = {
 	/* xprop(1):
@@ -74,14 +75,14 @@ static const Layout layouts[] = {
 	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = 1 << TAG} }, \
 	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
 
-/* helper for spawning shell commands in the pre dwm-5.0 fashion */
+/* Helper macros for spawning commands */
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
+#define CMD(...)   { .v = (const char*[]){ __VA_ARGS__, NULL } }
 
 #define STATUSBAR "dwmblocks"
 
 /* commands */
-static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() */
-static const char *dmenucmd[] = { "dmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_gray3, "-sb", col_cyan, "-sf", col_gray4, NULL };
+static const char *dmenucmd[] = { "dmenu_run", "-i", "-fn", dmenufont, "-nb", normbgcolor, "-nf", normfgcolor, "-sb", selbgcolor, "-sf", selfgcolor, NULL };
 static const char *termcmd[]  = { "st", NULL };
 
 static Key keys[] = {
