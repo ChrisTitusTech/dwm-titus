@@ -42,6 +42,7 @@ static const char *const autostart[] = {
   "sh", "-c", "feh --randomize --bg-fill $HOME/Pictures/backgrounds/*", NULL,
   "synergy", NULL,
   "slstatus", NULL,
+  "xfce4-power-manager", "--daemon", NULL,
   NULL /* terminate */
 };
 
