@@ -24,14 +24,17 @@ if [ -f /etc/os-release ]; then
     case "$ID" in
         debian|ubuntu)
             echo "Detected Debian-based distribution"
+            echo "Installing Dependencies using apt"
             install_debian
             ;;
         rhel|centos|fedora)
             echo "Detected Red Hat-based distribution"
+            echo "Installing dependencies using Yellowdog Updater Modified"
             install_redhat
             ;;
         arch)
             echo "Detected Arch-based distribution"
+            echo "Installing packages using pacman"
             install_arch
             ;;
         *)
@@ -43,6 +46,43 @@ else
     echo "/etc/os-release not found. Unsupported distribution"
     exit 1
 fi
+
+# Function to install Meslo Nerd font for dwm and rofi to Work
+install_nerd_font() {
+    echo "Installing Meslo Nerd-fonts"
+    
+    # Create the fonts directory if it doesn't exist
+    mkdir -p "$~/.local/share/fonts" || {
+        echo "Failed to create directory: ~/.local/share/fonts"
+        return 1
+    }
+
+    # Download the font zip file
+    wget -P "~/.local/share/fonts" "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Meslo.zip" || {
+        echo "Failed to download Meslo Nerd-fonts from https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Meslo.zip"
+        return 1
+    }
+
+    # Unzip the font file
+    unzip "~/.local/share/fonts/Meslo.zip" -d "~/.local/share/fonts" || {
+        echo "Failed to unzip ~/.local/share/fonts/Meslo.zip"
+        return 1
+    }
+
+    # Remove the zip file
+    rm "~/.local/share/fonts/Meslo.zip" || {
+        echo "Failed to remove ~/.local/share/fonts/Meslo.zip"
+        return 1
+    }
+
+    # Rebuild the font cache
+    fc-cache -fv || {
+        echo "Failed to rebuild font cache"
+        return 1
+    }
+
+    echo "Meslo Nerd-fonts installed successfully"
+}
 
 picom_animations() {
     # Clone the repository in the home/build directory
@@ -98,10 +138,12 @@ clone_config_folders() {
 }
 
 # Call the function
+install_nerd_font
+
+# Call the function
 clone_config_folders
 
 # Call the function
 picom_animations
 
 echo "All dependencies installed successfully."
-
