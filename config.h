@@ -39,7 +39,7 @@ static const char *const autostart[] = {
   "flameshot", NULL,
   "dunst", NULL,
   "picom", "--animations", "-b", NULL,
-  "sh", "-c", "feh --randomize --bg-fill /home/titus/Pictures/backgrounds/*", NULL,
+  "sh", "-c", "feh --randomize --bg-fill ~/Pictures/backgrounds/*", NULL,
   "synergy", NULL,
   "slstatus", NULL,
   NULL /* terminate */
