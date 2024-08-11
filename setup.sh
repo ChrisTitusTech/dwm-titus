@@ -47,31 +47,55 @@ else
     exit 1
 fi
 
-# Function to install Meslo Nerd font for dwm and rofi to Work
+# Function to install Meslo Nerd font for dwm and rofi icons to work
 install_nerd_font() {
+    FONT_DIR="$HOME/.local/share/fonts"
+    FONT_ZIP="$FONT_DIR/Meslo.zip"
+    FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Meslo.zip"
+    FONT_INSTALLED=$(fc-list | grep -i "Meslo")
+
+    # Check if Meslo Nerd-font is already installed
+    if [ -n "$FONT_INSTALLED" ]; then
+        echo "Meslo Nerd-fonts are already installed."
+        return 0
+    fi
+
     echo "Installing Meslo Nerd-fonts"
-    
+
     # Create the fonts directory if it doesn't exist
-    mkdir -p "$~/.local/share/fonts" || {
-        echo "Failed to create directory: ~/.local/share/fonts"
-        return 1
-    }
+    if [ ! -d "$FONT_DIR" ]; then
+        mkdir -p "$FONT_DIR" || {
+            echo "Failed to create directory: $FONT_DIR"
+            return 1
+        }
+    else
+        echo "$FONT_DIR exists, skipping creation."
+    fi
 
-    # Download the font zip file
-    wget -P "~/.local/share/fonts" "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Meslo.zip" || {
-        echo "Failed to download Meslo Nerd-fonts from https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Meslo.zip"
-        return 1
-    }
+    # Check if the font zip file already exists
+    if [ ! -f "$FONT_ZIP" ]; then
+        # Download the font zip file
+        wget -P "$FONT_DIR" "$FONT_URL" || {
+            echo "Failed to download Meslo Nerd-fonts from $FONT_URL"
+            return 1
+        }
+    else
+        echo "Meslo.zip already exists in $FONT_DIR, skipping download."
+    fi
 
-    # Unzip the font file
-    unzip "~/.local/share/fonts/Meslo.zip" -d "~/.local/share/fonts" || {
-        echo "Failed to unzip ~/.local/share/fonts/Meslo.zip"
-        return 1
-    }
+    # Unzip the font file if it hasn't been unzipped yet
+    if [ ! -d "$FONT_DIR/Meslo" ]; then
+        unzip "$FONT_ZIP" -d "$FONT_DIR" || {
+            echo "Failed to unzip $FONT_ZIP"
+            return 1
+        }
+    else
+        echo "Meslo font files already unzipped in $FONT_DIR, skipping unzip."
+    fi
 
     # Remove the zip file
-    rm "~/.local/share/fonts/Meslo.zip" || {
-        echo "Failed to remove ~/.local/share/fonts/Meslo.zip"
+    rm "$FONT_ZIP" || {
+        echo "Failed to remove $FONT_ZIP"
         return 1
     }
 
