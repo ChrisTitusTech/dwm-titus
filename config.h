@@ -38,7 +38,7 @@ static const char *const autostart[] = {
   "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
   "flameshot", NULL,
   "dunst", NULL,
-  "picom", "--animations", "-b", NULL,
+  "picom", "-b", NULL,
   "sh", "-c", "feh --randomize --bg-fill ~/Pictures/backgrounds/*", NULL,
   "synergy", NULL,
   "slstatus", NULL,
