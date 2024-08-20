@@ -97,11 +97,43 @@ clone_config_folders() {
     done
 }
 
+configure_backgrounds() {
+    # Set the variable BG_DIR to the path where backgrounds will be stored
+    BG_DIR="$HOME/Pictures/backgrounds"
+
+    # Check if the ~/Pictures directory exists
+    if [ ! -d "~/Pictures" ]; then
+        # If it doesn't exist, print an error message and return with a status of 1 (indicating failure)
+        echo "Pictures directory does not exist"
+        mkdir ~/Pictures
+        echo "Directory was created in Home folder"
+    fi
+    
+    # Check if the backgrounds directory (BG_DIR) exists
+    if [ ! -d "$BG_DIR" ]; then
+        # If the backgrounds directory doesn't exist, attempt to clone a repository containing backgrounds
+        if ! git clone https://github.com/ChrisTitusTech/nord-background.git ~/Pictures; then
+            # If the git clone command fails, print an error message and return with a status of 1
+            echo "Failed to clone the repository"
+            return 1
+        fi
+        # Rename the cloned directory to 'backgrounds'
+        mv ~/Pictures/nord-background ~/Pictures/backgrounds
+        # Print a success message indicating that the backgrounds have been downloaded
+        echo "Downloaded desktop backgrounds to $BG_DIR"    
+    else
+        # If the backgrounds directory already exists, print a message indicating that the download is being skipped
+        echo "Path $BG_DIR exists for desktop backgrounds, skipping download of backgrounds"
+    fi
+}
+
 # Call the function
 clone_config_folders
 
 # Call the function
 picom_animations
 
-echo "All dependencies installed successfully."
+# Call the function
+configure_backgrounds
 
+echo "All dependencies installed successfully."

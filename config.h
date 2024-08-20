@@ -31,18 +31,18 @@ static const char *colors[][3] = {
 };
 
 static const char *const autostart[] = {
-    "sh -c", "xset s off", NULL,
-    "sh -c", "xset s noblank", NULL,
-    "sh -c", "xset -dpms", NULL,
-    "sh -c", "dbus-update-activation-environment --systemd --all", NULL,
-    "sh -c", "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
-    "flameshot", NULL,
-    "dunst", NULL,
-    "picom", "-b", NULL,
-    "sh -c", "feh --randomize --bg-fill ~/Pictures/backgrounds/*", NULL,
-    "synergy", NULL,
-    "slstatus", NULL,
-    NULL /* terminate */
+  "xset", "s", "off", NULL,
+  "xset", "s", "noblank", NULL,
+  "xset", "-dpms", NULL,
+  "dbus-update-activation-environment", "--systemd", "--all", NULL,
+  "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
+  "flameshot", NULL,
+  "dunst", NULL,
+  "picom", "-b", NULL,
+  "sh", "-c", "feh --randomize --bg-fill ~/Pictures/backgrounds/*", NULL,
+  "synergy", NULL,
+  "slstatus", NULL,
+  NULL /* terminate */
 };
 
 /* tagging */
