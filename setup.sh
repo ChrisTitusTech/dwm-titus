@@ -24,14 +24,17 @@ if [ -f /etc/os-release ]; then
     case "$ID" in
         debian|ubuntu)
             echo "Detected Debian-based distribution"
+            echo "Installing Dependencies using apt"
             install_debian
             ;;
         rhel|centos|fedora)
             echo "Detected Red Hat-based distribution"
+            echo "Installing dependencies using Yellowdog Updater Modified"
             install_redhat
             ;;
         arch)
             echo "Detected Arch-based distribution"
+            echo "Installing packages using pacman"
             install_arch
             ;;
         *)
@@ -43,6 +46,67 @@ else
     echo "/etc/os-release not found. Unsupported distribution"
     exit 1
 fi
+
+# Function to install Meslo Nerd font for dwm and rofi icons to work
+install_nerd_font() {
+    FONT_DIR="$HOME/.local/share/fonts"
+    FONT_ZIP="$FONT_DIR/Meslo.zip"
+    FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Meslo.zip"
+    FONT_INSTALLED=$(fc-list | grep -i "Meslo")
+
+    # Check if Meslo Nerd-font is already installed
+    if [ -n "$FONT_INSTALLED" ]; then
+        echo "Meslo Nerd-fonts are already installed."
+        return 0
+    fi
+
+    echo "Installing Meslo Nerd-fonts"
+
+    # Create the fonts directory if it doesn't exist
+    if [ ! -d "$FONT_DIR" ]; then
+        mkdir -p "$FONT_DIR" || {
+            echo "Failed to create directory: $FONT_DIR"
+            return 1
+        }
+    else
+        echo "$FONT_DIR exists, skipping creation."
+    fi
+
+    # Check if the font zip file already exists
+    if [ ! -f "$FONT_ZIP" ]; then
+        # Download the font zip file
+        wget -P "$FONT_DIR" "$FONT_URL" || {
+            echo "Failed to download Meslo Nerd-fonts from $FONT_URL"
+            return 1
+        }
+    else
+        echo "Meslo.zip already exists in $FONT_DIR, skipping download."
+    fi
+
+    # Unzip the font file if it hasn't been unzipped yet
+    if [ ! -d "$FONT_DIR/Meslo" ]; then
+        unzip "$FONT_ZIP" -d "$FONT_DIR" || {
+            echo "Failed to unzip $FONT_ZIP"
+            return 1
+        }
+    else
+        echo "Meslo font files already unzipped in $FONT_DIR, skipping unzip."
+    fi
+
+    # Remove the zip file
+    rm "$FONT_ZIP" || {
+        echo "Failed to remove $FONT_ZIP"
+        return 1
+    }
+
+    # Rebuild the font cache
+    fc-cache -fv || {
+        echo "Failed to rebuild font cache"
+        return 1
+    }
+
+    echo "Meslo Nerd-fonts installed successfully"
+}
 
 picom_animations() {
     # Clone the repository in the home/build directory
@@ -126,6 +190,9 @@ configure_backgrounds() {
         echo "Path $BG_DIR exists for desktop backgrounds, skipping download of backgrounds"
     fi
 }
+
+# Call the function
+install_nerd_font
 
 # Call the function
 clone_config_folders
