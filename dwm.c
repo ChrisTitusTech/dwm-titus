@@ -2663,9 +2663,9 @@ sigstatusbar(const Arg *arg)
 int
 swallow(Client *p, Client *c)
 {
-	if (c->noswallow > 0 || c->isterminal)
+	if (c->noswallow > 0)
 		return 0;
-	if (c->noswallow < 0 && !swallowfloating && c->isfloating)
+	if (!swallowfloating && c->isfloating)
 		return 0;
 
 	detach(c);
