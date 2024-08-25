@@ -42,14 +42,14 @@ install_redhat() {
     $SUDO yum groupinstall -y "Development Tools" || handle_error "Failed to install Development Tools"
 
     # Check if Xorg is installed
-    if ! rpm -q xorg-x11-server-Xorg xorg-x11-server-utils xorg-x11-xinit >/dev/null 2>&1; then
+    if ! rpm -q xorg-x11-server-Xorg xorg-x11-xinit >/dev/null 2>&1; then
         echo "Xorg not found. Installing Xorg and related packages..."
-        $SUDO yum install -y xorg-x11-server-Xorg xorg-x11-server-utils xorg-x11-xinit || handle_error "Failed to install Xorg and related packages"
+        $SUDO yum install -y xorg-x11-server-Xorg xorg-x11-xinit xsetroot || handle_error "Failed to install Xorg and related packages"
     else
         echo "Xorg and related packages are already installed."
     fi
 
-    $SUDO yum install -y dbus-devel gcc git libconfig-devel libdrm-devel libev-devel libX11-devel libX11-xcb libXext-devel libxcb-devel libGL-devel libEGL-devel libepoxy-devel meson ninja-build pcre2-devel pixman-devel uthash-devel xcb-util-image-devel xcb-util-renderutil-devel xorg-x11-proto-devel xcb-util-devel cmake libxft-devel libimlib2-devel libxinerama-devel alsa-utils i3 xfce4-power-manager || handle_error "Failed to install dependencies"
+    $SUDO yum install -y dbus-devel gcc git libconfig-devel libdrm-devel libev-devel libX11-devel libX11-xcb libXext-devel libxcb-devel libGL-devel libEGL-devel libepoxy-devel meson ninja-build pcre2-devel pixman-devel uthash-devel xcb-util-image-devel xcb-util-renderutil-devel xorg-x11-proto-devel xcb-util-devel cmake libXft-devel imlib2-devel libXinerama-devel alsa-utils i3 xfce4-power-manager || handle_error "Failed to install dependencies"
 }
 
 # Function to install dependencies for Arch-based distributions

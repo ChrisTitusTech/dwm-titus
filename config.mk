@@ -1,3 +1,6 @@
+# Detect distribution
+DISTRO := $(shell if [ -f /etc/os-release ]; then . /etc/os-release && echo $$ID; else echo unknown; fi)
+
 # dwm version
 VERSION = 6.5
 
