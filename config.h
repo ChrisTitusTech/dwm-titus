@@ -13,9 +13,9 @@ static const int systraypinningfailfirst      = 1;   /* 1: if pinning fails, dis
 static const int showsystray                  = 1;   /* 0 means no systray */
 static const int showbar                      = 1;   /* 0 means no bar */
 static const int topbar                       = 1;   /* 0 means bottom bar */
-#define ICONSIZE                              17    /* icon size */
-#define ICONSPACING                           5     /* space between icon and title */
-#define SHOWWINICON                           1     /* 0 means no winicon */
+#define ICONSIZE                              17     /* icon size */
+#define ICONSPACING                           5      /* space between icon and title */
+#define SHOWWINICON                           1      /* 0 means no winicon */
 static const char *fonts[]                    = { "MesloLGS Nerd Font Mono:size=16", "NotoColorEmoji:pixelsize=16:antialias=true:autohint=true" };
 static const char normbordercolor[]           = "#3B4252";
 static const char normbgcolor[]               = "#2E3440";
@@ -31,42 +31,37 @@ static const char *colors[][3] = {
 };
 
 static const char *const autostart[] = {
-  "xset", "s", "off", NULL,
-  "xset", "s", "noblank", NULL,
-  "xset", "-dpms", NULL,
-  "dbus-update-activation-environment", "--systemd", "--all", NULL,
-  "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
-  "flameshot", NULL,
-  "dunst", NULL,
-  "picom", "--animations","-b", NULL,
-  "sh", "-c", "feh --randomize --bg-fill ~/Pictures/backgrounds/*", NULL,
-  "synergy", NULL,
-  "slstatus", NULL,
-  "xfce4-power-manager", "--daemon", NULL,
-  NULL /* terminate */
+    "xset", "s", "off", NULL,
+    "xset", "s", "noblank", NULL,
+    "xset", "-dpms", NULL,
+    "dbus-update-activation-environment", "--systemd", "--all", NULL,
+    "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
+    "flameshot", NULL,
+    "dunst", NULL,
+    "picom", "-b", NULL,
+    "sh", "-c", "feh --randomize --bg-fill ~/Pictures/backgrounds/*", NULL,
+    "synergy", NULL,
+    "slstatus", NULL,
+    NULL /* terminate */
 };
 
 /* tagging */
-static const char *tags[] = { "", "", "", "", "" };
+static const char *tags[] = { "", "", "󰊖", "", "" };
 
 static const char ptagf[] = "[%s %s]";  /* format of a tag label */
 static const char etagf[] = "[%s]";     /* format of an empty tag */
 static const int lcaselbl = 0;          /* 1 means make tag label lowercase */
 
 static const Rule rules[] = {
-    /* xprop(1):
-     *  WM_CLASS(STRING) = instance, class
-     *  WM_NAME(STRING) = title
-     */
-    /* class                instance  title           tags mask  isfloating  isterminal  noswallow monitor */
-    { "St",                 NULL,     NULL,           0,         0,          1,          0,        0 },
-    { "kitty",              NULL,     NULL,           0,         0,          1,          0,        0 },
-    { "Alacritty",          NULL,     NULL,           0,         0,          1,          0,        0 },
-    { "terminator",         NULL,     NULL,           0,         0,          1,          0,        0 },
-    { "lutris",             NULL,     NULL,           0,         1,          0,          0,        0 },
-    { "steam_app_default",  NULL,     NULL,           0,         1,          0,          0,        0 },
-    { "thunar",							NULL,     NULL,           0,         1,          0,          0,        0 },
-    { NULL,                 NULL,     "Event Tester", 0,         0,          0,          1,       -1 }, /* xev */
+    /* class                instance  title           tags mask  isfloating  isterminal  noswallow  monitor */
+    { "St",                 NULL,     NULL,           0,         0,          1,          0,         0 },
+    { "kitty",              NULL,     NULL,           0,         0,          1,          0,         0 },
+    { "Alacritty",          NULL,     NULL,           0,         0,          1,          0,         0 },
+    { "terminator",         NULL,     NULL,           0,         0,          1,          0,         0 },
+    { "lutris",             NULL,     NULL,           0,         1,          0,          0,         0 },
+    { "steam_app_default",  NULL,     NULL,           0,         1,          0,          0,         0 },
+    { "thunar",             NULL,     NULL,           0,         1,          0,          0,         0 },
+    { NULL,                 NULL,     "Event Tester", 0,         0,          0,          1,        -1 }, /* xev */
 };
 
 /* layout(s) */
@@ -77,9 +72,9 @@ static const int lockfullscreen = 1; /* 1 will force focus on the fullscreen win
 
 static const Layout layouts[] = {
     /* symbol     arrange function */
-    { "",      tile },    /* first entry is default */
-    { "",      NULL },    /* no layout function means floating behavior */
-    { "",      monocle },
+    { "",      tile },    /* first entry is default */
+    { "",      NULL },    /* no layout function means floating behavior */
+    { "",      monocle },
 };
 
 /* key definitions */
