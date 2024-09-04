@@ -80,70 +80,69 @@ static const Layout layouts[] = {
 /* key definitions */
 #define MODKEY Mod4Mask
 #define TAGKEYS(KEY,TAG) \
-    { MODKEY,                       KEY,      view,           {.ui = 1 << TAG} }, \
-    { MODKEY|ControlMask,           KEY,      toggleview,     {.ui = 1 << TAG} }, \
-    { MODKEY|ShiftMask,             KEY,      tag,            {.ui = 1 << TAG} }, \
-    { MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
+	{ MODKEY,                       KEY,      view,           {.ui = 1 << TAG} }, \
+	{ MODKEY|ControlMask,           KEY,      toggleview,     {.ui = 1 << TAG} }, \
+	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = 1 << TAG} }, \
+	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
 
 /* helper for spawning shell commands in the pre dwm-5.0 fashion */
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
 #define STATUSBAR "dwmblocks"
 /* commands */
 static const char *launchercmd[] = { "rofi", "-show", "drun", NULL };
-static const char *termcmd[]     = { "i3-sensible-terminal", NULL };
+static const char *termcmd[]  = { "i3-sensible-terminal", NULL };
 
 static Key keys[] = {
-    /* modifier                     key                        function        argument */
-    { MODKEY,                       XK_r,                      spawn,          {.v = launchercmd} },
-    { MODKEY|ControlMask,           XK_r,                      spawn,          SHCMD ("protonrestart")},
-    { MODKEY,                       XK_x,                      spawn,          {.v = termcmd } },
-    { MODKEY,                       XK_b,                      spawn,          SHCMD ("xdg-open https://")},
-    { MODKEY,                       XK_p,                      spawn,          SHCMD ("flameshot full -p /media/drive/Screenshots/")},
-    { MODKEY|ShiftMask,             XK_p,                      spawn,          SHCMD ("flameshot gui -p /media/drive/Screenshots/")},
-    { MODKEY|ControlMask,           XK_p,                      spawn,          SHCMD ("flameshot gui --clipboard")},
-    { MODKEY,                       XK_e,                      spawn,          SHCMD ("thunar")},
-    { MODKEY,                       XK_w,                      spawn,          SHCMD ("looking-glass-client -F")},
-    { MODKEY|ShiftMask,             XK_w,                      spawn,          SHCMD ("feh --randomize --bg-fill ~/Pictures/backgrounds/*")},
-    { 0,                            XF86XK_MonBrightnessUp,    spawn,          SHCMD ("xbacklight -inc 10")},
-    { 0,                            XF86XK_MonBrightnessDown,  spawn,          SHCMD ("xbacklight -dec 10")},
-    { 0,                            XF86XK_AudioLowerVolume,   spawn,          SHCMD ("amixer sset Master 5%- unmute")},
-    { 0,                            XF86XK_AudioMute,          spawn,          SHCMD ("amixer sset Master $(amixer get Master | grep -q '\\[on\\]' && echo 'mute' || echo 'unmute')")},
-    { 0,                            XF86XK_AudioRaiseVolume,   spawn,          SHCMD ("amixer sset Master 5%+ unmute")},
-    { MODKEY|ShiftMask,             XK_b,                      togglebar,      {0} },
-    { MODKEY,                       XK_j,                      focusstack,     {.i = +1 } },
-    { MODKEY,                       XK_k,                      focusstack,     {.i = -1 } },
-    { MODKEY|ShiftMask,             XK_j,                      movestack,      {.i = +1 } },
-    { MODKEY|ShiftMask,             XK_k,                      movestack,      {.i = -1 } },
-    { MODKEY,                       XK_i,                      incnmaster,     {.i = +1 } },
-    { MODKEY,                       XK_d,                      incnmaster,     {.i = -1 } },
-    { MODKEY,                       XK_h,                      setmfact,       {.f = -0.05} },
-    { MODKEY,                       XK_l,                      setmfact,       {.f = +0.05} },
-    { MODKEY|ShiftMask,             XK_h,                      setcfact,       {.f = +0.25} },
-    { MODKEY|ShiftMask,             XK_l,                      setcfact,       {.f = -0.25} },
-    { MODKEY|ShiftMask,             XK_o,                      setcfact,       {.f =  0.00} },
-    { MODKEY,                       XK_Return,                 zoom,           {0} },
-    { MODKEY,                       XK_Tab,                    view,           {0} },
-    { MODKEY,                       XK_q,                      killclient,     {0} },
-    { MODKEY,                       XK_t,                      setlayout,      {.v = &layouts[0]} },
-    { MODKEY,                       XK_f,                      setlayout,      {.v = &layouts[1]} },
-    { MODKEY,                       XK_m,                      fullscreen,     {0} },
-    { MODKEY,                       XK_space,                  setlayout,      {0} },
-    { MODKEY|ShiftMask,             XK_m,                      togglefloating, {0} },
-    { MODKEY|ShiftMask,             XK_y,                      togglefakefullscreen, {0} },
-    { MODKEY,                       XK_0,                      view,           {.ui = ~0 } },
-    { MODKEY,                       XK_comma,                  focusmon,       {.i = -1 } },
-    { MODKEY,                       XK_period,                 focusmon,       {.i = +1 } },
-    { MODKEY|ShiftMask,             XK_comma,                  tagmon,         {.i = -1 } },
-    { MODKEY|ShiftMask,             XK_period,                 tagmon,         {.i = +1 } },
-    TAGKEYS(                        XK_1,                      0)
-    TAGKEYS(                        XK_2,                      1)
-    TAGKEYS(                        XK_3,                      2)
-    TAGKEYS(                        XK_4,                      3)
-    TAGKEYS(                        XK_5,                      4)
-    { MODKEY|ShiftMask,             XK_q,                      quit,           {0} },
-    { MODKEY|ControlMask,           XK_q,                      spawn,          SHCMD("$HOME/.config/rofi/powermenu.sh")},
-    { MODKEY|ControlMask|ShiftMask, XK_r,                      spawn,          SHCMD("systemctl reboot")},
-    { MODKEY|ControlMask|ShiftMask, XK_s,                      spawn,          SHCMD("systemctl suspend")},
+	/* modifier                     key            function                argument */
+	{ MODKEY,                       XK_r,          spawn,                  {.v = launchercmd} }, // spawn rofi for launching other programs
+	{ MODKEY|ControlMask,           XK_r,          spawn,                  SHCMD ("protonrestart")}, // restart protonvpn
+	{ MODKEY,                       XK_x,          spawn,                  {.v = termcmd } }, // spawn a terminal
+	{ MODKEY,                       XK_b,          spawn,                  SHCMD ("xdg-open https://")}, // open default browser
+	{ MODKEY,                       XK_p,          spawn,                  SHCMD ("flameshot full -p /media/drive/Screenshots/")}, // capture full screen screenshot
+	{ MODKEY|ShiftMask,             XK_p,          spawn,                  SHCMD ("flameshot gui -p /media/drive/Screenshots/")}, // open flameshot gui for screenshot selection
+	{ MODKEY|ControlMask,           XK_p,          spawn,                  SHCMD ("flameshot gui --clipboard")}, // copy screenshot to clipboard
+	{ MODKEY,                       XK_e,          spawn,                  SHCMD ("thunar")}, // open thunar file manager
+	{ MODKEY,                       XK_w,          spawn,                  SHCMD ("looking-glass-client -F")}, // start Looking glass
+	{ 0,                            XK_F7,         spawn,                  SHCMD ("brillo -u 300000 -A 10")}, // increase backlight brightness
+	{ 0,                            XK_F6,         spawn,                  SHCMD ("brillo -u 300000 -U 10")}, // decrease backlight brightness
+	{ 0,                            XK_F1,         spawn,                  SHCMD ("amixer sset Master $(amixer get Master | grep -q '\\[on\\]' && echo 'mute' || echo 'unmute')")}, // toggle mute/unmute
+	{ 0,                            XK_F2,         spawn,                  SHCMD ("amixer sset Master 5%- unmute")}, // decrease volume
+	{ 0,                            XK_F3,         spawn,                  SHCMD ("amixer sset Master 5%+ unmute")}, // increase volume
+	{ MODKEY|ShiftMask,             XK_b,          togglebar,              {0} }, // toggle bar visibility
+	{ MODKEY,                       XK_j,          focusstack,             {.i = +1 } }, // focus on the next client in the stack
+	{ MODKEY,                       XK_k,          focusstack,             {.i = -1 } }, // focus on the previous client in the stack
+	{ MODKEY|ShiftMask,             XK_j,          movestack,              {.i = +1 } }, // move stack up
+	{ MODKEY|ShiftMask,             XK_k,          movestack,              {.i = -1 } }, // move stack down
+	{ MODKEY,                       XK_i,          incnmaster,             {.i = +1 } }, // decrease the number of clients in the master area
+	{ MODKEY,                       XK_d,          incnmaster,             {.i = -1 } }, // increase the number of clients in the master area
+	{ MODKEY,                       XK_h,          setmfact,               {.f = -0.05} }, // decrease the size of the master area compared to the stack area(s)
+	{ MODKEY,                       XK_l,          setmfact,               {.f = +0.05} }, // increase the size of the master area compared to the stack area(s)
+	{ MODKEY|ShiftMask,             XK_h,          setcfact,               {.f = +0.25} }, // increase size respective to other windows within the same area
+	{ MODKEY|ShiftMask,             XK_l,          setcfact,               {.f = -0.25} }, // decrease client size respective to other windows within the same area
+	{ MODKEY|ShiftMask,             XK_o,          setcfact,               {.f =  0.00} }, // reset client area
+	{ MODKEY,                       XK_Return,     zoom,                   {0} }, // moves the currently focused window to/from the master area (for tiled layouts)
+	{ MODKEY,                       XK_Tab,        view,                   {0} }, // view last focused tag
+	{ MODKEY,                       XK_q,          killclient,             {0} }, // close the currently focused window
+	{ MODKEY,                       XK_t,          setlayout,              {.v = &layouts[0]} }, // set tile layout
+	{ MODKEY,                       XK_f,          setlayout,              {.v = &layouts[1]} }, // set floating layout
+	{ MODKEY,                       XK_m,          fullscreen,             {0} }, // toggles fullscreen for the currently selected client
+	{ MODKEY,                       XK_space,      setlayout,              {0} }, // toggles between current and previous layout
+	{ MODKEY|ShiftMask,             XK_m,          togglefloating,         {0} }, // toggles between tiled and floating arrangement for the currently focused client
+	{ MODKEY|ShiftMask,             XK_y,          togglefakefullscreen,   {0} }, // toggles "fake" fullscreen for the selected window
+	{ MODKEY,                       XK_0,          view,                   {.ui = ~0 } }, // view all tags on the current monitor
+	{ MODKEY,                       XK_comma,      focusmon,               {.i = -1 } }, // focus on the previous monitor, if any
+	{ MODKEY,                       XK_period,     focusmon,               {.i = +1 } }, // focus on the next monitor, if any
+	{ MODKEY|ShiftMask,             XK_comma,      tagmon,                 {.i = -1 } }, // tag previous monitor
+	{ MODKEY|ShiftMask,             XK_period,     tagmon,                 {.i = +1 } }, // tag next monitor
+	TAGKEYS(                        XK_1,                                  0)
+	TAGKEYS(                        XK_2,                                  1)
+	TAGKEYS(                        XK_3,                                  2)
+	TAGKEYS(                        XK_4,                                  3)
+	TAGKEYS(                        XK_5,                                  4)
+	{ MODKEY|ShiftMask,             XK_q,          quit,                   {0} }, // exit dwm
+	{ MODKEY|ControlMask,           XK_q,          spawn,                  SHCMD("$HOME/.config/rofi/powermenu.sh")}, // exit dwm
+	{ MODKEY|ControlMask|ShiftMask, XK_r,          spawn,                  SHCMD("systemctl reboot")}, // reboot system
+	{ MODKEY|ControlMask|ShiftMask, XK_s,          spawn,                  SHCMD("systemctl suspend")}, // suspend system
 };
 
 /* button definitions */

@@ -1,21 +1,89 @@
 #!/bin/bash
 
+# Check for sudo or doas
+if command -v sudo > /dev/null 2>&1; then
+    SUDO="sudo"
+elif command -v doas > /dev/null 2>&1; then
+    SUDO="doas"
+else
+    echo "Neither sudo nor doas found. Please install one of them and try again."
+    exit 1
+fi
+
+# Check for root privileges
+if ! $SUDO -v; then
+    echo "This script requires sudo or doas privileges. Please run with appropriate permissions."
+    exit 1
+fi
+
+# Function to handle errors
+handle_error() {
+    echo "Error: $1"
+    exit 1
+}
+
 # Function to install dependencies for Debian-based distributions
 install_debian() {
-    sudo apt update
-    sudo apt install -y libconfig-dev libdbus-1-dev libegl-dev libev-dev libgl-dev libepoxy-dev libpcre2-dev libpixman-1-dev libx11-xcb-dev libxcb1-dev libxcb-composite0-dev libxcb-damage0-dev libxcb-dpms0-dev libxcb-glx0-dev libxcb-image0-dev libxcb-present-dev libxcb-randr0-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-shape0-dev libxcb-util-dev libxcb-xfixes0-dev libxext-dev meson ninja-build uthash-dev cmake libxft-dev libimlib2-dev libxinerama-dev libxcb-res0-dev alsa-utils i3-wm
+    $SUDO apt update || handle_error "Failed to update package lists"
+
+    # Check if Xorg is installed
+    if ! dpkg -s xserver-xorg x11-xserver-utils xinit >/dev/null 2>&1; then
+        echo "Xorg not found. Installing Xorg and related packages..."
+        $SUDO apt install -y xserver-xorg x11-xserver-utils xinit || handle_error "Failed to install Xorg and related packages"
+    else
+        echo "Xorg and related packages are already installed."
+    fi
+
+    $SUDO apt install -y libconfig-dev libdbus-1-dev libegl-dev libev-dev libgl-dev libepoxy-dev libpcre2-dev libpixman-1-dev libx11-xcb-dev libxcb1-dev libxcb-composite0-dev libxcb-damage0-dev libxcb-dpms0-dev libxcb-glx0-dev libxcb-image0-dev libxcb-present-dev libxcb-randr0-dev libxcb-render0-dev libxcb-render-util0-dev libxcb-shape0-dev libxcb-util-dev libxcb-xfixes0-dev libxext-dev meson ninja-build uthash-dev cmake libxft-dev libimlib2-dev libxinerama-dev libxcb-res0-dev alsa-utils i3-wm xfce4-power-manager make || handle_error "Failed to install dependencies"
 }
 
 # Function to install dependencies for Red Hat-based distributions
 install_redhat() {
-    sudo yum groupinstall -y "Development Tools"
-    sudo yum install -y dbus-devel gcc git libconfig-devel libdrm-devel libev-devel libX11-devel libX11-xcb libXext-devel libxcb-devel libGL-devel libEGL-devel libepoxy-devel meson ninja-build pcre2-devel pixman-devel uthash-devel xcb-util-image-devel xcb-util-renderutil-devel xorg-x11-proto-devel xcb-util-devel cmake libxft-devel libimlib2-devel libxinerama-devel libxcb-res0-devel alsa-utils i3
+    $SUDO yum groupinstall -y "Development Tools" || handle_error "Failed to install Development Tools"
+
+    # Check if Xorg is installed
+    if ! rpm -q xorg-x11-server-Xorg xorg-x11-xinit >/dev/null 2>&1; then
+        echo "Xorg not found. Installing Xorg and related packages..."
+        $SUDO yum install -y xorg-x11-server-Xorg xorg-x11-xinit xsetroot || handle_error "Failed to install Xorg and related packages"
+    else
+        echo "Xorg and related packages are already installed."
+    fi
+
+    $SUDO yum install -y dbus-devel gcc git libconfig-devel libdrm-devel libev-devel libX11-devel libX11-xcb libXext-devel libxcb-devel libGL-devel libEGL-devel libepoxy-devel meson ninja-build pcre2-devel pixman-devel uthash-devel xcb-util-image-devel xcb-util-renderutil-devel xorg-x11-proto-devel xcb-util-devel cmake libXft-devel imlib2-devel libXinerama-devel alsa-utils i3 xfce4-power-manager make || handle_error "Failed to install dependencies"
 }
 
 # Function to install dependencies for Arch-based distributions
 install_arch() {
-    sudo pacman -Syu --noconfirm
-    sudo pacman -S --noconfirm base-devel libconfig dbus libev libx11 libxcb libxext libgl libegl libepoxy meson pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto cmake libxft libimlib2 libxinerama libxcb-res xorg-xev xorg-xbacklight alsa-utils i3-wm
+    $SUDO pacman -Syu --noconfirm || handle_error "Failed to update system"
+
+    # Check if Xorg is installed
+    if ! pacman -Qi xorg-server xorg-xsetroot xorg-xinit >/dev/null 2>&1; then
+        echo "Xorg not found. Installing Xorg and related packages..."
+        $SUDO pacman -S --noconfirm xorg-server xorg-xsetroot xorg-xinit || handle_error "Failed to install Xorg and related packages"
+    else
+        echo "Xorg and related packages are already installed."
+    fi
+
+    $SUDO pacman -S --noconfirm base-devel libconfig dbus libev libx11 libxcb libxext libgl libegl libepoxy meson pcre2 pixman uthash xcb-util-image xcb-util-renderutil xorgproto cmake libxft libimlib2 libxinerama libxcb-res xorg-xev alsa-utils pulseaudio-alsa i3-wm xfce4-power-manager make || handle_error "Failed to install dependencies"
+
+    # AUR helper installation
+    if ! command -v yay &> /dev/null && ! command -v paru &> /dev/null; then
+        echo "No AUR helper found. Installing yay..."
+        git clone https://aur.archlinux.org/yay.git || handle_error "Failed to clone yay repository"
+        cd yay
+        makepkg -si --noconfirm || handle_error "Failed to install yay"
+        cd ..
+        rm -rf yay
+    fi
+
+    # Install brillo using the available AUR helper
+    if command -v yay &> /dev/null; then
+        yay -S --noconfirm brillo || handle_error "Failed to install brillo"
+    elif command -v paru &> /dev/null; then
+        paru -S --noconfirm brillo || handle_error "Failed to install brillo"
+    else
+        echo "No AUR helper available. Skipping brillo installation."
+    fi
 }
 
 # Detect the distribution and install the appropriate packages
@@ -38,13 +106,11 @@ if [ -f /etc/os-release ]; then
             install_arch
             ;;
         *)
-            echo "Unsupported distribution"
-            exit 1
+            handle_error "Unsupported distribution"
             ;;
     esac
 else
-    echo "/etc/os-release not found. Unsupported distribution"
-    exit 1
+    handle_error "OS ID cannot be found. Unsupported distribution"
 fi
 
 # Function to install Meslo Nerd font for dwm and rofi icons to work
@@ -134,7 +200,7 @@ picom_animations() {
     fi
 
     # Install the built binary
-    if ! sudo ninja -C build install; then
+    if ! $SUDO ninja -C build install; then
         echo "Failed to install the built binary"
         return 1
     fi
@@ -163,7 +229,7 @@ clone_config_folders() {
 
 configure_backgrounds() {
     # Set the variable BG_DIR to the path where backgrounds will be stored
-    BG_DIR="$HOME/Pictures/backgrounds"
+    BG_DIR="~/Pictures/backgrounds"
 
     # Check if the ~/Pictures directory exists
     if [ ! -d "~/Pictures" ]; then
