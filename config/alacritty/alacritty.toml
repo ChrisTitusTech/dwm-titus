@@ -1,12 +1,6 @@
 live_config_reload = true
 working_directory = "None"
 
-# Themes --
-import = [ 
-  "~/.config/alacritty/nordic.toml",
-  "~/.config/alacritty/keybinds.toml"
-]
-
 [window]
 title = "Alacritty"
 decorations = "none"
@@ -43,3 +37,58 @@ style = "Bold"
 [font.italic]
 family = "MesloLGS Nerd Font Mono"
 style = "Italic"
+
+[keyboard]
+bindings = [
+  # Clipboard
+  { key = "V", mods = "Super", action = "Paste" },
+  { key = "S", mods = "Control|Shift", action = "Paste" },
+  { key = "C", mods = "Super", action = "Copy" },
+  { key = "Insert", mods = "Shift", action = "PasteSelection" },
+  { key = "V", mods = "Control", action = "Paste" },
+  { key = "Insert", mods = "Shift", action = "Paste" },
+
+  # Scrolling
+  { key = "Up", mods = "Control|Shift", action = "ScrollLineUp" },
+  { key = "Down", mods = "Control|Shift", action = "ScrollLineDown" },
+  { key = "K", mods = "Control|Shift", action = "ScrollLineUp" },
+  { key = "J", mods = "Control|Shift", action = "ScrollLineDown" },
+  { key = "PageUp", mods = "Control|Shift", action = "ScrollPageUp" },
+  { key = "PageDown", mods = "Control|Shift", action = "ScrollPageDown" },
+  { key = "Home", mods = "Control|Shift", action = "ScrollToTop" },
+  { key = "End", mods = "Control|Shift", action = "ScrollToBottom" },
+
+  # Miscellaneous
+  { key = "Up", mods = "Control|Shift", action = "IncreaseFontSize" },
+  { key = "Down", mods = "Control|Shift", action = "DecreaseFontSize" },
+  { key = "Backspace", mods = "Control|Shift", action = "ResetFontSize" },
+]
+
+# Theme
+[colors.primary]
+background = '#2E3440'
+foreground = '#D8DEE9'
+
+[colors.normal]
+black = '#191C1D'
+red = '#BD6062'
+green = '#A3D6A9'
+yellow = '#F0DFAF'
+blue = '#8FB4D8'
+magenta = '#C7A9D9'
+cyan = '#B6D7A8'
+white = '#BDC5BD'
+
+[colors.bright]
+black = '#727C7C'
+red = '#D18FAF'
+green = '#B7CEB0'
+yellow = '#BCBCBC'
+blue = '#E0CF9F'
+magenta = '#C7A9D9'
+cyan = '#BBDA97'
+white = '#BDC5BD'
+
+[colors.selection]
+text = '#000000'
+background = '#F0DFAF'
