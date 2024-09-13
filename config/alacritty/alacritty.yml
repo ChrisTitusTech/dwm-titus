@@ -1,0 +1,45 @@
+live_config_reload: true
+working_directory: None
+
+# Themes --
+import:
+  - "~/.config/alacritty/nordic.toml"
+  - "~/.config/alacritty/keybinds.toml"
+
+window:
+  title: "Alacritty"
+  decorations: "none"
+  blur: true
+  opacity: 0.9
+  padding:
+    x: 10
+    y: 10
+
+  dimensions:
+    columns: 160
+    lines: 80
+
+cursor:
+  style:
+    shape: "Beam"
+    blinking: "Never"
+
+env:
+  TERM: "xterm-256color"
+
+font:
+  # glyph_offset:
+  #   x: 1
+  #   y: 0
+  normal:
+    family: "MesloLGS Nerd Font Mono"
+    style: "Regular"
+  size: 16.0
+
+  bold:
+    family: "MesloLGS Nerd Font Mono"
+    style: "Bold"
+
+  italic:
+    family: "MesloLGS Nerd Font Mono"
+    style: "Italic"
