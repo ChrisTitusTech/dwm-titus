@@ -191,6 +191,17 @@ configure_backgrounds() {
     fi
 }
 
+# Fucntion to install slstatus
+install_slstatus() {
+    if ! which slstatus > /dev/null 2>&1; then
+        cd ./slstatus || { echo "Failed to change directory to slstatus"; return 1; }
+        sudo make clean install
+        cd ..
+    else
+        echo "slstatus is already installed"
+    fi
+}
+
 # Call the function
 install_nerd_font
 
@@ -202,5 +213,8 @@ picom_animations
 
 # Call the function
 configure_backgrounds
+
+# Call the function
+install_slstatus
 
 echo "All dependencies installed successfully."
