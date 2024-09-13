@@ -3,8 +3,8 @@ working_directory: None
 
 # Themes --
 import:
-  - "~/.config/alacritty/nordic.toml"
-  - "~/.config/alacritty/keybinds.toml"
+  - "~/.config/alacritty/nordic.yml"
+  - "~/.config/alacritty/keybinds.yml"
 
 window:
   title: "Alacritty"
