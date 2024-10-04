@@ -6,6 +6,23 @@ include config.mk
 SRC = drw.c dwm.c util.c
 OBJ = ${SRC:.c=.o}
 
+# Add distribution-specific configurations
+ifeq ($(DISTRO),debian)
+    CPPFLAGS += -DDISTRO_DEBIAN
+else ifeq ($(DISTRO),ubuntu)
+    CPPFLAGS += -DDISTRO_DEBIAN
+else ifeq ($(DISTRO),fedora)
+    CPPFLAGS += -DDISTRO_FEDORA
+else ifeq ($(DISTRO),rhel)
+    CPPFLAGS += -DDISTRO_FEDORA
+else ifeq ($(DISTRO),centos)
+    CPPFLAGS += -DDISTRO_FEDORA
+else ifeq ($(DISTRO),arch)
+    CPPFLAGS += -DDISTRO_ARCH
+else
+    CPPFLAGS += -DDISTRO_UNKNOWN
+endif
+
 all: dwm
 
 .c.o:
@@ -18,6 +35,7 @@ config.h:
 
 dwm: ${OBJ}
 	${CC} -o $@ ${OBJ} ${LDFLAGS}
+	@echo "Compiled for distribution: $(DISTRO)"
 
 clean:
 	rm -f dwm ${OBJ} *.orig *.rej
