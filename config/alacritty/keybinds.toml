@@ -1,0 +1,56 @@
+[keyboard]
+bindings = [
+  # Clipboard
+  { key = "V", mods = "Super", action = "Paste" },
+  { key = "S", mods = "Control|Shift", action = "Paste" },
+  { key = "C", mods = "Super", action = "Copy" },
+  { key = "Insert", mods = "Shift", action = "PasteSelection" },
+  # { key = "C", mods = "Control", action = "Copy" }, # commented out
+  { key = "V", mods = "Control", action = "Paste" },
+  { key = "Insert", mods = "Shift", action = "Paste" },
+
+  # Scrolling
+  { key = "Up", mods = "Control|Shift", action = "ScrollLineUp" },
+  { key = "Down", mods = "Control|Shift", action = "ScrollLineDown" },
+  { key = "K", mods = "Control|Shift", action = "ScrollLineUp" },
+  { key = "J", mods = "Control|Shift", action = "ScrollLineDown" },
+  { key = "PageUp", mods = "Control|Shift", action = "ScrollPageUp" },
+  { key = "PageDown", mods = "Control|Shift", action = "ScrollPageDown" },
+  { key = "Home", mods = "Control|Shift", action = "ScrollToTop" },
+  { key = "End", mods = "Control|Shift", action = "ScrollToBottom" },
+ # { key = "H", mods = "Control|Shift", action = "ShowScrollback" },
+
+  # Window management
+#  { key = "N", mods = "Super", action = "SpawnNewInstance" },
+#  { key = "W", mods = "Super", action = "Close" },
+#  { key = "Enter", mods = "Control|Shift", action = "SpawnNewInstance" },
+#  { key = "RightBracket", mods = "Control|Shift", action = "NextWindow" },
+#  { key = "LeftBracket", mods = "Control|Shift", action = "PreviousWindow" },
+#  { key = "F", mods = "Control|Shift", action = "MoveForward" },
+#  { key = "B", mods = "Control|Shift", action = "MoveBackward" },
+#  { key = "Grave", mods = "Control|Shift", action = "MoveToTop" },
+#  { key = "Key1", mods = "Control|Shift", action = "MoveToFirst" },
+#  { key = "Key2", mods = "Control|Shift", action = "MoveToSecond" },
+#  { key = "Key3", mods = "Control|Shift", action = "MoveToThird" },
+#  { key = "Key4", mods = "Control|Shift", action = "MoveToFourth" },
+#  { key = "Key5", mods = "Control|Shift", action = "MoveToFifth" },
+#  { key = "Key6", mods = "Control|Shift", action = "MoveToSixth" },
+#  { key = "Key7", mods = "Control|Shift", action = "MoveToSeventh" },
+#  { key = "Key8", mods = "Control|Shift", action = "MoveToEighth" },
+#  { key = "Key9", mods = "Control|Shift", action = "MoveToNinth" },
+#  { key = "Key0", mods = "Control|Shift", action = "MoveToTenth" },
+
+  # Tab management
+#  { key = "Right", mods = "Control|Shift", action = "NextTab" },
+#  { key = "Left", mods = "Control|Shift", action = "PreviousTab" },
+#  { key = "T", mods = "Control|Shift", action = "SpawnNewTab" },
+#  { key = "Q", mods = "Control|Shift", action = "CloseTab" },
+#  { key = "L", mods = "Control|Shift", action = "NextLayout" },
+#  { key = "Period", mods = "Control|Shift", action = "MoveTabForward" },
+#  { key = "Comma", mods = "Control|Shift", action = "MoveTabBackward" },
+
+  # Miscellaneous
+  { key = "Up", mods = "Control|Shift", action = "IncreaseFontSize" },
+  { key = "Down", mods = "Control|Shift", action = "DecreaseFontSize" },
+  { key = "Backspace", mods = "Control|Shift", action = "ResetFontSize" },
+]

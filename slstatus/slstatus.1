@@ -1,0 +1,47 @@
+.Dd 2023-04-23
+.Dt SLSTATUS 1
+.Os
+.Sh NAME
+.Nm slstatus
+.Nd suckless status
+.Sh SYNOPSIS
+.Nm
+.Op Fl s
+.Op Fl 1
+.Sh DESCRIPTION
+.Nm
+is a small tool for providing system status information to other programs
+over the EWMH
+.Em WM_NAME
+property of the root window (used by
+.Xr dwm 1 ) or standard input/output. It is designed to be as efficient as possible by
+only issuing the minimum of system calls required.
+.P
+By default,
+.Nm
+outputs to WM_NAME.
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl v
+Print version information to stderr, then exit.
+.It Fl s
+Write to stdout instead of WM_NAME.
+.It Fl 1
+Write once to stdout and quit.
+.El
+.Sh CUSTOMIZATION
+.Nm
+can be customized by creating a custom config.h and (re)compiling the source
+code. This keeps it fast, secure and simple.
+.Sh SIGNALS
+.Nm
+responds to the following signals:
+.Pp
+.Bl -tag -width TERM -compact
+.It USR1
+Triggers an instant redraw.
+.El
+.Sh AUTHORS
+See the LICENSE file for the authors.
+.Sh SEE ALSO
+.Xr dwm 1
