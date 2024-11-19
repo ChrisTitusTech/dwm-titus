@@ -1,3 +1,4 @@
+[general]
 live_config_reload = true
 working_directory = "None"
 
