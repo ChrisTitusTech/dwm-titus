@@ -975,53 +975,39 @@ dirtomon(int dir)
 void
 drawbar(Monitor *m)
 {
-    // Initialize variables for drawing.
-	int x, w, tw = 0, stw = 0; // x: current x position, w: width, tw: text width, stw: systray width
-	int boxs = drw->fonts->h / 9; // boxs: size of the indicator box
-	int boxw = drw->fonts->h / 6 + 2; // boxw: width of the indicator box
-	unsigned int i, occ = 0, urg = 0; // i: iterator, occ: occupied tags, urg: urgent tags
+	int x, w, tw = 0, stw = 0;
+	int boxs = drw->fonts->h / 9;
+	int boxw = drw->fonts->h / 6 + 2;
+	unsigned int i, occ = 0, urg = 0;
 	Client *c;
 
-    // Return immediately if the monitor's showbar flag is not set.
 	if (!m->showbar)
 		return;
 
-    // Calculate the systray width if the systray is enabled, on the current monitor, and not on the left.
 	if(showsystray && m == systraytomon(m) && !systrayonleft)
 		stw = getsystraywidth();
 
-	// Draw the status text on the selected monitor.
-	if (m == selmon) {
-		char *text, *s, ch;
+	/* draw status first so it can be overdrawn by tags later */
+	if (m == selmon) { /* status is only drawn on selected monitor */
 		drw_setscheme(drw, scheme[SchemeNorm]);
-		x = 0;
-		for (text = s = stext; *s; s++) {
-			if ((unsigned char)(*s) < ' ') {
-				ch = *s;
-				*s = '\0';
-				tw = TEXTW(text) - lrpad;
-				drw_text(drw, m->ww - statusw - stw + x, 0, tw, bh, 0, text, 0);
-				x += tw;
-				*s = ch;
-				text = s + 1;
-			}
-		}
-		tw = TEXTW(text) - lrpad + 2;
-		drw_text(drw, m->ww - statusw - stw + x, 0, tw, bh, 0, text, 0);
-		tw = statusw;
+		tw = TEXTW(stext) - lrpad + 2; /* 2px right padding */
+		drw_text(drw, m->ww - tw - stw, 0, tw, bh, 0, stext, 0);
 	}
 
-    // Resize the bar window to fit the new content.
-	resizebarwin(m);
+	// Start x at 0, but only draw layout symbol if it's not an empty string
+	x = 0;
+	if (m->ltsymbol[0] != '\0' && strcmp(m->ltsymbol, "") != 0) {
+		w = TEXTW(m->ltsymbol);
+		drw_setscheme(drw, scheme[SchemeNorm]);
+		x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0);
+	}
 
-    // Determine which tags are occupied and urgent.
 	for (c = m->clients; c; c = c->next) {
 		occ |= c->tags == TAGMASK ? 0 : c->tags;
 		if (c->isurgent)
 			urg |= c->tags;
 	}
 
-    // Draw tags, indicating the selected, occupied, and urgent tags.
 	x = 0;
 	for (i = 0; i < LENGTH(tags); i++) {
 		/* Do not draw vacant tags */
@@ -1033,12 +1019,6 @@ drawbar(Monitor *m)
 		x += w;
 	}
 
-    // Draw the layout symbol.
-	w = TEXTW(m->ltsymbol);
-	drw_setscheme(drw, scheme[SchemeNorm]);
-	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0);
-
-    // Draw the window title or a blank space if no window is selected.
 	if ((w = m->ww - tw - stw - x) > bh) {
 		if (m->sel) {
 			drw_setscheme(drw, scheme[m == selmon ? SchemeSel : SchemeNorm]);
@@ -1056,7 +1036,6 @@ drawbar(Monitor *m)
 		}
 	}
 
-    // Map the drawn content to the bar window.
 	drw_map(drw, m->barwin, 0, 0, m->ww - stw, bh);
 }
 
