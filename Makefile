@@ -33,11 +33,12 @@ install: all
 	mkdir -p release
 	cp -f dwm release/
 	tar -czf release/dwm-${VERSION}.tar.gz -C release dwm
+	test -f ${HOME}/.xinitrc || install -Dm644 .xinitrc ${HOME}/.xinitrc
 
 uninstall:
-	rm -f ${DESTDIR}${PREFIX}/bin/dwm\
-		${DESTDIR}${MANPREFIX}/man1/dwm.1\
-		${DESTDIR}${PREFIX}/share/xsession/dwm.desktop
+	rm -f ${DESTDIR}${PREFIX}/bin/dwm \
+		${DESTDIR}${MANPREFIX}/man1/dwm.1 \
+		${DESTDIR}/usr/share/xsessions/dwm.desktop
 
 release: dwm
 	mkdir -p release
