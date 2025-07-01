@@ -57,6 +57,7 @@ static const Rule rules[] = {
     { "St",                 NULL,     NULL,           0,         0,          1,          0,         0 },
     { "kitty",              NULL,     NULL,           0,         0,          1,          0,         0 },
     { "alacritty",          NULL,     NULL,           0,         0,          1,          0,         0 },
+    { "ghostty",            NULL,     NULL,           0,         0,          1,          0,         0 },
     { "warp-terminal",      NULL,     NULL,           0,         0,          1,          0,         0 },
     { "terminator",         NULL,     NULL,           0,         0,          1,          0,         0 },
     { "lutris",             NULL,     NULL,           0,         1,          0,          0,         0 },
@@ -91,7 +92,7 @@ static const Layout layouts[] = {
 #define STATUSBAR "dwmblocks"
 /* commands */
 static const char *launchercmd[] = { "rofi", "-show", "drun", NULL };
-static const char *termcmd[]     = { "alacritty", NULL };
+static const char *termcmd[]     = { "ghostty", NULL };
 
 static Key keys[] = {
     /* modifier                     key                        function        argument */
