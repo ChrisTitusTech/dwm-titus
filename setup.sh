@@ -112,7 +112,7 @@ picom_animations() {
     # Clone the repository in the home/build directory
     mkdir -p ~/build
     if [ ! -d ~/build/picom ]; then
-        if ! git clone https://github.com/FT-Labs/picom.git ~/build/picom; then
+        if ! git clone https://github.com/ChrisTitusTech/picom.git ~/build/picom; then
             echo "Failed to clone the repository"
             return 1
         fi
