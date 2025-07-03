@@ -1,0 +1,19 @@
+theme = nord
+window-theme = ghostty
+window-height = 35
+window-width = 100
+background-opacity = 0.95
+font-family = MesloLGS Nerd Font Mono
+font-family-bold = MesloLGS Nerd Font Mono
+font-family-italic = MesloLGS Nerd Font Mono
+font-family-bold-italic = MesloLGS Nerd Font Mono
+font-size = 14
+gtk-titlebar = false
+confirm-close-surface = false
+
+
+#keybind = ctrl+up=scroll_page_lines:5
+#keybind = ctrl+down=scroll_page_lines:-5 
+
+keybind = ctrl+up=scroll_page_up
+keybind = ctrl+down=scroll_page_down
