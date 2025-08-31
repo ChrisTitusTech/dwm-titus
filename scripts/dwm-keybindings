@@ -1,0 +1,221 @@
+#!/bin/bash
+
+# A script to display DWM keybindings defined in config.h
+# using walker for an interactive search menu.
+
+# Path to the dwm config.h file
+DWM_CONFIG_PATH="${HOME}/github/dwm-titus/config.h"
+
+# Fetch keybindings from dwm config.h
+#
+# Parse the static Key keys[] and static Button buttons[] sections
+dynamic_bindings() {
+  awk '
+  BEGIN { 
+    in_keys = 0
+    in_buttons = 0
+    modkey_found = 0
+  }
+  
+  # Find MODKEY definition
+  /^#define MODKEY/ {
+    if ($3 == "Mod4Mask") modkey = "SUPER"
+    else if ($3 == "Mod1Mask") modkey = "ALT"
+    else modkey = "MOD"
+    modkey_found = 1
+  }
+  
+  # Start processing when we find the keys array
+  /^static Key keys\[\] = {/ { 
+    in_keys = 1
+    next
+  }
+  
+  # Start processing when we find the buttons array
+  /^static Button buttons\[\] = {/ { 
+    in_buttons = 1
+    next
+  }
+  
+  # Stop when we reach the end of either array
+  /^};/ && (in_keys || in_buttons) { 
+    in_keys = 0
+    in_buttons = 0
+  }
+  
+  # Process key definitions
+  (in_keys || in_buttons) && /{ / {
+    # Skip comments, empty lines, and TAGKEYS macro calls
+    if ($0 ~ /^[ \t]*\/\*/ || $0 ~ /^[ \t]*$/ || $0 ~ /TAGKEYS/) next
+    
+    # Remove leading whitespace and braces
+    gsub(/^[ \t]*{[ \t]*/, "")
+    gsub(/[ \t]*},?[ \t]*$/, "")
+    
+    # Split the line by commas
+    split($0, parts, ",")
+    
+    if (length(parts) >= 3) {
+      modifier = parts[1]
+      key_or_click = parts[2]
+      funcname = parts[3]
+      
+      # Clean up the fields
+      gsub(/[ \t]*/, "", modifier)
+      gsub(/[ \t]*/, "", key_or_click)
+      gsub(/[ \t]*/, "", funcname)
+      
+      # Skip if this is a button definition (contains Click or Button)
+      if (in_buttons) {
+        # Convert click types to readable format
+        if (key_or_click == "Button1") key_or_click = "Left Click"
+        else if (key_or_click == "Button2") key_or_click = "Middle Click"
+        else if (key_or_click == "Button3") key_or_click = "Right Click"
+        
+        # For buttons, the first field is click area, second is modifier
+        click_area = modifier
+        modifier = key_or_click
+        key_or_click = parts[3]
+        funcname = parts[4]
+        gsub(/[ \t]*/, "", funcname)
+        
+        # Convert click areas
+        if (click_area == "ClkTagBar") click_area = "Tag Bar"
+        else if (click_area == "ClkClientWin") click_area = "Window"
+        else if (click_area == "ClkRootWin") click_area = "Desktop"
+        else if (click_area == "ClkStatusText") click_area = "Status Bar"
+        
+        # For buttons, show as "Area + Modifier + Click"
+        if (modifier == "MODKEY") {
+          key_combo = click_area " + " modkey " + " key_or_click
+        } else if (modifier == "0") {
+          key_combo = click_area " + " key_or_click
+        } else {
+          key_combo = click_area " + " modifier " + " key_or_click
+        }
+      } else {
+        # Convert modifier masks to readable format for keys
+        mod_text = ""
+        if (modifier == "0") {
+          mod_text = ""
+        } else if (modifier == "MODKEY") {
+          mod_text = modkey
+        } else if (modifier ~ /MODKEY\|ControlMask\|ShiftMask/) {
+          mod_text = modkey " CTRL SHIFT"
+        } else if (modifier ~ /MODKEY\|ControlMask/) {
+          mod_text = modkey " CTRL"
+        } else if (modifier ~ /MODKEY\|ShiftMask/) {
+          mod_text = modkey " SHIFT"
+        } else {
+          mod_text = modifier
+        }
+        
+        # Convert key names
+        gsub(/XK_/, "", key_or_click)
+        gsub(/XF86XK_/, "", key_or_click)
+        
+        # Convert common key names
+        if (key_or_click == "Return") key_or_click = "Enter"
+        else if (key_or_click == "space") key_or_click = "Space"
+        else if (key_or_click == "comma") key_or_click = ","
+        else if (key_or_click == "period") key_or_click = "."
+        
+        # Format key combination
+        if (mod_text != "") {
+          key_combo = mod_text " + " key_or_click
+        } else {
+          key_combo = key_or_click
+        }
+      }
+      
+      # Create description based on function
+      desc = ""
+      if (funcname == "spawn") {
+        # Try to extract command from the argument
+        if ($0 ~ /launchercmd/) desc = "Launch application launcher"
+        else if ($0 ~ /termcmd/) desc = "Open terminal"
+        else if ($0 ~ /chatgptcmd/) desc = "Open ChatGPT"
+        else if ($0 ~ /grokcmd/) desc = "Open Grok"
+        else if ($0 ~ /gmailcmd/) desc = "Open Gmail"
+        else if ($0 ~ /youtubecmd/) desc = "Open YouTube"
+        else if ($0 ~ /protonrestart/) desc = "Restart Proton"
+        else if ($0 ~ /flameshot full/) desc = "Screenshot (full)"
+        else if ($0 ~ /flameshot gui.*clipboard/) desc = "Screenshot to clipboard"
+        else if ($0 ~ /flameshot gui/) desc = "Screenshot (selection)"
+        else if ($0 ~ /xdg-open https:/) desc = "Open browser"
+        else if ($0 ~ /xdg-open \./) desc = "Open file manager"
+        else if ($0 ~ /looking-glass-client/) desc = "Launch Looking Glass"
+        else if ($0 ~ /feh.*randomize/) desc = "Change wallpaper"
+        else if ($0 ~ /xbacklight.*inc/) desc = "Increase brightness"
+        else if ($0 ~ /xbacklight.*dec/) desc = "Decrease brightness"
+        else if ($0 ~ /amixer.*5%-/) desc = "Decrease volume"
+        else if ($0 ~ /amixer.*5%+/) desc = "Increase volume"
+        else if ($0 ~ /amixer.*mute/) desc = "Toggle mute"
+        else if ($0 ~ /powermenu/) desc = "Power menu"
+        else if ($0 ~ /systemctl reboot/) desc = "Reboot system"
+        else if ($0 ~ /systemctl suspend/) desc = "Suspend system"
+        else desc = "Run command"
+      } else if (funcname == "togglebar") desc = "Toggle status bar"
+      else if (funcname == "focusstack") desc = "Focus next/previous window"
+      else if (funcname == "movestack") desc = "Move window in stack"
+      else if (funcname == "incnmaster") desc = "Increase/decrease master windows"
+      else if (funcname == "setmfact") desc = "Resize master area"
+      else if (funcname == "setcfact") desc = "Resize client"
+      else if (funcname == "zoom") desc = "Swap with master"
+      else if (funcname == "view") desc = "View tag/all tags"
+      else if (funcname == "killclient") desc = "Close window"
+      else if (funcname == "setlayout") desc = "Set layout"
+      else if (funcname == "fullscreen") desc = "Toggle fullscreen"
+      else if (funcname == "togglefloating") desc = "Toggle floating"
+      else if (funcname == "togglefakefullscreen") desc = "Toggle fake fullscreen"
+      else if (funcname == "focusmon") desc = "Focus monitor"
+      else if (funcname == "tagmon") desc = "Move to monitor"
+      else if (funcname == "quit") desc = "Quit dwm"
+      else if (funcname == "tag") desc = "Move to tag"
+      else if (funcname == "toggleview") desc = "Toggle tag view"
+      else if (funcname == "toggletag") desc = "Toggle tag on window"
+      else if (funcname == "moveorplace") desc = "Move/place window"
+      else if (funcname == "resizemouse") desc = "Resize window with mouse"
+      else desc = funcname
+      
+      # Output in format: key_combo,description
+      printf "%s,%s\n", key_combo, desc
+    }
+  }
+  ' "$DWM_CONFIG_PATH"
+}
+
+# Parse and format keybindings
+#
+# `awk` does the heavy lifting:
+# - Set the field separator to a comma ','.
+# - Takes the key combination and description.
+# - Prints everything in a nicely aligned format.
+parse_bindings() {
+  awk -F, '
+{
+    # First field is the key combination, second is the description
+    key_combo = $1;
+    action = $2;
+
+    # Clean up: strip leading/trailing spaces
+    gsub(/^[ \t]+|[ \t]+$/, "", key_combo);
+    gsub(/^[ \t]+|[ \t]+$/, "", action);
+
+    # Escape XML entities for walker
+    gsub(/&/, "\\&amp;", action);
+    gsub(/</, "\\&lt;", action);
+    gsub(/>/, "\\&gt;", action);
+    gsub(/"/, "\\&quot;", action);
+    gsub(/'"'"'/, "\\&apos;", action);
+
+    if (action != "" && key_combo != "") {
+        printf "%-35s → %s\n", key_combo, action;
+    }
+}'
+}
+
+dynamic_bindings | \
+  sort -u | \
+  parse_bindings | \
+  walker --dmenu --theme keybindings -p 'DWM Keybindings'
