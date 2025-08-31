@@ -1,0 +1,114 @@
+#!/bin/bash
+# DWM Web App Manager - Similar to Omarchy's web2app
+
+APPS_DIR="$HOME/.local/share/applications"
+ICONS_DIR="$HOME/.local/share/icons"
+
+# Function to create a web app
+create_webapp() {
+    local name="$1"
+    local url="$2" 
+    local icon_url="$3"
+    local browser="${4:-webapp-launcher}"
+    
+    if [[ -z "$name" || -z "$url" ]]; then
+        echo "Usage: webapp-create 'App Name' 'https://url.com' 'icon_url' [browser-command]"
+        exit 1
+    fi
+    
+    # Create directories if they don't exist
+    mkdir -p "$APPS_DIR" "$ICONS_DIR"
+    
+    # Clean name for filename
+    local clean_name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
+    local desktop_file="$APPS_DIR/${clean_name}.desktop"
+    local icon_path="$ICONS_DIR/${clean_name}.png"
+    
+    # Download icon if provided
+    if [[ -n "$icon_url" ]]; then
+        echo "Downloading icon..."
+        if command -v curl >/dev/null 2>&1; then
+            curl -s -o "$icon_path" "$icon_url"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -q -O "$icon_path" "$icon_url"
+        fi
+    fi
+    
+    # Create desktop entry
+    cat > "$desktop_file" << EOF
+[Desktop Entry]
+Name=$name
+Exec=$browser $url
+Icon=$icon_path
+Type=Application
+Categories=Network;WebApp;
+StartupWMClass=$clean_name
+Comment=Web app for $name
+EOF
+    
+    echo "Created web app: $name"
+    echo "Desktop file: $desktop_file"
+    echo "Launch with: dmenu or run '$browser --app=$url'"
+}
+
+# Function to remove a web app
+remove_webapp() {
+    local name="$1"
+    if [[ -z "$name" ]]; then
+        echo "Usage: webapp-remove 'App Name'"
+        exit 1
+    fi
+    
+    local clean_name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
+    local desktop_file="$APPS_DIR/${clean_name}.desktop"
+    local icon_path="$ICONS_DIR/${clean_name}.png"
+    
+    if [[ -f "$desktop_file" ]]; then
+        rm "$desktop_file"
+        echo "Removed desktop file: $desktop_file"
+    fi
+    
+    if [[ -f "$icon_path" ]]; then
+        rm "$icon_path"
+        echo "Removed icon: $icon_path"
+    fi
+}
+
+# Function to list web apps
+list_webapps() {
+    echo "Installed web apps:"
+    for desktop_file in "$APPS_DIR"/*.desktop; do
+        if [[ -f "$desktop_file" ]] && grep -q "Categories=.*WebApp" "$desktop_file" 2>/dev/null; then
+            local name=$(grep "^Name=" "$desktop_file" | cut -d'=' -f2-)
+            echo "  - $name"
+        fi
+    done
+}
+
+# Main script logic
+case "${1:-help}" in
+    create)
+        shift
+        create_webapp "$@"
+        ;;
+    remove)
+        shift
+        remove_webapp "$@"
+        ;;
+    list)
+        list_webapps
+        ;;
+    help|*)
+        echo "DWM Web App Manager"
+        echo ""
+        echo "Usage:"
+        echo "  webapp create 'App Name' 'https://url.com' 'icon_url' [browser]"
+        echo "  webapp remove 'App Name'"
+        echo "  webapp list"
+        echo ""
+        echo "Examples:"
+        echo "  webapp create 'Gmail' 'https://gmail.com' 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/gmail.png'"
+        echo "  webapp create 'GitHub' 'https://github.com' 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/github.png' firefox"
+        echo "  webapp remove 'Gmail'"
+        ;;
+esac

@@ -42,6 +42,7 @@ static const char *const autostart[] = {
     "sh", "-c", "feh --randomize --bg-fill ~/Pictures/backgrounds/*", NULL,
     "/opt/Synergy/synergy-service", NULL,
     "slstatus", NULL,
+    "sh", "-c", "~/.screenlayout/main.sh", NULL,
     NULL /* terminate */
 };
 
@@ -93,12 +94,19 @@ static const Layout layouts[] = {
 /* commands */
 static const char *launchercmd[] = { "rofi", "-show", "drun", NULL };
 static const char *termcmd[]     = { "ghostty", NULL };
+/* Web app commands using xdg-open */
+static const char *gmailcmd[]     = { "webapp-launch", "https://gmail.com", NULL };
+static const char *youtubecmd[]   = { "webapp-launch", "https://youtube.com", NULL };
+static const char *chatgptcmd[]   = { "webapp-launch", "https://chatgpt.com", NULL };
+static const char *grokcmd[]      = { "webapp-launch", "https://grok.com", NULL };
 
 static Key keys[] = {
     /* modifier                     key                        function        argument */
     { MODKEY,                       XK_r,                      spawn,          {.v = launchercmd} },
     { MODKEY|ControlMask,           XK_r,                      spawn,          SHCMD ("protonrestart")},
     { MODKEY,                       XK_x,                      spawn,          {.v = termcmd } },
+    { MODKEY,                       XK_a,                      spawn,          {.v = chatgptcmd } },
+    { MODKEY|ShiftMask,             XK_a,                      spawn,          {.v = grokcmd } },
     { MODKEY,                       XK_b,                      spawn,          SHCMD ("xdg-open https://")},
     { MODKEY,                       XK_p,                      spawn,          SHCMD ("flameshot full -p /media/drive/Screenshots/")},
     { MODKEY|ShiftMask,             XK_p,                      spawn,          SHCMD ("flameshot gui -p /media/drive/Screenshots/")},
