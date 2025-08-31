@@ -16,7 +16,7 @@ static const int topbar                       = 1;   /* 0 means bottom bar */
 #define ICONSIZE                              17     /* icon size */
 #define ICONSPACING                           5      /* space between icon and title */
 #define SHOWWINICON                           1      /* 0 means no winicon */
-static const char *fonts[]                    = { "MesloLGS Nerd Font Mono:size=16:antialias=true:autohint=true:hintstyle=hintfull", "NotoColorEmoji:pixelsize=16:antialias=true:autohint=true" };
+static const char *fonts[]                    = { "MesloLGS Nerd Font Mono:size=14:antialias=true:autohint=true:hintstyle=hintfull", "NotoColorEmoji:pixelsize=16:antialias=true:autohint=true" };
 static const char normbordercolor[]           = "#3B4252";
 static const char normbgcolor[]               = "#434C5E";  /* Lighter background for better icon contrast */
 static const char normfgcolor[]               = "#D8DEE9";
