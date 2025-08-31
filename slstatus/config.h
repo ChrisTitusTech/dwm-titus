@@ -1,10 +1,10 @@
 /* See LICENSE file for copyright and license details. */
 
 /* interval between updates (in ms) */
-const unsigned int interval = 1000;
+const unsigned int interval = 2000;
 
 /* text to show if no value can be retrieved */
-static const char unknown_str[] = "n/a";
+static const char unknown_str[] = "";
 
 /* maximum output string length */
 #define MAXLEN 2048
@@ -65,8 +65,11 @@ static const char unknown_str[] = "n/a";
  */
 static const struct arg args[] = {
 	/* function format          argument */
-	{ cpu_perc,             "  %s%%",      NULL },
-	{ ram_used,             "  %s",         NULL },	
-	{ ram_total,             "/%s",         NULL },	
-	{ datetime, "  %s",           "%m-%d-%Y %I:%M:%S %p " },
+	{ cpu_perc,             " CPU %s%%",      NULL },
+	{ ram_perc,             " │ 󰍛 RAM %s%%",    NULL },	
+	{ run_command,          "%s",              "[ -d /sys/class/net/wlan0 ] && [ -f /proc/net/wireless ] && awk 'NR==3{if($3>0) printf \" │ 󰤨 WIFI %.0f%%\", ($3*100/70)}' /proc/net/wireless" },
+	{ run_command,          "%s",              "[ -f /sys/class/power_supply/BAT0/capacity ] && printf \" │ 󰁹 BAT %s%%\" \"$(cat /sys/class/power_supply/BAT0/capacity)\"" },
+	{ run_command,          "%s",              "command -v pactl >/dev/null 2>&1 && printf \" │ 󰕾 VOL %s\" \"$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | grep -o '[0-9]*%' | head -1)\"" },
+	{ datetime,             " │ 󰃭 %s",           "%a %b %d" },
+	{ datetime,             " │ 󰥔 %s ",          "%I:%M %p" },
 };
