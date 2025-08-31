@@ -185,14 +185,9 @@ dynamic_bindings() {
   ' "$DWM_CONFIG_PATH"
 }
 
-# Parse and format keybindings
-#
-# `awk` does the heavy lifting:
-# - Set the field separator to a comma ','.
-# - Takes the key combination and description.
-# - Prints everything in a nicely aligned format.
+# Parse and format keybindings for rofi with markup
 parse_bindings() {
-  awk -F, '
+  awk -F, -v q="'" '
 {
     # First field is the key combination, second is the description
     key_combo = $1;
@@ -202,20 +197,22 @@ parse_bindings() {
     gsub(/^[ \t]+|[ \t]+$/, "", key_combo);
     gsub(/^[ \t]+|[ \t]+$/, "", action);
 
-    # Escape XML entities for walker
+    # Escape XML entities for rofi markup
+    gsub(/&/, "\\&amp;", key_combo);
+    gsub(/</, "\\&lt;", key_combo);
+    gsub(/>/, "\\&gt;", key_combo);
     gsub(/&/, "\\&amp;", action);
     gsub(/</, "\\&lt;", action);
     gsub(/>/, "\\&gt;", action);
-    gsub(/"/, "\\&quot;", action);
-    gsub(/'"'"'/, "\\&apos;", action);
 
     if (action != "" && key_combo != "") {
-        printf "%-35s → %s\n", key_combo, action;
+        printf "<b>%s</b>  <i>%s</i>\n", key_combo, action;
     }
 }'
 }
 
-dynamic_bindings | \
-  sort -u | \
-  parse_bindings | \
-  walker --dmenu --theme keybindings -p 'DWM Keybindings'
+# Extract keybindings and store in array
+mapfile -t BINDINGS < <(dynamic_bindings | sort -u | parse_bindings)
+
+# Display with rofi
+CHOICE=$(printf '%s\n' "${BINDINGS[@]}" | rofi -dmenu -i -markup-rows -p "DWM Keybindings:")
