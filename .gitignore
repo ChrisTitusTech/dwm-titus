@@ -7,3 +7,5 @@
 
 # Object Files
 *.o
+
+nohup.out
