@@ -31,9 +31,6 @@ static const char *colors[][3] = {
 };
 
 static const char *const autostart[] = {
-    "xset", "s", "off", NULL,
-    "xset", "s", "noblank", NULL,
-    "xset", "-dpms", NULL,
     "dbus-update-activation-environment", "--systemd", "--all", NULL,
     "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
     "flameshot", NULL,
@@ -112,7 +109,7 @@ static Key keys[] = {
     { MODKEY|ShiftMask,             XK_p,                      spawn,          SHCMD ("flameshot gui -p /media/drive/Screenshots/")},
     { MODKEY|ControlMask,           XK_p,                      spawn,          SHCMD ("flameshot gui --clipboard")},
     { MODKEY,                       XK_e,                      spawn,          SHCMD ("xdg-open .")},
-    { MODKEY,                       XK_h,                      spawn,          SHCMD ("dwm-keybinds")},
+    { MODKEY,                       XK_slash,                  spawn,          SHCMD ("dwm-keybinds")},
     { MODKEY,                       XK_w,                      spawn,          SHCMD ("looking-glass-client -F")},
     { MODKEY|ShiftMask,             XK_w,                      spawn,          SHCMD ("feh --randomize --bg-fill ~/Pictures/backgrounds/*")},
     { 0,                            XF86XK_MonBrightnessUp,    spawn,          SHCMD ("xbacklight -inc 10")},
