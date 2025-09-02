@@ -15,8 +15,6 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 ## To-Do IMPORTANT
 
 - Fix install script and make sure all dependancies are getting installed (fonts, programs, etc.)
-    - ROFI / BASH / GHOSTTY Config import and run
-    - clone dwm-titus to ~/.local/share/
     - copy scripts to ~/.local/bin/
     - Fix keybinds to use $HOME
 - Plymouth Screen

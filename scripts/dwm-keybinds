@@ -4,7 +4,7 @@
 # using walker for an interactive search menu.
 
 # Path to the dwm config.h file
-DWM_CONFIG_PATH="${HOME}/github/dwm-titus/config.h"
+DWM_CONFIG_PATH="${HOME}/.local/share/dwm-titus/config.h"
 
 # Fetch keybindings from dwm config.h
 #
