@@ -15,8 +15,6 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 ## To-Do IMPORTANT
 
 - Fix install script and make sure all dependancies are getting installed (fonts, programs, etc.)
-    - copy scripts to ~/.local/bin/
-    - Fix keybinds to use $HOME
 - Plymouth Screen
 - Xscreensaver Gibson auto setup
 - Defaults for programs with xdg-utils
