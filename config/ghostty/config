@@ -2,7 +2,6 @@ theme = nord
 window-theme = ghostty
 window-height = 35
 window-width = 100
-window-maximize = true
 background-opacity = 0.95
 font-family = MesloLGS Nerd Font Mono
 font-family-bold = MesloLGS Nerd Font Mono
