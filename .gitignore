@@ -9,3 +9,5 @@
 *.o
 
 nohup.out
+.DS_STORE
+

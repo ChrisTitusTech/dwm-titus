@@ -11,6 +11,9 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 
 - Theming
 - Bar improvements
+  - Quickshell with tag recognition via https://dwm.suckless.org/patches/ewmhtags/dwm-ewmhtags-6.2.diff
+  - No status bar/systray needed in DWM
+  - New Quickshell qml config
 
 ## To-Do IMPORTANT
 
