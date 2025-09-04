@@ -10,9 +10,13 @@ static const unsigned int systraypinning      = 0;   /* 0: sloppy systray follow
 static const unsigned int systrayonleft       = 0;   /* 0: systray in the right corner, >0: systray on left of status text */
 static const unsigned int systrayspacing      = 5;   /* systray spacing */
 static const int systraypinningfailfirst      = 1;   /* 1: if pinning fails, display systray on the first monitor, False: display systray on the last monitor */
-static const int showsystray                  = 1;   /* 0 means no systray */
-static const int showbar                      = 1;   /* 0 means no bar */
+static const int showsystray                  = 0;   /* 0 means no systray - disable when using Polybar */
+static const int showbar                      = 1;   /* 1 means show bar - needed for Polybar space calculation */
 static const int topbar                       = 1;   /* 0 means bottom bar */
+static const int usealtbar                     = 1;   /* 1 means use non-dwm status bar */
+static const char *altbarclass                 = "Polybar"; /* Alternate bar class name */
+static const char *alttrayname                 = "tray";    /* Polybar tray instance name */
+static const char *altbarcmd                   = "$HOME/bar.sh"; /* Alternate bar launch command */
 #define ICONSIZE                              17     /* icon size */
 #define ICONSPACING                           5      /* space between icon and title */
 #define SHOWWINICON                           1      /* 0 means no winicon */
@@ -60,7 +64,7 @@ static const Rule rules[] = {
     { "terminator",         NULL,     NULL,           0,         0,          1,          0,         0 },
     { "lutris",             NULL,     NULL,           0,         1,          0,          0,         0 },
     { "steam_app_default",  NULL,     NULL,           0,         1,          0,          0,         0 },
-    { "thunar",             NULL,     NULL,           0,         1,          0,          0,         0 },
+    { "thunar",             NULL,     NULL,           0,         0,          0,          0,         0 },
     { NULL,                 NULL,     "Event Tester", 0,         0,          0,          1,        -1 }, /* xev */
 };
 
