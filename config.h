@@ -41,9 +41,6 @@ static const char *const autostart[] = {
     "dunst", NULL,
     "picom", "-b", NULL,
     "sh", "-c", "feh --randomize --bg-fill ~/Pictures/backgrounds/*", NULL,
-    "/opt/Synergy/synergy-service", NULL,
-    "slstatus", NULL,
-    "sh", "-c", "~/.screenlayout/main.sh", NULL,
     NULL /* terminate */
 };
 
