@@ -89,7 +89,7 @@ enum { SchemeNorm, SchemeSel }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType, NetWMIcon,
-       NetWMWindowTypeDialog, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetLast }; /* EWMH atoms */
+       NetWMWindowTypeDialog, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetLast }; /* EWMH atoms */
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
@@ -264,6 +264,7 @@ static void sendmon(Client *c, Monitor *m);
 static void setclientstate(Client *c, long state);
 static void setcurrentdesktop(void);
 static void setdesktopnames(void);
+static void setclientdesktop(Client *c);
 static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
 static void fullscreen(const Arg *arg);
@@ -391,6 +392,13 @@ unsigned int tagw[LENGTH(tags)];
 /* compile-time check if all tags fit into an unsigned int bit array. */
 struct NumTags { char limitexceeded[LENGTH(tags) > 31 ? -1 : 1]; };
 
+/* monitor-specific tag management */
+static int monitorcount = 1;
+static unsigned int getmontagmask(int monnum);
+static int getmonitorforselectedtag(void);
+static void updatemonitorcount(void);
+static void initmonitortags(void);
+
 /* dwm will keep pid's of processes from autostart array and kill them at quit */
 static pid_t *autostart_pids;
 static size_t autostart_len;
@@ -464,7 +472,24 @@ applyrules(Client *c)
 		XFree(ch.res_class);
 	if (ch.res_name)
 		XFree(ch.res_name);
+	
+	updatemonitorcount();
 	c->tags = c->tags & TAGMASK ? c->tags & TAGMASK : c->mon->tagset[c->mon->seltags];
+	
+	/* Ensure the client's tags are valid for its assigned monitor */
+	unsigned int montags = getmontagmask(c->mon->num);
+	if (!(c->tags & montags)) {
+		/* If no valid tags, assign the first tag of this monitor */
+		for (i = 0; i < LENGTH(tags); i++) {
+			if (montags & (1 << i)) {
+				c->tags = 1 << i;
+				break;
+			}
+		}
+	} else {
+		/* Mask to only valid tags for this monitor */
+		c->tags &= montags;
+	}
 }
 
 int
@@ -618,7 +643,14 @@ buttonpress(XEvent *e)
 		unsigned int occ = 0;
 		for(c = m->clients; c; c=c->next)
 			occ |= c->tags == TAGMASK ? 0 : c->tags;
+		
+		updatemonitorcount();
+		unsigned int montags = getmontagmask(m->num);
+		
 		do {
+			/* Only consider tags that belong to this monitor */
+			if (!(montags & (1 << i)))
+				continue;
 			/* Do not reserve space for vacant tags */
 			if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
 				continue;
@@ -906,7 +938,18 @@ createmon(void)
 	unsigned int i;
 
 	m = ecalloc(1, sizeof(Monitor));
+	
+	/* Calculate monitor number based on position in linked list */
+	m->num = 0;
+	if (mons) {
+		Monitor *temp;
+		for (temp = mons; temp; temp = temp->next)
+			m->num++;
+	}
+	
+	/* Set default tagset to first tag - will be updated later if needed */
 	m->tagset[0] = m->tagset[1] = 1;
+		
 	m->mfact = mfact;
 	m->nmaster = nmaster;
 	m->showbar = showbar;
@@ -1033,8 +1076,14 @@ drawbar(Monitor *m)
 			urg |= c->tags;
 	}
 
+	updatemonitorcount();
+	unsigned int montags = getmontagmask(m->num);
+
 	x = 0;
 	for (i = 0; i < LENGTH(tags); i++) {
+		/* Only draw tags that belong to this monitor */
+		if (!(montags & (1 << i)))
+			continue;
 		/* Do not draw vacant tags */
 		if(!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
 			continue;
@@ -1152,6 +1201,7 @@ focusmon(const Arg *arg)
 	selmon = m;
 	focus(NULL);
 	warp(selmon->sel);
+	updatecurrentdesktop();
 }
 
 void
@@ -1564,6 +1614,7 @@ manage(Window w, XWindowAttributes *wa)
 		(unsigned char *) &(c->win), 1);
 	XMoveResizeWindow(dpy, c->win, c->x + 2 * sw, c->y, c->w, c->h); /* some windows require this */
 	setclientstate(c, NormalState);
+	setclientdesktop(c);
 	if (c->mon == selmon)
 		unfocus(selmon->sel, 0);
 	c->mon->sel = c;
@@ -2358,13 +2409,38 @@ scantray(void)
 void
 sendmon(Client *c, Monitor *m)
 {
-	if (c->mon == m)
+	unsigned int montags;
+	int i;
+	
+	if (!c || !m || c->mon == m)
 		return;
 	unfocus(c, 1);
 	detach(c);
 	detachstack(c);
 	c->mon = m;
-	c->tags = m->tagset[m->seltags]; /* assign tags of target monitor */
+	
+	updatemonitorcount();
+	montags = getmontagmask(m->num);
+	
+	/* Assign appropriate tags for the target monitor */
+	if (!(c->tags & montags)) {
+		/* If client's current tags don't work on target monitor, assign first valid tag */
+		for (i = 0; i < LENGTH(tags); i++) {
+			if (montags & (1 << i)) {
+				c->tags = 1 << i;
+				break;
+			}
+		}
+		/* Fallback if no valid tags found */
+		if (!(c->tags & montags)) {
+			c->tags = m->tagset[m->seltags] ? m->tagset[m->seltags] : 1;
+		}
+	} else {
+		/* Mask to only valid tags for target monitor */
+		c->tags &= montags;
+	}
+	
+	setclientdesktop(c);
 	attachbottom(c);
 	attachstack(c);
 	arrange(NULL);
@@ -2390,6 +2466,27 @@ void setdesktopnames(void){
 	XTextProperty text;
 	Xutf8TextListToTextProperty(dpy, (char**)tags, TAGSLENGTH, XUTF8StringStyle, &text);
 	XSetTextProperty(dpy, root, &text, netatom[NetDesktopNames]);
+}
+
+void
+setclientdesktop(Client *c)
+{
+	long data[] = { 0 };
+	int i;
+	
+	/* Find which desktop/tag this client is on */
+	for (i = 0; i < TAGSLENGTH && !(c->tags & (1 << i)); i++);
+	
+	if (i < TAGSLENGTH) {
+		data[0] = i;
+	} else {
+		/* Client is on multiple tags or no tags - set to current desktop */
+		for (i = 0; i < TAGSLENGTH && !(selmon->tagset[selmon->seltags] & (1 << i)); i++);
+		data[0] = (i < TAGSLENGTH) ? i : 0;
+	}
+	
+	XChangeProperty(dpy, c->win, netatom[NetWMDesktop], XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char *)data, 1);
 }
 
 int
@@ -2612,6 +2709,8 @@ setup(void)
 	lrpad = drw->fonts->h;
 	bh = usealtbar ? 0 : drw->fonts->h + 2;
 	updategeom();
+	/* Initialize monitor-specific tags after geometry is set up */
+	initmonitortags();
 	/* init atoms */
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
 	wmatom[WMProtocols] = XInternAtom(dpy, "WM_PROTOCOLS", False);
@@ -2638,6 +2737,7 @@ setup(void)
 	netatom[NetNumberOfDesktops] = XInternAtom(dpy, "_NET_NUMBER_OF_DESKTOPS", False);
 	netatom[NetCurrentDesktop] = XInternAtom(dpy, "_NET_CURRENT_DESKTOP", False);
 	netatom[NetDesktopNames] = XInternAtom(dpy, "_NET_DESKTOP_NAMES", False);
+	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
 	xatom[Manager] = XInternAtom(dpy, "MANAGER", False);
 	xatom[Xembed] = XInternAtom(dpy, "_XEMBED", False);
 	xatom[XembedInfo] = XInternAtom(dpy, "_XEMBED_INFO", False);
@@ -2840,9 +2940,50 @@ spawnbar()
 void
 tag(const Arg *arg)
 {
-	if (selmon->sel && arg->ui & TAGMASK) {
-		selmon->sel->tags = arg->ui & TAGMASK;
+	unsigned int montags;
+	Monitor *targetmon = NULL;
+	Client *c = selmon->sel;
+	
+	if (!c || !(arg->ui & TAGMASK))
+		return;
+		
+	updatemonitorcount();
+	montags = getmontagmask(selmon->num);
+	
+	/* Check if the tag belongs to current monitor */
+	if (arg->ui & montags) {
+		/* Tag belongs to current monitor, proceed normally */
+		c->tags = arg->ui & TAGMASK & montags;
+		setclientdesktop(c);
 		view(arg);
+	} else {
+		/* Tag belongs to different monitor, find which one */
+		Monitor *m;
+		for (m = mons; m; m = m->next) {
+			unsigned int mmask = getmontagmask(m->num);
+			if (arg->ui & mmask) {
+				targetmon = m;
+				break;
+			}
+		}
+		
+		if (targetmon) {
+			/* Move window to target monitor */
+			sendmon(c, targetmon);
+			/* The sendmon function already handles tag assignment */
+			
+			/* Switch focus to target monitor and view the tag */
+			if (selmon != targetmon) {
+				unfocus(selmon->sel, 0);
+				selmon = targetmon;
+			}
+			/* Ensure the moved window gets the correct tag */
+			if (targetmon->sel) {
+				targetmon->sel->tags = arg->ui & TAGMASK & getmontagmask(targetmon->num);
+				setclientdesktop(targetmon->sel);
+			}
+			view(arg);
+		}
 	}
 }
 
@@ -3015,12 +3156,19 @@ void
 toggletag(const Arg *arg)
 {
 	unsigned int newtags;
+	unsigned int montags;
 
 	if (!selmon->sel)
 		return;
-	newtags = selmon->sel->tags ^ (arg->ui & TAGMASK);
-	if (newtags) {
-		selmon->sel->tags = newtags;
+		
+	updatemonitorcount();
+	montags = getmontagmask(selmon->num);
+	
+	/* Only allow toggling tags that belong to this monitor */
+	newtags = selmon->sel->tags ^ (arg->ui & TAGMASK & montags);
+	if (newtags && (newtags & montags)) {
+		selmon->sel->tags = newtags & montags;
+		setclientdesktop(selmon->sel);
 		arrange(selmon);
 		focus(NULL);
 		warp(NULL);
@@ -3031,13 +3179,20 @@ toggletag(const Arg *arg)
 void
 toggleview(const Arg *arg)
 {
-	unsigned int newtagset = selmon->tagset[selmon->seltags] ^ (arg->ui & TAGMASK);;
+	unsigned int newtagset;
+	unsigned int montags;
 	int i;
+
+	updatemonitorcount();
+	montags = getmontagmask(selmon->num);
+	
+	/* Only allow toggling tags that belong to this monitor */
+	newtagset = selmon->tagset[selmon->seltags] ^ (arg->ui & TAGMASK & montags);
 
 	if (newtagset) {
 		selmon->tagset[selmon->seltags] = newtagset;
 
-		if (newtagset == ~0)
+		if (newtagset == montags)
 		{
 			selmon->pertag->curtag = 0;
 		}
@@ -3279,12 +3434,17 @@ updateclientlist(void)
 }
 
 void updatecurrentdesktop(void){
-	long rawdata[] = { selmon->tagset[selmon->seltags] };
-	int i=0;
-	while(*rawdata >> (i+1)){
-		i++;
+	long data[] = { 0 };
+	int i;
+	unsigned int tagset = selmon->tagset[selmon->seltags];
+	
+	/* Find the first active tag */
+	for (i = 0; i < TAGSLENGTH && !(tagset & 1 << i); i++);
+	
+	if (i < TAGSLENGTH) {
+		data[0] = i;
 	}
-	long data[] = { i };
+	
 	XChangeProperty(dpy, root, netatom[NetCurrentDesktop], XA_CARDINAL, 32, PropModeReplace, (unsigned char *)data, 1);
 }
 
@@ -3611,12 +3771,52 @@ view(const Arg *arg)
 {
 	int i;
 	unsigned int tmptag;
+	unsigned int montags;
+	Monitor *targetmon = NULL;
+	
+	updatemonitorcount();
+	
+	/* If arg->ui contains tags, check if they belong to current monitor */
+	if (arg->ui & TAGMASK) {
+		montags = getmontagmask(selmon->num);
+		
+		/* If requested tags don't belong to current monitor, find the right monitor */
+		if (!(arg->ui & montags)) {
+			Monitor *m;
+			for (m = mons; m; m = m->next) {
+				unsigned int mmask = getmontagmask(m->num);
+				if (arg->ui & mmask) {
+					targetmon = m;
+					break;
+				}
+			}
+			
+			/* If we found a target monitor, switch to it and continue */
+			if (targetmon && targetmon != selmon) {
+				if (selmon->sel)
+					unfocus(selmon->sel, 0);
+				selmon = targetmon;
+				focus(NULL);
+				/* Warp cursor to the target monitor */
+				XWarpPointer(dpy, None, root, 0, 0, 0, 0, 
+					selmon->wx + selmon->ww/2, selmon->wy + selmon->wh/2);
+				montags = getmontagmask(selmon->num);
+			} else {
+				/* No valid monitor found for this tag, return */
+				return;
+			}
+		}
+	} else {
+		montags = getmontagmask(selmon->num);
+	}
 
+	/* Only allow viewing tags that belong to this monitor (now current after potential switch) */
 	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags])
 		return;
+
 	selmon->seltags ^= 1; /* toggle sel tagset */
 	if (arg->ui & TAGMASK) {
-		selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
+		selmon->tagset[selmon->seltags] = arg->ui & TAGMASK & montags;
 		selmon->pertag->prevtag = selmon->pertag->curtag;
 
 		if (arg->ui == ~0)
@@ -3847,6 +4047,106 @@ zoom(const Arg *arg)
 	if (c == nexttiled(selmon->clients) && !(c = nexttiled(c->next)))
 		return;
 	pop(c);
+}
+
+/* Monitor-specific tag management functions */
+void
+updatemonitorcount(void)
+{
+	Monitor *m;
+	int count = 0;
+	
+	for (m = mons; m; m = m->next)
+		count++;
+	
+	monitorcount = count > 0 ? count : 1;
+}
+
+unsigned int
+getmontagmask(int monnum)
+{
+	int tagspermon, start, end, i;
+	unsigned int mask = 0;
+	
+	/* Bounds checking */
+	if (monnum < 0 || monitorcount <= 0)
+		return TAGMASK;
+		
+	if (monitorcount <= 1)
+		return TAGMASK;
+		
+	tagspermon = LENGTH(tags) / monitorcount;
+	if (tagspermon == 0) tagspermon = 1;
+	
+	start = monnum * tagspermon;
+	end = start + tagspermon;
+	
+	/* Handle remainder tags for last monitor */
+	if (monnum == monitorcount - 1)
+		end = LENGTH(tags);
+	
+	/* Ensure we don't go beyond available tags */
+	if (start >= LENGTH(tags)) start = LENGTH(tags) - 1;
+	if (end > LENGTH(tags)) end = LENGTH(tags);
+	if (start >= end) {
+		/* Fallback for edge cases */
+		return 1 << (monnum % LENGTH(tags));
+	}
+	
+	for (i = start; i < end; i++)
+		mask |= 1 << i;
+	
+	/* Ensure we always return a valid mask */
+	return mask ? mask : (1 << (monnum % LENGTH(tags)));
+}
+
+int
+getmonitorforselectedtag(void)
+{
+	unsigned int curtag = selmon->tagset[selmon->seltags];
+	int tagspermon, i;
+	
+	if (monitorcount <= 1 || !curtag)
+		return 0;
+		
+	tagspermon = LENGTH(tags) / monitorcount;
+	if (tagspermon == 0) tagspermon = 1;
+	
+	/* Find which tag bit is set */
+	for (i = 0; i < LENGTH(tags); i++) {
+		if (curtag & (1 << i)) {
+			return i / tagspermon >= monitorcount ? monitorcount - 1 : i / tagspermon;
+		}
+	}
+	
+	return 0;
+}
+
+/* Initialize monitor-specific tags after all monitors are created */
+void
+initmonitortags(void)
+{
+	Monitor *m;
+	unsigned int montags;
+	int i;
+	
+	updatemonitorcount();
+	
+	for (m = mons; m; m = m->next) {
+		montags = getmontagmask(m->num);
+		
+		/* Set default tagset to first valid tag for this monitor */
+		for (i = 0; i < LENGTH(tags); i++) {
+			if (montags & (1 << i)) {
+				m->tagset[0] = m->tagset[1] = 1 << i;
+				break;
+			}
+		}
+		
+		/* Fallback to first tag if calculation fails */
+		if (!m->tagset[0])
+			m->tagset[0] = m->tagset[1] = 1;
+	}
 }
 
 int
