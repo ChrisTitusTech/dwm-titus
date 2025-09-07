@@ -89,7 +89,7 @@ enum { SchemeNorm, SchemeSel }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType, NetWMIcon,
-       NetWMWindowTypeDialog, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetLast }; /* EWMH atoms */
+       NetWMWindowTypeDialog, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetLast }; /* EWMH atoms */
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
@@ -264,6 +264,7 @@ static void sendmon(Client *c, Monitor *m);
 static void setclientstate(Client *c, long state);
 static void setcurrentdesktop(void);
 static void setdesktopnames(void);
+static void setclientdesktop(Client *c);
 static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
 static void fullscreen(const Arg *arg);
@@ -1612,6 +1613,7 @@ manage(Window w, XWindowAttributes *wa)
 		(unsigned char *) &(c->win), 1);
 	XMoveResizeWindow(dpy, c->win, c->x + 2 * sw, c->y, c->w, c->h); /* some windows require this */
 	setclientstate(c, NormalState);
+	setclientdesktop(c);
 	if (c->mon == selmon)
 		unfocus(selmon->sel, 0);
 	c->mon->sel = c;
@@ -2437,6 +2439,7 @@ sendmon(Client *c, Monitor *m)
 		c->tags &= montags;
 	}
 	
+	setclientdesktop(c);
 	attachbottom(c);
 	attachstack(c);
 	arrange(NULL);
@@ -2462,6 +2465,27 @@ void setdesktopnames(void){
 	XTextProperty text;
 	Xutf8TextListToTextProperty(dpy, (char**)tags, TAGSLENGTH, XUTF8StringStyle, &text);
 	XSetTextProperty(dpy, root, &text, netatom[NetDesktopNames]);
+}
+
+void
+setclientdesktop(Client *c)
+{
+	long data[] = { 0 };
+	int i;
+	
+	/* Find which desktop/tag this client is on */
+	for (i = 0; i < TAGSLENGTH && !(c->tags & (1 << i)); i++);
+	
+	if (i < TAGSLENGTH) {
+		data[0] = i;
+	} else {
+		/* Client is on multiple tags or no tags - set to current desktop */
+		for (i = 0; i < TAGSLENGTH && !(selmon->tagset[selmon->seltags] & (1 << i)); i++);
+		data[0] = (i < TAGSLENGTH) ? i : 0;
+	}
+	
+	XChangeProperty(dpy, c->win, netatom[NetWMDesktop], XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char *)data, 1);
 }
 
 int
@@ -2712,6 +2736,7 @@ setup(void)
 	netatom[NetNumberOfDesktops] = XInternAtom(dpy, "_NET_NUMBER_OF_DESKTOPS", False);
 	netatom[NetCurrentDesktop] = XInternAtom(dpy, "_NET_CURRENT_DESKTOP", False);
 	netatom[NetDesktopNames] = XInternAtom(dpy, "_NET_DESKTOP_NAMES", False);
+	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
 	xatom[Manager] = XInternAtom(dpy, "MANAGER", False);
 	xatom[Xembed] = XInternAtom(dpy, "_XEMBED", False);
 	xatom[XembedInfo] = XInternAtom(dpy, "_XEMBED_INFO", False);
@@ -2928,6 +2953,7 @@ tag(const Arg *arg)
 	if (arg->ui & montags) {
 		/* Tag belongs to current monitor, proceed normally */
 		c->tags = arg->ui & TAGMASK & montags;
+		setclientdesktop(c);
 		view(arg);
 	} else {
 		/* Tag belongs to different monitor, find which one */
@@ -2953,6 +2979,7 @@ tag(const Arg *arg)
 			/* Ensure the moved window gets the correct tag */
 			if (targetmon->sel) {
 				targetmon->sel->tags = arg->ui & TAGMASK & getmontagmask(targetmon->num);
+				setclientdesktop(targetmon->sel);
 			}
 			view(arg);
 		}
@@ -3140,6 +3167,7 @@ toggletag(const Arg *arg)
 	newtags = selmon->sel->tags ^ (arg->ui & TAGMASK & montags);
 	if (newtags && (newtags & montags)) {
 		selmon->sel->tags = newtags & montags;
+		setclientdesktop(selmon->sel);
 		arrange(selmon);
 		focus(NULL);
 		warp(NULL);
