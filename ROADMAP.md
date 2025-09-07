@@ -17,6 +17,11 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 - Plymouth Screen
 - Xscreensaver Gibson auto setup
 - Defaults for programs with xdg-utils
+- Autostart
+
+## Bugs
+
+- Multimonitor tag switch from one monitor to the other doesn't update cursor position or polybar header
  
 ## Complete
 
@@ -25,3 +30,4 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 - Move setup script to linutil
 - EWMH integration into DWM code
 - EWMH integration into polybar replacing DWM bar / systray
+- Multimonitor
