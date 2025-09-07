@@ -1201,6 +1201,7 @@ focusmon(const Arg *arg)
 	selmon = m;
 	focus(NULL);
 	warp(selmon->sel);
+	updatecurrentdesktop();
 }
 
 void
@@ -3433,12 +3434,17 @@ updateclientlist(void)
 }
 
 void updatecurrentdesktop(void){
-	long rawdata[] = { selmon->tagset[selmon->seltags] };
-	int i=0;
-	while(*rawdata >> (i+1)){
-		i++;
+	long data[] = { 0 };
+	int i;
+	unsigned int tagset = selmon->tagset[selmon->seltags];
+	
+	/* Find the first active tag */
+	for (i = 0; i < TAGSLENGTH && !(tagset & 1 << i); i++);
+	
+	if (i < TAGSLENGTH) {
+		data[0] = i;
 	}
-	long data[] = { i };
+	
 	XChangeProperty(dpy, root, netatom[NetCurrentDesktop], XA_CARDINAL, 32, PropModeReplace, (unsigned char *)data, 1);
 }
 
@@ -3791,6 +3797,9 @@ view(const Arg *arg)
 					unfocus(selmon->sel, 0);
 				selmon = targetmon;
 				focus(NULL);
+				/* Warp cursor to the target monitor */
+				XWarpPointer(dpy, None, root, 0, 0, 0, 0, 
+					selmon->wx + selmon->ww/2, selmon->wy + selmon->wh/2);
 				montags = getmontagmask(selmon->num);
 			} else {
 				/* No valid monitor found for this tag, return */
