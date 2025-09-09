@@ -13,11 +13,15 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 
 ## To-Do IMPORTANT
 
-- Fix install script and make sure all dependancies are getting installed (fonts, programs, etc.)
 - Plymouth Screen
 - Xscreensaver Gibson auto setup
 - Defaults for programs with xdg-utils
-- Autostart
+- Hide Grub on install
+- starship should be non-interactive
+- astronaut theme prompting for gum install
+- check for other interactive spots that need automation
+- Theming (nwg-look, mouse, dark-prefer, etc.)
+- Browser check
 
 ## Bugs
 
@@ -25,6 +29,8 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
  
 ## Complete
 
+- Fix install script and make sure all dependancies are getting installed (fonts, programs, etc.)
+- Autostart
 - Fix Meslo font install
 - Keyring unlock issue (SDDM install with Astronaut script)
 - Move setup script to linutil
