@@ -17,10 +17,19 @@ if command -v xrandr > /dev/null 2>&1; then
     echo "Detected $MONITOR_COUNT monitors: ${MONITORS[*]}"
     echo "Using simple EWMH on all monitors - DWM handles tag assignment"
     
-    # Launch polybar on all connected monitors with the same config
-    for monitor in "${MONITORS[@]}"; do
-        MONITOR=$monitor polybar main -c "$CONFIG_FILE" &
-        echo "Launched polybar on $monitor"
+    # Launch polybar on all connected monitors
+    # First monitor gets the tray, others don't
+    for i in "${!MONITORS[@]}"; do
+        monitor="${MONITORS[$i]}"
+        if [ $i -eq 0 ]; then
+            # Primary monitor gets the tray
+            MONITOR=$monitor polybar main -c "$CONFIG_FILE" &
+            echo "Launched primary polybar with tray on $monitor"
+        else
+            # Secondary monitors don't get the tray
+            MONITOR=$monitor polybar secondary -c "$CONFIG_FILE" &
+            echo "Launched secondary polybar without tray on $monitor"
+        fi
     done
 else
     # Fallback: launch main bar if xrandr is not available
