@@ -16,6 +16,7 @@ This guide assumes your system has the latest updates before going ahead with th
     ```bash
     curl -fsSL https://linutil.github.io/install | bash
     ```
+<img width="1839" height="1000" alt="image" src="https://github.com/user-attachments/assets/314f9a40-4ccb-4c34-b3d2-dcfee63c278b" />
 
 2. Enable Multi-Selection with key `v` and select `dwm`, `rofi`, `bash prompt`, and `ghostty` from the list.
   _Note: You can also select other packages as per your requirement._
