@@ -22,6 +22,7 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 - check for other interactive spots that need automation
 - Theming (nwg-look, mouse, dark-prefer, etc.)
 - Browser check
+- Cleanup Running Autostart on relaunches
 
 ## Bugs
 
