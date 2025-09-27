@@ -2471,22 +2471,22 @@ void setdesktopnames(void){
 void
 setclientdesktop(Client *c)
 {
-	long data[] = { 0 };
-	int i;
-	
-	/* Find which desktop/tag this client is on */
-	for (i = 0; i < TAGSLENGTH && !(c->tags & (1 << i)); i++);
-	
-	if (i < TAGSLENGTH) {
-		data[0] = i;
-	} else {
-		/* Client is on multiple tags or no tags - set to current desktop */
-		for (i = 0; i < TAGSLENGTH && !(selmon->tagset[selmon->seltags] & (1 << i)); i++);
-		data[0] = (i < TAGSLENGTH) ? i : 0;
-	}
-	
-	XChangeProperty(dpy, c->win, netatom[NetWMDesktop], XA_CARDINAL, 32,
-		PropModeReplace, (unsigned char *)data, 1);
+    long data[] = { 0 };
+    int i;
+    
+    /* Find which desktop/tag this client is on */
+    for (i = 0; i < TAGSLENGTH && !(c->tags & (1 << i)); i++);
+    
+    if (i < TAGSLENGTH) {
+        data[0] = i;
+    } else {
+        /* Client is on multiple tags or no tags - set to current desktop */
+        for (i = 0; i < TAGSLENGTH && !(selmon->tagset[selmon->seltags] & (1 << i)); i++);
+        data[0] = (i < TAGSLENGTH) ? i : 0;
+    }
+    
+    XChangeProperty(dpy, c->win, netatom[NetWMDesktop], XA_CARDINAL, 32,
+        PropModeReplace, (unsigned char *)data, 1);
 }
 
 int
@@ -2888,7 +2888,7 @@ swallow(Client *p, Client *c)
 	c->icon = icon;
 	int icw = p->icw;
 	p->icw = c->icw;
-	c->icw = icw;
+	c->ich = icw;
 	int ich = p->ich;
 	p->ich = c->ich;
 	c->ich = ich;
@@ -2940,51 +2940,51 @@ spawnbar()
 void
 tag(const Arg *arg)
 {
-	unsigned int montags;
-	Monitor *targetmon = NULL;
-	Client *c = selmon->sel;
-	
-	if (!c || !(arg->ui & TAGMASK))
-		return;
-		
-	updatemonitorcount();
-	montags = getmontagmask(selmon->num);
-	
-	/* Check if the tag belongs to current monitor */
-	if (arg->ui & montags) {
-		/* Tag belongs to current monitor, proceed normally */
-		c->tags = arg->ui & TAGMASK & montags;
-		setclientdesktop(c);
-		view(arg);
-	} else {
-		/* Tag belongs to different monitor, find which one */
-		Monitor *m;
-		for (m = mons; m; m = m->next) {
-			unsigned int mmask = getmontagmask(m->num);
-			if (arg->ui & mmask) {
-				targetmon = m;
-				break;
-			}
-		}
-		
-		if (targetmon) {
-			/* Move window to target monitor */
-			sendmon(c, targetmon);
-			/* The sendmon function already handles tag assignment */
-			
-			/* Switch focus to target monitor and view the tag */
-			if (selmon != targetmon) {
-				unfocus(selmon->sel, 0);
-				selmon = targetmon;
-			}
-			/* Ensure the moved window gets the correct tag */
-			if (targetmon->sel) {
-				targetmon->sel->tags = arg->ui & TAGMASK & getmontagmask(targetmon->num);
-				setclientdesktop(targetmon->sel);
-			}
-			view(arg);
-		}
-	}
+    unsigned int montags;
+    Monitor *targetmon = NULL;
+    Client *c = selmon->sel;
+    
+    if (!c || !(arg->ui & TAGMASK))
+        return;
+        
+    updatemonitorcount();
+    montags = getmontagmask(selmon->num);
+    
+    /* Check if the tag belongs to current monitor */
+    if (arg->ui & montags) {
+        /* Tag belongs to current monitor, proceed normally */
+        c->tags = arg->ui & TAGMASK & montags;
+        setclientdesktop(c);  // Add this line
+        view(arg);
+    } else {
+        /* Tag belongs to different monitor, find which one */
+        Monitor *m;
+        for (m = mons; m; m = m->next) {
+            unsigned int mmask = getmontagmask(m->num);
+            if (arg->ui & mmask) {
+                targetmon = m;
+                break;
+            }
+        }
+        
+        if (targetmon) {
+            /* Move window to target monitor */
+            sendmon(c, targetmon);
+            /* The sendmon function already handles tag assignment */
+            
+            /* Switch focus to target monitor and view the tag */
+            if (selmon != targetmon) {
+                unfocus(selmon->sel, 0);
+                selmon = targetmon;
+            }
+            /* Ensure the moved window gets the correct tag */
+            if (targetmon->sel) {
+                targetmon->sel->tags = arg->ui & TAGMASK & getmontagmask(targetmon->num);
+                setclientdesktop(targetmon->sel);  // Add this line
+            }
+            view(arg);
+        }
+    }
 }
 
 void
@@ -3155,25 +3155,25 @@ togglefloating(const Arg *arg)
 void
 toggletag(const Arg *arg)
 {
-	unsigned int newtags;
-	unsigned int montags;
+    unsigned int newtags;
+    unsigned int montags;
 
-	if (!selmon->sel)
-		return;
-		
-	updatemonitorcount();
-	montags = getmontagmask(selmon->num);
-	
-	/* Only allow toggling tags that belong to this monitor */
-	newtags = selmon->sel->tags ^ (arg->ui & TAGMASK & montags);
-	if (newtags && (newtags & montags)) {
-		selmon->sel->tags = newtags & montags;
-		setclientdesktop(selmon->sel);
-		arrange(selmon);
-		focus(NULL);
-		warp(NULL);
-	}
-	updatecurrentdesktop();
+    if (!selmon->sel)
+        return;
+        
+    updatemonitorcount();
+    montags = getmontagmask(selmon->num);
+    
+    /* Only allow toggling tags that belong to this monitor */
+    newtags = selmon->sel->tags ^ (arg->ui & TAGMASK & montags);
+    if (newtags && (newtags & montags)) {
+        selmon->sel->tags = newtags & montags;
+        setclientdesktop(selmon->sel);  // Add this line
+        arrange(selmon);
+        focus(NULL);
+        warp(NULL);
+    }
+    updatecurrentdesktop();
 }
 
 void
@@ -3610,6 +3610,7 @@ updatestatus(void)
 				statusw += TEXTW(text) - lrpad;
 				*s = ch;
 				text = s + 1;
+				statussig = ch;
 			}
 		}
 		statusw += TEXTW(text) - lrpad + 2;
