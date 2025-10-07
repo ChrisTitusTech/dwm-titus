@@ -7,6 +7,11 @@ killall polybar
 while pgrep -u $UID -x polybar >/dev/null; do sleep 1; done
 
 CONFIG_FILE="$HOME/.local/share/dwm-titus/polybar/themes/$THEME/config.ini"
+LAPTOP_CONFIG_FILE="$HOME/.local/share/dwm-titus/polybar/themes/$THEME/laptop-config.ini"
+
+if ls /sys/class/power_supply/ 2>/dev/null | grep -q '^BAT'; then
+	CONFIG_FILE=$LAPTOP_CONFIG_FILE
+fi
 
 # Check if xrandr is available and get monitor list
 if command -v xrandr > /dev/null 2>&1; then
