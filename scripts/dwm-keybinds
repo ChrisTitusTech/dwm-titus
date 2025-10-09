@@ -80,10 +80,10 @@ dynamic_bindings() {
         gsub(/[ \t]*/, "", funcname)
         
         # Convert click areas
-        if (click_area == "ClkTagBar") click_area = "Tag Bar"
-        else if (click_area == "ClkClientWin") click_area = "Window"
-        else if (click_area == "ClkRootWin") click_area = "Desktop"
-        else if (click_area == "ClkStatusText") click_area = "Status Bar"
+        #if (click_area == "ClkTagBar") click_area = "Tag Bar"
+        #else if (click_area == "ClkClientWin") click_area = "Window"
+        #else if (click_area == "ClkRootWin") click_area = "Desktop"
+        #else if (click_area == "ClkStatusText") click_area = "Status Bar"
         
         # For buttons, show as "Area + Modifier + Click"
         if (modifier == "MODKEY") {
