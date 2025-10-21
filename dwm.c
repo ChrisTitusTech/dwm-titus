@@ -314,7 +314,6 @@ static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
 static void view(const Arg *arg);
 static pid_t winpid(Window w);
-static void warp(Client *c);
 static Client *wintoclient(Window w);
 static Monitor *wintomon(Window w);
 static Client *wintosystrayicon(Window w);
@@ -1200,7 +1199,6 @@ focusmon(const Arg *arg)
 	unfocus(selmon->sel, 0);
 	selmon = m;
 	focus(NULL);
-	warp(selmon->sel);
 	updatecurrentdesktop();
 }
 
@@ -1227,7 +1225,6 @@ focusstack(const Arg *arg)
 	if (c) {
 		focus(c);
 		restack(selmon);
-		warp(c);
 	}
 }
 
@@ -1623,8 +1620,6 @@ manage(Window w, XWindowAttributes *wa)
 	if (term)
 		swallow(term, c);
 	focus(NULL);
-	if (ISVISIBLE(c))
-		warp(c);
 }
 
 void
@@ -1843,8 +1838,6 @@ movestack(const Arg *arg) {
 
 		arrange(selmon);
 	}
-
-	warp(NULL);
 }
 
 Client *
@@ -1905,9 +1898,6 @@ placemouse(const Arg *arg)
 	XGetWindowAttributes(dpy, c->win, &wa);
 	ocx = wa.x;
 	ocy = wa.y;
-
-	if (arg->i == 2) // warp cursor to client center
-		XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, WIDTH(c) / 2, HEIGHT(c) / 2);
 
 	if (!getrootptr(&x, &y))
 		return;
@@ -2378,11 +2368,6 @@ scan(void)
 		}
 		XFree(wins);
 	}
-
-	/* We may have last run manage() on a window that isn't visible. To be
-	 * deterministic on startup, place focus/warp on current master if any
-	 * client exists. */
-	warp(nexttiled(selmon->clients));
 }
 
 void
@@ -3149,7 +3134,6 @@ togglefloating(const Arg *arg)
 		resize(selmon->sel, selmon->sel->x, selmon->sel->y,
 			selmon->sel->w, selmon->sel->h, 0);
 	arrange(selmon);
-	warp(NULL);
 }
 
 void
@@ -3171,7 +3155,6 @@ toggletag(const Arg *arg)
         setclientdesktop(selmon->sel);  // Add this line
         arrange(selmon);
         focus(NULL);
-        warp(NULL);
     }
     updatecurrentdesktop();
 }
@@ -3278,8 +3261,6 @@ unmanage(Client *c, int destroyed)
 			/* Focus the top window and set it as the current focus */
 			focus(top);
 			restack(m);
-			/* Warp the cursor to the center of the top window */
-			XWarpPointer(dpy, None, top->win, 0, 0, 0, 0, top->w / 2, top->h / 2);
 			/* Set the input focus to the top window */
 			XSetInputFocus(dpy, top->win, RevertToPointerRoot, CurrentTime);
 		} else {
@@ -3798,9 +3779,6 @@ view(const Arg *arg)
 					unfocus(selmon->sel, 0);
 				selmon = targetmon;
 				focus(NULL);
-				/* Warp cursor to the target monitor */
-				XWarpPointer(dpy, None, root, 0, 0, 0, 0, 
-					selmon->wx + selmon->ww/2, selmon->wy + selmon->wh/2);
 				montags = getmontagmask(selmon->num);
 			} else {
 				/* No valid monitor found for this tag, return */
@@ -3843,7 +3821,6 @@ view(const Arg *arg)
 
 	arrange(selmon);
 	focus(NULL);
-	warp(NULL);
 
 	for (Client *c = selmon->clients; c; c = c->next) {
 		if ((c->tags & arg->ui) && ISVISIBLE(c)) { // arg->ui is the selected tagset
@@ -3852,22 +3829,6 @@ view(const Arg *arg)
 		}
 	}
 	updatecurrentdesktop();
-}
-
-void
-warp(Client *c)
-{
-	/* Try to warp to the active window. */
-	if (!c)
-		c = selmon->sel;
-
-	/* If there's no active window, just warp to the middle of the screen. */
-	if (!c) {
-		XWarpPointer(dpy, None, root, 0, 0, 0, 0, selmon->wx + selmon->ww/2, selmon->wy + selmon->wh/2);
-		return;
-	}
-
-	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
 }
 
 pid_t

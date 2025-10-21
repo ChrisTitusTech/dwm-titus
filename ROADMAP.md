@@ -23,10 +23,12 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 - Theming (nwg-look, mouse, dark-prefer, etc.)
 - Browser check
 - Cleanup Running Autostart on relaunches
+- Generalized Setup for different Monitor / GPU combos
 
 ## Bugs
 
 - Multimonitor tag switch from one monitor to the other doesn't update cursor position or polybar header
+- Resolutions below 1080p do not display power menu
  
 ## Complete
 
