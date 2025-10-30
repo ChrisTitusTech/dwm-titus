@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Adjust the volume of the active application's audio stream using PipeWire (wpctl)
+
+# Usage:
+#   ./active-audio up
+#   ./active-audio down
+#   ./active-audio mute
+
+STEP=0.05   # volume step (5%)
+ACTION="$1"
+
+if [[ -z "$ACTION" ]]; then
+  echo "Usage: $0 {up|down|mute}"
+  exit 1
+fi
+
+# Get the active window PID
+ACTIVE_PID=$(xdotool getactivewindow getwindowpid 2>/dev/null)
+if [[ -z "$ACTIVE_PID" ]]; then
+  echo "Could not determine active window PID."
+  exit 1
+fi
+
+# Find the PipeWire client associated with that PID
+CLIENT_ID=$(pw-cli ls Client | awk -v pid="$ACTIVE_PID" '
+  $1 == "id" {id=$3}
+  /application.process.id/ && $3==pid {print id}
+')
+
+if [[ -z "$CLIENT_ID" ]]; then
+  echo "No PipeWire client found for PID $ACTIVE_PID (might not be playing audio)."
+  exit 1
+fi
+
+# Find all stream nodes associated with that client
+NODE_IDS=$(pw-cli ls Node | awk -v cid="$CLIENT_ID" '
+  $1 == "id" {id=$3}
+  /client.id/ && $3==cid {print id}
+')
+
+if [[ -z "$NODE_IDS" ]]; then
+  echo "No audio node found for client $CLIENT_ID."
+  exit 1
+fi
+
+# Adjust volume for each node (some apps may use multiple)
+for NODE in $NODE_IDS; do
+  case "$ACTION" in
+    up)
+      wpctl set-volume "wp:$NODE" $STEP+ >/dev/null
+      ;;
+    down)
+      wpctl set-volume "wp:$NODE" $STEP- >/dev/null
+      ;;
+    mute)
+      wpctl set-mute "wp:$NODE" toggle >/dev/null
+      ;;
+    *)
+      echo "Invalid argument: $ACTION (use up, down, or mute)"
+      exit 1
+      ;;
+  esac
+done
+
+echo "Adjusted volume for active app (PID $ACTIVE_PID, client $CLIENT_ID, nodes: $NODE_IDS)"
+
