@@ -39,23 +39,32 @@ fi
     current=$(xprop -root _NET_CURRENT_DESKTOP 2>/dev/null | awk '{print $3}')
     current=${current:-0}
 
-    # Output tags 1-9
+    # Output tags 1-9 - always show at least active tag and occupied tags
     output=""
+    has_output=false
     for i in {0..8}; do
         tag=$((i + 1))
         if [ "$i" = "$current" ]; then
             # Active tag (currently selected)
             output+="%{F${COLOR_ACTIVE}}%{T${FONT_ACTIVE}}$tag%{T-}%{F-} "
+            has_output=true
         elif [ "${urgent_tags[$i]}" = "1" ]; then
             # Urgent tag (has urgent window)
             output+="%{F${COLOR_URGENT}}%{T${FONT_URGENT}}$tag%{T-}%{F-} "
+            has_output=true
         elif [ "${occupied_tags[$i]}" = "1" ]; then
             # Occupied tag (has windows)
             output+="%{F${COLOR_OCCUPIED}}%{T${FONT_OCCUPIED}}$tag%{T-}%{F-} "
+            has_output=true
         fi
     done
 
-    echo "$output"
+    # Always output something, even if empty, to prevent polybar from breaking
+    if [ "$has_output" = true ]; then
+        echo "$output"
+    else
+        echo " "
+    fi
 }
 
 # Check if tail mode is enabled (for event-driven updates)
