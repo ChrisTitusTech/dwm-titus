@@ -53,13 +53,12 @@ static const int lcaselbl = 0;          /* 1 means make tag label lowercase */
 
 static const Rule rules[] = {
     /* class                instance  title           tags mask  isfloating  isterminal  noswallow  monitor  lockmouse */
-    /* lockmouse: 1 = lock cursor to window when active, prevents cursor from leaving window unless switching tags */
-    { "St",                 NULL,     NULL,           0,         0,          1,          0,         0,       0 },
-    { "kitty",              NULL,     NULL,           0,         0,          1,          0,         0,       0 },
-    { "alacritty",          NULL,     NULL,           0,         0,          1,          0,         0,       0 },
-    { "ghostty",            NULL,     NULL,           0,         0,          1,          0,         0,       0 },
-    { "warp-terminal",      NULL,     NULL,           0,         0,          1,          0,         0,       0 },
-    { "terminator",         NULL,     NULL,           0,         0,          1,          0,         0,       0 },
+    { "St",                 NULL,     NULL,           0,         0,          1,          0,        -1,       0 },
+    { "kitty",              NULL,     NULL,           0,         0,          1,          0,        -1,       0 },
+    { "alacritty",          NULL,     NULL,           0,         0,          1,          0,        -1,       0 },
+    { "ghostty",            NULL,     NULL,           0,         0,          1,          0,        -1,       0 },
+    { "warp-terminal",      NULL,     NULL,           0,         0,          1,          0,        -1,       0 },
+    { "terminator",         NULL,     NULL,           0,         0,          1,          0,        -1,       0 },
     { "lutris",             NULL,     NULL,           0,         1,          0,          0,         0,       0 },
     { "steam_app_default",  NULL,     NULL,           0,         1,          0,          0,         0,       1 }, /* lock mouse for games */
     { "thunar",             NULL,     NULL,           0,         0,          0,          0,         0,       0 },
