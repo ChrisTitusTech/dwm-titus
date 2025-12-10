@@ -283,6 +283,7 @@ static void showhide(Client *c);
 static void sigstatusbar(const Arg *arg);
 static void spawn(const Arg *arg);
 static void spawnbar();
+static void updatepolybar();
 static Monitor *systraytomon(Monitor *m);
 static int swallow(Client *p, Client *c);
 static Client *swallowingclient(Window w);
@@ -2938,6 +2939,19 @@ spawnbar()
 }
 
 void
+updatepolybar()
+{
+	/* Send update signal to polybar via xprop property change */
+	/* This triggers the dwm-tags script to refresh */
+	static Atom atom = None;
+	if (atom == None)
+		atom = XInternAtom(dpy, "DWM_TAG_UPDATE", False);
+	XChangeProperty(dpy, root, atom, XA_STRING, 8, PropModeReplace,
+		(unsigned char *)"update", 6);
+	XFlush(dpy);
+}
+
+void
 tag(const Arg *arg)
 {
     unsigned int montags;
@@ -2955,6 +2969,7 @@ tag(const Arg *arg)
         /* Tag belongs to current monitor, proceed normally */
         c->tags = arg->ui & TAGMASK & montags;
         setclientdesktop(c);  // Add this line
+        updatepolybar();
         view(arg);
     } else {
         /* Tag belongs to different monitor, find which one */
@@ -2982,6 +2997,7 @@ tag(const Arg *arg)
                 targetmon->sel->tags = arg->ui & TAGMASK & getmontagmask(targetmon->num);
                 setclientdesktop(targetmon->sel);  // Add this line
             }
+            updatepolybar();
             view(arg);
         }
     }
@@ -3168,6 +3184,7 @@ toggletag(const Arg *arg)
     if (newtags && (newtags & montags)) {
         selmon->sel->tags = newtags & montags;
         setclientdesktop(selmon->sel);  // Add this line
+        updatepolybar();
         arrange(selmon);
         focus(NULL);
     }
@@ -3206,6 +3223,7 @@ toggleview(const Arg *arg)
 		selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
 		selmon->lt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
+		updatepolybar();
 		arrange(selmon);
 		focus(NULL);
 	}
@@ -3837,6 +3855,7 @@ view(const Arg *arg)
 	if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->curtag])
 		togglebar(NULL);
 
+	updatepolybar();
 	arrange(selmon);
 	focus(NULL);
 
