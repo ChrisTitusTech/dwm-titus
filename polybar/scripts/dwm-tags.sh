@@ -63,9 +63,11 @@ if [ "$1" = "--tail" ]; then
     # Output initial state
     update_tags
     
-    # Listen for X property changes on the root window
-    # This will trigger whenever DWM updates the DWM_TAG_UPDATE property
-    xprop -root -spy DWM_TAG_UPDATE 2>/dev/null | while read -r line; do
+    # Listen for property changes that indicate desktop/tag changes
+    # Monitors: DWM_TAG_UPDATE (custom signal), _NET_CURRENT_DESKTOP (active desktop), 
+    # and _NET_CLIENT_LIST (window list changes)
+    xprop -root -spy DWM_TAG_UPDATE _NET_CURRENT_DESKTOP _NET_CLIENT_LIST 2>/dev/null | \
+    while read -r line; do
         update_tags
     done
 else
