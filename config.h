@@ -96,7 +96,7 @@ static const char *termcmd[]     = { "ghostty", NULL };
 static const char *gmailcmd[]     = { "webapp-launch", "https://gmail.com", NULL };
 static const char *youtubecmd[]   = { "webapp-launch", "https://youtube.com", NULL };
 static const char *chatgptcmd[]   = { "webapp-launch", "https://chatgpt.com", NULL };
-static const char *grokcmd[]      = { "webapp-launch", "https://grok.com", NULL };
+static const char *geminicmd[]      = { "webapp-launch", "https://gemini.google.com/", NULL };
 static const char *xpostcmd[]      = { "webapp-launch", "https://x.com/compose/post", NULL };
 
 static Key keys[] = {
@@ -105,7 +105,7 @@ static Key keys[] = {
     { MODKEY|ControlMask,           XK_r,                      spawn,          SHCMD ("protonrestart")},
     { MODKEY,                       XK_x,                      spawn,          {.v = termcmd } },
     { MODKEY,                       XK_a,                      spawn,          {.v = chatgptcmd } },
-    { MODKEY|ShiftMask,             XK_a,                      spawn,          {.v = grokcmd } },
+    { MODKEY|ShiftMask,             XK_a,                      spawn,          {.v = geminicmd } },
     { MODKEY|ShiftMask,             XK_x,                      spawn,          {.v = xpostcmd } },
     { MODKEY,                       XK_b,                      spawn,          SHCMD ("xdg-open https://")},
     { MODKEY,                       XK_p,                      spawn,          SHCMD ("flameshot full -p /media/drive/Screenshots/")},
