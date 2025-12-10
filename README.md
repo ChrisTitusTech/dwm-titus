@@ -14,7 +14,7 @@ This guide assumes your system has the latest updates before going ahead with th
 
 1. Launch Linutil Project with the command:
     ```bash
-    curl -fsSL https://linutil.github.io/install | bash
+    curl -fsSL https://christitus.com/linux | bash
     ```
 <img width="1839" height="1000" alt="image" src="https://github.com/user-attachments/assets/314f9a40-4ccb-4c34-b3d2-dcfee63c278b" />
 
