@@ -125,7 +125,6 @@ struct Client {
 	int issteam;
 	int beingmoved;
 	int fakefullscreen;
-	int lockmouse;
 	pid_t pid;
 	Client *next;
 	Client *snext;
@@ -182,7 +181,6 @@ typedef struct {
 	int isterminal;
 	int noswallow;
 	int monitor;
-	int lockmouse;
 } Rule;
 
 typedef struct Systray Systray;
@@ -467,7 +465,6 @@ applyrules(Client *c)
 			c->isterminal = r->isterminal;
 			c->noswallow  = r->noswallow;
 			c->isfloating = r->isfloating;
-			c->lockmouse  = r->lockmouse;
 			c->tags |= r->tags;
 			for (m = mons; m && m->num != r->monitor; m = m->next);
 			if (m)
@@ -1178,12 +1175,6 @@ focus(Client *c)
 		grabbuttons(c, 1);
 		XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
 		setfocus(c);
-		/* Lock mouse cursor to window if lockmouse is enabled */
-		if (c->lockmouse) {
-			XGrabPointer(dpy, c->win, True,
-				PointerMotionMask | ButtonPressMask | ButtonReleaseMask,
-				GrabModeAsync, GrabModeAsync, c->win, None, CurrentTime);
-		}
 	} else {
 		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
 		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
@@ -3217,9 +3208,6 @@ unfocus(Client *c, int setfocus)
 {
 	if (!c)
 		return;
-	/* Unlock mouse cursor if it was locked */
-	if (c->lockmouse)
-		XUngrabPointer(dpy, CurrentTime);
 	grabbuttons(c, 0);
 	XSetWindowBorder(dpy, c->win, scheme[SchemeNorm][ColBorder].pixel);
 	if (setfocus) {
