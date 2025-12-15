@@ -59,7 +59,7 @@ static const Rule rules[] = {
     { "ghostty",            NULL,     NULL,           0,         0,          1,          0,        -1,       0 },
     { "warp-terminal",      NULL,     NULL,           0,         0,          1,          0,        -1,       0 },
     { "terminator",         NULL,     NULL,           0,         0,          1,          0,        -1,       0 },
-    { "steam_app_default",  NULL,     NULL,           0,         1,          0,          0,         0,       1 }, /* lock mouse for games */
+    { "steam_app_",         NULL,     NULL,           0,         1,          0,          0,         0,       1 }, /* lock mouse for all steam apps */
     { "thunar",             NULL,     NULL,           0,         0,          0,          0,         0,       0 },
     { NULL,                 NULL,     "Event Tester", 0,         0,          0,          1,        -1,       0 }, /* xev */
 };

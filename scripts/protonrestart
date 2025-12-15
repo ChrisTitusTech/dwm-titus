@@ -1,6 +1,30 @@
 #!/bin/bash
-PROTONCORE=(pv-bwrap winecfg.exe pressure-vessel reaper explorer.exe rpcss.exe plugplay.exe services.exe svchost.exe winedevice.exe winedevice.exe wineserver Fallout76.exe)
 
+# Kill all wine-related processes
+echo "Killing wine processes..."
+pkill -9 -i wine
+pkill -9 -i proton
+
+# Kill all .exe processes by matching process names
+echo "Killing .exe processes..."
+ps aux | grep -i '\.exe' | grep -v grep | awk '{print $2}' | xargs -r kill -9 2>/dev/null
+
+# Kill Battle.net launcher and other game launcher processes
+echo "Killing game launchers..."
+pkill -9 -f 'Battle\.net'
+pkill -9 -i lutris-wrapper
+
+# Kill Chromium Embedded Framework processes (used by Battle.net, Epic, etc.)
+echo "Killing CEF processes..."
+pkill -9 -f 'CrGpuMain'
+pkill -9 -f 'CrUtilityMain'
+pkill -9 -f 'CrBrowserMain'
+pkill -9 -f 'CrRendererMain'
+
+# Kill specific Proton/Wine core processes
+PROTONCORE=(pv-bwrap pressure-vessel reaper wineserver winedevice)
 for PROG in "${PROTONCORE[@]}"; do
-	killall -9 "$PROG"
+	killall -9 "$PROG" 2>/dev/null
 done
+
+echo "All wine and proton processes terminated."
