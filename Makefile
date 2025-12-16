@@ -53,6 +53,6 @@ release: dwm
 	cp -f .xinitrc release/
 	cp -rf polybar release/
 	cp -rf scripts release/
-	tar -czf release/dwm-${VERSION}.tar.gz -C release dwm dwm.desktop .xinitrc polybar scripts
+	tar -czf release/Omitus-${VERSION}.tar.gz -C release dwm dwm.desktop .xinitrc polybar scripts
 
 .PHONY: all clean install uninstall release
