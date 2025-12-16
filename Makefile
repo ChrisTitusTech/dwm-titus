@@ -34,6 +34,15 @@ install: all
 	cp -f dwm release/
 	tar -czf release/dwm-${VERSION}.tar.gz -C release dwm
 	test -f /home/${SUDO_USER}/.xinitrc || install -Dm644 .xinitrc /home/${SUDO_USER}/.xinitrc
+	mkdir -p /home/${SUDO_USER}/.config/polybar
+	cp -rf polybar/* /home/${SUDO_USER}/.config/polybar/
+	chmod +x /home/${SUDO_USER}/.config/polybar/launch.sh
+	chmod +x /home/${SUDO_USER}/.config/polybar/scripts/dwm-tags.sh
+	chmod +x /home/${SUDO_USER}/.config/polybar/scripts/wallz/wallz.py
+	chmod +x /home/${SUDO_USER}/.config/polybar/scripts/weather/main.py
+	chmod +x /home/${SUDO_USER}/.config/polybar/scripts/weather/weather.sh
+	mkdir -p ${DESTDIR}${PREFIX}/bin
+	install -Dm755 scripts/* ${DESTDIR}${PREFIX}/bin/
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm \
@@ -43,6 +52,10 @@ uninstall:
 release: dwm
 	mkdir -p release
 	cp -f dwm release/
-	tar -czf release/dwm-${VERSION}.tar.gz -C release dwm
+	cp -f dwm.desktop release/
+	cp -f .xinitrc release/
+	cp -rf polybar release/
+	cp -rf scripts release/
+	tar -czf release/dwm-${VERSION}.tar.gz -C release dwm polybar scripts
 
 .PHONY: all clean install uninstall release
