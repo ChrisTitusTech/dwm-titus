@@ -30,9 +30,6 @@ install: all
 	chmod 644 ${DESTDIR}${MANPREFIX}/man1/dwm.1
 	mkdir -p /usr/share/xsessions/
 	test -f /usr/share/xsessions/dwm.desktop || install -Dm644 dwm.desktop /usr/share/xsessions/
-	mkdir -p release
-	cp -f dwm release/
-	tar -czf release/dwm-${VERSION}.tar.gz -C release dwm
 	test -f /home/${SUDO_USER}/.xinitrc || install -Dm644 .xinitrc /home/${SUDO_USER}/.xinitrc
 	mkdir -p /home/${SUDO_USER}/.config/polybar
 	cp -rf polybar/* /home/${SUDO_USER}/.config/polybar/
@@ -56,6 +53,6 @@ release: dwm
 	cp -f .xinitrc release/
 	cp -rf polybar release/
 	cp -rf scripts release/
-	tar -czf release/dwm-${VERSION}.tar.gz -C release dwm polybar scripts
+	tar -czf release/dwm-${VERSION}.tar.gz -C release dwm dwm.desktop .xinitrc polybar scripts
 
 .PHONY: all clean install uninstall release
