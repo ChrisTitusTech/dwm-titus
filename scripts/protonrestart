@@ -1,62 +1,25 @@
 #!/bin/bash
 
-# First pass: Kill game-specific processes (add your games here)
-echo "Killing game processes..."
-pkill -9 -i "arc"  # Arc Raiders
-pkill -9 -i "raiders"
-pgrep -ai "arc.*raiders" | awk '{print $1}' | xargs -r kill -9 2>/dev/null
+echo "Killing all .exe processes (full command line)..."
+pgrep -fai '.*\.exe' | awk '{print $1}' | xargs -r kill -9 2>/dev/null
 
-# Kill all wine-related processes
-echo "Killing wine processes..."
-pkill -9 -i wine
-pkill -9 -i proton
-
-# Use wineserver to properly terminate all wine processes
-echo "Using wineserver to kill wine processes..."
-wineserver -k 2>/dev/null
-wineserver -k9 2>/dev/null  # Force kill if -k didn't work
-
-# Kill all wine-launched .exe processes by checking command line
-echo "Killing .exe processes launched through wine..."
-for pid in $(pgrep -afi 'wine.*\.exe' | awk '{print $1}'); do
-    kill -9 "$pid" 2>/dev/null
-done
-
-# Kill all .exe processes by matching process names (more thorough)
-echo "Killing .exe processes..."
-pgrep -afi '.*\.exe' | awk '{print $1}' | xargs -r kill -9 2>/dev/null
-
-# Also kill by examining cmdline for .exe
-for pid in $(ps aux | grep -iE '.*\.exe' | grep -v grep | awk '{print $2}'); do
-    kill -9 "$pid" 2>/dev/null
-done
-
-# Find and kill all processes with .exe in their path or command
-for pid in $(ps -eo pid,cmd | grep -iE '.*\.exe' | grep -v grep | awk '{print $1}'); do
-    kill -9 "$pid" 2>/dev/null
-done
-
-# Kill Battle.net launcher and other game launcher processes
 echo "Killing game launchers..."
 pkill -9 -f 'Battle\.net'
 pkill -9 -i lutris-wrapper
 pkill -9 -f 'steam'
 pkill -9 -f 'gameoverlayui'
 
-# Kill Chromium Embedded Framework processes (used by Battle.net, Epic, etc.)
 echo "Killing CEF processes..."
 pkill -9 -f 'CrGpuMain'
 pkill -9 -f 'CrUtilityMain'
 pkill -9 -f 'CrBrowserMain'
 pkill -9 -f 'CrRendererMain'
 
-# Kill specific Proton/Wine core processes
 PROTONCORE=(pv-bwrap pressure-vessel reaper wineserver winedevice services.exe explorer.exe)
 for PROG in "${PROTONCORE[@]}"; do
-	killall -9 "$PROG" 2>/dev/null
+    killall -9 "$PROG" 2>/dev/null
 done
 
-# Final sweep: kill anything in wine/proton prefix directories
 echo "Final sweep of wine/proton prefixes..."
 MYPID=$$
 for pid in $(lsof 2>/dev/null | grep -iE 'steamapps/compatdata|\.wine|proton' | awk '{print $2}' | sort -u); do
