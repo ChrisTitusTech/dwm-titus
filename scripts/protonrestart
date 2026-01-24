@@ -11,12 +11,28 @@ echo "Killing wine processes..."
 pkill -9 -i wine
 pkill -9 -i proton
 
+# Use wineserver to properly terminate all wine processes
+echo "Using wineserver to kill wine processes..."
+wineserver -k 2>/dev/null
+wineserver -k9 2>/dev/null  # Force kill if -k didn't work
+
+# Kill all wine-launched .exe processes by checking command line
+echo "Killing .exe processes launched through wine..."
+for pid in $(pgrep -afi 'wine.*\.exe' | awk '{print $1}'); do
+    kill -9 "$pid" 2>/dev/null
+done
+
 # Kill all .exe processes by matching process names (more thorough)
 echo "Killing .exe processes..."
-pgrep -af '\.exe' | awk '{print $1}' | xargs -r kill -9 2>/dev/null
+pgrep -afi '.*\.exe' | awk '{print $1}' | xargs -r kill -9 2>/dev/null
 
 # Also kill by examining cmdline for .exe
-for pid in $(ps aux | grep -iE '\.exe|\.EXE' | grep -v grep | awk '{print $2}'); do
+for pid in $(ps aux | grep -iE '.*\.exe' | grep -v grep | awk '{print $2}'); do
+    kill -9 "$pid" 2>/dev/null
+done
+
+# Find and kill all processes with .exe in their path or command
+for pid in $(ps -eo pid,cmd | grep -iE '.*\.exe' | grep -v grep | awk '{print $1}'); do
     kill -9 "$pid" 2>/dev/null
 done
 
