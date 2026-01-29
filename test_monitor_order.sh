@@ -1,0 +1,16 @@
+#!/bin/bash
+
+echo "=== Monitor Order Analysis ==="
+echo ""
+echo "Xrandr output:"
+xrandr --query | grep " connected"
+echo ""
+echo "Expected by user:"
+echo "  Monitor 1 (DP-0, bottom, y=1080): workspaces 1-4 (tags 0-3)"
+echo "  Monitor 2 (HDMI-0, top, y=0): workspaces 5-9 (tags 4-8)"
+echo ""
+echo "DWM likely assigns based on Xinerama screen order."
+echo "To see actual assignments, check which tag ranges work on each monitor."
+echo ""
+echo "Current window positions:"
+bash debug_client_tags.sh | grep -E "(Window ID|Name|Position|Desktop)"
