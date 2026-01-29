@@ -298,7 +298,6 @@ static void unmanage(Client *c, int destroyed);
 static void unmanagealtbar(Window w);
 static void unmanagetray(Window w);
 static void unmapnotify(XEvent *e);
-static void updateallclientdesktops(void);
 static void updatecurrentdesktop(void);
 static void unswallow(Client *c);
 static void updatebarpos(Monitor *m);
@@ -827,6 +826,48 @@ clientmessage(XEvent *e)
 	} else if (cme->message_type == netatom[NetActiveWindow]) {
 		if (c != selmon->sel && !c->isurgent)
 			seturgent(c, 1);
+	} else if (cme->message_type == netatom[NetWMDesktop]) {
+		/* Handle external desktop/workspace change requests */
+		long desktop = cme->data.l[0];
+		if (desktop >= 0 && desktop < TAGSLENGTH) {
+			Monitor *m;
+			unsigned int newtag = 1 << desktop;
+			
+			/* Find which monitor should handle this tag */
+			for (m = mons; m; m = m->next) {
+				unsigned int montags = getmontagmask(m->num);
+				if (newtag & montags) {
+					/* This monitor handles the requested tag */
+					if (c->mon != m) {
+						/* Window needs to move to different monitor */
+						sendmon(c, m);
+						updateclientlist();
+						/* sendmon already sets appropriate tags and calls setclientdesktop */
+					} else {
+						/* Same monitor, just change tags */
+						c->tags = newtag;
+						setclientdesktop(c);
+						updateclientlist();
+						arrange(c->mon);
+					}
+					focus(NULL);
+					break;
+				}
+			}
+			/* If no monitor found (shouldn't happen), fallback to simple tag change */
+			if (!m) {
+				c->tags = newtag;
+				setclientdesktop(c);
+				focus(NULL);
+				arrange(c->mon);
+			}
+		} else if (desktop == 0xFFFFFFFF) {
+			/* 0xFFFFFFFF means sticky/all desktops - set all tags */
+			c->tags = TAGMASK;
+			setclientdesktop(c);
+			focus(NULL);
+			arrange(c->mon);
+		}
 	}
 }
 
@@ -1793,6 +1834,7 @@ movemouse(const Arg *arg)
 	XUngrabPointer(dpy, CurrentTime);
 	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
 		sendmon(c, m);
+		updateclientlist();
 		selmon = m;
 		focus(NULL);
 	}
@@ -2469,35 +2511,16 @@ setclientdesktop(Client *c)
     if (!c)
         return;
     
-    /* Find which desktop/tag this client is PRIMARY on (use first matching tag)
-     * This provides the most accurate representation for EWMH compliance */
     for (i = 0; i < TAGSLENGTH && !(c->tags & (1 << i)); i++);
     
     if (i < TAGSLENGTH) {
-        /* Found a valid tag - report its index as the desktop number */
         data[0] = i;
     } else {
-        /* Client has no tags set - set to 0xFFFFFFFF (sticky/all desktops)
-         * This indicates the window appears on all desktops */
         data[0] = 0xFFFFFFFF;
     }
     
     XChangeProperty(dpy, c->win, netatom[NetWMDesktop], XA_CARDINAL, 32,
         PropModeReplace, (unsigned char *)data, 1);
-}
-
-void
-updateallclientdesktops(void)
-{
-	Monitor *m;
-	Client *c;
-	
-	/* Update desktop property for all clients across all monitors */
-	for (m = mons; m; m = m->next) {
-		for (c = m->clients; c; c = c->next) {
-			setclientdesktop(c);
-		}
-	}
 }
 
 int
@@ -2826,15 +2849,11 @@ showhide(Client *c)
 		XMoveWindow(dpy, c->win, c->x, c->y);
 		if ((!c->mon->lt[c->mon->sellt]->arrange || c->isfloating) && !c->isfullscreen)
 			resize(c, c->x, c->y, c->w, c->h, 0);
-		/* Update desktop property when showing window */
-		setclientdesktop(c);
 		showhide(c->snext);
 	} else {
 		/* hide clients bottom up */
 		showhide(c->snext);
 		XMoveWindow(dpy, c->win, WIDTH(c) * -2, c->y);
-		/* Keep desktop property set even when hidden for EWMH compliance */
-		setclientdesktop(c);
 	}
 }
 
@@ -2969,7 +2988,8 @@ tag(const Arg *arg)
     if (arg->ui & montags) {
         /* Tag belongs to current monitor, proceed normally */
         c->tags = arg->ui & TAGMASK & montags;
-        setclientdesktop(c);  // Add this line
+        setclientdesktop(c);
+        updateclientlist();
         view(arg);
     } else {
         /* Tag belongs to different monitor, find which one */
@@ -2985,6 +3005,7 @@ tag(const Arg *arg)
         if (targetmon) {
             /* Move window to target monitor */
             sendmon(c, targetmon);
+            updateclientlist();
             /* The sendmon function already handles tag assignment */
             
             /* Switch focus to target monitor and view the tag */
@@ -2995,7 +3016,7 @@ tag(const Arg *arg)
             /* Ensure the moved window gets the correct tag */
             if (targetmon->sel) {
                 targetmon->sel->tags = arg->ui & TAGMASK & getmontagmask(targetmon->num);
-                setclientdesktop(targetmon->sel);  // Add this line
+                setclientdesktop(targetmon->sel);
             }
             view(arg);
         }
@@ -3449,15 +3470,11 @@ void updatecurrentdesktop(void){
 	int i;
 	unsigned int tagset = selmon->tagset[selmon->seltags];
 	
-	/* Report the first active tag of the currently selected monitor
-	 * In multi-monitor setups with per-monitor tags, this represents the
-	 * desktop that has input focus, which is most useful for EWMH clients */
 	for (i = 0; i < TAGSLENGTH && !(tagset & 1 << i); i++);
 	
 	if (i < TAGSLENGTH) {
 		data[0] = i;
 	} else {
-		/* Fallback to 0 if no tag is active (shouldn't happen) */
 		data[0] = 0;
 	}
 	
@@ -4069,29 +4086,21 @@ getmonlogicalindex(Monitor *target)
 	if (!target || monitorcount <= 1)
 		return 0;
 	
-	/* Find the primary monitor:
-	 * 1. The one containing coordinates (0, 1080) or more (DP-0 in your setup)
-	 * 2. Or fallback to the first monitor in the list */
-	
 	for (m = mons; m; m = m->next) {
-		/* Check if this monitor contains y >= 1080 (your bottom/primary monitor) */
 		if (m->my >= 1080) {
 			primary = m;
 			break;
 		}
 	}
 	
-	/* If no monitor found with y >= 1080, use first monitor */
 	if (!primary) {
 		primary = mons;
 	}
 	
-	/* Primary monitor gets index 0, all others get higher indices */
 	if (target == primary) {
 		return 0;
 	}
 	
-	/* For non-primary monitors, assign sequential indices */
 	index = 1;
 	for (m = mons; m; m = m->next) {
 		if (m == target)
@@ -4119,12 +4128,10 @@ getmontagmask(int monnum)
 		}
 	}
 	
-	/* If monitor not found, fallback to monnum */
 	if (!m) {
 		logicalindex = monnum;
 	}
 	
-	/* Bounds checking */
 	if (logicalindex < 0 || monitorcount <= 0)
 		return TAGMASK;
 		
@@ -4134,26 +4141,21 @@ getmontagmask(int monnum)
 	tagspermon = LENGTH(tags) / monitorcount;
 	if (tagspermon == 0) tagspermon = 1;
 	
-	/* Use logical index (position-based) instead of physical monitor num */
 	start = logicalindex * tagspermon;
 	end = start + tagspermon;
 	
-	/* Handle remainder tags for last monitor */
 	if (logicalindex == monitorcount - 1)
 		end = LENGTH(tags);
 	
-	/* Ensure we don't go beyond available tags */
 	if (start >= LENGTH(tags)) start = LENGTH(tags) - 1;
 	if (end > LENGTH(tags)) end = LENGTH(tags);
 	if (start >= end) {
-		/* Fallback for edge cases */
 		return 1 << (monnum % LENGTH(tags));
 	}
 	
 	for (i = start; i < end; i++)
 		mask |= 1 << i;
 	
-	/* Ensure we always return a valid mask */
 	return mask ? mask : (1 << (monnum % LENGTH(tags)));
 }
 
