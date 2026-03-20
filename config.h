@@ -60,6 +60,7 @@ static const Rule rules[] = {
     { "warp-terminal",      NULL,     NULL,           0,         0,          1,          0,        -1 },
     { "terminator",         NULL,     NULL,           0,         0,          1,          0,        -1 },
     { "thunar",             NULL,     NULL,           0,         0,          0,          0,        -1 },
+    { "Diablo2-overlay",    NULL,     NULL,           0,         1,          0,          1,         1 },
     { NULL,                 NULL,     "Event Tester", 0,         0,          0,          1,        -1 }, /* xev */
 };
 
