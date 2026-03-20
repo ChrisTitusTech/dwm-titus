@@ -1217,6 +1217,8 @@ focus(Client *c)
 		grabbuttons(c, 1);
 		XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
 		setfocus(c);
+		if (cursorwarp)
+			XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
 	} else {
 		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
 		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
@@ -1247,6 +1249,9 @@ focusmon(const Arg *arg)
 	unfocus(selmon->sel, 0);
 	selmon = m;
 	focus(NULL);
+	if (cursorwarp)
+		XWarpPointer(dpy, None, root, 0, 0, 0, 0,
+			selmon->wx + selmon->ww / 2, selmon->wy + selmon->wh / 2);
 	updatecurrentdesktop();
 }
 

@@ -3,6 +3,7 @@
 /* appearance */
 static const unsigned int refresh_rate        = 120;  /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
 static const unsigned int enable_noborder     = 1;   /* toggles noborder feature (0=disabled, 1=enabled) */
+static const int cursorwarp                   = 1;   /* 1 means warp cursor to center of focused window/monitor */
 static const unsigned int borderpx            = 1;   /* border pixel of windows */
 static const unsigned int snap                = 26;  /* snap pixel */
 static const int swallowfloating              = 1;   /* 1 means swallow floating windows by default */
