@@ -3881,6 +3881,8 @@ view(const Arg *arg)
 	for (Client *c = selmon->clients; c; c = c->next) {
 		if ((c->tags & arg->ui) && ISVISIBLE(c)) { // arg->ui is the selected tagset
 		    focus(c);
+		    if (cursorwarp)
+		        XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
 		    break;
 		}
 	}
