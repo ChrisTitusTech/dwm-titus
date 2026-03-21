@@ -841,8 +841,11 @@ clientmessage(XEvent *e)
 					if (c->mon != m) {
 						/* Window needs to move to different monitor */
 						sendmon(c, m);
+						/* Fix tag to the requested one (sendmon defaults to first tag) */
+						c->tags = newtag;
+						setclientdesktop(c);
 						updateclientlist();
-						/* sendmon already sets appropriate tags and calls setclientdesktop */
+						arrange(NULL);
 					} else {
 						/* Same monitor, just change tags */
 						c->tags = newtag;
@@ -3009,19 +3012,18 @@ tag(const Arg *arg)
         if (targetmon) {
             /* Move window to target monitor */
             sendmon(c, targetmon);
+
+            /* Fix tags on the moved client directly (sendmon defaults to first tag) */
+            c->tags = arg->ui & TAGMASK & getmontagmask(targetmon->num);
+            setclientdesktop(c);
             updateclientlist();
-            /* The sendmon function already handles tag assignment */
             
             /* Switch focus to target monitor and view the tag */
             if (selmon != targetmon) {
                 unfocus(selmon->sel, 0);
                 selmon = targetmon;
             }
-            /* Ensure the moved window gets the correct tag */
-            if (targetmon->sel) {
-                targetmon->sel->tags = arg->ui & TAGMASK & getmontagmask(targetmon->num);
-                setclientdesktop(targetmon->sel);
-            }
+            arrange(NULL);
             view(arg);
         }
     }
@@ -3845,9 +3847,32 @@ view(const Arg *arg)
 		montags = getmontagmask(selmon->num);
 	}
 
-	/* Only allow viewing tags that belong to this monitor (now current after potential switch) */
-	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags])
+	/* If the requested tags are already the active tagset on this monitor,
+	 * we may still need to update EWMH/focus/warp if we crossed monitors */
+	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags]) {
+		if (targetmon) {
+			/* We switched monitors — update focus, warp, and EWMH */
+			arrange(selmon);
+			focus(NULL);
+			{
+				int found = 0;
+				for (Client *c = selmon->clients; c; c = c->next) {
+					if ((c->tags & arg->ui) && ISVISIBLE(c)) {
+					    focus(c);
+					    if (cursorwarp)
+					        XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
+					    found = 1;
+					    break;
+					}
+				}
+				if (!found && cursorwarp)
+					XWarpPointer(dpy, None, root, 0, 0, 0, 0,
+						selmon->mx + selmon->mw / 2, selmon->my + selmon->mh / 2);
+			}
+			updatecurrentdesktop();
+		}
 		return;
+	}
 
 	selmon->seltags ^= 1; /* toggle sel tagset */
 	if (arg->ui & TAGMASK) {
@@ -3878,13 +3903,20 @@ view(const Arg *arg)
 	arrange(selmon);
 	focus(NULL);
 
-	for (Client *c = selmon->clients; c; c = c->next) {
-		if ((c->tags & arg->ui) && ISVISIBLE(c)) { // arg->ui is the selected tagset
-		    focus(c);
-		    if (cursorwarp)
-		        XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
-		    break;
+	{
+		int found = 0;
+		for (Client *c = selmon->clients; c; c = c->next) {
+			if ((c->tags & arg->ui) && ISVISIBLE(c)) {
+			    focus(c);
+			    if (cursorwarp)
+			        XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
+			    found = 1;
+			    break;
+			}
 		}
+		if (!found && cursorwarp)
+			XWarpPointer(dpy, None, root, 0, 0, 0, 0,
+				selmon->mx + selmon->mw / 2, selmon->my + selmon->mh / 2);
 	}
 	updatecurrentdesktop();
 }
