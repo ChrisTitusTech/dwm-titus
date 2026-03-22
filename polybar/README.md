@@ -1,101 +1,83 @@
-# Polybar Collection
+# Polybar Configuration (dwm-titus)
 
-My personal collection. Trying to make some nice themes, and show how great [Polybar](https://github.com/polybar/polybar) is. I'll keep updating the collection, and maybe create some custom scripts so you and I can have a better experience with this thing. I also recommend you to check this [adi1090x Polybar Collection](https://github.com/adi1090x/polybar-themes), has some great themes, so if you don't like my collection, you can just check the other one. Also the reason why I'm doing this is because I want you to have more options and ideas to build your own theme.
+This directory contains the Polybar status bar configuration bundled with dwm-titus. It is **self-contained** — you do not need to clone any external repos.
 
-Read this README with attention.
+## How It Works
 
-## Getting Started
+When dwm starts, it launches `polybar/launch.sh` which:
+- Detects connected monitors via `xrandr`
+- Launches the **main** bar (with systray + EWMH tags) on the primary monitor
+- Launches **secondary** bars (no tray) on additional monitors
+- Auto-detects laptops (battery present) and uses `laptop-config.ini`
 
-### Prerequisites
+The default theme is **minimal** (Nord-inspired).
 
-First of all, install Polybar:
+## Setup
 
-[Compiling Polybar](https://github.com/polybar/polybar/wiki/Compiling)
-
-By default the font used is `JetBrainsMono` (you can change it in the **fonts.ini** file), you can download and install from [NerdFonts](https://www.nerdfonts.com/font-downloads):
-
-Also you'll need [MaterialIcons](https://github.com/google/material-design-icons) and [Feather](https://feathericons.com/).
-You can move both **MaterialIcons** and **feather** inside **fonts** to **$HOME/.fonts/** and run:
-
+### 1. Install Polybar
 ```bash
-$HOME
--> fc-cache -fv
+sudo pacman -S polybar
 ```
 
-or just search how to install fonts!
+### 2. Install Fonts
 
-### Cloning
-
-Now you need to clone the repo in the \$HOME directory (because the path inside the files points to **$HOME/polybar-collection**):
-
+The icon fonts (MaterialIcons, Feather) are bundled in `fonts/`:
 ```bash
-$HOME
--> git clone --depth 1 https://github.com/Murzchnvok/polybar-collection
+mkdir -p ~/.local/share/fonts
+cp -r fonts/* ~/.local/share/fonts/
+fc-cache -fv
 ```
 
-or clone to other directory and create a symlink of the folder in the \$HOME directory:
-
+Also install the text font:
 ```bash
-$HOME/Projects
--> git clone --depth 1 https://github.com/Murzchnvok/polybar-collection
-
-$HOME
--> ln -s $HOME/Projects/polybar-collection $HOME/polybar-collection
+sudo pacman -S ttf-meslo-nerd
 ```
 
-### Running
+> The default text font can be changed in `fonts.ini`.
 
-BSPwm
+### 3. Config Location
 
-```bash
-$HOME/polybar-collection/launch.sh
+When you run `sudo make install` from the dwm-titus root, Polybar configs are copied to:
+```
+~/.config/polybar/
 ```
 
-I3wm
-
-```bash
-exec_always --no-startup-id $HOME/polybar-collection/launch.sh
+The launch script path used by dwm is:
+```
+~/.config/polybar/launch.sh
 ```
 
-Remember to keep updated:
+### 4. Customizing Modules
 
-```bash
-$HOME
--> cd $HOME/polybar-collection && git pull
-```
-
-## Few changes
-
-Now we only have one file **modules.ini** to change the modules that we like to use. I believe that's a better way to configure our Polybar themes:
-
+Edit `themes/minimal/config.ini` to control which modules appear:
 ```ini
-modules-left = date wallz nft tor weather bspwm i3
-modules-center = mpd
-modules-right = wired cpu memory xbacklight pulseaudio
+modules-left = dwm-tags
+modules-center = title
+modules-right = pulseaudio date tray
 ```
 
-The only problem with this, is that some themes don't have certain modules, for now at least! I'm planning on making this collection easier to setup, so if you have any ideas you can always share.
+Available modules are in `themes/minimal/modules/`.
 
-## Weather app
+## Multi-Monitor
 
-As pointed out by Dennis Perrone, my personal OpenWeather API Key is in the project as a constant, and I did this intentionally so it just works, and it's fine if you want to use it the same as me, but I'll suggest you to create your own API Key for free in the official [OpenWeather](https://openweathermap.org/api) website. There's a limit of requests you can make using the same API Key, so we both could be without the weather info if a lot of requests are made.
+- **Single monitor**: One bar with systray + EWMH tags
+- **Multiple monitors**: Primary monitor gets systray + EWMH; secondary monitors get a simpler bar
+- Primary monitor is auto-detected via `xrandr --query`
 
-After you create your API Key, you can pass as an argument in the **weather.sh** script, or you can set an environment variable for **OPENWEATHER_API_KEY** with your own API Key:
+## Weather Module
 
-## Wallz
+If using the weather module, get a free API key from [OpenWeather](https://openweathermap.org/api) and set:
+```bash
+export OPENWEATHER_API_KEY="your-key-here"
+```
 
-Still thinking about this one, maybe I should add more 'backend' options, for now is only using Bing API, but I could add more options since Bing API have a 'limited', but with a really good quality, wallpapers collection. For now I'll be only using on minimal theme, but when I'm 'done' I'll add to the others.
+---
 
-## You might be interested
+## Theme Gallery
 
-- [Rofi Collection](https://github.com/Murzchnvok/rofi-collection)
-- [Wallpaper Collection](https://drive.google.com/drive/folders/1o1qjRgkJtnF_8uGB1z6MRsQUjWinHUsw?usp=sharing)
-- [Pomotroid (pomodoro app)](https://github.com/Splode/pomotroid)
-- [Ugly To-Do](https://github.com/Murzchnvok/ugly-todo)
+The collection includes several themes. Screenshots are in `screenshots/`.
 
-_Enjoy!_
-
-### Murz
+### Minimal (default)
 
 ![desktop](screenshots/murz/desktop.png)
 

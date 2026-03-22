@@ -1,6 +1,9 @@
 # binaries
 /dwm
 
+# User config (created from config.def.h, not tracked)
+config.h
+
 # Patch Fail
 *.rej
 *.orig
