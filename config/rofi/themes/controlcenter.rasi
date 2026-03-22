@@ -1,0 +1,103 @@
+/**
+ * dwm-titus Control Center — Rofi Theme
+ * Nord color palette
+ **/
+
+/*****----- Global Properties -----*****/
+* {
+    nord0:  #2e3440;
+    nord1:  #3b4252;
+    nord2:  #434c5e;
+    nord3:  #4c566a;
+    nord4:  #d8dee9;
+    nord5:  #e5e9f0;
+    nord6:  #eceff4;
+    nord7:  #8fbcbb;
+    nord8:  #88c0d0;
+    nord9:  #81a1c1;
+    nord10: #5e81ac;
+    nord11: #bf616a;
+    nord14: #a3be8c;
+
+    background-color: transparent;
+    font: "MesloLGS Nerd Font 13";
+}
+
+/*****----- Main Window -----*****/
+window {
+    location:         center;
+    anchor:           center;
+    width:            42em;
+    background-color: @nord0;
+    border:           2px;
+    border-color:     @nord10;
+    border-radius:    8px;
+    padding:          0;
+}
+
+/*****----- Main Box -----*****/
+mainbox {
+    spacing:          0;
+    background-color: @nord0;
+    children:         [ "inputbar", "message", "listview" ];
+}
+
+/*****----- Input Bar -----*****/
+inputbar {
+    children:         [ prompt ];
+    background-color: @nord1;
+    padding:          14px 18px;
+    border:           0 0 1px 0;
+    border-color:     @nord3;
+}
+
+prompt {
+    background-color: transparent;
+    text-color:       @nord8;
+    font:             "MesloLGS Nerd Font Bold 15";
+}
+
+/*****----- Message (status area) -----*****/
+message {
+    background-color: @nord0;
+    padding:          10px 18px;
+    border:           0 0 1px 0;
+    border-color:     @nord2;
+}
+
+textbox {
+    background-color: transparent;
+    text-color:       @nord4;
+    font:             "MesloLGS Nerd Font 11";
+}
+
+/*****----- List View -----*****/
+listview {
+    background-color: @nord0;
+    columns:          1;
+    lines:            10;
+    dynamic:          true;
+    scrollbar:        false;
+    padding:          8px 0;
+    fixed-height:     false;
+}
+
+/*****----- Elements -----*****/
+element {
+    padding:          10px 18px;
+    background-color: transparent;
+    text-color:       @nord4;
+    cursor:           pointer;
+}
+
+element selected.normal {
+    background-color: @nord2;
+    text-color:       @nord8;
+    border-radius:    0;
+}
+
+element-text {
+    background-color: inherit;
+    text-color:       inherit;
+    cursor:           inherit;
+}

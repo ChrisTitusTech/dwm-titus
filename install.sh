@@ -156,14 +156,10 @@ case "$term_choice" in
     *) info "Skipping terminal install." ;;
 esac
 
-# ── Step 5: Optional Polybar ────────────────────────────
-echo ""
-read -rp "Install Polybar? (recommended, used as status bar) [Y/n]: " polybar_choice
-polybar_choice="${polybar_choice:-Y}"
-if [[ "$polybar_choice" =~ ^[Yy] ]]; then
-    install_packages polybar
-    ok "Polybar installed."
-fi
+# ── Step 5: Install Polybar ──────────────────────────────
+info "Installing Polybar (status bar)..."
+install_packages polybar
+ok "Polybar installed."
 
 # ── Step 6: Create XDG user directories ─────────────────
 if command -v xdg-user-dirs-update &>/dev/null; then
@@ -210,6 +206,7 @@ info "Installing configuration files..."
 mkdir -p "$HOME/.config/rofi"
 cp -rn "$REPO_DIR/config/rofi/"* "$HOME/.config/rofi/" 2>/dev/null || true
 chmod +x "$HOME/.config/rofi/powermenu.sh" 2>/dev/null || true
+chmod +x "$HOME/.config/rofi/themes/controlcenter.rasi" 2>/dev/null || true
 
 # Terminal configs (copy only if not already present)
 for term_dir in alacritty ghostty kitty; do
@@ -274,6 +271,7 @@ echo "  • Log out and select 'dwm' from your display manager"
 echo "  • Or start with: startx"
 echo ""
 echo "  Key bindings:  SUPER + /     (interactive keybind viewer)"
+echo "  Control Center: SUPER + F1  (health checks, settings)"
 echo "  Terminal:      SUPER + X"
 echo "  App Launcher:  SUPER + R     (rofi)"
 echo "  Close Window:  SUPER + Q"

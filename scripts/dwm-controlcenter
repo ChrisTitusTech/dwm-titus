@@ -1,0 +1,460 @@
+#!/bin/bash
+# ─────────────────────────────────────────────────────────
+# dwm-controlcenter — Rofi-based Control Center for dwm-titus
+# Launch with SUPER+F1 or run directly from a terminal.
+# Provides: system health checks, quick actions, keybind
+# viewer, appearance settings, and system info.
+# ─────────────────────────────────────────────────────────
+set -euo pipefail
+
+# ── Paths ────────────────────────────────────────────────
+# Prefer installed location, fall back to repo checkout
+if [ -d "$HOME/.config/rofi/themes" ]; then
+    THEME_DIR="$HOME/.config/rofi/themes"
+elif [ -d "$HOME/.local/share/dwm-titus/config/rofi/themes" ]; then
+    THEME_DIR="$HOME/.local/share/dwm-titus/config/rofi/themes"
+else
+    THEME_DIR="$(cd "$(dirname "$0")/../config/rofi/themes" 2>/dev/null && pwd)" || THEME_DIR=""
+fi
+
+THEME_FILE="${THEME_DIR:+$THEME_DIR/controlcenter.rasi}"
+
+DWM_TITUS_DIR="$HOME/.local/share/dwm-titus"
+POLYBAR_DIR="$HOME/.config/polybar"
+ROFI_DIR="$HOME/.config/rofi"
+BG_DIR="$HOME/Pictures/backgrounds"
+
+# ── Terminal detection ───────────────────────────────────
+detect_terminal() {
+    for t in ghostty alacritty kitty st xterm; do
+        if command -v "$t" &>/dev/null; then
+            echo "$t"
+            return
+        fi
+    done
+    echo "xterm"
+}
+
+TERM_CMD="$(detect_terminal)"
+
+spawn_terminal() {
+    case "$TERM_CMD" in
+        ghostty)    ghostty -e "$@" &  ;;
+        alacritty)  alacritty -e "$@" & ;;
+        kitty)      kitty "$@" &        ;;
+        *)          "$TERM_CMD" -e "$@" & ;;
+    esac
+}
+
+# ── Rofi helpers ─────────────────────────────────────────
+rofi_menu() {
+    local prompt="$1" mesg="${2:-}"
+    shift 2
+    local args=(-dmenu -i -p "$prompt" -theme "$THEME_FILE")
+    [ -n "$mesg" ] && args+=(-mesg "$mesg")
+    rofi "${args[@]}" "$@"
+}
+
+notify() {
+    if command -v notify-send &>/dev/null; then
+        notify-send -a "DWM Control Center" "$@"
+    fi
+}
+
+# ═════════════════════════════════════════════════════════
+# HEALTH CHECK MODULE
+# ═════════════════════════════════════════════════════════
+
+run_health_check() {
+    local pass=0 fail=0 passed_lines=() failed_lines=()
+
+    # -- helper: check if a command exists --
+    _cmd() {
+        if command -v "$1" &>/dev/null; then
+            passed_lines+=("✓  $1")
+            pass=$((pass + 1))
+        else
+            failed_lines+=("<span color='#bf616a'>✗  $1  (missing)</span>")
+            fail=$((fail + 1))
+        fi
+    }
+
+    # -- helper: check if a package is installed (Arch) --
+    _pkg() {
+        if pacman -Qi "$1" &>/dev/null 2>&1; then
+            passed_lines+=("✓  $1")
+            pass=$((pass + 1))
+        else
+            failed_lines+=("<span color='#bf616a'>✗  $1  (not installed)</span>")
+            fail=$((fail + 1))
+        fi
+    }
+
+    # -- helper: check if a font is present --
+    _font() {
+        local result
+        result=$(fc-list : family 2>/dev/null || true)
+        local lower="${result,,}"
+        local query="${1,,}"
+        if [[ "$lower" == *"$query"* ]]; then
+            passed_lines+=("✓  $1")
+            pass=$((pass + 1))
+        else
+            failed_lines+=("<span color='#bf616a'>✗  $1  (not found)</span>")
+            fail=$((fail + 1))
+        fi
+    }
+
+    # -- helper: check if a process is running --
+    _proc() {
+        if pgrep -x "$1" &>/dev/null; then
+            passed_lines+=("✓  $1  (running)")
+            pass=$((pass + 1))
+        else
+            failed_lines+=("<span color='#bf616a'>✗  $1  (not running)</span>")
+            fail=$((fail + 1))
+        fi
+    }
+
+    # -- helper: check if a file/dir exists --
+    _path() {
+        if [ -e "$1" ]; then
+            passed_lines+=("✓  $1")
+            pass=$((pass + 1))
+        else
+            failed_lines+=("<span color='#bf616a'>✗  $1  (missing)</span>")
+            fail=$((fail + 1))
+        fi
+    }
+
+    # ── Build dependencies ───────────────────────────────
+    _cmd cc
+    _cmd make
+    for p in libx11 libxft libxinerama imlib2 libxcb freetype2 fontconfig; do
+        _pkg "$p"
+    done
+
+    # ── Xorg ─────────────────────────────────────────────
+    for p in xorg-server xorg-xinit xorg-xrandr xorg-xset xorg-xsetroot; do
+        _pkg "$p"
+    done
+
+    # ── Core Runtime ─────────────────────────────────────
+    _cmd rofi
+    _cmd picom
+    _cmd dunst
+    _cmd feh
+    _cmd flameshot
+    _cmd dex
+    _cmd amixer
+    _cmd polybar
+
+    # ── Terminal Emulators ───────────────────────────────
+    local term_ok=0
+    for t in ghostty alacritty kitty st; do
+        if command -v "$t" &>/dev/null; then
+            passed_lines+=("✓  $t")
+            pass=$((pass + 1)); term_ok=$((term_ok + 1))
+        fi
+    done
+    if [ "$term_ok" -eq 0 ]; then
+        failed_lines+=("<span color='#bf616a'>✗  No supported terminal found</span>")
+        fail=$((fail + 1))
+    fi
+
+    # ── Fonts ────────────────────────────────────────────
+    _font "MesloLGS Nerd"
+    _font "Noto Color Emoji"
+
+    # ── Running Services ─────────────────────────────────
+    _proc picom
+    _proc dunst
+    _proc polybar
+    _proc dbus-daemon
+    if systemctl is-active --quiet NetworkManager 2>/dev/null; then
+        passed_lines+=("✓  NetworkManager  (active)")
+        pass=$((pass + 1))
+    else
+        failed_lines+=("<span color='#bf616a'>✗  NetworkManager  (inactive)</span>")
+        fail=$((fail + 1))
+    fi
+
+    # ── Session & Config Files ───────────────────────────
+    _path /usr/share/xsessions/dwm.desktop
+    _path "$HOME/.xinitrc"
+    _path "$POLYBAR_DIR"
+    _path "$ROFI_DIR"
+    _path "$BG_DIR"
+
+    # ── Display results (failed first, then passed) ──────
+    local total=$((pass + fail))
+    local summary="$pass/$total checks passed"
+    [ "$fail" -gt 0 ] && summary="$summary  ·  <span color='#bf616a'>$fail issues found</span>"
+
+    local all_lines=()
+    if [ "${#failed_lines[@]}" -gt 0 ]; then
+        all_lines+=("─── Failed ───")
+        all_lines+=("${failed_lines[@]}")
+    fi
+    if [ "${#passed_lines[@]}" -gt 0 ]; then
+        all_lines+=("─── Passed ───")
+        all_lines+=("${passed_lines[@]}")
+    fi
+
+    local chosen
+    chosen=$(printf '%s\n' "${all_lines[@]}" | rofi_menu "  System Health" "$summary" -no-custom -markup-rows) || true
+
+    # If user selected a failing item, offer to run install.sh
+    if [[ "$chosen" == "✗"* ]]; then
+        local action
+        action=$(printf '%s\n' "Run install.sh (auto-fix)" "Run check-deps.sh (details)" "Back" \
+            | rofi_menu "  Fix" "Selected: $chosen") || true
+        case "$action" in
+            "Run install.sh"*)  spawn_terminal bash -c "cd '$DWM_TITUS_DIR' 2>/dev/null || cd '$(dirname "$0")/..'; bash install.sh; echo 'Press Enter to close'; read" ;;
+            "Run check-deps"*)  spawn_terminal bash -c "cd '$DWM_TITUS_DIR' 2>/dev/null || cd '$(dirname "$0")/..'; bash scripts/check-deps.sh; echo 'Press Enter to close'; read" ;;
+        esac
+    fi
+}
+
+# ═════════════════════════════════════════════════════════
+# QUICK ACTIONS MODULE
+# ═════════════════════════════════════════════════════════
+
+run_quick_actions() {
+    local items=(
+        "  Restart Picom"
+        "  Restart Dunst"
+        "  Restart Polybar"
+        "  Reload Wallpaper"
+        "  Toggle Compositor"
+        "  Restart NetworkManager"
+        "  Run Dependency Check"
+        "  Install Missing Deps"
+        "  Back"
+    )
+
+    local chosen
+    chosen=$(printf '%s\n' "${items[@]}" | rofi_menu "  Quick Actions" "") || return
+
+    case "$chosen" in
+        *"Restart Picom"*)
+            pkill picom 2>/dev/null || true
+            sleep 0.3
+            picom -b &
+            notify "Picom restarted"
+            ;;
+        *"Restart Dunst"*)
+            pkill dunst 2>/dev/null || true
+            sleep 0.3
+            dunst &
+            notify "Dunst restarted"
+            ;;
+        *"Restart Polybar"*)
+            if [ -x "$POLYBAR_DIR/launch.sh" ]; then
+                "$POLYBAR_DIR/launch.sh" &
+            else
+                notify "Polybar launch.sh not found" --urgency=critical
+            fi
+            ;;
+        *"Reload Wallpaper"*)
+            if [ -d "$BG_DIR" ]; then
+                feh --randomize --bg-fill "$BG_DIR"/*
+                notify "Wallpaper randomized"
+            else
+                notify "No wallpapers in $BG_DIR" --urgency=critical
+            fi
+            ;;
+        *"Toggle Compositor"*)
+            if pgrep -x picom &>/dev/null; then
+                pkill picom
+                notify "Compositor stopped"
+            else
+                picom -b &
+                notify "Compositor started"
+            fi
+            ;;
+        *"Restart NetworkManager"*)
+            spawn_terminal bash -c "sudo systemctl restart NetworkManager && echo 'NetworkManager restarted'; sleep 2"
+            ;;
+        *"Run Dependency Check"*)
+            spawn_terminal bash -c "cd '$DWM_TITUS_DIR' 2>/dev/null || cd '$(dirname "$0")/..'; bash scripts/check-deps.sh; echo; echo 'Press Enter to close'; read"
+            ;;
+        *"Install Missing Deps"*)
+            spawn_terminal bash -c "cd '$DWM_TITUS_DIR' 2>/dev/null || cd '$(dirname "$0")/..'; bash install.sh; echo; echo 'Press Enter to close'; read"
+            ;;
+        *"Back"*) return ;;
+    esac
+}
+
+# ═════════════════════════════════════════════════════════
+# APPEARANCE MODULE
+# ═════════════════════════════════════════════════════════
+
+run_appearance() {
+    local items=(
+        "  Randomize Wallpaper"
+        "  Open Wallpaper Folder"
+        "  Edit Polybar Config"
+        "  Edit Rofi Config"
+        "  GTK Theme Settings"
+        "  Back"
+    )
+
+    local chosen
+    chosen=$(printf '%s\n' "${items[@]}" | rofi_menu "  Appearance" "") || return
+
+    case "$chosen" in
+        *"Randomize Wallpaper"*)
+            if [ -d "$BG_DIR" ]; then
+                feh --randomize --bg-fill "$BG_DIR"/*
+                notify "Wallpaper randomized"
+            else
+                notify "No wallpapers in $BG_DIR" --urgency=critical
+            fi
+            ;;
+        *"Open Wallpaper Folder"*)
+            xdg-open "$BG_DIR" 2>/dev/null &
+            ;;
+        *"Edit Polybar Config"*)
+            local cfg="$POLYBAR_DIR/themes/minimal/config.ini"
+            if [ -f "$cfg" ]; then
+                xdg-open "$cfg" 2>/dev/null &
+            else
+                notify "Polybar config not found" --urgency=critical
+            fi
+            ;;
+        *"Edit Rofi Config"*)
+            if [ -f "$ROFI_DIR/config.rasi" ]; then
+                xdg-open "$ROFI_DIR/config.rasi" 2>/dev/null &
+            else
+                notify "Rofi config not found" --urgency=critical
+            fi
+            ;;
+        *"GTK Theme Settings"*)
+            if command -v nwg-look &>/dev/null; then
+                nwg-look &
+            else
+                notify "nwg-look is not installed" --urgency=critical
+            fi
+            ;;
+        *"Back"*) return ;;
+    esac
+}
+
+# ═════════════════════════════════════════════════════════
+# SYSTEM INFO MODULE
+# ═════════════════════════════════════════════════════════
+
+run_system_info() {
+    local info_lines=()
+
+    # DWM version
+    local dwm_ver
+    dwm_ver=$(dwm -v 2>&1 | head -1) || dwm_ver="dwm (version unknown)"
+    info_lines+=("DWM:  $dwm_ver")
+
+    # Kernel
+    info_lines+=("Kernel:  $(uname -sr)")
+
+    # Hostname
+    info_lines+=("Host:  $(hostname)")
+
+    # Uptime
+    info_lines+=("Uptime:  $(uptime -p 2>/dev/null | sed 's/up //')")
+
+    # Terminal
+    info_lines+=("Terminal:  $TERM_CMD")
+
+    # Compositor
+    if pgrep -x picom &>/dev/null; then
+        info_lines+=("Compositor:  picom (active)")
+    else
+        info_lines+=("Compositor:  none")
+    fi
+
+    # Audio server
+    if pgrep -x pipewire &>/dev/null; then
+        info_lines+=("Audio:  PipeWire")
+    elif pgrep -x pulseaudio &>/dev/null; then
+        info_lines+=("Audio:  PulseAudio")
+    else
+        info_lines+=("Audio:  unknown")
+    fi
+
+    # Current wallpaper
+    if [ -f "$HOME/.fehbg" ]; then
+        local wp
+        wp=$(grep -oP "(?<=').*(?=')" "$HOME/.fehbg" 2>/dev/null | tail -1) || wp="unknown"
+        info_lines+=("Wallpaper:  ${wp##*/}")
+    fi
+
+    # Display
+    if command -v xrandr &>/dev/null; then
+        local monitors
+        monitors=$(xrandr --query 2>/dev/null | grep -c " connected") || monitors=0
+        info_lines+=("Monitors:  $monitors")
+    fi
+
+    printf '%s\n' "${info_lines[@]}" | rofi_menu "  System Info" "dwm-titus environment" -no-custom || true
+}
+
+# ═════════════════════════════════════════════════════════
+# MAIN MENU
+# ═════════════════════════════════════════════════════════
+
+main_menu() {
+    local items=(
+        "  System Health"
+        "  Quick Actions"
+        "  Keybindings"
+        "  Appearance"
+        "  System Info"
+    )
+
+    while true; do
+        local chosen
+        chosen=$(printf '%s\n' "${items[@]}" | rofi_menu "  DWM Control Center" "dwm-titus · SUPER+F1") || break
+
+        case "$chosen" in
+            *"System Health"*)  run_health_check   ;;
+            *"Quick Actions"*)  run_quick_actions   ;;
+            *"Keybindings"*)
+                if command -v dwm-keybinds &>/dev/null; then
+                    dwm-keybinds
+                else
+                    # Try repo-local copy
+                    local kb
+                    kb="$(dirname "$0")/dwm-keybinds"
+                    if [ -x "$kb" ]; then
+                        "$kb"
+                    else
+                        notify "dwm-keybinds not found" --urgency=critical
+                    fi
+                fi
+                ;;
+            *"Appearance"*)     run_appearance      ;;
+            *"System Info"*)    run_system_info     ;;
+            *)                  break               ;;
+        esac
+    done
+}
+
+# ── Preflight: make sure rofi and theme exist ────────────
+if ! command -v rofi &>/dev/null; then
+    echo "Error: rofi is not installed." >&2
+    exit 1
+fi
+
+if [ ! -f "$THEME_FILE" ]; then
+    # Fall back to running without a custom theme
+    THEME_FILE=""
+    rofi_menu() {
+        local prompt="$1" mesg="${2:-}"
+        shift 2
+        local args=(-dmenu -i -p "$prompt")
+        [ -n "$mesg" ] && args+=(-mesg "$mesg")
+        rofi "${args[@]}" "$@"
+    }
+fi
+
+main_menu

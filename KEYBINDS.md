@@ -95,6 +95,7 @@ The shipped `config.h` remaps several keys from the defaults above. Notable chan
 | `SUPER` + `X` | Open ghostty terminal |
 | `SUPER` + `Q` | Close window (replaces `Shift`+`C`) |
 | `SUPER` + `/` | Show interactive keybind viewer |
+| `SUPER` + `F1` | Open Control Center (health, actions, appearance) |
 | `SUPER` + `E` | Open file manager |
 | `SUPER` + `P` | Full screenshot (flameshot) |
 | `SUPER` + `Shift` + `P` | Screenshot selection |
