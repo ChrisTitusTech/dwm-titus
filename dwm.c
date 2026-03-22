@@ -234,6 +234,7 @@ static void killclient(const Arg *arg);
 static void manage(Window w, XWindowAttributes *wa);
 static void managealtbar(Window win, XWindowAttributes *wa);
 static void managetray(Window win, XWindowAttributes *wa);
+/* Declaration removed: usealtbar is always true (Polybar always used) */
 static void mappingnotify(XEvent *e);
 static void maprequest(XEvent *e);
 static void monocle(Monitor *m);
@@ -368,6 +369,17 @@ static Drw *drw;
 static Monitor *mons, *selmon;
 static Window root, wmcheckwin;
 static xcb_connection_t *xcon;
+
+/* Polybar integration (always enabled) */
+static const char *altbarclass = "Polybar";
+static const char *alttrayname = "tray";
+
+/* Systray disabled (Polybar handles its own tray) */
+static const int showsystray = 0;
+static const unsigned int systraypinning = 0;
+static const unsigned int systrayonleft = 0;
+static const unsigned int systrayspacing = 5;
+static const int systraypinningfailfirst = 1;
 
 /* configuration, allows nested code to access above variables */
 #include "config.h"
@@ -759,10 +771,7 @@ cleanupmon(Monitor *mon)
 		for (m = mons; m && m->next != mon; m = m->next);
 		m->next = mon->next;
 	}
-	if (!usealtbar) {
-		XUnmapWindow(dpy, mon->barwin);
-		XDestroyWindow(dpy, mon->barwin);
-	}
+	/* Polybar manages its own windows; nothing to destroy here */
 	free(mon);
 }
 
@@ -1041,9 +1050,9 @@ destroynotify(XEvent *e)
 		resizebarwin(selmon);
 		updatesystray();
 	}
-	else if (usealtbar && (m = wintomon(ev->window)) && m->barwin == ev->window)
+	else if ((m = wintomon(ev->window)) && m->barwin == ev->window)
 		unmanagealtbar(ev->window);
-	else if (usealtbar && m->traywin == ev->window)
+	else if (m && m->traywin == ev->window)
 		unmanagetray(ev->window);
 }
 
@@ -1090,8 +1099,8 @@ dirtomon(int dir)
 void
 drawbar(Monitor *m)
 {
-	if (usealtbar)
-		return;
+	/* Polybar handles drawing; dwm bar is unused */
+	return;
 
 	int x, w, tw = 0, stw = 0;
 	int boxs = drw->fonts->h / 9;
@@ -1739,7 +1748,7 @@ maprequest(XEvent *e)
 
 	if (!XGetWindowAttributes(dpy, ev->window, &wa) || wa.override_redirect)
 		return;
-	if (usealtbar && wmclasscontains(ev->window, altbarclass, ""))
+	if (wmclasscontains(ev->window, altbarclass, ""))
 		managealtbar(ev->window, &wa);
 	else if (!wintoclient(ev->window))
 		manage(ev->window, &wa);
@@ -2410,7 +2419,7 @@ scan(void)
 			if (!XGetWindowAttributes(dpy, wins[i], &wa)
 			|| wa.override_redirect || XGetTransientForHint(dpy, wins[i], &d1))
 				continue;
-			if (usealtbar && wmclasscontains(wins[i], altbarclass, ""))
+			if (wmclasscontains(wins[i], altbarclass, ""))
 				managealtbar(wins[i], &wa);
 			else if (wa.map_state == IsViewable || getstate(wins[i]) == IconicState)
 				manage(wins[i], &wa);
@@ -2748,7 +2757,7 @@ setup(void)
 	if (!drw_fontset_create(drw, fonts, LENGTH(fonts)))
 		die("no fonts could be loaded.");
 	lrpad = drw->fonts->h;
-	bh = usealtbar ? 0 : drw->fonts->h + 2;
+	bh = 0; /* Polybar provides its own bar */
 	updategeom();
 	/* Initialize monitor-specific tags after geometry is set up */
 	initmonitortags();
@@ -2974,8 +2983,7 @@ spawn(const Arg *arg)
 void
 spawnbar()
 {
-	if (*altbarcmd)
-		system(altbarcmd);
+	system("$HOME/.config/polybar/launch.sh");
 }
 
 void
@@ -3138,14 +3146,13 @@ togglebar(const Arg *arg)
 	 * for. Scanning it too early while the tray is being populated would give
 	 * wrong dimensions.
 	 */
-	if (usealtbar && !selmon->traywin)
+	if (!selmon->traywin)
 		scantray();
 
 	selmon->showbar = selmon->pertag->showbars[selmon->pertag->curtag] = !selmon->showbar;
 	updatebarpos(selmon);
 	resizebarwin(selmon);
-	if (usealtbar)
-		XMoveResizeWindow(dpy, selmon->traywin, selmon->tx, selmon->by, selmon->tw, selmon->bh);
+	XMoveResizeWindow(dpy, selmon->traywin, selmon->tx, selmon->by, selmon->tw, selmon->bh);
 	if (showsystray) {
 		XWindowChanges wc;
 		if (!selmon->showbar)
@@ -3377,9 +3384,9 @@ unmapnotify(XEvent *e)
 		 * _not_ destroy them. We map those windows back */
 		XMapRaised(dpy, c->win);
 		updatesystray();
-	} else if (usealtbar && (m = wintomon(ev->window)) && m->barwin == ev->window)
+	} else if ((m = wintomon(ev->window)) && m->barwin == ev->window)
 		unmanagealtbar(ev->window);
-	else if (usealtbar && m->traywin == ev->window)
+	else if (m && m->traywin == ev->window)
 		unmanagetray(ev->window);
 }
 
@@ -3416,8 +3423,8 @@ unswallow(Client *c)
 void
 updatebars(void)
 {
-	if (usealtbar)
-		return;
+	/* Polybar creates its own bar windows; skip dwm bar creation */
+	return;
 
 	unsigned int w;
 	Monitor *m;
