@@ -50,9 +50,15 @@ spawn_terminal() {
 rofi_menu() {
     local prompt="$1" mesg="${2:-}"
     shift 2
-    local args=(-dmenu -i -p "$prompt" -theme "$THEME_FILE")
+    local args=(-dmenu -i -p "$prompt" -theme "$THEME_FILE" -kb-row-left "" -kb-move-char-back "" -kb-custom-1 "Left")
     [ -n "$mesg" ] && args+=(-mesg "$mesg")
-    rofi "${args[@]}" "$@"
+    local ret=0
+    rofi "${args[@]}" "$@" || ret=$?
+    # ret 0 = selected, 1 = escape, 10 = custom-1 (left arrow)
+    if [ "$ret" -eq 10 ] || [ "$ret" -eq 1 ]; then
+        return 1
+    fi
+    return 0
 }
 
 notify() {
@@ -201,19 +207,21 @@ run_health_check() {
         all_lines+=("${passed_lines[@]}")
     fi
 
-    local chosen
-    chosen=$(printf '%s\n' "${all_lines[@]}" | rofi_menu "  System Health" "$summary" -no-custom -markup-rows) || true
+    while true; do
+        local chosen
+        chosen=$(printf '%s\n' "${all_lines[@]}" | rofi_menu "  System Health" "$summary" -no-custom -markup-rows) || break
 
-    # If user selected a failing item, offer to run install.sh
-    if [[ "$chosen" == "✗"* ]]; then
-        local action
-        action=$(printf '%s\n' "Run install.sh (auto-fix)" "Run check-deps.sh (details)" "Back" \
-            | rofi_menu "  Fix" "Selected: $chosen") || true
-        case "$action" in
-            "Run install.sh"*)  spawn_terminal bash -c "cd '$DWM_TITUS_DIR' 2>/dev/null || cd '$(dirname "$0")/..'; bash install.sh; echo 'Press Enter to close'; read" ;;
-            "Run check-deps"*)  spawn_terminal bash -c "cd '$DWM_TITUS_DIR' 2>/dev/null || cd '$(dirname "$0")/..'; bash scripts/check-deps.sh; echo 'Press Enter to close'; read" ;;
-        esac
-    fi
+        # If user selected a failing item, offer to run install.sh
+        if [[ "$chosen" == *"✗"* ]]; then
+            local action
+            action=$(printf '%s\n' "Run install.sh (auto-fix)" "Run check-deps.sh (details)" \
+                | rofi_menu "  Fix" "Selected: $chosen") || continue
+            case "$action" in
+                "Run install.sh"*)  spawn_terminal bash -c "cd '$DWM_TITUS_DIR' 2>/dev/null || cd '$(dirname "$0")/..'; bash install.sh; echo 'Press Enter to close'; read" ;;
+                "Run check-deps"*)  spawn_terminal bash -c "cd '$DWM_TITUS_DIR' 2>/dev/null || cd '$(dirname "$0")/..'; bash scripts/check-deps.sh; echo 'Press Enter to close'; read" ;;
+            esac
+        fi
+    done
 }
 
 # ═════════════════════════════════════════════════════════
@@ -230,11 +238,11 @@ run_quick_actions() {
         "  Restart NetworkManager"
         "  Run Dependency Check"
         "  Install Missing Deps"
-        "  Back"
     )
 
+    while true; do
     local chosen
-    chosen=$(printf '%s\n' "${items[@]}" | rofi_menu "  Quick Actions" "") || return
+    chosen=$(printf '%s\n' "${items[@]}" | rofi_menu "  Quick Actions" "Esc / ← to go back") || break
 
     case "$chosen" in
         *"Restart Picom"*)
@@ -282,8 +290,8 @@ run_quick_actions() {
         *"Install Missing Deps"*)
             spawn_terminal bash -c "cd '$DWM_TITUS_DIR' 2>/dev/null || cd '$(dirname "$0")/..'; bash install.sh; echo; echo 'Press Enter to close'; read"
             ;;
-        *"Back"*) return ;;
     esac
+    done
 }
 
 # ═════════════════════════════════════════════════════════
@@ -297,11 +305,11 @@ run_appearance() {
         "  Edit Polybar Config"
         "  Edit Rofi Config"
         "  GTK Theme Settings"
-        "  Back"
     )
 
+    while true; do
     local chosen
-    chosen=$(printf '%s\n' "${items[@]}" | rofi_menu "  Appearance" "") || return
+    chosen=$(printf '%s\n' "${items[@]}" | rofi_menu "  Appearance" "Esc / ← to go back") || break
 
     case "$chosen" in
         *"Randomize Wallpaper"*)
@@ -337,8 +345,8 @@ run_appearance() {
                 notify "nwg-look is not installed" --urgency=critical
             fi
             ;;
-        *"Back"*) return ;;
     esac
+    done
 }
 
 # ═════════════════════════════════════════════════════════
@@ -395,7 +403,7 @@ run_system_info() {
         info_lines+=("Monitors:  $monitors")
     fi
 
-    printf '%s\n' "${info_lines[@]}" | rofi_menu "  System Info" "dwm-titus environment" -no-custom || true
+    printf '%s\n' "${info_lines[@]}" | rofi_menu "  System Info" "Esc / ← to go back" -no-custom || true
 }
 
 # ═════════════════════════════════════════════════════════
@@ -451,9 +459,14 @@ if [ ! -f "$THEME_FILE" ]; then
     rofi_menu() {
         local prompt="$1" mesg="${2:-}"
         shift 2
-        local args=(-dmenu -i -p "$prompt")
+        local args=(-dmenu -i -p "$prompt" -kb-row-left "" -kb-move-char-back "" -kb-custom-1 "Left")
         [ -n "$mesg" ] && args+=(-mesg "$mesg")
-        rofi "${args[@]}" "$@"
+        local ret=0
+        rofi "${args[@]}" "$@" || ret=$?
+        if [ "$ret" -eq 10 ] || [ "$ret" -eq 1 ]; then
+            return 1
+        fi
+        return 0
     }
 fi
 
