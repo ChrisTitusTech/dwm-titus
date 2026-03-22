@@ -69,8 +69,24 @@ RUNTIME_DEPS=(
     feh
     flameshot
     dex
-    polkit-mate
+    mate-polkit
     alsa-utils
+    git
+    unzip
+    xclip
+    xorg-xprop
+    thunar
+    gvfs
+    tumbler
+    thunar-archive-plugin
+    nwg-look
+    xdg-user-dirs
+    xdg-desktop-portal-gtk
+    pipewire
+    pavucontrol
+    gnome-keyring
+    networkmanager
+    network-manager-applet
 )
 
 # ─────────────────────────────────────────────────────────
@@ -149,7 +165,28 @@ if [[ "$polybar_choice" =~ ^[Yy] ]]; then
     ok "Polybar installed."
 fi
 
-# ── Step 6: Create config.h from config.def.h ───────────
+# ── Step 6: Create XDG user directories ─────────────────
+if command -v xdg-user-dirs-update &>/dev/null; then
+    xdg-user-dirs-update
+    ok "XDG user directories created."
+fi
+
+# ── Step 7: Download wallpapers ─────────────────────────
+PIC_DIR="$HOME/Pictures"
+BG_DIR="$PIC_DIR/backgrounds"
+mkdir -p "$PIC_DIR"
+if [ ! -d "$BG_DIR" ]; then
+    info "Downloading Nord wallpapers..."
+    if git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null; then
+        ok "Wallpapers downloaded to $BG_DIR"
+    else
+        warn "Failed to download wallpapers. Create $BG_DIR and add your own."
+    fi
+else
+    ok "Wallpapers already present at $BG_DIR"
+fi
+
+# ── Step 8: Create config.h from config.def.h ────────────
 cd "$REPO_DIR"
 if [ ! -f config.h ]; then
     cp config.def.h config.h
@@ -158,7 +195,7 @@ else
     info "config.h already exists, preserving your customizations."
 fi
 
-# ── Step 7: Compile and install dwm ─────────────────────
+# ── Step 9: Compile and install dwm ─────────────────────
 info "Compiling dwm..."
 make clean
 make
@@ -166,7 +203,7 @@ info "Installing dwm (requires sudo)..."
 sudo make install
 ok "dwm installed to /usr/local/bin/dwm"
 
-# ── Step 8: Copy terminal/rofi configs ──────────────────
+# ── Step 10: Copy terminal/rofi configs ─────────────────
 info "Installing configuration files..."
 
 # Rofi
@@ -184,7 +221,31 @@ done
 
 ok "Config files installed to ~/.config/"
 
-# ── Step 9: Verify session entry ────────────────────────
+# ── Step 11: Display manager setup ──────────────────────
+currentdm="none"
+for dm in gdm sddm lightdm; do
+    if command -v "$dm" &>/dev/null; then
+        currentdm="$dm"
+        break
+    fi
+done
+
+if [ "$currentdm" = "none" ]; then
+    echo ""
+    read -rp "No display manager found. Install SDDM? [Y/n]: " dm_choice
+    dm_choice="${dm_choice:-Y}"
+    if [[ "$dm_choice" =~ ^[Yy] ]]; then
+        install_packages sddm
+        sudo systemctl enable sddm
+        ok "SDDM installed and enabled."
+    else
+        info "Skipping display manager. Use 'startx' to launch dwm."
+    fi
+else
+    ok "Display manager already installed: $currentdm"
+fi
+
+# ── Step 12: Verify session entry ───────────────────────
 if [ -f /usr/share/xsessions/dwm.desktop ]; then
     ok "dwm.desktop session entry is in place."
 else
@@ -192,7 +253,7 @@ else
     warn "Run 'sudo make install' again or copy dwm.desktop manually."
 fi
 
-# ── Step 10: Verify .xinitrc ────────────────────────────
+# ── Step 13: Verify .xinitrc ────────────────────────────
 if [ -f "$HOME/.xinitrc" ]; then
     ok ".xinitrc exists (for startx users)."
 else

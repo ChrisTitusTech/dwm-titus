@@ -6,8 +6,18 @@ THEME="minimal"
 killall polybar
 while pgrep -u $UID -x polybar >/dev/null; do sleep 1; done
 
-CONFIG_FILE="$HOME/.local/share/dwm-titus/polybar/themes/$THEME/config.ini"
-LAPTOP_CONFIG_FILE="$HOME/.local/share/dwm-titus/polybar/themes/$THEME/laptop-config.ini"
+# Determine config path: prefer ~/.config/polybar (installed), fallback to repo location
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$HOME/.config/polybar/themes/$THEME/config.ini" ]; then
+    CONFIG_DIR="$HOME/.config/polybar"
+elif [ -f "$SCRIPT_DIR/themes/$THEME/config.ini" ]; then
+    CONFIG_DIR="$SCRIPT_DIR"
+else
+    CONFIG_DIR="$HOME/.local/share/dwm-titus/polybar"
+fi
+
+CONFIG_FILE="$CONFIG_DIR/themes/$THEME/config.ini"
+LAPTOP_CONFIG_FILE="$CONFIG_DIR/themes/$THEME/laptop-config.ini"
 
 if ls /sys/class/power_supply/ 2>/dev/null | grep -q '^BAT'; then
 	CONFIG_FILE=$LAPTOP_CONFIG_FILE
