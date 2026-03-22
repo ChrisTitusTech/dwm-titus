@@ -19,18 +19,21 @@ fi
 CONFIG_FILE="$CONFIG_DIR/themes/$THEME/config.ini"
 LAPTOP_CONFIG_FILE="$CONFIG_DIR/themes/$THEME/laptop-config.ini"
 
-if ls /sys/class/power_supply/ 2>/dev/null | grep -q '^BAT'; then
+if command ls /sys/class/power_supply/ 2>/dev/null | command grep -q '^BAT'; then
 	CONFIG_FILE=$LAPTOP_CONFIG_FILE
+	# Detect battery and adapter names for polybar battery module
+	export DWM_BATTERY=$(command ls /sys/class/power_supply/ 2>/dev/null | command grep -E '^BAT[0-9]' | head -1)
+	export DWM_ADAPTER=$(command ls /sys/class/power_supply/ 2>/dev/null | command grep -Ev '^BAT' | head -1)
 fi
 
 # Check if xrandr is available and get monitor list
 if command -v xrandr > /dev/null 2>&1; then
     # Get list of connected monitors
-    mapfile -t MONITORS < <(xrandr --query | grep " connected" | cut -d" " -f1)
+    mapfile -t MONITORS < <(xrandr --query | command grep " connected" | cut -d" " -f1)
     MONITOR_COUNT=${#MONITORS[@]}
     
     # Detect primary monitor
-    PRIMARY_MONITOR=$(xrandr --query | grep " connected primary" | cut -d" " -f1)
+    PRIMARY_MONITOR=$(xrandr --query | command grep " connected primary" | cut -d" " -f1)
     
     # If no primary monitor is explicitly set, use the first one
     if [ -z "$PRIMARY_MONITOR" ]; then

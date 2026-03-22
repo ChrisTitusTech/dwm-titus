@@ -23,7 +23,8 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 - Theming (nwg-look, mouse, dark-prefer, etc.)
 - Browser check
 - Cleanup Running Autostart on relaunches
-- Generalized Setup for different Monitor / GPU combos
+- Theming (nwg-look, mouse, dark-prefer, etc.)
+- Browser check
 
 ## Bugs
 
@@ -40,3 +41,4 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 - EWMH integration into DWM code
 - EWMH integration into polybar replacing DWM bar / systray
 - Multimonitor
+- Generalized Setup for different Monitor / GPU combos

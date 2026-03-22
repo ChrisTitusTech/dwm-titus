@@ -1,7 +1,7 @@
 /* See LICENSE file for copyright and license details. */
 
 /* appearance */
-static const unsigned int refresh_rate        = 120;  /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
+static const unsigned int refresh_rate        = 60;   /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
 static const unsigned int enable_noborder     = 1;   /* toggles noborder feature (0=disabled, 1=enabled) */
 static const int cursorwarp                   = 1;   /* 1 means warp cursor to center of focused window/monitor */
 static const unsigned int borderpx            = 1;   /* border pixel of windows */
@@ -37,7 +37,7 @@ static const char *colors[][3] = {
 
 static const char *const autostart[] = {
     "dbus-update-activation-environment", "--systemd", "--all", NULL,
-    "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1", NULL,
+    "dwm-polkit", NULL,
     "dunst", NULL,
     "picom", "-b", NULL,
     "sh", "-c", "feh --randomize --bg-fill ~/Pictures/backgrounds/*", NULL,
@@ -107,9 +107,9 @@ static Key keys[] = {
     { MODKEY|ShiftMask,             XK_a,                      spawn,          {.v = geminicmd } },
     { MODKEY|ShiftMask,             XK_x,                      spawn,          {.v = xpostcmd } },
     { MODKEY,                       XK_b,                      spawn,          SHCMD ("xdg-open https://")},
-    { MODKEY,                       XK_p,                      spawn,          SHCMD ("flameshot full -p /media/drive/Screenshots/")},
-    { MODKEY|ShiftMask,             XK_p,                      spawn,          SHCMD ("flameshot gui -p /media/drive/Screenshots/")},
-    { MODKEY|ControlMask,           XK_p,                      spawn,          SHCMD ("flameshot gui --clipboard")},
+    { MODKEY,                       XK_p,                      spawn,          SHCMD ("dwm-screenshot full")},
+    { MODKEY|ShiftMask,             XK_p,                      spawn,          SHCMD ("dwm-screenshot gui")},
+    { MODKEY|ControlMask,           XK_p,                      spawn,          SHCMD ("dwm-screenshot clip")},
     { MODKEY,                       XK_e,                      spawn,          SHCMD ("xdg-open .")},
     { MODKEY,                       XK_slash,                  spawn,          SHCMD ("dwm-keybinds")},
     { MODKEY,                       XK_F1,                     spawn,          SHCMD ("dwm-controlcenter")},

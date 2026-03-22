@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Adjust the volume of the active application's audio stream using PipeWire (wpctl)
+# Adjust the volume of the active application's audio stream
+# Supports: PipeWire (wpctl), PulseAudio (pactl), ALSA (amixer) fallback
 
 # Usage:
 #   ./active-audio up
 #   ./active-audio down
 #   ./active-audio mute
 
-STEP=0.05   # volume step (5%)
+STEP=5      # volume step percentage
 ACTION="$1"
 
 if [[ -z "$ACTION" ]]; then
@@ -14,53 +15,105 @@ if [[ -z "$ACTION" ]]; then
   exit 1
 fi
 
-# Get the active window PID
-ACTIVE_PID=$(xdotool getactivewindow getwindowpid 2>/dev/null)
-if [[ -z "$ACTIVE_PID" ]]; then
-  echo "Could not determine active window PID."
-  exit 1
+# ── Detect audio backend ─────────────────────────────────
+if command -v wpctl &>/dev/null && pgrep -x pipewire &>/dev/null; then
+    AUDIO_BACKEND="pipewire"
+elif command -v pactl &>/dev/null && pgrep -x pulseaudio &>/dev/null; then
+    AUDIO_BACKEND="pulseaudio"
+elif command -v amixer &>/dev/null; then
+    AUDIO_BACKEND="alsa"
+else
+    echo "No supported audio backend found (need wpctl, pactl, or amixer)."
+    exit 1
 fi
 
-# Find the PipeWire client associated with that PID
-CLIENT_ID=$(pw-cli ls Client | awk -v pid="$ACTIVE_PID" '
-  $1 == "id" {id=$3}
-  /application.process.id/ && $3==pid {print id}
-')
+# ── PipeWire: per-app volume via wpctl ───────────────────
+pipewire_adjust() {
+    # Get the active window PID
+    ACTIVE_PID=$(xdotool getactivewindow getwindowpid 2>/dev/null)
+    if [[ -z "$ACTIVE_PID" ]]; then
+        echo "Could not determine active window PID."
+        exit 1
+    fi
 
-if [[ -z "$CLIENT_ID" ]]; then
-  echo "No PipeWire client found for PID $ACTIVE_PID (might not be playing audio)."
-  exit 1
-fi
+    # Find the PipeWire client associated with that PID
+    CLIENT_ID=$(pw-cli ls Client | awk -v pid="$ACTIVE_PID" '
+      $1 == "id" {id=$3}
+      /application.process.id/ && $3==pid {print id}
+    ')
 
-# Find all stream nodes associated with that client
-NODE_IDS=$(pw-cli ls Node | awk -v cid="$CLIENT_ID" '
-  $1 == "id" {id=$3}
-  /client.id/ && $3==cid {print id}
-')
+    if [[ -z "$CLIENT_ID" ]]; then
+        echo "No PipeWire client found for PID $ACTIVE_PID (might not be playing audio)."
+        exit 1
+    fi
 
-if [[ -z "$NODE_IDS" ]]; then
-  echo "No audio node found for client $CLIENT_ID."
-  exit 1
-fi
+    # Find all stream nodes associated with that client
+    NODE_IDS=$(pw-cli ls Node | awk -v cid="$CLIENT_ID" '
+      $1 == "id" {id=$3}
+      /client.id/ && $3==cid {print id}
+    ')
 
-# Adjust volume for each node (some apps may use multiple)
-for NODE in $NODE_IDS; do
-  case "$ACTION" in
-    up)
-      wpctl set-volume "wp:$NODE" $STEP+ >/dev/null
-      ;;
-    down)
-      wpctl set-volume "wp:$NODE" $STEP- >/dev/null
-      ;;
-    mute)
-      wpctl set-mute "wp:$NODE" toggle >/dev/null
-      ;;
-    *)
-      echo "Invalid argument: $ACTION (use up, down, or mute)"
-      exit 1
-      ;;
-  esac
-done
+    if [[ -z "$NODE_IDS" ]]; then
+        echo "No audio node found for client $CLIENT_ID."
+        exit 1
+    fi
 
-echo "Adjusted volume for active app (PID $ACTIVE_PID, client $CLIENT_ID, nodes: $NODE_IDS)"
+    local step_frac
+    step_frac=$(awk "BEGIN {printf \"%.2f\", $STEP/100}")
+
+    for NODE in $NODE_IDS; do
+        case "$ACTION" in
+            up)   wpctl set-volume "wp:$NODE" "${step_frac}+" >/dev/null ;;
+            down) wpctl set-volume "wp:$NODE" "${step_frac}-" >/dev/null ;;
+            mute) wpctl set-mute "wp:$NODE" toggle >/dev/null ;;
+        esac
+    done
+    echo "Adjusted volume for active app (PID $ACTIVE_PID)"
+}
+
+# ── PulseAudio: per-app volume via pactl ─────────────────
+pulseaudio_adjust() {
+    ACTIVE_PID=$(xdotool getactivewindow getwindowpid 2>/dev/null)
+    if [[ -z "$ACTIVE_PID" ]]; then
+        echo "Could not determine active window PID."
+        exit 1
+    fi
+
+    # Find sink-inputs belonging to the active window's PID
+    local adjusted=0
+    while IFS= read -r index; do
+        case "$ACTION" in
+            up)   pactl set-sink-input-volume "$index" "+${STEP}%" ;;
+            down) pactl set-sink-input-volume "$index" "-${STEP}%" ;;
+            mute) pactl set-sink-input-mute "$index" toggle ;;
+        esac
+        adjusted=1
+    done < <(pactl list sink-inputs 2>/dev/null | awk -v pid="$ACTIVE_PID" '
+        /Sink Input #/ {idx=$NF; gsub(/#/,"",idx)}
+        /application.process.id.*=/ && $0 ~ "\"" pid "\"" {print idx}
+    ')
+
+    if [[ $adjusted -eq 0 ]]; then
+        echo "No PulseAudio stream found for PID $ACTIVE_PID."
+        exit 1
+    fi
+    echo "Adjusted volume for active app (PID $ACTIVE_PID)"
+}
+
+# ── ALSA: system-wide volume fallback ────────────────────
+alsa_adjust() {
+    case "$ACTION" in
+        up)   amixer sset Master "${STEP}%+" unmute >/dev/null ;;
+        down) amixer sset Master "${STEP}%-" unmute >/dev/null ;;
+        mute) amixer sset Master toggle >/dev/null ;;
+    esac
+    echo "Adjusted system volume (ALSA)"
+}
+
+# ── Dispatch ─────────────────────────────────────────────
+case "$AUDIO_BACKEND" in
+    pipewire)   pipewire_adjust ;;
+    pulseaudio) pulseaudio_adjust ;;
+    alsa)       alsa_adjust ;;
+esac
 

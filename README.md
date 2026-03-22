@@ -41,7 +41,7 @@ curl -fsSL https://christitus.com/linux | sh
 
 Select `dwm`, `rofi`, `bash prompt`, and `ghostty` using the `v` key, then press `Enter`.
 
-### Manual Install (Arch Linux)
+### Manual Install
 
 #### 1. Install Dependencies
 
@@ -57,18 +57,18 @@ sudo pacman -S --needed xorg-server xorg-xinit xorg-xrandr xorg-xsetroot xorg-xs
 
 **Runtime dependencies** (desktop experience):
 ```bash
-sudo pacman -S --needed rofi picom dunst feh flameshot dex polkit-mate alsa-utils noto-fonts-emoji ttf-meslo-nerd
+sudo pacman -S --needed rofi picom dunst feh flameshot dex mate-polkit alsa-utils noto-fonts-emoji ttf-meslo-nerd
 ```
 
 **Terminal emulator** (at least one):
 ```bash
 # Pick one — ghostty is the default in config.h
-sudo pacman -S --needed ghostty    # or: alacritty, kitty
+sudo pacman -S ghostty   # or: alacritty, kitty
 ```
 
 **Polybar** (status bar):
 ```bash
-sudo pacman -S --needed polybar
+sudo pacman -S polybar
 ```
 
 #### 2. Clone and Build
@@ -92,7 +92,7 @@ fc-cache -fv
 
 #### Automated Installer
 
-An install script is also provided that handles all of the above:
+An install script is provided that handles all of the above:
 ```bash
 ./install.sh
 ```
@@ -176,7 +176,7 @@ Key things to customize in `config.h`:
 - Install icon fonts: `cp -r polybar/fonts/* ~/.local/share/fonts/ && fc-cache -fv`
 
 **Terminal doesn't open (SUPER+X):**
-- Install a terminal: `sudo pacman -S ghostty` (or alacritty/kitty)
+- Install a terminal emulator (ghostty, alacritty, kitty, or st)
 - Or edit `config.h` → `termcmd[]` to use your preferred terminal
 
 **Multi-monitor issues:**
@@ -201,7 +201,7 @@ bash scripts/check-deps.sh
 | `Makefile` | Build and install system |
 | `.xinitrc` | Startup script for `startx` |
 | `dwm.desktop` | Session entry for display managers |
-| `install.sh` | Automated installer for Arch |
+| `install.sh` | Automated installer (Arch Linux) |
 | `polybar/` | Polybar config, themes, and fonts |
 | `config/` | Terminal, rofi, and app configurations |
 | `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |

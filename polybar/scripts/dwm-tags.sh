@@ -27,7 +27,7 @@ if [ -n "$client_list" ]; then
                 
                 # Check for urgent hint
                 hints=$(xprop -id "$win_id" WM_HINTS 2>/dev/null)
-                if echo "$hints" | grep -q "urgency hint"; then
+                if echo "$hints" | command grep -q "urgency hint"; then
                     urgent_tags[$desktop]=1
                 fi
             fi

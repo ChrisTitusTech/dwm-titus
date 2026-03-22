@@ -3,6 +3,9 @@
 
 include config.mk
 
+# Detect home directory of the installing user (handles non-standard home paths)
+USER_HOME ?= $(shell getent passwd $(or $(SUDO_USER),$(USER)) 2>/dev/null | cut -d: -f6)
+
 SRC = drw.c dwm.c util.c
 OBJ = ${SRC:.c=.o}
 
@@ -30,14 +33,14 @@ install: all
 	chmod 644 ${DESTDIR}${MANPREFIX}/man1/dwm.1
 	mkdir -p /usr/share/xsessions/
 	test -f /usr/share/xsessions/dwm.desktop || install -Dm644 dwm.desktop /usr/share/xsessions/
-	test -f /home/${SUDO_USER}/.xinitrc || install -Dm644 .xinitrc /home/${SUDO_USER}/.xinitrc
-	mkdir -p /home/${SUDO_USER}/.config/polybar
-	cp -rf polybar/* /home/${SUDO_USER}/.config/polybar/
-	chmod +x /home/${SUDO_USER}/.config/polybar/launch.sh
-	chmod +x /home/${SUDO_USER}/.config/polybar/scripts/dwm-tags.sh
-	chmod +x /home/${SUDO_USER}/.config/polybar/scripts/wallz/wallz.py
-	chmod +x /home/${SUDO_USER}/.config/polybar/scripts/weather/main.py
-	chmod +x /home/${SUDO_USER}/.config/polybar/scripts/weather/weather.sh
+	test -f ${USER_HOME}/.xinitrc || install -Dm644 .xinitrc ${USER_HOME}/.xinitrc
+	mkdir -p ${USER_HOME}/.config/polybar
+	cp -rf polybar/* ${USER_HOME}/.config/polybar/
+	chmod +x ${USER_HOME}/.config/polybar/launch.sh
+	chmod +x ${USER_HOME}/.config/polybar/scripts/dwm-tags.sh
+	chmod +x ${USER_HOME}/.config/polybar/scripts/wallz/wallz.py
+	chmod +x ${USER_HOME}/.config/polybar/scripts/weather/main.py
+	chmod +x ${USER_HOME}/.config/polybar/scripts/weather/weather.sh
 	mkdir -p ${DESTDIR}${PREFIX}/bin
 	install -Dm755 scripts/* ${DESTDIR}${PREFIX}/bin/
 

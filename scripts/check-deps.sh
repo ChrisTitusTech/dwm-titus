@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────
-# dwm-titus dependency checker
+# dwm-titus dependency checker — Arch Linux
 # Run before building to verify all required packages
 # are installed. Exit code 0 = all good, 1 = missing deps.
 # ─────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ check_pkg() {
 }
 
 check_font() {
-    if fc-list 2>/dev/null | grep -qi "$1"; then
+    if fc-list 2>/dev/null | command grep -qi "$1"; then
         printf "  ${GREEN}✓${NC} %s\n" "$1"
     else
         printf "  ${RED}✗${NC} %s ${YELLOW}(not found)${NC}\n" "$1"
@@ -40,12 +40,12 @@ check_font() {
 }
 
 echo ""
-echo "═══ dwm-titus Dependency Check ═══"
+echo "═══ dwm-titus Dependency Check (Arch Linux) ═══"
 echo ""
 
 # ── Build dependencies ──────────────────────────────────
 echo "Build Dependencies (required to compile):"
-for pkg in base-devel libx11 libxft libxinerama imlib2 libxcb freetype2 fontconfig; do
+for pkg in base-devel libx11 libxft libxinerama imlib2 libxcb xcb-util freetype2 fontconfig; do
     check_pkg "$pkg"
 done
 check_cmd "cc"
@@ -57,7 +57,6 @@ echo "Xorg Components:"
 for pkg in xorg-server xorg-xinit xorg-xrandr xorg-xset xorg-xsetroot; do
     check_pkg "$pkg"
 done
-echo ""
 
 # ── Runtime dependencies ────────────────────────────────
 echo "Runtime Dependencies (desktop experience):"
@@ -118,8 +117,8 @@ if [ $MISSING -eq 0 ]; then
     exit 0
 else
     printf "${RED}$MISSING missing dependency/dependencies.${NC}\n"
-    echo "  Run: ./install.sh   (automated install)"
-    echo "  Or install missing packages manually with pacman."
+    echo "  Install missing packages with: sudo pacman -S <package>"
+    echo "  Or run: ./install.sh   (automated install)"
     exit 1
 fi
 echo ""

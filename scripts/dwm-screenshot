@@ -1,0 +1,38 @@
+#!/bin/bash
+# ─────────────────────────────────────────────────────────
+# dwm-screenshot — Portable flameshot wrapper for dwm-titus
+# Detects screenshot directory at runtime via XDG.
+#
+# Usage:
+#   dwm-screenshot full    — capture full screen
+#   dwm-screenshot gui     — interactive region select
+#   dwm-screenshot clip    — region select to clipboard
+# ─────────────────────────────────────────────────────────
+
+# Determine screenshot directory
+SCREENSHOT_DIR=""
+if command -v xdg-user-dir &>/dev/null; then
+    SCREENSHOT_DIR="$(xdg-user-dir PICTURES 2>/dev/null)/Screenshots"
+fi
+SCREENSHOT_DIR="${SCREENSHOT_DIR:-$HOME/Pictures/Screenshots}"
+
+# Create directory if it doesn't exist
+mkdir -p "$SCREENSHOT_DIR"
+
+ACTION="${1:-gui}"
+
+case "$ACTION" in
+    full)
+        flameshot full -p "$SCREENSHOT_DIR"
+        ;;
+    gui)
+        flameshot gui -p "$SCREENSHOT_DIR"
+        ;;
+    clip)
+        flameshot gui --clipboard
+        ;;
+    *)
+        echo "Usage: $0 {full|gui|clip}"
+        exit 1
+        ;;
+esac

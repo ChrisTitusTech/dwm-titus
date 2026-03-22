@@ -1,0 +1,21 @@
+#!/bin/bash
+# ─────────────────────────────────────────────────────────
+# dwm-polkit — Portable polkit authentication agent launcher
+# Detects and launches the first available polkit agent.
+# ─────────────────────────────────────────────────────────
+
+for agent in \
+    /usr/lib/mate-polkit/polkit-mate-authentication-agent-1 \
+    /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
+    /usr/libexec/polkit-gnome-authentication-agent-1 \
+    /usr/lib/polkit-kde-authentication-agent-1 \
+    /usr/libexec/polkit-kde-authentication-agent-1 \
+    /usr/bin/lxpolkit \
+    /usr/lib/lxpolkit/lxpolkit; do
+    if [ -x "$agent" ]; then
+        exec "$agent"
+    fi
+done
+
+echo "Warning: No polkit authentication agent found." >&2
+exit 1

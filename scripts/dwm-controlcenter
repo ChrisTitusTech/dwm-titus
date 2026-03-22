@@ -85,9 +85,9 @@ run_health_check() {
         fi
     }
 
-    # -- helper: check if a package is installed (Arch) --
+    # -- helper: check if a package is installed --
     _pkg() {
-        if pacman -Qi "$1" &>/dev/null 2>&1; then
+        if pacman -Qi "$1" &>/dev/null; then
             passed_lines+=("✓  $1")
             pass=$((pass + 1))
         else
@@ -392,14 +392,14 @@ run_system_info() {
     # Current wallpaper
     if [ -f "$HOME/.fehbg" ]; then
         local wp
-        wp=$(grep -oP "(?<=').*(?=')" "$HOME/.fehbg" 2>/dev/null | tail -1) || wp="unknown"
+        wp=$(command grep -oP "(?<=').*(?=')" "$HOME/.fehbg" 2>/dev/null | tail -1) || wp="unknown"
         info_lines+=("Wallpaper:  ${wp##*/}")
     fi
 
     # Display
     if command -v xrandr &>/dev/null; then
         local monitors
-        monitors=$(xrandr --query 2>/dev/null | grep -c " connected") || monitors=0
+        monitors=$(xrandr --query 2>/dev/null | command grep -c " connected") || monitors=0
         info_lines+=("Monitors:  $monitors")
     fi
 
