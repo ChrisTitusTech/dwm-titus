@@ -1,131 +1,72 @@
-/**
- *
- * Author : Aditya Shakya (adi1090x)
- * Github : @adi1090x
- * 
- * Rofi Theme File
- * Rofi Version: 1.7.3
- **/
-
-/*****----- Configuration -----*****/
+/*****----- Power Menu -----*****/
 configuration {
-    show-icons:                 false;
+    show-icons: false;
 }
 
-/*****----- Global Properties -----*****/
 * {
-    /* Resolution : 1920x1080 */
-    mainbox-spacing:             100px;
-    mainbox-margin:              150px 400px;
-    message-margin:              0px 350px;
-    message-padding:             15px;
-    message-border-radius:       15px;
-    listview-spacing:            50px;
-    element-padding:             35px 40px;
-    element-border-radius:       20px;
+    background:        #1e1e2e;
+    background-alt:    #313244;
+    foreground:        #cdd6f4;
+    accent:            #cba6f7;
+    border-col:        #45475a;
 
-    prompt-font:                 "MesloLGS Nerd Font Bold 72";
-    textbox-font:                "MesloLGS Nerd Font 14";
-    element-text-font:           "feather 64";
+    background-color:  @background;
+    text-color:        @foreground;
 
-    background-window:           black/30%;
-    background-normal:           white/5%;
-    background-selected:         white/15%;
-    foreground-normal:           white;
-    foreground-selected:         white;
+    element-text-font: "MesloLGS Nerd Font 30";
 }
 
-/*****----- Main Window -----*****/
 window {
-    transparency:                "real";
-    location:                    center;
-    anchor:                      center;
-    fullscreen:                  true;
-    cursor:                      "default";
-    background-color:            var(background-window);
+    background-color: @background;
+    border:           2px solid;
+    border-color:     @border-col;
+    border-radius:    16px;
+    width:            500px;
+    height:           130px;
+    location:         center;
+    anchor:           center;
+    cursor:           "default";
 }
 
-/*****----- Main Box -----*****/
 mainbox {
-    enabled:                     true;
-    spacing:                     var(mainbox-spacing);
-    margin:                      var(mainbox-margin);
-    background-color:            transparent;
-    children:                    [ "dummy", "inputbar", "listview", "message", "dummy" ];
+    background-color: transparent;
+    padding:          20px 30px;
+    children:         [ "listview" ];
 }
 
-/*****----- Inputbar -----*****/
-inputbar {
-    enabled:                     true;
-    background-color:            transparent;
-    children:                    [ "dummy", "prompt", "dummy"];
-}
-
-dummy {
-    background-color:            transparent;
-}
-
-prompt {
-    enabled:                     true;
-    font:                        var(prompt-font);
-    background-color:            transparent;
-    text-color:                  var(foreground-normal);
-}
-
-/*****----- Message -----*****/
-message {
-    enabled:                     true;
-    margin:                      var(message-margin);
-    padding:                     var(message-padding);
-    border-radius:               var(message-border-radius);
-    background-color:            var(background-normal);
-    text-color:                  var(foreground-normal);
-}
-textbox {
-    font:                        var(textbox-font);
-    background-color:            transparent;
-    text-color:                  inherit;
-    vertical-align:              0.5;
-    horizontal-align:            0.5;
-}
-
-/*****----- Listview -----*****/
 listview {
-    enabled:                     true;
-    expand:                      false;
-    columns:                     5;
-    lines:                       1;
-    cycle:                       true;
-    dynamic:                     true;
-    scrollbar:                   false;
-    layout:                      vertical;
-    reverse:                     false;
-    fixed-height:                true;
-    fixed-columns:               true;
-    
-    spacing:                     var(listview-spacing);
-    background-color:            transparent;
-    cursor:                      "default";
+    background-color: transparent;
+    columns:          5;
+    lines:            1;
+    layout:           horizontal;
+    spacing:          0px;
+    fixed-height:     true;
+    fixed-columns:    true;
+    scrollbar:        false;
+    dynamic:          false;
+    cycle:            true;
+    cursor:           "default";
 }
 
-/*****----- Elements -----*****/
 element {
-    enabled:                     true;
-    padding:                     var(element-padding);
-    border-radius:               var(element-border-radius);
-    background-color:            var(background-normal);
-    text-color:                  var(foreground-normal);
-    cursor:                      pointer;
+    background-color: transparent;
+    text-color:       @foreground;
+    border-radius:    8px;
+    padding:          8px;
+    cursor:           pointer;
 }
+
 element-text {
-    font:                        var(element-text-font);
-    background-color:            transparent;
-    text-color:                  inherit;
-    cursor:                      inherit;
-    vertical-align:              0.5;
-    horizontal-align:            0.5;
+    font:             var(element-text-font);
+    background-color: transparent;
+    text-color:       inherit;
+    horizontal-align: 0.5;
+    vertical-align:   0.5;
+    expand:           false;
+    cursor:           inherit;
 }
+
 element selected.normal {
-    background-color:            var(background-selected);
-    text-color:                  var(foreground-selected);
+    background-color: @background-alt;
+    text-color:       @accent;
 }

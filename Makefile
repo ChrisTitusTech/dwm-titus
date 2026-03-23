@@ -44,6 +44,11 @@ install: all
 	cp -rf polybar/* ${USER_HOME}/.config/polybar/
 	find ${USER_HOME}/.config/polybar -name '*.sh' -exec chmod +x {} +
 	find ${USER_HOME}/.config/polybar -name '*.py' -exec chmod +x {} +
+	# Install rofi configs
+	mkdir -p ${USER_HOME}/.config/rofi/themes
+	for f in config/rofi/themes/*.rasi; do \
+		install -m644 "$$f" ${USER_HOME}/.config/rofi/themes/$$(basename $$f); \
+	done
 	# Install TOML hot-reload config files as symlinks so repo edits trigger live reload
 	mkdir -p ${USER_HOME}/.config/dwm-titus
 	ln -sf ${USER_HOME}/.local/share/dwm-titus/config/hotkeys.toml ${USER_HOME}/.config/dwm-titus/hotkeys.toml
@@ -56,7 +61,7 @@ install: all
 	# Set permissions on repo copy
 	find ${USER_HOME}/.local/share/dwm-titus -name '*.sh' -exec chmod +x {} +
 	find ${USER_HOME}/.local/share/dwm-titus -name '*.py' -exec chmod +x {} +
-	chown -R $(or ${SUDO_USER},${USER}): ${USER_HOME}/.local/share/dwm-titus ${USER_HOME}/.config/polybar
+	chown -R $(or ${SUDO_USER},${USER}): ${USER_HOME}/.local/share/dwm-titus ${USER_HOME}/.config/polybar ${USER_HOME}/.config/rofi
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm \
