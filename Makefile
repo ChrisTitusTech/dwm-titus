@@ -52,7 +52,7 @@ install: all
 	# Set permissions on repo copy
 	find ${USER_HOME}/.local/share/dwm-titus -name '*.sh' -exec chmod +x {} +
 	find ${USER_HOME}/.local/share/dwm-titus -name '*.py' -exec chmod +x {} +
-	chown -R $(or ${SUDO_USER},${USER}):$(or ${SUDO_USER},${USER}) ${USER_HOME}/.local/share/dwm-titus ${USER_HOME}/.config/polybar
+	chown -R $(or ${SUDO_USER},${USER}): ${USER_HOME}/.local/share/dwm-titus ${USER_HOME}/.config/polybar
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm \

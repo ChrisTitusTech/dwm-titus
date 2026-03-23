@@ -52,9 +52,20 @@ check_cmd "cc"
 check_cmd "make"
 echo ""
 
-# ── Xorg ────────────────────────────────────────────────
-echo "Xorg Components:"
-for pkg in xorg-server xorg-xinit xorg-xrandr xorg-xset xorg-xsetroot; do
+# ── Xorg / Xlibre ───────────────────────────────────────
+echo "X Server Components:"
+# Accept either Xorg or Xlibre as the X server
+# Detect Xlibre by any installed xlibre-* package (server, drivers, etc.)
+if pacman -Qq 2>/dev/null | grep -q '^xlibre'; then
+    xlibre_pkg=$(pacman -Qq 2>/dev/null | grep '^xlibre' | head -1)
+    printf "  ${GREEN}✓${NC} Xlibre detected (%s)\n" "$xlibre_pkg"
+elif pacman -Qi xorg-server &>/dev/null; then
+    printf "  ${GREEN}✓${NC} xorg-server\n"
+else
+    printf "  ${RED}✗${NC} xorg-server or xlibre ${YELLOW}(not installed)${NC}\n"
+    MISSING=$((MISSING + 1))
+fi
+for pkg in xorg-xinit xorg-xrandr xorg-xset xorg-xsetroot; do
     check_pkg "$pkg"
 done
 

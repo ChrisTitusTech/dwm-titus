@@ -45,8 +45,18 @@ info "Package manager: $PKG_CMD"
 
 # ── Step 1: Install build dependencies ──────────────────
 info "Installing build dependencies..."
-install_packages base-devel libx11 libxft libxinerama imlib2 libxcb xcb-util freetype2 fontconfig \
-    xorg-server xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
+install_packages base-devel libx11 libxft libxinerama imlib2 libxcb xcb-util freetype2 fontconfig
+
+# Install X server: skip xorg-server if any Xlibre package is present
+# (Xlibre input/server packages conflict with xorg-server at the ABI level)
+if pacman -Qq 2>/dev/null | grep -q '^xlibre'; then
+    info "Xlibre installation detected — skipping xorg-server installation."
+elif pacman -Qi xorg-server &>/dev/null 2>&1; then
+    info "xorg-server already installed — skipping."
+else
+    install_packages xorg-server
+fi
+install_packages xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
 ok "Build dependencies installed."
 
 # ── Step 2: Install runtime dependencies ────────────────

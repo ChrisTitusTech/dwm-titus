@@ -140,8 +140,21 @@ run_health_check() {
         _pkg "$p"
     done
 
-    # ── Xorg ─────────────────────────────────────────────
-    for p in xorg-server xorg-xinit xorg-xrandr xorg-xset xorg-xsetroot; do
+    # ── Xorg / Xlibre ─────────────────────────────────────
+    # Detect Xlibre by any installed xlibre-* package (server, drivers, etc.)
+    if pacman -Qq 2>/dev/null | grep -q '^xlibre'; then
+        local xlibre_pkg
+        xlibre_pkg=$(pacman -Qq 2>/dev/null | grep '^xlibre' | head -1)
+        passed_lines+=("✓  Xlibre detected ($xlibre_pkg)")
+        pass=$((pass + 1))
+    elif pacman -Qi xorg-server &>/dev/null; then
+        passed_lines+=("✓  xorg-server")
+        pass=$((pass + 1))
+    else
+        failed_lines+=("<span color='#bf616a'>✗  xorg-server or xlibre  (not installed)</span>")
+        fail=$((fail + 1))
+    fi
+    for p in xorg-xinit xorg-xrandr xorg-xset xorg-xsetroot; do
         _pkg "$p"
     done
 
