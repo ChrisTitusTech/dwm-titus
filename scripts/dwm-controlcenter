@@ -308,15 +308,74 @@ run_quick_actions() {
 }
 
 # ═════════════════════════════════════════════════════════
+# THEME SELECT MODULE
+# ═════════════════════════════════════════════════════════
+
+run_theme_select() {
+    local themes_file="$HOME/.local/share/dwm-titus/config/themes.toml"
+    [ ! -f "$themes_file" ] && themes_file="$HOME/.config/dwm-titus/themes.toml"
+
+    if [ ! -f "$themes_file" ]; then
+        notify "themes.toml not found" --urgency=critical
+        return
+    fi
+
+    # Read available theme names from [theme.xxx] headers
+    local themes=()
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^\[theme\.([a-zA-Z0-9_-]+)\] ]]; then
+            themes+=("${BASH_REMATCH[1]}")
+        fi
+    done < "$themes_file"
+
+    if [ "${#themes[@]}" -eq 0 ]; then
+        notify "No themes found in themes.toml" --urgency=critical
+        return
+    fi
+
+    # Get current active theme
+    local current
+    current=$(awk '/^\[active\]/{found=1} found && /^theme[[:space:]]*=/{match($0,/"([^"]+)"/,a); print a[1]; exit}' "$themes_file")
+
+    # Build display list (mark active theme)
+    local display=()
+    for t in "${themes[@]}"; do
+        if [ "$t" = "$current" ]; then
+            display+=("  $t  (active)")
+        else
+            display+=("  $t")
+        fi
+    done
+
+    local chosen
+    chosen=$(printf '%s\n' "${display[@]}" | rofi_menu "  Select Theme" "Current: $current · Esc / ← to go back") || return
+
+    # Extract theme name (strip icon prefix and status suffix)
+    local selected
+    selected=$(echo "$chosen" | sed 's/^[[:space:]]*//' | awk '{print $1}')
+
+    [ "$selected" = "$current" ] && return
+
+    # Update theme = "..." under [active] in place
+    awk -v new="$selected" '
+        /^\[active\]/{found=1}
+        found && /^theme[[:space:]]*=/{sub(/"[^"]*"/, "\"" new "\""); found=0}
+        {print}
+    ' "$themes_file" > "${themes_file}.tmp" && mv "${themes_file}.tmp" "$themes_file"
+
+    notify "Theme: $selected" "Applying…"
+}
+
+# ═════════════════════════════════════════════════════════
 # APPEARANCE MODULE
 # ═════════════════════════════════════════════════════════
 
 run_appearance() {
     local items=(
+        "  Select Theme"
         "  Randomize Wallpaper"
         "  Open Wallpaper Folder"
         "  Edit Polybar Config"
-        "  Edit Rofi Config"
         "  GTK Theme Settings"
     )
 
@@ -325,6 +384,9 @@ run_appearance() {
     chosen=$(printf '%s\n' "${items[@]}" | rofi_menu "  Appearance" "Esc / ← to go back") || break
 
     case "$chosen" in
+        *"Select Theme"*)
+            run_theme_select
+            ;;
         *"Randomize Wallpaper"*)
             if [ -d "$BG_DIR" ]; then
                 feh --randomize --bg-fill "$BG_DIR"/* || notify "Failed to set wallpaper" --urgency=critical
@@ -344,14 +406,6 @@ run_appearance() {
                 disown
             else
                 notify "Polybar config not found" --urgency=critical
-            fi
-            ;;
-        *"Edit Rofi Config"*)
-            if [ -f "$ROFI_DIR/config.rasi" ]; then
-                xdg-open "$ROFI_DIR/config.rasi" 2>/dev/null &
-                disown
-            else
-                notify "Rofi config not found" --urgency=critical
             fi
             ;;
         *"GTK Theme Settings"*)
