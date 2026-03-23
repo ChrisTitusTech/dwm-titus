@@ -13,7 +13,7 @@ configuration {
     background-color:  @background;
     text-color:        @foreground;
 
-    element-text-font: "MesloLGS Nerd Font 30";
+    element-text-font: "MesloLGS Nerd Font Mono 30";
 }
 
 window {
@@ -38,7 +38,7 @@ listview {
     background-color: transparent;
     columns:          5;
     lines:            1;
-    layout:           horizontal;
+    layout:           vertical;
     spacing:          0px;
     fixed-height:     true;
     fixed-columns:    true;
@@ -62,7 +62,7 @@ element-text {
     text-color:       inherit;
     horizontal-align: 0.5;
     vertical-align:   0.5;
-    expand:           false;
+    expand:           true;
     cursor:           inherit;
 }
 

@@ -63,16 +63,17 @@ _scale_theme() {
     pad_v=$(( 20  * h / 1080 )); [ "$pad_v" -lt 8   ] && pad_v=8
     pad_h=$(( 30  * h / 1080 )); [ "$pad_h" -lt 12  ] && pad_h=12
 
-    printf '* { element-text-font: "MesloLGS Nerd Font %d"; } window { width: %dpx; height: %dpx; } mainbox { padding: %dpx %dpx; }' \
+    printf '* { element-text-font: "MesloLGS Nerd Font Mono %d"; } window { width: %dpx; height: %dpx; } mainbox { padding: %dpx %dpx; }' \
         "$icon" "$win_w" "$win_h" "$pad_v" "$pad_h"
 }
 
-# Icons
-lock=''
-logout='󰍃'
-sleep='󰤄'
-reboot='󰜉'
-shutdown='󰐥'
+# Icons — ANSI-C quoting embeds exact codepoints, no glyph-in-file required
+# nf-fa: lock=F023  sign-out=F08B  moon=F186  refresh=F021  power=F011
+lock=$'\uf023'
+logout=$'\uf08b'
+sleep=$'\uf186'
+reboot=$'\uf021'
+shutdown=$'\uf011'
 
 rofi_cmd() {
     local _colors; _colors="$(_theme_colors)"
