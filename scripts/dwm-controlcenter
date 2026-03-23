@@ -63,7 +63,7 @@ rofi_menu() {
 
 notify() {
     if command -v notify-send &>/dev/null; then
-        notify-send -a "DWM Control Center" "$@"
+        notify-send -a "DWM Control Center" "$@" 2>/dev/null || true
     fi
 }
 
@@ -266,7 +266,7 @@ run_quick_actions() {
             ;;
         *"Reload Wallpaper"*)
             if [ -d "$BG_DIR" ]; then
-                feh --randomize --bg-fill "$BG_DIR"/*
+                feh --randomize --bg-fill "$BG_DIR"/* || notify "Failed to set wallpaper" --urgency=critical
                 notify "Wallpaper randomized"
             else
                 notify "No wallpapers in $BG_DIR" --urgency=critical
@@ -274,7 +274,7 @@ run_quick_actions() {
             ;;
         *"Toggle Compositor"*)
             if pgrep -x picom &>/dev/null; then
-                pkill picom
+                pkill picom 2>/dev/null || true
                 notify "Compositor stopped"
             else
                 picom -b &
@@ -314,7 +314,7 @@ run_appearance() {
     case "$chosen" in
         *"Randomize Wallpaper"*)
             if [ -d "$BG_DIR" ]; then
-                feh --randomize --bg-fill "$BG_DIR"/*
+                feh --randomize --bg-fill "$BG_DIR"/* || notify "Failed to set wallpaper" --urgency=critical
                 notify "Wallpaper randomized"
             else
                 notify "No wallpapers in $BG_DIR" --urgency=critical
