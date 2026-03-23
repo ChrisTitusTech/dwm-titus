@@ -1,0 +1,452 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║               DWM Theme Configuration  ·  themes.toml               ║
+# ╠══════════════════════════════════════════════════════════════════════╣
+# ║  LIVE RELOAD — just save this file and changes apply instantly!      ║
+# ║  Manual reload: kill -USR1 $(pidof dwm)                              ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+#
+# HOW TO SWITCH THEME
+# ───────────────────
+# 1. Change the theme name in [active] below to any theme defined in this file.
+# 2. Save the file — DWM, terminal, rofi, and polybar all update instantly!
+#
+# Available themes:
+#   nord · dracula · gruvbox · catppuccin · tokyonight · onedark
+#   solarized · rosepine · everforest · monochrome
+#
+# BORDER SIZE
+# ───────────
+#   borderpx = 0   → no borders (minimal look)
+#   borderpx = 1   → thin, clean borders (default)
+#   borderpx = 2   → thicker borders, easier to see
+#   borderpx = 3   → bold borders
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ACTIVE THEME  ←  only change this
+# ══════════════════════════════════════════════════════════════════════════════
+
+[active]
+theme = "nord"   # ← change only this line to switch themes
+
+[appearance]
+borderpx = 1   # border size in pixels (0 = none, 1-3 = recommended)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# THEME DEFINITIONS  —  add or edit themes here
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Each [theme.name] section defines a complete theme for all apps:
+#
+#   DWM colors:
+#     normfgcolor / normbgcolor / normbordercolor  → unfocused bar & windows
+#     selfgcolor  / selbgcolor  / selbordercolor   → focused window & active tag
+#
+#   Terminal colors:
+#     term_bg / term_fg / term_cursor
+#     term_color0 … term_color15  (standard 16-color palette)
+#
+#   Ghostty: ghostty_theme = "BuiltInThemeName"  (or "custom" to use term_* above)
+#   Rofi:    rofi_theme    = "filename"           (without .rasi, from rofi/themes/)
+#   Polybar: polybar_bg / polybar_fg / polybar_bg_alt / polybar_fg_alt / polybar_accent / polybar_urgent
+
+
+# ── Nord ──────────────────────────────────────────────────────────────────────
+[theme.nord]
+normfgcolor     = "#D8DEE9"
+normbgcolor     = "#434C5E"
+normbordercolor = "#3B4252"
+selfgcolor      = "#ECEFF4"
+selbgcolor      = "#434C5E"
+selbordercolor  = "#81A1C1"
+
+term_bg         = "#2E3440"
+term_fg         = "#D8DEE9"
+term_cursor     = "#81A1C1"
+term_color0     = "#3B4252"
+term_color1     = "#BF616A"
+term_color2     = "#A3BE8C"
+term_color3     = "#EBCB8B"
+term_color4     = "#81A1C1"
+term_color5     = "#B48EAD"
+term_color6     = "#88C0D0"
+term_color7     = "#E5E9F0"
+term_color8     = "#4C566A"
+term_color9     = "#BF616A"
+term_color10    = "#A3BE8C"
+term_color11    = "#EBCB8B"
+term_color12    = "#81A1C1"
+term_color13    = "#B48EAD"
+term_color14    = "#8FBCBB"
+term_color15    = "#ECEFF4"
+
+ghostty_theme   = "Nord"
+rofi_theme      = "sidetab-nord"
+
+polybar_bg      = "#2e3440"
+polybar_fg      = "#d8dee9"
+polybar_bg_alt  = "#3b4252"
+polybar_fg_alt  = "#4c566a"
+polybar_accent  = "#81a1c1"
+polybar_urgent  = "#bf616a"
+
+
+# ── Dracula ───────────────────────────────────────────────────────────────────
+[theme.dracula]
+normfgcolor     = "#F8F8F2"
+normbgcolor     = "#282A36"
+normbordercolor = "#44475A"
+selfgcolor      = "#F8F8F2"
+selbgcolor      = "#44475A"
+selbordercolor  = "#BD93F9"
+
+term_bg         = "#282A36"
+term_fg         = "#F8F8F2"
+term_cursor     = "#BD93F9"
+term_color0     = "#21222C"
+term_color1     = "#FF5555"
+term_color2     = "#50FA7B"
+term_color3     = "#F1FA8C"
+term_color4     = "#BD93F9"
+term_color5     = "#FF79C6"
+term_color6     = "#8BE9FD"
+term_color7     = "#F8F8F2"
+term_color8     = "#6272A4"
+term_color9     = "#FF6E6E"
+term_color10    = "#69FF94"
+term_color11    = "#FFFFA5"
+term_color12    = "#D6ACFF"
+term_color13    = "#FF92DF"
+term_color14    = "#A4FFFF"
+term_color15    = "#FFFFFF"
+
+ghostty_theme   = "Dracula"
+rofi_theme      = "sidetab-dracula"
+
+polybar_bg      = "#282A36"
+polybar_fg      = "#F8F8F2"
+polybar_bg_alt  = "#44475A"
+polybar_fg_alt  = "#6272A4"
+polybar_accent  = "#BD93F9"
+polybar_urgent  = "#FF5555"
+
+
+# ── Gruvbox Dark ──────────────────────────────────────────────────────────────
+[theme.gruvbox]
+normfgcolor     = "#EBDBB2"
+normbgcolor     = "#3C3836"
+normbordercolor = "#282828"
+selfgcolor      = "#FBF1C7"
+selbgcolor      = "#504945"
+selbordercolor  = "#D79921"
+
+term_bg         = "#282828"
+term_fg         = "#EBDBB2"
+term_cursor     = "#D79921"
+term_color0     = "#282828"
+term_color1     = "#CC241D"
+term_color2     = "#98971A"
+term_color3     = "#D79921"
+term_color4     = "#458588"
+term_color5     = "#B16286"
+term_color6     = "#689D6A"
+term_color7     = "#A89984"
+term_color8     = "#928374"
+term_color9     = "#FB4934"
+term_color10    = "#B8BB26"
+term_color11    = "#FABD2F"
+term_color12    = "#83A598"
+term_color13    = "#D3869B"
+term_color14    = "#8EC07C"
+term_color15    = "#EBDBB2"
+
+ghostty_theme   = "Gruvbox Dark"
+rofi_theme      = "sidetab-gruvbox"
+
+polybar_bg      = "#282828"
+polybar_fg      = "#EBDBB2"
+polybar_bg_alt  = "#3C3836"
+polybar_fg_alt  = "#928374"
+polybar_accent  = "#D79921"
+polybar_urgent  = "#CC241D"
+
+
+# ── Catppuccin Mocha ──────────────────────────────────────────────────────────
+[theme.catppuccin]
+normfgcolor     = "#CDD6F4"
+normbgcolor     = "#1E1E2E"
+normbordercolor = "#313244"
+selfgcolor      = "#CDD6F4"
+selbgcolor      = "#313244"
+selbordercolor  = "#CBA6F7"
+
+term_bg         = "#1E1E2E"
+term_fg         = "#CDD6F4"
+term_cursor     = "#CBA6F7"
+term_color0     = "#45475A"
+term_color1     = "#F38BA8"
+term_color2     = "#A6E3A1"
+term_color3     = "#F9E2AF"
+term_color4     = "#89B4FA"
+term_color5     = "#F5C2E7"
+term_color6     = "#94E2D5"
+term_color7     = "#BAC2DE"
+term_color8     = "#585B70"
+term_color9     = "#F38BA8"
+term_color10    = "#A6E3A1"
+term_color11    = "#F9E2AF"
+term_color12    = "#89B4FA"
+term_color13    = "#F5C2E7"
+term_color14    = "#94E2D5"
+term_color15    = "#A6ADC8"
+
+ghostty_theme   = "Catppuccin Mocha"
+rofi_theme      = "sidetab-catppuccin"
+
+polybar_bg      = "#1E1E2E"
+polybar_fg      = "#CDD6F4"
+polybar_bg_alt  = "#313244"
+polybar_fg_alt  = "#585B70"
+polybar_accent  = "#CBA6F7"
+polybar_urgent  = "#F38BA8"
+
+
+# ── Tokyo Night ───────────────────────────────────────────────────────────────
+[theme.tokyonight]
+normfgcolor     = "#A9B1D6"
+normbgcolor     = "#1A1B26"
+normbordercolor = "#24283B"
+selfgcolor      = "#C0CAF5"
+selbgcolor      = "#24283B"
+selbordercolor  = "#7AA2F7"
+
+term_bg         = "#1A1B26"
+term_fg         = "#C0CAF5"
+term_cursor     = "#7AA2F7"
+term_color0     = "#15161E"
+term_color1     = "#F7768E"
+term_color2     = "#9ECE6A"
+term_color3     = "#E0AF68"
+term_color4     = "#7AA2F7"
+term_color5     = "#BB9AF7"
+term_color6     = "#7DCFFF"
+term_color7     = "#A9B1D6"
+term_color8     = "#414868"
+term_color9     = "#F7768E"
+term_color10    = "#9ECE6A"
+term_color11    = "#E0AF68"
+term_color12    = "#7AA2F7"
+term_color13    = "#BB9AF7"
+term_color14    = "#7DCFFF"
+term_color15    = "#C0CAF5"
+
+ghostty_theme   = "TokyoNight"
+rofi_theme      = "sidetab-tokyonight"
+
+polybar_bg      = "#1A1B26"
+polybar_fg      = "#C0CAF5"
+polybar_bg_alt  = "#24283B"
+polybar_fg_alt  = "#414868"
+polybar_accent  = "#7AA2F7"
+polybar_urgent  = "#F7768E"
+
+
+# ── One Dark ──────────────────────────────────────────────────────────────────
+[theme.onedark]
+normfgcolor     = "#ABB2BF"
+normbgcolor     = "#282C34"
+normbordercolor = "#3E4451"
+selfgcolor      = "#ECEFF4"
+selbgcolor      = "#3E4451"
+selbordercolor  = "#61AFEF"
+
+term_bg         = "#282C34"
+term_fg         = "#ABB2BF"
+term_cursor     = "#61AFEF"
+term_color0     = "#282C34"
+term_color1     = "#E06C75"
+term_color2     = "#98C379"
+term_color3     = "#E5C07B"
+term_color4     = "#61AFEF"
+term_color5     = "#C678DD"
+term_color6     = "#56B6C2"
+term_color7     = "#ABB2BF"
+term_color8     = "#5C6370"
+term_color9     = "#E06C75"
+term_color10    = "#98C379"
+term_color11    = "#E5C07B"
+term_color12    = "#61AFEF"
+term_color13    = "#C678DD"
+term_color14    = "#56B6C2"
+term_color15    = "#FFFFFF"
+
+ghostty_theme   = "One Dark"
+rofi_theme      = "sidetab-onedark"
+
+polybar_bg      = "#282C34"
+polybar_fg      = "#ABB2BF"
+polybar_bg_alt  = "#3E4451"
+polybar_fg_alt  = "#5C6370"
+polybar_accent  = "#61AFEF"
+polybar_urgent  = "#E06C75"
+
+
+# ── Solarized Dark ────────────────────────────────────────────────────────────
+[theme.solarized]
+normfgcolor     = "#839496"
+normbgcolor     = "#073642"
+normbordercolor = "#002B36"
+selfgcolor      = "#FDF6E3"
+selbgcolor      = "#073642"
+selbordercolor  = "#2AA198"
+
+term_bg         = "#002B36"
+term_fg         = "#839496"
+term_cursor     = "#2AA198"
+term_color0     = "#073642"
+term_color1     = "#DC322F"
+term_color2     = "#859900"
+term_color3     = "#B58900"
+term_color4     = "#268BD2"
+term_color5     = "#D33682"
+term_color6     = "#2AA198"
+term_color7     = "#EEE8D5"
+term_color8     = "#002B36"
+term_color9     = "#CB4B16"
+term_color10    = "#586E75"
+term_color11    = "#657B83"
+term_color12    = "#839496"
+term_color13    = "#6C71C4"
+term_color14    = "#93A1A1"
+term_color15    = "#FDF6E3"
+
+ghostty_theme   = "Solarized Dark Patched"
+rofi_theme      = "sidetab-solarized"
+
+polybar_bg      = "#002B36"
+polybar_fg      = "#839496"
+polybar_bg_alt  = "#073642"
+polybar_fg_alt  = "#586E75"
+polybar_accent  = "#2AA198"
+polybar_urgent  = "#DC322F"
+
+
+# ── Rose Pine ─────────────────────────────────────────────────────────────────
+[theme.rosepine]
+normfgcolor     = "#E0DEF4"
+normbgcolor     = "#191724"
+normbordercolor = "#26233A"
+selfgcolor      = "#E0DEF4"
+selbgcolor      = "#26233A"
+selbordercolor  = "#C4A7E7"
+
+term_bg         = "#191724"
+term_fg         = "#E0DEF4"
+term_cursor     = "#C4A7E7"
+term_color0     = "#26233A"
+term_color1     = "#EB6F92"
+term_color2     = "#31748F"
+term_color3     = "#F6C177"
+term_color4     = "#9CCFD8"
+term_color5     = "#C4A7E7"
+term_color6     = "#EBBCBA"
+term_color7     = "#E0DEF4"
+term_color8     = "#6E6A86"
+term_color9     = "#EB6F92"
+term_color10    = "#31748F"
+term_color11    = "#F6C177"
+term_color12    = "#9CCFD8"
+term_color13    = "#C4A7E7"
+term_color14    = "#EBBCBA"
+term_color15    = "#E0DEF4"
+
+ghostty_theme   = "Rose Pine"
+rofi_theme      = "sidetab-rosepine"
+
+polybar_bg      = "#191724"
+polybar_fg      = "#E0DEF4"
+polybar_bg_alt  = "#26233A"
+polybar_fg_alt  = "#6E6A86"
+polybar_accent  = "#C4A7E7"
+polybar_urgent  = "#EB6F92"
+
+
+# ── Everforest Dark ───────────────────────────────────────────────────────────
+[theme.everforest]
+normfgcolor     = "#D3C6AA"
+normbgcolor     = "#3D4841"
+normbordercolor = "#2D353B"
+selfgcolor      = "#D3C6AA"
+selbgcolor      = "#3D4841"
+selbordercolor  = "#A7C080"
+
+term_bg         = "#2D353B"
+term_fg         = "#D3C6AA"
+term_cursor     = "#A7C080"
+term_color0     = "#475258"
+term_color1     = "#E67E80"
+term_color2     = "#A7C080"
+term_color3     = "#DBBC7F"
+term_color4     = "#7FBBB3"
+term_color5     = "#D699B6"
+term_color6     = "#83C092"
+term_color7     = "#D3C6AA"
+term_color8     = "#475258"
+term_color9     = "#E67E80"
+term_color10    = "#A7C080"
+term_color11    = "#DBBC7F"
+term_color12    = "#7FBBB3"
+term_color13    = "#D699B6"
+term_color14    = "#83C092"
+term_color15    = "#D3C6AA"
+
+ghostty_theme   = "Everforest Dark"
+rofi_theme      = "sidetab-everforest"
+
+polybar_bg      = "#2D353B"
+polybar_fg      = "#D3C6AA"
+polybar_bg_alt  = "#3D4841"
+polybar_fg_alt  = "#475258"
+polybar_accent  = "#A7C080"
+polybar_urgent  = "#E67E80"
+
+
+# ── Monochrome ────────────────────────────────────────────────────────────────
+[theme.monochrome]
+normfgcolor     = "#AAAAAA"
+normbgcolor     = "#222222"
+normbordercolor = "#333333"
+selfgcolor      = "#FFFFFF"
+selbgcolor      = "#333333"
+selbordercolor  = "#FFFFFF"
+
+term_bg         = "#1A1A1A"
+term_fg         = "#CCCCCC"
+term_cursor     = "#FFFFFF"
+term_color0     = "#1A1A1A"
+term_color1     = "#CC3333"
+term_color2     = "#66AA66"
+term_color3     = "#CCAA33"
+term_color4     = "#6699CC"
+term_color5     = "#AA66AA"
+term_color6     = "#66AAAA"
+term_color7     = "#AAAAAA"
+term_color8     = "#555555"
+term_color9     = "#FF6666"
+term_color10    = "#88CC88"
+term_color11    = "#FFDD55"
+term_color12    = "#88BBEE"
+term_color13    = "#CC88CC"
+term_color14    = "#88CCCC"
+term_color15    = "#FFFFFF"
+
+ghostty_theme   = "Monochrome"
+rofi_theme      = "sidetab-monochrome"
+
+polybar_bg      = "#1A1A1A"
+polybar_fg      = "#CCCCCC"
+polybar_bg_alt  = "#333333"
+polybar_fg_alt  = "#777777"
+polybar_accent  = "#FFFFFF"
+polybar_urgent  = "#CC3333"

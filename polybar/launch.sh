@@ -2,9 +2,11 @@
 
 THEME="minimal"
 
-# Kill all existing polybar instances
-killall polybar
-while pgrep -u $UID -x polybar >/dev/null; do sleep 0.2; done
+# Kill existing polybar instances only if running
+if pgrep -u $UID -x polybar >/dev/null 2>&1; then
+    killall polybar
+    while pgrep -u $UID -x polybar >/dev/null; do sleep 0.2; done
+fi
 
 # Determine config path: prefer ~/.config/polybar (installed), fallback to repo location
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -76,7 +78,6 @@ fi
 # This ensures tray apps started after this script can find the tray owner.
 for i in $(seq 1 30); do
     if xdotool search --class Polybar >/dev/null 2>&1; then
-        sleep 0.5  # extra delay for tray module initialization
         break
     fi
     sleep 0.1
