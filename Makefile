@@ -44,12 +44,10 @@ install: all
 	cp -rf polybar/* ${USER_HOME}/.config/polybar/
 	find ${USER_HOME}/.config/polybar -name '*.sh' -exec chmod +x {} +
 	find ${USER_HOME}/.config/polybar -name '*.py' -exec chmod +x {} +
-	# Install TOML hot-reload config files (never overwrite existing edits)
+	# Install TOML hot-reload config files as symlinks so repo edits trigger live reload
 	mkdir -p ${USER_HOME}/.config/dwm-titus
-	test -f ${USER_HOME}/.config/dwm-titus/hotkeys.toml || \
-		install -Dm644 config/hotkeys.toml ${USER_HOME}/.config/dwm-titus/hotkeys.toml
-	test -f ${USER_HOME}/.config/dwm-titus/themes.toml || \
-		install -Dm644 config/themes.toml  ${USER_HOME}/.config/dwm-titus/themes.toml
+	ln -sf ${USER_HOME}/.local/share/dwm-titus/config/hotkeys.toml ${USER_HOME}/.config/dwm-titus/hotkeys.toml
+	ln -sf ${USER_HOME}/.local/share/dwm-titus/config/themes.toml  ${USER_HOME}/.config/dwm-titus/themes.toml
 	# Install all scripts to PATH (except autostart scripts which stay in the repo copy)
 	for f in scripts/*; do \
 		case "$$(basename $$f)" in autostart*) continue;; esac; \

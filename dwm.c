@@ -362,9 +362,12 @@ static unsigned int  dyn_borderpx;
 /* inotify */
 static int           inotify_fd = -1;
 static int           inotify_wd = -1;
+static int           inotify_wd2 = -1;  /* optional: symlink-target dir */
 static char          toml_config_dir[PATH_MAX];
 static char          toml_hotkeys_path[PATH_MAX];
 static char          toml_themes_path[PATH_MAX];
+static char          toml_themes_realname[PATH_MAX];   /* basename inside symlink-target dir */
+static char          toml_hotkeys_realname[PATH_MAX];  /* basename inside symlink-target dir */
 /* Pending reload flag set by SIGUSR1 */
 static volatile sig_atomic_t sig_reload_pending = 0;
 /* Arena allocator for TOML-loaded spawn argv data */
@@ -2193,7 +2196,9 @@ run(void)
 					struct inotify_event *ie = (struct inotify_event *)ptr;
 					if (ie->len > 0 &&
 					    (strcmp(ie->name, "hotkeys.toml") == 0 ||
-					     strcmp(ie->name, "themes.toml")  == 0))
+					     strcmp(ie->name, "themes.toml")  == 0 ||
+					     (toml_themes_realname[0]  && strcmp(ie->name, toml_themes_realname)  == 0) ||
+					     (toml_hotkeys_realname[0] && strcmp(ie->name, toml_hotkeys_realname) == 0)))
 						need_reload = 1;
 					ptr += sizeof(struct inotify_event) + ie->len;
 				}
@@ -2891,8 +2896,15 @@ load_themes_toml(const char *path)
 	strncpy(c_selbg,      selbgcolor,      7); c_selbg[7]      = '\0';
 	strncpy(c_selfg,      selfgcolor,      7); c_selfg[7]      = '\0';
 
+	/* Resolve active theme section: [active] theme = "name" → "theme.name",
+	 * falling back to the legacy [colors] section for backwards compatibility. */
+	char color_section[TOML_MAX_STR] = "colors";
+	const TomlValue *vtheme = toml_get(&doc, "active", "theme");
+	if (vtheme && vtheme->type == TOML_STRING && vtheme->s[0])
+		snprintf(color_section, sizeof(color_section), "theme.%s", vtheme->s);
+
 #define TRY_COLOR(field, dest) do { \
-	const TomlValue *_v = toml_get(&doc, "colors", field); \
+	const TomlValue *_v = toml_get(&doc, color_section, field); \
 	if (_v && _v->type == TOML_STRING && strlen(_v->s) >= 4) { \
 		strncpy(dest, _v->s, 7); dest[7] = '\0'; \
 	} } while (0)
@@ -2952,6 +2964,23 @@ reload_config(void)
 	if (toml_hotkeys_path[0]) load_hotkeys_toml(toml_hotkeys_path);
 	if (toml_themes_path[0])  load_themes_toml(toml_themes_path);
 	if (dpy) grabkeys();
+
+	/* Spawn theme-apply script asynchronously to update terminal/rofi/polybar */
+	{
+		pid_t pid = fork();
+		if (pid == 0) {
+			/* child: find and run the theme-apply script */
+			const char *home = getenv("HOME");
+			char script[PATH_MAX];
+			if (home) {
+				snprintf(script, sizeof(script),
+				         "%s/.local/share/dwm-titus/scripts/theme-apply.sh", home);
+				execl("/bin/sh", "sh", script, (char *)NULL);
+			}
+			_exit(0);
+		}
+		/* parent continues; child is reaped by existing SIGCHLD handler */
+	}
 }
 
 static void
@@ -2975,6 +3004,46 @@ setup_inotify(void)
 		/* Config dir not present – inotify disabled until restart */
 		close(inotify_fd);
 		inotify_fd = -1;
+		return;
+	}
+
+	/* If the TOML files are symlinks (e.g. pointing into a git repo),
+	 * also watch the real target directory so that edits to the repo
+	 * files trigger hot-reload without needing to edit the installed copy. */
+	toml_themes_realname[0]  = '\0';
+	toml_hotkeys_realname[0] = '\0';
+	{
+		char real_path[PATH_MAX], real_dir[PATH_MAX];
+		char *slash;
+
+		/* Resolve themes.toml */
+		if (realpath(toml_themes_path, real_path)) {
+			strncpy(real_dir, real_path, PATH_MAX - 1);
+			real_dir[PATH_MAX - 1] = '\0';
+			slash = strrchr(real_dir, '/');
+			if (slash) {
+				strncpy(toml_themes_realname, slash + 1, PATH_MAX - 1);
+				*slash = '\0';
+				if (strcmp(real_dir, toml_config_dir) != 0)
+					inotify_wd2 = inotify_add_watch(inotify_fd, real_dir,
+					                                IN_CLOSE_WRITE | IN_MOVED_TO);
+			}
+		}
+
+		/* Resolve hotkeys.toml (same real dir assumed; just capture the name) */
+		if (realpath(toml_hotkeys_path, real_path)) {
+			strncpy(real_dir, real_path, PATH_MAX - 1);
+			real_dir[PATH_MAX - 1] = '\0';
+			slash = strrchr(real_dir, '/');
+			if (slash) {
+				strncpy(toml_hotkeys_realname, slash + 1, PATH_MAX - 1);
+				/* Add separate watch only if in yet another directory */
+				*slash = '\0';
+				if (strcmp(real_dir, toml_config_dir) != 0 && inotify_wd2 < 0)
+					inotify_wd2 = inotify_add_watch(inotify_fd, real_dir,
+					                                IN_CLOSE_WRITE | IN_MOVED_TO);
+			}
+		}
 	}
 }
 
