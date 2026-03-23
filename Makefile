@@ -6,7 +6,7 @@ include config.mk
 # Detect home directory of the installing user (handles non-standard home paths)
 USER_HOME ?= $(shell getent passwd $(or $(SUDO_USER),$(USER)) 2>/dev/null | cut -d: -f6)
 
-SRC = drw.c dwm.c util.c
+SRC = drw.c dwm.c util.c tomlparser.c
 OBJ = ${SRC:.c=.o}
 
 all: dwm
@@ -44,6 +44,10 @@ install: all
 	cp -rf polybar/* ${USER_HOME}/.config/polybar/
 	find ${USER_HOME}/.config/polybar -name '*.sh' -exec chmod +x {} +
 	find ${USER_HOME}/.config/polybar -name '*.py' -exec chmod +x {} +
+	# Install TOML hot-reload config files as symlinks so repo edits trigger live reload
+	mkdir -p ${USER_HOME}/.config/dwm-titus
+	ln -sf ${USER_HOME}/.local/share/dwm-titus/config/hotkeys.toml ${USER_HOME}/.config/dwm-titus/hotkeys.toml
+	ln -sf ${USER_HOME}/.local/share/dwm-titus/config/themes.toml  ${USER_HOME}/.config/dwm-titus/themes.toml
 	# Install all scripts to PATH (except autostart scripts which stay in the repo copy)
 	for f in scripts/*; do \
 		case "$$(basename $$f)" in autostart*) continue;; esac; \

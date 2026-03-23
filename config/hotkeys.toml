@@ -1,0 +1,163 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║              DWM Hotkeys Configuration  ·  hotkeys.toml             ║
+# ╠══════════════════════════════════════════════════════════════════════╣
+# ║  LIVE RELOAD — save this file and changes apply instantly!           ║
+# ║  Manual reload:  kill -USR1 $(pidof dwm)                             ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+#
+# ─────────────────────────────────────────────────────────────────────────────
+#  FORMAT — one binding per line:
+#    { mod="SUPER", key="x", desc="My app", func="spawn", exec=["myapp"] }
+#
+#  mod   Space-separated modifiers.  Use "" for no modifier.
+#          SUPER  SHIFT  CTRL  ALT
+#          Examples:  "SUPER"  "SUPER SHIFT"  "SUPER CTRL"  "SUPER CTRL SHIFT"
+#
+#  key   X11 key name.  Examples:
+#          Letters/numbers : "a"–"z", "0"–"9"
+#          Special         : "Return"  "space"  "Tab"  "Escape"  "Delete"
+#                            "F1"–"F12"  "Print"  "Home"  "End"  "Page_Up"
+#          Symbols         : "comma"  "period"  "semicolon"  "slash"  "equal"
+#                            "minus"  "bracket_left"  "bracket_right"  "grave"
+#          Media           : "XF86AudioMute"  "XF86AudioRaiseVolume"
+#                            "XF86AudioLowerVolume"  "XF86AudioPlay"
+#                            "XF86MonBrightnessUp"  "XF86MonBrightnessDown"
+#
+#  func  What to do:
+#          spawn             → exec=[...] or cmd="..."  run a program / shell
+#          killclient        → close focused window
+#          zoom              → promote window to/from master
+#          focusstack        → focus next/prev window          (i=1 or i=-1)
+#          movestack         → reorder window in stack          (i=1 or i=-1)
+#          incnmaster        → add/remove window from master    (i=1 or i=-1)
+#          setmfact          → resize master area               (f=0.05 or f=-0.05)
+#          setcfact          → resize window in stack slot      (f=0.25 / f=-0.25 / f=0.00)
+#          setlayout         → switch layout                    (layout_idx=0/1/2)
+#                               0=tiling  1=floating  2=monocle
+#          togglefloating    → float or tile focused window
+#          fullscreen        → true fullscreen (hides bar)
+#          togglefakefullscreen → fullscreen look, bar still works
+#          togglebar         → show/hide the status bar
+#          focusmon          → focus next/prev monitor           (i=1 or i=-1)
+#          tagmon            → send window to next/prev monitor  (i=1 or i=-1)
+#          view              → switch to a tag  (ui=-1 = show all)
+#          tag               → send window to a tag
+#          toggleview / toggletag → also show/tag alongside current
+#          quit              → exit DWM
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── VARIABLES ─────────────────────────────────────────────────────────────────
+# Define shortcuts here, then use $name in any exec or cmd value below.
+
+[vars]
+terminal = "ghostty"
+webapp   = "webapp-launch"
+
+# ── KEYBINDINGS ───────────────────────────────────────────────────────────────
+# One binding per line.  Save the file to reload instantly.
+# Comments inside the array are fine — they are skipped automatically.
+
+keys = [
+
+  # ── Launchers ────────────────────────────────────────────────────────────────
+  { mod="SUPER",            key="r",       desc="App launcher",            func="spawn",       exec=["rofi", "-show", "drun"] },
+  { mod="SUPER",            key="x",       desc="Terminal",                func="spawn",       exec=["$terminal"] },
+  { mod="SUPER",            key="w",       desc="Looking Glass (VM)",      func="spawn",       cmd="looking-glass-client -F" },
+  { mod="SUPER SHIFT",      key="w",       desc="Randomize wallpaper",     func="spawn",       cmd="feh --randomize --bg-fill ~/Pictures/backgrounds/*" },
+
+  # ── Web apps ─────────────────────────────────────────────────────────────────
+  { mod="SUPER",            key="a",       desc="ChatGPT",                 func="spawn",       exec=["$webapp", "https://chatgpt.com"] },
+  { mod="SUPER SHIFT",      key="a",       desc="Gemini",                  func="spawn",       exec=["$webapp", "https://gemini.google.com/"] },
+  { mod="SUPER SHIFT",      key="x",       desc="X/Twitter — new post",    func="spawn",       exec=["$webapp", "https://x.com/compose/post"] },
+  { mod="SUPER",            key="b",       desc="Browser",                 func="spawn",       cmd="xdg-open https://" },
+
+  # ── Screenshots ───────────────────────────────────────────────────────────────
+  { mod="SUPER",            key="p",       desc="Screenshot (fullscreen)", func="spawn",       cmd="dwm-screenshot full" },
+  { mod="SUPER SHIFT",      key="p",       desc="Screenshot area → file",  func="spawn",       cmd="dwm-screenshot gui" },
+  { mod="SUPER CTRL",       key="p",       desc="Screenshot area → clip",  func="spawn",       cmd="dwm-screenshot clip" },
+
+  # ── Files & utilities ─────────────────────────────────────────────────────────
+  { mod="SUPER",            key="e",       desc="File manager",            func="spawn",       cmd="xdg-open ." },
+  { mod="SUPER",            key="slash",   desc="Keybinds cheatsheet",     func="spawn",       cmd="dwm-keybinds" },
+  { mod="SUPER",            key="F1",      desc="Control center",          func="spawn",       cmd="dwm-controlcenter" },
+  { mod="SUPER CTRL",       key="r",       desc="Restart Proton/Steam",    func="spawn",       cmd="protonrestart" },
+
+  # ── Volume  (no modifier — press the media key directly) ─────────────────────
+  { mod="",                 key="XF86AudioRaiseVolume",   desc="Volume up",     func="spawn",  cmd="amixer sset Master 5%+ unmute" },
+  { mod="",                 key="XF86AudioLowerVolume",   desc="Volume down",   func="spawn",  cmd="amixer sset Master 5%- unmute" },
+  { mod="",                 key="XF86AudioMute",          desc="Mute toggle",   func="spawn",  cmd="amixer sset Master toggle" },
+
+  # ── Brightness ────────────────────────────────────────────────────────────────
+  { mod="",                 key="XF86MonBrightnessUp",    desc="Brightness +",  func="spawn",  cmd="xbacklight -inc 10" },
+  { mod="",                 key="XF86MonBrightnessDown",  desc="Brightness -",  func="spawn",  cmd="xbacklight -dec 10" },
+
+  # ── Window focus & movement ───────────────────────────────────────────────────
+  { mod="SUPER",            key="j",       desc="Focus next window",       func="focusstack",  i=1 },
+  { mod="SUPER",            key="k",       desc="Focus prev window",       func="focusstack",  i=-1 },
+  { mod="SUPER SHIFT",      key="j",       desc="Move window down",        func="movestack",   i=1 },
+  { mod="SUPER SHIFT",      key="k",       desc="Move window up",          func="movestack",   i=-1 },
+  { mod="SUPER",            key="Return",  desc="Promote to master",       func="zoom" },
+  { mod="SUPER",            key="Tab",     desc="Previous tag",            func="view" },
+  { mod="SUPER",            key="q",       desc="Close window",            func="killclient" },
+
+  # ── Master / stack sizing ─────────────────────────────────────────────────────
+  { mod="SUPER",            key="i",       desc="Add to master",           func="incnmaster",  i=1 },
+  { mod="SUPER",            key="d",       desc="Remove from master",      func="incnmaster",  i=-1 },
+  { mod="SUPER",            key="h",       desc="Shrink master",           func="setmfact",    f=-0.05 },
+  { mod="SUPER",            key="l",       desc="Grow master",             func="setmfact",    f=0.05 },
+  { mod="SUPER SHIFT",      key="h",       desc="Cfact grow",              func="setcfact",    f=0.25 },
+  { mod="SUPER SHIFT",      key="l",       desc="Cfact shrink",            func="setcfact",    f=-0.25 },
+  { mod="SUPER SHIFT",      key="o",       desc="Cfact reset",             func="setcfact",    f=0.00 },
+
+  # ── Layouts  (0=tiling  1=floating  2=monocle) ───────────────────────────────
+  { mod="SUPER",            key="t",       desc="Tile layout",             func="setlayout",   layout_idx=0 },
+  { mod="SUPER",            key="f",       desc="Float layout",            func="setlayout",   layout_idx=1 },
+  { mod="SUPER",            key="m",       desc="Fullscreen",              func="fullscreen" },
+  { mod="SUPER SHIFT",      key="m",       desc="Toggle floating window",  func="togglefloating" },
+  { mod="SUPER",            key="space",   desc="Toggle float/tile",       func="togglefloating" },
+  { mod="SUPER SHIFT",      key="y",       desc="Fake fullscreen",         func="togglefakefullscreen" },
+  { mod="SUPER SHIFT",      key="b",       desc="Toggle bar",              func="togglebar" },
+
+  # ── Multi-monitor ─────────────────────────────────────────────────────────────
+  { mod="SUPER",            key="comma",   desc="Focus left monitor",      func="focusmon",    i=-1 },
+  { mod="SUPER",            key="period",  desc="Focus right monitor",     func="focusmon",    i=1 },
+  { mod="SUPER SHIFT",      key="comma",   desc="Send to left monitor",    func="tagmon",      i=-1 },
+  { mod="SUPER SHIFT",      key="period",  desc="Send to right monitor",   func="tagmon",      i=1 },
+
+  # ── Session / power ───────────────────────────────────────────────────────────
+  { mod="SUPER",            key="0",       desc="Show all tags",           func="view",        ui=-1 },
+  { mod="SUPER SHIFT",      key="q",       desc="Quit dwm",                func="quit" },
+  { mod="SUPER CTRL",       key="q",       desc="Power menu",              func="spawn",       cmd="$HOME/.config/rofi/powermenu.sh" },
+  { mod="SUPER CTRL SHIFT", key="r",       desc="Reboot",                  func="spawn",       cmd="systemctl reboot" },
+  { mod="SUPER CTRL SHIFT", key="s",       desc="Suspend",                 func="spawn",       cmd="systemctl suspend" },
+
+]
+
+# ── TAG BINDINGS ──────────────────────────────────────────────────────────────
+# Each entry auto-generates 4 bindings for that tag number:
+#   SUPER + key                  → switch to tag
+#   SUPER + CTRL + key           → also show this tag alongside current
+#   SUPER + SHIFT + key          → send focused window to this tag
+#   SUPER + CTRL + SHIFT + key   → also show window on that tag
+#
+# key = X11 key name    tag = 0-based index  (0 = tag 1,  8 = tag 9)
+
+tag_keys = [
+  { key="1", tag=0 },
+  { key="2", tag=1 },
+  { key="3", tag=2 },
+  { key="4", tag=3 },
+  { key="5", tag=4 },
+  { key="6", tag=5 },
+  { key="7", tag=6 },
+  { key="8", tag=7 },
+  { key="9", tag=8 },
+]
+
+# ── CUSTOM SHORTCUTS ──────────────────────────────────────────────────────────
+# Add your own below.  Uncomment, fill in the fields, and save.
+#
+# { mod="SUPER SHIFT",  key="f",  desc="Firefox",   func="spawn",  exec=["firefox"] },
+# { mod="SUPER SHIFT",  key="c",  desc="VS Code",   func="spawn",  exec=["code"] },
+# { mod="SUPER SHIFT",  key="d",  desc="Discord",   func="spawn",  exec=["discord"] },
+# { mod="SUPER SHIFT",  key="s",  desc="Screenshot",func="spawn",  cmd="scrot -s ~/Pictures/screenshot.png" },

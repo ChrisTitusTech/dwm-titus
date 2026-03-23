@@ -1,0 +1,22 @@
+background = 1A1A1A
+foreground = CCCCCC
+cursor-color = FFFFFF
+selection-background = 333333
+selection-foreground = FFFFFF
+
+palette = 0=1A1A1A
+palette = 1=CC3333
+palette = 2=66AA66
+palette = 3=CCAA33
+palette = 4=6699CC
+palette = 5=AA66AA
+palette = 6=66AAAA
+palette = 7=AAAAAA
+palette = 8=555555
+palette = 9=FF6666
+palette = 10=88CC88
+palette = 11=FFDD55
+palette = 12=88BBEE
+palette = 13=CC88CC
+palette = 14=88CCCC
+palette = 15=FFFFFF

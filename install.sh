@@ -150,17 +150,33 @@ chmod +x "$HOME/.config/rofi/powermenu.sh" 2>/dev/null || true
 chmod +x "$HOME/.config/rofi/themes/controlcenter.rasi" 2>/dev/null || true
 
 # Terminal configs (copy only if not already present)
-for term_dir in alacritty ghostty kitty; do
+for term_dir in alacritty kitty; do
     if [ -d "$REPO_DIR/config/$term_dir" ]; then
         mkdir -p "$HOME/.config/$term_dir"
         cp -rn "$REPO_DIR/config/$term_dir/"* "$HOME/.config/$term_dir/" 2>/dev/null || true
     fi
 done
 
+# Ghostty — always sync theme files so new themes are available after updates
+if [ -d "$REPO_DIR/config/ghostty" ]; then
+    mkdir -p "$HOME/.config/ghostty/themes"
+    cp -rn "$REPO_DIR/config/ghostty/config" "$HOME/.config/ghostty/config" 2>/dev/null || true
+    cp -r  "$REPO_DIR/config/ghostty/themes/"* "$HOME/.config/ghostty/themes/" 2>/dev/null || true
+    ok "Ghostty themes installed to ~/.config/ghostty/themes/"
+fi
+
 # Polybar
 mkdir -p "$HOME/.config/polybar"
 cp -rn "$REPO_DIR/polybar/"* "$HOME/.config/polybar/" 2>/dev/null || true
 chmod +x "$HOME/.config/polybar/launch.sh" 2>/dev/null || true
+
+# dwm-titus TOML configs (hotkeys + themes, hot-reload at runtime)
+DWM_CFG_DIR="$HOME/.config/dwm-titus"
+mkdir -p "$DWM_CFG_DIR"
+# Use symlinks so that edits to the installed data-dir files trigger DWM hot-reload.
+ln -sf "$DWM_DATA_DIR/config/hotkeys.toml" "$DWM_CFG_DIR/hotkeys.toml"
+ln -sf "$DWM_DATA_DIR/config/themes.toml"  "$DWM_CFG_DIR/themes.toml"
+ok "dwm-titus TOML configs installed to $DWM_CFG_DIR"
 
 # Autostart scripts (dwm runautostart looks here)
 DWM_DATA_DIR="$HOME/.local/share/dwm-titus"
@@ -168,6 +184,20 @@ mkdir -p "$DWM_DATA_DIR/scripts"
 cp "$REPO_DIR/scripts/autostart.sh" "$DWM_DATA_DIR/scripts/autostart.sh"
 cp "$REPO_DIR/scripts/autostart_blocking.sh" "$DWM_DATA_DIR/scripts/autostart_blocking.sh"
 chmod +x "$DWM_DATA_DIR/scripts/autostart.sh" "$DWM_DATA_DIR/scripts/autostart_blocking.sh"
+
+# Theme-apply script (called by DWM on every theme reload)
+cp "$REPO_DIR/scripts/theme-apply.sh" "$DWM_DATA_DIR/scripts/theme-apply.sh"
+chmod +x "$DWM_DATA_DIR/scripts/theme-apply.sh"
+
+# Ghostty custom themes (copied to data dir so theme-apply.sh can sync them at runtime)
+mkdir -p "$DWM_DATA_DIR/ghostty/themes"
+cp "$REPO_DIR/config/ghostty/themes/"* "$DWM_DATA_DIR/ghostty/themes/" 2>/dev/null || true
+ok "theme-apply.sh installed to $DWM_DATA_DIR/scripts/"
+
+# Run theme-apply once to populate active-theme files for all installed apps
+info "Applying initial theme to terminal / rofi / polybar..."
+"$DWM_DATA_DIR/scripts/theme-apply.sh" 2>/dev/null || \
+    warn "theme-apply.sh encountered a non-fatal issue — it will work once DWM starts."
 
 ok "Config files installed to ~/.config/"
 

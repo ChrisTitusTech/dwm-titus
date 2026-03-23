@@ -1,0 +1,22 @@
+background = 2D353B
+foreground = D3C6AA
+cursor-color = A7C080
+selection-background = 3D4841
+selection-foreground = D3C6AA
+
+palette = 0=475258
+palette = 1=E67E80
+palette = 2=A7C080
+palette = 3=DBBC7F
+palette = 4=7FBBB3
+palette = 5=D699B6
+palette = 6=83C092
+palette = 7=D3C6AA
+palette = 8=475258
+palette = 9=E67E80
+palette = 10=A7C080
+palette = 11=DBBC7F
+palette = 12=7FBBB3
+palette = 13=D699B6
+palette = 14=83C092
+palette = 15=D3C6AA
