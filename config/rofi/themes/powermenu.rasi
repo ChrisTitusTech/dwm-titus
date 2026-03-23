@@ -14,10 +14,12 @@ configuration {
 
 /*****----- Global Properties -----*****/
 * {
-    /* Resolution : 1920x1080 */
+    /* Margins use % so they scale with any screen resolution.
+       Font sizes and element spacing are overridden by the launcher
+       script on screens smaller than 1920x1080. */
     mainbox-spacing:             100px;
-    mainbox-margin:              150px 400px;
-    message-margin:              0px 350px;
+    mainbox-margin:              14% 21%;
+    message-margin:              0px 18%;
     message-padding:             15px;
     message-border-radius:       15px;
     listview-spacing:            50px;
@@ -26,7 +28,7 @@ configuration {
 
     prompt-font:                 "MesloLGS Nerd Font Bold 72";
     textbox-font:                "MesloLGS Nerd Font 14";
-    element-text-font:           "feather 64";
+    element-text-font:           "MesloLGS Nerd Font 64";
 
     background-window:           black/30%;
     background-normal:           white/5%;
@@ -102,7 +104,6 @@ listview {
     reverse:                     false;
     fixed-height:                true;
     fixed-columns:               true;
-    
     spacing:                     var(listview-spacing);
     background-color:            transparent;
     cursor:                      "default";
