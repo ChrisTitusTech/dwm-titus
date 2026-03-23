@@ -1,6 +1,25 @@
 #!/bin/sh
-# dwm-titus autostart — runs in the background after the event loop starts
-# Launches services first, starts Polybar, waits for tray, then runs XDG apps.
+# dwm-titus autostart — single unified autostart script
+# Phase 1: Blocking setup (must complete before windows appear)
+# Phase 2: Background services (compositor, notifications, polybar, tray apps)
+
+# ── Phase 1: Blocking ──────────────────────────────────────────────────────────
+# Disable DPMS and screen blanking (prevents GPU/display wake issues)
+xset s off
+xset s noblank
+xset -dpms
+
+# Export display env to systemd user session (needed for XDG autostart apps)
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user import-environment DISPLAY XAUTHORITY
+fi
+dbus-update-activation-environment --systemd DISPLAY XAUTHORITY 2>/dev/null
+
+# Wallpaper
+feh --randomize --bg-fill ~/Pictures/backgrounds/* 2>/dev/null
+
+# ── Phase 2: Background services ───────────────────────────────────────────────
+{
 
 # Compositor
 picom -b 2>/dev/null &
@@ -35,18 +54,42 @@ if ! pgrep -x polybar >/dev/null 2>&1; then
     done
 fi
 
-# Wait for Polybar's tray to be ready before launching tray apps
-# Polybar needs time to claim _NET_SYSTEM_TRAY_S0 after its window appears
-timeout=50
+# Verify polybar systray module is loaded before launching tray apps
+# Polls _NET_SYSTEM_TRAY_S0 X selection to confirm the tray manager is ready
+polybar_tray_ready() {
+    python3 -c "
+import ctypes, ctypes.util, sys
+lib = ctypes.util.find_library('X11')
+if not lib: sys.exit(1)
+x11 = ctypes.cdll.LoadLibrary(lib)
+x11.XOpenDisplay.restype = ctypes.c_void_p
+d = x11.XOpenDisplay(None)
+if not d: sys.exit(1)
+atom = x11.XInternAtom(d, b'_NET_SYSTEM_TRAY_S0', True)
+if not atom:
+    x11.XCloseDisplay(d); sys.exit(1)
+owner = x11.XGetSelectionOwner(d, atom)
+x11.XCloseDisplay(d)
+sys.exit(0 if owner else 1)
+" 2>/dev/null
+}
+
+tray_ok=0
 i=0
-while [ $i -lt $timeout ]; do
-    if xdotool search --class Polybar >/dev/null 2>&1; then
-        sleep 1  # extra delay for tray module initialization
+while [ $i -lt 50 ]; do
+    if polybar_tray_ready; then
+        tray_ok=1
         break
     fi
     sleep 0.2
     i=$((i + 1))
 done
 
-# XDG Desktop Autostart — launches tray apps (nm-applet, blueman, etc.)
-dex -a 2>/dev/null
+if [ $tray_ok -eq 1 ]; then
+    dex -a 2>/dev/null
+else
+    echo "dwm-titus: polybar systray not detected, launching dex anyway" >&2
+    dex -a 2>/dev/null
+fi
+
+} &

@@ -34,15 +34,25 @@ install: all
 	mkdir -p /usr/share/xsessions/
 	test -f /usr/share/xsessions/dwm.desktop || install -Dm644 dwm.desktop /usr/share/xsessions/
 	test -f ${USER_HOME}/.xinitrc || install -Dm644 .xinitrc ${USER_HOME}/.xinitrc
+	# Copy repo to ~/.local/share/dwm-titus/ for future rebuilds (skip if already there)
+	@if [ "$$(cd . && pwd -P)" != "$$(cd ${USER_HOME}/.local/share/dwm-titus 2>/dev/null && pwd -P)" ]; then \
+		mkdir -p ${USER_HOME}/.local/share/dwm-titus; \
+		tar -cf - --exclude='.git' --exclude='*.o' . | tar -xf - -C ${USER_HOME}/.local/share/dwm-titus/; \
+	fi
+	# Install polybar configs
 	mkdir -p ${USER_HOME}/.config/polybar
 	cp -rf polybar/* ${USER_HOME}/.config/polybar/
-	chmod +x ${USER_HOME}/.config/polybar/launch.sh
-	chmod +x ${USER_HOME}/.config/polybar/scripts/dwm-tags.sh
-	chmod +x ${USER_HOME}/.config/polybar/scripts/wallz/wallz.py
-	chmod +x ${USER_HOME}/.config/polybar/scripts/weather/main.py
-	chmod +x ${USER_HOME}/.config/polybar/scripts/weather/weather.sh
-	mkdir -p ${DESTDIR}${PREFIX}/bin
-	install -Dm755 scripts/* ${DESTDIR}${PREFIX}/bin/
+	find ${USER_HOME}/.config/polybar -name '*.sh' -exec chmod +x {} +
+	find ${USER_HOME}/.config/polybar -name '*.py' -exec chmod +x {} +
+	# Install all scripts to PATH (except autostart scripts which stay in the repo copy)
+	for f in scripts/*; do \
+		case "$$(basename $$f)" in autostart*) continue;; esac; \
+		install -Dm755 "$$f" ${DESTDIR}${PREFIX}/bin/$$(basename $$f); \
+	done
+	# Set permissions on repo copy
+	find ${USER_HOME}/.local/share/dwm-titus -name '*.sh' -exec chmod +x {} +
+	find ${USER_HOME}/.local/share/dwm-titus -name '*.py' -exec chmod +x {} +
+	chown -R $(or ${SUDO_USER},${USER}):$(or ${SUDO_USER},${USER}) ${USER_HOME}/.local/share/dwm-titus ${USER_HOME}/.config/polybar
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm \

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Encoding=UTF-8
-Name=dwm
-Comment=Dynamic window manager
+Name=dwm-titus
+Comment=Dynamic window manager (dwm-titus)
 Exec=dwm
 Icon=dwm
 Type=XSession

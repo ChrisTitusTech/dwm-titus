@@ -119,7 +119,7 @@ fi
 header "Done"
 echo ""
 info "xscreensaver is installed and will start on login."
-info "Screen will blank after 10 minutes and lock immediately."
+info "Screen will blank after 10 minutes (locking is disabled)."
 info "DPMS is disabled (nvidia wake-up workaround)."
 info "Run 'xscreensaver-settings' to customize further."
 echo ""

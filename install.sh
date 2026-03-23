@@ -147,6 +147,18 @@ for term_dir in alacritty ghostty kitty; do
     fi
 done
 
+# Polybar
+mkdir -p "$HOME/.config/polybar"
+cp -rn "$REPO_DIR/polybar/"* "$HOME/.config/polybar/" 2>/dev/null || true
+chmod +x "$HOME/.config/polybar/launch.sh" 2>/dev/null || true
+
+# Autostart scripts (dwm runautostart looks here)
+DWM_DATA_DIR="$HOME/.local/share/dwm-titus"
+mkdir -p "$DWM_DATA_DIR/scripts"
+cp "$REPO_DIR/scripts/autostart.sh" "$DWM_DATA_DIR/scripts/autostart.sh"
+cp "$REPO_DIR/scripts/autostart_blocking.sh" "$DWM_DATA_DIR/scripts/autostart_blocking.sh"
+chmod +x "$DWM_DATA_DIR/scripts/autostart.sh" "$DWM_DATA_DIR/scripts/autostart_blocking.sh"
+
 ok "Config files installed to ~/.config/"
 
 # ── Step 11: Display manager setup ──────────────────────

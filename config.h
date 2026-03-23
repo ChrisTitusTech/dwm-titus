@@ -27,15 +27,7 @@ static const char *colors[][3] = {
     [SchemeSel]  = { selfgcolor,  selbgcolor,  selbordercolor },
 };
 
-static const char *const autostart[] = {
-    "dbus-update-activation-environment", "--systemd", "--all", NULL,
-    "dwm-polkit", NULL,
-    "dunst", NULL,
-    "picom", "-b", NULL,
-    "sh", "-c", "feh --randomize --bg-fill ~/Pictures/backgrounds/*", NULL,
-    "sh", "-c", "/usr/bin/dex -a", NULL,
-    NULL /* terminate */
-};
+
 
 /* tagging */
 static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };

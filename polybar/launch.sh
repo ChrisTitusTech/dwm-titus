@@ -4,7 +4,7 @@ THEME="minimal"
 
 # Kill all existing polybar instances
 killall polybar
-while pgrep -u $UID -x polybar >/dev/null; do sleep 1; done
+while pgrep -u $UID -x polybar >/dev/null; do sleep 0.2; done
 
 # Determine config path: prefer ~/.config/polybar (installed), fallback to repo location
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -13,7 +13,7 @@ if [ -f "$HOME/.config/polybar/themes/$THEME/config.ini" ]; then
 elif [ -f "$SCRIPT_DIR/themes/$THEME/config.ini" ]; then
     CONFIG_DIR="$SCRIPT_DIR"
 else
-    CONFIG_DIR="$HOME/.local/share/dwm-titus/polybar"
+    CONFIG_DIR="$HOME/.config/polybar"
 fi
 
 CONFIG_FILE="$CONFIG_DIR/themes/$THEME/config.ini"
@@ -71,3 +71,13 @@ else
     echo "xrandr not available - launching fallback main polybar with tray"
     polybar main -c "$CONFIG_FILE" &
 fi
+
+# Wait for Polybar to be ready before returning.
+# This ensures tray apps started after this script can find the tray owner.
+for i in $(seq 1 30); do
+    if xdotool search --class Polybar >/dev/null 2>&1; then
+        sleep 0.5  # extra delay for tray module initialization
+        break
+    fi
+    sleep 0.1
+done

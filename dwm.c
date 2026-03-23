@@ -294,14 +294,12 @@ static int xerror(Display *dpy, XErrorEvent *ee);
 static int xerrordummy(Display *dpy, XErrorEvent *ee);
 static int xerrorstart(Display *dpy, XErrorEvent *ee);
 static void zoom(const Arg *arg);
-static void autostart_exec(void);
 
 /* variables */
-static const char autostartblocksh[] = "autostart_blocking.sh";
-static const char autostartsh[] = "autostart.sh";
+static const char autostartsh[] = "scripts/autostart.sh";
 static const char broken[] = "broken";
-static const char dwmdir[] = "github/dwm-titus/scripts";
-static const char localshare[] = "";
+static const char dwmdir[] = "dwm-titus";
+static const char localshare[] = ".local/share";
 static char stext[256];
 static int statusw;
 static int statussig;
@@ -371,43 +369,6 @@ static unsigned int getmontagmask(int monnum);
 static int getmonitorforselectedtag(void);
 static void updatemonitorcount(void);
 static void initmonitortags(void);
-
-/* dwm will keep pid's of processes from autostart array and kill them at quit */
-static pid_t *autostart_pids;
-static size_t autostart_len;
-
-/* execute command from autostart array */
-static void
-autostart_exec()
-{
-	const char *const *p;
-	struct sigaction sa;
-	size_t i = 0;
-
-	/* count entries */
-	for (p = autostart; *p; autostart_len++, p++)
-		while (*++p);
-
-	autostart_pids = malloc(autostart_len * sizeof(pid_t));
-	for (p = autostart; *p; i++, p++) {
-		if ((autostart_pids[i] = fork()) == 0) {
-			setsid();
-
-			/* Restore SIGCHLD sighandler to default before spawning a program */
-			sigemptyset(&sa.sa_mask);
-			sa.sa_flags = 0;
-			sa.sa_handler = SIG_DFL;
-			sigaction(SIGCHLD, &sa, NULL);
-
-			execvp(*p, (char *const *)p);
-			fprintf(stderr, "dwm: execvp %s\n", *p);
-			perror(" failed");
-			_exit(EXIT_FAILURE);
-		}
-		/* skip arguments */
-		while (*++p);
-	}
-}
 
 /* function implementations */
 void
@@ -684,14 +645,6 @@ cleanup(void)
 	Monitor *m;
 	Layout foo = { "", NULL };
 	size_t i;
-
-	/* kill child processes */
-	for (i = 0; i < autostart_len; i++) {
-		if (0 < autostart_pids[i]) {
-			kill(autostart_pids[i], SIGTERM);
-			waitpid(autostart_pids[i], NULL, 0);
-		}
-	}
 
 	selmon->lt[selmon->sellt] = &foo;
 	for (m = mons; m; m = m->next)
@@ -1108,8 +1061,11 @@ expose(XEvent *e)
 	Monitor *m;
 	XExposeEvent *ev = &e->xexpose;
 
-	if (ev->count == 0 && (m = wintomon(ev->window)))
+	if (ev->count == 0 && (m = wintomon(ev->window))) {
 		drawbar(m);
+		if (!m->traywin)
+			scantray();
+	}
 }
 
 void
@@ -1586,11 +1542,13 @@ managealtbar(Window win, XWindowAttributes *wa)
 	bh = m->bh = wa->height;
 	updatebarpos(m);
 	arrange(m);
-	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
+	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask|ExposureMask);
 	XMoveResizeWindow(dpy, win, wa->x, wa->y, wa->width, wa->height);
 	XMapWindow(dpy, win);
 	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32, PropModeAppend,
 		(unsigned char *) &win, 1);
+	if (!m->traywin)
+		scantray();
 }
 
 void
@@ -2219,24 +2177,15 @@ runautostart(void)
 		}
 	}
 
-	/* try the blocking script first */
-	path = ecalloc(1, strlen(pathpfx) + strlen(autostartblocksh) + 2);
-	if (sprintf(path, "%s/%s", pathpfx, autostartblocksh) <= 0) {
-		free(path);
-		free(pathpfx);
-	}
-
-	if (access(path, X_OK) == 0)
-		system(path);
-
-	/* now the non-blocking script */
+	/* try the autostart script */
+	path = ecalloc(1, strlen(pathpfx) + strlen(autostartsh) + 2);
 	if (sprintf(path, "%s/%s", pathpfx, autostartsh) <= 0) {
 		free(path);
 		free(pathpfx);
 	}
 
 	if (access(path, X_OK) == 0)
-		system(strcat(path, " &"));
+		system(path);
 
 	free(pathpfx);
 	free(path);
@@ -2691,25 +2640,9 @@ showhide(Client *c)
 void
 sigchld(int unused)
 {
-	pid_t pid;
-
 	if (signal(SIGCHLD, sigchld) == SIG_ERR)
 		die("can't install SIGCHLD handler:");
-
-	while (0 < (pid = waitpid(-1, NULL, WNOHANG))) {
-		pid_t *p, *lim;
-
-		if (!(p = autostart_pids))
-			continue;
-		lim = &p[autostart_len];
-
-		for (; p < lim; p++) {
-			if (*p == pid) {
-				*p = -1;
-				break;
-			}
-		}
-	}
+	while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
 void
@@ -3924,7 +3857,6 @@ main(int argc, char *argv[])
 	if (!(xcon = XGetXCBConnection(dpy)))
 		die("dwm: cannot get xcb connection\n");
 	checkotherwm();
-	autostart_exec();
 	setup();
 #ifdef __OpenBSD__
 	if (pledge("stdio rpath proc exec ps", NULL) == -1)

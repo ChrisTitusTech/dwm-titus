@@ -29,27 +29,7 @@ static const char *colors[][3]      = {
 	[SchemeSel]  = { col_gray4, col_cyan,  col_cyan  },
 };
 
-static const char *const autostart[] = {
-	/* D-Bus — required for XDG autostart, notifications, and polkit */
-	"dbus-update-activation-environment", "--systemd", "--all", NULL,
 
-	/* Polkit authentication agent — detects mate, gnome, kde, or lxpolkit */
-	"sh", "-c", "for agent in /usr/lib/mate-polkit/polkit-mate-authentication-agent-1 /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 /usr/lib/polkit-kde-authentication-agent-1 /usr/bin/lxpolkit; do [ -x \"$agent\" ] && exec \"$agent\" & break; done", NULL,
-
-	/* Compositor — transparency, shadows, animations (remove if not needed) */
-	"picom", "-b", NULL,
-
-	/* Notification daemon */
-	"dunst", NULL,
-
-	/* Wallpaper — randomize from ~/Pictures/backgrounds/ */
-	"sh", "-c", "feh --randomize --bg-fill ~/Pictures/backgrounds/* 2>/dev/null", NULL,
-
-	/* XDG Desktop Autostart — launches ~/.config/autostart/*.desktop entries */
-	"sh", "-c", "/usr/bin/dex -a 2>/dev/null", NULL,
-
-	NULL /* terminate */
-};
 
 /* tagging */
 static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
