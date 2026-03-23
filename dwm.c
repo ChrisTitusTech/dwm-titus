@@ -2796,7 +2796,7 @@ build_arg(const char *func_name, const TomlDoc *doc,
 static void
 load_hotkeys_toml(const char *path)
 {
-	TomlDoc doc;
+	static TomlDoc doc;
 	if (!toml_parse(path, &doc)) {
 		fprintf(stderr, "dwm: cannot parse %s\n", path);
 		return;
@@ -2875,7 +2875,7 @@ load_hotkeys_toml(const char *path)
 static void
 load_themes_toml(const char *path)
 {
-	TomlDoc doc;
+	static TomlDoc doc;
 	if (!toml_parse(path, &doc)) {
 		fprintf(stderr, "dwm: cannot parse %s\n", path);
 		return;
@@ -2913,8 +2913,11 @@ load_themes_toml(const char *path)
 		};
 		int i;
 		for (i = 0; i < LENGTH(colors); i++) {
-			free(scheme[i]);
-			scheme[i] = drw_scm_create(drw, new_clrs[i], 3);
+			Clr *newscm = drw_scm_create(drw, new_clrs[i], 3);
+			if (newscm) {
+				drw_scm_free(drw, scheme[i], 3);
+				scheme[i] = newscm;
+			}
 		}
 	}
 

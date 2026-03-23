@@ -162,6 +162,13 @@ mkdir -p "$HOME/.config/polybar"
 cp -rn "$REPO_DIR/polybar/"* "$HOME/.config/polybar/" 2>/dev/null || true
 chmod +x "$HOME/.config/polybar/launch.sh" 2>/dev/null || true
 
+# dwm-titus TOML configs (hotkeys + themes, hot-reload at runtime)
+DWM_CFG_DIR="$HOME/.config/dwm-titus"
+mkdir -p "$DWM_CFG_DIR"
+cp -n "$REPO_DIR/config/hotkeys.toml" "$DWM_CFG_DIR/hotkeys.toml" 2>/dev/null || true
+cp -n "$REPO_DIR/config/themes.toml"  "$DWM_CFG_DIR/themes.toml"  2>/dev/null || true
+ok "dwm-titus TOML configs installed to $DWM_CFG_DIR"
+
 # Autostart scripts (dwm runautostart looks here)
 DWM_DATA_DIR="$HOME/.local/share/dwm-titus"
 mkdir -p "$DWM_DATA_DIR/scripts"
