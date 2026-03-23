@@ -9,17 +9,18 @@ xset s off
 xset s noblank
 xset -dpms
 
-# Export display env to systemd user session (needed for XDG autostart apps)
+# Export display env to systemd/dbus in parallel (both are IPC round-trips)
 if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user import-environment DISPLAY XAUTHORITY
+    systemctl --user import-environment DISPLAY XAUTHORITY &
 fi
-dbus-update-activation-environment --systemd DISPLAY XAUTHORITY 2>/dev/null
-
-# Wallpaper
-feh --randomize --bg-fill ~/Pictures/backgrounds/* 2>/dev/null
+dbus-update-activation-environment --systemd DISPLAY XAUTHORITY 2>/dev/null &
+wait
 
 # ── Phase 2: Background services ───────────────────────────────────────────────
 {
+
+# Wallpaper (moved here from Phase 1 — does not need to block dwm startup)
+feh --randomize --bg-fill ~/Pictures/backgrounds/* 2>/dev/null &
 
 # Compositor
 picom -b 2>/dev/null &

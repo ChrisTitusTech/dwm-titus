@@ -1,0 +1,135 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║               DWM Theme Configuration  ·  themes.toml               ║
+# ╠══════════════════════════════════════════════════════════════════════╣
+# ║  LIVE RELOAD — just save this file and changes apply instantly!      ║
+# ║  Manual reload: kill -USR1 $(pidof dwm)                              ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+#
+# HOW TO SWITCH THEME
+# ───────────────────
+# 1. Find the theme you like in the "PRESET THEMES" section below.
+# 2. Copy its color values into [colors] (overwrite the current ones).
+# 3. Save the file — colors update immediately, no restart needed!
+#
+# COLOR REFERENCE — what each setting controls
+# ────────────────────────────────────────────
+#   normfgcolor     → text color on unfocused windows / bar
+#   normbgcolor     → background of the bar
+#   normbordercolor → border color of unfocused windows
+#   selfgcolor      → text color on the focused window / active tag
+#   selbgcolor      → background highlight on focused window / active tag
+#   selbordercolor  → border color of the focused window
+#
+# BORDER SIZE
+# ───────────
+#   borderpx = 0   → no borders (minimal look)
+#   borderpx = 1   → thin, clean borders (default)
+#   borderpx = 2   → thicker borders, easier to see
+#   borderpx = 3   → bold borders
+#
+# Colors must be in hex format: "#RRGGBB"
+# (Pick colors from https://coolors.co or any color picker)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ACTIVE THEME  ←  edit these values
+# ══════════════════════════════════════════════════════════════════════════════
+
+[colors]
+# Unfocused windows & bar
+normfgcolor     = "#D8DEE9"   # text
+normbgcolor     = "#434C5E"   # background
+normbordercolor = "#3B4252"   # window border
+
+# Focused / selected window & active tag
+selfgcolor      = "#ECEFF4"   # text
+selbgcolor      = "#434C5E"   # background
+selbordercolor  = "#81A1C1"   # window border  ← change this to make focus obvious
+
+[appearance]
+borderpx = 1   # border size in pixels (0 = none, 1-3 = recommended)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PRESET THEMES  —  copy any block into [colors] above to apply it
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Nord (current) ────────────────────────────────────────────────────────────
+# normfgcolor     = "#D8DEE9"
+# normbgcolor     = "#434C5E"
+# normbordercolor = "#3B4252"
+# selfgcolor      = "#ECEFF4"
+# selbgcolor      = "#434C5E"
+# selbordercolor  = "#81A1C1"
+
+# ── Dracula ───────────────────────────────────────────────────────────────────
+# normfgcolor     = "#F8F8F2"
+# normbgcolor     = "#282A36"
+# normbordercolor = "#44475A"
+# selfgcolor      = "#F8F8F2"
+# selbgcolor      = "#44475A"
+# selbordercolor  = "#BD93F9"
+
+# ── Gruvbox Dark ──────────────────────────────────────────────────────────────
+# normfgcolor     = "#EBDBB2"
+# normbgcolor     = "#3C3836"
+# normbordercolor = "#282828"
+# selfgcolor      = "#FBF1C7"
+# selbgcolor      = "#504945"
+# selbordercolor  = "#D79921"
+
+# ── Catppuccin Mocha ──────────────────────────────────────────────────────────
+# normfgcolor     = "#CDD6F4"
+# normbgcolor     = "#1E1E2E"
+# normbordercolor = "#313244"
+# selfgcolor      = "#CDD6F4"
+# selbgcolor      = "#313244"
+# selbordercolor  = "#CBA6F7"
+
+# ── Tokyo Night ───────────────────────────────────────────────────────────────
+# normfgcolor     = "#A9B1D6"
+# normbgcolor     = "#1A1B26"
+# normbordercolor = "#24283B"
+# selfgcolor      = "#C0CAF5"
+# selbgcolor      = "#24283B"
+# selbordercolor  = "#7AA2F7"
+
+# ── One Dark ──────────────────────────────────────────────────────────────────
+# normfgcolor     = "#ABB2BF"
+# normbgcolor     = "#282C34"
+# normbordercolor = "#3E4451"
+# selfgcolor      = "#ECEFF4"
+# selbgcolor      = "#3E4451"
+# selbordercolor  = "#61AFEF"
+
+# ── Solarized Dark ────────────────────────────────────────────────────────────
+# normfgcolor     = "#839496"
+# normbgcolor     = "#073642"
+# normbordercolor = "#002B36"
+# selfgcolor      = "#FDF6E3"
+# selbgcolor      = "#073642"
+# selbordercolor  = "#2AA198"
+
+# ── Rose Pine ─────────────────────────────────────────────────────────────────
+# normfgcolor     = "#E0DEF4"
+# normbgcolor     = "#191724"
+# normbordercolor = "#26233A"
+# selfgcolor      = "#E0DEF4"
+# selbgcolor      = "#26233A"
+# selbordercolor  = "#C4A7E7"
+
+# ── Everforest Dark ───────────────────────────────────────────────────────────
+# normfgcolor     = "#D3C6AA"
+# normbgcolor     = "#3D4841"
+# normbordercolor = "#2D353B"
+# selfgcolor      = "#D3C6AA"
+# selbgcolor      = "#3D4841"
+# selbordercolor  = "#A7C080"
+
+# ── Monochrome ────────────────────────────────────────────────────────────────
+# normfgcolor     = "#AAAAAA"
+# normbgcolor     = "#222222"
+# normbordercolor = "#333333"
+# selfgcolor      = "#FFFFFF"
+# selbgcolor      = "#333333"
+# selbordercolor  = "#FFFFFF"

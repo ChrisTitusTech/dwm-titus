@@ -20,6 +20,7 @@
  *
  * To understand everything else, start reading main().
  */
+#include <ctype.h>
 #include <errno.h>
 #include <locale.h>
 #include <signal.h>
@@ -34,6 +35,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/inotify.h>
+#include <sys/select.h>
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
 #include <X11/XF86keysym.h>
@@ -54,6 +57,7 @@
 
 #include "drw.h"
 #include "util.h"
+#include "tomlparser.h"
 
 /* macros */
 #define BUTTONMASK              (ButtonPressMask|ButtonReleaseMask)
@@ -294,6 +298,12 @@ static int xerror(Display *dpy, XErrorEvent *ee);
 static int xerrordummy(Display *dpy, XErrorEvent *ee);
 static int xerrorstart(Display *dpy, XErrorEvent *ee);
 static void zoom(const Arg *arg);
+/* hot-reload */
+static void load_hotkeys_toml(const char *path);
+static void load_themes_toml(const char *path);
+static void reload_config(void);
+static void setup_inotify(void);
+static void *toml_alloc(size_t sz);
 
 /* variables */
 static const char autostartsh[] = "scripts/autostart.sh";
@@ -342,6 +352,26 @@ static const char *alttrayname = "tray";
 
 /* configuration, allows nested code to access above variables */
 #include "config.h"
+
+/* ── Hot-reload runtime state ─────────────────────────────── */
+/* Runtime keybindings loaded from hotkeys.toml (NULL = use config.h keys[]) */
+static Key          *rt_keys  = NULL;
+static int           rt_nkeys = 0;
+/* Runtime border pixel width (initialized from config.h borderpx) */
+static unsigned int  dyn_borderpx;
+/* inotify */
+static int           inotify_fd = -1;
+static int           inotify_wd = -1;
+static char          toml_config_dir[PATH_MAX];
+static char          toml_hotkeys_path[PATH_MAX];
+static char          toml_themes_path[PATH_MAX];
+/* Pending reload flag set by SIGUSR1 */
+static volatile sig_atomic_t sig_reload_pending = 0;
+/* Arena allocator for TOML-loaded spawn argv data */
+#define TOML_ARENA_CAP 65536u
+static char   toml_arena_buf[TOML_ARENA_CAP];
+static size_t toml_arena_pos = 0;
+/* ─────────────────────────────────────────────────────────── */
 
 #if SHOWWINICON
 static void freeicon(Client *c);
@@ -1383,13 +1413,15 @@ grabkeys(void)
 		syms = XGetKeyboardMapping(dpy, start, end - start + 1, &skip);
 		if (!syms)
 			return;
+		const Key  *akeys  = rt_keys  ? rt_keys  : keys;
+		unsigned int nkeys_active = rt_keys ? (unsigned int)rt_nkeys : LENGTH(keys);
 		for (k = start; k <= end; k++)
-			for (i = 0; i < LENGTH(keys); i++)
+			for (i = 0; i < nkeys_active; i++)
 				/* skip modifier codes, we do that ourselves */
-				if (keys[i].keysym == syms[(k - start) * skip])
+				if (akeys[i].keysym == syms[(k - start) * skip])
 					for (j = 0; j < LENGTH(modifiers); j++)
 						XGrabKey(dpy, k,
-							 keys[i].mod | modifiers[j],
+							 akeys[i].mod | modifiers[j],
 							 root, True,
 							 GrabModeAsync, GrabModeAsync);
 		XFree(syms);
@@ -1434,11 +1466,13 @@ keypress(XEvent *e)
 
 	ev = &e->xkey;
 	keysym = XGetKeyboardMapping(dpy, (KeyCode)ev->keycode, 1, &keysyms_return);
-	for (i = 0; i < LENGTH(keys); i++)
-		if (*keysym == keys[i].keysym
-				&& CLEANMASK(keys[i].mod) == CLEANMASK(ev->state)
-				&& keys[i].func)
-			keys[i].func(&(keys[i].arg));
+	const Key  *akeys  = rt_keys  ? rt_keys  : keys;
+	unsigned int nkeys_active = rt_keys ? (unsigned int)rt_nkeys : LENGTH(keys);
+	for (i = 0; i < nkeys_active; i++)
+		if (*keysym == akeys[i].keysym
+				&& CLEANMASK(akeys[i].mod) == CLEANMASK(ev->state)
+				&& akeys[i].func)
+			akeys[i].func(&(akeys[i].arg));
 	XFree(keysym);
 }
 
@@ -1496,7 +1530,7 @@ manage(Window w, XWindowAttributes *wa)
 		c->y = c->mon->wy + c->mon->wh - HEIGHT(c);
 	c->x = MAX(c->x, c->mon->mx);
 	c->y = MAX(c->y, c->mon->wy);
-	c->bw = borderpx;
+	c->bw = dyn_borderpx;
 
 	wc.border_width = c->bw;
 	XConfigureWindow(dpy, w, CWBorderWidth, &wc);
@@ -2116,11 +2150,57 @@ void
 run(void)
 {
 	XEvent ev;
-	/* main event loop */
+	int x11_fd = ConnectionNumber(dpy);
+	fd_set rfds;
+
 	XSync(dpy, False);
-	while (running && !XNextEvent(dpy, &ev))
-		if (handler[ev.type])
-			handler[ev.type](&ev); /* call handler */
+	while (running) {
+		/* Drain all pending X events */
+		while (XPending(dpy)) {
+			XNextEvent(dpy, &ev);
+			if (handler[ev.type])
+				handler[ev.type](&ev);
+		}
+		if (!running) break;
+
+		/* Handle SIGUSR1-triggered reload */
+		if (sig_reload_pending) {
+			sig_reload_pending = 0;
+			reload_config();
+		}
+
+		FD_ZERO(&rfds);
+		FD_SET(x11_fd, &rfds);
+		int maxfd = x11_fd;
+		if (inotify_fd >= 0) {
+			FD_SET(inotify_fd, &rfds);
+			if (inotify_fd > maxfd) maxfd = inotify_fd;
+		}
+
+		if (select(maxfd + 1, &rfds, NULL, NULL, NULL) < 0) {
+			if (errno == EINTR) continue; /* interrupted by signal */
+			break;
+		}
+
+		/* Handle inotify file-change events */
+		if (inotify_fd >= 0 && FD_ISSET(inotify_fd, &rfds)) {
+			char ibuf[4096];
+			ssize_t nr = read(inotify_fd, ibuf, sizeof(ibuf));
+			if (nr > 0) {
+				int need_reload = 0;
+				char *ptr = ibuf;
+				while (ptr < ibuf + nr) {
+					struct inotify_event *ie = (struct inotify_event *)ptr;
+					if (ie->len > 0 &&
+					    (strcmp(ie->name, "hotkeys.toml") == 0 ||
+					     strcmp(ie->name, "themes.toml")  == 0))
+						need_reload = 1;
+					ptr += sizeof(struct inotify_event) + ie->len;
+				}
+				if (need_reload) reload_config();
+			}
+		}
+	}
 }
 
 void
@@ -2184,8 +2264,15 @@ runautostart(void)
 		free(pathpfx);
 	}
 
-	if (access(path, X_OK) == 0)
-		system(path);
+	if (access(path, X_OK) == 0) {
+		pid_t pid = fork();
+		if (pid == 0) {
+			setsid();
+			execl(path, path, (char *)NULL);
+			_exit(127);
+		}
+		/* parent returns immediately — dwm is not blocked by autostart */
+	}
 
 	free(pathpfx);
 	free(path);
@@ -2509,6 +2596,385 @@ setmfact(const Arg *arg)
 	arrange(selmon);
 }
 
+/* ── Hot-reload implementation ────────────────────────────────────────────── */
+
+static void
+sigusr1_handler(int sig)
+{
+	(void)sig;
+	sig_reload_pending = 1;
+}
+
+static void *
+toml_alloc(size_t sz)
+{
+	sz = (sz + 7u) & ~7u;
+	if (toml_arena_pos + sz > TOML_ARENA_CAP)
+		return NULL;
+	void *p = toml_arena_buf + toml_arena_pos;
+	toml_arena_pos += sz;
+	return p;
+}
+
+static unsigned int
+parse_single_mod(const char *s)
+{
+	if (strcmp(s, "MODKEY")      == 0 || strcmp(s, "SUPER")   == 0) return MODKEY;
+	if (strcmp(s, "ShiftMask")   == 0 || strcmp(s, "SHIFT")   == 0) return ShiftMask;
+	if (strcmp(s, "ControlMask") == 0 || strcmp(s, "CTRL")    == 0) return ControlMask;
+	if (strcmp(s, "Mod1Mask")    == 0 || strcmp(s, "ALT")     == 0) return Mod1Mask;
+	if (strcmp(s, "Mod2Mask")    == 0) return Mod2Mask;
+	if (strcmp(s, "Mod3Mask")    == 0) return Mod3Mask;
+	if (strcmp(s, "Mod4Mask")    == 0) return Mod4Mask;
+	if (strcmp(s, "Mod5Mask")    == 0) return Mod5Mask;
+	return 0;
+}
+
+static unsigned int
+parse_mod_mask(const TomlValue *v)
+{
+	if (!v) return 0;
+	/* Compact format: "SUPER SHIFT CTRL" space-separated string */
+	if (v->type == TOML_STRING) {
+		unsigned int mask = 0;
+		const char *p = v->s;
+		char tok[32];
+		while (*p) {
+			while (isspace((unsigned char)*p)) p++;
+			if (!*p) break;
+			int ti = 0;
+			while (*p && !isspace((unsigned char)*p) && ti < 31)
+				tok[ti++] = *p++;
+			tok[ti] = '\0';
+			mask |= parse_single_mod(tok);
+		}
+		return mask;
+	}
+	/* Legacy array format: ["MODKEY", "ShiftMask"] */
+	if (v->type == TOML_ARRAY) {
+		unsigned int mask = 0;
+		int i;
+		for (i = 0; i < v->a.len; i++)
+			mask |= parse_single_mod(v->a.items[i]);
+		return mask;
+	}
+	return 0;
+}
+
+static void (*lookup_func(const char *name))(const Arg *)
+{
+	if (strcmp(name, "spawn")                == 0) return spawn;
+	if (strcmp(name, "killclient")           == 0) return killclient;
+	if (strcmp(name, "quit")                 == 0) return quit;
+	if (strcmp(name, "focusstack")           == 0) return focusstack;
+	if (strcmp(name, "movestack")            == 0) return movestack;
+	if (strcmp(name, "incnmaster")           == 0) return incnmaster;
+	if (strcmp(name, "setmfact")             == 0) return setmfact;
+	if (strcmp(name, "setcfact")             == 0) return setcfact;
+	if (strcmp(name, "zoom")                 == 0) return zoom;
+	if (strcmp(name, "view")                 == 0) return view;
+	if (strcmp(name, "toggleview")           == 0) return toggleview;
+	if (strcmp(name, "tag")                  == 0) return tag;
+	if (strcmp(name, "toggletag")            == 0) return toggletag;
+	if (strcmp(name, "togglebar")            == 0) return togglebar;
+	if (strcmp(name, "togglefloating")       == 0) return togglefloating;
+	if (strcmp(name, "fullscreen")           == 0) return fullscreen;
+	if (strcmp(name, "togglefakefullscreen") == 0) return togglefakefullscreen;
+	if (strcmp(name, "setlayout")            == 0) return setlayout;
+	if (strcmp(name, "focusmon")             == 0) return focusmon;
+	if (strcmp(name, "tagmon")               == 0) return tagmon;
+	return NULL;
+}
+
+/* Expand $varname from [vars] section into dst. */
+static void
+expand_var_to(const char *src, const TomlDoc *doc, char *dst, size_t dstsz)
+{
+	if (!strchr(src, '$')) {
+		strncpy(dst, src, dstsz - 1);
+		dst[dstsz - 1] = '\0';
+		return;
+	}
+	const char *p = src;
+	size_t di = 0;
+	while (*p && di < dstsz - 1) {
+		if (*p == '$') {
+			const char *ns = p + 1;
+			const char *ne = ns;
+			while (isalnum((unsigned char)*ne) || *ne == '_') ne++;
+			int nlen = (int)(ne - ns);
+			if (nlen > 0 && nlen < TOML_MAX_STR) {
+				char vname[TOML_MAX_STR];
+				strncpy(vname, ns, (size_t)nlen);
+				vname[nlen] = '\0';
+				const TomlValue *tv = toml_get(doc, "vars", vname);
+				if (tv && tv->type == TOML_STRING) {
+					size_t vl = strlen(tv->s);
+					if (di + vl < dstsz - 1) {
+						memcpy(dst + di, tv->s, vl);
+						di += vl;
+					}
+					p = ne;
+					continue;
+				}
+			}
+		}
+		dst[di++] = *p++;
+	}
+	dst[di] = '\0';
+}
+
+static Arg
+build_spawn_arg(const TomlDoc *doc, const char *section, int tidx)
+{
+	Arg arg = {0};
+	const TomlValue *vexec = toml_table_get(doc, section, tidx, "exec");
+	const TomlValue *vcmd  = toml_table_get(doc, section, tidx, "cmd");
+	if (vexec && vexec->type == TOML_ARRAY && vexec->a.len > 0) {
+		int argc = vexec->a.len;
+		const char **argv = toml_alloc((argc + 1) * sizeof(char *));
+		if (!argv) return arg;
+		for (int j = 0; j < argc; j++) {
+			char expanded[TOML_MAX_STR];
+			expand_var_to(vexec->a.items[j], doc, expanded, TOML_MAX_STR);
+			size_t slen = strlen(expanded) + 1;
+			char *s = toml_alloc(slen);
+			if (!s) return arg;
+			memcpy(s, expanded, slen);
+			argv[j] = s;
+		}
+		argv[argc] = NULL;
+		arg.v = argv;
+	} else if (vcmd && vcmd->type == TOML_STRING) {
+		const char **argv = toml_alloc(4 * sizeof(char *));
+		if (!argv) return arg;
+		char expanded[TOML_MAX_STR];
+		expand_var_to(vcmd->s, doc, expanded, TOML_MAX_STR);
+		size_t slen = strlen(expanded) + 1;
+		char *cmd = toml_alloc(slen);
+		if (!cmd) return arg;
+		memcpy(cmd, expanded, slen);
+		argv[0] = "/bin/sh";
+		argv[1] = "-c";
+		argv[2] = cmd;
+		argv[3] = NULL;
+		arg.v = argv;
+	}
+	return arg;
+}
+
+static Arg
+build_arg(const char *func_name, const TomlDoc *doc,
+          const char *section, int tidx)
+{
+	Arg arg = {0};
+	const TomlValue *v;
+	if (strcmp(func_name, "spawn") == 0)
+		return build_spawn_arg(doc, section, tidx);
+	if (strcmp(func_name, "setlayout") == 0) {
+		v = toml_table_get(doc, section, tidx, "layout_idx");
+		int idx = (v && v->type == TOML_INT) ? (int)v->i : 0;
+		if (idx < 0 || idx >= (int)LENGTH(layouts)) idx = 0;
+		arg.v = &layouts[idx];
+		return arg;
+	}
+	v = toml_table_get(doc, section, tidx, "i");
+	if (v) {
+		if (v->type == TOML_INT)   { arg.i = (int)v->i;   return arg; }
+		if (v->type == TOML_FLOAT) { arg.i = (int)v->d;   return arg; }
+	}
+	v = toml_table_get(doc, section, tidx, "ui");
+	if (v && v->type == TOML_INT) { arg.ui = (unsigned int)v->i; return arg; }
+	v = toml_table_get(doc, section, tidx, "f");
+	if (v) {
+		if (v->type == TOML_FLOAT) { arg.f = (float)v->d; return arg; }
+		if (v->type == TOML_INT)   { arg.f = (float)v->i; return arg; }
+	}
+	return arg;
+}
+
+static void
+load_hotkeys_toml(const char *path)
+{
+	TomlDoc doc;
+	if (!toml_parse(path, &doc)) {
+		fprintf(stderr, "dwm: cannot parse %s\n", path);
+		return;
+	}
+	int nregular = toml_table_count(&doc, "keys");
+	int ntag     = toml_table_count(&doc, "tag_keys");
+	int total    = nregular + ntag * 4;
+	if (total <= 0) return;
+
+	/* Reset arena – single-threaded, no race with keypress */
+	toml_arena_pos = 0;
+	Key *newkeys = toml_alloc((size_t)total * sizeof(Key));
+	if (!newkeys) {
+		fprintf(stderr, "dwm: TOML arena overflow\n");
+		return;
+	}
+	int nk = 0;
+
+	/* Regular [[keys]] entries */
+	for (int i = 0; i < nregular; i++) {
+		const TomlValue *vkey  = toml_table_get(&doc, "keys", i, "key");
+		const TomlValue *vmod  = toml_table_get(&doc, "keys", i, "mod");
+		const TomlValue *vfunc = toml_table_get(&doc, "keys", i, "func");
+		if (!vkey || vkey->type != TOML_STRING) continue;
+		if (!vfunc || vfunc->type != TOML_STRING) continue;
+		KeySym ks = XStringToKeysym(vkey->s);
+		if (ks == NoSymbol) {
+			fprintf(stderr, "dwm: unknown keysym '%s'\n", vkey->s);
+			continue;
+		}
+		void (*fn)(const Arg *) = lookup_func(vfunc->s);
+		if (!fn) {
+			fprintf(stderr, "dwm: unknown func '%s'\n", vfunc->s);
+			continue;
+		}
+		if (nk >= total) break;
+		Arg tmp_arg = build_arg(vfunc->s, &doc, "keys", i);
+		newkeys[nk].mod    = parse_mod_mask(vmod);
+		newkeys[nk].keysym = ks;
+		newkeys[nk].func   = fn;
+		memcpy((void *)&newkeys[nk].arg, &tmp_arg, sizeof(Arg));
+		nk++;
+	}
+
+	/* [[tag_keys]] expands to 4 bindings each */
+	static const char *tag_funcs[4] = {
+		"view", "toggleview", "tag", "toggletag"
+	};
+	static const unsigned int tag_mod_extra[4] = {
+		0, ControlMask, ShiftMask, ControlMask|ShiftMask
+	};
+	for (int i = 0; i < ntag; i++) {
+		const TomlValue *vkey = toml_table_get(&doc, "tag_keys", i, "key");
+		const TomlValue *vtag = toml_table_get(&doc, "tag_keys", i, "tag");
+		if (!vkey || vkey->type != TOML_STRING) continue;
+		if (!vtag || vtag->type != TOML_INT) continue;
+		KeySym ks = XStringToKeysym(vkey->s);
+		if (ks == NoSymbol) continue;
+		unsigned int tag_bit = (unsigned int)(1 << vtag->i);
+		for (int j = 0; j < 4 && nk < total; j++) {
+			Arg tmp_arg;
+			tmp_arg.ui = tag_bit;
+			newkeys[nk].mod    = MODKEY | tag_mod_extra[j];
+			newkeys[nk].keysym = ks;
+			newkeys[nk].func   = lookup_func(tag_funcs[j]);
+			memcpy((void *)&newkeys[nk].arg, &tmp_arg, sizeof(Arg));
+			nk++;
+		}
+	}
+
+	rt_keys  = newkeys;
+	rt_nkeys = nk;
+	fprintf(stderr, "dwm: loaded %d keybinds from %s\n", nk, path);
+}
+
+static void
+load_themes_toml(const char *path)
+{
+	TomlDoc doc;
+	if (!toml_parse(path, &doc)) {
+		fprintf(stderr, "dwm: cannot parse %s\n", path);
+		return;
+	}
+
+	/* Build color table, defaulting to config.h values */
+	static char c_normborder[8], c_normbg[8], c_normfg[8];
+	static char c_selborder[8],  c_selbg[8],  c_selfg[8];
+	strncpy(c_normborder, normbordercolor, 7); c_normborder[7] = '\0';
+	strncpy(c_normbg,     normbgcolor,     7); c_normbg[7]     = '\0';
+	strncpy(c_normfg,     normfgcolor,     7); c_normfg[7]     = '\0';
+	strncpy(c_selborder,  selbordercolor,  7); c_selborder[7]  = '\0';
+	strncpy(c_selbg,      selbgcolor,      7); c_selbg[7]      = '\0';
+	strncpy(c_selfg,      selfgcolor,      7); c_selfg[7]      = '\0';
+
+#define TRY_COLOR(field, dest) do { \
+	const TomlValue *_v = toml_get(&doc, "colors", field); \
+	if (_v && _v->type == TOML_STRING && strlen(_v->s) >= 4) { \
+		strncpy(dest, _v->s, 7); dest[7] = '\0'; \
+	} } while (0)
+
+	TRY_COLOR("normbordercolor", c_normborder);
+	TRY_COLOR("normbgcolor",     c_normbg);
+	TRY_COLOR("normfgcolor",     c_normfg);
+	TRY_COLOR("selbordercolor",  c_selborder);
+	TRY_COLOR("selbgcolor",      c_selbg);
+	TRY_COLOR("selfgcolor",      c_selfg);
+#undef TRY_COLOR
+
+	/* Rebuild color schemes */
+	if (scheme && drw) {
+		const char *new_clrs[2][3] = {
+			{ c_normfg, c_normbg, c_normborder },
+			{ c_selfg,  c_selbg,  c_selborder  }
+		};
+		int i;
+		for (i = 0; i < LENGTH(colors); i++) {
+			free(scheme[i]);
+			scheme[i] = drw_scm_create(drw, new_clrs[i], 3);
+		}
+	}
+
+	/* Update borderpx if specified */
+	const TomlValue *vbpx = toml_get(&doc, "appearance", "borderpx");
+	if (vbpx && vbpx->type == TOML_INT && vbpx->i >= 0) {
+		unsigned int newbpx = (unsigned int)vbpx->i;
+		if (newbpx != dyn_borderpx) {
+			dyn_borderpx = newbpx;
+			if (mons) {
+				Monitor *m;
+				Client  *c;
+				for (m = mons; m; m = m->next)
+					for (c = m->clients; c; c = c->next) {
+						c->bw = dyn_borderpx;
+						XSetWindowBorderWidth(dpy, c->win, c->bw);
+					}
+			}
+		}
+	}
+
+	if (mons) {
+		drawbars();
+		arrange(mons);
+	}
+	fprintf(stderr, "dwm: loaded theme from %s\n", path);
+}
+
+static void
+reload_config(void)
+{
+	if (toml_hotkeys_path[0]) load_hotkeys_toml(toml_hotkeys_path);
+	if (toml_themes_path[0])  load_themes_toml(toml_themes_path);
+	if (dpy) grabkeys();
+}
+
+static void
+setup_inotify(void)
+{
+	const char *home = getenv("HOME");
+	if (!home) return;
+	snprintf(toml_config_dir,   sizeof(toml_config_dir),
+	         "%s/.config/dwm-titus", home);
+	snprintf(toml_hotkeys_path, sizeof(toml_hotkeys_path),
+	         "%s/hotkeys.toml", toml_config_dir);
+	snprintf(toml_themes_path,  sizeof(toml_themes_path),
+	         "%s/themes.toml",  toml_config_dir);
+
+	inotify_fd = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
+	if (inotify_fd < 0) { perror("dwm: inotify_init1"); return; }
+
+	inotify_wd = inotify_add_watch(inotify_fd, toml_config_dir,
+	                               IN_CLOSE_WRITE | IN_MOVED_TO);
+	if (inotify_wd < 0) {
+		/* Config dir not present – inotify disabled until restart */
+		close(inotify_fd);
+		inotify_fd = -1;
+	}
+}
+
 void
 setup(void)
 {
@@ -2517,6 +2983,7 @@ setup(void)
 	Atom utf8string;
 	/* clean up any zombies immediately */
 	sigchld(0);
+	dyn_borderpx = borderpx; /* initialize from config.h (overridden by themes.toml) */
 
 	/* the one line of bloat that would have saved a lot of time for a lot of people */
 	putenv("_JAVA_AWT_WM_NONREPARENTING=1");
@@ -2595,6 +3062,10 @@ setup(void)
 		|LeaveWindowMask|StructureNotifyMask|PropertyChangeMask;
 	XChangeWindowAttributes(dpy, root, CWEventMask|CWCursor, &wa);
 	XSelectInput(dpy, root, wa.event_mask);
+	/* Install SIGUSR1 handler and load TOML configs before grabbing keys */
+	signal(SIGUSR1, sigusr1_handler);
+	setup_inotify();
+	reload_config();
 	grabkeys();
 	focus(NULL);
 	spawnbar();
