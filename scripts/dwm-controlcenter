@@ -322,11 +322,13 @@ run_appearance() {
             ;;
         *"Open Wallpaper Folder"*)
             xdg-open "$BG_DIR" 2>/dev/null &
+            disown
             ;;
         *"Edit Polybar Config"*)
             local cfg="$POLYBAR_DIR/themes/minimal/config.ini"
             if [ -f "$cfg" ]; then
                 xdg-open "$cfg" 2>/dev/null &
+                disown
             else
                 notify "Polybar config not found" --urgency=critical
             fi
@@ -334,13 +336,14 @@ run_appearance() {
         *"Edit Rofi Config"*)
             if [ -f "$ROFI_DIR/config.rasi" ]; then
                 xdg-open "$ROFI_DIR/config.rasi" 2>/dev/null &
+                disown
             else
                 notify "Rofi config not found" --urgency=critical
             fi
             ;;
         *"GTK Theme Settings"*)
             if command -v nwg-look &>/dev/null; then
-                nwg-look &
+                setsid nwg-look </dev/null >/dev/null 2>&1 &
             else
                 notify "nwg-look is not installed" --urgency=critical
             fi
