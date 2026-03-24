@@ -41,6 +41,15 @@ install_packages rofi picom dunst feh flameshot dex mate-polkit alsa-utils git u
     xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring networkmanager network-manager-applet
 ok "Runtime dependencies installed."
 
+# ── Qt / GTK theming ─────────────────────────────────────
+info "Installing Qt/GTK dark-mode dependencies..."
+# dconf: required for gsettings to persist GTK color-scheme changes
+# qt6ct / qt5ct: QT_QPA_PLATFORMTHEME backend for Qt dark mode in standalone WMs
+install_packages dconf
+install_packages qt6ct 2>/dev/null || install_packages qt5ct 2>/dev/null \
+    || warn "Neither qt6ct nor qt5ct found in repos — Qt apps may not respect dark mode."
+ok "Qt/GTK theming dependencies installed."
+
 # ── Fonts ────────────────────────────────────────────────
 info "Installing fonts..."
 install_packages noto-fonts-emoji ttf-meslo-nerd

@@ -11,8 +11,9 @@
 # 2. Save the file — DWM, terminal, rofi, and polybar all update instantly!
 #
 # Available themes:
-#   nord · dracula · gruvbox · catppuccin · tokyonight · onedark
-#   solarized · rosepine · everforest · monochrome
+#   DARK:  nord · dracula · gruvbox · catppuccin · tokyonight · onedark
+#          solarized · rosepine · everforest · monochrome
+#   LIGHT: catppuccin-latte · gruvbox-light · solarized-light · rosepine-dawn · tokyonight-day
 #
 # BORDER SIZE
 # ───────────
@@ -49,6 +50,7 @@ borderpx = 1   # border size in pixels (0 = none, 1-3 = recommended)
 #
 #   Ghostty: ghostty_theme = "BuiltInThemeName"  (or "custom" to use term_* above)
 #   Rofi:    rofi_theme    = "filename"           (without .rasi, from rofi/themes/)
+#   Dark mode: dark_mode = true                   (true = dark, false = light; default: true)
 #   Polybar: polybar_bg / polybar_fg / polybar_bg_alt / polybar_fg_alt / polybar_accent / polybar_urgent
 
 
@@ -83,6 +85,7 @@ term_color15    = "#ECEFF4"
 
 ghostty_theme   = "Nord"
 rofi_theme      = "sidetab-nord"
+dark_mode       = true
 
 polybar_bg      = "#2e3440"
 polybar_fg      = "#d8dee9"
@@ -123,6 +126,7 @@ term_color15    = "#FFFFFF"
 
 ghostty_theme   = "Dracula"
 rofi_theme      = "sidetab-dracula"
+dark_mode       = true
 
 polybar_bg      = "#282A36"
 polybar_fg      = "#F8F8F2"
@@ -163,6 +167,7 @@ term_color15    = "#EBDBB2"
 
 ghostty_theme   = "Gruvbox Dark"
 rofi_theme      = "sidetab-gruvbox"
+dark_mode       = true
 
 polybar_bg      = "#282828"
 polybar_fg      = "#EBDBB2"
@@ -203,6 +208,7 @@ term_color15    = "#A6ADC8"
 
 ghostty_theme   = "Catppuccin Mocha"
 rofi_theme      = "sidetab-catppuccin"
+dark_mode       = true
 
 polybar_bg      = "#1E1E2E"
 polybar_fg      = "#CDD6F4"
@@ -243,6 +249,7 @@ term_color15    = "#C0CAF5"
 
 ghostty_theme   = "TokyoNight"
 rofi_theme      = "sidetab-tokyonight"
+dark_mode       = true
 
 polybar_bg      = "#1A1B26"
 polybar_fg      = "#C0CAF5"
@@ -283,6 +290,7 @@ term_color15    = "#FFFFFF"
 
 ghostty_theme   = "One Dark"
 rofi_theme      = "sidetab-onedark"
+dark_mode       = true
 
 polybar_bg      = "#282C34"
 polybar_fg      = "#ABB2BF"
@@ -323,6 +331,7 @@ term_color15    = "#FDF6E3"
 
 ghostty_theme   = "Solarized Dark Patched"
 rofi_theme      = "sidetab-solarized"
+dark_mode       = true
 
 polybar_bg      = "#002B36"
 polybar_fg      = "#839496"
@@ -363,6 +372,7 @@ term_color15    = "#E0DEF4"
 
 ghostty_theme   = "Rose Pine"
 rofi_theme      = "sidetab-rosepine"
+dark_mode       = true
 
 polybar_bg      = "#191724"
 polybar_fg      = "#E0DEF4"
@@ -403,6 +413,7 @@ term_color15    = "#D3C6AA"
 
 ghostty_theme   = "Everforest Dark"
 rofi_theme      = "sidetab-everforest"
+dark_mode       = true
 
 polybar_bg      = "#2D353B"
 polybar_fg      = "#D3C6AA"
@@ -443,6 +454,7 @@ term_color15    = "#FFFFFF"
 
 ghostty_theme   = "Monochrome"
 rofi_theme      = "sidetab-monochrome"
+dark_mode       = true
 
 polybar_bg      = "#1A1A1A"
 polybar_fg      = "#CCCCCC"
@@ -450,3 +462,212 @@ polybar_bg_alt  = "#333333"
 polybar_fg_alt  = "#777777"
 polybar_accent  = "#FFFFFF"
 polybar_urgent  = "#CC3333"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LIGHT THEMES
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Catppuccin Latte ─────────────────────────────────────────────────────────
+[theme.catppuccin-latte]
+normfgcolor     = "#4C4F69"
+normbgcolor     = "#BCC0CC"
+normbordercolor = "#ACB0BE"
+selfgcolor      = "#4C4F69"
+selbgcolor      = "#ACB0BE"
+selbordercolor  = "#7287FD"
+
+term_bg         = "#EFF1F5"
+term_fg         = "#4C4F69"
+term_cursor     = "#DC8A78"
+term_color0     = "#5C5F77"
+term_color1     = "#D20F39"
+term_color2     = "#40A02B"
+term_color3     = "#DF8E1D"
+term_color4     = "#1E66F5"
+term_color5     = "#EA76CB"
+term_color6     = "#179299"
+term_color7     = "#ACB0BE"
+term_color8     = "#6C6F85"
+term_color9     = "#D20F39"
+term_color10    = "#40A02B"
+term_color11    = "#DF8E1D"
+term_color12    = "#1E66F5"
+term_color13    = "#EA76CB"
+term_color14    = "#179299"
+term_color15    = "#BCC0CC"
+
+ghostty_theme   = "Catppuccin Latte"
+rofi_theme      = "sidetab-catppuccin"
+dark_mode       = false
+
+polybar_bg      = "#EFF1F5"
+polybar_fg      = "#4C4F69"
+polybar_bg_alt  = "#E6E9EF"
+polybar_fg_alt  = "#8C8FA1"
+polybar_accent  = "#7287FD"
+polybar_urgent  = "#D20F39"
+
+
+# ── Gruvbox Light ────────────────────────────────────────────────────────────
+[theme.gruvbox-light]
+normfgcolor     = "#3C3836"
+normbgcolor     = "#D5C4A1"
+normbordercolor = "#BDAE93"
+selfgcolor      = "#282828"
+selbgcolor      = "#BDAE93"
+selbordercolor  = "#D79921"
+
+term_bg         = "#FBF1C7"
+term_fg         = "#3C3836"
+term_cursor     = "#D79921"
+term_color0     = "#FBF1C7"
+term_color1     = "#CC241D"
+term_color2     = "#98971A"
+term_color3     = "#D79921"
+term_color4     = "#458588"
+term_color5     = "#B16286"
+term_color6     = "#689D6A"
+term_color7     = "#7C6F64"
+term_color8     = "#928374"
+term_color9     = "#9D0006"
+term_color10    = "#79740E"
+term_color11    = "#B57614"
+term_color12    = "#076678"
+term_color13    = "#8F3F71"
+term_color14    = "#427B58"
+term_color15    = "#3C3836"
+
+ghostty_theme   = "Gruvbox Light"
+rofi_theme      = "sidetab-gruvbox"
+dark_mode       = false
+
+polybar_bg      = "#FBF1C7"
+polybar_fg      = "#3C3836"
+polybar_bg_alt  = "#EBDBB2"
+polybar_fg_alt  = "#928374"
+polybar_accent  = "#D79921"
+polybar_urgent  = "#CC241D"
+
+
+# ── Solarized Light ──────────────────────────────────────────────────────────
+[theme.solarized-light]
+normfgcolor     = "#657B83"
+normbgcolor     = "#EEE8D5"
+normbordercolor = "#DDD6C1"
+selfgcolor      = "#002B36"
+selbgcolor      = "#DDD6C1"
+selbordercolor  = "#268BD2"
+
+term_bg         = "#FDF6E3"
+term_fg         = "#657B83"
+term_cursor     = "#268BD2"
+term_color0     = "#073642"
+term_color1     = "#DC322F"
+term_color2     = "#859900"
+term_color3     = "#B58900"
+term_color4     = "#268BD2"
+term_color5     = "#D33682"
+term_color6     = "#2AA198"
+term_color7     = "#EEE8D5"
+term_color8     = "#002B36"
+term_color9     = "#CB4B16"
+term_color10    = "#586E75"
+term_color11    = "#657B83"
+term_color12    = "#839496"
+term_color13    = "#6C71C4"
+term_color14    = "#93A1A1"
+term_color15    = "#FDF6E3"
+
+ghostty_theme   = "iTerm2 Solarized Light"
+rofi_theme      = "sidetab-solarized"
+dark_mode       = false
+
+polybar_bg      = "#FDF6E3"
+polybar_fg      = "#657B83"
+polybar_bg_alt  = "#EEE8D5"
+polybar_fg_alt  = "#93A1A1"
+polybar_accent  = "#268BD2"
+polybar_urgent  = "#DC322F"
+
+
+# ── Rose Piné Dawn ───────────────────────────────────────────────────────────
+[theme.rosepine-dawn]
+normfgcolor     = "#575279"
+normbgcolor     = "#F2E9E1"
+normbordercolor = "#DFDAD9"
+selfgcolor      = "#575279"
+selbgcolor      = "#DFDAD9"
+selbordercolor  = "#B4637A"
+
+term_bg         = "#FAF4ED"
+term_fg         = "#575279"
+term_cursor     = "#CECACD"
+term_color0     = "#F2E9E1"
+term_color1     = "#B4637A"
+term_color2     = "#286983"
+term_color3     = "#EA9D34"
+term_color4     = "#56949F"
+term_color5     = "#907AA9"
+term_color6     = "#D7827E"
+term_color7     = "#575279"
+term_color8     = "#9893A5"
+term_color9     = "#B4637A"
+term_color10    = "#286983"
+term_color11    = "#EA9D34"
+term_color12    = "#56949F"
+term_color13    = "#907AA9"
+term_color14    = "#D7827E"
+term_color15    = "#575279"
+
+ghostty_theme   = "Rose Pine Dawn"
+rofi_theme      = "sidetab-rosepine"
+dark_mode       = false
+
+polybar_bg      = "#FAF4ED"
+polybar_fg      = "#575279"
+polybar_bg_alt  = "#F2E9E1"
+polybar_fg_alt  = "#9893A5"
+polybar_accent  = "#907AA9"
+polybar_urgent  = "#B4637A"
+
+
+# ── Tokyo Night Day ──────────────────────────────────────────────────────────
+[theme.tokyonight-day]
+normfgcolor     = "#3760BF"
+normbgcolor     = "#E9E9EC"
+normbordercolor = "#D0D0D5"
+selfgcolor      = "#2E3354"
+selbgcolor      = "#D0D0D5"
+selbordercolor  = "#3760BF"
+
+term_bg         = "#E1E2E7"
+term_fg         = "#3760BF"
+term_cursor     = "#3760BF"
+term_color0     = "#E9E9EC"
+term_color1     = "#F52A65"
+term_color2     = "#587539"
+term_color3     = "#8C6C3E"
+term_color4     = "#2E7DE9"
+term_color5     = "#9854F1"
+term_color6     = "#007197"
+term_color7     = "#6172B0"
+term_color8     = "#A1A6C5"
+term_color9     = "#F52A65"
+term_color10    = "#587539"
+term_color11    = "#8C6C3E"
+term_color12    = "#2E7DE9"
+term_color13    = "#9854F1"
+term_color14    = "#007197"
+term_color15    = "#3760BF"
+
+ghostty_theme   = "TokyoNight Day"
+rofi_theme      = "sidetab-tokyonight"
+dark_mode       = false
+
+polybar_bg      = "#E1E2E7"
+polybar_fg      = "#3760BF"
+polybar_bg_alt  = "#E9E9EC"
+polybar_fg_alt  = "#7890DD"
+polybar_accent  = "#2E7DE9"
+polybar_urgent  = "#F52A65"
