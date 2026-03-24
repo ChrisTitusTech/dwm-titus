@@ -1,28 +1,32 @@
 #!/bin/bash
 
-# Display DWM keybindings from KEYBINDS.md in a rofi menu.
+# Display DWM keybindings from docs/src/keybinds.md in a rofi menu.
 
-KEYBINDS_PATH="${HOME}/.local/share/dwm-titus/KEYBINDS.md"
-[ -f "$KEYBINDS_PATH" ] || KEYBINDS_PATH="$(dirname "$(realpath "$0")")/../KEYBINDS.md"
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+KEYBINDS_PATH="${HOME}/.local/share/dwm-titus/docs/src/keybinds.md"
+[ -f "$KEYBINDS_PATH" ] || KEYBINDS_PATH="${SCRIPT_DIR}/../docs/src/keybinds.md"
 
-# Parse markdown tables: extract | `key` | description | rows
+# Parse markdown: emit section headers and | `key` | description | rows
 parse_bindings() {
     awk '
+    /^## / {
+        section = substr($0, 4)
+        gsub(/^[ \t]+|[ \t]+$/, "", section)
+        printf "  ── %s\n", section
+        next
+    }
     /^\| *`/ {
         line = $0
-        # Remove leading/trailing pipe and whitespace
         gsub(/^\|[ \t]*/, "", line)
         gsub(/[ \t]*\|$/, "", line)
-        # Split on " | "
         n = split(line, cols, /[ \t]*\|[ \t]*/)
         if (n >= 2) {
             key = cols[1]
             desc = cols[2]
             # Strip backticks
             gsub(/`/, "", key)
-            # Skip header separators
             if (key ~ /^[-]+$/) next
-            # Escape XML for rofi markup
+            # Escape XML for rofi pango markup
             gsub(/&/, "\\&amp;", key);  gsub(/&/, "\\&amp;", desc)
             gsub(/</, "\\&lt;",  key);  gsub(/</, "\\&lt;",  desc)
             gsub(/>/, "\\&gt;",  key);  gsub(/>/, "\\&gt;",  desc)
@@ -34,5 +38,5 @@ parse_bindings() {
 
 mapfile -t BINDINGS < <(parse_bindings)
 
-printf '%s\n' "${BINDINGS[@]}" | rofi -dmenu -i -markup-rows -p "DWM Keybindings:"
+printf '%s\n' "${BINDINGS[@]}" | rofi -dmenu -i -markup-rows -p "Keybinds:"
 

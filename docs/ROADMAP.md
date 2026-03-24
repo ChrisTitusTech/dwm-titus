@@ -3,14 +3,15 @@
 
 MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed dependancies, Keep it simple stupid! (KISS).
 
-## Where are we going
-
-- Making a Control Center for various tasks (Volume, Networking)
-
 ## Design Improvements
 
 - Adjust polybar
 - Mouse control for the peasants
+- Gaming Setup Checks (Lutris, Steam, Heroic, xpadneo, 32-bit, etc.)
+- Hotreload Window Rules
+- GUI for Hotkeys and Window Rules
+- Design Display resolution and scaling checks. (Either xrandr or hardcode xorg.conf.d files for common resolutions and scaling options)
+  - Save display profiles for different setups (home, work, gaming, etc.)
 
 ## To-Do IMPORTANT
 

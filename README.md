@@ -116,7 +116,7 @@ The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake
 
 Press <kbd>SUPER</kbd> + <kbd>/</kbd> inside dwm for an **interactive keybind viewer** (via rofi).
 
-See [KEYBINDS.md](KEYBINDS.md) for the full static reference.
+See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 
 ### Essential Keybinds
 
@@ -205,5 +205,5 @@ bash scripts/check-deps.sh
 | `polybar/` | Polybar config, themes, and fonts |
 | `config/` | Terminal, rofi, and app configurations |
 | `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |
-| `KEYBINDS.md` | Full keybinding reference |
-| `ROADMAP.md` | Project roadmap and planned features |
+| `docs/src/keybinds.md` | Full keybinding reference |
+| `docs/ROADMAP.md` | Project roadmap and planned features |
