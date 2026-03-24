@@ -9,7 +9,9 @@ MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed depend
 
 ## Design Improvements
 
-- Theming
+- Adjust polybar
+- Better Docs
+- Mouse control for the peasants
 
 ## To-Do IMPORTANT
 
