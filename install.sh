@@ -1,264 +1,165 @@
 #!/bin/bash
 set -e
 
-# ─────────────────────────────────────────────────────────
-# dwm-titus installer — Arch Linux
-# Installs build/runtime dependencies, compiles dwm,
-# installs configs, and sets up Xorg session entry.
-# ─────────────────────────────────────────────────────────
-
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-# Source shared utility library
-# shellcheck source=scripts/dwm-utils.sh
 source "$REPO_DIR/scripts/dwm-utils.sh"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' CYAN='\033[0;36m' NC='\033[0m'
+info() { printf "${CYAN}[INFO]${NC} %s\n" "$1"; }
+ok()   { printf "${GREEN}[OK]${NC} %s\n" "$1"; }
+warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
+err()  { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 
-info()  { printf "${CYAN}[INFO]${NC} %s\n" "$1"; }
-ok()    { printf "${GREEN}[OK]${NC} %s\n" "$1"; }
-warn()  { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
-err()   { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
+command -v pacman &>/dev/null || { err "This installer requires Arch Linux (pacman not found)."; exit 1; }
 
-# ── Arch Linux check ────────────────────────────────────
-if ! command -v pacman &>/dev/null; then
-    err "This installer requires Arch Linux (pacman not found)."
-    exit 1
-fi
-
-# ─────────────────────────────────────────────────────────
-# Main install flow
-# ─────────────────────────────────────────────────────────
+DWM_DATA_DIR="$HOME/.local/share/dwm-titus"
+BG_DIR="$HOME/Pictures/backgrounds"
 
 echo ""
 echo "╔═══════════════════════════════════════════╗"
 echo "║        dwm-titus Installer (Arch)         ║"
 echo "╚═══════════════════════════════════════════╝"
 echo ""
-
 info "Package manager: $PKG_CMD"
 
-# ── Step 1: Install build dependencies ──────────────────
+# ── Build dependencies ───────────────────────────────────
 info "Installing build dependencies..."
 install_packages base-devel libx11 libxft libxinerama imlib2 libxcb xcb-util freetype2 fontconfig
 
-# Install X server: skip xorg-server if any Xlibre package is present
-# (Xlibre input/server packages conflict with xorg-server at the ABI level)
 if pacman -Qq 2>/dev/null | grep -q '^xlibre'; then
-    info "Xlibre installation detected — skipping xorg-server installation."
-elif pacman -Qi xorg-server &>/dev/null 2>&1; then
-    info "xorg-server already installed — skipping."
-else
+    info "Xlibre detected — skipping xorg-server."
+elif ! pacman -Qi xorg-server &>/dev/null; then
     install_packages xorg-server
 fi
 install_packages xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
 ok "Build dependencies installed."
 
-# ── Step 2: Install runtime dependencies ────────────────
+# ── Runtime dependencies ─────────────────────────────────
 info "Installing runtime dependencies..."
 install_packages rofi picom dunst feh flameshot dex mate-polkit alsa-utils git unzip xclip \
     xorg-xprop thunar gvfs tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
     xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring networkmanager network-manager-applet
 ok "Runtime dependencies installed."
 
-# ── Step 3: Install fonts ───────────────────────────────
+# ── Fonts ────────────────────────────────────────────────
 info "Installing fonts..."
 install_packages noto-fonts-emoji ttf-meslo-nerd
-
-# Install bundled Polybar fonts (MaterialIcons, Feather)
 FONT_DIR="$HOME/.local/share/fonts"
 mkdir -p "$FONT_DIR"
-if [ -d "$REPO_DIR/polybar/fonts" ]; then
-    cp -r "$REPO_DIR/polybar/fonts/"* "$FONT_DIR/"
+if [ -d "$REPO_DIR/config/polybar/fonts" ]; then
+    cp -r "$REPO_DIR/config/polybar/fonts/"* "$FONT_DIR/"
     fc-cache -fv >/dev/null 2>&1
-    ok "Polybar icon fonts installed to $FONT_DIR"
 fi
 ok "Fonts installed."
 
-# ── Step 4: Optional terminal emulator ──────────────────
-echo ""
-info "Select a terminal emulator to install (default keybind: SUPER+X):"
-echo "  1) ghostty  (default in config.h)"
-echo "  2) alacritty"
-echo "  3) kitty"
-echo "  4) skip (already installed or using another)"
-echo ""
-read -rp "Choice [1-4]: " term_choice
-case "$term_choice" in
-    1) install_packages ghostty 2>/dev/null || warn "ghostty not found in repos. Install manually from https://ghostty.org" ;;
-    2) install_packages alacritty ;;
-    3) install_packages kitty ;;
-    4) info "Skipping terminal install." ;;
-    *) info "Skipping terminal install." ;;
-esac
+# ── Terminal emulator ────────────────────────────────────
+terminal=""
+for t in ghostty kitty alacritty; do command -v "$t" &>/dev/null && { terminal="$t"; break; }; done
 
-# ── Step 5: Install Polybar ──────────────────────────────
-info "Installing Polybar (status bar)..."
-install_packages polybar
-ok "Polybar installed."
-
-# ── Step 6: Create XDG user directories ─────────────────
-if command -v xdg-user-dirs-update &>/dev/null; then
-    xdg-user-dirs-update
-    ok "XDG user directories created."
+if [ -n "$terminal" ]; then
+    ok "Terminal already installed: $terminal"
+else
+    info "No supported terminal found — installing ghostty..."
+    install_packages ghostty 2>/dev/null || warn "ghostty not in repos — install from https://ghostty.org"
 fi
 
-# ── Step 7: Download wallpapers ─────────────────────────
-PIC_DIR="$HOME/Pictures"
-BG_DIR="$PIC_DIR/backgrounds"
-mkdir -p "$PIC_DIR"
+# ── Polybar + XDG dirs + wallpapers ──────────────────────
+install_packages polybar
+command -v xdg-user-dirs-update &>/dev/null && xdg-user-dirs-update
+
+mkdir -p "$HOME/Pictures"
 if [ ! -d "$BG_DIR" ]; then
     info "Downloading Nord wallpapers..."
-    if git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null; then
-        ok "Wallpapers downloaded to $BG_DIR"
-    else
-        warn "Failed to download wallpapers. Create $BG_DIR and add your own."
-    fi
+    git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null \
+        && ok "Wallpapers downloaded to $BG_DIR" \
+        || warn "Failed to download wallpapers. Add your own to $BG_DIR."
 else
-    ok "Wallpapers already present at $BG_DIR"
+    ok "Wallpapers already present."
 fi
 
-# ── Step 8: Create config.h from config.def.h ────────────
+# ── Compile & install dwm ────────────────────────────────
 cd "$REPO_DIR"
-if [ ! -f config.h ]; then
-    cp config.def.h config.h
-    info "Created config.h from config.def.h — edit this file to customize."
-else
-    info "config.h already exists, preserving your customizations."
-fi
-
-# ── Step 9: Compile and install dwm ─────────────────────
-info "Compiling dwm..."
-make clean
-make
-info "Installing dwm (requires sudo)..."
+[ -f config.h ] || { cp config.def.h config.h; info "Created config.h — edit to customize."; }
+info "Compiling and installing dwm..."
+make clean && make
 sudo make install
-ok "dwm installed to /usr/local/bin/dwm"
+ok "dwm installed."
 
-# ── Step 10: Copy terminal/rofi configs ─────────────────
+# ── Configs ──────────────────────────────────────────────
 info "Installing configuration files..."
 
 # Rofi
 mkdir -p "$HOME/.config/rofi"
 cp -rn "$REPO_DIR/config/rofi/"* "$HOME/.config/rofi/" 2>/dev/null || true
 chmod +x "$HOME/.config/rofi/powermenu.sh" 2>/dev/null || true
-chmod +x "$HOME/.config/rofi/themes/controlcenter.rasi" 2>/dev/null || true
 
-# Terminal configs (copy only if not already present)
+# Terminal configs
 for term_dir in alacritty kitty; do
-    if [ -d "$REPO_DIR/config/$term_dir" ]; then
-        mkdir -p "$HOME/.config/$term_dir"
-        cp -rn "$REPO_DIR/config/$term_dir/"* "$HOME/.config/$term_dir/" 2>/dev/null || true
-    fi
+    [ -d "$REPO_DIR/config/$term_dir" ] || continue
+    mkdir -p "$HOME/.config/$term_dir"
+    cp -rn "$REPO_DIR/config/$term_dir/"* "$HOME/.config/$term_dir/" 2>/dev/null || true
 done
 
-# Ghostty — always sync theme files so new themes are available after updates
+# Ghostty
 if [ -d "$REPO_DIR/config/ghostty" ]; then
     mkdir -p "$HOME/.config/ghostty/themes"
     cp -rn "$REPO_DIR/config/ghostty/config" "$HOME/.config/ghostty/config" 2>/dev/null || true
     cp -r  "$REPO_DIR/config/ghostty/themes/"* "$HOME/.config/ghostty/themes/" 2>/dev/null || true
-    ok "Ghostty themes installed to ~/.config/ghostty/themes/"
+    ok "Ghostty themes installed."
 fi
 
-# Polybar
-mkdir -p "$HOME/.config/polybar"
-cp -rn "$REPO_DIR/polybar/"* "$HOME/.config/polybar/" 2>/dev/null || true
-chmod +x "$HOME/.config/polybar/launch.sh" 2>/dev/null || true
-
-# dwm-titus TOML configs (hotkeys + themes, hot-reload at runtime)
-DWM_CFG_DIR="$HOME/.config/dwm-titus"
-mkdir -p "$DWM_CFG_DIR"
-# Use symlinks so that edits to the installed data-dir files trigger DWM hot-reload.
-ln -sf "$DWM_DATA_DIR/config/hotkeys.toml" "$DWM_CFG_DIR/hotkeys.toml"
-ln -sf "$DWM_DATA_DIR/config/themes.toml"  "$DWM_CFG_DIR/themes.toml"
-ok "dwm-titus TOML configs installed to $DWM_CFG_DIR"
-
-# Autostart scripts (dwm runautostart looks here)
-DWM_DATA_DIR="$HOME/.local/share/dwm-titus"
-mkdir -p "$DWM_DATA_DIR/scripts"
-cp "$REPO_DIR/scripts/autostart.sh" "$DWM_DATA_DIR/scripts/autostart.sh"
-cp "$REPO_DIR/scripts/autostart_blocking.sh" "$DWM_DATA_DIR/scripts/autostart_blocking.sh"
-chmod +x "$DWM_DATA_DIR/scripts/autostart.sh" "$DWM_DATA_DIR/scripts/autostart_blocking.sh"
-
-# Theme-apply script (called by DWM on every theme reload)
-cp "$REPO_DIR/scripts/theme-apply.sh" "$DWM_DATA_DIR/scripts/theme-apply.sh"
-chmod +x "$DWM_DATA_DIR/scripts/theme-apply.sh"
-
-# Ghostty custom themes (copied to data dir so theme-apply.sh can sync them at runtime)
-mkdir -p "$DWM_DATA_DIR/ghostty/themes"
-cp "$REPO_DIR/config/ghostty/themes/"* "$DWM_DATA_DIR/ghostty/themes/" 2>/dev/null || true
-ok "theme-apply.sh installed to $DWM_DATA_DIR/scripts/"
-
-# Run theme-apply once to populate active-theme files for all installed apps
-info "Applying initial theme to terminal / rofi / polybar..."
-"$DWM_DATA_DIR/scripts/theme-apply.sh" 2>/dev/null || \
-    warn "theme-apply.sh encountered a non-fatal issue — it will work once DWM starts."
-
-ok "Config files installed to ~/.config/"
-
-# ── Step 11: Display manager setup ──────────────────────
-currentdm="none"
-for dm in gdm sddm lightdm; do
-    if command -v "$dm" &>/dev/null; then
-        currentdm="$dm"
-        break
-    fi
+# Autostart + theme scripts
+mkdir -p "$DWM_DATA_DIR/scripts" "$DWM_DATA_DIR/ghostty/themes"
+for f in "$REPO_DIR/scripts/autostart.sh" "$REPO_DIR/scripts/theme-apply.sh"; do
+    dst="$DWM_DATA_DIR/scripts/$(basename "$f")"
+    [ "$(realpath "$f")" != "$(realpath "$dst" 2>/dev/null)" ] && cp "$f" "$dst" || true
+done
+chmod +x "$DWM_DATA_DIR/scripts/"*.sh
+for f in "$REPO_DIR/config/ghostty/themes/"*; do
+    dst="$DWM_DATA_DIR/ghostty/themes/$(basename "$f")"
+    [ "$(realpath "$f")" != "$(realpath "$dst" 2>/dev/null)" ] && cp "$f" "$dst" || true
 done
 
-if [ "$currentdm" = "none" ]; then
-    echo ""
-    read -rp "No display manager found. Install SDDM? [Y/n]: " dm_choice
-    dm_choice="${dm_choice:-Y}"
-    if [[ "$dm_choice" =~ ^[Yy] ]]; then
-        install_packages sddm
-        sudo systemctl enable sddm
-        ok "SDDM installed and enabled."
-    else
-        info "Skipping display manager. Use 'startx' to launch dwm."
-    fi
-else
+info "Applying initial theme..."
+"$DWM_DATA_DIR/scripts/theme-apply.sh" 2>/dev/null \
+    || warn "theme-apply.sh had a non-fatal issue — it will work once DWM starts."
+ok "Configuration files installed."
+
+# ── Display manager ──────────────────────────────────────
+currentdm=""
+for dm in sddm lightdm gdm; do command -v "$dm" &>/dev/null && { currentdm="$dm"; break; }; done
+
+if [ -n "$currentdm" ]; then
     ok "Display manager already installed: $currentdm"
-fi
-
-# ── Step 12: Verify session entry ───────────────────────
-if [ -f /usr/share/xsessions/dwm.desktop ]; then
-    ok "dwm.desktop session entry is in place."
 else
-    warn "dwm.desktop not found in /usr/share/xsessions/ — display manager won't show dwm."
-    warn "Run 'sudo make install' again or copy dwm.desktop manually."
+    info "No display manager found — installing SDDM..."
+    install_packages sddm
+    sudo systemctl enable sddm
+    ok "SDDM installed and enabled."
 fi
 
-# ── Step 13: Verify .xinitrc ────────────────────────────
-if [ -f "$HOME/.xinitrc" ]; then
-    ok ".xinitrc exists (for startx users)."
-else
-    warn ".xinitrc not found. If using startx instead of a display manager,"
-    warn "copy the example: cp $REPO_DIR/.xinitrc ~/.xinitrc"
-fi
+# ── Verify ───────────────────────────────────────────────
+[ -f /usr/share/xsessions/dwm.desktop ] \
+    && ok "dwm.desktop session entry is in place." \
+    || warn "dwm.desktop missing from /usr/share/xsessions/ — run 'sudo make install' again."
 
-# ── Done ────────────────────────────────────────────────
+[ -f "$HOME/.xinitrc" ] \
+    && ok ".xinitrc exists." \
+    || warn ".xinitrc not found. Copy with: cp $REPO_DIR/.xinitrc ~/.xinitrc"
+
+# ── Done ─────────────────────────────────────────────────
 echo ""
 echo "╔═══════════════════════════════════════════╗"
 echo "║          Installation Complete!           ║"
 echo "╚═══════════════════════════════════════════╝"
 echo ""
 info "Detected: $DISTRO_NAME"
-info "Next steps:"
-echo "  • Edit config.h to customize keybinds, colors, and autostart programs"
-echo "  • After editing config.h, recompile: make && sudo make install"
-echo "  • Log out and select 'dwm' from your display manager"
-echo "  • Or start with: startx"
+echo "  • Edit config.h to customize, then: make && sudo make install"
+echo "  • Log out and select 'dwm', or start with: startx"
 echo ""
-echo "  Key bindings:  SUPER + /     (interactive keybind viewer)"
-echo "  Control Center: SUPER + F1  (health checks, settings)"
-echo "  Terminal:      SUPER + X"
-echo "  App Launcher:  SUPER + R     (rofi)"
-echo "  Close Window:  SUPER + Q"
+echo "  SUPER+/   keybind viewer     SUPER+X  terminal"
+echo "  SUPER+F1  control center     SUPER+R  app launcher (rofi)"
+echo "  SUPER+Q   close window"
 echo ""
-echo "  Full reference: see KEYBINDS.md or press SUPER+/ in dwm"
+echo "  Full reference: KEYBINDS.md or SUPER+/ in dwm"
 echo ""

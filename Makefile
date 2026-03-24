@@ -3,8 +3,10 @@
 
 include config.mk
 
-# Detect home directory of the installing user (handles non-standard home paths)
 USER_HOME ?= $(shell getent passwd $(or $(SUDO_USER),$(USER)) 2>/dev/null | cut -d: -f6)
+OWNER     := $(or $(SUDO_USER),$(USER))
+DATA_DIR  := ${USER_HOME}/.local/share/dwm-titus
+CFG_DIR   := ${USER_HOME}/.config
 
 SRC = drw.c dwm.c util.c tomlparser.c
 OBJ = ${SRC:.c=.o}
@@ -26,55 +28,43 @@ clean:
 	rm -f dwm ${OBJ} *.orig *.rej
 
 install: all
-	mkdir -p ${DESTDIR}${PREFIX}/bin
+	# Binary + man page
 	install -Dm755 dwm ${DESTDIR}${PREFIX}/bin/dwm
-	mkdir -p ${DESTDIR}${MANPREFIX}/man1
-	sed "s/VERSION/${VERSION}/g" < dwm.1 > ${DESTDIR}${MANPREFIX}/man1/dwm.1
-	chmod 644 ${DESTDIR}${MANPREFIX}/man1/dwm.1
-	mkdir -p /usr/share/xsessions/
+	sed "s/VERSION/${VERSION}/g" dwm.1 | install -Dm644 /dev/stdin ${DESTDIR}${MANPREFIX}/man1/dwm.1
+	# Session entry + xinitrc
 	test -f /usr/share/xsessions/dwm.desktop || install -Dm644 dwm.desktop /usr/share/xsessions/
 	test -f ${USER_HOME}/.xinitrc || install -Dm644 .xinitrc ${USER_HOME}/.xinitrc
-	# Copy repo to ~/.local/share/dwm-titus/ for future rebuilds (skip if already there)
-	@if [ "$$(cd . && pwd -P)" != "$$(cd ${USER_HOME}/.local/share/dwm-titus 2>/dev/null && pwd -P)" ]; then \
-		mkdir -p ${USER_HOME}/.local/share/dwm-titus; \
-		tar -cf - --exclude='.git' --exclude='*.o' . | tar -xf - -C ${USER_HOME}/.local/share/dwm-titus/; \
+	# Repo copy for future rebuilds
+	@if [ "$$(cd . && pwd -P)" != "$$(cd ${DATA_DIR} 2>/dev/null && pwd -P)" ]; then \
+		mkdir -p ${DATA_DIR}; \
+		tar -cf - --exclude='.git' --exclude='*.o' . | tar -xf - -C ${DATA_DIR}/; \
 	fi
-	# Install polybar configs
-	mkdir -p ${USER_HOME}/.config/polybar
-	cp -rf polybar/* ${USER_HOME}/.config/polybar/
-	find ${USER_HOME}/.config/polybar -name '*.sh' -exec chmod +x {} +
-	find ${USER_HOME}/.config/polybar -name '*.py' -exec chmod +x {} +
-	# Install rofi configs
-	mkdir -p ${USER_HOME}/.config/rofi/themes
-	for f in config/rofi/themes/*.rasi; do \
-		install -m644 "$$f" ${USER_HOME}/.config/rofi/themes/$$(basename $$f); \
-	done
-	# Install TOML hot-reload config files as symlinks so repo edits trigger live reload
-	mkdir -p ${USER_HOME}/.config/dwm-titus
-	ln -sf ${USER_HOME}/.local/share/dwm-titus/config/hotkeys.toml ${USER_HOME}/.config/dwm-titus/hotkeys.toml
-	ln -sf ${USER_HOME}/.local/share/dwm-titus/config/themes.toml  ${USER_HOME}/.config/dwm-titus/themes.toml
-	# Install all scripts to PATH (except autostart scripts which stay in the repo copy)
+	# Configs: polybar, rofi, dwm-titus TOML symlinks
+	mkdir -p ${CFG_DIR}/polybar
+	cp -rf config/polybar/* ${CFG_DIR}/polybar/
+	for f in config/rofi/themes/*.rasi; do install -Dm644 "$$f" ${CFG_DIR}/rofi/themes/$$(basename $$f); done
+	mkdir -p ${CFG_DIR}/dwm-titus
+	ln -sf ${DATA_DIR}/config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
+	ln -sf ${DATA_DIR}/config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
+	# Scripts to PATH (skip autostart scripts)
 	for f in scripts/*; do \
 		case "$$(basename $$f)" in autostart*) continue;; esac; \
 		install -Dm755 "$$f" ${DESTDIR}${PREFIX}/bin/$$(basename $$f); \
 	done
-	# Set permissions on repo copy
-	find ${USER_HOME}/.local/share/dwm-titus -name '*.sh' -exec chmod +x {} +
-	find ${USER_HOME}/.local/share/dwm-titus -name '*.py' -exec chmod +x {} +
-	chown -R $(or ${SUDO_USER},${USER}): ${USER_HOME}/.local/share/dwm-titus ${USER_HOME}/.config/polybar ${USER_HOME}/.config/rofi
+	# Fix ownership + permissions
+	find ${DATA_DIR} ${CFG_DIR}/polybar -name '*.sh' -o -name '*.py' | xargs -r chmod +x
+	chown -R ${OWNER}: ${DATA_DIR} ${CFG_DIR}/polybar ${CFG_DIR}/rofi ${CFG_DIR}/dwm-titus
+	chown ${OWNER}: ${USER_HOME}/.xinitrc 2>/dev/null || true
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm \
 		${DESTDIR}${MANPREFIX}/man1/dwm.1 \
-		${DESTDIR}/usr/share/xsessions/dwm.desktop
+		/usr/share/xsessions/dwm.desktop
 
 release: dwm
 	mkdir -p release
-	cp -f dwm release/
-	cp -f dwm.desktop release/
-	cp -f .xinitrc release/
-	cp -rf polybar release/
-	cp -rf scripts release/
-	tar -czf release/Omitus-${VERSION}.tar.gz -C release dwm dwm.desktop .xinitrc polybar scripts
+	cp -f dwm dwm.desktop .xinitrc release/
+	cp -rf config scripts release/
+	tar -czf release/Omitus-${VERSION}.tar.gz -C release dwm dwm.desktop .xinitrc config scripts
 
 .PHONY: all clean install uninstall release
