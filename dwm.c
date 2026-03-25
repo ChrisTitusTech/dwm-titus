@@ -301,6 +301,7 @@ static void zoom(const Arg *arg);
 /* hot-reload */
 static void load_hotkeys_toml(const char *path);
 static void load_themes_toml(const char *path);
+static void load_rules_toml(const char *path);
 static void reload_config(void);
 static void setup_inotify(void);
 static void *toml_alloc(size_t sz);
@@ -357,6 +358,12 @@ static const char *alttrayname = "tray";
 /* Runtime keybindings loaded from hotkeys.toml (NULL = use config.h keys[]) */
 static Key          *rt_keys  = NULL;
 static int           rt_nkeys = 0;
+/* Runtime window rules loaded from window-rules.toml (NULL = use config.h rules[]) */
+#define TOML_RULES_MAX 64
+static Rule          rt_rules_buf[TOML_RULES_MAX];
+static char          rt_rules_strbuf[TOML_RULES_MAX * 3][TOML_MAX_STR];
+static Rule         *rt_rules  = NULL;
+static int           rt_nrules = 0;
 /* Runtime border pixel width (initialized from config.h borderpx) */
 static unsigned int  dyn_borderpx;
 /* inotify */
@@ -366,8 +373,10 @@ static int           inotify_wd2 = -1;  /* optional: symlink-target dir */
 static char          toml_config_dir[PATH_MAX];
 static char          toml_hotkeys_path[PATH_MAX];
 static char          toml_themes_path[PATH_MAX];
+static char          toml_rules_path[PATH_MAX];
 static char          toml_themes_realname[PATH_MAX];   /* basename inside symlink-target dir */
 static char          toml_hotkeys_realname[PATH_MAX];  /* basename inside symlink-target dir */
+static char          toml_rules_realname[PATH_MAX];    /* basename inside symlink-target dir */
 /* Pending reload flag set by SIGUSR1 */
 static volatile sig_atomic_t sig_reload_pending = 0;
 /* Arena allocator for TOML-loaded spawn argv data */
@@ -423,8 +432,10 @@ applyrules(Client *c)
 	if (strstr(class, "Steam") || strstr(class, "steam_app_"))
 		c->issteam = 1;
 
-	for (i = 0; i < LENGTH(rules); i++) {
-		r = &rules[i];
+	const Rule *active_rules = rt_nrules > 0 ? rt_rules : rules;
+	unsigned int n_active_rules = rt_nrules > 0 ? (unsigned int)rt_nrules : LENGTH(rules);
+	for (i = 0; i < n_active_rules; i++) {
+		r = &active_rules[i];
 		if ((!r->title || strstr(c->name, r->title))
 		&& (!r->class || strstr(class, r->class))
 		&& (!r->instance || strstr(instance, r->instance)))
@@ -2195,10 +2206,12 @@ run(void)
 				while (ptr < ibuf + nr) {
 					struct inotify_event *ie = (struct inotify_event *)ptr;
 					if (ie->len > 0 &&
-					    (strcmp(ie->name, "hotkeys.toml") == 0 ||
-					     strcmp(ie->name, "themes.toml")  == 0 ||
+					    (strcmp(ie->name, "hotkeys.toml")      == 0 ||
+					     strcmp(ie->name, "themes.toml")       == 0 ||
+					     strcmp(ie->name, "window-rules.toml") == 0 ||
 					     (toml_themes_realname[0]  && strcmp(ie->name, toml_themes_realname)  == 0) ||
-					     (toml_hotkeys_realname[0] && strcmp(ie->name, toml_hotkeys_realname) == 0)))
+					     (toml_hotkeys_realname[0] && strcmp(ie->name, toml_hotkeys_realname) == 0) ||
+					     (toml_rules_realname[0]   && strcmp(ie->name, toml_rules_realname)   == 0)))
 						need_reload = 1;
 					ptr += sizeof(struct inotify_event) + ie->len;
 				}
@@ -2959,10 +2972,66 @@ load_themes_toml(const char *path)
 }
 
 static void
+load_rules_toml(const char *path)
+{
+	static TomlDoc doc;
+	if (!toml_parse(path, &doc)) {
+		fprintf(stderr, "dwm: cannot parse %s\n", path);
+		return;
+	}
+	int n = toml_table_count(&doc, "rules");
+	if (n > TOML_RULES_MAX) n = TOML_RULES_MAX;
+	int nk = 0;
+	for (int i = 0; i < n; i++) {
+		const TomlValue *vc    = toml_table_get(&doc, "rules", i, "class");
+		const TomlValue *vi    = toml_table_get(&doc, "rules", i, "instance");
+		const TomlValue *vt    = toml_table_get(&doc, "rules", i, "title");
+		const TomlValue *vtag  = toml_table_get(&doc, "rules", i, "tags");
+		const TomlValue *vfl   = toml_table_get(&doc, "rules", i, "isfloating");
+		const TomlValue *vterm = toml_table_get(&doc, "rules", i, "isterminal");
+		const TomlValue *vno   = toml_table_get(&doc, "rules", i, "noswallow");
+		const TomlValue *vmon  = toml_table_get(&doc, "rules", i, "monitor");
+		Rule *r = &rt_rules_buf[nk];
+		if (vc && vc->type == TOML_STRING && vc->s[0]) {
+			strncpy(rt_rules_strbuf[nk*3+0], vc->s, TOML_MAX_STR-1);
+			rt_rules_strbuf[nk*3+0][TOML_MAX_STR-1] = '\0';
+			r->class = rt_rules_strbuf[nk*3+0];
+		} else {
+			r->class = NULL;
+		}
+		if (vi && vi->type == TOML_STRING && vi->s[0]) {
+			strncpy(rt_rules_strbuf[nk*3+1], vi->s, TOML_MAX_STR-1);
+			rt_rules_strbuf[nk*3+1][TOML_MAX_STR-1] = '\0';
+			r->instance = rt_rules_strbuf[nk*3+1];
+		} else {
+			r->instance = NULL;
+		}
+		if (vt && vt->type == TOML_STRING && vt->s[0]) {
+			strncpy(rt_rules_strbuf[nk*3+2], vt->s, TOML_MAX_STR-1);
+			rt_rules_strbuf[nk*3+2][TOML_MAX_STR-1] = '\0';
+			r->title = rt_rules_strbuf[nk*3+2];
+		} else {
+			r->title = NULL;
+		}
+		r->tags       = (vtag  && vtag->type  == TOML_INT && vtag->i >= 1 && vtag->i <= 9)
+		                ? (unsigned int)(1 << (vtag->i - 1)) : 0;
+		r->isfloating = (vfl   && vfl->type   == TOML_INT) ? (int)vfl->i           : 0;
+		r->isterminal = (vterm && vterm->type == TOML_INT) ? (int)vterm->i         : 0;
+		r->noswallow  = (vno   && vno->type   == TOML_INT) ? (int)vno->i           : 0;
+		r->monitor    = (vmon  && vmon->type  == TOML_INT) ? (int)vmon->i          : -1;
+		nk++;
+	}
+	rt_rules  = rt_rules_buf;
+	rt_nrules = nk;
+	fprintf(stderr, "dwm: loaded %d window rules from %s\n", nk, path);
+}
+
+static void
 reload_config(void)
 {
 	if (toml_hotkeys_path[0]) load_hotkeys_toml(toml_hotkeys_path);
 	if (toml_themes_path[0])  load_themes_toml(toml_themes_path);
+	if (toml_rules_path[0])   load_rules_toml(toml_rules_path);
 	if (dpy) grabkeys();
 
 	/* Spawn theme-apply script asynchronously to update terminal/rofi/polybar */
@@ -2994,6 +3063,8 @@ setup_inotify(void)
 	         "%s/hotkeys.toml", toml_config_dir);
 	snprintf(toml_themes_path,  sizeof(toml_themes_path),
 	         "%s/themes.toml",  toml_config_dir);
+	snprintf(toml_rules_path,   sizeof(toml_rules_path),
+	         "%s/window-rules.toml", toml_config_dir);
 
 	inotify_fd = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
 	if (inotify_fd < 0) { perror("dwm: inotify_init1"); return; }
@@ -3012,6 +3083,7 @@ setup_inotify(void)
 	 * files trigger hot-reload without needing to edit the installed copy. */
 	toml_themes_realname[0]  = '\0';
 	toml_hotkeys_realname[0] = '\0';
+	toml_rules_realname[0]   = '\0';
 	{
 		char real_path[PATH_MAX], real_dir[PATH_MAX];
 		char *slash;
@@ -3038,6 +3110,20 @@ setup_inotify(void)
 			if (slash) {
 				strncpy(toml_hotkeys_realname, slash + 1, PATH_MAX - 1);
 				/* Add separate watch only if in yet another directory */
+				*slash = '\0';
+				if (strcmp(real_dir, toml_config_dir) != 0 && inotify_wd2 < 0)
+					inotify_wd2 = inotify_add_watch(inotify_fd, real_dir,
+					                                IN_CLOSE_WRITE | IN_MOVED_TO);
+			}
+		}
+
+		/* Resolve window-rules.toml */
+		if (realpath(toml_rules_path, real_path)) {
+			strncpy(real_dir, real_path, PATH_MAX - 1);
+			real_dir[PATH_MAX - 1] = '\0';
+			slash = strrchr(real_dir, '/');
+			if (slash) {
+				strncpy(toml_rules_realname, slash + 1, PATH_MAX - 1);
 				*slash = '\0';
 				if (strcmp(real_dir, toml_config_dir) != 0 && inotify_wd2 < 0)
 					inotify_wd2 = inotify_add_watch(inotify_fd, real_dir,

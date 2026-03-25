@@ -1,0 +1,42 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║           DWM Window Rules Configuration  ·  window-rules.toml      ║
+# ╠══════════════════════════════════════════════════════════════════════╣
+# ║  LIVE RELOAD — save this file and changes apply instantly!           ║
+# ║  Manual reload:  kill -USR1 $(pidof dwm)                             ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+#
+# One rule per line.  ALL matching rules are applied in order.
+#
+# Find window properties:  xprop | grep -E "WM_CLASS|WM_NAME"
+#   WM_CLASS(STRING) = "<instance>", "<class>"    WM_NAME(STRING) = "<title>"
+#
+# Fields (omit any field to match anything / use default):
+#   class       WM_CLASS second value      instance  WM_CLASS first value
+#   title       WM_NAME                    monitor   monitor number (-1 = any)
+#   tags        tag number 1–9  (0 or omit = follow current tag)
+#   isfloating  1=float  0=tile             isterminal  1=terminal (swallowing)
+#   noswallow   1=never swallow this window
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+rules = [
+  # ── terminals (isterminal=1 enables window swallowing) ───────────────────
+  { class="St",             isterminal=1 },
+  { class="kitty",          isterminal=1 },
+  { class="Alacritty",      isterminal=1 },
+  { class="ghostty",        isterminal=1 },
+  { class="warp-terminal",  isterminal=1 },
+  { class="Terminator",     isterminal=1 },
+
+  # ── no-swallow ────────────────────────────────────────────────────────────
+  { title="Event Tester",   noswallow=1  },
+
+  # ── floating ─────────────────────────────────────────────────────────────
+  # { class="Gimp",           isfloating=1 },
+  # { class="pavucontrol",    isfloating=1 },
+
+  # ── assign to tag ────────────────────────────────────────────────────────
+  # { class="firefox",        tags=2 },
+  # { class="discord",        tags=7 },
+  # { class="Steam",          tags=8, monitor=1 },
+]
