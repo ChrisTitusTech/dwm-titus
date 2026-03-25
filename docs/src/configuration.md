@@ -98,16 +98,23 @@ tag_keys = [
 
 ---
 
-## Autostart
+## Notes on XDG Autostart
 
-Programs launched at startup are configured in `config.h` under `autostart[]`:
+Recommend using Flatpak to install programs on startup:
 
-```c
-static const char *const autostart[] = {
-    "picom", NULL,
-    "dunst", NULL,
-    NULL /* terminate */
-};
+```
+flatpak install flathub io.github.flattool.Ignition
 ```
 
-Alternatively, place `.desktop` files in `~/.config/autostart/` — dwm-titus uses `dex` to process them.
+or you can create your own .desktop file in ~/.config/autostart/
+
+`set-refresh.desktop` Example:
+
+```
+[Desktop Entry]
+Type=Application
+Exec=xrandr --output HDMI-0 --primary --mode 1920x1080 --pos 0x0 --rotate normal --rate 120 --output DP-0 --off --output DP-1 --off --output DP-2 --off --output DP-3 --off --output DP-4 --off --output DP-5 --off
+Hidden=false
+X-GNOME-Autostart-enabled=true
+Name=Set Refresh
+```

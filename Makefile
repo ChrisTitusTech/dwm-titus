@@ -33,28 +33,32 @@ install: all
 	sed "s/VERSION/${VERSION}/g" dwm.1 | install -Dm644 /dev/stdin ${DESTDIR}${MANPREFIX}/man1/dwm.1
 	# Session entry + xinitrc
 	test -f /usr/share/xsessions/dwm.desktop || install -Dm644 dwm.desktop /usr/share/xsessions/
-	test -f ${USER_HOME}/.xinitrc || install -Dm644 .xinitrc ${USER_HOME}/.xinitrc
-	# Repo copy for future rebuilds
-	@if [ "$$(cd . && pwd -P)" != "$$(cd ${DATA_DIR} 2>/dev/null && pwd -P)" ]; then \
-		mkdir -p ${DATA_DIR}; \
-		tar -cf - --exclude='.git' --exclude='*.o' . | tar -xf - -C ${DATA_DIR}/; \
+	test -f ${USER_HOME}/.xinitrc || install -Dm644 scripts/.xinitrc ${USER_HOME}/.xinitrc
+	# Setup Local Repo Directory
+	mkdir -p ${DATA_DIR}
+	if [ "$$(realpath .)" != "$$(realpath ${DATA_DIR})" ]; then \
+		cp -rf . ${DATA_DIR}/; \
 	fi
-	# Configs: polybar, rofi, dwm-titus TOML files
-	mkdir -p ${CFG_DIR}/polybar
-	cp -rf config/polybar/* ${CFG_DIR}/polybar/
-	for f in config/rofi/themes/*.rasi; do install -Dm644 "$$f" ${CFG_DIR}/rofi/themes/$$(basename $$f); done
-	mkdir -p ${CFG_DIR}/dwm-titus
-	cp -n config/hotkeys.toml      ${CFG_DIR}/dwm-titus/hotkeys.toml 2>/dev/null || true
-	cp -n config/themes.toml       ${CFG_DIR}/dwm-titus/themes.toml  2>/dev/null || true
-	cp -n config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml 2>/dev/null || true
-	# Scripts to PATH (skip autostart scripts)
+
+	# Configs: copy all config subdirs
+	for dir in config/*/; do \
+		cp -rfL --remove-destination "$$dir" ${CFG_DIR}/$$(basename "$$dir"); \
+	done
+	# Scripts to PATH
 	for f in scripts/*; do \
 		case "$$(basename $$f)" in autostart*) continue;; esac; \
 		install -Dm755 "$$f" ${DESTDIR}${PREFIX}/bin/$$(basename $$f); \
 	done
+	
+	# Setup User Config if they don't exist
+	mkdir -p ${CFG_DIR}/dwm-titus
+	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
+	test -f ${CFG_DIR}/dwm-titus/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
+	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
 	# Fix ownership + permissions
 	find ${DATA_DIR} ${CFG_DIR}/polybar -name '*.sh' -o -name '*.py' | xargs -r chmod +x
-	chown -R ${OWNER}: ${DATA_DIR} ${CFG_DIR}/polybar ${CFG_DIR}/rofi ${CFG_DIR}/dwm-titus
+	for dir in config/*/; do chown -R ${OWNER}: "${CFG_DIR}/$$(basename $$dir)"; done
+	chown -R ${OWNER}: ${DATA_DIR}
 	chown ${OWNER}: ${USER_HOME}/.xinitrc 2>/dev/null || true
 
 uninstall:
