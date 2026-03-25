@@ -10,6 +10,11 @@ ok()   { printf "${GREEN}[OK]${NC} %s\n" "$1"; }
 warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
 err()  { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 
+# Mirror src -> dst exactly, removing stale files no longer in repo.
+mirror_dir() { local src="$1" dst="$2"; mkdir -p "$dst"; rsync -a --delete "$src/" "$dst/"; }
+# Seed dst on first install only -- never overwrites files the user has already edited.
+seed_dir()   { local src="$1" dst="$2"; mkdir -p "$dst"; rsync -a --ignore-existing "$src/" "$dst/"; }
+
 command -v pacman &>/dev/null || { err "This installer requires Arch Linux (pacman not found)."; exit 1; }
 
 DWM_DATA_DIR="$HOME/.local/share/dwm-titus"
@@ -39,7 +44,7 @@ info "Installing runtime dependencies..."
 install_packages rofi picom dunst feh flameshot dex mate-polkit alsa-utils git unzip xclip \
     xorg-xprop thunar gvfs tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
     xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring networkmanager network-manager-applet \
-    libnotify
+    libnotify rsync
 ok "Runtime dependencies installed."
 
 # ── Qt / GTK theming ─────────────────────────────────────
@@ -98,29 +103,28 @@ ok "dwm installed."
 # ── Configs ──────────────────────────────────────────────
 info "Installing configuration files..."
 
-# Rofi
-mkdir -p "$HOME/.config/rofi"
-cp -rn "$REPO_DIR/config/rofi/"* "$HOME/.config/rofi/" 2>/dev/null || true
+# Rofi (seed -- never clobbers user edits)
+mirror_dir "$REPO_DIR/config/rofi" "$HOME/.config/rofi"
 chmod +x "$HOME/.config/rofi/powermenu.sh" 2>/dev/null || true
 
-# Terminal configs
+# Terminal configs (seed -- never clobbers user edits)
 for term_dir in alacritty kitty; do
     [ -d "$REPO_DIR/config/$term_dir" ] || continue
-    mkdir -p "$HOME/.config/$term_dir"
-    cp -rn "$REPO_DIR/config/$term_dir/"* "$HOME/.config/$term_dir/" 2>/dev/null || true
+    mirror_dir "$REPO_DIR/config/$term_dir" "$HOME/.config/$term_dir"
 done
 
 # Ghostty
 if [ -d "$REPO_DIR/config/ghostty" ]; then
-    mkdir -p "$HOME/.config/ghostty/themes"
-    cp -rn "$REPO_DIR/config/ghostty/config" "$HOME/.config/ghostty/config" 2>/dev/null || true
-    cp -r  "$REPO_DIR/config/ghostty/themes/"* "$HOME/.config/ghostty/themes/" 2>/dev/null || true
+    mkdir -p "$HOME/.config/ghostty"
+    # config file: seed only (preserve user edits)
+    mirror_dir "$REPO_DIR/config/ghostty/config" "$HOME/.config/ghostty/config"
+    # themes: mirror exactly so removed themes are cleaned up
+    mirror_dir "$REPO_DIR/config/ghostty/themes" "$HOME/.config/ghostty/themes"
     ok "Ghostty themes installed."
 fi
 
-# Polybar
-mkdir -p "$HOME/.config/polybar"
-cp -rf "$REPO_DIR/config/polybar/"* "$HOME/.config/polybar/" 2>/dev/null || true
+# Polybar (mirror -- stale files removed so config stays in sync with the repo)
+mirror_dir "$REPO_DIR/config/polybar" "$HOME/.config/polybar"
 chmod +x "$HOME/.config/polybar/launch.sh" 2>/dev/null || true
 ok "Polybar config installed."
 
@@ -131,10 +135,8 @@ for f in "$REPO_DIR/scripts/autostart.sh" "$REPO_DIR/scripts/theme-apply.sh"; do
     [ "$(realpath "$f")" != "$(realpath "$dst" 2>/dev/null)" ] && cp "$f" "$dst" || true
 done
 chmod +x "$DWM_DATA_DIR/scripts/"*.sh
-for f in "$REPO_DIR/config/ghostty/themes/"*; do
-    dst="$DWM_DATA_DIR/ghostty/themes/$(basename "$f")"
-    [ "$(realpath "$f")" != "$(realpath "$dst" 2>/dev/null)" ] && cp "$f" "$dst" || true
-done
+# Mirror ghostty themes into data dir so removed themes are cleaned up
+mirror_dir "$REPO_DIR/config/ghostty/themes" "$DWM_DATA_DIR/ghostty/themes"
 
 # ── Default TOML configs (always kept up-to-date in data dir) ───────────────
 # These live in ~/.local/share/dwm-titus/config/ and serve as the
