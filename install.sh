@@ -38,7 +38,8 @@ ok "Build dependencies installed."
 info "Installing runtime dependencies..."
 install_packages rofi picom dunst feh flameshot dex mate-polkit alsa-utils git unzip xclip \
     xorg-xprop thunar gvfs tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
-    xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring networkmanager network-manager-applet
+    xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring networkmanager network-manager-applet \
+    libnotify
 ok "Runtime dependencies installed."
 
 # ── Qt / GTK theming ─────────────────────────────────────
@@ -134,6 +135,27 @@ for f in "$REPO_DIR/config/ghostty/themes/"*; do
     dst="$DWM_DATA_DIR/ghostty/themes/$(basename "$f")"
     [ "$(realpath "$f")" != "$(realpath "$dst" 2>/dev/null)" ] && cp "$f" "$dst" || true
 done
+
+# ── Default TOML configs (always kept up-to-date in data dir) ───────────────
+# These live in ~/.local/share/dwm-titus/config/ and serve as the
+# system-provided defaults.  DWM falls back to them when the user config
+# (~/.config/dwm-titus/) is missing or invalid.
+info "Installing default TOML configs..."
+mkdir -p "$DWM_DATA_DIR/config"
+cp -f "$REPO_DIR/config/hotkeys.toml"       "$DWM_DATA_DIR/config/hotkeys.toml"
+cp -f "$REPO_DIR/config/themes.toml"        "$DWM_DATA_DIR/config/themes.toml"
+cp -f "$REPO_DIR/config/window-rules.toml"  "$DWM_DATA_DIR/config/window-rules.toml"
+ok "Default TOML configs installed to $DWM_DATA_DIR/config/"
+
+# ── User TOML configs (seeded on first install only) ────────────────────────
+# ~/.config/dwm-titus/ is the user-editable config directory.
+# cp -n (no-clobber) ensures existing user customisations are never overwritten.
+DWM_USER_DIR="$HOME/.config/dwm-titus"
+mkdir -p "$DWM_USER_DIR"
+cp -n "$REPO_DIR/config/hotkeys.toml"       "$DWM_USER_DIR/hotkeys.toml"      2>/dev/null || true
+cp -n "$REPO_DIR/config/themes.toml"        "$DWM_USER_DIR/themes.toml"       2>/dev/null || true
+cp -n "$REPO_DIR/config/window-rules.toml"  "$DWM_USER_DIR/window-rules.toml" 2>/dev/null || true
+ok "User TOML configs ready in $DWM_USER_DIR"
 
 info "Applying initial theme..."
 "$DWM_DATA_DIR/scripts/theme-apply.sh" 2>/dev/null \

@@ -161,3 +161,34 @@ tag_keys = [
 # { mod="SUPER SHIFT",  key="c",  desc="VS Code",   func="spawn",  exec=["code"] },
 # { mod="SUPER SHIFT",  key="d",  desc="Discord",   func="spawn",  exec=["discord"] },
 # { mod="SUPER SHIFT",  key="s",  desc="Screenshot",func="spawn",  cmd="scrot -s ~/Pictures/screenshot.png" },
+
+
+# ── MOUSE BUTTON BINDINGS ─────────────────────────────────────────────────────
+#
+# Each { ... } entry in the buttons array maps a mouse click to a dwm action.
+#
+#  click   Where the click happens:
+#            ClkTagBar     → the tag/workspace bar
+#            ClkLtSymbol   → the layout symbol in the bar
+#            ClkStatusText → the status text (right side of bar)
+#            ClkWinTitle   → the window title in the bar
+#            ClkClientWin  → any client window
+#            ClkRootWin    → the desktop (no windows)
+#
+#  mod     Optional modifier (same format as hotkeys): "SUPER", "SUPER SHIFT", etc.
+#          Leave empty or omit for no modifier.
+#
+#  button  Mouse button number: 1=left  2=middle  3=right
+#
+#  func    Same functions as hotkeys.  For extra args: i=N, f=N, ui=N.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+buttons = [
+  { click="ClkTagBar",    mod="SUPER",  button=1,  func="tag" },
+  { click="ClkTagBar",    mod="SUPER",  button=3,  func="toggletag" },
+  { click="ClkClientWin", mod="SUPER",  button=1,  func="moveorplace",  i=2 },
+  { click="ClkClientWin", mod="SUPER",  button=3,  func="resizemouse" },
+  { click="ClkTagBar",    mod="",       button=1,  func="view" },
+  { click="ClkTagBar",    mod="",       button=3,  func="toggleview" },
+]

@@ -299,9 +299,10 @@ static int xerrordummy(Display *dpy, XErrorEvent *ee);
 static int xerrorstart(Display *dpy, XErrorEvent *ee);
 static void zoom(const Arg *arg);
 /* hot-reload */
-static void load_hotkeys_toml(const char *path);
-static void load_themes_toml(const char *path);
-static void load_rules_toml(const char *path);
+static void load_hotkeys_toml(const char *user_path, const char *default_path);
+static void load_themes_toml(const char *user_path, const char *default_path);
+static void load_rules_toml(const char *user_path, const char *default_path);
+static void notify_bad_config(const char *filename, const char *reason);
 static void reload_config(void);
 static void setup_inotify(void);
 static void *toml_alloc(size_t sz);
@@ -355,34 +356,41 @@ static const char *alttrayname = "tray";
 #include "config.h"
 
 /* ── Hot-reload runtime state ─────────────────────────────── */
-/* Runtime keybindings loaded from hotkeys.toml (NULL = use config.h keys[]) */
+/* Runtime keybindings loaded from hotkeys.toml */
 static Key          *rt_keys  = NULL;
 static int           rt_nkeys = 0;
-/* Runtime window rules loaded from window-rules.toml (NULL = use config.h rules[]) */
+/* Runtime window rules loaded from window-rules.toml */
 #define TOML_RULES_MAX 64
 static Rule          rt_rules_buf[TOML_RULES_MAX];
 static char          rt_rules_strbuf[TOML_RULES_MAX * 3][TOML_MAX_STR];
 static Rule         *rt_rules  = NULL;
 static int           rt_nrules = 0;
-/* Runtime border pixel width (initialized from config.h borderpx) */
+/* Runtime border pixel width (initialized to 1; overridden by themes.toml) */
 static unsigned int  dyn_borderpx;
 /* inotify */
 static int           inotify_fd = -1;
 static int           inotify_wd = -1;
-static int           inotify_wd2 = -1;  /* optional: symlink-target dir */
+static int           inotify_wd3 = -1;  /* optional: default config dir */
 static char          toml_config_dir[PATH_MAX];
 static char          toml_hotkeys_path[PATH_MAX];
 static char          toml_themes_path[PATH_MAX];
 static char          toml_rules_path[PATH_MAX];
-static char          toml_themes_realname[PATH_MAX];   /* basename inside symlink-target dir */
-static char          toml_hotkeys_realname[PATH_MAX];  /* basename inside symlink-target dir */
-static char          toml_rules_realname[PATH_MAX];    /* basename inside symlink-target dir */
 /* Pending reload flag set by SIGUSR1 */
 static volatile sig_atomic_t sig_reload_pending = 0;
 /* Arena allocator for TOML-loaded spawn argv data */
 #define TOML_ARENA_CAP 65536u
 static char   toml_arena_buf[TOML_ARENA_CAP];
 static size_t toml_arena_pos = 0;
+/* Default (fallback) config paths: ~/.local/share/dwm-titus/config/ */
+static char          toml_default_dir[PATH_MAX];
+static char          toml_hotkeys_default_path[PATH_MAX];
+static char          toml_themes_default_path[PATH_MAX];
+static char          toml_rules_default_path[PATH_MAX];
+/* Runtime mouse buttons loaded from hotkeys.toml [[buttons]] */
+#define TOML_BUTTONS_MAX 32
+static Button        rt_buttons_buf[TOML_BUTTONS_MAX];
+static Button       *rt_buttons  = NULL;
+static int           rt_nbuttons = 0;
 /* ─────────────────────────────────────────────────────────── */
 
 #if SHOWWINICON
@@ -432,8 +440,8 @@ applyrules(Client *c)
 	if (strstr(class, "Steam") || strstr(class, "steam_app_"))
 		c->issteam = 1;
 
-	const Rule *active_rules = rt_nrules > 0 ? rt_rules : rules;
-	unsigned int n_active_rules = rt_nrules > 0 ? (unsigned int)rt_nrules : LENGTH(rules);
+	const Rule *active_rules   = rt_rules;
+	unsigned int n_active_rules = (unsigned int)rt_nrules;
 	for (i = 0; i < n_active_rules; i++) {
 		r = &active_rules[i];
 		if ((!r->title || strstr(c->name, r->title))
@@ -666,10 +674,10 @@ buttonpress(XEvent *e)
 		XAllowEvents(dpy, ReplayPointer, CurrentTime);
 		click = ClkClientWin;
 	}
-	for (i = 0; i < LENGTH(buttons); i++)
-		if (click == buttons[i].click && buttons[i].func && buttons[i].button == ev->button
-		&& CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state))
-			buttons[i].func(click == ClkTagBar && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);
+	for (i = 0; rt_buttons && i < (unsigned int)rt_nbuttons; i++)
+		if (click == rt_buttons[i].click && rt_buttons[i].func && rt_buttons[i].button == ev->button
+		&& CLEANMASK(rt_buttons[i].mask) == CLEANMASK(ev->state))
+			rt_buttons[i].func(click == ClkTagBar && rt_buttons[i].arg.i == 0 ? &arg : &rt_buttons[i].arg);
 }
 
 void
@@ -699,7 +707,7 @@ cleanup(void)
 		cleanupmon(mons);
 	for (i = 0; i < CurLast; i++)
 		drw_cur_free(drw, cursor[i]);
-	for (i = 0; i < LENGTH(colors); i++)
+	for (i = 0; i < 2; i++)
 		drw_scm_free(drw, scheme[i], 3);
 	free(scheme);
 	XDestroyWindow(dpy, wmcheckwin);
@@ -1402,11 +1410,12 @@ grabbuttons(Client *c, int focused)
 		if (!focused)
 			XGrabButton(dpy, AnyButton, AnyModifier, c->win, False,
 				BUTTONMASK, GrabModeSync, GrabModeSync, None, None);
-		for (i = 0; i < LENGTH(buttons); i++)
-			if (buttons[i].click == ClkClientWin)
+		if (rt_buttons)
+		for (i = 0; i < (unsigned int)rt_nbuttons; i++)
+			if (rt_buttons[i].click == ClkClientWin)
 				for (j = 0; j < LENGTH(modifiers); j++)
-					XGrabButton(dpy, buttons[i].button,
-						buttons[i].mask | modifiers[j],
+					XGrabButton(dpy, rt_buttons[i].button,
+						rt_buttons[i].mask | modifiers[j],
 						c->win, False, BUTTONMASK,
 						GrabModeAsync, GrabModeSync, None, None);
 	}
@@ -1427,8 +1436,13 @@ grabkeys(void)
 		syms = XGetKeyboardMapping(dpy, start, end - start + 1, &skip);
 		if (!syms)
 			return;
-		const Key  *akeys  = rt_keys  ? rt_keys  : keys;
-		unsigned int nkeys_active = rt_keys ? (unsigned int)rt_nkeys : LENGTH(keys);
+		const Key  *akeys        = rt_keys;
+		unsigned int nkeys_active = (unsigned int)rt_nkeys;
+		if (!akeys || !nkeys_active) {
+			XUngrabKey(dpy, AnyKey, AnyModifier, root);
+			XFree(syms);
+			return;
+		}
 		for (k = start; k <= end; k++)
 			for (i = 0; i < nkeys_active; i++)
 				/* skip modifier codes, we do that ourselves */
@@ -1480,8 +1494,9 @@ keypress(XEvent *e)
 
 	ev = &e->xkey;
 	keysym = XGetKeyboardMapping(dpy, (KeyCode)ev->keycode, 1, &keysyms_return);
-	const Key  *akeys  = rt_keys  ? rt_keys  : keys;
-	unsigned int nkeys_active = rt_keys ? (unsigned int)rt_nkeys : LENGTH(keys);
+	const Key  *akeys        = rt_keys;
+	unsigned int nkeys_active = (unsigned int)rt_nkeys;
+	if (!akeys || !nkeys_active) { XFree(keysym); return; }
 	for (i = 0; i < nkeys_active; i++)
 		if (*keysym == akeys[i].keysym
 				&& CLEANMASK(akeys[i].mod) == CLEANMASK(ev->state)
@@ -2208,10 +2223,7 @@ run(void)
 					if (ie->len > 0 &&
 					    (strcmp(ie->name, "hotkeys.toml")      == 0 ||
 					     strcmp(ie->name, "themes.toml")       == 0 ||
-					     strcmp(ie->name, "window-rules.toml") == 0 ||
-					     (toml_themes_realname[0]  && strcmp(ie->name, toml_themes_realname)  == 0) ||
-					     (toml_hotkeys_realname[0] && strcmp(ie->name, toml_hotkeys_realname) == 0) ||
-					     (toml_rules_realname[0]   && strcmp(ie->name, toml_rules_realname)   == 0)))
+					     strcmp(ie->name, "window-rules.toml") == 0))
 						need_reload = 1;
 					ptr += sizeof(struct inotify_event) + ie->len;
 				}
@@ -2701,7 +2713,40 @@ static void (*lookup_func(const char *name))(const Arg *)
 	if (strcmp(name, "setlayout")            == 0) return setlayout;
 	if (strcmp(name, "focusmon")             == 0) return focusmon;
 	if (strcmp(name, "tagmon")               == 0) return tagmon;
+	if (strcmp(name, "moveorplace")          == 0) return moveorplace;
+	if (strcmp(name, "resizemouse")          == 0) return resizemouse;
+	if (strcmp(name, "sigstatusbar")         == 0) return sigstatusbar;
 	return NULL;
+}
+
+/* Fire a notify-send (async, non-blocking) to warn about bad/missing config */
+static void
+notify_bad_config(const char *filename, const char *reason)
+{
+	const char *base = strrchr(filename, '/');
+	base = base ? base + 1 : filename;
+	char msg[768];
+	snprintf(msg, sizeof(msg),
+	         "notify-send -u critical 'dwm: bad config' '%s: %s \u2014 loaded defaults'",
+	         base, reason);
+	pid_t pid = fork();
+	if (pid == 0) {
+		execl("/bin/sh", "sh", "-c", msg, (char *)NULL);
+		_exit(0);
+	}
+}
+
+/* Map a TOML click-name string to the dwm Click enum value */
+static unsigned int
+lookup_click(const char *name)
+{
+	if (strcmp(name, "ClkTagBar")    == 0) return ClkTagBar;
+	if (strcmp(name, "ClkLtSymbol")  == 0) return ClkLtSymbol;
+	if (strcmp(name, "ClkStatusText")== 0) return ClkStatusText;
+	if (strcmp(name, "ClkWinTitle")  == 0) return ClkWinTitle;
+	if (strcmp(name, "ClkClientWin") == 0) return ClkClientWin;
+	if (strcmp(name, "ClkRootWin")   == 0) return ClkRootWin;
+	return ClkLast; /* unknown */
 }
 
 /* Expand $varname from [vars] section into dst. */
@@ -2812,12 +2857,21 @@ build_arg(const char *func_name, const TomlDoc *doc,
 }
 
 static void
-load_hotkeys_toml(const char *path)
+load_hotkeys_toml(const char *user_path, const char *default_path)
 {
 	static TomlDoc doc;
-	if (!toml_parse(path, &doc)) {
-		fprintf(stderr, "dwm: cannot parse %s\n", path);
-		return;
+	int parsed = 0;
+	if (user_path && user_path[0]) {
+		parsed = toml_parse(user_path, &doc) && doc.n > 0;
+		if (!parsed)
+			notify_bad_config(user_path,
+			    access(user_path, F_OK) == 0 ? "invalid config" : "file not found");
+	}
+	if (!parsed) {
+		if (!default_path || !default_path[0] || !toml_parse(default_path, &doc)) {
+			fprintf(stderr, "dwm: cannot load hotkeys (no user or default config)\n");
+			return;
+		}
 	}
 	int nregular = toml_table_count(&doc, "keys");
 	int ntag     = toml_table_count(&doc, "tag_keys");
@@ -2887,27 +2941,74 @@ load_hotkeys_toml(const char *path)
 
 	rt_keys  = newkeys;
 	rt_nkeys = nk;
-	fprintf(stderr, "dwm: loaded %d keybinds from %s\n", nk, path);
+
+	/* Parse [[buttons]] — mouse button bindings */
+	{
+		int nbtn = toml_table_count(&doc, "buttons");
+		if (nbtn > TOML_BUTTONS_MAX) nbtn = TOML_BUTTONS_MAX;
+		int nb = 0;
+		for (int i = 0; i < nbtn; i++) {
+			const TomlValue *vclick = toml_table_get(&doc, "buttons", i, "click");
+			const TomlValue *vmod   = toml_table_get(&doc, "buttons", i, "mod");
+			const TomlValue *vbtn   = toml_table_get(&doc, "buttons", i, "button");
+			const TomlValue *vfunc  = toml_table_get(&doc, "buttons", i, "func");
+			if (!vclick || vclick->type != TOML_STRING) continue;
+			if (!vfunc  || vfunc->type  != TOML_STRING) continue;
+			if (!vbtn   || vbtn->type   != TOML_INT)    continue;
+			unsigned int click = lookup_click(vclick->s);
+			if (click == ClkLast) {
+				fprintf(stderr, "dwm: unknown click '%s'\n", vclick->s);
+				continue;
+			}
+			void (*fn)(const Arg *) = lookup_func(vfunc->s);
+			if (!fn) {
+				fprintf(stderr, "dwm: unknown func '%s'\n", vfunc->s);
+				continue;
+			}
+			if (nb >= TOML_BUTTONS_MAX) break;
+			Button *b = &rt_buttons_buf[nb];
+			b->click  = click;
+			b->mask   = parse_mod_mask(vmod);
+			b->button = (unsigned int)vbtn->i;
+			b->func   = fn;
+			Arg tmp_arg = build_arg(vfunc->s, &doc, "buttons", i);
+			memcpy((void *)&b->arg, &tmp_arg, sizeof(Arg));
+			nb++;
+		}
+		rt_buttons  = nb > 0 ? rt_buttons_buf : NULL;
+		rt_nbuttons = nb;
+		fprintf(stderr, "dwm: loaded %d button bindings from hotkeys config\n", nb);
+	}
+	fprintf(stderr, "dwm: loaded %d keybinds from hotkeys config\n", nk);
 }
 
 static void
-load_themes_toml(const char *path)
+load_themes_toml(const char *user_path, const char *default_path)
 {
 	static TomlDoc doc;
-	if (!toml_parse(path, &doc)) {
-		fprintf(stderr, "dwm: cannot parse %s\n", path);
-		return;
+	int parsed = 0;
+	if (user_path && user_path[0]) {
+		parsed = toml_parse(user_path, &doc) && doc.n > 0;
+		if (!parsed)
+			notify_bad_config(user_path,
+			    access(user_path, F_OK) == 0 ? "invalid config" : "file not found");
+	}
+	if (!parsed) {
+		if (!default_path || !default_path[0] || !toml_parse(default_path, &doc)) {
+			fprintf(stderr, "dwm: cannot load themes (no user or default config)\n");
+			return;
+		}
 	}
 
-	/* Build color table, defaulting to config.h values */
+	/* Build color table with Nord fallback values */
 	static char c_normborder[8], c_normbg[8], c_normfg[8];
 	static char c_selborder[8],  c_selbg[8],  c_selfg[8];
-	strncpy(c_normborder, normbordercolor, 7); c_normborder[7] = '\0';
-	strncpy(c_normbg,     normbgcolor,     7); c_normbg[7]     = '\0';
-	strncpy(c_normfg,     normfgcolor,     7); c_normfg[7]     = '\0';
-	strncpy(c_selborder,  selbordercolor,  7); c_selborder[7]  = '\0';
-	strncpy(c_selbg,      selbgcolor,      7); c_selbg[7]      = '\0';
-	strncpy(c_selfg,      selfgcolor,      7); c_selfg[7]      = '\0';
+	strncpy(c_normborder, "#3B4252", 7); c_normborder[7] = '\0';  /* Nord fallback */
+	strncpy(c_normbg,     "#434C5E", 7); c_normbg[7]     = '\0';
+	strncpy(c_normfg,     "#D8DEE9", 7); c_normfg[7]     = '\0';
+	strncpy(c_selborder,  "#81A1C1", 7); c_selborder[7]  = '\0';
+	strncpy(c_selbg,      "#434C5E", 7); c_selbg[7]      = '\0';
+	strncpy(c_selfg,      "#ECEFF4", 7); c_selfg[7]      = '\0';
 
 	/* Resolve active theme section: [active] theme = "name" → "theme.name",
 	 * falling back to the legacy [colors] section for backwards compatibility. */
@@ -2937,7 +3038,7 @@ load_themes_toml(const char *path)
 			{ c_selfg,  c_selbg,  c_selborder  }
 		};
 		int i;
-		for (i = 0; i < LENGTH(colors); i++) {
+		for (i = 0; i < 2; i++) {
 			Clr *newscm = drw_scm_create(drw, new_clrs[i], 3);
 			if (newscm) {
 				drw_scm_free(drw, scheme[i], 3);
@@ -2968,16 +3069,25 @@ load_themes_toml(const char *path)
 		drawbars();
 		arrange(mons);
 	}
-	fprintf(stderr, "dwm: loaded theme from %s\n", path);
+	fprintf(stderr, "dwm: loaded theme from config\n");
 }
 
 static void
-load_rules_toml(const char *path)
+load_rules_toml(const char *user_path, const char *default_path)
 {
 	static TomlDoc doc;
-	if (!toml_parse(path, &doc)) {
-		fprintf(stderr, "dwm: cannot parse %s\n", path);
-		return;
+	int parsed = 0;
+	if (user_path && user_path[0]) {
+		parsed = toml_parse(user_path, &doc) && doc.n > 0;
+		if (!parsed)
+			notify_bad_config(user_path,
+			    access(user_path, F_OK) == 0 ? "invalid config" : "file not found");
+	}
+	if (!parsed) {
+		if (!default_path || !default_path[0] || !toml_parse(default_path, &doc)) {
+			fprintf(stderr, "dwm: cannot load rules (no user or default config)\n");
+			return;
+		}
 	}
 	int n = toml_table_count(&doc, "rules");
 	if (n > TOML_RULES_MAX) n = TOML_RULES_MAX;
@@ -3023,15 +3133,15 @@ load_rules_toml(const char *path)
 	}
 	rt_rules  = rt_rules_buf;
 	rt_nrules = nk;
-	fprintf(stderr, "dwm: loaded %d window rules from %s\n", nk, path);
+	fprintf(stderr, "dwm: loaded %d window rules from config\n", nk);
 }
 
 static void
 reload_config(void)
 {
-	if (toml_hotkeys_path[0]) load_hotkeys_toml(toml_hotkeys_path);
-	if (toml_themes_path[0])  load_themes_toml(toml_themes_path);
-	if (toml_rules_path[0])   load_rules_toml(toml_rules_path);
+	load_hotkeys_toml(toml_hotkeys_path, toml_hotkeys_default_path);
+	load_themes_toml(toml_themes_path,   toml_themes_default_path);
+	load_rules_toml(toml_rules_path,     toml_rules_default_path);
 	if (dpy) grabkeys();
 
 	/* Spawn theme-apply script asynchronously to update terminal/rofi/polybar */
@@ -3057,6 +3167,8 @@ setup_inotify(void)
 {
 	const char *home = getenv("HOME");
 	if (!home) return;
+
+	/* User-editable config: ~/.config/dwm-titus/ */
 	snprintf(toml_config_dir,   sizeof(toml_config_dir),
 	         "%s/.config/dwm-titus", home);
 	snprintf(toml_hotkeys_path, sizeof(toml_hotkeys_path),
@@ -3066,71 +3178,37 @@ setup_inotify(void)
 	snprintf(toml_rules_path,   sizeof(toml_rules_path),
 	         "%s/window-rules.toml", toml_config_dir);
 
+	/* Default (fallback) config: ~/.local/share/dwm-titus/config/ */
+	snprintf(toml_default_dir,             sizeof(toml_default_dir),
+	         "%s/.local/share/dwm-titus/config", home);
+	snprintf(toml_hotkeys_default_path,    sizeof(toml_hotkeys_default_path),
+	         "%s/hotkeys.toml",      toml_default_dir);
+	snprintf(toml_themes_default_path,     sizeof(toml_themes_default_path),
+	         "%s/themes.toml",       toml_default_dir);
+	snprintf(toml_rules_default_path,      sizeof(toml_rules_default_path),
+	         "%s/window-rules.toml", toml_default_dir);
+
 	inotify_fd = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
 	if (inotify_fd < 0) { perror("dwm: inotify_init1"); return; }
 
 	inotify_wd = inotify_add_watch(inotify_fd, toml_config_dir,
 	                               IN_CLOSE_WRITE | IN_MOVED_TO);
 	if (inotify_wd < 0) {
-		/* Config dir not present – inotify disabled until restart */
+		/* User config dir not present – watch only the default dir */
+		inotify_wd = -1;
+	}
+
+	/* Watch the default dir so updates there also trigger hot-reload */
+	inotify_wd3 = inotify_add_watch(inotify_fd, toml_default_dir,
+	                                IN_CLOSE_WRITE | IN_MOVED_TO);
+
+	if (inotify_wd < 0 && inotify_wd3 < 0) {
+		/* Neither dir is watchable – disable inotify */
 		close(inotify_fd);
 		inotify_fd = -1;
 		return;
 	}
 
-	/* If the TOML files are symlinks (e.g. pointing into a git repo),
-	 * also watch the real target directory so that edits to the repo
-	 * files trigger hot-reload without needing to edit the installed copy. */
-	toml_themes_realname[0]  = '\0';
-	toml_hotkeys_realname[0] = '\0';
-	toml_rules_realname[0]   = '\0';
-	{
-		char real_path[PATH_MAX], real_dir[PATH_MAX];
-		char *slash;
-
-		/* Resolve themes.toml */
-		if (realpath(toml_themes_path, real_path)) {
-			strncpy(real_dir, real_path, PATH_MAX - 1);
-			real_dir[PATH_MAX - 1] = '\0';
-			slash = strrchr(real_dir, '/');
-			if (slash) {
-				strncpy(toml_themes_realname, slash + 1, PATH_MAX - 1);
-				*slash = '\0';
-				if (strcmp(real_dir, toml_config_dir) != 0)
-					inotify_wd2 = inotify_add_watch(inotify_fd, real_dir,
-					                                IN_CLOSE_WRITE | IN_MOVED_TO);
-			}
-		}
-
-		/* Resolve hotkeys.toml (same real dir assumed; just capture the name) */
-		if (realpath(toml_hotkeys_path, real_path)) {
-			strncpy(real_dir, real_path, PATH_MAX - 1);
-			real_dir[PATH_MAX - 1] = '\0';
-			slash = strrchr(real_dir, '/');
-			if (slash) {
-				strncpy(toml_hotkeys_realname, slash + 1, PATH_MAX - 1);
-				/* Add separate watch only if in yet another directory */
-				*slash = '\0';
-				if (strcmp(real_dir, toml_config_dir) != 0 && inotify_wd2 < 0)
-					inotify_wd2 = inotify_add_watch(inotify_fd, real_dir,
-					                                IN_CLOSE_WRITE | IN_MOVED_TO);
-			}
-		}
-
-		/* Resolve window-rules.toml */
-		if (realpath(toml_rules_path, real_path)) {
-			strncpy(real_dir, real_path, PATH_MAX - 1);
-			real_dir[PATH_MAX - 1] = '\0';
-			slash = strrchr(real_dir, '/');
-			if (slash) {
-				strncpy(toml_rules_realname, slash + 1, PATH_MAX - 1);
-				*slash = '\0';
-				if (strcmp(real_dir, toml_config_dir) != 0 && inotify_wd2 < 0)
-					inotify_wd2 = inotify_add_watch(inotify_fd, real_dir,
-					                                IN_CLOSE_WRITE | IN_MOVED_TO);
-			}
-		}
-	}
 }
 
 void
@@ -3141,7 +3219,7 @@ setup(void)
 	Atom utf8string;
 	/* clean up any zombies immediately */
 	sigchld(0);
-	dyn_borderpx = borderpx; /* initialize from config.h (overridden by themes.toml) */
+	dyn_borderpx = 1; /* initial value; overridden by themes.toml on load */
 
 	/* the one line of bloat that would have saved a lot of time for a lot of people */
 	putenv("_JAVA_AWT_WM_NONREPARENTING=1");
@@ -3190,10 +3268,16 @@ setup(void)
 	cursor[CurResizeTR] = drw_cur_create(drw, XC_top_right_corner);
 	cursor[CurResizeTL] = drw_cur_create(drw, XC_top_left_corner);
 	cursor[CurMove] = drw_cur_create(drw, XC_fleur);
-	/* init appearance */
-	scheme = ecalloc(LENGTH(colors), sizeof(Clr *));
-	for (i = 0; i < LENGTH(colors); i++)
-		scheme[i] = drw_scm_create(drw, colors[i], 3);
+	/* init appearance (placeholder colors; theme loaded from TOML in reload_config below) */
+	{
+		static const char *init_clrs[2][3] = {
+			{ "#D8DEE9", "#434C5E", "#3B4252" },  /* SchemeNorm: fg, bg, border */
+			{ "#ECEFF4", "#434C5E", "#81A1C1" },  /* SchemeSel:  fg, bg, border */
+		};
+		scheme = ecalloc(2, sizeof(Clr *));
+		for (i = 0; i < 2; i++)
+			scheme[i] = drw_scm_create(drw, init_clrs[i], 3);
+	}
 	/* init bars */
 	updatebars();
 	updatestatus();

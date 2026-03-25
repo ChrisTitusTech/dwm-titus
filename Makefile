@@ -39,13 +39,14 @@ install: all
 		mkdir -p ${DATA_DIR}; \
 		tar -cf - --exclude='.git' --exclude='*.o' . | tar -xf - -C ${DATA_DIR}/; \
 	fi
-	# Configs: polybar, rofi, dwm-titus TOML symlinks
+	# Configs: polybar, rofi, dwm-titus TOML files
 	mkdir -p ${CFG_DIR}/polybar
 	cp -rf config/polybar/* ${CFG_DIR}/polybar/
 	for f in config/rofi/themes/*.rasi; do install -Dm644 "$$f" ${CFG_DIR}/rofi/themes/$$(basename $$f); done
 	mkdir -p ${CFG_DIR}/dwm-titus
-	ln -sf ${DATA_DIR}/config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
-	ln -sf ${DATA_DIR}/config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
+	cp -n config/hotkeys.toml      ${CFG_DIR}/dwm-titus/hotkeys.toml 2>/dev/null || true
+	cp -n config/themes.toml       ${CFG_DIR}/dwm-titus/themes.toml  2>/dev/null || true
+	cp -n config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml 2>/dev/null || true
 	# Scripts to PATH (skip autostart scripts)
 	for f in scripts/*; do \
 		case "$$(basename $$f)" in autostart*) continue;; esac; \
