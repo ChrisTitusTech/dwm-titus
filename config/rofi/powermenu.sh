@@ -1,118 +1,290 @@
 #!/usr/bin/env bash
 
-uptime_info="$(uptime -p | sed 's/up //')"
+# This script defines just a mode for rofi instead of being a self-contained
+# executable that launches rofi by itself. This makes it more flexible than
+# running rofi inside this script as now the user can call rofi as one pleases.
+# For instance:
+#
+#   rofi -show powermenu -modi powermenu:./rofi-power-menu
+#
+# See README.md for more information.
 
-# ── Theme integration (reads colors from themes.toml) ────
-_themes_file() {
-    local f="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/themes.toml"
-    [[ -f "$f" ]] && echo "$f"
-}
+set -e
+set -u
 
-_toml_get() {
-    local section="$1" key="$2" file="$3"
-    awk -v sec="[$section]" -v key="$key" '
-        /^\[/ { in_sec = ($0 == sec) }
-        in_sec && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
-            sub(/^[^=]*=[[:space:]]*/, "")
-            gsub(/"/, "")
-            gsub(/[[:space:]]+#.*$/, "")
-            sub(/[[:space:]]+$/, "")
-            print; exit
-        }
-    ' "$file"
-}
+# All supported choices
+all=(shutdown reboot suspend hibernate logout lockscreen)
 
-_theme_colors() {
-    local tf; tf="$(_themes_file)"
-    [[ -z "$tf" ]] && return 0
+# By default, show all (i.e., just copy the array)
+show=("${all[@]}")
 
-    local name; name="$(_toml_get "active" "theme" "$tf")"
-    [[ -z "$name" ]] && return 0
+declare -A texts
+texts[lockscreen]="lock screen"
+texts[switchuser]="switch user"
+texts[logout]="log out"
+texts[suspend]="suspend"
+texts[hibernate]="hibernate"
+texts[reboot]="reboot"
+texts[shutdown]="shut down"
 
-    local sec="theme.$name"
-    local bg;     bg="$(_toml_get "$sec" "normbgcolor"     "$tf")"
-    local bg_alt; bg_alt="$(_toml_get "$sec" "selbgcolor"  "$tf")"
-    local fg;     fg="$(_toml_get "$sec" "normfgcolor"     "$tf")"
-    local accent; accent="$(_toml_get "$sec" "selbordercolor" "$tf")"
-    local border; border="$(_toml_get "$sec" "normbordercolor" "$tf")"
+declare -A icons
+icons[lockscreen]=$'\Uf033e'
+icons[switchuser]=$'\Uf0019'
+icons[logout]=$'\Uf0343'
+icons[suspend]=$'\Uf04b2'
+icons[hibernate]=$'\Uf02ca'
+icons[reboot]=$'\Uf0709'
+icons[shutdown]=$'\Uf0425'
+icons[cancel]=$'\Uf0156'
 
-    [[ -z "$bg" ]] && return 0
+declare -A actions
+actions[lockscreen]="loginctl lock-session ${XDG_SESSION_ID-}"
+#actions[switchuser]="???"
+actions[logout]="loginctl terminate-session ${XDG_SESSION_ID-}"
+actions[suspend]="systemctl suspend"
+actions[hibernate]="systemctl hibernate"
+actions[reboot]="systemctl reboot"
+actions[shutdown]="systemctl poweroff"
 
-    printf '* { background: %s; background-alt: %s; foreground: %s; accent: %s; border-col: %s; background-color: %s; text-color: %s; }' \
-        "$bg" "$bg_alt" "$fg" "$accent" "$border" "$bg" "$fg"
-}
+# By default, ask for confirmation for actions that are irreversible
+confirmations=(reboot shutdown logout)
 
-# ── Resolution scaling ───────────────────────────────────
-_screen_height() {
-    if command -v xrandr &>/dev/null; then
-        xrandr --query | awk '/\*/ { split($1,a,"x"); print a[2]; exit }'
-        return
-    fi
-    echo "1080"
-}
+# By default, no dry run
+dryrun=false
+showsymbols=true
+showtext=true
+symbols_font="MesloLGS Nerd Font Mono"
 
-_scale_theme() {
-    local h
-    h="$(_screen_height)"
-    [ "$h" -eq 1080 ] && return 0
-
-    local icon win_w win_h pad_v pad_h
-    icon=$(( 30  * h / 1080 )); [ "$icon"  -lt 14 ] && icon=14
-    win_w=$(( 500 * h / 1080 )); [ "$win_w" -lt 240 ] && win_w=240
-    win_h=$(( 130 * h / 1080 )); [ "$win_h" -lt 60  ] && win_h=60
-    pad_v=$(( 20  * h / 1080 )); [ "$pad_v" -lt 8   ] && pad_v=8
-    pad_h=$(( 30  * h / 1080 )); [ "$pad_h" -lt 12  ] && pad_h=12
-
-    printf '* { element-text-font: "MesloLGS Nerd Font Mono %d"; } window { width: %dpx; height: %dpx; } mainbox { padding: %dpx %dpx; }' \
-        "$icon" "$win_w" "$win_h" "$pad_v" "$pad_h"
-}
-
-# Icons — ANSI-C quoting embeds exact codepoints, no glyph-in-file required
-# nf-fa: lock=F023  sign-out=F08B  moon=F186  refresh=F021  power=F011
-lock=$'\uf023'
-logout=$'\uf08b'
-sleep=$'\uf186'
-reboot=$'\uf021'
-shutdown=$'\uf011'
-
-rofi_cmd() {
-    local _colors; _colors="$(_theme_colors)"
-    local _scale;  _scale="$(_scale_theme)"
-    local _args=(-dmenu -i -p "  $uptime_info"
-                 -theme "$HOME/.config/rofi/themes/powermenu.rasi")
-    [ -n "$_colors" ] && _args+=(-theme-str "$_colors")
-    [ -n "$_scale"  ] && _args+=(-theme-str "$_scale")
-    rofi "${_args[@]}"
-}
-
-selected=$(printf '%s\n%s\n%s\n%s\n%s' \
-    "$lock" "$logout" "$sleep" "$reboot" "$shutdown" | rofi_cmd)
-
-case "$selected" in
-    "$lock")
-        if command -v betterlockscreen &>/dev/null; then
-            betterlockscreen -l
-        elif command -v i3lock &>/dev/null; then
-            i3lock
+function check_valid {
+    option="$1"
+    shift 1
+    for entry in "${@}"
+    do
+        if [ -z "${actions[$entry]+x}" ]
+        then
+            echo "Invalid choice in $1: $entry" >&2
+            exit 1
         fi
-        ;;
-    "$logout")
-        case "$DESKTOP_SESSION" in
-            dwm)     pkill dwm ;;
-            openbox) openbox --exit ;;
-            bspwm)   bspc quit ;;
-            i3)      i3-msg exit ;;
-            plasma)  qdbus org.kde.ksmserver /KSMServer logout 0 0 0 ;;
-        esac
-        ;;
-    "$sleep")
-        amixer set Master mute 2>/dev/null
-        systemctl suspend
-        ;;
-    "$reboot")
-        systemctl reboot
-        ;;
-    "$shutdown")
-        systemctl poweroff
-        ;;
-esac
+    done
+}
+
+# Parse command-line options
+parsed=$(getopt --options=h --longoptions=help,dry-run,confirm:,choices:,choose:,symbols,no-symbols,text,no-text,symbols-font: --name "$0" -- "$@")
+if [ $? -ne 0 ]; then
+    echo 'Terminating...' >&2
+    exit 1
+fi
+eval set -- "$parsed"
+unset parsed
+while true; do
+    case "$1" in
+        "-h"|"--help")
+            echo "rofi-power-menu - a power menu mode for Rofi"
+            echo
+            echo "Usage: rofi-power-menu [--choices CHOICES] [--confirm CHOICES]"
+            echo "                       [--choose CHOICE] [--dry-run] [--symbols|--no-symbols]"
+            echo
+            echo "Use with Rofi in script mode. For instance, to ask for shutdown or reboot:"
+            echo
+            echo "  rofi -show menu -modi \"menu:rofi-power-menu --choices=shutdown/reboot\""
+            echo
+            echo "Available options:"
+            echo "  --dry-run            Don't perform the selected action but print it to stderr."
+            echo "  --choices CHOICES    Show only the selected choices in the given order. Use /"
+            echo "                       as the separator. Available choices are lockscreen,"
+            echo "                       logout,suspend, hibernate, reboot and shutdown. By"
+            echo "                       default, all available choices are shown."
+            echo "  --confirm CHOICES    Require confirmation for the gives choices only. Use / as"
+            echo "                       the separator. Available choices are lockscreen, logout,"
+            echo "                       suspend, hibernate, reboot and shutdown. By default, only"
+            echo "                       irreversible actions logout, reboot and shutdown require"
+            echo "                       confirmation."
+            echo "  --choose CHOICE      Preselect the given choice and only ask for a"
+            echo "                       confirmation (if confirmation is set to be requested). It"
+            echo "                       is strongly recommended to combine this option with"
+            echo "                       --confirm=CHOICE if the choice wouldn't require"
+            echo "                       confirmation by default. Available choices are"
+            echo "                       lockscreen, logout, suspend, hibernate, reboot and"
+            echo "                       shutdown."
+            echo "  --[no-]symbols       Show Unicode symbols or not. Requires a font with support"
+            echo "                       for the symbols. Use, for instance, fonts from the"
+            echo "                       Nerdfonts collection. By default, they are shown"
+            echo "  --[no-]text          Show text description or not."
+            echo "  --symbols-font FONT  Use the given font for symbols. By default, the symbols"
+            echo "                       use the same font as the text. That font is configured"
+            echo "                       with rofi."
+            echo "  -h,--help            Show this help text."
+            exit 0
+            ;;
+        "--dry-run")
+            dryrun=true
+            shift 1
+            ;;
+        "--confirm")
+            IFS='/' read -ra confirmations <<< "$2"
+            check_valid "$1" "${confirmations[@]}"
+            shift 2
+            ;;
+        "--choices")
+            IFS='/' read -ra show <<< "$2"
+            check_valid "$1" "${show[@]}"
+            shift 2
+            ;;
+        "--choose")
+            # Check that the choice is valid
+            check_valid "$1" "$2"
+            selectionID="$2"
+            shift 2
+            ;;
+        "--symbols")
+            showsymbols=true
+            shift 1
+            ;;
+        "--no-symbols")
+            showsymbols=false
+            shift 1
+            ;;
+        "--text")
+            showtext=true
+            shift 1
+            ;;
+        "--no-text")
+            showtext=false
+            shift 1
+            ;;
+        "--symbols-font")
+            symbols_font="$2"
+            shift 2
+            ;;
+        "--")
+            shift
+            break
+            ;;
+        *)
+            echo "Internal error" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [ "$showsymbols" = "false" -a "$showtext" = "false" ]
+then
+    echo "Invalid options: cannot have --no-symbols and --no-text enabled at the same time." >&2
+    exit 1
+fi
+
+# Define the messages after parsing the CLI options so that it is possible to
+# configure them in the future.
+
+function write_message {
+    if [ -z ${symbols_font+x} ];
+    then
+        icon="<span font_size=\"medium\">$1</span>"
+    else
+        icon="<span font=\"${symbols_font}\" font_size=\"medium\">$1</span>"
+    fi
+    text="<span font_size=\"medium\">$2</span>"
+    if [ "$showsymbols" = "true" ]
+    then
+        if [ "$showtext" = "true" ]
+        then
+            printf '\u200e%s \u2068%s\u2069' "$icon" "$text"
+        else
+            printf '\u200e%s' "$icon"
+        fi
+    else
+        printf '%s' "$text"
+    fi
+}
+
+function print_selection {
+    echo -e "$1" | $(read -r -d '' entry; echo "echo $entry")
+}
+
+declare -A messages
+declare -A confirmationMessages
+for entry in "${all[@]}"
+do
+    messages[$entry]=$(write_message "${icons[$entry]}" "${texts[$entry]^}")
+done
+for entry in "${all[@]}"
+do
+    # Add zero-width space character (\u200b) to icon to ensure confirmation-
+    # and regular messages never collide.
+    confirmationMessages[$entry]=$(write_message "${icons[$entry]}\u200b" "Yes, ${texts[$entry]}")
+done
+confirmationMessages[cancel]=$(write_message "${icons[cancel]}" "No, cancel")
+
+if [ $# -gt 0 ]
+then
+    # If arguments given, use those as the selection
+    selection="${@}"
+else
+    # Otherwise, use the CLI passed choice if given
+    if [ -n "${selectionID+x}" ]
+    then
+        selection="${messages[$selectionID]}"
+    fi
+fi
+
+# If not invoked by rofi, launch rofi with this script as the mode handler
+if [ -z "${ROFI_RETV+x}" ]; then
+    exec rofi -show powermenu -modi "powermenu:$0" \
+        -config "$HOME/.config/rofi/config.rasi" \
+        -theme-str 'window { location: center; anchor: center; height: 215px; width: 200px; border: 2px solid; margin: 0; } mainbox { margin: 0; spacing: 0; } listview { margin: 0; spacing: 0; } inputbar { enabled: false; }'
+fi
+
+# Don't allow custom entries
+echo -e "\0no-custom\x1ftrue"
+# Use markup
+echo -e "\0markup-rows\x1ftrue"
+
+if [ -z "${selection+x}" ]
+then
+    echo -e "\0prompt\x1fPower menu"
+    for entry in "${show[@]}"
+    do
+        echo -e "${messages[$entry]}\0icon\x1f${icons[$entry]}"
+    done
+else
+    for entry in "${show[@]}"
+    do
+        if [ "$selection" = "$(print_selection "${messages[$entry]}")" ]
+        then
+            # Check if the selected entry is listed in confirmation requirements
+            for confirmation in "${confirmations[@]}"
+            do
+                if [ "$entry" = "$confirmation" ]
+                then
+                    # Ask for confirmation
+                    echo -e "\0prompt\x1fAre you sure"
+                    echo -e "${confirmationMessages[$entry]}\0icon\x1f${icons[$entry]}"
+                    echo -e "${confirmationMessages[cancel]}\0icon\x1f${icons[cancel]}"
+                    exit 0
+                fi
+            done
+            # If not, then no confirmation is required, so mark confirmed
+            selection=$(print_selection "${confirmationMessages[$entry]}")
+        fi
+        if [ "$selection" = "$(print_selection "${confirmationMessages[$entry]}")" ]
+        then
+            if [ $dryrun = true ]
+            then
+                # Tell what would have been done
+                echo "Selected: $entry" >&2
+            else
+                # Perform the action
+                ${actions[$entry]}
+            fi
+            exit 0
+        fi
+        if [ "$selection" = "$(print_selection "${confirmationMessages[cancel]}")" ]
+        then
+            # Do nothing
+            exit 0
+        fi
+    done
+    # The selection didn't match anything, so raise an error
+    echo "Invalid selection: $selection" >&2
+    exit 1
+fi
