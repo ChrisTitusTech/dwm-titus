@@ -1,1 +1,0 @@
-exec dbus-update-activation-environment --all

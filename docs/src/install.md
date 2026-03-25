@@ -79,5 +79,5 @@ The script handles all dependency installation, font copying, and config placeme
 startx
 ```
 
-The provided `.xinitrc` disables screen blanking, starts dbus, launches Polybar, and runs dwm.
+The provided `.xinitrc` disables screen blanking, launches Polybar, and runs dwm.
 

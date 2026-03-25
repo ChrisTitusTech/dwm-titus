@@ -19,7 +19,7 @@ Runs a full dependency check and reports:
 - Runtime programs: rofi, picom, dunst, feh, flameshot, polybar
 - Terminal emulators (ghostty, alacritty, kitty, st)
 - Fonts: MesloLGS Nerd, Noto Color Emoji
-- Running services: picom, dunst, polybar, dbus, NetworkManager
+- Running services: picom, dunst, polybar, NetworkManager
 - Config paths: `.xinitrc`, polybar dir, rofi dir, wallpaper folder
 
 Selecting a failed item offers to run `install.sh` (auto-fix) or `check-deps.sh` (details).

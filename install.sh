@@ -117,6 +117,12 @@ if [ -d "$REPO_DIR/config/ghostty" ]; then
     ok "Ghostty themes installed."
 fi
 
+# Polybar
+mkdir -p "$HOME/.config/polybar"
+cp -rf "$REPO_DIR/config/polybar/"* "$HOME/.config/polybar/" 2>/dev/null || true
+chmod +x "$HOME/.config/polybar/launch.sh" 2>/dev/null || true
+ok "Polybar config installed."
+
 # Autostart + theme scripts
 mkdir -p "$DWM_DATA_DIR/scripts" "$DWM_DATA_DIR/ghostty/themes"
 for f in "$REPO_DIR/scripts/autostart.sh" "$REPO_DIR/scripts/theme-apply.sh"; do

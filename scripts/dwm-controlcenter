@@ -189,7 +189,6 @@ run_health_check() {
     _proc picom
     _proc dunst
     _proc polybar
-    _proc dbus-daemon
     if systemctl is-active --quiet NetworkManager 2>/dev/null; then
         passed_lines+=("✓  NetworkManager  (active)")
         pass=$((pass + 1))

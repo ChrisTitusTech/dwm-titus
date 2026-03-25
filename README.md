@@ -108,7 +108,7 @@ The installer places `.xinitrc` in your home directory. Start with:
 startx
 ```
 
-The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), sets up dbus, launches Polybar, and starts dwm.
+The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), launches Polybar, and starts dwm.
 
 ---
 
