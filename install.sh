@@ -116,11 +116,11 @@ done
 # Ghostty
 if [ -d "$REPO_DIR/config/ghostty" ]; then
     mkdir -p "$HOME/.config/ghostty"
-    # config file: seed only (preserve user edits)
-    mirror_dir "$REPO_DIR/config/ghostty/config" "$HOME/.config/ghostty/config"
+    # config is a single file -- overwrite it directly
+    cp -f "$REPO_DIR/config/ghostty/config" "$HOME/.config/ghostty/config"
     # themes: mirror exactly so removed themes are cleaned up
     mirror_dir "$REPO_DIR/config/ghostty/themes" "$HOME/.config/ghostty/themes"
-    ok "Ghostty themes installed."
+    ok "Ghostty config and themes installed."
 fi
 
 # Polybar (mirror -- stale files removed so config stays in sync with the repo)

@@ -40,8 +40,11 @@ install: all
 		cp -rf . ${DATA_DIR}/; \
 	fi
 
-	# Configs: copy all config subdirs
+	# Polybar: rsync -- dereferences symlinks, deletes stale files, overwrites all
+	rsync -rL --delete config/polybar/ ${CFG_DIR}/polybar/
+	# Remaining config subdirs (ghostty is a symlink to DATA_DIR -- skip it; polybar handled above)
 	for dir in config/*/; do \
+		case "$$(basename $$dir)" in polybar|ghostty) continue;; esac; \
 		cp -rfL --remove-destination "$$dir" ${CFG_DIR}/$$(basename "$$dir"); \
 	done
 	# Scripts to PATH
