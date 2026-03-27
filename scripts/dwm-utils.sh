@@ -17,7 +17,7 @@ fi
 
 install_packages() {
     # shellcheck disable=SC2086
-    $PKG_CMD "$@"
+    $PKG_CMD "$@" >/dev/null
 }
 
 # ── Hardware Detection ──────────────────────────────────
