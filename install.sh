@@ -10,14 +10,8 @@ ok()   { printf "${GREEN}[OK]${NC} %s\n" "$1"; }
 warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
 err()  { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 
-# Mirror src -> dst exactly, removing stale files no longer in repo.
-mirror_dir() { local src="$1" dst="$2"; mkdir -p "$dst"; rsync -a --delete "$src/" "$dst/"; }
-# Seed dst on first install only -- never overwrites files the user has already edited.
-seed_dir()   { local src="$1" dst="$2"; mkdir -p "$dst"; rsync -a --ignore-existing "$src/" "$dst/"; }
-
 command -v pacman &>/dev/null || { err "This installer requires Arch Linux (pacman not found)."; exit 1; }
 
-DWM_DATA_DIR="$HOME/.local/share/dwm-titus"
 BG_DIR="$HOME/Pictures/backgrounds"
 
 echo ""
@@ -92,77 +86,7 @@ else
     ok "Wallpapers already present."
 fi
 
-# ── Compile & install dwm ────────────────────────────────
-cd "$REPO_DIR"
-[ -f config.h ] || { cp config.def.h config.h; info "Created config.h — edit to customize."; }
-info "Compiling and installing dwm..."
-make clean && make
-sudo make install
-ok "dwm installed."
 
-# ── Configs ──────────────────────────────────────────────
-info "Installing configuration files..."
-
-# Rofi (seed -- never clobbers user edits)
-mirror_dir "$REPO_DIR/config/rofi" "$HOME/.config/rofi"
-chmod +x "$HOME/.config/rofi/powermenu.sh" 2>/dev/null || true
-
-# Terminal configs (seed -- never clobbers user edits)
-for term_dir in alacritty kitty; do
-    [ -d "$REPO_DIR/config/$term_dir" ] || continue
-    mirror_dir "$REPO_DIR/config/$term_dir" "$HOME/.config/$term_dir"
-done
-
-# Ghostty
-if [ -d "$REPO_DIR/config/ghostty" ]; then
-    mkdir -p "$HOME/.config/ghostty"
-    # config is a single file -- overwrite it directly
-    cp -f "$REPO_DIR/config/ghostty/config" "$HOME/.config/ghostty/config"
-    # themes: mirror exactly so removed themes are cleaned up
-    mirror_dir "$REPO_DIR/config/ghostty/themes" "$HOME/.config/ghostty/themes"
-    ok "Ghostty config and themes installed."
-fi
-
-# Polybar (mirror -- stale files removed so config stays in sync with the repo)
-mirror_dir "$REPO_DIR/config/polybar" "$HOME/.config/polybar"
-chmod +x "$HOME/.config/polybar/launch.sh" 2>/dev/null || true
-ok "Polybar config installed."
-
-# Autostart + theme scripts
-mkdir -p "$DWM_DATA_DIR/scripts" "$DWM_DATA_DIR/ghostty/themes"
-for f in "$REPO_DIR/scripts/autostart.sh" "$REPO_DIR/scripts/theme-apply.sh"; do
-    dst="$DWM_DATA_DIR/scripts/$(basename "$f")"
-    [ "$(realpath "$f")" != "$(realpath "$dst" 2>/dev/null)" ] && cp "$f" "$dst" || true
-done
-chmod +x "$DWM_DATA_DIR/scripts/"*.sh
-# Mirror ghostty themes into data dir so removed themes are cleaned up
-mirror_dir "$REPO_DIR/config/ghostty/themes" "$DWM_DATA_DIR/ghostty/themes"
-
-# ── Default TOML configs (always kept up-to-date in data dir) ───────────────
-# These live in ~/.local/share/dwm-titus/config/ and serve as the
-# system-provided defaults.  DWM falls back to them when the user config
-# (~/.config/dwm-titus/) is missing or invalid.
-info "Installing default TOML configs..."
-mkdir -p "$DWM_DATA_DIR/config"
-cp -f "$REPO_DIR/config/hotkeys.toml"       "$DWM_DATA_DIR/config/hotkeys.toml"
-cp -f "$REPO_DIR/config/themes.toml"        "$DWM_DATA_DIR/config/themes.toml"
-cp -f "$REPO_DIR/config/window-rules.toml"  "$DWM_DATA_DIR/config/window-rules.toml"
-ok "Default TOML configs installed to $DWM_DATA_DIR/config/"
-
-# ── User TOML configs (seeded on first install only) ────────────────────────
-# ~/.config/dwm-titus/ is the user-editable config directory.
-# cp -n (no-clobber) ensures existing user customisations are never overwritten.
-DWM_USER_DIR="$HOME/.config/dwm-titus"
-mkdir -p "$DWM_USER_DIR"
-cp -n "$REPO_DIR/config/hotkeys.toml"       "$DWM_USER_DIR/hotkeys.toml"      2>/dev/null || true
-cp -n "$REPO_DIR/config/themes.toml"        "$DWM_USER_DIR/themes.toml"       2>/dev/null || true
-cp -n "$REPO_DIR/config/window-rules.toml"  "$DWM_USER_DIR/window-rules.toml" 2>/dev/null || true
-ok "User TOML configs ready in $DWM_USER_DIR"
-
-info "Applying initial theme..."
-"$DWM_DATA_DIR/scripts/theme-apply.sh" 2>/dev/null \
-    || warn "theme-apply.sh had a non-fatal issue — it will work once DWM starts."
-ok "Configuration files installed."
 
 # ── Display manager ──────────────────────────────────────
 currentdm=""
@@ -177,14 +101,9 @@ else
     ok "SDDM installed and enabled."
 fi
 
-# ── Verify ───────────────────────────────────────────────
-[ -f /usr/share/xsessions/dwm.desktop ] \
-    && ok "dwm.desktop session entry is in place." \
-    || warn "dwm.desktop missing from /usr/share/xsessions/ — run 'sudo make install' again."
-
-[ -f "$HOME/.xinitrc" ] \
-    && ok ".xinitrc exists." \
-    || warn ".xinitrc not found. Copy with: cp $REPO_DIR/.xinitrc ~/.xinitrc"
+# ── Build & Install ──────────────────────────────────────
+cd "$REPO_DIR"
+sudo make clean install
 
 # ── Done ─────────────────────────────────────────────────
 echo ""

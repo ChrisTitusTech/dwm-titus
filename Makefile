@@ -1,6 +1,8 @@
 # dwm - dynamic window manager
 # See LICENSE file for copyright and license details.
 
+.SILENT:
+
 include config.mk
 
 USER_HOME ?= $(shell getent passwd $(or $(SUDO_USER),$(USER)) 2>/dev/null | cut -d: -f6)
@@ -28,41 +30,46 @@ clean:
 	rm -f dwm ${OBJ} *.orig *.rej
 
 install: all
-	# Binary + man page
+	@echo ""
+	@echo "==> Installing dwm binary and man page..."
 	install -Dm755 dwm ${DESTDIR}${PREFIX}/bin/dwm
 	sed "s/VERSION/${VERSION}/g" dwm.1 | install -Dm644 /dev/stdin ${DESTDIR}${MANPREFIX}/man1/dwm.1
-	# Session entry + xinitrc
-	test -f /usr/share/xsessions/dwm.desktop || install -Dm644 dwm.desktop /usr/share/xsessions/
-	test -f ${USER_HOME}/.xinitrc || install -Dm644 scripts/.xinitrc ${USER_HOME}/.xinitrc
-	# Setup Local Repo Directory
+	@echo "==> Setting up X session entries..."
+	install -Dm644 dwm.desktop /usr/share/xsessions/
+	install -Dm644 scripts/.xinitrc ${USER_HOME}/.xinitrc
+	@echo "==> Syncing local repo to data dir..."
 	mkdir -p ${DATA_DIR}
 	if [ "$$(realpath .)" != "$$(realpath ${DATA_DIR})" ]; then \
 		cp -rf . ${DATA_DIR}/; \
 	fi
-
-	# Polybar: rsync -- dereferences symlinks, deletes stale files, overwrites all
-	rsync -rL --delete config/polybar/ ${CFG_DIR}/polybar/
-	# Remaining config subdirs (ghostty is a symlink to DATA_DIR -- skip it; polybar handled above)
+	@echo "==> Installing config directories..."
 	for dir in config/*/; do \
-		case "$$(basename $$dir)" in polybar|ghostty) continue;; esac; \
-		cp -rfL --remove-destination "$$dir" ${CFG_DIR}/$$(basename "$$dir"); \
+		dst=${CFG_DIR}/$$(basename "$$dir"); \
+		[ -L "$$dst" ] && rm -f "$$dst"; \
+		cp -rfL --remove-destination "$$dir" "$$dst"; \
 	done
-	# Scripts to PATH
+	@echo "==> Installing scripts to PATH..."
 	for f in scripts/*; do \
 		case "$$(basename $$f)" in autostart*) continue;; esac; \
 		install -Dm755 "$$f" ${DESTDIR}${PREFIX}/bin/$$(basename $$f); \
 	done
-	
-	# Setup User Config if they don't exist
+	@echo "==> Seeding user config (skipping existing files)..."
 	mkdir -p ${CFG_DIR}/dwm-titus
 	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
 	test -f ${CFG_DIR}/dwm-titus/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
 	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
-	# Fix ownership + permissions
-	find ${DATA_DIR} ${CFG_DIR}/polybar -name '*.sh' -o -name '*.py' | xargs -r chmod +x
-	for dir in config/*/; do chown -R ${OWNER}: "${CFG_DIR}/$$(basename $$dir)"; done
-	chown -R ${OWNER}: ${DATA_DIR}
-	chown ${OWNER}: ${USER_HOME}/.xinitrc 2>/dev/null || true
+	@echo "==> Fixing ownership and permissions..."
+	find ${DATA_DIR} -name '*.sh' -o -name '*.py' | xargs -r chmod +x
+	for dir in config/*/; do \
+		b=$$(basename $$dir); \
+		find "${CFG_DIR}/$$b" -name '*.sh' -o -name '*.py' 2>/dev/null | xargs -r chmod +x; \
+		chown -R ${OWNER}: "${CFG_DIR}/$$b"; \
+	done
+	chown -R ${OWNER}: ${DATA_DIR} && chown ${OWNER}: ${USER_HOME}/.xinitrc 2>/dev/null || true
+	@echo ""
+	@echo "  dwm installed successfully."
+	@echo "  Log out and select 'dwm', or start with: startx"
+	@echo ""
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm \
