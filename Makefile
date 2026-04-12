@@ -35,6 +35,9 @@ install: all
 	install -Dm755 dwm ${DESTDIR}${PREFIX}/bin/dwm
 	sed "s/VERSION/${VERSION}/g" dwm.1 | install -Dm644 /dev/stdin ${DESTDIR}${MANPREFIX}/man1/dwm.1
 	@echo "==> Setting up X session entries..."
+	if [ ! -d /usr/share/xsessions ]; then \
+		mkdir -p /usr/share/xsessions; \
+	fi
 	install -Dm644 dwm.desktop /usr/share/xsessions/
 	install -Dm644 scripts/.xinitrc ${USER_HOME}/.xinitrc
 	@echo "==> Syncing local repo to data dir..."
