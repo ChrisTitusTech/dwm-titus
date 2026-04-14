@@ -2,6 +2,6 @@
 Encoding=UTF-8
 Name=dwm-titus
 Comment=Dynamic window manager (dwm-titus)
-Exec=dwm
+Exec=/usr/local/bin/dwm
 Icon=dwm
 Type=XSession

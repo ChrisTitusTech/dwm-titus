@@ -88,8 +88,8 @@ keys = [
   { mod="",                 key="XF86AudioMute",          desc="Mute toggle",   func="spawn",  cmd="amixer sset Master toggle" },
 
   # ── Brightness ────────────────────────────────────────────────────────────────
-  { mod="",                 key="XF86MonBrightnessUp",    desc="Brightness +",  func="spawn",  cmd="xbacklight -inc 10" },
-  { mod="",                 key="XF86MonBrightnessDown",  desc="Brightness -",  func="spawn",  cmd="xbacklight -dec 10" },
+  { mod="",                 key="XF86MonBrightnessUp",    desc="Brightness +",  func="spawn",  cmd="brightnessctl set 10%+" },
+  { mod="",                 key="XF86MonBrightnessDown",  desc="Brightness -",  func="spawn",  cmd="brightnessctl set 10%-" },
 
   # ── Window focus & movement ───────────────────────────────────────────────────
   { mod="SUPER",            key="j",       desc="Focus next window",       func="focusstack",  i=1 },
