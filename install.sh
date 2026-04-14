@@ -90,15 +90,22 @@ fi
 
 # ── Display manager ──────────────────────────────────────
 currentdm=""
-for dm in sddm lightdm gdm; do command -v "$dm" &>/dev/null && { currentdm="$dm"; break; }; done
+for dm in lightdm sddm gdm; do command -v "$dm" &>/dev/null && { currentdm="$dm"; break; }; done
 
 if [ -n "$currentdm" ]; then
     ok "Display manager already installed: $currentdm"
 else
-    info "No display manager found — installing SDDM..."
-    install_packages sddm
-    sudo systemctl enable sddm
-    ok "SDDM installed and enabled."
+    info "No display manager found — installing LightDM..."
+    install_packages lightdm lightdm-slick-greeter
+    sudo systemctl enable lightdm
+    ok "LightDM installed and enabled."
+fi
+
+# ── LightDM greeter config ───────────────────────────────
+if command -v lightdm &>/dev/null; then
+    info "Deploying LightDM GTK greeter config..."
+    sudo make -C "$REPO_DIR/lightdm" install
+    ok "LightDM config deployed."
 fi
 
 # ── Build & Install ──────────────────────────────────────
