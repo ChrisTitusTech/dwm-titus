@@ -29,18 +29,6 @@ This is a **heavily modified** version of dwm based on the original [suckless.or
 
 ## 📋 Install
 
-### Quick Install (Recommended)
-
-Use [Linutil](https://christitus.com/linux) for automated setup:
-
-```bash
-curl -fsSL https://christitus.com/linux | sh
-```
-
-<img width="1839" height="1000" alt="image" src="https://github.com/user-attachments/assets/314f9a40-4ccb-4c34-b3d2-dcfee63c278b" />
-
-Select `dwm`, `rofi`, `bash prompt`, and `ghostty` using the `v` key, then press `Enter`.
-
 ### Manual Install
 
 #### 1. Install Dependencies
@@ -74,8 +62,8 @@ sudo pacman -S polybar
 #### 2. Clone and Build
 
 ```bash
-git clone https://github.com/ChrisTitusTech/dwm-titus.git
-cd dwm-titus
+git clone https://github.com/SaiyRaw-py/dwm-dohc.git
+cd dwm-dohc
 cp config.def.h config.h    # Create your personal config
 make
 sudo make install
