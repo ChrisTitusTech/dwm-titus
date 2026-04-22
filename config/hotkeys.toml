@@ -62,13 +62,9 @@ keys = [
   # ── Launchers ────────────────────────────────────────────────────────────────
   { mod="SUPER",            key="r",       desc="App launcher",            func="spawn",       exec=["rofi", "-show", "drun"] },
   { mod="SUPER",            key="x",       desc="Terminal",                func="spawn",       exec=["$terminal"] },
-  { mod="SUPER",            key="w",       desc="Looking Glass (VM)",      func="spawn",       cmd="looking-glass-client -F" },
-  { mod="SUPER SHIFT",      key="w",       desc="Randomize wallpaper",     func="spawn",       cmd="feh --randomize --bg-fill ~/Pictures/backgrounds/*" },
 
   # ── Web apps ─────────────────────────────────────────────────────────────────
-  { mod="SUPER",            key="a",       desc="ChatGPT",                 func="spawn",       exec=["$webapp", "https://chatgpt.com"] },
-  { mod="SUPER SHIFT",      key="a",       desc="Gemini",                  func="spawn",       exec=["$webapp", "https://gemini.google.com/"] },
-  { mod="SUPER SHIFT",      key="x",       desc="X/Twitter — new post",    func="spawn",       exec=["$webapp", "https://x.com/compose/post"] },
+  { mod="SUPER",            key="a",       desc="Gemini",                  func="spawn",       exec=["$webapp", "https://gemini.google.com/"] },
   { mod="SUPER",            key="b",       desc="Browser",                 func="spawn",       cmd="xdg-open https://" },
 
   # ── Screenshots ───────────────────────────────────────────────────────────────
@@ -77,7 +73,7 @@ keys = [
   { mod="SUPER CTRL",       key="p",       desc="Screenshot area → clip",  func="spawn",       cmd="dwm-screenshot clip" },
 
   # ── Files & utilities ─────────────────────────────────────────────────────────
-  { mod="SUPER",            key="e",       desc="File manager",            func="spawn",       cmd="xdg-open ." },
+  { mod="SUPER",            key="e",       desc="File manager",            func="spawn",       cmd="yazi ." },
   { mod="SUPER",            key="slash",   desc="Keybinds cheatsheet",     func="spawn",       cmd="dwm-keybinds" },
   { mod="SUPER",            key="F1",      desc="Control center",          func="spawn",       cmd="dwm-controlcenter" },
   { mod="SUPER CTRL",       key="r",       desc="Restart Proton/Steam",    func="spawn",       cmd="protonrestart" },
@@ -131,6 +127,17 @@ keys = [
   { mod="SUPER CTRL SHIFT", key="r",       desc="Reboot",                  func="spawn",       cmd="systemctl reboot" },
   { mod="SUPER CTRL SHIFT", key="s",       desc="Suspend",                 func="spawn",       cmd="systemctl suspend" },
 
+
+
+
+  # ── CUSTOM SHORTCUTS ──────────────────────────────────────────────────────────
+  { mod="SUPER SHIFT",  key="f",  desc="Firefox",   func="spawn",  exec=["zen-browser"] },
+  { mod="SUPER SHIFT",  key="c",  desc="VS Code",   func="spawn",  exec=["code"] },
+  { mod="SUPER SHIFT",  key="g",  desc="Toggle Google Drive", func="spawn", exec=["/home/dohc/.local/share/dwm-dohc/scripts/toggle_gdrive.sh"] },
+  # { mod="SUPER SHIFT",  key="d",  desc="Discord",   func="spawn",  exec=["discord"] },
+  # { mod="SUPER SHIFT",  key="s",  desc="Screenshot",func="spawn",  cmd="scrot -s ~/Pictures/screenshot.png" },
+
+
 ]
 
 # ── TAG BINDINGS ──────────────────────────────────────────────────────────────
@@ -153,14 +160,6 @@ tag_keys = [
   { key="8", tag=7 },
   { key="9", tag=8 },
 ]
-
-# ── CUSTOM SHORTCUTS ──────────────────────────────────────────────────────────
-# Add your own below.  Uncomment, fill in the fields, and save.
-#
-# { mod="SUPER SHIFT",  key="f",  desc="Firefox",   func="spawn",  exec=["firefox"] },
-# { mod="SUPER SHIFT",  key="c",  desc="VS Code",   func="spawn",  exec=["code"] },
-# { mod="SUPER SHIFT",  key="d",  desc="Discord",   func="spawn",  exec=["discord"] },
-# { mod="SUPER SHIFT",  key="s",  desc="Screenshot",func="spawn",  cmd="scrot -s ~/Pictures/screenshot.png" },
 
 
 # ── MOUSE BUTTON BINDINGS ─────────────────────────────────────────────────────
