@@ -1,7 +1,7 @@
 [Desktop Entry]
 Encoding=UTF-8
-Name=dwm-titus
-Comment=Dynamic window manager (dwm-titus)
+Name=dwm-dohc
+Comment=Dynamic window manager (dwm-dohc)
 Exec=/usr/local/bin/dwm
 Icon=dwm
 Type=XSession

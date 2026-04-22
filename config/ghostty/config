@@ -1,5 +1,5 @@
 # Active theme — managed by theme-apply.sh, do not edit manually.
-# Change the theme in ~/.config/dwm-titus/themes.toml instead.
+# Change the theme in ~/.config/dwm-dohc/themes.toml instead.
 theme = Nord
 window-theme = ghostty
 window-height = 35

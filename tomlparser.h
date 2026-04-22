@@ -1,4 +1,4 @@
-/* Minimal TOML parser for dwm-titus hot-reload configuration.
+/* Minimal TOML parser for dwm-dohc hot-reload configuration.
  * Supports: string, integer, float, string arrays,
  *           [section], [[array-of-tables]]
  * Comments (#), basic string escapes (\n \t \\ \")

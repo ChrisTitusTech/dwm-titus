@@ -1,4 +1,4 @@
-# LightDM GTK Greeter — dwm-titus
+# LightDM GTK Greeter — dwm-dohc
 
 A modern LightDM login screen using `lightdm-slick-greeter` with a Nord
 colour palette, blurred background, and the MesloLGS NF font.
@@ -12,7 +12,7 @@ No extra dependencies beyond what `install.sh` installs
 |------|-------------|
 | `lightdm.conf` | `/etc/lightdm/lightdm.conf` |
 | `slick-greeter.conf` | `/etc/lightdm/slick-greeter.conf` |
-| `wallpaper.jpg` | `/usr/share/pixmaps/dwm-titus.jpg` |
+| `wallpaper.jpg` | `/usr/share/pixmaps/dwm-dohc.jpg` |
 
 ## Install
 

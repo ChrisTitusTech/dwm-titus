@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────
-# dwm-controlcenter — Rofi-based Control Center for dwm-titus
+# dwm-controlcenter — Rofi-based Control Center for dwm-dohc
 # Launch with SUPER+F1 or run directly from a terminal.
 # Provides: system health checks, quick actions, keybind
 # viewer, appearance settings, and system info.
@@ -11,15 +11,15 @@ set -euo pipefail
 # Prefer installed location, fall back to repo checkout
 if [ -d "$HOME/.config/rofi/themes" ]; then
     THEME_DIR="$HOME/.config/rofi/themes"
-elif [ -d "$HOME/.local/share/dwm-titus/config/rofi/themes" ]; then
-    THEME_DIR="$HOME/.local/share/dwm-titus/config/rofi/themes"
+elif [ -d "$HOME/.local/share/dwm-dohc/config/rofi/themes" ]; then
+    THEME_DIR="$HOME/.local/share/dwm-dohc/config/rofi/themes"
 else
     THEME_DIR="$(cd "$(dirname "$0")/../config/rofi/themes" 2>/dev/null && pwd)" || THEME_DIR=""
 fi
 
 THEME_FILE="${THEME_DIR:+$THEME_DIR/controlcenter.rasi}"
 
-DWM_TITUS_DIR="$HOME/.local/share/dwm-titus"
+DWM_TITUS_DIR="$HOME/.local/share/dwm-dohc"
 POLYBAR_DIR="$HOME/.config/polybar"
 ROFI_DIR="$HOME/.config/rofi"
 BG_DIR="$HOME/Pictures/backgrounds"
@@ -311,8 +311,8 @@ run_quick_actions() {
 # ═════════════════════════════════════════════════════════
 
 run_theme_select() {
-    local themes_file="$HOME/.local/share/dwm-titus/config/themes.toml"
-    [ ! -f "$themes_file" ] && themes_file="$HOME/.config/dwm-titus/themes.toml"
+    local themes_file="$HOME/.local/share/dwm-dohc/config/themes.toml"
+    [ ! -f "$themes_file" ] && themes_file="$HOME/.config/dwm-dohc/themes.toml"
 
     if [ ! -f "$themes_file" ]; then
         notify "themes.toml not found" --urgency=critical
@@ -490,7 +490,7 @@ main_menu() {
 
     while true; do
         local chosen
-        chosen=$(printf '%s\n' "${items[@]}" | rofi_menu "  DWM Control Center" "dwm-titus · SUPER+F1") || break
+        chosen=$(printf '%s\n' "${items[@]}" | rofi_menu "  DWM Control Center" "dwm-dohc · SUPER+F1") || break
 
         case "$chosen" in
             *"System Health"*)  run_health_check   ;;

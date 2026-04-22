@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────
-# install-arm.sh — dwm-titus installer for Arch Linux ARM
+# install-arm.sh — dwm-dohc installer for Arch Linux ARM
 # Tested architectures: aarch64 (Raspberry Pi 4/5, Rock Pi,
 #   ODROID, etc.) and armv7h
 # Packages verified against https://archlinuxarm.org/packages
@@ -30,7 +30,7 @@ BG_DIR="$HOME/Pictures/backgrounds"
 
 echo ""
 echo "╔═══════════════════════════════════════════╗"
-echo "║     dwm-titus Installer (Arch Linux ARM)  ║"
+echo "║     dwm-dohc Installer (Arch Linux ARM)  ║"
 echo "╚═══════════════════════════════════════════╝"
 echo ""
 info "Architecture : $ARCH"

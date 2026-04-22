@@ -310,7 +310,7 @@ static void *toml_alloc(size_t sz);
 /* variables */
 static const char autostartsh[] = "scripts/autostart.sh";
 static const char broken[] = "broken";
-static const char dwmdir[] = "dwm-titus";
+static const char dwmdir[] = "dwm-dohc";
 static const char localshare[] = ".local/share";
 static char stext[256];
 static int statusw;
@@ -381,7 +381,7 @@ static volatile sig_atomic_t sig_reload_pending = 0;
 #define TOML_ARENA_CAP 65536u
 static char   toml_arena_buf[TOML_ARENA_CAP];
 static size_t toml_arena_pos = 0;
-/* Default (fallback) config paths: ~/.local/share/dwm-titus/config/ */
+/* Default (fallback) config paths: ~/.local/share/dwm-dohc/config/ */
 static char          toml_default_dir[PATH_MAX];
 static char          toml_hotkeys_default_path[PATH_MAX];
 static char          toml_themes_default_path[PATH_MAX];
@@ -3153,7 +3153,7 @@ reload_config(void)
 			char script[PATH_MAX];
 			if (home) {
 				snprintf(script, sizeof(script),
-				         "%s/.local/share/dwm-titus/scripts/theme-apply.sh", home);
+				         "%s/.local/share/dwm-dohc/scripts/theme-apply.sh", home);
 				execl("/bin/sh", "sh", script, (char *)NULL);
 			}
 			_exit(0);
@@ -3168,9 +3168,9 @@ setup_inotify(void)
 	const char *home = getenv("HOME");
 	if (!home) return;
 
-	/* User-editable config: ~/.config/dwm-titus/ */
+	/* User-editable config: ~/.config/dwm-dohc/ */
 	snprintf(toml_config_dir,   sizeof(toml_config_dir),
-	         "%s/.config/dwm-titus", home);
+	         "%s/.config/dwm-dohc", home);
 	snprintf(toml_hotkeys_path, sizeof(toml_hotkeys_path),
 	         "%s/hotkeys.toml", toml_config_dir);
 	snprintf(toml_themes_path,  sizeof(toml_themes_path),
@@ -3178,9 +3178,9 @@ setup_inotify(void)
 	snprintf(toml_rules_path,   sizeof(toml_rules_path),
 	         "%s/window-rules.toml", toml_config_dir);
 
-	/* Default (fallback) config: ~/.local/share/dwm-titus/config/ */
+	/* Default (fallback) config: ~/.local/share/dwm-dohc/config/ */
 	snprintf(toml_default_dir,             sizeof(toml_default_dir),
-	         "%s/.local/share/dwm-titus/config", home);
+	         "%s/.local/share/dwm-dohc/config", home);
 	snprintf(toml_hotkeys_default_path,    sizeof(toml_hotkeys_default_path),
 	         "%s/hotkeys.toml",      toml_default_dir);
 	snprintf(toml_themes_default_path,     sizeof(toml_themes_default_path),
@@ -4082,7 +4082,7 @@ void
 updatestatus(void)
 {
 	if (!gettextprop(root, XA_WM_NAME, stext, sizeof(stext))) {
-		strcpy(stext, "dwm-titus:"VERSION);
+		strcpy(stext, "dwm-dohc:"VERSION);
 		statusw = TEXTW(stext) - lrpad + 2;
 	} else {
 		char *text, *s, ch;

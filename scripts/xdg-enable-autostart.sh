@@ -160,7 +160,7 @@ dbus-update-activation-environment --systemd DISPLAY XAUTHORITY 2>/dev/null'
 
 XINITRC_PATHS=(
     "${HOME}/.xinitrc"
-    "${HOME}/.local/share/dwm-titus/.xinitrc"
+    "${HOME}/.local/share/dwm-dohc/.xinitrc"
     "${HOME}/.config/X11/xinitrc"
 )
 

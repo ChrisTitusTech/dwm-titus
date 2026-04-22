@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────
-# dwm-screenshot — Portable flameshot wrapper for dwm-titus
+# dwm-screenshot — Portable flameshot wrapper for dwm-dohc
 # Detects screenshot directory at runtime via XDG.
 #
 # Usage:

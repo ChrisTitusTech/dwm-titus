@@ -16,7 +16,7 @@ BG_DIR="$HOME/Pictures/backgrounds"
 
 echo ""
 echo "╔═══════════════════════════════════════════╗"
-echo "║        dwm-titus Installer (Arch)         ║"
+echo "║        dwm-dohc Installer (Arch)         ║"
 echo "╚═══════════════════════════════════════════╝"
 echo ""
 info "Package manager: $PKG_CMD"

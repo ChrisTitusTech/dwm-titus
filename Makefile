@@ -7,7 +7,7 @@ include config.mk
 
 USER_HOME ?= $(shell getent passwd $(or $(SUDO_USER),$(USER)) 2>/dev/null | cut -d: -f6)
 OWNER     := $(or $(SUDO_USER),$(USER))
-DATA_DIR  := ${USER_HOME}/.local/share/dwm-titus
+DATA_DIR  := ${USER_HOME}/.local/share/dwm-dohc
 CFG_DIR   := ${USER_HOME}/.config
 
 SRC = drw.c dwm.c util.c tomlparser.c
@@ -57,10 +57,10 @@ install: all
 		install -Dm755 "$$f" ${DESTDIR}${PREFIX}/bin/$$(basename $$f); \
 	done
 	@echo "==> Seeding user config (skipping existing files)..."
-	mkdir -p ${CFG_DIR}/dwm-titus
-	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
-	test -f ${CFG_DIR}/dwm-titus/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
-	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
+	mkdir -p ${CFG_DIR}/dwm-dohc
+	test -f ${CFG_DIR}/dwm-dohc/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-dohc/hotkeys.toml
+	test -f ${CFG_DIR}/dwm-dohc/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-dohc/themes.toml
+	test -f ${CFG_DIR}/dwm-dohc/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-dohc/window-rules.toml
 	@echo "==> Fixing ownership and permissions..."
 	find ${DATA_DIR} -name '*.sh' -o -name '*.py' | xargs -r chmod +x
 	for dir in config/*/; do \

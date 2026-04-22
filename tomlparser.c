@@ -1,5 +1,5 @@
 /* See LICENSE file for copyright and license details.
- * Minimal TOML parser for dwm-titus hot-reload configuration.
+ * Minimal TOML parser for dwm-dohc hot-reload configuration.
  */
 #include "tomlparser.h"
 #include <stdio.h>

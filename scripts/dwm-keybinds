@@ -3,7 +3,7 @@
 # Display DWM keybindings from docs/src/keybinds.md in a rofi menu.
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-KEYBINDS_PATH="${HOME}/.local/share/dwm-titus/docs/src/keybinds.md"
+KEYBINDS_PATH="${HOME}/.local/share/dwm-dohc/docs/src/keybinds.md"
 [ -f "$KEYBINDS_PATH" ] || KEYBINDS_PATH="${SCRIPT_DIR}/../docs/src/keybinds.md"
 
 # Parse markdown: emit section headers and | `key` | description | rows

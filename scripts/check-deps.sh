@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────
-# dwm-titus dependency checker — Arch Linux
+# dwm-dohc dependency checker — Arch Linux
 # Run before building to verify all required packages
 # are installed. Exit code 0 = all good, 1 = missing deps.
 # ─────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ check_font() {
 }
 
 echo ""
-echo "═══ dwm-titus Dependency Check (Arch Linux) ═══"
+echo "═══ dwm-dohc Dependency Check (Arch Linux) ═══"
 echo ""
 
 # ── Build dependencies ──────────────────────────────────

@@ -1,6 +1,6 @@
-# Polybar Configuration (dwm-titus)
+# Polybar Configuration (dwm-dohc)
 
-This directory contains the Polybar status bar configuration bundled with dwm-titus. It is **self-contained** — you do not need to clone any external repos.
+This directory contains the Polybar status bar configuration bundled with dwm-dohc. It is **self-contained** — you do not need to clone any external repos.
 
 ## How It Works
 
@@ -37,7 +37,7 @@ sudo pacman -S ttf-meslo-nerd
 
 ### 3. Config Location
 
-When you run `sudo make install` from the dwm-titus root, Polybar configs are copied to:
+When you run `sudo make install` from the dwm-dohc root, Polybar configs are copied to:
 ```
 ~/.config/polybar/
 ```
