@@ -73,7 +73,7 @@ keys = [
   { mod="SUPER CTRL",       key="p",       desc="Screenshot area → clip",  func="spawn",       cmd="dwm-screenshot clip" },
 
   # ── Files & utilities ─────────────────────────────────────────────────────────
-  { mod="SUPER",            key="e",       desc="File manager",            func="spawn",       cmd="yazi ." },
+  { mod="SUPER",            key="e",       desc="File manager",            func="spawn",       cmd="ghostty -e yazi" },
   { mod="SUPER",            key="slash",   desc="Keybinds cheatsheet",     func="spawn",       cmd="dwm-keybinds" },
   { mod="SUPER",            key="F1",      desc="Control center",          func="spawn",       cmd="dwm-controlcenter" },
   { mod="SUPER CTRL",       key="r",       desc="Restart Proton/Steam",    func="spawn",       cmd="protonrestart" },
