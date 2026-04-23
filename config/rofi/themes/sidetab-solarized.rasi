@@ -65,7 +65,7 @@ element-icon {
    text-color: @foreground;
    placeholder: "Search";
    placeholder-color: @grey;
-   font: "Sora Regular 20";
+   font: "MesloLGS NF 20";
 }
 
 #prompt {
@@ -73,5 +73,5 @@ element-icon {
    padding: 0 4px;
    margin: 0 5px 0 0;
    text-color: @foreground;
-   font: "Sora Regular 20";
+   font: "MesloLGS NF 20";
 }

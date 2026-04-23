@@ -20,7 +20,7 @@
     nord14: #a3be8c;
 
     background-color: transparent;
-    font: "MesloLGS Nerd Font 13";
+    font: "MesloLGS NF 13";
 }
 
 /*****----- Main Window -----*****/
@@ -54,7 +54,7 @@ inputbar {
 prompt {
     background-color: transparent;
     text-color:       @nord8;
-    font:             "MesloLGS Nerd Font Bold 15";
+    font:             "MesloLGS NF Bold 15";
 }
 
 /*****----- Message (status area) -----*****/
@@ -68,7 +68,7 @@ message {
 textbox {
     background-color: transparent;
     text-color:       @nord4;
-    font:             "MesloLGS Nerd Font 11";
+    font:             "MesloLGS NF 11";
 }
 
 /*****----- List View -----*****/
