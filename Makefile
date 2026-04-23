@@ -64,33 +64,33 @@ install: all
 	@echo "==> Installing font aliases for cross-distro naming..."
 	mkdir -p ${CFG_DIR}/fontconfig/conf.d
 	if [ ! -f ${CFG_DIR}/fontconfig/conf.d/50-meslolgs-nerd-font-aliases.conf ]; then \
-		cat > ${CFG_DIR}/fontconfig/conf.d/50-meslolgs-nerd-font-aliases.conf <<-'EOF'; \
-	<?xml version="1.0"?>
-	<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-	<fontconfig>
-	  <alias>
-	    <family>MesloLGS NF</family>
-	    <prefer>
-	      <family>MesloLGS Nerd Font</family>
-	      <family>MesloLGS Nerd Font Mono</family>
-	    </prefer>
-	  </alias>
-	  <alias>
-	    <family>MesloLGS Nerd Font</family>
-	    <prefer>
-	      <family>MesloLGS NF</family>
-	      <family>MesloLGS Nerd Font Mono</family>
-	    </prefer>
-	  </alias>
-	  <alias>
-	    <family>MesloLGS Nerd Font Mono</family>
-	    <prefer>
-	      <family>MesloLGS NF</family>
-	      <family>MesloLGS Nerd Font</family>
-	    </prefer>
-	  </alias>
-	</fontconfig>
-	EOF
+		{ \
+			printf '%s\n' '<?xml version="1.0"?>'; \
+			printf '%s\n' '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">'; \
+			printf '%s\n' '<fontconfig>'; \
+			printf '%s\n' '  <alias>'; \
+			printf '%s\n' '    <family>MesloLGS NF</family>'; \
+			printf '%s\n' '    <prefer>'; \
+			printf '%s\n' '      <family>MesloLGS Nerd Font</family>'; \
+			printf '%s\n' '      <family>MesloLGS Nerd Font Mono</family>'; \
+			printf '%s\n' '    </prefer>'; \
+			printf '%s\n' '  </alias>'; \
+			printf '%s\n' '  <alias>'; \
+			printf '%s\n' '    <family>MesloLGS Nerd Font</family>'; \
+			printf '%s\n' '    <prefer>'; \
+			printf '%s\n' '      <family>MesloLGS NF</family>'; \
+			printf '%s\n' '      <family>MesloLGS Nerd Font Mono</family>'; \
+			printf '%s\n' '    </prefer>'; \
+			printf '%s\n' '  </alias>'; \
+			printf '%s\n' '  <alias>'; \
+			printf '%s\n' '    <family>MesloLGS Nerd Font Mono</family>'; \
+			printf '%s\n' '    <prefer>'; \
+			printf '%s\n' '      <family>MesloLGS NF</family>'; \
+			printf '%s\n' '      <family>MesloLGS Nerd Font</family>'; \
+			printf '%s\n' '    </prefer>'; \
+			printf '%s\n' '  </alias>'; \
+			printf '%s\n' '</fontconfig>'; \
+		} > ${CFG_DIR}/fontconfig/conf.d/50-meslolgs-nerd-font-aliases.conf; \
 	else \
 		echo "  Preserving existing Meslo font alias file."; \
 	fi
