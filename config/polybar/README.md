@@ -94,7 +94,7 @@ modules-right = round-left mpd
 ```ini
 modules-left = date weather mpd
 modules-center = bspwm
-modules-right = memory cpu xbacklight pulseaudio session
+modules-right = memory cpu brightnessctl pulseaudio session
 ```
 
 ### Dracula
@@ -104,7 +104,7 @@ modules-right = memory cpu xbacklight pulseaudio session
 ```ini
 modules-left = date margin weather margin mpd
 modules-center = bspwm
-modules-right = memory margin cpu margin xbacklight margin pulseaudio margin battery margin session
+modules-right = memory margin cpu margin brightnessctl margin pulseaudio margin battery margin session
 ```
 
 ### Gruvbox
@@ -114,7 +114,7 @@ modules-right = memory margin cpu margin xbacklight margin pulseaudio margin bat
 ```ini
 modules-left = bspwm
 modules-center = round-left-blue weather date round-right-blue margin round-left mpd round-right
-modules-right = cpu memory pulseaudio xbacklight
+modules-right = cpu memory pulseaudio brightnessctl
 ```
 
 ### Lofi
@@ -134,7 +134,7 @@ modules-right = date weather
 ```ini
 modules-left = weather margin date margin mpd tri-upper-right tri-lower-left bspwm tri-upper-right
 modules-center = 
-modules-right = memory margin cpu margin xbacklight margin pulseaudio
+modules-right = memory margin cpu margin brightnessctl margin pulseaudio
 ```
 
 ### Minimal
@@ -144,7 +144,7 @@ modules-right = memory margin cpu margin xbacklight margin pulseaudio
 ```ini
 modules-left = date weather bspwm
 modules-center = mpd
-modules-right = cpu memory xbacklight pulseaudio
+modules-right = cpu memory brightnessctl pulseaudio
 ```
 
 ### Nord
@@ -154,7 +154,7 @@ modules-right = cpu memory xbacklight pulseaudio
 ```ini
 modules-left = date margin weather margin mpd round-right
 modules-center = trap-left bspwm trap-right
-modules-right = memory margin cpu margin xbacklight margin pulseaudio margin wallz margin session
+modules-right = memory margin cpu margin brightnessctl margin pulseaudio margin wallz margin session
 ```
 
 ### One Dark
@@ -164,5 +164,5 @@ modules-right = memory margin cpu margin xbacklight margin pulseaudio margin wal
 ```ini
 modules-left = bspwm margin date margin weather margin mpd
 modules-center =
-modules-right = cpu margin memory margin pulseaudio margin xbacklight margin wallz margin session
+modules-right = cpu margin memory margin pulseaudio margin brightnessctl margin wallz margin session
 ```
