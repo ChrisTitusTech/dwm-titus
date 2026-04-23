@@ -61,6 +61,40 @@ install: all
 	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
 	test -f ${CFG_DIR}/dwm-titus/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
 	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
+	@echo "==> Installing font aliases for cross-distro naming..."
+	mkdir -p ${CFG_DIR}/fontconfig/conf.d
+	if [ ! -f ${CFG_DIR}/fontconfig/conf.d/50-meslolgs-nerd-font-aliases.conf ]; then \
+		cat > ${CFG_DIR}/fontconfig/conf.d/50-meslolgs-nerd-font-aliases.conf <<-'EOF'; \
+	<?xml version="1.0"?>
+	<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+	<fontconfig>
+	  <alias>
+	    <family>MesloLGS NF</family>
+	    <prefer>
+	      <family>MesloLGS Nerd Font</family>
+	      <family>MesloLGS Nerd Font Mono</family>
+	    </prefer>
+	  </alias>
+	  <alias>
+	    <family>MesloLGS Nerd Font</family>
+	    <prefer>
+	      <family>MesloLGS NF</family>
+	      <family>MesloLGS Nerd Font Mono</family>
+	    </prefer>
+	  </alias>
+	  <alias>
+	    <family>MesloLGS Nerd Font Mono</family>
+	    <prefer>
+	      <family>MesloLGS NF</family>
+	      <family>MesloLGS Nerd Font</family>
+	    </prefer>
+	  </alias>
+	</fontconfig>
+	EOF
+	else \
+		echo "  Preserving existing Meslo font alias file."; \
+	fi
+	fc-cache -f >/dev/null 2>&1 || true
 	@echo "==> Fixing ownership and permissions..."
 	find ${DATA_DIR} -name '*.sh' -o -name '*.py' | xargs -r chmod +x
 	for dir in config/*/; do \
@@ -68,6 +102,7 @@ install: all
 		find "${CFG_DIR}/$$b" -name '*.sh' -o -name '*.py' 2>/dev/null | xargs -r chmod +x; \
 		chown -R ${OWNER}: "${CFG_DIR}/$$b"; \
 	done
+	chown -R ${OWNER}: ${CFG_DIR}/fontconfig 2>/dev/null || true
 	chown -R ${OWNER}: ${DATA_DIR} && chown ${OWNER}: ${USER_HOME}/.xinitrc 2>/dev/null || true
 	@echo ""
 	@echo "  dwm installed successfully."

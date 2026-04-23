@@ -98,17 +98,26 @@ run_health_check() {
 
     # -- helper: check if a font is present --
     _font() {
+        local label="$1"
+        shift
+        if [ "$#" -eq 0 ]; then
+            set -- "$label"
+        fi
+
         local result
         result=$(fc-list : family 2>/dev/null || true)
         local lower="${result,,}"
-        local query="${1,,}"
-        if [[ "$lower" == *"$query"* ]]; then
-            passed_lines+=("✓  $1")
-            pass=$((pass + 1))
-        else
-            failed_lines+=("<span color='#bf616a'>✗  $1  (not found)</span>")
-            fail=$((fail + 1))
-        fi
+        local query
+        for query in "$@"; do
+            if [[ "$lower" == *"${query,,}"* ]]; then
+                passed_lines+=("✓  $label")
+                pass=$((pass + 1))
+                return
+            fi
+        done
+
+        failed_lines+=("<span color='#bf616a'>✗  $label  (not found)</span>")
+        fail=$((fail + 1))
     }
 
     # -- helper: check if a process is running --
@@ -182,7 +191,7 @@ run_health_check() {
     fi
 
     # ── Fonts ────────────────────────────────────────────
-    _font "MesloLGS Nerd"
+    _font "MesloLGS Nerd (NF compatible)" "MesloLGS Nerd Font" "MesloLGS Nerd Font Mono" "MesloLGS NF"
     _font "Noto Color Emoji"
 
     # ── Running Services ─────────────────────────────────
