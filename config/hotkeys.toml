@@ -132,7 +132,7 @@ keys = [
 
   # ── CUSTOM SHORTCUTS ──────────────────────────────────────────────────────────
   { mod="SUPER SHIFT",  key="f",  desc="Firefox",   func="spawn",  exec=["zen-browser"] },
-  { mod="SUPER SHIFT",  key="c",  desc="VS Code",   func="spawn",  exec=["code"] },
+  { mod="SUPER SHIFT",  key="c",  desc="VS Codium",   func="spawn",  exec=["vscodium"] },
   { mod="SUPER SHIFT",  key="g",  desc="Toggle Google Drive", func="spawn", exec=["/home/dohc/.local/share/dwm-dohc/scripts/toggle_gdrive.sh"] },
   # { mod="SUPER SHIFT",  key="d",  desc="Discord",   func="spawn",  exec=["discord"] },
   # { mod="SUPER SHIFT",  key="s",  desc="Screenshot",func="spawn",  cmd="scrot -s ~/Pictures/screenshot.png" },
