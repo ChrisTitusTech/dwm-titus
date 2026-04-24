@@ -1,23 +1,18 @@
 /* See LICENSE file for copyright and license details. */
 
 /* appearance */
-/* Set this to your monitor's refresh rate (e.g., 60, 120, 144, 165) */
-static const unsigned int refresh_rate = 60;    /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
-static const unsigned int enable_noborder = 1;  /* toggles noborder feature (0=disabled, 1=enabled) */
-static const int cursorwarp         = 1;        /* 1 means warp cursor to center of focused window/monitor */
-static const unsigned int snap      = 32;       /* snap pixel */
-static const int swallowfloating    = 0;        /* 1 means swallow floating windows by default */
-/* Window swallowing: when you launch a GUI app from a terminal, the terminal */
-/* hides and the GUI app takes its place. Set isterminal=1 in rules[] for your terminal. */
-static const int showbar            = 1;        /* 0 means no bar */
-static const int topbar             = 1;        /* 0 means bottom bar */
-#define ICONSIZE                      17        /* icon size */
-#define ICONSPACING                   5         /* space between icon and title */
-#define SHOWWINICON                   1         /* 0 means no winicon */
-/* Fonts: Install ttf-meslo-nerd and noto-fonts-emoji from pacman */
-static const char dmenufont[]       = "MesloLGS Nerd Font Mono:size=12";
-/* Fonts for the bar */
-static const char *fonts[]          = { "MesloLGS Nerd Font Mono:size=12:antialias=true:autohint=true", "NotoColorEmoji:pixelsize=14:antialias=true:autohint=true" };
+static const unsigned int refresh_rate        = 60;   /* matches dwm's mouse event processing to your monitor's refresh rate for smoother window interactions */
+static const unsigned int enable_noborder     = 1;   /* toggles noborder feature (0=disabled, 1=enabled) */
+static const int cursorwarp                   = 1;   /* 1 means warp cursor to center of focused window/monitor */
+static const unsigned int snap                = 26;  /* snap pixel */
+static const int swallowfloating              = 1;   /* 1 means swallow floating windows by default */
+
+static const int showbar                      = 1;   /* 1 means show bar - needed for Polybar space calculation */
+static const int topbar                       = 1;   /* 0 means bottom bar */
+#define ICONSIZE                              17     /* icon size */
+#define ICONSPACING                           5      /* space between icon and title */
+#define SHOWWINICON                           1      /* 0 means no winicon */
+static const char *fonts[]                    = { "MesloLGS NF:size=14:antialias=true:autohint=true:hintstyle=hintfull", "Noto Color Emoji:pixelsize=16:antialias=true:autohint=true" };
 
 
 

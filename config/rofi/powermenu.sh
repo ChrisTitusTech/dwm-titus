@@ -28,14 +28,26 @@ texts[reboot]="reboot"
 texts[shutdown]="shut down"
 
 declare -A icons
-icons[lockscreen]=$'\Uf033e'
-icons[switchuser]=$'\Uf0019'
-icons[logout]=$'\Uf0343'
-icons[suspend]=$'\Uf04b2'
-icons[hibernate]=$'\Uf02ca'
-icons[reboot]=$'\Uf0709'
-icons[shutdown]=$'\Uf0425'
-icons[cancel]=$'\Uf0156'
+declare -A material_icons
+declare -A nerd_font_icons
+
+material_icons[lockscreen]="lock"
+material_icons[switchuser]="switch_account"
+material_icons[logout]="logout"
+material_icons[suspend]="bedtime"
+material_icons[hibernate]="hotel"
+material_icons[reboot]="restart_alt"
+material_icons[shutdown]="power_settings_new"
+material_icons[cancel]="close"
+
+nerd_font_icons[lockscreen]=$'\Uf033e'
+nerd_font_icons[switchuser]=$'\Uf0019'
+nerd_font_icons[logout]=$'\Uf0343'
+nerd_font_icons[suspend]=$'\Uf04b2'
+nerd_font_icons[hibernate]=$'\Uf02ca'
+nerd_font_icons[reboot]=$'\Uf0709'
+nerd_font_icons[shutdown]=$'\Uf0425'
+nerd_font_icons[cancel]=$'\Uf0156'
 
 declare -A actions
 actions[lockscreen]="loginctl lock-session ${XDG_SESSION_ID-}"
@@ -53,16 +65,81 @@ confirmations=(reboot shutdown logout)
 dryrun=false
 showsymbols=true
 showtext=true
-symbols_font="MesloLGS Nerd Font Mono"
+
+font_exists() {
+    local candidate
+
+    candidate="$1"
+    if fc-match "$candidate" 2>/dev/null | command grep -Fqi "$candidate"; then
+        return 0
+    fi
+
+    return 1
+}
+
+detect_symbols_font() {
+    local candidate
+
+    for candidate in \
+        "Material Icons" \
+        "Material Icons Outlined" \
+        "Material Icons Round" \
+        "Material Icons Sharp" \
+        "Material Icons Two Tone" \
+        "Symbols Nerd Font Mono" \
+        "Symbols Nerd Font" \
+        "MesloLGS NF" \
+        "MesloLGS Nerd Font" \
+        "MesloLGS Nerd Font Mono"
+    do
+        if font_exists "$candidate"; then
+            printf '%s' "$candidate"
+            return
+        fi
+    done
+
+    return 1
+}
+
+use_material_icons() {
+    case "$1" in
+        "Material Icons"|"Material Icons Outlined"|"Material Icons Round"|"Material Icons Sharp"|"Material Icons Two Tone")
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
+set_icons() {
+    local entry
+
+    if use_material_icons "$1"; then
+        for entry in "${!material_icons[@]}"; do
+            icons[$entry]="${material_icons[$entry]}"
+        done
+        return
+    fi
+
+    for entry in "${!nerd_font_icons[@]}"; do
+        icons[$entry]="${nerd_font_icons[$entry]}"
+    done
+}
+
+symbols_font=""
+if detected_symbols_font=$(detect_symbols_font); then
+    symbols_font="$detected_symbols_font"
+fi
+set_icons "$symbols_font"
 
 function check_valid {
-    option="$1"
+    local option="$1"
     shift 1
     for entry in "${@}"
     do
         if [ -z "${actions[$entry]+x}" ]
         then
-            echo "Invalid choice in $1: $entry" >&2
+            echo "Invalid choice in $option: $entry" >&2
             exit 1
         fi
     done
@@ -154,6 +231,7 @@ while true; do
             ;;
         "--symbols-font")
             symbols_font="$2"
+            set_icons "$symbols_font"
             shift 2
             ;;
         "--")
@@ -167,7 +245,7 @@ while true; do
     esac
 done
 
-if [ "$showsymbols" = "false" -a "$showtext" = "false" ]
+if [ "$showsymbols" = "false" ] && [ "$showtext" = "false" ]
 then
     echo "Invalid options: cannot have --no-symbols and --no-text enabled at the same time." >&2
     exit 1
@@ -177,11 +255,11 @@ fi
 # configure them in the future.
 
 function write_message {
-    if [ -z ${symbols_font+x} ];
+    if [ -n "$symbols_font" ];
     then
-        icon="<span font_size=\"medium\">$1</span>"
-    else
         icon="<span font=\"${symbols_font}\" font_size=\"medium\">$1</span>"
+    else
+        icon="<span font_size=\"medium\">$1</span>"
     fi
     text="<span font_size=\"medium\">$2</span>"
     if [ "$showsymbols" = "true" ]
@@ -198,7 +276,7 @@ function write_message {
 }
 
 function print_selection {
-    echo -e "$1" | $(read -r -d '' entry; echo "echo $entry")
+    printf '%b' "$1"
 }
 
 declare -A messages
@@ -218,7 +296,7 @@ confirmationMessages[cancel]=$(write_message "${icons[cancel]}" "No, cancel")
 if [ $# -gt 0 ]
 then
     # If arguments given, use those as the selection
-    selection="${@}"
+    selection="$*"
 else
     # Otherwise, use the CLI passed choice if given
     if [ -n "${selectionID+x}" ]
@@ -244,7 +322,7 @@ then
     echo -e "\0prompt\x1fPower menu"
     for entry in "${show[@]}"
     do
-        echo -e "${messages[$entry]}\0icon\x1f${icons[$entry]}"
+        echo -e "${messages[$entry]}"
     done
 else
     for entry in "${show[@]}"
@@ -258,8 +336,8 @@ else
                 then
                     # Ask for confirmation
                     echo -e "\0prompt\x1fAre you sure"
-                    echo -e "${confirmationMessages[$entry]}\0icon\x1f${icons[$entry]}"
-                    echo -e "${confirmationMessages[cancel]}\0icon\x1f${icons[cancel]}"
+                    echo -e "${confirmationMessages[$entry]}"
+                    echo -e "${confirmationMessages[cancel]}"
                     exit 0
                 fi
             done
@@ -268,7 +346,7 @@ else
         fi
         if [ "$selection" = "$(print_selection "${confirmationMessages[$entry]}")" ]
         then
-            if [ $dryrun = true ]
+            if [ "$dryrun" = true ]
             then
                 # Tell what would have been done
                 echo "Selected: $entry" >&2

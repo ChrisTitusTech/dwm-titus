@@ -31,12 +31,29 @@ check_pkg() {
 }
 
 check_font() {
-    if fc-list 2>/dev/null | command grep -qi "$1"; then
-        printf "  ${GREEN}✓${NC} %s\n" "$1"
-    else
-        printf "  ${RED}✗${NC} %s ${YELLOW}(not found)${NC}\n" "$1"
-        MISSING=$((MISSING + 1))
+    local label="$1"
+    shift
+
+    if [ "$#" -eq 0 ]; then
+        set -- "$label"
     fi
+
+    local pattern
+    for pattern in "$@"; do
+        if fc-list 2>/dev/null | command grep -qi "$pattern"; then
+            printf "  ${GREEN}✓${NC} %s\n" "$label"
+            return
+        fi
+    done
+
+    printf "  ${RED}✗${NC} %s ${YELLOW}(not found)${NC}\n" "$label"
+    MISSING=$((MISSING + 1))
+}
+
+check_font_any() {
+    local label="$1"
+    shift
+    check_font "$label" "$@"
 }
 
 echo ""
@@ -103,7 +120,7 @@ echo ""
 
 # ── Fonts ───────────────────────────────────────────────
 echo "Fonts:"
-check_font "MesloLGS Nerd Font"
+check_font_any "MesloLGS Nerd Font (NF compatible)" "MesloLGS Nerd Font" "MesloLGS Nerd Font Mono" "MesloLGS NF"
 check_font "Noto Color Emoji"
 echo ""
 

@@ -78,6 +78,9 @@ cp -r polybar/fonts/* ~/.local/share/fonts/
 fc-cache -fv
 ```
 
+`make install` now also writes a local fontconfig alias file so both naming variants
+`MesloLGS NF` and `MesloLGS Nerd Font` resolve correctly across different Linux distributions.
+
 #### Automated Installer
 
 An install script is provided that handles all of the above:
