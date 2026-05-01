@@ -107,7 +107,7 @@ static Key keys[] = {
     { MODKEY,                       XK_a,                      spawn,          {.v = chatgptcmd } },
     { MODKEY|ShiftMask,             XK_a,                      spawn,          {.v = geminicmd } },
     { MODKEY|ShiftMask,             XK_x,                      spawn,          {.v = xpostcmd } },
-    { MODKEY,                       XK_b,                      spawn,          SHCMD ("firefox")},
+    { MODKEY,                       XK_b,                      spawn,          SHCMD ("xdg-open https://")},
     { MODKEY,                       XK_p,                      spawn,          SHCMD ("flameshot full -p ~/Pictures/Screenshots/")},
     { MODKEY|ShiftMask,             XK_p,                      spawn,          SHCMD ("flameshot gui -p ~/Pictures/Screenshots/")},
     { MODKEY|ControlMask,           XK_p,                      spawn,          SHCMD ("flameshot gui --clipboard")},
@@ -188,6 +188,10 @@ static Key keys[] = {
 
     /* performance profile */
     // { 0, XF86XK_Launch1, spawn, SHCMD("asusctl profile -n") },
+	
+    /* brightness*/
+    { 0, XF86XK_MonBrightnessUp,   spawn, SHCMD("brightnessctl set +10%") },
+    { 0, XF86XK_MonBrightnessDown, spawn, SHCMD("brightnessctl set 10%-") },
 };
 
 /* button definitions */

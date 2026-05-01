@@ -314,6 +314,8 @@ static void updatetitle(Client *c);
 static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
 static void view(const Arg *arg);
+static void viewnext(const Arg *arg);
+static void viewprev(const Arg *arg);
 static pid_t winpid(Window w);
 static Client *wintoclient(Window w);
 static Monitor *wintomon(Window w);
@@ -3881,6 +3883,30 @@ view(const Arg *arg)
 		}
 	}
 	updatecurrentdesktop();
+}
+
+void
+viewnext(const Arg *arg)
+{
+	int i;
+	for (i = selmon->tagset[selmon->seltags] << 1; i & TAGMASK; i <<= 1)
+		if (i & TAGMASK) {
+			view(&(Arg){.ui = i});
+			return;
+		}
+	view(&(Arg){.ui = 1});
+}
+
+void
+viewprev(const Arg *arg)
+{
+	int i;
+	for (i = selmon->tagset[selmon->seltags] >> 1; i > 0; i >>= 1)
+		if (i) {
+			view(&(Arg){.ui = i});
+			return;
+		}
+	view(&(Arg){.ui = 1 << (LENGTH(tags) - 1)});
 }
 
 pid_t
