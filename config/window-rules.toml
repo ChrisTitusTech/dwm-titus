@@ -27,6 +27,7 @@ rules = [
   { class="ghostty",        isterminal=1 },
   { class="warp-terminal",  isterminal=1 },
   { class="Terminator",     isterminal=1 },
+  { class="RAIL",           float=1 },
 
   # ── no-swallow ────────────────────────────────────────────────────────────
   { title="Event Tester",   noswallow=1  },
