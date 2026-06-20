@@ -60,7 +60,7 @@ webapp   = "webapp-launch"
 keys = [
 
   # ── Launchers ────────────────────────────────────────────────────────────────
-  { mod="SUPER",            key="t",       desc="App launcher",            func="spawn",       exec=["rofi", -show", "drun"] },
+  { mod="SUPER SHIFT",      key="r",       desc="App launcher",            func="spawn",       exec=["rofi", -show", "drun"] },
   { mod="SUPER",            key="r",       desc="App launcher",            func="spawn",       exec=["vicinae", "toggle"] },
   { mod="SUPER",            key="x",       desc="Terminal",                func="spawn",       exec=["$terminal"] },
   { mod="SUPER",            key="w",       desc="Looking Glass (VM)",      func="spawn",       cmd="looking-glass-client -F" },
