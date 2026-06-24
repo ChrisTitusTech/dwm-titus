@@ -22,10 +22,11 @@ CONFIG_FILE="$CONFIG_DIR/themes/$THEME/config.ini"
 LAPTOP_CONFIG_FILE="$CONFIG_DIR/themes/$THEME/laptop-config.ini"
 
 if command ls /sys/class/power_supply/ 2>/dev/null | command grep -q '^BAT'; then
-	CONFIG_FILE=$LAPTOP_CONFIG_FILE
-	# Detect battery and adapter names for polybar battery module
-	export DWM_BATTERY=$(command ls /sys/class/power_supply/ 2>/dev/null | command grep -E '^BAT[0-9]' | head -1)
-	export DWM_ADAPTER=$(command ls /sys/class/power_supply/ 2>/dev/null | command grep -Ev '^BAT' | head -1)
+    CONFIG_FILE=$LAPTOP_CONFIG_FILE
+    # Detect battery and adapter names for polybar battery module
+    DWM_BATTERY=$(command ls /sys/class/power_supply/ 2>/dev/null | command grep -E '^BAT[0-9]' | head -1)
+    DWM_ADAPTER=$(command ls /sys/class/power_supply/ 2>/dev/null | command grep -Ev '^BAT' | head -1)
+    export DWM_BATTERY DWM_ADAPTER
 fi
 
 # Check if xrandr is available and get monitor list
@@ -47,7 +48,7 @@ if command -v xrandr > /dev/null 2>&1; then
     
     echo "Detected $MONITOR_COUNT monitors: ${MONITORS[*]}"
     
-    if [ $MONITOR_COUNT -eq 1 ]; then
+    if [ "$MONITOR_COUNT" -eq 1 ]; then
         # Single monitor setup - launch main bar with tray and EWMH
         echo "Single monitor setup - launching main polybar with tray and EWMH on ${MONITORS[0]}"
         MONITOR=${MONITORS[0]} polybar main -c "$CONFIG_FILE" &
@@ -76,9 +77,11 @@ fi
 
 # Wait for Polybar to be ready before returning.
 # This ensures tray apps started after this script can find the tray owner.
-for i in $(seq 1 30); do
+attempt=0
+while [ "$attempt" -lt 30 ]; do
     if xdotool search --class Polybar >/dev/null 2>&1; then
         break
     fi
+    attempt=$((attempt + 1))
     sleep 0.1
 done

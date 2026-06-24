@@ -2,31 +2,24 @@ name: C/C++ CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+  pull_request:
 
 jobs:
-  build-and-release:
+  validate:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          /var/cache/apt/archives
-        key: ${{ runner.os }}-apt-${{ hashFiles('**/Makefile') }}
-        restore-keys: |
-          ${{ runner.os }}-apt-
+      - name: Install build and validation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config shellcheck \
+            libx11-dev libxft-dev libxinerama-dev libxrender-dev \
+            libimlib2-dev libx11-xcb-dev libxcb1-dev libxcb-res0-dev \
+            libfontconfig-dev libfreetype-dev
 
-    - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y libx11-dev libxft-dev libxinerama-dev
-
-    - name: Build
-      run: make
-      continue-on-error: true
-
-    - name: Check Build Failure
-      if: ${{ failure() }}
-      run: echo "Build failed. Investigate the logs for details." && exit 1
+      - name: Validate
+        run: make check

@@ -376,6 +376,13 @@ sudo make install \
     XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 configure_seeded_terminal "$HOTKEYS_FILE" "$terminal"
 
+if [[ $(uname -m) == x86_64 ]] && command -v systemctl &>/dev/null; then
+    info "Enabling the Vicinae user service..."
+    systemctl --user daemon-reload
+    systemctl --user enable vicinae.service
+    ok "Vicinae user service enabled."
+fi
+
 # ── Done ─────────────────────────────────────────────────
 echo ""
 echo "╔═══════════════════════════════════════════╗"
@@ -387,7 +394,7 @@ echo "  • Edit config.h to customize, then: make && sudo make install"
 echo "  • Log out and select 'dwm', or start with: startx"
 echo ""
 echo "  SUPER+/   keybind viewer     SUPER+X  terminal"
-echo "  SUPER+F1  control center     SUPER+R  app launcher (rofi)"
+echo "  SUPER+F1  control center     SUPER+R  app launcher (Vicinae)"
 echo "  SUPER+Q   close window"
 echo ""
 echo "  Full reference: docs/src/keybinds.md or SUPER+/ in dwm"

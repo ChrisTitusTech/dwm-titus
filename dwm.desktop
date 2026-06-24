@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=dwm-titus
 Comment=Dynamic window manager (dwm-titus)
-Exec=/usr/local/bin/dwm
+Exec=@PREFIX@/bin/dwm
 Icon=dwm
 Type=Application

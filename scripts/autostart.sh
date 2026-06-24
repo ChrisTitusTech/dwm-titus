@@ -3,11 +3,22 @@
 # Phase 1: Blocking setup (must complete before windows appear)
 # Phase 2: Background services (compositor, notifications, polybar, tray apps)
 
+start_once() {
+    process_name=$1
+    shift
+
+    command -v "$1" >/dev/null 2>&1 || return 0
+    pgrep -u "$(id -u)" -x "$process_name" >/dev/null 2>&1 && return 0
+    "$@" >/dev/null 2>&1 &
+}
+
 # ── Phase 1: Blocking ──────────────────────────────────────────────────────────
 # Disable DPMS and screen blanking (prevents GPU/display wake issues)
-xset s off
-xset s noblank
-xset -dpms
+if command -v xset >/dev/null 2>&1; then
+    xset s off
+    xset s noblank
+    xset -dpms
+fi
 
 # Export display env to systemd/dbus in parallel (both are IPC round-trips)
 if command -v systemctl >/dev/null 2>&1; then
@@ -26,13 +37,23 @@ THEME_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/theme-env.sh"
 [ -f "$THEME_ENV" ] && . "$THEME_ENV"
 
 # Wallpaper (moved here from Phase 1 — does not need to block dwm startup)
-feh --randomize --bg-fill ~/Pictures/backgrounds/* 2>/dev/null &
+if command -v feh >/dev/null 2>&1 &&
+    find "$HOME/Pictures/backgrounds" -type f -print -quit 2>/dev/null |
+        grep -q .; then
+    start_once feh feh --randomize --bg-fill "$HOME/Pictures/backgrounds"
+fi
 
 # Compositor
-picom -b 2>/dev/null &
+start_once picom picom -b
 
 # Notification daemon
-dunst 2>/dev/null &
+start_once dunst dunst
+
+# Vicinae is managed as a user service. Starting it here ensures the daemon is
+# available in dwm sessions that do not activate graphical-session.target.
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user start vicinae.service >/dev/null 2>&1 || true
+fi
 
 # Polkit authentication agent (try common agents)
 for agent in \
@@ -45,13 +66,18 @@ for agent in \
     /usr/bin/lxpolkit \
     /usr/lib/lxpolkit/lxpolkit; do
     if [ -x "$agent" ]; then
-        "$agent" &
+        agent_name=$(basename "$agent")
+        if ! pgrep -u "$(id -u)" -x "$agent_name" >/dev/null 2>&1; then
+            "$agent" >/dev/null 2>&1 &
+        fi
         break
     fi
 done
 
 # Launch Polybar
-"$HOME/.config/polybar/launch.sh" 2>/dev/null &
+if [ -x "$HOME/.config/polybar/launch.sh" ]; then
+    "$HOME/.config/polybar/launch.sh" >/dev/null 2>&1 &
+fi
 
 if command -v dex >/dev/null 2>&1; then
     dex -a 2>/dev/null

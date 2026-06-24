@@ -18,10 +18,10 @@ PKG_MODULES = x11 xft xinerama xrender imlib2 x11-xcb xcb xcb-res fontconfig fre
 INCS = $(shell ${PKG_CONFIG} --cflags ${PKG_MODULES})
 LIBS = $(shell ${PKG_CONFIG} --libs ${PKG_MODULES}) ${KVMLIB}
 
-# Optional compiler optimisations may create smaller binaries and
-# faster code, but increases compile time.
-# See https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
-OPTIMISATIONS ?= -march=native -mtune=native -flto=auto -O3
+# Keep release artifacts portable by default. Developers can opt into
+# host-specific tuning with `make native`.
+OPTIMISATIONS ?= -O2
+NATIVE_OPTIMISATIONS ?= -O3 -march=native -mtune=native -flto=auto
 
 # flags
 CPPFLAGS += -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_XOPEN_SOURCE=700L -DVERSION=\"${VERSION}\" ${XINERAMAFLAGS} ${INCS}

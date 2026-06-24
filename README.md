@@ -120,6 +120,12 @@ startx
 
 The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), launches Polybar, and starts dwm.
 
+The installer also deploys the bundled x86_64 Vicinae AppImage extraction,
+enables `vicinae.service` for the current user, and uses Vicinae for
+<kbd>SUPER</kbd> + <kbd>R</kbd>. Rofi remains available on
+<kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> and is still used by the
+control center and keybind viewer.
+
 ---
 
 ## ⌨️ Keybindings
@@ -133,7 +139,8 @@ See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 | Keybind | Action |
 |---------|--------|
 | <kbd>SUPER</kbd> + <kbd>X</kbd> | Open terminal |
-| <kbd>SUPER</kbd> + <kbd>R</kbd> | Launch rofi (app launcher) |
+| <kbd>SUPER</kbd> + <kbd>R</kbd> | Toggle Vicinae |
+| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> | Launch rofi |
 | <kbd>SUPER</kbd> + <kbd>Q</kbd> | Close window |
 | <kbd>SUPER</kbd> + <kbd>J</kbd> / <kbd>K</kbd> | Focus next / previous window |
 | <kbd>SUPER</kbd> + <kbd>H</kbd> / <kbd>L</kbd> | Resize master area |
@@ -217,3 +224,20 @@ bash scripts/check-deps.sh
 | `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |
 | `docs/src/keybinds.md` | Full keybinding reference |
 | `docs/ROADMAP.md` | Project roadmap and planned features |
+
+---
+
+## Development
+
+Run the repository checks before submitting a change:
+
+```bash
+make check
+```
+
+This performs a clean portable build, ShellCheck validation, and an
+unprivileged staged installation. Use `make native` only for a binary intended
+for the current machine; normal builds remain portable across compatible CPUs.
+
+Current implementation tasks are tracked in `TASKS.md`. Product scope and
+acceptance criteria remain in `SPEC.md`.

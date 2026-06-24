@@ -1,46 +1,160 @@
+# dwm-titus Roadmap
 
-# Mission Statement
+## Product Direction
 
-MINIMAL AT ALL COSTS. Do one thing and do it well. No bloat, no un-needed dependancies, Keep it simple stupid! (KISS).
+dwm-titus is an opinionated, minimal X11 desktop built around dwm. "Feature
+complete" means the requirements in `SPEC.md` are implemented, documented,
+and validated across the supported distribution families. It does not mean
+adding every desktop feature to the window-manager process.
 
-## Design Improvements
+The project follows these rules:
 
-- Adjust polybar
-- Mouse control for the peasants
-- Gaming Setup Checks (Lutris, Steam, Heroic, xpadneo, 32-bit, etc.)
-- Hotreload Window Rules
-- GUI for Hotkeys and Window Rules
-- Design Display resolution and scaling checks. (Either xrandr or hardcode xorg.conf.d files for common resolutions and scaling options)
-  - Save display profiles for different setups (home, work, gaming, etc.)
+- Keep the C core focused on window management and X11 integration.
+- Prefer small command-line helpers and standard freedesktop interfaces over
+  new resident services.
+- Keep optional visual components replaceable and failure-tolerant.
+- Add dependencies only when they are available on Debian, Arch, and RHEL
+  families and materially improve a required capability.
+- Require a regression test before extracting tightly coupled code from
+  `dwm.c`.
+- Treat GUI configuration as optional tooling, not part of the core runtime.
 
-## To-Do IMPORTANT
+## Phase 0: Build and Repository Readiness
 
-- Plymouth Screen
-- Defaults for programs with xdg-utils
-- Hide Grub on install
-- starship should be non-interactive
-- astronaut theme prompting for gum install
-- check for other interactive spots that need automation
-- Browser check
-- Cleanup Running Autostart on relaunches
-- GUI for Hotkeys
-- Window Rules toml
+Goal: make every change reviewable and prevent known portability regressions.
 
-## Bugs
+- [x] Use portable compiler optimizations by default and keep native tuning
+  opt-in.
+- [x] Fail early when required `pkg-config` modules are missing.
+- [x] Validate staged installation with `DESTDIR`.
+- [x] Generate the display-manager `Exec` path from `PREFIX`.
+- [x] Run build, shell, and staged-install validation in pull requests.
+- [ ] Validate the implemented duplicate-process guards for Picom, Dunst, Feh,
+  and polkit in both display-manager and `startx` sessions.
+- [ ] Stop tracking generated/local build configuration such as `config.h`
+  without deleting an existing user's file.
+- [ ] Define one source of truth for installable scripts and data files.
+- [ ] Add release artifact validation and a documented release checklist.
 
-- Multimonitor tag switch from one monitor to the other doesn't update cursor position or polybar header
-- Resolutions below 1080p do not display power menu
- 
-## Complete
+Exit criteria:
 
-- Theming
-- Hot-Reloadable Themes, and hotkeys
-- Fix install script and make sure all dependancies are getting installed (fonts, programs, etc.)
-- Autostart
-- Fix Meslo font install
-- Keyring unlock issue (SDDM install with Astronaut script)
-- Move setup script to linutil
-- EWMH integration into DWM code
-- EWMH integration into polybar replacing DWM bar / systray
-- Multimonitor
-- Generalized Setup for different Monitor / GPU combos
+- `make check` passes from a clean checkout.
+- CI blocks merges on compile, shell, or staged-install failures.
+- A non-default `PREFIX` produces a working session entry.
+
+## Phase 1: Installer and Distribution Parity
+
+Goal: provide one safe installation workflow for every supported family and
+architecture.
+
+- [ ] Move package capability mappings into one data module used by the
+  installer and dependency checker.
+- [ ] Merge ARM handling into `install.sh`; keep architecture-specific package
+  exceptions in the shared dependency map.
+- [ ] Separate required build/runtime packages from recommended desktop
+  packages and optional extras.
+- [ ] Add non-interactive flags for CI and packaging while preserving an
+  explicit interactive summary for users.
+- [ ] Add container validation for one Debian, one Arch, and one Fedora/RHEL
+  representative.
+- [ ] Verify that repeated installation preserves `config.h`, runtime TOML,
+  `.xinitrc`, and application configuration.
+- [ ] Remove Arch-only commands from general documentation and diagnostics.
+
+Exit criteria:
+
+- Each family resolves and installs the same required capabilities.
+- Clean build and staged install pass in all three family containers.
+- Unsupported derivatives fail clearly or require explicit family selection.
+
+## Phase 2: Runtime Correctness
+
+Goal: stabilize the required desktop behavior before adding new features.
+
+- [ ] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
+  fullscreen, EWMH state, and TOML reload.
+- [ ] Fix monitor-to-monitor tag switching so cursor position and Polybar EWMH
+  state update together.
+- [ ] Make the power menu fit and remain keyboard-usable below 1080p.
+- [ ] Make TOML reload transactional: invalid files retain the last valid
+  configuration and report the exact file and error.
+- [ ] Validate missing X properties and malformed `_NET_WM_ICON` data without
+  crashing.
+- [ ] Verify autostart behavior across dwm restart, display-manager login, and
+  `startx`.
+
+Exit criteria:
+
+- Core window-management actions have automated smoke coverage.
+- Known multi-monitor and low-resolution bugs are closed with regression tests.
+- Invalid or missing optional configuration cannot terminate the session.
+
+## Phase 3: Minimal Feature-Complete Desktop
+
+Goal: complete the product requirements without moving desktop policy into
+`dwm.c`.
+
+- [ ] Select a usable installed terminal at runtime with an actionable fallback
+  when none is available.
+- [ ] Add an `xdg-settings` based workflow for browser and default application
+  selection.
+- [ ] Add a small display-profile CLI using `xrandr`; profiles remain optional
+  user configuration under the XDG config directory.
+- [ ] Make Polybar modules capability-driven so missing battery, audio,
+  network, temperature, or tray tools hide cleanly.
+- [ ] Provide a single diagnostics command that reports required failures and
+  optional degraded features separately.
+- [ ] Document a minimal session profile that runs only dwm, a terminal, and
+  required X11/session services.
+
+Exit criteria:
+
+- dwm remains usable without Polybar, Picom, Dunst, wallpaper, or a preferred
+  terminal.
+- Every default keybinding either works with required dependencies or reports a
+  clear remediation.
+- Display-manager and `startx` sessions satisfy the runtime criteria in
+  `SPEC.md`.
+
+## Phase 4: Core Maintainability
+
+Goal: reduce risk in the patched C core after behavior is covered by tests.
+
+- [ ] Document patch ownership and invariants for EWMH, pertag, swallowing,
+  systray, fullscreen, icons, and runtime TOML.
+- [ ] Group static declarations and implementation sections by subsystem.
+- [ ] Extract runtime TOML loading/reload state behind a narrow interface.
+- [ ] Extract EWMH property updates behind a narrow interface.
+- [ ] Replace unchecked formatting and allocation edge cases in touched paths.
+- [ ] Keep layout and event-loop code in `dwm.c` unless extraction measurably
+  improves clarity without increasing coupling.
+
+Exit criteria:
+
+- Extracted modules have direct tests or runtime regression coverage.
+- No extraction adds blocking work to the X event loop.
+- The default binary and runtime dependency footprint do not materially grow.
+
+## Phase 5: Release Qualification
+
+Goal: make support claims evidence-based.
+
+- [ ] Run clean installer validation on current Debian/Ubuntu, Arch, and
+  Fedora/Rocky representatives.
+- [ ] Run real or nested X11 validation for single- and multi-monitor behavior.
+- [ ] Validate x86_64 and one supported ARM system.
+- [ ] Publish known limitations, tested versions, upgrade notes, and checksums.
+- [ ] Tag a release only after the acceptance criteria in `SPEC.md` are met.
+
+## Deferred and Out of Scope
+
+These items may live in separate optional projects or documentation, but they
+do not belong in the core roadmap:
+
+- Plymouth, GRUB hiding, bootloader changes, proprietary driver installation,
+  and automatic security-policy changes.
+- A Wayland compositor.
+- Bundled gaming-stack installation or hardware-specific gaming setup.
+- A mandatory GUI for hotkeys, themes, or window rules.
+- A new daemon when a script, XDG interface, or existing session service is
+  sufficient.

@@ -76,7 +76,7 @@ if [ "$1" = "--tail" ]; then
     # Monitors: DWM_TAG_UPDATE (custom signal), _NET_CURRENT_DESKTOP (active desktop), 
     # and _NET_CLIENT_LIST (window list changes)
     xprop -root -spy DWM_TAG_UPDATE _NET_CURRENT_DESKTOP _NET_CLIENT_LIST 2>/dev/null | \
-    while read -r line; do
+    while read -r _; do
         update_tags
     done
 else

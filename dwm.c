@@ -185,6 +185,7 @@ static void checkotherwm(void);
 static void cleanup(void);
 static void cleanupmon(Monitor *mon);
 static void clientmessage(XEvent *e);
+static void copystr(char *dst, size_t dstsz, const char *src);
 static void configure(Client *c);
 static void configurenotify(XEvent *e);
 static void configurerequest(XEvent *e);
@@ -303,6 +304,7 @@ static void load_hotkeys_toml(const char *user_path, const char *default_path);
 static void load_themes_toml(const char *user_path, const char *default_path);
 static void load_rules_toml(const char *user_path, const char *default_path);
 static void notify_bad_config(const char *filename, const char *reason);
+static int pathjoin(char *dst, size_t dstsz, const char *dir, const char *name);
 static void reload_config(void);
 static void setup_inotify(void);
 static void *toml_alloc(size_t sz);
@@ -421,6 +423,37 @@ static void updatemonitorcount(void);
 static void initmonitortags(void);
 
 /* function implementations */
+static void
+copystr(char *dst, size_t dstsz, const char *src)
+{
+	size_t len;
+
+	if (dstsz == 0)
+		return;
+	len = strlen(src);
+	if (len >= dstsz)
+		len = dstsz - 1;
+	memcpy(dst, src, len);
+	dst[len] = '\0';
+}
+
+static int
+pathjoin(char *dst, size_t dstsz, const char *dir, const char *name)
+{
+	size_t dirlen = strlen(dir);
+	size_t namelen = strlen(name);
+
+	if (dirlen >= dstsz || namelen >= dstsz - dirlen - 1) {
+		if (dstsz > 0)
+			dst[0] = '\0';
+		return 0;
+	}
+	memcpy(dst, dir, dirlen);
+	dst[dirlen] = '/';
+	memcpy(dst + dirlen + 1, name, namelen + 1);
+	return 1;
+}
+
 void
 applyrules(Client *c)
 {
@@ -564,7 +597,7 @@ arrange(Monitor *m)
 void
 arrangemon(Monitor *m)
 {
-	strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, sizeof m->ltsymbol);
+	copystr(m->ltsymbol, sizeof m->ltsymbol, m->lt[m->sellt]->symbol);
 	if (m->lt[m->sellt]->arrange)
 		m->lt[m->sellt]->arrange(m);
 }
@@ -941,7 +974,7 @@ createmon(void)
 	m->bh = bh;
 	m->lt[0] = &layouts[0];
 	m->lt[1] = &layouts[1 % LENGTH(layouts)];
-	strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);
+	copystr(m->ltsymbol, sizeof m->ltsymbol, layouts[0].symbol);
 	m->pertag = ecalloc(1, sizeof(Pertag));
 	m->pertag->curtag = m->pertag->prevtag = 1;
 
@@ -2588,7 +2621,8 @@ setlayout(const Arg *arg)
 		selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] = (Layout *)arg->v;
 	selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
 
-	strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, sizeof selmon->ltsymbol);
+	copystr(selmon->ltsymbol, sizeof selmon->ltsymbol,
+	        selmon->lt[selmon->sellt]->symbol);
 	if (selmon->sel)
 		arrange(selmon);
 	else
@@ -2762,8 +2796,7 @@ static void
 expand_var_to(const char *src, const TomlDoc *doc, char *dst, size_t dstsz)
 {
 	if (!strchr(src, '$')) {
-		strncpy(dst, src, dstsz - 1);
-		dst[dstsz - 1] = '\0';
+		copystr(dst, dstsz, src);
 		return;
 	}
 	const char *p = src;
@@ -3022,8 +3055,17 @@ load_themes_toml(const char *user_path, const char *default_path)
 	 * falling back to the legacy [colors] section for backwards compatibility. */
 	char color_section[TOML_MAX_STR] = "colors";
 	const TomlValue *vtheme = toml_get(&doc, "active", "theme");
-	if (vtheme && vtheme->type == TOML_STRING && vtheme->s[0])
-		snprintf(color_section, sizeof(color_section), "theme.%s", vtheme->s);
+	if (vtheme && vtheme->type == TOML_STRING && vtheme->s[0]) {
+		const char prefix[] = "theme.";
+		size_t theme_len = strlen(vtheme->s);
+		if (theme_len < sizeof(color_section) - (sizeof(prefix) - 1)) {
+			memcpy(color_section, prefix, sizeof(prefix) - 1);
+			memcpy(color_section + sizeof(prefix) - 1, vtheme->s,
+			       theme_len + 1);
+		} else {
+			fprintf(stderr, "dwm: active theme name is too long; using colors\n");
+		}
+	}
 
 #define TRY_COLOR(field, dest) do { \
 	const TomlValue *_v = toml_get(&doc, color_section, field); \
@@ -3111,22 +3153,19 @@ load_rules_toml(const char *user_path, const char *default_path)
 		const TomlValue *vmon  = toml_table_get(&doc, "rules", i, "monitor");
 		Rule *r = &rt_rules_buf[nk];
 		if (vc && vc->type == TOML_STRING && vc->s[0]) {
-			strncpy(rt_rules_strbuf[nk*3+0], vc->s, TOML_MAX_STR-1);
-			rt_rules_strbuf[nk*3+0][TOML_MAX_STR-1] = '\0';
+			copystr(rt_rules_strbuf[nk*3+0], TOML_MAX_STR, vc->s);
 			r->class = rt_rules_strbuf[nk*3+0];
 		} else {
 			r->class = NULL;
 		}
 		if (vi && vi->type == TOML_STRING && vi->s[0]) {
-			strncpy(rt_rules_strbuf[nk*3+1], vi->s, TOML_MAX_STR-1);
-			rt_rules_strbuf[nk*3+1][TOML_MAX_STR-1] = '\0';
+			copystr(rt_rules_strbuf[nk*3+1], TOML_MAX_STR, vi->s);
 			r->instance = rt_rules_strbuf[nk*3+1];
 		} else {
 			r->instance = NULL;
 		}
 		if (vt && vt->type == TOML_STRING && vt->s[0]) {
-			strncpy(rt_rules_strbuf[nk*3+2], vt->s, TOML_MAX_STR-1);
-			rt_rules_strbuf[nk*3+2][TOML_MAX_STR-1] = '\0';
+			copystr(rt_rules_strbuf[nk*3+2], TOML_MAX_STR, vt->s);
 			r->title = rt_rules_strbuf[nk*3+2];
 		} else {
 			r->title = NULL;
@@ -3177,24 +3216,33 @@ setup_inotify(void)
 	if (!home) return;
 
 	/* User-editable config: ~/.config/dwm-titus/ */
-	snprintf(toml_config_dir,   sizeof(toml_config_dir),
-	         "%s/.config/dwm-titus", home);
-	snprintf(toml_hotkeys_path, sizeof(toml_hotkeys_path),
-	         "%s/hotkeys.toml", toml_config_dir);
-	snprintf(toml_themes_path,  sizeof(toml_themes_path),
-	         "%s/themes.toml",  toml_config_dir);
-	snprintf(toml_rules_path,   sizeof(toml_rules_path),
-	         "%s/window-rules.toml", toml_config_dir);
+	if (!pathjoin(toml_config_dir, sizeof(toml_config_dir),
+	              home, ".config/dwm-titus")
+	    || !pathjoin(toml_hotkeys_path, sizeof(toml_hotkeys_path),
+	                 toml_config_dir, "hotkeys.toml")
+	    || !pathjoin(toml_themes_path, sizeof(toml_themes_path),
+	                 toml_config_dir, "themes.toml")
+	    || !pathjoin(toml_rules_path, sizeof(toml_rules_path),
+	                 toml_config_dir, "window-rules.toml")) {
+		fprintf(stderr, "dwm: user config path exceeds PATH_MAX\n");
+		return;
+	}
 
 	/* Default (fallback) config: ~/.local/share/dwm-titus/config/ */
-	snprintf(toml_default_dir,             sizeof(toml_default_dir),
-	         "%s/.local/share/dwm-titus/config", home);
-	snprintf(toml_hotkeys_default_path,    sizeof(toml_hotkeys_default_path),
-	         "%s/hotkeys.toml",      toml_default_dir);
-	snprintf(toml_themes_default_path,     sizeof(toml_themes_default_path),
-	         "%s/themes.toml",       toml_default_dir);
-	snprintf(toml_rules_default_path,      sizeof(toml_rules_default_path),
-	         "%s/window-rules.toml", toml_default_dir);
+	if (!pathjoin(toml_default_dir, sizeof(toml_default_dir),
+	              home, ".local/share/dwm-titus/config")
+	    || !pathjoin(toml_hotkeys_default_path,
+	                 sizeof(toml_hotkeys_default_path),
+	                 toml_default_dir, "hotkeys.toml")
+	    || !pathjoin(toml_themes_default_path,
+	                 sizeof(toml_themes_default_path),
+	                 toml_default_dir, "themes.toml")
+	    || !pathjoin(toml_rules_default_path,
+	                 sizeof(toml_rules_default_path),
+	                 toml_default_dir, "window-rules.toml")) {
+		fprintf(stderr, "dwm: default config path exceeds PATH_MAX\n");
+		return;
+	}
 
 	inotify_fd = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
 	if (inotify_fd < 0) { perror("dwm: inotify_init1"); return; }
