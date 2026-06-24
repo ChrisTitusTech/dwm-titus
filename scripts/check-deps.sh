@@ -6,6 +6,12 @@
 # are installed. Exit code 0 = all good, 1 = missing deps.
 # ─────────────────────────────────────────────────────────
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/dwm-utils.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/dwm-packages.sh"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -57,7 +63,24 @@ check_font_any() {
 	check_font "$label" "$@"
 }
 
+print_package_profile() {
+	local label=$1
+	local profile=$2
+	local packages
+
+	if ! packages="$(dwm_packages "$DISTRO_FAMILY" "$profile" | paste -sd ' ' -)"; then
+		return
+	fi
+
+	if [ -n "$packages" ]; then
+		printf "  %s: %s\n" "$label" "$packages"
+	fi
+}
+
 echo "═══ dwm-titus Dependency Check ═══"
+echo ""
+echo "Distribution: $DISTRO_NAME"
+echo "Family: $DISTRO_FAMILY"
 echo ""
 
 # ── Build dependencies ──────────────────────────────────
@@ -146,6 +169,14 @@ if [ $MISSING -eq 0 ]; then
 	exit 0
 else
 	printf "${RED}$MISSING missing dependency/dependencies.${NC}\n"
+	if [ "$DISTRO_FAMILY" != "unknown" ]; then
+		echo ""
+		echo "Package suggestions from the shared dependency map:"
+		print_package_profile "Required" required
+		print_package_profile "Recommended desktop" recommended
+		print_package_profile "Optional extras" optional
+		print_package_profile "Supported terminals" terminal
+	fi
 	echo "  Run: ./install.sh   (automated install)"
 	exit 1
 fi

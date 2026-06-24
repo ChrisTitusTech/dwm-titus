@@ -67,248 +67,292 @@ showsymbols=true
 showtext=true
 
 font_exists() {
-    local candidate
+	local candidate
 
-    candidate="$1"
-    if fc-match "$candidate" 2>/dev/null | command grep -Fqi "$candidate"; then
-        return 0
-    fi
+	candidate="$1"
+	if fc-match "$candidate" 2>/dev/null | command grep -Fqi "$candidate"; then
+		return 0
+	fi
 
-    return 1
+	return 1
 }
 
 detect_symbols_font() {
-    local candidate
+	local candidate
 
-    for candidate in \
-        "Material Icons" \
-        "Material Icons Outlined" \
-        "Material Icons Round" \
-        "Material Icons Sharp" \
-        "Material Icons Two Tone" \
-        "Symbols Nerd Font Mono" \
-        "Symbols Nerd Font" \
-        "MesloLGS NF" \
-        "MesloLGS Nerd Font" \
-        "MesloLGS Nerd Font Mono"
-    do
-        if font_exists "$candidate"; then
-            printf '%s' "$candidate"
-            return
-        fi
-    done
+	for candidate in \
+		"Material Icons" \
+		"Material Icons Outlined" \
+		"Material Icons Round" \
+		"Material Icons Sharp" \
+		"Material Icons Two Tone" \
+		"Symbols Nerd Font Mono" \
+		"Symbols Nerd Font" \
+		"MesloLGS NF" \
+		"MesloLGS Nerd Font" \
+		"MesloLGS Nerd Font Mono"; do
+		if font_exists "$candidate"; then
+			printf '%s' "$candidate"
+			return
+		fi
+	done
 
-    return 1
+	return 1
 }
 
 use_material_icons() {
-    case "$1" in
-        "Material Icons"|"Material Icons Outlined"|"Material Icons Round"|"Material Icons Sharp"|"Material Icons Two Tone")
-            return 0
-            ;;
-    esac
+	case "$1" in
+	"Material Icons" | "Material Icons Outlined" | "Material Icons Round" | "Material Icons Sharp" | "Material Icons Two Tone")
+		return 0
+		;;
+	esac
 
-    return 1
+	return 1
 }
 
 set_icons() {
-    local entry
+	local entry
 
-    if use_material_icons "$1"; then
-        for entry in "${!material_icons[@]}"; do
-            icons[$entry]="${material_icons[$entry]}"
-        done
-        return
-    fi
+	if use_material_icons "$1"; then
+		for entry in "${!material_icons[@]}"; do
+			icons[$entry]="${material_icons[$entry]}"
+		done
+		return
+	fi
 
-    for entry in "${!nerd_font_icons[@]}"; do
-        icons[$entry]="${nerd_font_icons[$entry]}"
-    done
+	for entry in "${!nerd_font_icons[@]}"; do
+		icons[$entry]="${nerd_font_icons[$entry]}"
+	done
 }
 
 symbols_font=""
 if detected_symbols_font=$(detect_symbols_font); then
-    symbols_font="$detected_symbols_font"
+	symbols_font="$detected_symbols_font"
 fi
 set_icons "$symbols_font"
 
 function check_valid {
-    local option="$1"
-    shift 1
-    for entry in "${@}"
-    do
-        if [ -z "${actions[$entry]+x}" ]
-        then
-            echo "Invalid choice in $option: $entry" >&2
-            exit 1
-        fi
-    done
+	local option="$1"
+	shift 1
+	for entry in "${@}"; do
+		if [ -z "${actions[$entry]+x}" ]; then
+			echo "Invalid choice in $option: $entry" >&2
+			exit 1
+		fi
+	done
 }
 
 # Parse command-line options
 if ! parsed=$(getopt --options=h --longoptions=help,dry-run,confirm:,choices:,choose:,symbols,no-symbols,text,no-text,symbols-font: --name "$0" -- "$@"); then
-    echo 'Terminating...' >&2
-    exit 1
+	echo 'Terminating...' >&2
+	exit 1
 fi
 eval set -- "$parsed"
 unset parsed
 while true; do
-    case "$1" in
-        "-h"|"--help")
-            echo "rofi-power-menu - a power menu mode for Rofi"
-            echo
-            echo "Usage: rofi-power-menu [--choices CHOICES] [--confirm CHOICES]"
-            echo "                       [--choose CHOICE] [--dry-run] [--symbols|--no-symbols]"
-            echo
-            echo "Use with Rofi in script mode. For instance, to ask for shutdown or reboot:"
-            echo
-            echo "  rofi -show menu -modi \"menu:rofi-power-menu --choices=shutdown/reboot\""
-            echo
-            echo "Available options:"
-            echo "  --dry-run            Don't perform the selected action but print it to stderr."
-            echo "  --choices CHOICES    Show only the selected choices in the given order. Use /"
-            echo "                       as the separator. Available choices are lockscreen,"
-            echo "                       logout,suspend, hibernate, reboot and shutdown. By"
-            echo "                       default, all available choices are shown."
-            echo "  --confirm CHOICES    Require confirmation for the gives choices only. Use / as"
-            echo "                       the separator. Available choices are lockscreen, logout,"
-            echo "                       suspend, hibernate, reboot and shutdown. By default, only"
-            echo "                       irreversible actions logout, reboot and shutdown require"
-            echo "                       confirmation."
-            echo "  --choose CHOICE      Preselect the given choice and only ask for a"
-            echo "                       confirmation (if confirmation is set to be requested). It"
-            echo "                       is strongly recommended to combine this option with"
-            echo "                       --confirm=CHOICE if the choice wouldn't require"
-            echo "                       confirmation by default. Available choices are"
-            echo "                       lockscreen, logout, suspend, hibernate, reboot and"
-            echo "                       shutdown."
-            echo "  --[no-]symbols       Show Unicode symbols or not. Requires a font with support"
-            echo "                       for the symbols. Use, for instance, fonts from the"
-            echo "                       Nerdfonts collection. By default, they are shown"
-            echo "  --[no-]text          Show text description or not."
-            echo "  --symbols-font FONT  Use the given font for symbols. By default, the symbols"
-            echo "                       use the same font as the text. That font is configured"
-            echo "                       with rofi."
-            echo "  -h,--help            Show this help text."
-            exit 0
-            ;;
-        "--dry-run")
-            dryrun=true
-            shift 1
-            ;;
-        "--confirm")
-            IFS='/' read -ra confirmations <<< "$2"
-            check_valid "$1" "${confirmations[@]}"
-            shift 2
-            ;;
-        "--choices")
-            IFS='/' read -ra show <<< "$2"
-            check_valid "$1" "${show[@]}"
-            shift 2
-            ;;
-        "--choose")
-            # Check that the choice is valid
-            check_valid "$1" "$2"
-            selectionID="$2"
-            shift 2
-            ;;
-        "--symbols")
-            showsymbols=true
-            shift 1
-            ;;
-        "--no-symbols")
-            showsymbols=false
-            shift 1
-            ;;
-        "--text")
-            showtext=true
-            shift 1
-            ;;
-        "--no-text")
-            showtext=false
-            shift 1
-            ;;
-        "--symbols-font")
-            symbols_font="$2"
-            set_icons "$symbols_font"
-            shift 2
-            ;;
-        "--")
-            shift
-            break
-            ;;
-        *)
-            echo "Internal error" >&2
-            exit 1
-            ;;
-    esac
+	case "$1" in
+	"-h" | "--help")
+		echo "rofi-power-menu - a power menu mode for Rofi"
+		echo
+		echo "Usage: rofi-power-menu [--choices CHOICES] [--confirm CHOICES]"
+		echo "                       [--choose CHOICE] [--dry-run] [--symbols|--no-symbols]"
+		echo
+		echo "Use with Rofi in script mode. For instance, to ask for shutdown or reboot:"
+		echo
+		echo "  rofi -show menu -modi \"menu:rofi-power-menu --choices=shutdown/reboot\""
+		echo
+		echo "Available options:"
+		echo "  --dry-run            Don't perform the selected action but print it to stderr."
+		echo "  --choices CHOICES    Show only the selected choices in the given order. Use /"
+		echo "                       as the separator. Available choices are lockscreen,"
+		echo "                       logout,suspend, hibernate, reboot and shutdown. By"
+		echo "                       default, all available choices are shown."
+		echo "  --confirm CHOICES    Require confirmation for the gives choices only. Use / as"
+		echo "                       the separator. Available choices are lockscreen, logout,"
+		echo "                       suspend, hibernate, reboot and shutdown. By default, only"
+		echo "                       irreversible actions logout, reboot and shutdown require"
+		echo "                       confirmation."
+		echo "  --choose CHOICE      Preselect the given choice and only ask for a"
+		echo "                       confirmation (if confirmation is set to be requested). It"
+		echo "                       is strongly recommended to combine this option with"
+		echo "                       --confirm=CHOICE if the choice wouldn't require"
+		echo "                       confirmation by default. Available choices are"
+		echo "                       lockscreen, logout, suspend, hibernate, reboot and"
+		echo "                       shutdown."
+		echo "  --[no-]symbols       Show Unicode symbols or not. Requires a font with support"
+		echo "                       for the symbols. Use, for instance, fonts from the"
+		echo "                       Nerdfonts collection. By default, they are shown"
+		echo "  --[no-]text          Show text description or not."
+		echo "  --symbols-font FONT  Use the given font for symbols. By default, the symbols"
+		echo "                       use the same font as the text. That font is configured"
+		echo "                       with rofi."
+		echo "  -h,--help            Show this help text."
+		exit 0
+		;;
+	"--dry-run")
+		dryrun=true
+		shift 1
+		;;
+	"--confirm")
+		IFS='/' read -ra confirmations <<<"$2"
+		check_valid "$1" "${confirmations[@]}"
+		shift 2
+		;;
+	"--choices")
+		IFS='/' read -ra show <<<"$2"
+		check_valid "$1" "${show[@]}"
+		shift 2
+		;;
+	"--choose")
+		# Check that the choice is valid
+		check_valid "$1" "$2"
+		selectionID="$2"
+		shift 2
+		;;
+	"--symbols")
+		showsymbols=true
+		shift 1
+		;;
+	"--no-symbols")
+		showsymbols=false
+		shift 1
+		;;
+	"--text")
+		showtext=true
+		shift 1
+		;;
+	"--no-text")
+		showtext=false
+		shift 1
+		;;
+	"--symbols-font")
+		symbols_font="$2"
+		set_icons "$symbols_font"
+		shift 2
+		;;
+	"--")
+		shift
+		break
+		;;
+	*)
+		echo "Internal error" >&2
+		exit 1
+		;;
+	esac
 done
 
-if [ "$showsymbols" = "false" ] && [ "$showtext" = "false" ]
-then
-    echo "Invalid options: cannot have --no-symbols and --no-text enabled at the same time." >&2
-    exit 1
+if [ "$showsymbols" = "false" ] && [ "$showtext" = "false" ]; then
+	echo "Invalid options: cannot have --no-symbols and --no-text enabled at the same time." >&2
+	exit 1
 fi
 
 # Define the messages after parsing the CLI options so that it is possible to
 # configure them in the future.
 
 function write_message {
-    if [ -n "$symbols_font" ];
-    then
-        icon="<span font=\"${symbols_font}\" font_size=\"medium\">$1</span>"
-    else
-        icon="<span font_size=\"medium\">$1</span>"
-    fi
-    text="<span font_size=\"medium\">$2</span>"
-    if [ "$showsymbols" = "true" ]
-    then
-        if [ "$showtext" = "true" ]
-        then
-            printf '\u200e%s \u2068%s\u2069' "$icon" "$text"
-        else
-            printf '\u200e%s' "$icon"
-        fi
-    else
-        printf '%s' "$text"
-    fi
+	if [ -n "$symbols_font" ]; then
+		icon="<span font=\"${symbols_font}\" font_size=\"medium\">$1</span>"
+	else
+		icon="<span font_size=\"medium\">$1</span>"
+	fi
+	text="<span font_size=\"medium\">$2</span>"
+	if [ "$showsymbols" = "true" ]; then
+		if [ "$showtext" = "true" ]; then
+			printf '\u200e%s \u2068%s\u2069' "$icon" "$text"
+		else
+			printf '\u200e%s' "$icon"
+		fi
+	else
+		printf '%s' "$text"
+	fi
 }
 
 function print_selection {
-    printf '%b' "$1"
+	printf '%b' "$1"
+}
+
+function display_size {
+	local dimensions
+
+	if ! command -v xdpyinfo >/dev/null 2>&1; then
+		return 1
+	fi
+	if ! dimensions=$(xdpyinfo 2>/dev/null | awk '/dimensions:/ { print $2; exit }'); then
+		return 1
+	fi
+	if [[ "$dimensions" =~ ^([0-9]+)x([0-9]+)$ ]]; then
+		printf '%s %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+		return 0
+	fi
+
+	return 1
+}
+
+function clamp_px {
+	local value="$1"
+	local min="$2"
+	local max="$3"
+
+	if ((value < min)); then
+		value="$min"
+	fi
+	if ((value > max)); then
+		value="$max"
+	fi
+	printf '%s' "$value"
+}
+
+function rofi_theme_override {
+	local screen_width=0
+	local screen_height=0
+	local window_width=320
+	local window_height=360
+	local max_width
+	local max_height
+
+	if read -r screen_width screen_height < <(display_size); then
+		max_width=$((screen_width - 48))
+		max_height=$((screen_height - 48))
+		if ((max_width < 240)); then
+			max_width=$((screen_width * 9 / 10))
+		fi
+		if ((max_height < 240)); then
+			max_height=$((screen_height * 9 / 10))
+		fi
+		window_width=$(clamp_px "$window_width" 220 "$max_width")
+		window_height=$(clamp_px "$window_height" 240 "$max_height")
+	fi
+
+	printf '%s' "window { location: center; anchor: center; width: ${window_width}px; height: ${window_height}px; border: 2px solid; margin: 0; } mainbox { margin: 0; spacing: 0; } listview { lines: 6; fixed-height: false; scrollbar: true; margin: 0; spacing: 0; } element { padding: 8px 12px; } inputbar { enabled: false; }"
 }
 
 declare -A messages
 declare -A confirmationMessages
-for entry in "${all[@]}"
-do
-    messages[$entry]=$(write_message "${icons[$entry]}" "${texts[$entry]^}")
+for entry in "${all[@]}"; do
+	messages[$entry]=$(write_message "${icons[$entry]}" "${texts[$entry]^}")
 done
-for entry in "${all[@]}"
-do
-    # Add zero-width space character (\u200b) to icon to ensure confirmation-
-    # and regular messages never collide.
-    confirmationMessages[$entry]=$(write_message "${icons[$entry]}\u200b" "Yes, ${texts[$entry]}")
+for entry in "${all[@]}"; do
+	# Add zero-width space character (\u200b) to icon to ensure confirmation-
+	# and regular messages never collide.
+	confirmationMessages[$entry]=$(write_message "${icons[$entry]}\u200b" "Yes, ${texts[$entry]}")
 done
 confirmationMessages[cancel]=$(write_message "${icons[cancel]}" "No, cancel")
 
-if [ $# -gt 0 ]
-then
-    # If arguments given, use those as the selection
-    selection="$*"
+if [ $# -gt 0 ]; then
+	# If arguments given, use those as the selection
+	selection="$*"
 else
-    # Otherwise, use the CLI passed choice if given
-    if [ -n "${selectionID+x}" ]
-    then
-        selection="${messages[$selectionID]}"
-    fi
+	# Otherwise, use the CLI passed choice if given
+	if [ -n "${selectionID+x}" ]; then
+		selection="${messages[$selectionID]}"
+	fi
 fi
 
 # If not invoked by rofi, launch rofi with this script as the mode handler
 if [ -z "${ROFI_RETV+x}" ]; then
-    exec rofi -show powermenu -modi "powermenu:$0" \
-        -config "$HOME/.config/rofi/config.rasi" \
-        -theme-str 'window { location: center; anchor: center; height: 215px; width: 200px; border: 2px solid; margin: 0; } mainbox { margin: 0; spacing: 0; } listview { margin: 0; spacing: 0; } inputbar { enabled: false; }'
+	exec rofi -show powermenu -modi "powermenu:$0" \
+		-config "$HOME/.config/rofi/config.rasi" \
+		-theme-str "$(rofi_theme_override)"
 fi
 
 # Don't allow custom entries
@@ -316,52 +360,43 @@ echo -e "\0no-custom\x1ftrue"
 # Use markup
 echo -e "\0markup-rows\x1ftrue"
 
-if [ -z "${selection+x}" ]
-then
-    echo -e "\0prompt\x1fPower menu"
-    for entry in "${show[@]}"
-    do
-        echo -e "${messages[$entry]}"
-    done
+if [ -z "${selection+x}" ]; then
+	echo -e "\0prompt\x1fPower menu"
+	for entry in "${show[@]}"; do
+		echo -e "${messages[$entry]}"
+	done
 else
-    for entry in "${show[@]}"
-    do
-        if [ "$selection" = "$(print_selection "${messages[$entry]}")" ]
-        then
-            # Check if the selected entry is listed in confirmation requirements
-            for confirmation in "${confirmations[@]}"
-            do
-                if [ "$entry" = "$confirmation" ]
-                then
-                    # Ask for confirmation
-                    echo -e "\0prompt\x1fAre you sure"
-                    echo -e "${confirmationMessages[$entry]}"
-                    echo -e "${confirmationMessages[cancel]}"
-                    exit 0
-                fi
-            done
-            # If not, then no confirmation is required, so mark confirmed
-            selection=$(print_selection "${confirmationMessages[$entry]}")
-        fi
-        if [ "$selection" = "$(print_selection "${confirmationMessages[$entry]}")" ]
-        then
-            if [ "$dryrun" = true ]
-            then
-                # Tell what would have been done
-                echo "Selected: $entry" >&2
-            else
-                # Perform the action
-                ${actions[$entry]}
-            fi
-            exit 0
-        fi
-        if [ "$selection" = "$(print_selection "${confirmationMessages[cancel]}")" ]
-        then
-            # Do nothing
-            exit 0
-        fi
-    done
-    # The selection didn't match anything, so raise an error
-    echo "Invalid selection: $selection" >&2
-    exit 1
+	for entry in "${show[@]}"; do
+		if [ "$selection" = "$(print_selection "${messages[$entry]}")" ]; then
+			# Check if the selected entry is listed in confirmation requirements
+			for confirmation in "${confirmations[@]}"; do
+				if [ "$entry" = "$confirmation" ]; then
+					# Ask for confirmation
+					echo -e "\0prompt\x1fAre you sure"
+					echo -e "${confirmationMessages[$entry]}"
+					echo -e "${confirmationMessages[cancel]}"
+					exit 0
+				fi
+			done
+			# If not, then no confirmation is required, so mark confirmed
+			selection=$(print_selection "${confirmationMessages[$entry]}")
+		fi
+		if [ "$selection" = "$(print_selection "${confirmationMessages[$entry]}")" ]; then
+			if [ "$dryrun" = true ]; then
+				# Tell what would have been done
+				echo "Selected: $entry" >&2
+			else
+				# Perform the action
+				${actions[$entry]}
+			fi
+			exit 0
+		fi
+		if [ "$selection" = "$(print_selection "${confirmationMessages[cancel]}")" ]; then
+			# Do nothing
+			exit 0
+		fi
+	done
+	# The selection didn't match anything, so raise an error
+	echo "Invalid selection: $selection" >&2
+	exit 1
 fi

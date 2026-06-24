@@ -319,8 +319,13 @@ rhel)
 		imlib2-devel libxcb-devel xcb-util-devel \
 		freetype-devel fontconfig-devel
 
-	install_packages \
-		xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot
+	if [[ $DISTRO_ID == "fedora" ]]; then
+		install_packages \
+			xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot
+	else
+		install_packages \
+			xorg-x11-server-Xorg xorg-x11-xinit xorg-x11-server-utils
+	fi
 	;;
 debian)
 	install_packages \
