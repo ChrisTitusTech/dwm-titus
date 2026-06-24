@@ -1,9 +1,16 @@
 #!/bin/bash
+# shellcheck disable=SC2059
 # ─────────────────────────────────────────────────────────
-# dwm-titus dependency checker — Arch Linux
+# dwm-titus dependency checker
 # Run before building to verify all required packages
 # are installed. Exit code 0 = all good, 1 = missing deps.
 # ─────────────────────────────────────────────────────────
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/dwm-utils.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/dwm-packages.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -13,77 +20,89 @@ NC='\033[0m'
 MISSING=0
 
 check_cmd() {
-    if command -v "$1" &>/dev/null; then
-        printf "  ${GREEN}✓${NC} %s\n" "$1"
-    else
-        printf "  ${RED}✗${NC} %s ${YELLOW}(missing)${NC}\n" "$1"
-        MISSING=$((MISSING + 1))
-    fi
+	if command -v "$1" &>/dev/null; then
+		printf "  ${GREEN}✓${NC} %s\n" "$1"
+	else
+		printf "  ${RED}✗${NC} %s ${YELLOW}(missing)${NC}\n" "$1"
+		MISSING=$((MISSING + 1))
+	fi
 }
 
-check_pkg() {
-    if pacman -Qi "$1" &>/dev/null; then
-        printf "  ${GREEN}✓${NC} %s\n" "$1"
-    else
-        printf "  ${RED}✗${NC} %s ${YELLOW}(not installed)${NC}\n" "$1"
-        MISSING=$((MISSING + 1))
-    fi
+check_pkg_config() {
+	if pkg-config --exists "$1" 2>/dev/null; then
+		printf "  ${GREEN}✓${NC} pkg-config:%s\n" "$1"
+	else
+		printf "  ${RED}✗${NC} pkg-config:%s ${YELLOW}(missing)${NC}\n" "$1"
+		MISSING=$((MISSING + 1))
+	fi
 }
 
 check_font() {
-    local label="$1"
-    shift
+	local label="$1"
+	shift
 
-    if [ "$#" -eq 0 ]; then
-        set -- "$label"
-    fi
+	if [ "$#" -eq 0 ]; then
+		set -- "$label"
+	fi
 
-    local pattern
-    for pattern in "$@"; do
-        if fc-list 2>/dev/null | command grep -qi "$pattern"; then
-            printf "  ${GREEN}✓${NC} %s\n" "$label"
-            return
-        fi
-    done
+	local pattern
+	for pattern in "$@"; do
+		if fc-list 2>/dev/null | command grep -qi "$pattern"; then
+			printf "  ${GREEN}✓${NC} %s\n" "$label"
+			return
+		fi
+	done
 
-    printf "  ${RED}✗${NC} %s ${YELLOW}(not found)${NC}\n" "$label"
-    MISSING=$((MISSING + 1))
+	printf "  ${RED}✗${NC} %s ${YELLOW}(not found)${NC}\n" "$label"
+	MISSING=$((MISSING + 1))
 }
 
 check_font_any() {
-    local label="$1"
-    shift
-    check_font "$label" "$@"
+	local label="$1"
+	shift
+	check_font "$label" "$@"
 }
 
+print_package_profile() {
+	local label=$1
+	local profile=$2
+	local packages
+
+	if ! packages="$(dwm_packages "$DISTRO_FAMILY" "$profile" | paste -sd ' ' -)"; then
+		return
+	fi
+
+	if [ -n "$packages" ]; then
+		printf "  %s: %s\n" "$label" "$packages"
+	fi
+}
+
+echo "═══ dwm-titus Dependency Check ═══"
 echo ""
-echo "═══ dwm-titus Dependency Check (Arch Linux) ═══"
+echo "Distribution: $DISTRO_NAME"
+echo "Family: $DISTRO_FAMILY"
 echo ""
 
 # ── Build dependencies ──────────────────────────────────
 echo "Build Dependencies (required to compile):"
-for pkg in base-devel libx11 libxft libxinerama imlib2 libxcb xcb-util freetype2 fontconfig; do
-    check_pkg "$pkg"
-done
 check_cmd "cc"
 check_cmd "make"
+check_cmd "pkg-config"
+for module in x11 xft xinerama xrender imlib2 x11-xcb xcb xcb-res; do
+	check_pkg_config "$module"
+done
 echo ""
 
 # ── Xorg / Xlibre ───────────────────────────────────────
 echo "X Server Components:"
-# Accept either Xorg or Xlibre as the X server
-# Detect Xlibre by any installed xlibre-* package (server, drivers, etc.)
-if pacman -Qq 2>/dev/null | grep -q '^xlibre'; then
-    xlibre_pkg=$(pacman -Qq 2>/dev/null | grep '^xlibre' | head -1)
-    printf "  ${GREEN}✓${NC} Xlibre detected (%s)\n" "$xlibre_pkg"
-elif pacman -Qi xorg-server &>/dev/null; then
-    printf "  ${GREEN}✓${NC} xorg-server\n"
+if command -v Xorg &>/dev/null || command -v Xlibre &>/dev/null; then
+	printf "  ${GREEN}✓${NC} X11 server\n"
 else
-    printf "  ${RED}✗${NC} xorg-server or xlibre ${YELLOW}(not installed)${NC}\n"
-    MISSING=$((MISSING + 1))
+	printf "  ${RED}✗${NC} Xorg or Xlibre ${YELLOW}(missing)${NC}\n"
+	MISSING=$((MISSING + 1))
 fi
-for pkg in xorg-xinit xorg-xrandr xorg-xset xorg-xsetroot; do
-    check_pkg "$pkg"
+for command in startx xrandr xset xsetroot; do
+	check_cmd "$command"
 done
 
 # ── Runtime dependencies ────────────────────────────────
@@ -93,7 +112,12 @@ check_cmd "picom"
 check_cmd "dunst"
 check_cmd "feh"
 check_cmd "flameshot"
-check_cmd "dex"
+if command -v dex &>/dev/null || command -v dex-autostart &>/dev/null; then
+	printf "  ${GREEN}✓${NC} XDG autostart runner\n"
+else
+	printf "  ${RED}✗${NC} dex or dex-autostart ${YELLOW}(missing)${NC}\n"
+	MISSING=$((MISSING + 1))
+fi
 check_cmd "amixer"
 echo ""
 
@@ -101,14 +125,14 @@ echo ""
 echo "Terminal Emulators (at least one required):"
 TERM_FOUND=0
 for term in ghostty alacritty kitty st; do
-    if command -v "$term" &>/dev/null; then
-        printf "  ${GREEN}✓${NC} %s\n" "$term"
-        TERM_FOUND=1
-    fi
+	if command -v "$term" &>/dev/null; then
+		printf "  ${GREEN}✓${NC} %s\n" "$term"
+		TERM_FOUND=1
+	fi
 done
 if [ $TERM_FOUND -eq 0 ]; then
-    printf "  ${RED}✗${NC} No supported terminal found ${YELLOW}(install ghostty, alacritty, kitty, or st)${NC}\n"
-    MISSING=$((MISSING + 1))
+	printf "  ${RED}✗${NC} No supported terminal found ${YELLOW}(install ghostty, alacritty, kitty, or st)${NC}\n"
+	MISSING=$((MISSING + 1))
 fi
 echo ""
 
@@ -127,26 +151,31 @@ echo ""
 # ── Session entry ───────────────────────────────────────
 echo "Session Setup:"
 if [ -f /usr/share/xsessions/dwm.desktop ]; then
-    printf "  ${GREEN}✓${NC} dwm.desktop in /usr/share/xsessions/\n"
+	printf "  ${GREEN}✓${NC} dwm.desktop in /usr/share/xsessions/\n"
 else
-    printf "  ${YELLOW}○${NC} dwm.desktop not found (run 'sudo make install')\n"
+	printf "  ${YELLOW}○${NC} dwm.desktop not found (run 'sudo make install')\n"
 fi
 if [ -f "$HOME/.xinitrc" ]; then
-    printf "  ${GREEN}✓${NC} ~/.xinitrc exists\n"
+	printf "  ${GREEN}✓${NC} ~/.xinitrc exists\n"
 else
-    printf "  ${YELLOW}○${NC} ~/.xinitrc not found (needed for startx)\n"
+	printf "  ${YELLOW}○${NC} ~/.xinitrc not found (needed for startx)\n"
 fi
 echo ""
 
 # ── Summary ─────────────────────────────────────────────
 if [ $MISSING -eq 0 ]; then
-    printf "${GREEN}All dependencies satisfied. Ready to build!${NC}\n"
-    echo "  Run: make && sudo make install"
-    exit 0
+	printf "${GREEN}All dependencies satisfied. Ready to build!${NC}\n"
+	echo "  Run: make && sudo make install"
+	exit 0
 else
-    printf "${RED}$MISSING missing dependency/dependencies.${NC}\n"
-    echo "  Install missing packages with: sudo pacman -S <package>"
-    echo "  Or run: ./install.sh   (automated install)"
-    exit 1
+	printf "${RED}$MISSING missing dependency/dependencies.${NC}\n"
+	if [ "$DISTRO_FAMILY" != "unknown" ]; then
+		echo ""
+		echo "Package suggestions from the shared dependency map:"
+		print_package_profile "Required" required
+		print_package_profile "Recommended desktop" recommended
+		print_package_profile "Optional extras" optional
+	fi
+	echo "  Run: ./install.sh   (automated install)"
+	exit 1
 fi
-echo ""

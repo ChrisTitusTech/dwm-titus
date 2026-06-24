@@ -23,6 +23,7 @@ DWM_TITUS_DIR="$HOME/.local/share/dwm-titus"
 POLYBAR_DIR="$HOME/.config/polybar"
 ROFI_DIR="$HOME/.config/rofi"
 BG_DIR="$HOME/Pictures/backgrounds"
+PICOM_BACKEND="${PICOM_BACKEND:-xrender}"
 
 # ── Terminal detection ───────────────────────────────────
 detect_terminal() {
@@ -67,6 +68,14 @@ notify() {
     fi
 }
 
+start_picom() {
+    if command -v setsid &>/dev/null; then
+        setsid -f picom --backend "$PICOM_BACKEND"
+    else
+        picom --backend "$PICOM_BACKEND" &
+    fi
+}
+
 # ═════════════════════════════════════════════════════════
 # HEALTH CHECK MODULE
 # ═════════════════════════════════════════════════════════
@@ -85,13 +94,13 @@ run_health_check() {
         fi
     }
 
-    # -- helper: check if a package is installed --
-    _pkg() {
-        if pacman -Qi "$1" &>/dev/null; then
-            passed_lines+=("✓  $1")
+    # -- helper: check if a pkg-config capability is installed --
+    _pkgconfig() {
+        if pkg-config --exists "$1" 2>/dev/null; then
+            passed_lines+=("✓  pkg-config:$1")
             pass=$((pass + 1))
         else
-            failed_lines+=("<span color='#bf616a'>✗  $1  (not installed)</span>")
+            failed_lines+=("<span color='#bf616a'>✗  pkg-config:$1  (missing)</span>")
             fail=$((fail + 1))
         fi
     }
@@ -145,26 +154,21 @@ run_health_check() {
     # ── Build dependencies ───────────────────────────────
     _cmd cc
     _cmd make
-    for p in libx11 libxft libxinerama imlib2 libxcb freetype2 fontconfig; do
-        _pkg "$p"
+    _cmd pkg-config
+    for module in x11 xft xinerama xrender imlib2 x11-xcb xcb xcb-res; do
+        _pkgconfig "$module"
     done
 
     # ── Xorg / Xlibre ─────────────────────────────────────
-    # Detect Xlibre by any installed xlibre-* package (server, drivers, etc.)
-    if pacman -Qq 2>/dev/null | grep -q '^xlibre'; then
-        local xlibre_pkg
-        xlibre_pkg=$(pacman -Qq 2>/dev/null | grep '^xlibre' | head -1)
-        passed_lines+=("✓  Xlibre detected ($xlibre_pkg)")
-        pass=$((pass + 1))
-    elif pacman -Qi xorg-server &>/dev/null; then
-        passed_lines+=("✓  xorg-server")
+    if command -v Xorg &>/dev/null || command -v Xlibre &>/dev/null; then
+        passed_lines+=("✓  X11 server")
         pass=$((pass + 1))
     else
-        failed_lines+=("<span color='#bf616a'>✗  xorg-server or xlibre  (not installed)</span>")
+        failed_lines+=("<span color='#bf616a'>✗  Xorg or Xlibre  (missing)</span>")
         fail=$((fail + 1))
     fi
-    for p in xorg-xinit xorg-xrandr xorg-xset xorg-xsetroot; do
-        _pkg "$p"
+    for command in startx xrandr xset xsetroot; do
+        _cmd "$command"
     done
 
     # ── Core Runtime ─────────────────────────────────────
@@ -173,7 +177,13 @@ run_health_check() {
     _cmd dunst
     _cmd feh
     _cmd flameshot
-    _cmd dex
+    if ! command -v dex &>/dev/null && ! command -v dex-autostart &>/dev/null; then
+        failed_lines+=("<span color='#bf616a'>✗  dex or dex-autostart</span>")
+        fail=$((fail + 1))
+    else
+        passed_lines+=("✓  XDG autostart runner")
+        pass=$((pass + 1))
+    fi
     _cmd amixer
     _cmd polybar
 
@@ -269,7 +279,7 @@ run_quick_actions() {
         *"Restart Picom"*)
             pkill picom 2>/dev/null || true
             sleep 0.3
-            picom -b &
+            start_picom
             notify "Picom restarted"
             ;;
         *"Restart Dunst"*)
@@ -298,7 +308,7 @@ run_quick_actions() {
                 pkill picom 2>/dev/null || true
                 notify "Compositor stopped"
             else
-                picom -b &
+                start_picom
                 notify "Compositor started"
             fi
             ;;
