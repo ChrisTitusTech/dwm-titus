@@ -29,6 +29,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-controlcenter \
 	scripts/dwm-keybinds \
 	scripts/dwm-polkit \
+	scripts/dwm-packages.sh \
 	scripts/dwm-screenshot \
 	scripts/dwm-utils.sh \
 	scripts/nvidia-gpu \

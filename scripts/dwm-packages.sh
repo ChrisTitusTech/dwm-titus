@@ -61,7 +61,15 @@ dwm_packages() {
 			xcb-util-devel freetype-devel fontconfig-devel
 		;;
 	rhel:x11)
-		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot
+		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit
+		if [[ ${DISTRO_ID:-} == fedora ]]; then
+			printf '%s\n' xrandr xset xsetroot
+		else
+			printf '%s\n' xorg-x11-server-utils
+		fi
+		;;
+	rhel:x11-server)
+		:
 		;;
 	rhel:desktop)
 		printf '%s\n' \
@@ -104,6 +112,9 @@ dwm_packages() {
 	debian:x11)
 		printf '%s\n' xserver-xorg-core xinit x11-xserver-utils
 		;;
+	debian:x11-server)
+		:
+		;;
 	debian:desktop)
 		printf '%s\n' \
 			rofi picom dunst feh flameshot dex mate-polkit alsa-utils \
@@ -136,6 +147,7 @@ dwm_packages() {
 	*:required)
 		dwm_packages "$family" build
 		dwm_packages "$family" x11
+		dwm_packages "$family" x11-server
 		;;
 	*:recommended)
 		dwm_packages "$family" desktop

@@ -175,6 +175,7 @@ else
 		print_package_profile "Required" required
 		print_package_profile "Recommended desktop" recommended
 		print_package_profile "Optional extras" optional
+		print_package_profile "Supported terminals" terminal
 	fi
 	echo "  Run: ./install.sh   (automated install)"
 	exit 1
