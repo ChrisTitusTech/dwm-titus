@@ -60,7 +60,7 @@ Each `[theme.name]` section sets colors for all components:
 | `ghostty_theme` | Ghostty built-in theme name |
 | `rofi_theme` | Rofi `.rasi` theme (filename without extension) |
 | `polybar_bg` / `polybar_fg` / `polybar_accent` / `polybar_urgent` | Polybar colors |
-| `dark_mode` | GTK dark preference (`true` / `false`) |
+| `dark_mode` | GTK dark preference and Capitaine cursor variant (`true` / `false`) |
 
 ---
 

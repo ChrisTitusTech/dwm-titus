@@ -15,6 +15,9 @@ DATADIR   ?= ${PREFIX}/share
 SYSTEMDUSERDIR ?= ${PREFIX}/lib/systemd/user
 VICINAE_APPDIR ?= ${PREFIX}/lib/dwm-titus/vicinae
 VICINAE_SOURCE_DIR ?=
+CAPITAINE_DARK_THEME = Capitaine-Cursors
+CAPITAINE_LIGHT_THEME = Capitaine-Cursors-White
+CAPITAINE_LICENSE_DIR = ${DATADIR}/licenses/dwm-titus/capitaine-cursors
 
 SRC = drw.c dwm.c util.c tomlparser.c
 OBJ = ${SRC:.c=.o}
@@ -86,7 +89,7 @@ install: install-system
 		echo "==> DESTDIR set; skipping user configuration."; \
 	fi
 
-install-system: all install-vicinae
+install-system: all install-vicinae install-cursors
 	@echo ""
 	@echo "==> Installing system files..."
 	install -Dm755 dwm ${DESTDIR}${PREFIX}/bin/dwm
@@ -97,6 +100,19 @@ install-system: all install-vicinae
 	for f in ${INSTALL_COMMANDS}; do \
 		install -Dm755 "$$f" ${DESTDIR}${PREFIX}/bin/$$(basename "$$f"); \
 	done
+
+install-cursors:
+	@echo "==> Installing Capitaine cursor themes..."
+	rm -rf \
+		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_DARK_THEME}" \
+		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_LIGHT_THEME}"
+	mkdir -p "${DESTDIR}${DATADIR}/icons"
+	cp -a "assets/cursors/${CAPITAINE_DARK_THEME}" \
+		"${DESTDIR}${DATADIR}/icons/"
+	cp -a "assets/cursors/${CAPITAINE_LIGHT_THEME}" \
+		"${DESTDIR}${DATADIR}/icons/"
+	install -Dm644 assets/cursors/COPYING \
+		"${DESTDIR}${CAPITAINE_LICENSE_DIR}/COPYING"
 
 install-vicinae:
 	@if [ -z "${VICINAE_SOURCE_DIR}" ]; then \
@@ -217,6 +233,10 @@ uninstall:
 		${DESTDIR}${DATADIR}/applications/vicinae-url-handler.desktop \
 		${DESTDIR}${DATADIR}/icons/hicolor/512x512/apps/vicinae.png
 	rm -rf ${DESTDIR}${VICINAE_APPDIR}
+	rm -rf \
+		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_DARK_THEME}" \
+		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_LIGHT_THEME}" \
+		"${DESTDIR}${CAPITAINE_LICENSE_DIR}"
 	for name in ${INSTALL_COMMAND_NAMES}; do \
 		rm -f ${DESTDIR}${PREFIX}/bin/$$name; \
 	done
@@ -229,7 +249,7 @@ release: dwm
 	install -Dm755 dwm "$$root/dwm"; \
 	install -Dm644 scripts/.xinitrc "$$root/.xinitrc"; \
 	sed "s|@PREFIX@|${PREFIX}|g" dwm.desktop > "$$root/dwm.desktop"; \
-	cp -a config scripts "$$root/"; \
+	cp -a assets config scripts "$$root/"; \
 	find "$$root" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +; \
 	tar --sort=name \
 		--mtime="@${SOURCE_DATE_EPOCH}" \
@@ -288,12 +308,22 @@ check-install-manifest: all
 		for name in ${INSTALL_COMMAND_NAMES}; do \
 			printf 'usr/bin/%s\n' "$$name"; \
 		done; \
+		find "assets/cursors/${CAPITAINE_DARK_THEME}" \
+			\( -type f -o -type l \) \
+			-printf 'usr/share/icons/${CAPITAINE_DARK_THEME}/%P\n'; \
+		find "assets/cursors/${CAPITAINE_LIGHT_THEME}" \
+			\( -type f -o -type l \) \
+			-printf 'usr/share/icons/${CAPITAINE_LIGHT_THEME}/%P\n'; \
+		printf '%s\n' \
+			usr/share/licenses/dwm-titus/capitaine-cursors/COPYING; \
 	} | sort > "$$expected"; \
 	find "$$stage" \( -type f -o -type l \) -printf '%P\n' | sort > "$$actual"; \
 	cmp "$$expected" "$$actual"; \
 	for name in dwm ${INSTALL_COMMAND_NAMES}; do \
 		test -f "$$stage/usr/bin/$$name"; \
 	done; \
+	test -f "$$stage/usr/share/icons/${CAPITAINE_DARK_THEME}/cursors/default"; \
+	test -f "$$stage/usr/share/icons/${CAPITAINE_LIGHT_THEME}/cursors/default"; \
 	$(MAKE) uninstall \
 		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions \
 		VICINAE_SOURCE_DIR=; \
@@ -345,6 +375,7 @@ release-check: all
 	grep -Fqx '${RELEASE_NAME}/.xinitrc' "$$listing"; \
 	grep -Fqx '${RELEASE_NAME}/config/' "$$listing"; \
 	grep -Fqx '${RELEASE_NAME}/scripts/' "$$listing"; \
+	grep -Fqx '${RELEASE_NAME}/assets/' "$$listing"; \
 	if grep -Eq '(^|/)config\.h$$|\.o$$' "$$listing"; then \
 		echo "Release archive contains local configuration or object files." >&2; \
 		exit 1; \
@@ -368,4 +399,4 @@ check:
 .PHONY: all check check-build-config check-build-deps check-format check-install \
 	check-install-manifest check-session-guards check-shell \
 	check-vicinae-install clean install install-system install-user \
-	install-vicinae native release release-check uninstall
+	install-cursors install-vicinae native release release-check uninstall
