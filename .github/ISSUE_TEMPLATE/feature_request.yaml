@@ -1,0 +1,21 @@
+name: "Feature request"
+description: "Suggest a new feature or improvement for the project."
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        # ✨ **Feature request**
+        Thank you for taking the time to suggest a feature! Please provide as much detail as possible to help us understand and evaluate your request.
+
+        ## ⚠️ **IMPORTANT**
+        - 💡 For general questions, use the [Discussions section](https://github.com/Christitustech/dwm-titus/discussions).
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: 💡 Describe the solution you'd like
+      placeholder: "Provide a clear and concise description."
+    validations:
+      required: true

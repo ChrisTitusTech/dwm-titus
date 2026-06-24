@@ -1,0 +1,17 @@
+name: "Bug report"
+description: "Report a bug to help us identify and fix issues in the project."
+labels: ["bug"]
+
+body:
+  - type: textarea
+    id: issue_description
+    attributes:
+      label: Provide a clear and concise description of the issue.
+    validations:
+      required: true
+
+  - type: textarea
+    id: error_output
+    attributes:
+      label: Paste the full error output (if available) or Screenshot or Video.
+      placeholder: "Include any relevant logs or error messages."
