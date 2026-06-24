@@ -738,6 +738,15 @@ clientmessage(XEvent *e)
 	XClientMessageEvent *cme = &e->xclient;
 	Client *c = wintoclient(cme->window);
 
+	if (cme->message_type == netatom[NetCurrentDesktop]) {
+		long desktop = cme->data.l[0];
+
+		if (desktop >= 0 && desktop < TAGSLENGTH) {
+			Arg arg = { .ui = 1U << desktop };
+			view(&arg);
+		}
+		return;
+	}
 	if (!c)
 		return;
 	if (cme->message_type == netatom[NetWMState]) {
@@ -2409,8 +2418,7 @@ setclientstate(Client *c, long state)
 
 void
 setcurrentdesktop(void){
-	long data[] = { 0 };
-	XChangeProperty(dpy, root, netatom[NetCurrentDesktop], XA_CARDINAL, 32, PropModeReplace, (unsigned char *)data, 1);
+	updatecurrentdesktop();
 }
 
 void setdesktopnames(void){
@@ -4207,8 +4215,8 @@ view(const Arg *arg)
 					XWarpPointer(dpy, None, root, 0, 0, 0, 0,
 						selmon->mx + selmon->mw / 2, selmon->my + selmon->mh / 2);
 			}
-			updatecurrentdesktop();
 		}
+		updatecurrentdesktop();
 		return;
 	}
 
