@@ -21,6 +21,11 @@ This file tracks the next reviewable work. Product requirements live in
   - Acceptance: staging with `PREFIX=/usr` writes `Exec=/usr/bin/dwm`.
 - [x] Make pull-request CI enforce repository checks.
   - Acceptance: CI runs `make check` and does not ignore build failures.
+- [x] Resolve compiler truncation warnings in the TOML and layout-symbol paths.
+  - Scope: bounded string copies and path construction only; no behavior
+    changes.
+  - Acceptance: `make clean && make` completes without truncation warnings.
+  - Validation: clean build completed without compiler warnings.
 
 ### Next tasks
 
@@ -38,10 +43,6 @@ This file tracks the next reviewable work. Product requirements live in
   - Scope: deterministic archive contents, version naming, generated session
     entry, and no object files or local config.
   - Acceptance: `make release-check` validates a newly generated archive.
-- [ ] Resolve compiler truncation warnings in the TOML and layout-symbol paths.
-  - Scope: bounded string copies and path construction only; no behavior
-    changes.
-  - Acceptance: `make clean && make` completes without truncation warnings.
 - [ ] Validate the new optional-session duplicate guards.
   - Scope: Feh, Picom, Dunst, polkit, Polybar, and XDG autostart under a
     display manager and `startx`.

@@ -12,19 +12,22 @@ source "$REPO_DIR/scripts/dwm-utils.sh"
 
 RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' CYAN='\033[0;36m' NC='\033[0m'
 info() { printf "${CYAN}[INFO]${NC} %s\n" "$1"; }
-ok()   { printf "${GREEN}[OK]${NC} %s\n" "$1"; }
+ok() { printf "${GREEN}[OK]${NC} %s\n" "$1"; }
 warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
-err()  { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
+err() { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 
 # ── Architecture check ───────────────────────────────────
 ARCH="$(uname -m)"
 if [[ "$ARCH" != "aarch64" && "$ARCH" != "armv7h" && "$ARCH" != "armv7l" ]]; then
-    err "This installer is for ARM systems only (detected: $ARCH)."
-    err "For x86_64, use install.sh instead."
-    exit 1
+	err "This installer is for ARM systems only (detected: $ARCH)."
+	err "For x86_64, use install.sh instead."
+	exit 1
 fi
 
-command -v pacman &>/dev/null || { err "This installer requires Arch Linux ARM (pacman not found)."; exit 1; }
+command -v pacman &>/dev/null || {
+	err "This installer requires Arch Linux ARM (pacman not found)."
+	exit 1
+}
 
 BG_DIR="$HOME/Pictures/backgrounds"
 
@@ -50,7 +53,7 @@ ok "Build dependencies installed."
 # ARM single-board computers that lack a dedicated GPU driver package.
 info "Installing Xorg server..."
 if ! pacman -Qi xorg-server &>/dev/null; then
-    install_packages xorg-server
+	install_packages xorg-server
 fi
 install_packages xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
 
@@ -58,12 +61,12 @@ install_packages xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
 # On boards with a Mali, Vivante, or other GPU, you may want the
 # appropriate vendor driver (e.g. xf86-video-armsoc-git from AUR).
 if ! pacman -Qq xf86-video-fbdev &>/dev/null 2>&1; then
-    info "Installing ARM framebuffer video driver (xf86-video-fbdev)..."
-    if install_packages xf86-video-fbdev; then
-        ok "xf86-video-fbdev installed."
-    else
-        warn "xf86-video-fbdev not found — your board's GPU driver may already provide Xorg support."
-    fi
+	info "Installing ARM framebuffer video driver (xf86-video-fbdev)..."
+	if install_packages xf86-video-fbdev; then
+		ok "xf86-video-fbdev installed."
+	else
+		warn "xf86-video-fbdev not found — your board's GPU driver may already provide Xorg support."
+	fi
 fi
 ok "Xorg server installed."
 
@@ -77,17 +80,17 @@ ok "Xorg server installed."
 #   network-manager-applet, libnotify, rsync
 info "Installing runtime dependencies..."
 install_packages rofi picom dunst feh flameshot dex mate-polkit alsa-utils git unzip xclip \
-    xorg-xprop thunar gvfs tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
-    xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring networkmanager network-manager-applet \
-    libnotify rsync
+	xorg-xprop thunar gvfs tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
+	xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring networkmanager network-manager-applet \
+	libnotify rsync
 ok "Runtime dependencies installed."
 
 # ── Qt / GTK theming ─────────────────────────────────────
 # dconf, qt6ct, qt5ct — all verified on archlinuxarm.org
 info "Installing Qt/GTK dark-mode dependencies..."
 install_packages dconf
-install_packages qt6ct 2>/dev/null || install_packages qt5ct 2>/dev/null \
-    || warn "Neither qt6ct nor qt5ct found — Qt apps may not respect dark mode."
+install_packages qt6ct 2>/dev/null || install_packages qt5ct 2>/dev/null ||
+	warn "Neither qt6ct nor qt5ct found — Qt apps may not respect dark mode."
 ok "Qt/GTK theming dependencies installed."
 
 # ── Fonts ────────────────────────────────────────────────
@@ -97,8 +100,8 @@ install_packages noto-fonts-emoji ttf-meslo-nerd
 FONT_DIR="$HOME/.local/share/fonts"
 mkdir -p "$FONT_DIR"
 if [ -d "$REPO_DIR/config/polybar/fonts" ]; then
-    cp -r "$REPO_DIR/config/polybar/fonts/"* "$FONT_DIR/"
-    fc-cache -fv >/dev/null 2>&1
+	cp -r "$REPO_DIR/config/polybar/fonts/"* "$FONT_DIR/"
+	fc-cache -fv >/dev/null 2>&1
 fi
 ok "Fonts installed."
 
@@ -107,14 +110,20 @@ ok "Fonts installed."
 # kitty 0.46.x and alacritty 0.17.x are both available for aarch64/armv7h.
 # Preference order: kitty → alacritty (ghostty intentionally excluded on ARM).
 terminal=""
-for t in kitty alacritty; do command -v "$t" &>/dev/null && { terminal="$t"; break; }; done
+for t in kitty alacritty; do command -v "$t" &>/dev/null && {
+	terminal="$t"
+	break
+}; done
 
 if [ -n "$terminal" ]; then
-    ok "Terminal already installed: $terminal"
+	ok "Terminal already installed: $terminal"
 else
-    info "No supported terminal found — installing kitty..."
-    install_packages kitty 2>/dev/null \
-        || { warn "kitty failed, trying alacritty..."; install_packages alacritty; }
+	info "No supported terminal found — installing kitty..."
+	install_packages kitty 2>/dev/null ||
+		{
+			warn "kitty failed, trying alacritty..."
+			install_packages alacritty
+		}
 fi
 
 # ── Polybar + XDG dirs + wallpapers ──────────────────────
@@ -124,28 +133,31 @@ command -v xdg-user-dirs-update &>/dev/null && xdg-user-dirs-update
 
 mkdir -p "$HOME/Pictures"
 if [ ! -d "$BG_DIR" ]; then
-    info "Downloading Nord wallpapers..."
-    if git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null; then
-        ok "Wallpapers downloaded to $BG_DIR"
-    else
-        warn "Failed to download wallpapers. Add your own to $BG_DIR."
-    fi
+	info "Downloading Nord wallpapers..."
+	if git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null; then
+		ok "Wallpapers downloaded to $BG_DIR"
+	else
+		warn "Failed to download wallpapers. Add your own to $BG_DIR."
+	fi
 else
-    ok "Wallpapers already present."
+	ok "Wallpapers already present."
 fi
 
 # ── Display manager ──────────────────────────────────────
 # sddm 0.21.x verified on archlinuxarm.org/packages/aarch64/sddm
 currentdm=""
-for dm in sddm lightdm gdm; do command -v "$dm" &>/dev/null && { currentdm="$dm"; break; }; done
+for dm in sddm lightdm gdm; do command -v "$dm" &>/dev/null && {
+	currentdm="$dm"
+	break
+}; done
 
 if [ -n "$currentdm" ]; then
-    ok "Display manager already installed: $currentdm"
+	ok "Display manager already installed: $currentdm"
 else
-    info "No display manager found — installing SDDM..."
-    install_packages sddm
-    sudo systemctl enable sddm
-    ok "SDDM installed and enabled."
+	info "No display manager found — installing SDDM..."
+	install_packages sddm
+	sudo systemctl enable sddm
+	ok "SDDM installed and enabled."
 fi
 
 # ── ARM-specific: picom backend advisory ─────────────────

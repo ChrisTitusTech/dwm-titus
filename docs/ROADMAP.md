@@ -29,6 +29,7 @@ Goal: make every change reviewable and prevent known portability regressions.
 - [x] Validate staged installation with `DESTDIR`.
 - [x] Generate the display-manager `Exec` path from `PREFIX`.
 - [x] Run build, shell, and staged-install validation in pull requests.
+- [x] Resolve compiler truncation warnings in TOML and layout-symbol handling.
 - [ ] Validate the implemented duplicate-process guards for Picom, Dunst, Feh,
   and polkit in both display-manager and `startx` sessions.
 - [ ] Stop tracking generated/local build configuration such as `config.h`

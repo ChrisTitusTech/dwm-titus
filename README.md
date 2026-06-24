@@ -120,11 +120,13 @@ startx
 
 The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), launches Polybar, and starts dwm.
 
-The installer also deploys the bundled x86_64 Vicinae AppImage extraction,
-enables `vicinae.service` for the current user, and uses Vicinae for
+On x86_64, the installer downloads the latest Vicinae AppImage from the
+official GitHub release, verifies the release-provided SHA-256 digest, extracts
+it, enables `vicinae.service` for the current user, and uses Vicinae for
 <kbd>SUPER</kbd> + <kbd>R</kbd>. Rofi remains available on
 <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> and is still used by the
-control center and keybind viewer.
+control center and keybind viewer. If the optional download fails, installation
+continues without Vicinae.
 
 ---
 

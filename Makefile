@@ -14,6 +14,7 @@ CFG_DIR   := ${XDG_CONFIG_HOME}
 DATADIR   ?= ${PREFIX}/share
 SYSTEMDUSERDIR ?= ${PREFIX}/lib/systemd/user
 VICINAE_APPDIR ?= ${PREFIX}/lib/dwm-titus/vicinae
+VICINAE_SOURCE_DIR ?=
 
 SRC = drw.c dwm.c util.c tomlparser.c
 OBJ = ${SRC:.c=.o}
@@ -73,26 +74,30 @@ install-system: all install-vicinae
 	done
 
 install-vicinae:
-	@if [ ! -x vicinae/AppRun ] || [ ! -x vicinae/usr/bin/vicinae ]; then \
-		echo "Vicinae AppImage extraction is incomplete; skipping Vicinae." >&2; \
+	@if [ -z "${VICINAE_SOURCE_DIR}" ]; then \
+		echo "Vicinae source not provided; skipping Vicinae."; \
 	elif [ "$$(uname -m)" != x86_64 ]; then \
-		echo "Bundled Vicinae is x86_64-only; skipping it on $$(uname -m)." >&2; \
+		echo "Vicinae AppImage is x86_64-only; skipping it on $$(uname -m)." >&2; \
+	elif [ ! -x "${VICINAE_SOURCE_DIR}/AppRun" ] || \
+		[ ! -x "${VICINAE_SOURCE_DIR}/usr/bin/vicinae" ]; then \
+		echo "Vicinae source is not a complete AppImage extraction: ${VICINAE_SOURCE_DIR}" >&2; \
+		exit 1; \
 	else \
-		echo "==> Installing bundled Vicinae..."; \
+		echo "==> Installing Vicinae..."; \
 		rm -rf "${DESTDIR}${VICINAE_APPDIR}"; \
 		mkdir -p "${DESTDIR}${VICINAE_APPDIR}"; \
-		cp -a vicinae/. "${DESTDIR}${VICINAE_APPDIR}/"; \
+		cp -a "${VICINAE_SOURCE_DIR}/." "${DESTDIR}${VICINAE_APPDIR}/"; \
 		sed "s|@VICINAE_APPDIR@|${VICINAE_APPDIR}|g" packaging/vicinae | \
 			install -Dm755 /dev/stdin "${DESTDIR}${PREFIX}/bin/vicinae"; \
 		sed "s|@PREFIX@|${PREFIX}|g" packaging/vicinae.service | \
 			install -Dm644 /dev/stdin \
 				"${DESTDIR}${SYSTEMDUSERDIR}/vicinae.service"; \
-		install -Dm644 vicinae/usr/share/applications/vicinae.desktop \
+		install -Dm644 "${VICINAE_SOURCE_DIR}/usr/share/applications/vicinae.desktop" \
 			"${DESTDIR}${DATADIR}/applications/vicinae.desktop"; \
-		install -Dm644 vicinae/usr/share/applications/vicinae-url-handler.desktop \
+		install -Dm644 "${VICINAE_SOURCE_DIR}/usr/share/applications/vicinae-url-handler.desktop" \
 			"${DESTDIR}${DATADIR}/applications/vicinae-url-handler.desktop"; \
 		install -Dm644 \
-			vicinae/usr/share/icons/hicolor/512x512/apps/vicinae.png \
+			"${VICINAE_SOURCE_DIR}/usr/share/icons/hicolor/512x512/apps/vicinae.png" \
 			"${DESTDIR}${DATADIR}/icons/hicolor/512x512/apps/vicinae.png"; \
 	fi
 
@@ -211,21 +216,46 @@ check-install: all
 		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions; \
 	test -x "$$stage/usr/bin/dwm"; \
 	test -x "$$stage/usr/bin/dwm-controlcenter"; \
-	test -x "$$stage/usr/bin/vicinae"; \
 	test -f "$$stage/usr/share/man/man1/dwm.1"; \
 	test -f "$$stage/usr/share/xsessions/dwm.desktop"; \
-	test -f "$$stage/usr/lib/systemd/user/vicinae.service"; \
 	grep -Fqx 'Exec=/usr/bin/dwm' \
 		"$$stage/usr/share/xsessions/dwm.desktop"; \
+	echo "==> Staged install validated."
+
+check-vicinae-install: all
+	@if [ "$$(uname -m)" != x86_64 ]; then \
+		echo "==> Skipping x86_64 Vicinae install validation on $$(uname -m)."; \
+		exit 0; \
+	fi; \
+	work="$$(mktemp -d)"; \
+	trap 'rm -rf "$$work"' EXIT; \
+	source="$$work/source"; \
+	stage="$$work/stage"; \
+	install -Dm755 packaging/vicinae "$$source/AppRun"; \
+	install -Dm755 packaging/vicinae "$$source/usr/bin/vicinae"; \
+	install -Dm644 dwm.desktop \
+		"$$source/usr/share/applications/vicinae.desktop"; \
+	install -Dm644 dwm.desktop \
+		"$$source/usr/share/applications/vicinae-url-handler.desktop"; \
+	install -Dm644 packaging/vicinae \
+		"$$source/usr/share/icons/hicolor/512x512/apps/vicinae.png"; \
+	$(MAKE) install-system \
+		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions \
+		VICINAE_SOURCE_DIR="$$source"; \
+	test -x "$$stage/usr/bin/vicinae"; \
+	test -x "$$stage/usr/lib/dwm-titus/vicinae/AppRun"; \
+	test -f "$$stage/usr/lib/systemd/user/vicinae.service"; \
 	grep -Fqx 'ExecStart=/usr/bin/vicinae server --replace' \
 		"$$stage/usr/lib/systemd/user/vicinae.service"; \
-	echo "==> Staged install validated."
+	echo "==> Vicinae staged install validated."
 
 check:
 	$(MAKE) clean
 	$(MAKE) all
 	$(MAKE) check-shell
 	$(MAKE) check-install
+	$(MAKE) check-vicinae-install
 
-.PHONY: all check check-build-deps check-install check-shell clean install \
-	install-system install-user install-vicinae native uninstall release
+.PHONY: all check check-build-deps check-install check-shell \
+	check-vicinae-install clean install install-system install-user \
+	install-vicinae native uninstall release
