@@ -3,7 +3,7 @@
 This file tracks the next reviewable work. Product requirements live in
 `SPEC.md`; sequencing and long-term scope live in `docs/ROADMAP.md`.
 
-## Current Phase: Build and Repository Readiness
+## Completed Phase: Build and Repository Readiness
 
 ### Completed in this phase
 
@@ -26,30 +26,47 @@ This file tracks the next reviewable work. Product requirements live in
     changes.
   - Acceptance: `make clean && make` completes without truncation warnings.
   - Validation: clean build completed without compiler warnings.
+- [x] Add guided first-install generation of `config.h`.
+  - Acceptance: interactive installs ask stable compile-time questions;
+    unattended installs use configurable defaults; existing files are
+    preserved.
+  - Validation: `make check-build-config`.
 
 ### Next tasks
 
-- [ ] Untrack `config.h` while preserving the working-tree file.
+- [x] Untrack `config.h` while preserving the working-tree file.
   - Scope: repository index and contributor documentation only.
   - Acceptance: a clone creates `config.h` from `config.def.h`; upgrades never
     replace a local `config.h`.
   - Validation: clean-clone build and upgrade simulation.
-- [ ] Define an installation manifest.
+  - Result: index-based clean-checkout build and local-marker upgrade
+    preservation simulation passed.
+- [x] Define an installation manifest.
   - Scope: replace wildcard installation of `scripts/*` with explicit runtime
     commands, libraries, and data files.
   - Acceptance: install and uninstall touch only listed project-owned paths.
   - Validation: compare staged tree before and after uninstall.
-- [ ] Add release checks.
+  - Result: staged contents match the explicit manifest and uninstall restores
+    the original staged file set.
+- [x] Add release checks.
   - Scope: deterministic archive contents, version naming, generated session
     entry, and no object files or local config.
   - Acceptance: `make release-check` validates a newly generated archive.
-- [ ] Validate the new optional-session duplicate guards.
+  - Result: two generated archives are byte-identical and archive content,
+    naming, session path, and exclusions are validated.
+- [x] Validate the new optional-session duplicate guards.
   - Scope: Feh, Picom, Dunst, polkit, Polybar, and XDG autostart under a
     display manager and `startx`.
   - Acceptance: restarting dwm does not create duplicate long-running
     processes; missing optional commands do not produce session-fatal errors.
+  - Validation: `make check-session-guards` validates repeated direct and
+    startx-style invocations with isolated process mocks, plus a missing
+    optional-command case. A live LightDM session retained a stable Polybar
+    process count across repeated startup, and an isolated `startx`/Xvfb
+    session started dwm, loaded runtime configuration, exposed EWMH desktops,
+    tolerated missing optional helpers, and exited cleanly.
 
-## Next Phase: Installer and Distribution Parity
+## Current Phase: Installer and Distribution Parity
 
 - [ ] Create one capability-to-package map for Debian, Arch, and RHEL families.
 - [ ] Refactor `install.sh`, `install-arm.sh`, and `scripts/check-deps.sh` to

@@ -39,6 +39,12 @@ echo ""
 info "Architecture : $ARCH"
 info "Package manager: $PKG_CMD"
 
+if [[ -t 0 && -t 1 ]]; then
+	"$REPO_DIR/scripts/configure-build.sh"
+else
+	"$REPO_DIR/scripts/configure-build.sh" --non-interactive
+fi
+
 # ── Build dependencies ───────────────────────────────────
 # All verified available on archlinuxarm.org/packages (aarch64 + armv7h):
 #   base-devel, libx11 1.8.x, libxft 2.3.x, libxinerama, imlib2 1.12.x,
@@ -171,7 +177,9 @@ warn "ARM NOTE: Some SBCs (e.g. older Raspberry Pi) may need 'dtoverlay=vc4-kms-
 
 # ── Build & Install dwm ──────────────────────────────────
 cd "$REPO_DIR"
-sudo make clean install
+make clean
+make
+sudo make install
 
 # ── Done ─────────────────────────────────────────────────
 echo ""
@@ -180,7 +188,8 @@ echo "║          Installation Complete!           ║"
 echo "╚═══════════════════════════════════════════╝"
 echo ""
 info "Architecture: $ARCH (Arch Linux ARM)"
-echo "  • Edit config.h to customize, then: make && sudo make install"
+echo "  • Build configuration: $REPO_DIR/config.h"
+echo "  • Reconfigure by removing config.h and running the installer again"
 echo "  • Log out and select 'dwm', or start with: startx"
 echo ""
 echo "  SUPER+/   keybind viewer     SUPER+X  terminal"

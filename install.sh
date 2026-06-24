@@ -286,6 +286,12 @@ info "Distribution: $DISTRO_NAME"
 info "Family: $DISTRO_FAMILY"
 info "Package manager: $PKG_CMD"
 
+if [[ -t 0 && -t 1 ]]; then
+	"$REPO_DIR/scripts/configure-build.sh"
+else
+	"$REPO_DIR/scripts/configure-build.sh" --non-interactive
+fi
+
 if [[ $DISTRO_FAMILY == "debian" ]]; then
 	info "Refreshing apt package metadata..."
 	sudo apt-get update
@@ -508,7 +514,8 @@ echo "║          Installation Complete!           ║"
 echo "╚═══════════════════════════════════════════╝"
 echo ""
 info "Detected: $DISTRO_NAME"
-echo "  • Edit config.h to customize, then: make && sudo make install"
+echo "  • Build configuration: $REPO_DIR/config.h"
+echo "  • Reconfigure by removing config.h and running the installer again"
 echo "  • Log out and select 'dwm', or start with: startx"
 echo ""
 echo "  SUPER+/   keybind viewer     SUPER+X  terminal"

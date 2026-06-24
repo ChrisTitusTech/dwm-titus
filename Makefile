@@ -19,6 +19,32 @@ VICINAE_SOURCE_DIR ?=
 SRC = drw.c dwm.c util.c tomlparser.c
 OBJ = ${SRC:.c=.o}
 
+INSTALL_COMMANDS = \
+	scripts/active-audio \
+	scripts/check-deps.sh \
+	scripts/disable-powersaving \
+	scripts/dwm-controlcenter \
+	scripts/dwm-keybinds \
+	scripts/dwm-polkit \
+	scripts/dwm-screenshot \
+	scripts/dwm-utils.sh \
+	scripts/nvidia-gpu \
+	scripts/nvidia-suspend-test.sh \
+	scripts/nvidia-temp \
+	scripts/pkg-scan.py \
+	scripts/power-management.sh \
+	scripts/protonrestart \
+	scripts/theme-apply.sh \
+	scripts/webapp-create \
+	scripts/webapp-launch \
+	scripts/xdg-enable-autostart.sh \
+	scripts/xscreensaver-setup.sh
+INSTALL_COMMAND_NAMES = $(notdir ${INSTALL_COMMANDS})
+
+RELEASE_NAME = dwm-titus-${VERSION}
+RELEASE_ARCHIVE = release/${RELEASE_NAME}.tar.gz
+SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || printf '0')
+
 all: dwm
 
 .c.o:
@@ -68,8 +94,7 @@ install-system: all install-vicinae
 	sed "s|@PREFIX@|${PREFIX}|g" dwm.desktop | \
 		install -Dm644 /dev/stdin ${DESTDIR}${XSESSIONSDIR}/dwm.desktop
 	@echo "==> Installing scripts to PATH..."
-	for f in scripts/*; do \
-		case "$$(basename "$$f")" in autostart*) continue;; esac; \
+	for f in ${INSTALL_COMMANDS}; do \
 		install -Dm755 "$$f" ${DESTDIR}${PREFIX}/bin/$$(basename "$$f"); \
 	done
 
@@ -192,25 +217,44 @@ uninstall:
 		${DESTDIR}${DATADIR}/applications/vicinae-url-handler.desktop \
 		${DESTDIR}${DATADIR}/icons/hicolor/512x512/apps/vicinae.png
 	rm -rf ${DESTDIR}${VICINAE_APPDIR}
-	for f in scripts/*; do \
-		case "$$(basename "$$f")" in autostart*) continue;; esac; \
-		rm -f ${DESTDIR}${PREFIX}/bin/$$(basename "$$f"); \
+	for name in ${INSTALL_COMMAND_NAMES}; do \
+		rm -f ${DESTDIR}${PREFIX}/bin/$$name; \
 	done
 
 release: dwm
-	mkdir -p release
-	cp -f dwm scripts/.xinitrc release/
-	sed "s|@PREFIX@|${PREFIX}|g" dwm.desktop > release/dwm.desktop
-	cp -rf config scripts release/
-	tar -czf release/Omitus-${VERSION}.tar.gz -C release dwm dwm.desktop .xinitrc config scripts
+	@work="$$(mktemp -d)"; \
+	trap 'rm -rf "$$work"' EXIT; \
+	root="$$work/${RELEASE_NAME}"; \
+	mkdir -p "$$root" release; \
+	install -Dm755 dwm "$$root/dwm"; \
+	install -Dm644 scripts/.xinitrc "$$root/.xinitrc"; \
+	sed "s|@PREFIX@|${PREFIX}|g" dwm.desktop > "$$root/dwm.desktop"; \
+	cp -a config scripts "$$root/"; \
+	find "$$root" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +; \
+	tar --sort=name \
+		--mtime="@${SOURCE_DATE_EPOCH}" \
+		--owner=0 --group=0 --numeric-owner \
+		--format=ustar \
+		-C "$$work" -cf - "${RELEASE_NAME}" | gzip -n > "${RELEASE_ARCHIVE}"; \
+	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/*.sh debug/*.sh \
+	shellcheck install.sh install-arm.sh scripts/*.sh tests/*.sh debug/*.sh \
 		config/polybar/*.sh config/polybar/scripts/*.sh \
 		config/polybar/scripts/weather/*.sh config/rofi/*.sh
 
+check-format:
+	shfmt -d install.sh install-arm.sh scripts/*.sh tests/*.sh
+
+check-session-guards:
+	tests/test-autostart.sh
+
+check-build-config:
+	tests/test-configure-build.sh
+
 check-install: all
-	@stage="$$(mktemp -d)"; \
+	@set -eu; \
+	stage="$$(mktemp -d)"; \
 	trap 'rm -rf "$$stage"' EXIT; \
 	$(MAKE) install-system \
 		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions; \
@@ -222,8 +266,44 @@ check-install: all
 		"$$stage/usr/share/xsessions/dwm.desktop"; \
 	echo "==> Staged install validated."
 
+check-install-manifest: all
+	@set -eu; \
+	stage="$$(mktemp -d)"; \
+	before="$$(mktemp)"; \
+	after="$$(mktemp)"; \
+	actual="$$(mktemp)"; \
+	expected="$$(mktemp)"; \
+	trap 'rm -rf "$$stage" "$$before" "$$after" "$$actual" "$$expected"' EXIT; \
+	install -Dm644 /dev/null "$$stage/pre-existing"; \
+	find "$$stage" \( -type f -o -type l \) -printf '%P\n' | sort > "$$before"; \
+	$(MAKE) install-system \
+		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions \
+		VICINAE_SOURCE_DIR=; \
+	{ \
+		printf '%s\n' \
+			pre-existing \
+			usr/bin/dwm \
+			usr/share/man/man1/dwm.1 \
+			usr/share/xsessions/dwm.desktop; \
+		for name in ${INSTALL_COMMAND_NAMES}; do \
+			printf 'usr/bin/%s\n' "$$name"; \
+		done; \
+	} | sort > "$$expected"; \
+	find "$$stage" \( -type f -o -type l \) -printf '%P\n' | sort > "$$actual"; \
+	cmp "$$expected" "$$actual"; \
+	for name in dwm ${INSTALL_COMMAND_NAMES}; do \
+		test -f "$$stage/usr/bin/$$name"; \
+	done; \
+	$(MAKE) uninstall \
+		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions \
+		VICINAE_SOURCE_DIR=; \
+	find "$$stage" \( -type f -o -type l \) -printf '%P\n' | sort > "$$after"; \
+	cmp "$$before" "$$after"; \
+	echo "==> Install manifest and uninstall symmetry validated."
+
 check-vicinae-install: all
-	@if [ "$$(uname -m)" != x86_64 ]; then \
+	@set -eu; \
+	if [ "$$(uname -m)" != x86_64 ]; then \
 		echo "==> Skipping x86_64 Vicinae install validation on $$(uname -m)."; \
 		exit 0; \
 	fi; \
@@ -249,13 +329,43 @@ check-vicinae-install: all
 		"$$stage/usr/lib/systemd/user/vicinae.service"; \
 	echo "==> Vicinae staged install validated."
 
+release-check: all
+	@set -eu; \
+	first="$$(mktemp)"; \
+	listing="$$(mktemp)"; \
+	trap 'rm -f "$$first" "$$listing"' EXIT; \
+	$(MAKE) release; \
+	test -f "${RELEASE_ARCHIVE}"; \
+	cp "${RELEASE_ARCHIVE}" "$$first"; \
+	$(MAKE) release; \
+	cmp "$$first" "${RELEASE_ARCHIVE}"; \
+	tar -tzf "${RELEASE_ARCHIVE}" > "$$listing"; \
+	grep -Fqx '${RELEASE_NAME}/dwm' "$$listing"; \
+	grep -Fqx '${RELEASE_NAME}/dwm.desktop' "$$listing"; \
+	grep -Fqx '${RELEASE_NAME}/.xinitrc' "$$listing"; \
+	grep -Fqx '${RELEASE_NAME}/config/' "$$listing"; \
+	grep -Fqx '${RELEASE_NAME}/scripts/' "$$listing"; \
+	if grep -Eq '(^|/)config\.h$$|\.o$$' "$$listing"; then \
+		echo "Release archive contains local configuration or object files." >&2; \
+		exit 1; \
+	fi; \
+	tar -xOzf "${RELEASE_ARCHIVE}" '${RELEASE_NAME}/dwm.desktop' | \
+		grep -Fqx 'Exec=${PREFIX}/bin/dwm'; \
+	echo "==> Release archive validated."
+
 check:
 	$(MAKE) clean
 	$(MAKE) all
 	$(MAKE) check-shell
+	$(MAKE) check-format
+	$(MAKE) check-build-config
+	$(MAKE) check-session-guards
 	$(MAKE) check-install
+	$(MAKE) check-install-manifest
 	$(MAKE) check-vicinae-install
+	$(MAKE) release-check
 
-.PHONY: all check check-build-deps check-install check-shell \
+.PHONY: all check check-build-config check-build-deps check-format check-install \
+	check-install-manifest check-session-guards check-shell \
 	check-vicinae-install clean install install-system install-user \
-	install-vicinae native uninstall release
+	install-vicinae native release release-check uninstall

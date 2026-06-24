@@ -16,7 +16,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential pkg-config shellcheck \
+            build-essential pkg-config shellcheck shfmt \
             libx11-dev libxft-dev libxinerama-dev libxrender-dev \
             libimlib2-dev libx11-xcb-dev libxcb1-dev libxcb-res0-dev \
             libfontconfig-dev libfreetype-dev

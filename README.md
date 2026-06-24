@@ -76,8 +76,7 @@ sudo pacman -S polybar
 ```bash
 git clone https://github.com/ChrisTitusTech/dwm-titus.git
 cd dwm-titus
-cp config.def.h config.h    # Create your personal config
-make
+make                       # Creates config.h from config.def.h when missing
 sudo make install
 ```
 
@@ -166,7 +165,17 @@ $EDITOR config.h
 make && sudo make install
 ```
 
-> **Note:** `config.def.h` is the clean default template. `config.h` is your personal customization. If `config.h` doesn't exist, `make` will create it from `config.def.h` automatically.
+> **Note:** `config.def.h` is the tracked default template. `config.h` is
+> ignored by Git and belongs to the local user. If it does not exist, `make`
+> creates it from `config.def.h`; pulls and upgrades do not replace it.
+> The installer creates it interactively on first installation, asking for
+> stable compile-time preferences such as refresh rate, font size, modifier
+> key, layout ratio, cursor warp, swallowing, and resize hints.
+
+For unattended installation, the same values can be supplied with
+`DWM_REFRESH_RATE`, `DWM_FONT_SIZE`, `DWM_MODKEY`, `DWM_MFACT`, `DWM_NMASTER`,
+`DWM_CURSORWARP`, `DWM_SWALLOWFLOATING`, and `DWM_RESIZEHINTS`. Existing
+`config.h` files are always preserved.
 
 Key things to customize in `config.h`:
 - **`refresh_rate`** — match your monitor (default: 60, set to 120 for high-refresh)
@@ -215,7 +224,7 @@ bash scripts/check-deps.sh
 | Path | Purpose |
 |------|---------|
 | `config.def.h` | Default configuration template |
-| `config.h` | Your personal configuration (edit this) |
+| `config.h` | Generated, untracked personal configuration (edit this) |
 | `dwm.c` | Main window manager source |
 | `Makefile` | Build and install system |
 | `.xinitrc` | Startup script for `startx` |
@@ -226,6 +235,7 @@ bash scripts/check-deps.sh
 | `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |
 | `docs/src/keybinds.md` | Full keybinding reference |
 | `docs/ROADMAP.md` | Project roadmap and planned features |
+| `docs/RELEASING.md` | Release validation and publication checklist |
 
 ---
 
@@ -237,9 +247,10 @@ Run the repository checks before submitting a change:
 make check
 ```
 
-This performs a clean portable build, ShellCheck validation, and an
-unprivileged staged installation. Use `make native` only for a binary intended
-for the current machine; normal builds remain portable across compatible CPUs.
+This performs a clean portable build, ShellCheck and shfmt validation,
+autostart guard tests, staged install/uninstall checks, and release artifact
+validation. Use `make native` only for a binary intended for the current
+machine; normal builds remain portable across compatible CPUs.
 
 Current implementation tasks are tracked in `TASKS.md`. Product scope and
 acceptance criteria remain in `SPEC.md`.

@@ -117,13 +117,16 @@ The supported installation flow must:
 3. Show required and optional packages before installing them.
 4. Install only missing required packages unless the user requests a broader
    desktop setup.
-5. Build dwm with the system compiler and detected X11 flags.
-6. Install the binary, man page, X session file, scripts, and default
+5. Create a missing `config.h` from guided compile-time questions, or detected
+   and documented defaults for an unattended installation. Preserve an
+   existing `config.h`.
+6. Build dwm with the system compiler and detected X11 flags.
+7. Install the binary, man page, X session file, scripts, and default
    configuration.
-7. Seed missing user configuration while preserving existing files.
-8. Set ownership to the invoking user for files in that user's home.
-9. Support repeated execution without destructive side effects.
-10. Print a summary, skipped optional features, and actionable next steps.
+8. Seed missing user configuration while preserving existing files.
+9. Set ownership to the invoking user for files in that user's home.
+10. Support repeated execution without destructive side effects.
+11. Print a summary, skipped optional features, and actionable next steps.
 
 The installer must not require an AUR helper. On RHEL-family systems it may
 explain when an optional component requires EPEL or another repository, but it
