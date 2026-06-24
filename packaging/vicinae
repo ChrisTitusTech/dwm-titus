@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+APPDIR="@VICINAE_APPDIR@"
+export APPDIR
+
+exec "$APPDIR/AppRun" "$@"
