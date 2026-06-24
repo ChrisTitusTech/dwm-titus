@@ -135,7 +135,7 @@ seed_defaults "$FAKE1"
 seed_user     "$FAKE1"
 
 LOG1=$(run_dwm "normal" "$FAKE1")
-cat "$LOG1" | head -20
+head -20 "$LOG1"
 if dwm_ran_ok "$LOG1"; then
     ok "Scenario 1 PASSED — dwm started without crash"
 else
@@ -153,7 +153,7 @@ seed_defaults "$FAKE2"
 # intentionally NOT calling seed_user
 
 LOG2=$(run_dwm "missing-user" "$FAKE2")
-cat "$LOG2" | head -20
+head -20 "$LOG2"
 if dwm_ran_ok "$LOG2"; then
     ok "Scenario 2 PASSED — dwm fell back to defaults without crash"
     # Optionally check for fallback message
@@ -182,7 +182,7 @@ printf '[[invalid\n' \
     > "$FAKE3/.config/dwm-titus/hotkeys.toml"
 
 LOG3=$(run_dwm "bad-toml" "$FAKE3")
-cat "$LOG3" | head -20
+head -20 "$LOG3"
 if dwm_ran_ok "$LOG3"; then
     ok "Scenario 3 PASSED — dwm fell back to defaults without crash"
 else
@@ -199,7 +199,7 @@ FAKE4=$(mktemp -d /tmp/dwm-test-home-XXXXX)
 # neither user dir nor default dir created
 
 LOG4=$(run_dwm "no-configs" "$FAKE4")
-cat "$LOG4" | head -20
+head -20 "$LOG4"
 if dwm_ran_ok "$LOG4"; then
     ok "Scenario 4 PASSED — dwm survived with zero config files"
 else

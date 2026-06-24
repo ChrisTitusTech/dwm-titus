@@ -8,7 +8,7 @@
 
 ---
 
-This is a **heavily modified** version of dwm based on the original [suckless.org](https://dwm.suckless.org/) dwm. It includes numerous patches and customizations for a productive, user-friendly desktop on Arch Linux with Xorg.
+This is a **heavily modified** version of dwm based on the original [suckless.org](https://dwm.suckless.org/) dwm. It includes numerous patches and customizations for a productive, user-friendly X11 desktop on Debian-, Arch-, and Fedora/RHEL-family distributions.
 
 ### Patches & Features
 
@@ -76,8 +76,7 @@ sudo pacman -S polybar
 ```bash
 git clone https://github.com/ChrisTitusTech/dwm-titus.git
 cd dwm-titus
-cp config.def.h config.h    # Create your personal config
-make
+make                       # Creates config.h from config.def.h when missing
 sudo make install
 ```
 
@@ -92,10 +91,12 @@ fc-cache -fv
 
 `make install` now also writes a local fontconfig alias file so both naming variants
 `MesloLGS NF` and `MesloLGS Nerd Font` resolve correctly across different Linux distributions.
+It also installs the bundled Capitaine dark and light cursor themes. Theme reloads
+select `Capitaine-Cursors-White` for dark themes and `Capitaine-Cursors` for light themes.
 
 #### Automated Installer
 
-The installer detects Arch-family and Fedora/RHEL-family systems:
+The installer detects Debian-, Arch-, and Fedora/RHEL-family systems:
 ```bash
 ./install.sh
 ```
@@ -104,7 +105,8 @@ On Fedora it installs the required X11 development libraries and desktop
 packages with `dnf`. MesloLGS Nerd Font is downloaded from the pinned Nerd
 Fonts v3.4.0 release, checksum-verified, and installed under
 `~/.local/share/fonts/Meslo/`. If no supported terminal is installed, the
-installer enables the `scottames/ghostty` Fedora COPR and installs Ghostty.
+installer selects Alacritty or Kitty from the enabled distribution
+repositories. It does not enable third-party repositories.
 
 ### Post-Install Setup
 
@@ -119,6 +121,14 @@ startx
 
 The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), launches Polybar, and starts dwm.
 
+On x86_64, the installer downloads the latest Vicinae AppImage from the
+official GitHub release, verifies the release-provided SHA-256 digest, extracts
+it, enables `vicinae.service` for the current user, and uses Vicinae for
+<kbd>SUPER</kbd> + <kbd>R</kbd>. Rofi remains available on
+<kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> and is still used by the
+control center and keybind viewer. If the optional download fails, installation
+continues without Vicinae.
+
 ---
 
 ## ⌨️ Keybindings
@@ -132,7 +142,8 @@ See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 | Keybind | Action |
 |---------|--------|
 | <kbd>SUPER</kbd> + <kbd>X</kbd> | Open terminal |
-| <kbd>SUPER</kbd> + <kbd>R</kbd> | Launch rofi (app launcher) |
+| <kbd>SUPER</kbd> + <kbd>R</kbd> | Toggle Vicinae |
+| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> | Launch rofi |
 | <kbd>SUPER</kbd> + <kbd>Q</kbd> | Close window |
 | <kbd>SUPER</kbd> + <kbd>J</kbd> / <kbd>K</kbd> | Focus next / previous window |
 | <kbd>SUPER</kbd> + <kbd>H</kbd> / <kbd>L</kbd> | Resize master area |
@@ -156,7 +167,17 @@ $EDITOR config.h
 make && sudo make install
 ```
 
-> **Note:** `config.def.h` is the clean default template. `config.h` is your personal customization. If `config.h` doesn't exist, `make` will create it from `config.def.h` automatically.
+> **Note:** `config.def.h` is the tracked default template. `config.h` is
+> ignored by Git and belongs to the local user. If it does not exist, `make`
+> creates it from `config.def.h`; pulls and upgrades do not replace it.
+> The installer creates it interactively on first installation, asking for
+> stable compile-time preferences such as refresh rate, font size, modifier
+> key, layout ratio, cursor warp, swallowing, and resize hints.
+
+For unattended installation, the same values can be supplied with
+`DWM_REFRESH_RATE`, `DWM_FONT_SIZE`, `DWM_MODKEY`, `DWM_MFACT`, `DWM_NMASTER`,
+`DWM_CURSORWARP`, `DWM_SWALLOWFLOATING`, and `DWM_RESIZEHINTS`. Existing
+`config.h` files are always preserved.
 
 Key things to customize in `config.h`:
 - **`refresh_rate`** — match your monitor (default: 60, set to 120 for high-refresh)
@@ -205,14 +226,33 @@ bash scripts/check-deps.sh
 | Path | Purpose |
 |------|---------|
 | `config.def.h` | Default configuration template |
-| `config.h` | Your personal configuration (edit this) |
+| `config.h` | Generated, untracked personal configuration (edit this) |
 | `dwm.c` | Main window manager source |
 | `Makefile` | Build and install system |
 | `.xinitrc` | Startup script for `startx` |
 | `dwm.desktop` | Session entry for display managers |
-| `install.sh` | Automated installer (Arch Linux) |
+| `install.sh` | Automated installer for Debian, Arch, and Fedora/RHEL families |
 | `polybar/` | Polybar config, themes, and fonts |
 | `config/` | Terminal, rofi, and app configurations |
 | `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |
 | `docs/src/keybinds.md` | Full keybinding reference |
 | `docs/ROADMAP.md` | Project roadmap and planned features |
+| `docs/RELEASING.md` | Release validation and publication checklist |
+
+---
+
+## Development
+
+Run the repository checks before submitting a change:
+
+```bash
+make check
+```
+
+This performs a clean portable build, ShellCheck and shfmt validation,
+autostart guard tests, staged install/uninstall checks, and release artifact
+validation. Use `make native` only for a binary intended for the current
+machine; normal builds remain portable across compatible CPUs.
+
+Current implementation tasks are tracked in `TASKS.md`. Product scope and
+acceptance criteria remain in `SPEC.md`.

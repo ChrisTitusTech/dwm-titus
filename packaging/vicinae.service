@@ -1,0 +1,17 @@
+[Unit]
+Description=Vicinae Launcher Daemon
+Documentation=https://docs.vicinae.com
+After=graphical-session.target
+Requires=dbus.socket
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@PREFIX@/bin/vicinae server --replace
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=60
+KillMode=process
+
+[Install]
+WantedBy=graphical-session.target

@@ -12,7 +12,8 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 
 | Keys | Action |
 |------|--------|
-| `Super` + `R` | App launcher (rofi) |
+| `Super` + `R` | App launcher (Vicinae) |
+| `Super` + `Shift` + `R` | App launcher (rofi) |
 | `Super` + `X` | Terminal |
 | `Super` + `E` | File manager |
 | `Super` + `B` | Browser |
