@@ -23,6 +23,7 @@ DWM_TITUS_DIR="$HOME/.local/share/dwm-titus"
 POLYBAR_DIR="$HOME/.config/polybar"
 ROFI_DIR="$HOME/.config/rofi"
 BG_DIR="$HOME/Pictures/backgrounds"
+PICOM_BACKEND="${PICOM_BACKEND:-xrender}"
 
 # ── Terminal detection ───────────────────────────────────
 detect_terminal() {
@@ -64,6 +65,14 @@ rofi_menu() {
 notify() {
     if command -v notify-send &>/dev/null; then
         notify-send -a "DWM Control Center" "$@" 2>/dev/null || true
+    fi
+}
+
+start_picom() {
+    if command -v setsid &>/dev/null; then
+        setsid -f picom --backend "$PICOM_BACKEND"
+    else
+        picom --backend "$PICOM_BACKEND" &
     fi
 }
 
@@ -270,7 +279,7 @@ run_quick_actions() {
         *"Restart Picom"*)
             pkill picom 2>/dev/null || true
             sleep 0.3
-            picom -b &
+            start_picom
             notify "Picom restarted"
             ;;
         *"Restart Dunst"*)
@@ -299,7 +308,7 @@ run_quick_actions() {
                 pkill picom 2>/dev/null || true
                 notify "Compositor stopped"
             else
-                picom -b &
+                start_picom
                 notify "Compositor started"
             fi
             ;;

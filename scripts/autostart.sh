@@ -12,6 +12,21 @@ start_once() {
 	"$@" >/dev/null 2>&1 &
 }
 
+start_detached_once() {
+	process_name=$1
+	shift
+
+	command -v "$1" >/dev/null 2>&1 || return 0
+	pgrep -u "$(id -u)" -x "$process_name" >/dev/null 2>&1 && return 0
+	if command -v setsid >/dev/null 2>&1; then
+		setsid -f "$@" >/dev/null 2>&1
+	else
+		"$@" >/dev/null 2>&1 &
+	fi
+}
+
+PICOM_BACKEND=${PICOM_BACKEND:-xrender}
+
 # ── Phase 1: Blocking ──────────────────────────────────────────────────────────
 # Disable DPMS and screen blanking (prevents GPU/display wake issues)
 if command -v xset >/dev/null 2>&1; then
@@ -43,7 +58,7 @@ if command -v feh >/dev/null 2>&1 &&
 fi
 
 # Compositor
-start_once picom picom -b
+start_detached_once picom picom --backend "$PICOM_BACKEND"
 
 # Notification daemon
 start_once dunst dunst

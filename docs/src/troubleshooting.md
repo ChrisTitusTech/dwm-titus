@@ -85,10 +85,11 @@ fc-cache -fv
 
 Restart picom via the Control Center (**Quick Actions → Restart Picom**) or:
 ```bash
-pkill picom; picom -b
+pkill picom; setsid -f picom --backend xrender
 ```
 
-If artifacts persist, try disabling experimental backends in `~/.config/picom.conf`.
+If artifacts persist, set a different backend in `~/.config/picom.conf` or run with
+`PICOM_BACKEND=glx` or `PICOM_BACKEND=egl`.
 
 ---
 
