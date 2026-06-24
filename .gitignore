@@ -16,3 +16,6 @@ nohup.out
 
 /release/**
 /release
+
+# Local Vicinae AppImage extraction/staging tree
+/vicinae/
