@@ -80,9 +80,9 @@ DARK_MODE="$(theme_get dark_mode)"
 [[ "$DARK_MODE" != "false" ]] && DARK_MODE="true" # default to dark if unset
 CURSOR_SIZE=32
 if [[ "$DARK_MODE" == "true" ]]; then
-	CURSOR_THEME="Capitaine-Cursors"
-else
 	CURSOR_THEME="Capitaine-Cursors-White"
+else
+	CURSOR_THEME="Capitaine-Cursors"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════

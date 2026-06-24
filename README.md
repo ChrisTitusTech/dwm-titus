@@ -92,7 +92,7 @@ fc-cache -fv
 `make install` now also writes a local fontconfig alias file so both naming variants
 `MesloLGS NF` and `MesloLGS Nerd Font` resolve correctly across different Linux distributions.
 It also installs the bundled Capitaine dark and light cursor themes. Theme reloads
-select `Capitaine-Cursors` for dark themes and `Capitaine-Cursors-White` for light themes.
+select `Capitaine-Cursors-White` for dark themes and `Capitaine-Cursors` for light themes.
 
 #### Automated Installer
 
