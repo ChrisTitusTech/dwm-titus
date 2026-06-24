@@ -53,4 +53,8 @@ done
 # Launch Polybar
 "$HOME/.config/polybar/launch.sh" 2>/dev/null &
 
-dex -a 2>/dev/null
+if command -v dex >/dev/null 2>&1; then
+    dex -a 2>/dev/null
+elif command -v dex-autostart >/dev/null 2>&1; then
+    dex-autostart -a 2>/dev/null
+fi

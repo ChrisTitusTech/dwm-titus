@@ -1,6 +1,7 @@
 # Installation
 
-> Arch Linux (or an Arch-based distro) with Xorg is required.
+> A supported Debian-, Arch-, or Fedora/RHEL-family distribution with Xorg is
+> required.
 
 ## Quick Install (Recommended)
 
@@ -68,7 +69,9 @@ fc-cache -fv
 ./install.sh
 ```
 
-The script handles all dependency installation, font copying, and config placement.
+The script detects the distribution family and handles dependency
+installation, font copying, display-manager integration, and config placement.
+Existing user configuration and `.xinitrc` files are preserved.
 
 ## Starting dwm
 
@@ -80,4 +83,3 @@ startx
 ```
 
 The provided `.xinitrc` disables screen blanking, launches Polybar, and runs dwm.
-

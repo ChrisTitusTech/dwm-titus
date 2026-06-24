@@ -59,9 +59,11 @@ install_packages xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
 # appropriate vendor driver (e.g. xf86-video-armsoc-git from AUR).
 if ! pacman -Qq xf86-video-fbdev &>/dev/null 2>&1; then
     info "Installing ARM framebuffer video driver (xf86-video-fbdev)..."
-    install_packages xf86-video-fbdev \
-        && ok "xf86-video-fbdev installed." \
-        || warn "xf86-video-fbdev not found — your board's GPU driver may already provide Xorg support."
+    if install_packages xf86-video-fbdev; then
+        ok "xf86-video-fbdev installed."
+    else
+        warn "xf86-video-fbdev not found — your board's GPU driver may already provide Xorg support."
+    fi
 fi
 ok "Xorg server installed."
 
@@ -123,9 +125,11 @@ command -v xdg-user-dirs-update &>/dev/null && xdg-user-dirs-update
 mkdir -p "$HOME/Pictures"
 if [ ! -d "$BG_DIR" ]; then
     info "Downloading Nord wallpapers..."
-    git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null \
-        && ok "Wallpapers downloaded to $BG_DIR" \
-        || warn "Failed to download wallpapers. Add your own to $BG_DIR."
+    if git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null; then
+        ok "Wallpapers downloaded to $BG_DIR"
+    else
+        warn "Failed to download wallpapers. Add your own to $BG_DIR."
+    fi
 else
     ok "Wallpapers already present."
 fi

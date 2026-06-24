@@ -342,7 +342,11 @@ if command -v tlp-stat &>/dev/null; then
         key="${entry%%:*}"; rest="${entry#*:}"; want="${rest%%:*}"; default="${rest#*:}"
         val=$(get_tlp "$key")
         if [[ -n "$val" ]]; then
-            [[ "$val" == "$want" ]] && ok "$key=$val" || warn "$key=$val (recommend: $want)"
+            if [[ "$val" == "$want" ]]; then
+                ok "$key=$val"
+            else
+                warn "$key=$val (recommend: $want)"
+            fi
         else
             bad "$key — not set (TLP default: $default, recommend: $want)"
         fi
@@ -358,12 +362,21 @@ if command -v tlp-stat &>/dev/null; then
     RUNTIME_AUD=$(cat /sys/module/snd_hda_intel/parameters/power_save 2>/dev/null)
     RUNTIME_WIFI=$(iw dev wlo1 get power_save 2>/dev/null | awk '{print $NF}')
 
-    [[ "$RUNTIME_NMI" == "0" ]]   && ok "NMI watchdog disabled (saves ~0.5W)" \
-                                   || warn "NMI watchdog ON ($RUNTIME_NMI)"
-    [[ "$RUNTIME_AUD" == "1" ]]   && ok "snd_hda_intel power_save=1 (audio idles down)" \
-                                   || warn "snd_hda_intel power_save=$RUNTIME_AUD"
-    [[ "$RUNTIME_WIFI" == "on" ]] && ok "Wi-Fi power save: on" \
-                                   || warn "Wi-Fi power save: $RUNTIME_WIFI"
+    if [[ "$RUNTIME_NMI" == "0" ]]; then
+        ok "NMI watchdog disabled (saves ~0.5W)"
+    else
+        warn "NMI watchdog ON ($RUNTIME_NMI)"
+    fi
+    if [[ "$RUNTIME_AUD" == "1" ]]; then
+        ok "snd_hda_intel power_save=1 (audio idles down)"
+    else
+        warn "snd_hda_intel power_save=$RUNTIME_AUD"
+    fi
+    if [[ "$RUNTIME_WIFI" == "on" ]]; then
+        ok "Wi-Fi power save: on"
+    else
+        warn "Wi-Fi power save: $RUNTIME_WIFI"
+    fi
     info "CPU EPP (live): $RUNTIME_CPU_EPP"
     info "Turbo no_turbo (live): $RUNTIME_TURBO  (0=enabled, 1=disabled)"
     info "PCIe ASPM policy (live): $RUNTIME_ASPM"
@@ -416,8 +429,11 @@ else
             info "Add to ~/.xinitrc or DWM autostart for persistence"
         else
             ok "DPMS is enabled"
-            (( DPMS_OFF == 0 )) && warn "DPMS 'Off' timer is 0 — monitor will never power off" \
-                                || ok "Monitor will power off after ${DPMS_OFF}s"
+            if (( DPMS_OFF == 0 )); then
+                warn "DPMS 'Off' timer is 0 — monitor will never power off"
+            else
+                ok "Monitor will power off after ${DPMS_OFF}s"
+            fi
         fi
 
         echo
@@ -628,7 +644,11 @@ if $APPLY; then
             echo auto > "$ctrl" && CHANGED=$((CHANGED + 1))
         fi
     done
-    (( CHANGED > 0 )) && ok "Enabled runtime PM for $CHANGED PCI device(s)" || info "All PCI devices already on auto"
+    if (( CHANGED > 0 )); then
+        ok "Enabled runtime PM for $CHANGED PCI device(s)"
+    else
+        info "All PCI devices already on auto"
+    fi
 
     # DPMS
     if command -v xset &>/dev/null && xset q &>/dev/null 2>&1; then
@@ -765,10 +785,21 @@ if $APPLY_TLP; then
         info "  CPU EPP (cpu0)       : $EPP"
         info "  Turbo no_turbo       : $TURBO  (1=disabled)"
         info "  PCIe ASPM policy     : $ASPM"
-        [[ "$EPP" == "power" ]]   && ok "EPP → power" || warn "EPP not yet 'power' ($EPP)"
-        [[ "$TURBO" == "1" ]]     && ok "Turbo disabled" || warn "Turbo still on (no_turbo=$TURBO)"
-        echo "$ASPM" | grep -q 'powersupersave' && ok "ASPM includes powersupersave" \
-            || warn "ASPM policy unchanged: $ASPM"
+        if [[ "$EPP" == "power" ]]; then
+            ok "EPP → power"
+        else
+            warn "EPP not yet 'power' ($EPP)"
+        fi
+        if [[ "$TURBO" == "1" ]]; then
+            ok "Turbo disabled"
+        else
+            warn "Turbo still on (no_turbo=$TURBO)"
+        fi
+        if grep -q 'powersupersave' <<< "$ASPM"; then
+            ok "ASPM includes powersupersave"
+        else
+            warn "ASPM policy unchanged: $ASPM"
+        fi
     else
         ok "All TLP settings already correct — nothing changed"
         info "Running tlp start to ensure current session is up to date ..."

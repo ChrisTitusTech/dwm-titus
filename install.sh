@@ -30,12 +30,14 @@ case "$DISTRO_FAMILY" in
         }
         ;;
     debian)
-        err "Debian-family installation is not implemented by this installer yet."
-        exit 1
+        command -v apt-get &>/dev/null || {
+            err "Debian-family distribution detected, but apt-get was not found."
+            exit 1
+        }
         ;;
     *)
         err "Unsupported distribution: $DISTRO_NAME"
-        err "Supported installer families: Arch and Fedora/RHEL."
+        err "Supported installer families: Debian, Arch, and Fedora/RHEL."
         exit 1
         ;;
 esac
@@ -78,25 +80,90 @@ install_meslo_nerd_font() {
     ok "MesloLGS Nerd Font installed."
 }
 
-install_ghostty_fedora() {
-    local copr_repo="scottames/ghostty"
-    local copr_repo_id="copr:copr.fedorainfracloud.org:scottames:ghostty"
+install_supported_terminal() {
+    case "$DISTRO_FAMILY" in
+        arch)
+            install_optional_package ghostty 2>/dev/null ||
+                install_packages kitty
+            ;;
+        rhel)
+            if package_available alacritty; then
+                install_packages alacritty
+            elif package_available kitty; then
+                install_packages kitty
+            else
+                err "No supported terminal is available in the enabled repositories."
+                return 1
+            fi
+            ;;
+        debian)
+            if package_available alacritty; then
+                install_packages alacritty
+            elif package_available kitty; then
+                install_packages kitty
+            else
+                err "No supported terminal is available in the enabled repositories."
+                return 1
+            fi
+            ;;
+    esac
+}
 
-    if command -v ghostty &>/dev/null; then
-        ok "Terminal already installed: ghostty"
+configure_seeded_terminal() {
+    local hotkeys_file=$1
+    local terminal=$2
+
+    if [[ $HOTKEYS_EXISTED == true ]]; then
         return
     fi
 
-    install_packages dnf-plugins-core
+    sed -i -E \
+        "s|^terminal = \"[^\"]*\"|terminal = \"$terminal\"|" \
+        "$hotkeys_file"
+    ok "Configured the default terminal: $terminal"
+}
 
-    if ! dnf -q repolist --enabled 2>/dev/null |
-        command grep -Fq "$copr_repo_id"; then
-        info "Enabling Fedora COPR: $copr_repo"
-        sudo dnf copr enable -y "$copr_repo"
+detect_display_manager() {
+    local unit
+
+    unit="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
+    case "$(basename "$unit")" in
+        lightdm.service) echo "lightdm"; return ;;
+        gdm.service) echo "gdm"; return ;;
+        sddm.service) echo "sddm"; return ;;
+    esac
+
+    for unit in lightdm gdm sddm; do
+        if command -v "$unit" &>/dev/null; then
+            echo "$unit"
+            return
+        fi
+    done
+}
+
+install_lightdm_config() {
+    local legacy_config="/etc/lightdm/lightdm.conf"
+    local backup
+
+    if sudo test -f "$legacy_config" &&
+        sudo grep -Fxq 'greeter-session=lightdm-slick-greeter' "$legacy_config" &&
+        sudo grep -Fxq 'user-session=dwm' "$legacy_config" &&
+        sudo grep -Fxq 'session-wrapper=/etc/lightdm/Xsession' "$legacy_config"; then
+        backup="${legacy_config}.dwm-titus.$(date +%Y%m%d%H%M%S).bak"
+        warn "Migrating the legacy dwm-titus LightDM configuration."
+        sudo cp -a "$legacy_config" "$backup"
+        sudo rm "$legacy_config"
+        ok "Legacy LightDM configuration backed up to $backup"
     fi
 
-    info "Installing Ghostty from $copr_repo..."
-    install_packages ghostty
+    sudo make -C "$REPO_DIR/lightdm" install
+    if command -v restorecon &>/dev/null; then
+        sudo restorecon \
+            /etc/lightdm/lightdm.conf.d/90-dwm-titus.conf \
+            /etc/lightdm/slick-greeter.conf \
+            /usr/share/pixmaps/dwm-titus.jpg \
+            /usr/share/pixmaps/dwm-titus-logo.png
+    fi
 }
 
 echo ""
@@ -107,6 +174,11 @@ echo ""
 info "Distribution: $DISTRO_NAME"
 info "Family: $DISTRO_FAMILY"
 info "Package manager: $PKG_CMD"
+
+if [[ $DISTRO_FAMILY == "debian" ]]; then
+    info "Refreshing apt package metadata..."
+    sudo apt-get update
+fi
 
 # ── Build dependencies ───────────────────────────────────
 info "Installing build dependencies..."
@@ -133,6 +205,16 @@ case "$DISTRO_FAMILY" in
         install_packages \
             xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot
         ;;
+    debian)
+        install_packages \
+            build-essential pkg-config \
+            libx11-dev libxft-dev libxinerama-dev libxrender-dev \
+            libimlib2-dev libx11-xcb-dev libxcb1-dev libxcb-res0-dev \
+            libfontconfig-dev libfreetype-dev
+
+        install_packages \
+            xserver-xorg-core xinit x11-xserver-utils
+        ;;
 esac
 ok "Build dependencies installed."
 
@@ -142,15 +224,18 @@ case "$DISTRO_FAMILY" in
     arch)
         install_packages \
             rofi picom dunst feh flameshot dex mate-polkit alsa-utils \
-            curl git unzip xclip xorg-xprop thunar gvfs tumbler \
+            brightnessctl curl git procps-ng psmisc unzip xclip xdotool \
+            xorg-xprop thunar gvfs tumbler \
             thunar-archive-plugin nwg-look xdg-user-dirs \
-            xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring \
+            xdg-utils xdg-desktop-portal-gtk pipewire pipewire-pulse \
+            wireplumber pavucontrol gnome-keyring \
             networkmanager network-manager-applet libnotify rsync
         ;;
     rhel)
         install_packages \
             rofi picom dunst feh flameshot dex-autostart mate-polkit \
-            alsa-utils brightnessctl curl git psmisc unzip xclip xdotool xprop \
+            alsa-utils brightnessctl curl git procps-ng psmisc pulseaudio-utils \
+            unzip xclip xdotool xprop \
             Thunar gvfs tumbler \
             thunar-archive-plugin file-roller xdg-user-dirs xdg-utils \
             xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring \
@@ -163,6 +248,16 @@ case "$DISTRO_FAMILY" in
         else
             install_packages nwg-look
         fi
+        ;;
+    debian)
+        install_packages \
+            rofi picom dunst feh flameshot dex mate-polkit \
+            alsa-utils brightnessctl curl git procps psmisc pulseaudio-utils \
+            unzip xclip xdotool x11-utils \
+            thunar gvfs tumbler thunar-archive-plugin file-roller \
+            xdg-user-dirs xdg-utils xdg-desktop-portal-gtk \
+            pipewire pipewire-pulse wireplumber pavucontrol gnome-keyring \
+            network-manager network-manager-gnome libnotify-bin rsync dbus-x11
         ;;
 esac
 ok "Runtime dependencies installed."
@@ -188,6 +283,11 @@ case "$DISTRO_FAMILY" in
             google-noto-color-emoji-fonts \
             google-noto-sans-mono-fonts
         ;;
+    debian)
+        install_packages \
+            fonts-noto-color-emoji \
+            fonts-noto-mono
+        ;;
 esac
 FONT_DIR="$HOME/.local/share/fonts"
 mkdir -p "$FONT_DIR"
@@ -205,21 +305,9 @@ for t in ghostty kitty alacritty; do command -v "$t" &>/dev/null && { terminal="
 if [ -n "$terminal" ]; then
     ok "Terminal already installed: $terminal"
 else
-    case "$DISTRO_FAMILY" in
-        arch)
-            info "No supported terminal found - installing ghostty..."
-            install_optional_package ghostty 2>/dev/null ||
-                install_packages kitty
-            ;;
-        rhel)
-            if [[ $DISTRO_ID == "fedora" ]]; then
-                install_ghostty_fedora
-            else
-                info "No supported terminal found - installing kitty..."
-                install_packages kitty
-            fi
-            ;;
-    esac
+    info "No supported terminal found - installing one from enabled repositories..."
+    install_supported_terminal
+    terminal="$(detect_terminal)"
 fi
 
 # ── Polybar + XDG dirs + wallpapers ──────────────────────
@@ -241,8 +329,7 @@ fi
 
 
 # ── Display manager ──────────────────────────────────────
-currentdm=""
-for dm in lightdm sddm gdm; do command -v "$dm" &>/dev/null && { currentdm="$dm"; break; }; done
+currentdm="$(detect_display_manager)"
 
 if [ -n "$currentdm" ]; then
     ok "Display manager already installed: $currentdm"
@@ -255,21 +342,39 @@ else
         rhel)
             install_packages lightdm slick-greeter
             ;;
+        debian)
+            install_packages lightdm slick-greeter
+            ;;
     esac
     sudo systemctl enable lightdm.service
+    currentdm="lightdm"
     ok "LightDM installed and enabled."
 fi
 
 # ── LightDM greeter config ───────────────────────────────
-if command -v lightdm &>/dev/null; then
-    info "Deploying LightDM GTK greeter config..."
-    sudo make -C "$REPO_DIR/lightdm" install
+if [[ $currentdm == "lightdm" ]]; then
+    info "Deploying LightDM Slick Greeter config..."
+    install_lightdm_config
     ok "LightDM config deployed."
 fi
 
 # ── Build & Install ──────────────────────────────────────
+HOTKEYS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/hotkeys.toml"
+if [[ -f $HOTKEYS_FILE ]]; then
+    HOTKEYS_EXISTED=true
+else
+    HOTKEYS_EXISTED=false
+fi
+
 cd "$REPO_DIR"
-sudo make clean install
+make clean
+make
+sudo make install \
+    USER_HOME="$HOME" \
+    OWNER="$(id -un)" \
+    XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
+    XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+configure_seeded_terminal "$HOTKEYS_FILE" "$terminal"
 
 # ── Done ─────────────────────────────────────────────────
 echo ""

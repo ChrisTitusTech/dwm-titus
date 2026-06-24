@@ -270,13 +270,15 @@ In a real or nested X11 session:
 
 ## 10. Current Gap
 
-The primary installer supports Arch and Fedora/RHEL-family package mappings.
-The ARM installer, dependency checker, and some manual README instructions
-remain Arch-specific. The build also contains fixed X11 path assumptions.
+The primary installer contains Debian-, Arch-, and Fedora/RHEL-family package
+mappings. The build uses `pkg-config`, supports staged installation with
+`DESTDIR`, and avoids writing user configuration during package builds.
 
-Therefore, Debian-family support and complete validation on non-Fedora RHEL
-derivatives remain project targets. Support may be claimed only after the
-acceptance criteria above are met and documented.
+The ARM installer and some manual package examples remain Arch-specific.
+Debian package resolution and clean compilation have been validated in a
+Debian 13 container, but a real Debian X11 session has not been tested.
+Complete runtime validation on Debian and non-Fedora RHEL derivatives remains
+required before describing those environments as universally verified.
 
 ## 11. Definition of Done
 

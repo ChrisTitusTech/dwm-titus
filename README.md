@@ -8,7 +8,7 @@
 
 ---
 
-This is a **heavily modified** version of dwm based on the original [suckless.org](https://dwm.suckless.org/) dwm. It includes numerous patches and customizations for a productive, user-friendly desktop on Arch Linux with Xorg.
+This is a **heavily modified** version of dwm based on the original [suckless.org](https://dwm.suckless.org/) dwm. It includes numerous patches and customizations for a productive, user-friendly X11 desktop on Debian-, Arch-, and Fedora/RHEL-family distributions.
 
 ### Patches & Features
 
@@ -95,7 +95,7 @@ fc-cache -fv
 
 #### Automated Installer
 
-The installer detects Arch-family and Fedora/RHEL-family systems:
+The installer detects Debian-, Arch-, and Fedora/RHEL-family systems:
 ```bash
 ./install.sh
 ```
@@ -104,7 +104,8 @@ On Fedora it installs the required X11 development libraries and desktop
 packages with `dnf`. MesloLGS Nerd Font is downloaded from the pinned Nerd
 Fonts v3.4.0 release, checksum-verified, and installed under
 `~/.local/share/fonts/Meslo/`. If no supported terminal is installed, the
-installer enables the `scottames/ghostty` Fedora COPR and installs Ghostty.
+installer selects Alacritty or Kitty from the enabled distribution
+repositories. It does not enable third-party repositories.
 
 ### Post-Install Setup
 
@@ -210,7 +211,7 @@ bash scripts/check-deps.sh
 | `Makefile` | Build and install system |
 | `.xinitrc` | Startup script for `startx` |
 | `dwm.desktop` | Session entry for display managers |
-| `install.sh` | Automated installer (Arch Linux) |
+| `install.sh` | Automated installer for Debian, Arch, and Fedora/RHEL families |
 | `polybar/` | Polybar config, themes, and fonts |
 | `config/` | Terminal, rofi, and app configurations |
 | `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |

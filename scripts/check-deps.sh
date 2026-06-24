@@ -1,6 +1,7 @@
 #!/bin/bash
+# shellcheck disable=SC2059
 # ─────────────────────────────────────────────────────────
-# dwm-titus dependency checker — Arch Linux
+# dwm-titus dependency checker
 # Run before building to verify all required packages
 # are installed. Exit code 0 = all good, 1 = missing deps.
 # ─────────────────────────────────────────────────────────
@@ -21,11 +22,11 @@ check_cmd() {
     fi
 }
 
-check_pkg() {
-    if pacman -Qi "$1" &>/dev/null; then
-        printf "  ${GREEN}✓${NC} %s\n" "$1"
+check_pkg_config() {
+    if pkg-config --exists "$1" 2>/dev/null; then
+        printf "  ${GREEN}✓${NC} pkg-config:%s\n" "$1"
     else
-        printf "  ${RED}✗${NC} %s ${YELLOW}(not installed)${NC}\n" "$1"
+        printf "  ${RED}✗${NC} pkg-config:%s ${YELLOW}(missing)${NC}\n" "$1"
         MISSING=$((MISSING + 1))
     fi
 }
@@ -56,34 +57,29 @@ check_font_any() {
     check_font "$label" "$@"
 }
 
-echo ""
-echo "═══ dwm-titus Dependency Check (Arch Linux) ═══"
+echo "═══ dwm-titus Dependency Check ═══"
 echo ""
 
 # ── Build dependencies ──────────────────────────────────
 echo "Build Dependencies (required to compile):"
-for pkg in base-devel libx11 libxft libxinerama imlib2 libxcb xcb-util freetype2 fontconfig; do
-    check_pkg "$pkg"
-done
 check_cmd "cc"
 check_cmd "make"
+check_cmd "pkg-config"
+for module in x11 xft xinerama xrender imlib2 x11-xcb xcb xcb-res; do
+    check_pkg_config "$module"
+done
 echo ""
 
 # ── Xorg / Xlibre ───────────────────────────────────────
 echo "X Server Components:"
-# Accept either Xorg or Xlibre as the X server
-# Detect Xlibre by any installed xlibre-* package (server, drivers, etc.)
-if pacman -Qq 2>/dev/null | grep -q '^xlibre'; then
-    xlibre_pkg=$(pacman -Qq 2>/dev/null | grep '^xlibre' | head -1)
-    printf "  ${GREEN}✓${NC} Xlibre detected (%s)\n" "$xlibre_pkg"
-elif pacman -Qi xorg-server &>/dev/null; then
-    printf "  ${GREEN}✓${NC} xorg-server\n"
+if command -v Xorg &>/dev/null || command -v Xlibre &>/dev/null; then
+    printf "  ${GREEN}✓${NC} X11 server\n"
 else
-    printf "  ${RED}✗${NC} xorg-server or xlibre ${YELLOW}(not installed)${NC}\n"
+    printf "  ${RED}✗${NC} Xorg or Xlibre ${YELLOW}(missing)${NC}\n"
     MISSING=$((MISSING + 1))
 fi
-for pkg in xorg-xinit xorg-xrandr xorg-xset xorg-xsetroot; do
-    check_pkg "$pkg"
+for command in startx xrandr xset xsetroot; do
+    check_cmd "$command"
 done
 
 # ── Runtime dependencies ────────────────────────────────
@@ -93,7 +89,12 @@ check_cmd "picom"
 check_cmd "dunst"
 check_cmd "feh"
 check_cmd "flameshot"
-check_cmd "dex"
+if command -v dex &>/dev/null || command -v dex-autostart &>/dev/null; then
+    printf "  ${GREEN}✓${NC} XDG autostart runner\n"
+else
+    printf "  ${RED}✗${NC} dex or dex-autostart ${YELLOW}(missing)${NC}\n"
+    MISSING=$((MISSING + 1))
+fi
 check_cmd "amixer"
 echo ""
 
@@ -145,8 +146,6 @@ if [ $MISSING -eq 0 ]; then
     exit 0
 else
     printf "${RED}$MISSING missing dependency/dependencies.${NC}\n"
-    echo "  Install missing packages with: sudo pacman -S <package>"
-    echo "  Or run: ./install.sh   (automated install)"
+    echo "  Run: ./install.sh   (automated install)"
     exit 1
 fi
-echo ""

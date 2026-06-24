@@ -233,10 +233,10 @@ info "graphical-session.target: ${GS_FINAL}"
 info "xdg-desktop-autostart.target: ${XDG_FINAL}"
 
 # List which autostart services systemd generated
-GENERATED=$(systemctl --user list-unit-files --type=service 2>/dev/null | grep "@autostart" | wc -l)
+GENERATED=$(systemctl --user list-unit-files --type=service 2>/dev/null | grep -c "@autostart" || true)
 if [[ $GENERATED -gt 0 ]]; then
     info "Systemd generated ${GENERATED} autostart service(s):"
-    systemctl --user list-unit-files --type=service 2>/dev/null | grep "@autostart" | while read -r unit state _; do
+    systemctl --user list-unit-files --type=service 2>/dev/null | grep "@autostart" | while read -r unit _; do
         STATUS=$(systemctl --user is-active "$unit" 2>/dev/null || echo "inactive")
         if [[ "$STATUS" == "active" || "$STATUS" == "inactive" ]]; then
             SHORT=$(echo "$unit" | sed 's/app-//;s/@autostart.service//;s/\\x2d/-/g')
