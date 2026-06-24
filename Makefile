@@ -46,6 +46,7 @@ install: all
 		cp -rf . ${DATA_DIR}/; \
 	fi
 	@echo "==> Installing config directories..."
+	mkdir -p ${CFG_DIR}
 	for dir in config/*/; do \
 		dst=${CFG_DIR}/$$(basename "$$dir"); \
 		[ -L "$$dst" ] && rm -f "$$dst"; \

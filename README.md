@@ -95,10 +95,16 @@ fc-cache -fv
 
 #### Automated Installer
 
-An install script is provided that handles all of the above:
+The installer detects Arch-family and Fedora/RHEL-family systems:
 ```bash
 ./install.sh
 ```
+
+On Fedora it installs the required X11 development libraries and desktop
+packages with `dnf`. MesloLGS Nerd Font is downloaded from the pinned Nerd
+Fonts v3.4.0 release, checksum-verified, and installed under
+`~/.local/share/fonts/Meslo/`. If no supported terminal is installed, the
+installer enables the `scottames/ghostty` Fedora COPR and installs Ghostty.
 
 ### Post-Install Setup
 

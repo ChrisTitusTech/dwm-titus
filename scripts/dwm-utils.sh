@@ -1,23 +1,110 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────
 # dwm-utils.sh — Shared utility library for dwm-titus
 # Source this file from other scripts:
 #   source "$(dirname "$0")/dwm-utils.sh"
 # ─────────────────────────────────────────────────────────
 
-# ── Package Manager ─────────────────────────────────────
-# Prefer AUR helpers for access to AUR packages
-if command -v paru &>/dev/null; then
-    PKG_CMD="paru -S --needed --noconfirm"
-elif command -v yay &>/dev/null; then
-    PKG_CMD="yay -S --needed --noconfirm"
-else
-    PKG_CMD="sudo pacman -S --needed --noconfirm"
+# ── Distribution and package manager ────────────────────
+DISTRO_ID="unknown"
+DISTRO_ID_LIKE=""
+DISTRO_NAME="Unknown Linux"
+DISTRO_FAMILY="unknown"
+
+if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    DISTRO_ID="${ID:-unknown}"
+    DISTRO_ID_LIKE="${ID_LIKE:-}"
+    DISTRO_NAME="${PRETTY_NAME:-${NAME:-Unknown Linux}}"
 fi
 
+case " ${DISTRO_ID} ${DISTRO_ID_LIKE} " in
+    *" arch "*)
+        DISTRO_FAMILY="arch"
+        ;;
+    *" fedora "* | *" rhel "* | *" centos "*)
+        DISTRO_FAMILY="rhel"
+        ;;
+    *" debian "* | *" ubuntu "*)
+        DISTRO_FAMILY="debian"
+        ;;
+esac
+
+case "$DISTRO_FAMILY" in
+    arch)
+        if command -v paru &>/dev/null; then
+            PKG_CMD="paru -S --needed --noconfirm"
+        elif command -v yay &>/dev/null; then
+            PKG_CMD="yay -S --needed --noconfirm"
+        else
+            PKG_CMD="sudo pacman -S --needed --noconfirm"
+        fi
+        ;;
+    rhel)
+        PKG_CMD="sudo dnf install -y"
+        ;;
+    debian)
+        PKG_CMD="sudo apt-get install -y"
+        ;;
+    *)
+        PKG_CMD="unavailable"
+        ;;
+esac
+export PKG_CMD
+
 install_packages() {
-    # shellcheck disable=SC2086
-    $PKG_CMD "$@" >/dev/null
+    case "$DISTRO_FAMILY" in
+        arch)
+            if command -v paru &>/dev/null; then
+                paru -S --needed --noconfirm "$@"
+            elif command -v yay &>/dev/null; then
+                yay -S --needed --noconfirm "$@"
+            else
+                sudo pacman -S --needed --noconfirm "$@"
+            fi
+            ;;
+        rhel)
+            sudo dnf install -y "$@"
+            ;;
+        debian)
+            sudo apt-get install -y "$@"
+            ;;
+        *)
+            printf 'Unsupported distribution: %s\n' "$DISTRO_NAME" >&2
+            return 1
+            ;;
+    esac
+}
+
+package_available() {
+    case "$DISTRO_FAMILY" in
+        arch)
+            pacman -Si "$1" &>/dev/null
+            ;;
+        rhel)
+            dnf -q repoquery --available --qf '%{name}' "$1" 2>/dev/null |
+                command grep -Fxq "$1"
+            ;;
+        debian)
+            apt-cache show "$1" &>/dev/null
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+install_optional_package() {
+    local package=$1
+
+    if package_available "$package"; then
+        install_packages "$package"
+        return
+    fi
+
+    printf 'Optional package is unavailable in enabled repositories: %s\n' "$package" >&2
+    return 1
 }
 
 # ── Hardware Detection ──────────────────────────────────

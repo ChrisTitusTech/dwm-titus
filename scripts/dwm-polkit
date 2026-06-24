@@ -6,6 +6,7 @@
 
 for agent in \
     /usr/lib/mate-polkit/polkit-mate-authentication-agent-1 \
+    /usr/libexec/polkit-mate-authentication-agent-1 \
     /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
     /usr/libexec/polkit-gnome-authentication-agent-1 \
     /usr/lib/polkit-kde-authentication-agent-1 \
