@@ -7,6 +7,20 @@
 #include <string.h>
 #include <ctype.h>
 
+static void
+copystr(char *dst, size_t dstsz, const char *src)
+{
+	size_t len;
+
+	if (dstsz == 0)
+		return;
+	len = strlen(src);
+	if (len >= dstsz)
+		len = dstsz - 1;
+	memcpy(dst, src, len);
+	dst[len] = '\0';
+}
+
 static char *
 strtrim(char *s)
 {
@@ -253,11 +267,9 @@ toml_parse(const char *path, TomlDoc *doc)
 		/* ── standard scalar / array value ── */
 		if (doc->n >= TOML_MAX_ENTRIES) continue;
 		TomlEntry *ent = &doc->entries[doc->n];
-		strncpy(ent->section, cur_section, TOML_MAX_STR - 1);
-		ent->section[TOML_MAX_STR - 1] = '\0';
+		copystr(ent->section, sizeof(ent->section), cur_section);
 		ent->table_idx = cur_tidx;
-		strncpy(ent->key, key, TOML_MAX_STR - 1);
-		ent->key[TOML_MAX_STR - 1] = '\0';
+		copystr(ent->key, sizeof(ent->key), key);
 
 		if (*v == '"') {
 			ent->val.type = TOML_STRING;
