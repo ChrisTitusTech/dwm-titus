@@ -31,6 +31,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
 	scripts/dwm-screenshot \
+	scripts/dwm-terminal \
 	scripts/dwm-utils.sh \
 	scripts/nvidia-gpu \
 	scripts/nvidia-suspend-test.sh \
@@ -260,7 +261,7 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/*.sh tests/*.sh debug/*.sh \
+	shellcheck install.sh install-arm.sh scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
 		config/polybar/*.sh config/polybar/scripts/*.sh \
 		config/polybar/scripts/weather/*.sh config/rofi/*.sh
 
@@ -272,6 +273,9 @@ check-session-guards:
 
 check-build-config:
 	tests/test-configure-build.sh
+
+check-terminal:
+	tests/test-dwm-terminal.sh
 
 check-install: all
 	@set -eu; \
@@ -391,6 +395,7 @@ check:
 	$(MAKE) check-shell
 	$(MAKE) check-format
 	$(MAKE) check-build-config
+	$(MAKE) check-terminal
 	$(MAKE) check-session-guards
 	$(MAKE) check-install
 	$(MAKE) check-install-manifest
@@ -399,5 +404,5 @@ check:
 
 .PHONY: all check check-build-config check-build-deps check-format check-install \
 	check-install-manifest check-session-guards check-shell \
-	check-vicinae-install clean install install-system install-user \
+	check-terminal check-vicinae-install clean install install-system install-user \
 	install-cursors install-vicinae native release release-check uninstall

@@ -40,8 +40,10 @@ fc-cache -fv
 
 ## Terminal Won't Open (`Super`+`X`)
 
-- Install a terminal: `sudo pacman -S ghostty`
-- Or change the terminal in `config/hotkeys.toml`:
+- Run `dwm-terminal` from an existing shell to see the exact fallback message
+- Install a supported terminal: `ghostty`, `alacritty`, `kitty`, `st`,
+  `warp-terminal`, or `xterm`
+- Or set a fixed terminal in `config/hotkeys.toml`:
   ```toml
   [vars]
   terminal = "alacritty"

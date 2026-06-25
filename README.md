@@ -206,8 +206,9 @@ Key things to customize in `config.h`:
 - Install icon fonts: `cp -r polybar/fonts/* ~/.local/share/fonts/ && fc-cache -fv`
 
 **Terminal doesn't open (SUPER+X):**
-- Install a terminal emulator (ghostty, alacritty, kitty, or st)
-- Or edit `config.h` → `termcmd[]` to use your preferred terminal
+- Install a terminal emulator (`ghostty`, `alacritty`, `kitty`, `st`,
+  `warp-terminal`, or `xterm`)
+- Or set `DWM_TERMINAL` / edit `hotkeys.toml` to use your preferred terminal
 
 **Multi-monitor issues:**
 - Polybar auto-detects monitors via `xrandr`

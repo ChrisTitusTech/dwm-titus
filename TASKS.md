@@ -75,6 +75,26 @@ This file tracks the next reviewable work. Product requirements live in
 - [ ] Add Debian, Arch, and Fedora/RHEL container smoke tests.
 - [ ] Replace remaining Arch-only general documentation.
 
+## Current Phase: Minimal Feature-Complete Desktop
+
+- [x] Select a usable installed terminal at runtime with an actionable fallback
+  when none is available.
+  - Scope: add a small runtime terminal launcher and make the default hotkey use
+    it without changing user-owned `hotkeys.toml` files.
+  - Acceptance: `Super+X` resolves the first installed supported terminal, and
+    the launcher exits with a clear remediation message when none is available.
+  - Validation: `make check-terminal`.
+- [ ] Add an `xdg-settings` based workflow for browser and default application
+  selection.
+- [ ] Add a small display-profile CLI using `xrandr`; profiles remain optional
+  user configuration under the XDG config directory.
+- [ ] Make Polybar modules capability-driven so missing battery, audio,
+  network, temperature, or tray tools hide cleanly.
+- [ ] Provide a single diagnostics command that reports required failures and
+  optional degraded features separately.
+- [ ] Document a minimal session profile that runs only dwm, a terminal, and
+  required X11/session services.
+
 ## Validation Policy
 
 A task is complete only when its acceptance command passes or the exact skipped

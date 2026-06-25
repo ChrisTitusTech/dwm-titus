@@ -120,7 +120,7 @@ Edit `config/hotkeys.toml` — changes take effect on save, no recompile require
 
 ```toml
 [vars]
-terminal = "ghostty"
+terminal = "dwm-terminal"
 
 keys = [
   { mod="SUPER SHIFT", key="f", desc="Firefox", func="spawn", exec=["firefox"] },

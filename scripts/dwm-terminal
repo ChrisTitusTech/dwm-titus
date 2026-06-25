@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEFAULT_TERMINALS=(
+	ghostty
+	alacritty
+	kitty
+	st
+	warp-terminal
+	xterm
+)
+
+terminals=()
+
+if [[ ${DWM_TERMINAL:-} != "" ]]; then
+	terminals+=("$DWM_TERMINAL")
+fi
+
+terminals+=("${DEFAULT_TERMINALS[@]}")
+
+for terminal in "${terminals[@]}"; do
+	if command -v "$terminal" >/dev/null 2>&1; then
+		exec "$terminal" "$@"
+	fi
+done
+
+printf '%s\n' \
+	'dwm-terminal: no supported terminal emulator found.' \
+	'' \
+	'Install one of: ghostty, alacritty, kitty, st, warp-terminal, xterm.' \
+	'Or set DWM_TERMINAL to an installed terminal command.' >&2
+
+exit 127

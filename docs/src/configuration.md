@@ -50,7 +50,7 @@ Add or change bindings without recompiling. Save the file and they apply instant
 
 ```toml
 [vars]
-terminal = "ghostty"
+terminal = "dwm-terminal"
 webapp   = "webapp-launch"
 
 keys = [
@@ -58,6 +58,10 @@ keys = [
   { mod="SUPER SHIFT", key="f",  desc="Firefox",     func="spawn", exec=["firefox"] },
 ]
 ```
+
+`dwm-terminal` selects the first installed supported terminal at launch time.
+Set `DWM_TERMINAL` or replace `terminal` with a specific command if you want a
+fixed terminal.
 
 ### Modifier Syntax
 

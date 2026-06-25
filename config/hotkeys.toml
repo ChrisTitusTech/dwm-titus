@@ -50,7 +50,7 @@
 # Define shortcuts here, then use $name in any exec or cmd value below.
 
 [vars]
-terminal = "ghostty"
+terminal = "dwm-terminal"
 webapp   = "webapp-launch"
 
 # ── KEYBINDINGS ───────────────────────────────────────────────────────────────

@@ -95,7 +95,7 @@ Exit criteria:
 Goal: complete the product requirements without moving desktop policy into
 `dwm.c`.
 
-- [ ] Select a usable installed terminal at runtime with an actionable fallback
+- [x] Select a usable installed terminal at runtime with an actionable fallback
   when none is available.
 - [ ] Add an `xdg-settings` based workflow for browser and default application
   selection.
