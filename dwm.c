@@ -314,6 +314,12 @@ static void load_rules_toml(const char *user_path, const char *default_path);
 static void notify_bad_config(const char *filename, const char *reason);
 static int pathjoin(char *dst, size_t dstsz, const char *dir, const char *name);
 static void reload_config(void);
+static int runtime_config_fd(void);
+static void runtime_config_mark_reload_pending(void);
+static void runtime_config_poll_inotify(void);
+static void runtime_config_reload(void);
+static void runtime_config_reload_if_pending(void);
+static void runtime_config_setup(void);
 static void setup_inotify(void);
 static void *toml_alloc(size_t sz);
 
@@ -2241,6 +2247,7 @@ run(void)
 {
 	XEvent ev;
 	int x11_fd = ConnectionNumber(dpy);
+	int config_fd;
 	fd_set rfds;
 
 	XSync(dpy, False);
@@ -2253,18 +2260,16 @@ run(void)
 		}
 		if (!running) break;
 
-		/* Handle SIGUSR1-triggered reload */
-		if (sig_reload_pending) {
-			sig_reload_pending = 0;
-			reload_config();
-		}
+		runtime_config_reload_if_pending();
 
 		FD_ZERO(&rfds);
 		FD_SET(x11_fd, &rfds);
 		int maxfd = x11_fd;
-		if (inotify_fd >= 0) {
-			FD_SET(inotify_fd, &rfds);
-			if (inotify_fd > maxfd) maxfd = inotify_fd;
+		config_fd = runtime_config_fd();
+		if (config_fd >= 0) {
+			FD_SET(config_fd, &rfds);
+			if (config_fd > maxfd)
+				maxfd = config_fd;
 		}
 
 		if (select(maxfd + 1, &rfds, NULL, NULL, NULL) < 0) {
@@ -2272,25 +2277,8 @@ run(void)
 			break;
 		}
 
-		/* Handle inotify file-change events */
-		if (inotify_fd >= 0 && FD_ISSET(inotify_fd, &rfds)) {
-			char ibuf[4096];
-			ssize_t nr = read(inotify_fd, ibuf, sizeof(ibuf));
-			if (nr > 0) {
-				int need_reload = 0;
-				char *ptr = ibuf;
-				while (ptr < ibuf + nr) {
-					struct inotify_event *ie = (struct inotify_event *)ptr;
-					if (ie->len > 0 &&
-					    (strcmp(ie->name, "hotkeys.toml")      == 0 ||
-					     strcmp(ie->name, "themes.toml")       == 0 ||
-					     strcmp(ie->name, "window-rules.toml") == 0))
-						need_reload = 1;
-					ptr += sizeof(struct inotify_event) + ie->len;
-				}
-				if (need_reload) reload_config();
-			}
-		}
+		if (config_fd >= 0 && FD_ISSET(config_fd, &rfds))
+			runtime_config_poll_inotify();
 	}
 }
 
@@ -2695,7 +2683,7 @@ static void
 sigusr1_handler(int sig)
 {
 	(void)sig;
-	sig_reload_pending = 1;
+	runtime_config_mark_reload_pending();
 }
 
 static void *
@@ -3239,6 +3227,63 @@ reload_config(void)
 	}
 }
 
+static int
+runtime_config_fd(void)
+{
+	return inotify_fd;
+}
+
+static void
+runtime_config_mark_reload_pending(void)
+{
+	sig_reload_pending = 1;
+}
+
+static void
+runtime_config_poll_inotify(void)
+{
+	char ibuf[4096];
+	ssize_t nr = read(inotify_fd, ibuf, sizeof(ibuf));
+	int need_reload = 0;
+	char *ptr = ibuf;
+
+	if (nr <= 0)
+		return;
+
+	while (ptr < ibuf + nr) {
+		struct inotify_event *ie = (struct inotify_event *)ptr;
+		if (ie->len > 0 &&
+		    (strcmp(ie->name, "hotkeys.toml")      == 0 ||
+		     strcmp(ie->name, "themes.toml")       == 0 ||
+		     strcmp(ie->name, "window-rules.toml") == 0))
+			need_reload = 1;
+		ptr += sizeof(struct inotify_event) + ie->len;
+	}
+	if (need_reload)
+		runtime_config_reload();
+}
+
+static void
+runtime_config_reload(void)
+{
+	reload_config();
+}
+
+static void
+runtime_config_reload_if_pending(void)
+{
+	if (!sig_reload_pending)
+		return;
+	sig_reload_pending = 0;
+	runtime_config_reload();
+}
+
+static void
+runtime_config_setup(void)
+{
+	setup_inotify();
+}
+
 static void
 setup_inotify(void)
 {
@@ -3392,8 +3437,8 @@ setup(void)
 	XSelectInput(dpy, root, wa.event_mask);
 	/* Install SIGUSR1 handler and load TOML configs before grabbing keys */
 	signal(SIGUSR1, sigusr1_handler);
-	setup_inotify();
-	reload_config();
+	runtime_config_setup();
+	runtime_config_reload();
 	grabkeys();
 	focus(NULL);
 	spawnbar();

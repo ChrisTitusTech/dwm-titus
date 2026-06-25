@@ -256,7 +256,7 @@ complete from compile-only validation.
   - Acceptance: related patched subsystems are easier to locate and no runtime
     behavior changes.
   - Validation: `make check`.
-- [ ] Extract runtime TOML loading/reload state behind a narrow interface.
+- [x] Extract runtime TOML loading/reload state behind a narrow interface.
   - Scope: isolate runtime TOML state transitions while preserving
     transactional reload behavior.
   - Acceptance: invalid reloads keep the last valid state and existing hotkey,
