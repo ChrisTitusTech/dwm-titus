@@ -273,3 +273,10 @@ complete from compile-only validation.
     without broad unrelated rewrites.
   - Acceptance: touched paths check allocation and formatting boundaries.
   - Validation: `make check`.
+- [x] Keep layout and event-loop code in `dwm.c` unless extraction measurably
+  improves clarity without increasing coupling.
+  - Scope: preserve layout functions and the X event loop in `dwm.c`; the Phase
+    4 extraction work added internal interfaces without moving those ownership
+    boundaries.
+  - Acceptance: layout and event-loop ownership remains local to `dwm.c`.
+  - Validation: `make check`, code review of Phase 4 diff.

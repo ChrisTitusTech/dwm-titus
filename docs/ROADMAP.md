@@ -157,7 +157,7 @@ Goal: reduce risk in the patched C core after behavior is covered by tests.
 - [x] Extract runtime TOML loading/reload state behind a narrow interface.
 - [x] Extract EWMH property updates behind a narrow interface.
 - [x] Replace unchecked formatting and allocation edge cases in touched paths.
-- [ ] Keep layout and event-loop code in `dwm.c` unless extraction measurably
+- [x] Keep layout and event-loop code in `dwm.c` unless extraction measurably
   improves clarity without increasing coupling.
 
 Exit criteria:
