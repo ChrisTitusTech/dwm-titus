@@ -99,7 +99,7 @@ EOF
 
 chmod +x "$work/bin/"*
 
-for name in feh picom dunst; do
+for name in feh picom dunst light-locker; do
 	make_mock_command "$name"
 done
 
@@ -148,7 +148,7 @@ EOF
 		wait_for_marker "$state/dunst.running"
 	done
 
-	for name in feh picom dunst; do
+	for name in feh picom dunst light-locker; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
 	test "$(cat "$state/polybar-launch.count")" -eq 2

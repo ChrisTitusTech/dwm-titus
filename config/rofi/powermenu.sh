@@ -50,7 +50,7 @@ nerd_font_icons[shutdown]=$'\Uf0425'
 nerd_font_icons[cancel]=$'\Uf0156'
 
 declare -A actions
-actions[lockscreen]="loginctl lock-session ${XDG_SESSION_ID-}"
+actions[lockscreen]="dwm-lock"
 #actions[switchuser]="???"
 actions[logout]="loginctl terminate-session ${XDG_SESSION_ID-}"
 actions[suspend]="systemctl suspend"

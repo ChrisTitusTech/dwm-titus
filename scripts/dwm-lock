@@ -1,0 +1,75 @@
+#!/bin/sh
+
+set -eu
+
+start_light_locker() {
+	command -v light-locker >/dev/null 2>&1 || return 0
+
+	if command -v pgrep >/dev/null 2>&1 &&
+		pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
+		return 0
+	fi
+
+	light-locker >/dev/null 2>&1 &
+	if command -v sleep >/dev/null 2>&1; then
+		sleep "${DWM_LOCK_START_DELAY:-0.2}"
+	fi
+}
+
+try_lock() {
+	"$@" >/dev/null 2>&1
+}
+
+if command -v light-locker-command >/dev/null 2>&1; then
+	start_light_locker
+	if try_lock light-locker-command --lock; then
+		exit 0
+	fi
+fi
+
+if command -v xdg-screensaver >/dev/null 2>&1 &&
+	try_lock xdg-screensaver lock; then
+	exit 0
+fi
+
+if command -v loginctl >/dev/null 2>&1; then
+	if [ -n "${XDG_SESSION_ID:-}" ]; then
+		if try_lock loginctl lock-session "$XDG_SESSION_ID"; then
+			exit 0
+		fi
+	elif try_lock loginctl lock-session; then
+		exit 0
+	fi
+fi
+
+if command -v mate-screensaver-command >/dev/null 2>&1 &&
+	try_lock mate-screensaver-command --lock; then
+	exit 0
+fi
+
+if command -v xfce4-screensaver-command >/dev/null 2>&1 &&
+	try_lock xfce4-screensaver-command --lock; then
+	exit 0
+fi
+
+if command -v cinnamon-screensaver-command >/dev/null 2>&1 &&
+	try_lock cinnamon-screensaver-command --lock; then
+	exit 0
+fi
+
+if command -v gnome-screensaver-command >/dev/null 2>&1 &&
+	try_lock gnome-screensaver-command --lock; then
+	exit 0
+fi
+
+for locker in i3lock slock xlock; do
+	if command -v "$locker" >/dev/null 2>&1 &&
+		try_lock "$locker"; then
+		exit 0
+	fi
+done
+
+printf '%s\n' \
+	'dwm-lock: no usable screen locker found.' \
+	'Install light-locker or another supported locker.' >&2
+exit 1

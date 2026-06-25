@@ -24,7 +24,7 @@ dwm_packages() {
 		printf '%s\n' \
 			rofi picom dunst feh flameshot dex mate-polkit alsa-utils \
 			brightnessctl pipewire pipewire-pulse wireplumber pavucontrol \
-			libnotify
+			libnotify light-locker
 		;;
 	arch:desktop-optional)
 		printf '%s\n' \
@@ -83,7 +83,7 @@ dwm_packages() {
 		printf '%s\n' \
 			rofi picom dunst feh flameshot dex-autostart mate-polkit \
 			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \
-			pipewire-pulseaudio wireplumber libnotify xorg-x11-drv-libinput
+			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput
 		;;
 	rhel:desktop-optional)
 		printf '%s\n' \
@@ -128,7 +128,7 @@ dwm_packages() {
 		printf '%s\n' \
 			rofi picom dunst feh flameshot dex mate-polkit alsa-utils \
 			brightnessctl pulseaudio-utils pipewire pipewire-pulse \
-			wireplumber pavucontrol libnotify-bin
+			wireplumber pavucontrol libnotify-bin light-locker
 		;;
 	debian:desktop-optional)
 		printf '%s\n' \
