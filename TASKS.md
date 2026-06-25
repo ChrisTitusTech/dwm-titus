@@ -319,6 +319,14 @@ complete from compile-only validation.
     `make check-install-preservation` passed. `make check-container-smoke`
     passed with `debian:stable-slim`, `archlinux:latest`, and
     `fedora:latest` through Podman.
+  - Arch host 2026-06-25: Arch Linux rolling, x86_64, Arch family detection,
+    installed `/usr/local/bin/dwm`, and `/usr/share/xsessions/dwm.desktop`
+    with `Exec=/usr/local/bin/dwm` verified. `make clean`, `make`,
+    `make check-install`, `./install.sh --dry-run --non-interactive --profile core`,
+    `scripts/check-deps.sh`, `dwm-diagnostics`,
+    `make check-install-preservation`, `make check-shell`, and
+    `make check-format` passed. Debian/Ubuntu, Rocky/RHEL, and ARM real or VM
+    installer runs remain outstanding.
 - [ ] Run real or nested X11 validation for single- and multi-monitor behavior.
   - Scope: cover display-manager and `startx` startup, terminal launch, focus,
     tagging, floating, fullscreen, EWMH state, TOML reload, optional-component
@@ -343,6 +351,14 @@ complete from compile-only validation.
     reported current desktop 0, nine desktops, a non-empty client list, and an
     active window. `make check-xvfb-runtime`, `make check-session-guards`, and
     `make check-monitor-tags` passed.
+  - Arch host 2026-06-25: current installed `dwm` session verified as
+    `DESKTOP_SESSION=dwm`, `XDG_SESSION_TYPE=x11`, `DISPLAY=:0`; `xrandr`
+    reported two connected monitors (`HDMI-0`, 1920x1080, and primary `DP-0`,
+    2560x1440) with `DP-1` through `DP-5` disconnected. EWMH root properties
+    reported current desktop 0, nine desktops, a non-empty client list, and an
+    active window. `make check-xvfb-runtime`, `make check-session-guards`, and
+    `make check-monitor-tags` passed. Manual cross-monitor handoff remains
+    outstanding unless exercised interactively.
 - [ ] Validate x86_64 and one supported ARM system.
   - Scope: run build, staged install, dependency detection, and installer
     profile checks on x86_64 and one ARM Linux system with the required X11
@@ -358,6 +374,10 @@ complete from compile-only validation.
     the installed Fedora system. ARM validation remains outstanding.
   - Rechecked 2026-06-25 on Fedora Linux 44 (Server Edition), x86_64, with the
     RHEL-family core profile: `make clean`, `make`, `make check-install`, and
+    `./install.sh --dry-run --non-interactive --profile core` passed. ARM
+    validation remains outstanding.
+  - Arch host 2026-06-25: Arch Linux rolling, x86_64, with the Arch-family core
+    profile: `make clean`, `make`, `make check-install`, and
     `./install.sh --dry-run --non-interactive --profile core` passed. ARM
     validation remains outstanding.
 - [ ] Publish known limitations, tested versions, upgrade notes, and checksums.
