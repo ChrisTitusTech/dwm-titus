@@ -66,7 +66,7 @@ This file tracks the next reviewable work. Product requirements live in
     session started dwm, loaded runtime configuration, exposed EWMH desktops,
     tolerated missing optional helpers, and exited cleanly.
 
-## Current Phase: Installer and Distribution Parity
+## Completed Phase: Installer and Distribution Parity
 
 - [x] Create one capability-to-package map for Debian, Arch, and RHEL families.
   - Scope: keep package capability groups in `scripts/dwm-packages.sh` and use
@@ -133,7 +133,7 @@ This file tracks the next reviewable work. Product requirements live in
   - Validation: source grep for `pacman`/Arch-only install snippets, `bash -n
     scripts/power-management.sh`, `make check-shell`, `make check-format`.
 
-## Current Phase: Runtime Correctness
+## Completed Phase: Runtime Correctness
 
 - [x] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
   fullscreen, EWMH state, and TOML reload.
@@ -241,7 +241,7 @@ A task is complete only when its acceptance command passes or the exact skipped
 environment is recorded. Runtime and multi-monitor tasks cannot be marked
 complete from compile-only validation.
 
-## Current Phase: Core Maintainability
+## Completed Phase: Core Maintainability
 
 - [x] Document patch ownership and invariants for EWMH, pertag, swallowing,
   systray, fullscreen, icons, and runtime TOML.
@@ -280,3 +280,78 @@ complete from compile-only validation.
     boundaries.
   - Acceptance: layout and event-loop ownership remains local to `dwm.c`.
   - Validation: `make check`, code review of Phase 4 diff.
+
+### Phase 4 completion check
+
+- Result: Phase 4 checklist and roadmap items are complete.
+- Validation: `make check`, `git diff --check`.
+- Notes: No blocking work was added to the X event loop, and the default
+  runtime dependency footprint remains unchanged.
+
+## Current Phase: Release Qualification
+
+- [ ] Run clean installer validation on current Debian/Ubuntu, Arch, and
+  Fedora/Rocky representatives.
+  - Scope: validate dependency resolution, dry-run summary, clean build,
+    staged install, uninstall symmetry, and user-file preservation on each
+    representative.
+  - Acceptance: each tested system records distribution ID, version,
+    architecture, package profile, validation commands, and any skipped runtime
+    coverage.
+  - Validation: `make check-container-smoke`, plus real or VM installer runs
+    where available.
+  - Started 2026-06-25: `make check-container-smoke` passed with
+    `debian:stable-slim`, `archlinux:latest`, and `fedora:latest` through
+    Podman. Real or VM installer runs are still required before this task is
+    complete.
+  - Fedora host 2026-06-25: Fedora Linux 44 (Server Edition), x86_64, RHEL
+    family detection, installed `/usr/local/bin/dwm`, and
+    `/usr/share/xsessions/dwm.desktop` with `Exec=/usr/local/bin/dwm` verified.
+    `make clean`, `make`, `make check-install`,
+    `./install.sh --dry-run --non-interactive --profile core`,
+    `scripts/check-deps.sh`, `dwm-diagnostics`, and
+    `make check-install-preservation` passed. Debian/Ubuntu, Arch, and
+    Rocky/RHEL real or VM installer runs remain outstanding.
+- [ ] Run real or nested X11 validation for single- and multi-monitor behavior.
+  - Scope: cover display-manager and `startx` startup, terminal launch, focus,
+    tagging, floating, fullscreen, EWMH state, TOML reload, optional-component
+    failure tolerance, and real multi-monitor handoff where available.
+  - Acceptance: single-monitor and multi-monitor results are recorded with the
+    X server type and monitor topology; untested multi-monitor environments are
+    called out explicitly.
+  - Validation: `make check-xvfb-runtime`, `make check-session-guards`,
+    `make check-monitor-tags`, and a real or nested multi-monitor session.
+  - Started 2026-06-25: `make check-xvfb-runtime`,
+    `make check-session-guards`, and `make check-monitor-tags` passed. Real
+    multi-monitor validation remains outstanding.
+  - Fedora host 2026-06-25: current installed `dwm` session verified as
+    `DESKTOP_SESSION=dwm`, `XDG_SESSION_TYPE=x11`, `DISPLAY=:0`; `xrandr`
+    reported one monitor (`eDP-1`, 2560x1600); EWMH root properties reported
+    current desktop, nine desktops, client list, and active window. Real
+    multi-monitor behavior remains outstanding.
+- [ ] Validate x86_64 and one supported ARM system.
+  - Scope: run build, staged install, dependency detection, and installer
+    profile checks on x86_64 and one ARM Linux system with the required X11
+    libraries.
+  - Acceptance: architecture, distribution, package manager, and skipped tests
+    are recorded.
+  - Validation: `make clean`, `make`, `make check-install`,
+    `./install.sh --dry-run --non-interactive --profile core`.
+  - Started 2026-06-25: host dry-run validation passed on Fedora Linux 44
+    (Server Edition), x86_64, with the RHEL-family core profile. ARM validation
+    remains outstanding.
+  - Fedora host 2026-06-25: x86_64 clean build and staged install passed on
+    the installed Fedora system. ARM validation remains outstanding.
+- [ ] Publish known limitations, tested versions, upgrade notes, and checksums.
+  - Scope: prepare release notes from recorded Phase 5 validation and generate
+    the release artifact checksum.
+  - Acceptance: release notes include tested distribution versions,
+    architectures, X11 environments, known limitations, upgrade notes, and
+    SHA-256 checksum.
+  - Validation: `make release-check`, `sha256sum release/dwm-titus-*.tar.gz`.
+- [ ] Tag a release only after the acceptance criteria in `SPEC.md` are met.
+  - Scope: confirm all required static, distribution, and runtime validation is
+    either passed or explicitly marked untested before tagging.
+  - Acceptance: no release tag is created until the `SPEC.md` release
+    acceptance criteria and `docs/RELEASING.md` checklist are satisfied.
+  - Validation: final release checklist review.
