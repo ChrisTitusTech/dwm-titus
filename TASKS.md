@@ -84,8 +84,14 @@ This file tracks the next reviewable work. Product requirements live in
   - Acceptance: `Super+X` resolves the first installed supported terminal, and
     the launcher exits with a clear remediation message when none is available.
   - Validation: `make check-terminal`.
-- [ ] Add an `xdg-settings` based workflow for browser and default application
+- [x] Add an `xdg-settings` based workflow for browser and default application
   selection.
+  - Scope: add `dwm-default-apps` for browser discovery, default browser
+    selection through `xdg-settings`, MIME defaults through `xdg-mime`, and
+    browser launching with an actionable missing-default message.
+  - Acceptance: users can list browser desktop files, set the default browser,
+    set a MIME default, and use the default browser hotkey through the helper.
+  - Validation: `make check-default-apps`.
 - [ ] Add a small display-profile CLI using `xrandr`; profiles remain optional
   user configuration under the XDG config directory.
 - [ ] Make Polybar modules capability-driven so missing battery, audio,

@@ -128,3 +128,6 @@ keys = [
 ```
 
 See the comments in `hotkeys.toml` for a full list of `func` values and modifier syntax.
+
+The browser binding uses `dwm-default-apps open`. Configure it with
+`dwm-default-apps browsers` and `dwm-default-apps set-browser <desktop-id>`.

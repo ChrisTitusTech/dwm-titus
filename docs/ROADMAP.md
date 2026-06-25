@@ -97,7 +97,7 @@ Goal: complete the product requirements without moving desktop policy into
 
 - [x] Select a usable installed terminal at runtime with an actionable fallback
   when none is available.
-- [ ] Add an `xdg-settings` based workflow for browser and default application
+- [x] Add an `xdg-settings` based workflow for browser and default application
   selection.
 - [ ] Add a small display-profile CLI using `xrandr`; profiles remain optional
   user configuration under the XDG config directory.

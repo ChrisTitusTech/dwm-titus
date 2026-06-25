@@ -63,6 +63,11 @@ keys = [
 Set `DWM_TERMINAL` or replace `terminal` with a specific command if you want a
 fixed terminal.
 
+Default applications use freedesktop settings. Run `dwm-default-apps browsers`
+to list browser desktop files, `dwm-default-apps set-browser firefox.desktop`
+to set the default browser, or `dwm-default-apps set-mime <mime> <desktop-id>`
+for other file types.
+
 ### Modifier Syntax
 
 Use space-separated modifiers: `"SUPER"`, `"SUPER SHIFT"`, `"SUPER CTRL"`, `"SUPER CTRL SHIFT"`.

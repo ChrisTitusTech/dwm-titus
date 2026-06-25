@@ -49,6 +49,14 @@ fc-cache -fv
   terminal = "alacritty"
   ```
 
+## Browser Won't Open (`Super`+`B`)
+
+- Run `dwm-default-apps status` to inspect the current default browser
+- Run `dwm-default-apps browsers` to list installed browser desktop files
+- Set one with `dwm-default-apps set-browser firefox.desktop`
+- Ensure `xdg-utils` is installed so `xdg-settings`, `xdg-mime`, and `xdg-open`
+  are available
+
 ---
 
 ## Themes Not Applying

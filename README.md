@@ -209,6 +209,8 @@ Key things to customize in `config.h`:
 - Install a terminal emulator (`ghostty`, `alacritty`, `kitty`, `st`,
   `warp-terminal`, or `xterm`)
 - Or set `DWM_TERMINAL` / edit `hotkeys.toml` to use your preferred terminal
+- Browser defaults: run `dwm-default-apps browsers`, then
+  `dwm-default-apps set-browser <desktop-id>`
 
 **Multi-monitor issues:**
 - Polybar auto-detects monitors via `xrandr`
