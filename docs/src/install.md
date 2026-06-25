@@ -11,7 +11,7 @@ The easiest way is via [Linutil](https://christitus.com/linux):
 curl -fsSL https://christitus.com/linux | sh
 ```
 
-In the TUI, press `v` to multi-select, then select **dwm**, **rofi**, **bash prompt**, and **ghostty**. Press `Enter` to install.
+In the TUI, press `v` to multi-select, then select **dwm**, **rofi**, **bash prompt**, and **alacritty**. Press `Enter` to install.
 
 ![linutil-appinstall](images/linutil-applications.png)
 

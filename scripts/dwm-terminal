@@ -2,8 +2,8 @@
 set -euo pipefail
 
 DEFAULT_TERMINALS=(
-	ghostty
 	alacritty
+	ghostty
 	kitty
 	st
 	warp-terminal
@@ -38,7 +38,7 @@ done
 printf '%s\n' \
 	'dwm-terminal: no supported terminal emulator found.' \
 	'' \
-	'Install one of: ghostty, alacritty, kitty, st, warp-terminal, xterm.' \
+	'Install one of: alacritty, ghostty, kitty, st, warp-terminal, xterm.' \
 	'Or set DWM_TERMINAL to an installed terminal command.' >&2
 
 exit 127

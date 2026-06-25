@@ -48,10 +48,10 @@ dwm_packages() {
 		printf '%s\n' lightdm lightdm-slick-greeter
 		;;
 	arch:terminal)
-		printf '%s\n' ghostty kitty alacritty
+		printf '%s\n' alacritty ghostty kitty
 		;;
 	arch:terminal-arm)
-		printf '%s\n' kitty alacritty
+		printf '%s\n' alacritty kitty
 		;;
 	arch:arm-video)
 		printf '%s\n' xf86-video-fbdev

@@ -39,7 +39,7 @@ curl -fsSL https://christitus.com/linux | sh
 
 <img width="1839" height="1000" alt="image" src="https://github.com/user-attachments/assets/314f9a40-4ccb-4c34-b3d2-dcfee63c278b" />
 
-Select `dwm`, `rofi`, `bash prompt`, and `ghostty` using the `v` key, then press `Enter`.
+Select `dwm`, `rofi`, `bash prompt`, and `alacritty` using the `v` key, then press `Enter`.
 
 ### Manual Install
 
@@ -198,7 +198,7 @@ Key things to customize in `config.h`:
 - Install icon fonts: `cp -r polybar/fonts/* ~/.local/share/fonts/ && fc-cache -fv`
 
 **Terminal doesn't open (SUPER+X):**
-- Install a terminal emulator (`ghostty`, `alacritty`, `kitty`, `st`,
+- Install a terminal emulator (`alacritty`, `ghostty`, `kitty`, `st`,
   `warp-terminal`, or `xterm`)
 - Or set `DWM_TERMINAL` / edit `hotkeys.toml` to use your preferred terminal
 - Browser defaults: run `dwm-default-apps browsers`, then

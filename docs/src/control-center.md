@@ -17,7 +17,7 @@ Runs a full dependency check and reports:
 - Build tools (`cc`, `make`) and required libraries
 - Xorg / Xlibre installation
 - Runtime programs: rofi, picom, dunst, feh, flameshot, polybar
-- Terminal emulators (ghostty, alacritty, kitty, st)
+- Terminal emulators (alacritty, ghostty, kitty, st)
 - Fonts: MesloLGS Nerd, Noto Color Emoji
 - Running services: picom, dunst, polybar, NetworkManager
 - Config paths: `.xinitrc`, polybar dir, rofi dir, wallpaper folder
@@ -59,4 +59,4 @@ Displays all bindings from `hotkeys.toml` in a searchable rofi list. Same as pre
 dwm-controlcenter
 ```
 
-The script auto-detects your terminal emulator (ghostty → alacritty → kitty → st → xterm) and uses the active rofi theme from `~/.config/rofi/themes/controlcenter.rasi`.
+The script auto-detects your terminal emulator (alacritty -> ghostty -> kitty -> st -> xterm) and uses the active rofi theme from `~/.config/rofi/themes/controlcenter.rasi`.

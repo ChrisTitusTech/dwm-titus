@@ -27,7 +27,7 @@ PICOM_BACKEND="${PICOM_BACKEND:-xrender}"
 
 # ── Terminal detection ───────────────────────────────────
 detect_terminal() {
-    for t in ghostty alacritty kitty st xterm; do
+    for t in alacritty ghostty kitty st xterm; do
         if command -v "$t" &>/dev/null; then
             echo "$t"
             return
@@ -189,7 +189,7 @@ run_health_check() {
 
     # ── Terminal Emulators ───────────────────────────────
     local term_ok=0
-    for t in ghostty alacritty kitty st; do
+    for t in alacritty ghostty kitty st; do
         if command -v "$t" &>/dev/null; then
             passed_lines+=("✓  $t")
             pass=$((pass + 1)); term_ok=$((term_ok + 1))

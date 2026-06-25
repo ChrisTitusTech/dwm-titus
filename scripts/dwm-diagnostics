@@ -82,14 +82,14 @@ check_terminal() {
 		return
 	fi
 
-	for cmd in ghostty alacritty kitty st warp-terminal xterm; do
+	for cmd in alacritty ghostty kitty st warp-terminal xterm; do
 		if have_cmd "$cmd"; then
 			ok "terminal ($cmd)"
 			return
 		fi
 	done
 
-	required_missing "terminal (ghostty alacritty kitty st warp-terminal xterm)"
+	required_missing "terminal (alacritty ghostty kitty st warp-terminal xterm)"
 }
 
 check_path_optional() {

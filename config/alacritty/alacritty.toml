@@ -18,8 +18,8 @@ padding.x = 10
 padding.y = 10
 
 [window.dimensions]
-columns = 160
-lines = 80
+columns = 100
+lines = 30
 
 [cursor.style]
 shape= "Beam"
@@ -36,7 +36,7 @@ TERM = "xterm-256color"
 #glyph_offset = { x = 1, y = 0 }
 normal.family = "MesloLGS NF"
 normal.style = "Regular"
-size = 16.0
+size = 11.0
 
 [font.bold]
 family = "MesloLGS NF"

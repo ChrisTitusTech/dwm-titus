@@ -543,7 +543,7 @@ fi
 
 # ── Terminal emulator ────────────────────────────────────
 terminal=""
-for t in ghostty kitty alacritty; do command -v "$t" &>/dev/null && {
+for t in alacritty ghostty kitty; do command -v "$t" &>/dev/null && {
 	terminal="$t"
 	break
 }; done
