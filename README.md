@@ -213,6 +213,8 @@ Key things to customize in `config.h`:
   `dwm-default-apps set-browser <desktop-id>`
 - Display profiles: run `dwm-display-profile template` and save optional
   profiles under `~/.config/dwm-titus/display-profiles/`
+- Diagnostics: run `dwm-diagnostics` to separate required failures from
+  optional degraded desktop features
 
 **Multi-monitor issues:**
 - Polybar auto-detects monitors via `xrandr`

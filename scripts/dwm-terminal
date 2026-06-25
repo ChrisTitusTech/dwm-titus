@@ -10,6 +10,13 @@ DEFAULT_TERMINALS=(
 	xterm
 )
 
+if [[ ${1:-} == "--print-command" ]]; then
+	print_only=1
+	shift
+else
+	print_only=0
+fi
+
 terminals=()
 
 if [[ ${DWM_TERMINAL:-} != "" ]]; then
@@ -20,6 +27,10 @@ terminals+=("${DEFAULT_TERMINALS[@]}")
 
 for terminal in "${terminals[@]}"; do
 	if command -v "$terminal" >/dev/null 2>&1; then
+		if ((print_only)); then
+			printf '%s\n' "$terminal"
+			exit 0
+		fi
 		exec "$terminal" "$@"
 	fi
 done

@@ -28,6 +28,7 @@ INSTALL_COMMANDS = \
 	scripts/disable-powersaving \
 	scripts/dwm-controlcenter \
 	scripts/dwm-default-apps \
+	scripts/dwm-diagnostics \
 	scripts/dwm-display-profile \
 	scripts/dwm-keybinds \
 	scripts/dwm-polkit \
@@ -263,12 +264,12 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-display-profile scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
+	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
 		config/polybar/*.sh config/polybar/scripts/*.sh \
 		config/polybar/scripts/weather/*.sh config/rofi/*.sh
 
 check-format:
-	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-display-profile scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -284,6 +285,9 @@ check-default-apps:
 
 check-display-profile:
 	tests/test-dwm-display-profile.sh
+
+check-diagnostics:
+	tests/test-dwm-diagnostics.sh
 
 check-polybar-capabilities:
 	tests/test-polybar-capabilities.sh
@@ -407,6 +411,7 @@ check:
 	$(MAKE) check-format
 	$(MAKE) check-build-config
 	$(MAKE) check-default-apps
+	$(MAKE) check-diagnostics
 	$(MAKE) check-display-profile
 	$(MAKE) check-polybar-capabilities
 	$(MAKE) check-terminal
@@ -418,6 +423,7 @@ check:
 
 .PHONY: all check check-build-config check-build-deps check-default-apps \
 	check-display-profile check-format check-install \
-	check-install-manifest check-polybar-capabilities check-session-guards check-shell \
+	check-install-manifest check-polybar-capabilities check-session-guards \
+	check-shell check-diagnostics \
 	check-terminal check-vicinae-install clean install install-system install-user \
 	install-cursors install-vicinae native release release-check uninstall

@@ -103,7 +103,7 @@ Goal: complete the product requirements without moving desktop policy into
   user configuration under the XDG config directory.
 - [x] Make Polybar modules capability-driven so missing battery, audio,
   network, temperature, or tray tools hide cleanly.
-- [ ] Provide a single diagnostics command that reports required failures and
+- [x] Provide a single diagnostics command that reports required failures and
   optional degraded features separately.
 - [ ] Document a minimal session profile that runs only dwm, a terminal, and
   required X11/session services.

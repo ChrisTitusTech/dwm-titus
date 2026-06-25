@@ -107,8 +107,13 @@ This file tracks the next reviewable work. Product requirements live in
   - Acceptance: missing battery, audio, wireless, wired, temperature, or tray
     capability is omitted from the runtime module list before Polybar starts.
   - Validation: `make check-polybar-capabilities`.
-- [ ] Provide a single diagnostics command that reports required failures and
+- [x] Provide a single diagnostics command that reports required failures and
   optional degraded features separately.
+  - Scope: add `dwm-diagnostics` with separate required and optional desktop
+    sections and failure counts.
+  - Acceptance: required failures produce a nonzero exit; optional degraded
+    features are reported without making the core diagnostic fail.
+  - Validation: `make check-diagnostics`.
 - [ ] Document a minimal session profile that runs only dwm, a terminal, and
   required X11/session services.
 

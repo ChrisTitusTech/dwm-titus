@@ -3,7 +3,7 @@
 Run the dependency checker first — it covers most common issues:
 
 ```bash
-bash scripts/check-deps.sh
+dwm-diagnostics
 ```
 
 Or use the [Control Center](./control-center.md) → **System Health**.

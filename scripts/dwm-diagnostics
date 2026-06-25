@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+required_fail=0
+optional_fail=0
+
+ok() {
+	printf '  ok      %s\n' "$1"
+}
+
+required_missing() {
+	printf '  missing %s\n' "$1"
+	required_fail=$((required_fail + 1))
+}
+
+optional_missing() {
+	printf '  degraded %s\n' "$1"
+	optional_fail=$((optional_fail + 1))
+}
+
+have_cmd() {
+	command -v "$1" >/dev/null 2>&1
+}
+
+check_required_cmd() {
+	if have_cmd "$1"; then
+		ok "$1"
+	else
+		required_missing "$1"
+	fi
+}
+
+check_optional_cmd() {
+	if have_cmd "$1"; then
+		ok "$1"
+	else
+		optional_missing "$1"
+	fi
+}
+
+check_pkg_config() {
+	if have_cmd pkg-config && pkg-config --exists "$1" 2>/dev/null; then
+		ok "pkg-config:$1"
+	else
+		required_missing "pkg-config:$1"
+	fi
+}
+
+check_any_required_cmd() {
+	local label=$1
+	shift
+	local cmd
+
+	for cmd in "$@"; do
+		if have_cmd "$cmd"; then
+			ok "$label ($cmd)"
+			return
+		fi
+	done
+
+	required_missing "$label (${*})"
+}
+
+check_any_optional_cmd() {
+	local label=$1
+	shift
+	local cmd
+
+	for cmd in "$@"; do
+		if have_cmd "$cmd"; then
+			ok "$label ($cmd)"
+			return
+		fi
+	done
+
+	optional_missing "$label (${*})"
+}
+
+check_terminal() {
+	if have_cmd dwm-terminal && dwm-terminal --print-command >/dev/null 2>&1; then
+		ok "terminal ($(dwm-terminal --print-command))"
+		return
+	fi
+
+	for cmd in ghostty alacritty kitty st warp-terminal xterm; do
+		if have_cmd "$cmd"; then
+			ok "terminal ($cmd)"
+			return
+		fi
+	done
+
+	required_missing "terminal (ghostty alacritty kitty st warp-terminal xterm)"
+}
+
+check_path_optional() {
+	if [[ -e $1 ]]; then
+		ok "$1"
+	else
+		optional_missing "$1"
+	fi
+}
+
+main() {
+	printf 'dwm-titus diagnostics\n'
+	printf '\nRequired\n'
+
+	check_required_cmd cc
+	check_required_cmd make
+	check_required_cmd pkg-config
+	for module in x11 xft xinerama xrender imlib2 x11-xcb xcb xcb-res; do
+		check_pkg_config "$module"
+	done
+	check_any_required_cmd "X11 server" Xorg Xlibre
+	for cmd in startx xrandr xset xsetroot; do
+		check_required_cmd "$cmd"
+	done
+	check_terminal
+
+	printf '\nOptional desktop\n'
+	for cmd in rofi picom dunst feh flameshot polybar xdg-open notify-send amixer brightnessctl; do
+		check_optional_cmd "$cmd"
+	done
+	check_any_optional_cmd "XDG autostart runner" dex dex-autostart
+	check_any_optional_cmd "audio control" pactl wpctl amixer
+	check_path_optional "$HOME/.xinitrc"
+	check_path_optional "${XDG_CONFIG_HOME:-$HOME/.config}/polybar"
+	check_path_optional "${XDG_CONFIG_HOME:-$HOME/.config}/rofi"
+
+	printf '\nSummary\n'
+	printf '  required_failures=%d\n' "$required_fail"
+	printf '  optional_degraded=%d\n' "$optional_fail"
+
+	if ((required_fail > 0)); then
+		printf '\nRequired failures must be fixed before dwm-titus is fully usable.\n' >&2
+		return 1
+	fi
+
+	if ((optional_fail > 0)); then
+		printf '\nOptional desktop features are degraded, but core dwm should remain usable.\n'
+	fi
+}
+
+main "$@"
