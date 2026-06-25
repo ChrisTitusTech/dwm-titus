@@ -161,6 +161,15 @@ This file tracks the next reviewable work. Product requirements live in
     retains rofi's no-custom script-mode guard.
   - Validation: `make check-powermenu-layout`, `make check-shell`,
     `make check-format`, `git diff --check`.
+- [x] Validate missing X properties and malformed `_NET_WM_ICON` data without
+  crashing.
+  - Scope: make `_NET_WM_ICON` parsing use explicit bounds and extend the Xvfb
+    harness with clients missing name/class hints and a truncated icon
+    property.
+  - Acceptance: dwm keeps running and managing clients with absent optional
+    hints or malformed icon data.
+  - Validation: `make clean`, `make`, `make check-xvfb-runtime`,
+    `make check-shell`, `make check-format`, `git diff --check`.
 
 ## Current Phase: Minimal Feature-Complete Desktop
 

@@ -111,6 +111,7 @@ chmod +x "$home/.config/polybar/launch.sh"
 
 cat >"$work/xclient.c" <<'EOF'
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <signal.h>
 #include <stdio.h>
@@ -135,6 +136,8 @@ main(int argc, char **argv)
 	XClassHint classhint;
 	Atom wm_delete;
 	XEvent ev;
+	int set_hints = 1;
+	int malformed_icon = 0;
 
 	signal(SIGTERM, stop);
 	signal(SIGINT, stop);
@@ -162,13 +165,25 @@ main(int argc, char **argv)
 		XCloseDisplay(dpy);
 		return 0;
 	}
+	if (argc == 2 && strcmp(argv[1], "minimal") == 0)
+		set_hints = 0;
+	else if (argc == 2 && strcmp(argv[1], "malformed-icon") == 0)
+		malformed_icon = 1;
 
 	win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy),
 		20, 20, 320, 180, 0, 0, WhitePixel(dpy, DefaultScreen(dpy)));
-	XStoreName(dpy, win, "dwm-xvfb-runtime");
-	classhint.res_name = "dwm-xvfb-runtime";
-	classhint.res_class = "DwmXvfbRuntime";
-	XSetClassHint(dpy, win, &classhint);
+	if (set_hints) {
+		XStoreName(dpy, win, "dwm-xvfb-runtime");
+		classhint.res_name = "dwm-xvfb-runtime";
+		classhint.res_class = "DwmXvfbRuntime";
+		XSetClassHint(dpy, win, &classhint);
+	}
+	if (malformed_icon) {
+		unsigned long icon[] = { 8, 8, 0xff00ff00 };
+		Atom net_wm_icon = XInternAtom(dpy, "_NET_WM_ICON", False);
+		XChangeProperty(dpy, win, net_wm_icon, XA_CARDINAL, 32,
+			PropModeReplace, (unsigned char *)icon, 3);
+	}
 	wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
 	XSetWMProtocols(dpy, win, &wm_delete, 1);
 	XSelectInput(dpy, win, StructureNotifyMask);
@@ -243,5 +258,38 @@ wait_for_current_desktop 0
 wait_for_active_window "$win"
 DISPLAY=$display "$work/xclient" fullscreen "$win"
 wait_for_window_state "$win" _NET_WM_STATE_FULLSCREEN
+
+kill "$client_pid"
+wait "$client_pid" 2>/dev/null || true
+client_pid=
+
+DISPLAY=$display "$work/xclient" minimal >"$work/minimal-window-id" 2>"$work/minimal-client.log" &
+client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/minimal-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+minimal_win=$(cat "$work/minimal-window-id")
+[ -n "$minimal_win" ]
+wait_for_active_window "$minimal_win"
+DISPLAY=$display xprop -root _NET_CLIENT_LIST | grep -q "$minimal_win"
+
+kill "$client_pid"
+wait "$client_pid" 2>/dev/null || true
+client_pid=
+
+DISPLAY=$display "$work/xclient" malformed-icon >"$work/icon-window-id" 2>"$work/icon-client.log" &
+client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/icon-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+icon_win=$(cat "$work/icon-window-id")
+[ -n "$icon_win" ]
+wait_for_active_window "$icon_win"
+DISPLAY=$display xprop -root _NET_CLIENT_LIST | grep -q "$icon_win"
+kill -0 "$dwm_pid"
 
 printf '%s\n' "Xvfb runtime smoke: PASS"
