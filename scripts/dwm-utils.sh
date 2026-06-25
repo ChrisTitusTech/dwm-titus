@@ -33,9 +33,9 @@ esac
 
 case "$DISTRO_FAMILY" in
 arch)
-	if command -v paru &>/dev/null; then
+	if command -v paru &>/dev/null && paru --version &>/dev/null; then
 		PKG_CMD="paru -S --needed --noconfirm"
-	elif command -v yay &>/dev/null; then
+	elif command -v yay &>/dev/null && yay --version &>/dev/null; then
 		PKG_CMD="yay -S --needed --noconfirm"
 	else
 		PKG_CMD="sudo pacman -S --needed --noconfirm"
@@ -56,9 +56,9 @@ export PKG_CMD
 install_packages() {
 	case "$DISTRO_FAMILY" in
 	arch)
-		if command -v paru &>/dev/null; then
+		if command -v paru &>/dev/null && paru --version &>/dev/null; then
 			paru -S --needed --noconfirm "$@"
-		elif command -v yay &>/dev/null; then
+		elif command -v yay &>/dev/null && yay --version &>/dev/null; then
 			yay -S --needed --noconfirm "$@"
 		else
 			sudo pacman -S --needed --noconfirm "$@"

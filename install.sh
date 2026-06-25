@@ -277,6 +277,26 @@ install_lightdm_config() {
 	fi
 }
 
+enable_vicinae_user_service() {
+	if ! command -v systemctl &>/dev/null; then
+		warn "systemctl not found; enable Vicinae later with: systemctl --user enable vicinae.service"
+		return
+	fi
+
+	info "Enabling the Vicinae user service..."
+	if ! systemctl --user daemon-reload; then
+		warn "Could not contact the user systemd manager; enable Vicinae after login with: systemctl --user enable vicinae.service"
+		return
+	fi
+
+	if ! systemctl --user enable vicinae.service; then
+		warn "Could not enable the Vicinae user service; run later: systemctl --user enable vicinae.service"
+		return
+	fi
+
+	ok "Vicinae user service enabled."
+}
+
 echo ""
 echo "╔═══════════════════════════════════════════╗"
 echo "║             dwm-titus Installer           ║"
@@ -506,11 +526,8 @@ sudo make install \
 	VICINAE_SOURCE_DIR="$VICINAE_SOURCE_DIR"
 configure_seeded_terminal "$HOTKEYS_FILE" "$terminal"
 
-if [[ -n $VICINAE_SOURCE_DIR ]] && command -v systemctl &>/dev/null; then
-	info "Enabling the Vicinae user service..."
-	systemctl --user daemon-reload
-	systemctl --user enable vicinae.service
-	ok "Vicinae user service enabled."
+if [[ -n $VICINAE_SOURCE_DIR ]]; then
+	enable_vicinae_user_service
 fi
 
 # ── Done ─────────────────────────────────────────────────
