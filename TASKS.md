@@ -177,6 +177,16 @@ This file tracks the next reviewable work. Product requirements live in
     invalid and preserves the previously loaded hotkey bindings.
   - Validation: `make check-xvfb-runtime`, `make`, `make check-shell`,
     `make check-format`, `git diff --check`.
+- [x] Fix monitor-to-monitor tag switching so cursor position and Polybar EWMH
+  state update together.
+  - Scope: guard the cross-monitor `view()` path that switches `selmon`, focuses
+    the target monitor/window, warps the cursor, and updates EWMH current
+    desktop state.
+  - Acceptance: source-level regression covers both cross-monitor handoff and
+    already-active target tag paths. Real nested multi-monitor Xinerama coverage
+    is deferred to Phase 5 because this host's Xvfb reports only one monitor.
+  - Validation: `make check-monitor-tags`, `make`, `make check-shell`,
+    `make check-format`.
 
 ## Current Phase: Minimal Feature-Complete Desktop
 

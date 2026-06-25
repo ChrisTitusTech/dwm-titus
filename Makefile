@@ -298,6 +298,9 @@ check-polybar-capabilities:
 check-powermenu-layout:
 	tests/test-powermenu-layout.sh
 
+check-monitor-tags:
+	tests/test-monitor-tag-switching.sh
+
 check-install: all
 	@set -eu; \
 	stage="$$(mktemp -d)"; \

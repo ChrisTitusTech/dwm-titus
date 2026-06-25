@@ -97,12 +97,14 @@ hotkey reload. `make check-powermenu-layout` validates the power menu rofi
 override against low-resolution display sizes. The Xvfb runtime harness now
 also validates clients with missing optional hints and truncated
 `_NET_WM_ICON` data, and verifies invalid user TOML reloads keep the last valid
-hotkey state. Current-tree evidence is not sufficient to check off the
-remaining runtime item.
+hotkey state. `make check-monitor-tags` guards the cross-monitor tag-switch
+source path for monitor handoff, focus, cursor warp, and EWMH update calls;
+this host's Xvfb does not expose multiple Xinerama monitors, so real nested
+multi-monitor validation remains a Phase 5 qualification item.
 
 - [x] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
   fullscreen, EWMH state, and TOML reload.
-- [ ] Fix monitor-to-monitor tag switching so cursor position and Polybar EWMH
+- [x] Fix monitor-to-monitor tag switching so cursor position and Polybar EWMH
   state update together.
 - [x] Make the power menu fit and remain keyboard-usable below 1080p.
 - [x] Make TOML reload transactional: invalid files retain the last valid
