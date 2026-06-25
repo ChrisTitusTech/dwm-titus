@@ -121,6 +121,11 @@ startx
 
 The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), launches Polybar, and starts dwm.
 
+For a core-only setup, use the minimal session profile documented in
+[`docs/src/install.md`](docs/src/install.md). It runs dwm with one terminal,
+required X11/session services, and treats Polybar, Rofi, Picom, Dunst,
+wallpapers, tray tools, and hardware helpers as optional degraded features.
+
 On x86_64, the installer downloads the latest Vicinae AppImage from the
 official GitHub release, verifies the release-provided SHA-256 digest, extracts
 it, enables `vicinae.service` for the current user, and uses Vicinae for

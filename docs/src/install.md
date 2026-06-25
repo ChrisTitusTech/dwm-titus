@@ -83,3 +83,43 @@ startx
 ```
 
 The provided `.xinitrc` disables screen blanking, launches Polybar, and runs dwm.
+
+## Minimal Session Profile
+
+The minimal supported profile is useful for lean systems, recovery sessions,
+and portability testing. It keeps only:
+
+- an X11 server and either a display-manager session or `startx`
+- D-Bus session support
+- `dwm`
+- one supported terminal available through `dwm-terminal`
+- required X11 helpers used by core startup and display commands, such as
+  `xrandr`, `xset`, and `xsetroot`
+
+Polybar, Rofi, Picom, Dunst, Feh, Dex, a polkit agent, screenshot tools,
+wallpapers, tray utilities, and audio or brightness helpers are optional in
+this profile. Missing optional components should appear as degraded features in
+`dwm-diagnostics`, not as session-fatal failures.
+
+For `startx`, a minimal `.xinitrc` can be:
+
+```sh
+#!/bin/sh
+xset s off
+xset -dpms
+xsetroot -cursor_name left_ptr
+exec dbus-run-session dwm
+```
+
+If the login path already creates a user D-Bus session, use `exec dwm`
+instead of wrapping it with `dbus-run-session`.
+
+After installation, verify the profile with:
+
+```bash
+dwm-diagnostics
+dwm-terminal --print-command
+```
+
+`dwm-diagnostics` must report zero required failures before treating the
+minimal profile as ready. Optional degraded features can remain unresolved.

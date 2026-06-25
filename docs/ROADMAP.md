@@ -105,7 +105,7 @@ Goal: complete the product requirements without moving desktop policy into
   network, temperature, or tray tools hide cleanly.
 - [x] Provide a single diagnostics command that reports required failures and
   optional degraded features separately.
-- [ ] Document a minimal session profile that runs only dwm, a terminal, and
+- [x] Document a minimal session profile that runs only dwm, a terminal, and
   required X11/session services.
 
 Exit criteria:

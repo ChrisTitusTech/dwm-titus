@@ -114,8 +114,13 @@ This file tracks the next reviewable work. Product requirements live in
   - Acceptance: required failures produce a nonzero exit; optional degraded
     features are reported without making the core diagnostic fail.
   - Validation: `make check-diagnostics`.
-- [ ] Document a minimal session profile that runs only dwm, a terminal, and
+- [x] Document a minimal session profile that runs only dwm, a terminal, and
   required X11/session services.
+  - Scope: document the core-only profile in installation docs and link it from
+    the README.
+  - Acceptance: required profile components and optional degraded desktop
+    features are separated, with `startx` and diagnostic verification steps.
+  - Validation: `git diff --check`.
 
 ## Validation Policy
 
