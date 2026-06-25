@@ -166,7 +166,21 @@ Exit criteria:
 - No extraction adds blocking work to the X event loop.
 - The default binary and runtime dependency footprint do not materially grow.
 
-## Phase 5: Release Qualification
+## Phase 5: Feature Expansion
+
+Goal: Replace rofi menus with vicinae menus, add a small GUI for hotkey and theme management. Treat this like a control center and making it accessible from Mod+F1. Make a settings cog that shows all the small GUI management options, and make them accessible from Mod+F2 through Mod+F7. Each GUI should be optional and not required for the core functionality of dwm-titus.
+
+- [ ] Replace rofi menus with vicinae menus for power, app launcher, and
+	window switching. Keep rofi as an optional fallback with hotkey Mod+Shift+R.
+- [ ] Add a small GUI for hotkey and theme management, accessible from Mod+F1.
+- [ ] Add a small GUI for display profile management, accessible from Mod+F2.
+- [ ] Add a small GUI for Polybar module management, accessible from Mod+F3.
+- [ ] Add a small GUI for optional service management, accessible from Mod+F4.
+- [ ] Add a small GUI for optional application management, accessible from Mod+F5.
+- [ ] Add a small GUI for optional configuration management, accessible from Mod+F6.
+- [ ] Add a small GUI for optional system information management, accessible from Mod+F7.
+
+## Phase 6: Release Qualification
 
 Goal: make support claims evidence-based.
 
