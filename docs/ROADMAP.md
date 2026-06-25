@@ -48,6 +48,13 @@ Exit criteria:
 Goal: provide one safe installation workflow for every supported family and
 architecture.
 
+Audit status: current-tree evidence is not sufficient to check off these tasks.
+`scripts/dwm-packages.sh` exists and `scripts/check-deps.sh` consumes it, but
+`install.sh` and `install-arm.sh` still contain hardcoded package lists. The
+manual installation docs still include Arch-family commands, and there is no
+current roadmap-linked container target that validates Debian, Arch, and
+Fedora/RHEL together.
+
 - [ ] Move package capability mappings into one data module used by the
   installer and dependency checker.
 - [ ] Merge ARM handling into `install.sh`; keep architecture-specific package
@@ -71,6 +78,12 @@ Exit criteria:
 ## Phase 2: Runtime Correctness
 
 Goal: stabilize the required desktop behavior before adding new features.
+
+Audit status: current-tree evidence is not sufficient to check off these tasks.
+The autostart guard test exists, but `make check-session-guards` currently
+fails in the live desktop environment while validating the Picom duplicate
+guard, so the autostart verification item remains unchecked until that path
+passes reliably.
 
 - [ ] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
   fullscreen, EWMH state, and TOML reload.
