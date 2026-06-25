@@ -312,6 +312,13 @@ complete from compile-only validation.
     `scripts/check-deps.sh`, `dwm-diagnostics`, and
     `make check-install-preservation` passed. Debian/Ubuntu, Arch, and
     Rocky/RHEL real or VM installer runs remain outstanding.
+  - Rechecked 2026-06-25 on the current Fedora Linux 44 (Server Edition)
+    x86_64 host: `make clean`, `make`, `make check-install`,
+    `./install.sh --dry-run --non-interactive --profile core`,
+    `scripts/check-deps.sh`, `dwm-diagnostics`, and
+    `make check-install-preservation` passed. `make check-container-smoke`
+    passed with `debian:stable-slim`, `archlinux:latest`, and
+    `fedora:latest` through Podman.
 - [ ] Run real or nested X11 validation for single- and multi-monitor behavior.
   - Scope: cover display-manager and `startx` startup, terminal launch, focus,
     tagging, floating, fullscreen, EWMH state, TOML reload, optional-component
@@ -329,6 +336,13 @@ complete from compile-only validation.
     reported one monitor (`eDP-1`, 2560x1600); EWMH root properties reported
     current desktop, nine desktops, client list, and active window. Real
     multi-monitor behavior remains outstanding.
+  - Rechecked 2026-06-25 on the current live X11 session:
+    `DESKTOP_SESSION=dwm`, `XDG_SESSION_TYPE=x11`, `DISPLAY=:0`; `xrandr`
+    reported one connected monitor (`eDP-1`, 2560x1600) with `HDMI-1`,
+    `DP-1`, `DP-2`, `DP-3`, and `DP-4` disconnected. EWMH root properties
+    reported current desktop 0, nine desktops, a non-empty client list, and an
+    active window. `make check-xvfb-runtime`, `make check-session-guards`, and
+    `make check-monitor-tags` passed.
 - [ ] Validate x86_64 and one supported ARM system.
   - Scope: run build, staged install, dependency detection, and installer
     profile checks on x86_64 and one ARM Linux system with the required X11
@@ -342,6 +356,10 @@ complete from compile-only validation.
     remains outstanding.
   - Fedora host 2026-06-25: x86_64 clean build and staged install passed on
     the installed Fedora system. ARM validation remains outstanding.
+  - Rechecked 2026-06-25 on Fedora Linux 44 (Server Edition), x86_64, with the
+    RHEL-family core profile: `make clean`, `make`, `make check-install`, and
+    `./install.sh --dry-run --non-interactive --profile core` passed. ARM
+    validation remains outstanding.
 - [ ] Publish known limitations, tested versions, upgrade notes, and checksums.
   - Scope: prepare release notes from recorded Phase 5 validation and generate
     the release artifact checksum.
@@ -349,6 +367,11 @@ complete from compile-only validation.
     architectures, X11 environments, known limitations, upgrade notes, and
     SHA-256 checksum.
   - Validation: `make release-check`, `sha256sum release/dwm-titus-*.tar.gz`.
+  - Generated 2026-06-25: `make release-check` passed and
+    `release/dwm-titus-0.5.tar.gz` SHA-256 is
+    `b20ee89abac9661ebc01c8aed096be8afa901eb915674995ce94cc45c997852c`.
+    Release notes remain outstanding until the remaining Phase 5 gaps are
+    either tested or explicitly documented as limitations.
 - [ ] Tag a release only after the acceptance criteria in `SPEC.md` are met.
   - Scope: confirm all required static, distribution, and runtime validation is
     either passed or explicitly marked untested before tagging.
