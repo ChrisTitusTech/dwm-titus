@@ -100,8 +100,13 @@ This file tracks the next reviewable work. Product requirements live in
     current `xrandr` state, print a template, and apply a profile without
     sourcing user-controlled shell.
   - Validation: `make check-display-profile`.
-- [ ] Make Polybar modules capability-driven so missing battery, audio,
+- [x] Make Polybar modules capability-driven so missing battery, audio,
   network, temperature, or tray tools hide cleanly.
+  - Scope: detect Polybar module capabilities in `config/polybar/launch.sh`
+    and export module lists plus device names for the minimal theme.
+  - Acceptance: missing battery, audio, wireless, wired, temperature, or tray
+    capability is omitted from the runtime module list before Polybar starts.
+  - Validation: `make check-polybar-capabilities`.
 - [ ] Provide a single diagnostics command that reports required failures and
   optional degraded features separately.
 - [ ] Document a minimal session profile that runs only dwm, a terminal, and

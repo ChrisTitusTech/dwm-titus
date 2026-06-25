@@ -101,7 +101,7 @@ Goal: complete the product requirements without moving desktop policy into
   selection.
 - [x] Add a small display-profile CLI using `xrandr`; profiles remain optional
   user configuration under the XDG config directory.
-- [ ] Make Polybar modules capability-driven so missing battery, audio,
+- [x] Make Polybar modules capability-driven so missing battery, audio,
   network, temperature, or tray tools hide cleanly.
 - [ ] Provide a single diagnostics command that reports required failures and
   optional degraded features separately.

@@ -285,6 +285,9 @@ check-default-apps:
 check-display-profile:
 	tests/test-dwm-display-profile.sh
 
+check-polybar-capabilities:
+	tests/test-polybar-capabilities.sh
+
 check-install: all
 	@set -eu; \
 	stage="$$(mktemp -d)"; \
@@ -405,6 +408,7 @@ check:
 	$(MAKE) check-build-config
 	$(MAKE) check-default-apps
 	$(MAKE) check-display-profile
+	$(MAKE) check-polybar-capabilities
 	$(MAKE) check-terminal
 	$(MAKE) check-session-guards
 	$(MAKE) check-install
@@ -414,6 +418,6 @@ check:
 
 .PHONY: all check check-build-config check-build-deps check-default-apps \
 	check-display-profile check-format check-install \
-	check-install-manifest check-session-guards check-shell \
+	check-install-manifest check-polybar-capabilities check-session-guards check-shell \
 	check-terminal check-vicinae-install clean install install-system install-user \
 	install-cursors install-vicinae native release release-check uninstall
