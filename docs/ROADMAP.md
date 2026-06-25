@@ -48,14 +48,14 @@ Exit criteria:
 Goal: provide one safe installation workflow for every supported family and
 architecture.
 
-Audit status: current-tree evidence is not sufficient to check off these tasks.
-`scripts/dwm-packages.sh` exists and `scripts/check-deps.sh` consumes it, but
-`install.sh` and `install-arm.sh` still contain hardcoded package lists. The
-manual installation docs still include Arch-family commands, and there is no
-current roadmap-linked container target that validates Debian, Arch, and
-Fedora/RHEL together.
+Audit status: package capability mappings now live in
+`scripts/dwm-packages.sh` and are consumed by `install.sh` and
+`scripts/check-deps.sh`. `install-arm.sh` remains separate, the manual
+installation docs still include Arch-family commands, and there is no current
+roadmap-linked container target that validates Debian, Arch, and Fedora/RHEL
+together.
 
-- [ ] Move package capability mappings into one data module used by the
+- [x] Move package capability mappings into one data module used by the
   installer and dependency checker.
 - [ ] Merge ARM handling into `install.sh`; keep architecture-specific package
   exceptions in the shared dependency map.

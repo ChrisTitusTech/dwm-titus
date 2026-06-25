@@ -3,7 +3,11 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/dwm-utils.sh
+# shellcheck disable=SC1091
 source "$REPO_DIR/scripts/dwm-utils.sh"
+# shellcheck source=scripts/dwm-packages.sh
+# shellcheck disable=SC1091
+source "$REPO_DIR/scripts/dwm-packages.sh"
 
 RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' CYAN='\033[0;36m' NC='\033[0m'
 info() { printf "${CYAN}[INFO]${NC} %s\n" "$1"; }
@@ -183,32 +187,10 @@ install_meslo_nerd_font() {
 }
 
 install_supported_terminal() {
-	case "$DISTRO_FAMILY" in
-	arch)
-		install_optional_package ghostty 2>/dev/null ||
-			install_packages kitty
-		;;
-	rhel)
-		if package_available alacritty; then
-			install_packages alacritty
-		elif package_available kitty; then
-			install_packages kitty
-		else
-			err "No supported terminal is available in the enabled repositories."
-			return 1
-		fi
-		;;
-	debian)
-		if package_available alacritty; then
-			install_packages alacritty
-		elif package_available kitty; then
-			install_packages kitty
-		else
-			err "No supported terminal is available in the enabled repositories."
-			return 1
-		fi
-		;;
-	esac
+	if ! dwm_install_first_available_profile terminal; then
+		err "No supported terminal is available in the enabled repositories."
+		return 1
+	fi
 }
 
 configure_seeded_terminal() {
@@ -319,89 +301,22 @@ fi
 
 # ── Build dependencies ───────────────────────────────────
 info "Installing build dependencies..."
-case "$DISTRO_FAMILY" in
-arch)
-	install_packages \
-		base-devel libx11 libxft libxinerama libxrender imlib2 \
-		libxcb xcb-util freetype2 fontconfig pkgconf
-
+dwm_install_package_profile build
+if [[ $DISTRO_FAMILY == "arch" ]]; then
 	if pacman -Qq 2>/dev/null | command grep -q '^xlibre'; then
 		info "Xlibre detected - skipping xorg-server."
 	elif ! pacman -Qi xorg-server &>/dev/null; then
-		install_packages xorg-server
+		dwm_install_package_profile x11-server
 	fi
-	install_packages xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
-	;;
-rhel)
-	install_packages \
-		gcc make pkgconf-pkg-config \
-		libX11-devel libXft-devel libXinerama-devel libXrender-devel \
-		imlib2-devel libxcb-devel xcb-util-devel \
-		freetype-devel fontconfig-devel
-
-	if [[ $DISTRO_ID == "fedora" ]]; then
-		install_packages \
-			xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot
-	else
-		install_packages \
-			xorg-x11-server-Xorg xorg-x11-xinit xorg-x11-server-utils
-	fi
-	;;
-debian)
-	install_packages \
-		build-essential pkg-config \
-		libx11-dev libxft-dev libxinerama-dev libxrender-dev \
-		libimlib2-dev libx11-xcb-dev libxcb1-dev libxcb-res0-dev \
-		libfontconfig-dev libfreetype-dev
-
-	install_packages \
-		xserver-xorg-core xinit x11-xserver-utils
-	;;
-esac
+else
+	dwm_install_package_profile x11-server
+fi
+dwm_install_package_profile x11
 ok "Build dependencies installed."
 
 # ── Runtime dependencies ─────────────────────────────────
 info "Installing runtime dependencies..."
-case "$DISTRO_FAMILY" in
-arch)
-	install_packages \
-		rofi picom dunst feh flameshot dex mate-polkit alsa-utils \
-		brightnessctl curl git procps-ng psmisc unzip xclip xdotool \
-		xorg-xprop thunar gvfs tumbler \
-		thunar-archive-plugin nwg-look xdg-user-dirs \
-		xdg-utils xdg-desktop-portal-gtk pipewire pipewire-pulse \
-		wireplumber pavucontrol gnome-keyring \
-		networkmanager network-manager-applet libnotify rsync
-	;;
-rhel)
-	install_packages \
-		rofi picom dunst feh flameshot dex-autostart mate-polkit \
-		alsa-utils brightnessctl curl git procps-ng psmisc pulseaudio-utils \
-		unzip xclip xdotool xprop \
-		Thunar gvfs tumbler \
-		thunar-archive-plugin file-roller xdg-user-dirs xdg-utils \
-		xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring \
-		pipewire-pulseaudio wireplumber NetworkManager \
-		network-manager-applet libnotify rsync dbus-x11 \
-		xorg-x11-drv-libinput
-
-	if ! package_available nwg-look; then
-		warn "nwg-look is not in Fedora's official repositories; skipping it."
-	else
-		install_packages nwg-look
-	fi
-	;;
-debian)
-	install_packages \
-		rofi picom dunst feh flameshot dex mate-polkit \
-		alsa-utils brightnessctl curl git procps psmisc pulseaudio-utils \
-		unzip xclip xdotool x11-utils \
-		thunar gvfs tumbler thunar-archive-plugin file-roller \
-		xdg-user-dirs xdg-utils xdg-desktop-portal-gtk \
-		pipewire pipewire-pulse wireplumber pavucontrol gnome-keyring \
-		network-manager network-manager-gnome libnotify-bin rsync dbus-x11
-	;;
-esac
+dwm_install_package_profile desktop
 ok "Runtime dependencies installed."
 
 # ── Vicinae app launcher ─────────────────────────────────
@@ -413,29 +328,14 @@ fi
 info "Installing Qt/GTK dark-mode dependencies..."
 # dconf: required for gsettings to persist GTK color-scheme changes
 # qt6ct / qt5ct: QT_QPA_PLATFORMTHEME backend for Qt dark mode in standalone WMs
-install_packages dconf
-install_optional_package qt6ct 2>/dev/null ||
-	install_optional_package qt5ct 2>/dev/null ||
+dwm_install_package_profile theme
+dwm_install_first_available_profile theme-optional ||
 	warn "Neither qt6ct nor qt5ct is available - Qt apps may not respect dark mode."
 ok "Qt/GTK theming dependencies installed."
 
 # ── Fonts ────────────────────────────────────────────────
 info "Installing fonts..."
-case "$DISTRO_FAMILY" in
-arch)
-	install_packages noto-fonts-emoji ttf-meslo-nerd
-	;;
-rhel)
-	install_packages \
-		google-noto-color-emoji-fonts \
-		google-noto-sans-mono-fonts
-	;;
-debian)
-	install_packages \
-		fonts-noto-color-emoji \
-		fonts-noto-mono
-	;;
-esac
+dwm_install_package_profile fonts
 FONT_DIR="$HOME/.local/share/fonts"
 mkdir -p "$FONT_DIR"
 install_meslo_nerd_font
@@ -461,7 +361,7 @@ else
 fi
 
 # ── Polybar + XDG dirs + wallpapers ──────────────────────
-install_packages polybar
+dwm_install_package_profile bar
 command -v xdg-user-dirs-update &>/dev/null && xdg-user-dirs-update
 
 mkdir -p "$HOME/Pictures"
@@ -483,17 +383,7 @@ if [ -n "$currentdm" ]; then
 	ok "Display manager already installed: $currentdm"
 else
 	info "No display manager found - installing LightDM..."
-	case "$DISTRO_FAMILY" in
-	arch)
-		install_packages lightdm lightdm-slick-greeter
-		;;
-	rhel)
-		install_packages lightdm slick-greeter
-		;;
-	debian)
-		install_packages lightdm slick-greeter
-		;;
-	esac
+	dwm_install_package_profile lightdm
 	sudo systemctl enable lightdm.service
 	currentdm="lightdm"
 	ok "LightDM installed and enabled."

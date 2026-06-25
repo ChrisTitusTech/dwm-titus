@@ -68,7 +68,13 @@ This file tracks the next reviewable work. Product requirements live in
 
 ## Current Phase: Installer and Distribution Parity
 
-- [ ] Create one capability-to-package map for Debian, Arch, and RHEL families.
+- [x] Create one capability-to-package map for Debian, Arch, and RHEL families.
+  - Scope: keep package capability groups in `scripts/dwm-packages.sh` and use
+    them from the main installer and dependency checker.
+  - Acceptance: `install.sh` and `scripts/check-deps.sh` consume the shared map
+    instead of duplicating Debian, Arch, and RHEL package lists.
+  - Validation: `bash -n install.sh scripts/dwm-packages.sh scripts/check-deps.sh`,
+    `make check-shell`, `make check-format`, `make check-build-config`.
 - [ ] Refactor `install.sh`, `install-arm.sh`, and `scripts/check-deps.sh` to
   consume the shared map.
 - [ ] Split installer profiles into required, recommended, and optional.
