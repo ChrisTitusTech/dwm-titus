@@ -85,7 +85,16 @@ This file tracks the next reviewable work. Product requirements live in
     installer implementation.
   - Validation: `bash -n install.sh install-arm.sh scripts/dwm-packages.sh`,
     `make check-shell`, `make check-format`, `make`.
-- [ ] Split installer profiles into required, recommended, and optional.
+- [x] Split installer profiles into required, recommended, and optional.
+  - Scope: add runtime-required package groups, keep recommended desktop
+    packages separate from optional extras, and make `install.sh` select core,
+    recommended, or full package layers.
+  - Acceptance: Debian, Arch, and RHEL families expose non-empty required,
+    recommended, optional, and full profiles from the shared map; optional
+    extras are skipped with warnings when unavailable.
+  - Validation: `bash -n install.sh scripts/dwm-packages.sh scripts/check-deps.sh`,
+    `make check-shell`, `make check-format`, `make check-build-config`,
+    `make`, and package-map profile count smoke test.
 - [ ] Add Debian, Arch, and Fedora/RHEL container smoke tests.
 - [ ] Replace remaining Arch-only general documentation.
 

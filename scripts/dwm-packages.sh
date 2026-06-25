@@ -17,16 +17,21 @@ dwm_packages() {
 	arch:x11-server)
 		printf '%s\n' xorg-server
 		;;
+	arch:runtime-required)
+		printf '%s\n' dbus curl git procps-ng psmisc unzip xclip xdotool xorg-xprop xdg-utils
+		;;
 	arch:desktop)
 		printf '%s\n' \
 			rofi picom dunst feh flameshot dex mate-polkit alsa-utils \
-			brightnessctl curl git procps-ng psmisc unzip xclip xdotool \
-			xorg-xprop thunar gvfs tumbler thunar-archive-plugin nwg-look \
-			xdg-user-dirs xdg-utils xdg-desktop-portal-gtk pipewire \
-			pipewire-pulse wireplumber pavucontrol gnome-keyring \
-			networkmanager network-manager-applet libnotify rsync
+			brightnessctl pipewire pipewire-pulse wireplumber pavucontrol \
+			libnotify
 		;;
-	arch:desktop-optional) ;;
+	arch:desktop-optional)
+		printf '%s\n' \
+			thunar gvfs tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
+			xdg-desktop-portal-gtk gnome-keyring networkmanager \
+			network-manager-applet rsync
+		;;
 	arch:theme)
 		printf '%s\n' dconf
 		;;
@@ -71,19 +76,20 @@ dwm_packages() {
 	rhel:x11-server)
 		:
 		;;
+	rhel:runtime-required)
+		printf '%s\n' dbus-x11 curl git procps-ng psmisc unzip xclip xdotool xprop xdg-utils
+		;;
 	rhel:desktop)
 		printf '%s\n' \
 			rofi picom dunst feh flameshot dex-autostart mate-polkit \
-			alsa-utils brightnessctl curl git procps-ng psmisc \
-			pulseaudio-utils unzip xclip xdotool xprop Thunar gvfs tumbler \
-			thunar-archive-plugin file-roller xdg-user-dirs xdg-utils \
-			xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring \
-			pipewire-pulseaudio wireplumber NetworkManager \
-			network-manager-applet libnotify rsync dbus-x11 \
-			xorg-x11-drv-libinput
+			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \
+			pipewire-pulseaudio wireplumber libnotify xorg-x11-drv-libinput
 		;;
 	rhel:desktop-optional)
-		printf '%s\n' nwg-look
+		printf '%s\n' \
+			Thunar gvfs tumbler thunar-archive-plugin file-roller \
+			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring NetworkManager \
+			network-manager-applet rsync nwg-look
 		;;
 	rhel:theme)
 		printf '%s\n' dconf
@@ -115,17 +121,21 @@ dwm_packages() {
 	debian:x11-server)
 		:
 		;;
+	debian:runtime-required)
+		printf '%s\n' dbus-x11 curl git procps psmisc unzip xclip xdotool x11-utils xdg-utils
+		;;
 	debian:desktop)
 		printf '%s\n' \
 			rofi picom dunst feh flameshot dex mate-polkit alsa-utils \
-			brightnessctl curl git procps psmisc pulseaudio-utils unzip \
-			xclip xdotool x11-utils thunar gvfs tumbler \
-			thunar-archive-plugin file-roller xdg-user-dirs xdg-utils \
-			xdg-desktop-portal-gtk pipewire pipewire-pulse wireplumber \
-			pavucontrol gnome-keyring network-manager network-manager-gnome \
-			libnotify-bin rsync dbus-x11
+			brightnessctl pulseaudio-utils pipewire pipewire-pulse \
+			wireplumber pavucontrol libnotify-bin
 		;;
-	debian:desktop-optional) ;;
+	debian:desktop-optional)
+		printf '%s\n' \
+			thunar gvfs tumbler thunar-archive-plugin file-roller \
+			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring \
+			network-manager network-manager-gnome rsync
+		;;
 	debian:theme)
 		printf '%s\n' dconf
 		;;
@@ -148,6 +158,7 @@ dwm_packages() {
 		dwm_packages "$family" build
 		dwm_packages "$family" x11
 		dwm_packages "$family" x11-server
+		dwm_packages "$family" runtime-required
 		;;
 	*:recommended)
 		dwm_packages "$family" desktop
@@ -158,6 +169,11 @@ dwm_packages() {
 	*:optional)
 		dwm_packages "$family" theme-optional
 		dwm_packages "$family" desktop-optional
+		;;
+	*:full)
+		dwm_packages "$family" required
+		dwm_packages "$family" recommended
+		dwm_packages "$family" optional
 		;;
 	*)
 		return 1
@@ -179,6 +195,22 @@ dwm_install_package_profile() {
 	fi
 
 	install_packages "${packages[@]}"
+}
+
+dwm_install_available_package_profile() {
+	local profile=$1
+	local package
+	local status=0
+
+	while IFS= read -r package; do
+		[[ -n $package ]] || continue
+		if ! install_optional_package "$package"; then
+			printf 'Skipping unavailable optional package: %s\n' "$package" >&2
+			status=1
+		fi
+	done < <(dwm_packages "$DISTRO_FAMILY" "$profile")
+
+	return "$status"
 }
 
 dwm_install_first_available_package() {

@@ -73,6 +73,23 @@ The script detects the distribution family and handles dependency
 installation, font copying, display-manager integration, and config placement.
 Existing user configuration and `.xinitrc` files are preserved.
 
+Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
+
+- `core`: required build packages, X11/session runtime, and one supported
+  terminal.
+- `recommended`: `core` plus the recommended desktop layer such as Polybar,
+  Rofi, Picom, Dunst, Feh, Dex, fonts, theming, screenshot, audio, and
+  brightness tools.
+- `full`: `recommended` plus optional extras such as file-manager integration,
+  network tray utilities, portals, wallpapers, and display-manager setup.
+
+The default is `full` to preserve the historical automated installer behavior.
+For a minimal install:
+
+```bash
+DWM_INSTALL_PROFILE=core ./install.sh
+```
+
 ## Starting dwm
 
 **Display manager** (SDDM, GDM, LightDM): log out and select **dwm** from the session list.

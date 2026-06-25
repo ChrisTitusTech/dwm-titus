@@ -55,10 +55,31 @@ VICINAE_ASSET_NAME="Vicinae-x86_64.AppImage"
 VICINAE_TMP_DIR=""
 VICINAE_SOURCE_DIR=""
 ARCH="$(uname -m)"
+INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
+
+case "$INSTALL_PROFILE" in
+core | minimal)
+	INSTALL_PROFILE="core"
+	;;
+recommended | full) ;;
+*)
+	err "Unsupported DWM_INSTALL_PROFILE: $INSTALL_PROFILE"
+	err "Supported profiles: core, recommended, full"
+	exit 1
+	;;
+esac
 
 is_arch_arm() {
 	[[ $DISTRO_FAMILY == "arch" &&
 		($ARCH == "aarch64" || $ARCH == "armv7h" || $ARCH == "armv7l") ]]
+}
+
+install_recommended_profile() {
+	[[ $INSTALL_PROFILE == "recommended" || $INSTALL_PROFILE == "full" ]]
+}
+
+install_optional_profile() {
+	[[ $INSTALL_PROFILE == "full" ]]
 }
 
 cleanup() {
@@ -299,6 +320,7 @@ echo ""
 info "Distribution: $DISTRO_NAME"
 info "Family: $DISTRO_FAMILY"
 info "Package manager: $PKG_CMD"
+info "Install profile: $INSTALL_PROFILE"
 
 if [[ -t 0 && -t 1 ]]; then
 	"$REPO_DIR/scripts/configure-build.sh"
@@ -311,8 +333,8 @@ if [[ $DISTRO_FAMILY == "debian" ]]; then
 	sudo apt-get update
 fi
 
-# ── Build dependencies ───────────────────────────────────
-info "Installing build dependencies..."
+# ── Required build and runtime dependencies ──────────────
+info "Installing required build and runtime dependencies..."
 dwm_install_package_profile build
 if [[ $DISTRO_FAMILY == "arch" ]]; then
 	if pacman -Qq 2>/dev/null | command grep -q '^xlibre'; then
@@ -324,6 +346,7 @@ else
 	dwm_install_package_profile x11-server
 fi
 dwm_install_package_profile x11
+dwm_install_package_profile runtime-required
 if is_arch_arm; then
 	if dwm_install_first_available_profile arm-video; then
 		ok "ARM framebuffer video driver installed."
@@ -331,38 +354,58 @@ if is_arch_arm; then
 		warn "ARM framebuffer video driver unavailable; your board's GPU driver may already provide Xorg support."
 	fi
 fi
-ok "Build dependencies installed."
+ok "Required build and runtime dependencies installed."
 
-# ── Runtime dependencies ─────────────────────────────────
-info "Installing runtime dependencies..."
-dwm_install_package_profile desktop
-ok "Runtime dependencies installed."
+# ── Recommended desktop dependencies ─────────────────────
+if install_recommended_profile; then
+	info "Installing recommended desktop dependencies..."
+	dwm_install_package_profile desktop
+	dwm_install_package_profile theme
+	dwm_install_package_profile fonts
+	dwm_install_package_profile bar
+	ok "Recommended desktop dependencies installed."
+else
+	warn "Skipping recommended desktop dependencies for core profile."
+fi
+
+# ── Optional desktop extras ──────────────────────────────
+if install_optional_profile; then
+	info "Installing optional desktop extras..."
+	if ! dwm_install_available_package_profile optional; then
+		warn "Some optional desktop extras were unavailable in enabled repositories."
+	fi
+	ok "Optional desktop extras processed."
+else
+	warn "Skipping optional desktop extras for $INSTALL_PROFILE profile."
+fi
 
 # ── Vicinae app launcher ─────────────────────────────────
-if ! prepare_vicinae; then
+if install_recommended_profile && ! prepare_vicinae; then
 	warn "Vicinae will not be installed. Rofi remains available with SUPER+Shift+R."
 fi
 
 # ── Qt / GTK theming ─────────────────────────────────────
-info "Installing Qt/GTK dark-mode dependencies..."
-# dconf: required for gsettings to persist GTK color-scheme changes
-# qt6ct / qt5ct: QT_QPA_PLATFORMTHEME backend for Qt dark mode in standalone WMs
-dwm_install_package_profile theme
-dwm_install_first_available_profile theme-optional ||
-	warn "Neither qt6ct nor qt5ct is available - Qt apps may not respect dark mode."
-ok "Qt/GTK theming dependencies installed."
+if install_recommended_profile; then
+	info "Configuring Qt/GTK dark-mode dependencies..."
+	# dconf: required for gsettings to persist GTK color-scheme changes
+	# qt6ct / qt5ct: QT_QPA_PLATFORMTHEME backend for Qt dark mode in standalone WMs
+	dwm_install_first_available_profile theme-optional ||
+		warn "Neither qt6ct nor qt5ct is available - Qt apps may not respect dark mode."
+	ok "Qt/GTK theming dependencies configured."
+fi
 
 # ── Fonts ────────────────────────────────────────────────
-info "Installing fonts..."
-dwm_install_package_profile fonts
-FONT_DIR="$HOME/.local/share/fonts"
-mkdir -p "$FONT_DIR"
-install_meslo_nerd_font
-if [ -d "$REPO_DIR/config/polybar/fonts" ]; then
-	cp -r "$REPO_DIR/config/polybar/fonts/"* "$FONT_DIR/"
-	fc-cache -fv >/dev/null 2>&1
+if install_recommended_profile; then
+	info "Installing fonts..."
+	FONT_DIR="$HOME/.local/share/fonts"
+	mkdir -p "$FONT_DIR"
+	install_meslo_nerd_font
+	if [ -d "$REPO_DIR/config/polybar/fonts" ]; then
+		cp -r "$REPO_DIR/config/polybar/fonts/"* "$FONT_DIR/"
+		fc-cache -fv >/dev/null 2>&1
+	fi
+	ok "Fonts installed."
 fi
-ok "Fonts installed."
 
 # ── Terminal emulator ────────────────────────────────────
 terminal=""
@@ -379,20 +422,23 @@ else
 	terminal="$(detect_terminal)"
 fi
 
-# ── Polybar + XDG dirs + wallpapers ──────────────────────
-dwm_install_package_profile bar
-command -v xdg-user-dirs-update &>/dev/null && xdg-user-dirs-update
+# ── XDG dirs + wallpapers ────────────────────────────────
+if install_optional_profile && command -v xdg-user-dirs-update &>/dev/null; then
+	xdg-user-dirs-update
+fi
 
-mkdir -p "$HOME/Pictures"
-if [ ! -d "$BG_DIR" ]; then
-	info "Downloading Nord wallpapers..."
-	if git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null; then
-		ok "Wallpapers downloaded to $BG_DIR"
+if install_optional_profile; then
+	mkdir -p "$HOME/Pictures"
+	if [ ! -d "$BG_DIR" ]; then
+		info "Downloading Nord wallpapers..."
+		if git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null; then
+			ok "Wallpapers downloaded to $BG_DIR"
+		else
+			warn "Failed to download wallpapers. Add your own to $BG_DIR."
+		fi
 	else
-		warn "Failed to download wallpapers. Add your own to $BG_DIR."
+		ok "Wallpapers already present."
 	fi
-else
-	ok "Wallpapers already present."
 fi
 
 # ── Display manager ──────────────────────────────────────
@@ -400,6 +446,8 @@ currentdm="$(detect_display_manager)"
 
 if [ -n "$currentdm" ]; then
 	ok "Display manager already installed: $currentdm"
+elif ! install_optional_profile; then
+	warn "No display manager found; skipping display-manager installation for $INSTALL_PROFILE profile."
 else
 	if is_arch_arm; then
 		info "No display manager found - installing SDDM for Arch ARM..."
