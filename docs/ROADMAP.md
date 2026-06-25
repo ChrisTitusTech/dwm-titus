@@ -58,8 +58,9 @@ shared map and selected by `install.sh`. `install.sh` also has explicit
 `--profile`, `--non-interactive`, `--yes`, and `--dry-run` flags with a
 resolved install summary before changes. `make check-container-smoke` validates
 the required package profile, clean build, and staged install in Debian, Arch,
-and Fedora containers. The manual installation docs still include Arch-family
-commands.
+and Fedora containers. `make check-install-preservation` validates repeated
+user installs preserve `config.h`, runtime TOML, `.xinitrc`, and existing app
+configuration. The manual installation docs still include Arch-family commands.
 
 - [x] Move package capability mappings into one data module used by the
   installer and dependency checker.
@@ -71,7 +72,7 @@ commands.
   explicit interactive summary for users.
 - [x] Add container validation for one Debian, one Arch, and one Fedora/RHEL
   representative.
-- [ ] Verify that repeated installation preserves `config.h`, runtime TOML,
+- [x] Verify that repeated installation preserves `config.h`, runtime TOML,
   `.xinitrc`, and application configuration.
 - [ ] Remove Arch-only commands from general documentation and diagnostics.
 

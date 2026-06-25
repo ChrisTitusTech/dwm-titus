@@ -351,6 +351,9 @@ check-install-manifest: all
 	cmp "$$before" "$$after"; \
 	echo "==> Install manifest and uninstall symmetry validated."
 
+check-install-preservation:
+	tests/test-install-preservation.sh
+
 check-vicinae-install: all
 	@set -eu; \
 	if [ "$$(uname -m)" != x86_64 ]; then \
@@ -421,13 +424,14 @@ check:
 	$(MAKE) check-session-guards
 	$(MAKE) check-install
 	$(MAKE) check-install-manifest
+	$(MAKE) check-install-preservation
 	$(MAKE) check-vicinae-install
 	$(MAKE) release-check
 
 .PHONY: all check check-build-config check-build-deps check-default-apps \
 	check-container-smoke \
 	check-display-profile check-format check-install \
-	check-install-manifest check-polybar-capabilities check-session-guards \
-	check-shell check-diagnostics \
+	check-install-manifest check-install-preservation \
+	check-polybar-capabilities check-session-guards check-shell check-diagnostics \
 	check-terminal check-vicinae-install clean install install-system install-user \
 	install-cursors install-vicinae native release release-check uninstall

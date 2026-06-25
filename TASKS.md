@@ -115,6 +115,15 @@ This file tracks the next reviewable work. Product requirements live in
   - Validation: `make check-shell`, `make check-format`,
     `make check-container-smoke` with `debian:stable-slim`,
     `archlinux:latest`, and `fedora:latest`.
+- [x] Verify repeated installation preserves user-owned files.
+  - Scope: add `tests/test-install-preservation.sh` and
+    `make check-install-preservation` using a temporary repo copy and temporary
+    home/XDG directories.
+  - Acceptance: two repeated user installs preserve existing `config.h`,
+    `.xinitrc`, runtime TOML files, and existing Polybar/Picom app config
+    markers.
+  - Validation: `bash -n tests/test-install-preservation.sh`,
+    `make check-shell`, `make check-format`, `make check-install-preservation`.
 - [ ] Replace remaining Arch-only general documentation.
 
 ## Current Phase: Minimal Feature-Complete Desktop
