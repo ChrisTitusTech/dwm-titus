@@ -155,7 +155,7 @@ Goal: reduce risk in the patched C core after behavior is covered by tests.
   systray, fullscreen, icons, and runtime TOML.
 - [x] Group static declarations and implementation sections by subsystem.
 - [x] Extract runtime TOML loading/reload state behind a narrow interface.
-- [ ] Extract EWMH property updates behind a narrow interface.
+- [x] Extract EWMH property updates behind a narrow interface.
 - [ ] Replace unchecked formatting and allocation edge cases in touched paths.
 - [ ] Keep layout and event-loop code in `dwm.c` unless extraction measurably
   improves clarity without increasing coupling.

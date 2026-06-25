@@ -262,7 +262,7 @@ complete from compile-only validation.
   - Acceptance: invalid reloads keep the last valid state and existing hotkey,
     theme, and rule behavior remains covered.
   - Validation: `make check-xvfb-runtime`, `make check`.
-- [ ] Extract EWMH property updates behind a narrow interface.
+- [x] Extract EWMH property updates behind a narrow interface.
   - Scope: isolate root/client property updates from layout and monitor logic.
   - Acceptance: EWMH state remains synchronized with focus, tag, fullscreen,
     and client-list changes.

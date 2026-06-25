@@ -286,6 +286,14 @@ static void setup(void);
 static void unmapnotify(XEvent *e);
 
 /* EWMH declarations */
+static void ewmh_append_client(Window win);
+static void ewmh_clear_active_window(void);
+static void ewmh_clear_client_list(void);
+static void ewmh_replace_root_cardinal(Atom prop, const long *data, int n);
+static void ewmh_replace_window_cardinal(Window win, Atom prop, const long *data, int n);
+static void ewmh_set_active_window(Window win);
+static void ewmh_set_desktop_names(void);
+static void ewmh_set_fullscreen_state(Client *c, int fullscreen);
 static Atom getatomprop(Client *c, Atom prop);
 static void setclientdesktop(Client *c);
 static void setcurrentdesktop(void);
@@ -764,7 +772,7 @@ cleanup(void)
 	drw_free(drw);
 	XSync(dpy, False);
 	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
-	XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+	ewmh_clear_active_window();
 }
 
 void
@@ -1198,7 +1206,7 @@ focus(Client *c)
 		setfocus(c);
 	} else {
 		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
-		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+		ewmh_clear_active_window();
 	}
 	selmon->sel = c;
 	drawbars();
@@ -1644,8 +1652,7 @@ manage(Window w, XWindowAttributes *wa)
 		XRaiseWindow(dpy, c->win);
 	attachbottom(c);
 	attachstack(c);
-	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32, PropModeAppend,
-		(unsigned char *) &(c->win), 1);
+	ewmh_append_client(c->win);
 	XMoveResizeWindow(dpy, c->win, c->x + 2 * sw, c->y, c->w, c->h); /* some windows require this */
 	setclientstate(c, NormalState);
 	setclientdesktop(c);
@@ -1675,8 +1682,7 @@ managealtbar(Window win, XWindowAttributes *wa)
 	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask|ExposureMask);
 	XMoveResizeWindow(dpy, win, wa->x, wa->y, wa->width, wa->height);
 	XMapWindow(dpy, win);
-	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32, PropModeAppend,
-		(unsigned char *) &win, 1);
+	ewmh_append_client(win);
 	if (!m->traywin)
 		scantray();
 }
@@ -1696,8 +1702,7 @@ managetray(Window win, XWindowAttributes *wa)
 	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
 	XMoveResizeWindow(dpy, win, wa->x, wa->y, wa->width, wa->height);
 	XMapWindow(dpy, win);
-	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32, PropModeAppend,
-			(unsigned char *) &win, 1);
+	ewmh_append_client(win);
 }
 
 void
@@ -2449,6 +2454,67 @@ sendmon(Client *c, Monitor *m)
 }
 
 /* EWMH property implementations */
+static void
+ewmh_append_client(Window win)
+{
+	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32,
+		PropModeAppend, (unsigned char *)&win, 1);
+}
+
+static void
+ewmh_clear_active_window(void)
+{
+	XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+}
+
+static void
+ewmh_clear_client_list(void)
+{
+	XDeleteProperty(dpy, root, netatom[NetClientList]);
+}
+
+static void
+ewmh_replace_root_cardinal(Atom prop, const long *data, int n)
+{
+	XChangeProperty(dpy, root, prop, XA_CARDINAL, 32, PropModeReplace,
+		(unsigned char *)data, n);
+}
+
+static void
+ewmh_replace_window_cardinal(Window win, Atom prop, const long *data, int n)
+{
+	XChangeProperty(dpy, win, prop, XA_CARDINAL, 32, PropModeReplace,
+		(unsigned char *)data, n);
+}
+
+static void
+ewmh_set_active_window(Window win)
+{
+	XChangeProperty(dpy, root, netatom[NetActiveWindow], XA_WINDOW, 32,
+		PropModeReplace, (unsigned char *)&win, 1);
+}
+
+static void
+ewmh_set_desktop_names(void)
+{
+	XTextProperty text;
+
+	Xutf8TextListToTextProperty(dpy, (char **)tags, TAGSLENGTH,
+		XUTF8StringStyle, &text);
+	XSetTextProperty(dpy, root, &text, netatom[NetDesktopNames]);
+}
+
+static void
+ewmh_set_fullscreen_state(Client *c, int fullscreen)
+{
+	if (fullscreen)
+		XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
+			PropModeReplace, (unsigned char *)&netatom[NetWMFullscreen], 1);
+	else
+		XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
+			PropModeReplace, (unsigned char *)0, 0);
+}
+
 void
 setclientstate(Client *c, long state)
 {
@@ -2464,9 +2530,7 @@ setcurrentdesktop(void){
 }
 
 void setdesktopnames(void){
-	XTextProperty text;
-	Xutf8TextListToTextProperty(dpy, (char**)tags, TAGSLENGTH, XUTF8StringStyle, &text);
-	XSetTextProperty(dpy, root, &text, netatom[NetDesktopNames]);
+	ewmh_set_desktop_names();
 }
 
 void
@@ -2486,8 +2550,7 @@ setclientdesktop(Client *c)
         data[0] = 0xFFFFFFFF;
     }
     
-    XChangeProperty(dpy, c->win, netatom[NetWMDesktop], XA_CARDINAL, 32,
-        PropModeReplace, (unsigned char *)data, 1);
+    ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
 }
 
 int
@@ -2518,7 +2581,7 @@ sendevent(Client *c, Atom proto)
 void
 setnumdesktops(void){
 	long data[] = { TAGSLENGTH };
-	XChangeProperty(dpy, root, netatom[NetNumberOfDesktops], XA_CARDINAL, 32, PropModeReplace, (unsigned char *)data, 1);
+	ewmh_replace_root_cardinal(netatom[NetNumberOfDesktops], data, 1);
 }
 
 void
@@ -2526,9 +2589,7 @@ setfocus(Client *c)
 {
 	if (!c->neverfocus) {
 		XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
-		XChangeProperty(dpy, root, netatom[NetActiveWindow],
-			XA_WINDOW, 32, PropModeReplace,
-			(unsigned char *) &(c->win), 1);
+		ewmh_set_active_window(c->win);
 	}
 	sendevent(c, wmatom[WMTakeFocus]);
 }
@@ -2559,12 +2620,7 @@ setfullscreen(Client *c, int fullscreen)
 		c->fakefullscreen = 1;
 
 	if (fullscreen != c->isfullscreen) { // only send property change if necessary
-		if (fullscreen)
-			XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
-				PropModeReplace, (unsigned char*)&netatom[NetWMFullscreen], 1);
-		else
-			XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
-				PropModeReplace, (unsigned char*)0, 0);
+		ewmh_set_fullscreen_state(c, fullscreen);
 	}
 
 	c->isfullscreen = fullscreen;
@@ -3427,7 +3483,7 @@ setup(void)
 	setcurrentdesktop();
 	setdesktopnames();
 	setviewport();
-	XDeleteProperty(dpy, root, netatom[NetClientList]);
+	ewmh_clear_client_list();
 	/* select events */
 	wa.cursor = cursor[CurNormal]->cursor;
 	wa.event_mask = SubstructureRedirectMask|SubstructureNotifyMask
@@ -3447,7 +3503,7 @@ setup(void)
 void
 setviewport(void){
 	long data[] = { 0, 0 };
-	XChangeProperty(dpy, root, netatom[NetDesktopViewport], XA_CARDINAL, 32, PropModeReplace, (unsigned char *)data, 2);
+	ewmh_replace_root_cardinal(netatom[NetDesktopViewport], data, 2);
 }
 
 void
@@ -3851,7 +3907,7 @@ unfocus(Client *c, int setfocus)
 	XSetWindowBorder(dpy, c->win, scheme[SchemeNorm][ColBorder].pixel);
 	if (setfocus) {
 		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
-		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+		ewmh_clear_active_window();
 	}
 }
 
@@ -4040,12 +4096,10 @@ updateclientlist(void)
 	Client *c;
 	Monitor *m;
 
-	XDeleteProperty(dpy, root, netatom[NetClientList]);
+	ewmh_clear_client_list();
 	for (m = mons; m; m = m->next)
 		for (c = m->clients; c; c = c->next)
-			XChangeProperty(dpy, root, netatom[NetClientList],
-				XA_WINDOW, 32, PropModeAppend,
-				(unsigned char *) &(c->win), 1);
+			ewmh_append_client(c->win);
 }
 
 void updatecurrentdesktop(void){
@@ -4061,7 +4115,7 @@ void updatecurrentdesktop(void){
 		data[0] = 0;
 	}
 	
-	XChangeProperty(dpy, root, netatom[NetCurrentDesktop], XA_CARDINAL, 32, PropModeReplace, (unsigned char *)data, 1);
+	ewmh_replace_root_cardinal(netatom[NetCurrentDesktop], data, 1);
 }
 
 #if SHOWWINICON
