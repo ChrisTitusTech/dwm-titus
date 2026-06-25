@@ -135,6 +135,15 @@ This file tracks the next reviewable work. Product requirements live in
 
 ## Current Phase: Runtime Correctness
 
+- [x] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
+  fullscreen, EWMH state, and TOML reload.
+  - Scope: add `tests/test-xvfb-runtime.sh` and `make check-xvfb-runtime`
+    using Xvfb plus a compiled temporary Xlib client.
+  - Acceptance: the harness starts dwm in an isolated X server, validates EWMH
+    root startup state, focuses a managed client, switches tags, handles an
+    EWMH fullscreen request, and proves TOML hotkey reload.
+  - Validation: `make check-xvfb-runtime`, `make check-shell`,
+    `make check-format`, `git diff --check`.
 - [x] Verify autostart behavior across dwm restart, display-manager login, and
   `startx`.
   - Scope: keep Picom, Dunst, Feh, polkit, and XDG autostart helpers from

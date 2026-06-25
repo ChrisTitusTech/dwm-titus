@@ -91,10 +91,12 @@ Goal: stabilize the required desktop behavior before adding new features.
 Audit status: autostart verification now passes through
 `make check-session-guards` with isolated display-manager and `startx`
 invocations, including duplicate-process and missing optional-command guards.
-Current-tree evidence is not sufficient to check off the remaining runtime
-items.
+`make check-xvfb-runtime` now starts dwm under Xvfb and validates startup EWMH
+properties, client focus, tag switching, EWMH fullscreen handling, and TOML
+hotkey reload. Current-tree evidence is not sufficient to check off the
+remaining runtime items.
 
-- [ ] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
+- [x] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
   fullscreen, EWMH state, and TOML reload.
 - [ ] Fix monitor-to-monitor tag switching so cursor position and Polybar EWMH
   state update together.

@@ -274,6 +274,9 @@ check-format:
 check-session-guards:
 	tests/test-autostart.sh
 
+check-xvfb-runtime: all
+	tests/test-xvfb-runtime.sh
+
 check-build-config:
 	tests/test-configure-build.sh
 
