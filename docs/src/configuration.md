@@ -68,6 +68,12 @@ to list browser desktop files, `dwm-default-apps set-browser firefox.desktop`
 to set the default browser, or `dwm-default-apps set-mime <mime> <desktop-id>`
 for other file types.
 
+Display profiles are optional files under
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles`. Use
+`dwm-display-profile template` to print the format, `dwm-display-profile list`
+to show profiles, and `dwm-display-profile apply <name>` to run the profile
+through `xrandr`.
+
 ### Modifier Syntax
 
 Use space-separated modifiers: `"SUPER"`, `"SUPER SHIFT"`, `"SUPER CTRL"`, `"SUPER CTRL SHIFT"`.

@@ -99,7 +99,7 @@ Goal: complete the product requirements without moving desktop policy into
   when none is available.
 - [x] Add an `xdg-settings` based workflow for browser and default application
   selection.
-- [ ] Add a small display-profile CLI using `xrandr`; profiles remain optional
+- [x] Add a small display-profile CLI using `xrandr`; profiles remain optional
   user configuration under the XDG config directory.
 - [ ] Make Polybar modules capability-driven so missing battery, audio,
   network, temperature, or tray tools hide cleanly.

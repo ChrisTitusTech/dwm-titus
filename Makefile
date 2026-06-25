@@ -28,6 +28,7 @@ INSTALL_COMMANDS = \
 	scripts/disable-powersaving \
 	scripts/dwm-controlcenter \
 	scripts/dwm-default-apps \
+	scripts/dwm-display-profile \
 	scripts/dwm-keybinds \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
@@ -262,12 +263,12 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
+	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-display-profile scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
 		config/polybar/*.sh config/polybar/scripts/*.sh \
 		config/polybar/scripts/weather/*.sh config/rofi/*.sh
 
 check-format:
-	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-display-profile scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -280,6 +281,9 @@ check-terminal:
 
 check-default-apps:
 	tests/test-dwm-default-apps.sh
+
+check-display-profile:
+	tests/test-dwm-display-profile.sh
 
 check-install: all
 	@set -eu; \
@@ -400,6 +404,7 @@ check:
 	$(MAKE) check-format
 	$(MAKE) check-build-config
 	$(MAKE) check-default-apps
+	$(MAKE) check-display-profile
 	$(MAKE) check-terminal
 	$(MAKE) check-session-guards
 	$(MAKE) check-install
@@ -407,7 +412,8 @@ check:
 	$(MAKE) check-vicinae-install
 	$(MAKE) release-check
 
-.PHONY: all check check-build-config check-build-deps check-default-apps check-format check-install \
+.PHONY: all check check-build-config check-build-deps check-default-apps \
+	check-display-profile check-format check-install \
 	check-install-manifest check-session-guards check-shell \
 	check-terminal check-vicinae-install clean install install-system install-user \
 	install-cursors install-vicinae native release release-check uninstall

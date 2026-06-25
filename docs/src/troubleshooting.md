@@ -81,6 +81,8 @@ fc-cache -fv
 - Tags not syncing across monitors: run `debug/debug_ewmh.sh`
 - Polybar only on one monitor: check `~/.config/polybar/launch.sh` uses `xrandr` to detect monitors
 - Cursor doesn't follow focus: verify cursor warp is enabled in `config.h` (`cursorwarp = 1`)
+- Display layout profiles: run `dwm-display-profile dir` and
+  `dwm-display-profile template` to create optional `xrandr` profiles
 
 ---
 

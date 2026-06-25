@@ -211,6 +211,8 @@ Key things to customize in `config.h`:
 - Or set `DWM_TERMINAL` / edit `hotkeys.toml` to use your preferred terminal
 - Browser defaults: run `dwm-default-apps browsers`, then
   `dwm-default-apps set-browser <desktop-id>`
+- Display profiles: run `dwm-display-profile template` and save optional
+  profiles under `~/.config/dwm-titus/display-profiles/`
 
 **Multi-monitor issues:**
 - Polybar auto-detects monitors via `xrandr`

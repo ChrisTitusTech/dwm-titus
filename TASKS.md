@@ -92,8 +92,14 @@ This file tracks the next reviewable work. Product requirements live in
   - Acceptance: users can list browser desktop files, set the default browser,
     set a MIME default, and use the default browser hotkey through the helper.
   - Validation: `make check-default-apps`.
-- [ ] Add a small display-profile CLI using `xrandr`; profiles remain optional
+- [x] Add a small display-profile CLI using `xrandr`; profiles remain optional
   user configuration under the XDG config directory.
+  - Scope: add `dwm-display-profile` with optional profiles under
+    `${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles`.
+  - Acceptance: users can list profiles, print the profile directory, inspect
+    current `xrandr` state, print a template, and apply a profile without
+    sourcing user-controlled shell.
+  - Validation: `make check-display-profile`.
 - [ ] Make Polybar modules capability-driven so missing battery, audio,
   network, temperature, or tray tools hide cleanly.
 - [ ] Provide a single diagnostics command that reports required failures and

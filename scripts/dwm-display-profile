@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+profile_dir="${DWM_DISPLAY_PROFILE_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles}"
+
+usage() {
+	cat <<EOF
+Usage:
+  dwm-display-profile dir
+  dwm-display-profile list
+  dwm-display-profile apply <profile>
+  dwm-display-profile current
+  dwm-display-profile template
+
+Profiles live in:
+  $profile_dir
+
+Each non-empty, non-comment line starts with an output name followed by xrandr
+options for that output. Example:
+  HDMI-1 --primary --mode 1920x1080 --rate 60
+  DP-1 --off
+EOF
+}
+
+need_xrandr() {
+	if ! command -v xrandr >/dev/null 2>&1; then
+		printf 'dwm-display-profile: missing required command: xrandr\n' >&2
+		return 1
+	fi
+}
+
+profile_path() {
+	local name=$1
+
+	case "$name" in
+	"" | */* | *..*)
+		printf 'dwm-display-profile: invalid profile name: %s\n' "$name" >&2
+		return 1
+		;;
+	esac
+
+	if [[ $name == *.conf ]]; then
+		printf '%s/%s\n' "$profile_dir" "$name"
+	else
+		printf '%s/%s.conf\n' "$profile_dir" "$name"
+	fi
+}
+
+list_profiles() {
+	local file
+
+	[[ -d $profile_dir ]] || return 0
+	for file in "$profile_dir"/*.conf; do
+		[[ -f $file ]] || continue
+		printf '%s\n' "${file##*/}" | sed 's/\.conf$//'
+	done
+}
+
+apply_profile() {
+	local name=$1
+	local file line output
+	local -a args=() words=()
+
+	need_xrandr
+	file=$(profile_path "$name")
+
+	if [[ ! -f $file ]]; then
+		printf 'dwm-display-profile: profile not found: %s\n' "$file" >&2
+		printf 'Create one under %s or run: dwm-display-profile template\n' "$profile_dir" >&2
+		return 1
+	fi
+
+	while IFS= read -r line || [[ -n $line ]]; do
+		line=${line%%#*}
+		[[ $line =~ ^[[:space:]]*$ ]] && continue
+		read -r -a words <<<"$line"
+		output=${words[0]:-}
+		if [[ -z $output ]]; then
+			continue
+		fi
+		args+=(--output "$output")
+		if ((${#words[@]} > 1)); then
+			args+=("${words[@]:1}")
+		fi
+	done <"$file"
+
+	if ((${#args[@]} == 0)); then
+		printf 'dwm-display-profile: profile has no outputs: %s\n' "$file" >&2
+		return 1
+	fi
+
+	xrandr "${args[@]}"
+}
+
+print_current() {
+	need_xrandr
+	xrandr --query
+}
+
+print_template() {
+	cat <<'EOF'
+# Save as ~/.config/dwm-titus/display-profiles/example.conf
+# Lines are: <output> <xrandr options for that output>
+HDMI-1 --primary --mode 1920x1080 --rate 60
+DP-1 --off
+EOF
+}
+
+main() {
+	local cmd=${1:-}
+
+	case "$cmd" in
+	dir)
+		printf '%s\n' "$profile_dir"
+		;;
+	list)
+		list_profiles
+		;;
+	apply)
+		[[ $# -eq 2 ]] || {
+			usage >&2
+			return 2
+		}
+		apply_profile "$2"
+		;;
+	current)
+		print_current
+		;;
+	template)
+		print_template
+		;;
+	-h | --help | help)
+		usage
+		;;
+	*)
+		usage >&2
+		return 2
+		;;
+	esac
+}
+
+main "$@"
