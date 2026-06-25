@@ -88,11 +88,11 @@ Exit criteria:
 
 Goal: stabilize the required desktop behavior before adding new features.
 
-Audit status: current-tree evidence is not sufficient to check off these tasks.
-The autostart guard test exists, but `make check-session-guards` currently
-fails in the live desktop environment while validating the Picom duplicate
-guard, so the autostart verification item remains unchecked until that path
-passes reliably.
+Audit status: autostart verification now passes through
+`make check-session-guards` with isolated display-manager and `startx`
+invocations, including duplicate-process and missing optional-command guards.
+Current-tree evidence is not sufficient to check off the remaining runtime
+items.
 
 - [ ] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
   fullscreen, EWMH state, and TOML reload.
@@ -103,7 +103,7 @@ passes reliably.
   configuration and report the exact file and error.
 - [ ] Validate missing X properties and malformed `_NET_WM_ICON` data without
   crashing.
-- [ ] Verify autostart behavior across dwm restart, display-manager login, and
+- [x] Verify autostart behavior across dwm restart, display-manager login, and
   `startx`.
 
 Exit criteria:

@@ -133,6 +133,18 @@ This file tracks the next reviewable work. Product requirements live in
   - Validation: source grep for `pacman`/Arch-only install snippets, `bash -n
     scripts/power-management.sh`, `make check-shell`, `make check-format`.
 
+## Current Phase: Runtime Correctness
+
+- [x] Verify autostart behavior across dwm restart, display-manager login, and
+  `startx`.
+  - Scope: keep Picom, Dunst, Feh, polkit, and XDG autostart helpers from
+    escaping the test harness or duplicating across repeated dwm startup.
+  - Acceptance: repeated display-manager and `startx`-style autostart runs
+    launch singleton helpers once, rerun Polybar launch cleanly, and tolerate
+    missing optional commands.
+  - Validation: `sh tests/test-autostart.sh`, `make check-session-guards`,
+    `make check-shell`, `make check-format`.
+
 ## Current Phase: Minimal Feature-Complete Desktop
 
 - [x] Select a usable installed terminal at runtime with an actionable fallback
