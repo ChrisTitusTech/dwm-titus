@@ -172,7 +172,7 @@ typedef struct {
 	int monitor;
 } Rule;
 
-/* function declarations */
+/* core client and layout declarations */
 static void applyrules(Client *c);
 static int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact);
 static void arrange(Monitor *m);
@@ -180,29 +180,17 @@ static void arrangemon(Monitor *m);
 static void attach(Client *c);
 static void attachbottom(Client *c);
 static void attachstack(Client *c);
-static void buttonpress(XEvent *e);
-static void checkotherwm(void);
-static void cleanup(void);
-static void cleanupmon(Monitor *mon);
-static void clientmessage(XEvent *e);
 static void copystr(char *dst, size_t dstsz, const char *src);
 static void configure(Client *c);
-static void configurenotify(XEvent *e);
-static void configurerequest(XEvent *e);
 static Monitor *createmon(void);
-static void destroynotify(XEvent *e);
 static void detach(Client *c);
 static void detachstack(Client *c);
 static Monitor *dirtomon(int dir);
 static void drawbar(Monitor *m);
 static void drawbars(void);
-static void enternotify(XEvent *e);
-static void expose(XEvent *e);
 static void focus(Client *c);
-static void focusin(XEvent *e);
 static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
-static Atom getatomprop(Client *c, Atom prop);
 static pid_t getparentprocess(pid_t p);
 static int getrootptr(int *x, int *y);
 static long getstate(Window w);
@@ -212,16 +200,9 @@ static void grabbuttons(Client *c, int focused);
 static void grabkeys(void);
 static void incnmaster(const Arg *arg);
 static int isdescprocess(pid_t p, pid_t c);
-static void keypress(XEvent *e);
 static void killclient(const Arg *arg);
 static void manage(Window w, XWindowAttributes *wa);
-static void managealtbar(Window win, XWindowAttributes *wa);
-static void managetray(Window win, XWindowAttributes *wa);
-/* Declaration removed: usealtbar is always true (Polybar always used) */
-static void mappingnotify(XEvent *e);
-static void maprequest(XEvent *e);
 static void monocle(Monitor *m);
-static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
 static void movestack(const Arg *arg);
 static void moveorplace(const Arg *arg);
@@ -229,7 +210,6 @@ static Client *nexttiled(Client *c);
 static int noborder(Client *c);
 static void placemouse(const Arg *arg);
 static void pop(Client *c);
-static void propertynotify(XEvent *e);
 static void quit(const Arg *arg);
 static Client *recttoclient(int x, int y, int w, int h);
 static Monitor *recttomon(int x, int y, int w, int h);
@@ -237,31 +217,18 @@ static void resize(Client *c, int x, int y, int w, int h, int interact);
 static void resizeclient(Client *c, int x, int y, int w, int h);
 static void resizemouse(const Arg *arg);
 static void restack(Monitor *m);
-static void run(void);
-static void runautostart(void);
-static void scan(void);
-static void scantray(void);
 static int sendevent(Client *c, Atom proto);
 static void sendmon(Client *c, Monitor *m);
 static void setclientstate(Client *c, long state);
-static void setcurrentdesktop(void);
-static void setdesktopnames(void);
-static void setclientdesktop(Client *c);
 static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
 static void fullscreen(const Arg *arg);
 static void setlayout(const Arg *arg);
 static void setcfact(const Arg *arg);
 static void setmfact(const Arg *arg);
-static void setnumdesktops(void);
-static void setup(void);
-static void setviewport(void);
 static void seturgent(Client *c, int urg);
-static void sigchld(int unused);
 static void showhide(Client *c);
-static void sigstatusbar(const Arg *arg);
 static void spawn(const Arg *arg);
-static void spawnbar();
 static int swallow(Client *p, Client *c);
 static Client *swallowingclient(Window w);
 static void tag(const Arg *arg);
@@ -275,10 +242,6 @@ static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void unfocus(Client *c, int setfocus);
 static void unmanage(Client *c, int destroyed);
-static void unmanagealtbar(Window w);
-static void unmanagetray(Window w);
-static void unmapnotify(XEvent *e);
-static void updatecurrentdesktop(void);
 static void unswallow(Client *c);
 static void updatebarpos(Monitor *m);
 static void updatebars(void);
@@ -295,11 +258,56 @@ static pid_t winpid(Window w);
 static Client *wintoclient(Window w);
 static Monitor *wintomon(Window w);
 static int wmclasscontains(Window win, const char *class, const char *name);
+static void zoom(const Arg *arg);
+
+/* event, startup, and shutdown declarations */
+static void buttonpress(XEvent *e);
+static void checkotherwm(void);
+static void cleanup(void);
+static void cleanupmon(Monitor *mon);
+static void clientmessage(XEvent *e);
+static void configurenotify(XEvent *e);
+static void configurerequest(XEvent *e);
+static void destroynotify(XEvent *e);
+static void enternotify(XEvent *e);
+static void expose(XEvent *e);
+static void focusin(XEvent *e);
+static void keypress(XEvent *e);
+static void mappingnotify(XEvent *e);
+static void maprequest(XEvent *e);
+static void motionnotify(XEvent *e);
+static void propertynotify(XEvent *e);
+static void run(void);
+static void runautostart(void);
+static void scan(void);
+static void sigchld(int unused);
+static void sigstatusbar(const Arg *arg);
+static void setup(void);
+static void unmapnotify(XEvent *e);
+
+/* EWMH declarations */
+static Atom getatomprop(Client *c, Atom prop);
+static void setclientdesktop(Client *c);
+static void setcurrentdesktop(void);
+static void setdesktopnames(void);
+static void setnumdesktops(void);
+static void setviewport(void);
+static void updatecurrentdesktop(void);
+
+/* Polybar and systray declarations */
+static void managealtbar(Window win, XWindowAttributes *wa);
+static void managetray(Window win, XWindowAttributes *wa);
+static void scantray(void);
+static void spawnbar();
+static void unmanagealtbar(Window w);
+static void unmanagetray(Window w);
+
+/* X error declarations */
 static int xerror(Display *dpy, XErrorEvent *ee);
 static int xerrordummy(Display *dpy, XErrorEvent *ee);
 static int xerrorstart(Display *dpy, XErrorEvent *ee);
-static void zoom(const Arg *arg);
-/* hot-reload */
+
+/* runtime TOML declarations */
 static void load_hotkeys_toml(const char *user_path, const char *default_path);
 static void load_themes_toml(const char *user_path, const char *default_path);
 static void load_rules_toml(const char *user_path, const char *default_path);
@@ -422,7 +430,7 @@ static int getmonitorforselectedtag(void);
 static void updatemonitorcount(void);
 static void initmonitortags(void);
 
-/* function implementations */
+/* common utility implementations */
 static void
 copystr(char *dst, size_t dstsz, const char *src)
 {
@@ -513,6 +521,8 @@ applyrules(Client *c)
 		c->tags &= montags;
 	}
 }
+
+/* core client, layout, and input implementations */
 
 int
 applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
@@ -643,6 +653,7 @@ attachstack(Client *c)
 	c->mon->stack = c;
 }
 
+/* X event and lifecycle implementations */
 void
 buttonpress(XEvent *e)
 {
@@ -1242,6 +1253,7 @@ focusstack(const Arg *arg)
 	}
 }
 
+/* icon and X property helper implementations */
 #if SHOWWINICON
 void
 freeicon(Client *c)
@@ -1641,6 +1653,7 @@ manage(Window w, XWindowAttributes *wa)
 	focus(NULL);
 }
 
+/* Polybar and systray implementations */
 void
 managealtbar(Window win, XWindowAttributes *wa)
 {
@@ -2384,6 +2397,7 @@ scan(void)
 	}
 }
 
+/* Systray discovery implementation */
 void
 scantray(void)
 {
@@ -2446,6 +2460,7 @@ sendmon(Client *c, Monitor *m)
 	focus(NULL);
 }
 
+/* EWMH property implementations */
 void
 setclientstate(Client *c, long state)
 {
@@ -2674,7 +2689,7 @@ setmfact(const Arg *arg)
 	arrange(selmon);
 }
 
-/* ── Hot-reload implementation ────────────────────────────────────────────── */
+/* runtime TOML implementation */
 
 static void
 sigusr1_handler(int sig)
@@ -4434,6 +4449,7 @@ wmclasscontains(Window win, const char *class, const char *name)
 	return res;
 }
 
+/* X error and shutdown helper implementations */
 /* There's no way to check accesses to destroyed windows, thus those cases are
  * ignored (especially on UnmapNotify's). Other types of errors call Xlibs
  * default error handler, which may call exit. */
@@ -4482,7 +4498,7 @@ zoom(const Arg *arg)
 	pop(c);
 }
 
-/* Monitor-specific tag management functions */
+/* monitor-specific tag management implementations */
 void
 updatemonitorcount(void)
 {

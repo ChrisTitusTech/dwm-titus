@@ -250,7 +250,7 @@ complete from compile-only validation.
   - Acceptance: each named subsystem has documented invariants and validation
     notes, including explicit gaps where direct automated coverage is missing.
   - Validation: `make check`, `git diff --check`.
-- [ ] Group static declarations and implementation sections by subsystem.
+- [x] Group static declarations and implementation sections by subsystem.
   - Scope: regroup declarations and implementation blocks inside `dwm.c`
     without changing behavior.
   - Acceptance: related patched subsystems are easier to locate and no runtime

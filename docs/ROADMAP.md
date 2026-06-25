@@ -153,7 +153,7 @@ Goal: reduce risk in the patched C core after behavior is covered by tests.
 
 - [x] Document patch ownership and invariants for EWMH, pertag, swallowing,
   systray, fullscreen, icons, and runtime TOML.
-- [ ] Group static declarations and implementation sections by subsystem.
+- [x] Group static declarations and implementation sections by subsystem.
 - [ ] Extract runtime TOML loading/reload state behind a narrow interface.
 - [ ] Extract EWMH property updates behind a narrow interface.
 - [ ] Replace unchecked formatting and allocation edge cases in touched paths.
