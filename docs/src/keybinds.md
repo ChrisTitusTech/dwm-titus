@@ -120,7 +120,7 @@ Edit `config/hotkeys.toml` — changes take effect on save, no recompile require
 
 ```toml
 [vars]
-terminal = "ghostty"
+terminal = "dwm-terminal"
 
 keys = [
   { mod="SUPER SHIFT", key="f", desc="Firefox", func="spawn", exec=["firefox"] },
@@ -128,3 +128,6 @@ keys = [
 ```
 
 See the comments in `hotkeys.toml` for a full list of `func` values and modifier syntax.
+
+The browser binding uses `dwm-default-apps open`. Configure it with
+`dwm-default-apps browsers` and `dwm-default-apps set-browser <desktop-id>`.

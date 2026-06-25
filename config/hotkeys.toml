@@ -50,7 +50,7 @@
 # Define shortcuts here, then use $name in any exec or cmd value below.
 
 [vars]
-terminal = "ghostty"
+terminal = "dwm-terminal"
 webapp   = "webapp-launch"
 
 # ── KEYBINDINGS ───────────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ keys = [
   { mod="SUPER",            key="a",       desc="ChatGPT",                 func="spawn",       exec=["$webapp", "https://chatgpt.com"] },
   { mod="SUPER SHIFT",      key="a",       desc="Gemini",                  func="spawn",       exec=["$webapp", "https://gemini.google.com/"] },
   { mod="SUPER SHIFT",      key="x",       desc="X/Twitter — new post",    func="spawn",       exec=["$webapp", "https://x.com/compose/post"] },
-  { mod="SUPER",            key="b",       desc="Browser",                 func="spawn",       cmd="xdg-open https://" },
+  { mod="SUPER",            key="b",       desc="Browser",                 func="spawn",       exec=["dwm-default-apps", "open", "https://"] },
 
   # ── Screenshots ───────────────────────────────────────────────────────────────
   { mod="SUPER",            key="p",       desc="Screenshot (fullscreen)", func="spawn",       cmd="dwm-screenshot full" },

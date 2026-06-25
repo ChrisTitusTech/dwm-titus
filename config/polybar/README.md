@@ -8,7 +8,8 @@ When dwm starts, it launches `polybar/launch.sh` which:
 - Detects connected monitors via `xrandr`
 - Launches the **main** bar (with systray + EWMH tags) on the primary monitor
 - Launches **secondary** bars (no tray) on additional monitors
-- Auto-detects laptops (battery present) and uses `laptop-config.ini`
+- Auto-detects battery, audio, network, temperature, and tray capability before
+  launching modules
 
 The default theme is **minimal** (Nord-inspired).
 

@@ -1,0 +1,304 @@
+#!/bin/sh
+
+set -eu
+
+repo_dir=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
+
+require_cmd() {
+	for cmd; do
+		if ! command -v "$cmd" >/dev/null 2>&1; then
+			printf '%s\n' "missing required command: $cmd" >&2
+			exit 77
+		fi
+	done
+}
+
+wait_for_display() {
+	i=0
+	while [ "$i" -lt 100 ]; do
+		if DISPLAY=$display xprop -root >/dev/null 2>&1; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "Xvfb did not become ready" >&2
+	return 1
+}
+
+wait_for_root_property() {
+	prop=$1
+	i=0
+	while [ "$i" -lt 100 ]; do
+		if DISPLAY=$display xprop -root "$prop" 2>/dev/null |
+			grep -qv 'not found'; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "root property did not appear: $prop" >&2
+	return 1
+}
+
+wait_for_current_desktop() {
+	expected=$1
+	i=0
+	while [ "$i" -lt 100 ]; do
+		current=$(DISPLAY=$display xprop -root _NET_CURRENT_DESKTOP 2>/dev/null |
+			sed -n 's/.*= //p')
+		if [ "$current" = "$expected" ]; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "current desktop did not become $expected" >&2
+	return 1
+}
+
+wait_for_window_state() {
+	win=$1
+	needle=$2
+	i=0
+	while [ "$i" -lt 100 ]; do
+		if DISPLAY=$display xprop -id "$win" _NET_WM_STATE 2>/dev/null |
+			grep -q "$needle"; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "window $win did not gain state $needle" >&2
+	return 1
+}
+
+wait_for_active_window() {
+	win=$1
+	i=0
+	while [ "$i" -lt 100 ]; do
+		active=$(DISPLAY=$display xprop -root _NET_ACTIVE_WINDOW 2>/dev/null |
+			sed -n 's/.*# //p')
+		if [ "$active" = "$win" ]; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "window $win did not become active" >&2
+	return 1
+}
+
+require_cmd Xvfb cc pkg-config xdotool xprop sed grep
+pkg-config --exists x11
+
+work=$(mktemp -d)
+trap 'set +e; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
+
+home="$work/home"
+mkdir -p "$home/.config/dwm-titus" "$home/.config/polybar" \
+	"$home/.local/share/dwm-titus/config"
+cp "$repo_dir/config/hotkeys.toml" "$home/.config/dwm-titus/hotkeys.toml"
+cp "$repo_dir/config/themes.toml" "$home/.config/dwm-titus/themes.toml"
+cp "$repo_dir/config/window-rules.toml" "$home/.config/dwm-titus/window-rules.toml"
+cp "$repo_dir/config/"*.toml "$home/.local/share/dwm-titus/config/"
+
+cat >"$home/.config/polybar/launch.sh" <<'EOS'
+#!/bin/sh
+exit 0
+EOS
+chmod +x "$home/.config/polybar/launch.sh"
+
+cat >"$work/xclient.c" <<'EOF'
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <X11/Xutil.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+static volatile sig_atomic_t running = 1;
+
+static void
+stop(int sig)
+{
+	(void)sig;
+	running = 0;
+}
+
+int
+main(int argc, char **argv)
+{
+	Display *dpy;
+	Window win;
+	XClassHint classhint;
+	Atom wm_delete;
+	XEvent ev;
+	int set_hints = 1;
+	int malformed_icon = 0;
+
+	signal(SIGTERM, stop);
+	signal(SIGINT, stop);
+
+	dpy = XOpenDisplay(NULL);
+	if (!dpy)
+		return 2;
+
+	if (argc == 3 && strcmp(argv[1], "fullscreen") == 0) {
+		XEvent ev;
+		Atom state = XInternAtom(dpy, "_NET_WM_STATE", False);
+		Atom fullscreen = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+
+		win = strtoul(argv[2], NULL, 0);
+		memset(&ev, 0, sizeof(ev));
+		ev.xclient.type = ClientMessage;
+		ev.xclient.window = win;
+		ev.xclient.message_type = state;
+		ev.xclient.format = 32;
+		ev.xclient.data.l[0] = 1;
+		ev.xclient.data.l[1] = fullscreen;
+		XSendEvent(dpy, DefaultRootWindow(dpy), False,
+			SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+		XFlush(dpy);
+		XCloseDisplay(dpy);
+		return 0;
+	}
+	if (argc == 2 && strcmp(argv[1], "minimal") == 0)
+		set_hints = 0;
+	else if (argc == 2 && strcmp(argv[1], "malformed-icon") == 0)
+		malformed_icon = 1;
+
+	win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy),
+		20, 20, 320, 180, 0, 0, WhitePixel(dpy, DefaultScreen(dpy)));
+	if (set_hints) {
+		XStoreName(dpy, win, "dwm-xvfb-runtime");
+		classhint.res_name = "dwm-xvfb-runtime";
+		classhint.res_class = "DwmXvfbRuntime";
+		XSetClassHint(dpy, win, &classhint);
+	}
+	if (malformed_icon) {
+		unsigned long icon[] = { 8, 8, 0xff00ff00 };
+		Atom net_wm_icon = XInternAtom(dpy, "_NET_WM_ICON", False);
+		XChangeProperty(dpy, win, net_wm_icon, XA_CARDINAL, 32,
+			PropModeReplace, (unsigned char *)icon, 3);
+	}
+	wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
+	XSetWMProtocols(dpy, win, &wm_delete, 1);
+	XSelectInput(dpy, win, StructureNotifyMask);
+	XMapWindow(dpy, win);
+	XFlush(dpy);
+
+	printf("0x%lx\n", win);
+	fflush(stdout);
+
+	while (running) {
+		while (XPending(dpy)) {
+			XNextEvent(dpy, &ev);
+			if (ev.type == DestroyNotify)
+				running = 0;
+		}
+		usleep(50000);
+	}
+
+	XDestroyWindow(dpy, win);
+	XCloseDisplay(dpy);
+	return 0;
+}
+EOF
+# shellcheck disable=SC2046
+cc "$work/xclient.c" -o "$work/xclient" $(pkg-config --cflags --libs x11)
+
+display=":$((($$ % 500) + 150))"
+Xvfb "$display" -screen 0 1024x768x24 -nolisten tcp -extension GLX \
+	>"$work/xvfb.log" 2>&1 &
+xvfb_pid=$!
+wait_for_display
+
+DISPLAY=$display \
+	HOME=$home \
+	PATH="$repo_dir:$PATH" \
+	"$repo_dir/dwm" >"$work/dwm.log" 2>&1 &
+dwm_pid=$!
+
+wait_for_root_property _NET_SUPPORTED
+wait_for_root_property _NET_NUMBER_OF_DESKTOPS
+wait_for_current_desktop 0
+
+DISPLAY=$display "$work/xclient" >"$work/window-id" 2>"$work/xclient.log" &
+client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+win=$(cat "$work/window-id")
+[ -n "$win" ]
+
+wait_for_active_window "$win"
+DISPLAY=$display xprop -root _NET_CLIENT_LIST | grep -q "$win"
+
+DISPLAY=$display xdotool key Super+2
+wait_for_current_desktop 1
+
+printf '%s\n' \
+	'keys = [' \
+	'  { mod="SUPER", key="1", desc="Xvfb tag 1", func="view", ui=1 },' \
+	'  { mod="SUPER", key="m", desc="Xvfb fullscreen", func="fullscreen" },' \
+	'  { mod="SUPER", key="u", desc="Xvfb reload tag", func="view", ui=16 },' \
+	']' >"$home/.config/dwm-titus/hotkeys.toml"
+kill -USR1 "$dwm_pid"
+sleep 0.2
+DISPLAY=$display xdotool key Super+u
+wait_for_current_desktop 4
+
+DISPLAY=$display xdotool key Super+1
+wait_for_current_desktop 0
+
+printf '%s\n' '=' >"$home/.config/dwm-titus/hotkeys.toml"
+kill -USR1 "$dwm_pid"
+sleep 0.2
+DISPLAY=$display xdotool key Super+u
+wait_for_current_desktop 4
+DISPLAY=$display xdotool key Super+1
+wait_for_current_desktop 0
+
+wait_for_active_window "$win"
+DISPLAY=$display "$work/xclient" fullscreen "$win"
+wait_for_window_state "$win" _NET_WM_STATE_FULLSCREEN
+
+kill "$client_pid"
+wait "$client_pid" 2>/dev/null || true
+client_pid=
+
+DISPLAY=$display "$work/xclient" minimal >"$work/minimal-window-id" 2>"$work/minimal-client.log" &
+client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/minimal-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+minimal_win=$(cat "$work/minimal-window-id")
+[ -n "$minimal_win" ]
+wait_for_active_window "$minimal_win"
+DISPLAY=$display xprop -root _NET_CLIENT_LIST | grep -q "$minimal_win"
+
+kill "$client_pid"
+wait "$client_pid" 2>/dev/null || true
+client_pid=
+
+DISPLAY=$display "$work/xclient" malformed-icon >"$work/icon-window-id" 2>"$work/icon-client.log" &
+client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/icon-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+icon_win=$(cat "$work/icon-window-id")
+[ -n "$icon_win" ]
+wait_for_active_window "$icon_win"
+DISPLAY=$display xprop -root _NET_CLIENT_LIST | grep -q "$icon_win"
+kill -0 "$dwm_pid"
+
+printf '%s\n' "Xvfb runtime smoke: PASS"

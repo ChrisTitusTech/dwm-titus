@@ -39,37 +39,23 @@ curl -fsSL https://christitus.com/linux | sh
 
 <img width="1839" height="1000" alt="image" src="https://github.com/user-attachments/assets/314f9a40-4ccb-4c34-b3d2-dcfee63c278b" />
 
-Select `dwm`, `rofi`, `bash prompt`, and `ghostty` using the `v` key, then press `Enter`.
+Select `dwm`, `rofi`, `bash prompt`, and `alacritty` using the `v` key, then press `Enter`.
 
 ### Manual Install
 
 #### 1. Install Dependencies
 
-**Build dependencies** (required to compile):
+The supported dependency path is the installer because it resolves package
+names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
+
 ```bash
-sudo pacman -S --needed base-devel libx11 libxft libxinerama imlib2 libxcb xcb-util freetype2 fontconfig
+./install.sh --dry-run --non-interactive --profile core
+./install.sh --profile full
 ```
 
-**Xorg**:
-```bash
-sudo pacman -S --needed xorg-server xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
-```
-
-**Runtime dependencies** (desktop experience):
-```bash
-sudo pacman -S --needed rofi picom dunst feh flameshot dex mate-polkit alsa-utils noto-fonts-emoji ttf-meslo-nerd
-```
-
-**Terminal emulator** (at least one):
-```bash
-# Pick one — ghostty is the default in config.h
-sudo pacman -S ghostty   # or: alacritty, kitty
-```
-
-**Polybar** (status bar):
-```bash
-sudo pacman -S polybar
-```
+Use `core` for the required build/X11/session packages and one terminal,
+`recommended` for the desktop layer, or `full` for optional extras such as
+file-manager integration, portals, wallpapers, and display-manager setup.
 
 #### 2. Clone and Build
 
@@ -120,6 +106,11 @@ startx
 ```
 
 The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), launches Polybar, and starts dwm.
+
+For a core-only setup, use the minimal session profile documented in
+[`docs/src/install.md`](docs/src/install.md). It runs dwm with one terminal,
+required X11/session services, and treats Polybar, Rofi, Picom, Dunst,
+wallpapers, tray tools, and hardware helpers as optional degraded features.
 
 On x86_64, the installer downloads the latest Vicinae AppImage from the
 official GitHub release, verifies the release-provided SHA-256 digest, extracts
@@ -193,12 +184,13 @@ Key things to customize in `config.h`:
 ## 🔍 Troubleshooting
 
 **Black screen / dwm doesn't start:**
-- Verify Xorg is installed: `pacman -Q xorg-server xorg-xinit`
+- Run `dwm-diagnostics` and resolve any required X11/session failures.
+- Preview required packages with `./install.sh --dry-run --profile core`.
 - Check `.xinitrc` exists and ends with `exec dwm`
 - Try `startx` from a TTY to see error output
 
 **No status bar / Polybar missing:**
-- Install polybar: `sudo pacman -S polybar`
+- Install the recommended desktop layer: `./install.sh --profile recommended`
 - Check fonts are installed: `fc-list | grep -i meslo`
 - Verify polybar config: `ls ~/.config/polybar/`
 
@@ -206,8 +198,15 @@ Key things to customize in `config.h`:
 - Install icon fonts: `cp -r polybar/fonts/* ~/.local/share/fonts/ && fc-cache -fv`
 
 **Terminal doesn't open (SUPER+X):**
-- Install a terminal emulator (ghostty, alacritty, kitty, or st)
-- Or edit `config.h` → `termcmd[]` to use your preferred terminal
+- Install a terminal emulator (`alacritty`, `ghostty`, `kitty`, `st`,
+  `warp-terminal`, or `xterm`)
+- Or set `DWM_TERMINAL` / edit `hotkeys.toml` to use your preferred terminal
+- Browser defaults: run `dwm-default-apps browsers`, then
+  `dwm-default-apps set-browser <desktop-id>`
+- Display profiles: run `dwm-display-profile template` and save optional
+  profiles under `~/.config/dwm-titus/display-profiles/`
+- Diagnostics: run `dwm-diagnostics` to separate required failures from
+  optional degraded desktop features
 
 **Multi-monitor issues:**
 - Polybar auto-detects monitors via `xrandr`

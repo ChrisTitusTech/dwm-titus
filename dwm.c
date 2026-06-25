@@ -1290,20 +1290,26 @@ geticonprop(Window win, unsigned int *picw, unsigned int *pich)
 	if (n == 0 || format != 32) { XFree(p); return None; }
 
 	unsigned long *bstp = NULL;
-	uint32_t w, h, sz;
+	uint32_t w = 0, h = 0, sz;
 	{
-		unsigned long *i; const unsigned long *end = p + n;
+		unsigned long pos;
 		uint32_t bstd = UINT32_MAX, d, m;
-		for (i = p; i < end - 1; i += sz) {
-			if ((w = *i++) >= 16384 || (h = *i++) >= 16384) { XFree(p); return None; }
-			if ((sz = w * h) > end - i) break;
-			if ((m = w > h ? w : h) >= ICONSIZE && (d = m - ICONSIZE) < bstd) { bstd = d; bstp = i; }
+		for (pos = 0; pos + 2 <= n; pos += sz) {
+			w = (uint32_t)p[pos++];
+			h = (uint32_t)p[pos++];
+			if (w == 0 || h == 0 || w >= 16384 || h >= 16384) break;
+			if (w > UINT32_MAX / h) break;
+			if ((sz = w * h) > n - pos) break;
+			if ((m = w > h ? w : h) >= ICONSIZE && (d = m - ICONSIZE) < bstd) { bstd = d; bstp = p + pos; }
 		}
 		if (!bstp) {
-			for (i = p; i < end - 1; i += sz) {
-				if ((w = *i++) >= 16384 || (h = *i++) >= 16384) { XFree(p); return None; }
-				if ((sz = w * h) > end - i) break;
-				if ((d = ICONSIZE - (w > h ? w : h)) < bstd) { bstd = d; bstp = i; }
+			for (pos = 0; pos + 2 <= n; pos += sz) {
+				w = (uint32_t)p[pos++];
+				h = (uint32_t)p[pos++];
+				if (w == 0 || h == 0 || w >= 16384 || h >= 16384) break;
+				if (w > UINT32_MAX / h) break;
+				if ((sz = w * h) > n - pos) break;
+				if ((d = ICONSIZE - (w > h ? w : h)) < bstd) { bstd = d; bstp = p + pos; }
 			}
 		}
 		if (!bstp) { XFree(p); return None; }
@@ -2903,10 +2909,13 @@ load_hotkeys_toml(const char *user_path, const char *default_path)
 	static TomlDoc doc;
 	int parsed = 0;
 	if (user_path && user_path[0]) {
-		parsed = toml_parse(user_path, &doc) && doc.n > 0;
-		if (!parsed)
-			notify_bad_config(user_path,
-			    access(user_path, F_OK) == 0 ? "invalid config" : "file not found");
+		if (access(user_path, F_OK) == 0) {
+			parsed = toml_parse(user_path, &doc) && doc.n > 0;
+			if (!parsed) {
+				notify_bad_config(user_path, "invalid config");
+				return;
+			}
+		}
 	}
 	if (!parsed) {
 		if (!default_path || !default_path[0] || !toml_parse(default_path, &doc)) {
@@ -3029,10 +3038,13 @@ load_themes_toml(const char *user_path, const char *default_path)
 	static TomlDoc doc;
 	int parsed = 0;
 	if (user_path && user_path[0]) {
-		parsed = toml_parse(user_path, &doc) && doc.n > 0;
-		if (!parsed)
-			notify_bad_config(user_path,
-			    access(user_path, F_OK) == 0 ? "invalid config" : "file not found");
+		if (access(user_path, F_OK) == 0) {
+			parsed = toml_parse(user_path, &doc) && doc.n > 0;
+			if (!parsed) {
+				notify_bad_config(user_path, "invalid config");
+				return;
+			}
+		}
 	}
 	if (!parsed) {
 		if (!default_path || !default_path[0] || !toml_parse(default_path, &doc)) {
@@ -3128,10 +3140,13 @@ load_rules_toml(const char *user_path, const char *default_path)
 	static TomlDoc doc;
 	int parsed = 0;
 	if (user_path && user_path[0]) {
-		parsed = toml_parse(user_path, &doc) && doc.n > 0;
-		if (!parsed)
-			notify_bad_config(user_path,
-			    access(user_path, F_OK) == 0 ? "invalid config" : "file not found");
+		if (access(user_path, F_OK) == 0) {
+			parsed = toml_parse(user_path, &doc) && doc.n > 0;
+			if (!parsed) {
+				notify_bad_config(user_path, "invalid config");
+				return;
+			}
+		}
 	}
 	if (!parsed) {
 		if (!default_path || !default_path[0] || !toml_parse(default_path, &doc)) {

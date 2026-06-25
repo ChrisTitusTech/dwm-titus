@@ -68,12 +68,172 @@ This file tracks the next reviewable work. Product requirements live in
 
 ## Current Phase: Installer and Distribution Parity
 
-- [ ] Create one capability-to-package map for Debian, Arch, and RHEL families.
-- [ ] Refactor `install.sh`, `install-arm.sh`, and `scripts/check-deps.sh` to
+- [x] Create one capability-to-package map for Debian, Arch, and RHEL families.
+  - Scope: keep package capability groups in `scripts/dwm-packages.sh` and use
+    them from the main installer and dependency checker.
+  - Acceptance: `install.sh` and `scripts/check-deps.sh` consume the shared map
+    instead of duplicating Debian, Arch, and RHEL package lists.
+  - Validation: `bash -n install.sh scripts/dwm-packages.sh scripts/check-deps.sh`,
+    `make check-shell`, `make check-format`, `make check-build-config`.
+- [x] Refactor `install.sh`, `install-arm.sh`, and `scripts/check-deps.sh` to
   consume the shared map.
-- [ ] Split installer profiles into required, recommended, and optional.
-- [ ] Add Debian, Arch, and Fedora/RHEL container smoke tests.
-- [ ] Replace remaining Arch-only general documentation.
+  - Scope: merge ARM-specific installer behavior into `install.sh`, keep ARM
+    package exceptions in `scripts/dwm-packages.sh`, and leave `install-arm.sh`
+    as an ARM-only compatibility wrapper.
+  - Acceptance: Arch ARM terminal, framebuffer video-driver, and display
+    manager choices come from shared package profiles instead of a separate
+    installer implementation.
+  - Validation: `bash -n install.sh install-arm.sh scripts/dwm-packages.sh`,
+    `make check-shell`, `make check-format`, `make`.
+- [x] Split installer profiles into required, recommended, and optional.
+  - Scope: add runtime-required package groups, keep recommended desktop
+    packages separate from optional extras, and make `install.sh` select core,
+    recommended, or full package layers.
+  - Acceptance: Debian, Arch, and RHEL families expose non-empty required,
+    recommended, optional, and full profiles from the shared map; optional
+    extras are skipped with warnings when unavailable.
+  - Validation: `bash -n install.sh scripts/dwm-packages.sh scripts/check-deps.sh`,
+    `make check-shell`, `make check-format`, `make check-build-config`,
+    `make`, and package-map profile count smoke test.
+- [x] Add non-interactive installer flags for CI and packaging.
+  - Scope: add `--profile`, `--non-interactive`, `--yes`, and `--dry-run`,
+    while keeping an explicit package summary before any installing work.
+  - Acceptance: interactive runs show the resolved summary before prompting;
+    non-interactive and dry-run invocations do not prompt; dry-run exits before
+    package, filesystem, or sudo changes.
+  - Validation: `bash -n install.sh scripts/dwm-packages.sh`, `./install.sh --help`,
+    `./install.sh --dry-run --non-interactive --profile core`,
+    `make check-shell`, `make check-format`, `make check-build-config`,
+    `make`.
+- [x] Add Debian, Arch, and Fedora/RHEL container smoke tests.
+  - Scope: add `tests/test-container-smoke.sh` and `make check-container-smoke`
+    using Podman or Docker with configurable Debian, Arch, and RHEL-family
+    images.
+  - Acceptance: each container resolves the required package profile from
+    `scripts/dwm-packages.sh`, installs it, runs the installer dry-run summary,
+    builds dwm, and validates staged install plus uninstall manifest symmetry.
+  - Validation: `make check-shell`, `make check-format`,
+    `make check-container-smoke` with `debian:stable-slim`,
+    `archlinux:latest`, and `fedora:latest`.
+- [x] Verify repeated installation preserves user-owned files.
+  - Scope: add `tests/test-install-preservation.sh` and
+    `make check-install-preservation` using a temporary repo copy and temporary
+    home/XDG directories.
+  - Acceptance: two repeated user installs preserve existing `config.h`,
+    `.xinitrc`, runtime TOML files, and existing Polybar/Picom app config
+    markers.
+  - Validation: `bash -n tests/test-install-preservation.sh`,
+    `make check-shell`, `make check-format`, `make check-install-preservation`.
+- [x] Replace remaining Arch-only general documentation.
+  - Scope: update README and `docs/src` install/troubleshooting guidance to
+    use cross-distro installer profiles, and make power-management remediation
+    hints use the detected package manager.
+  - Acceptance: source docs no longer tell all users to run pacman-only package
+    commands for general install or troubleshooting paths.
+  - Validation: source grep for `pacman`/Arch-only install snippets, `bash -n
+    scripts/power-management.sh`, `make check-shell`, `make check-format`.
+
+## Current Phase: Runtime Correctness
+
+- [x] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
+  fullscreen, EWMH state, and TOML reload.
+  - Scope: add `tests/test-xvfb-runtime.sh` and `make check-xvfb-runtime`
+    using Xvfb plus a compiled temporary Xlib client.
+  - Acceptance: the harness starts dwm in an isolated X server, validates EWMH
+    root startup state, focuses a managed client, switches tags, handles an
+    EWMH fullscreen request, and proves TOML hotkey reload.
+  - Validation: `make check-xvfb-runtime`, `make check-shell`,
+    `make check-format`, `git diff --check`.
+- [x] Verify autostart behavior across dwm restart, display-manager login, and
+  `startx`.
+  - Scope: keep Picom, Dunst, Feh, polkit, and XDG autostart helpers from
+    escaping the test harness or duplicating across repeated dwm startup.
+  - Acceptance: repeated display-manager and `startx`-style autostart runs
+    launch singleton helpers once, rerun Polybar launch cleanly, and tolerate
+    missing optional commands.
+  - Validation: `sh tests/test-autostart.sh`, `make check-session-guards`,
+    `make check-shell`, `make check-format`.
+- [x] Make the power menu fit and remain keyboard-usable below 1080p.
+  - Scope: expose the generated rofi theme override for tests and validate
+    low-resolution display sizing without launching a live rofi session.
+  - Acceptance: the power menu stays centered within 1366x768 and 800x600
+    displays, uses a scrollable non-fixed list, disables custom input, and
+    retains rofi's no-custom script-mode guard.
+  - Validation: `make check-powermenu-layout`, `make check-shell`,
+    `make check-format`, `git diff --check`.
+- [x] Validate missing X properties and malformed `_NET_WM_ICON` data without
+  crashing.
+  - Scope: make `_NET_WM_ICON` parsing use explicit bounds and extend the Xvfb
+    harness with clients missing name/class hints and a truncated icon
+    property.
+  - Acceptance: dwm keeps running and managing clients with absent optional
+    hints or malformed icon data.
+  - Validation: `make clean`, `make`, `make check-xvfb-runtime`,
+    `make check-shell`, `make check-format`, `git diff --check`.
+- [x] Make TOML reload transactional.
+  - Scope: reject invalid existing user TOML files without falling back to
+    defaults over the current runtime state.
+  - Acceptance: a bad user `hotkeys.toml` reload reports the exact file as
+    invalid and preserves the previously loaded hotkey bindings.
+  - Validation: `make check-xvfb-runtime`, `make`, `make check-shell`,
+    `make check-format`, `git diff --check`.
+- [x] Fix monitor-to-monitor tag switching so cursor position and Polybar EWMH
+  state update together.
+  - Scope: guard the cross-monitor `view()` path that switches `selmon`, focuses
+    the target monitor/window, warps the cursor, and updates EWMH current
+    desktop state.
+  - Acceptance: source-level regression covers both cross-monitor handoff and
+    already-active target tag paths. Real nested multi-monitor Xinerama coverage
+    is deferred to Phase 5 because this host's Xvfb reports only one monitor.
+  - Validation: `make check-monitor-tags`, `make`, `make check-shell`,
+    `make check-format`.
+
+## Current Phase: Minimal Feature-Complete Desktop
+
+- [x] Select a usable installed terminal at runtime with an actionable fallback
+  when none is available.
+  - Scope: add a small runtime terminal launcher and make the default hotkey use
+    it without changing user-owned `hotkeys.toml` files.
+  - Acceptance: `Super+X` resolves the first installed supported terminal, and
+    the launcher exits with a clear remediation message when none is available.
+  - Validation: `make check-terminal`.
+- [x] Add an `xdg-settings` based workflow for browser and default application
+  selection.
+  - Scope: add `dwm-default-apps` for browser discovery, default browser
+    selection through `xdg-settings`, MIME defaults through `xdg-mime`, and
+    browser launching with an actionable missing-default message.
+  - Acceptance: users can list browser desktop files, set the default browser,
+    set a MIME default, and use the default browser hotkey through the helper.
+  - Validation: `make check-default-apps`.
+- [x] Add a small display-profile CLI using `xrandr`; profiles remain optional
+  user configuration under the XDG config directory.
+  - Scope: add `dwm-display-profile` with optional profiles under
+    `${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles`.
+  - Acceptance: users can list profiles, print the profile directory, inspect
+    current `xrandr` state, print a template, and apply a profile without
+    sourcing user-controlled shell.
+  - Validation: `make check-display-profile`.
+- [x] Make Polybar modules capability-driven so missing battery, audio,
+  network, temperature, or tray tools hide cleanly.
+  - Scope: detect Polybar module capabilities in `config/polybar/launch.sh`
+    and export module lists plus device names for the minimal theme.
+  - Acceptance: missing battery, audio, wireless, wired, temperature, or tray
+    capability is omitted from the runtime module list before Polybar starts.
+  - Validation: `make check-polybar-capabilities`.
+- [x] Provide a single diagnostics command that reports required failures and
+  optional degraded features separately.
+  - Scope: add `dwm-diagnostics` with separate required and optional desktop
+    sections and failure counts.
+  - Acceptance: required failures produce a nonzero exit; optional degraded
+    features are reported without making the core diagnostic fail.
+  - Validation: `make check-diagnostics`.
+- [x] Document a minimal session profile that runs only dwm, a terminal, and
+  required X11/session services.
+  - Scope: document the core-only profile in installation docs and link it from
+    the README.
+  - Acceptance: required profile components and optional degraded desktop
+    features are separated, with `startx` and diagnostic verification steps.
+  - Validation: `git diff --check`.
 
 ## Validation Policy
 

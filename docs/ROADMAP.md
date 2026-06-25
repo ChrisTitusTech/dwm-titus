@@ -48,19 +48,35 @@ Exit criteria:
 Goal: provide one safe installation workflow for every supported family and
 architecture.
 
-- [ ] Move package capability mappings into one data module used by the
+Audit status: package capability mappings now live in
+`scripts/dwm-packages.sh` and are consumed by `install.sh` and
+`scripts/check-deps.sh`. ARM-specific terminal, video-driver, and display
+manager package exceptions now live in the shared map and are selected by
+`install.sh`; `install-arm.sh` remains as a compatibility wrapper. Required,
+recommended, optional, and full package profiles are now separated in the
+shared map and selected by `install.sh`. `install.sh` also has explicit
+`--profile`, `--non-interactive`, `--yes`, and `--dry-run` flags with a
+resolved install summary before changes. `make check-container-smoke` validates
+the required package profile, clean build, and staged install in Debian, Arch,
+and Fedora containers. `make check-install-preservation` validates repeated
+user installs preserve `config.h`, runtime TOML, `.xinitrc`, and existing app
+configuration. General manual installation and troubleshooting docs now point
+to cross-distro installer profiles instead of Arch-only package commands, and
+power-management remediation uses the detected package manager.
+
+- [x] Move package capability mappings into one data module used by the
   installer and dependency checker.
-- [ ] Merge ARM handling into `install.sh`; keep architecture-specific package
+- [x] Merge ARM handling into `install.sh`; keep architecture-specific package
   exceptions in the shared dependency map.
-- [ ] Separate required build/runtime packages from recommended desktop
+- [x] Separate required build/runtime packages from recommended desktop
   packages and optional extras.
-- [ ] Add non-interactive flags for CI and packaging while preserving an
+- [x] Add non-interactive flags for CI and packaging while preserving an
   explicit interactive summary for users.
-- [ ] Add container validation for one Debian, one Arch, and one Fedora/RHEL
+- [x] Add container validation for one Debian, one Arch, and one Fedora/RHEL
   representative.
-- [ ] Verify that repeated installation preserves `config.h`, runtime TOML,
+- [x] Verify that repeated installation preserves `config.h`, runtime TOML,
   `.xinitrc`, and application configuration.
-- [ ] Remove Arch-only commands from general documentation and diagnostics.
+- [x] Remove Arch-only commands from general documentation and diagnostics.
 
 Exit criteria:
 
@@ -72,16 +88,30 @@ Exit criteria:
 
 Goal: stabilize the required desktop behavior before adding new features.
 
-- [ ] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
+Audit status: autostart verification now passes through
+`make check-session-guards` with isolated display-manager and `startx`
+invocations, including duplicate-process and missing optional-command guards.
+`make check-xvfb-runtime` now starts dwm under Xvfb and validates startup EWMH
+properties, client focus, tag switching, EWMH fullscreen handling, and TOML
+hotkey reload. `make check-powermenu-layout` validates the power menu rofi
+override against low-resolution display sizes. The Xvfb runtime harness now
+also validates clients with missing optional hints and truncated
+`_NET_WM_ICON` data, and verifies invalid user TOML reloads keep the last valid
+hotkey state. `make check-monitor-tags` guards the cross-monitor tag-switch
+source path for monitor handoff, focus, cursor warp, and EWMH update calls;
+this host's Xvfb does not expose multiple Xinerama monitors, so real nested
+multi-monitor validation remains a Phase 5 qualification item.
+
+- [x] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
   fullscreen, EWMH state, and TOML reload.
-- [ ] Fix monitor-to-monitor tag switching so cursor position and Polybar EWMH
+- [x] Fix monitor-to-monitor tag switching so cursor position and Polybar EWMH
   state update together.
-- [ ] Make the power menu fit and remain keyboard-usable below 1080p.
-- [ ] Make TOML reload transactional: invalid files retain the last valid
+- [x] Make the power menu fit and remain keyboard-usable below 1080p.
+- [x] Make TOML reload transactional: invalid files retain the last valid
   configuration and report the exact file and error.
-- [ ] Validate missing X properties and malformed `_NET_WM_ICON` data without
+- [x] Validate missing X properties and malformed `_NET_WM_ICON` data without
   crashing.
-- [ ] Verify autostart behavior across dwm restart, display-manager login, and
+- [x] Verify autostart behavior across dwm restart, display-manager login, and
   `startx`.
 
 Exit criteria:
@@ -95,17 +125,17 @@ Exit criteria:
 Goal: complete the product requirements without moving desktop policy into
 `dwm.c`.
 
-- [ ] Select a usable installed terminal at runtime with an actionable fallback
+- [x] Select a usable installed terminal at runtime with an actionable fallback
   when none is available.
-- [ ] Add an `xdg-settings` based workflow for browser and default application
+- [x] Add an `xdg-settings` based workflow for browser and default application
   selection.
-- [ ] Add a small display-profile CLI using `xrandr`; profiles remain optional
+- [x] Add a small display-profile CLI using `xrandr`; profiles remain optional
   user configuration under the XDG config directory.
-- [ ] Make Polybar modules capability-driven so missing battery, audio,
+- [x] Make Polybar modules capability-driven so missing battery, audio,
   network, temperature, or tray tools hide cleanly.
-- [ ] Provide a single diagnostics command that reports required failures and
+- [x] Provide a single diagnostics command that reports required failures and
   optional degraded features separately.
-- [ ] Document a minimal session profile that runs only dwm, a terminal, and
+- [x] Document a minimal session profile that runs only dwm, a terminal, and
   required X11/session services.
 
 Exit criteria:
@@ -136,7 +166,21 @@ Exit criteria:
 - No extraction adds blocking work to the X event loop.
 - The default binary and runtime dependency footprint do not materially grow.
 
-## Phase 5: Release Qualification
+## Phase 5: Feature Expansion
+
+Goal: Replace rofi menus with vicinae menus, add a small GUI for hotkey and theme management. Treat this like a control center and making it accessible from Mod+F1. Make a settings cog that shows all the small GUI management options, and make them accessible from Mod+F2 through Mod+F7. Each GUI should be optional and not required for the core functionality of dwm-titus.
+
+- [ ] Replace rofi menus with vicinae menus for power, app launcher, and
+	window switching. Keep rofi as an optional fallback with hotkey Mod+Shift+R.
+- [ ] Add a small GUI for hotkey and theme management, accessible from Mod+F1.
+- [ ] Add a small GUI for display profile management, accessible from Mod+F2.
+- [ ] Add a small GUI for Polybar module management, accessible from Mod+F3.
+- [ ] Add a small GUI for optional service management, accessible from Mod+F4.
+- [ ] Add a small GUI for optional application management, accessible from Mod+F5.
+- [ ] Add a small GUI for optional configuration management, accessible from Mod+F6.
+- [ ] Add a small GUI for optional system information management, accessible from Mod+F7.
+
+## Phase 6: Release Qualification
 
 Goal: make support claims evidence-based.
 

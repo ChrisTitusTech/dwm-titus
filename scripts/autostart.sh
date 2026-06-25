@@ -18,7 +18,8 @@ start_detached_once() {
 
 	command -v "$1" >/dev/null 2>&1 || return 0
 	pgrep -u "$(id -u)" -x "$process_name" >/dev/null 2>&1 && return 0
-	if command -v setsid >/dev/null 2>&1; then
+	if [ "${DWM_AUTOSTART_NO_SETSID:-0}" != 1 ] &&
+		command -v setsid >/dev/null 2>&1; then
 		setsid -f "$@" >/dev/null 2>&1
 	else
 		"$@" >/dev/null 2>&1 &
@@ -62,6 +63,9 @@ start_detached_once picom picom --backend "$PICOM_BACKEND"
 
 # Notification daemon
 start_once dunst dunst
+
+# Session locker for the power menu lock action and loginctl lock requests.
+start_once light-locker light-locker
 
 # Vicinae is managed as a user service. Starting it here ensures the daemon is
 # available in dwm sessions that do not activate graphical-session.target.

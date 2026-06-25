@@ -3,7 +3,7 @@
 Run the dependency checker first — it covers most common issues:
 
 ```bash
-bash scripts/check-deps.sh
+dwm-diagnostics
 ```
 
 Or use the [Control Center](./control-center.md) → **System Health**.
@@ -13,7 +13,8 @@ Or use the [Control Center](./control-center.md) → **System Health**.
 ## dwm Won't Start
 
 **Black screen / returns immediately to login:**
-- Verify Xorg: `pacman -Q xorg-server xorg-xinit`
+- Run `dwm-diagnostics` and resolve any required X11/session failures.
+- Preview required packages with `./install.sh --dry-run --profile core`.
 - Check `.xinitrc` exists and ends with `exec dwm`
 - Run `startx` from a TTY to see error output in the terminal
 
@@ -25,7 +26,7 @@ Or use the [Control Center](./control-center.md) → **System Health**.
 
 ## No Status Bar / Polybar Missing
 
-- Install polybar: `sudo pacman -S polybar`
+- Install the recommended desktop layer: `./install.sh --profile recommended`
 - Verify launch script: `ls ~/.config/polybar/launch.sh`
 - Run manually: `~/.config/polybar/launch.sh`
 - Check fonts: `fc-list | grep -i meslo`
@@ -40,12 +41,22 @@ fc-cache -fv
 
 ## Terminal Won't Open (`Super`+`X`)
 
-- Install a terminal: `sudo pacman -S ghostty`
-- Or change the terminal in `config/hotkeys.toml`:
+- Run `dwm-terminal` from an existing shell to see the exact fallback message
+- Install a supported terminal: `alacritty`, `ghostty`, `kitty`, `st`,
+  `warp-terminal`, or `xterm`
+- Or set a fixed terminal in `config/hotkeys.toml`:
   ```toml
   [vars]
   terminal = "alacritty"
   ```
+
+## Browser Won't Open (`Super`+`B`)
+
+- Run `dwm-default-apps status` to inspect the current default browser
+- Run `dwm-default-apps browsers` to list installed browser desktop files
+- Set one with `dwm-default-apps set-browser firefox.desktop`
+- Ensure `xdg-utils` is installed so `xdg-settings`, `xdg-mime`, and `xdg-open`
+  are available
 
 ---
 
@@ -71,6 +82,8 @@ fc-cache -fv
 - Tags not syncing across monitors: run `debug/debug_ewmh.sh`
 - Polybar only on one monitor: check `~/.config/polybar/launch.sh` uses `xrandr` to detect monitors
 - Cursor doesn't follow focus: verify cursor warp is enabled in `config.h` (`cursorwarp = 1`)
+- Display layout profiles: run `dwm-display-profile dir` and
+  `dwm-display-profile template` to create optional `xrandr` profiles
 
 ---
 

@@ -50,7 +50,7 @@ Add or change bindings without recompiling. Save the file and they apply instant
 
 ```toml
 [vars]
-terminal = "ghostty"
+terminal = "dwm-terminal"
 webapp   = "webapp-launch"
 
 keys = [
@@ -58,6 +58,21 @@ keys = [
   { mod="SUPER SHIFT", key="f",  desc="Firefox",     func="spawn", exec=["firefox"] },
 ]
 ```
+
+`dwm-terminal` selects the first installed supported terminal at launch time.
+Set `DWM_TERMINAL` or replace `terminal` with a specific command if you want a
+fixed terminal.
+
+Default applications use freedesktop settings. Run `dwm-default-apps browsers`
+to list browser desktop files, `dwm-default-apps set-browser firefox.desktop`
+to set the default browser, or `dwm-default-apps set-mime <mime> <desktop-id>`
+for other file types.
+
+Display profiles are optional files under
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles`. Use
+`dwm-display-profile template` to print the format, `dwm-display-profile list`
+to show profiles, and `dwm-display-profile apply <name>` to run the profile
+through `xrandr`.
 
 ### Modifier Syntax
 

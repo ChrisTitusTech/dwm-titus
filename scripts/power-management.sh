@@ -10,8 +10,8 @@
 #   ./power-management.sh --apply-tlp # write TLP config & run tlp start (needs root)
 #   ./power-management.sh --help      # show this help
 #
-# Hardware: Intel Raptor Lake-P / Iris Xe / DisplayLink (evdi DKMS)
-# OS:       Arch Linux (linux-lts / cachyos kernels)
+# Hardware: Laptop-oriented Linux systems with ACPI power interfaces
+# OS:       Debian-, Arch-, and Fedora/RHEL-family systems
 # =============================================================================
 
 set -euo pipefail
@@ -54,6 +54,20 @@ info() { echo -e "  ${CYAN}•${RESET}  $1"; }
 bad() { echo -e "  ${RED}✘${RESET}  $1"; }
 
 read_sys() { cat "$1" 2>/dev/null || echo "N/A"; }
+
+package_install_hint() {
+	local package=$1
+
+	if command -v pacman &>/dev/null; then
+		printf 'sudo pacman -S %s' "$package"
+	elif command -v dnf &>/dev/null; then
+		printf 'sudo dnf install %s' "$package"
+	elif command -v apt-get &>/dev/null; then
+		printf 'sudo apt-get install %s' "$package"
+	else
+		printf 'install package: %s' "$package"
+	fi
+}
 
 # =============================================================================
 # 1. SYSTEM IDENTITY
@@ -331,8 +345,8 @@ if ! systemctl is-active tlp.service &>/dev/null &&
 	! systemctl is-active power-profiles-daemon.service &>/dev/null; then
 	warn "No advanced power manager (TLP / auto-cpufreq / power-profiles-daemon) is running"
 	info "Consider installing one for better battery life:"
-	info "  pacman -S tlp          # comprehensive power management"
-	info "  pacman -S auto-cpufreq # automatic CPU frequency + governor management"
+	info "  $(package_install_hint tlp)          # comprehensive power management"
+	info "  auto-cpufreq may require a distro-specific repository or package source"
 fi
 
 # If TLP is installed, show key active settings
@@ -601,9 +615,9 @@ elif $TLP_INSTALLED && ! $TLP_CONF_OK; then
 else
 	REC_N=$((REC_N + 1))
 	echo -e "\n  ${YELLOW}${REC_N}. Install & configure TLP:${RESET}"
-	echo "     sudo pacman -S tlp && sudo systemctl enable --now tlp"
+	echo "     $(package_install_hint tlp) && sudo systemctl enable --now tlp"
 	echo "     # Then run: sudo bash power-management.sh --apply-tlp"
-	echo "     # or: sudo pacman -S auto-cpufreq && sudo systemctl enable --now auto-cpufreq"
+	echo "     # Or install auto-cpufreq from your distro or upstream package source."
 fi
 
 # 4. USB wakeup
@@ -697,7 +711,7 @@ if $APPLY_TLP; then
 	TLP_CONF="/etc/tlp.conf"
 
 	if ! command -v tlp &>/dev/null; then
-		bad "tlp is not installed. Install with: pacman -S tlp"
+		bad "tlp is not installed. Install with: $(package_install_hint tlp)"
 		exit 1
 	fi
 

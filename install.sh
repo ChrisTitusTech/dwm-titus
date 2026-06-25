@@ -3,7 +3,11 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/dwm-utils.sh
+# shellcheck disable=SC1091
 source "$REPO_DIR/scripts/dwm-utils.sh"
+# shellcheck source=scripts/dwm-packages.sh
+# shellcheck disable=SC1091
+source "$REPO_DIR/scripts/dwm-packages.sh"
 
 RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' CYAN='\033[0;36m' NC='\033[0m'
 info() { printf "${CYAN}[INFO]${NC} %s\n" "$1"; }
@@ -11,10 +15,19 @@ ok() { printf "${GREEN}[OK]${NC} %s\n" "$1"; }
 warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
 err() { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 
-if [[ $EUID -eq 0 ]]; then
-	err "Run this installer as a normal user. It invokes sudo only when needed."
-	exit 1
-fi
+usage() {
+	cat <<EOF
+Usage: ./install.sh [options]
+
+Options:
+  --profile PROFILE      Install profile: core, recommended, or full.
+                         Defaults to DWM_INSTALL_PROFILE or full.
+  --non-interactive      Use unattended defaults and do not prompt.
+  --yes                  Accept the interactive install summary.
+  --dry-run              Print the resolved plan and exit before changes.
+  -h, --help             Show this help.
+EOF
+}
 
 case "$DISTRO_FAMILY" in
 arch)
@@ -50,6 +63,157 @@ VICINAE_RELEASE_API="https://api.github.com/repos/vicinaehq/vicinae/releases/lat
 VICINAE_ASSET_NAME="Vicinae-x86_64.AppImage"
 VICINAE_TMP_DIR=""
 VICINAE_SOURCE_DIR=""
+ARCH="$(uname -m)"
+INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
+NON_INTERACTIVE=false
+ASSUME_YES=false
+DRY_RUN=false
+
+while (($# > 0)); do
+	case "$1" in
+	--profile)
+		if (($# < 2)); then
+			err "--profile requires a value."
+			exit 1
+		fi
+		INSTALL_PROFILE=$2
+		shift 2
+		;;
+	--profile=*)
+		INSTALL_PROFILE=${1#*=}
+		shift
+		;;
+	--non-interactive)
+		NON_INTERACTIVE=true
+		ASSUME_YES=true
+		shift
+		;;
+	--yes)
+		ASSUME_YES=true
+		shift
+		;;
+	--dry-run)
+		DRY_RUN=true
+		shift
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		err "Unknown option: $1"
+		usage >&2
+		exit 1
+		;;
+	esac
+done
+
+case "$INSTALL_PROFILE" in
+core | minimal)
+	INSTALL_PROFILE="core"
+	;;
+recommended | full) ;;
+*)
+	err "Unsupported DWM_INSTALL_PROFILE: $INSTALL_PROFILE"
+	err "Supported profiles: core, recommended, full"
+	exit 1
+	;;
+esac
+
+if [[ ! -t 0 || ! -t 1 ]]; then
+	NON_INTERACTIVE=true
+	ASSUME_YES=true
+fi
+
+if [[ $EUID -eq 0 && $DRY_RUN != true ]]; then
+	err "Run this installer as a normal user. It invokes sudo only when needed."
+	exit 1
+fi
+
+is_arch_arm() {
+	[[ $DISTRO_FAMILY == "arch" &&
+		($ARCH == "aarch64" || $ARCH == "armv7h" || $ARCH == "armv7l") ]]
+}
+
+install_recommended_profile() {
+	[[ $INSTALL_PROFILE == "recommended" || $INSTALL_PROFILE == "full" ]]
+}
+
+install_optional_profile() {
+	[[ $INSTALL_PROFILE == "full" ]]
+}
+
+package_line() {
+	local profile=$1
+
+	dwm_packages "$DISTRO_FAMILY" "$profile" | paste -sd ' ' -
+}
+
+print_summary_profile() {
+	local label=$1
+	local profile=$2
+	local packages
+
+	packages="$(package_line "$profile")"
+	if [[ -n $packages ]]; then
+		printf '  %s: %s\n' "$label" "$packages"
+	else
+		printf '  %s: none\n' "$label"
+	fi
+}
+
+print_install_summary() {
+	echo ""
+	echo "Installation summary:"
+	printf '  Distribution: %s\n' "$DISTRO_NAME"
+	printf '  Family: %s\n' "$DISTRO_FAMILY"
+	printf '  Package manager: %s\n' "$PKG_CMD"
+	printf '  Profile: %s\n' "$INSTALL_PROFILE"
+	printf '  Mode: %s\n' "$([[ $NON_INTERACTIVE == true ]] && echo non-interactive || echo interactive)"
+	print_summary_profile "Required packages" required
+	if install_recommended_profile; then
+		print_summary_profile "Recommended packages" recommended
+	else
+		printf '  Recommended packages: skipped\n'
+	fi
+	if install_optional_profile; then
+		print_summary_profile "Optional extras" optional
+	else
+		printf '  Optional extras: skipped\n'
+	fi
+	if is_arch_arm; then
+		print_summary_profile "Arch ARM terminal candidates" terminal-arm
+		print_summary_profile "Arch ARM video fallback" arm-video
+	else
+		print_summary_profile "Terminal candidates" terminal
+	fi
+	echo ""
+}
+
+confirm_install_summary() {
+	local answer
+
+	print_install_summary
+
+	if [[ $DRY_RUN == true ]]; then
+		ok "Dry run complete; no changes were made."
+		exit 0
+	fi
+
+	if [[ $ASSUME_YES == true ]]; then
+		return
+	fi
+
+	printf 'Continue with installation? [y/N] '
+	read -r answer
+	case "$answer" in
+	y | Y | yes | YES) ;;
+	*)
+		err "Installation cancelled."
+		exit 1
+		;;
+	esac
+}
 
 cleanup() {
 	if [[ -n $VICINAE_TMP_DIR ]]; then
@@ -183,32 +347,16 @@ install_meslo_nerd_font() {
 }
 
 install_supported_terminal() {
-	case "$DISTRO_FAMILY" in
-	arch)
-		install_optional_package ghostty 2>/dev/null ||
-			install_packages kitty
-		;;
-	rhel)
-		if package_available alacritty; then
-			install_packages alacritty
-		elif package_available kitty; then
-			install_packages kitty
-		else
-			err "No supported terminal is available in the enabled repositories."
-			return 1
-		fi
-		;;
-	debian)
-		if package_available alacritty; then
-			install_packages alacritty
-		elif package_available kitty; then
-			install_packages kitty
-		else
-			err "No supported terminal is available in the enabled repositories."
-			return 1
-		fi
-		;;
-	esac
+	local profile="terminal"
+
+	if is_arch_arm; then
+		profile="terminal-arm"
+	fi
+
+	if ! dwm_install_first_available_profile "$profile"; then
+		err "No supported terminal is available in the enabled repositories."
+		return 1
+	fi
 }
 
 configure_seeded_terminal() {
@@ -305,8 +453,10 @@ echo ""
 info "Distribution: $DISTRO_NAME"
 info "Family: $DISTRO_FAMILY"
 info "Package manager: $PKG_CMD"
+info "Install profile: $INSTALL_PROFILE"
+confirm_install_summary
 
-if [[ -t 0 && -t 1 ]]; then
+if [[ $NON_INTERACTIVE != true ]]; then
 	"$REPO_DIR/scripts/configure-build.sh"
 else
 	"$REPO_DIR/scripts/configure-build.sh" --non-interactive
@@ -317,137 +467,83 @@ if [[ $DISTRO_FAMILY == "debian" ]]; then
 	sudo apt-get update
 fi
 
-# ── Build dependencies ───────────────────────────────────
-info "Installing build dependencies..."
-case "$DISTRO_FAMILY" in
-arch)
-	install_packages \
-		base-devel libx11 libxft libxinerama libxrender imlib2 \
-		libxcb xcb-util freetype2 fontconfig pkgconf
-
+# ── Required build and runtime dependencies ──────────────
+info "Installing required build and runtime dependencies..."
+dwm_install_package_profile build
+if [[ $DISTRO_FAMILY == "arch" ]]; then
 	if pacman -Qq 2>/dev/null | command grep -q '^xlibre'; then
 		info "Xlibre detected - skipping xorg-server."
 	elif ! pacman -Qi xorg-server &>/dev/null; then
-		install_packages xorg-server
+		dwm_install_package_profile x11-server
 	fi
-	install_packages xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
-	;;
-rhel)
-	install_packages \
-		gcc make pkgconf-pkg-config \
-		libX11-devel libXft-devel libXinerama-devel libXrender-devel \
-		imlib2-devel libxcb-devel xcb-util-devel \
-		freetype-devel fontconfig-devel
-
-	if [[ $DISTRO_ID == "fedora" ]]; then
-		install_packages \
-			xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot
+else
+	dwm_install_package_profile x11-server
+fi
+dwm_install_package_profile x11
+dwm_install_package_profile runtime-required
+if is_arch_arm; then
+	if dwm_install_first_available_profile arm-video; then
+		ok "ARM framebuffer video driver installed."
 	else
-		install_packages \
-			xorg-x11-server-Xorg xorg-x11-xinit xorg-x11-server-utils
+		warn "ARM framebuffer video driver unavailable; your board's GPU driver may already provide Xorg support."
 	fi
-	;;
-debian)
-	install_packages \
-		build-essential pkg-config \
-		libx11-dev libxft-dev libxinerama-dev libxrender-dev \
-		libimlib2-dev libx11-xcb-dev libxcb1-dev libxcb-res0-dev \
-		libfontconfig-dev libfreetype-dev
+fi
+ok "Required build and runtime dependencies installed."
 
-	install_packages \
-		xserver-xorg-core xinit x11-xserver-utils
-	;;
-esac
-ok "Build dependencies installed."
+# ── Recommended desktop dependencies ─────────────────────
+if install_recommended_profile; then
+	info "Installing recommended desktop dependencies..."
+	dwm_install_package_profile desktop
+	dwm_install_package_profile theme
+	dwm_install_package_profile fonts
+	dwm_install_package_profile bar
+	ok "Recommended desktop dependencies installed."
+else
+	warn "Skipping recommended desktop dependencies for core profile."
+fi
 
-# ── Runtime dependencies ─────────────────────────────────
-info "Installing runtime dependencies..."
-case "$DISTRO_FAMILY" in
-arch)
-	install_packages \
-		rofi picom dunst feh flameshot dex mate-polkit alsa-utils \
-		brightnessctl curl git procps-ng psmisc unzip xclip xdotool \
-		xorg-xprop thunar gvfs tumbler \
-		thunar-archive-plugin nwg-look xdg-user-dirs \
-		xdg-utils xdg-desktop-portal-gtk pipewire pipewire-pulse \
-		wireplumber pavucontrol gnome-keyring \
-		networkmanager network-manager-applet libnotify rsync
-	;;
-rhel)
-	install_packages \
-		rofi picom dunst feh flameshot dex-autostart mate-polkit \
-		alsa-utils brightnessctl curl git procps-ng psmisc pulseaudio-utils \
-		unzip xclip xdotool xprop \
-		Thunar gvfs tumbler \
-		thunar-archive-plugin file-roller xdg-user-dirs xdg-utils \
-		xdg-desktop-portal-gtk pipewire pavucontrol gnome-keyring \
-		pipewire-pulseaudio wireplumber NetworkManager \
-		network-manager-applet libnotify rsync dbus-x11 \
-		xorg-x11-drv-libinput
-
-	if ! package_available nwg-look; then
-		warn "nwg-look is not in Fedora's official repositories; skipping it."
-	else
-		install_packages nwg-look
+# ── Optional desktop extras ──────────────────────────────
+if install_optional_profile; then
+	info "Installing optional desktop extras..."
+	if ! dwm_install_available_package_profile optional; then
+		warn "Some optional desktop extras were unavailable in enabled repositories."
 	fi
-	;;
-debian)
-	install_packages \
-		rofi picom dunst feh flameshot dex mate-polkit \
-		alsa-utils brightnessctl curl git procps psmisc pulseaudio-utils \
-		unzip xclip xdotool x11-utils \
-		thunar gvfs tumbler thunar-archive-plugin file-roller \
-		xdg-user-dirs xdg-utils xdg-desktop-portal-gtk \
-		pipewire pipewire-pulse wireplumber pavucontrol gnome-keyring \
-		network-manager network-manager-gnome libnotify-bin rsync dbus-x11
-	;;
-esac
-ok "Runtime dependencies installed."
+	ok "Optional desktop extras processed."
+else
+	warn "Skipping optional desktop extras for $INSTALL_PROFILE profile."
+fi
 
 # ── Vicinae app launcher ─────────────────────────────────
-if ! prepare_vicinae; then
+if install_recommended_profile && ! prepare_vicinae; then
 	warn "Vicinae will not be installed. Rofi remains available with SUPER+Shift+R."
 fi
 
 # ── Qt / GTK theming ─────────────────────────────────────
-info "Installing Qt/GTK dark-mode dependencies..."
-# dconf: required for gsettings to persist GTK color-scheme changes
-# qt6ct / qt5ct: QT_QPA_PLATFORMTHEME backend for Qt dark mode in standalone WMs
-install_packages dconf
-install_optional_package qt6ct 2>/dev/null ||
-	install_optional_package qt5ct 2>/dev/null ||
-	warn "Neither qt6ct nor qt5ct is available - Qt apps may not respect dark mode."
-ok "Qt/GTK theming dependencies installed."
+if install_recommended_profile; then
+	info "Configuring Qt/GTK dark-mode dependencies..."
+	# dconf: required for gsettings to persist GTK color-scheme changes
+	# qt6ct / qt5ct: QT_QPA_PLATFORMTHEME backend for Qt dark mode in standalone WMs
+	dwm_install_first_available_profile theme-optional ||
+		warn "Neither qt6ct nor qt5ct is available - Qt apps may not respect dark mode."
+	ok "Qt/GTK theming dependencies configured."
+fi
 
 # ── Fonts ────────────────────────────────────────────────
-info "Installing fonts..."
-case "$DISTRO_FAMILY" in
-arch)
-	install_packages noto-fonts-emoji ttf-meslo-nerd
-	;;
-rhel)
-	install_packages \
-		google-noto-color-emoji-fonts \
-		google-noto-sans-mono-fonts
-	;;
-debian)
-	install_packages \
-		fonts-noto-color-emoji \
-		fonts-noto-mono
-	;;
-esac
-FONT_DIR="$HOME/.local/share/fonts"
-mkdir -p "$FONT_DIR"
-install_meslo_nerd_font
-if [ -d "$REPO_DIR/config/polybar/fonts" ]; then
-	cp -r "$REPO_DIR/config/polybar/fonts/"* "$FONT_DIR/"
-	fc-cache -fv >/dev/null 2>&1
+if install_recommended_profile; then
+	info "Installing fonts..."
+	FONT_DIR="$HOME/.local/share/fonts"
+	mkdir -p "$FONT_DIR"
+	install_meslo_nerd_font
+	if [ -d "$REPO_DIR/config/polybar/fonts" ]; then
+		cp -r "$REPO_DIR/config/polybar/fonts/"* "$FONT_DIR/"
+		fc-cache -fv >/dev/null 2>&1
+	fi
+	ok "Fonts installed."
 fi
-ok "Fonts installed."
 
 # ── Terminal emulator ────────────────────────────────────
 terminal=""
-for t in ghostty kitty alacritty; do command -v "$t" &>/dev/null && {
+for t in alacritty ghostty kitty; do command -v "$t" &>/dev/null && {
 	terminal="$t"
 	break
 }; done
@@ -460,20 +556,23 @@ else
 	terminal="$(detect_terminal)"
 fi
 
-# ── Polybar + XDG dirs + wallpapers ──────────────────────
-install_packages polybar
-command -v xdg-user-dirs-update &>/dev/null && xdg-user-dirs-update
+# ── XDG dirs + wallpapers ────────────────────────────────
+if install_optional_profile && command -v xdg-user-dirs-update &>/dev/null; then
+	xdg-user-dirs-update
+fi
 
-mkdir -p "$HOME/Pictures"
-if [ ! -d "$BG_DIR" ]; then
-	info "Downloading Nord wallpapers..."
-	if git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null; then
-		ok "Wallpapers downloaded to $BG_DIR"
+if install_optional_profile; then
+	mkdir -p "$HOME/Pictures"
+	if [ ! -d "$BG_DIR" ]; then
+		info "Downloading Nord wallpapers..."
+		if git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null; then
+			ok "Wallpapers downloaded to $BG_DIR"
+		else
+			warn "Failed to download wallpapers. Add your own to $BG_DIR."
+		fi
 	else
-		warn "Failed to download wallpapers. Add your own to $BG_DIR."
+		ok "Wallpapers already present."
 	fi
-else
-	ok "Wallpapers already present."
 fi
 
 # ── Display manager ──────────────────────────────────────
@@ -481,22 +580,22 @@ currentdm="$(detect_display_manager)"
 
 if [ -n "$currentdm" ]; then
 	ok "Display manager already installed: $currentdm"
+elif ! install_optional_profile; then
+	warn "No display manager found; skipping display-manager installation for $INSTALL_PROFILE profile."
 else
-	info "No display manager found - installing LightDM..."
-	case "$DISTRO_FAMILY" in
-	arch)
-		install_packages lightdm lightdm-slick-greeter
-		;;
-	rhel)
-		install_packages lightdm slick-greeter
-		;;
-	debian)
-		install_packages lightdm slick-greeter
-		;;
-	esac
-	sudo systemctl enable lightdm.service
-	currentdm="lightdm"
-	ok "LightDM installed and enabled."
+	if is_arch_arm; then
+		info "No display manager found - installing SDDM for Arch ARM..."
+		dwm_install_package_profile arm-display-manager
+		sudo systemctl enable sddm.service
+		currentdm="sddm"
+		ok "SDDM installed and enabled."
+	else
+		info "No display manager found - installing LightDM..."
+		dwm_install_package_profile lightdm
+		sudo systemctl enable lightdm.service
+		currentdm="lightdm"
+		ok "LightDM installed and enabled."
+	fi
 fi
 
 # ── LightDM greeter config ───────────────────────────────
@@ -504,6 +603,11 @@ if [[ $currentdm == "lightdm" ]]; then
 	info "Deploying LightDM Slick Greeter config..."
 	install_lightdm_config
 	ok "LightDM config deployed."
+fi
+
+if is_arch_arm; then
+	warn "ARM NOTE: If picom causes display issues, set 'backend = \"xrender\"' in ~/.config/picom.conf"
+	warn "ARM NOTE: Some SBCs may need a board-specific KMS or GPU driver configuration for accelerated Xorg."
 fi
 
 # ── Build & Install ──────────────────────────────────────

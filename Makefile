@@ -27,10 +27,15 @@ INSTALL_COMMANDS = \
 	scripts/check-deps.sh \
 	scripts/disable-powersaving \
 	scripts/dwm-controlcenter \
+	scripts/dwm-default-apps \
+	scripts/dwm-diagnostics \
+	scripts/dwm-display-profile \
 	scripts/dwm-keybinds \
+	scripts/dwm-lock \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
 	scripts/dwm-screenshot \
+	scripts/dwm-terminal \
 	scripts/dwm-utils.sh \
 	scripts/nvidia-gpu \
 	scripts/nvidia-suspend-test.sh \
@@ -260,18 +265,45 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/*.sh tests/*.sh debug/*.sh \
+	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
 		config/polybar/*.sh config/polybar/scripts/*.sh \
 		config/polybar/scripts/weather/*.sh config/rofi/*.sh
 
 check-format:
-	shfmt -d install.sh install-arm.sh scripts/*.sh tests/*.sh
+	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
 
+check-xvfb-runtime: all
+	tests/test-xvfb-runtime.sh
+
 check-build-config:
 	tests/test-configure-build.sh
+
+check-terminal:
+	tests/test-dwm-terminal.sh
+
+check-lock:
+	tests/test-dwm-lock.sh
+
+check-default-apps:
+	tests/test-dwm-default-apps.sh
+
+check-display-profile:
+	tests/test-dwm-display-profile.sh
+
+check-diagnostics:
+	tests/test-dwm-diagnostics.sh
+
+check-polybar-capabilities:
+	tests/test-polybar-capabilities.sh
+
+check-powermenu-layout:
+	tests/test-powermenu-layout.sh
+
+check-monitor-tags:
+	tests/test-monitor-tag-switching.sh
 
 check-install: all
 	@set -eu; \
@@ -332,6 +364,9 @@ check-install-manifest: all
 	cmp "$$before" "$$after"; \
 	echo "==> Install manifest and uninstall symmetry validated."
 
+check-install-preservation:
+	tests/test-install-preservation.sh
+
 check-vicinae-install: all
 	@set -eu; \
 	if [ "$$(uname -m)" != x86_64 ]; then \
@@ -359,6 +394,9 @@ check-vicinae-install: all
 	grep -Fqx 'ExecStart=/usr/bin/vicinae server --replace' \
 		"$$stage/usr/lib/systemd/user/vicinae.service"; \
 	echo "==> Vicinae staged install validated."
+
+check-container-smoke:
+	tests/test-container-smoke.sh
 
 release-check: all
 	@set -eu; \
@@ -391,13 +429,23 @@ check:
 	$(MAKE) check-shell
 	$(MAKE) check-format
 	$(MAKE) check-build-config
+	$(MAKE) check-default-apps
+	$(MAKE) check-diagnostics
+	$(MAKE) check-display-profile
+	$(MAKE) check-polybar-capabilities
+	$(MAKE) check-terminal
+	$(MAKE) check-lock
 	$(MAKE) check-session-guards
 	$(MAKE) check-install
 	$(MAKE) check-install-manifest
+	$(MAKE) check-install-preservation
 	$(MAKE) check-vicinae-install
 	$(MAKE) release-check
 
-.PHONY: all check check-build-config check-build-deps check-format check-install \
-	check-install-manifest check-session-guards check-shell \
-	check-vicinae-install clean install install-system install-user \
+.PHONY: all check check-build-config check-build-deps check-default-apps \
+	check-container-smoke \
+	check-display-profile check-format check-install \
+	check-install-manifest check-install-preservation check-lock \
+	check-polybar-capabilities check-session-guards check-shell check-diagnostics \
+	check-terminal check-vicinae-install clean install install-system install-user \
 	install-cursors install-vicinae native release release-check uninstall

@@ -21,6 +21,17 @@ EOF
 	chmod +x "$work/bin/$name"
 }
 
+wait_for_marker() {
+	marker=$1
+	i=0
+	while [ "$i" -lt 50 ]; do
+		[ -f "$marker" ] && return 0
+		i=$((i + 1))
+		sleep 0.02
+	done
+	return 1
+}
+
 mkdir -p "$work/bin"
 
 cat >"$work/bin/id" <<'EOF'
@@ -30,9 +41,18 @@ EOF
 
 cat >"$work/bin/pgrep" <<'EOF'
 #!/bin/sh
-for arg do
-	name=$arg
+name=
+while [ "$#" -gt 0 ]; do
+	case $1 in
+	-x)
+		shift
+		name=${1:-}
+		break
+		;;
+	esac
+	shift
 done
+[ -n "$name" ] || exit 1
 test -f "${TEST_STATE:?}/$name.running"
 EOF
 
@@ -46,9 +66,25 @@ cat >"$work/bin/dbus-update-activation-environment" <<'EOF'
 exit 0
 EOF
 
+cat >"$work/bin/dbus-run-session" <<'EOF'
+#!/bin/sh
+if [ "$1" = "--" ]; then
+	shift
+fi
+exec "$@"
+EOF
+
 cat >"$work/bin/xset" <<'EOF'
 #!/bin/sh
 exit 0
+EOF
+
+cat >"$work/bin/setsid" <<'EOF'
+#!/bin/sh
+if [ "$1" = "-f" ]; then
+	shift
+fi
+exec "$@"
 EOF
 
 cat >"$work/bin/dex-autostart" <<'EOF'
@@ -56,9 +92,14 @@ cat >"$work/bin/dex-autostart" <<'EOF'
 exit 0
 EOF
 
+cat >"$work/bin/dex" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+
 chmod +x "$work/bin/"*
 
-for name in feh picom dunst; do
+for name in feh picom dunst light-locker; do
 	make_mock_command "$name"
 done
 
@@ -87,23 +128,27 @@ EOF
 
 	for _ in 1 2; do
 		if [ "$mode" = startx ]; then
-			XDG_RUNTIME_DIR="$runtime" /usr/bin/dbus-run-session -- env \
+			XDG_RUNTIME_DIR="$runtime" dbus-run-session -- env \
 				HOME="$home" \
 				TEST_STATE="$state" \
 				PATH="$work/bin:/usr/bin:/bin" \
 				XDG_CONFIG_HOME="$home/.config" \
+				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		else
 			HOME=$home \
 				TEST_STATE=$state \
 				PATH="$work/bin:/usr/bin:/bin" \
 				XDG_CONFIG_HOME="$home/.config" \
+				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		fi
-		sleep 0.1
+		wait_for_marker "$state/feh.running"
+		wait_for_marker "$state/picom.running"
+		wait_for_marker "$state/dunst.running"
 	done
 
-	for name in feh picom dunst; do
+	for name in feh picom dunst light-locker; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
 	test "$(cat "$state/polybar-launch.count")" -eq 2
