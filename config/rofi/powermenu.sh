@@ -143,7 +143,7 @@ function check_valid {
 }
 
 # Parse command-line options
-if ! parsed=$(getopt --options=h --longoptions=help,dry-run,confirm:,choices:,choose:,symbols,no-symbols,text,no-text,symbols-font: --name "$0" -- "$@"); then
+if ! parsed=$(getopt --options=h --longoptions=help,dry-run,confirm:,choices:,choose:,symbols,no-symbols,text,no-text,symbols-font:,print-theme --name "$0" -- "$@"); then
 	echo 'Terminating...' >&2
 	exit 1
 fi
@@ -186,6 +186,7 @@ while true; do
 		echo "  --symbols-font FONT  Use the given font for symbols. By default, the symbols"
 		echo "                       use the same font as the text. That font is configured"
 		echo "                       with rofi."
+		echo "  --print-theme        Print the generated rofi theme override and exit."
 		echo "  -h,--help            Show this help text."
 		exit 0
 		;;
@@ -229,6 +230,10 @@ while true; do
 		symbols_font="$2"
 		set_icons "$symbols_font"
 		shift 2
+		;;
+	"--print-theme")
+		print_theme=true
+		shift 1
 		;;
 	"--")
 		shift
@@ -325,6 +330,12 @@ function rofi_theme_override {
 
 	printf '%s' "window { location: center; anchor: center; width: ${window_width}px; height: ${window_height}px; border: 2px solid; margin: 0; } mainbox { margin: 0; spacing: 0; } listview { lines: 6; fixed-height: false; scrollbar: true; margin: 0; spacing: 0; } element { padding: 8px 12px; } inputbar { enabled: false; }"
 }
+
+if [ "${print_theme:-false}" = true ]; then
+	rofi_theme_override
+	printf '\n'
+	exit 0
+fi
 
 declare -A messages
 declare -A confirmationMessages

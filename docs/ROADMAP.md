@@ -93,14 +93,15 @@ Audit status: autostart verification now passes through
 invocations, including duplicate-process and missing optional-command guards.
 `make check-xvfb-runtime` now starts dwm under Xvfb and validates startup EWMH
 properties, client focus, tag switching, EWMH fullscreen handling, and TOML
-hotkey reload. Current-tree evidence is not sufficient to check off the
-remaining runtime items.
+hotkey reload. `make check-powermenu-layout` validates the power menu rofi
+override against low-resolution display sizes. Current-tree evidence is not
+sufficient to check off the remaining runtime items.
 
 - [x] Add an Xvfb/Xephyr regression harness for startup, tags, focus,
   fullscreen, EWMH state, and TOML reload.
 - [ ] Fix monitor-to-monitor tag switching so cursor position and Polybar EWMH
   state update together.
-- [ ] Make the power menu fit and remain keyboard-usable below 1080p.
+- [x] Make the power menu fit and remain keyboard-usable below 1080p.
 - [ ] Make TOML reload transactional: invalid files retain the last valid
   configuration and report the exact file and error.
 - [ ] Validate missing X properties and malformed `_NET_WM_ICON` data without

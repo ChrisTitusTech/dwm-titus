@@ -153,6 +153,14 @@ This file tracks the next reviewable work. Product requirements live in
     missing optional commands.
   - Validation: `sh tests/test-autostart.sh`, `make check-session-guards`,
     `make check-shell`, `make check-format`.
+- [x] Make the power menu fit and remain keyboard-usable below 1080p.
+  - Scope: expose the generated rofi theme override for tests and validate
+    low-resolution display sizing without launching a live rofi session.
+  - Acceptance: the power menu stays centered within 1366x768 and 800x600
+    displays, uses a scrollable non-fixed list, disables custom input, and
+    retains rofi's no-custom script-mode guard.
+  - Validation: `make check-powermenu-layout`, `make check-shell`,
+    `make check-format`, `git diff --check`.
 
 ## Current Phase: Minimal Feature-Complete Desktop
 

@@ -295,6 +295,9 @@ check-diagnostics:
 check-polybar-capabilities:
 	tests/test-polybar-capabilities.sh
 
+check-powermenu-layout:
+	tests/test-powermenu-layout.sh
+
 check-install: all
 	@set -eu; \
 	stage="$$(mktemp -d)"; \
