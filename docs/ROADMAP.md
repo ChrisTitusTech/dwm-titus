@@ -151,13 +151,13 @@ Exit criteria:
 
 Goal: reduce risk in the patched C core after behavior is covered by tests.
 
-- [ ] Document patch ownership and invariants for EWMH, pertag, swallowing,
+- [x] Document patch ownership and invariants for EWMH, pertag, swallowing,
   systray, fullscreen, icons, and runtime TOML.
-- [ ] Group static declarations and implementation sections by subsystem.
-- [ ] Extract runtime TOML loading/reload state behind a narrow interface.
-- [ ] Extract EWMH property updates behind a narrow interface.
-- [ ] Replace unchecked formatting and allocation edge cases in touched paths.
-- [ ] Keep layout and event-loop code in `dwm.c` unless extraction measurably
+- [x] Group static declarations and implementation sections by subsystem.
+- [x] Extract runtime TOML loading/reload state behind a narrow interface.
+- [x] Extract EWMH property updates behind a narrow interface.
+- [x] Replace unchecked formatting and allocation edge cases in touched paths.
+- [x] Keep layout and event-loop code in `dwm.c` unless extraction measurably
   improves clarity without increasing coupling.
 
 Exit criteria:

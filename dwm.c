@@ -172,7 +172,7 @@ typedef struct {
 	int monitor;
 } Rule;
 
-/* function declarations */
+/* core client and layout declarations */
 static void applyrules(Client *c);
 static int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact);
 static void arrange(Monitor *m);
@@ -180,29 +180,17 @@ static void arrangemon(Monitor *m);
 static void attach(Client *c);
 static void attachbottom(Client *c);
 static void attachstack(Client *c);
-static void buttonpress(XEvent *e);
-static void checkotherwm(void);
-static void cleanup(void);
-static void cleanupmon(Monitor *mon);
-static void clientmessage(XEvent *e);
 static void copystr(char *dst, size_t dstsz, const char *src);
 static void configure(Client *c);
-static void configurenotify(XEvent *e);
-static void configurerequest(XEvent *e);
 static Monitor *createmon(void);
-static void destroynotify(XEvent *e);
 static void detach(Client *c);
 static void detachstack(Client *c);
 static Monitor *dirtomon(int dir);
 static void drawbar(Monitor *m);
 static void drawbars(void);
-static void enternotify(XEvent *e);
-static void expose(XEvent *e);
 static void focus(Client *c);
-static void focusin(XEvent *e);
 static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
-static Atom getatomprop(Client *c, Atom prop);
 static pid_t getparentprocess(pid_t p);
 static int getrootptr(int *x, int *y);
 static long getstate(Window w);
@@ -212,16 +200,9 @@ static void grabbuttons(Client *c, int focused);
 static void grabkeys(void);
 static void incnmaster(const Arg *arg);
 static int isdescprocess(pid_t p, pid_t c);
-static void keypress(XEvent *e);
 static void killclient(const Arg *arg);
 static void manage(Window w, XWindowAttributes *wa);
-static void managealtbar(Window win, XWindowAttributes *wa);
-static void managetray(Window win, XWindowAttributes *wa);
-/* Declaration removed: usealtbar is always true (Polybar always used) */
-static void mappingnotify(XEvent *e);
-static void maprequest(XEvent *e);
 static void monocle(Monitor *m);
-static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
 static void movestack(const Arg *arg);
 static void moveorplace(const Arg *arg);
@@ -229,7 +210,6 @@ static Client *nexttiled(Client *c);
 static int noborder(Client *c);
 static void placemouse(const Arg *arg);
 static void pop(Client *c);
-static void propertynotify(XEvent *e);
 static void quit(const Arg *arg);
 static Client *recttoclient(int x, int y, int w, int h);
 static Monitor *recttomon(int x, int y, int w, int h);
@@ -237,31 +217,18 @@ static void resize(Client *c, int x, int y, int w, int h, int interact);
 static void resizeclient(Client *c, int x, int y, int w, int h);
 static void resizemouse(const Arg *arg);
 static void restack(Monitor *m);
-static void run(void);
-static void runautostart(void);
-static void scan(void);
-static void scantray(void);
 static int sendevent(Client *c, Atom proto);
 static void sendmon(Client *c, Monitor *m);
 static void setclientstate(Client *c, long state);
-static void setcurrentdesktop(void);
-static void setdesktopnames(void);
-static void setclientdesktop(Client *c);
 static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
 static void fullscreen(const Arg *arg);
 static void setlayout(const Arg *arg);
 static void setcfact(const Arg *arg);
 static void setmfact(const Arg *arg);
-static void setnumdesktops(void);
-static void setup(void);
-static void setviewport(void);
 static void seturgent(Client *c, int urg);
-static void sigchld(int unused);
 static void showhide(Client *c);
-static void sigstatusbar(const Arg *arg);
 static void spawn(const Arg *arg);
-static void spawnbar();
 static int swallow(Client *p, Client *c);
 static Client *swallowingclient(Window w);
 static void tag(const Arg *arg);
@@ -275,10 +242,6 @@ static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void unfocus(Client *c, int setfocus);
 static void unmanage(Client *c, int destroyed);
-static void unmanagealtbar(Window w);
-static void unmanagetray(Window w);
-static void unmapnotify(XEvent *e);
-static void updatecurrentdesktop(void);
 static void unswallow(Client *c);
 static void updatebarpos(Monitor *m);
 static void updatebars(void);
@@ -295,17 +258,76 @@ static pid_t winpid(Window w);
 static Client *wintoclient(Window w);
 static Monitor *wintomon(Window w);
 static int wmclasscontains(Window win, const char *class, const char *name);
+static void zoom(const Arg *arg);
+
+/* event, startup, and shutdown declarations */
+static void buttonpress(XEvent *e);
+static void checkotherwm(void);
+static void cleanup(void);
+static void cleanupmon(Monitor *mon);
+static void clientmessage(XEvent *e);
+static void configurenotify(XEvent *e);
+static void configurerequest(XEvent *e);
+static void destroynotify(XEvent *e);
+static void enternotify(XEvent *e);
+static void expose(XEvent *e);
+static void focusin(XEvent *e);
+static void keypress(XEvent *e);
+static void mappingnotify(XEvent *e);
+static void maprequest(XEvent *e);
+static void motionnotify(XEvent *e);
+static void propertynotify(XEvent *e);
+static void run(void);
+static void runautostart(void);
+static void scan(void);
+static void sigchld(int unused);
+static void sigstatusbar(const Arg *arg);
+static void setup(void);
+static void unmapnotify(XEvent *e);
+
+/* EWMH declarations */
+static void ewmh_append_client(Window win);
+static void ewmh_clear_active_window(void);
+static void ewmh_clear_client_list(void);
+static void ewmh_replace_root_cardinal(Atom prop, const long *data, int n);
+static void ewmh_replace_window_cardinal(Window win, Atom prop, const long *data, int n);
+static void ewmh_set_active_window(Window win);
+static void ewmh_set_desktop_names(void);
+static void ewmh_set_fullscreen_state(Client *c, int fullscreen);
+static Atom getatomprop(Client *c, Atom prop);
+static void setclientdesktop(Client *c);
+static void setcurrentdesktop(void);
+static void setdesktopnames(void);
+static void setnumdesktops(void);
+static void setviewport(void);
+static void updatecurrentdesktop(void);
+
+/* Polybar and systray declarations */
+static void managealtbar(Window win, XWindowAttributes *wa);
+static void managetray(Window win, XWindowAttributes *wa);
+static void scantray(void);
+static void spawnbar();
+static void unmanagealtbar(Window w);
+static void unmanagetray(Window w);
+
+/* X error declarations */
 static int xerror(Display *dpy, XErrorEvent *ee);
 static int xerrordummy(Display *dpy, XErrorEvent *ee);
 static int xerrorstart(Display *dpy, XErrorEvent *ee);
-static void zoom(const Arg *arg);
-/* hot-reload */
+
+/* runtime TOML declarations */
 static void load_hotkeys_toml(const char *user_path, const char *default_path);
 static void load_themes_toml(const char *user_path, const char *default_path);
 static void load_rules_toml(const char *user_path, const char *default_path);
 static void notify_bad_config(const char *filename, const char *reason);
 static int pathjoin(char *dst, size_t dstsz, const char *dir, const char *name);
 static void reload_config(void);
+static int runtime_config_fd(void);
+static void runtime_config_mark_reload_pending(void);
+static void runtime_config_poll_inotify(void);
+static void runtime_config_reload(void);
+static void runtime_config_reload_if_pending(void);
+static void runtime_config_setup(void);
 static void setup_inotify(void);
 static void *toml_alloc(size_t sz);
 
@@ -422,7 +444,7 @@ static int getmonitorforselectedtag(void);
 static void updatemonitorcount(void);
 static void initmonitortags(void);
 
-/* function implementations */
+/* common utility implementations */
 static void
 copystr(char *dst, size_t dstsz, const char *src)
 {
@@ -513,6 +535,8 @@ applyrules(Client *c)
 		c->tags &= montags;
 	}
 }
+
+/* core client, layout, and input implementations */
 
 int
 applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
@@ -643,6 +667,7 @@ attachstack(Client *c)
 	c->mon->stack = c;
 }
 
+/* X event and lifecycle implementations */
 void
 buttonpress(XEvent *e)
 {
@@ -747,7 +772,7 @@ cleanup(void)
 	drw_free(drw);
 	XSync(dpy, False);
 	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
-	XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+	ewmh_clear_active_window();
 }
 
 void
@@ -1181,7 +1206,7 @@ focus(Client *c)
 		setfocus(c);
 	} else {
 		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
-		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+		ewmh_clear_active_window();
 	}
 	selmon->sel = c;
 	drawbars();
@@ -1242,6 +1267,7 @@ focusstack(const Arg *arg)
 	}
 }
 
+/* icon and X property helper implementations */
 #if SHOWWINICON
 void
 freeicon(Client *c)
@@ -1626,8 +1652,7 @@ manage(Window w, XWindowAttributes *wa)
 		XRaiseWindow(dpy, c->win);
 	attachbottom(c);
 	attachstack(c);
-	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32, PropModeAppend,
-		(unsigned char *) &(c->win), 1);
+	ewmh_append_client(c->win);
 	XMoveResizeWindow(dpy, c->win, c->x + 2 * sw, c->y, c->w, c->h); /* some windows require this */
 	setclientstate(c, NormalState);
 	setclientdesktop(c);
@@ -1641,6 +1666,7 @@ manage(Window w, XWindowAttributes *wa)
 	focus(NULL);
 }
 
+/* Polybar and systray implementations */
 void
 managealtbar(Window win, XWindowAttributes *wa)
 {
@@ -1656,8 +1682,7 @@ managealtbar(Window win, XWindowAttributes *wa)
 	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask|ExposureMask);
 	XMoveResizeWindow(dpy, win, wa->x, wa->y, wa->width, wa->height);
 	XMapWindow(dpy, win);
-	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32, PropModeAppend,
-		(unsigned char *) &win, 1);
+	ewmh_append_client(win);
 	if (!m->traywin)
 		scantray();
 }
@@ -1677,8 +1702,7 @@ managetray(Window win, XWindowAttributes *wa)
 	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
 	XMoveResizeWindow(dpy, win, wa->x, wa->y, wa->width, wa->height);
 	XMapWindow(dpy, win);
-	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32, PropModeAppend,
-			(unsigned char *) &win, 1);
+	ewmh_append_client(win);
 }
 
 void
@@ -2228,6 +2252,7 @@ run(void)
 {
 	XEvent ev;
 	int x11_fd = ConnectionNumber(dpy);
+	int config_fd;
 	fd_set rfds;
 
 	XSync(dpy, False);
@@ -2240,18 +2265,16 @@ run(void)
 		}
 		if (!running) break;
 
-		/* Handle SIGUSR1-triggered reload */
-		if (sig_reload_pending) {
-			sig_reload_pending = 0;
-			reload_config();
-		}
+		runtime_config_reload_if_pending();
 
 		FD_ZERO(&rfds);
 		FD_SET(x11_fd, &rfds);
 		int maxfd = x11_fd;
-		if (inotify_fd >= 0) {
-			FD_SET(inotify_fd, &rfds);
-			if (inotify_fd > maxfd) maxfd = inotify_fd;
+		config_fd = runtime_config_fd();
+		if (config_fd >= 0) {
+			FD_SET(config_fd, &rfds);
+			if (config_fd > maxfd)
+				maxfd = config_fd;
 		}
 
 		if (select(maxfd + 1, &rfds, NULL, NULL, NULL) < 0) {
@@ -2259,25 +2282,8 @@ run(void)
 			break;
 		}
 
-		/* Handle inotify file-change events */
-		if (inotify_fd >= 0 && FD_ISSET(inotify_fd, &rfds)) {
-			char ibuf[4096];
-			ssize_t nr = read(inotify_fd, ibuf, sizeof(ibuf));
-			if (nr > 0) {
-				int need_reload = 0;
-				char *ptr = ibuf;
-				while (ptr < ibuf + nr) {
-					struct inotify_event *ie = (struct inotify_event *)ptr;
-					if (ie->len > 0 &&
-					    (strcmp(ie->name, "hotkeys.toml")      == 0 ||
-					     strcmp(ie->name, "themes.toml")       == 0 ||
-					     strcmp(ie->name, "window-rules.toml") == 0))
-						need_reload = 1;
-					ptr += sizeof(struct inotify_event) + ie->len;
-				}
-				if (need_reload) reload_config();
-			}
-		}
+		if (config_fd >= 0 && FD_ISSET(config_fd, &rfds))
+			runtime_config_poll_inotify();
 	}
 }
 
@@ -2384,6 +2390,7 @@ scan(void)
 	}
 }
 
+/* Systray discovery implementation */
 void
 scantray(void)
 {
@@ -2446,6 +2453,70 @@ sendmon(Client *c, Monitor *m)
 	focus(NULL);
 }
 
+/* EWMH property implementations */
+static void
+ewmh_append_client(Window win)
+{
+	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32,
+		PropModeAppend, (unsigned char *)&win, 1);
+}
+
+static void
+ewmh_clear_active_window(void)
+{
+	XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+}
+
+static void
+ewmh_clear_client_list(void)
+{
+	XDeleteProperty(dpy, root, netatom[NetClientList]);
+}
+
+static void
+ewmh_replace_root_cardinal(Atom prop, const long *data, int n)
+{
+	XChangeProperty(dpy, root, prop, XA_CARDINAL, 32, PropModeReplace,
+		(unsigned char *)data, n);
+}
+
+static void
+ewmh_replace_window_cardinal(Window win, Atom prop, const long *data, int n)
+{
+	XChangeProperty(dpy, win, prop, XA_CARDINAL, 32, PropModeReplace,
+		(unsigned char *)data, n);
+}
+
+static void
+ewmh_set_active_window(Window win)
+{
+	XChangeProperty(dpy, root, netatom[NetActiveWindow], XA_WINDOW, 32,
+		PropModeReplace, (unsigned char *)&win, 1);
+}
+
+static void
+ewmh_set_desktop_names(void)
+{
+	XTextProperty text;
+
+	if (Xutf8TextListToTextProperty(dpy, (char **)tags, TAGSLENGTH,
+	    XUTF8StringStyle, &text) == Success) {
+		XSetTextProperty(dpy, root, &text, netatom[NetDesktopNames]);
+		XFree(text.value);
+	}
+}
+
+static void
+ewmh_set_fullscreen_state(Client *c, int fullscreen)
+{
+	if (fullscreen)
+		XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
+			PropModeReplace, (unsigned char *)&netatom[NetWMFullscreen], 1);
+	else
+		XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
+			PropModeReplace, (unsigned char *)0, 0);
+}
+
 void
 setclientstate(Client *c, long state)
 {
@@ -2461,9 +2532,7 @@ setcurrentdesktop(void){
 }
 
 void setdesktopnames(void){
-	XTextProperty text;
-	Xutf8TextListToTextProperty(dpy, (char**)tags, TAGSLENGTH, XUTF8StringStyle, &text);
-	XSetTextProperty(dpy, root, &text, netatom[NetDesktopNames]);
+	ewmh_set_desktop_names();
 }
 
 void
@@ -2483,8 +2552,7 @@ setclientdesktop(Client *c)
         data[0] = 0xFFFFFFFF;
     }
     
-    XChangeProperty(dpy, c->win, netatom[NetWMDesktop], XA_CARDINAL, 32,
-        PropModeReplace, (unsigned char *)data, 1);
+    ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
 }
 
 int
@@ -2515,7 +2583,7 @@ sendevent(Client *c, Atom proto)
 void
 setnumdesktops(void){
 	long data[] = { TAGSLENGTH };
-	XChangeProperty(dpy, root, netatom[NetNumberOfDesktops], XA_CARDINAL, 32, PropModeReplace, (unsigned char *)data, 1);
+	ewmh_replace_root_cardinal(netatom[NetNumberOfDesktops], data, 1);
 }
 
 void
@@ -2523,9 +2591,7 @@ setfocus(Client *c)
 {
 	if (!c->neverfocus) {
 		XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
-		XChangeProperty(dpy, root, netatom[NetActiveWindow],
-			XA_WINDOW, 32, PropModeReplace,
-			(unsigned char *) &(c->win), 1);
+		ewmh_set_active_window(c->win);
 	}
 	sendevent(c, wmatom[WMTakeFocus]);
 }
@@ -2556,12 +2622,7 @@ setfullscreen(Client *c, int fullscreen)
 		c->fakefullscreen = 1;
 
 	if (fullscreen != c->isfullscreen) { // only send property change if necessary
-		if (fullscreen)
-			XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
-				PropModeReplace, (unsigned char*)&netatom[NetWMFullscreen], 1);
-		else
-			XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
-				PropModeReplace, (unsigned char*)0, 0);
+		ewmh_set_fullscreen_state(c, fullscreen);
 	}
 
 	c->isfullscreen = fullscreen;
@@ -2674,13 +2735,13 @@ setmfact(const Arg *arg)
 	arrange(selmon);
 }
 
-/* ── Hot-reload implementation ────────────────────────────────────────────── */
+/* runtime TOML implementation */
 
 static void
 sigusr1_handler(int sig)
 {
 	(void)sig;
-	sig_reload_pending = 1;
+	runtime_config_mark_reload_pending();
 }
 
 static void *
@@ -2774,13 +2835,17 @@ notify_bad_config(const char *filename, const char *reason)
 	const char *base = strrchr(filename, '/');
 	base = base ? base + 1 : filename;
 	char msg[768];
-	snprintf(msg, sizeof(msg),
-	         "notify-send -u critical 'dwm: bad config' '%s: %s \u2014 loaded defaults'",
-	         base, reason);
+	int len = snprintf(msg, sizeof(msg), "%s: %s - loaded defaults",
+	                   base, reason);
+	if (len < 0)
+		return;
+	if ((size_t)len >= sizeof(msg))
+		copystr(msg, sizeof(msg), "config error - loaded defaults");
 	pid_t pid = fork();
 	if (pid == 0) {
-		execl("/bin/sh", "sh", "-c", msg, (char *)NULL);
-		_exit(0);
+		execlp("notify-send", "notify-send", "-u", "critical",
+		       "dwm: bad config", msg, (char *)NULL);
+		_exit(127);
 	}
 }
 
@@ -3212,16 +3277,80 @@ reload_config(void)
 		if (pid == 0) {
 			/* child: find and run the theme-apply script */
 			const char *home = getenv("HOME");
+			char script_dir[PATH_MAX];
 			char script[PATH_MAX];
-			if (home) {
-				snprintf(script, sizeof(script),
-				         "%s/.local/share/dwm-titus/scripts/theme-apply.sh", home);
+			if (home &&
+			    pathjoin(script_dir, sizeof(script_dir),
+			            home, ".local/share/dwm-titus/scripts") &&
+			    pathjoin(script, sizeof(script),
+			            script_dir, "theme-apply.sh")) {
 				execl("/bin/sh", "sh", script, (char *)NULL);
 			}
 			_exit(0);
 		}
 		/* parent continues; child is reaped by existing SIGCHLD handler */
 	}
+}
+
+static int
+runtime_config_fd(void)
+{
+	return inotify_fd;
+}
+
+static void
+runtime_config_mark_reload_pending(void)
+{
+	sig_reload_pending = 1;
+}
+
+static void
+runtime_config_poll_inotify(void)
+{
+	char ibuf[4096];
+	ssize_t nr = read(inotify_fd, ibuf, sizeof(ibuf));
+	int need_reload = 0;
+	char *ptr = ibuf;
+	char *end;
+
+	if (nr <= 0)
+		return;
+	end = ibuf + nr;
+
+	while (ptr + sizeof(struct inotify_event) <= end) {
+		struct inotify_event *ie = (struct inotify_event *)ptr;
+		if (ptr + sizeof(struct inotify_event) + ie->len > end)
+			break;
+		if (ie->len > 0 &&
+		    (strcmp(ie->name, "hotkeys.toml")      == 0 ||
+		     strcmp(ie->name, "themes.toml")       == 0 ||
+		     strcmp(ie->name, "window-rules.toml") == 0))
+			need_reload = 1;
+		ptr += sizeof(struct inotify_event) + ie->len;
+	}
+	if (need_reload)
+		runtime_config_reload();
+}
+
+static void
+runtime_config_reload(void)
+{
+	reload_config();
+}
+
+static void
+runtime_config_reload_if_pending(void)
+{
+	if (!sig_reload_pending)
+		return;
+	sig_reload_pending = 0;
+	runtime_config_reload();
+}
+
+static void
+runtime_config_setup(void)
+{
+	setup_inotify();
 }
 
 static void
@@ -3367,7 +3496,7 @@ setup(void)
 	setcurrentdesktop();
 	setdesktopnames();
 	setviewport();
-	XDeleteProperty(dpy, root, netatom[NetClientList]);
+	ewmh_clear_client_list();
 	/* select events */
 	wa.cursor = cursor[CurNormal]->cursor;
 	wa.event_mask = SubstructureRedirectMask|SubstructureNotifyMask
@@ -3377,8 +3506,8 @@ setup(void)
 	XSelectInput(dpy, root, wa.event_mask);
 	/* Install SIGUSR1 handler and load TOML configs before grabbing keys */
 	signal(SIGUSR1, sigusr1_handler);
-	setup_inotify();
-	reload_config();
+	runtime_config_setup();
+	runtime_config_reload();
 	grabkeys();
 	focus(NULL);
 	spawnbar();
@@ -3387,7 +3516,7 @@ setup(void)
 void
 setviewport(void){
 	long data[] = { 0, 0 };
-	XChangeProperty(dpy, root, netatom[NetDesktopViewport], XA_CARDINAL, 32, PropModeReplace, (unsigned char *)data, 2);
+	ewmh_replace_root_cardinal(netatom[NetDesktopViewport], data, 2);
 }
 
 void
@@ -3791,7 +3920,7 @@ unfocus(Client *c, int setfocus)
 	XSetWindowBorder(dpy, c->win, scheme[SchemeNorm][ColBorder].pixel);
 	if (setfocus) {
 		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
-		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
+		ewmh_clear_active_window();
 	}
 }
 
@@ -3980,12 +4109,10 @@ updateclientlist(void)
 	Client *c;
 	Monitor *m;
 
-	XDeleteProperty(dpy, root, netatom[NetClientList]);
+	ewmh_clear_client_list();
 	for (m = mons; m; m = m->next)
 		for (c = m->clients; c; c = c->next)
-			XChangeProperty(dpy, root, netatom[NetClientList],
-				XA_WINDOW, 32, PropModeAppend,
-				(unsigned char *) &(c->win), 1);
+			ewmh_append_client(c->win);
 }
 
 void updatecurrentdesktop(void){
@@ -4001,7 +4128,7 @@ void updatecurrentdesktop(void){
 		data[0] = 0;
 	}
 	
-	XChangeProperty(dpy, root, netatom[NetCurrentDesktop], XA_CARDINAL, 32, PropModeReplace, (unsigned char *)data, 1);
+	ewmh_replace_root_cardinal(netatom[NetCurrentDesktop], data, 1);
 }
 
 #if SHOWWINICON
@@ -4434,6 +4561,7 @@ wmclasscontains(Window win, const char *class, const char *name)
 	return res;
 }
 
+/* X error and shutdown helper implementations */
 /* There's no way to check accesses to destroyed windows, thus those cases are
  * ignored (especially on UnmapNotify's). Other types of errors call Xlibs
  * default error handler, which may call exit. */
@@ -4482,7 +4610,7 @@ zoom(const Arg *arg)
 	pop(c);
 }
 
-/* Monitor-specific tag management functions */
+/* monitor-specific tag management implementations */
 void
 updatemonitorcount(void)
 {

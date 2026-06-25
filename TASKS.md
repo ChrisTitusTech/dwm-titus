@@ -188,7 +188,7 @@ This file tracks the next reviewable work. Product requirements live in
   - Validation: `make check-monitor-tags`, `make`, `make check-shell`,
     `make check-format`.
 
-## Current Phase: Minimal Feature-Complete Desktop
+## Completed Phase: Minimal Feature-Complete Desktop
 
 - [x] Select a usable installed terminal at runtime with an actionable fallback
   when none is available.
@@ -240,3 +240,43 @@ This file tracks the next reviewable work. Product requirements live in
 A task is complete only when its acceptance command passes or the exact skipped
 environment is recorded. Runtime and multi-monitor tasks cannot be marked
 complete from compile-only validation.
+
+## Current Phase: Core Maintainability
+
+- [x] Document patch ownership and invariants for EWMH, pertag, swallowing,
+  systray, fullscreen, icons, and runtime TOML.
+  - Scope: add a Phase 4 maintenance baseline that identifies the owning source
+    areas, invariants, and existing regression coverage before extraction work.
+  - Acceptance: each named subsystem has documented invariants and validation
+    notes, including explicit gaps where direct automated coverage is missing.
+  - Validation: `make check`, `git diff --check`.
+- [x] Group static declarations and implementation sections by subsystem.
+  - Scope: regroup declarations and implementation blocks inside `dwm.c`
+    without changing behavior.
+  - Acceptance: related patched subsystems are easier to locate and no runtime
+    behavior changes.
+  - Validation: `make check`.
+- [x] Extract runtime TOML loading/reload state behind a narrow interface.
+  - Scope: isolate runtime TOML state transitions while preserving
+    transactional reload behavior.
+  - Acceptance: invalid reloads keep the last valid state and existing hotkey,
+    theme, and rule behavior remains covered.
+  - Validation: `make check-xvfb-runtime`, `make check`.
+- [x] Extract EWMH property updates behind a narrow interface.
+  - Scope: isolate root/client property updates from layout and monitor logic.
+  - Acceptance: EWMH state remains synchronized with focus, tag, fullscreen,
+    and client-list changes.
+  - Validation: `make check-xvfb-runtime`, `make check-monitor-tags`,
+    `make check`.
+- [x] Replace unchecked formatting and allocation edge cases in touched paths.
+  - Scope: address issues encountered while touching maintainability paths,
+    without broad unrelated rewrites.
+  - Acceptance: touched paths check allocation and formatting boundaries.
+  - Validation: `make check`.
+- [x] Keep layout and event-loop code in `dwm.c` unless extraction measurably
+  improves clarity without increasing coupling.
+  - Scope: preserve layout functions and the X event loop in `dwm.c`; the Phase
+    4 extraction work added internal interfaces without moving those ownership
+    boundaries.
+  - Acceptance: layout and event-loop ownership remains local to `dwm.c`.
+  - Validation: `make check`, code review of Phase 4 diff.
