@@ -255,6 +255,15 @@ wait_for_current_desktop 4
 
 DISPLAY=$display xdotool key Super+1
 wait_for_current_desktop 0
+
+printf '%s\n' '=' >"$home/.config/dwm-titus/hotkeys.toml"
+kill -USR1 "$dwm_pid"
+sleep 0.2
+DISPLAY=$display xdotool key Super+u
+wait_for_current_desktop 4
+DISPLAY=$display xdotool key Super+1
+wait_for_current_desktop 0
+
 wait_for_active_window "$win"
 DISPLAY=$display "$work/xclient" fullscreen "$win"
 wait_for_window_state "$win" _NET_WM_STATE_FULLSCREEN

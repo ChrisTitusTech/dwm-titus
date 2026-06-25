@@ -2909,10 +2909,13 @@ load_hotkeys_toml(const char *user_path, const char *default_path)
 	static TomlDoc doc;
 	int parsed = 0;
 	if (user_path && user_path[0]) {
-		parsed = toml_parse(user_path, &doc) && doc.n > 0;
-		if (!parsed)
-			notify_bad_config(user_path,
-			    access(user_path, F_OK) == 0 ? "invalid config" : "file not found");
+		if (access(user_path, F_OK) == 0) {
+			parsed = toml_parse(user_path, &doc) && doc.n > 0;
+			if (!parsed) {
+				notify_bad_config(user_path, "invalid config");
+				return;
+			}
+		}
 	}
 	if (!parsed) {
 		if (!default_path || !default_path[0] || !toml_parse(default_path, &doc)) {
@@ -3035,10 +3038,13 @@ load_themes_toml(const char *user_path, const char *default_path)
 	static TomlDoc doc;
 	int parsed = 0;
 	if (user_path && user_path[0]) {
-		parsed = toml_parse(user_path, &doc) && doc.n > 0;
-		if (!parsed)
-			notify_bad_config(user_path,
-			    access(user_path, F_OK) == 0 ? "invalid config" : "file not found");
+		if (access(user_path, F_OK) == 0) {
+			parsed = toml_parse(user_path, &doc) && doc.n > 0;
+			if (!parsed) {
+				notify_bad_config(user_path, "invalid config");
+				return;
+			}
+		}
 	}
 	if (!parsed) {
 		if (!default_path || !default_path[0] || !toml_parse(default_path, &doc)) {
@@ -3134,10 +3140,13 @@ load_rules_toml(const char *user_path, const char *default_path)
 	static TomlDoc doc;
 	int parsed = 0;
 	if (user_path && user_path[0]) {
-		parsed = toml_parse(user_path, &doc) && doc.n > 0;
-		if (!parsed)
-			notify_bad_config(user_path,
-			    access(user_path, F_OK) == 0 ? "invalid config" : "file not found");
+		if (access(user_path, F_OK) == 0) {
+			parsed = toml_parse(user_path, &doc) && doc.n > 0;
+			if (!parsed) {
+				notify_bad_config(user_path, "invalid config");
+				return;
+			}
+		}
 	}
 	if (!parsed) {
 		if (!default_path || !default_path[0] || !toml_parse(default_path, &doc)) {

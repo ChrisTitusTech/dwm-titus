@@ -170,6 +170,13 @@ This file tracks the next reviewable work. Product requirements live in
     hints or malformed icon data.
   - Validation: `make clean`, `make`, `make check-xvfb-runtime`,
     `make check-shell`, `make check-format`, `git diff --check`.
+- [x] Make TOML reload transactional.
+  - Scope: reject invalid existing user TOML files without falling back to
+    defaults over the current runtime state.
+  - Acceptance: a bad user `hotkeys.toml` reload reports the exact file as
+    invalid and preserves the previously loaded hotkey bindings.
+  - Validation: `make check-xvfb-runtime`, `make`, `make check-shell`,
+    `make check-format`, `git diff --check`.
 
 ## Current Phase: Minimal Feature-Complete Desktop
 
