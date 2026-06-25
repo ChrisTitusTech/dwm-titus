@@ -379,6 +379,9 @@ check-vicinae-install: all
 		"$$stage/usr/lib/systemd/user/vicinae.service"; \
 	echo "==> Vicinae staged install validated."
 
+check-container-smoke:
+	tests/test-container-smoke.sh
+
 release-check: all
 	@set -eu; \
 	first="$$(mktemp)"; \
@@ -422,6 +425,7 @@ check:
 	$(MAKE) release-check
 
 .PHONY: all check check-build-config check-build-deps check-default-apps \
+	check-container-smoke \
 	check-display-profile check-format check-install \
 	check-install-manifest check-polybar-capabilities check-session-guards \
 	check-shell check-diagnostics \

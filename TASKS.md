@@ -105,7 +105,16 @@ This file tracks the next reviewable work. Product requirements live in
     `./install.sh --dry-run --non-interactive --profile core`,
     `make check-shell`, `make check-format`, `make check-build-config`,
     `make`.
-- [ ] Add Debian, Arch, and Fedora/RHEL container smoke tests.
+- [x] Add Debian, Arch, and Fedora/RHEL container smoke tests.
+  - Scope: add `tests/test-container-smoke.sh` and `make check-container-smoke`
+    using Podman or Docker with configurable Debian, Arch, and RHEL-family
+    images.
+  - Acceptance: each container resolves the required package profile from
+    `scripts/dwm-packages.sh`, installs it, runs the installer dry-run summary,
+    builds dwm, and validates staged install plus uninstall manifest symmetry.
+  - Validation: `make check-shell`, `make check-format`,
+    `make check-container-smoke` with `debian:stable-slim`,
+    `archlinux:latest`, and `fedora:latest`.
 - [ ] Replace remaining Arch-only general documentation.
 
 ## Current Phase: Minimal Feature-Complete Desktop

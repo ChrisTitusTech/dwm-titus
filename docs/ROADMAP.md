@@ -56,9 +56,10 @@ manager package exceptions now live in the shared map and are selected by
 recommended, optional, and full package profiles are now separated in the
 shared map and selected by `install.sh`. `install.sh` also has explicit
 `--profile`, `--non-interactive`, `--yes`, and `--dry-run` flags with a
-resolved install summary before changes. The manual installation docs still
-include Arch-family commands, and there is no current roadmap-linked container
-target that validates Debian, Arch, and Fedora/RHEL together.
+resolved install summary before changes. `make check-container-smoke` validates
+the required package profile, clean build, and staged install in Debian, Arch,
+and Fedora containers. The manual installation docs still include Arch-family
+commands.
 
 - [x] Move package capability mappings into one data module used by the
   installer and dependency checker.
@@ -68,7 +69,7 @@ target that validates Debian, Arch, and Fedora/RHEL together.
   packages and optional extras.
 - [x] Add non-interactive flags for CI and packaging while preserving an
   explicit interactive summary for users.
-- [ ] Add container validation for one Debian, one Arch, and one Fedora/RHEL
+- [x] Add container validation for one Debian, one Arch, and one Fedora/RHEL
   representative.
 - [ ] Verify that repeated installation preserves `config.h`, runtime TOML,
   `.xinitrc`, and application configuration.
