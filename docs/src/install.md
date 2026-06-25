@@ -19,30 +19,17 @@ In the TUI, press `v` to multi-select, then select **dwm**, **rofi**, **bash pro
 
 ### 1. Dependencies
 
-**Build:**
+The supported dependency path is the installer because it resolves package
+names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
+
 ```bash
-sudo pacman -S --needed base-devel libx11 libxft libxinerama imlib2 libxcb xcb-util freetype2 fontconfig
+./install.sh --dry-run --non-interactive --profile core
+./install.sh --profile full
 ```
 
-**Xorg:**
-```bash
-sudo pacman -S --needed xorg-server xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
-```
-
-**Runtime:**
-```bash
-sudo pacman -S --needed rofi picom dunst feh flameshot dex mate-polkit alsa-utils noto-fonts-emoji ttf-meslo-nerd
-```
-
-**Terminal** (pick one — ghostty is the default):
-```bash
-sudo pacman -S ghostty   # or: alacritty, kitty
-```
-
-**Status bar:**
-```bash
-sudo pacman -S polybar
-```
+Use `core` for the required build/X11/session packages and one terminal,
+`recommended` for the desktop layer, or `full` for optional extras such as
+file-manager integration, portals, wallpapers, and display-manager setup.
 
 ### 2. Clone and Build
 

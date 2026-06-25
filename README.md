@@ -45,31 +45,17 @@ Select `dwm`, `rofi`, `bash prompt`, and `ghostty` using the `v` key, then press
 
 #### 1. Install Dependencies
 
-**Build dependencies** (required to compile):
+The supported dependency path is the installer because it resolves package
+names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
+
 ```bash
-sudo pacman -S --needed base-devel libx11 libxft libxinerama imlib2 libxcb xcb-util freetype2 fontconfig
+./install.sh --dry-run --non-interactive --profile core
+./install.sh --profile full
 ```
 
-**Xorg**:
-```bash
-sudo pacman -S --needed xorg-server xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
-```
-
-**Runtime dependencies** (desktop experience):
-```bash
-sudo pacman -S --needed rofi picom dunst feh flameshot dex mate-polkit alsa-utils noto-fonts-emoji ttf-meslo-nerd
-```
-
-**Terminal emulator** (at least one):
-```bash
-# Pick one — ghostty is the default in config.h
-sudo pacman -S ghostty   # or: alacritty, kitty
-```
-
-**Polybar** (status bar):
-```bash
-sudo pacman -S polybar
-```
+Use `core` for the required build/X11/session packages and one terminal,
+`recommended` for the desktop layer, or `full` for optional extras such as
+file-manager integration, portals, wallpapers, and display-manager setup.
 
 #### 2. Clone and Build
 
@@ -198,12 +184,13 @@ Key things to customize in `config.h`:
 ## 🔍 Troubleshooting
 
 **Black screen / dwm doesn't start:**
-- Verify Xorg is installed: `pacman -Q xorg-server xorg-xinit`
+- Run `dwm-diagnostics` and resolve any required X11/session failures.
+- Preview required packages with `./install.sh --dry-run --profile core`.
 - Check `.xinitrc` exists and ends with `exec dwm`
 - Try `startx` from a TTY to see error output
 
 **No status bar / Polybar missing:**
-- Install polybar: `sudo pacman -S polybar`
+- Install the recommended desktop layer: `./install.sh --profile recommended`
 - Check fonts are installed: `fc-list | grep -i meslo`
 - Verify polybar config: `ls ~/.config/polybar/`
 

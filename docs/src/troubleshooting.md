@@ -13,7 +13,8 @@ Or use the [Control Center](./control-center.md) → **System Health**.
 ## dwm Won't Start
 
 **Black screen / returns immediately to login:**
-- Verify Xorg: `pacman -Q xorg-server xorg-xinit`
+- Run `dwm-diagnostics` and resolve any required X11/session failures.
+- Preview required packages with `./install.sh --dry-run --profile core`.
 - Check `.xinitrc` exists and ends with `exec dwm`
 - Run `startx` from a TTY to see error output in the terminal
 
@@ -25,7 +26,7 @@ Or use the [Control Center](./control-center.md) → **System Health**.
 
 ## No Status Bar / Polybar Missing
 
-- Install polybar: `sudo pacman -S polybar`
+- Install the recommended desktop layer: `./install.sh --profile recommended`
 - Verify launch script: `ls ~/.config/polybar/launch.sh`
 - Run manually: `~/.config/polybar/launch.sh`
 - Check fonts: `fc-list | grep -i meslo`

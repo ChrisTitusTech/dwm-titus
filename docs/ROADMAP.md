@@ -60,7 +60,9 @@ resolved install summary before changes. `make check-container-smoke` validates
 the required package profile, clean build, and staged install in Debian, Arch,
 and Fedora containers. `make check-install-preservation` validates repeated
 user installs preserve `config.h`, runtime TOML, `.xinitrc`, and existing app
-configuration. The manual installation docs still include Arch-family commands.
+configuration. General manual installation and troubleshooting docs now point
+to cross-distro installer profiles instead of Arch-only package commands, and
+power-management remediation uses the detected package manager.
 
 - [x] Move package capability mappings into one data module used by the
   installer and dependency checker.
@@ -74,7 +76,7 @@ configuration. The manual installation docs still include Arch-family commands.
   representative.
 - [x] Verify that repeated installation preserves `config.h`, runtime TOML,
   `.xinitrc`, and application configuration.
-- [ ] Remove Arch-only commands from general documentation and diagnostics.
+- [x] Remove Arch-only commands from general documentation and diagnostics.
 
 Exit criteria:
 

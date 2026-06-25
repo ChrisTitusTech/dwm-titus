@@ -124,7 +124,14 @@ This file tracks the next reviewable work. Product requirements live in
     markers.
   - Validation: `bash -n tests/test-install-preservation.sh`,
     `make check-shell`, `make check-format`, `make check-install-preservation`.
-- [ ] Replace remaining Arch-only general documentation.
+- [x] Replace remaining Arch-only general documentation.
+  - Scope: update README and `docs/src` install/troubleshooting guidance to
+    use cross-distro installer profiles, and make power-management remediation
+    hints use the detected package manager.
+  - Acceptance: source docs no longer tell all users to run pacman-only package
+    commands for general install or troubleshooting paths.
+  - Validation: source grep for `pacman`/Arch-only install snippets, `bash -n
+    scripts/power-management.sh`, `make check-shell`, `make check-format`.
 
 ## Current Phase: Minimal Feature-Complete Desktop
 
