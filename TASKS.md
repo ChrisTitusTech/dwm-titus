@@ -268,7 +268,7 @@ complete from compile-only validation.
     and client-list changes.
   - Validation: `make check-xvfb-runtime`, `make check-monitor-tags`,
     `make check`.
-- [ ] Replace unchecked formatting and allocation edge cases in touched paths.
+- [x] Replace unchecked formatting and allocation edge cases in touched paths.
   - Scope: address issues encountered while touching maintainability paths,
     without broad unrelated rewrites.
   - Acceptance: touched paths check allocation and formatting boundaries.

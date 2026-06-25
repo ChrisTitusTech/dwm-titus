@@ -2499,9 +2499,11 @@ ewmh_set_desktop_names(void)
 {
 	XTextProperty text;
 
-	Xutf8TextListToTextProperty(dpy, (char **)tags, TAGSLENGTH,
-		XUTF8StringStyle, &text);
-	XSetTextProperty(dpy, root, &text, netatom[NetDesktopNames]);
+	if (Xutf8TextListToTextProperty(dpy, (char **)tags, TAGSLENGTH,
+	    XUTF8StringStyle, &text) == Success) {
+		XSetTextProperty(dpy, root, &text, netatom[NetDesktopNames]);
+		XFree(text.value);
+	}
 }
 
 static void
@@ -2833,13 +2835,17 @@ notify_bad_config(const char *filename, const char *reason)
 	const char *base = strrchr(filename, '/');
 	base = base ? base + 1 : filename;
 	char msg[768];
-	snprintf(msg, sizeof(msg),
-	         "notify-send -u critical 'dwm: bad config' '%s: %s \u2014 loaded defaults'",
-	         base, reason);
+	int len = snprintf(msg, sizeof(msg), "%s: %s - loaded defaults",
+	                   base, reason);
+	if (len < 0)
+		return;
+	if ((size_t)len >= sizeof(msg))
+		copystr(msg, sizeof(msg), "config error - loaded defaults");
 	pid_t pid = fork();
 	if (pid == 0) {
-		execl("/bin/sh", "sh", "-c", msg, (char *)NULL);
-		_exit(0);
+		execlp("notify-send", "notify-send", "-u", "critical",
+		       "dwm: bad config", msg, (char *)NULL);
+		_exit(127);
 	}
 }
 
@@ -3271,10 +3277,13 @@ reload_config(void)
 		if (pid == 0) {
 			/* child: find and run the theme-apply script */
 			const char *home = getenv("HOME");
+			char script_dir[PATH_MAX];
 			char script[PATH_MAX];
-			if (home) {
-				snprintf(script, sizeof(script),
-				         "%s/.local/share/dwm-titus/scripts/theme-apply.sh", home);
+			if (home &&
+			    pathjoin(script_dir, sizeof(script_dir),
+			            home, ".local/share/dwm-titus/scripts") &&
+			    pathjoin(script, sizeof(script),
+			            script_dir, "theme-apply.sh")) {
 				execl("/bin/sh", "sh", script, (char *)NULL);
 			}
 			_exit(0);
@@ -3302,12 +3311,16 @@ runtime_config_poll_inotify(void)
 	ssize_t nr = read(inotify_fd, ibuf, sizeof(ibuf));
 	int need_reload = 0;
 	char *ptr = ibuf;
+	char *end;
 
 	if (nr <= 0)
 		return;
+	end = ibuf + nr;
 
-	while (ptr < ibuf + nr) {
+	while (ptr + sizeof(struct inotify_event) <= end) {
 		struct inotify_event *ie = (struct inotify_event *)ptr;
+		if (ptr + sizeof(struct inotify_event) + ie->len > end)
+			break;
 		if (ie->len > 0 &&
 		    (strcmp(ie->name, "hotkeys.toml")      == 0 ||
 		     strcmp(ie->name, "themes.toml")       == 0 ||
