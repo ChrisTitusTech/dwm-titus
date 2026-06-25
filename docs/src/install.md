@@ -90,6 +90,20 @@ For a minimal install:
 DWM_INSTALL_PROFILE=core ./install.sh
 ```
 
+The same profile can be selected with a flag:
+
+```bash
+./install.sh --profile core
+```
+
+Interactive runs print the resolved package plan before prompting. For CI,
+packaging checks, or scripted validation, use the non-interactive flags:
+
+```bash
+./install.sh --dry-run --non-interactive --profile core
+./install.sh --non-interactive --yes --profile recommended
+```
+
 ## Starting dwm
 
 **Display manager** (SDDM, GDM, LightDM): log out and select **dwm** from the session list.

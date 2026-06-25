@@ -54,7 +54,9 @@ Audit status: package capability mappings now live in
 manager package exceptions now live in the shared map and are selected by
 `install.sh`; `install-arm.sh` remains as a compatibility wrapper. Required,
 recommended, optional, and full package profiles are now separated in the
-shared map and selected by `install.sh`. The manual installation docs still
+shared map and selected by `install.sh`. `install.sh` also has explicit
+`--profile`, `--non-interactive`, `--yes`, and `--dry-run` flags with a
+resolved install summary before changes. The manual installation docs still
 include Arch-family commands, and there is no current roadmap-linked container
 target that validates Debian, Arch, and Fedora/RHEL together.
 
@@ -64,7 +66,7 @@ target that validates Debian, Arch, and Fedora/RHEL together.
   exceptions in the shared dependency map.
 - [x] Separate required build/runtime packages from recommended desktop
   packages and optional extras.
-- [ ] Add non-interactive flags for CI and packaging while preserving an
+- [x] Add non-interactive flags for CI and packaging while preserving an
   explicit interactive summary for users.
 - [ ] Add container validation for one Debian, one Arch, and one Fedora/RHEL
   representative.

@@ -95,6 +95,16 @@ This file tracks the next reviewable work. Product requirements live in
   - Validation: `bash -n install.sh scripts/dwm-packages.sh scripts/check-deps.sh`,
     `make check-shell`, `make check-format`, `make check-build-config`,
     `make`, and package-map profile count smoke test.
+- [x] Add non-interactive installer flags for CI and packaging.
+  - Scope: add `--profile`, `--non-interactive`, `--yes`, and `--dry-run`,
+    while keeping an explicit package summary before any installing work.
+  - Acceptance: interactive runs show the resolved summary before prompting;
+    non-interactive and dry-run invocations do not prompt; dry-run exits before
+    package, filesystem, or sudo changes.
+  - Validation: `bash -n install.sh scripts/dwm-packages.sh`, `./install.sh --help`,
+    `./install.sh --dry-run --non-interactive --profile core`,
+    `make check-shell`, `make check-format`, `make check-build-config`,
+    `make`.
 - [ ] Add Debian, Arch, and Fedora/RHEL container smoke tests.
 - [ ] Replace remaining Arch-only general documentation.
 

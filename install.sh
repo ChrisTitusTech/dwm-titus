@@ -15,10 +15,19 @@ ok() { printf "${GREEN}[OK]${NC} %s\n" "$1"; }
 warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
 err() { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 
-if [[ $EUID -eq 0 ]]; then
-	err "Run this installer as a normal user. It invokes sudo only when needed."
-	exit 1
-fi
+usage() {
+	cat <<EOF
+Usage: ./install.sh [options]
+
+Options:
+  --profile PROFILE      Install profile: core, recommended, or full.
+                         Defaults to DWM_INSTALL_PROFILE or full.
+  --non-interactive      Use unattended defaults and do not prompt.
+  --yes                  Accept the interactive install summary.
+  --dry-run              Print the resolved plan and exit before changes.
+  -h, --help             Show this help.
+EOF
+}
 
 case "$DISTRO_FAMILY" in
 arch)
@@ -56,6 +65,48 @@ VICINAE_TMP_DIR=""
 VICINAE_SOURCE_DIR=""
 ARCH="$(uname -m)"
 INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
+NON_INTERACTIVE=false
+ASSUME_YES=false
+DRY_RUN=false
+
+while (($# > 0)); do
+	case "$1" in
+	--profile)
+		if (($# < 2)); then
+			err "--profile requires a value."
+			exit 1
+		fi
+		INSTALL_PROFILE=$2
+		shift 2
+		;;
+	--profile=*)
+		INSTALL_PROFILE=${1#*=}
+		shift
+		;;
+	--non-interactive)
+		NON_INTERACTIVE=true
+		ASSUME_YES=true
+		shift
+		;;
+	--yes)
+		ASSUME_YES=true
+		shift
+		;;
+	--dry-run)
+		DRY_RUN=true
+		shift
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		err "Unknown option: $1"
+		usage >&2
+		exit 1
+		;;
+	esac
+done
 
 case "$INSTALL_PROFILE" in
 core | minimal)
@@ -69,6 +120,16 @@ recommended | full) ;;
 	;;
 esac
 
+if [[ ! -t 0 || ! -t 1 ]]; then
+	NON_INTERACTIVE=true
+	ASSUME_YES=true
+fi
+
+if [[ $EUID -eq 0 && $DRY_RUN != true ]]; then
+	err "Run this installer as a normal user. It invokes sudo only when needed."
+	exit 1
+fi
+
 is_arch_arm() {
 	[[ $DISTRO_FAMILY == "arch" &&
 		($ARCH == "aarch64" || $ARCH == "armv7h" || $ARCH == "armv7l") ]]
@@ -80,6 +141,78 @@ install_recommended_profile() {
 
 install_optional_profile() {
 	[[ $INSTALL_PROFILE == "full" ]]
+}
+
+package_line() {
+	local profile=$1
+
+	dwm_packages "$DISTRO_FAMILY" "$profile" | paste -sd ' ' -
+}
+
+print_summary_profile() {
+	local label=$1
+	local profile=$2
+	local packages
+
+	packages="$(package_line "$profile")"
+	if [[ -n $packages ]]; then
+		printf '  %s: %s\n' "$label" "$packages"
+	else
+		printf '  %s: none\n' "$label"
+	fi
+}
+
+print_install_summary() {
+	echo ""
+	echo "Installation summary:"
+	printf '  Distribution: %s\n' "$DISTRO_NAME"
+	printf '  Family: %s\n' "$DISTRO_FAMILY"
+	printf '  Package manager: %s\n' "$PKG_CMD"
+	printf '  Profile: %s\n' "$INSTALL_PROFILE"
+	printf '  Mode: %s\n' "$([[ $NON_INTERACTIVE == true ]] && echo non-interactive || echo interactive)"
+	print_summary_profile "Required packages" required
+	if install_recommended_profile; then
+		print_summary_profile "Recommended packages" recommended
+	else
+		printf '  Recommended packages: skipped\n'
+	fi
+	if install_optional_profile; then
+		print_summary_profile "Optional extras" optional
+	else
+		printf '  Optional extras: skipped\n'
+	fi
+	if is_arch_arm; then
+		print_summary_profile "Arch ARM terminal candidates" terminal-arm
+		print_summary_profile "Arch ARM video fallback" arm-video
+	else
+		print_summary_profile "Terminal candidates" terminal
+	fi
+	echo ""
+}
+
+confirm_install_summary() {
+	local answer
+
+	print_install_summary
+
+	if [[ $DRY_RUN == true ]]; then
+		ok "Dry run complete; no changes were made."
+		exit 0
+	fi
+
+	if [[ $ASSUME_YES == true ]]; then
+		return
+	fi
+
+	printf 'Continue with installation? [y/N] '
+	read -r answer
+	case "$answer" in
+	y | Y | yes | YES) ;;
+	*)
+		err "Installation cancelled."
+		exit 1
+		;;
+	esac
 }
 
 cleanup() {
@@ -321,8 +454,9 @@ info "Distribution: $DISTRO_NAME"
 info "Family: $DISTRO_FAMILY"
 info "Package manager: $PKG_CMD"
 info "Install profile: $INSTALL_PROFILE"
+confirm_install_summary
 
-if [[ -t 0 && -t 1 ]]; then
+if [[ $NON_INTERACTIVE != true ]]; then
 	"$REPO_DIR/scripts/configure-build.sh"
 else
 	"$REPO_DIR/scripts/configure-build.sh" --non-interactive
