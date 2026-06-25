@@ -50,14 +50,16 @@ architecture.
 
 Audit status: package capability mappings now live in
 `scripts/dwm-packages.sh` and are consumed by `install.sh` and
-`scripts/check-deps.sh`. `install-arm.sh` remains separate, the manual
+`scripts/check-deps.sh`. ARM-specific terminal, video-driver, and display
+manager package exceptions now live in the shared map and are selected by
+`install.sh`; `install-arm.sh` remains as a compatibility wrapper. The manual
 installation docs still include Arch-family commands, and there is no current
 roadmap-linked container target that validates Debian, Arch, and Fedora/RHEL
 together.
 
 - [x] Move package capability mappings into one data module used by the
   installer and dependency checker.
-- [ ] Merge ARM handling into `install.sh`; keep architecture-specific package
+- [x] Merge ARM handling into `install.sh`; keep architecture-specific package
   exceptions in the shared dependency map.
 - [ ] Separate required build/runtime packages from recommended desktop
   packages and optional extras.

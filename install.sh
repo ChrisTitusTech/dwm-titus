@@ -54,6 +54,12 @@ VICINAE_RELEASE_API="https://api.github.com/repos/vicinaehq/vicinae/releases/lat
 VICINAE_ASSET_NAME="Vicinae-x86_64.AppImage"
 VICINAE_TMP_DIR=""
 VICINAE_SOURCE_DIR=""
+ARCH="$(uname -m)"
+
+is_arch_arm() {
+	[[ $DISTRO_FAMILY == "arch" &&
+		($ARCH == "aarch64" || $ARCH == "armv7h" || $ARCH == "armv7l") ]]
+}
 
 cleanup() {
 	if [[ -n $VICINAE_TMP_DIR ]]; then
@@ -187,7 +193,13 @@ install_meslo_nerd_font() {
 }
 
 install_supported_terminal() {
-	if ! dwm_install_first_available_profile terminal; then
+	local profile="terminal"
+
+	if is_arch_arm; then
+		profile="terminal-arm"
+	fi
+
+	if ! dwm_install_first_available_profile "$profile"; then
 		err "No supported terminal is available in the enabled repositories."
 		return 1
 	fi
@@ -312,6 +324,13 @@ else
 	dwm_install_package_profile x11-server
 fi
 dwm_install_package_profile x11
+if is_arch_arm; then
+	if dwm_install_first_available_profile arm-video; then
+		ok "ARM framebuffer video driver installed."
+	else
+		warn "ARM framebuffer video driver unavailable; your board's GPU driver may already provide Xorg support."
+	fi
+fi
 ok "Build dependencies installed."
 
 # ── Runtime dependencies ─────────────────────────────────
@@ -382,11 +401,19 @@ currentdm="$(detect_display_manager)"
 if [ -n "$currentdm" ]; then
 	ok "Display manager already installed: $currentdm"
 else
-	info "No display manager found - installing LightDM..."
-	dwm_install_package_profile lightdm
-	sudo systemctl enable lightdm.service
-	currentdm="lightdm"
-	ok "LightDM installed and enabled."
+	if is_arch_arm; then
+		info "No display manager found - installing SDDM for Arch ARM..."
+		dwm_install_package_profile arm-display-manager
+		sudo systemctl enable sddm.service
+		currentdm="sddm"
+		ok "SDDM installed and enabled."
+	else
+		info "No display manager found - installing LightDM..."
+		dwm_install_package_profile lightdm
+		sudo systemctl enable lightdm.service
+		currentdm="lightdm"
+		ok "LightDM installed and enabled."
+	fi
 fi
 
 # ── LightDM greeter config ───────────────────────────────
@@ -394,6 +421,11 @@ if [[ $currentdm == "lightdm" ]]; then
 	info "Deploying LightDM Slick Greeter config..."
 	install_lightdm_config
 	ok "LightDM config deployed."
+fi
+
+if is_arch_arm; then
+	warn "ARM NOTE: If picom causes display issues, set 'backend = \"xrender\"' in ~/.config/picom.conf"
+	warn "ARM NOTE: Some SBCs may need a board-specific KMS or GPU driver configuration for accelerated Xorg."
 fi
 
 # ── Build & Install ──────────────────────────────────────

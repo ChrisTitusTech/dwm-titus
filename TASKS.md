@@ -75,8 +75,16 @@ This file tracks the next reviewable work. Product requirements live in
     instead of duplicating Debian, Arch, and RHEL package lists.
   - Validation: `bash -n install.sh scripts/dwm-packages.sh scripts/check-deps.sh`,
     `make check-shell`, `make check-format`, `make check-build-config`.
-- [ ] Refactor `install.sh`, `install-arm.sh`, and `scripts/check-deps.sh` to
+- [x] Refactor `install.sh`, `install-arm.sh`, and `scripts/check-deps.sh` to
   consume the shared map.
+  - Scope: merge ARM-specific installer behavior into `install.sh`, keep ARM
+    package exceptions in `scripts/dwm-packages.sh`, and leave `install-arm.sh`
+    as an ARM-only compatibility wrapper.
+  - Acceptance: Arch ARM terminal, framebuffer video-driver, and display
+    manager choices come from shared package profiles instead of a separate
+    installer implementation.
+  - Validation: `bash -n install.sh install-arm.sh scripts/dwm-packages.sh`,
+    `make check-shell`, `make check-format`, `make`.
 - [ ] Split installer profiles into required, recommended, and optional.
 - [ ] Add Debian, Arch, and Fedora/RHEL container smoke tests.
 - [ ] Replace remaining Arch-only general documentation.
