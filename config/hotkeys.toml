@@ -60,7 +60,7 @@ webapp   = "webapp-launch"
 keys = [
 
   # ── Launchers ────────────────────────────────────────────────────────────────
-  { mod="SUPER",            key="r",       desc="App launcher",            func="spawn",       exec=["quickshell", "ipc", "call", "launcher", "toggle"] },
+  { mod="SUPER",            key="r",       desc="App launcher",            func="spawn",       cmd="quickshell ipc --path \"${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml\" call launcher toggle" },
   { mod="SUPER SHIFT",      key="r",       desc="App launcher fallback",   func="spawn",       exec=["rofi", "-show", "drun"] },
   { mod="SUPER",            key="x",       desc="Terminal",                func="spawn",       exec=["$terminal"] },
   { mod="SUPER",            key="w",       desc="Looking Glass (VM)",      func="spawn",       cmd="looking-glass-client -F" },

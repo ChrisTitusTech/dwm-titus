@@ -99,7 +99,7 @@ desktop_entry_summary() {
 		}
 
 		function emit() {
-			if (entry && type == "Application" && name != "" && exec != "" &&
+			if (type == "Application" && name != "" && exec != "" &&
 			    hidden != "true" && nodisplay != "true") {
 				printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 					clean(name), clean(generic), clean(comment),

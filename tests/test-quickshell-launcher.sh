@@ -25,6 +25,43 @@ Keywords=visible;sample;
 Categories=Utility;System;
 DESKTOP
 
+cat >"$work/data/applications/browser-actions.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Brave Origin Browser
+GenericName=Web Browser
+Comment=Access the Internet
+Exec=brave-origin-beta %U
+Icon=brave-origin-beta
+Categories=Network;WebBrowser;
+Actions=new-window;new-private-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=brave-origin-beta
+
+[Desktop Action new-private-window]
+Name=New Private Window
+Exec=brave-origin-beta --incognito
+DESKTOP
+
+cat >"$work/data/applications/editor-actions.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Zed
+GenericName=Text Editor
+Comment=A high-performance code editor.
+Exec=zeditor %U
+Icon=zed
+Categories=Utility;TextEditor;Development;IDE;
+Keywords=zed;
+Actions=NewWorkspace;
+
+[Desktop Action NewWorkspace]
+Name=Open a new workspace
+Exec=zeditor --new %U
+DESKTOP
+
 cat >"$work/data/applications/symlink-target.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -100,6 +137,8 @@ output=$(
 
 printf '%s\n' "$output" | grep -Fq 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'
 printf '%s\n' "$output" | grep -Fq 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'"$work/data/applications/visible.desktop"'	visible;sample;	Utility;System;'
+printf '%s\n' "$output" | grep -Fq 'Brave Origin Browser	Web Browser	Access the Internet	brave-origin-beta %U	brave-origin-beta	'"$work/data/applications/browser-actions.desktop"'		Network;WebBrowser;		new-window;new-private-window;'
+printf '%s\n' "$output" | grep -Fq 'Zed	Text Editor	A high-performance code editor.	zeditor %U	zed	'"$work/data/applications/editor-actions.desktop"'	zed;	Utility;TextEditor;Development;IDE;		NewWorkspace;'
 printf '%s\n' "$output" | grep -Fq 'Flatpak Export	Exported App	Shown from Flatpak export path	flatpak-export	flatpak	'"$work/home/.local/share/flatpak/exports/share/applications/flatpak.desktop"'	flatpak;exported;	Network;'
 printf '%s\n' "$output" | grep -Fq 'Snap Export	Packaged App	Shown from Snap export path	snap-export	snap	'"$work/home/.local/share/snapd/applications/snap.desktop"'	snap;exported;	Utility;	snap-export	new-window;'
 printf '%s\n' "$output" | grep -Fq 'Localized Name	Localized Generic	Localized comment	localized-app	localized	'"$work/data/applications/localized.desktop"'	localized;translated;	Office;'

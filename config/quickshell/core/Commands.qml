@@ -5,7 +5,7 @@ import Quickshell
 Singleton {
     function launcherHelperCommand(action, args) {
         const argv = args || [];
-        const script = "if command -v dwm-quickshell-launcher >/dev/null 2>&1; then exec dwm-quickshell-launcher \"$@\"; fi; data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; exec \"$data_dir/scripts/dwm-quickshell-launcher\" \"$@\"";
+        const script = "data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; if [ -x \"$data_dir/scripts/dwm-quickshell-launcher\" ]; then exec \"$data_dir/scripts/dwm-quickshell-launcher\" \"$@\"; fi; exec dwm-quickshell-launcher \"$@\"";
 
         return ["sh", "-c", script, "dwm-quickshell-launcher", action].concat(argv);
     }
