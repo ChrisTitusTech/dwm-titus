@@ -21,6 +21,25 @@ root_property_value() {
 	xprop -root "$prop" 2>/dev/null | sed -n 's/^[^=]*= //p'
 }
 
+root_status() {
+	xprop -root WM_NAME 2>/dev/null |
+		awk -F'= ' '
+			/^WM_NAME/ {
+				status = $2
+				gsub(/^"/, "", status)
+				gsub(/"$/, "", status)
+				print status
+				found = 1
+				exit
+			}
+			END {
+				if (!found) {
+					print ""
+				}
+			}
+		' | clean_line
+}
+
 desktop_names() {
 	names=$(root_property_value _NET_DESKTOP_NAMES | awk '
 		BEGIN { RS = ","; sep = "" }
@@ -84,12 +103,14 @@ show_state() {
 	window_id=$(active_window_id)
 	title=$(window_title "$window_id" || true)
 	title=${title:-Desktop}
+	status=$(root_status)
 
 	printf 'current=%s\n' "$current"
 	printf 'count=%s\n' "$count"
 	printf 'names=%s\n' "$names"
 	printf 'active_window=%s\n' "$window_id"
 	printf 'title=%s\n' "$title"
+	printf 'status=%s\n' "$status"
 }
 
 watch_state() {
@@ -102,7 +123,8 @@ watch_state() {
 		_NET_NUMBER_OF_DESKTOPS \
 		_NET_DESKTOP_NAMES \
 		_NET_ACTIVE_WINDOW \
-		_NET_CLIENT_LIST 2>/dev/null |
+		_NET_CLIENT_LIST \
+		WM_NAME 2>/dev/null |
 		while IFS= read -r _event; do
 			show_state
 			printf '\n'
