@@ -73,6 +73,13 @@ if command -v systemctl >/dev/null 2>&1; then
 	systemctl --user start vicinae.service >/dev/null 2>&1 || true
 fi
 
+# Temporary Quickshell migration baseline. Keep Polybar/Rofi available as the
+# fallback shell stack while the Quickshell setup is being validated.
+QUICKSHELL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
+if [ -f "$QUICKSHELL_CONFIG" ]; then
+	start_detached_once quickshell quickshell --no-duplicate
+fi
+
 # Polkit authentication agent (try common agents)
 for agent in \
 	/usr/lib/mate-polkit/polkit-mate-authentication-agent-1 \

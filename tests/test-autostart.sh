@@ -99,7 +99,7 @@ EOF
 
 chmod +x "$work/bin/"*
 
-for name in feh picom dunst light-locker; do
+for name in feh picom dunst light-locker quickshell; do
 	make_mock_command "$name"
 done
 
@@ -108,9 +108,11 @@ run_duplicate_case() {
 	home="$work/$mode/home"
 	state="$work/$mode/state"
 	runtime="$work/$mode/runtime"
-	mkdir -p "$home/Pictures/backgrounds" "$home/.config/polybar" "$state" "$runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$home/.config/polybar" \
+		"$home/.config/quickshell" "$state" "$runtime"
 	chmod 700 "$runtime"
 	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$home/.config/quickshell/shell.qml"
 
 	cat >"$home/.config/polybar/launch.sh" <<'EOF'
 #!/bin/sh
@@ -146,9 +148,10 @@ EOF
 		wait_for_marker "$state/feh.running"
 		wait_for_marker "$state/picom.running"
 		wait_for_marker "$state/dunst.running"
+		wait_for_marker "$state/quickshell.running"
 	done
 
-	for name in feh picom dunst light-locker; do
+	for name in feh picom dunst light-locker quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
 	test "$(cat "$state/polybar-launch.count")" -eq 2

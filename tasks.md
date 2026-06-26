@@ -60,11 +60,20 @@ replacing Polybar, Rofi, Dunst, or other existing shell components.
     `wmctrl -ic`, Quickshell was stopped, `quickshell list` and
     `pgrep -a quickshell` confirmed no remaining instance, and `wmctrl -m`
     still reported `Name: dwm`.
-- [ ] Add a temporary startup command while keeping Polybar and Rofi enabled.
+- [x] Add a temporary startup command while keeping Polybar and Rofi enabled.
   - Acceptance: Quickshell can be started with the session without removing
     the current fallback shell tools.
   - Validation: restart the session or startup script in a controlled test and
     confirm Polybar/Rofi still work.
+  - Result: added a temporary Quickshell startup block to
+    `scripts/autostart.sh` that runs `quickshell --no-duplicate` only when
+    `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml` exists. The
+    existing Polybar launch remains in place, and Rofi remains installed at
+    `/usr/bin/rofi` with the existing app-launcher hotkeys still present in
+    `hotkeys.toml`. `make check-session-guards` passed with mocked
+    display-manager and `startx` runs, confirming Quickshell starts once while
+    Polybar still launches and duplicate guards continue to work. `make
+    check-shell`, `make check-format`, and `git diff --check` also passed.
 
 ## Backlog
 
