@@ -9,6 +9,7 @@ ShellRoot {
     property string clockText: ""
     property string networkText: ""
     property string systemText: ""
+    property string volumeText: ""
 
     Process {
         id: dateProcess
@@ -43,6 +44,17 @@ ShellRoot {
         }
     }
 
+    Process {
+        id: volumeProcess
+
+        command: ["sh", "-c", "if command -v pactl >/dev/null 2>&1; then mute=$(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | awk '{ print $2 }'); volume=$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | awk 'match($0, /[0-9]+%/) { print substr($0, RSTART, RLENGTH); exit }'); if [ \"$mute\" = yes ]; then printf 'VOL muted'; else printf 'VOL %s' \"${volume:-n/a}\"; fi; else printf 'VOL n/a'; fi"]
+        running: true
+
+        stdout: StdioCollector {
+            onStreamFinished: root.volumeText = this.text.trim()
+        }
+    }
+
     Timer {
         interval: 1000
         running: true
@@ -62,6 +74,13 @@ ShellRoot {
         running: true
         repeat: true
         onTriggered: networkProcess.running = true
+    }
+
+    Timer {
+        interval: 5000
+        running: true
+        repeat: true
+        onTriggered: volumeProcess.running = true
     }
 
     Variants {
@@ -98,6 +117,13 @@ ShellRoot {
 
                     Item {
                         Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: root.volumeText
+                        color: "#d8dee9"
+                        font.pixelSize: 13
+                        verticalAlignment: Text.AlignVCenter
                     }
 
                     Text {

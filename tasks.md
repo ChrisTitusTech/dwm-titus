@@ -132,7 +132,19 @@ available as the fallback until the Quickshell panel is usable.
     `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
     --log-times` reported `Configuration Loaded`; `quickshell list` showed the
     instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
-- [ ] Add volume indicator.
+- [x] Add volume indicator.
+  - Acceptance: the panel displays the default sink volume and muted state,
+    with a fallback when `pactl` is unavailable.
+  - Validation: verify `pactl` can read the default sink, run the volume status
+    command directly, then launch the config in the active Xorg/dwm session.
+  - Result: added one shared `volumeText` property, a `pactl` based status
+    process, and a 5 second update timer to `config/quickshell/shell.qml`.
+    `pactl get-sink-mute @DEFAULT_SINK@` returned `Mute: no`, `pactl
+    get-sink-volume @DEFAULT_SINK@` reported 40%, and the panel command
+    returned `VOL 40%`. Running
+    `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
+    --log-times` reported `Configuration Loaded`; `quickshell list` showed the
+    instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
 - [ ] Add battery/power indicator if needed.
 - [ ] Reserve screen space correctly.
 - [ ] Match current bar height and monitor placement.
