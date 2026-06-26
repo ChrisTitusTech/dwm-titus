@@ -13,8 +13,6 @@ DATA_DIR  := ${XDG_DATA_HOME}/dwm-titus
 CFG_DIR   := ${XDG_CONFIG_HOME}
 DATADIR   ?= ${PREFIX}/share
 SYSTEMDUSERDIR ?= ${PREFIX}/lib/systemd/user
-VICINAE_APPDIR ?= ${PREFIX}/lib/dwm-titus/vicinae
-VICINAE_SOURCE_DIR ?=
 CAPITAINE_DARK_THEME = Capitaine-Cursors
 CAPITAINE_LIGHT_THEME = Capitaine-Cursors-White
 CAPITAINE_LICENSE_DIR = ${DATADIR}/licenses/dwm-titus/capitaine-cursors
@@ -97,7 +95,7 @@ install: install-system
 		echo "==> DESTDIR set; skipping user configuration."; \
 	fi
 
-install-system: all install-vicinae install-cursors
+install-system: all install-cursors
 	@echo ""
 	@echo "==> Installing system files..."
 	install -Dm755 dwm ${DESTDIR}${PREFIX}/bin/dwm
@@ -121,34 +119,6 @@ install-cursors:
 		"${DESTDIR}${DATADIR}/icons/"
 	install -Dm644 assets/cursors/COPYING \
 		"${DESTDIR}${CAPITAINE_LICENSE_DIR}/COPYING"
-
-install-vicinae:
-	@if [ -z "${VICINAE_SOURCE_DIR}" ]; then \
-		echo "Vicinae source not provided; skipping Vicinae."; \
-	elif [ "$$(uname -m)" != x86_64 ]; then \
-		echo "Vicinae AppImage is x86_64-only; skipping it on $$(uname -m)." >&2; \
-	elif [ ! -x "${VICINAE_SOURCE_DIR}/AppRun" ] || \
-		[ ! -x "${VICINAE_SOURCE_DIR}/usr/bin/vicinae" ]; then \
-		echo "Vicinae source is not a complete AppImage extraction: ${VICINAE_SOURCE_DIR}" >&2; \
-		exit 1; \
-	else \
-		echo "==> Installing Vicinae..."; \
-		rm -rf "${DESTDIR}${VICINAE_APPDIR}"; \
-		mkdir -p "${DESTDIR}${VICINAE_APPDIR}"; \
-		cp -a "${VICINAE_SOURCE_DIR}/." "${DESTDIR}${VICINAE_APPDIR}/"; \
-		sed "s|@VICINAE_APPDIR@|${VICINAE_APPDIR}|g" packaging/vicinae | \
-			install -Dm755 /dev/stdin "${DESTDIR}${PREFIX}/bin/vicinae"; \
-		sed "s|@PREFIX@|${PREFIX}|g" packaging/vicinae.service | \
-			install -Dm644 /dev/stdin \
-				"${DESTDIR}${SYSTEMDUSERDIR}/vicinae.service"; \
-		install -Dm644 "${VICINAE_SOURCE_DIR}/usr/share/applications/vicinae.desktop" \
-			"${DESTDIR}${DATADIR}/applications/vicinae.desktop"; \
-		install -Dm644 "${VICINAE_SOURCE_DIR}/usr/share/applications/vicinae-url-handler.desktop" \
-			"${DESTDIR}${DATADIR}/applications/vicinae-url-handler.desktop"; \
-		install -Dm644 \
-			"${VICINAE_SOURCE_DIR}/usr/share/icons/hicolor/512x512/apps/vicinae.png" \
-			"${DESTDIR}${DATADIR}/icons/hicolor/512x512/apps/vicinae.png"; \
-	fi
 
 install-user:
 	@test -n "${USER_HOME}" || { echo "USER_HOME could not be determined." >&2; exit 1; }
@@ -242,14 +212,8 @@ install-user:
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm \
-		${DESTDIR}${PREFIX}/bin/vicinae \
 		${DESTDIR}${MANPREFIX}/man1/dwm.1 \
-		${DESTDIR}${XSESSIONSDIR}/dwm.desktop \
-		${DESTDIR}${SYSTEMDUSERDIR}/vicinae.service \
-		${DESTDIR}${DATADIR}/applications/vicinae.desktop \
-		${DESTDIR}${DATADIR}/applications/vicinae-url-handler.desktop \
-		${DESTDIR}${DATADIR}/icons/hicolor/512x512/apps/vicinae.png
-	rm -rf ${DESTDIR}${VICINAE_APPDIR}
+		${DESTDIR}${XSESSIONSDIR}/dwm.desktop
 	rm -rf \
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_DARK_THEME}" \
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_LIGHT_THEME}" \
@@ -344,8 +308,7 @@ check-install-manifest: all
 	install -Dm644 /dev/null "$$stage/pre-existing"; \
 	find "$$stage" \( -type f -o -type l \) -printf '%P\n' | sort > "$$before"; \
 	$(MAKE) install-system \
-		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions \
-		VICINAE_SOURCE_DIR=; \
+		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions; \
 	{ \
 		printf '%s\n' \
 			pre-existing \
@@ -372,42 +335,13 @@ check-install-manifest: all
 	test -f "$$stage/usr/share/icons/${CAPITAINE_DARK_THEME}/cursors/default"; \
 	test -f "$$stage/usr/share/icons/${CAPITAINE_LIGHT_THEME}/cursors/default"; \
 	$(MAKE) uninstall \
-		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions \
-		VICINAE_SOURCE_DIR=; \
+		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions; \
 	find "$$stage" \( -type f -o -type l \) -printf '%P\n' | sort > "$$after"; \
 	cmp "$$before" "$$after"; \
 	echo "==> Install manifest and uninstall symmetry validated."
 
 check-install-preservation:
 	tests/test-install-preservation.sh
-
-check-vicinae-install: all
-	@set -eu; \
-	if [ "$$(uname -m)" != x86_64 ]; then \
-		echo "==> Skipping x86_64 Vicinae install validation on $$(uname -m)."; \
-		exit 0; \
-	fi; \
-	work="$$(mktemp -d)"; \
-	trap 'rm -rf "$$work"' EXIT; \
-	source="$$work/source"; \
-	stage="$$work/stage"; \
-	install -Dm755 packaging/vicinae "$$source/AppRun"; \
-	install -Dm755 packaging/vicinae "$$source/usr/bin/vicinae"; \
-	install -Dm644 dwm.desktop \
-		"$$source/usr/share/applications/vicinae.desktop"; \
-	install -Dm644 dwm.desktop \
-		"$$source/usr/share/applications/vicinae-url-handler.desktop"; \
-	install -Dm644 packaging/vicinae \
-		"$$source/usr/share/icons/hicolor/512x512/apps/vicinae.png"; \
-	$(MAKE) install-system \
-		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions \
-		VICINAE_SOURCE_DIR="$$source"; \
-	test -x "$$stage/usr/bin/vicinae"; \
-	test -x "$$stage/usr/lib/dwm-titus/vicinae/AppRun"; \
-	test -f "$$stage/usr/lib/systemd/user/vicinae.service"; \
-	grep -Fqx 'ExecStart=/usr/bin/vicinae server --replace' \
-		"$$stage/usr/lib/systemd/user/vicinae.service"; \
-	echo "==> Vicinae staged install validated."
 
 check-container-smoke:
 	tests/test-container-smoke.sh
@@ -454,7 +388,6 @@ check:
 	$(MAKE) check-install
 	$(MAKE) check-install-manifest
 	$(MAKE) check-install-preservation
-	$(MAKE) check-vicinae-install
 	$(MAKE) release-check
 
 .PHONY: all check check-build-config check-build-deps check-default-apps \
@@ -462,5 +395,5 @@ check:
 	check-display-profile check-format check-install \
 	check-install-manifest check-install-preservation check-lock \
 	check-polybar-capabilities check-session-guards check-shell check-diagnostics \
-	check-quickshell-launcher check-terminal check-vicinae-install clean install install-system install-user \
-	install-cursors install-vicinae native release release-check uninstall
+	check-quickshell-launcher check-terminal clean install install-system install-user \
+	install-cursors native release release-check uninstall

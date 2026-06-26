@@ -7,21 +7,34 @@ usage() {
 
 data_dirs() {
 	sep=
+	seen=:
+
+	add_dir() {
+		case $seen in
+		*:"$1":*) return 0 ;;
+		esac
+
+		printf '%s%s/applications' "$sep" "$1"
+		sep=':'
+		seen=$seen$1:
+	}
 
 	if [ -n "${XDG_DATA_HOME:-}" ]; then
-		printf '%s%s/applications' "$sep" "$XDG_DATA_HOME"
-		sep=':'
+		add_dir "$XDG_DATA_HOME"
 	elif [ -n "${HOME:-}" ]; then
-		printf '%s%s/.local/share/applications' "$sep" "$HOME"
-		sep=':'
+		add_dir "$HOME/.local/share"
 	fi
+
+	if [ -n "${HOME:-}" ]; then
+		add_dir "$HOME/.local/share/flatpak/exports/share"
+	fi
+	add_dir /var/lib/flatpak/exports/share
 
 	old_ifs=$IFS
 	IFS=:
 	for dir in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do
 		[ -n "$dir" ] || continue
-		printf '%s%s/applications' "$sep" "$dir"
-		sep=':'
+		add_dir "$dir"
 	done
 	IFS=$old_ifs
 	printf '\n'
@@ -32,7 +45,7 @@ desktop_files() {
 		tr ':' '\n' |
 		while IFS= read -r dir; do
 			[ -d "$dir" ] || continue
-			find "$dir" -type f -name '*.desktop'
+			find "$dir" \( -type f -o -type l \) -name '*.desktop'
 		done |
 		sort -u
 }
@@ -50,9 +63,10 @@ desktop_entry_summary() {
 		function emit() {
 			if (entry && type == "Application" && name != "" && exec != "" &&
 			    hidden != "true" && nodisplay != "true") {
-				printf "%s\t%s\t%s\t%s\t%s\t%s\n",
+				printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 					clean(name), clean(generic), clean(comment),
-					clean(exec), clean(icon), clean(file)
+					clean(exec), clean(icon), clean(file),
+					clean(keywords), clean(categories)
 			}
 		}
 
@@ -65,6 +79,8 @@ desktop_entry_summary() {
 			comment = ""
 			exec = ""
 			icon = ""
+			keywords = ""
+			categories = ""
 			hidden = "false"
 			nodisplay = "false"
 		}
@@ -106,6 +122,16 @@ desktop_entry_summary() {
 
 		entry && $0 ~ /^Icon=/ && icon == "" {
 			icon = substr($0, 6)
+			next
+		}
+
+		entry && $0 ~ /^Keywords=/ && keywords == "" {
+			keywords = substr($0, 10)
+			next
+		}
+
+		entry && $0 ~ /^Categories=/ && categories == "" {
+			categories = substr($0, 12)
 			next
 		}
 

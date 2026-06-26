@@ -9,6 +9,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/data/applications"
+mkdir -p "$work/home/.local/share/flatpak/exports/share/applications"
 mkdir -p "$work/bin"
 
 cat >"$work/data/applications/visible.desktop" <<'DESKTOP'
@@ -19,6 +20,28 @@ GenericName=Utility
 Comment=Shown in launcher
 Exec=visible-app --flag %U
 Icon=visible
+Keywords=visible;sample;
+Categories=Utility;System;
+DESKTOP
+
+cat >"$work/data/applications/symlink-target.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Symlinked App
+Exec=symlinked-app
+DESKTOP
+ln -s "$work/data/applications/symlink-target.desktop" "$work/data/applications/symlink.desktop"
+
+cat >"$work/home/.local/share/flatpak/exports/share/applications/flatpak.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Flatpak Export
+GenericName=Exported App
+Comment=Shown from Flatpak export path
+Exec=flatpak-export
+Icon=flatpak
+Keywords=flatpak;exported;
+Categories=Network;
 DESKTOP
 
 cat >"$work/data/applications/hidden.desktop" <<'DESKTOP'
@@ -44,6 +67,9 @@ output=$(
 )
 
 printf '%s\n' "$output" | grep -Fq 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'
+printf '%s\n' "$output" | grep -Fq 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'"$work/data/applications/visible.desktop"'	visible;sample;	Utility;System;'
+printf '%s\n' "$output" | grep -Fq 'Flatpak Export	Exported App	Shown from Flatpak export path	flatpak-export	flatpak	'"$work/home/.local/share/flatpak/exports/share/applications/flatpak.desktop"'	flatpak;exported;	Network;'
+printf '%s\n' "$output" | grep -Fq 'Symlinked App			symlinked-app		'"$work/data/applications/symlink.desktop"
 if printf '%s\n' "$output" | grep -F 'Hidden App'; then
 	exit 1
 fi

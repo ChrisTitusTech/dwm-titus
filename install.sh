@@ -59,10 +59,6 @@ BG_DIR="$HOME/Pictures/backgrounds"
 MESLO_VERSION="3.4.0"
 MESLO_URL="https://github.com/ryanoasis/nerd-fonts/releases/download/v${MESLO_VERSION}/Meslo.zip"
 MESLO_SHA256="13b502ac8c2bd9d3161018064560e23cd42b175bb730780a270975265a19ad57"
-VICINAE_RELEASE_API="https://api.github.com/repos/vicinaehq/vicinae/releases/latest"
-VICINAE_ASSET_NAME="Vicinae-x86_64.AppImage"
-VICINAE_TMP_DIR=""
-VICINAE_SOURCE_DIR=""
 ARCH="$(uname -m)"
 INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
 NON_INTERACTIVE=false
@@ -215,104 +211,6 @@ confirm_install_summary() {
 	esac
 }
 
-cleanup() {
-	if [[ -n $VICINAE_TMP_DIR ]]; then
-		rm -rf "$VICINAE_TMP_DIR"
-	fi
-}
-trap cleanup EXIT
-
-prepare_vicinae() {
-	local metadata
-	local appimage
-	local asset_url
-	local asset_digest
-	local expected_sha256
-
-	if [[ $(uname -m) != x86_64 ]]; then
-		warn "Vicinae provides an x86_64 AppImage; skipping it on $(uname -m)."
-		return 1
-	fi
-
-	VICINAE_TMP_DIR="$(mktemp -d)"
-	metadata="$VICINAE_TMP_DIR/release.json"
-	appimage="$VICINAE_TMP_DIR/$VICINAE_ASSET_NAME"
-
-	info "Resolving the latest Vicinae release..."
-	if ! curl --fail --location --show-error --silent \
-		-H "Accept: application/vnd.github+json" \
-		"$VICINAE_RELEASE_API" --output "$metadata"; then
-		err "Failed to query the latest Vicinae release."
-		return 1
-	fi
-
-	asset_url="$(
-		awk -v asset="$VICINAE_ASSET_NAME" '
-            index($0, "\"name\": \"" asset "\"") { found = 1 }
-            found && /"browser_download_url":/ {
-                sub(/^[^:]*: "/, "")
-                sub(/".*$/, "")
-                print
-                exit
-            }
-        ' "$metadata"
-	)"
-	asset_digest="$(
-		awk -v asset="$VICINAE_ASSET_NAME" '
-            index($0, "\"name\": \"" asset "\"") { found = 1 }
-            found && /"digest":/ {
-                sub(/^[^:]*: "/, "")
-                sub(/".*$/, "")
-                print
-                exit
-            }
-        ' "$metadata"
-	)"
-
-	if [[ -z $asset_url ]]; then
-		err "The latest Vicinae release does not contain $VICINAE_ASSET_NAME."
-		return 1
-	fi
-	if [[ $asset_digest != sha256:* ]]; then
-		err "GitHub did not provide a SHA-256 digest for $VICINAE_ASSET_NAME."
-		return 1
-	fi
-	expected_sha256="${asset_digest#sha256:}"
-
-	info "Downloading $VICINAE_ASSET_NAME..."
-	if ! curl --fail --location --show-error --silent \
-		"$asset_url" --output "$appimage"; then
-		err "Failed to download Vicinae."
-		return 1
-	fi
-
-	if ! printf '%s  %s\n' "$expected_sha256" "$appimage" |
-		sha256sum --check --status; then
-		err "Vicinae AppImage checksum verification failed."
-		return 1
-	fi
-
-	chmod +x "$appimage"
-	info "Extracting the Vicinae AppImage..."
-	if ! (
-		cd "$VICINAE_TMP_DIR"
-		"$appimage" --appimage-extract >/dev/null
-	); then
-		err "Failed to extract the Vicinae AppImage."
-		return 1
-	fi
-
-	VICINAE_SOURCE_DIR="$VICINAE_TMP_DIR/squashfs-root"
-	if [[ ! -x $VICINAE_SOURCE_DIR/AppRun ||
-		! -x $VICINAE_SOURCE_DIR/usr/bin/vicinae ]]; then
-		err "The Vicinae AppImage extraction is incomplete."
-		VICINAE_SOURCE_DIR=""
-		return 1
-	fi
-
-	ok "Vicinae downloaded, verified, and extracted."
-}
-
 install_meslo_nerd_font() {
 	local font_dir="$HOME/.local/share/fonts/Meslo"
 	local tmp_dir
@@ -413,26 +311,6 @@ install_lightdm_config() {
 	fi
 }
 
-enable_vicinae_user_service() {
-	if ! command -v systemctl &>/dev/null; then
-		warn "systemctl not found; enable Vicinae later with: systemctl --user enable vicinae.service"
-		return
-	fi
-
-	info "Enabling the Vicinae user service..."
-	if ! systemctl --user daemon-reload; then
-		warn "Could not contact the user systemd manager; enable Vicinae after login with: systemctl --user enable vicinae.service"
-		return
-	fi
-
-	if ! systemctl --user enable vicinae.service; then
-		warn "Could not enable the Vicinae user service; run later: systemctl --user enable vicinae.service"
-		return
-	fi
-
-	ok "Vicinae user service enabled."
-}
-
 echo ""
 echo "╔═══════════════════════════════════════════╗"
 echo "║             dwm-titus Installer           ║"
@@ -499,11 +377,6 @@ if install_optional_profile; then
 	ok "Optional desktop extras processed."
 else
 	warn "Skipping optional desktop extras for $INSTALL_PROFILE profile."
-fi
-
-# ── Vicinae app launcher ─────────────────────────────────
-if install_recommended_profile && ! prepare_vicinae; then
-	warn "Vicinae will not be installed. Rofi remains available with SUPER+Shift+R."
 fi
 
 # ── Qt / GTK theming ─────────────────────────────────────
@@ -614,13 +487,8 @@ sudo make install \
 	OWNER="$(id -un)" \
 	DATADIR="/usr/share" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
-	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}" \
-	VICINAE_SOURCE_DIR="$VICINAE_SOURCE_DIR"
+	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 configure_seeded_terminal "$HOTKEYS_FILE" "$terminal"
-
-if [[ -n $VICINAE_SOURCE_DIR ]]; then
-	enable_vicinae_user_service
-fi
 
 # ── Done ─────────────────────────────────────────────────
 echo ""
@@ -634,7 +502,7 @@ echo "  • Reconfigure by removing config.h and running the installer again"
 echo "  • Log out and select 'dwm', or start with: startx"
 echo ""
 echo "  SUPER+/   keybind viewer     SUPER+X  terminal"
-echo "  SUPER+F1  control center     SUPER+R  app launcher (Vicinae)"
+echo "  SUPER+F1  control center     SUPER+R  app launcher"
 echo "  SUPER+Q   close window"
 echo ""
 echo "  Full reference: docs/src/keybinds.md or SUPER+/ in dwm"

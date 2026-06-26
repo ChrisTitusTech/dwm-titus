@@ -112,13 +112,10 @@ For a core-only setup, use the minimal session profile documented in
 required X11/session services, and treats Polybar, Rofi, Picom, Dunst,
 wallpapers, tray tools, and hardware helpers as optional degraded features.
 
-On x86_64, the installer downloads the latest Vicinae AppImage from the
-official GitHub release, verifies the release-provided SHA-256 digest, extracts
-it, and enables `vicinae.service` for the current user. The normal app launcher
-binding is the Quickshell launcher on <kbd>SUPER</kbd> + <kbd>R</kbd>. Rofi
-remains available on <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> and is
-still used by the control center and keybind viewer. If the optional Vicinae
-download fails, installation continues without Vicinae.
+The normal app launcher binding is the Quickshell launcher on
+<kbd>SUPER</kbd> + <kbd>R</kbd>. Rofi remains available on
+<kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> and is still used by the
+control center and keybind viewer.
 
 ---
 

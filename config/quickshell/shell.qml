@@ -36,7 +36,10 @@ ShellRoot {
 
         return app.name.toLowerCase().indexOf(needle) >= 0 ||
             app.generic.toLowerCase().indexOf(needle) >= 0 ||
-            app.comment.toLowerCase().indexOf(needle) >= 0;
+            app.comment.toLowerCase().indexOf(needle) >= 0 ||
+            app.keywords.toLowerCase().indexOf(needle) >= 0 ||
+            app.categories.toLowerCase().indexOf(needle) >= 0 ||
+            app.exec.toLowerCase().indexOf(needle) >= 0;
     }
 
     function closeLauncher() {
@@ -75,6 +78,7 @@ ShellRoot {
 
     function openLauncher() {
         root.launcherVisible = true;
+        root.launcherStatus = "Loading applications...";
         launcherIndexProcess.running = true;
         Qt.callLater(function() {
             launcherSearch.forceActiveFocus();
@@ -99,7 +103,9 @@ ShellRoot {
                 "comment": fields[2],
                 "exec": fields[3],
                 "icon": fields[4],
-                "desktopFile": fields[5]
+                "desktopFile": fields[5],
+                "keywords": fields.length >= 7 ? fields[6] : "",
+                "categories": fields.length >= 8 ? fields[7] : ""
             });
         }
 
@@ -247,7 +253,7 @@ ShellRoot {
         id: launcherIndexProcess
 
         command: root.launcherHelperCommand("list")
-        running: true
+        running: false
 
         stdout: StdioCollector {
             onStreamFinished: root.parseLauncherApps(this.text)
