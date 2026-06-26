@@ -10,24 +10,25 @@ Rectangle {
     signal connectRequested(var profile)
     signal disconnectRequested(string device)
 
-    height: 48
+    height: Theme.confirmButtonHeight
     color: rowMouse.containsMouse ? Theme.surfaceHover : Theme.surface
     radius: Theme.radius
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 10
-        anchors.rightMargin: 10
-        spacing: 10
+        anchors.leftMargin: Theme.rowSpacing
+        anchors.rightMargin: Theme.rowSpacing
+        spacing: Theme.rowSpacing
 
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 2
+            spacing: Theme.compactSpacing
 
             Text {
                 Layout.fillWidth: true
                 text: root.profile.name
                 color: Theme.textStrong
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.panelFontSize
                 elide: Text.ElideRight
             }
@@ -36,6 +37,7 @@ Rectangle {
                 Layout.fillWidth: true
                 text: root.active ? root.profile.type + " on " + root.profile.device : root.profile.type
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight
             }
@@ -43,7 +45,7 @@ Rectangle {
 
         Rectangle {
             Layout.preferredWidth: actionText.implicitWidth + 18
-            Layout.preferredHeight: 28
+            Layout.preferredHeight: Theme.chipHeight
             color: actionMouse.containsMouse ? Theme.accent : Theme.border
             radius: Theme.radius
 
@@ -53,6 +55,7 @@ Rectangle {
                 anchors.centerIn: parent
                 text: root.active ? "Disconnect" : "Connect"
                 color: Theme.textStrong
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
             }
 

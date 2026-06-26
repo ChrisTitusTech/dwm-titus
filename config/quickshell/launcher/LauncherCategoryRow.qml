@@ -16,7 +16,7 @@ Flickable {
         id: launcherCategoryRow
 
         height: parent.height
-        spacing: 6
+        spacing: Theme.listSpacing + Theme.compactSpacing
 
         Repeater {
             model: root.launcherModel.categories
@@ -24,7 +24,7 @@ Flickable {
             delegate: Rectangle {
                 required property var modelData
 
-                Layout.preferredHeight: 28
+                Layout.preferredHeight: Theme.chipHeight
                 Layout.preferredWidth: launcherCategoryLabel.width + 22
                 radius: Theme.radius
                 color: root.launcherModel.category === modelData.id ? Theme.accent : launcherCategoryMouse.containsMouse ? Theme.surfaceHover : Theme.surface
@@ -34,7 +34,8 @@ Flickable {
 
                     anchors.centerIn: parent
                     text: modelData.label + " " + modelData.count
-                    color: root.launcherModel.category === parent.modelData.id ? Theme.bg : Theme.text
+                    color: root.launcherModel.category === parent.modelData.id ? Theme.accentText : Theme.text
+                    font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallFontSize
                     font.bold: root.launcherModel.category === parent.modelData.id
                 }

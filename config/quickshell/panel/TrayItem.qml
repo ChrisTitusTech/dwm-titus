@@ -25,7 +25,7 @@ Rectangle {
 
     Layout.preferredWidth: Theme.trayItemSize
     Layout.preferredHeight: Theme.trayItemSize
-    radius: 3
+    radius: Theme.smallRadius
     color: trayMouse.containsMouse ? Theme.surface : "transparent"
 
     IconImage {
@@ -49,7 +49,8 @@ Rectangle {
             return title.length > 0 ? title.charAt(0).toUpperCase() : "?";
         }
         color: Theme.text
-        font.pixelSize: 10
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.tinyFontSize
         font.bold: true
     }
 

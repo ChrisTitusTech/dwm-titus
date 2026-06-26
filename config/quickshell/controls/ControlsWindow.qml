@@ -11,11 +11,11 @@ PopupWindow {
 
     readonly property int popupWidth: 360
     readonly property int popupHeight: 412
-    readonly property int edgeMargin: 10
-    readonly property int contentMargin: 18
-    readonly property int contentSpacing: 12
-    readonly property int rowSpacing: 10
-    readonly property int actionButtonHeight: 40
+    readonly property int edgeMargin: Theme.rowSpacing
+    readonly property int contentMargin: Theme.popupMargin
+    readonly property int contentSpacing: Theme.popupSpacing
+    readonly property int rowSpacing: Theme.rowSpacing
+    readonly property int actionButtonHeight: Theme.compactButtonHeight
     readonly property int volumeControlHeight: 46
     readonly property int volumePercentWidth: 42
     readonly property int muteButtonWidth: 84
@@ -27,7 +27,7 @@ PopupWindow {
     anchor.rect.x: Math.max(edgeMargin, panelWindow.width - popupWidth - edgeMargin)
     anchor.rect.y: Theme.panelHeight
     grabFocus: true
-    color: "#00000000"
+    color: Theme.transparent
 
     onVisibleChanged: {
         if (visible) {
@@ -71,7 +71,8 @@ PopupWindow {
                     Layout.fillWidth: true
                     text: root.controlsModel.volumeText
                     color: Theme.text
-                    font.pixelSize: 18
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.titleFontSize
                     font.bold: true
                     elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter
@@ -79,7 +80,7 @@ PopupWindow {
 
                 Rectangle {
                     Layout.preferredWidth: refreshText.implicitWidth + 18
-                    Layout.preferredHeight: 30
+                    Layout.preferredHeight: Theme.buttonHeight
                     color: refreshMouse.containsMouse ? Theme.surfaceHover : Theme.surface
                     radius: Theme.radius
 
@@ -89,6 +90,7 @@ PopupWindow {
                         anchors.centerIn: parent
                         text: "Refresh"
                         color: Theme.text
+                        font.family: Theme.fontFamily
                         font.pixelSize: Theme.smallFontSize
                     }
 
@@ -108,6 +110,7 @@ PopupWindow {
                 visible: root.controlsModel.message.length > 0
                 text: root.controlsModel.message
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight
             }
@@ -141,7 +144,7 @@ PopupWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         height: 8
                         color: Theme.surface
-                        radius: 4
+                        radius: Theme.radius
 
                         Rectangle {
                             width: Math.round((volumeSlider.displayPercent / 100) * parent.width)
@@ -159,7 +162,7 @@ PopupWindow {
                         color: volumeMouse.enabled ? Theme.text : Theme.textMuted
                         border.color: Theme.border
                         border.width: 1
-                        radius: 10
+                        radius: height / 2
                     }
 
                     MouseArea {
@@ -188,6 +191,7 @@ PopupWindow {
                     Layout.preferredWidth: root.volumePercentWidth
                     text: root.controlsModel.volumePercent + "%"
                     color: Theme.text
+                    font.family: Theme.fontFamily
                     font.pixelSize: Theme.panelFontSize
                     font.bold: true
                     horizontalAlignment: Text.AlignRight
@@ -211,13 +215,15 @@ PopupWindow {
                     Layout.fillWidth: true
                     text: "Microphone"
                     color: Theme.textMuted
+                    font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallFontSize
                     font.bold: true
                 }
 
                 Text {
                     text: root.controlsModel.micText
-                    color: root.controlsModel.micText === "MIC muted" ? "#bf616a" : Theme.text
+                    color: root.controlsModel.micText === "MIC muted" ? Theme.danger : Theme.text
+                    font.family: Theme.fontFamily
                     font.pixelSize: Theme.panelFontSize
                     font.bold: true
                 }
@@ -231,6 +237,7 @@ PopupWindow {
                     Layout.fillWidth: true
                     text: "Bluetooth"
                     color: Theme.textMuted
+                    font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallFontSize
                     font.bold: true
                 }
@@ -238,6 +245,7 @@ PopupWindow {
                 Text {
                     text: root.controlsModel.bluetoothText
                     color: Theme.text
+                    font.family: Theme.fontFamily
                     font.pixelSize: Theme.panelFontSize
                     font.bold: true
                 }
@@ -261,12 +269,13 @@ PopupWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.leftMargin: 12
                     anchors.rightMargin: 12
-                    spacing: 2
+                    spacing: Theme.compactSpacing
 
                     Text {
                         width: parent.width
                         text: root.controlsModel.mediaText
                         color: Theme.text
+                        font.family: Theme.fontFamily
                         font.pixelSize: Theme.panelFontSize
                         font.bold: true
                         elide: Text.ElideRight
@@ -277,6 +286,7 @@ PopupWindow {
                         visible: root.controlsModel.mediaPlayer.length > 0
                         text: root.controlsModel.mediaPlayer
                         color: Theme.textMuted
+                        font.family: Theme.fontFamily
                         font.pixelSize: Theme.smallFontSize
                         elide: Text.ElideRight
                     }
@@ -285,7 +295,7 @@ PopupWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: Theme.listSpacing * 2
 
                 ControlsActionButton {
                     Layout.fillWidth: true

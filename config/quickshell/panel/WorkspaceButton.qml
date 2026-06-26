@@ -9,15 +9,16 @@ Rectangle {
     required property bool selected
     signal clicked()
 
-    Layout.preferredWidth: 22
-    Layout.preferredHeight: 22
-    radius: 3
+    Layout.preferredWidth: Theme.workspaceButtonSize
+    Layout.preferredHeight: Theme.workspaceButtonSize
+    radius: Theme.smallRadius
     color: selected ? Theme.surface : "transparent"
 
     Text {
         anchors.centerIn: parent
         text: root.label
         color: root.selected ? Theme.accent : Theme.text
+        font.family: Theme.fontFamily
         font.pixelSize: Theme.panelFontSize
         font.bold: root.selected
         verticalAlignment: Text.AlignVCenter

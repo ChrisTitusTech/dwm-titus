@@ -13,7 +13,7 @@ Rectangle {
 
     radius: Theme.radius
     color: actionMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-    border.color: danger ? "#bf616a" : Theme.border
+    border.color: danger ? Theme.danger : Theme.border
     border.width: 1
 
     MouseArea {
@@ -30,13 +30,14 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         anchors.leftMargin: compact ? 12 : 14
         anchors.rightMargin: compact ? 12 : 14
-        spacing: compact ? 2 : 4
+        spacing: compact ? Theme.compactSpacing : Theme.listSpacing
 
         Text {
             width: parent.width
             text: root.action.label
-            color: root.danger ? "#eceff4" : Theme.text
-            font.pixelSize: root.compact ? 14 : 15
+            color: root.danger ? Theme.textStrong : Theme.text
+            font.family: Theme.fontFamily
+            font.pixelSize: root.compact ? Theme.bodyFontSize : Theme.bodyFontSize + 1
             font.bold: true
             elide: Text.ElideRight
         }
@@ -45,6 +46,7 @@ Rectangle {
             width: parent.width
             text: root.action.detail || ""
             color: Theme.textMuted
+            font.family: Theme.fontFamily
             font.pixelSize: Theme.smallFontSize
             elide: Text.ElideRight
             visible: text.length > 0

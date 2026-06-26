@@ -38,11 +38,12 @@ PanelWindow {
         anchors.fill: parent
         anchors.leftMargin: 10
         anchors.rightMargin: 10
-        spacing: 10
+        spacing: Theme.rowSpacing
 
         Text {
             text: "dwm"
             color: Theme.text
+            font.family: Theme.fontFamily
             font.pixelSize: Theme.panelFontSize
             font.bold: true
             verticalAlignment: Text.AlignVCenter
@@ -66,6 +67,7 @@ PanelWindow {
             text: root.state.activeWindowTitle
             color: Theme.text
             elide: Text.ElideRight
+            font.family: Theme.fontFamily
             font.pixelSize: Theme.panelFontSize
             verticalAlignment: Text.AlignVCenter
         }
@@ -82,6 +84,7 @@ PanelWindow {
 
                 text: modelData
                 color: Theme.text
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.panelFontSize
                 verticalAlignment: Text.AlignVCenter
             }
@@ -89,7 +92,7 @@ PanelWindow {
 
         Rectangle {
             Layout.preferredWidth: volumeLabel.implicitWidth + 18
-            Layout.preferredHeight: 24
+            Layout.preferredHeight: Theme.pillHeight
             color: controlsMouse.containsMouse || root.controlsModel.visible ? Theme.surfaceHover : Theme.surface
             radius: Theme.radius
 
@@ -99,6 +102,7 @@ PanelWindow {
                 anchors.centerIn: parent
                 text: root.controlsModel.volumeText
                 color: Theme.text
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.panelFontSize
                 verticalAlignment: Text.AlignVCenter
             }
@@ -115,7 +119,7 @@ PanelWindow {
 
         Rectangle {
             Layout.preferredWidth: networkLabel.implicitWidth + 18
-            Layout.preferredHeight: 24
+            Layout.preferredHeight: Theme.pillHeight
             color: networkMouse.containsMouse || root.networkModel.visible ? Theme.surfaceHover : Theme.surface
             radius: Theme.radius
 
@@ -125,6 +129,7 @@ PanelWindow {
                 anchors.centerIn: parent
                 text: root.networkModel.statusText
                 color: Theme.text
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.panelFontSize
                 verticalAlignment: Text.AlignVCenter
             }
@@ -146,6 +151,7 @@ PanelWindow {
         Text {
             text: Qt.formatDateTime(root.clock.date, "ddd MMM dd  hh:mm")
             color: Theme.accent
+            font.family: Theme.fontFamily
             font.pixelSize: Theme.panelFontSize
             verticalAlignment: Text.AlignVCenter
         }

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell.Services.SystemTray
+import qs.core
 
 RowLayout {
     id: root
@@ -8,7 +9,7 @@ RowLayout {
     signal openMenu(var trayItem, var anchorItem)
 
     visible: SystemTray.items.values.length > 0
-    spacing: 2
+    spacing: Theme.compactSpacing
 
     Repeater {
         model: SystemTray.items.values

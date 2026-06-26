@@ -18,6 +18,7 @@ Rectangle {
         anchors.centerIn: parent
         text: root.label
         color: Theme.text
+        font.family: Theme.fontFamily
         font.pixelSize: Theme.panelFontSize
         font.bold: true
         elide: Text.ElideRight

@@ -12,7 +12,7 @@ FloatingWindow {
     visible: powerMenuModel.visible
     implicitWidth: 520
     implicitHeight: powerMenuModel.confirming ? 250 : 520
-    color: "#00000000"
+    color: Theme.transparent
 
     readonly property var cancelAction: {
         "label": "Cancel",
@@ -53,13 +53,14 @@ FloatingWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 18
-            spacing: 12
+            anchors.margins: Theme.popupMargin
+            spacing: Theme.popupSpacing
 
             Text {
                 text: root.powerMenuModel.confirming ? "Confirm Action" : "Power Menu"
                 color: Theme.text
-                font.pixelSize: 18
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.titleFontSize
                 font.bold: true
                 verticalAlignment: Text.AlignVCenter
             }
@@ -68,12 +69,13 @@ FloatingWindow {
                 visible: !root.powerMenuModel.confirming
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 14
+                spacing: Theme.sectionSpacing
 
                 Text {
                     Layout.fillWidth: true
                     text: "Session"
                     color: Theme.textMuted
+                    font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallFontSize
                     font.bold: true
                 }
@@ -81,8 +83,8 @@ FloatingWindow {
                     GridLayout {
                         Layout.fillWidth: true
                         columns: 2
-                        columnSpacing: 8
-                        rowSpacing: 8
+                        columnSpacing: Theme.listSpacing * 2
+                        rowSpacing: Theme.listSpacing * 2
 
                     PowerMenuActionButton {
                         Layout.fillWidth: true
@@ -117,17 +119,18 @@ FloatingWindow {
                     Layout.fillWidth: true
                     text: "Quick Actions"
                     color: Theme.textMuted
+                    font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallFontSize
                     font.bold: true
                 }
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 4
+                    spacing: Theme.listSpacing
 
                     PowerMenuActionButton {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 40
+                        Layout.preferredHeight: Theme.compactButtonHeight
                         compact: true
                         action: root.powerMenuModel.quickActions[0]
                         onActivated: root.powerMenuModel.requestAction(action)
@@ -135,7 +138,7 @@ FloatingWindow {
 
                     PowerMenuActionButton {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 40
+                        Layout.preferredHeight: Theme.compactButtonHeight
                         compact: true
                         action: root.powerMenuModel.quickActions[1]
                         onActivated: root.powerMenuModel.requestAction(action)
@@ -143,7 +146,7 @@ FloatingWindow {
 
                     PowerMenuActionButton {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 40
+                        Layout.preferredHeight: Theme.compactButtonHeight
                         compact: true
                         action: root.powerMenuModel.quickActions[2]
                         onActivated: root.powerMenuModel.requestAction(action)
@@ -151,7 +154,7 @@ FloatingWindow {
 
                     PowerMenuActionButton {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 40
+                        Layout.preferredHeight: Theme.compactButtonHeight
                         compact: true
                         action: root.powerMenuModel.quickActions[3]
                         onActivated: root.powerMenuModel.requestAction(action)
@@ -159,7 +162,7 @@ FloatingWindow {
 
                     PowerMenuActionButton {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 40
+                        Layout.preferredHeight: Theme.compactButtonHeight
                         compact: true
                         action: root.powerMenuModel.quickActions[4]
                         onActivated: root.powerMenuModel.requestAction(action)
@@ -171,13 +174,14 @@ FloatingWindow {
                 visible: root.powerMenuModel.confirming
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 14
+                spacing: Theme.sectionSpacing
 
                 Text {
                     Layout.fillWidth: true
                     text: root.powerMenuModel.pendingAction ? root.powerMenuModel.pendingAction.label : ""
                     color: Theme.textStrong
-                    font.pixelSize: 16
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.inputFontSize
                     font.bold: true
                     elide: Text.ElideRight
                 }
@@ -186,6 +190,7 @@ FloatingWindow {
                     Layout.fillWidth: true
                     text: "This action will affect the current session or system."
                     color: Theme.textMuted
+                    font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallFontSize
                     wrapMode: Text.WordWrap
                 }
@@ -193,11 +198,11 @@ FloatingWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignBottom
-                    spacing: 8
+                    spacing: Theme.listSpacing * 2
 
                     PowerMenuActionButton {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 48
+                        Layout.preferredHeight: Theme.confirmButtonHeight
                         action: root.cancelAction
                         compact: true
                         onActivated: root.powerMenuModel.cancelConfirmation()
@@ -205,7 +210,7 @@ FloatingWindow {
 
                     PowerMenuActionButton {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 48
+                        Layout.preferredHeight: Theme.confirmButtonHeight
                         action: root.confirmButtonAction
                         compact: true
                         danger: true

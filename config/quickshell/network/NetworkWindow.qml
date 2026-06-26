@@ -12,7 +12,7 @@ FloatingWindow {
     visible: networkModel.visible
     implicitWidth: 520
     implicitHeight: 560
-    color: "#00000000"
+    color: Theme.transparent
 
     Rectangle {
         id: content
@@ -33,18 +33,19 @@ FloatingWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 18
-            spacing: 12
+            anchors.margins: Theme.popupMargin
+            spacing: Theme.popupSpacing
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                spacing: Theme.rowSpacing
 
                 Text {
                     Layout.fillWidth: true
                     text: root.networkModel.statusText
                     color: Theme.text
-                    font.pixelSize: 18
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.titleFontSize
                     font.bold: true
                     elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter
@@ -52,7 +53,7 @@ FloatingWindow {
 
                 Rectangle {
                     Layout.preferredWidth: refreshText.implicitWidth + 18
-                    Layout.preferredHeight: 30
+                    Layout.preferredHeight: Theme.buttonHeight
                     color: refreshMouse.containsMouse ? Theme.surfaceHover : Theme.surface
                     radius: Theme.radius
 
@@ -62,6 +63,7 @@ FloatingWindow {
                         anchors.centerIn: parent
                         text: "Refresh"
                         color: Theme.text
+                        font.family: Theme.fontFamily
                         font.pixelSize: Theme.smallFontSize
                     }
 
@@ -81,6 +83,7 @@ FloatingWindow {
                 visible: root.networkModel.message.length > 0
                 text: root.networkModel.message
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight
             }
@@ -89,6 +92,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 text: "Active"
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 font.bold: true
             }
@@ -97,7 +101,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(150, Math.max(42, contentHeight))
                 clip: true
-                spacing: 4
+                spacing: Theme.listSpacing
                 model: root.networkModel.activeConnections
 
                 delegate: NetworkProfileRow {
@@ -115,6 +119,7 @@ FloatingWindow {
                 visible: root.networkModel.activeConnections.length === 0
                 text: "No active connections"
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
             }
 
@@ -122,6 +127,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 text: "Saved"
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 font.bold: true
             }
@@ -130,7 +136,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                spacing: 4
+                spacing: Theme.listSpacing
                 model: root.networkModel.savedProfiles
 
                 delegate: NetworkProfileRow {
@@ -148,6 +154,7 @@ FloatingWindow {
                 visible: root.networkModel.savedProfiles.length === 0
                 text: "No saved Ethernet, Wi-Fi, or VPN profiles"
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
             }
 
@@ -162,6 +169,7 @@ FloatingWindow {
                     anchors.centerIn: parent
                     text: "Edit Connections"
                     color: Theme.text
+                    font.family: Theme.fontFamily
                     font.pixelSize: Theme.panelFontSize
                 }
 

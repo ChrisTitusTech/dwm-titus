@@ -12,7 +12,7 @@ FloatingWindow {
     visible: notificationModel.historyVisible
     implicitWidth: 520
     implicitHeight: 560
-    color: "#00000000"
+    color: Theme.transparent
 
     Rectangle {
         anchors.fill: parent
@@ -24,24 +24,25 @@ FloatingWindow {
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: 16
-            spacing: 12
+            spacing: Theme.popupSpacing
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: Theme.listSpacing * 2
 
                 Text {
                     Layout.fillWidth: true
                     text: "Notifications"
                     color: Theme.text
-                    font.pixelSize: 18
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.titleFontSize
                     font.bold: true
                     elide: Text.ElideRight
                 }
 
                 Rectangle {
                     Layout.preferredWidth: 58
-                    Layout.preferredHeight: 30
+                    Layout.preferredHeight: Theme.buttonHeight
                     radius: Theme.radius
                     color: clearMouse.containsMouse ? Theme.surfaceHover : Theme.surface
                     border.color: Theme.border
@@ -51,6 +52,7 @@ FloatingWindow {
                         anchors.centerIn: parent
                         text: "Clear"
                         color: Theme.text
+                        font.family: Theme.fontFamily
                         font.pixelSize: Theme.smallFontSize
                         font.bold: true
                     }
@@ -65,8 +67,8 @@ FloatingWindow {
                 }
 
                 Rectangle {
-                    Layout.preferredWidth: 30
-                    Layout.preferredHeight: 30
+                    Layout.preferredWidth: Theme.closeButtonSize
+                    Layout.preferredHeight: Theme.closeButtonSize
                     radius: Theme.radius
                     color: closeMouse.containsMouse ? Theme.surfaceHover : Theme.surface
                     border.color: Theme.border
@@ -76,7 +78,8 @@ FloatingWindow {
                         anchors.centerIn: parent
                         text: "x"
                         color: Theme.text
-                        font.pixelSize: 13
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.panelFontSize
                         font.bold: true
                     }
 
@@ -95,6 +98,7 @@ FloatingWindow {
                 visible: root.notificationModel.history.length === 0
                 text: "No notifications"
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -110,7 +114,7 @@ FloatingWindow {
                     id: historyColumn
 
                     width: parent.width
-                    spacing: 8
+                    spacing: Theme.listSpacing * 2
 
                     Repeater {
                         model: root.notificationModel.history
@@ -121,8 +125,8 @@ FloatingWindow {
                             Layout.fillWidth: true
                             Layout.preferredHeight: Math.max(74, historyContent.implicitHeight + 22)
                             radius: Theme.radius
-                            color: modelData.urgencyName === "critical" ? "#4a2f35" : Theme.surface
-                            border.color: modelData.urgencyName === "critical" ? "#bf616a" : Theme.border
+                            color: modelData.urgencyName === "critical" ? Theme.dangerSurface : Theme.surface
+                            border.color: modelData.urgencyName === "critical" ? Theme.danger : Theme.border
                             border.width: 1
 
                             ColumnLayout {
@@ -130,16 +134,17 @@ FloatingWindow {
 
                                 anchors.fill: parent
                                 anchors.margins: 11
-                                spacing: 3
+                                spacing: Theme.tightSpacing
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 8
+                                    spacing: Theme.listSpacing * 2
 
                                     Text {
                                         Layout.fillWidth: true
                                         text: modelData.appName || "Notification"
                                         color: Theme.textMuted
+                                        font.family: Theme.fontFamily
                                         font.pixelSize: Theme.smallFontSize
                                         elide: Text.ElideRight
                                     }
@@ -147,6 +152,7 @@ FloatingWindow {
                                     Text {
                                         text: Qt.formatTime(new Date(modelData.timestamp || Date.now()), "hh:mm")
                                         color: Theme.textMuted
+                                        font.family: Theme.fontFamily
                                         font.pixelSize: Theme.smallFontSize
                                     }
                                 }
@@ -155,7 +161,8 @@ FloatingWindow {
                                     Layout.fillWidth: true
                                     text: modelData.summary || modelData.urgencyName || ""
                                     color: Theme.textStrong
-                                    font.pixelSize: 14
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: Theme.bodyFontSize
                                     font.bold: true
                                     elide: Text.ElideRight
                                 }
@@ -165,6 +172,7 @@ FloatingWindow {
                                     visible: text.length > 0
                                     text: modelData.body || ""
                                     color: Theme.text
+                                    font.family: Theme.fontFamily
                                     font.pixelSize: Theme.smallFontSize
                                     wrapMode: Text.WordWrap
                                     maximumLineCount: 3

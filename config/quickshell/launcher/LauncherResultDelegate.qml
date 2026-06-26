@@ -27,24 +27,25 @@ Rectangle {
         anchors.leftMargin: 12
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 10
+        spacing: Theme.rowSpacing
 
         IconImage {
-            Layout.preferredWidth: 28
-            Layout.preferredHeight: 28
+            Layout.preferredWidth: Theme.iconSize
+            Layout.preferredHeight: Theme.iconSize
             Layout.alignment: Qt.AlignVCenter
             source: Icons.launcherIcon(root.modelData.icon)
         }
 
         Column {
             Layout.fillWidth: true
-            spacing: 3
+            spacing: Theme.tightSpacing
 
             Text {
                 width: parent.width
                 text: root.modelData.name
                 color: Theme.text
-                font.pixelSize: 14
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.bodyFontSize
                 font.bold: root.selected
                 elide: Text.ElideRight
             }
@@ -62,6 +63,7 @@ Rectangle {
                     return category;
                 }
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight
                 visible: text.length > 0

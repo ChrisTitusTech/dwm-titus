@@ -15,8 +15,8 @@ Rectangle {
     Layout.preferredHeight: Math.max(72, content.implicitHeight + 24)
 
     radius: Theme.radius
-    color: item.urgency === NotificationUrgency.Critical ? "#4a2f35" : Theme.surface
-    border.color: item.urgency === NotificationUrgency.Critical ? "#bf616a" : Theme.border
+    color: item.urgency === NotificationUrgency.Critical ? Theme.dangerSurface : Theme.surface
+    border.color: item.urgency === NotificationUrgency.Critical ? Theme.danger : Theme.border
     border.width: 1
 
     Timer {
@@ -31,23 +31,24 @@ Rectangle {
 
         anchors.fill: parent
         anchors.margins: 12
-        spacing: 10
+        spacing: Theme.rowSpacing
 
         Rectangle {
-            Layout.preferredWidth: 4
+            Layout.preferredWidth: Theme.notificationAccentWidth
             Layout.fillHeight: true
-            radius: 2
-            color: root.item.urgency === NotificationUrgency.Critical ? "#bf616a" : Theme.accent
+            radius: Theme.notificationAccentRadius
+            color: root.item.urgency === NotificationUrgency.Critical ? Theme.danger : Theme.accent
         }
 
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 3
+            spacing: Theme.tightSpacing
 
             Text {
                 Layout.fillWidth: true
                 text: root.item.appName
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight
             }
@@ -56,7 +57,8 @@ Rectangle {
                 Layout.fillWidth: true
                 text: root.item.summary || root.item.urgencyName
                 color: Theme.textStrong
-                font.pixelSize: 14
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.bodyFontSize
                 font.bold: true
                 elide: Text.ElideRight
             }
@@ -66,6 +68,7 @@ Rectangle {
                 visible: text.length > 0
                 text: root.item.body || ""
                 color: Theme.text
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 wrapMode: Text.WordWrap
                 maximumLineCount: 3
@@ -74,10 +77,10 @@ Rectangle {
         }
 
         Rectangle {
-            Layout.preferredWidth: 26
-            Layout.preferredHeight: 26
+            Layout.preferredWidth: Theme.closeButtonSize - Theme.listSpacing
+            Layout.preferredHeight: Theme.closeButtonSize - Theme.listSpacing
             radius: Theme.radius
-            color: closeMouse.containsMouse ? Theme.surfaceHover : "#00000000"
+            color: closeMouse.containsMouse ? Theme.surfaceHover : Theme.transparent
             border.color: Theme.border
             border.width: 1
 
@@ -85,7 +88,8 @@ Rectangle {
                 anchors.centerIn: parent
                 text: "x"
                 color: Theme.text
-                font.pixelSize: 13
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.panelFontSize
                 font.bold: true
             }
 

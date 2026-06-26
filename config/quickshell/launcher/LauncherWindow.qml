@@ -13,7 +13,7 @@ FloatingWindow {
     visible: launcherModel.visible
     implicitWidth: 760
     implicitHeight: 560
-    color: "#00000000"
+    color: Theme.transparent
 
     function focusSearch() {
         launcherSearch.forceActiveFocus();
@@ -35,13 +35,14 @@ FloatingWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 18
-            spacing: 12
+            anchors.margins: Theme.popupMargin
+            spacing: Theme.popupSpacing
 
             Text {
                 text: "Applications"
                 color: Theme.text
-                font.pixelSize: 18
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.titleFontSize
                 font.bold: true
                 verticalAlignment: Text.AlignVCenter
             }
@@ -61,9 +62,10 @@ FloatingWindow {
                     verticalAlignment: TextInput.AlignVCenter
                     color: Theme.textStrong
                     selectionColor: Theme.accent
-                    selectedTextColor: Theme.bg
+                    selectedTextColor: Theme.accentText
                     text: root.launcherModel.query
-                    font.pixelSize: 16
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.inputFontSize
                     clip: true
 
                     onTextChanged: root.launcherModel.setQuery(text)
@@ -106,7 +108,8 @@ FloatingWindow {
                     visible: launcherSearch.text.length === 0
                     text: "Search applications"
                     color: Theme.placeholder
-                    font.pixelSize: 16
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.inputFontSize
                 }
             }
 
@@ -114,6 +117,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 text: root.launcherModel.filteredApps.length + " shown / " + root.launcherModel.status
                 color: Theme.textMuted
+                font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight
             }
@@ -130,7 +134,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                spacing: 4
+                spacing: Theme.listSpacing
                 model: root.launcherModel.filteredApps
 
                 onModelChanged: {

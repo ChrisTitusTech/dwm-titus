@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import qs.core
 
 FloatingWindow {
     id: root
@@ -12,7 +13,7 @@ FloatingWindow {
     visible: notificationModel.notifications.length > 0
     implicitWidth: 380
     implicitHeight: notificationsColumn.implicitHeight + 24
-    color: "#00000000"
+    color: Theme.transparent
 
     onVisibleChanged: {
         if (visible) {
@@ -54,7 +55,7 @@ FloatingWindow {
 
         anchors.fill: parent
         anchors.margins: 12
-        spacing: 8
+        spacing: Theme.listSpacing * 2
 
         Repeater {
             model: root.notificationModel.notifications
