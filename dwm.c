@@ -175,6 +175,7 @@ typedef struct {
 
 /* core client and layout declarations */
 static void applyrules(Client *c);
+static int applytitlerules(Client *c);
 static int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact);
 static void arrange(Monitor *m);
 static void arrangemon(Monitor *m);
@@ -541,6 +542,50 @@ applyrules(Client *c)
 		/* Mask to only valid tags for this monitor */
 		c->tags &= montags;
 	}
+}
+
+int
+applytitlerules(Client *c)
+{
+	const char *class, *instance;
+	unsigned int i;
+	const Rule *r;
+	int changed = 0;
+	XClassHint ch = { NULL, NULL };
+
+	XGetClassHint(dpy, c->win, &ch);
+	class = ch.res_class ? ch.res_class : broken;
+	instance = ch.res_name ? ch.res_name : broken;
+
+	const Rule *active_rules = rt_rules;
+	unsigned int n_active_rules = (unsigned int)rt_nrules;
+	for (i = 0; i < n_active_rules; i++) {
+		r = &active_rules[i];
+		if (!r->title)
+			continue;
+		if ((strstr(c->name, r->title))
+		&& (!r->class || strstr(class, r->class))
+		&& (!r->instance || strstr(instance, r->instance))) {
+			c->isterminal = r->isterminal;
+			c->noswallow = r->noswallow;
+			if (r->isfloating && !c->isfloating) {
+				c->isfloating = 1;
+				changed = 1;
+			}
+			if (r->alwaysontop && !c->alwaysontop) {
+				c->alwaysontop = 1;
+				c->isfloating = 1;
+				changed = 1;
+			}
+		}
+	}
+
+	if (ch.res_class)
+		XFree(ch.res_class);
+	if (ch.res_name)
+		XFree(ch.res_name);
+
+	return changed;
 }
 
 /* core client, layout, and input implementations */
@@ -2127,6 +2172,10 @@ propertynotify(XEvent *e)
 		}
 		if (ev->atom == XA_WM_NAME || ev->atom == netatom[NetWMName]) {
 			updatetitle(c);
+			if (applytitlerules(c)) {
+				arrange(c->mon);
+				raisealwaysontop(c->mon);
+			}
 			if (c == c->mon->sel)
 				drawbar(c->mon);
 		}

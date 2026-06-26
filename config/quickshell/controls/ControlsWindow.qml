@@ -1,29 +1,42 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import qs.core
 
-PanelWindow {
+FloatingWindow {
     id: root
 
     required property var controlsModel
 
+    title: "dwm controls"
     visible: controlsModel.visible
     implicitWidth: 360
     implicitHeight: 412
     color: "#00000000"
-    exclusiveZone: 0
-    aboveWindows: true
-    focusable: true
 
-    anchors {
-        top: true
-        right: true
+    onVisibleChanged: {
+        if (visible) {
+            Qt.callLater(function() {
+                positionProcess.running = true;
+                content.forceActiveFocus();
+            });
+        }
     }
 
-    margins {
-        top: Theme.panelHeight + 12
-        right: 10
+    Process {
+        id: positionProcess
+
+        command: [
+            "sh",
+            "-c",
+            "if [ -x \"$HOME/.local/share/dwm-titus/scripts/dwm-quickshell-position-notification\" ]; then " +
+            "\"$HOME/.local/share/dwm-titus/scripts/dwm-quickshell-position-notification\" 'dwm controls' 10 42 primary; " +
+            "elif command -v dwm-quickshell-position-notification >/dev/null 2>&1; then " +
+            "dwm-quickshell-position-notification 'dwm controls' 10 42 primary; " +
+            "fi"
+        ]
+        running: false
     }
 
     Rectangle {
