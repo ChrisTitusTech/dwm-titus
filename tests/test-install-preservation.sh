@@ -16,6 +16,7 @@ mkdir -p \
 	"$XDG_CONFIG_HOME/dwm-titus" \
 	"$XDG_CONFIG_HOME/polybar" \
 	"$XDG_CONFIG_HOME/picom" \
+	"$XDG_CONFIG_HOME/quickshell" \
 	"$XDG_DATA_HOME"
 
 printf '%s\n' '/* local config marker */' >"$TEST_REPO/config.h"
@@ -25,6 +26,8 @@ printf '%s\n' '# existing themes marker' >"$XDG_CONFIG_HOME/dwm-titus/themes.tom
 printf '%s\n' '# existing rules marker' >"$XDG_CONFIG_HOME/dwm-titus/window-rules.toml"
 printf '%s\n' '# existing polybar marker' >"$XDG_CONFIG_HOME/polybar/config.ini"
 printf '%s\n' '# existing picom marker' >"$XDG_CONFIG_HOME/picom/picom.conf"
+printf '%s\n' '// stale quickshell marker' >"$XDG_CONFIG_HOME/quickshell/shell.qml"
+printf '%s\n' 'stale quickshell file' >"$XDG_CONFIG_HOME/quickshell/stale.txt"
 
 snapshot_file() {
 	local path=$1
@@ -69,5 +72,14 @@ assert_preserved themes "$XDG_CONFIG_HOME/dwm-titus/themes.toml" "$WORK_DIR/them
 assert_preserved window-rules "$XDG_CONFIG_HOME/dwm-titus/window-rules.toml" "$WORK_DIR/window-rules.before"
 assert_preserved polybar "$XDG_CONFIG_HOME/polybar/config.ini" "$WORK_DIR/polybar.before"
 assert_preserved picom "$XDG_CONFIG_HOME/picom/picom.conf" "$WORK_DIR/picom.before"
+
+if ! cmp -s "$TEST_REPO/config/quickshell/shell.qml" "$XDG_CONFIG_HOME/quickshell/shell.qml"; then
+	printf 'Install did not refresh managed Quickshell config.\n' >&2
+	exit 1
+fi
+if [ -e "$XDG_CONFIG_HOME/quickshell/stale.txt" ]; then
+	printf 'Install did not replace managed Quickshell config directory.\n' >&2
+	exit 1
+fi
 
 printf 'Repeated install preservation: PASS\n'

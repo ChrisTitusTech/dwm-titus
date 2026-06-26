@@ -166,7 +166,11 @@ install-user:
 	@echo "==> Seeding application config without overwriting user files..."
 	mkdir -p ${CFG_DIR}
 	for dir in config/*/; do \
-		dst=${CFG_DIR}/$$(basename "$$dir"); \
+		b=$$(basename "$$dir"); \
+		if [ "$$b" = quickshell ]; then \
+			continue; \
+		fi; \
+		dst=${CFG_DIR}/$$b; \
 		if [ -L "$$dst" ]; then \
 			echo "  Preserving symlink $$dst"; \
 			continue; \
@@ -174,6 +178,11 @@ install-user:
 		mkdir -p "$$dst"; \
 		cp -aL -n "$$dir"/. "$$dst"/; \
 	done
+	@echo "==> Replacing managed Quickshell config..."
+	test -n "${CFG_DIR}"
+	rm -rf "${CFG_DIR}/quickshell"
+	mkdir -p "${CFG_DIR}/quickshell"
+	cp -aL config/quickshell/. "${CFG_DIR}/quickshell"/
 	@echo "==> Seeding user config (skipping existing files)..."
 	mkdir -p ${CFG_DIR}/dwm-titus
 	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml

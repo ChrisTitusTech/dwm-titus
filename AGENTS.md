@@ -80,6 +80,15 @@ startup, configuration deployment, and the core runtime checks in `SPEC.md`.
   `${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/`.
 - Preserve hot reload behavior for `hotkeys.toml`, `themes.toml`, and
   `window-rules.toml`.
+- `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` is managed exclusively by
+  dwm-titus. Unlike user-owned dwm TOML files, install/update flows may replace
+  this directory from tracked `config/quickshell/` to prevent stale shell code.
+- Quickshell integration must be event-driven whenever the underlying state has
+  a signal, subscription, watch, IPC, or service API. Prefer `xprop -spy`,
+  D-Bus/service notifications, process stdout streams, or Quickshell service
+  APIs over QML polling timers. Polling is allowed only for inherently sampled
+  values such as a clock or CPU load, or when a documented fallback has no
+  event source.
 - Keep existing keybindings, window rules, EWMH behavior, multi-monitor
   behavior, and autostart behavior unless the task explicitly changes them.
 - When changing defaults, update the relevant documentation and migration
@@ -155,4 +164,3 @@ do not describe the change as universally verified.
 - Do not perform destructive Git or filesystem operations without explicit
   authorization.
 - Never expose credentials, tokens, private keys, or secret file contents.
-

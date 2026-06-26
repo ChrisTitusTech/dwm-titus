@@ -43,7 +43,6 @@ ShellRoot {
     function switchWorkspace(index) {
         switchWorkspaceProcess.command = ["dwm-quickshell-state", "switch", index.toString()];
         switchWorkspaceProcess.running = true;
-        workspaceProcess.running = true;
     }
 
     Process {
@@ -104,11 +103,14 @@ ShellRoot {
     Process {
         id: workspaceProcess
 
-        command: ["dwm-quickshell-state"]
+        command: ["dwm-quickshell-state", "watch"]
         running: true
 
-        stdout: StdioCollector {
-            onStreamFinished: root.updateWorkspaceState(this.text)
+        stdout: SplitParser {
+            splitMarker: "\n\n"
+            onRead: function(data) {
+                root.updateWorkspaceState(data);
+            }
         }
     }
 
@@ -152,13 +154,6 @@ ShellRoot {
         running: true
         repeat: true
         onTriggered: powerProcess.running = true
-    }
-
-    Timer {
-        interval: 1000
-        running: true
-        repeat: true
-        onTriggered: workspaceProcess.running = true
     }
 
     Variants {

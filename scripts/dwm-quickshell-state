@@ -92,6 +92,23 @@ show_state() {
 	printf 'title=%s\n' "$title"
 }
 
+watch_state() {
+	show_state
+	printf '\n'
+
+	xprop -root -spy \
+		DWM_TAG_UPDATE \
+		_NET_CURRENT_DESKTOP \
+		_NET_NUMBER_OF_DESKTOPS \
+		_NET_DESKTOP_NAMES \
+		_NET_ACTIVE_WINDOW \
+		_NET_CLIENT_LIST 2>/dev/null |
+		while IFS= read -r _event; do
+			show_state
+			printf '\n'
+		done
+}
+
 switch_workspace() {
 	target=${1:-}
 	case $target in
@@ -111,11 +128,14 @@ case ${1:-state} in
 state)
 	show_state
 	;;
+watch)
+	watch_state
+	;;
 switch)
 	switch_workspace "${2:-}"
 	;;
 *)
-	printf 'usage: %s [state|switch <zero-based-workspace>]\n' "$0" >&2
+	printf 'usage: %s [state|watch|switch <zero-based-workspace>]\n' "$0" >&2
 	exit 2
 	;;
 esac

@@ -94,6 +94,17 @@ an actionable error and retain safe defaults or the last valid state.
 Compile-time defaults remain in `config.def.h`. An existing `config.h` is user
 owned and must not be overwritten during installation or upgrade.
 
+Quickshell configuration is a managed shell-layer artifact owned by dwm-titus.
+During installation, `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` must be
+replaced from the tracked `config/quickshell/` directory so the running shell
+does not fall behind repository behavior. User-owned dwm TOML files remain
+preserved, but users should not place unrelated personal configuration under
+the dwm-titus-managed Quickshell directory. Quickshell integrations must use
+event-driven updates whenever a state source provides a signal, subscription,
+watch mode, IPC stream, or service API. Polling timers are acceptable only for
+inherently sampled values, such as a clock or CPU load, or as documented
+fallbacks when no event source exists.
+
 ### 5.3 Session Startup
 
 The project must support:

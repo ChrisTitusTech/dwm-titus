@@ -199,9 +199,85 @@ available as the fallback until the Quickshell panel is usable.
     launches Polybar when that Quickshell config is absent; the autostart test
     covers both paths.
 
+## Completed Phase: Workspace and Window State Integration
+
+Goal: expose dwm workspace/tag state and active-window state to Quickshell
+without making Quickshell responsible for primary workspace control.
+
+- [x] Decide how workspace/tag state will be exposed.
+  - Acceptance: the bridge uses existing Xorg/EWMH state instead of adding a
+    new window-manager IPC dependency.
+  - Validation: inspect the implementation and run it in the active Xorg/dwm
+    session.
+  - Result: `scripts/dwm-quickshell-state` reads `_NET_CURRENT_DESKTOP`,
+    `_NET_NUMBER_OF_DESKTOPS`, `_NET_DESKTOP_NAMES`, and `_NET_ACTIVE_WINDOW`
+    using `xprop`, with `xdotool getactivewindow` as the primary active-window
+    lookup. Its `watch` mode follows `xprop -root -spy` events for the same
+    root-window properties instead of polling from QML. `dwm-quickshell-state
+    watch` returned `current=0`, `count=9`, `names=1|2|3|4|5|6|7|8|9`, and the
+    active window title from the live Fedora X11/dwm session.
+- [x] Create a script or IPC bridge for current workspace/tag.
+  - Acceptance: the bridge is tracked, executable, installed in the normal
+    command path, and has fallback output when EWMH data is missing.
+  - Validation: compare the installed command with the repository copy and run
+    lint/format checks.
+  - Result: `/usr/local/bin/dwm-quickshell-state` matched
+    `scripts/dwm-quickshell-state`. `shellcheck scripts/dwm-quickshell-state`,
+    `shfmt -d scripts/dwm-quickshell-state`, and `git diff --check` passed.
+- [x] Display active workspace/tag in Quickshell.
+  - Acceptance: the tracked Quickshell config consumes bridge output and marks
+    the active workspace distinctly.
+  - Validation: inspect `config/quickshell/shell.qml` and launch it directly.
+  - Result: `config/quickshell/shell.qml` runs `dwm-quickshell-state watch`,
+    parses state blocks with `SplitParser`, renders workspace labels with a
+    `Repeater`, and highlights the current workspace. Running
+    `timeout 6s quickshell --path config/quickshell/shell.qml --no-color
+    --log-times` reported `Configuration Loaded`.
+- [x] Add clickable workspace/tag switching if practical.
+  - Acceptance: clicking a workspace label invokes a safe switch command while
+    existing dwm keybindings remain the primary control path.
+  - Validation: inspect the click handler and perform a no-op switch to the
+    current workspace.
+  - Result: each workspace label has a `MouseArea` that runs
+    `dwm-quickshell-state switch <index>`, and the bridge uses `wmctrl -s`.
+    Running the switch command against the current workspace completed
+    successfully and left `_NET_CURRENT_DESKTOP` unchanged at `0`.
+- [x] Display active window title.
+  - Acceptance: Quickshell displays the active window title from the bridge and
+    bounds the label so long titles do not consume the full panel.
+  - Validation: run the bridge in the live session and inspect the panel label.
+  - Result: `scripts/dwm-quickshell-state` returned the current active window
+    title, and `config/quickshell/shell.qml` binds it to a `Text` element with
+    `Layout.maximumWidth: 360` and `elide: Text.ElideRight`.
+- [x] Add fallback behavior when no active window exists.
+  - Acceptance: missing active-window data does not leave an empty or invalid
+    panel label.
+  - Validation: inspect the script and QML fallback paths.
+  - Result: the bridge falls back from `xdotool getactivewindow` to
+    `_NET_ACTIVE_WINDOW`, then emits `title=Desktop` when no title is
+    available. The QML parser also falls back to `Desktop` for an empty title.
+
+Validation notes:
+
+- `make clean`, `make`, `make check-shell`, `make check-format`,
+  `make check-install-preservation`, `make check-session-guards`,
+  `make check-install`, `make check-xvfb-runtime`, and
+  `make check-monitor-tags` passed after the Phase 3 cleanup.
+- `sudo make install` passed on the live Fedora X11 host and printed
+  `Replacing managed Quickshell config`, confirming the normal privileged
+  install path refreshes `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/`.
+- `wmctrl -m` reported `Name: dwm` with `DISPLAY=:0`,
+  `XDG_SESSION_TYPE=x11`, and `DESKTOP_SESSION=dwm`.
+- The live managed config at `/home/titus/.config/quickshell/shell.qml` was
+  synced with tracked `config/quickshell/shell.qml`, and the default Quickshell
+  instance was restarted with `quickshell --no-duplicate --daemonize`.
+- `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` is treated as a managed
+  dwm-titus directory. `install-user` replaces it from tracked
+  `config/quickshell/` so `sudo make install` cannot leave stale Quickshell
+  code in the active session config.
+
 ## Backlog
 
-- [ ] Expose workspace and active-window state to Quickshell.
 - [ ] Replace the Rofi app launcher.
 - [ ] Add a Quickshell power/user menu.
 - [ ] Replace Dunst or other notification UI.
