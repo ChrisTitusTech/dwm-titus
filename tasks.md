@@ -120,17 +120,17 @@ available as the fallback until the Quickshell panel is usable.
     --log-times` reported `Configuration Loaded`; `quickshell list` showed the
     instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
 - [x] Add network indicator.
-  - Acceptance: the panel displays the default route interface and link state,
-    with an offline fallback when no default route exists.
-  - Validation: run the network status command directly, then launch the config
-    in the active Xorg/dwm session and confirm Quickshell remains running.
-  - Result: added one shared `networkText` property, a default-route network
-    status process, and a 10 second update timer to
-    `config/quickshell/shell.qml`. The command returned `NET wlo1 up` on the
-    current session. Running
-    `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
-    --log-times` reported `Configuration Loaded`; `quickshell list` showed the
-    instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
+  - Acceptance: the panel displays the primary connected NetworkManager
+    device, with an offline fallback when no connected non-loopback device
+    exists, and opens a native Quickshell popover for saved profile
+    connect/disconnect actions.
+  - Validation: run `scripts/dwm-quickshell-network status`, helper unit tests,
+    and a repo-scoped Quickshell smoke load.
+  - Result: added `scripts/dwm-quickshell-network`, a clickable network pill,
+    a native NetworkManager popover, saved profile connect/disconnect actions,
+    and a `network` IPC target. The command returned `NET enp6s0` on the
+    current session. `make check-quickshell-network`, `make check-shell`,
+    `make check-format`, and the repo-scoped Quickshell smoke load passed.
 - [x] Add volume indicator.
   - Acceptance: the panel displays the default sink volume and muted state,
     with a fallback when `pactl` is unavailable.
@@ -491,12 +491,6 @@ clients.
     and added a `tray` IPC target with `count` and `ids` helpers for follow-up
     tray app validation.
 - [ ] Test tray apps.
-  - [ ] Network manager applet
-    - Validation: `nm-applet` is running and exposes XEmbed tray windows
-      (`NetworkManager Applet` and the active connection window), but it is not
-      registered with Quickshell's StatusNotifier watcher on this host.
-      Probing `env XDG_CURRENT_DESKTOP=Unity nm-applet --indicator` did not add
-      a Quickshell tray item; `tray count` stayed `2`.
   - [ ] Audio applet if used
     - Validation: no dedicated audio tray app is installed or running on this
       host; audio controls are planned for Phase 8.
