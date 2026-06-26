@@ -128,7 +128,7 @@ keys = [
   # ── Session / power ───────────────────────────────────────────────────────────
   { mod="SUPER",            key="0",       desc="Show all tags",           func="view",        ui=-1 },
   { mod="SUPER SHIFT",      key="q",       desc="Quit dwm",                func="quit" },
-  { mod="SUPER CTRL",       key="q",       desc="Power menu",              func="spawn",       cmd="$HOME/.config/rofi/powermenu.sh" },
+  { mod="SUPER CTRL",       key="q",       desc="Power menu",              func="spawn",       exec=["quickshell", "ipc", "call", "power", "toggle"] },
   { mod="SUPER CTRL SHIFT", key="r",       desc="Reboot",                  func="spawn",       cmd="systemctl reboot" },
   { mod="SUPER CTRL SHIFT", key="s",       desc="Suspend",                 func="spawn",       cmd="systemctl suspend" },
 

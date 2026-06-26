@@ -335,7 +335,63 @@ workflow while keeping Rofi available as a fallback during testing.
 
 ## Backlog
 
-- [ ] Add a Quickshell power/user menu.
+## Completed Phase: Add Power/User Menu
+
+Goal: replace the Rofi power menu path with a Quickshell-controlled session
+menu while keeping destructive actions behind explicit confirmation.
+
+- [x] Create power menu UI.
+  - Acceptance: Quickshell exposes a power menu surface that can open, close,
+    and toggle through IPC.
+  - Validation: `timeout 6s quickshell --path config/quickshell/shell.qml
+    --no-duplicate --no-color --log-times` reported `Configuration Loaded`.
+    A temporary Quickshell instance accepted `quickshell ipc --path
+    config/quickshell/shell.qml call power open` and `close`.
+  - Result: added `config/quickshell/power/` with a power menu model, window,
+    and action button component, plus an `IpcHandler` target named `power`.
+- [x] Add lock.
+  - Acceptance: the menu includes a non-destructive lock action.
+  - Validation: inspected the command path; the command was not clicked during
+    automated validation.
+  - Result: Lock tries `loginctl lock-session`, then `dwm-lock`, then
+    `light-locker-command -l`.
+- [x] Add logout.
+  - Acceptance: logout is available only after a confirmation step.
+  - Validation: inspected the confirmation flow and command; the command was
+    not executed to preserve the active session.
+  - Result: Logout confirms before terminating the current loginctl session or
+    falling back to terminating dwm.
+- [x] Add reboot.
+  - Acceptance: reboot is available only after a confirmation step.
+  - Validation: inspected the confirmation flow and command; the command was
+    not executed.
+  - Result: Reboot confirms before running `systemctl reboot`.
+- [x] Add shutdown.
+  - Acceptance: shutdown is available only after a confirmation step.
+  - Validation: inspected the confirmation flow and command; the command was
+    not executed.
+  - Result: Shutdown confirms before running `systemctl poweroff`.
+- [x] Add confirmation step for destructive actions.
+  - Acceptance: logout, reboot, and shutdown do not run on first click.
+  - Validation: the Quickshell config smoke test loaded cleanly, and the QML
+    routes confirmed actions through `pendingAction` before execution.
+  - Result: destructive actions show a confirmation view with Cancel and
+    Confirm buttons; Escape cancels confirmation or closes the menu.
+- [x] Add optional quick actions.
+  - Acceptance: screenshot, file manager, terminal, browser, and settings
+    script shortcuts are available without replacing the main launcher.
+  - Validation: inspected the action table and ran the Quickshell config smoke
+    test.
+  - Result: quick actions run `dwm-screenshot gui`, `xdg-open "$HOME"`,
+    `dwm-terminal`, `dwm-default-apps open https://`, and `dwm-controlcenter`.
+- [x] Update keybinds to Quickshell menus.
+  - Acceptance: the normal power-menu key opens Quickshell instead of the Rofi
+    power menu.
+  - Validation: `make check-build-config` passed.
+  - Result: `Super+Ctrl+q` now runs `quickshell ipc call power toggle`.
+
+## Backlog
+
 - [ ] Replace Dunst or other notification UI.
 - [ ] Move tray functionality into Quickshell.
 - [ ] Add media, audio, and quick controls.

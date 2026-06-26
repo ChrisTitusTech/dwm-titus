@@ -110,7 +110,7 @@ struct Client {
 	int basew, baseh, incw, inch, maxw, maxh, minw, minh;
 	int bw, oldbw;
 	unsigned int tags;
-	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, noswallow;
+	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, noswallow, alwaysontop;
 	int issteam;
 	int beingmoved;
 	int fakefullscreen;
@@ -167,6 +167,7 @@ typedef struct {
 	const char *title;
 	unsigned int tags;
 	int isfloating;
+	int alwaysontop;
 	int isterminal;
 	int noswallow;
 	int monitor;
@@ -217,6 +218,7 @@ static Monitor *recttomon(int x, int y, int w, int h);
 static void resize(Client *c, int x, int y, int w, int h, int interact);
 static void resizeclient(Client *c, int x, int y, int w, int h);
 static void resizemouse(const Arg *arg);
+static void raisealwaysontop(Monitor *m);
 static void restack(Monitor *m);
 static int sendevent(Client *c, Atom proto);
 static void sendmon(Client *c, Monitor *m);
@@ -488,6 +490,7 @@ applyrules(Client *c)
 
 	/* rule matching */
 	c->isfloating = 0;
+	c->alwaysontop = 0;
 	c->tags = 0;
 	XGetClassHint(dpy, c->win, &ch);
 	class    = ch.res_class ? ch.res_class : broken;
@@ -507,6 +510,9 @@ applyrules(Client *c)
 			c->isterminal = r->isterminal;
 			c->noswallow  = r->noswallow;
 			c->isfloating = r->isfloating;
+			c->alwaysontop = r->alwaysontop;
+			if (c->alwaysontop)
+				c->isfloating = 1;
 			c->tags |= r->tags;
 			for (m = mons; m && m->num != r->monitor; m = m->next);
 			if (m)
@@ -2288,8 +2294,19 @@ restack(Monitor *m)
 				wc.sibling = c->win;
 			}
 	}
+	raisealwaysontop(m);
 	XSync(dpy, False);
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
+}
+
+void
+raisealwaysontop(Monitor *m)
+{
+	Client *c;
+
+	for (c = m->stack; c; c = c->snext)
+		if (c->alwaysontop && ISVISIBLE(c))
+			XRaiseWindow(dpy, c->win);
 }
 
 void
@@ -3273,6 +3290,7 @@ load_rules_toml(const char *user_path, const char *default_path)
 		const TomlValue *vt    = toml_table_get(&doc, "rules", i, "title");
 		const TomlValue *vtag  = toml_table_get(&doc, "rules", i, "tags");
 		const TomlValue *vfl   = toml_table_get(&doc, "rules", i, "isfloating");
+		const TomlValue *vaot  = toml_table_get(&doc, "rules", i, "alwaysontop");
 		const TomlValue *vterm = toml_table_get(&doc, "rules", i, "isterminal");
 		const TomlValue *vno   = toml_table_get(&doc, "rules", i, "noswallow");
 		const TomlValue *vmon  = toml_table_get(&doc, "rules", i, "monitor");
@@ -3298,6 +3316,7 @@ load_rules_toml(const char *user_path, const char *default_path)
 		r->tags       = (vtag  && vtag->type  == TOML_INT && vtag->i >= 1 && vtag->i <= 9)
 		                ? (unsigned int)(1 << (vtag->i - 1)) : 0;
 		r->isfloating = (vfl   && vfl->type   == TOML_INT) ? (int)vfl->i           : 0;
+		r->alwaysontop = (vaot && vaot->type  == TOML_INT) ? (int)vaot->i          : 0;
 		r->isterminal = (vterm && vterm->type == TOML_INT) ? (int)vterm->i         : 0;
 		r->noswallow  = (vno   && vno->type   == TOML_INT) ? (int)vno->i           : 0;
 		r->monitor    = (vmon  && vmon->type  == TOML_INT) ? (int)vmon->i          : -1;

@@ -15,7 +15,7 @@
 #   title       WM_NAME                    monitor   monitor number (-1 = any)
 #   tags        tag number 1–9  (0 or omit = follow current tag)
 #   isfloating  1=float  0=tile             isterminal  1=terminal (swallowing)
-#   noswallow   1=never swallow this window
+#   alwaysontop 1=raise above normal clients  noswallow 1=never swallow this window
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -32,6 +32,10 @@ rules = [
   { title="Event Tester",   noswallow=1  },
 
   # ── floating ─────────────────────────────────────────────────────────────
+  # Quickshell dock windows are handled as the managed top bar and keep the
+  # reserved 30px gap. FloatingWindow surfaces expose titles but no WM_CLASS.
+  { title="dwm launcher",   isfloating=1, alwaysontop=1 },
+  { title="dwm power menu", isfloating=1, alwaysontop=1 },
   # { class="Gimp",           isfloating=1 },
   # { class="pavucontrol",    isfloating=1 },
 

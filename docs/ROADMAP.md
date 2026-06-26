@@ -129,24 +129,24 @@ Replace small Rofi scripts such as power menus, logout menus, and utility menus.
 
 ### Tasks
 
-- [ ] Create power menu UI
-- [ ] Add lock
-- [ ] Add logout
-- [ ] Add reboot
-- [ ] Add shutdown
-- [ ] Add confirmation step for destructive actions
-- [ ] Add optional quick actions:
-  - [ ] Screenshot
-  - [ ] File manager
-  - [ ] Terminal
-  - [ ] Browser
-  - [ ] Settings scripts
+- [x] Create power menu UI
+- [x] Add lock
+- [x] Add logout
+- [x] Add reboot
+- [x] Add shutdown
+- [x] Add confirmation step for destructive actions
+- [x] Add optional quick actions:
+  - [x] Screenshot
+  - [x] File manager
+  - [x] Terminal
+  - [x] Browser
+  - [x] Settings scripts
 
 ### Exit Criteria
 
-- Common Rofi script menus are replaced
-- Destructive actions require confirmation
-- Keybinds are updated to Quickshell menus
+- [x] Common Rofi script menus are replaced
+- [x] Destructive actions require confirmation
+- [x] Keybinds are updated to Quickshell menus
 
 ---
 
