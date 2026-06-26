@@ -9,8 +9,8 @@ Rectangle {
     required property var trayItem
     signal openMenu(var trayItem)
 
-    Layout.preferredWidth: 24
-    Layout.preferredHeight: 24
+    Layout.preferredWidth: Theme.trayItemSize
+    Layout.preferredHeight: Theme.trayItemSize
     radius: 3
     color: trayMouse.containsMouse ? Theme.surface : "transparent"
 
@@ -18,8 +18,8 @@ Rectangle {
         id: trayIcon
 
         anchors.centerIn: parent
-        width: 18
-        height: 18
+        width: Theme.trayIconSize
+        height: Theme.trayIconSize
         source: Icons.trayIconSource(root.trayItem)
         asynchronous: true
         smooth: true

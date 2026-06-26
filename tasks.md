@@ -505,7 +505,12 @@ clients.
       Quickshell IPC helpers returned `tray count = 2` and tray ids
       `flameshot` and `blueman`.
 - [ ] Confirm left-click/right-click behavior.
-- [ ] Confirm icons scale correctly.
+- [x] Confirm icons scale correctly.
+  - Validation: tray item and icon dimensions are fixed through shared theme
+    values (`trayItemSize: 24`, `trayIconSize: 18`) so each tray item keeps a
+    stable panel footprint. The repo-scoped Quickshell smoke test and live
+    `tray count`/`tray ids` IPC checks passed with the active `flameshot` and
+    `blueman` tray clients.
 
 ## Backlog
 

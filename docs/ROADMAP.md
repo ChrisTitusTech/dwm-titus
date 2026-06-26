@@ -194,7 +194,7 @@ Move tray functionality into Quickshell.
   - [ ] Discord/Steam/etc.
   - [ ] Syncthing/Nextcloud/etc.
 - [ ] Confirm left-click/right-click behavior
-- [ ] Confirm icons scale correctly
+- [x] Confirm icons scale correctly
 
 ### Exit Criteria
 

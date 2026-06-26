@@ -16,4 +16,6 @@ Singleton {
     readonly property int radius: 4
     readonly property int panelFontSize: 13
     readonly property int smallFontSize: 12
+    readonly property int trayItemSize: 24
+    readonly property int trayIconSize: 18
 }
