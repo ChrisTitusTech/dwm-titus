@@ -241,6 +241,7 @@ static void togglefakefullscreen(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
+static void updatealtbar(Monitor *m, Window win, XWindowAttributes *wa);
 static void unfocus(Client *c, int setfocus);
 static void unmanage(Client *c, int destroyed);
 static void unswallow(Client *c);
@@ -899,6 +900,7 @@ configurenotify(XEvent *e)
 	Monitor *m;
 	Client *c;
 	XConfigureEvent *ev = &e->xconfigure;
+	XWindowAttributes wa;
 	int dirty;
 	/* TODO: updategeom handling sucks, needs to be simplified */
 	if (ev->window == root) {
@@ -916,6 +918,17 @@ configurenotify(XEvent *e)
 			}
 			arrange(NULL);
 			focus(NULL);
+		}
+	} else {
+		for (m = mons; m; m = m->next) {
+			if (m->barwin == ev->window
+			&& XGetWindowAttributes(dpy, ev->window, &wa)) {
+				updatealtbar(m, ev->window, &wa);
+				arrange(m);
+				XRaiseWindow(dpy, ev->window);
+				updateclientlist();
+				break;
+			}
 		}
 	}
 }
@@ -1691,15 +1704,13 @@ managealtbar(Window win, XWindowAttributes *wa)
 	if (!(m = recttomon(wa->x, wa->y, wa->width, wa->height)))
 		return;
 
-	m->barwin = win;
-	m->by = wa->y;
-	bh = m->bh = wa->height;
-	updatebarpos(m);
+	updatealtbar(m, win, wa);
 	arrange(m);
 	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask|ExposureMask);
 	XMoveResizeWindow(dpy, win, wa->x, wa->y, wa->width, wa->height);
+	XRaiseWindow(dpy, win);
 	XMapWindow(dpy, win);
-	ewmh_append_client(win);
+	updateclientlist();
 	if (!m->traywin)
 		scantray();
 }
@@ -4032,6 +4043,7 @@ unmanagealtbar(Window w)
 	m->bh = 0;
 	updatebarpos(m);
 	arrange(m);
+	updateclientlist();
 }
 
 void
@@ -4047,6 +4059,7 @@ unmanagetray(Window w)
 	m->tw = 0;
 	updatebarpos(m);
 	arrange(m);
+	updateclientlist();
 }
 
 void
@@ -4135,6 +4148,20 @@ updatebarpos(Monitor *m)
 		m->by = -m->bh;
 }
 
+static void
+updatealtbar(Monitor *m, Window win, XWindowAttributes *wa)
+{
+	if (!m || !wa)
+		return;
+
+	m->barwin = win;
+	m->topbar = wa->y < m->my + m->mh / 2;
+	m->by = wa->y;
+	m->bh = wa->height > 0 ? wa->height : bh;
+	bh = m->bh;
+	updatebarpos(m);
+}
+
 void
 updateclientlist(void)
 {
@@ -4142,9 +4169,14 @@ updateclientlist(void)
 	Monitor *m;
 
 	ewmh_clear_client_list();
-	for (m = mons; m; m = m->next)
+	for (m = mons; m; m = m->next) {
+		if (m->barwin)
+			ewmh_append_client(m->barwin);
+		if (m->traywin)
+			ewmh_append_client(m->traywin);
 		for (c = m->clients; c; c = c->next)
 			ewmh_append_client(c->win);
+	}
 }
 
 void updatecurrentdesktop(void){
