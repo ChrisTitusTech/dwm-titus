@@ -32,6 +32,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-display-profile \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
+	scripts/dwm-quickshell-launcher \
 	scripts/dwm-quickshell-state \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
@@ -275,12 +276,12 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
+	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
 		config/polybar/*.sh config/polybar/scripts/*.sh \
 		config/polybar/scripts/weather/*.sh config/rofi/*.sh
 
 check-format:
-	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -314,6 +315,9 @@ check-powermenu-layout:
 
 check-monitor-tags:
 	tests/test-monitor-tag-switching.sh
+
+check-quickshell-launcher:
+	tests/test-quickshell-launcher.sh
 
 check-install: all
 	@set -eu; \
@@ -443,6 +447,7 @@ check:
 	$(MAKE) check-diagnostics
 	$(MAKE) check-display-profile
 	$(MAKE) check-polybar-capabilities
+	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-terminal
 	$(MAKE) check-lock
 	$(MAKE) check-session-guards
@@ -457,5 +462,5 @@ check:
 	check-display-profile check-format check-install \
 	check-install-manifest check-install-preservation check-lock \
 	check-polybar-capabilities check-session-guards check-shell check-diagnostics \
-	check-terminal check-vicinae-install clean install install-system install-user \
+	check-quickshell-launcher check-terminal check-vicinae-install clean install install-system install-user \
 	install-cursors install-vicinae native release release-check uninstall

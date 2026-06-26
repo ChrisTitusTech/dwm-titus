@@ -1,0 +1,134 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	printf 'usage: %s list\n' "$0" >&2
+}
+
+data_dirs() {
+	sep=
+
+	if [ -n "${XDG_DATA_HOME:-}" ]; then
+		printf '%s%s/applications' "$sep" "$XDG_DATA_HOME"
+		sep=':'
+	elif [ -n "${HOME:-}" ]; then
+		printf '%s%s/.local/share/applications' "$sep" "$HOME"
+		sep=':'
+	fi
+
+	old_ifs=$IFS
+	IFS=:
+	for dir in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do
+		[ -n "$dir" ] || continue
+		printf '%s%s/applications' "$sep" "$dir"
+		sep=':'
+	done
+	IFS=$old_ifs
+	printf '\n'
+}
+
+list_apps() {
+	data_dirs |
+		tr ':' '\n' |
+		while IFS= read -r dir; do
+			[ -d "$dir" ] || continue
+			find "$dir" -type f -name '*.desktop'
+		done |
+		sort -u |
+		while IFS= read -r file; do
+			awk '
+				function clean(value) {
+					gsub(/\t/, " ", value)
+					gsub(/\r/, "", value)
+					return value
+				}
+
+				function emit() {
+					if (entry && type == "Application" && name != "" && exec != "" &&
+					    hidden != "true" && nodisplay != "true") {
+						printf "%s\t%s\t%s\t%s\t%s\t%s\n",
+							clean(name), clean(generic), clean(comment),
+							clean(exec), clean(icon), clean(file)
+					}
+				}
+
+				BEGIN {
+					file = ARGV[1]
+					entry = 0
+					type = ""
+					name = ""
+					generic = ""
+					comment = ""
+					exec = ""
+					icon = ""
+					hidden = "false"
+					nodisplay = "false"
+				}
+
+				$0 == "[Desktop Entry]" {
+					entry = 1
+					next
+				}
+
+				/^\[/ {
+					entry = 0
+					next
+				}
+
+				entry && $0 ~ /^Type=/ {
+					type = substr($0, 6)
+					next
+				}
+
+				entry && $0 ~ /^Name=/ && name == "" {
+					name = substr($0, 6)
+					next
+				}
+
+				entry && $0 ~ /^GenericName=/ && generic == "" {
+					generic = substr($0, 13)
+					next
+				}
+
+				entry && $0 ~ /^Comment=/ && comment == "" {
+					comment = substr($0, 9)
+					next
+				}
+
+				entry && $0 ~ /^Exec=/ && exec == "" {
+					exec = substr($0, 6)
+					next
+				}
+
+				entry && $0 ~ /^Icon=/ && icon == "" {
+					icon = substr($0, 6)
+					next
+				}
+
+				entry && $0 ~ /^Hidden=/ {
+					hidden = tolower(substr($0, 8))
+					next
+				}
+
+				entry && $0 ~ /^NoDisplay=/ {
+					nodisplay = tolower(substr($0, 11))
+					next
+				}
+
+				END {
+					emit()
+				}
+			' "$file"
+		done |
+		sort -f
+}
+
+case ${1:-list} in
+list)
+	list_apps
+	;;
+*)
+	usage
+	exit 2
+	;;
+esac
