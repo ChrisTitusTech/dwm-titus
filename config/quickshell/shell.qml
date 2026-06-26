@@ -7,6 +7,7 @@ ShellRoot {
     id: root
 
     property string clockText: ""
+    property string networkText: ""
     property string systemText: ""
 
     Process {
@@ -31,6 +32,17 @@ ShellRoot {
         }
     }
 
+    Process {
+        id: networkProcess
+
+        command: ["sh", "-c", "iface=$(ip route show default 2>/dev/null | awk 'NR == 1 { print $5 }'); if [ -n \"$iface\" ]; then state=$(cat \"/sys/class/net/$iface/operstate\" 2>/dev/null || printf unknown); printf 'NET %s %s' \"$iface\" \"$state\"; else printf 'NET offline'; fi"]
+        running: true
+
+        stdout: StdioCollector {
+            onStreamFinished: root.networkText = this.text.trim()
+        }
+    }
+
     Timer {
         interval: 1000
         running: true
@@ -43,6 +55,13 @@ ShellRoot {
         running: true
         repeat: true
         onTriggered: systemProcess.running = true
+    }
+
+    Timer {
+        interval: 10000
+        running: true
+        repeat: true
+        onTriggered: networkProcess.running = true
     }
 
     Variants {
@@ -79,6 +98,13 @@ ShellRoot {
 
                     Item {
                         Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: root.networkText
+                        color: "#d8dee9"
+                        font.pixelSize: 13
+                        verticalAlignment: Text.AlignVCenter
                     }
 
                     Text {

@@ -120,7 +120,18 @@ available as the fallback until the Quickshell panel is usable.
     `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
     --log-times` reported `Configuration Loaded`; `quickshell list` showed the
     instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
-- [ ] Add network indicator.
+- [x] Add network indicator.
+  - Acceptance: the panel displays the default route interface and link state,
+    with an offline fallback when no default route exists.
+  - Validation: run the network status command directly, then launch the config
+    in the active Xorg/dwm session and confirm Quickshell remains running.
+  - Result: added one shared `networkText` property, a default-route network
+    status process, and a 10 second update timer to
+    `config/quickshell/shell.qml`. The command returned `NET wlo1 up` on the
+    current session. Running
+    `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
+    --log-times` reported `Configuration Loaded`; `quickshell list` showed the
+    instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
 - [ ] Add volume indicator.
 - [ ] Add battery/power indicator if needed.
 - [ ] Reserve screen space correctly.
