@@ -3,28 +3,20 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
-PanelWindow {
+PopupWindow {
     id: root
 
     required property var controlsModel
     required property var panelWindow
 
     visible: controlsModel.visible
+    implicitWidth: 360
+    implicitHeight: 412
+    anchor.window: panelWindow
+    anchor.rect.x: Math.max(10, panelWindow.width - implicitWidth - 10)
+    anchor.rect.y: Theme.panelHeight
+    grabFocus: true
     color: "#00000000"
-    screen: panelWindow.screen
-    exclusiveZone: 0
-    aboveWindows: true
-
-    anchors {
-        top: true
-        left: true
-        right: true
-        bottom: true
-    }
-
-    mask: Region {
-        item: content
-    }
 
     onVisibleChanged: {
         if (visible) {
@@ -37,10 +29,7 @@ PanelWindow {
     Rectangle {
         id: content
 
-        width: 360
-        height: 412
-        x: Math.max(10, root.width - width - 10)
-        y: 0
+        anchors.fill: parent
         color: Theme.bg
         border.color: Theme.border
         border.width: 1
