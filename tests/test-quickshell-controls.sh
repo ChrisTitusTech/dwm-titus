@@ -19,10 +19,20 @@ case "$*" in
 	printf 'Mute: %s\n' "${DWM_TEST_SINK_MUTE:-no}"
 	;;
 "get-sink-volume @DEFAULT_SINK@")
-	printf 'Volume: front-left: 26214 / 40%% / -23.88 dB, front-right: 26214 / 40%% / -23.88 dB\n'
+	volume=${DWM_TEST_SINK_VOLUME:-40}
+	if [ -n "${DWM_TEST_SINK_VOLUME_FILE:-}" ] && [ -f "$DWM_TEST_SINK_VOLUME_FILE" ]; then
+		volume=$(cat "$DWM_TEST_SINK_VOLUME_FILE")
+	fi
+	printf 'Volume: front-left: 26214 / %s%% / -23.88 dB, front-right: 26214 / %s%% / -23.88 dB\n' "$volume" "$volume"
 	;;
 "get-source-mute @DEFAULT_SOURCE@")
 	printf 'Mute: %s\n' "${DWM_TEST_SOURCE_MUTE:-no}"
+	;;
+"subscribe")
+	if [ -n "${DWM_TEST_SINK_VOLUME_FILE:-}" ]; then
+		printf '45\n' >"$DWM_TEST_SINK_VOLUME_FILE"
+	fi
+	printf "Event 'change' on sink #1\n"
 	;;
 "set-sink-volume @DEFAULT_SINK@ +5%")
 	printf 'volume up\n' >>"$DWM_TEST_PACTL_LOG"
@@ -129,6 +139,13 @@ DWM_TEST_SINK_MUTE=yes \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" volume-status >"$work/muted.out"
 grep -Fqx "VOL muted 40%" "$work/muted.out"
+
+printf '40\n' >"$work/volume-state"
+DWM_TEST_SINK_VOLUME_FILE="$work/volume-state" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" volume-watch >"$work/volume-watch.out"
+grep -Fqx "VOL 40%" "$work/volume-watch.out"
+grep -Fqx "VOL 45%" "$work/volume-watch.out"
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" mic-status >"$work/mic.out"
 grep -Fqx "MIC on" "$work/mic.out"

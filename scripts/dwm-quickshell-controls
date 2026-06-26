@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status" >&2
 	exit 2
 }
 
@@ -101,6 +101,23 @@ volume_status() {
 	fi
 
 	printf '%s\n' "VOL unavailable"
+}
+
+volume_watch() {
+	volume_status
+
+	if ! command -v pactl >/dev/null 2>&1; then
+		return 0
+	fi
+
+	pactl subscribe 2>/dev/null |
+		while IFS= read -r event; do
+			case "$event" in
+			*" on sink"* | *" on server"* | *" on card"*)
+				volume_status
+				;;
+			esac
+		done
 }
 
 volume_up() {
@@ -272,6 +289,10 @@ case "$command" in
 volume-status)
 	[ "$#" -eq 0 ] || usage
 	volume_status
+	;;
+volume-watch)
+	[ "$#" -eq 0 ] || usage
+	volume_watch
 	;;
 volume-up)
 	[ "$#" -le 1 ] || usage

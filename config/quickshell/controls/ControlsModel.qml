@@ -88,6 +88,14 @@ Scope {
         root.mediaText = (labelParts.length > 0 ? labelParts.join(" ") : "MEDIA") + (titleParts.length > 0 ? ": " + titleParts.join(" - ") : "");
     }
 
+    function parseVolume(text) {
+        const trimmed = text.trim();
+
+        if (trimmed.length > 0) {
+            root.volumeText = trimmed;
+        }
+    }
+
     function runAction(action, args) {
         if (root.busy) {
             return;
@@ -130,10 +138,17 @@ Scope {
         running: false
 
         stdout: StdioCollector {
-            onStreamFinished: {
-                const text = this.text.trim();
+            onStreamFinished: root.parseVolume(this.text.length > 0 ? this.text : "VOL unavailable")
+        }
+    }
 
-                root.volumeText = text.length > 0 ? text : "VOL unavailable";
+    Process {
+        command: Commands.controlsHelperCommand("volume-watch")
+        running: true
+
+        stdout: SplitParser {
+            onRead: function(data) {
+                root.parseVolume(data);
             }
         }
     }
