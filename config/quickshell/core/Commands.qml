@@ -3,24 +3,30 @@ pragma Singleton
 import Quickshell
 
 Singleton {
-    function launcherHelperCommand(action, args) {
+    function helperCommand(helper, action, args, preferManaged) {
         const argv = args || [];
-        const script = "data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; if [ -x \"$data_dir/scripts/dwm-quickshell-launcher\" ]; then exec \"$data_dir/scripts/dwm-quickshell-launcher\" \"$@\"; fi; exec dwm-quickshell-launcher \"$@\"";
+        const managedScript = "\"$data_dir/scripts/" + helper + "\"";
+        const dataDir = "data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus";
+        const runManaged = "[ -x " + managedScript + " ] && exec " + managedScript + " \"$@\"";
+        const runPath = "command -v " + helper + " >/dev/null 2>&1 && exec " + helper + " \"$@\"";
+        const fallback = "exec " + managedScript + " \"$@\"";
+        const orderedChecks = preferManaged
+            ? [runManaged, runPath, fallback]
+            : [runPath, runManaged, fallback];
+        const script = [dataDir].concat(orderedChecks).join("; ");
 
-        return ["sh", "-c", script, "dwm-quickshell-launcher", action].concat(argv);
+        return ["sh", "-c", script, helper, action].concat(argv);
+    }
+
+    function launcherHelperCommand(action, args) {
+        return helperCommand("dwm-quickshell-launcher", action, args, true);
     }
 
     function networkHelperCommand(action, args) {
-        const argv = args || [];
-        const script = "if command -v dwm-quickshell-network >/dev/null 2>&1; then exec dwm-quickshell-network \"$@\"; fi; data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; exec \"$data_dir/scripts/dwm-quickshell-network\" \"$@\"";
-
-        return ["sh", "-c", script, "dwm-quickshell-network", action].concat(argv);
+        return helperCommand("dwm-quickshell-network", action, args, false);
     }
 
     function controlsHelperCommand(action, args) {
-        const argv = args || [];
-        const script = "if command -v dwm-quickshell-controls >/dev/null 2>&1; then exec dwm-quickshell-controls \"$@\"; fi; data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; exec \"$data_dir/scripts/dwm-quickshell-controls\" \"$@\"";
-
-        return ["sh", "-c", script, "dwm-quickshell-controls", action].concat(argv);
+        return helperCommand("dwm-quickshell-controls", action, args, false);
     }
 }

@@ -1,0 +1,14 @@
+{
+  "lsp": {
+    "qml": {
+      "binary": {
+        "path": "/home/YOUR_USER/.local/bin/qml-language-server"
+      }
+    }
+  },
+  "languages": {
+    "QML": {
+      "language_servers": ["qml", "!qmlls", "..."]
+    }
+  }
+}

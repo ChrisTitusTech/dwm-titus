@@ -201,7 +201,68 @@ Required native interfaces and libraries currently include:
 - freetype headers
 - standard Linux/POSIX process and filesystem interfaces
 
-### 5.7 Dependency Mapping
+### 5.7 Quickshell QML Development Tooling
+
+Quickshell QML files are part of the maintained source tree. Systems used to
+edit this project should provide both the stock Qt QML tools and a
+Quickshell-aware language server:
+
+- `qmllint` is the baseline syntax/static check for individual QML files.
+- `qmlls` is the stock Qt QML language server and remains useful for generic
+  Qt/QML projects.
+- `qml-language-server` from `cushycush/qml-language-server` is the preferred
+  editor language server for this repository because it understands Quickshell
+  imports, singletons, types, snippets, and workspace QML components.
+
+The Qt tools are installed from distribution packages:
+
+| Family | Package examples |
+| --- | --- |
+| Debian | `qt6-declarative-dev-tools` |
+| Arch | `qt6-declarative` |
+| RHEL/Fedora | `qt6-qtdeclarative-devel` |
+
+Some distributions install Qt helper binaries outside the default `PATH`, such
+as `/usr/lib/qt6/bin`. Development environments should either add that
+directory to `PATH` or create user/system symlinks for `qmllint` and `qmlls`.
+
+Install the Quickshell-aware server with one of these supported methods:
+
+```sh
+# Arch-family systems with a working AUR helper
+yay -S qml-language-server-bin
+
+# Nix systems
+nix run github:cushycush/qml-language-server
+
+# Source build on any system with Go 1.26.1 or newer
+git clone https://github.com/cushycush/qml-language-server.git
+cd qml-language-server
+make build
+make install
+```
+
+For non-AUR systems that do not use Nix, install the matching prebuilt release
+archive from `https://github.com/cushycush/qml-language-server/releases` and
+place the binary in a developer `PATH` directory such as
+`${HOME}/.local/bin/qml-language-server` or `/usr/local/bin/qml-language-server`.
+
+Editor configuration must prefer `qml-language-server` for this repository's
+QML files. Zed users should install the QML extension for language registration,
+copy `.zed/settings.example.json` to `.zed/settings.json`, and configure its
+`qml` language server binary to the absolute local path of
+`qml-language-server`; Zed requires an absolute `lsp.qml.binary.path`. The
+active `.zed/settings.json` file is intentionally local-only because that path
+differs by machine. Other LSP-capable editors should run `qml-language-server`
+for `*.qml` files and use the repository root, `shell.qml`, or `.git` as the
+workspace root marker.
+
+Plain `qmllint` is not considered a complete Quickshell validation pass because
+it does not understand every Quickshell-specific module shape. Runtime
+validation still requires loading the managed shell with `quickshell --path`
+and exercising the relevant IPC targets.
+
+### 5.8 Dependency Mapping
 
 Package names differ by release and derivative. The maintained dependency map
 must cover the equivalent of these capabilities:

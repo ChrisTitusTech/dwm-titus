@@ -98,9 +98,16 @@ desktop_entry_summary() {
 			}
 		}
 
+		function desktop_entry_visible() {
+			return type == "Application" &&
+				name != "" &&
+				exec != "" &&
+				hidden != "true" &&
+				nodisplay != "true"
+		}
+
 		function emit() {
-			if (type == "Application" && name != "" && exec != "" &&
-			    hidden != "true" && nodisplay != "true") {
+			if (desktop_entry_visible()) {
 				printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 					clean(name), clean(generic), clean(comment),
 					clean(exec), clean(icon), clean(file),

@@ -13,6 +13,18 @@ mkdir -p "$work/home/.local/share/flatpak/exports/share/applications"
 mkdir -p "$work/home/.local/share/snapd/applications"
 mkdir -p "$work/bin"
 
+assert_listed() {
+	printf '%s\n' "$output" | grep -Fq "$1"
+}
+
+visible_desktop="$work/data/applications/visible.desktop"
+browser_desktop="$work/data/applications/browser-actions.desktop"
+editor_desktop="$work/data/applications/editor-actions.desktop"
+symlink_desktop="$work/data/applications/symlink.desktop"
+flatpak_desktop="$work/home/.local/share/flatpak/exports/share/applications/flatpak.desktop"
+snap_desktop="$work/home/.local/share/snapd/applications/snap.desktop"
+localized_desktop="$work/data/applications/localized.desktop"
+
 cat >"$work/data/applications/visible.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -135,14 +147,14 @@ output=$(
 		"$repo/scripts/dwm-quickshell-launcher" list
 )
 
-printf '%s\n' "$output" | grep -Fq 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'
-printf '%s\n' "$output" | grep -Fq 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'"$work/data/applications/visible.desktop"'	visible;sample;	Utility;System;'
-printf '%s\n' "$output" | grep -Fq 'Brave Origin Browser	Web Browser	Access the Internet	brave-origin-beta %U	brave-origin-beta	'"$work/data/applications/browser-actions.desktop"'		Network;WebBrowser;		new-window;new-private-window;'
-printf '%s\n' "$output" | grep -Fq 'Zed	Text Editor	A high-performance code editor.	zeditor %U	zed	'"$work/data/applications/editor-actions.desktop"'	zed;	Utility;TextEditor;Development;IDE;		NewWorkspace;'
-printf '%s\n' "$output" | grep -Fq 'Flatpak Export	Exported App	Shown from Flatpak export path	flatpak-export	flatpak	'"$work/home/.local/share/flatpak/exports/share/applications/flatpak.desktop"'	flatpak;exported;	Network;'
-printf '%s\n' "$output" | grep -Fq 'Snap Export	Packaged App	Shown from Snap export path	snap-export	snap	'"$work/home/.local/share/snapd/applications/snap.desktop"'	snap;exported;	Utility;	snap-export	new-window;'
-printf '%s\n' "$output" | grep -Fq 'Localized Name	Localized Generic	Localized comment	localized-app	localized	'"$work/data/applications/localized.desktop"'	localized;translated;	Office;'
-printf '%s\n' "$output" | grep -Fq 'Symlinked App			symlinked-app		'"$work/data/applications/symlink.desktop"
+assert_listed 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'
+assert_listed 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'"$visible_desktop"'	visible;sample;	Utility;System;'
+assert_listed 'Brave Origin Browser	Web Browser	Access the Internet	brave-origin-beta %U	brave-origin-beta	'"$browser_desktop"'		Network;WebBrowser;		new-window;new-private-window;'
+assert_listed 'Zed	Text Editor	A high-performance code editor.	zeditor %U	zed	'"$editor_desktop"'	zed;	Utility;TextEditor;Development;IDE;		NewWorkspace;'
+assert_listed 'Flatpak Export	Exported App	Shown from Flatpak export path	flatpak-export	flatpak	'"$flatpak_desktop"'	flatpak;exported;	Network;'
+assert_listed 'Snap Export	Packaged App	Shown from Snap export path	snap-export	snap	'"$snap_desktop"'	snap;exported;	Utility;	snap-export	new-window;'
+assert_listed 'Localized Name	Localized Generic	Localized comment	localized-app	localized	'"$localized_desktop"'	localized;translated;	Office;'
+assert_listed 'Symlinked App			symlinked-app		'"$symlink_desktop"
 if printf '%s\n' "$output" | grep -F 'Hidden App'; then
 	exit 1
 fi
