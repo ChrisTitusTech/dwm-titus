@@ -85,20 +85,8 @@ PanelWindow {
             }
         }
 
-        RowLayout {
-            visible: SystemTray.items.values.length > 0
-            spacing: 2
-
-            Repeater {
-                model: SystemTray.items.values
-
-                delegate: TrayItem {
-                    required property var modelData
-
-                    trayItem: modelData
-                    onOpenMenu: root.openTrayMenu(trayItem, this)
-                }
-            }
+        TrayArea {
+            onOpenMenu: (trayItem, anchorItem) => root.openTrayMenu(trayItem, anchorItem)
         }
 
         Text {

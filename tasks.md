@@ -474,6 +474,32 @@ Notes:
 
 ## Backlog
 
+## In Progress Phase: System Tray and App Indicators
+
+Goal: move tray functionality into Quickshell without losing common X11 tray
+clients.
+
+- [x] Add system tray area.
+  - Acceptance: the Quickshell panel renders system tray items from the
+    Quickshell system tray service and exposes a validation path for checking
+    visible tray clients.
+  - Validation: the repo-scoped Quickshell smoke test reported
+    `Configuration Loaded`. After restarting the live symlinked Quickshell
+    config, `quickshell ipc call tray count` returned `1`, and
+    `quickshell ipc call tray ids` returned `flameshot`.
+  - Result: added `TrayArea.qml`, kept per-item rendering in `TrayItem.qml`,
+    and added a `tray` IPC target with `count` and `ids` helpers for follow-up
+    tray app validation.
+- [ ] Test tray apps.
+  - [ ] Network manager applet
+  - [ ] Audio applet if used
+  - [ ] Discord/Steam/etc.
+  - [ ] Syncthing/Nextcloud/etc.
+- [ ] Confirm left-click/right-click behavior.
+- [ ] Confirm icons scale correctly.
+
+## Backlog
+
 - [ ] Move tray functionality into Quickshell.
 - [ ] Add media, audio, and quick controls.
 - [ ] Centralize Quickshell styling and reusable components.

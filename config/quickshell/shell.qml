@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.SystemTray
 import qs.launcher
 import qs.notifications
 import qs.panel
@@ -97,6 +98,25 @@ ShellRoot {
 
         function toggleHistory(): void {
             notificationModel.toggleHistory();
+        }
+    }
+
+    IpcHandler {
+        target: "tray"
+
+        function count(): int {
+            return SystemTray.items.values.length;
+        }
+
+        function ids(): string {
+            const items = SystemTray.items.values;
+            const ids = [];
+
+            for (let i = 0; i < items.length; i++) {
+                ids.push(items[i].id || items[i].title || items[i].tooltipTitle || "unknown");
+            }
+
+            return ids.join("\n");
         }
     }
 

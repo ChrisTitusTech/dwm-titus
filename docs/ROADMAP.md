@@ -187,7 +187,7 @@ Move tray functionality into Quickshell.
 
 ### Tasks
 
-- [ ] Add system tray area
+- [x] Add system tray area
 - [ ] Test tray apps:
   - [ ] Network manager applet
   - [ ] Audio applet if used
