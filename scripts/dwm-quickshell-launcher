@@ -5,6 +5,12 @@ usage() {
 	printf 'usage: %s list|launch <desktop-file>\n' "$0" >&2
 }
 
+desktop_id() {
+	file=$1
+	base=${file##*/}
+	printf '%s\n' "${base%.desktop}"
+}
+
 data_dirs() {
 	sep=
 	seen=:
@@ -27,8 +33,12 @@ data_dirs() {
 
 	if [ -n "${HOME:-}" ]; then
 		add_dir "$HOME/.local/share/flatpak/exports/share"
+		add_dir "$HOME/.local/share/snapd"
+		add_dir "$HOME/.nix-profile/share"
 	fi
 	add_dir /var/lib/flatpak/exports/share
+	add_dir /var/lib/snapd/desktop
+	add_dir /nix/var/nix/profiles/default/share
 
 	old_ifs=$IFS
 	IFS=:
@@ -45,28 +55,57 @@ desktop_files() {
 		tr ':' '\n' |
 		while IFS= read -r dir; do
 			[ -d "$dir" ] || continue
-			find "$dir" \( -type f -o -type l \) -name '*.desktop'
-		done |
-		sort -u
+			find "$dir" \( -type f -o -type l \) -name '*.desktop' | sort
+		done
 }
 
 desktop_entry_summary() {
 	file=$1
+	locale=${LC_MESSAGES:-${LANG:-}}
+	locale=${locale%%.*}
+	locale_short=${locale%%_*}
 
-	awk '
+	awk -v locale="$locale" -v locale_short="$locale_short" '
 		function clean(value) {
 			gsub(/\t/, " ", value)
 			gsub(/\r/, "", value)
 			return value
 		}
 
+		function key_name(line) {
+			return substr(line, 1, index(line, "=") - 1)
+		}
+
+		function key_value(line) {
+			return substr(line, index(line, "=") + 1)
+		}
+
+		function localized_match(key, base) {
+			return locale != "" &&
+				(key == base "[" locale "]" ||
+				 key == base "[" locale_short "]")
+		}
+
+		function assign_localized(key, value) {
+			if (localized_match(key, "Name")) {
+				name = value
+			} else if (localized_match(key, "GenericName")) {
+				generic = value
+			} else if (localized_match(key, "Comment")) {
+				comment = value
+			} else if (localized_match(key, "Keywords")) {
+				keywords = value
+			}
+		}
+
 		function emit() {
 			if (entry && type == "Application" && name != "" && exec != "" &&
 			    hidden != "true" && nodisplay != "true") {
-				printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 					clean(name), clean(generic), clean(comment),
 					clean(exec), clean(icon), clean(file),
-					clean(keywords), clean(categories)
+					clean(keywords), clean(categories),
+					clean(startup_wm_class), clean(actions)
 			}
 		}
 
@@ -81,6 +120,8 @@ desktop_entry_summary() {
 			icon = ""
 			keywords = ""
 			categories = ""
+			startup_wm_class = ""
+			actions = ""
 			hidden = "false"
 			nodisplay = "false"
 		}
@@ -135,6 +176,16 @@ desktop_entry_summary() {
 			next
 		}
 
+		entry && $0 ~ /^StartupWMClass=/ && startup_wm_class == "" {
+			startup_wm_class = substr($0, 16)
+			next
+		}
+
+		entry && $0 ~ /^Actions=/ && actions == "" {
+			actions = substr($0, 9)
+			next
+		}
+
 		entry && $0 ~ /^Hidden=/ {
 			hidden = tolower(substr($0, 8))
 			next
@@ -145,6 +196,11 @@ desktop_entry_summary() {
 			next
 		}
 
+		entry && $0 ~ /^[A-Za-z]+(\[[^]]+\])=/ {
+			assign_localized(key_name($0), key_value($0))
+			next
+		}
+
 		END {
 			emit()
 		}
@@ -152,17 +208,19 @@ desktop_entry_summary() {
 }
 
 list_apps() {
+	seen_ids=:
+
 	desktop_files |
 		while IFS= read -r file; do
+			id=$(desktop_id "$file")
+			case $seen_ids in
+			*:"$id":*) continue ;;
+			esac
+
+			seen_ids=$seen_ids$id:
 			desktop_entry_summary "$file"
 		done |
 		sort -f
-}
-
-desktop_id() {
-	file=$1
-	base=${file##*/}
-	printf '%s\n' "${base%.desktop}"
 }
 
 desktop_value() {

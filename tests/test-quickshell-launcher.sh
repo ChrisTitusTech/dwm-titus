@@ -10,6 +10,7 @@ trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/data/applications"
 mkdir -p "$work/home/.local/share/flatpak/exports/share/applications"
+mkdir -p "$work/home/.local/share/snapd/applications"
 mkdir -p "$work/bin"
 
 cat >"$work/data/applications/visible.desktop" <<'DESKTOP'
@@ -44,6 +45,36 @@ Keywords=flatpak;exported;
 Categories=Network;
 DESKTOP
 
+cat >"$work/home/.local/share/snapd/applications/snap.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Snap Export
+GenericName=Packaged App
+Comment=Shown from Snap export path
+Exec=snap-export
+Icon=snap
+Keywords=snap;exported;
+Categories=Utility;
+StartupWMClass=snap-export
+Actions=new-window;
+DESKTOP
+
+cat >"$work/data/applications/localized.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Base Name
+Name[en_US]=Localized Name
+GenericName=Base Generic
+GenericName[en_US]=Localized Generic
+Comment=Base comment
+Comment[en_US]=Localized comment
+Exec=localized-app
+Icon=localized
+Keywords=base;
+Keywords[en_US]=localized;translated;
+Categories=Office;
+DESKTOP
+
 cat >"$work/data/applications/hidden.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -60,7 +91,8 @@ Exec=xdg-open https://example.invalid
 DESKTOP
 
 output=$(
-	HOME="$work/home" \
+	LANG=en_US.UTF-8 \
+		HOME="$work/home" \
 		XDG_DATA_HOME="$work/empty" \
 		XDG_DATA_DIRS="$work/data" \
 		"$repo/scripts/dwm-quickshell-launcher" list
@@ -69,6 +101,8 @@ output=$(
 printf '%s\n' "$output" | grep -Fq 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'
 printf '%s\n' "$output" | grep -Fq 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'"$work/data/applications/visible.desktop"'	visible;sample;	Utility;System;'
 printf '%s\n' "$output" | grep -Fq 'Flatpak Export	Exported App	Shown from Flatpak export path	flatpak-export	flatpak	'"$work/home/.local/share/flatpak/exports/share/applications/flatpak.desktop"'	flatpak;exported;	Network;'
+printf '%s\n' "$output" | grep -Fq 'Snap Export	Packaged App	Shown from Snap export path	snap-export	snap	'"$work/home/.local/share/snapd/applications/snap.desktop"'	snap;exported;	Utility;	snap-export	new-window;'
+printf '%s\n' "$output" | grep -Fq 'Localized Name	Localized Generic	Localized comment	localized-app	localized	'"$work/data/applications/localized.desktop"'	localized;translated;	Office;'
 printf '%s\n' "$output" | grep -Fq 'Symlinked App			symlinked-app		'"$work/data/applications/symlink.desktop"
 if printf '%s\n' "$output" | grep -F 'Hidden App'; then
 	exit 1
