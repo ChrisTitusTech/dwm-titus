@@ -117,6 +117,10 @@ ShellRoot {
             controlsModel.close();
         }
 
+        function bluetoothStatus(): string {
+            return controlsModel.bluetoothText;
+        }
+
         function open(): void {
             controlsModel.open();
         }

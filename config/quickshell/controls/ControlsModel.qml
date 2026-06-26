@@ -14,6 +14,7 @@ Scope {
     property string mediaState: ""
     property string mediaArtist: ""
     property string mediaTitle: ""
+    property string bluetoothText: "BT unavailable"
     property string message: ""
 
     function open() {
@@ -43,6 +44,9 @@ Scope {
         }
         if (!mediaStatusProcess.running) {
             mediaStatusProcess.running = true;
+        }
+        if (!bluetoothStatusProcess.running) {
+            bluetoothStatusProcess.running = true;
         }
     }
 
@@ -157,6 +161,21 @@ Scope {
 
         stdout: StdioCollector {
             onStreamFinished: root.parseMedia(this.text)
+        }
+    }
+
+    Process {
+        id: bluetoothStatusProcess
+
+        command: Commands.controlsHelperCommand("bluetooth-status")
+        running: false
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const text = this.text.trim();
+
+                root.bluetoothText = text.length > 0 ? text : "BT unavailable";
+            }
         }
     }
 

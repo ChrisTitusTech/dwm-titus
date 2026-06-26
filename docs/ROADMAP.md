@@ -221,7 +221,7 @@ Add shell controls that previously required separate scripts or widgets.
 - [x] Add brightness controls if needed
   - Not needed on the current validation host: `/sys/class/backlight` is empty,
     and `brightnessctl --list` only reports LED devices.
-- [ ] Add Bluetooth status if needed
+- [x] Add Bluetooth status if needed
 
 ### Exit Criteria
 

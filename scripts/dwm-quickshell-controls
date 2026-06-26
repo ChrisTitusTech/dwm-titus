@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status|media-status|media-play-pause|media-next|media-previous" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status|media-status|media-play-pause|media-next|media-previous|bluetooth-status" >&2
 	exit 2
 }
 
@@ -219,6 +219,38 @@ playerctl_action() {
 	playerctl "$1"
 }
 
+bluetooth_status() {
+	if ! command -v bluetoothctl >/dev/null 2>&1; then
+		printf '%s\n' "BT unavailable"
+		return 0
+	fi
+
+	powered=$(bluetoothctl show 2>/dev/null |
+		awk '
+			/^[[:space:]]*Powered:/ {
+				print $2
+				found = 1
+				exit
+			}
+			END {
+				if (!found) {
+					exit 1
+				}
+			}
+		') || {
+		printf '%s\n' "BT unavailable"
+		return 0
+	}
+
+	if [ "$powered" != yes ]; then
+		printf '%s\n' "BT off"
+		return 0
+	fi
+
+	count=$(bluetoothctl devices Connected 2>/dev/null | awk 'NF > 0 { count++ } END { print count + 0 }')
+	printf 'BT %s\n' "$count"
+}
+
 [ "$#" -ge 1 ] || usage
 
 command=$1
@@ -260,6 +292,10 @@ media-next)
 media-previous)
 	[ "$#" -eq 0 ] || usage
 	playerctl_action previous
+	;;
+bluetooth-status)
+	[ "$#" -eq 0 ] || usage
+	bluetooth_status
 	;;
 *)
 	usage

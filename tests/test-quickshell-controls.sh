@@ -73,6 +73,44 @@ esac
 SH
 chmod +x "$work/bin/playerctl"
 
+cat >"$work/bin/bluetoothctl" <<'SH'
+#!/bin/sh
+set -eu
+
+case "$*" in
+show)
+	case "${DWM_TEST_BT_MODE:-on}" in
+	on)
+		printf 'Controller 00:11:22:33:44:55\n'
+		printf '\tPowered: yes\n'
+		;;
+	off)
+		printf 'Controller 00:11:22:33:44:55\n'
+		printf '\tPowered: no\n'
+		;;
+	none)
+		exit 1
+		;;
+	esac
+	;;
+"devices Connected")
+	case "${DWM_TEST_BT_CONNECTED:-0}" in
+	0)
+		;;
+	2)
+		printf 'Device AA:BB:CC:DD:EE:01 Headphones\n'
+		printf 'Device AA:BB:CC:DD:EE:02 Keyboard\n'
+		;;
+	esac
+	;;
+*)
+	printf 'unexpected bluetoothctl call: %s\n' "$*" >&2
+	exit 1
+	;;
+esac
+SH
+chmod +x "$work/bin/bluetoothctl"
+
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" volume-status >"$work/volume.out"
 grep -Fqx "VOL 40%" "$work/volume.out"
 
@@ -113,6 +151,24 @@ DWM_TEST_PLAYERCTL_LOG="$work/playerctl.log" \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" media-previous
 grep -Fqx "previous" "$work/playerctl.log"
+
+PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" bluetooth-status >"$work/bluetooth.out"
+grep -Fqx "BT 0" "$work/bluetooth.out"
+
+DWM_TEST_BT_CONNECTED=2 \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-status >"$work/bluetooth-connected.out"
+grep -Fqx "BT 2" "$work/bluetooth-connected.out"
+
+DWM_TEST_BT_MODE=off \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-status >"$work/bluetooth-off.out"
+grep -Fqx "BT off" "$work/bluetooth-off.out"
+
+DWM_TEST_BT_MODE=none \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-status >"$work/bluetooth-none.out"
+grep -Fqx "BT unavailable" "$work/bluetooth-none.out"
 
 DWM_TEST_PACTL_LOG="$work/pactl.log" \
 	PATH="$work/bin:$PATH" \

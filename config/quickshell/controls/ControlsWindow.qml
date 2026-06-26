@@ -11,7 +11,7 @@ FloatingWindow {
     title: "dwm controls"
     visible: controlsModel.visible
     implicitWidth: 360
-    implicitHeight: 374
+    implicitHeight: 412
     color: "#00000000"
 
     Rectangle {
@@ -137,6 +137,26 @@ FloatingWindow {
                 Text {
                     text: root.controlsModel.micText
                     color: root.controlsModel.micText === "MIC muted" ? "#bf616a" : Theme.text
+                    font.pixelSize: Theme.panelFontSize
+                    font.bold: true
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "Bluetooth"
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.smallFontSize
+                    font.bold: true
+                }
+
+                Text {
+                    text: root.controlsModel.bluetoothText
+                    color: Theme.text
                     font.pixelSize: Theme.panelFontSize
                     font.bold: true
                 }
