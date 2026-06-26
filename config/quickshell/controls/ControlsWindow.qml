@@ -15,6 +15,8 @@ FloatingWindow {
     implicitHeight: 412
     color: "#00000000"
 
+    readonly property int topOffset: Theme.panelHeight + 30
+
     onVisibleChanged: {
         if (visible) {
             Qt.callLater(function() {
@@ -31,9 +33,9 @@ FloatingWindow {
             "sh",
             "-c",
             "if [ -x \"$HOME/.local/share/dwm-titus/scripts/dwm-quickshell-position-notification\" ]; then " +
-            "\"$HOME/.local/share/dwm-titus/scripts/dwm-quickshell-position-notification\" 'dwm controls' 10 42 primary; " +
+            "\"$HOME/.local/share/dwm-titus/scripts/dwm-quickshell-position-notification\" 'dwm controls' 10 " + root.topOffset + " primary; " +
             "elif command -v dwm-quickshell-position-notification >/dev/null 2>&1; then " +
-            "dwm-quickshell-position-notification 'dwm controls' 10 42 primary; " +
+            "dwm-quickshell-position-notification 'dwm controls' 10 " + root.topOffset + " primary; " +
             "fi"
         ]
         running: false
