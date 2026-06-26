@@ -135,14 +135,32 @@ run_duplicate_case() {
 		fi
 		wait_for_marker "$state/feh.running"
 		wait_for_marker "$state/picom.running"
-		wait_for_marker "$state/dunst.running"
 		wait_for_marker "$state/dwm-status.running"
 		wait_for_marker "$state/quickshell.running"
 	done
 
-	for name in feh picom dunst light-locker quickshell; do
+	for name in feh picom light-locker quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
+	test ! -f "$state/dunst.count"
+}
+
+run_dunst_fallback_case() {
+	home="$work/dunst-fallback/home"
+	state="$work/dunst-fallback/state"
+	mkdir -p "$home" "$state"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+
+	HOME=$home \
+		TEST_STATE=$state \
+		PATH="$work/bin:/usr/bin:/bin" \
+		XDG_CONFIG_HOME="$home/.config" \
+		DWM_AUTOSTART_NO_SETSID=1 \
+		sh "$repo_dir/scripts/autostart.sh"
+
+	wait_for_marker "$state/dunst.running"
+	test "$(cat "$state/dunst.count")" -eq 1
+	test ! -f "$state/quickshell.count"
 }
 
 run_missing_optional_case() {
@@ -171,6 +189,7 @@ run_missing_optional_case() {
 
 run_duplicate_case display-manager
 run_duplicate_case startx
+run_dunst_fallback_case
 run_missing_optional_case
 
 printf '%s\n' "Autostart duplicate and missing-optional command guards: PASS"

@@ -164,7 +164,7 @@ Replace Dunst or other notification UI with Quickshell notifications.
 - [x] Add dismiss action
 - [x] Add timeout behavior
 - [x] Add urgency styling
-- [ ] Test with common apps:
+- [x] Test with common apps:
   - [x] Browser
   - [x] Discord/Slack
   - [x] Terminal notify-send
@@ -172,10 +172,10 @@ Replace Dunst or other notification UI with Quickshell notifications.
 
 ### Exit Criteria
 
-- Notifications appear consistently
-- Urgent notifications are obvious
-- Notification history works
-- Dunst can be disabled
+- [x] Notifications appear consistently
+- [x] Urgent notifications are obvious
+- [x] Notification history works
+- [x] Dunst can be disabled
 
 ---
 

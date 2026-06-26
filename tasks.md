@@ -392,7 +392,7 @@ menu while keeping destructive actions behind explicit confirmation.
 
 ## Backlog
 
-## In Progress Phase: Notifications
+## Completed Phase: Notifications
 
 Goal: replace Dunst or other notification UI with Quickshell notifications
 without losing a working notification fallback before the replacement is fully
@@ -447,7 +447,7 @@ tested.
     the live Quickshell notification path.
   - Result: critical cards use a red-tinted surface and border; normal cards
     use the standard shell surface and accent strip.
-- [ ] Test with common apps.
+- [x] Test with common apps.
   - [x] Browser
     - Validation: sent a Chromium desktop-entry notification with
       `notify-send -a Chromium -h string:desktop-entry:chromium`; the visible
@@ -472,10 +472,15 @@ tested.
 
 Notes:
 
-- Dunst is still installed and remains the fallback notification daemon until
-  browser, chat, and game-launcher notification behavior is tested.
+- Dunst is still installed and remains the fallback notification daemon when
+  the managed Quickshell config is unavailable.
 - During validation, Dunst was stopped temporarily with `pkill -x dunst` so
   Quickshell could claim `org.freedesktop.Notifications`.
+- Validation: `make check-session-guards` passed after changing
+  `scripts/autostart.sh` so normal sessions with
+  `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml` start Quickshell
+  without Dunst, while sessions without that managed config still start Dunst
+  as the rollback notification daemon.
 
 ## Backlog
 
