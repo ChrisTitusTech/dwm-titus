@@ -8,6 +8,8 @@ Scope {
     property bool visible: false
     property bool busy: false
     property string volumeText: "VOL unavailable"
+    property int volumePercent: 0
+    property bool volumeMuted: false
     property string micText: "MIC unavailable"
     property string mediaText: "MEDIA none"
     property string mediaPlayer: ""
@@ -94,6 +96,22 @@ Scope {
         if (trimmed.length > 0) {
             root.volumeText = trimmed;
         }
+
+        const match = trimmed.match(/([0-9]+)%/);
+        if (match !== null) {
+            root.volumePercent = root.clampPercent(parseInt(match[1], 10));
+        }
+        root.volumeMuted = trimmed.indexOf("VOL muted") === 0;
+    }
+
+    function clampPercent(value) {
+        const number = Math.round(Number(value));
+
+        if (isNaN(number)) {
+            return root.volumePercent;
+        }
+
+        return Math.max(0, Math.min(100, number));
     }
 
     function runAction(action, args) {
@@ -117,6 +135,10 @@ Scope {
 
     function volumeToggleMute() {
         root.runAction("volume-toggle-mute");
+    }
+
+    function volumeSet(percent) {
+        root.runAction("volume-set", [root.clampPercent(percent).toString() + "%"]);
     }
 
     function mediaPlayPause() {

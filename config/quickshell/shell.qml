@@ -161,6 +161,10 @@ ShellRoot {
             return controlsModel.volumeText;
         }
 
+        function volumeSet(percent: int): void {
+            controlsModel.volumeSet(percent);
+        }
+
         function volumeToggleMute(): void {
             controlsModel.volumeToggleMute();
         }

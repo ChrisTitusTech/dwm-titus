@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status" >&2
 	exit 2
 }
 
@@ -17,6 +17,23 @@ volume_step() {
 		usage
 		;;
 	esac
+}
+
+volume_percent() {
+	percent=${1:-}
+	percent=${percent%%%}
+
+	case "$percent" in
+	'' | *[!0-9]*)
+		usage
+		;;
+	esac
+
+	if [ "$percent" -gt 100 ]; then
+		usage
+	fi
+
+	printf '%s%%\n' "$percent"
 }
 
 sink_mute_pactl() {
@@ -140,6 +157,19 @@ volume_down() {
 		pactl set-sink-volume @DEFAULT_SINK@ "-$step"
 	elif command -v wpctl >/dev/null 2>&1; then
 		wpctl set-volume @DEFAULT_AUDIO_SINK@ "$step-"
+	else
+		printf '%s\n' "pactl or wpctl not found" >&2
+		exit 127
+	fi
+}
+
+volume_set() {
+	percent=$(volume_percent "${1:-}")
+
+	if command -v pactl >/dev/null 2>&1; then
+		pactl set-sink-volume @DEFAULT_SINK@ "$percent"
+	elif command -v wpctl >/dev/null 2>&1; then
+		wpctl set-volume @DEFAULT_AUDIO_SINK@ "$percent"
 	else
 		printf '%s\n' "pactl or wpctl not found" >&2
 		exit 127
@@ -301,6 +331,10 @@ volume-up)
 volume-down)
 	[ "$#" -le 1 ] || usage
 	volume_down "${1:-}"
+	;;
+volume-set)
+	[ "$#" -eq 1 ] || usage
+	volume_set "$1"
 	;;
 volume-toggle-mute)
 	[ "$#" -eq 0 ] || usage

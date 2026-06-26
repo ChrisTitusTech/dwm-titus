@@ -1,18 +1,31 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import qs.core
 
-FloatingWindow {
+PanelWindow {
     id: root
 
     required property var controlsModel
 
-    title: "dwm controls"
     visible: controlsModel.visible
     implicitWidth: 360
     implicitHeight: 412
     color: "#00000000"
+    exclusiveZone: 0
+    aboveWindows: true
+    focusable: true
+
+    anchors {
+        top: true
+        right: true
+    }
+
+    margins {
+        top: Theme.panelHeight + 12
+        right: 10
+    }
 
     Rectangle {
         id: content
@@ -95,30 +108,66 @@ FloatingWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: 10
 
-                ControlsActionButton {
+                Slider {
+                    id: volumeSlider
+
                     Layout.fillWidth: true
                     Layout.preferredHeight: 46
-                    label: "Down"
+                    from: 0
+                    to: 100
+                    stepSize: 1
+                    live: false
+                    value: root.controlsModel.volumePercent
                     enabled: !root.controlsModel.busy
-                    onActivated: root.controlsModel.volumeDown()
+
+                    background: Rectangle {
+                        x: volumeSlider.leftPadding
+                        y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
+                        width: volumeSlider.availableWidth
+                        height: 8
+                        color: Theme.surface
+                        radius: 4
+
+                        Rectangle {
+                            width: volumeSlider.visualPosition * parent.width
+                            height: parent.height
+                            color: root.controlsModel.volumeMuted ? Theme.textMuted : Theme.accent
+                            radius: parent.radius
+                        }
+                    }
+
+                    handle: Rectangle {
+                        x: volumeSlider.leftPadding + volumeSlider.visualPosition * (volumeSlider.availableWidth - width)
+                        y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
+                        implicitWidth: 20
+                        implicitHeight: 20
+                        color: volumeSlider.enabled ? Theme.text : Theme.textMuted
+                        border.color: Theme.border
+                        border.width: 1
+                        radius: 10
+                    }
+
+                    onMoved: root.controlsModel.volumeSet(Math.round(value))
+                }
+
+                Text {
+                    Layout.preferredWidth: 42
+                    text: root.controlsModel.volumePercent + "%"
+                    color: Theme.text
+                    font.pixelSize: Theme.panelFontSize
+                    font.bold: true
+                    horizontalAlignment: Text.AlignRight
+                    verticalAlignment: Text.AlignVCenter
                 }
 
                 ControlsActionButton {
-                    Layout.fillWidth: true
+                    Layout.preferredWidth: 84
                     Layout.preferredHeight: 46
-                    label: "Mute"
+                    label: root.controlsModel.volumeMuted ? "Unmute" : "Mute"
                     enabled: !root.controlsModel.busy
                     onActivated: root.controlsModel.volumeToggleMute()
-                }
-
-                ControlsActionButton {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 46
-                    label: "Up"
-                    enabled: !root.controlsModel.busy
-                    onActivated: root.controlsModel.volumeUp()
                 }
             }
 

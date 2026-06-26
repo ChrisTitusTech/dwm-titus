@@ -40,6 +40,9 @@ case "$*" in
 "set-sink-volume @DEFAULT_SINK@ -5%")
 	printf 'volume down\n' >>"$DWM_TEST_PACTL_LOG"
 	;;
+"set-sink-volume @DEFAULT_SINK@ 35%")
+	printf 'volume set 35%%\n' >>"$DWM_TEST_PACTL_LOG"
+	;;
 "set-sink-mute @DEFAULT_SINK@ toggle")
 	printf 'mute toggle\n' >>"$DWM_TEST_PACTL_LOG"
 	;;
@@ -217,6 +220,12 @@ DWM_TEST_PACTL_LOG="$work/pactl.log" \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" volume-down 5%
 grep -Fqx "volume down" "$work/pactl.log"
+
+: >"$work/pactl.log"
+DWM_TEST_PACTL_LOG="$work/pactl.log" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" volume-set 35%
+grep -Fqx "volume set 35%" "$work/pactl.log"
 
 : >"$work/pactl.log"
 DWM_TEST_PACTL_LOG="$work/pactl.log" \
