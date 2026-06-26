@@ -27,98 +27,108 @@ data_dirs() {
 	printf '\n'
 }
 
-list_apps() {
+desktop_files() {
 	data_dirs |
 		tr ':' '\n' |
 		while IFS= read -r dir; do
 			[ -d "$dir" ] || continue
 			find "$dir" -type f -name '*.desktop'
 		done |
-		sort -u |
+		sort -u
+}
+
+desktop_entry_summary() {
+	file=$1
+
+	awk '
+		function clean(value) {
+			gsub(/\t/, " ", value)
+			gsub(/\r/, "", value)
+			return value
+		}
+
+		function emit() {
+			if (entry && type == "Application" && name != "" && exec != "" &&
+			    hidden != "true" && nodisplay != "true") {
+				printf "%s\t%s\t%s\t%s\t%s\t%s\n",
+					clean(name), clean(generic), clean(comment),
+					clean(exec), clean(icon), clean(file)
+			}
+		}
+
+		BEGIN {
+			file = ARGV[1]
+			entry = 0
+			type = ""
+			name = ""
+			generic = ""
+			comment = ""
+			exec = ""
+			icon = ""
+			hidden = "false"
+			nodisplay = "false"
+		}
+
+		$0 == "[Desktop Entry]" {
+			entry = 1
+			next
+		}
+
+		/^\[/ {
+			entry = 0
+			next
+		}
+
+		entry && $0 ~ /^Type=/ {
+			type = substr($0, 6)
+			next
+		}
+
+		entry && $0 ~ /^Name=/ && name == "" {
+			name = substr($0, 6)
+			next
+		}
+
+		entry && $0 ~ /^GenericName=/ && generic == "" {
+			generic = substr($0, 13)
+			next
+		}
+
+		entry && $0 ~ /^Comment=/ && comment == "" {
+			comment = substr($0, 9)
+			next
+		}
+
+		entry && $0 ~ /^Exec=/ && exec == "" {
+			exec = substr($0, 6)
+			next
+		}
+
+		entry && $0 ~ /^Icon=/ && icon == "" {
+			icon = substr($0, 6)
+			next
+		}
+
+		entry && $0 ~ /^Hidden=/ {
+			hidden = tolower(substr($0, 8))
+			next
+		}
+
+		entry && $0 ~ /^NoDisplay=/ {
+			nodisplay = tolower(substr($0, 11))
+			next
+		}
+
+		END {
+			emit()
+		}
+	' "$file"
+}
+
+list_apps() {
+	desktop_files |
 		while IFS= read -r file; do
-			awk '
-				function clean(value) {
-					gsub(/\t/, " ", value)
-					gsub(/\r/, "", value)
-					return value
-				}
-
-				function emit() {
-					if (entry && type == "Application" && name != "" && exec != "" &&
-					    hidden != "true" && nodisplay != "true") {
-						printf "%s\t%s\t%s\t%s\t%s\t%s\n",
-							clean(name), clean(generic), clean(comment),
-							clean(exec), clean(icon), clean(file)
-					}
-				}
-
-				BEGIN {
-					file = ARGV[1]
-					entry = 0
-					type = ""
-					name = ""
-					generic = ""
-					comment = ""
-					exec = ""
-					icon = ""
-					hidden = "false"
-					nodisplay = "false"
-				}
-
-				$0 == "[Desktop Entry]" {
-					entry = 1
-					next
-				}
-
-				/^\[/ {
-					entry = 0
-					next
-				}
-
-				entry && $0 ~ /^Type=/ {
-					type = substr($0, 6)
-					next
-				}
-
-				entry && $0 ~ /^Name=/ && name == "" {
-					name = substr($0, 6)
-					next
-				}
-
-				entry && $0 ~ /^GenericName=/ && generic == "" {
-					generic = substr($0, 13)
-					next
-				}
-
-				entry && $0 ~ /^Comment=/ && comment == "" {
-					comment = substr($0, 9)
-					next
-				}
-
-				entry && $0 ~ /^Exec=/ && exec == "" {
-					exec = substr($0, 6)
-					next
-				}
-
-				entry && $0 ~ /^Icon=/ && icon == "" {
-					icon = substr($0, 6)
-					next
-				}
-
-				entry && $0 ~ /^Hidden=/ {
-					hidden = tolower(substr($0, 8))
-					next
-				}
-
-				entry && $0 ~ /^NoDisplay=/ {
-					nodisplay = tolower(substr($0, 11))
-					next
-				}
-
-				END {
-					emit()
-				}
-			' "$file"
+			desktop_entry_summary "$file"
 		done |
 		sort -f
 }
@@ -163,9 +173,17 @@ fallback_launch() {
 	}
 
 	if [ "$terminal" = true ]; then
-		setsid dwm-terminal -e sh -c "$command" >/dev/null 2>&1 &
+		launch_background dwm-terminal -e sh -c "$command"
 	else
-		setsid sh -c "$command" >/dev/null 2>&1 &
+		launch_background sh -c "$command"
+	fi
+}
+
+launch_background() {
+	if command -v setsid >/dev/null 2>&1; then
+		setsid "$@" >/dev/null 2>&1 &
+	else
+		"$@" >/dev/null 2>&1 &
 	fi
 }
 

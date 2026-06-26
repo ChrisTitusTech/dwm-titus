@@ -43,7 +43,7 @@ output=$(
 		"$repo/scripts/dwm-quickshell-launcher" list
 )
 
-printf '%s\n' "$output" | grep -F 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'
+printf '%s\n' "$output" | grep -Fq 'Visible App	Utility	Shown in launcher	visible-app --flag %U	visible	'
 if printf '%s\n' "$output" | grep -F 'Hidden App'; then
 	exit 1
 fi
@@ -62,4 +62,9 @@ DWM_TEST_DEX_LOG="$work/dex.log" \
 	"$repo/scripts/dwm-quickshell-launcher" launch "$work/data/applications/visible.desktop"
 grep -Fqx "$work/data/applications/visible.desktop" "$work/dex.log"
 
-printf 'Quickshell launcher index: PASS\n'
+if "$repo/scripts/dwm-quickshell-launcher" launch "$work/data/applications/missing.desktop" 2>"$work/missing.err"; then
+	exit 1
+fi
+grep -Fqx "desktop entry not found: $work/data/applications/missing.desktop" "$work/missing.err"
+
+printf 'Quickshell launcher helper: PASS\n'

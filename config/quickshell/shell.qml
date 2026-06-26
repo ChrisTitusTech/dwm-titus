@@ -20,6 +20,13 @@ ShellRoot {
     property var launcherApps: []
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
+    function launcherHelperCommand(action, args) {
+        const argv = args || [];
+        const script = "if command -v dwm-quickshell-launcher >/dev/null 2>&1; then exec dwm-quickshell-launcher \"$@\"; fi; data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; exec \"$data_dir/scripts/dwm-quickshell-launcher\" \"$@\"";
+
+        return ["sh", "-c", script, "dwm-quickshell-launcher", action].concat(argv);
+    }
+
     function appMatchesQuery(app, query) {
         const needle = query.trim().toLowerCase();
 
@@ -51,7 +58,7 @@ ShellRoot {
             return;
         }
 
-        launcherLaunchProcess.command = ["sh", "-c", "if command -v dwm-quickshell-launcher >/dev/null 2>&1; then exec dwm-quickshell-launcher launch \"$1\"; fi; data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; exec \"$data_dir/scripts/dwm-quickshell-launcher\" launch \"$1\"", "dwm-quickshell-launcher", app.desktopFile];
+        launcherLaunchProcess.command = root.launcherHelperCommand("launch", [app.desktopFile]);
         launcherLaunchProcess.running = true;
         root.closeLauncher();
     }
@@ -239,7 +246,7 @@ ShellRoot {
     Process {
         id: launcherIndexProcess
 
-        command: ["sh", "-c", "if command -v dwm-quickshell-launcher >/dev/null 2>&1; then exec dwm-quickshell-launcher list; fi; data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; exec \"$data_dir/scripts/dwm-quickshell-launcher\" list"]
+        command: root.launcherHelperCommand("list")
         running: true
 
         stdout: StdioCollector {
