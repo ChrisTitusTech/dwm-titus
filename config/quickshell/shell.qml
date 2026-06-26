@@ -8,6 +8,7 @@ ShellRoot {
 
     property string clockText: ""
     property string networkText: ""
+    property string powerText: ""
     property string systemText: ""
     property string volumeText: ""
 
@@ -55,6 +56,17 @@ ShellRoot {
         }
     }
 
+    Process {
+        id: powerProcess
+
+        command: ["sh", "-c", "battery=; for path in /sys/class/power_supply/BAT*; do [ -e \"$path\" ] || continue; battery=$path; break; done; if [ -n \"$battery\" ]; then capacity=$(cat \"$battery/capacity\" 2>/dev/null || printf n/a); status=$(cat \"$battery/status\" 2>/dev/null || printf unknown); printf 'BAT %s%% %s' \"$capacity\" \"$status\"; else printf 'AC'; fi"]
+        running: true
+
+        stdout: StdioCollector {
+            onStreamFinished: root.powerText = this.text.trim()
+        }
+    }
+
     Timer {
         interval: 1000
         running: true
@@ -81,6 +93,13 @@ ShellRoot {
         running: true
         repeat: true
         onTriggered: volumeProcess.running = true
+    }
+
+    Timer {
+        interval: 30000
+        running: true
+        repeat: true
+        onTriggered: powerProcess.running = true
     }
 
     Variants {
@@ -117,6 +136,13 @@ ShellRoot {
 
                     Item {
                         Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: root.powerText
+                        color: "#d8dee9"
+                        font.pixelSize: 13
+                        verticalAlignment: Text.AlignVCenter
                     }
 
                     Text {

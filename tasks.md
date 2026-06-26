@@ -145,7 +145,19 @@ available as the fallback until the Quickshell panel is usable.
     `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
     --log-times` reported `Configuration Loaded`; `quickshell list` showed the
     instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
-- [ ] Add battery/power indicator if needed.
+- [x] Add battery/power indicator if needed.
+  - Acceptance: if a battery is present, the panel displays battery capacity
+    and charging state; otherwise it falls back to AC-only text.
+  - Validation: inspect `/sys/class/power_supply`, run the battery status
+    command directly, then launch the config in the active Xorg/dwm session.
+  - Result: `/sys/class/power_supply` exposes `BAT0`, which reported 71% and
+    `Discharging`. Added one shared `powerText` property, a sysfs battery
+    status process, and a 30 second update timer to
+    `config/quickshell/shell.qml`. The command returned
+    `BAT 71% Discharging`. Running
+    `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
+    --log-times` reported `Configuration Loaded`; `quickshell list` showed the
+    instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
 - [ ] Reserve screen space correctly.
 - [ ] Match current bar height and monitor placement.
 - [ ] Disable Polybar only after Quickshell panel is usable.
