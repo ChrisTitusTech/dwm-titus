@@ -448,7 +448,11 @@ tested.
   - Result: critical cards use a red-tinted surface and border; normal cards
     use the standard shell surface and accent strip.
 - [ ] Test with common apps.
-  - [ ] Browser
+  - [x] Browser
+    - Validation: sent a Chromium desktop-entry notification with
+      `notify-send -a Chromium -h string:desktop-entry:chromium`; the visible
+      popup count became `1`, history count became `1`, and the latest history
+      summary matched the unique browser test title.
   - [ ] Discord/Slack
   - [x] Terminal notify-send
     - Validation: normal and critical `notify-send` calls were delivered to
