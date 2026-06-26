@@ -15,25 +15,12 @@ cleanup() {
 }
 
 publish() {
-	local power volume network
+	local power volume
 
 	power=$(power_text)
 	volume=$(volume_text)
-	network=$(network_text)
 
-	xsetroot -name "$power | $volume | $network"
-}
-
-network_text() {
-	local iface state
-
-	iface=$(ip route show default 2>/dev/null | awk 'NR == 1 { print $5 }')
-	if [[ -n $iface ]]; then
-		state=$(cat "/sys/class/net/$iface/operstate" 2>/dev/null || printf unknown)
-		printf 'NET %s %s\n' "$iface" "$state"
-	else
-		printf 'NET offline\n'
-	fi
+	xsetroot -name "$power | $volume"
 }
 
 volume_text() {
@@ -91,14 +78,6 @@ watch_pactl() {
 		done
 }
 
-watch_ip() {
-	command -v ip >/dev/null 2>&1 || return 0
-	ip monitor address route link 2>/dev/null |
-		while IFS= read -r _event; do
-			printf 'network\n' >"$fifo"
-		done
-}
-
 watch_power() {
 	command -v udevadm >/dev/null 2>&1 || return 0
 	udevadm monitor --udev --subsystem-match=power_supply 2>/dev/null |
@@ -116,8 +95,6 @@ trap 'cleanup; exit 143' TERM
 
 publish
 watch_pactl &
-pids+=("$!")
-watch_ip &
 pids+=("$!")
 watch_power &
 pids+=("$!")

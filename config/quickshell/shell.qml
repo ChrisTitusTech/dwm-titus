@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.SystemTray
 import qs.launcher
+import qs.network
 import qs.notifications
 import qs.panel
 import qs.power
@@ -27,6 +28,18 @@ ShellRoot {
 
     PowerMenuModel {
         id: powerMenuModel
+    }
+
+    NetworkModel {
+        id: networkModel
+    }
+
+    LazyLoader {
+        active: true
+
+        component: Item {
+            Component.onCompleted: networkModel.refresh()
+        }
     }
 
     NotificationModel {
@@ -62,6 +75,30 @@ ShellRoot {
 
         function toggle(): void {
             powerMenuModel.toggle();
+        }
+    }
+
+    IpcHandler {
+        target: "network"
+
+        function close(): void {
+            networkModel.close();
+        }
+
+        function open(): void {
+            networkModel.open();
+        }
+
+        function refresh(): void {
+            networkModel.refresh();
+        }
+
+        function status(): string {
+            return networkModel.statusText;
+        }
+
+        function toggle(): void {
+            networkModel.toggle();
         }
     }
 
@@ -128,6 +165,10 @@ ShellRoot {
         powerMenuModel: powerMenuModel
     }
 
+    NetworkWindow {
+        networkModel: networkModel
+    }
+
     NotificationPopupWindow {
         notificationModel: notificationModel
     }
@@ -139,5 +180,6 @@ ShellRoot {
     DwmPanel {
         state: dwmState
         clock: clock
+        networkModel: networkModel
     }
 }

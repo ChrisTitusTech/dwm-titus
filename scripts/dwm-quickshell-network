@@ -1,0 +1,117 @@
+#!/bin/sh
+set -eu
+
+tab=$(printf '\t')
+
+usage() {
+	printf '%s\n' "usage: dwm-quickshell-network status|devices|connections|connect <uuid>|disconnect <device>|editor" >&2
+	exit 2
+}
+
+need_nmcli() {
+	if ! command -v nmcli >/dev/null 2>&1; then
+		printf '%s\n' "nmcli not found" >&2
+		exit 127
+	fi
+}
+
+nmcli_tab() {
+	nmcli --terse --escape no --separator "$tab" "$@"
+}
+
+status() {
+	need_nmcli
+
+	nmcli_tab -f DEVICE,TYPE,STATE device status 2>/dev/null |
+		awk -F '\t' '
+			$1 != "lo" && $3 == "connected" {
+				print "NET " $1
+				found = 1
+				exit
+			}
+			END {
+				if (!found) {
+					print "NET offline"
+				}
+			}
+		'
+}
+
+devices() {
+	need_nmcli
+	nmcli_tab -f DEVICE,TYPE,STATE,CONNECTION device status
+}
+
+connections() {
+	need_nmcli
+
+	active=$(mktemp "${TMPDIR:-/tmp}/dwm-network-active.XXXXXX")
+	trap 'rm -f "$active"' EXIT
+
+	nmcli_tab -f NAME,UUID,TYPE,DEVICE connection show --active >"$active"
+	nmcli_tab -f NAME,UUID,TYPE connection show |
+		awk -F '\t' -v OFS='\t' '
+			NR == FNR {
+				active[$2] = 1
+				device[$2] = $4
+				next
+			}
+			{
+				print $1, $2, $3, (active[$2] ? "yes" : "no"), device[$2]
+			}
+		' "$active" -
+}
+
+connect_uuid() {
+	need_nmcli
+	[ "$#" -eq 1 ] || usage
+	nmcli connection up uuid "$1"
+}
+
+disconnect_device() {
+	need_nmcli
+	[ "$#" -eq 1 ] || usage
+	nmcli device disconnect "$1"
+}
+
+editor() {
+	if ! command -v nm-connection-editor >/dev/null 2>&1; then
+		printf '%s\n' "nm-connection-editor not found" >&2
+		exit 127
+	fi
+
+	exec nm-connection-editor
+}
+
+[ "$#" -ge 1 ] || usage
+
+command=$1
+shift
+
+case "$command" in
+status)
+	[ "$#" -eq 0 ] || usage
+	status
+	;;
+devices)
+	[ "$#" -eq 0 ] || usage
+	devices
+	;;
+connections)
+	[ "$#" -eq 0 ] || usage
+	connections
+	;;
+connect)
+	connect_uuid "$@"
+	;;
+disconnect)
+	disconnect_device "$@"
+	;;
+editor)
+	[ "$#" -eq 0 ] || usage
+	editor
+	;;
+*)
+	usage
+	;;
+esac

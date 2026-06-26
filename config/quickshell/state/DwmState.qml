@@ -47,7 +47,9 @@ Scope {
         }
 
         root.statusSegments = text.split(/\s+\|\s+| {2,}/).filter(function(segment) {
-            return segment.trim().length > 0;
+            const trimmed = segment.trim();
+
+            return trimmed.length > 0 && trimmed.indexOf("NET ") !== 0;
         });
     }
 
