@@ -21,6 +21,9 @@ case "$*" in
 "get-sink-volume @DEFAULT_SINK@")
 	printf 'Volume: front-left: 26214 / 40%% / -23.88 dB, front-right: 26214 / 40%% / -23.88 dB\n'
 	;;
+"get-source-mute @DEFAULT_SOURCE@")
+	printf 'Mute: %s\n' "${DWM_TEST_SOURCE_MUTE:-no}"
+	;;
 "set-sink-volume @DEFAULT_SINK@ +5%")
 	printf 'volume up\n' >>"$DWM_TEST_PACTL_LOG"
 	;;
@@ -45,6 +48,14 @@ DWM_TEST_SINK_MUTE=yes \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" volume-status >"$work/muted.out"
 grep -Fqx "VOL muted 40%" "$work/muted.out"
+
+PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" mic-status >"$work/mic.out"
+grep -Fqx "MIC on" "$work/mic.out"
+
+DWM_TEST_SOURCE_MUTE=yes \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" mic-status >"$work/mic-muted.out"
+grep -Fqx "MIC muted" "$work/mic-muted.out"
 
 DWM_TEST_PACTL_LOG="$work/pactl.log" \
 	PATH="$work/bin:$PATH" \
@@ -78,6 +89,9 @@ case "$*" in
 "get-volume @DEFAULT_AUDIO_SINK@")
 	printf 'Volume: 0.55%s\n' "${DWM_TEST_WPCTL_MUTED:-}"
 	;;
+"get-volume @DEFAULT_AUDIO_SOURCE@")
+	printf 'Volume: 0.70%s\n' "${DWM_TEST_WPCTL_SOURCE_MUTED:-}"
+	;;
 *)
 	printf 'unexpected wpctl call: %s\n' "$*" >&2
 	exit 1
@@ -93,6 +107,14 @@ DWM_TEST_WPCTL_MUTED=" [MUTED]" \
 	PATH="$work/bin:/usr/bin:/bin" \
 	"$repo/scripts/dwm-quickshell-controls" volume-status >"$work/wpctl-muted.out"
 grep -Fqx "VOL muted 55%" "$work/wpctl-muted.out"
+
+PATH="$work/bin:/usr/bin:/bin" "$repo/scripts/dwm-quickshell-controls" mic-status >"$work/wpctl-mic.out"
+grep -Fqx "MIC on" "$work/wpctl-mic.out"
+
+DWM_TEST_WPCTL_SOURCE_MUTED=" [MUTED]" \
+	PATH="$work/bin:/usr/bin:/bin" \
+	"$repo/scripts/dwm-quickshell-controls" mic-status >"$work/wpctl-mic-muted.out"
+grep -Fqx "MIC muted" "$work/wpctl-mic-muted.out"
 
 cat >"$work/bin/wpctl" <<'SH'
 #!/bin/sh

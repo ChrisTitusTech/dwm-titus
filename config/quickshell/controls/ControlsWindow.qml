@@ -11,7 +11,7 @@ FloatingWindow {
     title: "dwm controls"
     visible: controlsModel.visible
     implicitWidth: 360
-    implicitHeight: 190
+    implicitHeight: 230
     color: "#00000000"
 
     Rectangle {
@@ -119,6 +119,26 @@ FloatingWindow {
                     label: "Up"
                     enabled: !root.controlsModel.busy
                     onActivated: root.controlsModel.volumeUp()
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "Microphone"
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.smallFontSize
+                    font.bold: true
+                }
+
+                Text {
+                    text: root.controlsModel.micText
+                    color: root.controlsModel.micText === "MIC muted" ? "#bf616a" : Theme.text
+                    font.pixelSize: Theme.panelFontSize
+                    font.bold: true
                 }
             }
         }

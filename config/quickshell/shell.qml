@@ -125,6 +125,10 @@ ShellRoot {
             controlsModel.refresh();
         }
 
+        function micStatus(): string {
+            return controlsModel.micText;
+        }
+
         function toggle(): void {
             controlsModel.toggle();
         }

@@ -8,6 +8,7 @@ Scope {
     property bool visible: false
     property bool busy: false
     property string volumeText: "VOL unavailable"
+    property string micText: "MIC unavailable"
     property string message: ""
 
     function open() {
@@ -31,6 +32,9 @@ Scope {
     function refresh() {
         if (!volumeStatusProcess.running) {
             volumeStatusProcess.running = true;
+        }
+        if (!micStatusProcess.running) {
+            micStatusProcess.running = true;
         }
     }
 
@@ -68,6 +72,21 @@ Scope {
                 const text = this.text.trim();
 
                 root.volumeText = text.length > 0 ? text : "VOL unavailable";
+            }
+        }
+    }
+
+    Process {
+        id: micStatusProcess
+
+        command: Commands.controlsHelperCommand("mic-status")
+        running: false
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const text = this.text.trim();
+
+                root.micText = text.length > 0 ? text : "MIC unavailable";
             }
         }
     }

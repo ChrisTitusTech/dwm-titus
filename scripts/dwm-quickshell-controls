@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status" >&2
 	exit 2
 }
 
@@ -140,6 +140,62 @@ volume_toggle_mute() {
 	fi
 }
 
+mic_status_pactl() {
+	command -v pactl >/dev/null 2>&1 || return 1
+
+	pactl get-source-mute @DEFAULT_SOURCE@ 2>/dev/null |
+		awk '
+			/Mute:/ {
+				if ($2 == "yes") {
+					print "MIC muted"
+				} else {
+					print "MIC on"
+				}
+				found = 1
+				exit
+			}
+			END {
+				if (!found) {
+					exit 1
+				}
+			}
+		'
+}
+
+mic_status_wpctl() {
+	command -v wpctl >/dev/null 2>&1 || return 1
+
+	wpctl get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null |
+		awk '
+			/Volume:/ {
+				if ($0 ~ /\[MUTED\]/) {
+					print "MIC muted"
+				} else {
+					print "MIC on"
+				}
+				found = 1
+				exit
+			}
+			END {
+				if (!found) {
+					exit 1
+				}
+			}
+		'
+}
+
+mic_status() {
+	if mic_status_pactl; then
+		return 0
+	fi
+
+	if mic_status_wpctl; then
+		return 0
+	fi
+
+	printf '%s\n' "MIC unavailable"
+}
+
 [ "$#" -ge 1 ] || usage
 
 command=$1
@@ -161,6 +217,10 @@ volume-down)
 volume-toggle-mute)
 	[ "$#" -eq 0 ] || usage
 	volume_toggle_mute
+	;;
+mic-status)
+	[ "$#" -eq 0 ] || usage
+	mic_status
 	;;
 *)
 	usage
