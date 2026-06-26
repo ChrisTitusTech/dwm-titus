@@ -38,11 +38,17 @@ replacing Polybar, Rofi, Dunst, or other existing shell components.
     --log-times` from the active session exited with status 0 after the test
     timer and reported `Configuration Loaded`. `quickshell list` and
     `pgrep -a quickshell` confirmed no remaining Quickshell process.
-- [ ] Confirm Quickshell starts correctly inside the current Xorg session.
+- [x] Confirm Quickshell starts correctly inside the current Xorg session.
   - Acceptance: Quickshell starts with `XDG_SESSION_TYPE=x11` and the active
     window manager remains dwm.
   - Validation: record `echo "$XDG_SESSION_TYPE"`, `echo "$DESKTOP_SESSION"`,
     and the Quickshell launch result.
+  - Result: `XDG_SESSION_TYPE=x11`, `DESKTOP_SESSION=dwm`, and `DISPLAY=:0`.
+    `pgrep -a dwm` showed `/usr/local/bin/dwm`, and `wmctrl -m` reported
+    `Name: dwm`. Running
+    `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
+    --log-times` in that session exited with status 0 and reported
+    `Configuration Loaded`.
 - [ ] Confirm Quickshell does not interfere with the current window manager.
   - Acceptance: dwm focus, tagging, terminal launch, and existing keybindings
     still work while the minimal Quickshell process is running.
