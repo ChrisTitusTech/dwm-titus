@@ -158,8 +158,8 @@ available as the fallback until the Quickshell panel is usable.
     `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
     --log-times` reported `Configuration Loaded`; `quickshell list` showed the
     instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
-- [ ] Reserve screen space correctly.
-  - Status: implementation added, runtime validation pending a dwm restart.
+- [x] Reserve screen space correctly.
+  - Status: validated with a controlled rebuilt dwm launch under Xvfb.
   - Finding: this dwm fork does not reserve space from `_NET_WORKAREA`.
     Instead, `managealtbar()` records an external bar as `m->barwin`, copies
     its window height to `m->bh`, and `updatebarpos()` subtracts `m->bh` from
@@ -169,11 +169,19 @@ available as the fallback until the Quickshell panel is usable.
     keeps the existing Polybar `WM_CLASS=Polybar` path and also treats
     bar-shaped dock windows as altbars so Quickshell can enter the same
     `managealtbar()` reservation path after the rebuilt dwm is running.
-  - Validation so far: Quickshell inspection showed no `WM_CLASS` and
+  - Validation: Quickshell inspection showed no `WM_CLASS` and
     `_NET_WM_WINDOW_TYPE_DOCK`; `make clean`, `make`, and `git diff --check`
-    passed. Runtime reservation still needs a controlled dwm restart before
-    this checkbox is marked complete.
-- [ ] Match current bar height and monitor placement.
+    passed. After installing the rebuilt binary with `sudo make
+    install-system`, a controlled Xvfb session launched `/usr/local/bin/dwm`,
+    then launched Quickshell. `wmctrl -m` reported `Name: dwm`; the
+    Quickshell dock window was `1280x30` at `0,0`; and a normal tiled X11 test
+    client was placed at `y=60` with height `690`, confirming dwm reserved the
+    panel area before tiling clients.
+- [x] Match current bar height and monitor placement.
+  - Acceptance: the Quickshell panel uses the current top bar placement and
+    30px height.
+  - Validation: the controlled Xvfb session reported the Quickshell dock as
+    `1280x30` at `0,0`, matching the configured top panel height and placement.
 - [ ] Disable Polybar only after Quickshell panel is usable.
 
 ## Backlog
