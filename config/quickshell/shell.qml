@@ -11,6 +11,7 @@ ShellRoot {
     property string powerText: ""
     property string systemText: ""
     property string volumeText: ""
+    property string activeWindowTitle: ""
     property int currentWorkspace: 0
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
@@ -33,6 +34,8 @@ ShellRoot {
                 root.currentWorkspace = isNaN(parsed) ? 0 : parsed;
             } else if (key === "names") {
                 root.workspaceNames = value.length > 0 ? value.split("|") : [];
+            } else if (key === "title") {
+                root.activeWindowTitle = value;
             }
         }
     }
@@ -218,6 +221,15 @@ ShellRoot {
                                 onClicked: root.switchWorkspace(parent.index)
                             }
                         }
+                    }
+
+                    Text {
+                        Layout.maximumWidth: 360
+                        text: root.activeWindowTitle
+                        color: "#d8dee9"
+                        elide: Text.ElideRight
+                        font.pixelSize: 13
+                        verticalAlignment: Text.AlignVCenter
                     }
 
                     Item {
