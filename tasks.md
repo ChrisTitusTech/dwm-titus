@@ -49,10 +49,17 @@ replacing Polybar, Rofi, Dunst, or other existing shell components.
     `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
     --log-times` in that session exited with status 0 and reported
     `Configuration Loaded`.
-- [ ] Confirm Quickshell does not interfere with the current window manager.
+- [x] Confirm Quickshell does not interfere with the current window manager.
   - Acceptance: dwm focus, tagging, terminal launch, and existing keybindings
     still work while the minimal Quickshell process is running.
   - Validation: manually exercise the core workflow and record the result.
+  - Result: with the minimal Quickshell window running, `Super+X` launched an
+    Alacritty terminal, `Super+J` moved focus from the terminal back to the
+    Quickshell baseline window, `Super+2` changed `_NET_CURRENT_DESKTOP` from
+    0 to 1, and `Super+1` returned it to 0. The test terminal was closed with
+    `wmctrl -ic`, Quickshell was stopped, `quickshell list` and
+    `pgrep -a quickshell` confirmed no remaining instance, and `wmctrl -m`
+    still reported `Name: dwm`.
 - [ ] Add a temporary startup command while keeping Polybar and Rofi enabled.
   - Acceptance: Quickshell can be started with the session without removing
     the current fallback shell tools.
