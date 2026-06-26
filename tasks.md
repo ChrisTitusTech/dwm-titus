@@ -276,9 +276,65 @@ Validation notes:
   `config/quickshell/` so `sudo make install` cannot leave stale Quickshell
   code in the active session config.
 
+## Completed Phase: Replace Rofi App Launcher
+
+Goal: provide a Quickshell application launcher for the normal app-launching
+workflow while keeping Rofi available as a fallback during testing.
+
+- [x] Build launcher popup/window.
+  - Acceptance: Quickshell exposes a launcher surface that can open, close, and
+    toggle without Wayland-only APIs.
+  - Validation: `timeout 5 quickshell --path config/quickshell/shell.qml
+    --no-duplicate --no-color` reported `Configuration Loaded`, and temporary
+    `quickshell ipc --path config/quickshell/shell.qml call launcher open` and
+    `close` calls returned successfully.
+  - Result: `config/quickshell/shell.qml` includes a `FloatingWindow` launcher
+    and an `IpcHandler` target named `launcher`.
+- [x] Index `.desktop` applications.
+  - Acceptance: the launcher reads XDG application directories and excludes
+    hidden, `NoDisplay=true`, and non-application entries.
+  - Validation: `make check-quickshell-launcher` passed.
+  - Result: added `scripts/dwm-quickshell-launcher list` plus a focused test
+    using temporary `.desktop` files.
+- [x] Add search/filter input.
+  - Acceptance: the launcher opens with keyboard focus in a search field and
+    filters applications by useful desktop-entry text.
+  - Validation: the Quickshell config smoke test reported `Configuration
+    Loaded`.
+  - Result: the launcher filters by name, generic name, and comment.
+- [x] Launch selected app.
+  - Acceptance: selected desktop entries can be launched from the helper and
+    from the Quickshell result list.
+  - Validation: `make check-quickshell-launcher`, `make check-shell`, and
+    `make check-format` passed.
+  - Result: `scripts/dwm-quickshell-launcher launch <desktop-file>` prefers
+    `dex`, falls back to `gtk-launch`, then uses a parsed `Exec=` fallback.
+- [x] Add keyboard navigation.
+  - Acceptance: Up and Down move selection, Enter launches the selected app,
+    and Escape closes the launcher.
+  - Validation: the Quickshell config smoke test reported `Configuration
+    Loaded`.
+  - Result: keyboard handling is implemented in the launcher search field.
+- [x] Add close-on-launch behavior.
+  - Acceptance: launching through mouse or keyboard dismisses the launcher.
+  - Validation: inspected `launchApp()` and ran the Quickshell config smoke
+    test.
+  - Result: app activation starts the launch process and closes the launcher.
+- [x] Bind launcher open/close through WM keybinds.
+  - Acceptance: the normal app launcher key opens Quickshell; the old Rofi
+    path remains reachable during testing.
+  - Validation: `make check-build-config` passed.
+  - Result: `Super+r` runs `quickshell ipc call launcher toggle`, and
+    `Super+Shift+r` remains `rofi -show drun`.
+- [x] Keep Rofi installed as fallback during testing.
+  - Acceptance: Phase 4 does not remove Rofi packages, config, scripts, or
+    fallback keybinds.
+  - Validation: reviewed `config/hotkeys.toml` and package/config paths.
+  - Result: Rofi remains installed and available as the shifted launcher
+    fallback.
+
 ## Backlog
 
-- [ ] Replace the Rofi app launcher.
 - [ ] Add a Quickshell power/user menu.
 - [ ] Replace Dunst or other notification UI.
 - [ ] Move tray functionality into Quickshell.

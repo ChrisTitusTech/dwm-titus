@@ -103,21 +103,21 @@ Create a Quickshell launcher for desktop applications.
 
 ### Tasks
 
-- [ ] Build launcher popup/window
-- [ ] Index `.desktop` applications
-- [ ] Add search/filter input
-- [ ] Launch selected app
-- [ ] Add keyboard navigation
-- [ ] Add close-on-launch behavior
-- [ ] Bind launcher open/close through WM keybinds
-- [ ] Keep Rofi installed as fallback during testing
+- [x] Build launcher popup/window
+- [x] Index `.desktop` applications
+- [x] Add search/filter input
+- [x] Launch selected app
+- [x] Add keyboard navigation
+- [x] Add close-on-launch behavior
+- [x] Bind launcher open/close through WM keybinds
+- [x] Keep Rofi installed as fallback during testing
 
 ### Exit Criteria
 
-- Quickshell launcher can replace normal app-launching workflow
-- Keyboard navigation feels reliable
-- Launcher opens quickly enough for daily use
-- Rofi can be removed from normal keybinds
+- [x] Quickshell launcher can replace normal app-launching workflow
+- [x] Keyboard navigation feels reliable
+- [x] Launcher opens quickly enough for daily use
+- [ ] Rofi can be removed from normal keybinds
 
 ---
 

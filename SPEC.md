@@ -119,7 +119,32 @@ The project must support:
 
 Missing optional components must be logged or skipped without terminating dwm.
 
-### 5.4 Installer
+### 5.4 Quickshell Launcher
+
+The Quickshell shell layer must provide an X11-compatible application launcher
+that can become the normal app-launching workflow while Rofi remains available
+as a fallback during migration.
+
+The launcher must:
+
+1. Open, close, and toggle through Quickshell IPC so dwm keybindings can
+   control it without depending on Wayland global shortcuts.
+2. Index desktop applications from the XDG `.desktop` application directories.
+3. Ignore hidden, `NoDisplay=true`, and non-application desktop entries.
+4. Provide a search-first UI with keyboard focus on open.
+5. Filter by application name, generic name, and comment.
+6. Support keyboard navigation, mouse activation, Escape-to-close, and
+   close-on-launch behavior.
+7. Launch applications through a helper that prefers standard desktop-entry
+   launchers when available and preserves a terminal fallback for
+   `Terminal=true` entries.
+8. Avoid Wayland-only shell, compositor, layer-shell, or global-shortcut APIs.
+
+The launcher may follow a modular QML structure with small helper scripts,
+IPC-facing open/close/toggle functions, and reusable list/delegate patterns,
+but X11/EWMH behavior remains the compatibility boundary for this project.
+
+### 5.5 Installer
 
 The supported installation flow must:
 
@@ -143,7 +168,7 @@ The installer must not require an AUR helper. On RHEL-family systems it may
 explain when an optional component requires EPEL or another repository, but it
 must not enable third-party repositories without user confirmation.
 
-### 5.5 Build System
+### 5.6 Build System
 
 The build must:
 
@@ -168,7 +193,7 @@ Required native interfaces and libraries currently include:
 - freetype headers
 - standard Linux/POSIX process and filesystem interfaces
 
-### 5.6 Dependency Mapping
+### 5.7 Dependency Mapping
 
 Package names differ by release and derivative. The maintained dependency map
 must cover the equivalent of these capabilities:

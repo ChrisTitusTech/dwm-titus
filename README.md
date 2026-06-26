@@ -114,11 +114,11 @@ wallpapers, tray tools, and hardware helpers as optional degraded features.
 
 On x86_64, the installer downloads the latest Vicinae AppImage from the
 official GitHub release, verifies the release-provided SHA-256 digest, extracts
-it, enables `vicinae.service` for the current user, and uses Vicinae for
-<kbd>SUPER</kbd> + <kbd>R</kbd>. Rofi remains available on
-<kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> and is still used by the
-control center and keybind viewer. If the optional download fails, installation
-continues without Vicinae.
+it, and enables `vicinae.service` for the current user. The normal app launcher
+binding is the Quickshell launcher on <kbd>SUPER</kbd> + <kbd>R</kbd>. Rofi
+remains available on <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> and is
+still used by the control center and keybind viewer. If the optional Vicinae
+download fails, installation continues without Vicinae.
 
 ---
 
@@ -133,8 +133,8 @@ See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 | Keybind | Action |
 |---------|--------|
 | <kbd>SUPER</kbd> + <kbd>X</kbd> | Open terminal |
-| <kbd>SUPER</kbd> + <kbd>R</kbd> | Toggle Vicinae |
-| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> | Launch rofi |
+| <kbd>SUPER</kbd> + <kbd>R</kbd> | Toggle Quickshell launcher |
+| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> | Launch rofi fallback |
 | <kbd>SUPER</kbd> + <kbd>Q</kbd> | Close window |
 | <kbd>SUPER</kbd> + <kbd>J</kbd> / <kbd>K</kbd> | Focus next / previous window |
 | <kbd>SUPER</kbd> + <kbd>H</kbd> / <kbd>L</kbd> | Resize master area |

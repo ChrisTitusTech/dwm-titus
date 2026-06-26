@@ -9,7 +9,8 @@ Press <kbd>Super</kbd> + <kbd>/</kbd> at any time to open the interactive keybin
 | Action | Keys |
 |--------|------|
 | Open terminal | `Super` + `X` |
-| App launcher (rofi) | `Super` + `R` |
+| App launcher (Quickshell) | `Super` + `R` |
+| App launcher fallback (rofi) | `Super` + `Shift` + `R` |
 | Close window | `Super` + `Q` |
 | Power menu | `Super` + `Ctrl` + `Q` |
 | Control Center | `Super` + `F1` |
@@ -36,4 +37,3 @@ Three layouts are available — switch between them instantly.
 | Fullscreen (monocle) | `Super` + `M` |
 
 See [Keybindings](./keybinds.md) for the full reference.
-
