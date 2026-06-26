@@ -53,6 +53,17 @@ ShellRoot {
 
         launcherLaunchProcess.command = ["sh", "-c", "if command -v dwm-quickshell-launcher >/dev/null 2>&1; then exec dwm-quickshell-launcher launch \"$1\"; fi; data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; exec \"$data_dir/scripts/dwm-quickshell-launcher\" launch \"$1\"", "dwm-quickshell-launcher", app.desktopFile];
         launcherLaunchProcess.running = true;
+        root.closeLauncher();
+    }
+
+    function launchSelectedApp() {
+        const apps = root.filteredLauncherApps();
+
+        if (apps.length === 0) {
+            return;
+        }
+
+        root.launchApp(apps[root.selectedLauncherIndex]);
     }
 
     function openLauncher() {
@@ -90,8 +101,24 @@ ShellRoot {
         root.selectedLauncherIndex = 0;
     }
 
+    function selectLauncherRelative(delta) {
+        const apps = root.filteredLauncherApps();
+
+        if (apps.length === 0) {
+            root.selectedLauncherIndex = 0;
+            return;
+        }
+
+        root.selectedLauncherIndex = (root.selectedLauncherIndex + delta + apps.length) % apps.length;
+        launcherResults.positionViewAtIndex(root.selectedLauncherIndex, ListView.Contain);
+    }
+
     function toggleLauncher() {
-        root.launcherVisible = !root.launcherVisible;
+        if (root.launcherVisible) {
+            root.closeLauncher();
+        } else {
+            root.openLauncher();
+        }
     }
 
     function updateWorkspaceState(text) {
@@ -321,6 +348,22 @@ ShellRoot {
                         onTextChanged: {
                             root.launcherQuery = text;
                             root.selectedLauncherIndex = 0;
+                        }
+
+                        Keys.onPressed: function(event) {
+                            if (event.key === Qt.Key_Down) {
+                                root.selectLauncherRelative(1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Up) {
+                                root.selectLauncherRelative(-1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                root.launchSelectedApp();
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Escape) {
+                                root.closeLauncher();
+                                event.accepted = true;
+                            }
                         }
                     }
 
