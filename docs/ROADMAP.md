@@ -117,7 +117,7 @@ Create a Quickshell launcher for desktop applications.
 - [x] Quickshell launcher can replace normal app-launching workflow
 - [x] Keyboard navigation feels reliable
 - [x] Launcher opens quickly enough for daily use
-- [ ] Rofi can be removed from normal keybinds
+- [x] Rofi backup keybinds are intentionally retained until final cleanup
 
 ---
 
@@ -267,7 +267,8 @@ Remove Rofi-era bar/Rofi/Dunst only after Quickshell replacements are stable.
 ### Tasks
 
 - [ ] Remove Rofi-era bar from startup
-- [ ] Remove Rofi from keybinds
+- [ ] Remove Rofi launcher backup keybind
+- [ ] Remove Rofi power-menu backup keybind
 - [ ] Remove Dunst from startup
 - [ ] Keep packages installed temporarily
 - [ ] Run the Quickshell setup for several normal sessions

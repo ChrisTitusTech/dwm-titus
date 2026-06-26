@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.SystemTray
+import Quickshell.Widgets
 
 ShellRoot {
     id: root
@@ -9,7 +11,6 @@ ShellRoot {
     property string clockText: ""
     property string networkText: ""
     property string powerText: ""
-    property string systemText: ""
     property string volumeText: ""
     property string activeWindowTitle: "Desktop"
     property int currentWorkspace: 0
@@ -84,6 +85,58 @@ ShellRoot {
         }
 
         root.launchApp(apps[root.selectedLauncherIndex]);
+    }
+
+    function launcherIcon(iconName) {
+        if (iconName.length > 0) {
+            return Quickshell.iconPath(iconName, true);
+        }
+
+        return Quickshell.iconPath("application-x-executable", true);
+    }
+
+    function trayIconSource(trayItem) {
+        const icon = trayItem && trayItem.icon;
+
+        if (typeof icon !== "string" && !(icon instanceof String)) {
+            return "";
+        }
+
+        if (icon.length === 0) {
+            return "";
+        }
+
+        if (icon.indexOf("?path=") >= 0) {
+            const parts = icon.split("?path=");
+
+            if (parts.length !== 2) {
+                return icon;
+            }
+
+            let fileName = parts[0].substring(parts[0].lastIndexOf("/") + 1);
+
+            if (fileName.indexOf("dropboxstatus") === 0) {
+                fileName = "hicolor/16x16/status/" + fileName;
+            }
+
+            return "file://" + parts[1] + "/" + fileName;
+        }
+
+        if (icon.indexOf("/") === 0 && icon.indexOf("file://") !== 0) {
+            return "file://" + icon;
+        }
+
+        return icon;
+    }
+
+    function openTrayMenu(trayItem, anchorItem) {
+        if (!trayItem || !trayItem.hasMenu) {
+            return;
+        }
+
+        const point = anchorItem.mapToItem(panelWindow.contentItem, anchorItem.width / 2, anchorItem.height);
+
+        trayItem.display(panelWindow, Math.round(point.x), Math.round(point.y));
     }
 
     function openLauncher() {
@@ -208,17 +261,6 @@ ShellRoot {
     }
 
     Process {
-        id: systemProcess
-
-        command: ["sh", "-c", "load=$(cut -d ' ' -f1 /proc/loadavg); mem=$(awk '/MemTotal/ { total = $2 } /MemAvailable/ { available = $2 } END { printf \"%d\", (total - available) * 100 / total }' /proc/meminfo); printf 'CPU %s  RAM %s%%' \"$load\" \"$mem\""]
-        running: true
-
-        stdout: StdioCollector {
-            onStreamFinished: root.systemText = this.text.trim()
-        }
-    }
-
-    Process {
         id: networkProcess
 
         command: ["sh", "-c", "iface=$(ip route show default 2>/dev/null | awk 'NR == 1 { print $5 }'); if [ -n \"$iface\" ]; then state=$(cat \"/sys/class/net/$iface/operstate\" 2>/dev/null || printf unknown); printf 'NET %s %s' \"$iface\" \"$state\"; else printf 'NET offline'; fi"]
@@ -297,17 +339,6 @@ ShellRoot {
         onTriggered: {
             if (!dateProcess.running) {
                 dateProcess.running = true;
-            }
-        }
-    }
-
-    Timer {
-        interval: 15000
-        running: true
-        repeat: true
-        onTriggered: {
-            if (!systemProcess.running) {
-                systemProcess.running = true;
             }
         }
     }
@@ -401,16 +432,18 @@ ShellRoot {
                         }
 
                         Keys.onPressed: function(event) {
-                            if (event.key === Qt.Key_Down) {
+                            const ctrl = event.modifiers & Qt.ControlModifier;
+
+                            if (event.key === Qt.Key_Down || (event.key === Qt.Key_N && ctrl)) {
                                 root.selectLauncherRelative(1);
                                 event.accepted = true;
-                            } else if (event.key === Qt.Key_Up) {
+                            } else if (event.key === Qt.Key_Up || (event.key === Qt.Key_P && ctrl)) {
                                 root.selectLauncherRelative(-1);
                                 event.accepted = true;
                             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                                 root.launchSelectedApp();
                                 event.accepted = true;
-                            } else if (event.key === Qt.Key_Escape) {
+                            } else if (event.key === Qt.Key_Escape || (event.key === Qt.Key_C && ctrl)) {
                                 root.closeLauncher();
                                 event.accepted = true;
                             }
@@ -460,30 +493,42 @@ ShellRoot {
                             onClicked: root.launchApp(parent.modelData)
                         }
 
-                        Column {
+                        RowLayout {
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.leftMargin: 12
                             anchors.rightMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 3
+                            spacing: 10
 
-                            Text {
-                                width: parent.width
-                                text: modelData.name
-                                color: "#d8dee9"
-                                font.pixelSize: 14
-                                font.bold: index === root.selectedLauncherIndex
-                                elide: Text.ElideRight
+                            IconImage {
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+                                Layout.alignment: Qt.AlignVCenter
+                                source: root.launcherIcon(modelData.icon)
                             }
 
-                            Text {
-                                width: parent.width
-                                text: modelData.generic.length > 0 ? modelData.generic : modelData.comment
-                                color: "#aeb7c4"
-                                font.pixelSize: 12
-                                elide: Text.ElideRight
-                                visible: text.length > 0
+                            Column {
+                                Layout.fillWidth: true
+                                spacing: 3
+
+                                Text {
+                                    width: parent.width
+                                    text: modelData.name
+                                    color: "#d8dee9"
+                                    font.pixelSize: 14
+                                    font.bold: index === root.selectedLauncherIndex
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: modelData.generic.length > 0 ? modelData.generic : modelData.comment
+                                    color: "#aeb7c4"
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
+                                    visible: text.length > 0
+                                }
                             }
                         }
                     }
@@ -493,6 +538,8 @@ ShellRoot {
     }
 
     PanelWindow {
+        id: panelWindow
+
         implicitHeight: 30
         color: "#2e3440"
         exclusiveZone: 30
@@ -581,11 +628,72 @@ ShellRoot {
                 verticalAlignment: Text.AlignVCenter
             }
 
-            Text {
-                text: root.systemText
-                color: "#d8dee9"
-                font.pixelSize: 13
-                verticalAlignment: Text.AlignVCenter
+            RowLayout {
+                visible: SystemTray.items.values.length > 0
+                spacing: 2
+
+                Repeater {
+                    model: SystemTray.items.values
+
+                    delegate: Rectangle {
+                        id: trayItemRoot
+
+                        required property var modelData
+
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 3
+                        color: trayMouse.containsMouse ? "#3b4252" : "transparent"
+
+                        IconImage {
+                            id: trayIcon
+
+                            anchors.centerIn: parent
+                            width: 18
+                            height: 18
+                            source: root.trayIconSource(parent.modelData)
+                            asynchronous: true
+                            smooth: true
+                            mipmap: true
+                            visible: status === Image.Ready
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            visible: !trayIcon.visible
+                            text: {
+                                const title = parent.modelData.tooltipTitle || parent.modelData.title || parent.modelData.id || "?";
+                                return title.length > 0 ? title.charAt(0).toUpperCase() : "?";
+                            }
+                            color: "#d8dee9"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: trayMouse
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                            cursorShape: Qt.PointingHandCursor
+
+                            onClicked: function(mouse) {
+                                if (mouse.button === Qt.LeftButton) {
+                                    if (!parent.modelData.onlyMenu) {
+                                        parent.modelData.activate();
+                                    } else if (parent.modelData.hasMenu) {
+                                        root.openTrayMenu(parent.modelData, parent);
+                                    }
+                                } else if (mouse.button === Qt.MiddleButton) {
+                                    parent.modelData.secondaryActivate();
+                                } else if (mouse.button === Qt.RightButton && parent.modelData.hasMenu) {
+                                    root.openTrayMenu(parent.modelData, parent);
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             Text {
