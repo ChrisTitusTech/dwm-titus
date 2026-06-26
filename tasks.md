@@ -9,10 +9,14 @@ in `SPEC.md`.
 Goal: install Quickshell and confirm it works reliably under Xorg before
 replacing Polybar, Rofi, Dunst, or other existing shell components.
 
-- [ ] Install Quickshell.
+- [x] Install Quickshell.
   - Acceptance: `quickshell --version` or the equivalent package command
     confirms Quickshell is installed.
   - Validation: record the installed version and package source.
+  - Result: installed `quickshell-0.2.1^git20260209.dacfa9d-3.fc44` from the
+    Fedora updates repository with `jemalloc-5.3.0-14.fc44` as a dependency.
+    `quickshell --version` reports `quickshell 0.2.1`, revision
+    `dacfa9de829ac7cb173825f593236bf2c21f637e`, distributed by Fedora Project.
 - [ ] Create the base Quickshell config directory.
   - Acceptance: the config lives under the expected XDG config path and does
     not replace existing dwm, Polybar, Rofi, or Dunst configuration.
