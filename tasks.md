@@ -95,7 +95,19 @@ available as the fallback until the Quickshell panel is usable.
     instance on `x11,:0`; `wmctrl -m` still reported `Name: dwm`; and
     `quickshell list` confirmed no running instance after stopping the test
     process.
-- [ ] Add clock/date.
+- [x] Add clock/date.
+  - Acceptance: the panel displays a live date/time value without creating one
+    process loop per monitor.
+  - Validation: launch the config in the active Xorg/dwm session and confirm
+    Quickshell loads, remains listed as an X11 instance, and the date command
+    used by the panel returns the expected format.
+  - Result: added one shared `clockText` property, a `date` process, and a
+    repeating timer to `config/quickshell/shell.qml`. The panel now binds its
+    right-side text to `root.clockText`. Running
+    `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
+    --log-times` reported `Configuration Loaded`; `quickshell list` showed the
+    instance on `x11,:0`; `date '+%a %b %d  %H:%M'` returned the expected
+    format; and `wmctrl -m` still reported `Name: dwm`.
 - [ ] Add CPU/RAM indicators.
 - [ ] Add network indicator.
 - [ ] Add volume indicator.
