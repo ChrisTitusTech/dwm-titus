@@ -492,9 +492,18 @@ clients.
     tray app validation.
 - [ ] Test tray apps.
   - [ ] Network manager applet
+    - Validation: `nm-applet` is running and exposes XEmbed tray windows
+      (`NetworkManager Applet` and the active connection window), but it is not
+      registered with Quickshell's StatusNotifier watcher on this host.
   - [ ] Audio applet if used
   - [ ] Discord/Steam/etc.
   - [ ] Syncthing/Nextcloud/etc.
+  - [x] Current host SNI tray clients
+    - Validation: `busctl --user get-property org.kde.StatusNotifierWatcher
+      /StatusNotifierWatcher org.kde.StatusNotifierWatcher
+      RegisteredStatusNotifierItems` returned two SNI items. The live
+      Quickshell IPC helpers returned `tray count = 2` and tray ids
+      `flameshot` and `blueman`.
 - [ ] Confirm left-click/right-click behavior.
 - [ ] Confirm icons scale correctly.
 
