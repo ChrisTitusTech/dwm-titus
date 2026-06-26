@@ -11,6 +11,31 @@ ShellRoot {
     property string powerText: ""
     property string systemText: ""
     property string volumeText: ""
+    property int currentWorkspace: 0
+    property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+    function updateWorkspaceState(text) {
+        const lines = text.trim().split("\n");
+
+        for (const line of lines) {
+            const separator = line.indexOf("=");
+
+            if (separator < 0) {
+                continue;
+            }
+
+            const key = line.slice(0, separator);
+            const value = line.slice(separator + 1);
+
+            if (key === "current") {
+                const parsed = parseInt(value, 10);
+
+                root.currentWorkspace = isNaN(parsed) ? 0 : parsed;
+            } else if (key === "names") {
+                root.workspaceNames = value.length > 0 ? value.split("|") : [];
+            }
+        }
+    }
 
     Process {
         id: dateProcess
@@ -67,6 +92,17 @@ ShellRoot {
         }
     }
 
+    Process {
+        id: workspaceProcess
+
+        command: ["dwm-quickshell-state"]
+        running: true
+
+        stdout: StdioCollector {
+            onStreamFinished: root.updateWorkspaceState(this.text)
+        }
+    }
+
     Timer {
         interval: 1000
         running: true
@@ -102,6 +138,13 @@ ShellRoot {
         onTriggered: powerProcess.running = true
     }
 
+    Timer {
+        interval: 1000
+        running: true
+        repeat: true
+        onTriggered: workspaceProcess.running = true
+    }
+
     Variants {
         model: Quickshell.screens
 
@@ -133,6 +176,21 @@ ShellRoot {
                         font.pixelSize: 13
                         font.bold: true
                         verticalAlignment: Text.AlignVCenter
+                    }
+
+                    Repeater {
+                        model: root.workspaceNames
+
+                        delegate: Text {
+                            required property int index
+                            required property string modelData
+
+                            text: modelData
+                            color: index === root.currentWorkspace ? "#81a1c1" : "#d8dee9"
+                            font.pixelSize: 13
+                            font.bold: index === root.currentWorkspace
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
 
                     Item {
