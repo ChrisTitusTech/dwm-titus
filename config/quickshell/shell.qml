@@ -13,7 +13,20 @@ ShellRoot {
     property string volumeText: ""
     property string activeWindowTitle: "Desktop"
     property int currentWorkspace: 0
+    property bool launcherVisible: false
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+    function closeLauncher() {
+        root.launcherVisible = false;
+    }
+
+    function openLauncher() {
+        root.launcherVisible = true;
+    }
+
+    function toggleLauncher() {
+        root.launcherVisible = !root.launcherVisible;
+    }
 
     function updateWorkspaceState(text) {
         const lines = text.trim().split("\n");
@@ -43,6 +56,22 @@ ShellRoot {
     function switchWorkspace(index) {
         switchWorkspaceProcess.command = ["dwm-quickshell-state", "switch", index.toString()];
         switchWorkspaceProcess.running = true;
+    }
+
+    IpcHandler {
+        target: "launcher"
+
+        function close(): void {
+            root.closeLauncher();
+        }
+
+        function open(): void {
+            root.openLauncher();
+        }
+
+        function toggle(): void {
+            root.toggleLauncher();
+        }
     }
 
     Process {
@@ -154,6 +183,64 @@ ShellRoot {
         running: true
         repeat: true
         onTriggered: powerProcess.running = true
+    }
+
+    FloatingWindow {
+        id: launcherWindow
+
+        title: "dwm launcher"
+        visible: root.launcherVisible
+        implicitWidth: 620
+        implicitHeight: 430
+        color: "#00000000"
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#2e3440"
+            border.color: "#4c566a"
+            border.width: 1
+            radius: 4
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 12
+
+                Text {
+                    text: "Applications"
+                    color: "#d8dee9"
+                    font.pixelSize: 18
+                    font.bold: true
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 42
+                    color: "#3b4252"
+                    radius: 4
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Launcher UI ready"
+                        color: "#d8dee9"
+                        font.pixelSize: 14
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "Desktop application indexing will be added in the next task."
+                    color: "#aeb7c4"
+                    font.pixelSize: 13
+                    wrapMode: Text.WordWrap
+                }
+
+                Item {
+                    Layout.fillHeight: true
+                }
+            }
+        }
     }
 
     Variants {
