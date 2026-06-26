@@ -45,7 +45,7 @@ dwm_packages() {
 		printf '%s\n' lightdm lightdm-slick-greeter
 		;;
 	arch:terminal)
-		printf '%s\n' alacritty ghostty kitty
+		printf '%s\n' alacritty kitty
 		;;
 	arch:terminal-arm)
 		printf '%s\n' alacritty kitty

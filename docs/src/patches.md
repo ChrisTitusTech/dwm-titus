@@ -31,7 +31,7 @@ When a GUI application is launched from a terminal, it replaces the terminal in 
 
 Controlled via window rules in `config.h`:
 ```c
-{ "ghostty", NULL, NULL, 0, 0, 1, 0, -1 },  /* isterminal = 1 */
+{ "Alacritty", NULL, NULL, 0, 0, 1, 0, -1 },  /* isterminal = 1 */
 ```
 
 ### Fullscreen (3-State)

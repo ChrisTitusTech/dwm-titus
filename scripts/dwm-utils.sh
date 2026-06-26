@@ -145,7 +145,7 @@ is_laptop() {
 
 # Detect first available terminal emulator
 detect_terminal() {
-	for t in alacritty ghostty kitty st warp-terminal xterm; do
+	for t in alacritty kitty st warp-terminal xterm; do
 		if command -v "$t" &>/dev/null; then
 			echo "$t"
 			return

@@ -185,7 +185,7 @@ Key things to customize in `config.h`:
 - Run manually: `quickshell --no-duplicate`
 
 **Terminal doesn't open (SUPER+X):**
-- Install a terminal emulator (`alacritty`, `ghostty`, `kitty`, `st`,
+- Install a terminal emulator (`alacritty`, `kitty`, `st`,
   `warp-terminal`, or `xterm`)
 - Or set `DWM_TERMINAL` / edit `hotkeys.toml` to use your preferred terminal
 - Browser defaults: run `dwm-default-apps browsers`, then

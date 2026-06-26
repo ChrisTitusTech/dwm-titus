@@ -57,7 +57,6 @@ Each `[theme.name]` section sets colors for all components:
 | `selfgcolor` / `selbgcolor` / `selbordercolor` | Focused window and active tag |
 | `term_bg` / `term_fg` / `term_cursor` | Terminal background, text, cursor |
 | `term_color0`–`term_color15` | Full 16-color terminal palette |
-| `ghostty_theme` | Ghostty built-in theme name |
 | `rofi_theme` | Rofi `.rasi` theme (filename without extension) |
 | `dark_mode` | GTK dark preference and Capitaine cursor variant (`true` / `false`) |
 
@@ -81,7 +80,6 @@ term_fg         = "#cdd6f4"
 term_cursor     = "#f5e0dc"
 # ... term_color0–15 ...
 
-ghostty_theme   = "Catppuccin Mocha"
 rofi_theme      = "sidetab-catppuccin"
 dark_mode       = true
 ```

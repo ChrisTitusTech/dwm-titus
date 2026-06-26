@@ -10,7 +10,7 @@ trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/bin" "$work/home/.config"
 
-for cmd in cc make Xorg startx xrandr xset xsetroot ghostty; do
+for cmd in cc make Xorg startx xrandr xset xsetroot alacritty; do
 	cat >"$work/bin/$cmd" <<'SCRIPT'
 #!/bin/sh
 exit 0
@@ -35,7 +35,7 @@ grep -Fqx "  required_failures=0" "$work/ok"
 grep -Fq "Optional desktop" "$work/ok"
 grep -Fq "degraded rofi" "$work/ok"
 
-rm -f "$work/bin/ghostty" "$work/bin/Xorg"
+rm -f "$work/bin/alacritty" "$work/bin/Xorg"
 
 if env HOME="$work/home" PATH="$work/bin" "$BASH_BIN" "$HELPER" >"$work/fail" 2>"$work/err"; then
 	echo "diagnostics passed despite missing required commands" >&2

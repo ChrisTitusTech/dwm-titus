@@ -4,7 +4,7 @@
 # Called automatically by DWM on config reload (SIGUSR1 / file save).
 # Can also be run manually: theme-apply.sh
 #
-# Updates: alacritty · kitty · ghostty · rofi · GTK · Qt
+# Updates: alacritty · kitty · rofi · GTK · Qt
 
 set -euo pipefail
 
@@ -66,7 +66,6 @@ TERM_C13="$(theme_get term_color13)"
 TERM_C14="$(theme_get term_color14)"
 TERM_C15="$(theme_get term_color15)"
 
-GHOSTTY_THEME="$(theme_get ghostty_theme)"
 ROFI_THEME="$(theme_get rofi_theme)"
 
 DARK_MODE="$(theme_get dark_mode)"
@@ -172,21 +171,6 @@ EOF
 	if command -v kitty &>/dev/null; then
 		kill -SIGUSR1 "$(pgrep -x kitty)" 2>/dev/null || true
 	fi
-fi
-
-# ══════════════════════════════════════════════════════════════════════════════
-# GHOSTTY — update ~/.config/ghostty/config
-# ══════════════════════════════════════════════════════════════════════════════
-GHOSTTY_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty/config"
-if [[ -n "$GHOSTTY_THEME" && -f "$GHOSTTY_CFG" ]]; then
-	if grep -q "^theme[[:space:]]*=" "$GHOSTTY_CFG"; then
-		sed -i "s|^theme[[:space:]]*=.*|theme = $GHOSTTY_THEME|" "$GHOSTTY_CFG"
-	else
-		echo "theme = $GHOSTTY_THEME" >>"$GHOSTTY_CFG"
-	fi
-	# Remove any manually set background/foreground so the named theme controls colors
-	sed -i '/^background[[:space:]]*=[^=]/d' "$GHOSTTY_CFG"
-	sed -i '/^foreground[[:space:]]*=[^=]/d' "$GHOSTTY_CFG"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════

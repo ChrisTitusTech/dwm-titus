@@ -36,7 +36,7 @@ Or use the [Control Center](./control-center.md) → **System Health**.
 ## Terminal Won't Open (`Super`+`X`)
 
 - Run `dwm-terminal` from an existing shell to see the exact fallback message
-- Install a supported terminal: `alacritty`, `ghostty`, `kitty`, `st`,
+- Install a supported terminal: `alacritty`, `kitty`, `st`,
   `warp-terminal`, or `xterm`
 - Or set a fixed terminal in `config/hotkeys.toml`:
   ```toml

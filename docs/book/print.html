@@ -38,7 +38,7 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-c33f0205.js";
+            window.path_to_searchindex_js = "searchindex-70a45a99.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e4ab374d.js"></script>
@@ -673,7 +673,6 @@ borderpx = 1   # 0 = no border, 1 = thin (default), 2-3 = thicker
 <tr><td><code>selfgcolor</code> / <code>selbgcolor</code> / <code>selbordercolor</code></td><td>Focused window and active tag</td></tr>
 <tr><td><code>term_bg</code> / <code>term_fg</code> / <code>term_cursor</code></td><td>Terminal background, text, cursor</td></tr>
 <tr><td><code>term_color0</code>–<code>term_color15</code></td><td>Full 16-color terminal palette</td></tr>
-<tr><td><code>ghostty_theme</code></td><td>Ghostty built-in theme name</td></tr>
 <tr><td><code>rofi_theme</code></td><td>Rofi <code>.rasi</code> theme (filename without extension)</td></tr>
 <tr><td><code>dark_mode</code></td><td>GTK dark preference and Capitaine cursor variant (<code>true</code> / <code>false</code>)</td></tr>
 </tbody>
@@ -695,7 +694,6 @@ term_fg         = "#cdd6f4"
 term_cursor     = "#f5e0dc"
 # ... term_color0–15 ...
 
-ghostty_theme   = "Catppuccin Mocha"
 rofi_theme      = "sidetab-catppuccin"
 dark_mode       = true
 </code></pre>
@@ -711,7 +709,7 @@ dark_mode       = true
 <p>Place images in <code>~/Pictures/backgrounds/</code>. Use <code>Super</code> + <code>Shift</code> + <code>W</code> to randomize, or set a specific one:</p>
 <pre><code class="language-bash">feh --bg-fill ~/Pictures/backgrounds/mywall.jpg
 </code></pre>
-<footer id="last-change-4">Last change: <time datetime="2026-06-24">2026-06-24</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change-4">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="control-center"><a class="header" href="#control-center">Control Center</a></h1>
 <p>The Control Center is a rofi-based menu providing system health, quick actions, appearance settings, and more.</p>
 <p><strong>Open:</strong> <kbd>Super</kbd> + <kbd>F1</kbd> — or run <code>dwm-controlcenter</code> from a terminal.</p>
@@ -724,7 +722,7 @@ dark_mode       = true
 <li>Build tools (<code>cc</code>, <code>make</code>) and required libraries</li>
 <li>Xorg / Xlibre installation</li>
 <li>Runtime programs: rofi, picom, dunst, feh, flameshot</li>
-<li>Terminal emulators (alacritty, ghostty, kitty, st)</li>
+<li>Terminal emulators (alacritty, kitty, st)</li>
 <li>Fonts: MesloLGS Nerd, Noto Color Emoji</li>
 <li>Running services: picom, dunst, NetworkManager</li>
 <li>Config paths: <code>.xinitrc</code>, rofi dir, wallpaper folder</li>
@@ -767,8 +765,8 @@ dark_mode       = true
 <h2 id="running-from-terminal"><a class="header" href="#running-from-terminal">Running from Terminal</a></h2>
 <pre><code class="language-bash">dwm-controlcenter
 </code></pre>
-<p>The script auto-detects your terminal emulator (alacritty -&gt; ghostty -&gt; kitty -&gt; st -&gt; xterm) and uses the active rofi theme from <code>~/.config/rofi/themes/controlcenter.rasi</code>.</p>
-<footer id="last-change-5">Last change: <time datetime="2026-06-24">2026-06-24</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<p>The script auto-detects your terminal emulator (alacritty -&gt; kitty -&gt; st -&gt; xterm) and uses the active rofi theme from <code>~/.config/rofi/themes/controlcenter.rasi</code>.</p>
+<footer id="last-change-5">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="patches--features"><a class="header" href="#patches--features">Patches &amp; Features</a></h1>
 <p>dwm-titus is a heavily patched build. Below is every addition on top of stock dwm.</p>
 <hr>
@@ -805,7 +803,7 @@ dark_mode       = true
 <h3 id="window-swallowing"><a class="header" href="#window-swallowing">Window Swallowing</a></h3>
 <p>When a GUI application is launched from a terminal, it replaces the terminal in the layout. Closing the app brings the terminal back.</p>
 <p>Controlled via window rules in <code>config.h</code>:</p>
-<pre><code class="language-c">{ "ghostty", NULL, NULL, 0, 0, 1, 0, -1 },  /* isterminal = 1 */
+<pre><code class="language-c">{ "Alacritty", NULL, NULL, 0, 0, 1, 0, -1 },  /* isterminal = 1 */
 </code></pre>
 <h3 id="fullscreen-3-state"><a class="header" href="#fullscreen-3-state">Fullscreen (3-State)</a></h3>
 <p>Three fullscreen modes available:</p>
@@ -868,7 +866,7 @@ EWMH-compatible helpers so the panel stays synchronized with X11 state.</p>
 <h2 id="multi-monitor-1"><a class="header" href="#multi-monitor-1">Multi-Monitor</a></h2>
 <p>Xinerama support keeps tags independent per monitor. Windows can be moved
 between monitors with <code>Super</code> + <code>Shift</code> + <code>,</code>/<code>.</code>.</p>
-<footer id="last-change-6">Last change: <time datetime="2026-03-24">2026-03-24</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change-6">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
 <p>Run the dependency checker first — it covers most common issues:</p>
 <pre><code class="language-bash">dwm-diagnostics
@@ -900,7 +898,7 @@ between monitors with <code>Super</code> + <code>Shift</code> + <code>,</code>/<
 <h2 id="terminal-wont-open-superx"><a class="header" href="#terminal-wont-open-superx">Terminal Won’t Open (<code>Super</code>+<code>X</code>)</a></h2>
 <ul>
 <li>Run <code>dwm-terminal</code> from an existing shell to see the exact fallback message</li>
-<li>Install a supported terminal: <code>alacritty</code>, <code>ghostty</code>, <code>kitty</code>, <code>st</code>,
+<li>Install a supported terminal: <code>alacritty</code>, <code>kitty</code>, <code>st</code>,
 <code>warp-terminal</code>, or <code>xterm</code></li>
 <li>Or set a fixed terminal in <code>config/hotkeys.toml</code>:
 <pre><code class="language-toml">[vars]
@@ -958,7 +956,7 @@ are available</li>
 <li>Open an issue: <a href="https://github.com/ChrisTitusTech/dwm-titus/issues">github.com/ChrisTitusTech/dwm-titus/issues</a></li>
 <li>Run the full check: <code>bash scripts/check-deps.sh</code></li>
 </ul>
-<footer id="last-change-7">Last change: <time datetime="2026-06-24">2026-06-24</time></footer>
+<footer id="last-change-7">Last change: <time datetime="2026-06-25">2026-06-25</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">

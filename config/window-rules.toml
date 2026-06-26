@@ -24,7 +24,6 @@ rules = [
   { class="St",             isterminal=1 },
   { class="kitty",          isterminal=1 },
   { class="Alacritty",      isterminal=1 },
-  { class="ghostty",        isterminal=1 },
   { class="warp-terminal",  isterminal=1 },
   { class="Terminator",     isterminal=1 },
   { class="RAIL",           float=1 },

@@ -124,14 +124,14 @@ echo ""
 # ── Terminal emulators ──────────────────────────────────
 echo "Terminal Emulators (at least one required):"
 TERM_FOUND=0
-for term in alacritty ghostty kitty st; do
+for term in alacritty kitty st; do
 	if command -v "$term" &>/dev/null; then
 		printf "  ${GREEN}✓${NC} %s\n" "$term"
 		TERM_FOUND=1
 	fi
 done
 if [ $TERM_FOUND -eq 0 ]; then
-	printf "  ${RED}✗${NC} No supported terminal found ${YELLOW}(install alacritty, ghostty, kitty, or st)${NC}\n"
+	printf "  ${RED}✗${NC} No supported terminal found ${YELLOW}(install alacritty, kitty, or st)${NC}\n"
 	MISSING=$((MISSING + 1))
 fi
 echo ""

@@ -17,12 +17,6 @@ printf '%s\n' "$@" >>"$DWM_TERMINAL_TEST_OUT"
 SCRIPT
 chmod +x "$work/bin/alacritty"
 
-cat >"$work/bin/ghostty" <<'SCRIPT'
-#!/bin/sh
-printf 'ghostty should not be selected by default\n' >"$DWM_TERMINAL_TEST_OUT"
-SCRIPT
-chmod +x "$work/bin/ghostty"
-
 DWM_TERMINAL_TEST_OUT="$work/out" \
 	PATH="$work/bin" \
 	"$BASH_BIN" "$HELPER" --class dwm-test
@@ -44,7 +38,7 @@ DWM_TERMINAL_TEST_OUT="$work/custom-out" \
 
 grep -Fqx "custom" "$work/custom-out"
 
-rm -f "$work/bin/alacritty" "$work/bin/ghostty" "$work/bin/custom-term"
+rm -f "$work/bin/alacritty" "$work/bin/custom-term"
 
 if PATH="$work/bin" "$BASH_BIN" "$HELPER" 2>"$work/err"; then
 	echo "dwm-terminal succeeded without a terminal" >&2
