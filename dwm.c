@@ -79,7 +79,7 @@ enum { CurResizeBR, CurResizeBL, CurResizeTR, CurResizeTL, CurNormal, CurResize,
 enum { SchemeNorm, SchemeSel }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType, NetWMIcon,
-       NetWMWindowTypeDialog, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetLast }; /* EWMH atoms */
+       NetWMWindowTypeDialog, NetWMWindowTypeDock, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
@@ -199,6 +199,7 @@ static int gettextprop(Window w, Atom atom, char *text, unsigned int size);
 static void grabbuttons(Client *c, int focused);
 static void grabkeys(void);
 static void incnmaster(const Arg *arg);
+static int isaltbar(Window win, XWindowAttributes *wa);
 static int isdescprocess(pid_t p, pid_t c);
 static void killclient(const Arg *arg);
 static void manage(Window w, XWindowAttributes *wa);
@@ -1295,6 +1296,22 @@ getatomprop(Client *c, Atom prop)
 	return atom;
 }
 
+Atom
+getwinatomprop(Window win, Atom prop)
+{
+	int di;
+	unsigned long dl;
+	unsigned char *p = NULL;
+	Atom da, atom = None;
+
+	if (XGetWindowProperty(dpy, win, prop, 0L, sizeof atom, False, XA_ATOM,
+		&da, &di, &dl, &dl, &p) == Success && p) {
+		atom = *(Atom *)p;
+		XFree(p);
+	}
+	return atom;
+}
+
 #if SHOWWINICON
 static uint32_t prealpha(uint32_t p) {
 	uint8_t a = p >> 24u;
@@ -1687,6 +1704,20 @@ managealtbar(Window win, XWindowAttributes *wa)
 		scantray();
 }
 
+int
+isaltbar(Window win, XWindowAttributes *wa)
+{
+	Atom wtype;
+
+	if (wmclasscontains(win, altbarclass, ""))
+		return 1;
+	if (!wa || wa->width <= wa->height)
+		return 0;
+
+	wtype = getwinatomprop(win, netatom[NetWMWindowType]);
+	return wtype == netatom[NetWMWindowTypeDock];
+}
+
 void
 managetray(Window win, XWindowAttributes *wa)
 {
@@ -1722,7 +1753,7 @@ maprequest(XEvent *e)
 	XMapRequestEvent *ev = &e->xmaprequest;
 	if (!XGetWindowAttributes(dpy, ev->window, &wa) || wa.override_redirect)
 		return;
-	if (wmclasscontains(ev->window, altbarclass, ""))
+	if (isaltbar(ev->window, &wa))
 		managealtbar(ev->window, &wa);
 	else if (!wintoclient(ev->window))
 		manage(ev->window, &wa);
@@ -2374,7 +2405,7 @@ scan(void)
 			if (!XGetWindowAttributes(dpy, wins[i], &wa)
 			|| wa.override_redirect || XGetTransientForHint(dpy, wins[i], &d1))
 				continue;
-			if (wmclasscontains(wins[i], altbarclass, ""))
+			if (isaltbar(wins[i], &wa))
 				managealtbar(wins[i], &wa);
 			else if (wa.map_state == IsViewable || getstate(wins[i]) == IconicState)
 				manage(wins[i], &wa);
@@ -3454,6 +3485,7 @@ setup(void)
 	netatom[NetWMFullscreen] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
 	netatom[NetWMWindowType] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
 	netatom[NetWMWindowTypeDialog] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
+	netatom[NetWMWindowTypeDock] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
 	netatom[NetClientList] = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
 	netatom[NetDesktopViewport] = XInternAtom(dpy, "_NET_DESKTOP_VIEWPORT", False);
 	netatom[NetNumberOfDesktops] = XInternAtom(dpy, "_NET_NUMBER_OF_DESKTOPS", False);

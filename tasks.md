@@ -159,6 +159,20 @@ available as the fallback until the Quickshell panel is usable.
     --log-times` reported `Configuration Loaded`; `quickshell list` showed the
     instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
 - [ ] Reserve screen space correctly.
+  - Status: implementation added, runtime validation pending a dwm restart.
+  - Finding: this dwm fork does not reserve space from `_NET_WORKAREA`.
+    Instead, `managealtbar()` records an external bar as `m->barwin`, copies
+    its window height to `m->bh`, and `updatebarpos()` subtracts `m->bh` from
+    `m->wh` while shifting `m->wy` down for a top bar.
+  - Implementation: Quickshell's X11 `PanelWindow` does not expose
+    `WM_CLASS`, but it does expose `_NET_WM_WINDOW_TYPE_DOCK`. `dwm.c` now
+    keeps the existing Polybar `WM_CLASS=Polybar` path and also treats
+    bar-shaped dock windows as altbars so Quickshell can enter the same
+    `managealtbar()` reservation path after the rebuilt dwm is running.
+  - Validation so far: Quickshell inspection showed no `WM_CLASS` and
+    `_NET_WM_WINDOW_TYPE_DOCK`; `make clean`, `make`, and `git diff --check`
+    passed. Runtime reservation still needs a controlled dwm restart before
+    this checkbox is marked complete.
 - [ ] Match current bar height and monitor placement.
 - [ ] Disable Polybar only after Quickshell panel is usable.
 
