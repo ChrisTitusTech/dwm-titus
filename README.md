@@ -105,7 +105,7 @@ The installer places `.xinitrc` in your home directory. Start with:
 startx
 ```
 
-The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), launches Polybar, and starts dwm.
+The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), starts the configured shell panel, and starts dwm. Quickshell is preferred when `~/.config/quickshell/shell.qml` exists; Polybar remains the fallback panel.
 
 For a core-only setup, use the minimal session profile documented in
 [`docs/src/install.md`](docs/src/install.md). It runs dwm with one terminal,

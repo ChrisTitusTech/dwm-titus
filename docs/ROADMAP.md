@@ -44,22 +44,22 @@ Replace Polybar with a simple Quickshell top or bottom panel.
 
 ### Tasks
 
-- [ ] Build a basic `PanelWindow`
-- [ ] Add clock/date
-- [ ] Add CPU/RAM indicators
-- [ ] Add network indicator
-- [ ] Add volume indicator
-- [ ] Add battery/power indicator if needed
-- [ ] Reserve screen space correctly
-- [ ] Match current bar height and monitor placement
-- [ ] Disable Polybar only after Quickshell panel is usable
+- [x] Build a basic `PanelWindow`
+- [x] Add clock/date
+- [x] Add CPU/RAM indicators
+- [x] Add network indicator
+- [x] Add volume indicator
+- [x] Add battery/power indicator if needed
+- [x] Reserve screen space correctly
+- [x] Match current bar height and monitor placement
+- [x] Disable Polybar only after Quickshell panel is usable
 
 ### Exit Criteria
 
-- Quickshell panel fully replaces basic Polybar functionality
-- Panel survives reloads
-- Window manager respects reserved screen space
-- Polybar can be removed from startup
+- [x] Quickshell panel fully replaces basic Polybar functionality
+- [x] Panel survives reloads
+- [x] Window manager respects reserved screen space
+- [x] Polybar can be removed from startup
 
 ---
 

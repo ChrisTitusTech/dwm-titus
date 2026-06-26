@@ -75,7 +75,7 @@ replacing Polybar, Rofi, Dunst, or other existing shell components.
     Polybar still launches and duplicate guards continue to work. `make
     check-shell`, `make check-format`, and `git diff --check` also passed.
 
-## Current Phase: Basic Quickshell Panel
+## Completed Phase: Basic Quickshell Panel
 
 Goal: replace Polybar with a simple Quickshell top panel while keeping Polybar
 available as the fallback until the Quickshell panel is usable.
@@ -182,7 +182,22 @@ available as the fallback until the Quickshell panel is usable.
     30px height.
   - Validation: the controlled Xvfb session reported the Quickshell dock as
     `1280x30` at `0,0`, matching the configured top panel height and placement.
-- [ ] Disable Polybar only after Quickshell panel is usable.
+- [x] Disable Polybar only after Quickshell panel is usable.
+  - Acceptance: normal session startup launches Quickshell as the panel when
+    its config exists and keeps Polybar as a fallback when Quickshell is not
+    configured.
+  - Validation: live X11 session plus autostart guard tests.
+  - Result: after adding `aboveWindows: true` to the Quickshell panel and
+    restarting Quickshell in the live Fedora X11/dwm session, `xprop` showed
+    `_NET_WM_WINDOW_TYPE_DOCK`, `_NET_WM_STATE_ABOVE`,
+    `_NET_WM_STRUT`, and `_NET_WM_STRUT_PARTIAL` reserving 30px at the top.
+    `xdotool getwindowgeometry` reported the active terminal at `0,30` with
+    geometry `2560x1570`, confirming the window manager respected the panel
+    reservation. `pgrep -af 'quickshell|polybar'` showed Quickshell running
+    and no Polybar process. `scripts/autostart.sh` now starts Quickshell when
+    `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml` exists and only
+    launches Polybar when that Quickshell config is absent; the autostart test
+    covers both paths.
 
 ## Backlog
 

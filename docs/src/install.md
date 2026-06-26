@@ -100,7 +100,7 @@ packaging checks, or scripted validation, use the non-interactive flags:
 startx
 ```
 
-The provided `.xinitrc` disables screen blanking, launches Polybar, and runs dwm.
+The provided `.xinitrc` disables screen blanking, starts the configured shell panel, and runs dwm. Quickshell is preferred when `~/.config/quickshell/shell.qml` exists; Polybar remains the fallback panel.
 
 ## Minimal Session Profile
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 # dwm-titus autostart — single unified autostart script
 # Phase 1: Blocking setup (must complete before windows appear)
-# Phase 2: Background services (compositor, notifications, polybar, tray apps)
+# Phase 2: Background services (compositor, notifications, shell, tray apps)
 
 start_once() {
 	process_name=$1
@@ -73,8 +73,8 @@ if command -v systemctl >/dev/null 2>&1; then
 	systemctl --user start vicinae.service >/dev/null 2>&1 || true
 fi
 
-# Temporary Quickshell migration baseline. Keep Polybar/Rofi available as the
-# fallback shell stack while the Quickshell setup is being validated.
+# Quickshell is the preferred panel when its config is present. Polybar remains
+# a fallback for sessions without a Quickshell config.
 QUICKSHELL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
 if [ -f "$QUICKSHELL_CONFIG" ]; then
 	start_detached_once quickshell quickshell --no-duplicate
@@ -99,8 +99,8 @@ for agent in \
 	fi
 done
 
-# Launch Polybar
-if [ -x "$HOME/.config/polybar/launch.sh" ]; then
+# Launch Polybar only when Quickshell is not configured.
+if [ ! -f "$QUICKSHELL_CONFIG" ] && [ -x "$HOME/.config/polybar/launch.sh" ]; then
 	"$HOME/.config/polybar/launch.sh" >/dev/null 2>&1 &
 fi
 
