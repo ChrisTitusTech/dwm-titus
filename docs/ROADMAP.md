@@ -213,12 +213,14 @@ Add shell controls that previously required separate scripts or widgets.
 
 ### Tasks
 
-- [ ] Add volume display
-- [ ] Add volume up/down/mute actions
-- [ ] Add microphone mute status
-- [ ] Add media player display using MPRIS
-- [ ] Add play/pause/next/previous controls
-- [ ] Add brightness controls if needed
+- [x] Add volume display
+- [x] Add volume up/down/mute actions
+- [x] Add microphone mute status
+- [x] Add media player display using MPRIS
+- [x] Add play/pause/next/previous controls
+- [x] Add brightness controls if needed
+  - Not needed on the current validation host: `/sys/class/backlight` is empty,
+    and `brightnessctl --list` only reports LED devices.
 - [ ] Add Bluetooth status if needed
 
 ### Exit Criteria
