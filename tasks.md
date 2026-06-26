@@ -463,7 +463,12 @@ tested.
       Quickshell after temporarily stopping Dunst; the visible popup count
       changed as expected and the latest notification persisted to history
       across restart.
-  - [ ] Steam/game launchers
+  - [x] Steam/game launchers
+    - Validation: sent a Steam desktop-entry notification with
+      `notify-send -a Steam -h string:desktop-entry:steam`; the visible popup
+      count became `1`, history count became `1`, the latest history summary
+      matched the unique game-launcher test title, and the popup remained at
+      the top-right geometry.
 
 Notes:
 

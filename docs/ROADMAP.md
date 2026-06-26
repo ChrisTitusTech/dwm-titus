@@ -168,7 +168,7 @@ Replace Dunst or other notification UI with Quickshell notifications.
   - [x] Browser
   - [x] Discord/Slack
   - [x] Terminal notify-send
-  - [ ] Steam/game launchers
+  - [x] Steam/game launchers
 
 ### Exit Criteria
 
