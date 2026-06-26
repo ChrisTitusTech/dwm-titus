@@ -453,7 +453,11 @@ tested.
       `notify-send -a Chromium -h string:desktop-entry:chromium`; the visible
       popup count became `1`, history count became `1`, and the latest history
       summary matched the unique browser test title.
-  - [ ] Discord/Slack
+  - [x] Discord/Slack
+    - Validation: sent a Discord desktop-entry notification with
+      `notify-send -a Discord -h string:desktop-entry:discord-455712169795780630`;
+      the visible popup count became `1`, history count became `1`, and the
+      latest history summary matched the unique chat test title.
   - [x] Terminal notify-send
     - Validation: normal and critical `notify-send` calls were delivered to
       Quickshell after temporarily stopping Dunst; the visible popup count

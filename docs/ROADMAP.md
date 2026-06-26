@@ -166,7 +166,7 @@ Replace Dunst or other notification UI with Quickshell notifications.
 - [x] Add urgency styling
 - [ ] Test with common apps:
   - [x] Browser
-  - [ ] Discord/Slack
+  - [x] Discord/Slack
   - [x] Terminal notify-send
   - [ ] Steam/game launchers
 
