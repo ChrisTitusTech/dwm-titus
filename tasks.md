@@ -504,7 +504,12 @@ clients.
       RegisteredStatusNotifierItems` returned two SNI items. The live
       Quickshell IPC helpers returned `tray count = 2` and tray ids
       `flameshot` and `blueman`.
-- [ ] Confirm left-click/right-click behavior.
+- [x] Confirm left-click/right-click behavior.
+  - Validation: `TrayItem.handleClick()` routes left click to
+    `activate()` unless the item is menu-only, routes menu-only left click and
+    right click to the tray menu when one exists, and routes middle click to
+    `secondaryActivate()`. The repo-scoped Quickshell smoke test loaded the
+    component successfully after this refactor.
 - [x] Confirm icons scale correctly.
   - Validation: tray item and icon dimensions are fixed through shared theme
     values (`trayItemSize: 24`, `trayIconSize: 18`) so each tray item keeps a

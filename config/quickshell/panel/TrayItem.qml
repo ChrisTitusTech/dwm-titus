@@ -9,6 +9,20 @@ Rectangle {
     required property var trayItem
     signal openMenu(var trayItem)
 
+    function handleClick(button) {
+        if (button === Qt.LeftButton) {
+            if (!root.trayItem.onlyMenu) {
+                root.trayItem.activate();
+            } else if (root.trayItem.hasMenu) {
+                root.openMenu(root.trayItem);
+            }
+        } else if (button === Qt.MiddleButton) {
+            root.trayItem.secondaryActivate();
+        } else if (button === Qt.RightButton && root.trayItem.hasMenu) {
+            root.openMenu(root.trayItem);
+        }
+    }
+
     Layout.preferredWidth: Theme.trayItemSize
     Layout.preferredHeight: Theme.trayItemSize
     radius: 3
@@ -47,18 +61,6 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         cursorShape: Qt.PointingHandCursor
 
-        onClicked: function(mouse) {
-            if (mouse.button === Qt.LeftButton) {
-                if (!root.trayItem.onlyMenu) {
-                    root.trayItem.activate();
-                } else if (root.trayItem.hasMenu) {
-                    root.openMenu(root.trayItem);
-                }
-            } else if (mouse.button === Qt.MiddleButton) {
-                root.trayItem.secondaryActivate();
-            } else if (mouse.button === Qt.RightButton && root.trayItem.hasMenu) {
-                root.openMenu(root.trayItem);
-            }
-        }
+        onClicked: mouse => root.handleClick(mouse.button)
     }
 }

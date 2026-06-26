@@ -193,7 +193,7 @@ Move tray functionality into Quickshell.
   - [ ] Audio applet if used
   - [ ] Discord/Steam/etc.
   - [ ] Syncthing/Nextcloud/etc.
-- [ ] Confirm left-click/right-click behavior
+- [x] Confirm left-click/right-click behavior
 - [x] Confirm icons scale correctly
 
 ### Exit Criteria
