@@ -13,15 +13,72 @@ ShellRoot {
     property string volumeText: ""
     property string activeWindowTitle: "Desktop"
     property int currentWorkspace: 0
+    property int selectedLauncherIndex: 0
     property bool launcherVisible: false
+    property string launcherQuery: ""
+    property string launcherStatus: "Loading applications..."
+    property var launcherApps: []
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+    function appMatchesQuery(app, query) {
+        const needle = query.trim().toLowerCase();
+
+        if (needle.length === 0) {
+            return true;
+        }
+
+        return app.name.toLowerCase().indexOf(needle) >= 0 ||
+            app.generic.toLowerCase().indexOf(needle) >= 0 ||
+            app.comment.toLowerCase().indexOf(needle) >= 0;
+    }
 
     function closeLauncher() {
         root.launcherVisible = false;
     }
 
+    function filteredLauncherApps() {
+        const apps = root.launcherApps.filter(app => root.appMatchesQuery(app, root.launcherQuery));
+
+        if (root.selectedLauncherIndex >= apps.length) {
+            root.selectedLauncherIndex = Math.max(0, apps.length - 1);
+        }
+
+        return apps;
+    }
+
     function openLauncher() {
         root.launcherVisible = true;
+        launcherIndexProcess.running = true;
+        Qt.callLater(function() {
+            launcherSearch.forceActiveFocus();
+            launcherSearch.cursorPosition = launcherSearch.text.length;
+        });
+    }
+
+    function parseLauncherApps(text) {
+        const apps = [];
+        const lines = text.trim().length > 0 ? text.trim().split("\n") : [];
+
+        for (const line of lines) {
+            const fields = line.split("\t");
+
+            if (fields.length < 6) {
+                continue;
+            }
+
+            apps.push({
+                "name": fields[0],
+                "generic": fields[1],
+                "comment": fields[2],
+                "exec": fields[3],
+                "icon": fields[4],
+                "desktopFile": fields[5]
+            });
+        }
+
+        root.launcherApps = apps;
+        root.launcherStatus = apps.length === 1 ? "1 application" : apps.length + " applications";
+        root.selectedLauncherIndex = 0;
     }
 
     function toggleLauncher() {
@@ -144,6 +201,17 @@ ShellRoot {
     }
 
     Process {
+        id: launcherIndexProcess
+
+        command: ["sh", "-c", "if command -v dwm-quickshell-launcher >/dev/null 2>&1; then exec dwm-quickshell-launcher list; fi; data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; exec \"$data_dir/scripts/dwm-quickshell-launcher\" list"]
+        running: true
+
+        stdout: StdioCollector {
+            onStreamFinished: root.parseLauncherApps(this.text)
+        }
+    }
+
+    Process {
         id: switchWorkspaceProcess
 
         command: ["dwm-quickshell-state", "switch", root.currentWorkspace.toString()]
@@ -220,24 +288,90 @@ ShellRoot {
                     color: "#3b4252"
                     radius: 4
 
+                    TextInput {
+                        id: launcherSearch
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: "#eceff4"
+                        selectionColor: "#81a1c1"
+                        selectedTextColor: "#2e3440"
+                        text: root.launcherQuery
+                        font.pixelSize: 16
+                        clip: true
+
+                        onTextChanged: {
+                            root.launcherQuery = text;
+                            root.selectedLauncherIndex = 0;
+                        }
+                    }
+
                     Text {
-                        anchors.centerIn: parent
-                        text: "Launcher UI ready"
-                        color: "#d8dee9"
-                        font.pixelSize: 14
+                        anchors.left: parent.left
+                        anchors.leftMargin: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: launcherSearch.text.length === 0
+                        text: "Search applications"
+                        color: "#8f9aa8"
+                        font.pixelSize: 16
                     }
                 }
 
                 Text {
                     Layout.fillWidth: true
-                    text: "Desktop application indexing will be added in the next task."
+                    text: root.launcherStatus
                     color: "#aeb7c4"
-                    font.pixelSize: 13
-                    wrapMode: Text.WordWrap
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
                 }
 
-                Item {
+                ListView {
+                    id: launcherResults
+
+                    Layout.fillWidth: true
                     Layout.fillHeight: true
+                    clip: true
+                    spacing: 4
+                    model: root.filteredLauncherApps()
+
+                    delegate: Rectangle {
+                        required property int index
+                        required property var modelData
+
+                        width: launcherResults.width
+                        height: 54
+                        radius: 4
+                        color: index === root.selectedLauncherIndex ? "#3b4252" : "transparent"
+
+                        Column {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 3
+
+                            Text {
+                                width: parent.width
+                                text: modelData.name
+                                color: "#d8dee9"
+                                font.pixelSize: 14
+                                font.bold: index === root.selectedLauncherIndex
+                                elide: Text.ElideRight
+                            }
+
+                            Text {
+                                width: parent.width
+                                text: modelData.generic.length > 0 ? modelData.generic : modelData.comment
+                                color: "#aeb7c4"
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                                visible: text.length > 0
+                            }
+                        }
+                    }
                 }
             }
         }
