@@ -40,7 +40,7 @@ PanelWindow {
         width: 360
         height: 412
         x: Math.max(10, root.width - width - 10)
-        y: 30
+        y: 0
         color: Theme.bg
         border.color: Theme.border
         border.width: 1
