@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf 'usage: %s list\n' "$0" >&2
+	printf 'usage: %s list|launch <desktop-file>\n' "$0" >&2
 }
 
 data_dirs() {
@@ -123,9 +123,81 @@ list_apps() {
 		sort -f
 }
 
+desktop_id() {
+	file=$1
+	base=${file##*/}
+	printf '%s\n' "${base%.desktop}"
+}
+
+desktop_value() {
+	file=$1
+	key=$2
+
+	awk -v key="$key" '
+		$0 == "[Desktop Entry]" {
+			entry = 1
+			next
+		}
+
+		/^\[/ {
+			entry = 0
+			next
+		}
+
+		entry && index($0, key "=") == 1 {
+			print substr($0, length(key) + 2)
+			exit
+		}
+	' "$file"
+}
+
+fallback_launch() {
+	file=$1
+	exec_line=$(desktop_value "$file" Exec)
+	terminal=$(desktop_value "$file" Terminal | tr '[:upper:]' '[:lower:]')
+	command=$(printf '%s\n' "$exec_line" | sed 's/%[fFuUdDnNickvm]//g; s/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//')
+
+	[ -n "$command" ] || {
+		printf 'desktop entry has no Exec line: %s\n' "$file" >&2
+		return 1
+	}
+
+	if [ "$terminal" = true ]; then
+		setsid dwm-terminal -e sh -c "$command" >/dev/null 2>&1 &
+	else
+		setsid sh -c "$command" >/dev/null 2>&1 &
+	fi
+}
+
+launch_app() {
+	file=$1
+
+	[ -f "$file" ] || {
+		printf 'desktop entry not found: %s\n' "$file" >&2
+		return 1
+	}
+
+	if command -v dex >/dev/null 2>&1; then
+		exec dex "$file"
+	fi
+
+	if command -v gtk-launch >/dev/null 2>&1; then
+		exec gtk-launch "$(desktop_id "$file")"
+	fi
+
+	fallback_launch "$file"
+}
+
 case ${1:-list} in
 list)
 	list_apps
+	;;
+launch)
+	if [ $# -ne 2 ]; then
+		usage
+		exit 2
+	fi
+	launch_app "$2"
 	;;
 *)
 	usage

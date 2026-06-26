@@ -46,6 +46,15 @@ ShellRoot {
         return apps;
     }
 
+    function launchApp(app) {
+        if (!app || app.desktopFile.length === 0) {
+            return;
+        }
+
+        launcherLaunchProcess.command = ["sh", "-c", "if command -v dwm-quickshell-launcher >/dev/null 2>&1; then exec dwm-quickshell-launcher launch \"$1\"; fi; data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; exec \"$data_dir/scripts/dwm-quickshell-launcher\" launch \"$1\"", "dwm-quickshell-launcher", app.desktopFile];
+        launcherLaunchProcess.running = true;
+    }
+
     function openLauncher() {
         root.launcherVisible = true;
         launcherIndexProcess.running = true;
@@ -212,6 +221,13 @@ ShellRoot {
     }
 
     Process {
+        id: launcherLaunchProcess
+
+        command: ["sh", "-c", "exit 0"]
+        running: false
+    }
+
+    Process {
         id: switchWorkspaceProcess
 
         command: ["dwm-quickshell-state", "switch", root.currentWorkspace.toString()]
@@ -344,6 +360,12 @@ ShellRoot {
                         height: 54
                         radius: 4
                         color: index === root.selectedLauncherIndex ? "#3b4252" : "transparent"
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.launchApp(parent.modelData)
+                        }
 
                         Column {
                             anchors.left: parent.left
