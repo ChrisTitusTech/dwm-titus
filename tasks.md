@@ -27,11 +27,17 @@ replacing Polybar, Rofi, Dunst, or other existing shell components.
     `/home/titus/.config/dwm-titus`, `/home/titus/.config/polybar`, and
     `/home/titus/.config/rofi` directories remained present; no existing Dunst
     config directory was present to preserve.
-- [ ] Launch a minimal Quickshell window manually.
+- [x] Launch a minimal Quickshell window manually.
   - Acceptance: a minimal test window starts and exits without breaking the
     current dwm session.
   - Validation: run it from a terminal inside the current Xorg session and
     record any stderr output.
+  - Result: created `/home/titus/.config/quickshell/shell.qml` with a minimal
+    `ShellRoot` and `FloatingWindow` baseline. Running
+    `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
+    --log-times` from the active session exited with status 0 after the test
+    timer and reported `Configuration Loaded`. `quickshell list` and
+    `pgrep -a quickshell` confirmed no remaining Quickshell process.
 - [ ] Confirm Quickshell starts correctly inside the current Xorg session.
   - Acceptance: Quickshell starts with `XDG_SESSION_TYPE=x11` and the active
     window manager remains dwm.
