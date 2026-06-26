@@ -188,19 +188,20 @@ Move tray functionality into Quickshell.
 ### Tasks
 
 - [x] Add system tray area
-- [ ] Test tray apps:
-  - [ ] Network manager applet
-  - [ ] Audio applet if used
-  - [ ] Discord/Steam/etc.
-  - [ ] Syncthing/Nextcloud/etc.
+- [x] Test tray apps:
+  - [x] NetworkManager native widget path
+  - [x] Audio applet if used
+  - [x] Discord/Steam/etc.
+  - [x] Syncthing/Nextcloud/etc.
+  - [x] Current host SNI clients
 - [x] Confirm left-click/right-click behavior
 - [x] Confirm icons scale correctly
 
 ### Exit Criteria
 
-- Tray icons appear correctly
-- Menus work
-- No missing tray clients from the old bar
+- [x] Tray icons appear correctly
+- [x] Menus work
+- [x] No missing tray clients from the old bar
 
 ---
 

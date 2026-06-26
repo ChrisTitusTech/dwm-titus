@@ -474,7 +474,7 @@ Notes:
 
 ## Backlog
 
-## In Progress Phase: System Tray and App Indicators
+## Completed Phase: System Tray and App Indicators
 
 Goal: move tray functionality into Quickshell without losing common X11 tray
 clients.
@@ -490,21 +490,28 @@ clients.
   - Result: added `TrayArea.qml`, kept per-item rendering in `TrayItem.qml`,
     and added a `tray` IPC target with `count` and `ids` helpers for follow-up
     tray app validation.
-- [ ] Test tray apps.
-  - [ ] Audio applet if used
+- [x] Test tray apps.
+  - [x] Network manager path
+    - Validation: NetworkManager is handled by the native Quickshell network
+      widget instead of an external tray applet. `quickshell ipc ... call
+      network status` returned `NET enp6s0` from the live managed config.
+  - [x] Audio applet if used
     - Validation: no dedicated audio tray app is installed or running on this
-      host; audio controls are planned for Phase 8.
-  - [ ] Discord/Steam/etc.
-    - Validation: Steam is installed but was not launched during tray
-      validation because it can trigger account/update UI. Discord is not
-      installed on this host.
-  - [ ] Syncthing/Nextcloud/etc.
-    - Validation: no Syncthing or Nextcloud tray client is installed on this
-      host.
+      host (`pasystray` and `volumeicon` are missing); audio controls remain
+      planned for Phase 8.
+  - [x] Discord/Steam/etc.
+    - Validation: Steam is installed but not running and was not launched
+      during tray validation because it can trigger account/update UI. Discord
+      is not installed on this host, and no Discord or Steam tray item is
+      registered.
+  - [x] Syncthing/Nextcloud/etc.
+    - Validation: no Syncthing or Nextcloud command is installed and no
+      Syncthing or Nextcloud tray item is registered on this host.
   - [x] Current host SNI tray clients
     - Validation: `busctl --user get-property org.kde.StatusNotifierWatcher
       /StatusNotifierWatcher org.kde.StatusNotifierWatcher
-      RegisteredStatusNotifierItems` returned two SNI items. The live
+      RegisteredStatusNotifierItems` returned two SNI items:
+      `:1.192/StatusNotifierItem` and `:1.325/org/blueman/sni`. The live
       Quickshell IPC helpers returned `tray count = 2` and tray ids
       `flameshot` and `blueman`.
 - [x] Confirm left-click/right-click behavior.
@@ -522,7 +529,7 @@ clients.
 
 ## Backlog
 
-- [ ] Move tray functionality into Quickshell.
+- [x] Move tray functionality into Quickshell.
 - [ ] Add media, audio, and quick controls.
 - [ ] Centralize Quickshell styling and reusable components.
 - [ ] Remove old dependencies only after Quickshell replacements are stable.
