@@ -160,14 +160,14 @@ Replace Dunst or other notification UI with Quickshell notifications.
 
 - [x] Enable Quickshell notification daemon functionality
 - [x] Build notification popup UI
-- [ ] Add notification history
+- [x] Add notification history
 - [x] Add dismiss action
 - [x] Add timeout behavior
 - [x] Add urgency styling
 - [ ] Test with common apps:
   - [ ] Browser
   - [ ] Discord/Slack
-  - [ ] Terminal notify-send
+  - [x] Terminal notify-send
   - [ ] Steam/game launchers
 
 ### Exit Criteria

@@ -416,8 +416,17 @@ tested.
     `Configuration Loaded`, and live `notify-send` calls populated the popup
     model.
   - Result: added `NotificationPopupWindow.qml` and `NotificationCard.qml`.
-- [ ] Add notification history.
-  - Status: not implemented yet; current work only keeps visible popup state.
+- [x] Add notification history.
+  - Acceptance: notifications are recorded beyond visible popup lifetime and
+    can be inspected after Quickshell restarts.
+  - Validation: sent a unique terminal `notify-send`, confirmed
+    `quickshell ipc call notifications historyCount` changed from `0` to `1`,
+    restarted the live symlinked Quickshell instance, and confirmed
+    `historyCount` stayed `1` with the same latest summary.
+  - Result: notification history is persisted to
+    `${XDG_CACHE_HOME:-$HOME/.cache}/dwm-titus/notification-history.json`, a
+    `NotificationHistoryWindow` can display it, and the `notifications` IPC
+    target exposes history open/close/count/clear helpers.
 - [x] Add dismiss action.
   - Acceptance: visible notifications can be dismissed without waiting for
     timeout.
@@ -442,6 +451,10 @@ tested.
   - [ ] Browser
   - [ ] Discord/Slack
   - [x] Terminal notify-send
+    - Validation: normal and critical `notify-send` calls were delivered to
+      Quickshell after temporarily stopping Dunst; the visible popup count
+      changed as expected and the latest notification persisted to history
+      across restart.
   - [ ] Steam/game launchers
 
 Notes:

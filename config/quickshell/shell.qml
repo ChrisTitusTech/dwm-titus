@@ -74,6 +74,30 @@ ShellRoot {
         function count(): int {
             return notificationModel.notifications.length;
         }
+
+        function clearHistory(): void {
+            notificationModel.clearHistory();
+        }
+
+        function closeHistory(): void {
+            notificationModel.closeHistory();
+        }
+
+        function historyCount(): int {
+            return notificationModel.history.length;
+        }
+
+        function historyLatestSummary(): string {
+            return notificationModel.historyLatestSummary();
+        }
+
+        function openHistory(): void {
+            notificationModel.openHistory();
+        }
+
+        function toggleHistory(): void {
+            notificationModel.toggleHistory();
+        }
     }
 
     LauncherWindow {
@@ -85,6 +109,10 @@ ShellRoot {
     }
 
     NotificationPopupWindow {
+        notificationModel: notificationModel
+    }
+
+    NotificationHistoryWindow {
         notificationModel: notificationModel
     }
 
