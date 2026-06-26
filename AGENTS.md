@@ -89,6 +89,14 @@ startup, configuration deployment, and the core runtime checks in `SPEC.md`.
   APIs over QML polling timers. Polling is allowed only for inherently sampled
   values such as a clock or CPU load, or when a documented fallback has no
   event source.
+- Quickshell must not be an idle resource hog. Avoid resident hidden launcher
+  models, overlapping `Process` launches from timers, and duplicate shell
+  providers such as running DMS alongside the dwm-titus managed shell. On X11,
+  avoid per-screen `Variants { model: Quickshell.screens }` panels unless a
+  live CPU sample proves they idle cleanly; prefer a single `PanelWindow` for
+  the managed shell. After Quickshell changes, validate `quickshell --no-duplicate`
+  in a real or nested X11 session and confirm the Quickshell process is near
+  idle when the launcher is closed.
 - Keep existing keybindings, window rules, EWMH behavior, multi-monitor
   behavior, and autostart behavior unless the task explicitly changes them.
 - When changing defaults, update the relevant documentation and migration

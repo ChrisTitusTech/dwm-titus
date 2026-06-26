@@ -18,6 +18,7 @@ ShellRoot {
     property string launcherQuery: ""
     property string launcherStatus: "Loading applications..."
     property var launcherApps: []
+    property var filteredLauncherApps: []
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
     function launcherHelperCommand(action, args) {
@@ -44,16 +45,25 @@ ShellRoot {
 
     function closeLauncher() {
         root.launcherVisible = false;
+        root.launcherQuery = "";
+        root.filteredLauncherApps = [];
+        root.selectedLauncherIndex = 0;
     }
 
-    function filteredLauncherApps() {
+    function refreshFilteredLauncherApps() {
+        if (!root.launcherVisible) {
+            root.filteredLauncherApps = [];
+            root.selectedLauncherIndex = 0;
+            return;
+        }
+
         const apps = root.launcherApps.filter(app => root.appMatchesQuery(app, root.launcherQuery));
 
         if (root.selectedLauncherIndex >= apps.length) {
             root.selectedLauncherIndex = Math.max(0, apps.length - 1);
         }
 
-        return apps;
+        root.filteredLauncherApps = apps;
     }
 
     function launchApp(app) {
@@ -67,7 +77,7 @@ ShellRoot {
     }
 
     function launchSelectedApp() {
-        const apps = root.filteredLauncherApps();
+        const apps = root.filteredLauncherApps;
 
         if (apps.length === 0) {
             return;
@@ -78,8 +88,13 @@ ShellRoot {
 
     function openLauncher() {
         root.launcherVisible = true;
+        root.launcherQuery = "";
+        root.selectedLauncherIndex = 0;
         root.launcherStatus = "Loading applications...";
-        launcherIndexProcess.running = true;
+        root.refreshFilteredLauncherApps();
+        if (!launcherIndexProcess.running) {
+            launcherIndexProcess.running = true;
+        }
         Qt.callLater(function() {
             launcherSearch.forceActiveFocus();
             launcherSearch.cursorPosition = launcherSearch.text.length;
@@ -112,10 +127,11 @@ ShellRoot {
         root.launcherApps = apps;
         root.launcherStatus = apps.length === 1 ? "1 application" : apps.length + " applications";
         root.selectedLauncherIndex = 0;
+        root.refreshFilteredLauncherApps();
     }
 
     function selectLauncherRelative(delta) {
-        const apps = root.filteredLauncherApps();
+        const apps = root.filteredLauncherApps;
 
         if (apps.length === 0) {
             root.selectedLauncherIndex = 0;
@@ -275,38 +291,58 @@ ShellRoot {
     }
 
     Timer {
-        interval: 1000
+        interval: 60000
         running: true
         repeat: true
-        onTriggered: dateProcess.running = true
+        onTriggered: {
+            if (!dateProcess.running) {
+                dateProcess.running = true;
+            }
+        }
     }
 
     Timer {
-        interval: 5000
+        interval: 15000
         running: true
         repeat: true
-        onTriggered: systemProcess.running = true
-    }
-
-    Timer {
-        interval: 10000
-        running: true
-        repeat: true
-        onTriggered: networkProcess.running = true
-    }
-
-    Timer {
-        interval: 5000
-        running: true
-        repeat: true
-        onTriggered: volumeProcess.running = true
+        onTriggered: {
+            if (!systemProcess.running) {
+                systemProcess.running = true;
+            }
+        }
     }
 
     Timer {
         interval: 30000
         running: true
         repeat: true
-        onTriggered: powerProcess.running = true
+        onTriggered: {
+            if (!networkProcess.running) {
+                networkProcess.running = true;
+            }
+        }
+    }
+
+    Timer {
+        interval: 15000
+        running: true
+        repeat: true
+        onTriggered: {
+            if (!volumeProcess.running) {
+                volumeProcess.running = true;
+            }
+        }
+    }
+
+    Timer {
+        interval: 30000
+        running: true
+        repeat: true
+        onTriggered: {
+            if (!powerProcess.running) {
+                powerProcess.running = true;
+            }
+        }
     }
 
     FloatingWindow {
@@ -361,6 +397,7 @@ ShellRoot {
                         onTextChanged: {
                             root.launcherQuery = text;
                             root.selectedLauncherIndex = 0;
+                            root.refreshFilteredLauncherApps();
                         }
 
                         Keys.onPressed: function(event) {
@@ -406,7 +443,7 @@ ShellRoot {
                     Layout.fillHeight: true
                     clip: true
                     spacing: 4
-                    model: root.filteredLauncherApps()
+                    model: root.filteredLauncherApps
 
                     delegate: Rectangle {
                         required property int index
@@ -455,116 +492,107 @@ ShellRoot {
         }
     }
 
-    Variants {
-        model: Quickshell.screens
+    PanelWindow {
+        implicitHeight: 30
+        color: "#2e3440"
+        exclusiveZone: 30
+        aboveWindows: true
 
-        delegate: Component {
-            PanelWindow {
-                required property var modelData
+        anchors {
+            top: true
+            left: true
+            right: true
+        }
 
-                screen: modelData
-                implicitHeight: 30
-                color: "#2e3440"
-                exclusiveZone: 30
-                aboveWindows: true
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            spacing: 10
 
-                anchors {
-                    top: true
-                    left: true
-                    right: true
-                }
+            Text {
+                text: "dwm"
+                color: "#d8dee9"
+                font.pixelSize: 13
+                font.bold: true
+                verticalAlignment: Text.AlignVCenter
+            }
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    spacing: 10
+            Repeater {
+                model: root.workspaceNames
+
+                delegate: Rectangle {
+                    required property int index
+                    required property string modelData
+
+                    Layout.preferredWidth: 22
+                    Layout.preferredHeight: 22
+                    radius: 3
+                    color: index === root.currentWorkspace ? "#3b4252" : "transparent"
 
                     Text {
-                        text: "dwm"
-                        color: "#d8dee9"
+                        anchors.centerIn: parent
+                        text: parent.modelData
+                        color: parent.index === root.currentWorkspace ? "#81a1c1" : "#d8dee9"
                         font.pixelSize: 13
-                        font.bold: true
+                        font.bold: parent.index === root.currentWorkspace
                         verticalAlignment: Text.AlignVCenter
                     }
 
-                    Repeater {
-                        model: root.workspaceNames
-
-                        delegate: Rectangle {
-                            required property int index
-                            required property string modelData
-
-                            Layout.preferredWidth: 22
-                            Layout.preferredHeight: 22
-                            radius: 3
-                            color: index === root.currentWorkspace ? "#3b4252" : "transparent"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: parent.modelData
-                                color: parent.index === root.currentWorkspace ? "#81a1c1" : "#d8dee9"
-                                font.pixelSize: 13
-                                font.bold: parent.index === root.currentWorkspace
-                                verticalAlignment: Text.AlignVCenter
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.switchWorkspace(parent.index)
-                            }
-                        }
-                    }
-
-                    Text {
-                        Layout.maximumWidth: 360
-                        text: root.activeWindowTitle
-                        color: "#d8dee9"
-                        elide: Text.ElideRight
-                        font.pixelSize: 13
-                        verticalAlignment: Text.AlignVCenter
-                    }
-
-                    Item {
-                        Layout.fillWidth: true
-                    }
-
-                    Text {
-                        text: root.powerText
-                        color: "#d8dee9"
-                        font.pixelSize: 13
-                        verticalAlignment: Text.AlignVCenter
-                    }
-
-                    Text {
-                        text: root.volumeText
-                        color: "#d8dee9"
-                        font.pixelSize: 13
-                        verticalAlignment: Text.AlignVCenter
-                    }
-
-                    Text {
-                        text: root.networkText
-                        color: "#d8dee9"
-                        font.pixelSize: 13
-                        verticalAlignment: Text.AlignVCenter
-                    }
-
-                    Text {
-                        text: root.systemText
-                        color: "#d8dee9"
-                        font.pixelSize: 13
-                        verticalAlignment: Text.AlignVCenter
-                    }
-
-                    Text {
-                        text: root.clockText
-                        color: "#81a1c1"
-                        font.pixelSize: 13
-                        verticalAlignment: Text.AlignVCenter
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.switchWorkspace(parent.index)
                     }
                 }
+            }
+
+            Text {
+                Layout.maximumWidth: 360
+                text: root.activeWindowTitle
+                color: "#d8dee9"
+                elide: Text.ElideRight
+                font.pixelSize: 13
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            Item {
+                Layout.fillWidth: true
+            }
+
+            Text {
+                text: root.powerText
+                color: "#d8dee9"
+                font.pixelSize: 13
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            Text {
+                text: root.volumeText
+                color: "#d8dee9"
+                font.pixelSize: 13
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            Text {
+                text: root.networkText
+                color: "#d8dee9"
+                font.pixelSize: 13
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            Text {
+                text: root.systemText
+                color: "#d8dee9"
+                font.pixelSize: 13
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            Text {
+                text: root.clockText
+                color: "#81a1c1"
+                font.pixelSize: 13
+                verticalAlignment: Text.AlignVCenter
             }
         }
     }

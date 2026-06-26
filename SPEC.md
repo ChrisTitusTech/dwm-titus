@@ -103,7 +103,13 @@ the dwm-titus-managed Quickshell directory. Quickshell integrations must use
 event-driven updates whenever a state source provides a signal, subscription,
 watch mode, IPC stream, or service API. Polling timers are acceptable only for
 inherently sampled values, such as a clock or CPU load, or as documented
-fallbacks when no event source exists.
+fallbacks when no event source exists. The managed Quickshell shell must remain
+low overhead while idle: hidden launcher UI must not continuously filter or
+render application models, timer-triggered helper processes must not overlap,
+and only one shell provider should run in the dwm-titus session. On X11, a
+single managed `PanelWindow` is the expected panel shape unless a per-screen
+Quickshell `Variants` design is explicitly profiled and shown not to consume
+idle CPU.
 
 ### 5.3 Session Startup
 
@@ -139,6 +145,8 @@ The launcher must:
    launchers when available and preserves a terminal fallback for
    `Terminal=true` entries.
 8. Avoid Wayland-only shell, compositor, layer-shell, or global-shortcut APIs.
+9. Release application-list resources while closed so the launcher does no
+   repeated filtering or rendering work when hidden.
 
 The launcher may follow a modular QML structure with small helper scripts,
 IPC-facing open/close/toggle functions, and reusable list/delegate patterns,
@@ -304,6 +312,9 @@ In a real or nested X11 session:
 - A display-manager session and `startx` path both launch.
 - Missing optional desktop processes do not terminate the session.
 - EWMH integration works with Quickshell or an equivalent inspection tool.
+- With the launcher closed, the managed Quickshell process remains near idle
+  in a short CPU sample, and no second Quickshell-based shell provider is
+  running in the same session.
 - Multi-monitor behavior is tested where suitable hardware or nested displays
   are available.
 
