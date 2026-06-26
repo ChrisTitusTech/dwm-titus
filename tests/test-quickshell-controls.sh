@@ -21,6 +21,15 @@ case "$*" in
 "get-sink-volume @DEFAULT_SINK@")
 	printf 'Volume: front-left: 26214 / 40%% / -23.88 dB, front-right: 26214 / 40%% / -23.88 dB\n'
 	;;
+"set-sink-volume @DEFAULT_SINK@ +5%")
+	printf 'volume up\n' >>"$DWM_TEST_PACTL_LOG"
+	;;
+"set-sink-volume @DEFAULT_SINK@ -5%")
+	printf 'volume down\n' >>"$DWM_TEST_PACTL_LOG"
+	;;
+"set-sink-mute @DEFAULT_SINK@ toggle")
+	printf 'mute toggle\n' >>"$DWM_TEST_PACTL_LOG"
+	;;
 *)
 	printf 'unexpected pactl call: %s\n' "$*" >&2
 	exit 1
@@ -36,6 +45,23 @@ DWM_TEST_SINK_MUTE=yes \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" volume-status >"$work/muted.out"
 grep -Fqx "VOL muted 40%" "$work/muted.out"
+
+DWM_TEST_PACTL_LOG="$work/pactl.log" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" volume-up 5%
+grep -Fqx "volume up" "$work/pactl.log"
+
+: >"$work/pactl.log"
+DWM_TEST_PACTL_LOG="$work/pactl.log" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" volume-down 5%
+grep -Fqx "volume down" "$work/pactl.log"
+
+: >"$work/pactl.log"
+DWM_TEST_PACTL_LOG="$work/pactl.log" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" volume-toggle-mute
+grep -Fqx "mute toggle" "$work/pactl.log"
 
 rm -f "$work/bin/pactl"
 cat >"$work/bin/pactl" <<'SH'

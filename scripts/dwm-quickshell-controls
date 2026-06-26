@@ -2,8 +2,21 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute" >&2
 	exit 2
+}
+
+volume_step() {
+	step=${1:-5%}
+
+	case "$step" in
+	[0-9]*%)
+		printf '%s\n' "$step"
+		;;
+	*)
+		usage
+		;;
+	esac
 }
 
 sink_mute_pactl() {
@@ -90,6 +103,43 @@ volume_status() {
 	printf '%s\n' "VOL unavailable"
 }
 
+volume_up() {
+	step=$(volume_step "${1:-}")
+
+	if command -v pactl >/dev/null 2>&1; then
+		pactl set-sink-volume @DEFAULT_SINK@ "+$step"
+	elif command -v wpctl >/dev/null 2>&1; then
+		wpctl set-volume @DEFAULT_AUDIO_SINK@ "$step+"
+	else
+		printf '%s\n' "pactl or wpctl not found" >&2
+		exit 127
+	fi
+}
+
+volume_down() {
+	step=$(volume_step "${1:-}")
+
+	if command -v pactl >/dev/null 2>&1; then
+		pactl set-sink-volume @DEFAULT_SINK@ "-$step"
+	elif command -v wpctl >/dev/null 2>&1; then
+		wpctl set-volume @DEFAULT_AUDIO_SINK@ "$step-"
+	else
+		printf '%s\n' "pactl or wpctl not found" >&2
+		exit 127
+	fi
+}
+
+volume_toggle_mute() {
+	if command -v pactl >/dev/null 2>&1; then
+		pactl set-sink-mute @DEFAULT_SINK@ toggle
+	elif command -v wpctl >/dev/null 2>&1; then
+		wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+	else
+		printf '%s\n' "pactl or wpctl not found" >&2
+		exit 127
+	fi
+}
+
 [ "$#" -ge 1 ] || usage
 
 command=$1
@@ -99,6 +149,18 @@ case "$command" in
 volume-status)
 	[ "$#" -eq 0 ] || usage
 	volume_status
+	;;
+volume-up)
+	[ "$#" -le 1 ] || usage
+	volume_up "${1:-}"
+	;;
+volume-down)
+	[ "$#" -le 1 ] || usage
+	volume_down "${1:-}"
+	;;
+volume-toggle-mute)
+	[ "$#" -eq 0 ] || usage
+	volume_toggle_mute
 	;;
 *)
 	usage

@@ -129,8 +129,20 @@ ShellRoot {
             controlsModel.toggle();
         }
 
+        function volumeDown(): void {
+            controlsModel.volumeDown();
+        }
+
         function volumeStatus(): string {
             return controlsModel.volumeText;
+        }
+
+        function volumeToggleMute(): void {
+            controlsModel.volumeToggleMute();
+        }
+
+        function volumeUp(): void {
+            controlsModel.volumeUp();
         }
     }
 
@@ -199,6 +211,10 @@ ShellRoot {
 
     NetworkWindow {
         networkModel: networkModel
+    }
+
+    ControlsWindow {
+        controlsModel: controlsModel
     }
 
     NotificationPopupWindow {
