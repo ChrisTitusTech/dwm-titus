@@ -9,11 +9,22 @@ PopupWindow {
     required property var controlsModel
     required property var panelWindow
 
+    readonly property int popupWidth: 360
+    readonly property int popupHeight: 412
+    readonly property int edgeMargin: 10
+    readonly property int contentMargin: 18
+    readonly property int contentSpacing: 12
+    readonly property int rowSpacing: 10
+    readonly property int actionButtonHeight: 40
+    readonly property int volumeControlHeight: 46
+    readonly property int volumePercentWidth: 42
+    readonly property int muteButtonWidth: 84
+
     visible: controlsModel.visible
-    implicitWidth: 360
-    implicitHeight: 412
+    implicitWidth: popupWidth
+    implicitHeight: popupHeight
     anchor.window: panelWindow
-    anchor.rect.x: Math.max(10, panelWindow.width - implicitWidth - 10)
+    anchor.rect.x: Math.max(edgeMargin, panelWindow.width - popupWidth - edgeMargin)
     anchor.rect.y: Theme.panelHeight
     grabFocus: true
     color: "#00000000"
@@ -24,6 +35,10 @@ PopupWindow {
                 content.forceActiveFocus();
             });
         }
+    }
+
+    function setVolumePendingFromX(x) {
+        volumeSlider.pendingPercent = volumeSlider.percentFromX(x);
     }
 
     Rectangle {
@@ -45,12 +60,12 @@ PopupWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 18
-            spacing: 12
+            anchors.margins: root.contentMargin
+            spacing: root.contentSpacing
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                spacing: root.rowSpacing
 
                 Text {
                     Layout.fillWidth: true
@@ -97,17 +112,13 @@ PopupWindow {
                 elide: Text.ElideRight
             }
 
-            Text {
-                Layout.fillWidth: true
-                text: "Volume"
-                color: Theme.textMuted
-                font.pixelSize: Theme.smallFontSize
-                font.bold: true
+            ControlsSectionLabel {
+                label: "Volume"
             }
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                spacing: root.rowSpacing
 
                 Item {
                     id: volumeSlider
@@ -116,14 +127,10 @@ PopupWindow {
                     property int displayPercent: volumeMouse.pressed ? pendingPercent : root.controlsModel.volumePercent
 
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 46
+                    Layout.preferredHeight: root.volumeControlHeight
 
                     function percentFromX(x) {
                         return Math.max(0, Math.min(100, Math.round((x / Math.max(1, width)) * 100)));
-                    }
-
-                    function updatePending(x) {
-                        pendingPercent = percentFromX(x);
                     }
 
                     Rectangle {
@@ -163,22 +170,22 @@ PopupWindow {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onPressed: function(mouse) {
-                            volumeSlider.updatePending(mouse.x);
+                            root.setVolumePendingFromX(mouse.x);
                         }
                         onPositionChanged: function(mouse) {
                             if (pressed) {
-                                volumeSlider.updatePending(mouse.x);
+                                root.setVolumePendingFromX(mouse.x);
                             }
                         }
                         onReleased: function(mouse) {
-                            volumeSlider.updatePending(mouse.x);
+                            root.setVolumePendingFromX(mouse.x);
                             root.controlsModel.volumeSet(volumeSlider.pendingPercent);
                         }
                     }
                 }
 
                 Text {
-                    Layout.preferredWidth: 42
+                    Layout.preferredWidth: root.volumePercentWidth
                     text: root.controlsModel.volumePercent + "%"
                     color: Theme.text
                     font.pixelSize: Theme.panelFontSize
@@ -188,8 +195,8 @@ PopupWindow {
                 }
 
                 ControlsActionButton {
-                    Layout.preferredWidth: 84
-                    Layout.preferredHeight: 46
+                    Layout.preferredWidth: root.muteButtonWidth
+                    Layout.preferredHeight: root.volumeControlHeight
                     label: root.controlsModel.volumeMuted ? "Unmute" : "Mute"
                     enabled: !root.controlsModel.busy
                     onActivated: root.controlsModel.volumeToggleMute()
@@ -198,7 +205,7 @@ PopupWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                spacing: root.rowSpacing
 
                 Text {
                     Layout.fillWidth: true
@@ -218,7 +225,7 @@ PopupWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                spacing: root.rowSpacing
 
                 Text {
                     Layout.fillWidth: true
@@ -236,12 +243,8 @@ PopupWindow {
                 }
             }
 
-            Text {
-                Layout.fillWidth: true
-                text: "Media"
-                color: Theme.textMuted
-                font.pixelSize: Theme.smallFontSize
-                font.bold: true
+            ControlsSectionLabel {
+                label: "Media"
             }
 
             Rectangle {
@@ -286,7 +289,7 @@ PopupWindow {
 
                 ControlsActionButton {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 40
+                    Layout.preferredHeight: root.actionButtonHeight
                     label: "Previous"
                     enabled: !root.controlsModel.busy && root.controlsModel.mediaPlayer.length > 0
                     onActivated: root.controlsModel.mediaPrevious()
@@ -294,7 +297,7 @@ PopupWindow {
 
                 ControlsActionButton {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 40
+                    Layout.preferredHeight: root.actionButtonHeight
                     label: "Play/Pause"
                     enabled: !root.controlsModel.busy && root.controlsModel.mediaPlayer.length > 0
                     onActivated: root.controlsModel.mediaPlayPause()
@@ -302,7 +305,7 @@ PopupWindow {
 
                 ControlsActionButton {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 40
+                    Layout.preferredHeight: root.actionButtonHeight
                     label: "Next"
                     enabled: !root.controlsModel.busy && root.controlsModel.mediaPlayer.length > 0
                     onActivated: root.controlsModel.mediaNext()
