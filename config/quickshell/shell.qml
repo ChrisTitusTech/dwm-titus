@@ -37,6 +37,12 @@ ShellRoot {
         }
     }
 
+    function switchWorkspace(index) {
+        switchWorkspaceProcess.command = ["dwm-quickshell-state", "switch", index.toString()];
+        switchWorkspaceProcess.running = true;
+        workspaceProcess.running = true;
+    }
+
     Process {
         id: dateProcess
 
@@ -101,6 +107,13 @@ ShellRoot {
         stdout: StdioCollector {
             onStreamFinished: root.updateWorkspaceState(this.text)
         }
+    }
+
+    Process {
+        id: switchWorkspaceProcess
+
+        command: ["dwm-quickshell-state", "switch", root.currentWorkspace.toString()]
+        running: false
     }
 
     Timer {
@@ -181,15 +194,29 @@ ShellRoot {
                     Repeater {
                         model: root.workspaceNames
 
-                        delegate: Text {
+                        delegate: Rectangle {
                             required property int index
                             required property string modelData
 
-                            text: modelData
-                            color: index === root.currentWorkspace ? "#81a1c1" : "#d8dee9"
-                            font.pixelSize: 13
-                            font.bold: index === root.currentWorkspace
-                            verticalAlignment: Text.AlignVCenter
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            radius: 3
+                            color: index === root.currentWorkspace ? "#3b4252" : "transparent"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: parent.modelData
+                                color: parent.index === root.currentWorkspace ? "#81a1c1" : "#d8dee9"
+                                font.pixelSize: 13
+                                font.bold: parent.index === root.currentWorkspace
+                                verticalAlignment: Text.AlignVCenter
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.switchWorkspace(parent.index)
+                            }
                         }
                     }
 
