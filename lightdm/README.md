@@ -12,7 +12,7 @@ the distribution package selects the correct greeter session name.
 
 | File | Destination |
 |------|-------------|
-| `lightdm.conf` | `/etc/lightdm/lightdm.conf.d/90-dwm-titus.conf` |
+| `lightdm.conf` | `/etc/lightdm/lightdm.conf` |
 | `slick-greeter.conf` | `/etc/lightdm/slick-greeter.conf` |
 | `wallpaper.jpg` | `/usr/share/pixmaps/dwm-titus.jpg` |
 

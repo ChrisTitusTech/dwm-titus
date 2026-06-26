@@ -401,24 +401,12 @@ detect_display_manager() {
 }
 
 install_lightdm_config() {
-	local legacy_config="/etc/lightdm/lightdm.conf"
-	local backup
-
-	if sudo test -f "$legacy_config" &&
-		sudo grep -Fxq 'greeter-session=lightdm-slick-greeter' "$legacy_config" &&
-		sudo grep -Fxq 'user-session=dwm' "$legacy_config" &&
-		sudo grep -Fxq 'session-wrapper=/etc/lightdm/Xsession' "$legacy_config"; then
-		backup="${legacy_config}.dwm-titus.$(date +%Y%m%d%H%M%S).bak"
-		warn "Migrating the legacy dwm-titus LightDM configuration."
-		sudo cp -a "$legacy_config" "$backup"
-		sudo rm "$legacy_config"
-		ok "Legacy LightDM configuration backed up to $backup"
-	fi
+	local lightdm_config="/etc/lightdm/lightdm.conf"
 
 	sudo make -C "$REPO_DIR/lightdm" install
 	if command -v restorecon &>/dev/null; then
 		sudo restorecon \
-			/etc/lightdm/lightdm.conf.d/90-dwm-titus.conf \
+			"$lightdm_config" \
 			/etc/lightdm/slick-greeter.conf \
 			/usr/share/pixmaps/dwm-titus.jpg \
 			/usr/share/pixmaps/dwm-titus-logo.png
