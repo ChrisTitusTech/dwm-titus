@@ -241,10 +241,6 @@ ShellRoot {
         networkModel: networkModel
     }
 
-    ControlsWindow {
-        controlsModel: controlsModel
-    }
-
     NotificationPopupWindow {
         notificationModel: notificationModel
     }
@@ -254,9 +250,16 @@ ShellRoot {
     }
 
     DwmPanel {
+        id: panelWindow
+
         state: dwmState
         clock: clock
         networkModel: networkModel
         controlsModel: controlsModel
+    }
+
+    ControlsWindow {
+        controlsModel: controlsModel
+        panelWindow: panelWindow
     }
 }
