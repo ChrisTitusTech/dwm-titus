@@ -32,6 +32,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-lock \
 	scripts/dwm-quickshell-launcher \
 	scripts/dwm-quickshell-state \
+	scripts/dwm-status \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
 	scripts/dwm-screenshot \
@@ -240,11 +241,11 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh \
+	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh \
 		config/rofi/*.sh
 
 check-format:
-	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh

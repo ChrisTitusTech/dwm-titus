@@ -99,7 +99,7 @@ EOF
 
 chmod +x "$work/bin/"*
 
-for name in feh picom dunst light-locker quickshell; do
+for name in feh picom dunst dwm-status light-locker quickshell; do
 	make_mock_command "$name"
 done
 
@@ -136,6 +136,7 @@ run_duplicate_case() {
 		wait_for_marker "$state/feh.running"
 		wait_for_marker "$state/picom.running"
 		wait_for_marker "$state/dunst.running"
+		wait_for_marker "$state/dwm-status.running"
 		wait_for_marker "$state/quickshell.running"
 	done
 

@@ -64,6 +64,9 @@ start_detached_once picom picom --backend "$PICOM_BACKEND"
 # Notification daemon
 start_once dunst dunst
 
+# dwm root-window status publisher for Quickshell's event-driven panel.
+start_detached_once dwm-status dwm-status
+
 # Session locker for the power menu lock action and loginctl lock requests.
 start_once light-locker light-locker
 
