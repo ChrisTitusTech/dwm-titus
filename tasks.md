@@ -535,7 +535,16 @@ clients.
     mute state, MPRIS media display/actions, live media updates, and Bluetooth
     status. Brightness controls were not needed on the current host because no
     backlight device is exposed.
-- [ ] Centralize Quickshell styling and reusable components.
+- [x] Centralize Quickshell styling and reusable components.
+  - Result: Phase 9 centralized colors, font choices, spacing variables, icon
+    sizing, and dark/light palette tokens in `Theme.qml`; added reusable
+    `ShellSurface`, `ShellButton`, and `SectionLabel` components; preserved the
+    existing panel, launcher, notifications, tray, controls, network, power,
+    state, and core module split.
+  - Validation: `make check-quickshell-launcher`, `tests/test-autostart.sh`,
+    `tests/test-install-preservation.sh`, `make check-install-manifest`, a
+    repo-scoped Quickshell reload, IPC target inspection, IPC network/status
+    probes, and launcher open/close passed.
 - [ ] Remove old dependencies only after Quickshell replacements are stable.
 - [ ] Document rollback steps and keep the old shell stack available until the
       migration is proven stable.

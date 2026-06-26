@@ -242,25 +242,49 @@ Make the Quickshell setup visually consistent and easier to maintain.
 
 ### Tasks
 
-- [ ] Define shared colors
-- [ ] Define font choices
-- [ ] Define spacing variables
-- [ ] Define icon sizing
-- [ ] Create reusable components
-- [ ] Separate config into logical modules:
-  - [ ] Panel
-  - [ ] Launcher
-  - [ ] Notifications
-  - [ ] Tray
-  - [ ] Menus
-  - [ ] Services
-- [ ] Add light/dark theme support if desired
+- [x] Define shared colors
+  - `config/quickshell/core/Theme.qml` now owns shell colors, including dark
+    and light palette tokens, accent, danger, surfaces, text, and transparent
+    values.
+- [x] Define font choices
+  - The shared theme defines `fontFamily` and the common title, input, panel,
+    body, small, and tiny font sizes used across the shell.
+- [x] Define spacing variables
+  - Common popup margin, popup spacing, row spacing, list spacing, compact
+    spacing, and section spacing are centralized in the theme.
+- [x] Define icon sizing
+  - Launcher, tray, close-button, workspace-button, chip, and notification
+    accent sizes are shared theme tokens.
+- [x] Create reusable components
+  - Added reusable `ShellSurface`, `ShellButton`, and `SectionLabel`
+    components under `config/quickshell/core/`.
+- [x] Separate config into logical modules:
+  - [x] Panel
+  - [x] Launcher
+  - [x] Notifications
+  - [x] Tray
+  - [x] Menus
+  - [x] Services
+- [x] Add light/dark theme support if desired
+  - The theme includes dark and light palette branches; the session defaults to
+    dark mode and can be switched by changing the theme `dark` flag in one
+    place.
 
 ### Exit Criteria
 
-- Styling is centralized
-- Components are reusable
-- Config is readable enough to maintain long-term
+- [x] Styling is centralized
+  - Repeated colors, fonts, spacing, radii, and shell dimensions now resolve
+    through `Theme.qml`.
+- [x] Components are reusable
+  - Common popup chrome, simple buttons, and section labels are shared instead
+    of reimplemented in each feature window.
+- [x] Config is readable enough to maintain long-term
+  - Feature modules remain split by panel, launcher, notifications, tray,
+    network, controls, power menu, state, and core services.
+  - Validation: `make check-quickshell-launcher`,
+    `tests/test-autostart.sh`, `tests/test-install-preservation.sh`,
+    `make check-install-manifest`, repo-scoped Quickshell reload, IPC target
+    inspection, and launcher open/close all passed.
 
 ---
 
