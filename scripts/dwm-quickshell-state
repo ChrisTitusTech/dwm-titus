@@ -1,0 +1,120 @@
+#!/bin/sh
+set -eu
+
+print_default_names() {
+	count=${1:-9}
+	i=1
+	sep=
+	while [ "$i" -le "$count" ]; do
+		printf '%s%s' "$sep" "$i"
+		sep='|'
+		i=$((i + 1))
+	done
+}
+
+clean_line() {
+	tr '\r\n' '  ' | sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//'
+}
+
+root_property_value() {
+	prop=$1
+	xprop -root "$prop" 2>/dev/null | sed -n 's/^[^=]*= //p'
+}
+
+desktop_names() {
+	names=$(root_property_value _NET_DESKTOP_NAMES | awk '
+		BEGIN { RS = ","; sep = "" }
+		{
+			gsub(/^[[:space:]]*"/, "")
+			gsub(/"[[:space:]]*$/, "")
+			if ($0 != "") {
+				printf "%s%s", sep, $0
+				sep = "|"
+			}
+		}
+	')
+	if [ -n "$names" ]; then
+		printf '%s' "$names"
+	else
+		print_default_names "$1"
+	fi
+}
+
+active_window_id() {
+	xdotool getactivewindow 2>/dev/null || {
+		root_property_value _NET_ACTIVE_WINDOW |
+			sed -n 's/^window id # //p' |
+			awk '$1 != "0x0" { print $1; exit }'
+	}
+}
+
+window_title() {
+	window_id=$1
+	[ -n "$window_id" ] || return 1
+	xprop -id "$window_id" _NET_WM_NAME WM_NAME 2>/dev/null |
+		awk -F'= ' '
+			/^_NET_WM_NAME/ {
+				title = $2
+				gsub(/^"/, "", title)
+				gsub(/"$/, "", title)
+				print title
+				found = 1
+				exit
+			}
+			/^WM_NAME/ {
+				title = $2
+				gsub(/^"/, "", title)
+				gsub(/"$/, "", title)
+				fallback = title
+			}
+			END {
+				if (!found && fallback != "") {
+					print fallback
+				}
+			}
+		' | clean_line
+}
+
+show_state() {
+	current=$(root_property_value _NET_CURRENT_DESKTOP | awk '{ print $1; exit }')
+	count=$(root_property_value _NET_NUMBER_OF_DESKTOPS | awk '{ print $1; exit }')
+	current=${current:-0}
+	count=${count:-9}
+	names=$(desktop_names "$count")
+	window_id=$(active_window_id)
+	title=$(window_title "$window_id" || true)
+
+	printf 'current=%s\n' "$current"
+	printf 'count=%s\n' "$count"
+	printf 'names=%s\n' "$names"
+	printf 'active_window=%s\n' "$window_id"
+	printf 'title=%s\n' "$title"
+}
+
+switch_workspace() {
+	target=${1:-}
+	case $target in
+	'' | *[!0-9]*)
+		printf 'usage: %s switch <zero-based-workspace>\n' "$0" >&2
+		return 2
+		;;
+	esac
+	command -v wmctrl >/dev/null 2>&1 || {
+		printf 'wmctrl is required for workspace switching\n' >&2
+		return 127
+	}
+	wmctrl -s "$target"
+}
+
+case ${1:-state} in
+state)
+	show_state
+	;;
+switch)
+	switch_workspace "${2:-}"
+	;;
+*)
+	printf 'usage: %s [state|switch <zero-based-workspace>]\n' "$0" >&2
+	exit 2
+	;;
+esac

@@ -81,7 +81,7 @@ tag switching is available. WM keybinds remain the primary control path.
 ### Tasks
 
 - [x] Decide how workspace/tag state will be exposed
-- [ ] Create a script or IPC bridge for current workspace/tag
+- [x] Create a script or IPC bridge for current workspace/tag
 - [ ] Display active workspace/tag in Quickshell
 - [ ] Add clickable workspace/tag switching if practical
 - [ ] Display active window title

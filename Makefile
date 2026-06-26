@@ -32,6 +32,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-display-profile \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
+	scripts/dwm-quickshell-state \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
 	scripts/dwm-screenshot \
@@ -265,12 +266,12 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
+	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
 		config/polybar/*.sh config/polybar/scripts/*.sh \
 		config/polybar/scripts/weather/*.sh config/rofi/*.sh
 
 check-format:
-	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
