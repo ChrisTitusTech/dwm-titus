@@ -362,7 +362,6 @@ if install_recommended_profile; then
 	dwm_install_package_profile desktop
 	dwm_install_package_profile theme
 	dwm_install_package_profile fonts
-	dwm_install_package_profile bar
 	ok "Recommended desktop dependencies installed."
 else
 	warn "Skipping recommended desktop dependencies for core profile."
@@ -395,10 +394,6 @@ if install_recommended_profile; then
 	FONT_DIR="$HOME/.local/share/fonts"
 	mkdir -p "$FONT_DIR"
 	install_meslo_nerd_font
-	if [ -d "$REPO_DIR/config/polybar/fonts" ]; then
-		cp -r "$REPO_DIR/config/polybar/fonts/"* "$FONT_DIR/"
-		fc-cache -fv >/dev/null 2>&1
-	fi
 	ok "Fonts installed."
 fi
 

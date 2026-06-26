@@ -7,7 +7,7 @@ in `SPEC.md`.
 ## Completed Phase: Quickshell Baseline
 
 Goal: install Quickshell and confirm it works reliably under Xorg before
-replacing Polybar, Rofi, Dunst, or other existing shell components.
+replacing Rofi-era bar, Rofi, Dunst, or other existing shell components.
 
 - [x] Install Quickshell.
   - Acceptance: `quickshell --version` or the equivalent package command
@@ -19,12 +19,12 @@ replacing Polybar, Rofi, Dunst, or other existing shell components.
     `dacfa9de829ac7cb173825f593236bf2c21f637e`, distributed by Fedora Project.
 - [x] Create the base Quickshell config directory.
   - Acceptance: the config lives under the expected XDG config path and does
-    not replace existing dwm, Polybar, Rofi, or Dunst configuration.
+    not replace existing dwm, Rofi-era bar, Rofi, or Dunst configuration.
   - Validation: inspect the created path and confirm existing config files are
     still present.
   - Result: created `/home/titus/.config/quickshell` under
     `XDG_CONFIG_HOME=/home/titus/.config`. Existing
-    `/home/titus/.config/dwm-titus`, `/home/titus/.config/polybar`, and
+    `/home/titus/.config/dwm-titus`, `/home/titus/.config/legacy-bar`, and
     `/home/titus/.config/rofi` directories remained present; no existing Dunst
     config directory was present to preserve.
 - [x] Launch a minimal Quickshell window manually.
@@ -60,36 +60,36 @@ replacing Polybar, Rofi, Dunst, or other existing shell components.
     `wmctrl -ic`, Quickshell was stopped, `quickshell list` and
     `pgrep -a quickshell` confirmed no remaining instance, and `wmctrl -m`
     still reported `Name: dwm`.
-- [x] Add a temporary startup command while keeping Polybar and Rofi enabled.
+- [x] Add a temporary startup command while keeping Rofi-era bar and Rofi enabled.
   - Acceptance: Quickshell can be started with the session without removing
     the current fallback shell tools.
   - Validation: restart the session or startup script in a controlled test and
-    confirm Polybar/Rofi still work.
+    confirm Rofi-era bar/Rofi still work.
   - Result: added a temporary Quickshell startup block to
     `scripts/autostart.sh` that runs `quickshell --no-duplicate` only when
     `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml` exists. The
-    existing Polybar launch remains in place, and Rofi remains installed at
+    existing Rofi-era bar launch remains in place, and Rofi remains installed at
     `/usr/bin/rofi` with the existing app-launcher hotkeys still present in
     `hotkeys.toml`. `make check-session-guards` passed with mocked
     display-manager and `startx` runs, confirming Quickshell starts once while
-    Polybar still launches and duplicate guards continue to work. `make
+    Rofi-era bar still launches and duplicate guards continue to work. `make
     check-shell`, `make check-format`, and `git diff --check` also passed.
 
 ## Completed Phase: Basic Quickshell Panel
 
-Goal: replace Polybar with a simple Quickshell top panel while keeping Polybar
+Goal: replace Rofi-era bar with a simple Quickshell top panel while keeping Rofi-era bar
 available as the fallback until the Quickshell panel is usable.
 
 - [x] Build a basic `PanelWindow`.
   - Acceptance: a tracked Quickshell config creates a top panel matching the
-    current 30px Polybar height.
+    current 30px Rofi-era bar height.
   - Validation: launch the config in the active Xorg/dwm session and confirm
     Quickshell reports a running X11 instance while dwm remains the active
     window manager.
   - Result: added `config/quickshell/shell.qml` and synced the active user
     config at `/home/titus/.config/quickshell/shell.qml`. The config creates a
     30px top `PanelWindow` for each `Quickshell.screens` entry, uses the
-    current Polybar Nord colors, and sets `exclusiveZone: 30`. Running
+    current Rofi-era bar Nord colors, and sets `exclusiveZone: 30`. Running
     `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
     --log-times` reported `Configuration Loaded`; `quickshell list` showed the
     instance on `x11,:0`; `wmctrl -m` still reported `Name: dwm`; and
@@ -110,7 +110,7 @@ available as the fallback until the Quickshell panel is usable.
     format; and `wmctrl -m` still reported `Name: dwm`.
 - [x] Add CPU/RAM indicators.
   - Acceptance: the panel displays a lightweight CPU/RAM summary without
-    requiring Polybar or a new package dependency.
+    requiring Rofi-era bar or a new package dependency.
   - Validation: run the status command directly, then launch the config in the
     active Xorg/dwm session and confirm Quickshell remains running.
   - Result: added one shared `systemText` property, a `/proc/loadavg` and
@@ -166,7 +166,7 @@ available as the fallback until the Quickshell panel is usable.
     `m->wh` while shifting `m->wy` down for a top bar.
   - Implementation: Quickshell's X11 `PanelWindow` does not expose
     `WM_CLASS`, but it does expose `_NET_WM_WINDOW_TYPE_DOCK`. `dwm.c` now
-    keeps the existing Polybar `WM_CLASS=Polybar` path and also treats
+    keeps the existing Rofi-era bar `WM_CLASS=Rofi-era bar` path and also treats
     bar-shaped dock windows as altbars so Quickshell can enter the same
     `managealtbar()` reservation path after the rebuilt dwm is running.
   - Validation: Quickshell inspection showed no `WM_CLASS` and
@@ -182,9 +182,9 @@ available as the fallback until the Quickshell panel is usable.
     30px height.
   - Validation: the controlled Xvfb session reported the Quickshell dock as
     `1280x30` at `0,0`, matching the configured top panel height and placement.
-- [x] Disable Polybar only after Quickshell panel is usable.
+- [x] Disable Rofi-era bar only after Quickshell panel is usable.
   - Acceptance: normal session startup launches Quickshell as the panel when
-    its config exists and keeps Polybar as a fallback when Quickshell is not
+    its config exists and keeps Rofi-era bar as a fallback when Quickshell is not
     configured.
   - Validation: live X11 session plus autostart guard tests.
   - Result: after adding `aboveWindows: true` to the Quickshell panel and
@@ -193,10 +193,10 @@ available as the fallback until the Quickshell panel is usable.
     `_NET_WM_STRUT`, and `_NET_WM_STRUT_PARTIAL` reserving 30px at the top.
     `xdotool getwindowgeometry` reported the active terminal at `0,30` with
     geometry `2560x1570`, confirming the window manager respected the panel
-    reservation. `pgrep -af 'quickshell|polybar'` showed Quickshell running
-    and no Polybar process. `scripts/autostart.sh` now starts Quickshell when
+    reservation. `pgrep -af 'quickshell|legacy-bar'` showed Quickshell running
+    and no Rofi-era bar process. `scripts/autostart.sh` now starts Quickshell when
     `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml` exists and only
-    launches Polybar when that Quickshell config is absent; the autostart test
+    launches Rofi-era bar when that Quickshell config is absent; the autostart test
     covers both paths.
 
 ## Completed Phase: Workspace and Window State Integration
@@ -347,6 +347,6 @@ workflow while keeping Rofi available as a fallback during testing.
 ## Validation Policy
 
 A task is complete only when its acceptance criteria pass or the exact skipped
-environment is recorded. Do not remove Polybar, Rofi, or Dunst from the normal
+environment is recorded. Do not remove Rofi-era bar, Rofi, or Dunst from the normal
 startup path until the Quickshell replacement for that component has been
 validated and rollback steps are documented.

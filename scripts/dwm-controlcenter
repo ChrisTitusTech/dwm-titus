@@ -20,7 +20,6 @@ fi
 THEME_FILE="${THEME_DIR:+$THEME_DIR/controlcenter.rasi}"
 
 DWM_TITUS_DIR="$HOME/.local/share/dwm-titus"
-POLYBAR_DIR="$HOME/.config/polybar"
 ROFI_DIR="$HOME/.config/rofi"
 BG_DIR="$HOME/Pictures/backgrounds"
 PICOM_BACKEND="${PICOM_BACKEND:-xrender}"
@@ -176,7 +175,7 @@ run_health_check() {
     _cmd picom
     _cmd dunst
     _cmd feh
-    _cmd flameshot
+	_cmd flameshot
     if ! command -v dex &>/dev/null && ! command -v dex-autostart &>/dev/null; then
         failed_lines+=("<span color='#bf616a'>✗  dex or dex-autostart</span>")
         fail=$((fail + 1))
@@ -184,8 +183,7 @@ run_health_check() {
         passed_lines+=("✓  XDG autostart runner")
         pass=$((pass + 1))
     fi
-    _cmd amixer
-    _cmd polybar
+	_cmd amixer
 
     # ── Terminal Emulators ───────────────────────────────
     local term_ok=0
@@ -205,9 +203,8 @@ run_health_check() {
     _font "Noto Color Emoji"
 
     # ── Running Services ─────────────────────────────────
-    _proc picom
-    _proc dunst
-    _proc polybar
+	_proc picom
+	_proc dunst
     if systemctl is-active --quiet NetworkManager 2>/dev/null; then
         passed_lines+=("✓  NetworkManager  (active)")
         pass=$((pass + 1))
@@ -217,10 +214,9 @@ run_health_check() {
     fi
 
     # ── Session & Config Files ───────────────────────────
-    _path /usr/share/xsessions/dwm.desktop
-    _path "$HOME/.xinitrc"
-    _path "$POLYBAR_DIR"
-    _path "$ROFI_DIR"
+	_path /usr/share/xsessions/dwm.desktop
+	_path "$HOME/.xinitrc"
+	_path "$ROFI_DIR"
     _path "$BG_DIR"
 
     # ── Display results (failed first, then passed) ──────
@@ -261,10 +257,9 @@ run_health_check() {
 
 run_quick_actions() {
     local items=(
-        "  Restart Picom"
-        "  Restart Dunst"
-        "  Restart Polybar"
-        "  Reload Wallpaper"
+		"  Restart Picom"
+		"  Restart Dunst"
+		"  Reload Wallpaper"
         "  Toggle Compositor"
         "  Restart NetworkManager"
         "  Run Dependency Check"
@@ -288,14 +283,7 @@ run_quick_actions() {
             dunst &
             notify "Dunst restarted"
             ;;
-        *"Restart Polybar"*)
-            if [ -x "$POLYBAR_DIR/launch.sh" ]; then
-                "$POLYBAR_DIR/launch.sh" &
-            else
-                notify "Polybar launch.sh not found" --urgency=critical
-            fi
-            ;;
-        *"Reload Wallpaper"*)
+		*"Reload Wallpaper"*)
             if [ -d "$BG_DIR" ]; then
                 feh --randomize --bg-fill "$BG_DIR"/* || notify "Failed to set wallpaper" --urgency=critical
                 notify "Wallpaper randomized"
@@ -390,11 +378,10 @@ run_theme_select() {
 
 run_appearance() {
     local items=(
-        "  Select Theme"
-        "  Randomize Wallpaper"
-        "  Open Wallpaper Folder"
-        "  Edit Polybar Config"
-        "  GTK Theme Settings"
+		"  Select Theme"
+		"  Randomize Wallpaper"
+		"  Open Wallpaper Folder"
+		"  GTK Theme Settings"
     )
 
     while true; do
@@ -417,16 +404,7 @@ run_appearance() {
             xdg-open "$BG_DIR" 2>/dev/null &
             disown
             ;;
-        *"Edit Polybar Config"*)
-            local cfg="$POLYBAR_DIR/themes/minimal/config.ini"
-            if [ -f "$cfg" ]; then
-                xdg-open "$cfg" 2>/dev/null &
-                disown
-            else
-                notify "Polybar config not found" --urgency=critical
-            fi
-            ;;
-        *"GTK Theme Settings"*)
+		*"GTK Theme Settings"*)
             if command -v nwg-look &>/dev/null; then
                 setsid nwg-look </dev/null >/dev/null 2>&1 &
             else

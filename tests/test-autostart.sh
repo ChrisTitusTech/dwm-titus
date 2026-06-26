@@ -108,22 +108,10 @@ run_duplicate_case() {
 	home="$work/$mode/home"
 	state="$work/$mode/state"
 	runtime="$work/$mode/runtime"
-	mkdir -p "$home/Pictures/backgrounds" "$home/.config/polybar" \
-		"$home/.config/quickshell" "$state" "$runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$home/.config/quickshell" "$state" "$runtime"
 	chmod 700 "$runtime"
 	: >"$home/Pictures/backgrounds/wallpaper"
 	: >"$home/.config/quickshell/shell.qml"
-
-	cat >"$home/.config/polybar/launch.sh" <<'EOF'
-#!/bin/sh
-count_file="${TEST_STATE:?}/polybar-launch.count"
-count=0
-[ ! -f "$count_file" ] || count=$(cat "$count_file")
-count=$((count + 1))
-printf '%s\n' "$count" >"$count_file"
-: >"${TEST_STATE:?}/polybar.running"
-EOF
-	chmod +x "$home/.config/polybar/launch.sh"
 
 	# Prevent this isolated test from starting a host polkit agent.
 	: >"$state/polkit-mate-authentication-agent-1.running"
@@ -154,38 +142,6 @@ EOF
 	for name in feh picom dunst light-locker quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
-	test ! -f "$state/polybar-launch.count"
-	test ! -f "$state/polybar.running"
-}
-
-run_polybar_fallback_case() {
-	home="$work/polybar-fallback/home"
-	state="$work/polybar-fallback/state"
-	mkdir -p "$home/.config/polybar" "$state"
-
-	cat >"$home/.config/polybar/launch.sh" <<'EOF'
-#!/bin/sh
-count_file="${TEST_STATE:?}/polybar-launch.count"
-count=0
-[ ! -f "$count_file" ] || count=$(cat "$count_file")
-count=$((count + 1))
-printf '%s\n' "$count" >"$count_file"
-: >"${TEST_STATE:?}/polybar.running"
-EOF
-	chmod +x "$home/.config/polybar/launch.sh"
-
-	: >"$state/polkit-mate-authentication-agent-1.running"
-
-	HOME=$home \
-		TEST_STATE=$state \
-		PATH="$work/bin:/usr/bin:/bin" \
-		XDG_CONFIG_HOME="$home/.config" \
-		DWM_AUTOSTART_NO_SETSID=1 \
-		sh "$repo_dir/scripts/autostart.sh"
-
-	test "$(cat "$state/polybar-launch.count")" -eq 1
-	test -f "$state/polybar.running"
-	test ! -f "$state/quickshell.running"
 }
 
 run_missing_optional_case() {
@@ -214,7 +170,6 @@ run_missing_optional_case() {
 
 run_duplicate_case display-manager
 run_duplicate_case startx
-run_polybar_fallback_case
 run_missing_optional_case
 
 printf '%s\n' "Autostart duplicate and missing-optional command guards: PASS"

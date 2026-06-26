@@ -4,8 +4,8 @@
 
 dwm-titus is a maintained, opinionated fork of suckless dwm for X11. It
 combines a small C window-manager core with runtime-configurable hotkeys,
-themes, and window rules, plus an optional desktop layer built around Polybar,
-Rofi, Picom, Dunst, and helper scripts.
+themes, and window rules, plus a Quickshell shell layer and optional desktop
+helpers such as Rofi, Picom, Dunst, and supporting scripts.
 
 The product target is one repository and one documented installation workflow
 that works across Debian-family, Arch-family, and RHEL-family Linux
@@ -111,7 +111,7 @@ The project must support:
 
 - A display-manager session installed as `dwm.desktop`.
 - A `startx` flow whose `.xinitrc` launches dwm in a D-Bus session.
-- Startup without Polybar, Picom, Dunst, a wallpaper, or a polkit agent.
+- Startup without Picom, Dunst, a wallpaper, or a polkit agent.
 - Detection of common polkit agent locations across `/usr/lib`,
   `/usr/lib64`, and `/usr/libexec` layouts.
 - Startup helpers that do not create duplicate long-running processes when the
@@ -215,7 +215,7 @@ Runtime dependencies are classified as:
 
 - Core: an X11 server/session, D-Bus session support, one usable terminal, and
   the tools required by configured core keybindings.
-- Recommended desktop: Polybar, Rofi, Picom, Dunst, Feh, Dex, a polkit agent,
+- Recommended desktop: Quickshell, Rofi, Picom, Dunst, Feh, Dex, a polkit agent,
   notification tools, audio controls, screenshot tooling, and Nerd/emoji
   fonts.
 - Optional: file manager, network tray, theme utilities, display-manager
@@ -235,7 +235,6 @@ Default user locations:
 
 ```text
 ${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/
-${XDG_CONFIG_HOME:-$HOME/.config}/polybar/
 ${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/
 ```
 
@@ -253,7 +252,8 @@ configuration and unrelated application configuration by default.
 - The terminal command must select an installed supported terminal or provide a
   clear configuration path.
 - Font aliases must accommodate common Meslo Nerd Font naming differences.
-- Multi-monitor setup must expose EWMH tags correctly to Polybar.
+- Multi-monitor setup must expose EWMH tags correctly to Quickshell and EWMH
+  inspection tools.
 - Defaults should work at 1080p and remain usable at lower and higher
   resolutions.
 - Installation output must be readable in both interactive terminals and logs.
@@ -303,7 +303,7 @@ In a real or nested X11 session:
 - Runtime TOML configuration loads and reloads.
 - A display-manager session and `startx` path both launch.
 - Missing optional desktop processes do not terminate the session.
-- EWMH integration works with Polybar or an equivalent inspection tool.
+- EWMH integration works with Quickshell or an equivalent inspection tool.
 - Multi-monitor behavior is tested where suitable hardware or nested displays
   are available.
 

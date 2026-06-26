@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-83dbc899.js";
+            window.path_to_searchindex_js = "searchindex-c33f0205.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ec609ebd.js"></script>
+        <script src="toc-e4ab374d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -230,15 +230,15 @@
 </div>
 <hr>
 <h2 id="bar--ewmh"><a class="header" href="#bar--ewmh">Bar &amp; EWMH</a></h2>
-<h3 id="polybar-integration"><a class="header" href="#polybar-integration">Polybar Integration</a></h3>
-<p>The built-in dwm bar is replaced by Polybar. dwm-titus feeds tag and window data to Polybar via EWMH atoms, keeping it fully informed.</p>
-<p>Multi-monitor support: each monitor gets its own Polybar instance. The primary monitor hosts the system tray and EWMH tag reporting.</p>
+<h3 id="quickshell-integration"><a class="header" href="#quickshell-integration">Quickshell Integration</a></h3>
+<p>The managed Quickshell layer reads dwm workspace and active-window state through
+EWMH-compatible helpers so the panel stays synchronized with X11 state.</p>
 <h3 id="ewmh-compliance"><a class="header" href="#ewmh-compliance">EWMH Compliance</a></h3>
 <p>Implements <code>_NET_WM_STATE</code>, <code>_NET_CURRENT_DESKTOP</code>, <code>_NET_NUMBER_OF_DESKTOPS</code>, and related atoms so external tools and taskbars work correctly.</p>
 <h3 id="window-icons"><a class="header" href="#window-icons">Window Icons</a></h3>
 <p>Title bar icons via <code>_NET_WM_ICON</code>. Applications that set this atom display their icon in the bar.</p>
 <h3 id="systray"><a class="header" href="#systray">Systray</a></h3>
-<p>A built-in system tray is compiled in. It is disabled by default when Polybar is running (to avoid duplication), but can be re-enabled in <code>config.h</code>.</p>
+<p>A built-in system tray is compiled in and can be configured in <code>config.h</code>.</p>
 <hr>
 <h2 id="visual"><a class="header" href="#visual">Visual</a></h2>
 <h3 id="noborder"><a class="header" href="#noborder">Noborder</a></h3>
@@ -250,7 +250,7 @@
 <h3 id="toml-hotkeys-hotkeystoml"><a class="header" href="#toml-hotkeys-hotkeystoml">TOML Hotkeys (<code>hotkeys.toml</code>)</a></h3>
 <p>Keybindings are parsed from <code>config/hotkeys.toml</code> at runtime. Edit and save — bindings update without recompiling or restarting dwm.</p>
 <h3 id="toml-themes-themestoml"><a class="header" href="#toml-themes-themestoml">TOML Themes (<code>themes.toml</code>)</a></h3>
-<p>Colors for dwm, terminal, rofi, and polybar are all sourced from <code>config/themes.toml</code>. Save the file to apply a new theme instantly across all apps.</p>
+<p>Colors for dwm, terminal, and rofi are sourced from <code>config/themes.toml</code>. Save the file to apply a new theme instantly across supported apps.</p>
 <hr>
 <h2 id="scripts--utilities"><a class="header" href="#scripts--utilities">Scripts &amp; Utilities</a></h2>
 <div class="table-wrapper">
@@ -267,15 +267,15 @@
 <tr><td><code>webapp-launch</code></td><td>Launches a URL as a standalone web app window</td></tr>
 <tr><td><code>autostart.sh</code></td><td>Runs programs on dwm start</td></tr>
 <tr><td><code>check-deps.sh</code></td><td>Checks all required dependencies</td></tr>
-<tr><td><code>active-audio</code></td><td>Displays active audio device in Polybar</td></tr>
 <tr><td><code>disable-powersaving</code></td><td>Disables DPMS and screen blanking</td></tr>
 </tbody>
 </table>
 </div>
 <hr>
 <h2 id="multi-monitor"><a class="header" href="#multi-monitor">Multi-Monitor</a></h2>
-<p>Xinerama support with per-monitor Polybar bars. Tags are independent per monitor. Windows can be moved between monitors with <code>Super</code> + <code>Shift</code> + <code>,</code>/<code>.</code>.</p>
-
+<p>Xinerama support keeps tags independent per monitor. Windows can be moved
+between monitors with <code>Super</code> + <code>Shift</code> + <code>,</code>/<code>.</code>.</p>
+<footer id="last-change">Last change: <time datetime="2026-03-24">2026-03-24</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
@@ -320,11 +320,11 @@
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

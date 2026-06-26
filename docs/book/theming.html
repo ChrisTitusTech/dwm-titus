@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-83dbc899.js";
+            window.path_to_searchindex_js = "searchindex-c33f0205.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ec609ebd.js"></script>
+        <script src="toc-e4ab374d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -177,7 +177,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="theming"><a class="header" href="#theming">Theming</a></h1>
-<p>Themes are defined in <code>config/themes.toml</code>. Change the active theme and <strong>save</strong> — dwm, terminal, rofi, and polybar all update instantly. No restart needed.</p>
+<p>Themes are defined in <code>config/themes.toml</code>. Change the active theme and <strong>save</strong> — dwm, terminal, and rofi update instantly. No restart needed.</p>
 <pre><code class="language-toml">[active]
 theme = "nord"   # ← change this line to switch themes
 </code></pre>
@@ -238,8 +238,7 @@ borderpx = 1   # 0 = no border, 1 = thin (default), 2-3 = thicker
 <tr><td><code>term_color0</code>–<code>term_color15</code></td><td>Full 16-color terminal palette</td></tr>
 <tr><td><code>ghostty_theme</code></td><td>Ghostty built-in theme name</td></tr>
 <tr><td><code>rofi_theme</code></td><td>Rofi <code>.rasi</code> theme (filename without extension)</td></tr>
-<tr><td><code>polybar_bg</code> / <code>polybar_fg</code> / <code>polybar_accent</code> / <code>polybar_urgent</code></td><td>Polybar colors</td></tr>
-<tr><td><code>dark_mode</code></td><td>GTK dark preference (<code>true</code> / <code>false</code>)</td></tr>
+<tr><td><code>dark_mode</code></td><td>GTK dark preference and Capitaine cursor variant (<code>true</code> / <code>false</code>)</td></tr>
 </tbody>
 </table>
 </div>
@@ -261,12 +260,6 @@ term_cursor     = "#f5e0dc"
 
 ghostty_theme   = "Catppuccin Mocha"
 rofi_theme      = "sidetab-catppuccin"
-polybar_bg      = "#1e1e2e"
-polybar_fg      = "#cdd6f4"
-polybar_bg_alt  = "#313244"
-polybar_fg_alt  = "#a6adc8"
-polybar_accent  = "#89b4fa"
-polybar_urgent  = "#f38ba8"
 dark_mode       = true
 </code></pre>
 <p>Then set <code>theme = "mytheme"</code> under <code>[active]</code> and save.</p>
@@ -281,7 +274,7 @@ dark_mode       = true
 <p>Place images in <code>~/Pictures/backgrounds/</code>. Use <code>Super</code> + <code>Shift</code> + <code>W</code> to randomize, or set a specific one:</p>
 <pre><code class="language-bash">feh --bg-fill ~/Pictures/backgrounds/mywall.jpg
 </code></pre>
-
+<footer id="last-change">Last change: <time datetime="2026-06-24">2026-06-24</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
@@ -326,11 +319,11 @@ dark_mode       = true
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

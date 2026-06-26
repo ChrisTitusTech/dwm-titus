@@ -12,18 +12,18 @@ This is a **heavily modified** version of dwm based on the original [suckless.or
 
 ### Patches & Features
 
-- **Polybar** integration (replaces dwm built-in bar)
+- **Quickshell** panel and application launcher for the normal desktop workflow
 - **Window swallowing** — terminals absorb child GUI windows
 - **EWMH** compliance — proper desktop/tag reporting for external tools
 - **Pertag** — independent layouts, master counts, and sizing per tag
 - **Cfact** — per-window sizing in tiled layouts
 - **Movestack** — reorder windows in the stack with keybinds
-- **Systray** — built-in system tray (disabled by default when using Polybar)
+- **Systray** — built-in system tray
 - **Fullscreen** — actual and fake fullscreen toggle (3-state)
 - **Window icons** — title bar icons via `_NET_WM_ICON`
 - **Cursor warp** — cursor follows focus across windows/monitors
 - **Noborder** — auto-remove borders when only one window is visible
-- **Multi-monitor** — Xinerama support with per-monitor Polybar bars
+- **Multi-monitor** — Xinerama support with EWMH-aware tags
 
 ---
 
@@ -68,14 +68,7 @@ sudo make install
 
 #### 3. Install Fonts
 
-Polybar icon fonts (MaterialIcons, Feather) are bundled in `polybar/fonts/`:
-```bash
-mkdir -p ~/.local/share/fonts
-cp -r polybar/fonts/* ~/.local/share/fonts/
-fc-cache -fv
-```
-
-`make install` now also writes a local fontconfig alias file so both naming variants
+`make install` writes a local fontconfig alias file so both naming variants
 `MesloLGS NF` and `MesloLGS Nerd Font` resolve correctly across different Linux distributions.
 It also installs the bundled Capitaine dark and light cursor themes. Theme reloads
 select `Capitaine-Cursors-White` for dark themes and `Capitaine-Cursors` for light themes.
@@ -105,11 +98,11 @@ The installer places `.xinitrc` in your home directory. Start with:
 startx
 ```
 
-The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), starts the configured shell panel, and starts dwm. Quickshell is preferred when `~/.config/quickshell/shell.qml` exists; Polybar remains the fallback panel.
+The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), starts the configured Quickshell panel, and starts dwm.
 
 For a core-only setup, use the minimal session profile documented in
 [`docs/src/install.md`](docs/src/install.md). It runs dwm with one terminal,
-required X11/session services, and treats Polybar, Rofi, Picom, Dunst,
+required X11/session services, and treats Rofi, Picom, Dunst,
 wallpapers, tray tools, and hardware helpers as optional degraded features.
 
 The normal app launcher binding is the Quickshell launcher on
@@ -186,13 +179,10 @@ Key things to customize in `config.h`:
 - Check `.xinitrc` exists and ends with `exec dwm`
 - Try `startx` from a TTY to see error output
 
-**No status bar / Polybar missing:**
+**No status bar / Quickshell missing:**
 - Install the recommended desktop layer: `./install.sh --profile recommended`
-- Check fonts are installed: `fc-list | grep -i meslo`
-- Verify polybar config: `ls ~/.config/polybar/`
-
-**Missing icons in Polybar:**
-- Install icon fonts: `cp -r polybar/fonts/* ~/.local/share/fonts/ && fc-cache -fv`
+- Verify the managed shell config exists: `ls ~/.config/quickshell/shell.qml`
+- Run manually: `quickshell --no-duplicate`
 
 **Terminal doesn't open (SUPER+X):**
 - Install a terminal emulator (`alacritty`, `ghostty`, `kitty`, `st`,
@@ -206,9 +196,7 @@ Key things to customize in `config.h`:
   optional degraded desktop features
 
 **Multi-monitor issues:**
-- Polybar auto-detects monitors via `xrandr`
-- Primary monitor gets systray + EWMH tags; secondary monitors get a simpler bar
-- If tags don't switch correctly across monitors, check `debug_ewmh.sh`
+- If tags don't switch correctly across monitors, run `dwm-diagnostics`
 
 **Dependency check:**
 ```bash
@@ -228,7 +216,6 @@ bash scripts/check-deps.sh
 | `.xinitrc` | Startup script for `startx` |
 | `dwm.desktop` | Session entry for display managers |
 | `install.sh` | Automated installer for Debian, Arch, and Fedora/RHEL families |
-| `polybar/` | Polybar config, themes, and fonts |
 | `config/` | Terminal, rofi, and app configurations |
 | `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |
 | `docs/src/keybinds.md` | Full keybinding reference |

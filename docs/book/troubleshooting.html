@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-83dbc899.js";
+            window.path_to_searchindex_js = "searchindex-c33f0205.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ec609ebd.js"></script>
+        <script src="toc-e4ab374d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -178,14 +178,15 @@
                     <main>
                         <h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
 <p>Run the dependency checker first — it covers most common issues:</p>
-<pre><code class="language-bash">bash scripts/check-deps.sh
+<pre><code class="language-bash">dwm-diagnostics
 </code></pre>
 <p>Or use the <a href="./control-center.html">Control Center</a> → <strong>System Health</strong>.</p>
 <hr>
 <h2 id="dwm-wont-start"><a class="header" href="#dwm-wont-start">dwm Won’t Start</a></h2>
 <p><strong>Black screen / returns immediately to login:</strong></p>
 <ul>
-<li>Verify Xorg: <code>pacman -Q xorg-server xorg-xinit</code></li>
+<li>Run <code>dwm-diagnostics</code> and resolve any required X11/session failures.</li>
+<li>Preview required packages with <code>./install.sh --dry-run --profile core</code>.</li>
 <li>Check <code>.xinitrc</code> exists and ends with <code>exec dwm</code></li>
 <li>Run <code>startx</code> from a TTY to see error output in the terminal</li>
 </ul>
@@ -195,26 +196,32 @@
 <li>If using a display manager, ensure <code>dwm.desktop</code> is in <code>/usr/share/xsessions/</code></li>
 </ul>
 <hr>
-<h2 id="no-status-bar--polybar-missing"><a class="header" href="#no-status-bar--polybar-missing">No Status Bar / Polybar Missing</a></h2>
+<h2 id="no-status-bar--quickshell-missing"><a class="header" href="#no-status-bar--quickshell-missing">No Status Bar / Quickshell Missing</a></h2>
 <ul>
-<li>Install polybar: <code>sudo pacman -S polybar</code></li>
-<li>Verify launch script: <code>ls ~/.config/polybar/launch.sh</code></li>
-<li>Run manually: <code>~/.config/polybar/launch.sh</code></li>
+<li>Install the recommended desktop layer: <code>./install.sh --profile recommended</code></li>
+<li>Verify the managed config exists: <code>ls ~/.config/quickshell/shell.qml</code></li>
+<li>Run manually: <code>quickshell --no-duplicate</code></li>
 <li>Check fonts: <code>fc-list | grep -i meslo</code></li>
 </ul>
-<p><strong>Missing icons in Polybar:</strong></p>
-<pre><code class="language-bash">cp -r config/polybar/fonts/* ~/.local/share/fonts/
-fc-cache -fv
-</code></pre>
 <hr>
 <h2 id="terminal-wont-open-superx"><a class="header" href="#terminal-wont-open-superx">Terminal Won’t Open (<code>Super</code>+<code>X</code>)</a></h2>
 <ul>
-<li>Install a terminal: <code>sudo pacman -S ghostty</code></li>
-<li>Or change the terminal in <code>config/hotkeys.toml</code>:
+<li>Run <code>dwm-terminal</code> from an existing shell to see the exact fallback message</li>
+<li>Install a supported terminal: <code>alacritty</code>, <code>ghostty</code>, <code>kitty</code>, <code>st</code>,
+<code>warp-terminal</code>, or <code>xterm</code></li>
+<li>Or set a fixed terminal in <code>config/hotkeys.toml</code>:
 <pre><code class="language-toml">[vars]
 terminal = "alacritty"
 </code></pre>
 </li>
+</ul>
+<h2 id="browser-wont-open-superb"><a class="header" href="#browser-wont-open-superb">Browser Won’t Open (<code>Super</code>+<code>B</code>)</a></h2>
+<ul>
+<li>Run <code>dwm-default-apps status</code> to inspect the current default browser</li>
+<li>Run <code>dwm-default-apps browsers</code> to list installed browser desktop files</li>
+<li>Set one with <code>dwm-default-apps set-browser firefox.desktop</code></li>
+<li>Ensure <code>xdg-utils</code> is installed so <code>xdg-settings</code>, <code>xdg-mime</code>, and <code>xdg-open</code>
+are available</li>
 </ul>
 <hr>
 <h2 id="themes-not-applying"><a class="header" href="#themes-not-applying">Themes Not Applying</a></h2>
@@ -234,9 +241,10 @@ terminal = "alacritty"
 <hr>
 <h2 id="multi-monitor-issues"><a class="header" href="#multi-monitor-issues">Multi-Monitor Issues</a></h2>
 <ul>
-<li>Tags not syncing across monitors: run <code>debug/debug_ewmh.sh</code></li>
-<li>Polybar only on one monitor: check <code>~/.config/polybar/launch.sh</code> uses <code>xrandr</code> to detect monitors</li>
+<li>Tags not syncing across monitors: run <code>dwm-diagnostics</code></li>
 <li>Cursor doesn’t follow focus: verify cursor warp is enabled in <code>config.h</code> (<code>cursorwarp = 1</code>)</li>
+<li>Display layout profiles: run <code>dwm-display-profile dir</code> and
+<code>dwm-display-profile template</code> to create optional <code>xrandr</code> profiles</li>
 </ul>
 <hr>
 <h2 id="nvidia--suspend-issues"><a class="header" href="#nvidia--suspend-issues">NVIDIA / Suspend Issues</a></h2>
@@ -247,16 +255,17 @@ terminal = "alacritty"
 <hr>
 <h2 id="picom--compositor-artifacts"><a class="header" href="#picom--compositor-artifacts">Picom / Compositor Artifacts</a></h2>
 <p>Restart picom via the Control Center (<strong>Quick Actions → Restart Picom</strong>) or:</p>
-<pre><code class="language-bash">pkill picom; picom -b
+<pre><code class="language-bash">pkill picom; setsid -f picom --backend xrender
 </code></pre>
-<p>If artifacts persist, try disabling experimental backends in <code>~/.config/picom.conf</code>.</p>
+<p>If artifacts persist, set a different backend in <code>~/.config/picom.conf</code> or run with
+<code>PICOM_BACKEND=glx</code> or <code>PICOM_BACKEND=egl</code>.</p>
 <hr>
 <h2 id="still-stuck"><a class="header" href="#still-stuck">Still Stuck?</a></h2>
 <ul>
 <li>Open an issue: <a href="https://github.com/ChrisTitusTech/dwm-titus/issues">github.com/ChrisTitusTech/dwm-titus/issues</a></li>
 <li>Run the full check: <code>bash scripts/check-deps.sh</code></li>
 </ul>
-
+<footer id="last-change">Last change: <time datetime="2026-06-24">2026-06-24</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
@@ -295,11 +304,11 @@ terminal = "alacritty"
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

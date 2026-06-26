@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-83dbc899.js";
+            window.path_to_searchindex_js = "searchindex-c33f0205.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ec609ebd.js"></script>
+        <script src="toc-e4ab374d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -223,7 +223,7 @@ make &amp;&amp; sudo make install
 <h2 id="hotkeystoml--live-keybinds"><a class="header" href="#hotkeystoml--live-keybinds">hotkeys.toml — Live Keybinds</a></h2>
 <p>Add or change bindings without recompiling. Save the file and they apply instantly.</p>
 <pre><code class="language-toml">[vars]
-terminal = "ghostty"
+terminal = "dwm-terminal"
 webapp   = "webapp-launch"
 
 keys = [
@@ -231,6 +231,18 @@ keys = [
   { mod="SUPER SHIFT", key="f",  desc="Firefox",     func="spawn", exec=["firefox"] },
 ]
 </code></pre>
+<p><code>dwm-terminal</code> selects the first installed supported terminal at launch time.
+Set <code>DWM_TERMINAL</code> or replace <code>terminal</code> with a specific command if you want a
+fixed terminal.</p>
+<p>Default applications use freedesktop settings. Run <code>dwm-default-apps browsers</code>
+to list browser desktop files, <code>dwm-default-apps set-browser firefox.desktop</code>
+to set the default browser, or <code>dwm-default-apps set-mime &lt;mime&gt; &lt;desktop-id&gt;</code>
+for other file types.</p>
+<p>Display profiles are optional files under
+<code>${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles</code>. Use
+<code>dwm-display-profile template</code> to print the format, <code>dwm-display-profile list</code>
+to show profiles, and <code>dwm-display-profile apply &lt;name&gt;</code> to run the profile
+through <code>xrandr</code>.</p>
 <h3 id="modifier-syntax"><a class="header" href="#modifier-syntax">Modifier Syntax</a></h3>
 <p>Use space-separated modifiers: <code>"SUPER"</code>, <code>"SUPER SHIFT"</code>, <code>"SUPER CTRL"</code>, <code>"SUPER CTRL SHIFT"</code>.</p>
 <h3 id="available-functions"><a class="header" href="#available-functions">Available Functions</a></h3>
@@ -268,16 +280,20 @@ keys = [
 ]
 </code></pre>
 <hr>
-<h2 id="autostart"><a class="header" href="#autostart">Autostart</a></h2>
-<p>Programs launched at startup are configured in <code>config.h</code> under <code>autostart[]</code>:</p>
-<pre><code class="language-c">static const char *const autostart[] = {
-    "picom", NULL,
-    "dunst", NULL,
-    NULL /* terminate */
-};
+<h2 id="notes-on-xdg-autostart"><a class="header" href="#notes-on-xdg-autostart">Notes on XDG Autostart</a></h2>
+<p>Recommend using Flatpak to install programs on startup:</p>
+<pre><code>flatpak install flathub io.github.flattool.Ignition
 </code></pre>
-<p>Alternatively, place <code>.desktop</code> files in <code>~/.config/autostart/</code> — dwm-titus uses <code>dex</code> to process them.</p>
-
+<p>or you can create your own .desktop file in ~/.config/autostart/</p>
+<p><code>set-refresh.desktop</code> Example:</p>
+<pre><code>[Desktop Entry]
+Type=Application
+Exec=xrandr --output HDMI-0 --primary --mode 1920x1080 --pos 0x0 --rotate normal --rate 120 --output DP-0 --off --output DP-1 --off --output DP-2 --off --output DP-3 --off --output DP-4 --off --output DP-5 --off
+Hidden=false
+X-GNOME-Autostart-enabled=true
+Name=Set Refresh
+</code></pre>
+<footer id="last-change">Last change: <time datetime="2026-06-24">2026-06-24</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
@@ -322,11 +338,11 @@ keys = [
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

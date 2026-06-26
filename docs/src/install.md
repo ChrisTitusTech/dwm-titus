@@ -41,15 +41,6 @@ make
 sudo make install
 ```
 
-### 3. Fonts
-
-Polybar icon fonts are bundled in `config/polybar/fonts/`:
-```bash
-mkdir -p ~/.local/share/fonts
-cp -r config/polybar/fonts/* ~/.local/share/fonts/
-fc-cache -fv
-```
-
 ### Automated Installer
 
 ```bash
@@ -64,7 +55,7 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
 
 - `core`: required build packages, X11/session runtime, and one supported
   terminal.
-- `recommended`: `core` plus the recommended desktop layer such as Polybar,
+- `recommended`: `core` plus the recommended desktop layer such as Quickshell,
   Rofi, Picom, Dunst, Feh, Dex, fonts, theming, screenshot, audio, and
   brightness tools.
 - `full`: `recommended` plus optional extras such as file-manager integration,
@@ -100,7 +91,7 @@ packaging checks, or scripted validation, use the non-interactive flags:
 startx
 ```
 
-The provided `.xinitrc` disables screen blanking, starts the configured shell panel, and runs dwm. Quickshell is preferred when `~/.config/quickshell/shell.qml` exists; Polybar remains the fallback panel.
+The provided `.xinitrc` disables screen blanking, starts the configured Quickshell panel, and runs dwm.
 
 ## Minimal Session Profile
 
@@ -114,7 +105,7 @@ and portability testing. It keeps only:
 - required X11 helpers used by core startup and display commands, such as
   `xrandr`, `xset`, and `xsetroot`
 
-Polybar, Rofi, Picom, Dunst, Feh, Dex, a polkit agent, screenshot tools,
+Rofi, Picom, Dunst, Feh, Dex, a polkit agent, screenshot tools,
 wallpapers, tray utilities, and audio or brightness helpers are optional in
 this profile. Missing optional components should appear as degraded features in
 `dwm-diagnostics`, not as session-fatal failures.

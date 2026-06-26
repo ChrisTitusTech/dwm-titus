@@ -240,9 +240,8 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh debug/*.sh \
-		config/polybar/*.sh config/polybar/scripts/*.sh \
-		config/polybar/scripts/weather/*.sh config/rofi/*.sh
+	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh \
+		config/rofi/*.sh
 
 check-format:
 	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-state scripts/dwm-terminal scripts/*.sh tests/*.sh
@@ -270,9 +269,6 @@ check-display-profile:
 
 check-diagnostics:
 	tests/test-dwm-diagnostics.sh
-
-check-polybar-capabilities:
-	tests/test-polybar-capabilities.sh
 
 check-powermenu-layout:
 	tests/test-powermenu-layout.sh
@@ -380,7 +376,6 @@ check:
 	$(MAKE) check-default-apps
 	$(MAKE) check-diagnostics
 	$(MAKE) check-display-profile
-	$(MAKE) check-polybar-capabilities
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-terminal
 	$(MAKE) check-lock
@@ -394,6 +389,6 @@ check:
 	check-container-smoke \
 	check-display-profile check-format check-install \
 	check-install-manifest check-install-preservation check-lock \
-	check-polybar-capabilities check-session-guards check-shell check-diagnostics \
+	check-session-guards check-shell check-diagnostics \
 	check-quickshell-launcher check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall

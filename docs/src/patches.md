@@ -47,10 +47,9 @@ Three fullscreen modes available:
 
 ## Bar & EWMH
 
-### Polybar Integration
-The built-in dwm bar is replaced by Polybar. dwm-titus feeds tag and window data to Polybar via EWMH atoms, keeping it fully informed.
-
-Multi-monitor support: each monitor gets its own Polybar instance. The primary monitor hosts the system tray and EWMH tag reporting.
+### Quickshell Integration
+The managed Quickshell layer reads dwm workspace and active-window state through
+EWMH-compatible helpers so the panel stays synchronized with X11 state.
 
 ### EWMH Compliance
 Implements `_NET_WM_STATE`, `_NET_CURRENT_DESKTOP`, `_NET_NUMBER_OF_DESKTOPS`, and related atoms so external tools and taskbars work correctly.
@@ -59,7 +58,7 @@ Implements `_NET_WM_STATE`, `_NET_CURRENT_DESKTOP`, `_NET_NUMBER_OF_DESKTOPS`, a
 Title bar icons via `_NET_WM_ICON`. Applications that set this atom display their icon in the bar.
 
 ### Systray
-A built-in system tray is compiled in. It is disabled by default when Polybar is running (to avoid duplication), but can be re-enabled in `config.h`.
+A built-in system tray is compiled in and can be configured in `config.h`.
 
 ---
 
@@ -79,7 +78,7 @@ When focus moves to a different window or monitor (via keyboard), the mouse curs
 Keybindings are parsed from `config/hotkeys.toml` at runtime. Edit and save — bindings update without recompiling or restarting dwm.
 
 ### TOML Themes (`themes.toml`)
-Colors for dwm, terminal, rofi, and polybar are all sourced from `config/themes.toml`. Save the file to apply a new theme instantly across all apps.
+Colors for dwm, terminal, and rofi are sourced from `config/themes.toml`. Save the file to apply a new theme instantly across supported apps.
 
 ---
 
@@ -95,11 +94,11 @@ Colors for dwm, terminal, rofi, and polybar are all sourced from `config/themes.
 | `webapp-launch` | Launches a URL as a standalone web app window |
 | `autostart.sh` | Runs programs on dwm start |
 | `check-deps.sh` | Checks all required dependencies |
-| `active-audio` | Displays active audio device in Polybar |
 | `disable-powersaving` | Disables DPMS and screen blanking |
 
 ---
 
 ## Multi-Monitor
 
-Xinerama support with per-monitor Polybar bars. Tags are independent per monitor. Windows can be moved between monitors with `Super` + `Shift` + `,`/`.`.
+Xinerama support keeps tags independent per monitor. Windows can be moved
+between monitors with `Super` + `Shift` + `,`/`.`.

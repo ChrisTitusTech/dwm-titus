@@ -24,18 +24,12 @@ Or use the [Control Center](./control-center.md) → **System Health**.
 
 ---
 
-## No Status Bar / Polybar Missing
+## No Status Bar / Quickshell Missing
 
 - Install the recommended desktop layer: `./install.sh --profile recommended`
-- Verify launch script: `ls ~/.config/polybar/launch.sh`
-- Run manually: `~/.config/polybar/launch.sh`
+- Verify the managed config exists: `ls ~/.config/quickshell/shell.qml`
+- Run manually: `quickshell --no-duplicate`
 - Check fonts: `fc-list | grep -i meslo`
-
-**Missing icons in Polybar:**
-```bash
-cp -r config/polybar/fonts/* ~/.local/share/fonts/
-fc-cache -fv
-```
 
 ---
 
@@ -79,8 +73,7 @@ fc-cache -fv
 
 ## Multi-Monitor Issues
 
-- Tags not syncing across monitors: run `debug/debug_ewmh.sh`
-- Polybar only on one monitor: check `~/.config/polybar/launch.sh` uses `xrandr` to detect monitors
+- Tags not syncing across monitors: run `dwm-diagnostics`
 - Cursor doesn't follow focus: verify cursor warp is enabled in `config.h` (`cursorwarp = 1`)
 - Display layout profiles: run `dwm-display-profile dir` and
   `dwm-display-profile template` to create optional `xrandr` profiles

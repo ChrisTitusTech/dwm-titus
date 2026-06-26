@@ -1,6 +1,6 @@
 # Theming
 
-Themes are defined in `config/themes.toml`. Change the active theme and **save** — dwm, terminal, rofi, and polybar all update instantly. No restart needed.
+Themes are defined in `config/themes.toml`. Change the active theme and **save** — dwm, terminal, and rofi update instantly. No restart needed.
 
 ```toml
 [active]
@@ -59,7 +59,6 @@ Each `[theme.name]` section sets colors for all components:
 | `term_color0`–`term_color15` | Full 16-color terminal palette |
 | `ghostty_theme` | Ghostty built-in theme name |
 | `rofi_theme` | Rofi `.rasi` theme (filename without extension) |
-| `polybar_bg` / `polybar_fg` / `polybar_accent` / `polybar_urgent` | Polybar colors |
 | `dark_mode` | GTK dark preference and Capitaine cursor variant (`true` / `false`) |
 
 ---
@@ -84,12 +83,6 @@ term_cursor     = "#f5e0dc"
 
 ghostty_theme   = "Catppuccin Mocha"
 rofi_theme      = "sidetab-catppuccin"
-polybar_bg      = "#1e1e2e"
-polybar_fg      = "#cdd6f4"
-polybar_bg_alt  = "#313244"
-polybar_fg_alt  = "#a6adc8"
-polybar_accent  = "#89b4fa"
-polybar_urgent  = "#f38ba8"
 dark_mode       = true
 ```
 

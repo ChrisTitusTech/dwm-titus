@@ -67,8 +67,7 @@ start_once dunst dunst
 # Session locker for the power menu lock action and loginctl lock requests.
 start_once light-locker light-locker
 
-# Quickshell is the preferred panel when its config is present. Polybar remains
-# a fallback for sessions without a Quickshell config.
+# Quickshell is the managed panel for this session.
 QUICKSHELL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
 if [ -f "$QUICKSHELL_CONFIG" ]; then
 	start_detached_once quickshell quickshell --no-duplicate
@@ -92,11 +91,6 @@ for agent in \
 		break
 	fi
 done
-
-# Launch Polybar only when Quickshell is not configured.
-if [ ! -f "$QUICKSHELL_CONFIG" ] && [ -x "$HOME/.config/polybar/launch.sh" ]; then
-	"$HOME/.config/polybar/launch.sh" >/dev/null 2>&1 &
-fi
 
 if command -v dex >/dev/null 2>&1; then
 	dex -a 2>/dev/null

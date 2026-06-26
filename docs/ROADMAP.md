@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace the current Polybar/Rofi/widget stack with a Quickshell-based shell layer for an Xorg setup while keeping the window manager stable.
+Replace the current Rofi-era bar/Rofi/widget stack with a Quickshell-based shell layer for an Xorg setup while keeping the window manager stable.
 
 Target setup:
 
@@ -26,21 +26,21 @@ Install Quickshell and confirm it works reliably under Xorg before replacing any
 - [x] Launch a minimal Quickshell window manually
 - [x] Confirm it starts correctly inside the current Xorg session
 - [x] Confirm it does not interfere with the current WM
-- [x] Add a temporary startup command but keep Polybar/Rofi enabled
+- [x] Add a temporary startup command but keep Rofi-era bar/Rofi enabled
 
 ### Exit Criteria
 
 - [x] Quickshell launches successfully
 - [x] No login/session breakage
-- [x] Existing Polybar/Rofi workflow still works as fallback
+- [x] Existing Rofi-era bar/Rofi workflow still works as fallback
 
 ---
 
-## Phase 2: Replace Polybar with a Basic Quickshell Panel
+## Phase 2: Replace Rofi-era bar with a Basic Quickshell Panel
 
 ### Objective
 
-Replace Polybar with a simple Quickshell top or bottom panel.
+Replace Rofi-era bar with a simple Quickshell top or bottom panel.
 
 ### Tasks
 
@@ -52,14 +52,14 @@ Replace Polybar with a simple Quickshell top or bottom panel.
 - [x] Add battery/power indicator if needed
 - [x] Reserve screen space correctly
 - [x] Match current bar height and monitor placement
-- [x] Disable Polybar only after Quickshell panel is usable
+- [x] Disable Rofi-era bar only after Quickshell panel is usable
 
 ### Exit Criteria
 
-- [x] Quickshell panel fully replaces basic Polybar functionality
+- [x] Quickshell panel fully replaces basic Rofi-era bar functionality
 - [x] Panel survives reloads
 - [x] Window manager respects reserved screen space
-- [x] Polybar can be removed from startup
+- [x] Rofi-era bar can be removed from startup
 
 ---
 
@@ -262,11 +262,11 @@ Make the Quickshell setup visually consistent and easier to maintain.
 
 ### Objective
 
-Remove Polybar/Rofi/Dunst only after Quickshell replacements are stable.
+Remove Rofi-era bar/Rofi/Dunst only after Quickshell replacements are stable.
 
 ### Tasks
 
-- [ ] Remove Polybar from startup
+- [ ] Remove Rofi-era bar from startup
 - [ ] Remove Rofi from keybinds
 - [ ] Remove Dunst from startup
 - [ ] Keep packages installed temporarily
@@ -276,7 +276,7 @@ Remove Polybar/Rofi/Dunst only after Quickshell replacements are stable.
 
 ### Exit Criteria
 
-- Daily workflow works without Polybar/Rofi/Dunst
+- Daily workflow works without Rofi-era bar/Rofi/Dunst
 - No missing launcher, panel, tray, or notification functionality
 - Rollback path is documented
 
@@ -288,7 +288,7 @@ Keep the old stack available until the Quickshell setup is proven stable.
 
 ### Rollback Tasks
 
-- [ ] Keep old Polybar config
+- [ ] Keep old Rofi-era bar config
 - [ ] Keep old Rofi scripts
 - [ ] Keep old Dunst config
 - [ ] Keep old WM keybinds commented, not deleted
@@ -299,7 +299,7 @@ Keep the old stack available until the Quickshell setup is proven stable.
 Example fallback commands:
 
 ```sh
-polybar main &
+legacy-bar main &
 dunst &
 rofi -show drun
 ```

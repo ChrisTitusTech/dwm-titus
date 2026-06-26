@@ -304,11 +304,10 @@ static void setnumdesktops(void);
 static void setviewport(void);
 static void updatecurrentdesktop(void);
 
-/* Polybar and systray declarations */
+/* External dock and systray declarations */
 static void managealtbar(Window win, XWindowAttributes *wa);
 static void managetray(Window win, XWindowAttributes *wa);
 static void scantray(void);
-static void spawnbar();
 static void unmanagealtbar(Window w);
 static void unmanagetray(Window w);
 
@@ -374,8 +373,8 @@ static Monitor *mons, *selmon;
 static Window root, wmcheckwin;
 static xcb_connection_t *xcon;
 
-/* Polybar integration (always enabled) */
-static const char *altbarclass = "Polybar";
+/* External dock integration */
+static const char *altbarclass = "quickshell";
 static const char *alttrayname = "tray";
 
 /* configuration, allows nested code to access above variables */
@@ -788,7 +787,7 @@ cleanupmon(Monitor *mon)
 		for (m = mons; m && m->next != mon; m = m->next);
 		m->next = mon->next;
 	}
-	/* Polybar manages its own windows; nothing to destroy here */
+	/* External dock windows are managed by their own process. */
 	free(mon);
 }
 
@@ -1093,7 +1092,7 @@ dirtomon(int dir)
 void
 drawbar(Monitor *m)
 {
-	/* Polybar handles drawing; dwm bar is unused */
+	/* The Quickshell panel handles drawing; the dwm bar is unused. */
 	return;
 
 	int x, w, tw = 0;
@@ -1698,7 +1697,7 @@ manage(Window w, XWindowAttributes *wa)
 	focus(NULL);
 }
 
-/* Polybar and systray implementations */
+/* External dock and systray implementations */
 void
 managealtbar(Window win, XWindowAttributes *wa)
 {
@@ -3317,7 +3316,7 @@ reload_config(void)
 	load_rules_toml(toml_rules_path,     toml_rules_default_path);
 	if (dpy) grabkeys();
 
-	/* Spawn theme-apply script asynchronously to update terminal/rofi/polybar */
+	/* Spawn theme-apply script asynchronously to update terminal and rofi. */
 	{
 		pid_t pid = fork();
 		if (pid == 0) {
@@ -3479,7 +3478,7 @@ setup(void)
 	if (!drw_fontset_create(drw, fonts, LENGTH(fonts)))
 		die("no fonts could be loaded.");
 	lrpad = drw->fonts->h;
-	bh = 0; /* Polybar provides its own bar */
+	bh = 0; /* Quickshell provides the panel. */
 	updategeom();
 	/* Initialize monitor-specific tags after geometry is set up */
 	initmonitortags();
@@ -3557,7 +3556,6 @@ setup(void)
 	runtime_config_reload();
 	grabkeys();
 	focus(NULL);
-	spawnbar();
 }
 
 void
@@ -3686,12 +3684,6 @@ void
 spawn(const Arg *arg)
 {
 	posix_spawnp(NULL, ((char **)arg->v)[0], NULL, NULL, (char **)arg->v, environ);
-}
-
-void
-spawnbar()
-{
-	system("$HOME/.config/polybar/launch.sh");
 }
 
 void
@@ -3850,9 +3842,8 @@ void
 togglebar(const Arg *arg)
 {
 	/**
-	 * Polybar tray does not raise maprequest event. It must be manually scanned
-	 * for. Scanning it too early while the tray is being populated would give
-	 * wrong dimensions.
+	 * Some tray providers do not raise MapRequest. Scan lazily so tray geometry
+	 * is available when toggling the reserved panel area.
 	 */
 	if (!selmon->traywin)
 		scantray();
@@ -4117,7 +4108,7 @@ unswallow(Client *c)
 void
 updatebars(void)
 {
-	/* Polybar creates its own bar windows; skip dwm bar creation */
+	/* The external panel creates its own windows; skip dwm bar creation. */
 	return;
 
 	Monitor *m;

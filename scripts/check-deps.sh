@@ -138,7 +138,6 @@ echo ""
 
 # ── Optional but recommended ────────────────────────────
 echo "Optional (recommended):"
-check_cmd "polybar"
 check_cmd "xdg-open"
 echo ""
 

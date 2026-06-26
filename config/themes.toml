@@ -8,7 +8,7 @@
 # HOW TO SWITCH THEME
 # ───────────────────
 # 1. Change the theme name in [active] below to any theme defined in this file.
-# 2. Save the file — DWM, terminal, rofi, and polybar all update instantly!
+# 2. Save the file — DWM, terminal, and rofi all update instantly!
 #
 # Available themes:
 #   DARK:  nord · dracula · gruvbox · catppuccin · tokyonight · onedark
@@ -51,7 +51,6 @@ borderpx = 1   # border size in pixels (0 = none, 1-3 = recommended)
 #   Ghostty: ghostty_theme = "BuiltInThemeName"  (or "custom" to use term_* above)
 #   Rofi:    rofi_theme    = "filename"           (without .rasi, from rofi/themes/)
 #   Dark mode: dark_mode = true                   (true = dark, false = light; default: true)
-#   Polybar: polybar_bg / polybar_fg / polybar_bg_alt / polybar_fg_alt / polybar_accent / polybar_urgent
 
 
 # ── Nord ──────────────────────────────────────────────────────────────────────
@@ -87,12 +86,6 @@ ghostty_theme   = "Nord"
 rofi_theme      = "sidetab-nord"
 dark_mode       = true
 
-polybar_bg      = "#2e3440"
-polybar_fg      = "#d8dee9"
-polybar_bg_alt  = "#3b4252"
-polybar_fg_alt  = "#4c566a"
-polybar_accent  = "#81a1c1"
-polybar_urgent  = "#bf616a"
 
 
 # ── Dracula ───────────────────────────────────────────────────────────────────
@@ -128,12 +121,6 @@ ghostty_theme   = "Dracula"
 rofi_theme      = "sidetab-dracula"
 dark_mode       = true
 
-polybar_bg      = "#282A36"
-polybar_fg      = "#F8F8F2"
-polybar_bg_alt  = "#44475A"
-polybar_fg_alt  = "#6272A4"
-polybar_accent  = "#BD93F9"
-polybar_urgent  = "#FF5555"
 
 
 # ── Gruvbox Dark ──────────────────────────────────────────────────────────────
@@ -169,12 +156,6 @@ ghostty_theme   = "Gruvbox Dark"
 rofi_theme      = "sidetab-gruvbox"
 dark_mode       = true
 
-polybar_bg      = "#282828"
-polybar_fg      = "#EBDBB2"
-polybar_bg_alt  = "#3C3836"
-polybar_fg_alt  = "#928374"
-polybar_accent  = "#D79921"
-polybar_urgent  = "#CC241D"
 
 
 # ── Catppuccin Mocha ──────────────────────────────────────────────────────────
@@ -210,12 +191,6 @@ ghostty_theme   = "Catppuccin Mocha"
 rofi_theme      = "sidetab-catppuccin"
 dark_mode       = true
 
-polybar_bg      = "#1E1E2E"
-polybar_fg      = "#CDD6F4"
-polybar_bg_alt  = "#313244"
-polybar_fg_alt  = "#585B70"
-polybar_accent  = "#CBA6F7"
-polybar_urgent  = "#F38BA8"
 
 
 # ── Tokyo Night ───────────────────────────────────────────────────────────────
@@ -251,12 +226,6 @@ ghostty_theme   = "TokyoNight"
 rofi_theme      = "sidetab-tokyonight"
 dark_mode       = true
 
-polybar_bg      = "#1A1B26"
-polybar_fg      = "#C0CAF5"
-polybar_bg_alt  = "#24283B"
-polybar_fg_alt  = "#414868"
-polybar_accent  = "#7AA2F7"
-polybar_urgent  = "#F7768E"
 
 
 # ── One Dark ──────────────────────────────────────────────────────────────────
@@ -292,12 +261,6 @@ ghostty_theme   = "One Dark"
 rofi_theme      = "sidetab-onedark"
 dark_mode       = true
 
-polybar_bg      = "#282C34"
-polybar_fg      = "#ABB2BF"
-polybar_bg_alt  = "#3E4451"
-polybar_fg_alt  = "#5C6370"
-polybar_accent  = "#61AFEF"
-polybar_urgent  = "#E06C75"
 
 
 # ── Solarized Dark ────────────────────────────────────────────────────────────
@@ -333,12 +296,6 @@ ghostty_theme   = "Solarized Dark Patched"
 rofi_theme      = "sidetab-solarized"
 dark_mode       = true
 
-polybar_bg      = "#002B36"
-polybar_fg      = "#839496"
-polybar_bg_alt  = "#073642"
-polybar_fg_alt  = "#586E75"
-polybar_accent  = "#2AA198"
-polybar_urgent  = "#DC322F"
 
 
 # ── Rose Pine ─────────────────────────────────────────────────────────────────
@@ -374,12 +331,6 @@ ghostty_theme   = "Rose Pine"
 rofi_theme      = "sidetab-rosepine"
 dark_mode       = true
 
-polybar_bg      = "#191724"
-polybar_fg      = "#E0DEF4"
-polybar_bg_alt  = "#26233A"
-polybar_fg_alt  = "#6E6A86"
-polybar_accent  = "#C4A7E7"
-polybar_urgent  = "#EB6F92"
 
 
 # ── Everforest Dark ───────────────────────────────────────────────────────────
@@ -415,12 +366,6 @@ ghostty_theme   = "Everforest Dark"
 rofi_theme      = "sidetab-everforest"
 dark_mode       = true
 
-polybar_bg      = "#2D353B"
-polybar_fg      = "#D3C6AA"
-polybar_bg_alt  = "#3D4841"
-polybar_fg_alt  = "#475258"
-polybar_accent  = "#A7C080"
-polybar_urgent  = "#E67E80"
 
 
 # ── Monochrome ────────────────────────────────────────────────────────────────
@@ -456,12 +401,6 @@ ghostty_theme   = "Monochrome"
 rofi_theme      = "sidetab-monochrome"
 dark_mode       = true
 
-polybar_bg      = "#1A1A1A"
-polybar_fg      = "#CCCCCC"
-polybar_bg_alt  = "#333333"
-polybar_fg_alt  = "#777777"
-polybar_accent  = "#FFFFFF"
-polybar_urgent  = "#CC3333"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -501,12 +440,6 @@ ghostty_theme   = "Catppuccin Latte"
 rofi_theme      = "sidetab-catppuccin"
 dark_mode       = false
 
-polybar_bg      = "#EFF1F5"
-polybar_fg      = "#4C4F69"
-polybar_bg_alt  = "#E6E9EF"
-polybar_fg_alt  = "#8C8FA1"
-polybar_accent  = "#7287FD"
-polybar_urgent  = "#D20F39"
 
 
 # ── Gruvbox Light ────────────────────────────────────────────────────────────
@@ -542,12 +475,6 @@ ghostty_theme   = "Gruvbox Light"
 rofi_theme      = "sidetab-gruvbox"
 dark_mode       = false
 
-polybar_bg      = "#FBF1C7"
-polybar_fg      = "#3C3836"
-polybar_bg_alt  = "#EBDBB2"
-polybar_fg_alt  = "#928374"
-polybar_accent  = "#D79921"
-polybar_urgent  = "#CC241D"
 
 
 # ── Solarized Light ──────────────────────────────────────────────────────────
@@ -583,12 +510,6 @@ ghostty_theme   = "iTerm2 Solarized Light"
 rofi_theme      = "sidetab-solarized"
 dark_mode       = false
 
-polybar_bg      = "#FDF6E3"
-polybar_fg      = "#657B83"
-polybar_bg_alt  = "#EEE8D5"
-polybar_fg_alt  = "#93A1A1"
-polybar_accent  = "#268BD2"
-polybar_urgent  = "#DC322F"
 
 
 # ── Rose Piné Dawn ───────────────────────────────────────────────────────────
@@ -624,12 +545,6 @@ ghostty_theme   = "Rose Pine Dawn"
 rofi_theme      = "sidetab-rosepine"
 dark_mode       = false
 
-polybar_bg      = "#FAF4ED"
-polybar_fg      = "#575279"
-polybar_bg_alt  = "#F2E9E1"
-polybar_fg_alt  = "#9893A5"
-polybar_accent  = "#907AA9"
-polybar_urgent  = "#B4637A"
 
 
 # ── Tokyo Night Day ──────────────────────────────────────────────────────────
@@ -665,9 +580,3 @@ ghostty_theme   = "TokyoNight Day"
 rofi_theme      = "sidetab-tokyonight"
 dark_mode       = false
 
-polybar_bg      = "#E1E2E7"
-polybar_fg      = "#3760BF"
-polybar_bg_alt  = "#E9E9EC"
-polybar_fg_alt  = "#7890DD"
-polybar_accent  = "#2E7DE9"
-polybar_urgent  = "#F52A65"

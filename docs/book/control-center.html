@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-83dbc899.js";
+            window.path_to_searchindex_js = "searchindex-c33f0205.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ec609ebd.js"></script>
+        <script src="toc-e4ab374d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -187,11 +187,11 @@
 <ul>
 <li>Build tools (<code>cc</code>, <code>make</code>) and required libraries</li>
 <li>Xorg / Xlibre installation</li>
-<li>Runtime programs: rofi, picom, dunst, feh, flameshot, polybar</li>
-<li>Terminal emulators (ghostty, alacritty, kitty, st)</li>
+<li>Runtime programs: rofi, picom, dunst, feh, flameshot</li>
+<li>Terminal emulators (alacritty, ghostty, kitty, st)</li>
 <li>Fonts: MesloLGS Nerd, Noto Color Emoji</li>
-<li>Running services: picom, dunst, polybar, dbus, NetworkManager</li>
-<li>Config paths: <code>.xinitrc</code>, polybar dir, rofi dir, wallpaper folder</li>
+<li>Running services: picom, dunst, NetworkManager</li>
+<li>Config paths: <code>.xinitrc</code>, rofi dir, wallpaper folder</li>
 </ul>
 <p>Selecting a failed item offers to run <code>install.sh</code> (auto-fix) or <code>check-deps.sh</code> (details).</p>
 <h3 id="quick-actions"><a class="header" href="#quick-actions">Quick Actions</a></h3>
@@ -203,7 +203,6 @@
 <tbody>
 <tr><td>Restart Picom</td><td>Kill and relaunch the compositor</td></tr>
 <tr><td>Restart Dunst</td><td>Kill and relaunch the notification daemon</td></tr>
-<tr><td>Restart Polybar</td><td>Relaunch using <code>~/.config/polybar/launch.sh</code></td></tr>
 <tr><td>Reload Wallpaper</td><td>Randomize from <code>~/Pictures/backgrounds/</code></td></tr>
 <tr><td>Toggle Compositor</td><td>Start or stop picom</td></tr>
 <tr><td>Restart NetworkManager</td><td><code>sudo systemctl restart NetworkManager</code></td></tr>
@@ -222,7 +221,6 @@
 <tr><td>Select Theme</td><td>Pick from all themes defined in <code>themes.toml</code></td></tr>
 <tr><td>Randomize Wallpaper</td><td>Random image from <code>~/Pictures/backgrounds/</code></td></tr>
 <tr><td>Open Wallpaper Folder</td><td>Open folder in file manager</td></tr>
-<tr><td>Edit Polybar Config</td><td>Open polybar config in <code>$EDITOR</code></td></tr>
 <tr><td>GTK Theme Settings</td><td>Launch <code>nwg-look</code> for GTK theming</td></tr>
 </tbody>
 </table>
@@ -233,8 +231,8 @@
 <h2 id="running-from-terminal"><a class="header" href="#running-from-terminal">Running from Terminal</a></h2>
 <pre><code class="language-bash">dwm-controlcenter
 </code></pre>
-<p>The script auto-detects your terminal emulator (ghostty → alacritty → kitty → st → xterm) and uses the active rofi theme from <code>~/.config/rofi/themes/controlcenter.rasi</code>.</p>
-
+<p>The script auto-detects your terminal emulator (alacritty -&gt; ghostty -&gt; kitty -&gt; st -&gt; xterm) and uses the active rofi theme from <code>~/.config/rofi/themes/controlcenter.rasi</code>.</p>
+<footer id="last-change">Last change: <time datetime="2026-06-24">2026-06-24</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
@@ -279,11 +277,11 @@
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

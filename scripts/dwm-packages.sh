@@ -41,9 +41,6 @@ dwm_packages() {
 	arch:fonts)
 		printf '%s\n' noto-fonts-emoji ttf-meslo-nerd
 		;;
-	arch:bar)
-		printf '%s\n' polybar
-		;;
 	arch:lightdm)
 		printf '%s\n' lightdm lightdm-slick-greeter
 		;;
@@ -100,9 +97,6 @@ dwm_packages() {
 	rhel:fonts)
 		printf '%s\n' google-noto-color-emoji-fonts google-noto-sans-mono-fonts
 		;;
-	rhel:bar)
-		printf '%s\n' polybar
-		;;
 	rhel:lightdm)
 		printf '%s\n' lightdm slick-greeter
 		;;
@@ -145,9 +139,6 @@ dwm_packages() {
 	debian:fonts)
 		printf '%s\n' fonts-noto-color-emoji fonts-noto-mono
 		;;
-	debian:bar)
-		printf '%s\n' polybar
-		;;
 	debian:lightdm)
 		printf '%s\n' lightdm slick-greeter
 		;;
@@ -164,7 +155,6 @@ dwm_packages() {
 		dwm_packages "$family" desktop
 		dwm_packages "$family" theme
 		dwm_packages "$family" fonts
-		dwm_packages "$family" bar
 		;;
 	*:optional)
 		dwm_packages "$family" theme-optional

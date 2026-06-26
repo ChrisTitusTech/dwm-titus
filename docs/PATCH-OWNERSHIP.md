@@ -71,7 +71,7 @@ Regression coverage:
 ## Systray
 
 Owner: systray window management, tray icon reparenting, bar geometry, and
-Polybar-facing monitor behavior in `dwm.c` plus Polybar launch configuration.
+Rofi-era bar-facing monitor behavior in `dwm.c` plus Rofi-era bar launch configuration.
 
 Invariants:
 
@@ -86,7 +86,7 @@ Invariants:
 Regression coverage:
 
 - `make check-session-guards` validates optional startup behavior.
-- Polybar capability checks cover missing desktop components, but live tray icon
+- Rofi-era bar capability checks cover missing desktop components, but live tray icon
   behavior still requires runtime validation.
 
 ## Fullscreen

@@ -66,7 +66,7 @@ startup, configuration deployment, and the core runtime checks in `SPEC.md`.
   only when no stable command or package interface exists.
 - Support both display-manager sessions and `startx`.
 - Treat Xorg as required. Wayland-native support is outside the current scope.
-- Keep optional desktop components optional. The absence of Polybar, Picom,
+- Keep optional desktop components optional. The absence of Picom,
   Dunst, a wallpaper, or a preferred terminal must not crash dwm.
 - Use ASCII punctuation in source, scripts, and new documentation unless a
   file's established format requires otherwise.

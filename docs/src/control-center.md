@@ -16,11 +16,11 @@ Runs a full dependency check and reports:
 
 - Build tools (`cc`, `make`) and required libraries
 - Xorg / Xlibre installation
-- Runtime programs: rofi, picom, dunst, feh, flameshot, polybar
+- Runtime programs: rofi, picom, dunst, feh, flameshot
 - Terminal emulators (alacritty, ghostty, kitty, st)
 - Fonts: MesloLGS Nerd, Noto Color Emoji
-- Running services: picom, dunst, polybar, NetworkManager
-- Config paths: `.xinitrc`, polybar dir, rofi dir, wallpaper folder
+- Running services: picom, dunst, NetworkManager
+- Config paths: `.xinitrc`, rofi dir, wallpaper folder
 
 Selecting a failed item offers to run `install.sh` (auto-fix) or `check-deps.sh` (details).
 
@@ -30,7 +30,6 @@ Selecting a failed item offers to run `install.sh` (auto-fix) or `check-deps.sh`
 |--------|-------------|
 | Restart Picom | Kill and relaunch the compositor |
 | Restart Dunst | Kill and relaunch the notification daemon |
-| Restart Polybar | Relaunch using `~/.config/polybar/launch.sh` |
 | Reload Wallpaper | Randomize from `~/Pictures/backgrounds/` |
 | Toggle Compositor | Start or stop picom |
 | Restart NetworkManager | `sudo systemctl restart NetworkManager` |
@@ -44,7 +43,6 @@ Selecting a failed item offers to run `install.sh` (auto-fix) or `check-deps.sh`
 | Select Theme | Pick from all themes defined in `themes.toml` |
 | Randomize Wallpaper | Random image from `~/Pictures/backgrounds/` |
 | Open Wallpaper Folder | Open folder in file manager |
-| Edit Polybar Config | Open polybar config in `$EDITOR` |
 | GTK Theme Settings | Launch `nwg-look` for GTK theming |
 
 ### Keybind Viewer

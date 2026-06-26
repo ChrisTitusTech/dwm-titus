@@ -96,18 +96,11 @@ work=$(mktemp -d)
 trap 'set +e; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
-mkdir -p "$home/.config/dwm-titus" "$home/.config/polybar" \
-	"$home/.local/share/dwm-titus/config"
+mkdir -p "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/config"
 cp "$repo_dir/config/hotkeys.toml" "$home/.config/dwm-titus/hotkeys.toml"
 cp "$repo_dir/config/themes.toml" "$home/.config/dwm-titus/themes.toml"
 cp "$repo_dir/config/window-rules.toml" "$home/.config/dwm-titus/window-rules.toml"
 cp "$repo_dir/config/"*.toml "$home/.local/share/dwm-titus/config/"
-
-cat >"$home/.config/polybar/launch.sh" <<'EOS'
-#!/bin/sh
-exit 0
-EOS
-chmod +x "$home/.config/polybar/launch.sh"
 
 cat >"$work/xclient.c" <<'EOF'
 #include <X11/Xlib.h>
