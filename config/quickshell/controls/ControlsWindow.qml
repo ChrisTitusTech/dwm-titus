@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import qs.core
@@ -110,46 +109,72 @@ PanelWindow {
                 Layout.fillWidth: true
                 spacing: 10
 
-                Slider {
+                Item {
                     id: volumeSlider
+
+                    property int pendingPercent: root.controlsModel.volumePercent
+                    property int displayPercent: volumeMouse.pressed ? pendingPercent : root.controlsModel.volumePercent
 
                     Layout.fillWidth: true
                     Layout.preferredHeight: 46
-                    from: 0
-                    to: 100
-                    stepSize: 1
-                    live: false
-                    value: root.controlsModel.volumePercent
-                    enabled: !root.controlsModel.busy
 
-                    background: Rectangle {
-                        x: volumeSlider.leftPadding
-                        y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
-                        width: volumeSlider.availableWidth
+                    function percentFromX(x) {
+                        return Math.max(0, Math.min(100, Math.round((x / Math.max(1, width)) * 100)));
+                    }
+
+                    function updatePending(x) {
+                        pendingPercent = percentFromX(x);
+                    }
+
+                    Rectangle {
+                        id: sliderTrack
+
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
                         height: 8
                         color: Theme.surface
                         radius: 4
 
                         Rectangle {
-                            width: volumeSlider.visualPosition * parent.width
+                            width: Math.round((volumeSlider.displayPercent / 100) * parent.width)
                             height: parent.height
                             color: root.controlsModel.volumeMuted ? Theme.textMuted : Theme.accent
                             radius: parent.radius
                         }
                     }
 
-                    handle: Rectangle {
-                        x: volumeSlider.leftPadding + volumeSlider.visualPosition * (volumeSlider.availableWidth - width)
-                        y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
-                        implicitWidth: 20
-                        implicitHeight: 20
-                        color: volumeSlider.enabled ? Theme.text : Theme.textMuted
+                    Rectangle {
+                        width: 20
+                        height: 20
+                        x: Math.max(0, Math.min(parent.width - width, Math.round((volumeSlider.displayPercent / 100) * parent.width) - width / 2))
+                        y: parent.height / 2 - height / 2
+                        color: volumeMouse.enabled ? Theme.text : Theme.textMuted
                         border.color: Theme.border
                         border.width: 1
                         radius: 10
                     }
 
-                    onMoved: root.controlsModel.volumeSet(Math.round(value))
+                    MouseArea {
+                        id: volumeMouse
+
+                        anchors.fill: parent
+                        enabled: !root.controlsModel.busy
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onPressed: function(mouse) {
+                            volumeSlider.updatePending(mouse.x);
+                        }
+                        onPositionChanged: function(mouse) {
+                            if (pressed) {
+                                volumeSlider.updatePending(mouse.x);
+                            }
+                        }
+                        onReleased: function(mouse) {
+                            volumeSlider.updatePending(mouse.x);
+                            root.controlsModel.volumeSet(volumeSlider.pendingPercent);
+                        }
+                    }
                 }
 
                 Text {
