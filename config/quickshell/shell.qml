@@ -129,6 +129,10 @@ ShellRoot {
             return controlsModel.micText;
         }
 
+        function mediaStatus(): string {
+            return controlsModel.mediaText;
+        }
+
         function toggle(): void {
             controlsModel.toggle();
         }

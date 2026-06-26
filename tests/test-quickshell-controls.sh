@@ -41,6 +41,29 @@ esac
 SH
 chmod +x "$work/bin/pactl"
 
+cat >"$work/bin/playerctl" <<'SH'
+#!/bin/sh
+set -eu
+
+case "$*" in
+metadata\ --format\ *)
+	case "${DWM_TEST_PLAYER_MODE:-playing}" in
+	playing)
+		printf 'brave\tPlaying\tArtist Name\tTrack Title\n'
+		;;
+	none)
+		exit 1
+		;;
+	esac
+	;;
+*)
+	printf 'unexpected playerctl call: %s\n' "$*" >&2
+	exit 1
+	;;
+esac
+SH
+chmod +x "$work/bin/playerctl"
+
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" volume-status >"$work/volume.out"
 grep -Fqx "VOL 40%" "$work/volume.out"
 
@@ -56,6 +79,14 @@ DWM_TEST_SOURCE_MUTE=yes \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" mic-status >"$work/mic-muted.out"
 grep -Fqx "MIC muted" "$work/mic-muted.out"
+
+PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" media-status >"$work/media.out"
+grep -Fqx "brave	Playing	Artist Name	Track Title" "$work/media.out"
+
+DWM_TEST_PLAYER_MODE=none \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" media-status >"$work/media-none.out"
+grep -Fqx "MEDIA none" "$work/media-none.out"
 
 DWM_TEST_PACTL_LOG="$work/pactl.log" \
 	PATH="$work/bin:$PATH" \

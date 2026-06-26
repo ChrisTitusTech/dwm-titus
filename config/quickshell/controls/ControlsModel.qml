@@ -9,6 +9,11 @@ Scope {
     property bool busy: false
     property string volumeText: "VOL unavailable"
     property string micText: "MIC unavailable"
+    property string mediaText: "MEDIA none"
+    property string mediaPlayer: ""
+    property string mediaState: ""
+    property string mediaArtist: ""
+    property string mediaTitle: ""
     property string message: ""
 
     function open() {
@@ -36,6 +41,47 @@ Scope {
         if (!micStatusProcess.running) {
             micStatusProcess.running = true;
         }
+        if (!mediaStatusProcess.running) {
+            mediaStatusProcess.running = true;
+        }
+    }
+
+    function parseMedia(text) {
+        const trimmed = text.trim();
+
+        if (trimmed.length === 0 || trimmed.indexOf("MEDIA ") === 0) {
+            root.mediaText = trimmed.length > 0 ? trimmed : "MEDIA none";
+            root.mediaPlayer = "";
+            root.mediaState = "";
+            root.mediaArtist = "";
+            root.mediaTitle = "";
+            return;
+        }
+
+        const fields = trimmed.split("\t");
+
+        root.mediaPlayer = fields.length > 0 ? fields[0] : "";
+        root.mediaState = fields.length > 1 ? fields[1] : "";
+        root.mediaArtist = fields.length > 2 ? fields[2] : "";
+        root.mediaTitle = fields.length > 3 ? fields.slice(3).join("\t") : "";
+
+        const labelParts = [];
+        if (root.mediaPlayer.length > 0) {
+            labelParts.push(root.mediaPlayer);
+        }
+        if (root.mediaState.length > 0) {
+            labelParts.push(root.mediaState);
+        }
+
+        const titleParts = [];
+        if (root.mediaArtist.length > 0) {
+            titleParts.push(root.mediaArtist);
+        }
+        if (root.mediaTitle.length > 0) {
+            titleParts.push(root.mediaTitle);
+        }
+
+        root.mediaText = (labelParts.length > 0 ? labelParts.join(" ") : "MEDIA") + (titleParts.length > 0 ? ": " + titleParts.join(" - ") : "");
     }
 
     function runAction(action, args) {
@@ -88,6 +134,17 @@ Scope {
 
                 root.micText = text.length > 0 ? text : "MIC unavailable";
             }
+        }
+    }
+
+    Process {
+        id: mediaStatusProcess
+
+        command: Commands.controlsHelperCommand("media-status")
+        running: false
+
+        stdout: StdioCollector {
+            onStreamFinished: root.parseMedia(this.text)
         }
     }
 

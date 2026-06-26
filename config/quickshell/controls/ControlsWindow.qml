@@ -11,7 +11,7 @@ FloatingWindow {
     title: "dwm controls"
     visible: controlsModel.visible
     implicitWidth: 360
-    implicitHeight: 230
+    implicitHeight: 320
     color: "#00000000"
 
     Rectangle {
@@ -139,6 +139,50 @@ FloatingWindow {
                     color: root.controlsModel.micText === "MIC muted" ? "#bf616a" : Theme.text
                     font.pixelSize: Theme.panelFontSize
                     font.bold: true
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Media"
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                font.bold: true
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 54
+                color: Theme.surface
+                radius: Theme.radius
+                border.color: Theme.border
+                border.width: 1
+
+                Column {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 2
+
+                    Text {
+                        width: parent.width
+                        text: root.controlsModel.mediaText
+                        color: Theme.text
+                        font.pixelSize: Theme.panelFontSize
+                        font.bold: true
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        width: parent.width
+                        visible: root.controlsModel.mediaPlayer.length > 0
+                        text: root.controlsModel.mediaPlayer
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.smallFontSize
+                        elide: Text.ElideRight
+                    }
                 }
             }
         }

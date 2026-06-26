@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status|media-status" >&2
 	exit 2
 }
 
@@ -196,6 +196,18 @@ mic_status() {
 	printf '%s\n' "MIC unavailable"
 }
 
+media_status() {
+	if ! command -v playerctl >/dev/null 2>&1; then
+		printf '%s\n' "MEDIA unavailable"
+		return 0
+	fi
+
+	format=$(printf '{{playerName}}\t{{status}}\t{{artist}}\t{{title}}')
+	if ! playerctl metadata --format "$format" 2>/dev/null; then
+		printf '%s\n' "MEDIA none"
+	fi
+}
+
 [ "$#" -ge 1 ] || usage
 
 command=$1
@@ -221,6 +233,10 @@ volume-toggle-mute)
 mic-status)
 	[ "$#" -eq 0 ] || usage
 	mic_status
+	;;
+media-status)
+	[ "$#" -eq 0 ] || usage
+	media_status
 	;;
 *)
 	usage
