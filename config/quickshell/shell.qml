@@ -7,6 +7,7 @@ ShellRoot {
     id: root
 
     property string clockText: ""
+    property string systemText: ""
 
     Process {
         id: dateProcess
@@ -19,11 +20,29 @@ ShellRoot {
         }
     }
 
+    Process {
+        id: systemProcess
+
+        command: ["sh", "-c", "load=$(cut -d ' ' -f1 /proc/loadavg); mem=$(awk '/MemTotal/ { total = $2 } /MemAvailable/ { available = $2 } END { printf \"%d\", (total - available) * 100 / total }' /proc/meminfo); printf 'CPU %s  RAM %s%%' \"$load\" \"$mem\""]
+        running: true
+
+        stdout: StdioCollector {
+            onStreamFinished: root.systemText = this.text.trim()
+        }
+    }
+
     Timer {
         interval: 1000
         running: true
         repeat: true
         onTriggered: dateProcess.running = true
+    }
+
+    Timer {
+        interval: 5000
+        running: true
+        repeat: true
+        onTriggered: systemProcess.running = true
     }
 
     Variants {
@@ -60,6 +79,13 @@ ShellRoot {
 
                     Item {
                         Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: root.systemText
+                        color: "#d8dee9"
+                        font.pixelSize: 13
+                        verticalAlignment: Text.AlignVCenter
                     }
 
                     Text {

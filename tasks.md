@@ -108,7 +108,18 @@ available as the fallback until the Quickshell panel is usable.
     --log-times` reported `Configuration Loaded`; `quickshell list` showed the
     instance on `x11,:0`; `date '+%a %b %d  %H:%M'` returned the expected
     format; and `wmctrl -m` still reported `Name: dwm`.
-- [ ] Add CPU/RAM indicators.
+- [x] Add CPU/RAM indicators.
+  - Acceptance: the panel displays a lightweight CPU/RAM summary without
+    requiring Polybar or a new package dependency.
+  - Validation: run the status command directly, then launch the config in the
+    active Xorg/dwm session and confirm Quickshell remains running.
+  - Result: added one shared `systemText` property, a `/proc/loadavg` and
+    `/proc/meminfo` status process, and a 5 second update timer to
+    `config/quickshell/shell.qml`. The command returned output in the form
+    `CPU 0.59  RAM 10%`. Running
+    `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
+    --log-times` reported `Configuration Loaded`; `quickshell list` showed the
+    instance on `x11,:0`; and `wmctrl -m` still reported `Name: dwm`.
 - [ ] Add network indicator.
 - [ ] Add volume indicator.
 - [ ] Add battery/power indicator if needed.
