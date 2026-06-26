@@ -1,0 +1,101 @@
+#!/bin/sh
+set -eu
+
+window_title=${1:-dwm notifications}
+margin_x=${2:-12}
+offset_y=${3:-42}
+
+command -v xdotool >/dev/null 2>&1 || exit 0
+
+window_id=$(xdotool search --name "^${window_title}$" 2>/dev/null | tail -n 1)
+[ -n "$window_id" ] || exit 0
+
+load_window_geometry() {
+	prefix=$1
+	window=$2
+
+	xdotool getwindowgeometry --shell "$window" |
+		awk -v prefix="$prefix" -F= '
+			/^(X|Y|WIDTH|HEIGHT)=/ && $2 ~ /^-?[0-9]+$/ {
+				printf "%s_%s=%s\n", prefix, $1, $2
+			}
+		'
+}
+
+monitor_from_geometry() {
+	geometry=$1
+
+	mon_width=${geometry%%x*}
+	rest=${geometry#*x}
+	mon_height=${rest%%+*}
+	rest=${rest#*+}
+	mon_x=${rest%%+*}
+	mon_y=${rest#*+}
+}
+
+is_point_in_monitor() {
+	[ -n "${active_center_x:-}" ] || return 1
+	[ "$active_center_x" -ge "$mon_x" ] &&
+		[ "$active_center_x" -lt $((mon_x + mon_width)) ] &&
+		[ "$active_center_y" -ge "$mon_y" ] &&
+		[ "$active_center_y" -lt $((mon_y + mon_height)) ]
+}
+
+eval "$(load_window_geometry popup "$window_id")"
+popup_WIDTH=${popup_WIDTH:-380}
+
+active_window=$(xdotool getactivewindow 2>/dev/null || true)
+if [ -n "$active_window" ]; then
+	eval "$(load_window_geometry active "$active_window")"
+	if [ -n "${active_X:-}" ] &&
+		[ -n "${active_Y:-}" ] &&
+		[ -n "${active_WIDTH:-}" ] &&
+		[ -n "${active_HEIGHT:-}" ]; then
+		active_center_x=$((active_X + active_WIDTH / 2))
+		active_center_y=$((active_Y + active_HEIGHT / 2))
+	fi
+fi
+
+selected_geometry=
+primary_geometry=
+first_geometry=
+
+if command -v xrandr >/dev/null 2>&1; then
+	while IFS= read -r line; do
+		geometry=$(printf '%s\n' "$line" |
+			sed -n 's/.* \([0-9][0-9]*x[0-9][0-9]*[+][0-9][0-9]*[+][0-9][0-9]*\).*/\1/p')
+		[ -n "$geometry" ] || continue
+
+		[ -n "$first_geometry" ] || first_geometry=$geometry
+		case $line in
+		*" primary "*) primary_geometry=$geometry ;;
+		esac
+
+		monitor_from_geometry "$geometry"
+		if is_point_in_monitor; then
+			selected_geometry=$geometry
+			break
+		fi
+	done <<EOF
+$(xrandr --query | sed -n '/^[^ ]\+ connected/p')
+EOF
+fi
+
+selected_geometry=${selected_geometry:-${primary_geometry:-${first_geometry:-}}}
+
+if [ -n "$selected_geometry" ]; then
+	monitor_from_geometry "$selected_geometry"
+else
+	read -r mon_width mon_height <<EOF
+$(xdotool getdisplaygeometry)
+EOF
+	mon_x=0
+	mon_y=0
+fi
+
+x=$((mon_x + mon_width - popup_WIDTH - margin_x))
+y=$((mon_y + offset_y))
+
+[ "$x" -ge "$mon_x" ] || x=$mon_x
+
+xdotool windowmove "$window_id" "$x" "$y"

@@ -31,6 +31,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
 	scripts/dwm-quickshell-launcher \
+	scripts/dwm-quickshell-position-notification \
 	scripts/dwm-quickshell-state \
 	scripts/dwm-status \
 	scripts/dwm-polkit \
@@ -287,7 +288,9 @@ check-install: all
 	$(MAKE) install-system \
 		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions; \
 	test -x "$$stage/usr/bin/dwm"; \
-	test -x "$$stage/usr/bin/dwm-controlcenter"; \
+	for name in ${INSTALL_COMMAND_NAMES}; do \
+		test -x "$$stage/usr/bin/$$name"; \
+	done; \
 	test -f "$$stage/usr/share/man/man1/dwm.1"; \
 	test -f "$$stage/usr/share/xsessions/dwm.desktop"; \
 	grep -Fqx 'Exec=/usr/bin/dwm' \
