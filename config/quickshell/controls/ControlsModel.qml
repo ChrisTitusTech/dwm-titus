@@ -165,6 +165,17 @@ Scope {
     }
 
     Process {
+        command: Commands.controlsHelperCommand("media-watch")
+        running: true
+
+        stdout: SplitParser {
+            onRead: function(data) {
+                root.parseMedia(data);
+            }
+        }
+    }
+
+    Process {
         id: bluetoothStatusProcess
 
         command: Commands.controlsHelperCommand("bluetooth-status")

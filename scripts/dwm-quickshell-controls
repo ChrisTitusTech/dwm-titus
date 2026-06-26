@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status|media-status|media-play-pause|media-next|media-previous|bluetooth-status" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status" >&2
 	exit 2
 }
 
@@ -208,6 +208,18 @@ media_status() {
 	fi
 }
 
+media_watch() {
+	if ! command -v playerctl >/dev/null 2>&1; then
+		printf '%s\n' "MEDIA unavailable"
+		return 0
+	fi
+
+	format=$(printf '{{playerName}}\t{{status}}\t{{artist}}\t{{title}}')
+	if ! playerctl --follow metadata --format "$format" 2>/dev/null; then
+		printf '%s\n' "MEDIA none"
+	fi
+}
+
 playerctl_action() {
 	[ "$#" -eq 1 ] || usage
 
@@ -280,6 +292,10 @@ mic-status)
 media-status)
 	[ "$#" -eq 0 ] || usage
 	media_status
+	;;
+media-watch)
+	[ "$#" -eq 0 ] || usage
+	media_watch
 	;;
 media-play-pause)
 	[ "$#" -eq 0 ] || usage

@@ -56,6 +56,17 @@ metadata\ --format\ *)
 		;;
 	esac
 	;;
+--follow\ metadata\ --format\ *)
+	case "${DWM_TEST_PLAYER_MODE:-playing}" in
+	playing)
+		printf 'brave\tPlaying\tArtist Name\tTrack Title\n'
+		printf 'brave\tPaused\tArtist Name\tTrack Title\n'
+		;;
+	none)
+		exit 1
+		;;
+	esac
+	;;
 play-pause)
 	printf 'play-pause\n' >>"$DWM_TEST_PLAYERCTL_LOG"
 	;;
@@ -134,6 +145,15 @@ DWM_TEST_PLAYER_MODE=none \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" media-status >"$work/media-none.out"
 grep -Fqx "MEDIA none" "$work/media-none.out"
+
+PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" media-watch >"$work/media-watch.out"
+grep -Fqx "brave	Playing	Artist Name	Track Title" "$work/media-watch.out"
+grep -Fqx "brave	Paused	Artist Name	Track Title" "$work/media-watch.out"
+
+DWM_TEST_PLAYER_MODE=none \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" media-watch >"$work/media-watch-none.out"
+grep -Fqx "MEDIA none" "$work/media-watch-none.out"
 
 DWM_TEST_PLAYERCTL_LOG="$work/playerctl.log" \
 	PATH="$work/bin:$PATH" \
