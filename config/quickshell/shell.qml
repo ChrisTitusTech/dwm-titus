@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.launcher
+import qs.notifications
 import qs.panel
 import qs.power
 import qs.state
@@ -25,6 +26,10 @@ ShellRoot {
 
     PowerMenuModel {
         id: powerMenuModel
+    }
+
+    NotificationModel {
+        id: notificationModel
     }
 
     IpcHandler {
@@ -59,12 +64,28 @@ ShellRoot {
         }
     }
 
+    IpcHandler {
+        target: "notifications"
+
+        function clear(): void {
+            notificationModel.clear();
+        }
+
+        function count(): int {
+            return notificationModel.notifications.length;
+        }
+    }
+
     LauncherWindow {
         launcherModel: launcherModel
     }
 
     PowerMenuWindow {
         powerMenuModel: powerMenuModel
+    }
+
+    NotificationPopupWindow {
+        notificationModel: notificationModel
     }
 
     DwmPanel {

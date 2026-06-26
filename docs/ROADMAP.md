@@ -158,12 +158,12 @@ Replace Dunst or other notification UI with Quickshell notifications.
 
 ### Tasks
 
-- [ ] Enable Quickshell notification daemon functionality
-- [ ] Build notification popup UI
+- [x] Enable Quickshell notification daemon functionality
+- [x] Build notification popup UI
 - [ ] Add notification history
-- [ ] Add dismiss action
-- [ ] Add timeout behavior
-- [ ] Add urgency styling
+- [x] Add dismiss action
+- [x] Add timeout behavior
+- [x] Add urgency styling
 - [ ] Test with common apps:
   - [ ] Browser
   - [ ] Discord/Slack

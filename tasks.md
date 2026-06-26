@@ -392,7 +392,67 @@ menu while keeping destructive actions behind explicit confirmation.
 
 ## Backlog
 
-- [ ] Replace Dunst or other notification UI.
+## In Progress Phase: Notifications
+
+Goal: replace Dunst or other notification UI with Quickshell notifications
+without losing a working notification fallback before the replacement is fully
+tested.
+
+- [x] Enable Quickshell notification daemon functionality.
+  - Acceptance: the tracked Quickshell config declares a freedesktop
+    notification server and can receive notifications when no other daemon owns
+    `org.freedesktop.Notifications`.
+  - Validation: after temporarily stopping Dunst and restarting the live
+    symlinked Quickshell config, Quickshell loaded without the notification
+    registration warning. `notify-send` delivered test notifications, and
+    `quickshell ipc call notifications count` changed from `0` to `1` and then
+    `2`.
+  - Result: added `config/quickshell/notifications/NotificationModel.qml` with
+    a `NotificationServer` that tracks incoming notifications.
+- [x] Build notification popup UI.
+  - Acceptance: incoming notifications are shown in a Quickshell X11 popup
+    surface without requiring Wayland-only APIs.
+  - Validation: the repo-scoped Quickshell smoke test reported
+    `Configuration Loaded`, and live `notify-send` calls populated the popup
+    model.
+  - Result: added `NotificationPopupWindow.qml` and `NotificationCard.qml`.
+- [ ] Add notification history.
+  - Status: not implemented yet; current work only keeps visible popup state.
+- [x] Add dismiss action.
+  - Acceptance: visible notifications can be dismissed without waiting for
+    timeout.
+  - Validation: `quickshell ipc call notifications clear` removed visible
+    notifications during the live test path; each card also exposes an `x`
+    dismiss button.
+  - Result: the model exposes `dismiss()`, `clear()`, and card-level dismiss.
+- [x] Add timeout behavior.
+  - Acceptance: non-critical notifications expire automatically.
+  - Validation: after sending normal and critical test notifications, the
+    visible count changed from `2` to `1` after seven seconds.
+  - Result: normal popups use a 6 second timeout; critical popups use a longer
+    10 second timeout.
+- [x] Add urgency styling.
+  - Acceptance: critical notifications are visually distinct from normal and
+    low-urgency notifications.
+  - Validation: sent a critical `notify-send -u critical` notification through
+    the live Quickshell notification path.
+  - Result: critical cards use a red-tinted surface and border; normal cards
+    use the standard shell surface and accent strip.
+- [ ] Test with common apps.
+  - [ ] Browser
+  - [ ] Discord/Slack
+  - [x] Terminal notify-send
+  - [ ] Steam/game launchers
+
+Notes:
+
+- Dunst is still installed and remains the fallback notification daemon until
+  browser, chat, and game-launcher notification behavior is tested.
+- During validation, Dunst was stopped temporarily with `pkill -x dunst` so
+  Quickshell could claim `org.freedesktop.Notifications`.
+
+## Backlog
+
 - [ ] Move tray functionality into Quickshell.
 - [ ] Add media, audio, and quick controls.
 - [ ] Centralize Quickshell styling and reusable components.
