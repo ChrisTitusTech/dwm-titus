@@ -109,7 +109,6 @@ done
 echo "Runtime Dependencies (desktop experience):"
 check_cmd "rofi"
 check_cmd "picom"
-check_cmd "dunst"
 check_cmd "feh"
 check_cmd "flameshot"
 if command -v dex &>/dev/null || command -v dex-autostart &>/dev/null; then

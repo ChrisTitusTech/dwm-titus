@@ -172,7 +172,6 @@ run_health_check() {
     # ── Core Runtime ─────────────────────────────────────
     _cmd rofi
     _cmd picom
-    _cmd dunst
     _cmd feh
 	_cmd flameshot
     if ! command -v dex &>/dev/null && ! command -v dex-autostart &>/dev/null; then
@@ -203,7 +202,6 @@ run_health_check() {
 
     # ── Running Services ─────────────────────────────────
 	_proc picom
-	_proc dunst
     if systemctl is-active --quiet NetworkManager 2>/dev/null; then
         passed_lines+=("✓  NetworkManager  (active)")
         pass=$((pass + 1))
@@ -257,7 +255,6 @@ run_health_check() {
 run_quick_actions() {
     local items=(
 		"  Restart Picom"
-		"  Restart Dunst"
 		"  Reload Wallpaper"
         "  Toggle Compositor"
         "  Restart NetworkManager"
@@ -275,12 +272,6 @@ run_quick_actions() {
             sleep 0.3
             start_picom
             notify "Picom restarted"
-            ;;
-        *"Restart Dunst"*)
-            pkill dunst 2>/dev/null || true
-            sleep 0.3
-            dunst &
-            notify "Dunst restarted"
             ;;
 		*"Reload Wallpaper"*)
             if [ -d "$BG_DIR" ]; then

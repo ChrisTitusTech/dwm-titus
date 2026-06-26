@@ -16,10 +16,10 @@ Runs a full dependency check and reports:
 
 - Build tools (`cc`, `make`) and required libraries
 - Xorg / Xlibre installation
-- Runtime programs: rofi, picom, dunst, feh, flameshot
+- Runtime programs: rofi, picom, feh, flameshot
 - Terminal emulators (alacritty, kitty, st)
 - Fonts: MesloLGS Nerd, Noto Color Emoji
-- Running services: picom, dunst, NetworkManager
+- Running services: picom, NetworkManager
 - Config paths: `.xinitrc`, rofi dir, wallpaper folder
 
 Selecting a failed item offers to run `install.sh` (auto-fix) or `check-deps.sh` (details).
@@ -29,7 +29,6 @@ Selecting a failed item offers to run `install.sh` (auto-fix) or `check-deps.sh`
 | Action | Description |
 |--------|-------------|
 | Restart Picom | Kill and relaunch the compositor |
-| Restart Dunst | Kill and relaunch the notification daemon |
 | Reload Wallpaper | Randomize from `~/Pictures/backgrounds/` |
 | Toggle Compositor | Start or stop picom |
 | Restart NetworkManager | `sudo systemctl restart NetworkManager` |

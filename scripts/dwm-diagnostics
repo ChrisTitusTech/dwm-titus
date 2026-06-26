@@ -117,7 +117,7 @@ main() {
 	check_terminal
 
 	printf '\nOptional desktop\n'
-	for cmd in rofi picom dunst feh flameshot xdg-open notify-send amixer brightnessctl; do
+	for cmd in rofi picom feh flameshot xdg-open notify-send amixer brightnessctl; do
 		check_optional_cmd "$cmd"
 	done
 	check_any_optional_cmd "XDG autostart runner" dex dex-autostart

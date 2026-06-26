@@ -154,7 +154,7 @@ Replace small Rofi scripts such as power menus, logout menus, and utility menus.
 
 ### Objective
 
-Replace Dunst or other notification UI with Quickshell notifications.
+Replace external notification UI with Quickshell notifications.
 
 ### Tasks
 
@@ -175,7 +175,7 @@ Replace Dunst or other notification UI with Quickshell notifications.
 - [x] Notifications appear consistently
 - [x] Urgent notifications are obvious
 - [x] Notification history works
-- [x] Dunst can be disabled
+- [x] No separate notification daemon is required
 
 ---
 
@@ -262,14 +262,13 @@ Make the Quickshell setup visually consistent and easier to maintain.
 
 ### Objective
 
-Remove Rofi-era bar/Rofi/Dunst only after Quickshell replacements are stable.
+Remove Rofi-era bar/Rofi only after Quickshell replacements are stable.
 
 ### Tasks
 
 - [ ] Remove Rofi-era bar from startup
 - [ ] Remove Rofi launcher backup keybind
 - [ ] Remove Rofi power-menu backup keybind
-- [ ] Remove Dunst from startup
 - [ ] Keep packages installed temporarily
 - [ ] Run the Quickshell setup for several normal sessions
 - [ ] Remove unused packages after validation
@@ -277,7 +276,7 @@ Remove Rofi-era bar/Rofi/Dunst only after Quickshell replacements are stable.
 
 ### Exit Criteria
 
-- Daily workflow works without Rofi-era bar/Rofi/Dunst
+- Daily workflow works without Rofi-era bar/Rofi
 - No missing launcher, panel, tray, or notification functionality
 - Rollback path is documented
 
@@ -291,7 +290,6 @@ Keep the old stack available until the Quickshell setup is proven stable.
 
 - [ ] Keep old Rofi-era bar config
 - [ ] Keep old Rofi scripts
-- [ ] Keep old Dunst config
 - [ ] Keep old WM keybinds commented, not deleted
 - [ ] Add emergency keybind to launch terminal
 - [ ] Add emergency keybind to restart Quickshell
@@ -301,6 +299,5 @@ Example fallback commands:
 
 ```sh
 legacy-bar main &
-dunst &
 rofi -show drun
 ```

@@ -67,13 +67,10 @@ start_detached_once dwm-status dwm-status
 # Session locker for the power menu lock action and loginctl lock requests.
 start_once light-locker light-locker
 
-# Quickshell is the managed shell for this session. Dunst remains the fallback
-# notification daemon when the managed Quickshell config is unavailable.
+# Quickshell is the managed shell for this session.
 QUICKSHELL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
 if [ -f "$QUICKSHELL_CONFIG" ]; then
 	start_detached_once quickshell quickshell --no-duplicate
-else
-	start_once dunst dunst
 fi
 
 # Polkit authentication agent (try common agents)

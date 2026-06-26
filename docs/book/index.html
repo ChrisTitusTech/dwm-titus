@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-70a45a99.js";
+            window.path_to_searchindex_js = "searchindex-3d775476.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e4ab374d.js"></script>
@@ -215,8 +215,8 @@ Existing user configuration and <code>.xinitrc</code> files are preserved.</p>
 <li><code>core</code>: required build packages, X11/session runtime, and one supported
 terminal.</li>
 <li><code>recommended</code>: <code>core</code> plus the recommended desktop layer such as Quickshell,
-Rofi, Picom, Dunst, Feh, Dex, fonts, theming, screenshot, audio, and
-brightness tools.</li>
+Rofi, Picom, Feh, Dex, fonts, theming, screenshot, audio, and brightness
+tools.</li>
 <li><code>full</code>: <code>recommended</code> plus optional extras such as file-manager integration,
 network tray utilities, portals, wallpapers, and display-manager setup.</li>
 </ul>
@@ -249,9 +249,9 @@ and portability testing. It keeps only:</p>
 <li>required X11 helpers used by core startup and display commands, such as
 <code>xrandr</code>, <code>xset</code>, and <code>xsetroot</code></li>
 </ul>
-<p>Rofi, Picom, Dunst, Feh, Dex, a polkit agent, screenshot tools,
-wallpapers, tray utilities, and audio or brightness helpers are optional in
-this profile. Missing optional components should appear as degraded features in
+<p>Rofi, Picom, Feh, Dex, a polkit agent, screenshot tools, wallpapers, tray
+utilities, and audio or brightness helpers are optional in this profile.
+Missing optional components should appear as degraded features in
 <code>dwm-diagnostics</code>, not as session-fatal failures.</p>
 <p>For <code>startx</code>, a minimal <code>.xinitrc</code> can be:</p>
 <pre><code class="language-sh">#!/bin/sh

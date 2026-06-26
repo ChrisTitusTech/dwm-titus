@@ -102,8 +102,8 @@ The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake
 
 For a core-only setup, use the minimal session profile documented in
 [`docs/src/install.md`](docs/src/install.md). It runs dwm with one terminal,
-required X11/session services, and treats Rofi, Picom, Dunst,
-wallpapers, tray tools, and hardware helpers as optional degraded features.
+required X11/session services, and treats Rofi, Picom, wallpapers, tray tools,
+and hardware helpers as optional degraded features.
 
 The normal app launcher binding is the Quickshell launcher on
 <kbd>SUPER</kbd> + <kbd>R</kbd>. Rofi remains available on

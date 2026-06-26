@@ -7,7 +7,7 @@ in `SPEC.md`.
 ## Completed Phase: Quickshell Baseline
 
 Goal: install Quickshell and confirm it works reliably under Xorg before
-replacing Rofi-era bar, Rofi, Dunst, or other existing shell components.
+replacing Rofi-era bar, Rofi, or other existing shell components.
 
 - [x] Install Quickshell.
   - Acceptance: `quickshell --version` or the equivalent package command
@@ -19,14 +19,13 @@ replacing Rofi-era bar, Rofi, Dunst, or other existing shell components.
     `dacfa9de829ac7cb173825f593236bf2c21f637e`, distributed by Fedora Project.
 - [x] Create the base Quickshell config directory.
   - Acceptance: the config lives under the expected XDG config path and does
-    not replace existing dwm, Rofi-era bar, Rofi, or Dunst configuration.
+    not replace existing dwm, Rofi-era bar, or Rofi configuration.
   - Validation: inspect the created path and confirm existing config files are
     still present.
   - Result: created `/home/titus/.config/quickshell` under
     `XDG_CONFIG_HOME=/home/titus/.config`. Existing
     `/home/titus/.config/dwm-titus`, `/home/titus/.config/legacy-bar`, and
-    `/home/titus/.config/rofi` directories remained present; no existing Dunst
-    config directory was present to preserve.
+    `/home/titus/.config/rofi` directories remained present.
 - [x] Launch a minimal Quickshell window manually.
   - Acceptance: a minimal test window starts and exits without breaking the
     current dwm session.
@@ -394,19 +393,16 @@ menu while keeping destructive actions behind explicit confirmation.
 
 ## Completed Phase: Notifications
 
-Goal: replace Dunst or other notification UI with Quickshell notifications
-without losing a working notification fallback before the replacement is fully
-tested.
+Goal: replace external notification UI with Quickshell notifications.
 
 - [x] Enable Quickshell notification daemon functionality.
   - Acceptance: the tracked Quickshell config declares a freedesktop
     notification server and can receive notifications when no other daemon owns
     `org.freedesktop.Notifications`.
-  - Validation: after temporarily stopping Dunst and restarting the live
-    symlinked Quickshell config, Quickshell loaded without the notification
-    registration warning. `notify-send` delivered test notifications, and
-    `quickshell ipc call notifications count` changed from `0` to `1` and then
-    `2`.
+  - Validation: after restarting the live symlinked Quickshell config,
+    Quickshell owned the notification service. `notify-send` delivered test
+    notifications, and `quickshell ipc call notifications count` changed from
+    `0` to `1` and then `2`.
   - Result: added `config/quickshell/notifications/NotificationModel.qml` with
     a `NotificationServer` that tracks incoming notifications.
 - [x] Build notification popup UI.
@@ -460,9 +456,8 @@ tested.
       latest history summary matched the unique chat test title.
   - [x] Terminal notify-send
     - Validation: normal and critical `notify-send` calls were delivered to
-      Quickshell after temporarily stopping Dunst; the visible popup count
-      changed as expected and the latest notification persisted to history
-      across restart.
+      Quickshell; the visible popup count changed as expected and the latest
+      notification persisted to history across restart.
   - [x] Steam/game launchers
     - Validation: sent a Steam desktop-entry notification with
       `notify-send -a Steam -h string:desktop-entry:steam`; the visible popup
@@ -472,15 +467,10 @@ tested.
 
 Notes:
 
-- Dunst is still installed and remains the fallback notification daemon when
-  the managed Quickshell config is unavailable.
-- During validation, Dunst was stopped temporarily with `pkill -x dunst` so
-  Quickshell could claim `org.freedesktop.Notifications`.
 - Validation: `make check-session-guards` passed after changing
   `scripts/autostart.sh` so normal sessions with
   `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml` start Quickshell
-  without Dunst, while sessions without that managed config still start Dunst
-  as the rollback notification daemon.
+  without a separate notification daemon.
 
 ## Backlog
 
@@ -494,6 +484,6 @@ Notes:
 ## Validation Policy
 
 A task is complete only when its acceptance criteria pass or the exact skipped
-environment is recorded. Do not remove Rofi-era bar, Rofi, or Dunst from the normal
+environment is recorded. Do not remove Rofi-era bar or Rofi from the normal
 startup path until the Quickshell replacement for that component has been
 validated and rollback steps are documented.

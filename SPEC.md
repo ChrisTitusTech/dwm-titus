@@ -5,7 +5,7 @@
 dwm-titus is a maintained, opinionated fork of suckless dwm for X11. It
 combines a small C window-manager core with runtime-configurable hotkeys,
 themes, and window rules, plus a Quickshell shell layer and optional desktop
-helpers such as Rofi, Picom, Dunst, and supporting scripts.
+helpers such as Rofi, Picom, and supporting scripts.
 
 The product target is one repository and one documented installation workflow
 that works across Debian-family, Arch-family, and RHEL-family Linux
@@ -117,7 +117,7 @@ The project must support:
 
 - A display-manager session installed as `dwm.desktop`.
 - A `startx` flow whose `.xinitrc` launches dwm in a D-Bus session.
-- Startup without Picom, Dunst, a wallpaper, or a polkit agent.
+- Startup without Picom, a wallpaper, or a polkit agent.
 - Detection of common polkit agent locations across `/usr/lib`,
   `/usr/lib64`, and `/usr/libexec` layouts.
 - Startup helpers that do not create duplicate long-running processes when the
@@ -223,9 +223,8 @@ Runtime dependencies are classified as:
 
 - Core: an X11 server/session, D-Bus session support, one usable terminal, and
   the tools required by configured core keybindings.
-- Recommended desktop: Quickshell, Rofi, Picom, Dunst, Feh, Dex, a polkit agent,
-  notification tools, audio controls, screenshot tooling, and Nerd/emoji
-  fonts.
+- Recommended desktop: Quickshell, Rofi, Picom, Feh, Dex, a polkit agent,
+  notification tools, audio controls, screenshot tooling, and Nerd/emoji fonts.
 - Optional: file manager, network tray, theme utilities, display-manager
   greeter customization, wallpapers, and hardware-specific helpers.
 

@@ -56,8 +56,8 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
 - `core`: required build packages, X11/session runtime, and one supported
   terminal.
 - `recommended`: `core` plus the recommended desktop layer such as Quickshell,
-  Rofi, Picom, Dunst, Feh, Dex, fonts, theming, screenshot, audio, and
-  brightness tools.
+  Rofi, Picom, Feh, Dex, fonts, theming, screenshot, audio, and brightness
+  tools.
 - `full`: `recommended` plus optional extras such as file-manager integration,
   network tray utilities, portals, wallpapers, and display-manager setup.
 
@@ -105,9 +105,9 @@ and portability testing. It keeps only:
 - required X11 helpers used by core startup and display commands, such as
   `xrandr`, `xset`, and `xsetroot`
 
-Rofi, Picom, Dunst, Feh, Dex, a polkit agent, screenshot tools,
-wallpapers, tray utilities, and audio or brightness helpers are optional in
-this profile. Missing optional components should appear as degraded features in
+Rofi, Picom, Feh, Dex, a polkit agent, screenshot tools, wallpapers, tray
+utilities, and audio or brightness helpers are optional in this profile.
+Missing optional components should appear as degraded features in
 `dwm-diagnostics`, not as session-fatal failures.
 
 For `startx`, a minimal `.xinitrc` can be:
