@@ -49,7 +49,7 @@ Scope {
         root.statusSegments = text.split(/\s+\|\s+| {2,}/).filter(function(segment) {
             const trimmed = segment.trim();
 
-            return trimmed.length > 0 && trimmed.indexOf("NET ") !== 0;
+            return trimmed.length > 0 && trimmed.indexOf("NET ") !== 0 && trimmed.indexOf("VOL ") !== 0;
         });
     }
 

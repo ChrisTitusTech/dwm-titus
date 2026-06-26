@@ -1,0 +1,106 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status" >&2
+	exit 2
+}
+
+sink_mute_pactl() {
+	pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null |
+		awk '
+			/Mute:/ {
+				print $2
+				found = 1
+				exit
+			}
+			END {
+				if (!found) {
+					exit 1
+				}
+			}
+		'
+}
+
+sink_volume_pactl() {
+	pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null |
+		awk '
+			{
+				for (i = 1; i <= NF; i++) {
+					if ($i ~ /^[0-9]+%$/) {
+						print $i
+						found = 1
+						exit
+					}
+				}
+			}
+			END {
+				if (!found) {
+					exit 1
+				}
+			}
+		'
+}
+
+volume_status_pactl() {
+	command -v pactl >/dev/null 2>&1 || return 1
+
+	mute=$(sink_mute_pactl) || return 1
+	volume=$(sink_volume_pactl) || return 1
+
+	if [ "$mute" = yes ]; then
+		printf 'VOL muted %s\n' "$volume"
+	else
+		printf 'VOL %s\n' "$volume"
+	fi
+}
+
+volume_status_wpctl() {
+	command -v wpctl >/dev/null 2>&1 || return 1
+
+	wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null |
+		awk '
+			/Volume:/ {
+				percent = int(($2 * 100) + 0.5)
+				if ($0 ~ /\[MUTED\]/) {
+					printf "VOL muted %d%%\n", percent
+				} else {
+					printf "VOL %d%%\n", percent
+				}
+				found = 1
+				exit
+			}
+			END {
+				if (!found) {
+					exit 1
+				}
+			}
+		'
+}
+
+volume_status() {
+	if volume_status_pactl; then
+		return 0
+	fi
+
+	if volume_status_wpctl; then
+		return 0
+	fi
+
+	printf '%s\n' "VOL unavailable"
+}
+
+[ "$#" -ge 1 ] || usage
+
+command=$1
+shift
+
+case "$command" in
+volume-status)
+	[ "$#" -eq 0 ] || usage
+	volume_status
+	;;
+*)
+	usage
+	;;
+esac

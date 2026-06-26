@@ -31,6 +31,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
 	scripts/dwm-quickshell-launcher \
+	scripts/dwm-quickshell-controls \
 	scripts/dwm-quickshell-network \
 	scripts/dwm-quickshell-position-notification \
 	scripts/dwm-quickshell-state \
@@ -243,11 +244,11 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh \
+	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh \
 		config/rofi/*.sh
 
 check-format:
-	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -284,6 +285,9 @@ check-quickshell-launcher:
 
 check-quickshell-network:
 	tests/test-quickshell-network.sh
+
+check-quickshell-controls:
+	tests/test-quickshell-controls.sh
 
 check-install: all
 	@set -eu; \
@@ -385,6 +389,7 @@ check:
 	$(MAKE) check-diagnostics
 	$(MAKE) check-display-profile
 	$(MAKE) check-quickshell-launcher
+	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-network
 	$(MAKE) check-terminal
 	$(MAKE) check-lock
@@ -399,5 +404,5 @@ check:
 	check-display-profile check-format check-install \
 	check-install-manifest check-install-preservation check-lock \
 	check-session-guards check-shell check-diagnostics \
-	check-quickshell-launcher check-quickshell-network check-terminal clean install install-system install-user \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-network check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall

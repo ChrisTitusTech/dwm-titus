@@ -11,6 +11,7 @@ PanelWindow {
     required property var state
     required property var clock
     required property var networkModel
+    required property var controlsModel
 
     implicitHeight: Theme.panelHeight
     color: Theme.bg
@@ -83,6 +84,32 @@ PanelWindow {
                 color: Theme.text
                 font.pixelSize: Theme.panelFontSize
                 verticalAlignment: Text.AlignVCenter
+            }
+        }
+
+        Rectangle {
+            Layout.preferredWidth: volumeLabel.implicitWidth + 18
+            Layout.preferredHeight: 24
+            color: controlsMouse.containsMouse || root.controlsModel.visible ? Theme.surfaceHover : Theme.surface
+            radius: Theme.radius
+
+            Text {
+                id: volumeLabel
+
+                anchors.centerIn: parent
+                text: root.controlsModel.volumeText
+                color: Theme.text
+                font.pixelSize: Theme.panelFontSize
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            MouseArea {
+                id: controlsMouse
+
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.controlsModel.toggle()
             }
         }
 

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.SystemTray
+import qs.controls
 import qs.launcher
 import qs.network
 import qs.notifications
@@ -34,11 +35,18 @@ ShellRoot {
         id: networkModel
     }
 
+    ControlsModel {
+        id: controlsModel
+    }
+
     LazyLoader {
         active: true
 
         component: Item {
-            Component.onCompleted: networkModel.refresh()
+            Component.onCompleted: {
+                networkModel.refresh();
+                controlsModel.refresh();
+            }
         }
     }
 
@@ -99,6 +107,30 @@ ShellRoot {
 
         function toggle(): void {
             networkModel.toggle();
+        }
+    }
+
+    IpcHandler {
+        target: "controls"
+
+        function close(): void {
+            controlsModel.close();
+        }
+
+        function open(): void {
+            controlsModel.open();
+        }
+
+        function refresh(): void {
+            controlsModel.refresh();
+        }
+
+        function toggle(): void {
+            controlsModel.toggle();
+        }
+
+        function volumeStatus(): string {
+            return controlsModel.volumeText;
         }
     }
 
@@ -181,5 +213,6 @@ ShellRoot {
         state: dwmState
         clock: clock
         networkModel: networkModel
+        controlsModel: controlsModel
     }
 }

@@ -16,4 +16,11 @@ Singleton {
 
         return ["sh", "-c", script, "dwm-quickshell-network", action].concat(argv);
     }
+
+    function controlsHelperCommand(action, args) {
+        const argv = args || [];
+        const script = "if command -v dwm-quickshell-controls >/dev/null 2>&1; then exec dwm-quickshell-controls \"$@\"; fi; data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus; exec \"$data_dir/scripts/dwm-quickshell-controls\" \"$@\"";
+
+        return ["sh", "-c", script, "dwm-quickshell-controls", action].concat(argv);
+    }
 }
