@@ -56,6 +56,15 @@ metadata\ --format\ *)
 		;;
 	esac
 	;;
+play-pause)
+	printf 'play-pause\n' >>"$DWM_TEST_PLAYERCTL_LOG"
+	;;
+next)
+	printf 'next\n' >>"$DWM_TEST_PLAYERCTL_LOG"
+	;;
+previous)
+	printf 'previous\n' >>"$DWM_TEST_PLAYERCTL_LOG"
+	;;
 *)
 	printf 'unexpected playerctl call: %s\n' "$*" >&2
 	exit 1
@@ -87,6 +96,23 @@ DWM_TEST_PLAYER_MODE=none \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" media-status >"$work/media-none.out"
 grep -Fqx "MEDIA none" "$work/media-none.out"
+
+DWM_TEST_PLAYERCTL_LOG="$work/playerctl.log" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" media-play-pause
+grep -Fqx "play-pause" "$work/playerctl.log"
+
+: >"$work/playerctl.log"
+DWM_TEST_PLAYERCTL_LOG="$work/playerctl.log" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" media-next
+grep -Fqx "next" "$work/playerctl.log"
+
+: >"$work/playerctl.log"
+DWM_TEST_PLAYERCTL_LOG="$work/playerctl.log" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" media-previous
+grep -Fqx "previous" "$work/playerctl.log"
 
 DWM_TEST_PACTL_LOG="$work/pactl.log" \
 	PATH="$work/bin:$PATH" \

@@ -11,7 +11,7 @@ FloatingWindow {
     title: "dwm controls"
     visible: controlsModel.visible
     implicitWidth: 360
-    implicitHeight: 320
+    implicitHeight: 374
     color: "#00000000"
 
     Rectangle {
@@ -183,6 +183,35 @@ FloatingWindow {
                         font.pixelSize: Theme.smallFontSize
                         elide: Text.ElideRight
                     }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                ControlsActionButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 40
+                    label: "Previous"
+                    enabled: !root.controlsModel.busy && root.controlsModel.mediaPlayer.length > 0
+                    onActivated: root.controlsModel.mediaPrevious()
+                }
+
+                ControlsActionButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 40
+                    label: "Play/Pause"
+                    enabled: !root.controlsModel.busy && root.controlsModel.mediaPlayer.length > 0
+                    onActivated: root.controlsModel.mediaPlayPause()
+                }
+
+                ControlsActionButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 40
+                    label: "Next"
+                    enabled: !root.controlsModel.busy && root.controlsModel.mediaPlayer.length > 0
+                    onActivated: root.controlsModel.mediaNext()
                 }
             }
         }

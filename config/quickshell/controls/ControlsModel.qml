@@ -107,6 +107,18 @@ Scope {
         root.runAction("volume-toggle-mute");
     }
 
+    function mediaPlayPause() {
+        root.runAction("media-play-pause");
+    }
+
+    function mediaNext() {
+        root.runAction("media-next");
+    }
+
+    function mediaPrevious() {
+        root.runAction("media-previous");
+    }
+
     Process {
         id: volumeStatusProcess
 

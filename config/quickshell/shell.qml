@@ -133,6 +133,18 @@ ShellRoot {
             return controlsModel.mediaText;
         }
 
+        function mediaNext(): void {
+            controlsModel.mediaNext();
+        }
+
+        function mediaPlayPause(): void {
+            controlsModel.mediaPlayPause();
+        }
+
+        function mediaPrevious(): void {
+            controlsModel.mediaPrevious();
+        }
+
         function toggle(): void {
             controlsModel.toggle();
         }

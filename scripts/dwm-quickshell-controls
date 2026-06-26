@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status|media-status" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-up [step]|volume-down [step]|volume-toggle-mute|mic-status|media-status|media-play-pause|media-next|media-previous" >&2
 	exit 2
 }
 
@@ -208,6 +208,17 @@ media_status() {
 	fi
 }
 
+playerctl_action() {
+	[ "$#" -eq 1 ] || usage
+
+	if ! command -v playerctl >/dev/null 2>&1; then
+		printf '%s\n' "playerctl not found" >&2
+		exit 127
+	fi
+
+	playerctl "$1"
+}
+
 [ "$#" -ge 1 ] || usage
 
 command=$1
@@ -237,6 +248,18 @@ mic-status)
 media-status)
 	[ "$#" -eq 0 ] || usage
 	media_status
+	;;
+media-play-pause)
+	[ "$#" -eq 0 ] || usage
+	playerctl_action play-pause
+	;;
+media-next)
+	[ "$#" -eq 0 ] || usage
+	playerctl_action next
+	;;
+media-previous)
+	[ "$#" -eq 0 ] || usage
+	playerctl_action previous
 	;;
 *)
 	usage
