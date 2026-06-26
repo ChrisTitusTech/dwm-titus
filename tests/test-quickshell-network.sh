@@ -40,22 +40,22 @@ case "$*" in
 "device status")
 	case "${DWM_TEST_NMCLI_MODE:-wired}" in
 	wired)
-		printf 'enp6s0\tethernet\tconnected\tWired connection 1\n'
-		printf 'wlan0\twifi\tdisconnected\t--\n'
+		printf 'enp6s0:ethernet:connected:Wired connection 1\n'
+		printf 'wlan0:wifi:disconnected:--\n'
 		;;
 	offline)
-		printf 'enp6s0\tethernet\tdisconnected\t--\n'
-		printf 'lo\tloopback\tconnected\tlo\n'
+		printf 'enp6s0:ethernet:disconnected:--\n'
+		printf 'lo:loopback:connected:lo\n'
 		;;
 	esac
 	;;
 "connection show --active")
-	printf 'Wired connection 1\tuuid-wired\t802-3-ethernet\tenp6s0\n'
+	printf 'Wired connection 1:uuid-wired:802-3-ethernet:enp6s0\n'
 	;;
 "connection show")
-	printf 'Wired connection 1\tuuid-wired\t802-3-ethernet\n'
-	printf 'Home WiFi\tuuid-wifi\t802-11-wireless\n'
-	printf 'Work VPN\tuuid-vpn\tvpn\n'
+	printf 'Wired connection 1:uuid-wired:802-3-ethernet\n'
+	printf 'Home WiFi:uuid-wifi:802-11-wireless\n'
+	printf 'Work VPN:uuid-vpn:vpn\n'
 	;;
 "connection up uuid uuid-wifi")
 	printf 'connect uuid-wifi\n' >>"$DWM_TEST_NMCLI_LOG"
