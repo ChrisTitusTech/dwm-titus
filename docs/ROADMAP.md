@@ -73,9 +73,14 @@ Expose workspace/tag state from the Xorg window manager to Quickshell.
 
 Quickshell does not directly manage Xorg workspaces for DWM-style setups. Workspace state may need to come from scripts, `xprop`, `xdotool`, `wmctrl`, or a WM-specific patch/status output.
 
+Phase 3 will expose state through a small shell bridge that reads the existing
+EWMH root window properties with `xprop`, reads the active window title with
+`xdotool` and `xprop`, and switches workspaces with `wmctrl -s` when clickable
+tag switching is available. WM keybinds remain the primary control path.
+
 ### Tasks
 
-- [ ] Decide how workspace/tag state will be exposed
+- [x] Decide how workspace/tag state will be exposed
 - [ ] Create a script or IPC bridge for current workspace/tag
 - [ ] Display active workspace/tag in Quickshell
 - [ ] Add clickable workspace/tag switching if practical
