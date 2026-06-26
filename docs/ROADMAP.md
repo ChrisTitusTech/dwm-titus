@@ -21,18 +21,18 @@ Install Quickshell and confirm it works reliably under Xorg before replacing any
 
 ### Tasks
 
-- [ ] Install Quickshell
-- [ ] Create base config directory
-- [ ] Launch a minimal Quickshell window manually
-- [ ] Confirm it starts correctly inside the current Xorg session
-- [ ] Confirm it does not interfere with the current WM
-- [ ] Add a temporary startup command but keep Polybar/Rofi enabled
+- [x] Install Quickshell
+- [x] Create base config directory
+- [x] Launch a minimal Quickshell window manually
+- [x] Confirm it starts correctly inside the current Xorg session
+- [x] Confirm it does not interfere with the current WM
+- [x] Add a temporary startup command but keep Polybar/Rofi enabled
 
 ### Exit Criteria
 
-- Quickshell launches successfully
-- No login/session breakage
-- Existing Polybar/Rofi workflow still works as fallback
+- [x] Quickshell launches successfully
+- [x] No login/session breakage
+- [x] Existing Polybar/Rofi workflow still works as fallback
 
 ---
 
