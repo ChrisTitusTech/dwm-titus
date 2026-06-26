@@ -17,11 +17,16 @@ replacing Polybar, Rofi, Dunst, or other existing shell components.
     Fedora updates repository with `jemalloc-5.3.0-14.fc44` as a dependency.
     `quickshell --version` reports `quickshell 0.2.1`, revision
     `dacfa9de829ac7cb173825f593236bf2c21f637e`, distributed by Fedora Project.
-- [ ] Create the base Quickshell config directory.
+- [x] Create the base Quickshell config directory.
   - Acceptance: the config lives under the expected XDG config path and does
     not replace existing dwm, Polybar, Rofi, or Dunst configuration.
   - Validation: inspect the created path and confirm existing config files are
     still present.
+  - Result: created `/home/titus/.config/quickshell` under
+    `XDG_CONFIG_HOME=/home/titus/.config`. Existing
+    `/home/titus/.config/dwm-titus`, `/home/titus/.config/polybar`, and
+    `/home/titus/.config/rofi` directories remained present; no existing Dunst
+    config directory was present to preserve.
 - [ ] Launch a minimal Quickshell window manually.
   - Acceptance: a minimal test window starts and exits without breaking the
     current dwm session.
