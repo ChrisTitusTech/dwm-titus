@@ -241,10 +241,10 @@ static void togglefakefullscreen(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
-static void updatealtbar(Monitor *m, Window win, XWindowAttributes *wa);
 static void unfocus(Client *c, int setfocus);
 static void unmanage(Client *c, int destroyed);
 static void unswallow(Client *c);
+static int updatealtbar(Monitor *m, Window win, XWindowAttributes *wa);
 static void updatebarpos(Monitor *m);
 static void updatebars(void);
 static void updateclientlist(void);
@@ -911,19 +911,21 @@ configurenotify(XEvent *e)
 			drw_resize(drw, sw, bh);
 			updatebars();
 			for (m = mons; m; m = m->next) {
-				for (c = m->clients; c; c = c->next)
+				for (c = m->clients; c; c = c->next) {
 					if (c->isfullscreen && c->fakefullscreen != 1)
-           resizeclient(c, m->mx, m->my, m->mw, m->mh);
-				XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, m->ww, bh);
+						resizeclient(c, m->mx, m->my, m->mw, m->mh);
+				}
+				if (m->barwin)
+					XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, m->ww, bh);
 			}
 			arrange(NULL);
 			focus(NULL);
 		}
 	} else {
 		for (m = mons; m; m = m->next) {
-			if (m->barwin == ev->window
-			&& XGetWindowAttributes(dpy, ev->window, &wa)) {
-				updatealtbar(m, ev->window, &wa);
+			if (m->barwin == ev->window &&
+			    XGetWindowAttributes(dpy, ev->window, &wa) &&
+			    updatealtbar(m, ev->window, &wa)) {
 				arrange(m);
 				XRaiseWindow(dpy, ev->window);
 				updateclientlist();
@@ -1704,7 +1706,9 @@ managealtbar(Window win, XWindowAttributes *wa)
 	if (!(m = recttomon(wa->x, wa->y, wa->width, wa->height)))
 		return;
 
-	updatealtbar(m, win, wa);
+	if (!updatealtbar(m, win, wa))
+		return;
+
 	arrange(m);
 	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask|ExposureMask);
 	XMoveResizeWindow(dpy, win, wa->x, wa->y, wa->width, wa->height);
@@ -4148,18 +4152,20 @@ updatebarpos(Monitor *m)
 		m->by = -m->bh;
 }
 
-static void
+static int
 updatealtbar(Monitor *m, Window win, XWindowAttributes *wa)
 {
 	if (!m || !wa)
-		return;
+		return 0;
+	if (wa->override_redirect)
+		return 0;
 
 	m->barwin = win;
 	m->topbar = wa->y < m->my + m->mh / 2;
-	m->by = wa->y;
 	m->bh = wa->height > 0 ? wa->height : bh;
 	bh = m->bh;
 	updatebarpos(m);
+	return 1;
 }
 
 void
@@ -4167,10 +4173,12 @@ updateclientlist(void)
 {
 	Client *c;
 	Monitor *m;
+	XWindowAttributes wa;
 
 	ewmh_clear_client_list();
 	for (m = mons; m; m = m->next) {
-		if (m->barwin)
+		if (m->barwin && XGetWindowAttributes(dpy, m->barwin, &wa) &&
+		    !wa.override_redirect)
 			ewmh_append_client(m->barwin);
 		if (m->traywin)
 			ewmh_append_client(m->traywin);
