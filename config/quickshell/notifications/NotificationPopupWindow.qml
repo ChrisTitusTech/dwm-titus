@@ -2,27 +2,16 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 
-PanelWindow {
+FloatingWindow {
     id: root
 
     required property var notificationModel
 
+    title: "dwm notifications"
     visible: notificationModel.notifications.length > 0
     implicitWidth: 380
     implicitHeight: notificationsColumn.implicitHeight + 24
     color: "#00000000"
-    exclusiveZone: 0
-    aboveWindows: true
-
-    anchors {
-        top: true
-        right: true
-    }
-
-    margins {
-        top: 42
-        right: 12
-    }
 
     ColumnLayout {
         id: notificationsColumn
