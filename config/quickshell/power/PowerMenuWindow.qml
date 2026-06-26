@@ -30,14 +30,10 @@ FloatingWindow {
         }
     }
 
-    Rectangle {
+    ShellSurface {
         id: content
 
         anchors.fill: parent
-        color: Theme.bg
-        border.color: Theme.border
-        border.width: 1
-        radius: Theme.radius
         focus: true
 
         Keys.onPressed: function(event) {
@@ -53,7 +49,6 @@ FloatingWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Theme.popupMargin
             spacing: Theme.popupSpacing
 
             Text {
@@ -71,13 +66,8 @@ FloatingWindow {
                 Layout.fillHeight: true
                 spacing: Theme.sectionSpacing
 
-                Text {
-                    Layout.fillWidth: true
-                    text: "Session"
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.smallFontSize
-                    font.bold: true
+                SectionLabel {
+                    label: "Session"
                 }
 
                     GridLayout {
@@ -115,13 +105,8 @@ FloatingWindow {
                     }
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: "Quick Actions"
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.smallFontSize
-                    font.bold: true
+                SectionLabel {
+                    label: "Quick Actions"
                 }
 
                 ColumnLayout {

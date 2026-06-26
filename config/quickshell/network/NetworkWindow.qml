@@ -14,14 +14,10 @@ FloatingWindow {
     implicitHeight: 560
     color: Theme.transparent
 
-    Rectangle {
+    ShellSurface {
         id: content
 
         anchors.fill: parent
-        color: Theme.bg
-        border.color: Theme.border
-        border.width: 1
-        radius: Theme.radius
         focus: true
 
         Keys.onPressed: function(event) {
@@ -33,7 +29,6 @@ FloatingWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Theme.popupMargin
             spacing: Theme.popupSpacing
 
             RowLayout {
@@ -51,30 +46,11 @@ FloatingWindow {
                     verticalAlignment: Text.AlignVCenter
                 }
 
-                Rectangle {
-                    Layout.preferredWidth: refreshText.implicitWidth + 18
+                ShellButton {
+                    Layout.preferredWidth: implicitWidth
                     Layout.preferredHeight: Theme.buttonHeight
-                    color: refreshMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-                    radius: Theme.radius
-
-                    Text {
-                        id: refreshText
-
-                        anchors.centerIn: parent
-                        text: "Refresh"
-                        color: Theme.text
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.smallFontSize
-                    }
-
-                    MouseArea {
-                        id: refreshMouse
-
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.networkModel.refresh()
-                    }
+                    label: "Refresh"
+                    onActivated: root.networkModel.refresh()
                 }
             }
 
@@ -88,13 +64,8 @@ FloatingWindow {
                 elide: Text.ElideRight
             }
 
-            Text {
-                Layout.fillWidth: true
-                text: "Active"
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallFontSize
-                font.bold: true
+            SectionLabel {
+                label: "Active"
             }
 
             ListView {
@@ -123,13 +94,8 @@ FloatingWindow {
                 font.pixelSize: Theme.smallFontSize
             }
 
-            Text {
-                Layout.fillWidth: true
-                text: "Saved"
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallFontSize
-                font.bold: true
+            SectionLabel {
+                label: "Saved"
             }
 
             ListView {
@@ -158,29 +124,13 @@ FloatingWindow {
                 font.pixelSize: Theme.smallFontSize
             }
 
-            Rectangle {
+            ShellButton {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.networkModel.editorAvailable ? 36 : 0
                 visible: root.networkModel.editorAvailable
-                color: editorMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-                radius: Theme.radius
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "Edit Connections"
-                    color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.panelFontSize
-                }
-
-                MouseArea {
-                    id: editorMouse
-
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.networkModel.openEditor()
-                }
+                label: "Edit Connections"
+                compact: false
+                onActivated: root.networkModel.openEditor()
             }
         }
     }

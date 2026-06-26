@@ -14,16 +14,12 @@ FloatingWindow {
     implicitHeight: 560
     color: Theme.transparent
 
-    Rectangle {
+    ShellSurface {
         anchors.fill: parent
-        color: Theme.bg
-        border.color: Theme.border
-        border.width: 1
-        radius: Theme.radius
+        margin: 16
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 16
             spacing: Theme.popupSpacing
 
             RowLayout {
@@ -40,56 +36,18 @@ FloatingWindow {
                     elide: Text.ElideRight
                 }
 
-                Rectangle {
+                ShellButton {
                     Layout.preferredWidth: 58
                     Layout.preferredHeight: Theme.buttonHeight
-                    radius: Theme.radius
-                    color: clearMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-                    border.color: Theme.border
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Clear"
-                        color: Theme.text
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.smallFontSize
-                        font.bold: true
-                    }
-
-                    MouseArea {
-                        id: clearMouse
-
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.notificationModel.clearHistory()
-                    }
+                    label: "Clear"
+                    onActivated: root.notificationModel.clearHistory()
                 }
 
-                Rectangle {
+                ShellButton {
                     Layout.preferredWidth: Theme.closeButtonSize
                     Layout.preferredHeight: Theme.closeButtonSize
-                    radius: Theme.radius
-                    color: closeMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-                    border.color: Theme.border
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "x"
-                        color: Theme.text
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.panelFontSize
-                        font.bold: true
-                    }
-
-                    MouseArea {
-                        id: closeMouse
-
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.notificationModel.closeHistory()
-                    }
+                    label: "x"
+                    onActivated: root.notificationModel.closeHistory()
                 }
             }
 

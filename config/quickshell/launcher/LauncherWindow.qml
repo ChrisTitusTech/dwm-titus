@@ -26,16 +26,11 @@ FloatingWindow {
         }
     }
 
-    Rectangle {
+    ShellSurface {
         anchors.fill: parent
-        color: Theme.bg
-        border.color: Theme.border
-        border.width: 1
-        radius: Theme.radius
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Theme.popupMargin
             spacing: Theme.popupSpacing
 
             Text {

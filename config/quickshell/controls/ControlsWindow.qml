@@ -12,7 +12,6 @@ PopupWindow {
     readonly property int popupWidth: 360
     readonly property int popupHeight: 412
     readonly property int edgeMargin: Theme.rowSpacing
-    readonly property int contentMargin: Theme.popupMargin
     readonly property int contentSpacing: Theme.popupSpacing
     readonly property int rowSpacing: Theme.rowSpacing
     readonly property int actionButtonHeight: Theme.compactButtonHeight
@@ -41,14 +40,10 @@ PopupWindow {
         volumeSlider.pendingPercent = volumeSlider.percentFromX(x);
     }
 
-    Rectangle {
+    ShellSurface {
         id: content
 
         anchors.fill: parent
-        color: Theme.bg
-        border.color: Theme.border
-        border.width: 1
-        radius: Theme.radius
         focus: true
 
         Keys.onPressed: function(event) {
@@ -60,7 +55,6 @@ PopupWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: root.contentMargin
             spacing: root.contentSpacing
 
             RowLayout {
@@ -78,30 +72,11 @@ PopupWindow {
                     verticalAlignment: Text.AlignVCenter
                 }
 
-                Rectangle {
-                    Layout.preferredWidth: refreshText.implicitWidth + 18
+                ShellButton {
+                    Layout.preferredWidth: implicitWidth
                     Layout.preferredHeight: Theme.buttonHeight
-                    color: refreshMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-                    radius: Theme.radius
-
-                    Text {
-                        id: refreshText
-
-                        anchors.centerIn: parent
-                        text: "Refresh"
-                        color: Theme.text
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.smallFontSize
-                    }
-
-                    MouseArea {
-                        id: refreshMouse
-
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.controlsModel.refresh()
-                    }
+                    label: "Refresh"
+                    onActivated: root.controlsModel.refresh()
                 }
             }
 
@@ -115,7 +90,7 @@ PopupWindow {
                 elide: Text.ElideRight
             }
 
-            ControlsSectionLabel {
+            SectionLabel {
                 label: "Volume"
             }
 
@@ -211,13 +186,8 @@ PopupWindow {
                 Layout.fillWidth: true
                 spacing: root.rowSpacing
 
-                Text {
-                    Layout.fillWidth: true
-                    text: "Microphone"
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.smallFontSize
-                    font.bold: true
+                SectionLabel {
+                    label: "Microphone"
                 }
 
                 Text {
@@ -233,13 +203,8 @@ PopupWindow {
                 Layout.fillWidth: true
                 spacing: root.rowSpacing
 
-                Text {
-                    Layout.fillWidth: true
-                    text: "Bluetooth"
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.smallFontSize
-                    font.bold: true
+                SectionLabel {
+                    label: "Bluetooth"
                 }
 
                 Text {
@@ -251,7 +216,7 @@ PopupWindow {
                 }
             }
 
-            ControlsSectionLabel {
+            SectionLabel {
                 label: "Media"
             }
 
