@@ -85,13 +85,13 @@ tag switching is available. WM keybinds remain the primary control path.
 - [x] Display active workspace/tag in Quickshell
 - [x] Add clickable workspace/tag switching if practical
 - [x] Display active window title
-- [ ] Add fallback behavior when no active window exists
+- [x] Add fallback behavior when no active window exists
 
 ### Exit Criteria
 
-- Quickshell shows useful workspace/tag state
-- Active window title works
-- Existing WM keybinds remain the primary control path
+- [x] Quickshell shows useful workspace/tag state
+- [x] Active window title works
+- [x] Existing WM keybinds remain the primary control path
 
 ---
 

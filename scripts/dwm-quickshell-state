@@ -83,6 +83,7 @@ show_state() {
 	names=$(desktop_names "$count")
 	window_id=$(active_window_id)
 	title=$(window_title "$window_id" || true)
+	title=${title:-Desktop}
 
 	printf 'current=%s\n' "$current"
 	printf 'count=%s\n' "$count"

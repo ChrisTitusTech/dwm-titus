@@ -11,7 +11,7 @@ ShellRoot {
     property string powerText: ""
     property string systemText: ""
     property string volumeText: ""
-    property string activeWindowTitle: ""
+    property string activeWindowTitle: "Desktop"
     property int currentWorkspace: 0
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
@@ -35,7 +35,7 @@ ShellRoot {
             } else if (key === "names") {
                 root.workspaceNames = value.length > 0 ? value.split("|") : [];
             } else if (key === "title") {
-                root.activeWindowTitle = value;
+                root.activeWindowTitle = value.length > 0 ? value : "Desktop";
             }
         }
     }
