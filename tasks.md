@@ -530,7 +530,11 @@ clients.
 ## Backlog
 
 - [x] Move tray functionality into Quickshell.
-- [ ] Add media, audio, and quick controls.
+- [x] Add media, audio, and quick controls.
+  - Result: added a native Quickshell controls popover for volume, microphone
+    mute state, MPRIS media display/actions, live media updates, and Bluetooth
+    status. Brightness controls were not needed on the current host because no
+    backlight device is exposed.
 - [ ] Centralize Quickshell styling and reusable components.
 - [ ] Remove old dependencies only after Quickshell replacements are stable.
 - [ ] Document rollback steps and keep the old shell stack available until the

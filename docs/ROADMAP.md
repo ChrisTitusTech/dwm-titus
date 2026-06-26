@@ -225,9 +225,12 @@ Add shell controls that previously required separate scripts or widgets.
 
 ### Exit Criteria
 
-- Common audio/media controls work from Quickshell
-- Existing hotkeys continue to work
-- Media state updates live
+- [x] Common audio/media controls work from Quickshell
+- [x] Existing hotkeys continue to work
+  - No hotkey configuration changes were needed for Phase 8.
+- [x] Media state updates live
+  - `dwm-quickshell-controls media-watch` streams MPRIS state changes through
+    `playerctl --follow` into the Quickshell controls model.
 
 ---
 
