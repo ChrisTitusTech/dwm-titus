@@ -235,7 +235,8 @@ bash scripts/check-deps.sh
 | `config/` | Terminal, rofi, and app configurations |
 | `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |
 | `docs/src/keybinds.md` | Full keybinding reference |
-| `docs/ROADMAP.md` | Project roadmap and planned features |
+| `docs/ROADMAP.md` | Quickshell migration roadmap |
+| `tasks.md` | Active Quickshell migration tasks |
 | `docs/RELEASING.md` | Release validation and publication checklist |
 
 ---
@@ -253,5 +254,5 @@ autostart guard tests, staged install/uninstall checks, and release artifact
 validation. Use `make native` only for a binary intended for the current
 machine; normal builds remain portable across compatible CPUs.
 
-Current implementation tasks are tracked in `TASKS.md`. Product scope and
+Current implementation tasks are tracked in `tasks.md`. Product scope and
 acceptance criteria remain in `SPEC.md`.
