@@ -4,7 +4,7 @@ This file tracks the next reviewable work for the Quickshell migration.
 Long-term sequencing lives in `docs/ROADMAP.md`; product requirements remain
 in `SPEC.md`.
 
-## Current Phase: Quickshell Baseline
+## Completed Phase: Quickshell Baseline
 
 Goal: install Quickshell and confirm it works reliably under Xorg before
 replacing Polybar, Rofi, Dunst, or other existing shell components.
@@ -75,9 +75,37 @@ replacing Polybar, Rofi, Dunst, or other existing shell components.
     Polybar still launches and duplicate guards continue to work. `make
     check-shell`, `make check-format`, and `git diff --check` also passed.
 
+## Current Phase: Basic Quickshell Panel
+
+Goal: replace Polybar with a simple Quickshell top panel while keeping Polybar
+available as the fallback until the Quickshell panel is usable.
+
+- [x] Build a basic `PanelWindow`.
+  - Acceptance: a tracked Quickshell config creates a top panel matching the
+    current 30px Polybar height.
+  - Validation: launch the config in the active Xorg/dwm session and confirm
+    Quickshell reports a running X11 instance while dwm remains the active
+    window manager.
+  - Result: added `config/quickshell/shell.qml` and synced the active user
+    config at `/home/titus/.config/quickshell/shell.qml`. The config creates a
+    30px top `PanelWindow` for each `Quickshell.screens` entry, uses the
+    current Polybar Nord colors, and sets `exclusiveZone: 30`. Running
+    `quickshell --path /home/titus/.config/quickshell/shell.qml --no-color
+    --log-times` reported `Configuration Loaded`; `quickshell list` showed the
+    instance on `x11,:0`; `wmctrl -m` still reported `Name: dwm`; and
+    `quickshell list` confirmed no running instance after stopping the test
+    process.
+- [ ] Add clock/date.
+- [ ] Add CPU/RAM indicators.
+- [ ] Add network indicator.
+- [ ] Add volume indicator.
+- [ ] Add battery/power indicator if needed.
+- [ ] Reserve screen space correctly.
+- [ ] Match current bar height and monitor placement.
+- [ ] Disable Polybar only after Quickshell panel is usable.
+
 ## Backlog
 
-- [ ] Replace Polybar with a basic Quickshell panel.
 - [ ] Expose workspace and active-window state to Quickshell.
 - [ ] Replace the Rofi app launcher.
 - [ ] Add a Quickshell power/user menu.
