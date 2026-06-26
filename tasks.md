@@ -495,9 +495,18 @@ clients.
     - Validation: `nm-applet` is running and exposes XEmbed tray windows
       (`NetworkManager Applet` and the active connection window), but it is not
       registered with Quickshell's StatusNotifier watcher on this host.
+      Probing `env XDG_CURRENT_DESKTOP=Unity nm-applet --indicator` did not add
+      a Quickshell tray item; `tray count` stayed `2`.
   - [ ] Audio applet if used
+    - Validation: no dedicated audio tray app is installed or running on this
+      host; audio controls are planned for Phase 8.
   - [ ] Discord/Steam/etc.
+    - Validation: Steam is installed but was not launched during tray
+      validation because it can trigger account/update UI. Discord is not
+      installed on this host.
   - [ ] Syncthing/Nextcloud/etc.
+    - Validation: no Syncthing or Nextcloud tray client is installed on this
+      host.
   - [x] Current host SNI tray clients
     - Validation: `busctl --user get-property org.kde.StatusNotifierWatcher
       /StatusNotifierWatcher org.kde.StatusNotifierWatcher
