@@ -61,7 +61,6 @@ keys = [
 
   # ── Launchers ────────────────────────────────────────────────────────────────
   { mod="SUPER",            key="r",       desc="App launcher",            func="spawn",       cmd="quickshell ipc --path \"${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml\" call launcher toggle" },
-  { mod="SUPER SHIFT",      key="r",       desc="App launcher fallback",   func="spawn",       exec=["rofi", "-show", "drun"] },
   { mod="SUPER",            key="x",       desc="Terminal",                func="spawn",       exec=["$terminal"] },
   { mod="SUPER",            key="w",       desc="Looking Glass (VM)",      func="spawn",       cmd="looking-glass-client -F" },
   { mod="SUPER SHIFT",      key="w",       desc="Randomize wallpaper",     func="spawn",       cmd="feh --randomize --bg-fill ~/Pictures/backgrounds/*" },
@@ -79,8 +78,8 @@ keys = [
 
   # ── Files & utilities ─────────────────────────────────────────────────────────
   { mod="SUPER",            key="e",       desc="File manager",            func="spawn",       cmd="xdg-open ." },
-  { mod="SUPER",            key="slash",   desc="Keybinds cheatsheet",     func="spawn",       cmd="dwm-keybinds" },
-  { mod="SUPER",            key="F1",      desc="Control center",          func="spawn",       cmd="dwm-controlcenter" },
+  { mod="SUPER",            key="slash",   desc="Keybinds cheatsheet",     func="spawn",       cmd="quickshell ipc --path \"${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml\" call controlcenter openKeybinds" },
+  { mod="SUPER",            key="F1",      desc="Control center",          func="spawn",       cmd="quickshell ipc --path \"${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml\" call controlcenter toggle" },
   { mod="SUPER CTRL",       key="r",       desc="Restart Proton/Steam",    func="spawn",       cmd="protonrestart" },
 
   # ── Volume  (no modifier — press the media key directly) ─────────────────────
@@ -128,7 +127,7 @@ keys = [
   # ── Session / power ───────────────────────────────────────────────────────────
   { mod="SUPER",            key="0",       desc="Show all tags",           func="view",        ui=-1 },
   { mod="SUPER SHIFT",      key="q",       desc="Quit dwm",                func="quit" },
-  { mod="SUPER CTRL",       key="q",       desc="Power menu",              func="spawn",       exec=["quickshell", "ipc", "call", "power", "toggle"] },
+  { mod="SUPER CTRL",       key="q",       desc="Power menu",              func="spawn",       cmd="quickshell ipc --path \"${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml\" call power toggle" },
   { mod="SUPER CTRL SHIFT", key="r",       desc="Reboot",                  func="spawn",       cmd="systemctl reboot" },
   { mod="SUPER CTRL SHIFT", key="s",       desc="Suspend",                 func="spawn",       cmd="systemctl suspend" },
 

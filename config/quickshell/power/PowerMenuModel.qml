@@ -73,7 +73,7 @@ Scope {
             "id": "settings",
             "label": "Settings",
             "detail": "Open the control center",
-            "command": ["dwm-controlcenter"],
+            "command": ["sh", "-c", "exec quickshell ipc --path \"${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml\" call controlcenter toggle"],
             "confirm": false
         }
     ]
