@@ -1,54 +1,24 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Io
 import qs.core
 
-FloatingWindow {
+PopupWindow {
     id: root
 
     required property var notificationModel
+    required property var panelWindow
 
-    title: "dwm notifications"
+    readonly property int popupWidth: 380
+    readonly property int edgeMargin: Theme.rowSpacing
+
     visible: notificationModel.notifications.length > 0
-    implicitWidth: 380
+    implicitWidth: popupWidth
     implicitHeight: notificationsColumn.implicitHeight + 24
+    anchor.window: panelWindow
+    anchor.rect.x: Math.max(edgeMargin, panelWindow.width - popupWidth - edgeMargin)
+    anchor.rect.y: Theme.panelHeight
     color: Theme.transparent
-
-    onVisibleChanged: {
-        if (visible) {
-            positionTimer.restart();
-        }
-    }
-
-    onImplicitHeightChanged: {
-        if (visible) {
-            positionTimer.restart();
-        }
-    }
-
-    Timer {
-        id: positionTimer
-
-        interval: 50
-        repeat: false
-        onTriggered: positionProcess.running = true
-    }
-
-    Process {
-        id: positionProcess
-
-        command: [
-            "sh",
-            "-c",
-            "if command -v dwm-quickshell-position-notification >/dev/null 2>&1; then " +
-            "dwm-quickshell-position-notification 'dwm notifications'; " +
-            "elif [ -x \"$HOME/.local/share/dwm-titus/scripts/dwm-quickshell-position-notification\" ]; then " +
-            "\"$HOME/.local/share/dwm-titus/scripts/dwm-quickshell-position-notification\" 'dwm notifications'; " +
-            "fi"
-        ]
-        running: false
-    }
 
     ColumnLayout {
         id: notificationsColumn

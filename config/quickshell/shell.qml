@@ -270,14 +270,6 @@ ShellRoot {
         networkModel: networkModel
     }
 
-    NotificationPopupWindow {
-        notificationModel: notificationModel
-    }
-
-    NotificationHistoryWindow {
-        notificationModel: notificationModel
-    }
-
     DwmPanel {
         id: panelWindow
 
@@ -285,6 +277,15 @@ ShellRoot {
         clock: clock
         networkModel: networkModel
         controlsModel: controlsModel
+    }
+
+    NotificationPopupWindow {
+        notificationModel: notificationModel
+        panelWindow: panelWindow
+    }
+
+    NotificationHistoryWindow {
+        notificationModel: notificationModel
     }
 
     ControlsWindow {

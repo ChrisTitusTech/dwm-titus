@@ -34,7 +34,6 @@ INSTALL_COMMANDS = \
 	scripts/dwm-quickshell-controls \
 	scripts/dwm-quickshell-controlcenter \
 	scripts/dwm-quickshell-network \
-	scripts/dwm-quickshell-position-notification \
 	scripts/dwm-quickshell-state \
 	scripts/dwm-status \
 	scripts/dwm-polkit \
