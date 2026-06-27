@@ -1,10 +1,10 @@
 #!/bin/sh
 set -eu
 
-config=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml
+config=${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml
 
 if [ ! -f "$config" ]; then
-	config=${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml
+	config=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml
 fi
 
 exec quickshell ipc --path "$config" call controlcenter openKeybinds
