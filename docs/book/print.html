@@ -38,7 +38,7 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-3d775476.js";
+            window.path_to_searchindex_js = "searchindex-4fab5756.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e4ab374d.js"></script>
@@ -186,7 +186,8 @@ required.</p>
 <p>The easiest way is via <a href="https://christitus.com/linux">Linutil</a>:</p>
 <pre><code class="language-bash">curl -fsSL https://christitus.com/linux | sh
 </code></pre>
-<p>In the TUI, press <code>v</code> to multi-select, then select <strong>dwm</strong>, <strong>rofi</strong>, <strong>bash prompt</strong>, and <strong>alacritty</strong>. Press <code>Enter</code> to install.</p>
+<p>In the TUI, press <code>v</code> to multi-select, then select <strong>dwm</strong>, <strong>bash prompt</strong>,
+and <strong>alacritty</strong>. Press <code>Enter</code> to install.</p>
 <p><img src="images/linutil-applications.png" alt="linutil-appinstall"></p>
 <h2 id="manual-install"><a class="header" href="#manual-install">Manual Install</a></h2>
 <h3 id="1-dependencies"><a class="header" href="#1-dependencies">1. Dependencies</a></h3>
@@ -216,7 +217,7 @@ Existing user configuration and <code>.xinitrc</code> files are preserved.</p>
 <li><code>core</code>: required build packages, X11/session runtime, and one supported
 terminal.</li>
 <li><code>recommended</code>: <code>core</code> plus the recommended desktop layer such as Quickshell,
-Rofi, Picom, Feh, Dex, fonts, theming, screenshot, audio, and brightness
+Quickshell, Picom, Feh, Dex, fonts, theming, screenshot, audio, and brightness
 tools.</li>
 <li><code>full</code>: <code>recommended</code> plus optional extras such as file-manager integration,
 network tray utilities, portals, wallpapers, and display-manager setup.</li>
@@ -250,7 +251,7 @@ and portability testing. It keeps only:</p>
 <li>required X11 helpers used by core startup and display commands, such as
 <code>xrandr</code>, <code>xset</code>, and <code>xsetroot</code></li>
 </ul>
-<p>Rofi, Picom, Feh, Dex, a polkit agent, screenshot tools, wallpapers, tray
+<p>Quickshell, Picom, Feh, Dex, a polkit agent, screenshot tools, wallpapers, tray
 utilities, and audio or brightness helpers are optional in this profile.
 Missing optional components should appear as degraded features in
 <code>dwm-diagnostics</code>, not as session-fatal failures.</p>
@@ -269,7 +270,7 @@ dwm-terminal --print-command
 </code></pre>
 <p><code>dwm-diagnostics</code> must report zero required failures before treating the
 minimal profile as ready. Optional degraded features can remain unresolved.</p>
-<footer id="last-change">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change">Last change: <time datetime="2026-06-26">2026-06-26</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
 <p>After installing, the first thing to know: <strong>Super</strong> = the Windows key.</p>
 <p>Press <kbd>Super</kbd> + <kbd>/</kbd> at any time to open the interactive keybind viewer.</p>
@@ -282,7 +283,6 @@ minimal profile as ready. Optional degraded features can remain unresolved.</p>
 <tbody>
 <tr><td>Open terminal</td><td><code>Super</code> + <code>X</code></td></tr>
 <tr><td>App launcher (Quickshell)</td><td><code>Super</code> + <code>R</code></td></tr>
-<tr><td>App launcher fallback (rofi)</td><td><code>Super</code> + <code>Shift</code> + <code>R</code></td></tr>
 <tr><td>Close window</td><td><code>Super</code> + <code>Q</code></td></tr>
 <tr><td>Power menu</td><td><code>Super</code> + <code>Ctrl</code> + <code>Q</code></td></tr>
 <tr><td>Control Center</td><td><code>Super</code> + <code>F1</code></td></tr>
@@ -322,7 +322,8 @@ minimal profile as ready. Optional degraded features can remain unresolved.</p>
 <footer id="last-change-1">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="keybindings"><a class="header" href="#keybindings">Keybindings</a></h1>
 <blockquote>
-<p>Press <kbd>Super</kbd> + <kbd>/</kbd> inside dwm to open a live, searchable keybind viewer via rofi.</p>
+<p>Press <kbd>Super</kbd> + <kbd>/</kbd> inside dwm to open a live, searchable
+Quickshell keybind viewer.</p>
 </blockquote>
 <p><strong>MODKEY</strong> = <kbd>Super</kbd> (Windows key) in the shipped <code>config.h</code>.</p>
 <p>Bindings are defined in <code>config/hotkeys.toml</code> and reload instantly on save — no recompile needed.</p>
@@ -335,7 +336,6 @@ minimal profile as ready. Optional degraded features can remain unresolved.</p>
 </thead>
 <tbody>
 <tr><td><code>Super</code> + <code>R</code></td><td>App launcher (Quickshell)</td></tr>
-<tr><td><code>Super</code> + <code>Shift</code> + <code>R</code></td><td>App launcher fallback (rofi)</td></tr>
 <tr><td><code>Super</code> + <code>X</code></td><td>Terminal</td></tr>
 <tr><td><code>Super</code> + <code>E</code></td><td>File manager</td></tr>
 <tr><td><code>Super</code> + <code>B</code></td><td>Browser</td></tr>
@@ -614,7 +614,8 @@ Name=Set Refresh
 </code></pre>
 <footer id="last-change-3">Last change: <time datetime="2026-06-24">2026-06-24</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="theming"><a class="header" href="#theming">Theming</a></h1>
-<p>Themes are defined in <code>config/themes.toml</code>. Change the active theme and <strong>save</strong> — dwm, terminal, and rofi update instantly. No restart needed.</p>
+<p>Themes are defined in <code>config/themes.toml</code>. Change the active theme and <strong>save</strong>
+to update dwm, terminal, GTK, and Qt styling. No restart needed.</p>
 <pre><code class="language-toml">[active]
 theme = "nord"   # ← change this line to switch themes
 </code></pre>
@@ -673,7 +674,6 @@ borderpx = 1   # 0 = no border, 1 = thin (default), 2-3 = thicker
 <tr><td><code>selfgcolor</code> / <code>selbgcolor</code> / <code>selbordercolor</code></td><td>Focused window and active tag</td></tr>
 <tr><td><code>term_bg</code> / <code>term_fg</code> / <code>term_cursor</code></td><td>Terminal background, text, cursor</td></tr>
 <tr><td><code>term_color0</code>–<code>term_color15</code></td><td>Full 16-color terminal palette</td></tr>
-<tr><td><code>rofi_theme</code></td><td>Rofi <code>.rasi</code> theme (filename without extension)</td></tr>
 <tr><td><code>dark_mode</code></td><td>GTK dark preference and Capitaine cursor variant (<code>true</code> / <code>false</code>)</td></tr>
 </tbody>
 </table>
@@ -692,9 +692,7 @@ selbordercolor  = "#89b4fa"
 term_bg         = "#1e1e2e"
 term_fg         = "#cdd6f4"
 term_cursor     = "#f5e0dc"
-# ... term_color0–15 ...
-
-rofi_theme      = "sidetab-catppuccin"
+# ... term_color0-15 ...
 dark_mode       = true
 </code></pre>
 <p>Then set <code>theme = "mytheme"</code> under <code>[active]</code> and save.</p>
@@ -702,18 +700,18 @@ dark_mode       = true
 <h2 id="applying-themes-via-control-center"><a class="header" href="#applying-themes-via-control-center">Applying Themes via Control Center</a></h2>
 <p>Open the Control Center with <kbd>Super</kbd> + <kbd>F1</kbd>, navigate to <strong>Appearance → Select Theme</strong>, and pick from the list. The theme switches immediately.</p>
 <hr>
-<h2 id="rofi-themes"><a class="header" href="#rofi-themes">Rofi Themes</a></h2>
-<p>Rofi theme files live in <code>config/rofi/themes/</code>. The active theme’s <code>rofi_theme</code> key selects which <code>.rasi</code> file is used.</p>
-<p>Available rofi themes: <code>nord</code>, <code>onedark</code>, <code>catppuccin</code>, <code>dracula</code>, <code>gruvbox</code>, <code>everforest</code>, <code>monochrome</code>, <code>rosepine</code>, <code>solarized</code>, <code>tokyonight</code>.</p>
 <h2 id="wallpapers"><a class="header" href="#wallpapers">Wallpapers</a></h2>
 <p>Place images in <code>~/Pictures/backgrounds/</code>. Use <code>Super</code> + <code>Shift</code> + <code>W</code> to randomize, or set a specific one:</p>
 <pre><code class="language-bash">feh --bg-fill ~/Pictures/backgrounds/mywall.jpg
 </code></pre>
 <footer id="last-change-4">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="control-center"><a class="header" href="#control-center">Control Center</a></h1>
-<p>The Control Center is a rofi-based menu providing system health, quick actions, appearance settings, and more.</p>
-<p><strong>Open:</strong> <kbd>Super</kbd> + <kbd>F1</kbd> — or run <code>dwm-controlcenter</code> from a terminal.</p>
-<p>Navigate with arrow keys or type to filter. Press <kbd>Esc</kbd> or <kbd>←</kbd> to go back.</p>
+<p>The Control Center is a Quickshell utility window for system health, quick
+actions, appearance settings, and keybind discovery.</p>
+<p><strong>Open:</strong> <kbd>Super</kbd> + <kbd>F1</kbd>, or run <code>dwm-controlcenter</code> from a
+terminal.</p>
+<p>The window floats above normal clients like the launcher, network popover, and
+power menu. Press <kbd>Esc</kbd> to close it.</p>
 <hr>
 <h2 id="modules"><a class="header" href="#modules">Modules</a></h2>
 <h3 id="system-health"><a class="header" href="#system-health">System Health</a></h3>
@@ -721,11 +719,11 @@ dark_mode       = true
 <ul>
 <li>Build tools (<code>cc</code>, <code>make</code>) and required libraries</li>
 <li>Xorg / Xlibre installation</li>
-<li>Runtime programs: rofi, picom, feh, flameshot</li>
+<li>Runtime programs: quickshell, picom, feh, flameshot</li>
 <li>Terminal emulators (alacritty, kitty, st)</li>
 <li>Fonts: MesloLGS Nerd, Noto Color Emoji</li>
 <li>Running services: picom, NetworkManager</li>
-<li>Config paths: <code>.xinitrc</code>, rofi dir, wallpaper folder</li>
+<li>Config paths: <code>.xinitrc</code>, Quickshell config, wallpaper folder</li>
 </ul>
 <p>Selecting a failed item offers to run <code>install.sh</code> (auto-fix) or <code>check-deps.sh</code> (details).</p>
 <h3 id="quick-actions"><a class="header" href="#quick-actions">Quick Actions</a></h3>
@@ -759,13 +757,16 @@ dark_mode       = true
 </table>
 </div>
 <h3 id="keybind-viewer"><a class="header" href="#keybind-viewer">Keybind Viewer</a></h3>
-<p>Displays all bindings from <code>hotkeys.toml</code> in a searchable rofi list. Same as pressing <kbd>Super</kbd> + <kbd>/</kbd>.</p>
+<p>Displays all bindings from <code>hotkeys.toml</code> in a searchable Quickshell list. Same
+as pressing <kbd>Super</kbd> + <kbd>/</kbd>.</p>
 <hr>
 <h2 id="running-from-terminal"><a class="header" href="#running-from-terminal">Running from Terminal</a></h2>
 <pre><code class="language-bash">dwm-controlcenter
 </code></pre>
-<p>The script auto-detects your terminal emulator (alacritty -&gt; kitty -&gt; st -&gt; xterm) and uses the active rofi theme from <code>~/.config/rofi/themes/controlcenter.rasi</code>.</p>
-<footer id="last-change-5">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<p>The script is a compatibility wrapper around the Quickshell IPC target:</p>
+<pre><code class="language-bash">quickshell ipc --path "${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml" call controlcenter toggle
+</code></pre>
+<footer id="last-change-5">Last change: <time datetime="2026-06-26">2026-06-26</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="patches--features"><a class="header" href="#patches--features">Patches &amp; Features</a></h1>
 <p>dwm-titus is a heavily patched build. Below is every addition on top of stock dwm.</p>
 <hr>
@@ -840,7 +841,8 @@ EWMH-compatible helpers so the panel stays synchronized with X11 state.</p>
 <h3 id="toml-hotkeys-hotkeystoml"><a class="header" href="#toml-hotkeys-hotkeystoml">TOML Hotkeys (<code>hotkeys.toml</code>)</a></h3>
 <p>Keybindings are parsed from <code>config/hotkeys.toml</code> at runtime. Edit and save — bindings update without recompiling or restarting dwm.</p>
 <h3 id="toml-themes-themestoml"><a class="header" href="#toml-themes-themestoml">TOML Themes (<code>themes.toml</code>)</a></h3>
-<p>Colors for dwm, terminal, and rofi are sourced from <code>config/themes.toml</code>. Save the file to apply a new theme instantly across supported apps.</p>
+<p>Colors for dwm, terminal, GTK, and Qt are sourced from <code>config/themes.toml</code>.
+Save the file to apply a new theme instantly across supported apps.</p>
 <hr>
 <h2 id="scripts--utilities"><a class="header" href="#scripts--utilities">Scripts &amp; Utilities</a></h2>
 <div class="table-wrapper">
@@ -849,7 +851,7 @@ EWMH-compatible helpers so the panel stays synchronized with X11 state.</p>
 <tr><th>Script</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>dwm-controlcenter</code></td><td>Rofi-based control center (<code>Super</code>+<code>F1</code>)</td></tr>
+<tr><td><code>dwm-controlcenter</code></td><td>Quickshell control center (<code>Super</code>+<code>F1</code>)</td></tr>
 <tr><td><code>dwm-keybinds</code></td><td>Searchable keybind viewer (<code>Super</code>+<code>/</code>)</td></tr>
 <tr><td><code>dwm-screenshot</code></td><td>Wrapper for flameshot (full, gui, clip modes)</td></tr>
 <tr><td><code>theme-apply.sh</code></td><td>Applies active theme from <code>themes.toml</code> to all apps</td></tr>

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title></title>
+        <title>DWM for Everyone</title>
         <meta name="robots" content="noindex">
 
 
@@ -13,21 +13,20 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" id="highlight-css" href="highlight.css">
-        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
-        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
         <link rel="stylesheet" href="./theme/catppuccin.css">
@@ -39,10 +38,10 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex.js";
+            window.path_to_searchindex_js = "searchindex-4fab5756.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc.js"></script>
+        <script src="toc-e4ab374d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -56,7 +55,7 @@
             </div>
         </div>
     </div>
-    <div id="body-container">
+    <div id="mdbook-body-container">
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
         <script>
             try {
@@ -85,12 +84,12 @@
             html.classList.add("js");
         </script>
 
-        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
 
         <!-- Hide / unhide sidebar before it is displayed -->
         <script>
             let sidebar = null;
-            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
             if (document.body.clientWidth >= 1080) {
                 try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
                 sidebar = sidebar || 'visible';
@@ -105,105 +104,860 @@
             }
         </script>
 
-        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
                 <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
             </noscript>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
             </div>
         </nav>
 
-        <div id="page-wrapper" class="page-wrapper">
+        <div id="mdbook-page-wrapper" class="page-wrapper">
 
             <div class="page">
-                <div id="menu-bar-hover-placeholder"></div>
-                <div id="menu-bar" class="menu-bar sticky">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
                     <div class="left-buttons">
-                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
-                            <i class="fa fa-bars"></i>
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
                         </label>
-                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
-                            <i class="fa fa-paint-brush"></i>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
                         </button>
-                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
-                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
                         </ul>
-                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
-                            <i class="fa fa-search"></i>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
                         </button>
                     </div>
 
-                    <h1 class="menu-title"></h1>
+                    <h1 class="menu-title">DWM for Everyone</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
-                            <i id="print-button" class="fa fa-print"></i>
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
                         </a>
 
                     </div>
                 </div>
 
-                <div id="search-wrapper" class="hidden">
-                    <form id="searchbar-outer" class="searchbar-outer">
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
                         <div class="search-wrapper">
-                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
                             <div class="spinner-wrapper">
-                                <i class="fa fa-spinner fa-spin"></i>
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
                             </div>
                         </div>
                     </form>
-                    <div id="searchresults-outer" class="searchresults-outer hidden">
-                        <div id="searchresults-header" class="searchresults-header"></div>
-                        <ul id="searchresults">
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
                         </ul>
                     </div>
                 </div>
 
                 <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
                 <script>
-                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
-                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
-                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
                         link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
                     });
                 </script>
 
-                <div id="content" class="content">
+                <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
-<p>This guide assumes your system has the latest updates before going ahead with the installation on a Arch Linux based system.</p>
-<ol>
-<li>Launch Linutil Project with the command:
-<pre><code class="language-bash">curl -fsSL https://linutil.github.io/install | bash
+<blockquote>
+<p>A supported Debian-, Arch-, or Fedora/RHEL-family distribution with Xorg is
+required.</p>
+</blockquote>
+<h2 id="quick-install-recommended"><a class="header" href="#quick-install-recommended">Quick Install (Recommended)</a></h2>
+<p>The easiest way is via <a href="https://christitus.com/linux">Linutil</a>:</p>
+<pre><code class="language-bash">curl -fsSL https://christitus.com/linux | sh
+</code></pre>
+<p>In the TUI, press <code>v</code> to multi-select, then select <strong>dwm</strong>, <strong>bash prompt</strong>,
+and <strong>alacritty</strong>. Press <code>Enter</code> to install.</p>
+<p><img src="images/linutil-applications.png" alt="linutil-appinstall"></p>
+<h2 id="manual-install"><a class="header" href="#manual-install">Manual Install</a></h2>
+<h3 id="1-dependencies"><a class="header" href="#1-dependencies">1. Dependencies</a></h3>
+<p>The supported dependency path is the installer because it resolves package
+names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:</p>
+<pre><code class="language-bash">./install.sh --dry-run --non-interactive --profile core
+./install.sh --profile full
+</code></pre>
+<p>Use <code>core</code> for the required build/X11/session packages and one terminal,
+<code>recommended</code> for the desktop layer, or <code>full</code> for optional extras such as
+file-manager integration, portals, wallpapers, and display-manager setup.</p>
+<h3 id="2-clone-and-build"><a class="header" href="#2-clone-and-build">2. Clone and Build</a></h3>
+<pre><code class="language-bash">git clone https://github.com/ChrisTitusTech/dwm-titus.git
+cd dwm-titus
+cp config.def.h config.h
+make
+sudo make install
+</code></pre>
+<h3 id="automated-installer"><a class="header" href="#automated-installer">Automated Installer</a></h3>
+<pre><code class="language-bash">./install.sh
+</code></pre>
+<p>The script detects the distribution family and handles dependency
+installation, font copying, display-manager integration, and config placement.
+Existing user configuration and <code>.xinitrc</code> files are preserved.</p>
+<p>Installer package profiles are selected with <code>DWM_INSTALL_PROFILE</code>:</p>
+<ul>
+<li><code>core</code>: required build packages, X11/session runtime, and one supported
+terminal.</li>
+<li><code>recommended</code>: <code>core</code> plus the recommended desktop layer such as Quickshell,
+Quickshell, Picom, Feh, Dex, fonts, theming, screenshot, audio, and brightness
+tools.</li>
+<li><code>full</code>: <code>recommended</code> plus optional extras such as file-manager integration,
+network tray utilities, portals, wallpapers, and display-manager setup.</li>
+</ul>
+<p>The default is <code>full</code> to preserve the historical automated installer behavior.
+For a minimal install:</p>
+<pre><code class="language-bash">DWM_INSTALL_PROFILE=core ./install.sh
+</code></pre>
+<p>The same profile can be selected with a flag:</p>
+<pre><code class="language-bash">./install.sh --profile core
+</code></pre>
+<p>Interactive runs print the resolved package plan before prompting. For CI,
+packaging checks, or scripted validation, use the non-interactive flags:</p>
+<pre><code class="language-bash">./install.sh --dry-run --non-interactive --profile core
+./install.sh --non-interactive --yes --profile recommended
+</code></pre>
+<h2 id="starting-dwm"><a class="header" href="#starting-dwm">Starting dwm</a></h2>
+<p><strong>Display manager</strong> (SDDM, GDM, LightDM): log out and select <strong>dwm</strong> from the session list.</p>
+<p><strong>startx:</strong></p>
+<pre><code class="language-bash">startx
+</code></pre>
+<p>The provided <code>.xinitrc</code> disables screen blanking, starts the configured Quickshell panel, and runs dwm.</p>
+<h2 id="minimal-session-profile"><a class="header" href="#minimal-session-profile">Minimal Session Profile</a></h2>
+<p>The minimal supported profile is useful for lean systems, recovery sessions,
+and portability testing. It keeps only:</p>
+<ul>
+<li>an X11 server and either a display-manager session or <code>startx</code></li>
+<li>D-Bus session support</li>
+<li><code>dwm</code></li>
+<li>one supported terminal available through <code>dwm-terminal</code></li>
+<li>required X11 helpers used by core startup and display commands, such as
+<code>xrandr</code>, <code>xset</code>, and <code>xsetroot</code></li>
+</ul>
+<p>Quickshell, Picom, Feh, Dex, a polkit agent, screenshot tools, wallpapers, tray
+utilities, and audio or brightness helpers are optional in this profile.
+Missing optional components should appear as degraded features in
+<code>dwm-diagnostics</code>, not as session-fatal failures.</p>
+<p>For <code>startx</code>, a minimal <code>.xinitrc</code> can be:</p>
+<pre><code class="language-sh">#!/bin/sh
+xset s off
+xset -dpms
+xsetroot -cursor_name left_ptr
+exec dbus-run-session dwm
+</code></pre>
+<p>If the login path already creates a user D-Bus session, use <code>exec dwm</code>
+instead of wrapping it with <code>dbus-run-session</code>.</p>
+<p>After installation, verify the profile with:</p>
+<pre><code class="language-bash">dwm-diagnostics
+dwm-terminal --print-command
+</code></pre>
+<p><code>dwm-diagnostics</code> must report zero required failures before treating the
+minimal profile as ready. Optional degraded features can remain unresolved.</p>
+<footer id="last-change">Last change: <time datetime="2026-06-26">2026-06-26</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
+<p>After installing, the first thing to know: <strong>Super</strong> = the Windows key.</p>
+<p>Press <kbd>Super</kbd> + <kbd>/</kbd> at any time to open the interactive keybind viewer.</p>
+<h2 id="essential-actions"><a class="header" href="#essential-actions">Essential Actions</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Action</th><th>Keys</th></tr>
+</thead>
+<tbody>
+<tr><td>Open terminal</td><td><code>Super</code> + <code>X</code></td></tr>
+<tr><td>App launcher (Quickshell)</td><td><code>Super</code> + <code>R</code></td></tr>
+<tr><td>Close window</td><td><code>Super</code> + <code>Q</code></td></tr>
+<tr><td>Power menu</td><td><code>Super</code> + <code>Ctrl</code> + <code>Q</code></td></tr>
+<tr><td>Control Center</td><td><code>Super</code> + <code>F1</code></td></tr>
+<tr><td>Keybind viewer</td><td><code>Super</code> + <code>/</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="switching-tags-workspaces"><a class="header" href="#switching-tags-workspaces">Switching Tags (Workspaces)</a></h2>
+<p>Tags 1–9 act as workspaces. Use <code>Super</code> + a number to switch.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Action</th><th>Keys</th></tr>
+</thead>
+<tbody>
+<tr><td>Switch to tag</td><td><code>Super</code> + <code>1</code>–<code>9</code></td></tr>
+<tr><td>Move window to tag</td><td><code>Super</code> + <code>Shift</code> + <code>1</code>–<code>9</code></td></tr>
+<tr><td>Show all tags</td><td><code>Super</code> + <code>0</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="layouts"><a class="header" href="#layouts">Layouts</a></h2>
+<p>Three layouts are available — switch between them instantly.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Layout</th><th>Keys</th></tr>
+</thead>
+<tbody>
+<tr><td>Tiling (master + stack)</td><td><code>Super</code> + <code>T</code></td></tr>
+<tr><td>Floating</td><td><code>Super</code> + <code>Shift</code> + <code>M</code></td></tr>
+<tr><td>Fullscreen (monocle)</td><td><code>Super</code> + <code>M</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="#keybindings">Keybindings</a> for the full reference.</p>
+<footer id="last-change-1">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<h1 id="keybindings"><a class="header" href="#keybindings">Keybindings</a></h1>
+<blockquote>
+<p>Press <kbd>Super</kbd> + <kbd>/</kbd> inside dwm to open a live, searchable
+Quickshell keybind viewer.</p>
+</blockquote>
+<p><strong>MODKEY</strong> = <kbd>Super</kbd> (Windows key) in the shipped <code>config.h</code>.</p>
+<p>Bindings are defined in <code>config/hotkeys.toml</code> and reload instantly on save — no recompile needed.</p>
+<hr>
+<h2 id="launchers"><a class="header" href="#launchers">Launchers</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + <code>R</code></td><td>App launcher (Quickshell)</td></tr>
+<tr><td><code>Super</code> + <code>X</code></td><td>Terminal</td></tr>
+<tr><td><code>Super</code> + <code>E</code></td><td>File manager</td></tr>
+<tr><td><code>Super</code> + <code>B</code></td><td>Browser</td></tr>
+<tr><td><code>Super</code> + <code>/</code></td><td>Keybind viewer</td></tr>
+<tr><td><code>Super</code> + <code>F1</code></td><td>Control Center</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="screenshots"><a class="header" href="#screenshots">Screenshots</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + <code>P</code></td><td>Full screenshot</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>P</code></td><td>Screenshot selection → file</td></tr>
+<tr><td><code>Super</code> + <code>Ctrl</code> + <code>P</code></td><td>Screenshot selection → clipboard</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="web-apps"><a class="header" href="#web-apps">Web Apps</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + <code>A</code></td><td>ChatGPT</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>A</code></td><td>Gemini</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>X</code></td><td>X/Twitter — new post</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="window-management"><a class="header" href="#window-management">Window Management</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + <code>J</code></td><td>Focus next window</td></tr>
+<tr><td><code>Super</code> + <code>K</code></td><td>Focus previous window</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>J</code></td><td>Move window down in stack</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>K</code></td><td>Move window up in stack</td></tr>
+<tr><td><code>Super</code> + <code>Return</code></td><td>Promote window to master</td></tr>
+<tr><td><code>Super</code> + <code>Q</code></td><td>Close window</td></tr>
+<tr><td><code>Super</code> + <code>I</code></td><td>Add window to master area</td></tr>
+<tr><td><code>Super</code> + <code>D</code></td><td>Remove window from master area</td></tr>
+<tr><td><code>Super</code> + <code>H</code></td><td>Shrink master area</td></tr>
+<tr><td><code>Super</code> + <code>L</code></td><td>Expand master area</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>H</code></td><td>Increase window cfact size</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>L</code></td><td>Decrease window cfact size</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>O</code></td><td>Reset window cfact</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="layouts-1"><a class="header" href="#layouts-1">Layouts</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + <code>T</code></td><td>Tiling layout</td></tr>
+<tr><td><code>Super</code> + <code>M</code></td><td>Fullscreen (monocle)</td></tr>
+<tr><td><code>Super</code> + <code>Space</code></td><td>Toggle floating for window</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>M</code></td><td>Toggle floating for window</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>Y</code></td><td>Fake fullscreen (bar stays)</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>B</code></td><td>Toggle bar visibility</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="tags-workspaces"><a class="header" href="#tags-workspaces">Tags (Workspaces)</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + <code>1</code>–<code>9</code></td><td>Switch to tag</td></tr>
+<tr><td><code>Super</code> + <code>Ctrl</code> + <code>1</code>–<code>9</code></td><td>Also show tag alongside current</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>1</code>–<code>9</code></td><td>Move window to tag</td></tr>
+<tr><td><code>Super</code> + <code>Ctrl</code> + <code>Shift</code> + <code>1</code>–<code>9</code></td><td>Also show window on that tag</td></tr>
+<tr><td><code>Super</code> + <code>0</code></td><td>Show all tags</td></tr>
+<tr><td><code>Super</code> + <code>Tab</code></td><td>Previous tag</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="multi-monitor"><a class="header" href="#multi-monitor">Multi-Monitor</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + <code>,</code></td><td>Focus left monitor</td></tr>
+<tr><td><code>Super</code> + <code>.</code></td><td>Focus right monitor</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>,</code></td><td>Send window to left monitor</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>.</code></td><td>Send window to right monitor</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="media-keys"><a class="header" href="#media-keys">Media Keys</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>XF86AudioRaiseVolume</code></td><td>Volume up</td></tr>
+<tr><td><code>XF86AudioLowerVolume</code></td><td>Volume down</td></tr>
+<tr><td><code>XF86AudioMute</code></td><td>Mute toggle</td></tr>
+<tr><td><code>XF86MonBrightnessUp</code></td><td>Brightness up</td></tr>
+<tr><td><code>XF86MonBrightnessDown</code></td><td>Brightness down</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="session--power"><a class="header" href="#session--power">Session &amp; Power</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + <code>Ctrl</code> + <code>Q</code></td><td>Power menu</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>Q</code></td><td>Quit dwm</td></tr>
+<tr><td><code>Super</code> + <code>Ctrl</code> + <code>Shift</code> + <code>R</code></td><td>Reboot</td></tr>
+<tr><td><code>Super</code> + <code>Ctrl</code> + <code>Shift</code> + <code>S</code></td><td>Suspend</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="mouse"><a class="header" href="#mouse">Mouse</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Action</th><th>Function</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + Left drag</td><td>Move window</td></tr>
+<tr><td><code>Super</code> + Middle click</td><td>Toggle floating</td></tr>
+<tr><td><code>Super</code> + Right drag</td><td>Resize window</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="customizing-keybinds"><a class="header" href="#customizing-keybinds">Customizing Keybinds</a></h2>
+<p>Edit <code>config/hotkeys.toml</code> — changes take effect on save, no recompile required.</p>
+<pre><code class="language-toml">[vars]
+terminal = "dwm-terminal"
+
+keys = [
+  { mod="SUPER SHIFT", key="f", desc="Firefox", func="spawn", exec=["firefox"] },
+]
+</code></pre>
+<p>See the comments in <code>hotkeys.toml</code> for a full list of <code>func</code> values and modifier syntax.</p>
+<p>The browser binding uses <code>dwm-default-apps open</code>. Configure it with
+<code>dwm-default-apps browsers</code> and <code>dwm-default-apps set-browser &lt;desktop-id&gt;</code>.</p>
+<footer id="last-change-2">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<p>dwm-titus uses two TOML config files that <strong>live-reload on save</strong> — no recompile needed for most changes.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>File</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>config/hotkeys.toml</code></td><td>All keybindings</td></tr>
+<tr><td><code>config/themes.toml</code></td><td>Colors, themes, border size</td></tr>
+</tbody>
+</table>
+</div>
+<p>For deeper changes (window rules, fonts, refresh rate), edit <code>config.h</code> and run <code>make &amp;&amp; sudo make install</code>.</p>
+<hr>
+<h2 id="configh-essentials"><a class="header" href="#configh-essentials">config.h Essentials</a></h2>
+<p><code>config.h</code> is your personal copy of <code>config.def.h</code>. It is created automatically by <code>make</code> if it doesn’t exist.</p>
+<pre><code class="language-bash">$EDITOR config.h
+make &amp;&amp; sudo make install
+</code></pre>
+<h3 id="key-options"><a class="header" href="#key-options">Key Options</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Setting</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>refresh_rate</code></td><td>Match your monitor (default 60; set 120 for high-refresh)</td></tr>
+<tr><td><code>fonts[]</code></td><td>Font family and size used in the bar</td></tr>
+<tr><td><code>colors[]</code></td><td>Managed by <code>themes.toml</code> — rarely edit directly</td></tr>
+<tr><td><code>autostart[]</code></td><td>Programs launched on dwm start</td></tr>
+<tr><td><code>rules[]</code></td><td>Per-app window rules (floating, tag assignment, terminal flag)</td></tr>
+<tr><td><code>keys[]</code></td><td>Fallback static keybinds (prefer <code>hotkeys.toml</code>)</td></tr>
+<tr><td><code>MODKEY</code></td><td><code>Mod4Mask</code> = Super, <code>Mod1Mask</code> = Alt</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="window-rules"><a class="header" href="#window-rules">Window Rules</a></h3>
+<p>Rules in <code>config.h</code> let you assign windows to specific tags or force float:</p>
+<pre><code class="language-c">/* class      instance  title   tags mask  isfloating  isterminal  noswallow  monitor */
+{ "Gimp",     NULL,     NULL,   0,         1,          0,           0,        -1 },
+{ "Firefox",  NULL,     NULL,   1 &lt;&lt; 1,    0,          0,          -1,        -1 },
+</code></pre>
+<hr>
+<h2 id="hotkeystoml--live-keybinds"><a class="header" href="#hotkeystoml--live-keybinds">hotkeys.toml — Live Keybinds</a></h2>
+<p>Add or change bindings without recompiling. Save the file and they apply instantly.</p>
+<pre><code class="language-toml">[vars]
+terminal = "dwm-terminal"
+webapp   = "webapp-launch"
+
+keys = [
+  { mod="SUPER",       key="x",  desc="Terminal",    func="spawn", exec=["$terminal"] },
+  { mod="SUPER SHIFT", key="f",  desc="Firefox",     func="spawn", exec=["firefox"] },
+]
+</code></pre>
+<p><code>dwm-terminal</code> selects the first installed supported terminal at launch time.
+Set <code>DWM_TERMINAL</code> or replace <code>terminal</code> with a specific command if you want a
+fixed terminal.</p>
+<p>Default applications use freedesktop settings. Run <code>dwm-default-apps browsers</code>
+to list browser desktop files, <code>dwm-default-apps set-browser firefox.desktop</code>
+to set the default browser, or <code>dwm-default-apps set-mime &lt;mime&gt; &lt;desktop-id&gt;</code>
+for other file types.</p>
+<p>Display profiles are optional files under
+<code>${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles</code>. Use
+<code>dwm-display-profile template</code> to print the format, <code>dwm-display-profile list</code>
+to show profiles, and <code>dwm-display-profile apply &lt;name&gt;</code> to run the profile
+through <code>xrandr</code>.</p>
+<h3 id="modifier-syntax"><a class="header" href="#modifier-syntax">Modifier Syntax</a></h3>
+<p>Use space-separated modifiers: <code>"SUPER"</code>, <code>"SUPER SHIFT"</code>, <code>"SUPER CTRL"</code>, <code>"SUPER CTRL SHIFT"</code>.</p>
+<h3 id="available-functions"><a class="header" href="#available-functions">Available Functions</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>func</code></th><th>Parameters</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>spawn</code></td><td><code>exec=[...]</code> or <code>cmd="..."</code></td><td>Run a program</td></tr>
+<tr><td><code>killclient</code></td><td>—</td><td>Close focused window</td></tr>
+<tr><td><code>zoom</code></td><td>—</td><td>Promote/demote master</td></tr>
+<tr><td><code>focusstack</code></td><td><code>i=1</code> or <code>i=-1</code></td><td>Focus next/prev window</td></tr>
+<tr><td><code>movestack</code></td><td><code>i=1</code> or <code>i=-1</code></td><td>Reorder in stack</td></tr>
+<tr><td><code>incnmaster</code></td><td><code>i=1</code> or <code>i=-1</code></td><td>Change master count</td></tr>
+<tr><td><code>setmfact</code></td><td><code>f=0.05</code> or <code>f=-0.05</code></td><td>Resize master area</td></tr>
+<tr><td><code>setcfact</code></td><td><code>f=0.25</code> / <code>f=-0.25</code> / <code>f=0.00</code></td><td>Resize window slot</td></tr>
+<tr><td><code>setlayout</code></td><td><code>layout_idx=0/1/2</code></td><td>0=tile, 1=float, 2=monocle</td></tr>
+<tr><td><code>togglefloating</code></td><td>—</td><td>Float/tile window</td></tr>
+<tr><td><code>fullscreen</code></td><td>—</td><td>True fullscreen</td></tr>
+<tr><td><code>togglefakefullscreen</code></td><td>—</td><td>Fullscreen with bar</td></tr>
+<tr><td><code>togglebar</code></td><td>—</td><td>Show/hide bar</td></tr>
+<tr><td><code>focusmon</code></td><td><code>i=1</code> or <code>i=-1</code></td><td>Focus monitor</td></tr>
+<tr><td><code>tagmon</code></td><td><code>i=1</code> or <code>i=-1</code></td><td>Send window to monitor</td></tr>
+<tr><td><code>view</code></td><td><code>ui=-1</code> = all tags</td><td>Switch tag</td></tr>
+<tr><td><code>quit</code></td><td>—</td><td>Exit dwm</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="tag-bindings"><a class="header" href="#tag-bindings">Tag Bindings</a></h3>
+<p>Tag bindings auto-generate all four variants (switch, toggle-view, move, toggle-tag):</p>
+<pre><code class="language-toml">tag_keys = [
+  { key="1", tag=0 },
+  { key="2", tag=1 },
+]
+</code></pre>
+<hr>
+<h2 id="notes-on-xdg-autostart"><a class="header" href="#notes-on-xdg-autostart">Notes on XDG Autostart</a></h2>
+<p>Recommend using Flatpak to install programs on startup:</p>
+<pre><code>flatpak install flathub io.github.flattool.Ignition
+</code></pre>
+<p>or you can create your own .desktop file in ~/.config/autostart/</p>
+<p><code>set-refresh.desktop</code> Example:</p>
+<pre><code>[Desktop Entry]
+Type=Application
+Exec=xrandr --output HDMI-0 --primary --mode 1920x1080 --pos 0x0 --rotate normal --rate 120 --output DP-0 --off --output DP-1 --off --output DP-2 --off --output DP-3 --off --output DP-4 --off --output DP-5 --off
+Hidden=false
+X-GNOME-Autostart-enabled=true
+Name=Set Refresh
+</code></pre>
+<footer id="last-change-3">Last change: <time datetime="2026-06-24">2026-06-24</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<h1 id="theming"><a class="header" href="#theming">Theming</a></h1>
+<p>Themes are defined in <code>config/themes.toml</code>. Change the active theme and <strong>save</strong>
+to update dwm, terminal, GTK, and Qt styling. No restart needed.</p>
+<pre><code class="language-toml">[active]
+theme = "nord"   # ← change this line to switch themes
+</code></pre>
+<hr>
+<h2 id="available-themes"><a class="header" href="#available-themes">Available Themes</a></h2>
+<h3 id="dark"><a class="header" href="#dark">Dark</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Theme</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>nord</code></td><td>Arctic, cool blue palette (default)</td></tr>
+<tr><td><code>dracula</code></td><td>Purple-tinted dark theme</td></tr>
+<tr><td><code>gruvbox</code></td><td>Warm retro earth tones</td></tr>
+<tr><td><code>catppuccin</code></td><td>Mocha variant — soft pastels</td></tr>
+<tr><td><code>tokyonight</code></td><td>Deep blue-grey night theme</td></tr>
+<tr><td><code>onedark</code></td><td>Atom One Dark inspired</td></tr>
+<tr><td><code>solarized</code></td><td>Dark variant of Solarized</td></tr>
+<tr><td><code>rosepine</code></td><td>Muted rose/pine tones</td></tr>
+<tr><td><code>everforest</code></td><td>Muted green forest palette</td></tr>
+<tr><td><code>monochrome</code></td><td>Black and white minimal</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="light"><a class="header" href="#light">Light</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Theme</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>catppuccin-latte</code></td><td>Catppuccin light variant</td></tr>
+<tr><td><code>gruvbox-light</code></td><td>Warm light tones</td></tr>
+<tr><td><code>solarized-light</code></td><td>Classic Solarized light</td></tr>
+<tr><td><code>rosepine-dawn</code></td><td>Rose Pine dawn variant</td></tr>
+<tr><td><code>tokyonight-day</code></td><td>Tokyo Night day variant</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="border-size"><a class="header" href="#border-size">Border Size</a></h2>
+<pre><code class="language-toml">[appearance]
+borderpx = 1   # 0 = no border, 1 = thin (default), 2-3 = thicker
+</code></pre>
+<hr>
+<h2 id="what-each-theme-controls"><a class="header" href="#what-each-theme-controls">What Each Theme Controls</a></h2>
+<p>Each <code>[theme.name]</code> section sets colors for all components:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Applies To</th></tr>
+</thead>
+<tbody>
+<tr><td><code>normfgcolor</code> / <code>normbgcolor</code> / <code>normbordercolor</code></td><td>Unfocused bar and windows</td></tr>
+<tr><td><code>selfgcolor</code> / <code>selbgcolor</code> / <code>selbordercolor</code></td><td>Focused window and active tag</td></tr>
+<tr><td><code>term_bg</code> / <code>term_fg</code> / <code>term_cursor</code></td><td>Terminal background, text, cursor</td></tr>
+<tr><td><code>term_color0</code>–<code>term_color15</code></td><td>Full 16-color terminal palette</td></tr>
+<tr><td><code>dark_mode</code></td><td>GTK dark preference and Capitaine cursor variant (<code>true</code> / <code>false</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="creating-a-custom-theme"><a class="header" href="#creating-a-custom-theme">Creating a Custom Theme</a></h2>
+<p>Add a new section to <code>themes.toml</code>:</p>
+<pre><code class="language-toml">[theme.mytheme]
+normfgcolor     = "#cdd6f4"
+normbgcolor     = "#1e1e2e"
+normbordercolor = "#313244"
+selfgcolor      = "#cdd6f4"
+selbgcolor      = "#89b4fa"
+selbordercolor  = "#89b4fa"
+
+term_bg         = "#1e1e2e"
+term_fg         = "#cdd6f4"
+term_cursor     = "#f5e0dc"
+# ... term_color0-15 ...
+dark_mode       = true
+</code></pre>
+<p>Then set <code>theme = "mytheme"</code> under <code>[active]</code> and save.</p>
+<hr>
+<h2 id="applying-themes-via-control-center"><a class="header" href="#applying-themes-via-control-center">Applying Themes via Control Center</a></h2>
+<p>Open the Control Center with <kbd>Super</kbd> + <kbd>F1</kbd>, navigate to <strong>Appearance → Select Theme</strong>, and pick from the list. The theme switches immediately.</p>
+<hr>
+<h2 id="wallpapers"><a class="header" href="#wallpapers">Wallpapers</a></h2>
+<p>Place images in <code>~/Pictures/backgrounds/</code>. Use <code>Super</code> + <code>Shift</code> + <code>W</code> to randomize, or set a specific one:</p>
+<pre><code class="language-bash">feh --bg-fill ~/Pictures/backgrounds/mywall.jpg
+</code></pre>
+<footer id="last-change-4">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<h1 id="control-center"><a class="header" href="#control-center">Control Center</a></h1>
+<p>The Control Center is a Quickshell utility window for system health, quick
+actions, appearance settings, and keybind discovery.</p>
+<p><strong>Open:</strong> <kbd>Super</kbd> + <kbd>F1</kbd>, or run <code>dwm-controlcenter</code> from a
+terminal.</p>
+<p>The window floats above normal clients like the launcher, network popover, and
+power menu. Press <kbd>Esc</kbd> to close it.</p>
+<hr>
+<h2 id="modules"><a class="header" href="#modules">Modules</a></h2>
+<h3 id="system-health"><a class="header" href="#system-health">System Health</a></h3>
+<p>Runs a full dependency check and reports:</p>
+<ul>
+<li>Build tools (<code>cc</code>, <code>make</code>) and required libraries</li>
+<li>Xorg / Xlibre installation</li>
+<li>Runtime programs: quickshell, picom, feh, flameshot</li>
+<li>Terminal emulators (alacritty, kitty, st)</li>
+<li>Fonts: MesloLGS Nerd, Noto Color Emoji</li>
+<li>Running services: picom, NetworkManager</li>
+<li>Config paths: <code>.xinitrc</code>, Quickshell config, wallpaper folder</li>
+</ul>
+<p>Selecting a failed item offers to run <code>install.sh</code> (auto-fix) or <code>check-deps.sh</code> (details).</p>
+<h3 id="quick-actions"><a class="header" href="#quick-actions">Quick Actions</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Action</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>Restart Picom</td><td>Kill and relaunch the compositor</td></tr>
+<tr><td>Reload Wallpaper</td><td>Randomize from <code>~/Pictures/backgrounds/</code></td></tr>
+<tr><td>Toggle Compositor</td><td>Start or stop picom</td></tr>
+<tr><td>Restart NetworkManager</td><td><code>sudo systemctl restart NetworkManager</code></td></tr>
+<tr><td>Run Dependency Check</td><td>Opens <code>check-deps.sh</code> in a terminal</td></tr>
+<tr><td>Install Missing Deps</td><td>Runs <code>install.sh</code> in a terminal</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="appearance"><a class="header" href="#appearance">Appearance</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Action</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>Select Theme</td><td>Pick from all themes defined in <code>themes.toml</code></td></tr>
+<tr><td>Randomize Wallpaper</td><td>Random image from <code>~/Pictures/backgrounds/</code></td></tr>
+<tr><td>Open Wallpaper Folder</td><td>Open folder in file manager</td></tr>
+<tr><td>GTK Theme Settings</td><td>Launch <code>nwg-look</code> for GTK theming</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="keybind-viewer"><a class="header" href="#keybind-viewer">Keybind Viewer</a></h3>
+<p>Displays all bindings from <code>hotkeys.toml</code> in a searchable Quickshell list. Same
+as pressing <kbd>Super</kbd> + <kbd>/</kbd>.</p>
+<hr>
+<h2 id="running-from-terminal"><a class="header" href="#running-from-terminal">Running from Terminal</a></h2>
+<pre><code class="language-bash">dwm-controlcenter
+</code></pre>
+<p>The script is a compatibility wrapper around the Quickshell IPC target:</p>
+<pre><code class="language-bash">quickshell ipc --path "${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml" call controlcenter toggle
+</code></pre>
+<footer id="last-change-5">Last change: <time datetime="2026-06-26">2026-06-26</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<h1 id="patches--features"><a class="header" href="#patches--features">Patches &amp; Features</a></h1>
+<p>dwm-titus is a heavily patched build. Below is every addition on top of stock dwm.</p>
+<hr>
+<h2 id="window-management-patches"><a class="header" href="#window-management-patches">Window Management Patches</a></h2>
+<h3 id="pertag"><a class="header" href="#pertag">Pertag</a></h3>
+<p>Each tag independently remembers its layout, master count, and master/stack sizing. Switching tags restores the previous layout for that tag.</p>
+<h3 id="cfact"><a class="header" href="#cfact">Cfact</a></h3>
+<p>Assign per-window size weights within the stack area. Windows are no longer forced to equal height.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>H</code></td><td>Grow this window’s slot</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>L</code></td><td>Shrink this window’s slot</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>O</code></td><td>Reset to equal sizing</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="movestack"><a class="header" href="#movestack">Movestack</a></h3>
+<p>Reorder windows within the stack without using the mouse.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Keys</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>J</code></td><td>Move window down</td></tr>
+<tr><td><code>Super</code> + <code>Shift</code> + <code>K</code></td><td>Move window up</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="window-swallowing"><a class="header" href="#window-swallowing">Window Swallowing</a></h3>
+<p>When a GUI application is launched from a terminal, it replaces the terminal in the layout. Closing the app brings the terminal back.</p>
+<p>Controlled via window rules in <code>config.h</code>:</p>
+<pre><code class="language-c">{ "Alacritty", NULL, NULL, 0, 0, 1, 0, -1 },  /* isterminal = 1 */
+</code></pre>
+<h3 id="fullscreen-3-state"><a class="header" href="#fullscreen-3-state">Fullscreen (3-State)</a></h3>
+<p>Three fullscreen modes available:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Keys</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>True fullscreen</td><td><code>Super</code> + <code>M</code></td><td>Hides bar, takes full screen</td></tr>
+<tr><td>Fake fullscreen</td><td><code>Super</code> + <code>Shift</code> + <code>Y</code></td><td>Looks fullscreen, bar still usable</td></tr>
+<tr><td>Monocle layout</td><td>—</td><td>Single window view, bar visible</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="bar--ewmh"><a class="header" href="#bar--ewmh">Bar &amp; EWMH</a></h2>
+<h3 id="quickshell-integration"><a class="header" href="#quickshell-integration">Quickshell Integration</a></h3>
+<p>The managed Quickshell layer reads dwm workspace and active-window state through
+EWMH-compatible helpers so the panel stays synchronized with X11 state.</p>
+<h3 id="ewmh-compliance"><a class="header" href="#ewmh-compliance">EWMH Compliance</a></h3>
+<p>Implements <code>_NET_WM_STATE</code>, <code>_NET_CURRENT_DESKTOP</code>, <code>_NET_NUMBER_OF_DESKTOPS</code>, and related atoms so external tools and taskbars work correctly.</p>
+<h3 id="window-icons"><a class="header" href="#window-icons">Window Icons</a></h3>
+<p>Title bar icons via <code>_NET_WM_ICON</code>. Applications that set this atom display their icon in the bar.</p>
+<h3 id="systray"><a class="header" href="#systray">Systray</a></h3>
+<p>A built-in system tray is compiled in and can be configured in <code>config.h</code>.</p>
+<hr>
+<h2 id="visual"><a class="header" href="#visual">Visual</a></h2>
+<h3 id="noborder"><a class="header" href="#noborder">Noborder</a></h3>
+<p>When only one window is visible on a tag, its border is automatically removed for a cleaner look. Borders return when a second window appears.</p>
+<h3 id="cursor-warp"><a class="header" href="#cursor-warp">Cursor Warp</a></h3>
+<p>When focus moves to a different window or monitor (via keyboard), the mouse cursor warps to the center of the newly focused window.</p>
+<hr>
+<h2 id="live-configuration"><a class="header" href="#live-configuration">Live Configuration</a></h2>
+<h3 id="toml-hotkeys-hotkeystoml"><a class="header" href="#toml-hotkeys-hotkeystoml">TOML Hotkeys (<code>hotkeys.toml</code>)</a></h3>
+<p>Keybindings are parsed from <code>config/hotkeys.toml</code> at runtime. Edit and save — bindings update without recompiling or restarting dwm.</p>
+<h3 id="toml-themes-themestoml"><a class="header" href="#toml-themes-themestoml">TOML Themes (<code>themes.toml</code>)</a></h3>
+<p>Colors for dwm, terminal, GTK, and Qt are sourced from <code>config/themes.toml</code>.
+Save the file to apply a new theme instantly across supported apps.</p>
+<hr>
+<h2 id="scripts--utilities"><a class="header" href="#scripts--utilities">Scripts &amp; Utilities</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Script</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>dwm-controlcenter</code></td><td>Quickshell control center (<code>Super</code>+<code>F1</code>)</td></tr>
+<tr><td><code>dwm-keybinds</code></td><td>Searchable keybind viewer (<code>Super</code>+<code>/</code>)</td></tr>
+<tr><td><code>dwm-screenshot</code></td><td>Wrapper for flameshot (full, gui, clip modes)</td></tr>
+<tr><td><code>theme-apply.sh</code></td><td>Applies active theme from <code>themes.toml</code> to all apps</td></tr>
+<tr><td><code>webapp-create</code></td><td>Creates a web app shortcut</td></tr>
+<tr><td><code>webapp-launch</code></td><td>Launches a URL as a standalone web app window</td></tr>
+<tr><td><code>autostart.sh</code></td><td>Runs programs on dwm start</td></tr>
+<tr><td><code>check-deps.sh</code></td><td>Checks all required dependencies</td></tr>
+<tr><td><code>disable-powersaving</code></td><td>Disables DPMS and screen blanking</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="multi-monitor-1"><a class="header" href="#multi-monitor-1">Multi-Monitor</a></h2>
+<p>Xinerama support keeps tags independent per monitor. Windows can be moved
+between monitors with <code>Super</code> + <code>Shift</code> + <code>,</code>/<code>.</code>.</p>
+<footer id="last-change-6">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
+<p>Run the dependency checker first — it covers most common issues:</p>
+<pre><code class="language-bash">dwm-diagnostics
+</code></pre>
+<p>Or use the <a href="#control-center">Control Center</a> → <strong>System Health</strong>.</p>
+<hr>
+<h2 id="dwm-wont-start"><a class="header" href="#dwm-wont-start">dwm Won’t Start</a></h2>
+<p><strong>Black screen / returns immediately to login:</strong></p>
+<ul>
+<li>Run <code>dwm-diagnostics</code> and resolve any required X11/session failures.</li>
+<li>Preview required packages with <code>./install.sh --dry-run --profile core</code>.</li>
+<li>Check <code>.xinitrc</code> exists and ends with <code>exec dwm</code></li>
+<li>Run <code>startx</code> from a TTY to see error output in the terminal</li>
+</ul>
+<p><strong><code>dwm: cannot open display</code>:</strong></p>
+<ul>
+<li>You must launch dwm from a TTY, not an existing X session</li>
+<li>If using a display manager, ensure <code>dwm.desktop</code> is in <code>/usr/share/xsessions/</code></li>
+</ul>
+<hr>
+<h2 id="no-status-bar--quickshell-missing"><a class="header" href="#no-status-bar--quickshell-missing">No Status Bar / Quickshell Missing</a></h2>
+<ul>
+<li>Install the recommended desktop layer: <code>./install.sh --profile recommended</code></li>
+<li>Verify the managed config exists: <code>ls ~/.config/quickshell/shell.qml</code></li>
+<li>Run manually: <code>quickshell --no-duplicate</code></li>
+<li>Check fonts: <code>fc-list | grep -i meslo</code></li>
+</ul>
+<hr>
+<h2 id="terminal-wont-open-superx"><a class="header" href="#terminal-wont-open-superx">Terminal Won’t Open (<code>Super</code>+<code>X</code>)</a></h2>
+<ul>
+<li>Run <code>dwm-terminal</code> from an existing shell to see the exact fallback message</li>
+<li>Install a supported terminal: <code>alacritty</code>, <code>kitty</code>, <code>st</code>,
+<code>warp-terminal</code>, or <code>xterm</code></li>
+<li>Or set a fixed terminal in <code>config/hotkeys.toml</code>:
+<pre><code class="language-toml">[vars]
+terminal = "alacritty"
 </code></pre>
 </li>
-</ol>
-<p><img src="/images/linutil-applications.png" alt="linutil-appinstall" /></p>
-<ol start="2">
-<li>Enable Multi-Selection with key <code>v</code> and select <code>dwm</code>, <code>rofi</code>, <code>bash prompt</code>, and <code></code> from the list.
-<em>Note: You can also select other packages as per your requirement.</em></li>
-<li>Press <code>Enter</code> to start the installation. Follow the on-screen instructions to complete the installation.</li>
-</ol>
-<blockquote>
-<p>[!TIP]</p>
-<ul>
-<li>By default new terminals are opened by using the keyboard shortcut of <kbd>SUPER</kbd> + <kbd>X</kbd> while rofi is started using <kbd>SUPER</kbd>+<kbd>R</kbd></li>
-<li>Check <code>config.h</code> for the keybindings, and change them according to your preference.</li>
 </ul>
-</blockquote>
-<footer id="last-change">Last change: <time datetime="2025-09-11">2025-09-11</time></footer><div style="break-before: page; page-break-before: always;"></div><h1 id="getting-started-with-dwm-titus"><a class="header" href="#getting-started-with-dwm-titus">Getting Started with DWM-Titus</a></h1>
-<p>Learn the hotkeys for navigation.</p>
-<p>Super = Windows key</p>
-<p><kbd>Super</kbd> + <kbd>/</kbd> = Keybinds hotkey to learn all keys</p>
-<footer id="last-change">Last change: <time datetime="2025-10-07">2025-10-07</time></footer>
+<h2 id="browser-wont-open-superb"><a class="header" href="#browser-wont-open-superb">Browser Won’t Open (<code>Super</code>+<code>B</code>)</a></h2>
+<ul>
+<li>Run <code>dwm-default-apps status</code> to inspect the current default browser</li>
+<li>Run <code>dwm-default-apps browsers</code> to list installed browser desktop files</li>
+<li>Set one with <code>dwm-default-apps set-browser firefox.desktop</code></li>
+<li>Ensure <code>xdg-utils</code> is installed so <code>xdg-settings</code>, <code>xdg-mime</code>, and <code>xdg-open</code>
+are available</li>
+</ul>
+<hr>
+<h2 id="themes-not-applying"><a class="header" href="#themes-not-applying">Themes Not Applying</a></h2>
+<ul>
+<li>Confirm <code>themes.toml</code> is at <code>~/.config/dwm-titus/themes.toml</code></li>
+<li>Check the <code>[active]</code> section has a valid theme name</li>
+<li>Manually trigger: <code>kill -USR1 $(pidof dwm)</code></li>
+<li>Run <code>theme-apply.sh</code> directly to see any errors</li>
+</ul>
+<hr>
+<h2 id="keybinds-not-working"><a class="header" href="#keybinds-not-working">Keybinds Not Working</a></h2>
+<ul>
+<li>Check <code>config/hotkeys.toml</code> for syntax errors — invalid TOML silently fails</li>
+<li>Verify the key name is correct (use <code>xev</code> to find X11 key names)</li>
+<li>If a bind still doesn’t work, add it as a fallback in <code>config.h</code> and recompile</li>
+</ul>
+<hr>
+<h2 id="multi-monitor-issues"><a class="header" href="#multi-monitor-issues">Multi-Monitor Issues</a></h2>
+<ul>
+<li>Tags not syncing across monitors: run <code>dwm-diagnostics</code></li>
+<li>Cursor doesn’t follow focus: verify cursor warp is enabled in <code>config.h</code> (<code>cursorwarp = 1</code>)</li>
+<li>Display layout profiles: run <code>dwm-display-profile dir</code> and
+<code>dwm-display-profile template</code> to create optional <code>xrandr</code> profiles</li>
+</ul>
+<hr>
+<h2 id="nvidia--suspend-issues"><a class="header" href="#nvidia--suspend-issues">NVIDIA / Suspend Issues</a></h2>
+<ul>
+<li>Black screen on wake: run <code>scripts/nvidia-suspend-test.sh</code> to diagnose</li>
+<li>DPMS/screensaver issues: run <code>scripts/disable-powersaving</code> or add it to autostart</li>
+</ul>
+<hr>
+<h2 id="picom--compositor-artifacts"><a class="header" href="#picom--compositor-artifacts">Picom / Compositor Artifacts</a></h2>
+<p>Restart picom via the Control Center (<strong>Quick Actions → Restart Picom</strong>) or:</p>
+<pre><code class="language-bash">pkill picom; setsid -f picom --backend xrender
+</code></pre>
+<p>If artifacts persist, set a different backend in <code>~/.config/picom.conf</code> or run with
+<code>PICOM_BACKEND=glx</code> or <code>PICOM_BACKEND=egl</code>.</p>
+<hr>
+<h2 id="still-stuck"><a class="header" href="#still-stuck">Still Stuck?</a></h2>
+<ul>
+<li>Open an issue: <a href="https://github.com/ChrisTitusTech/dwm-titus/issues">github.com/ChrisTitusTech/dwm-titus/issues</a></li>
+<li>Run the full check: <code>bash scripts/check-deps.sh</code></li>
+</ul>
+<footer id="last-change-7">Last change: <time datetime="2026-06-25">2026-06-25</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
@@ -221,22 +975,11 @@
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
 
 
 
@@ -245,13 +988,13 @@
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

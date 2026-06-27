@@ -1,10 +1,13 @@
 # Control Center
 
-The Control Center is a rofi-based menu providing system health, quick actions, appearance settings, and more.
+The Control Center is a Quickshell utility window for system health, quick
+actions, appearance settings, and keybind discovery.
 
-**Open:** <kbd>Super</kbd> + <kbd>F1</kbd> — or run `dwm-controlcenter` from a terminal.
+**Open:** <kbd>Super</kbd> + <kbd>F1</kbd>, or run `dwm-controlcenter` from a
+terminal.
 
-Navigate with arrow keys or type to filter. Press <kbd>Esc</kbd> or <kbd>←</kbd> to go back.
+The window floats above normal clients like the launcher, network popover, and
+power menu. Press <kbd>Esc</kbd> to close it.
 
 ---
 
@@ -16,11 +19,11 @@ Runs a full dependency check and reports:
 
 - Build tools (`cc`, `make`) and required libraries
 - Xorg / Xlibre installation
-- Runtime programs: rofi, picom, feh, flameshot
+- Runtime programs: quickshell, picom, feh, flameshot
 - Terminal emulators (alacritty, kitty, st)
 - Fonts: MesloLGS Nerd, Noto Color Emoji
 - Running services: picom, NetworkManager
-- Config paths: `.xinitrc`, rofi dir, wallpaper folder
+- Config paths: `.xinitrc`, Quickshell config, wallpaper folder
 
 Selecting a failed item offers to run `install.sh` (auto-fix) or `check-deps.sh` (details).
 
@@ -46,7 +49,8 @@ Selecting a failed item offers to run `install.sh` (auto-fix) or `check-deps.sh`
 
 ### Keybind Viewer
 
-Displays all bindings from `hotkeys.toml` in a searchable rofi list. Same as pressing <kbd>Super</kbd> + <kbd>/</kbd>.
+Displays all bindings from `hotkeys.toml` in a searchable Quickshell list. Same
+as pressing <kbd>Super</kbd> + <kbd>/</kbd>.
 
 ---
 
@@ -56,4 +60,8 @@ Displays all bindings from `hotkeys.toml` in a searchable rofi list. Same as pre
 dwm-controlcenter
 ```
 
-The script auto-detects your terminal emulator (alacritty -> kitty -> st -> xterm) and uses the active rofi theme from `~/.config/rofi/themes/controlcenter.rasi`.
+The script is a compatibility wrapper around the Quickshell IPC target:
+
+```bash
+quickshell ipc --path "${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml" call controlcenter toggle
+```

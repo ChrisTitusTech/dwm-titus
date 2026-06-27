@@ -292,42 +292,43 @@ Make the Quickshell setup visually consistent and easier to maintain.
 
 ### Objective
 
-Remove Rofi-era bar/Rofi only after Quickshell replacements are stable.
+Remove the old shell stack after Quickshell replacements are stable.
 
 ### Tasks
 
-- [ ] Remove Rofi-era bar from startup
-- [ ] Remove Rofi launcher backup keybind
-- [ ] Remove Rofi power-menu backup keybind
-- [ ] Keep packages installed temporarily
-- [ ] Run the Quickshell setup for several normal sessions
-- [ ] Remove unused packages after validation
-- [ ] Document rollback steps
+- [x] Remove legacy bar startup paths from the normal Quickshell session
+- [x] Remove Rofi launcher backup keybind
+- [x] Remove Rofi control center and keybind viewer paths
+- [x] Remove Rofi power-menu backup path
+- [x] Remove Rofi package, config, and theme assets after validation
+- [x] Add Quickshell utility-window rules for control center and network UI
+- [x] Document rollback steps
 
 ### Exit Criteria
 
-- Daily workflow works without Rofi-era bar/Rofi
-- No missing launcher, panel, tray, or notification functionality
-- Rollback path is documented
+- [x] Daily workflow works without the old shell stack
+- [x] No missing launcher, panel, tray, notification, power menu, network, or
+  control center functionality
+- [x] Rollback path is documented
 
 ---
 
 ## Rollback Plan
 
-Keep the old stack available until the Quickshell setup is proven stable.
+The old stack is no longer part of the normal runtime. The supported rollback
+path is to revert the Phase 10 commits or restore the specific files from git
+history, then rerun the normal install/update flow.
 
 ### Rollback Tasks
 
-- [ ] Keep old Rofi-era bar config
-- [ ] Keep old Rofi scripts
-- [ ] Keep old WM keybinds commented, not deleted
-- [ ] Add emergency keybind to launch terminal
-- [ ] Add emergency keybind to restart Quickshell
-- [ ] Document how to restore the old startup commands
+- [x] Keep emergency terminal keybind
+- [x] Keep emergency Quickshell restart keybind
+- [x] Document how to restore the old stack from git history
 
-Example fallback commands:
+Example rollback commands:
 
 ```sh
-legacy-bar main &
-rofi -show drun
+git log --oneline -- config/rofi config/hotkeys.toml scripts/dwm-controlcenter
+git revert <phase-10-commit>
+make install
 ```

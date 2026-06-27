@@ -1,6 +1,7 @@
 # Keybindings
 
-> Press <kbd>Super</kbd> + <kbd>/</kbd> inside dwm to open a live, searchable keybind viewer via rofi.
+> Press <kbd>Super</kbd> + <kbd>/</kbd> inside dwm to open a live, searchable
+> Quickshell keybind viewer.
 
 **MODKEY** = <kbd>Super</kbd> (Windows key) in the shipped `config.h`.
 
@@ -13,7 +14,6 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | Keys | Action |
 |------|--------|
 | `Super` + `R` | App launcher (Quickshell) |
-| `Super` + `Shift` + `R` | App launcher fallback (rofi) |
 | `Super` + `X` | Terminal |
 | `Super` + `E` | File manager |
 | `Super` + `B` | Browser |

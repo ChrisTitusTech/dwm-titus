@@ -39,7 +39,7 @@ curl -fsSL https://christitus.com/linux | sh
 
 <img width="1839" height="1000" alt="image" src="https://github.com/user-attachments/assets/314f9a40-4ccb-4c34-b3d2-dcfee63c278b" />
 
-Select `dwm`, `rofi`, `bash prompt`, and `alacritty` using the `v` key, then press `Enter`.
+Select `dwm`, `bash prompt`, and `alacritty` using the `v` key, then press `Enter`.
 
 ### Manual Install
 
@@ -102,19 +102,19 @@ The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake
 
 For a core-only setup, use the minimal session profile documented in
 [`docs/src/install.md`](docs/src/install.md). It runs dwm with one terminal,
-required X11/session services, and treats Rofi, Picom, wallpapers, tray tools,
-and hardware helpers as optional degraded features.
+required X11/session services, and treats Picom, wallpapers, tray tools, and
+hardware helpers as optional degraded features.
 
 The normal app launcher binding is the Quickshell launcher on
-<kbd>SUPER</kbd> + <kbd>R</kbd>. Rofi remains available on
-<kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> and is still used by the
-control center and keybind viewer.
+<kbd>SUPER</kbd> + <kbd>R</kbd>. The control center and keybind viewer are
+native Quickshell utility windows on <kbd>SUPER</kbd> + <kbd>F1</kbd> and
+<kbd>SUPER</kbd> + <kbd>/</kbd>.
 
 ---
 
 ## ⌨️ Keybindings
 
-Press <kbd>SUPER</kbd> + <kbd>/</kbd> inside dwm for an **interactive keybind viewer** (via rofi).
+Press <kbd>SUPER</kbd> + <kbd>/</kbd> inside dwm for an **interactive keybind viewer**.
 
 See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 
@@ -124,7 +124,6 @@ See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 |---------|--------|
 | <kbd>SUPER</kbd> + <kbd>X</kbd> | Open terminal |
 | <kbd>SUPER</kbd> + <kbd>R</kbd> | Toggle Quickshell launcher |
-| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> | Launch rofi fallback |
 | <kbd>SUPER</kbd> + <kbd>Q</kbd> | Close window |
 | <kbd>SUPER</kbd> + <kbd>J</kbd> / <kbd>K</kbd> | Focus next / previous window |
 | <kbd>SUPER</kbd> + <kbd>H</kbd> / <kbd>L</kbd> | Resize master area |
@@ -216,7 +215,7 @@ bash scripts/check-deps.sh
 | `.xinitrc` | Startup script for `startx` |
 | `dwm.desktop` | Session entry for display managers |
 | `install.sh` | Automated installer for Debian, Arch, and Fedora/RHEL families |
-| `config/` | Terminal, rofi, and app configurations |
+| `config/` | Quickshell, terminal, and app configurations |
 | `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |
 | `docs/src/keybinds.md` | Full keybinding reference |
 | `docs/ROADMAP.md` | Quickshell migration roadmap |

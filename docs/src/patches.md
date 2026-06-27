@@ -78,7 +78,8 @@ When focus moves to a different window or monitor (via keyboard), the mouse curs
 Keybindings are parsed from `config/hotkeys.toml` at runtime. Edit and save — bindings update without recompiling or restarting dwm.
 
 ### TOML Themes (`themes.toml`)
-Colors for dwm, terminal, and rofi are sourced from `config/themes.toml`. Save the file to apply a new theme instantly across supported apps.
+Colors for dwm, terminal, GTK, and Qt are sourced from `config/themes.toml`.
+Save the file to apply a new theme instantly across supported apps.
 
 ---
 
@@ -86,7 +87,7 @@ Colors for dwm, terminal, and rofi are sourced from `config/themes.toml`. Save t
 
 | Script | Description |
 |--------|-------------|
-| `dwm-controlcenter` | Rofi-based control center (`Super`+`F1`) |
+| `dwm-controlcenter` | Quickshell control center (`Super`+`F1`) |
 | `dwm-keybinds` | Searchable keybind viewer (`Super`+`/`) |
 | `dwm-screenshot` | Wrapper for flameshot (full, gui, clip modes) |
 | `theme-apply.sh` | Applies active theme from `themes.toml` to all apps |

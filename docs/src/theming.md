@@ -1,6 +1,7 @@
 # Theming
 
-Themes are defined in `config/themes.toml`. Change the active theme and **save** — dwm, terminal, and rofi update instantly. No restart needed.
+Themes are defined in `config/themes.toml`. Change the active theme and **save**
+to update dwm, terminal, GTK, and Qt styling. No restart needed.
 
 ```toml
 [active]
@@ -57,7 +58,6 @@ Each `[theme.name]` section sets colors for all components:
 | `selfgcolor` / `selbgcolor` / `selbordercolor` | Focused window and active tag |
 | `term_bg` / `term_fg` / `term_cursor` | Terminal background, text, cursor |
 | `term_color0`–`term_color15` | Full 16-color terminal palette |
-| `rofi_theme` | Rofi `.rasi` theme (filename without extension) |
 | `dark_mode` | GTK dark preference and Capitaine cursor variant (`true` / `false`) |
 
 ---
@@ -78,9 +78,7 @@ selbordercolor  = "#89b4fa"
 term_bg         = "#1e1e2e"
 term_fg         = "#cdd6f4"
 term_cursor     = "#f5e0dc"
-# ... term_color0–15 ...
-
-rofi_theme      = "sidetab-catppuccin"
+# ... term_color0-15 ...
 dark_mode       = true
 ```
 
@@ -93,13 +91,6 @@ Then set `theme = "mytheme"` under `[active]` and save.
 Open the Control Center with <kbd>Super</kbd> + <kbd>F1</kbd>, navigate to **Appearance → Select Theme**, and pick from the list. The theme switches immediately.
 
 ---
-
-## Rofi Themes
-
-Rofi theme files live in `config/rofi/themes/`. The active theme's `rofi_theme` key selects which `.rasi` file is used.
-
-Available rofi themes: `nord`, `onedark`, `catppuccin`, `dracula`, `gruvbox`, `everforest`, `monochrome`, `rosepine`, `solarized`, `tokyonight`.
-
 ## Wallpapers
 
 Place images in `~/Pictures/backgrounds/`. Use `Super` + `Shift` + `W` to randomize, or set a specific one:

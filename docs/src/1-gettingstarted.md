@@ -10,7 +10,6 @@ Press <kbd>Super</kbd> + <kbd>/</kbd> at any time to open the interactive keybin
 |--------|------|
 | Open terminal | `Super` + `X` |
 | App launcher (Quickshell) | `Super` + `R` |
-| App launcher fallback (rofi) | `Super` + `Shift` + `R` |
 | Close window | `Super` + `Q` |
 | Power menu | `Super` + `Ctrl` + `Q` |
 | Control Center | `Super` + `F1` |

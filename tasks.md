@@ -545,13 +545,20 @@ clients.
     `tests/test-install-preservation.sh`, `make check-install-manifest`, a
     repo-scoped Quickshell reload, IPC target inspection, IPC network/status
     probes, and launcher open/close passed.
-- [ ] Remove old dependencies only after Quickshell replacements are stable.
-- [ ] Document rollback steps and keep the old shell stack available until the
-      migration is proven stable.
+- [x] Remove old shell dependencies after Quickshell replacements became stable.
+  - Result: removed Rofi launcher, control center, keybind viewer, power menu,
+    package, config, and theme paths from the normal runtime. Super+R,
+    Super+F1, Super+/, and Super+Ctrl+Q now route through Quickshell.
+  - Validation: `make check-shell`, `make check-format`,
+    `make check-diagnostics`, `make check-quickshell-controlcenter`, and
+    repo-scoped Quickshell IPC checks passed during Phase 10.
+- [x] Document rollback steps for the removed old shell stack.
+  - Result: `docs/ROADMAP.md` now records rollback through git history and the
+    normal install/update flow instead of retaining stale runtime scripts.
 
 ## Validation Policy
 
 A task is complete only when its acceptance criteria pass or the exact skipped
-environment is recorded. Do not remove Rofi-era bar or Rofi from the normal
-startup path until the Quickshell replacement for that component has been
-validated and rollback steps are documented.
+environment is recorded. Removed shell dependencies must have a validated
+Quickshell replacement and a documented rollback path before they leave the
+normal startup path.
