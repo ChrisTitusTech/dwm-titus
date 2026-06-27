@@ -384,11 +384,12 @@ The primary installer contains Debian-, Arch-, and Fedora/RHEL-family package
 mappings. The build uses `pkg-config`, supports staged installation with
 `DESTDIR`, and avoids writing user configuration during package builds.
 
-The ARM installer and some manual package examples remain Arch-specific.
-Debian package resolution and clean compilation have been validated in a
-Debian 13 container, but a real Debian X11 session has not been tested.
-Complete runtime validation on Debian and non-Fedora RHEL derivatives remains
-required before describing those environments as universally verified.
+Arch ARM handling is part of the primary installer; some manual package
+examples remain Arch-specific. Debian package resolution and clean compilation
+have been validated in a Debian 13 container, but a real Debian X11 session has
+not been tested. Complete runtime validation on Debian and non-Fedora RHEL
+derivatives remains required before describing those environments as
+universally verified.
 
 ## 11. Definition of Done
 
