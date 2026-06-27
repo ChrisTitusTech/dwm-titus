@@ -1,0 +1,350 @@
+#!/bin/sh
+set -eu
+
+repo_dir=$(
+	unset CDPATH
+	cd -- "$(dirname -- "$0")/.." && pwd
+)
+
+config_home=${XDG_CONFIG_HOME:-${HOME:-}/.config}
+
+themes_file() {
+	if [ -f "$config_home/dwm-titus/themes.toml" ]; then
+		printf '%s\n' "$config_home/dwm-titus/themes.toml"
+	else
+		printf '%s\n' "$repo_dir/config/themes.toml"
+	fi
+}
+
+hotkeys_file() {
+	if [ -f "$config_home/dwm-titus/hotkeys.toml" ]; then
+		printf '%s\n' "$config_home/dwm-titus/hotkeys.toml"
+	else
+		printf '%s\n' "$repo_dir/config/hotkeys.toml"
+	fi
+}
+
+notify() {
+	if command -v notify-send >/dev/null 2>&1; then
+		notify-send -a "DWM Control Center" "$@" 2>/dev/null || true
+	fi
+}
+
+launch_background() {
+	if [ "${DWM_TEST_SYNC:-0}" = 1 ]; then
+		"$@"
+		return
+	fi
+
+	if command -v setsid >/dev/null 2>&1; then
+		setsid "$@" >/dev/null 2>&1 &
+	else
+		"$@" >/dev/null 2>&1 &
+	fi
+}
+
+terminal_run() {
+	if command -v dwm-terminal >/dev/null 2>&1; then
+		launch_background dwm-terminal -e sh -c "$1"
+	else
+		sh -c "$1"
+	fi
+}
+
+status_command() {
+	label=$1
+	command_name=$2
+	severity=$3
+
+	if command -v "$command_name" >/dev/null 2>&1; then
+		printf 'ok\t%s\t%s found\n' "$label" "$command_name"
+	else
+		printf '%s\t%s\t%s missing\n' "$severity" "$label" "$command_name"
+	fi
+}
+
+status_path() {
+	label=$1
+	path=$2
+	severity=$3
+
+	if [ -e "$path" ]; then
+		printf 'ok\t%s\t%s\n' "$label" "$path"
+	else
+		printf '%s\t%s\t%s missing\n' "$severity" "$label" "$path"
+	fi
+}
+
+health() {
+	status_command "Quickshell" quickshell error
+	status_command "X property tools" xprop error
+	status_command "App launcher helper" dwm-quickshell-launcher error
+	status_command "Control helper" dwm-quickshell-controlcenter error
+	status_command "Desktop launcher" dex warn
+	status_command "Compositor" picom warn
+	status_command "Wallpaper setter" feh warn
+	status_command "Screenshot tool" flameshot warn
+	status_command "Notifications" notify-send warn
+	status_command "Audio control" pactl warn
+	status_command "Brightness control" brightnessctl warn
+	status_path "Hotkeys config" "$(hotkeys_file)" error
+	status_path "Themes config" "$(themes_file)" error
+	status_path "Quickshell config" "$config_home/quickshell/shell.qml" error
+	status_path "Wallpaper folder" "${HOME:-}/Pictures/backgrounds" warn
+}
+
+info() {
+	os_name=unknown
+	if [ -r /etc/os-release ]; then
+		os_name=$(awk -F= '$1 == "PRETTY_NAME" { gsub(/^"|"$/, "", $2); print $2; exit }' /etc/os-release)
+	fi
+
+	compositor=stopped
+	if pgrep -x picom >/dev/null 2>&1; then
+		compositor=running
+	fi
+
+	audio=unavailable
+	if command -v pactl >/dev/null 2>&1; then
+		audio=$(pactl info 2>/dev/null | awk -F': ' '$1 == "Server Name" { print $2; exit }')
+		audio=${audio:-available}
+	elif command -v wpctl >/dev/null 2>&1; then
+		audio=wireplumber
+	fi
+
+	printf 'OS\t%s\n' "$os_name"
+	printf 'Kernel\t%s\n' "$(uname -sr)"
+	printf 'Host\t%s\n' "$(hostname 2>/dev/null || printf unknown)"
+	printf 'Uptime\t%s\n' "$(uptime -p 2>/dev/null || uptime 2>/dev/null || printf unknown)"
+	printf 'Terminal\t%s\n' "${TERMINAL:-dwm-terminal}"
+	printf 'Compositor\t%s\n' "$compositor"
+	printf 'Audio\t%s\n' "$audio"
+	printf 'Theme\t%s\n' "$(active_theme)"
+}
+
+active_theme() {
+	awk '
+		$0 ~ /^\[active\]/ { active = 1; next }
+		$0 ~ /^\[/ { active = 0 }
+		active && $1 == "theme" {
+			value = $0
+			sub(/^[^=]*=[[:space:]]*/, "", value)
+			sub(/[[:space:]]*#.*/, "", value)
+			gsub(/"/, "", value)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			print value
+			exit
+		}
+	' "$(themes_file)"
+}
+
+theme_exists() {
+	name=$1
+	awk -v section="[theme.$name]" '$0 == section { found = 1 } END { exit found ? 0 : 1 }' "$(themes_file)"
+}
+
+themes() {
+	active=$(active_theme)
+	awk -v active="$active" '
+		/^\[theme\.[^]]+\]/ {
+			name = $0
+			sub(/^\[theme\./, "", name)
+			sub(/\]$/, "", name)
+			status = name == active ? "active" : "available"
+			printf "%s\t%s\n", status, name
+		}
+	' "$(themes_file)"
+}
+
+ensure_user_themes_file() {
+	file=$config_home/dwm-titus/themes.toml
+	if [ ! -f "$file" ]; then
+		mkdir -p "$config_home/dwm-titus"
+		cp "$repo_dir/config/themes.toml" "$file"
+	fi
+	printf '%s\n' "$file"
+}
+
+theme_set() {
+	name=$1
+	if ! theme_exists "$name"; then
+		printf 'unknown theme: %s\n' "$name" >&2
+		return 1
+	fi
+
+	file=$(ensure_user_themes_file)
+	tmp=$(mktemp "${TMPDIR:-/tmp}/dwm-theme.XXXXXX")
+	trap 'rm -f "$tmp"' EXIT INT HUP TERM
+	awk -v name="$name" '
+		$0 ~ /^\[active\]/ {
+			active = 1
+			print
+			next
+		}
+		$0 ~ /^\[/ {
+			active = 0
+		}
+		active && $1 == "theme" {
+			sub(/theme[[:space:]]*=.*/, "theme = \"" name "\"")
+			print
+			done = 1
+			next
+		}
+		{ print }
+		END {
+			if (!done) {
+				print ""
+				print "[active]"
+				print "theme = \"" name "\""
+			}
+		}
+	' "$file" >"$tmp"
+	mv "$tmp" "$file"
+	trap - EXIT INT HUP TERM
+
+	notify "Theme changed" "$name"
+	printf 'theme\t%s\n' "$name"
+}
+
+keybinds() {
+	awk '
+		function value(line, key, pattern, result) {
+			pattern = key "=\"[^\"]*\""
+			if (match(line, pattern)) {
+				result = substr(line, RSTART + length(key) + 2, RLENGTH - length(key) - 3)
+				return result
+			}
+			return ""
+		}
+
+		/^[[:space:]]*\{/ && /desc=/ {
+			mod = value($0, "mod")
+			key = value($0, "key")
+			desc = value($0, "desc")
+			if (key == "") {
+				next
+			}
+			label = mod == "" ? key : mod "+" key
+			gsub(/SUPER/, "Super", label)
+			gsub(/SHIFT/, "Shift", label)
+			gsub(/CTRL/, "Ctrl", label)
+			gsub(/ALT/, "Alt", label)
+			gsub(/\+/, " + ", label)
+			printf "%s\t%s\n", label, desc
+		}
+	' "$(hotkeys_file)"
+}
+
+restart_picom() {
+	pkill -x picom 2>/dev/null || true
+	if command -v picom >/dev/null 2>&1; then
+		launch_background picom
+		notify "Picom restarted"
+	else
+		printf 'picom is not installed\n' >&2
+		return 1
+	fi
+}
+
+reload_wallpaper() {
+	if command -v feh >/dev/null 2>&1 && [ -d "${HOME:-}/Pictures/backgrounds" ]; then
+		feh --randomize --bg-fill "${HOME:-}/Pictures/backgrounds"/* >/dev/null 2>&1 || true
+		notify "Wallpaper reloaded"
+	else
+		printf 'feh or wallpaper folder is unavailable\n' >&2
+		return 1
+	fi
+}
+
+toggle_compositor() {
+	if pgrep -x picom >/dev/null 2>&1; then
+		pkill -x picom
+		notify "Compositor stopped"
+	else
+		restart_picom
+	fi
+}
+
+restart_networkmanager() {
+	if command -v systemctl >/dev/null 2>&1; then
+		terminal_run "sudo systemctl restart NetworkManager"
+	else
+		printf 'systemctl is unavailable\n' >&2
+		return 1
+	fi
+}
+
+dependency_check() {
+	terminal_run "$repo_dir/scripts/check-deps.sh; printf '\\nPress enter to close...'; read -r _"
+}
+
+install_missing_deps() {
+	terminal_run "cd '$repo_dir' && ./install.sh; printf '\\nPress enter to close...'; read -r _"
+}
+
+open_wallpapers() {
+	if command -v xdg-open >/dev/null 2>&1; then
+		launch_background xdg-open "${HOME:-}/Pictures/backgrounds"
+	else
+		printf 'xdg-open is unavailable\n' >&2
+		return 1
+	fi
+}
+
+gtk_settings() {
+	if command -v nwg-look >/dev/null 2>&1; then
+		launch_background nwg-look
+	else
+		printf 'nwg-look is unavailable\n' >&2
+		return 1
+	fi
+}
+
+action() {
+	case ${1:-} in
+	restart-picom) restart_picom ;;
+	reload-wallpaper) reload_wallpaper ;;
+	toggle-compositor) toggle_compositor ;;
+	restart-networkmanager) restart_networkmanager ;;
+	dependency-check) dependency_check ;;
+	install-missing-deps) install_missing_deps ;;
+	open-wallpapers) open_wallpapers ;;
+	gtk-settings) gtk_settings ;;
+	terminal) launch_background dwm-terminal ;;
+	browser) launch_background dwm-default-apps open https:// ;;
+	*)
+		printf 'unknown action: %s\n' "${1:-}" >&2
+		return 2
+		;;
+	esac
+	printf 'action\t%s\n' "$1"
+}
+
+usage() {
+	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|action <name>\n' "$0" >&2
+}
+
+case ${1:-} in
+health) health ;;
+info) info ;;
+themes) themes ;;
+theme-set)
+	if [ $# -ne 2 ]; then
+		usage
+		exit 2
+	fi
+	theme_set "$2"
+	;;
+keybinds) keybinds ;;
+action)
+	if [ $# -ne 2 ]; then
+		usage
+		exit 2
+	fi
+	action "$2"
+	;;
+*)
+	usage
+	exit 2
+	;;
+esac
