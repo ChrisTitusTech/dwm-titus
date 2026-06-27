@@ -5,8 +5,8 @@ with a Nord colour palette, blurred background, and the MesloLGS NF font.
 
 The main installer selects the distribution-specific package names. Arch uses
 `lightdm-slick-greeter`; Fedora and other RHEL-family systems use
-`slick-greeter`. The dwm-titus LightDM drop-in selects the `dwm` session while
-the distribution package selects the correct greeter session name.
+`slick-greeter`. The dwm-titus LightDM config selects the Slick Greeter,
+the `dwm` session, and the distribution Xsession wrapper.
 
 ## Files
 
