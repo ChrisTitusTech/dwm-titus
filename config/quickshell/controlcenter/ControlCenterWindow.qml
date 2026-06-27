@@ -17,8 +17,8 @@ FloatingWindow {
     ]
     readonly property var actions: [
         { "id": "restart-picom", "label": "Restart Picom", "detail": "Restart the compositor" },
+        { "id": "restart-quickshell", "label": "Restart Quickshell", "detail": "Restart the desktop shell" },
         { "id": "reload-wallpaper", "label": "Reload Wallpaper", "detail": "Randomize the wallpaper folder" },
-        { "id": "toggle-compositor", "label": "Toggle Compositor", "detail": "Start or stop picom" },
         { "id": "restart-networkmanager", "label": "Restart NetworkManager", "detail": "Open a terminal for the privileged restart" },
         { "id": "dependency-check", "label": "Dependency Check", "detail": "Run check-deps.sh in a terminal" },
         { "id": "install-missing-deps", "label": "Install Missing Deps", "detail": "Run the installer in a terminal" },

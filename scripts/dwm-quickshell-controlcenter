@@ -240,6 +240,23 @@ restart_picom() {
 	fi
 }
 
+restart_quickshell() {
+	config=$config_home/quickshell/shell.qml
+	if [ ! -f "$config" ]; then
+		printf 'quickshell config is unavailable: %s\n' "$config" >&2
+		return 1
+	fi
+
+	pkill -x quickshell 2>/dev/null || true
+	if command -v quickshell >/dev/null 2>&1; then
+		launch_background quickshell --no-duplicate
+		notify "Quickshell restarted"
+	else
+		printf 'quickshell is not installed\n' >&2
+		return 1
+	fi
+}
+
 reload_wallpaper() {
 	if command -v feh >/dev/null 2>&1 && [ -d "${HOME:-}/Pictures/backgrounds" ]; then
 		feh --randomize --bg-fill "${HOME:-}/Pictures/backgrounds"/* >/dev/null 2>&1 || true
@@ -297,6 +314,7 @@ gtk_settings() {
 action() {
 	case ${1:-} in
 	restart-picom) restart_picom ;;
+	restart-quickshell) restart_quickshell ;;
 	reload-wallpaper) reload_wallpaper ;;
 	toggle-compositor) toggle_compositor ;;
 	restart-networkmanager) restart_networkmanager ;;

@@ -9,9 +9,11 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/bin" "$work/config/dwm-titus" "$work/home/Pictures/backgrounds" "$work/data/dwm-titus/config/quickshell"
+mkdir -p "$work/config/quickshell"
 cp "$repo/config/themes.toml" "$work/config/dwm-titus/themes.toml"
 cp "$repo/config/hotkeys.toml" "$work/config/dwm-titus/hotkeys.toml"
 : >"$work/data/dwm-titus/config/quickshell/shell.qml"
+: >"$work/config/quickshell/shell.qml"
 : >"$work/home/Pictures/backgrounds/wallpaper.png"
 
 stub_command() {
@@ -90,9 +92,16 @@ printf '%s\n' "$keybinds" | grep -Fqx 'Super + r	App launcher'
 printf '%s\n' "$keybinds" | grep -Fqx 'Super + F1	Control center'
 
 : >"$work/actions.log"
-DWM_TEST_PICOM_RUNNING=0 run_helper action toggle-compositor >"$work/toggle.out"
-grep -Fqx 'action	toggle-compositor' "$work/toggle.out"
+run_helper action restart-quickshell >"$work/quickshell.out"
+grep -Fqx 'action	restart-quickshell' "$work/quickshell.out"
+grep -Fq 'pkill -x quickshell' "$work/actions.log"
+grep -Fq 'quickshell --no-duplicate' "$work/actions.log"
+
+: >"$work/actions.log"
+run_helper action restart-picom >"$work/picom.out"
+grep -Fqx 'action	restart-picom' "$work/picom.out"
 grep -Fq 'pkill -x picom' "$work/actions.log"
+grep -Fqx 'picom ' "$work/actions.log"
 
 : >"$work/actions.log"
 run_helper action open-wallpapers >"$work/wallpapers.out"
