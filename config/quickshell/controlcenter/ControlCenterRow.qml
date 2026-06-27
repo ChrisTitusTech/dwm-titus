@@ -8,6 +8,7 @@ Rectangle {
     property string title: ""
     property string detail: ""
     property string status: ""
+    readonly property color statusColor: root.status === "error" ? Theme.danger : root.status === "warn" ? "#ebcb8b" : Theme.accent
 
     implicitHeight: Math.max(42, row.implicitHeight + 16)
     color: Theme.surface
@@ -26,7 +27,7 @@ Rectangle {
             Layout.preferredWidth: 10
             Layout.preferredHeight: 10
             radius: 5
-            color: root.status === "error" ? Theme.danger : root.status === "warn" ? "#ebcb8b" : Theme.accent
+            color: root.statusColor
         }
 
         ColumnLayout {

@@ -14,6 +14,14 @@ Scope {
     property var themeRows: []
     property var keybindRows: []
 
+    function openPage(name, message, process) {
+        root.page = name;
+        root.message = message;
+        if (process && !process.running) {
+            process.running = true;
+        }
+    }
+
     function open() {
         root.visible = true;
         root.openOverview();
@@ -37,46 +45,28 @@ Scope {
     }
 
     function openOverview() {
-        root.page = "overview";
-        root.message = "";
+        root.openPage("overview", "", null);
     }
 
     function openHealth() {
-        root.page = "health";
-        root.message = "Checking system health...";
-        if (!healthProcess.running) {
-            healthProcess.running = true;
-        }
+        root.openPage("health", "Checking system health...", healthProcess);
     }
 
     function openActions() {
-        root.page = "actions";
-        root.message = "";
+        root.openPage("actions", "", null);
     }
 
     function openAppearance() {
-        root.page = "appearance";
-        root.message = "Loading themes...";
-        if (!themesProcess.running) {
-            themesProcess.running = true;
-        }
+        root.openPage("appearance", "Loading themes...", themesProcess);
     }
 
     function openKeybinds() {
         root.visible = true;
-        root.page = "keybinds";
-        root.message = "Loading keybinds...";
-        if (!keybindsProcess.running) {
-            keybindsProcess.running = true;
-        }
+        root.openPage("keybinds", "Loading keybinds...", keybindsProcess);
     }
 
     function openInfo() {
-        root.page = "info";
-        root.message = "Loading system info...";
-        if (!infoProcess.running) {
-            infoProcess.running = true;
-        }
+        root.openPage("info", "Loading system info...", infoProcess);
     }
 
     function refreshCurrentPage() {

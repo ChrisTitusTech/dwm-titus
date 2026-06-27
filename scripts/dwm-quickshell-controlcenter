@@ -7,20 +7,14 @@ repo_dir=$(
 )
 
 config_home=${XDG_CONFIG_HOME:-${HOME:-}/.config}
+dwm_config_dir=$config_home/dwm-titus
 
-themes_file() {
-	if [ -f "$config_home/dwm-titus/themes.toml" ]; then
-		printf '%s\n' "$config_home/dwm-titus/themes.toml"
+config_file() {
+	name=$1
+	if [ -f "$dwm_config_dir/$name" ]; then
+		printf '%s\n' "$dwm_config_dir/$name"
 	else
-		printf '%s\n' "$repo_dir/config/themes.toml"
-	fi
-}
-
-hotkeys_file() {
-	if [ -f "$config_home/dwm-titus/hotkeys.toml" ]; then
-		printf '%s\n' "$config_home/dwm-titus/hotkeys.toml"
-	else
-		printf '%s\n' "$repo_dir/config/hotkeys.toml"
+		printf '%s\n' "$repo_dir/config/$name"
 	fi
 }
 
@@ -87,8 +81,8 @@ health() {
 	status_command "Notifications" notify-send warn
 	status_command "Audio control" pactl warn
 	status_command "Brightness control" brightnessctl warn
-	status_path "Hotkeys config" "$(hotkeys_file)" error
-	status_path "Themes config" "$(themes_file)" error
+	status_path "Hotkeys config" "$(config_file hotkeys.toml)" error
+	status_path "Themes config" "$(config_file themes.toml)" error
 	status_path "Quickshell config" "$config_home/quickshell/shell.qml" error
 	status_path "Wallpaper folder" "${HOME:-}/Pictures/backgrounds" warn
 }
@@ -135,12 +129,12 @@ active_theme() {
 			print value
 			exit
 		}
-	' "$(themes_file)"
+	' "$(config_file themes.toml)"
 }
 
 theme_exists() {
 	name=$1
-	awk -v section="[theme.$name]" '$0 == section { found = 1 } END { exit found ? 0 : 1 }' "$(themes_file)"
+	awk -v section="[theme.$name]" '$0 == section { found = 1 } END { exit found ? 0 : 1 }' "$(config_file themes.toml)"
 }
 
 themes() {
@@ -153,13 +147,13 @@ themes() {
 			status = name == active ? "active" : "available"
 			printf "%s\t%s\n", status, name
 		}
-	' "$(themes_file)"
+	' "$(config_file themes.toml)"
 }
 
 ensure_user_themes_file() {
-	file=$config_home/dwm-titus/themes.toml
+	file=$dwm_config_dir/themes.toml
 	if [ ! -f "$file" ]; then
-		mkdir -p "$config_home/dwm-titus"
+		mkdir -p "$dwm_config_dir"
 		cp "$repo_dir/config/themes.toml" "$file"
 	fi
 	printf '%s\n' "$file"
@@ -232,7 +226,7 @@ keybinds() {
 			gsub(/\+/, " + ", label)
 			printf "%s\t%s\n", label, desc
 		}
-	' "$(hotkeys_file)"
+	' "$(config_file hotkeys.toml)"
 }
 
 restart_picom() {

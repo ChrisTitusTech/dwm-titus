@@ -32,6 +32,14 @@ FloatingWindow {
     implicitHeight: 620
     color: Theme.transparent
 
+    function pageTitle() {
+        if (controlCenterModel.page === "overview") {
+            return "Control Center";
+        }
+
+        return controlCenterModel.page.charAt(0).toUpperCase() + controlCenterModel.page.slice(1);
+    }
+
     function openPage(page) {
         if (page === "health") {
             controlCenterModel.openHealth();
@@ -71,7 +79,7 @@ FloatingWindow {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.controlCenterModel.page === "overview" ? "Control Center" : root.controlCenterModel.page.charAt(0).toUpperCase() + root.controlCenterModel.page.slice(1)
+                    text: root.pageTitle()
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.titleFontSize

@@ -12,7 +12,8 @@ Rectangle {
     signal activated
 
     implicitHeight: 58
-    color: hovered ? Theme.surfaceHover : Theme.surface
+    opacity: enabled ? 1 : 0.55
+    color: enabled && hovered ? Theme.surfaceHover : Theme.surface
     border.color: Theme.border
     border.width: 1
     radius: Theme.radius
@@ -46,6 +47,7 @@ Rectangle {
         id: mouse
 
         anchors.fill: parent
+        enabled: root.enabled
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: root.activated()
