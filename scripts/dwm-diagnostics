@@ -117,13 +117,13 @@ main() {
 	check_terminal
 
 	printf '\nOptional desktop\n'
-	for cmd in rofi picom feh flameshot xdg-open notify-send amixer brightnessctl; do
+	for cmd in quickshell picom feh flameshot xdg-open notify-send amixer brightnessctl; do
 		check_optional_cmd "$cmd"
 	done
 	check_any_optional_cmd "XDG autostart runner" dex dex-autostart
 	check_any_optional_cmd "audio control" pactl wpctl amixer
 	check_path_optional "$HOME/.xinitrc"
-	check_path_optional "${XDG_CONFIG_HOME:-$HOME/.config}/rofi"
+	check_path_optional "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
 
 	printf '\nSummary\n'
 	printf '  required_failures=%d\n' "$required_fail"

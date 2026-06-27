@@ -4,7 +4,7 @@
 # Called automatically by DWM on config reload (SIGUSR1 / file save).
 # Can also be run manually: theme-apply.sh
 #
-# Updates: alacritty · kitty · rofi · GTK · Qt
+# Updates: alacritty · kitty · GTK · Qt
 
 set -euo pipefail
 
@@ -65,8 +65,6 @@ TERM_C12="$(theme_get term_color12)"
 TERM_C13="$(theme_get term_color13)"
 TERM_C14="$(theme_get term_color14)"
 TERM_C15="$(theme_get term_color15)"
-
-ROFI_THEME="$(theme_get rofi_theme)"
 
 DARK_MODE="$(theme_get dark_mode)"
 [[ "$DARK_MODE" != "false" ]] && DARK_MODE="true" # default to dark if unset
@@ -170,18 +168,6 @@ EOF
 	# Signal kitty to reload (no restart needed)
 	if command -v kitty &>/dev/null; then
 		kill -SIGUSR1 "$(pgrep -x kitty)" 2>/dev/null || true
-	fi
-fi
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ROFI — update @theme line in ~/.config/rofi/config.rasi
-# ══════════════════════════════════════════════════════════════════════════════
-ROFI_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/rofi/config.rasi"
-if [[ -n "$ROFI_THEME" && -f "$ROFI_CFG" ]]; then
-	if grep -q '@theme' "$ROFI_CFG"; then
-		sed -i "s|@theme \".*\"|@theme \"themes/$ROFI_THEME.rasi\"|g" "$ROFI_CFG"
-	else
-		echo "@theme \"themes/$ROFI_THEME.rasi\"" >>"$ROFI_CFG"
 	fi
 fi
 

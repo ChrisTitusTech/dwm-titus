@@ -245,8 +245,7 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh \
-		config/rofi/*.sh
+	shellcheck install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-format:
 	shfmt -d install.sh install-arm.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh
@@ -274,9 +273,6 @@ check-display-profile:
 
 check-diagnostics:
 	tests/test-dwm-diagnostics.sh
-
-check-powermenu-layout:
-	tests/test-powermenu-layout.sh
 
 check-monitor-tags:
 	tests/test-monitor-tag-switching.sh

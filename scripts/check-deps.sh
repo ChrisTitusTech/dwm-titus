@@ -107,7 +107,7 @@ done
 
 # ── Runtime dependencies ────────────────────────────────
 echo "Runtime Dependencies (desktop experience):"
-check_cmd "rofi"
+check_cmd "quickshell"
 check_cmd "picom"
 check_cmd "feh"
 check_cmd "flameshot"

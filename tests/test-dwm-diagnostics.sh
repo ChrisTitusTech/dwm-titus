@@ -33,7 +33,7 @@ chmod +x "$work/bin/pkg-config"
 env HOME="$work/home" PATH="$work/bin" "$BASH_BIN" "$HELPER" >"$work/ok"
 grep -Fqx "  required_failures=0" "$work/ok"
 grep -Fq "Optional desktop" "$work/ok"
-grep -Fq "degraded rofi" "$work/ok"
+grep -Fq "degraded quickshell" "$work/ok"
 
 rm -f "$work/bin/alacritty" "$work/bin/Xorg"
 

@@ -8,7 +8,7 @@
 # HOW TO SWITCH THEME
 # ───────────────────
 # 1. Change the theme name in [active] below to any theme defined in this file.
-# 2. Save the file — DWM, terminal, and rofi all update instantly!
+# 2. Save the file — DWM, terminal, GTK, and Qt update instantly!
 #
 # Available themes:
 #   DARK:  nord · dracula · gruvbox · catppuccin · tokyonight · onedark
@@ -48,7 +48,6 @@ borderpx = 1   # border size in pixels (0 = none, 1-3 = recommended)
 #     term_bg / term_fg / term_cursor
 #     term_color0 … term_color15  (standard 16-color palette)
 #
-#   Rofi:    rofi_theme    = "filename"           (without .rasi, from rofi/themes/)
 #   Dark mode: dark_mode = true                   (true = dark, false = light; default: true)
 
 
@@ -81,7 +80,6 @@ term_color13    = "#B48EAD"
 term_color14    = "#8FBCBB"
 term_color15    = "#ECEFF4"
 
-rofi_theme      = "sidetab-nord"
 dark_mode       = true
 
 
@@ -115,7 +113,6 @@ term_color13    = "#FF92DF"
 term_color14    = "#A4FFFF"
 term_color15    = "#FFFFFF"
 
-rofi_theme      = "sidetab-dracula"
 dark_mode       = true
 
 
@@ -149,7 +146,6 @@ term_color13    = "#D3869B"
 term_color14    = "#8EC07C"
 term_color15    = "#EBDBB2"
 
-rofi_theme      = "sidetab-gruvbox"
 dark_mode       = true
 
 
@@ -183,7 +179,6 @@ term_color13    = "#F5C2E7"
 term_color14    = "#94E2D5"
 term_color15    = "#A6ADC8"
 
-rofi_theme      = "sidetab-catppuccin"
 dark_mode       = true
 
 
@@ -217,7 +212,6 @@ term_color13    = "#BB9AF7"
 term_color14    = "#7DCFFF"
 term_color15    = "#C0CAF5"
 
-rofi_theme      = "sidetab-tokyonight"
 dark_mode       = true
 
 
@@ -251,7 +245,6 @@ term_color13    = "#C678DD"
 term_color14    = "#56B6C2"
 term_color15    = "#FFFFFF"
 
-rofi_theme      = "sidetab-onedark"
 dark_mode       = true
 
 
@@ -285,7 +278,6 @@ term_color13    = "#6C71C4"
 term_color14    = "#93A1A1"
 term_color15    = "#FDF6E3"
 
-rofi_theme      = "sidetab-solarized"
 dark_mode       = true
 
 
@@ -319,7 +311,6 @@ term_color13    = "#C4A7E7"
 term_color14    = "#EBBCBA"
 term_color15    = "#E0DEF4"
 
-rofi_theme      = "sidetab-rosepine"
 dark_mode       = true
 
 
@@ -353,7 +344,6 @@ term_color13    = "#D699B6"
 term_color14    = "#83C092"
 term_color15    = "#D3C6AA"
 
-rofi_theme      = "sidetab-everforest"
 dark_mode       = true
 
 
@@ -387,7 +377,6 @@ term_color13    = "#CC88CC"
 term_color14    = "#88CCCC"
 term_color15    = "#FFFFFF"
 
-rofi_theme      = "sidetab-monochrome"
 dark_mode       = true
 
 
@@ -425,7 +414,6 @@ term_color13    = "#EA76CB"
 term_color14    = "#179299"
 term_color15    = "#BCC0CC"
 
-rofi_theme      = "sidetab-catppuccin"
 dark_mode       = false
 
 
@@ -459,7 +447,6 @@ term_color13    = "#8F3F71"
 term_color14    = "#427B58"
 term_color15    = "#3C3836"
 
-rofi_theme      = "sidetab-gruvbox"
 dark_mode       = false
 
 
@@ -493,7 +480,6 @@ term_color13    = "#6C71C4"
 term_color14    = "#93A1A1"
 term_color15    = "#FDF6E3"
 
-rofi_theme      = "sidetab-solarized"
 dark_mode       = false
 
 
@@ -527,7 +513,6 @@ term_color13    = "#907AA9"
 term_color14    = "#D7827E"
 term_color15    = "#575279"
 
-rofi_theme      = "sidetab-rosepine"
 dark_mode       = false
 
 
@@ -561,5 +546,4 @@ term_color13    = "#9854F1"
 term_color14    = "#007197"
 term_color15    = "#3760BF"
 
-rofi_theme      = "sidetab-tokyonight"
 dark_mode       = false
