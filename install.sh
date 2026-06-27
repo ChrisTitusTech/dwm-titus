@@ -300,8 +300,24 @@ detect_display_manager() {
 
 install_lightdm_config() {
 	local lightdm_config="/etc/lightdm/lightdm.conf"
+	local lightdm_seat_section="SeatDefaults"
+	local lightdm_greeter_session="lightdm-slick-greeter"
+	local lightdm_session_wrapper="/etc/lightdm/Xsession"
+	local lightdm_logind_check=false
 
-	sudo make -C "$REPO_DIR/lightdm" install
+	if [[ $DISTRO_FAMILY == "rhel" ]]; then
+		lightdm_seat_section="Seat:*"
+		lightdm_greeter_session="slick-greeter"
+		lightdm_session_wrapper=""
+		lightdm_logind_check=true
+	fi
+
+	sudo make -C "$REPO_DIR/lightdm" \
+		LIGHTDM_SEAT_SECTION="$lightdm_seat_section" \
+		LIGHTDM_GREETER_SESSION="$lightdm_greeter_session" \
+		LIGHTDM_SESSION_WRAPPER="$lightdm_session_wrapper" \
+		LIGHTDM_LOGIND_CHECK="$lightdm_logind_check" \
+		install
 	if command -v restorecon &>/dev/null; then
 		sudo restorecon \
 			"$lightdm_config" \

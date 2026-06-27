@@ -289,6 +289,9 @@ check-quickshell-controls:
 check-quickshell-controlcenter:
 	tests/test-quickshell-controlcenter.sh
 
+check-lightdm-config:
+	tests/test-lightdm-config.sh
+
 check-install: all
 	@set -eu; \
 	stage="$$(mktemp -d)"; \
@@ -398,6 +401,7 @@ check:
 	$(MAKE) check-install
 	$(MAKE) check-install-manifest
 	$(MAKE) check-install-preservation
+	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
 .PHONY: all check check-build-config check-build-deps check-default-apps \
@@ -405,5 +409,5 @@ check:
 	check-display-profile check-format check-install \
 	check-install-manifest check-install-preservation check-lock \
 	check-session-guards check-shell check-diagnostics \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-network check-terminal clean install install-system install-user \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-network check-lightdm-config check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall
