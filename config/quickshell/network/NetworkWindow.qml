@@ -107,6 +107,7 @@ FloatingWindow {
                 model: root.networkModel.wifiNetworks
 
                 delegate: NetworkWifiRow {
+                    required property int index
                     required property var modelData
 
                     width: ListView.view.width
