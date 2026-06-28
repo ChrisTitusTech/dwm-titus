@@ -11,6 +11,18 @@ power menu. Press <kbd>Esc</kbd> to close it.
 
 ---
 
+## Network Popover
+
+The panel network indicator opens a Quickshell network popover. It shows active
+NetworkManager connections, scans visible Wi-Fi networks, and connects to open
+or WPA personal networks directly. Successful Wi-Fi connections are saved as
+NetworkManager profiles, so they reconnect normally in later sessions.
+
+Hidden SSIDs and enterprise Wi-Fi are handled through the optional
+`nm-connection-editor` fallback when it is installed.
+
+---
+
 ## Modules
 
 ### System Health

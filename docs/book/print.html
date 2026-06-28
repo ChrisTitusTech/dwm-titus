@@ -38,7 +38,7 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-4fab5756.js";
+            window.path_to_searchindex_js = "searchindex-f97e23b9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e4ab374d.js"></script>
@@ -319,7 +319,7 @@ minimal profile as ready. Optional degraded features can remain unresolved.</p>
 </table>
 </div>
 <p>See <a href="#keybindings">Keybindings</a> for the full reference.</p>
-<footer id="last-change-1">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change-1">Last change: <time datetime="2026-06-26">2026-06-26</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="keybindings"><a class="header" href="#keybindings">Keybindings</a></h1>
 <blockquote>
 <p>Press <kbd>Super</kbd> + <kbd>/</kbd> inside dwm to open a live, searchable
@@ -494,7 +494,7 @@ keys = [
 <p>See the comments in <code>hotkeys.toml</code> for a full list of <code>func</code> values and modifier syntax.</p>
 <p>The browser binding uses <code>dwm-default-apps open</code>. Configure it with
 <code>dwm-default-apps browsers</code> and <code>dwm-default-apps set-browser &lt;desktop-id&gt;</code>.</p>
-<footer id="last-change-2">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change-2">Last change: <time datetime="2026-06-26">2026-06-26</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
 <p>dwm-titus uses two TOML config files that <strong>live-reload on save</strong> — no recompile needed for most changes.</p>
 <div class="table-wrapper">
@@ -704,7 +704,7 @@ dark_mode       = true
 <p>Place images in <code>~/Pictures/backgrounds/</code>. Use <code>Super</code> + <code>Shift</code> + <code>W</code> to randomize, or set a specific one:</p>
 <pre><code class="language-bash">feh --bg-fill ~/Pictures/backgrounds/mywall.jpg
 </code></pre>
-<footer id="last-change-4">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change-4">Last change: <time datetime="2026-06-26">2026-06-26</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="control-center"><a class="header" href="#control-center">Control Center</a></h1>
 <p>The Control Center is a Quickshell utility window for system health, quick
 actions, appearance settings, and keybind discovery.</p>
@@ -712,6 +712,14 @@ actions, appearance settings, and keybind discovery.</p>
 terminal.</p>
 <p>The window floats above normal clients like the launcher, network popover, and
 power menu. Press <kbd>Esc</kbd> to close it.</p>
+<hr>
+<h2 id="network-popover"><a class="header" href="#network-popover">Network Popover</a></h2>
+<p>The panel network indicator opens a Quickshell network popover. It shows active
+NetworkManager connections, scans visible Wi-Fi networks, and connects to open
+or WPA personal networks directly. Successful Wi-Fi connections are saved as
+NetworkManager profiles, so they reconnect normally in later sessions.</p>
+<p>Hidden SSIDs and enterprise Wi-Fi are handled through the optional
+<code>nm-connection-editor</code> fallback when it is installed.</p>
 <hr>
 <h2 id="modules"><a class="header" href="#modules">Modules</a></h2>
 <h3 id="system-health"><a class="header" href="#system-health">System Health</a></h3>
@@ -867,7 +875,7 @@ Save the file to apply a new theme instantly across supported apps.</p>
 <h2 id="multi-monitor-1"><a class="header" href="#multi-monitor-1">Multi-Monitor</a></h2>
 <p>Xinerama support keeps tags independent per monitor. Windows can be moved
 between monitors with <code>Super</code> + <code>Shift</code> + <code>,</code>/<code>.</code>.</p>
-<footer id="last-change-6">Last change: <time datetime="2026-06-25">2026-06-25</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change-6">Last change: <time datetime="2026-06-26">2026-06-26</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
 <p>Run the dependency checker first — it covers most common issues:</p>
 <pre><code class="language-bash">dwm-diagnostics
