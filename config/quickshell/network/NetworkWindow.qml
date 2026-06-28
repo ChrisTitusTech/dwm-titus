@@ -3,15 +3,23 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
-FloatingWindow {
+PopupWindow {
     id: root
 
     required property var networkModel
+    required property var panelWindow
 
-    title: "dwm network"
+    readonly property int popupWidth: 620
+    readonly property int popupHeight: 680
+    readonly property int edgeMargin: Theme.rowSpacing
+
     visible: networkModel.visible
-    implicitWidth: 620
-    implicitHeight: 680
+    implicitWidth: popupWidth
+    implicitHeight: popupHeight
+    anchor.window: panelWindow
+    anchor.rect.x: Math.max(edgeMargin, panelWindow.width - popupWidth - edgeMargin)
+    anchor.rect.y: Theme.panelHeight
+    grabFocus: true
     color: Theme.transparent
 
     ShellSurface {

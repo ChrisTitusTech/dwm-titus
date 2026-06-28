@@ -266,10 +266,6 @@ ShellRoot {
         powerMenuModel: powerMenuModel
     }
 
-    NetworkWindow {
-        networkModel: networkModel
-    }
-
     DwmPanel {
         id: panelWindow
 
@@ -277,6 +273,11 @@ ShellRoot {
         clock: clock
         networkModel: networkModel
         controlsModel: controlsModel
+    }
+
+    NetworkWindow {
+        networkModel: networkModel
+        panelWindow: panelWindow
     }
 
     NotificationPopupWindow {
