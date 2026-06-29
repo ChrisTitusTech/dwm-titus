@@ -15,6 +15,7 @@ nohup.out
 .DS_STORE
 livemedia.log
 program.log
+dwm-titus.iso
 
 # Local editor settings that may contain machine-specific absolute paths
 .zed/settings.json

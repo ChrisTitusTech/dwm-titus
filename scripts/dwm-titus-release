@@ -42,8 +42,48 @@ remote_release_exists() {
 	gh release view "$tag" >/dev/null 2>&1
 }
 
+expand_user_path() {
+	case "$1" in
+	\~)
+		printf '%s\n' "$HOME"
+		;;
+	\~/*)
+		printf '%s/%s\n' "$HOME" "${1#"~/"}"
+		;;
+	*)
+		printf '%s\n' "$1"
+		;;
+	esac
+}
+
+prompt_for_iso() {
+	local fallback answer
+
+	fallback="$HOME/Downloads/dwm-titus.iso"
+	if [[ ! -t 0 ]]; then
+		err "ISO not found at $default_iso_path; continuing without ISO upload. Use --iso PATH to upload one."
+		return 0
+	fi
+
+	if [[ -f $fallback ]]; then
+		printf 'ISO not found at %s.\n' "$default_iso_path" >&2
+		printf 'Path to dwm-titus.iso [%s]: ' "$fallback" >&2
+	else
+		printf 'ISO not found at %s.\n' "$default_iso_path" >&2
+		printf 'Path to dwm-titus.iso (leave blank to skip ISO upload): ' >&2
+	fi
+	IFS= read -r answer
+
+	if [[ -z $answer && -f $fallback ]]; then
+		iso_path=$fallback
+	elif [[ -n $answer ]]; then
+		iso_path="$(expand_user_path "$answer")"
+	fi
+}
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 config_mk="$repo_root/config.mk"
+default_iso_path="$repo_root/dwm-titus.iso"
 release_version=
 iso_path=
 notes_file=
@@ -148,6 +188,16 @@ tag="v$release_version"
 next_version="$major.$((minor + 1)).0"
 release_archive="$repo_root/release/dwm-titus-$release_version.tar.gz"
 checksums="$repo_root/release/dwm-titus-$release_version-SHA256SUMS"
+
+if [[ -z $iso_path ]]; then
+	if [[ -f $default_iso_path ]]; then
+		iso_path=$default_iso_path
+	else
+		prompt_for_iso
+	fi
+else
+	iso_path="$(expand_user_path "$iso_path")"
+fi
 
 if [[ -n $iso_path && ! -f $iso_path ]]; then
 	err "ISO not found: $iso_path"
