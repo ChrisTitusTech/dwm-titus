@@ -294,6 +294,14 @@ check-lightdm-config:
 
 check-kickstart:
 	ksvalidator dwm-fedora.ks
+	awk 'BEGIN { bad = 0 } \
+		/^[[:space:]]*#/ { next } \
+		/(^user[[:space:]]|^rootpw[[:space:]]|--hostname=|\/home\/titus|America\/Chicago|^initial-setup$$|^firstboot[[:space:]]+--enable)/ { \
+			print "Personal kickstart default remains: " $$0 > "/dev/stderr"; \
+			bad = 1; \
+		} \
+		END { exit bad }' dwm-fedora.ks
+	grep -Fqx 'firstboot --disable' dwm-fedora.ks
 
 check-install: all
 	@set -eu; \
