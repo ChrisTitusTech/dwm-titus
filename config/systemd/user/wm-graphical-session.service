@@ -1,0 +1,14 @@
+[Unit]
+Description=Window Manager Graphical Session
+Documentation=man:systemd.special(7)
+BindsTo=graphical-session.target
+Wants=graphical-session.target xdg-desktop-autostart.target
+After=basic.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+
+[Install]
+WantedBy=default.target

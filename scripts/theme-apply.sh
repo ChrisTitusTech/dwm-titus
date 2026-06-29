@@ -279,9 +279,15 @@ if [[ "$QT_PLATFORM_THEME" == "qt5ct" || "$QT_PLATFORM_THEME" == "qt6ct" ]]; the
 	fi
 fi
 
-# Propagate to D-Bus-activated services already running in this session
+# Propagate to user services and D-Bus-activated services in this session
+if command -v systemctl &>/dev/null; then
+	systemctl --user import-environment \
+		QT_QPA_PLATFORMTHEME \
+		XCURSOR_THEME \
+		XCURSOR_SIZE 2>/dev/null || true
+fi
 if command -v dbus-update-activation-environment &>/dev/null; then
-	dbus-update-activation-environment \
+	dbus-update-activation-environment --systemd \
 		QT_QPA_PLATFORMTHEME="$QT_PLATFORM_THEME" \
 		XCURSOR_THEME="$CURSOR_THEME" \
 		XCURSOR_SIZE="$CURSOR_SIZE" 2>/dev/null || true
