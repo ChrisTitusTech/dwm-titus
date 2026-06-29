@@ -35,6 +35,9 @@ dwm_packages() {
 	arch:theme)
 		printf '%s\n' dconf
 		;;
+	arch:theme-gtk)
+		printf '%s\n' arc-gtk-theme materia-gtk-theme numix-themes yaru-gtk-theme
+		;;
 	arch:theme-optional)
 		printf '%s\n' qt6ct qt5ct
 		;;
@@ -91,6 +94,14 @@ dwm_packages() {
 	rhel:theme)
 		printf '%s\n' dconf
 		;;
+	rhel:theme-gtk)
+		if [[ ${DISTRO_ID:-} == fedora ]]; then
+			printf '%s\n' \
+				arc-theme adw-gtk3-theme numix-gtk-theme \
+				yaru-gtk3-theme yaru-gtk4-theme deepin-gtk-theme \
+				bluebird-gtk3-theme
+		fi
+		;;
 	rhel:theme-optional)
 		printf '%s\n' qt6ct qt5ct
 		;;
@@ -133,6 +144,9 @@ dwm_packages() {
 	debian:theme)
 		printf '%s\n' dconf
 		;;
+	debian:theme-gtk)
+		printf '%s\n' arc-theme materia-gtk-theme numix-gtk-theme yaru-theme-gtk
+		;;
 	debian:theme-optional)
 		printf '%s\n' qt6ct qt5ct
 		;;
@@ -154,6 +168,7 @@ dwm_packages() {
 	*:recommended)
 		dwm_packages "$family" desktop
 		dwm_packages "$family" theme
+		dwm_packages "$family" theme-gtk
 		dwm_packages "$family" fonts
 		;;
 	*:optional)

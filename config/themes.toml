@@ -49,6 +49,7 @@ borderpx = 1   # border size in pixels (0 = none, 1-3 = recommended)
 #     term_color0 … term_color15  (standard 16-color palette)
 #
 #   Dark mode: dark_mode = true                   (true = dark, false = light; default: true)
+#   GTK theme: gtk_theme = "Nordic"               (optional installed GTK theme name)
 
 
 # ── Nord ──────────────────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ term_color14    = "#8FBCBB"
 term_color15    = "#ECEFF4"
 
 dark_mode       = true
+gtk_theme       = "Nordic"
 
 
 

@@ -56,6 +56,9 @@ names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
 Use `core` for the required build/X11/session packages and one terminal,
 `recommended` for the desktop layer, or `full` for optional extras such as
 file-manager integration, portals, wallpapers, and display-manager setup.
+The recommended profile also installs portable GTK themes where available and
+installs Nordic system-wide so the default Nord theme is recognized by GTK apps
+such as Thunar.
 
 #### 2. Clone and Build
 

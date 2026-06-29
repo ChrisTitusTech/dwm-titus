@@ -59,6 +59,8 @@ BG_DIR="$HOME/Pictures/backgrounds"
 MESLO_VERSION="3.4.0"
 MESLO_URL="https://github.com/ryanoasis/nerd-fonts/releases/download/v${MESLO_VERSION}/Meslo.zip"
 MESLO_SHA256="13b502ac8c2bd9d3161018064560e23cd42b175bb730780a270975265a19ad57"
+NORDIC_THEME_URL="https://github.com/EliverLara/Nordic.git"
+NORDIC_THEME_REF="master"
 ARCH="$(uname -m)"
 INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
 NON_INTERACTIVE=false
@@ -244,6 +246,36 @@ install_meslo_nerd_font() {
 	ok "MesloLGS Nerd Font installed."
 }
 
+install_nordic_gtk_theme() {
+	local target="/usr/share/themes/Nordic"
+	local tmp_dir
+
+	if [[ -d "$target/gtk-3.0" || -d "$target/gtk-4.0" ]]; then
+		ok "Nordic GTK theme is already installed system-wide."
+		return 0
+	fi
+
+	if ! command -v git &>/dev/null; then
+		warn "git is unavailable; skipping Nordic GTK theme install."
+		return 1
+	fi
+
+	tmp_dir="$(mktemp -d)"
+	if ! git clone --depth 1 --branch "$NORDIC_THEME_REF" "$NORDIC_THEME_URL" "$tmp_dir/Nordic" 2>/dev/null; then
+		rm -rf "$tmp_dir"
+		warn "Could not download Nordic GTK theme; continuing without it."
+		return 1
+	fi
+
+	sudo rm -rf "$target"
+	sudo install -d -m 0755 /usr/share/themes
+	sudo cp -a "$tmp_dir/Nordic" "$target"
+	sudo find "$target" -type d -exec chmod 0755 {} +
+	sudo find "$target" -type f -exec chmod 0644 {} +
+	rm -rf "$tmp_dir"
+	ok "Nordic GTK theme installed system-wide."
+}
+
 install_supported_terminal() {
 	local profile="terminal"
 
@@ -377,6 +409,10 @@ if install_recommended_profile; then
 	info "Installing recommended desktop dependencies..."
 	dwm_install_package_profile desktop
 	dwm_install_package_profile theme
+	if ! dwm_install_available_package_profile theme-gtk; then
+		warn "Some GTK theme packages were unavailable in enabled repositories."
+	fi
+	install_nordic_gtk_theme || true
 	dwm_install_package_profile fonts
 	ok "Recommended desktop dependencies installed."
 else

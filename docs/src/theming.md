@@ -59,6 +59,7 @@ Each `[theme.name]` section sets colors for all components:
 | `term_bg` / `term_fg` / `term_cursor` | Terminal background, text, cursor |
 | `term_color0`–`term_color15` | Full 16-color terminal palette |
 | `dark_mode` | GTK dark preference and Capitaine cursor variant (`true` / `false`) |
+| `gtk_theme` | Optional installed GTK theme name for GTK apps such as Thunar |
 
 ---
 
@@ -80,6 +81,7 @@ term_fg         = "#cdd6f4"
 term_cursor     = "#f5e0dc"
 # ... term_color0-15 ...
 dark_mode       = true
+gtk_theme       = "Nordic"
 ```
 
 Then set `theme = "mytheme"` under `[active]` and save.

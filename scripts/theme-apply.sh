@@ -75,6 +75,31 @@ else
 	CURSOR_THEME="Capitaine-Cursors"
 fi
 
+gtk_theme_available() {
+	local name="$1"
+	local base
+	for base in \
+		"${XDG_DATA_HOME:-$HOME/.local/share}/themes" \
+		"$HOME/.themes" \
+		/usr/local/share/themes \
+		/usr/share/themes; do
+		[[ -d "$base/$name" ]] || continue
+		[[ -d "$base/$name/gtk-3.0" || -d "$base/$name/gtk-4.0" ]] && return 0
+	done
+	return 1
+}
+
+default_gtk_theme() {
+	if [[ "$DARK_MODE" == "true" ]]; then
+		case "$THEME_NAME" in
+		nord) printf '%s\n' "Nordic" ;;
+		*) printf '%s\n' "Adwaita-dark" ;;
+		esac
+	else
+		printf '%s\n' "Adwaita"
+	fi
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ALACRITTY — write ~/.config/alacritty/active-theme.toml
 # ══════════════════════════════════════════════════════════════════════════════
@@ -176,12 +201,18 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════
 if [[ "$DARK_MODE" == "true" ]]; then
 	GTK_COLOR_SCHEME="prefer-dark"
-	GTK_THEME_NAME="Adwaita-dark"
 	GTK_DARK_PREF=1
 else
 	GTK_COLOR_SCHEME="default"
-	GTK_THEME_NAME="Adwaita"
 	GTK_DARK_PREF=0
+fi
+GTK_THEME_NAME="$(theme_get gtk_theme)"
+[[ -n "$GTK_THEME_NAME" ]] || GTK_THEME_NAME="$(default_gtk_theme)"
+if ! gtk_theme_available "$GTK_THEME_NAME"; then
+	GTK_THEME_FALLBACK="Adwaita"
+	[[ "$DARK_MODE" == "true" ]] && GTK_THEME_FALLBACK="Adwaita-dark"
+	echo "theme-apply: GTK theme '$GTK_THEME_NAME' not found; falling back to '$GTK_THEME_FALLBACK'" >&2
+	GTK_THEME_NAME="$GTK_THEME_FALLBACK"
 fi
 
 # Helper: set or add a key in a [Settings] ini file without destroying other settings
@@ -239,6 +270,11 @@ if command -v gsettings &>/dev/null; then
 	gsettings set org.gnome.desktop.interface gtk-theme "$GTK_THEME_NAME" 2>/dev/null || true
 	gsettings set org.gnome.desktop.interface cursor-theme "$CURSOR_THEME" 2>/dev/null || true
 	gsettings set org.gnome.desktop.interface cursor-size "$CURSOR_SIZE" 2>/dev/null || true
+fi
+if command -v xfconf-query &>/dev/null; then
+	xfconf-query -c xsettings -p /Net/ThemeName -n -t string -s "$GTK_THEME_NAME" 2>/dev/null || true
+	xfconf-query -c xsettings -p /Gtk/CursorThemeName -n -t string -s "$CURSOR_THEME" 2>/dev/null || true
+	xfconf-query -c xsettings -p /Gtk/CursorThemeSize -n -t int -s "$CURSOR_SIZE" 2>/dev/null || true
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
