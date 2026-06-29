@@ -25,3 +25,6 @@ dwm-titus.iso
 
 # Local Vicinae AppImage extraction/staging tree
 /vicinae/
+
+# Local CI validation virtualenv
+/.ci-pykickstart/
