@@ -121,14 +121,18 @@ wifi_scan() {
 
 wifi_connect() {
 	need_nmcli
-	[ "$#" -ge 3 ] && [ "$#" -le 4 ] || usage
+	if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+		usage
+	fi
 
 	ifname=$1
 	bssid=$2
 	ssid=$3
 	password=${4:-}
 
-	[ -n "$ifname" ] && [ -n "$bssid" ] && [ -n "$ssid" ] || usage
+	if [ -z "$ifname" ] || [ -z "$bssid" ] || [ -z "$ssid" ]; then
+		usage
+	fi
 
 	if [ "$#" -eq 4 ]; then
 		nmcli device wifi connect "$ssid" password "$password" ifname "$ifname" bssid "$bssid"
