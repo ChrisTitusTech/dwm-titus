@@ -1,5 +1,5 @@
-# dwm version
-VERSION = 0.5
+# dwm-titus version
+VERSION = 0.5.0
 
 # Customize below to fit your system
 

@@ -13,6 +13,8 @@ config.h
 
 nohup.out
 .DS_STORE
+livemedia.log
+program.log
 
 # Local editor settings that may contain machine-specific absolute paths
 .zed/settings.json

@@ -38,6 +38,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-status \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
+	scripts/dwm-titus-release \
 	scripts/dwm-screenshot \
 	scripts/dwm-terminal \
 	scripts/dwm-utils.sh \
@@ -291,6 +292,9 @@ check-quickshell-controlcenter:
 check-lightdm-config:
 	tests/test-lightdm-config.sh
 
+check-kickstart:
+	ksvalidator dwm-fedora.ks
+
 check-install: all
 	@set -eu; \
 	stage="$$(mktemp -d)"; \
@@ -397,6 +401,7 @@ check:
 	$(MAKE) check-terminal
 	$(MAKE) check-lock
 	$(MAKE) check-session-guards
+	$(MAKE) check-kickstart
 	$(MAKE) check-install
 	$(MAKE) check-install-manifest
 	$(MAKE) check-install-preservation
@@ -406,7 +411,7 @@ check:
 .PHONY: all check check-build-config check-build-deps check-default-apps \
 	check-container-smoke \
 	check-display-profile check-format check-install \
-	check-install-manifest check-install-preservation check-lock \
+	check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-shell check-diagnostics \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-network check-lightdm-config check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall

@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+	cat <<'EOF'
+Usage: scripts/dwm-titus-release [options]
+
+Create a GitHub release for the current config.mk VERSION, then bump config.mk
+to the next minor version.
+
+Options:
+  --version VERSION       Release this version instead of config.mk VERSION.
+                          Accepts 0.5.0 or v0.5.0.
+  --iso PATH              Upload an installer ISO alongside the source archive.
+  --notes FILE            Use FILE as release notes.
+  --dry-run               Print the planned commands and version bump only.
+  --skip-checks           Skip make release-check.
+  --no-bump               Do not bump config.mk after release creation.
+  -h, --help              Show this help.
+EOF
+}
+
+err() {
+	printf 'dwm-titus-release: %s\n' "$*" >&2
+}
+
+run() {
+	if [[ $dry_run == true ]]; then
+		printf '+'
+		printf ' %q' "$@"
+		printf '\n'
+	else
+		"$@"
+	fi
+}
+
+remote_tag_exists() {
+	gh api "repos/:owner/:repo/git/ref/tags/$tag" >/dev/null 2>&1
+}
+
+remote_release_exists() {
+	gh release view "$tag" >/dev/null 2>&1
+}
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+config_mk="$repo_root/config.mk"
+release_version=
+iso_path=
+notes_file=
+dry_run=false
+skip_checks=false
+bump_after_release=true
+
+while (($# > 0)); do
+	case "$1" in
+	--version)
+		if (($# < 2)); then
+			err "--version requires a value."
+			exit 1
+		fi
+		release_version=$2
+		shift 2
+		;;
+	--version=*)
+		release_version=${1#*=}
+		shift
+		;;
+	--iso)
+		if (($# < 2)); then
+			err "--iso requires a value."
+			exit 1
+		fi
+		iso_path=$2
+		shift 2
+		;;
+	--iso=*)
+		iso_path=${1#*=}
+		shift
+		;;
+	--notes)
+		if (($# < 2)); then
+			err "--notes requires a value."
+			exit 1
+		fi
+		notes_file=$2
+		shift 2
+		;;
+	--notes=*)
+		notes_file=${1#*=}
+		shift
+		;;
+	--dry-run)
+		dry_run=true
+		shift
+		;;
+	--skip-checks)
+		skip_checks=true
+		shift
+		;;
+	--no-bump)
+		bump_after_release=false
+		shift
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		err "unknown argument: $1"
+		usage >&2
+		exit 1
+		;;
+	esac
+done
+
+if [[ ! -f $config_mk ]]; then
+	err "missing config.mk at $config_mk"
+	exit 1
+fi
+
+current_version="$(
+	awk -F= '
+		$1 ~ /^[[:space:]]*VERSION[[:space:]]*$/ {
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
+			print $2
+			exit
+		}
+	' "$config_mk"
+)"
+
+if [[ -z $current_version ]]; then
+	err "could not read VERSION from config.mk"
+	exit 1
+fi
+
+release_version=${release_version:-$current_version}
+release_version=${release_version#v}
+
+if [[ ! $release_version =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+	err "version must look like MAJOR.MINOR or MAJOR.MINOR.PATCH: $release_version"
+	exit 1
+fi
+
+IFS=. read -r major minor patch <<<"$release_version"
+patch=${patch:-0}
+release_version="$major.$minor.$patch"
+tag="v$release_version"
+next_version="$major.$((minor + 1)).0"
+release_archive="$repo_root/release/dwm-titus-$release_version.tar.gz"
+checksums="$repo_root/release/dwm-titus-$release_version-SHA256SUMS"
+
+if [[ -n $iso_path && ! -f $iso_path ]]; then
+	err "ISO not found: $iso_path"
+	exit 1
+fi
+
+if [[ -n $notes_file && ! -f $notes_file ]]; then
+	err "release notes file not found: $notes_file"
+	exit 1
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+	err "missing required command: gh"
+	exit 1
+fi
+
+cd "$repo_root"
+
+release_exists=false
+
+if [[ $dry_run == true ]]; then
+	run gh api "repos/:owner/:repo/git/ref/tags/$tag"
+	run gh api -X POST repos/:owner/:repo/git/refs \
+		-f "ref=refs/tags/$tag" \
+		-f "sha=$(git rev-parse HEAD)"
+	run gh release view "$tag"
+else
+	if remote_tag_exists; then
+		printf 'Remote tag %s already exists.\n' "$tag"
+	else
+		head_sha="$(git rev-parse HEAD)"
+		printf 'Remote tag %s does not exist; creating it at %s.\n' "$tag" "$head_sha"
+		run gh api -X POST repos/:owner/:repo/git/refs \
+			-f "ref=refs/tags/$tag" \
+			-f "sha=$head_sha" >/dev/null
+	fi
+
+	if remote_release_exists; then
+		release_exists=true
+	fi
+fi
+
+if [[ $release_version != "$current_version" ]]; then
+	run sed -i -E "s/^[[:space:]]*VERSION[[:space:]]*=.*/VERSION = $release_version/" "$config_mk"
+fi
+
+if [[ $skip_checks != true ]]; then
+	run make release-check
+else
+	run make release
+fi
+
+assets=("$release_archive")
+if [[ -n $iso_path ]]; then
+	assets+=("$iso_path")
+fi
+
+if [[ $dry_run == true ]]; then
+	printf '+ sha256sum'
+	printf ' %q' "${assets[@]}"
+	printf ' > %q\n' "$checksums"
+else
+	mkdir -p "$(dirname "$checksums")"
+	sha256sum "${assets[@]}" >"$checksums"
+fi
+assets+=("$checksums")
+
+if [[ $release_exists == true ]]; then
+	run gh release upload "$tag" "${assets[@]}" --clobber
+else
+	gh_args=(release create "$tag" "${assets[@]}" --title "dwm-titus $tag" --verify-tag)
+	if [[ -n $notes_file ]]; then
+		gh_args+=(--notes-file "$notes_file")
+	else
+		gh_args+=(--notes "dwm-titus $tag release.")
+	fi
+	run gh "${gh_args[@]}"
+fi
+
+if [[ $bump_after_release == true ]]; then
+	run sed -i -E "s/^[[:space:]]*VERSION[[:space:]]*=.*/VERSION = $next_version/" "$config_mk"
+	printf 'Next development version: %s\n' "$next_version"
+fi
