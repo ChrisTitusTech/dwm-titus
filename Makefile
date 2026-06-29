@@ -208,6 +208,7 @@ install-user:
 		fi; \
 	done
 	chown -R ${OWNER}: ${CFG_DIR}/fontconfig 2>/dev/null || true
+	chown -R ${OWNER}: ${CFG_DIR}/dwm-titus
 	chown -R ${OWNER}: ${DATA_DIR}
 	if [ -e "${USER_HOME}/.xinitrc" ]; then chown ${OWNER}: "${USER_HOME}/.xinitrc"; fi
 	@echo ""

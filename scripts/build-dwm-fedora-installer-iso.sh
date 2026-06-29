@@ -82,7 +82,13 @@ fi
 
 work_dir="$(mktemp -d)"
 payload_dir="$work_dir/dwm-titus"
-trap 'rm -rf "$work_dir"' EXIT
+grub_cfg="$work_dir/grub.cfg"
+patched_grub_cfg="$work_dir/grub.cfg.patched"
+output_dir="$(dirname "$output_iso")"
+output_base="$(basename "$output_iso")"
+tmp_output="$(mktemp "$output_dir/.$output_base.tmp.XXXXXX")"
+rm -f "$tmp_output"
+trap 'rm -rf "$work_dir"; rm -f "$tmp_output"' EXIT
 
 rsync -a --delete \
 	--exclude='.git/' \
@@ -96,9 +102,22 @@ rsync -a --delete \
 	--exclude='*.iso' \
 	"$repo_dir/" "$payload_dir/"
 
-xorriso -indev "$input_iso" -outdev "$output_iso" \
+xorriso -osirrox on -indev "$input_iso" -extract /EFI/BOOT/grub.cfg "$grub_cfg" >/dev/null 2>&1
+awk '
+	/^[[:space:]]*linux[[:space:]]/ && $0 !~ /inst\.ks=/ {
+		if (match($0, /inst\.stage2=[^[:space:]]+/)) {
+			stage2 = substr($0, RSTART + length("inst.stage2="), RLENGTH - length("inst.stage2="))
+			$0 = $0 " inst.ks=" stage2 ":/dwm-fedora.ks"
+		}
+	}
+	{ print }
+' "$grub_cfg" >"$patched_grub_cfg"
+
+xorriso -indev "$input_iso" -outdev "$tmp_output" \
 	-boot_image any replay \
 	-map "$ks_file" /dwm-fedora.ks \
+	-map "$patched_grub_cfg" /EFI/BOOT/grub.cfg \
 	-map "$payload_dir" /dwm-titus
 
+mv -f "$tmp_output" "$output_iso"
 printf 'Created %s\n' "$output_iso"
