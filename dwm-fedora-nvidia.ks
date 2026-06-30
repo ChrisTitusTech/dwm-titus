@@ -1,7 +1,8 @@
-# Fedora mutable installer profile for dwm-titus.
+# Fedora mutable installer profile for dwm-titus with RPM Fusion NVIDIA drivers.
 #
-# Build an installer ISO with scripts/build-dwm-fedora-installer-iso.sh so the
-# local checkout is available at /run/install/repo/dwm-titus during install.
+# Build an installer ISO with:
+# scripts/build-dwm-fedora-installer-iso.sh --variant nvidia
+# The local checkout is available at /run/install/repo/dwm-titus during install.
 # Storage, locale, keyboard layout, timezone, hostname, root password, and user
 # creation are intentionally left to the Anaconda UI.
 
@@ -22,7 +23,7 @@ repo --name="rpmfusion-nonfree-tainted" --metalink="https://mirrors.rpmfusion.or
 repo --name="brave-browser" --baseurl="https://brave-browser-rpm-release.s3.brave.com/$basearch" --install
 repo --name="mwt-packages" --baseurl="https://mirror.mwt.me/shiftkey-desktop/rpm" --install
 
-bootloader --location=mbr
+bootloader --location=mbr --append="rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1"
 services --enabled=NetworkManager
 
 %packages
@@ -98,6 +99,14 @@ file-roller
 xdg-user-dirs
 xdg-desktop-portal-gtk
 gnome-keyring
+kernel-devel
+kernel-headers
+perl
+elfutils-libelf-devel
+akmod-nvidia
+xorg-x11-drv-nvidia
+xorg-x11-drv-nvidia-cuda
+nvidia-settings
 %end
 
 %post --nochroot --erroronfail --log=/mnt/sysimage/root/dwm-titus-copy.log
@@ -143,6 +152,15 @@ install -m 0440 /dev/null "$install_sudoers"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$target_user" > "$install_sudoers"
 
 su - "$target_user" -c 'cd "$HOME/.local/share/dwm-titus" && ./install.sh --non-interactive --profile core'
+
+install -d -m 0755 /etc/modprobe.d
+printf '%s\n' 'options nvidia-drm modeset=1 fbdev=1' >/etc/modprobe.d/nvidia-drm.conf
+if command -v dracut >/dev/null 2>&1; then
+	dracut -f --regenerate-all
+fi
+if systemctl list-unit-files nvidia-persistenced.service >/dev/null 2>&1; then
+	systemctl enable nvidia-persistenced.service
+fi
 
 find /usr/share/xsessions -mindepth 1 -maxdepth 1 -type f ! -name dwm.desktop -delete 2>/dev/null || true
 find /usr/share/wayland-sessions -mindepth 1 -maxdepth 1 -type f -delete 2>/dev/null || true

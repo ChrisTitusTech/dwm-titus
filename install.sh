@@ -359,6 +359,27 @@ install_lightdm_config() {
 	fi
 }
 
+disable_selinux_for_fedora() {
+	local selinux_config="/etc/selinux/config"
+
+	if [[ $DISTRO_ID != "fedora" ]]; then
+		return
+	fi
+
+	info "Disabling SELinux for Fedora..."
+	if command -v getenforce &>/dev/null && [[ $(getenforce 2>/dev/null) == "Enforcing" ]]; then
+		sudo setenforce 0 || warn "Could not switch SELinux to permissive for this boot."
+	fi
+	if [[ -f $selinux_config ]]; then
+		sudo sed -i -E 's/^[[:space:]]*SELINUX=.*/SELINUX=disabled/' "$selinux_config"
+	else
+		sudo install -d -m 0755 /etc/selinux
+		printf '%s\n' 'SELINUX=disabled' 'SELINUXTYPE=targeted' |
+			sudo tee "$selinux_config" >/dev/null
+	fi
+	ok "SELinux disabled for future Fedora boots."
+}
+
 echo ""
 echo "╔═══════════════════════════════════════════╗"
 echo "║             dwm-titus Installer           ║"
@@ -380,6 +401,8 @@ if [[ $DISTRO_FAMILY == "debian" ]]; then
 	info "Refreshing apt package metadata..."
 	sudo apt-get update
 fi
+
+disable_selinux_for_fedora
 
 # ── Required build and runtime dependencies ──────────────
 info "Installing required build and runtime dependencies..."

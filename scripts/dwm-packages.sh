@@ -81,7 +81,7 @@ dwm_packages() {
 		;;
 	rhel:desktop)
 		printf '%s\n' \
-			picom feh flameshot dex-autostart mate-polkit \
+			quickshell picom feh flameshot dex-autostart mate-polkit \
 			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput
 		;;

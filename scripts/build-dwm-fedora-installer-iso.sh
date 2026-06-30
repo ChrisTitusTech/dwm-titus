@@ -3,9 +3,9 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/build-dwm-fedora-installer-iso.sh --input ISO --output ISO
+Usage: scripts/build-dwm-fedora-installer-iso.sh --input ISO --output ISO [--variant standard|nvidia]
 
-Embed this checkout and dwm-fedora.ks into a Fedora installer ISO.
+Embed this checkout and a dwm-titus Kickstart into a Fedora installer ISO.
 The resulting ISO exposes the checkout at /run/install/repo/dwm-titus.
 EOF
 }
@@ -16,6 +16,7 @@ err() {
 
 input_iso=
 output_iso=
+variant=standard
 
 while (($# > 0)); do
 	case "$1" in
@@ -43,6 +44,18 @@ while (($# > 0)); do
 		output_iso=${1#*=}
 		shift
 		;;
+	--variant)
+		if (($# < 2)); then
+			err "--variant requires a value."
+			exit 1
+		fi
+		variant=$2
+		shift 2
+		;;
+	--variant=*)
+		variant=${1#*=}
+		shift
+		;;
 	-h | --help)
 		usage
 		exit 0
@@ -60,6 +73,15 @@ if [[ -z $input_iso || -z $output_iso ]]; then
 	exit 1
 fi
 
+case "$variant" in
+standard | nvidia) ;;
+*)
+	err "unknown variant: $variant"
+	usage >&2
+	exit 1
+	;;
+esac
+
 if [[ ! -f $input_iso ]]; then
 	err "input ISO not found: $input_iso"
 	exit 1
@@ -73,7 +95,16 @@ for command in xorriso rsync; do
 done
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ks_file="$repo_dir/dwm-fedora.ks"
+case "$variant" in
+standard)
+	ks_file="$repo_dir/dwm-fedora.ks"
+	extra_linux_args=
+	;;
+nvidia)
+	ks_file="$repo_dir/dwm-fedora-nvidia.ks"
+	extra_linux_args="rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1"
+	;;
+esac
 
 if [[ ! -f $ks_file ]]; then
 	err "missing Kickstart file: $ks_file"
@@ -103,11 +134,23 @@ rsync -a --delete \
 	"$repo_dir/" "$payload_dir/"
 
 xorriso -osirrox on -indev "$input_iso" -extract /EFI/BOOT/grub.cfg "$grub_cfg" >/dev/null 2>&1
-awk '
-	/^[[:space:]]*linux[[:space:]]/ && $0 !~ /inst\.ks=/ {
+awk -v extra_linux_args="$extra_linux_args" '
+	function append_arg(arg) {
+		if (arg != "" && index($0, arg) == 0) {
+			$0 = $0 " " arg
+		}
+	}
+
+	/^[[:space:]]*linux[[:space:]]/ {
 		if (match($0, /inst\.stage2=[^[:space:]]+/)) {
 			stage2 = substr($0, RSTART + length("inst.stage2="), RLENGTH - length("inst.stage2="))
-			$0 = $0 " inst.ks=" stage2 ":/dwm-fedora.ks"
+			append_arg("inst.ks=" stage2 ":/dwm-fedora.ks")
+		}
+		if (extra_linux_args != "") {
+			count = split(extra_linux_args, args, /[[:space:]]+/)
+			for (i = 1; i <= count; i++) {
+				append_arg(args[i])
+			}
 		}
 	}
 	{ print }
@@ -120,4 +163,4 @@ xorriso -indev "$input_iso" -outdev "$tmp_output" \
 	-map "$payload_dir" /dwm-titus
 
 mv -f "$tmp_output" "$output_iso"
-printf 'Created %s\n' "$output_iso"
+printf 'Created %s (%s)\n' "$output_iso" "$variant"

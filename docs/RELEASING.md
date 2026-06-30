@@ -28,3 +28,27 @@ unless `--no-bump` is provided.
 `make release-check` builds the archive twice and verifies identical bytes,
 the generated desktop-session path, required archive entries, and the absence
 of `config.h` and object files.
+
+## Fedora installer ISOs
+
+Build the regular Fedora installer ISO from a Fedora netinst ISO:
+
+```sh
+scripts/build-dwm-fedora-installer-iso.sh \
+  --input ~/Downloads/Fedora-Server-netinst-x86_64-44-1.7.iso \
+  --output release/dwm-titus.iso
+```
+
+Build the NVIDIA installer ISO:
+
+```sh
+scripts/build-dwm-fedora-installer-iso.sh \
+  --input ~/Downloads/Fedora-Server-netinst-x86_64-44-1.7.iso \
+  --output release/dwm-titus-nvidia.iso \
+  --variant nvidia
+```
+
+Both spins install the enabled Fedora, RPM Fusion, Brave, and MWT package
+repositories used by this project. The NVIDIA spin additionally enables RPM
+Fusion NVIDIA driver packages, blacklists Nouveau, and sets NVIDIA DRM
+modesetting for first boot.

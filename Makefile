@@ -294,15 +294,18 @@ check-lightdm-config:
 	tests/test-lightdm-config.sh
 
 check-kickstart:
-	ksvalidator dwm-fedora.ks
-	awk 'BEGIN { bad = 0 } \
-		/^[[:space:]]*#/ { next } \
-		/(^user[[:space:]]|^rootpw[[:space:]]|--hostname=|\/home\/titus|America\/Chicago|^initial-setup$$|^firstboot[[:space:]]+--enable)/ { \
-			print "Personal kickstart default remains: " $$0 > "/dev/stderr"; \
-			bad = 1; \
-		} \
-		END { exit bad }' dwm-fedora.ks
-	grep -Fqx 'firstboot --disable' dwm-fedora.ks
+	for ks in dwm-fedora.ks dwm-fedora-nvidia.ks; do \
+		ksvalidator "$$ks"; \
+		awk 'BEGIN { bad = 0 } \
+			/^[[:space:]]*#/ { next } \
+			/(^user[[:space:]]|^rootpw[[:space:]]|--hostname=|\/home\/titus|America\/Chicago|^initial-setup$$|^firstboot[[:space:]]+--enable)/ { \
+				print "Personal kickstart default remains in '"$$ks"': " $$0 > "/dev/stderr"; \
+				bad = 1; \
+			} \
+			END { exit bad }' "$$ks"; \
+		grep -Fqx 'firstboot --disable' "$$ks"; \
+	done
+	tests/test-kickstart-variants.sh
 
 check-install: all
 	@set -eu; \
