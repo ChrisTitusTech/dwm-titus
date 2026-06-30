@@ -83,6 +83,11 @@ startup, configuration deployment, and the core runtime checks in `SPEC.md`.
 - `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` is managed exclusively by
   dwm-titus. Unlike user-owned dwm TOML files, install/update flows may replace
   this directory from tracked `config/quickshell/` to prevent stale shell code.
+- Relaunch the managed Quickshell instance through
+  `dwm-quickshell-controlcenter action restart-quickshell` or the normal
+  autostart path. Do not manually start it with a repo-local `--path`, because
+  hotkeys target `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml` and
+  Quickshell treats different config paths as different IPC instances.
 - Quickshell integration must be event-driven whenever the underlying state has
   a signal, subscription, watch, IPC, or service API. Prefer `xprop -spy`,
   D-Bus/service notifications, process stdout streams, or Quickshell service

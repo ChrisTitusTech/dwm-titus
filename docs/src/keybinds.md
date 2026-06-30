@@ -19,6 +19,7 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | `Super` + `B` | Browser |
 | `Super` + `/` | Keybind viewer |
 | `Super` + `F1` | Control Center |
+| `Super` + `Shift` + `R` | Restart Quickshell |
 
 ## Screenshots
 
