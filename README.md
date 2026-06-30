@@ -27,91 +27,85 @@ This is a **heavily modified** version of dwm based on the original [suckless.or
 
 ---
 
-## 📋 Install
+## Install
 
-### Quick Install (Recommended)
+Choose the path that matches what you are installing:
 
-Use [Linutil](https://christitus.com/linux) for automated setup:
+| Path | Best for | Result |
+|------|----------|--------|
+| `install.sh` | Existing Debian-, Arch-, Fedora-, or RHEL-family system | Installs dependencies, builds dwm, installs the session, and preserves local config |
+| Fedora ISO | Fresh Fedora install | Boots a Fedora installer with dwm-titus Kickstart and this repo embedded |
 
-```bash
-curl -fsSL https://christitus.com/linux | sh
-```
-
-<img width="1839" height="1000" alt="image" src="https://github.com/user-attachments/assets/314f9a40-4ccb-4c34-b3d2-dcfee63c278b" />
-
-Select `dwm`, `bash prompt`, and `alacritty` using the `v` key, then press `Enter`.
-
-### Manual Install
-
-#### 1. Install Dependencies
-
-The supported dependency path is the installer because it resolves package
-names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
-
-```bash
-./install.sh --dry-run --non-interactive --profile core
-./install.sh --profile full
-```
-
-Use `core` for the required build/X11/session packages and one terminal,
-`recommended` for the desktop layer, or `full` for optional extras such as
-file-manager integration, portals, wallpapers, and display-manager setup.
-The recommended profile also installs portable GTK themes where available and
-installs Nordic system-wide so the default Nord theme is recognized by GTK apps
-such as Thunar.
-
-#### 2. Clone and Build
+### Option 1: Install on an Existing System
 
 ```bash
 git clone https://github.com/ChrisTitusTech/dwm-titus.git
 cd dwm-titus
-make                       # Creates config.h from config.def.h when missing
-sudo make install
+
+./install.sh --dry-run --non-interactive --profile recommended
+./install.sh --profile recommended
 ```
 
-#### 3. Install Fonts
+Profiles:
 
-`make install` writes a local fontconfig alias file so both naming variants
-`MesloLGS NF` and `MesloLGS Nerd Font` resolve correctly across different Linux distributions.
-It also installs the bundled Capitaine dark and light cursor themes. Theme reloads
-select `Capitaine-Cursors-White` for dark themes and `Capitaine-Cursors` for light themes.
+| Profile | Use when you want |
+|---------|-------------------|
+| `core` | dwm, required X11/session packages, and one terminal |
+| `recommended` | `core` plus Quickshell, Picom, fonts, theming, screenshots, audio, and brightness tools |
+| `full` | `recommended` plus optional extras such as file manager integration, portals, wallpapers, and display-manager setup |
 
-#### Automated Installer
+The installer detects the distribution from `/etc/os-release`, resolves package
+names for the detected family, preserves existing `config.h` and user TOML
+files, and installs the managed Quickshell config.
 
-The installer detects Debian-, Arch-, and Fedora/RHEL-family systems:
+For unattended runs:
+
 ```bash
-./install.sh
+./install.sh --non-interactive --yes --profile recommended
 ```
 
-On Fedora it installs the required X11 development libraries and desktop
-packages with `dnf`. MesloLGS Nerd Font is downloaded from the pinned Nerd
-Fonts v3.4.0 release, checksum-verified, and installed under
-`~/.local/share/fonts/Meslo/`. If no supported terminal is installed, the
-installer selects Alacritty or Kitty from the enabled distribution
-repositories. It does not enable third-party repositories.
+### Option 2: Install from the Fedora ISO
 
-### Post-Install Setup
+Download the latest installer image from the GitHub release:
 
-**Option A — Display Manager** (SDDM, GDM, LightDM):
-Log out, select **dwm** from the session menu, and log back in.
+| ISO | Download |
+|-----|----------|
+| Standard | [`dwm-titus.iso`](https://github.com/ChrisTitusTech/dwm-titus/releases/latest/download/dwm-titus.iso) |
+| NVIDIA | [`dwm-titus-nvidia.iso`](https://github.com/ChrisTitusTech/dwm-titus/releases/latest/download/dwm-titus-nvidia.iso) |
+| Checksums | [latest release assets](https://github.com/ChrisTitusTech/dwm-titus/releases/latest) |
 
-**Option B — startx**:
-The installer places `.xinitrc` in your home directory. Start with:
+Use the NVIDIA ISO when the machine needs the NVIDIA Kickstart and installer
+boot arguments. Otherwise use the standard ISO.
+
+Basic flow:
+
+1. Write the ISO to a USB drive.
+2. Boot the machine from the USB drive.
+3. Choose the Fedora install entry.
+4. Complete the installer.
+5. Reboot and select the `dwm` session if your display manager asks.
+
+The ISO exposes the embedded checkout at `/run/install/repo/dwm-titus` during
+installation and uses the included Fedora Kickstart.
+
+### Starting dwm
+
+With a display manager, log out, select the `dwm` session, and log back in.
+
+With `startx`, run:
+
 ```bash
 startx
 ```
 
-The `.xinitrc` disables screen blanking/DPMS (prevents NVIDIA GPU issues on wake), starts the configured Quickshell panel, and starts dwm.
+After login, use these first:
 
-For a core-only setup, use the minimal session profile documented in
-[`docs/src/install.md`](docs/src/install.md). It runs dwm with one terminal,
-required X11/session services, and treats Picom, wallpapers, tray tools, and
-hardware helpers as optional degraded features.
-
-The normal app launcher binding is the Quickshell launcher on
-<kbd>SUPER</kbd> + <kbd>R</kbd>. The control center and keybind viewer are
-native Quickshell utility windows on <kbd>SUPER</kbd> + <kbd>F1</kbd> and
-<kbd>SUPER</kbd> + <kbd>/</kbd>.
+| Keybind | Action |
+|---------|--------|
+| <kbd>SUPER</kbd> + <kbd>X</kbd> | Open terminal |
+| <kbd>SUPER</kbd> + <kbd>R</kbd> | Toggle Quickshell launcher |
+| <kbd>SUPER</kbd> + <kbd>F1</kbd> | Open control center |
+| <kbd>SUPER</kbd> + <kbd>/</kbd> | Open keybind viewer |
 
 ---
 
