@@ -17,6 +17,23 @@ assert_listed() {
 	printf '%s\n' "$output" | grep -Fq "$1"
 }
 
+assert_file_line() {
+	file=$1
+	expected=$2
+	attempts=0
+
+	while [ "$attempts" -lt 5 ]; do
+		if [ -f "$file" ] && grep -Fqx "$expected" "$file"; then
+			return 0
+		fi
+		attempts=$((attempts + 1))
+		sleep 1
+	done
+
+	printf 'expected line not found in %s: %s\n' "$file" "$expected" >&2
+	return 1
+}
+
 visible_desktop="$work/data/applications/visible.desktop"
 browser_desktop="$work/data/applications/browser-actions.desktop"
 editor_desktop="$work/data/applications/editor-actions.desktop"
@@ -171,7 +188,7 @@ chmod +x "$work/bin/dex"
 DWM_TEST_DEX_LOG="$work/dex.log" \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-launcher" launch "$work/data/applications/visible.desktop"
-grep -Fqx "$work/data/applications/visible.desktop" "$work/dex.log"
+assert_file_line "$work/dex.log" "$work/data/applications/visible.desktop"
 
 if "$repo/scripts/dwm-quickshell-launcher" launch "$work/data/applications/missing.desktop" 2>"$work/missing.err"; then
 	exit 1

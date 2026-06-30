@@ -287,11 +287,13 @@ launch_app() {
 	}
 
 	if command -v dex >/dev/null 2>&1; then
-		exec dex "$file"
+		launch_background dex "$file"
+		return 0
 	fi
 
 	if command -v gtk-launch >/dev/null 2>&1; then
-		exec gtk-launch "$(desktop_id "$file")"
+		launch_background gtk-launch "$(desktop_id "$file")"
+		return 0
 	fi
 
 	fallback_launch "$file"
