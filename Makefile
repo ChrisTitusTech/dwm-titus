@@ -275,6 +275,9 @@ check-display-profile:
 check-diagnostics:
 	tests/test-dwm-diagnostics.sh
 
+check-status:
+	tests/test-dwm-status.sh
+
 check-monitor-tags:
 	tests/test-monitor-tag-switching.sh
 
@@ -405,6 +408,7 @@ check:
 	$(MAKE) check-build-config
 	$(MAKE) check-default-apps
 	$(MAKE) check-diagnostics
+	$(MAKE) check-status
 	$(MAKE) check-display-profile
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
@@ -424,6 +428,6 @@ check:
 	check-container-smoke \
 	check-display-profile check-format check-install \
 	check-install-manifest check-install-preservation check-kickstart check-lock \
-	check-session-guards check-shell check-diagnostics \
+	check-session-guards check-shell check-diagnostics check-status \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-network check-lightdm-config check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall
