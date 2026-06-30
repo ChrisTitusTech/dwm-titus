@@ -120,6 +120,7 @@ main() {
 	for cmd in quickshell picom feh flameshot xdg-open notify-send amixer brightnessctl; do
 		check_optional_cmd "$cmd"
 	done
+	check_optional_cmd blueman-applet
 	check_any_optional_cmd "XDG autostart runner" dex dex-autostart
 	check_any_optional_cmd "audio control" pactl wpctl amixer
 	check_path_optional "$HOME/.xinitrc"

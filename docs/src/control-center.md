@@ -31,7 +31,7 @@ Runs a full dependency check and reports:
 
 - Build tools (`cc`, `make`) and required libraries
 - Xorg / Xlibre installation
-- Runtime programs: quickshell, picom, feh, flameshot
+- Runtime programs: quickshell, picom, feh, flameshot, bluetoothctl, blueman-applet
 - Terminal emulators (alacritty, kitty, st)
 - Fonts: MesloLGS Nerd, Noto Color Emoji
 - Running services: picom, NetworkManager

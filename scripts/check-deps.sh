@@ -118,6 +118,8 @@ else
 	MISSING=$((MISSING + 1))
 fi
 check_cmd "amixer"
+check_cmd "bluetoothctl"
+check_cmd "blueman-applet"
 echo ""
 
 # ── Terminal emulators ──────────────────────────────────

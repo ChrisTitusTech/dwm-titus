@@ -57,8 +57,8 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
 - `core`: required build packages, X11/session runtime, and one supported
   terminal.
 - `recommended`: `core` plus the recommended desktop layer such as Quickshell,
-  Quickshell, Picom, Feh, Dex, fonts, theming, screenshot, audio, and brightness
-  tools. It also installs portable GTK theme packages where available and
+  Quickshell, Picom, Feh, Dex, fonts, theming, screenshot, audio, Bluetooth
+  control and tray tools, and brightness tools. It also installs portable GTK theme packages where available and
   installs Nordic system-wide for the default Nord theme.
 - `full`: `recommended` plus optional extras such as file-manager integration,
   network tray utilities, portals, wallpapers, and display-manager setup.
