@@ -63,7 +63,7 @@ keys = [
   { mod="SUPER",            key="r",       desc="App launcher",            func="spawn",       cmd="quickshell ipc --path \"${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml\" call launcher toggle" },
   { mod="SUPER",            key="x",       desc="Terminal",                func="spawn",       exec=["$terminal"] },
   { mod="SUPER",            key="w",       desc="Looking Glass (VM)",      func="spawn",       cmd="looking-glass-client -F" },
-  { mod="SUPER SHIFT",      key="w",       desc="Randomize wallpaper",     func="spawn",       cmd="feh --randomize --bg-fill ~/Pictures/backgrounds/*" },
+  { mod="SUPER SHIFT",      key="w",       desc="Randomize wallpaper",     func="spawn",       cmd="dwm-quickshell-controlcenter action reload-wallpaper" },
 
   # ── Web apps ─────────────────────────────────────────────────────────────────
   { mod="SUPER",            key="a",       desc="ChatGPT",                 func="spawn",       exec=["$webapp", "https://chatgpt.com"] },
