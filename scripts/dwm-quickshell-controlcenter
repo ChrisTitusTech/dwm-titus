@@ -258,11 +258,30 @@ restart_quickshell() {
 }
 
 reload_wallpaper() {
-	if command -v feh >/dev/null 2>&1 && [ -d "${HOME:-}/Pictures/backgrounds" ]; then
-		feh --randomize --bg-fill "${HOME:-}/Pictures/backgrounds"/* >/dev/null 2>&1 || true
+	wallpaper_dir=${HOME:-}/Pictures/backgrounds
+
+	if ! command -v feh >/dev/null 2>&1; then
+		printf 'feh is unavailable\n' >&2
+		return 1
+	fi
+	if [ ! -d "$wallpaper_dir" ]; then
+		printf 'wallpaper folder is unavailable: %s\n' "$wallpaper_dir" >&2
+		notify "Wallpaper folder missing" "$wallpaper_dir"
+		return 1
+	fi
+	if ! find "$wallpaper_dir" -type f \
+		\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' -o -iname '*.gif' \) \
+		-print -quit | grep -q .; then
+		printf 'no loadable wallpaper images found in %s\n' "$wallpaper_dir" >&2
+		notify "No wallpapers found" "$wallpaper_dir"
+		return 1
+	fi
+	if find "$wallpaper_dir" -type f \
+		\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' -o -iname '*.gif' \) \
+		-exec feh --randomize --bg-fill {} + >/dev/null 2>&1; then
 		notify "Wallpaper reloaded"
 	else
-		printf 'feh or wallpaper folder is unavailable\n' >&2
+		printf 'failed to reload wallpaper from %s\n' "$wallpaper_dir" >&2
 		return 1
 	fi
 }

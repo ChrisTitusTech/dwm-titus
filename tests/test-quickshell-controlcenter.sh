@@ -108,6 +108,17 @@ run_helper action open-wallpapers >"$work/wallpapers.out"
 grep -Fqx 'action	open-wallpapers' "$work/wallpapers.out"
 grep -Fq "xdg-open $work/home/Pictures/backgrounds" "$work/actions.log"
 
+: >"$work/actions.log"
+run_helper action reload-wallpaper >"$work/reload-wallpaper.out"
+grep -Fqx 'action	reload-wallpaper' "$work/reload-wallpaper.out"
+grep -Fq "feh --randomize --bg-fill $work/home/Pictures/backgrounds/wallpaper.png" "$work/actions.log"
+
+rm -f "$work/home/Pictures/backgrounds/wallpaper.png"
+if run_helper action reload-wallpaper 2>"$work/reload-wallpaper.err"; then
+	exit 1
+fi
+grep -Fqx "no loadable wallpaper images found in $work/home/Pictures/backgrounds" "$work/reload-wallpaper.err"
+
 if run_helper action not-real 2>"$work/action.err"; then
 	exit 1
 fi
