@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Widgets
 import qs.core
 
@@ -7,19 +8,22 @@ Rectangle {
     id: root
 
     required property var trayItem
-    signal openMenu(var trayItem)
+
+    function openContextMenu() {
+        if (root.trayItem && root.trayItem.hasMenu) {
+            trayMenu.open();
+        }
+    }
 
     function handleClick(button) {
         if (button === Qt.LeftButton) {
             if (!root.trayItem.onlyMenu) {
                 root.trayItem.activate();
             } else if (root.trayItem.hasMenu) {
-                root.openMenu(root.trayItem);
+                root.openContextMenu();
             }
         } else if (button === Qt.MiddleButton) {
             root.trayItem.secondaryActivate();
-        } else if (button === Qt.RightButton && root.trayItem.hasMenu) {
-            root.openMenu(root.trayItem);
         }
     }
 
@@ -27,6 +31,13 @@ Rectangle {
     Layout.preferredHeight: Theme.trayItemSize
     radius: Theme.smallRadius
     color: trayMouse.containsMouse ? Theme.surface : "transparent"
+
+    QsMenuAnchor {
+        id: trayMenu
+
+        menu: root.trayItem ? root.trayItem.menu : null
+        anchor.item: root
+    }
 
     IconImage {
         id: trayIcon
@@ -62,6 +73,17 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         cursorShape: Qt.PointingHandCursor
 
-        onClicked: mouse => root.handleClick(mouse.button)
+        onPressed: mouse => {
+            if (mouse.button === Qt.RightButton) {
+                root.openContextMenu();
+                mouse.accepted = true;
+            }
+        }
+
+        onClicked: mouse => {
+            if (mouse.button !== Qt.RightButton) {
+                root.handleClick(mouse.button);
+            }
+        }
     }
 }

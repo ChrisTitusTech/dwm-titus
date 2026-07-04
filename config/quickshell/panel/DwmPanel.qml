@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Services.SystemTray
 import Quickshell.Widgets
 import qs.core
 
@@ -22,16 +21,6 @@ PanelWindow {
         top: true
         left: true
         right: true
-    }
-
-    function openTrayMenu(trayItem, anchorItem) {
-        if (!trayItem || !trayItem.hasMenu) {
-            return;
-        }
-
-        const point = anchorItem.mapToItem(root.contentItem, anchorItem.width / 2, anchorItem.height);
-
-        trayItem.display(root, Math.round(point.x), Math.round(point.y));
     }
 
     RowLayout {
@@ -145,7 +134,6 @@ PanelWindow {
         }
 
         TrayArea {
-            onOpenMenu: (trayItem, anchorItem) => root.openTrayMenu(trayItem, anchorItem)
         }
 
         Text {
