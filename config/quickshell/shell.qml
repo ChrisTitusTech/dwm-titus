@@ -258,6 +258,24 @@ ShellRoot {
 
             return ids.join("\n");
         }
+
+        function details(): string {
+            const items = SystemTray.items.values;
+            const rows = [];
+
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                rows.push([
+                    item.id || "unknown",
+                    item.title || "",
+                    item.icon || "",
+                    item.hasMenu ? "menu" : "no-menu",
+                    item.status || ""
+                ].join("\t"));
+            }
+
+            return rows.join("\n");
+        }
     }
 
     LauncherWindow {

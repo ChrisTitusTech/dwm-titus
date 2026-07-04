@@ -8,6 +8,8 @@ Rectangle {
     id: root
 
     required property var trayItem
+    property var iconSources: Icons.trayIconSources(root.trayItem)
+    property int iconSourceIndex: 0
 
     function openContextMenu() {
         if (root.trayItem && root.trayItem.hasMenu) {
@@ -27,6 +29,10 @@ Rectangle {
         }
     }
 
+    onIconSourcesChanged: {
+        iconSourceIndex = 0;
+    }
+
     Layout.preferredWidth: Theme.trayItemSize
     Layout.preferredHeight: Theme.trayItemSize
     radius: Theme.smallRadius
@@ -39,17 +45,26 @@ Rectangle {
         anchor.item: root
     }
 
-    IconImage {
+    Image {
         id: trayIcon
 
         anchors.centerIn: parent
         width: Theme.trayIconSize
         height: Theme.trayIconSize
-        source: Icons.trayIconSource(root.trayItem)
+        source: root.iconSources.length > root.iconSourceIndex ? root.iconSources[root.iconSourceIndex] : ""
+        sourceSize.width: Theme.trayIconSize
+        sourceSize.height: Theme.trayIconSize
+        fillMode: Image.PreserveAspectFit
         asynchronous: true
         smooth: true
         mipmap: true
         visible: status === Image.Ready
+
+        onStatusChanged: {
+            if (status === Image.Error && root.iconSourceIndex < root.iconSources.length - 1) {
+                root.iconSourceIndex += 1;
+            }
+        }
     }
 
     Text {
