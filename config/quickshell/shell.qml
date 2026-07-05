@@ -165,7 +165,7 @@ ShellRoot {
         }
 
         function volumeStatus(): string {
-            return controlsModel.volumeText;
+            return controlsModel.volumeDisplayText;
         }
 
         function volumeSet(percent: int): void {

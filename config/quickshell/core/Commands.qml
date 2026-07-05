@@ -27,7 +27,7 @@ Singleton {
     }
 
     function controlsHelperCommand(action, args) {
-        return helperCommand("dwm-quickshell-controls", action, args, false);
+        return helperCommand("dwm-quickshell-controls", action, args, true);
     }
 
     function controlCenterHelperCommand(action, args) {

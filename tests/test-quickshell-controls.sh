@@ -25,6 +25,24 @@ case "$*" in
 	fi
 	printf 'Volume: front-left: 26214 / %s%% / -23.88 dB, front-right: 26214 / %s%% / -23.88 dB\n' "$volume" "$volume"
 	;;
+info)
+	printf 'Server String: /run/user/1000/pulse/native\n'
+	printf 'Default Sink: %s\n' "${DWM_TEST_DEFAULT_SINK:-alsa_output.pci-0000_00_1f.3.analog-stereo}"
+	;;
+list\ sinks)
+	cat <<'OUT'
+Sink #1
+	Name: alsa_output.pci-0000_00_1f.3.analog-stereo
+	Description: Built-in Audio Analog Stereo
+Sink #2
+	Name: bluez_output.00_11_22_33_44_55.a2dp-sink
+	Description: Wireless Headphones
+OUT
+	;;
+list\ short\ sink-inputs)
+	printf '21\t1\t7\tprotocol-native.c\tfloat32le 2ch 48000Hz\n'
+	printf '22\t1\t8\tprotocol-native.c\tfloat32le 2ch 48000Hz\n'
+	;;
 "get-source-mute @DEFAULT_SOURCE@")
 	printf 'Mute: %s\n' "${DWM_TEST_SOURCE_MUTE:-no}"
 	;;
@@ -45,6 +63,12 @@ case "$*" in
 	;;
 "set-sink-mute @DEFAULT_SINK@ toggle")
 	printf 'mute toggle\n' >>"$DWM_TEST_PACTL_LOG"
+	;;
+set-default-sink\ *)
+	printf 'default sink %s\n' "$2" >>"$DWM_TEST_PACTL_LOG"
+	;;
+move-sink-input\ *)
+	printf 'move sink input %s %s\n' "$2" "$3" >>"$DWM_TEST_PACTL_LOG"
 	;;
 *)
 	printf 'unexpected pactl call: %s\n' "$*" >&2
@@ -143,6 +167,16 @@ DWM_TEST_SINK_MUTE=yes \
 	"$repo/scripts/dwm-quickshell-controls" volume-status >"$work/muted.out"
 grep -Fqx "VOL muted 40%" "$work/muted.out"
 
+PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" output-devices >"$work/output-devices.out"
+grep -Fqx "alsa_output.pci-0000_00_1f.3.analog-stereo	Built-in Audio Analog Stereo	1" "$work/output-devices.out"
+grep -Fqx "bluez_output.00_11_22_33_44_55.a2dp-sink	Wireless Headphones	0" "$work/output-devices.out"
+
+DWM_TEST_DEFAULT_SINK=bluez_output.00_11_22_33_44_55.a2dp-sink \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" output-devices >"$work/output-devices-bluez.out"
+grep -Fqx "alsa_output.pci-0000_00_1f.3.analog-stereo	Built-in Audio Analog Stereo	0" "$work/output-devices-bluez.out"
+grep -Fqx "bluez_output.00_11_22_33_44_55.a2dp-sink	Wireless Headphones	1" "$work/output-devices-bluez.out"
+
 printf '40\n' >"$work/volume-state"
 DWM_TEST_SINK_VOLUME_FILE="$work/volume-state" \
 	PATH="$work/bin:$PATH" \
@@ -233,6 +267,14 @@ DWM_TEST_PACTL_LOG="$work/pactl.log" \
 	"$repo/scripts/dwm-quickshell-controls" volume-toggle-mute
 grep -Fqx "mute toggle" "$work/pactl.log"
 
+: >"$work/pactl.log"
+DWM_TEST_PACTL_LOG="$work/pactl.log" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" output-set-default bluez_output.00_11_22_33_44_55.a2dp-sink
+grep -Fqx "default sink bluez_output.00_11_22_33_44_55.a2dp-sink" "$work/pactl.log"
+grep -Fqx "move sink input 21 bluez_output.00_11_22_33_44_55.a2dp-sink" "$work/pactl.log"
+grep -Fqx "move sink input 22 bluez_output.00_11_22_33_44_55.a2dp-sink" "$work/pactl.log"
+
 rm -f "$work/bin/pactl"
 cat >"$work/bin/pactl" <<'SH'
 #!/bin/sh
@@ -250,6 +292,25 @@ case "$*" in
 	;;
 "get-volume @DEFAULT_AUDIO_SOURCE@")
 	printf 'Volume: 0.70%s\n' "${DWM_TEST_WPCTL_SOURCE_MUTED:-}"
+	;;
+status)
+	cat <<'OUT'
+PipeWire 'pipewire-0'
+
+Audio
+ ├─ Devices:
+ │      49. Built-in Audio [alsa]
+ │
+ ├─ Sinks:
+ │      47. Built-in Audio Analog Stereo [vol: 0.24]
+ │  *   59. USB Headphones [vol: 1.00]
+ │
+ ├─ Sources:
+ │      42. Built-in Audio Analog Stereo [vol: 1.00]
+OUT
+	;;
+set-default\ *)
+	printf 'wpctl default %s\n' "$2" >>"$DWM_TEST_WPCTL_LOG"
 	;;
 *)
 	printf 'unexpected wpctl call: %s\n' "$*" >&2
@@ -274,6 +335,15 @@ DWM_TEST_WPCTL_SOURCE_MUTED=" [MUTED]" \
 	PATH="$work/bin:/usr/bin:/bin" \
 	"$repo/scripts/dwm-quickshell-controls" mic-status >"$work/wpctl-mic-muted.out"
 grep -Fqx "MIC muted" "$work/wpctl-mic-muted.out"
+
+PATH="$work/bin:/usr/bin:/bin" "$repo/scripts/dwm-quickshell-controls" output-devices >"$work/wpctl-output-devices.out"
+grep -Fqx "47	Built-in Audio Analog Stereo	0" "$work/wpctl-output-devices.out"
+grep -Fqx "59	USB Headphones	1" "$work/wpctl-output-devices.out"
+
+DWM_TEST_WPCTL_LOG="$work/wpctl.log" \
+	PATH="$work/bin:/usr/bin:/bin" \
+	"$repo/scripts/dwm-quickshell-controls" output-set-default 47
+grep -Fqx "wpctl default 47" "$work/wpctl.log"
 
 cat >"$work/bin/wpctl" <<'SH'
 #!/bin/sh

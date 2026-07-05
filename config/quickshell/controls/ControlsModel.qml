@@ -10,6 +10,10 @@ Scope {
     property string volumeText: "VOL unavailable"
     property int volumePercent: 0
     property bool volumeMuted: false
+    property string volumeDisplayText: volumeText + (outputDeviceDescription.length > 0 ? " - " + outputDeviceDescription : "")
+    property var outputDevices: []
+    property string outputDeviceName: ""
+    property string outputDeviceDescription: ""
     property string micText: "MIC unavailable"
     property string mediaText: "MEDIA none"
     property string mediaPlayer: ""
@@ -44,11 +48,18 @@ Scope {
         if (!micStatusProcess.running) {
             micStatusProcess.running = true;
         }
+        root.refreshOutputDevices();
         if (!mediaStatusProcess.running) {
             mediaStatusProcess.running = true;
         }
         if (!bluetoothStatusProcess.running) {
             bluetoothStatusProcess.running = true;
+        }
+    }
+
+    function refreshOutputDevices() {
+        if (!outputDevicesProcess.running) {
+            outputDevicesProcess.running = true;
         }
     }
 
@@ -104,6 +115,41 @@ Scope {
         root.volumeMuted = trimmed.indexOf("VOL muted") === 0;
     }
 
+    function parseOutputDevices(text) {
+        const devices = [];
+        const lines = text.trim().split("\n");
+        let defaultName = "";
+        let defaultDescription = "";
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+
+            if (line.length === 0 || line === "OUTPUT unavailable") {
+                continue;
+            }
+
+            const fields = line.split("\t");
+            const name = fields.length > 0 ? fields[0] : "";
+
+            if (name.length === 0) {
+                continue;
+            }
+
+            const description = fields.length > 1 && fields[1].length > 0 ? fields[1] : name;
+            const isDefault = fields.length > 2 && fields[2] === "1";
+
+            devices.push({ "name": name, "description": description, "isDefault": isDefault });
+            if (isDefault) {
+                defaultName = name;
+                defaultDescription = description;
+            }
+        }
+
+        root.outputDevices = devices;
+        root.outputDeviceName = defaultName;
+        root.outputDeviceDescription = defaultDescription;
+    }
+
     function clampPercent(value) {
         const number = Math.round(Number(value));
 
@@ -141,6 +187,14 @@ Scope {
         root.runAction("volume-set", [root.clampPercent(percent).toString() + "%"]);
     }
 
+    function outputSetDefault(name) {
+        if (name.length === 0 || name === root.outputDeviceName) {
+            return;
+        }
+
+        root.runAction("output-set-default", [name]);
+    }
+
     function mediaPlayPause() {
         root.runAction("media-play-pause");
     }
@@ -171,6 +225,7 @@ Scope {
         stdout: SplitParser {
             onRead: function(data) {
                 root.parseVolume(data);
+                root.refreshOutputDevices();
             }
         }
     }
@@ -187,6 +242,17 @@ Scope {
 
                 root.micText = text.length > 0 ? text : "MIC unavailable";
             }
+        }
+    }
+
+    Process {
+        id: outputDevicesProcess
+
+        command: Commands.controlsHelperCommand("output-devices")
+        running: false
+
+        stdout: StdioCollector {
+            onStreamFinished: root.parseOutputDevices(this.text)
         }
     }
 

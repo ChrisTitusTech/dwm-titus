@@ -80,7 +80,7 @@ PanelWindow {
         }
 
         Rectangle {
-            Layout.preferredWidth: volumeLabel.implicitWidth + 18
+            Layout.preferredWidth: Math.min(volumeLabel.implicitWidth + 18, 260)
             Layout.preferredHeight: Theme.pillHeight
             color: controlsMouse.containsMouse || root.controlsModel.visible ? Theme.surfaceHover : Theme.surface
             radius: Theme.radius
@@ -88,9 +88,14 @@ PanelWindow {
             Text {
                 id: volumeLabel
 
-                anchors.centerIn: parent
-                text: root.controlsModel.volumeText
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 9
+                anchors.rightMargin: 9
+                text: root.controlsModel.volumeDisplayText
                 color: Theme.text
+                elide: Text.ElideRight
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.panelFontSize
                 verticalAlignment: Text.AlignVCenter

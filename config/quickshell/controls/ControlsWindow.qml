@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
+pragma ComponentBehavior: Bound
+
 PopupWindow {
     id: root
 
@@ -10,7 +12,7 @@ PopupWindow {
     required property var panelWindow
 
     readonly property int popupWidth: 360
-    readonly property int popupHeight: 412
+    readonly property int popupHeight: 560
     readonly property int edgeMargin: Theme.rowSpacing
     readonly property int contentSpacing: Theme.popupSpacing
     readonly property int rowSpacing: Theme.rowSpacing
@@ -18,6 +20,7 @@ PopupWindow {
     readonly property int volumeControlHeight: 46
     readonly property int volumePercentWidth: 42
     readonly property int muteButtonWidth: 84
+    readonly property int outputDeviceRowHeight: 34
 
     visible: controlsModel.visible
     implicitWidth: popupWidth
@@ -63,7 +66,7 @@ PopupWindow {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.controlsModel.volumeText
+                    text: root.controlsModel.volumeDisplayText
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.titleFontSize
@@ -179,6 +182,85 @@ PopupWindow {
                     label: root.controlsModel.volumeMuted ? "Unmute" : "Mute"
                     enabled: !root.controlsModel.busy
                     onActivated: root.controlsModel.volumeToggleMute()
+                }
+            }
+
+            SectionLabel {
+                label: "Output"
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: root.controlsModel.outputDevices.length === 0
+                text: "OUTPUT unavailable"
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.panelFontSize
+                font.bold: true
+                elide: Text.ElideRight
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.compactSpacing
+                visible: root.controlsModel.outputDevices.length > 0
+
+                Repeater {
+                    model: root.controlsModel.outputDevices
+
+                    Rectangle {
+                        id: outputDeviceRow
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: root.outputDeviceRowHeight
+                        radius: Theme.radius
+                        color: outputMouse.containsMouse && !outputDeviceRow.modelData.isDefault && !root.controlsModel.busy ? Theme.surfaceHover : Theme.surface
+                        border.color: outputDeviceRow.modelData.isDefault ? Theme.accent : Theme.border
+                        border.width: 1
+                        opacity: root.controlsModel.busy && !outputDeviceRow.modelData.isDefault ? 0.5 : 1
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            spacing: root.rowSpacing
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: outputDeviceRow.modelData.description
+                                color: Theme.text
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.panelFontSize
+                                font.bold: outputDeviceRow.modelData.isDefault
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
+
+                            Text {
+                                Layout.preferredWidth: 58
+                                text: outputDeviceRow.modelData.isDefault ? "Default" : "Set"
+                                color: outputDeviceRow.modelData.isDefault ? Theme.accent : Theme.textMuted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.smallFontSize
+                                font.bold: true
+                                horizontalAlignment: Text.AlignRight
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        MouseArea {
+                            id: outputMouse
+
+                            anchors.fill: parent
+                            enabled: !root.controlsModel.busy && !outputDeviceRow.modelData.isDefault
+                            hoverEnabled: true
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: root.controlsModel.outputSetDefault(outputDeviceRow.modelData.name)
+                        }
+                    }
                 }
             }
 
