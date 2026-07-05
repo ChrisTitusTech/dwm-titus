@@ -309,6 +309,10 @@ check-kickstart:
 		grep -Fqx 'firstboot --disable' "$$ks"; \
 	done
 	tests/test-kickstart-variants.sh
+	$(MAKE) check-fedora-iso-builder
+
+check-fedora-iso-builder:
+	tests/test-fedora-iso-builder.sh
 
 check-install: all
 	@set -eu; \
@@ -426,7 +430,7 @@ check:
 
 .PHONY: all check check-build-config check-build-deps check-default-apps \
 	check-container-smoke \
-	check-display-profile check-format check-install \
+	check-display-profile check-fedora-iso-builder check-format check-install \
 	check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-shell check-diagnostics check-status \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-network check-lightdm-config check-terminal clean install install-system install-user \

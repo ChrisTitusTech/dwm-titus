@@ -73,6 +73,8 @@ pipewire
 pipewire-pulseaudio
 wireplumber
 pavucontrol
+bluez
+blueman
 libnotify
 light-locker
 xorg-x11-drv-libinput
@@ -98,6 +100,7 @@ file-roller
 xdg-user-dirs
 xdg-desktop-portal-gtk
 gnome-keyring
+nwg-look
 %end
 
 %post --nochroot --erroronfail --log=/mnt/sysimage/root/dwm-titus-copy.log

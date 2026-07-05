@@ -10,6 +10,9 @@ standard_ks="$repo/dwm-fedora.ks"
 nvidia_ks="$repo/dwm-fedora-nvidia.ks"
 builder="$repo/scripts/build-dwm-fedora-installer-iso.sh"
 
+# shellcheck source=scripts/dwm-packages.sh
+source "$repo/scripts/dwm-packages.sh"
+
 required_repos=(
 	'repo --name="updates"'
 	'repo --name="fedora-cisco-openh264"'
@@ -44,11 +47,18 @@ required_packages=(
 	bluebird-gtk3-theme
 )
 
+mapfile -t mapped_fedora_packages < <(
+	DISTRO_ID=fedora dwm_packages rhel full | awk 'NF' | sort -u
+)
+
 for ks in "$standard_ks" "$nvidia_ks"; do
 	for repo_line in "${required_repos[@]}"; do
 		grep -Fq "$repo_line" "$ks"
 	done
 	for package in "${required_packages[@]}"; do
+		grep -Fxq "$package" "$ks"
+	done
+	for package in "${mapped_fedora_packages[@]}"; do
 		grep -Fxq "$package" "$ks"
 	done
 	if grep -Eq 'updates-testing|rpmfusion-.*-updates-testing' "$ks"; then

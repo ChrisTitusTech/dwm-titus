@@ -74,6 +74,8 @@ pipewire
 pipewire-pulseaudio
 wireplumber
 pavucontrol
+bluez
+blueman
 libnotify
 light-locker
 xorg-x11-drv-libinput
@@ -99,6 +101,7 @@ file-roller
 xdg-user-dirs
 xdg-desktop-portal-gtk
 gnome-keyring
+nwg-look
 kernel-devel
 kernel-headers
 perl
