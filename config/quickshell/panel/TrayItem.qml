@@ -45,18 +45,15 @@ Rectangle {
         anchor.item: root
     }
 
-    Image {
+    IconImage {
         id: trayIcon
 
         anchors.centerIn: parent
         width: Theme.trayIconSize
         height: Theme.trayIconSize
         source: root.iconSources.length > root.iconSourceIndex ? root.iconSources[root.iconSourceIndex] : ""
-        sourceSize.width: Theme.trayIconSize
-        sourceSize.height: Theme.trayIconSize
-        fillMode: Image.PreserveAspectFit
+        implicitSize: Theme.trayIconSize
         asynchronous: true
-        smooth: true
         mipmap: true
         visible: status === Image.Ready
 

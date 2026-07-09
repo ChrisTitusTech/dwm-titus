@@ -13,6 +13,8 @@ import qs.panel
 import qs.power
 import qs.state
 
+pragma ComponentBehavior: Bound
+
 ShellRoot {
     id: root
 

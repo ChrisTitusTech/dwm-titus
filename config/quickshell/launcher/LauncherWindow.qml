@@ -1,8 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Widgets
 import qs.core
+
+pragma ComponentBehavior: Bound
 
 FloatingWindow {
     id: root

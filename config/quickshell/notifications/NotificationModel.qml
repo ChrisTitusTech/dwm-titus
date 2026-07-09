@@ -3,6 +3,8 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Notifications
 
+pragma ComponentBehavior: Bound
+
 Scope {
     id: root
 
@@ -105,11 +107,11 @@ Scope {
     }
 
     function loadHistory() {
-        root.history = (historyAdapter.notifications || []).slice(0, root.maxHistory);
+        root.history = (historyFile.notifications || []).slice(0, root.maxHistory);
     }
 
     function saveHistory() {
-        historyAdapter.notifications = root.history;
+        historyFile.notifications = root.history;
         historyFile.writeAdapter();
     }
 
@@ -132,6 +134,8 @@ Scope {
     FileView {
         id: historyFile
 
+        property alias notifications: historyAdapter.notifications
+
         path: root.historyPath
         printErrors: false
         onLoaded: root.loadHistory()
@@ -141,7 +145,8 @@ Scope {
             }
         }
 
-        JsonAdapter {
+        // qmllint disable unresolved-type
+        adapter: JsonAdapter {
             id: historyAdapter
 
             property var notifications: []

@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
+pragma ComponentBehavior: Bound
+
 FloatingWindow {
     id: root
 
@@ -180,18 +182,20 @@ FloatingWindow {
                 model: root.controlCenterModel.themeRows
 
                 delegate: ControlCenterRow {
+                    id: appearanceThemeRow
+
                     required property var modelData
 
                     width: ListView.view.width
-                    title: modelData.name
-                    detail: modelData.status === "active" ? "Active theme" : "Click to apply"
-                    status: modelData.status === "active" ? "ok" : ""
+                    title: appearanceThemeRow.modelData.name
+                    detail: appearanceThemeRow.modelData.status === "active" ? "Active theme" : "Click to apply"
+                    status: appearanceThemeRow.modelData.status === "active" ? "ok" : ""
 
                     MouseArea {
                         anchors.fill: parent
-                        enabled: modelData.status !== "active" && !root.controlCenterModel.busy
+                        enabled: appearanceThemeRow.modelData.status !== "active" && !root.controlCenterModel.busy
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.controlCenterModel.setTheme(modelData.name)
+                        onClicked: root.controlCenterModel.setTheme(appearanceThemeRow.modelData.name)
                     }
                 }
             }

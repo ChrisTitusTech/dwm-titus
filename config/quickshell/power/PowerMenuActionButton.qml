@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Layouts
 import qs.core
 
 Rectangle {
@@ -28,9 +27,9 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: compact ? 12 : 14
-        anchors.rightMargin: compact ? 12 : 14
-        spacing: compact ? Theme.compactSpacing : Theme.listSpacing
+        anchors.leftMargin: root.compact ? 12 : 14
+        anchors.rightMargin: root.compact ? 12 : 14
+        spacing: root.compact ? Theme.compactSpacing : Theme.listSpacing
 
         Text {
             width: parent.width
