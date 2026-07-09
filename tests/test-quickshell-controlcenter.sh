@@ -8,7 +8,7 @@ repo=$(
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-mkdir -p "$work/bin" "$work/config/dwm-titus" "$work/home/Pictures/backgrounds" "$work/data/dwm-titus/config/quickshell"
+mkdir -p "$work/bin" "$work/config/dwm-titus" "$work/home/Pictures/backgrounds" "$work/data/dwm-titus/config/quickshell" "$work/power-state"
 mkdir -p "$work/config/quickshell"
 cp "$repo/config/themes.toml" "$work/config/dwm-titus/themes.toml"
 cp "$repo/config/hotkeys.toml" "$work/config/dwm-titus/hotkeys.toml"
@@ -25,7 +25,7 @@ SH
 	chmod +x "$work/bin/$name"
 }
 
-for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh flameshot notify-send pactl brightnessctl setsid dwm-terminal dwm-default-apps xdg-open nwg-look pkill pgrep; do
+for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh flameshot notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps xdg-open nwg-look pkill pgrep; do
 	stub_command "$name"
 done
 
@@ -35,12 +35,118 @@ case "$*" in
 "-x picom")
 	exit "${DWM_TEST_PICOM_RUNNING:-1}"
 	;;
+*"-x light-locker"*)
+	test -f "${DWM_TEST_POWER_STATE:?}/light-locker.running"
+	;;
 *)
 	exit 1
 	;;
 esac
 SH
 chmod +x "$work/bin/pgrep"
+
+cat >"$work/bin/xset" <<'SH'
+#!/bin/sh
+state=${DWM_TEST_POWER_STATE:?}
+log=${DWM_TEST_LOG:?}
+mkdir -p "$state"
+
+read_state() {
+	name=$1
+	default=$2
+	if [ -f "$state/$name" ]; then
+		cat "$state/$name"
+	else
+		printf '%s\n' "$default"
+	fi
+}
+
+case ${1:-} in
+q)
+	dpms_enabled=$(read_state dpms_enabled 0)
+	dpms_timeout=$(read_state dpms_timeout 600)
+	saver_timeout=$(read_state saver_timeout 0)
+	if [ "$dpms_enabled" = 1 ]; then
+		dpms_text=Enabled
+	else
+		dpms_text=Disabled
+	fi
+	cat <<EOF
+Screen Saver:
+  prefer blanking:  no    allow exposures:  yes
+  timeout:  $saver_timeout    cycle:  600
+DPMS (Display Power Management Signaling):
+  Standby: $dpms_timeout    Suspend: $dpms_timeout    Off: $dpms_timeout
+  DPMS is $dpms_text
+EOF
+	;;
++dpms)
+	printf '1\n' >"$state/dpms_enabled"
+	printf 'xset %s\n' "$*" >>"$log"
+	;;
+-dpms)
+	printf '0\n' >"$state/dpms_enabled"
+	printf 'xset %s\n' "$*" >>"$log"
+	;;
+dpms)
+	printf '%s\n' "${4:-600}" >"$state/dpms_timeout"
+	printf 'xset %s\n' "$*" >>"$log"
+	;;
+s)
+	case ${2:-} in
+	off) printf '0\n' >"$state/saver_timeout" ;;
+	noblank) : ;;
+	*[!0-9]* | "") : ;;
+	*) printf '%s\n' "$2" >"$state/saver_timeout" ;;
+	esac
+	printf 'xset %s\n' "$*" >>"$log"
+	;;
+*)
+	printf 'xset %s\n' "$*" >>"$log"
+	;;
+esac
+SH
+chmod +x "$work/bin/xset"
+
+cat >"$work/bin/gsettings" <<'SH'
+#!/bin/sh
+state=${DWM_TEST_POWER_STATE:?}
+log=${DWM_TEST_LOG:?}
+mkdir -p "$state"
+
+case ${1:-} in
+get)
+	if [ "${2:-}" = apps.light-locker ] && [ "${3:-}" = lock-after-screensaver ]; then
+		if [ -f "$state/lock_after" ]; then
+			printf 'uint32 %s\n' "$(cat "$state/lock_after")"
+		else
+			printf 'uint32 0\n'
+		fi
+	else
+		exit 1
+	fi
+	;;
+set)
+	printf 'gsettings %s\n' "$*" >>"$log"
+	if [ "${2:-}" = apps.light-locker ] && [ "${3:-}" = lock-after-screensaver ]; then
+		printf '%s\n' "${4:-0}" >"$state/lock_after"
+	else
+		exit 1
+	fi
+	;;
+*)
+	printf 'gsettings %s\n' "$*" >>"$log"
+	;;
+esac
+SH
+chmod +x "$work/bin/gsettings"
+
+cat >"$work/bin/light-locker" <<'SH'
+#!/bin/sh
+printf 'light-locker %s\n' "$*" >>"${DWM_TEST_LOG:?}"
+: >"${DWM_TEST_POWER_STATE:?}/light-locker.running"
+SH
+chmod +x "$work/bin/light-locker"
 
 cat >"$work/bin/pactl" <<'SH'
 #!/bin/sh
@@ -61,6 +167,7 @@ run_helper() {
 		HOME="$work/home" \
 		XDG_CONFIG_HOME="$work/config" \
 		XDG_DATA_HOME="$work/data" \
+		DWM_TEST_POWER_STATE="$work/power-state" \
 		PATH="$work/bin:/usr/bin:/bin" \
 		"$repo/scripts/dwm-quickshell-controlcenter" "$@"
 }
@@ -68,6 +175,8 @@ run_helper() {
 health=$(run_helper health)
 printf '%s\n' "$health" | grep -Fqx 'ok	Quickshell	quickshell found'
 printf '%s\n' "$health" | grep -Fqx 'ok	Control helper	dwm-quickshell-controlcenter found'
+printf '%s\n' "$health" | grep -Fqx 'ok	Display power control	xset found'
+printf '%s\n' "$health" | grep -Fqx 'ok	Session locker	light-locker found'
 printf '%s\n' "$health" | grep -Fqx "ok	Themes config	$work/config/dwm-titus/themes.toml"
 
 info=$(run_helper info)
@@ -90,6 +199,44 @@ grep -Fqx 'unknown theme: missing-theme' "$work/theme-set.err"
 keybinds=$(run_helper keybinds)
 printf '%s\n' "$keybinds" | grep -Fqx 'Super + r	App launcher'
 printf '%s\n' "$keybinds" | grep -Fqx 'Super + F1	Control center'
+
+power=$(run_helper power-status)
+printf '%s\n' "$power" | grep -Fqx 'dpms_available	1'
+printf '%s\n' "$power" | grep -Fqx 'dpms_enabled	0'
+printf '%s\n' "$power" | grep -Fqx 'lock_available	1'
+printf '%s\n' "$power" | grep -Fqx 'lock_enabled	0'
+
+: >"$work/actions.log"
+run_helper power-dpms-timeout 900 >"$work/power-dpms-timeout.out"
+grep -Fqx 'power-dpms-timeout	900' "$work/power-dpms-timeout.out"
+grep -Fq 'dpms_enabled=1' "$work/config/dwm-titus/power.conf"
+grep -Fq 'dpms_timeout=900' "$work/config/dwm-titus/power.conf"
+grep -Fqx 'xset +dpms' "$work/actions.log"
+grep -Fqx 'xset dpms 900 900 900' "$work/actions.log"
+power=$(run_helper power-status)
+printf '%s\n' "$power" | grep -Fqx 'dpms_enabled	1'
+printf '%s\n' "$power" | grep -Fqx 'dpms_timeout	900'
+
+: >"$work/actions.log"
+run_helper power-lock-timeout 300 >"$work/power-lock-timeout.out"
+grep -Fqx 'power-lock-timeout	300' "$work/power-lock-timeout.out"
+grep -Fq 'lock_enabled=1' "$work/config/dwm-titus/power.conf"
+grep -Fq 'lock_timeout=300' "$work/config/dwm-titus/power.conf"
+grep -Fqx 'xset s 300' "$work/actions.log"
+grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 5' "$work/actions.log"
+grep -Fqx 'light-locker ' "$work/actions.log"
+power=$(run_helper power-status)
+printf '%s\n' "$power" | grep -Fqx 'lock_enabled	1'
+printf '%s\n' "$power" | grep -Fqx 'lock_timeout	300'
+printf '%s\n' "$power" | grep -Fqx 'lock_running	1'
+
+: >"$work/actions.log"
+run_helper power-lock off >"$work/power-lock-off.out"
+grep -Fqx 'power-lock	0' "$work/power-lock-off.out"
+grep -Fq 'lock_enabled=0' "$work/config/dwm-titus/power.conf"
+grep -Fqx 'xset s off' "$work/actions.log"
+grep -Fqx 'xset s noblank' "$work/actions.log"
+grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 0' "$work/actions.log"
 
 : >"$work/actions.log"
 run_helper action restart-quickshell >"$work/quickshell.out"

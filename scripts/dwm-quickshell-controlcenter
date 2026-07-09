@@ -18,6 +18,280 @@ config_file() {
 	fi
 }
 
+power_config_file=$dwm_config_dir/power.conf
+
+is_uint() {
+	case ${1:-} in
+	"" | *[!0123456789]*) return 1 ;;
+	*) return 0 ;;
+	esac
+}
+
+strip_space() {
+	printf '%s' "$1" | tr -d '[:space:]'
+}
+
+normalize_seconds() {
+	power_value=${1:-}
+	power_fallback=${2:-600}
+
+	if ! is_uint "$power_value"; then
+		power_value=$power_fallback
+	fi
+	if [ "$power_value" -lt 60 ]; then
+		power_value=60
+	fi
+	if [ "$power_value" -gt 86400 ]; then
+		power_value=86400
+	fi
+
+	printf '%s\n' "$power_value"
+}
+
+power_bool() {
+	case $(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]') in
+	1 | true | yes | on | enabled) printf '1\n' ;;
+	*) printf '0\n' ;;
+	esac
+}
+
+read_power_config() {
+	power_dpms_enabled=0
+	power_dpms_timeout=600
+	power_lock_enabled=0
+	power_lock_managed=0
+	power_lock_timeout=600
+	power_lock_after=5
+
+	[ -r "$power_config_file" ] || return 0
+
+	while IFS='=' read -r power_key power_value || [ -n "$power_key" ]; do
+		power_key=$(strip_space "$power_key")
+		case $power_key in
+		"" | \#*) continue ;;
+		esac
+
+		power_value=${power_value%%#*}
+		power_value=$(strip_space "$power_value")
+
+		case $power_key in
+		dpms_enabled) power_dpms_enabled=$(power_bool "$power_value") ;;
+		dpms_timeout) power_dpms_timeout=$(normalize_seconds "$power_value" "$power_dpms_timeout") ;;
+		lock_enabled) power_lock_enabled=$(power_bool "$power_value") ;;
+		lock_managed) power_lock_managed=$(power_bool "$power_value") ;;
+		lock_timeout) power_lock_timeout=$(normalize_seconds "$power_value" "$power_lock_timeout") ;;
+		lock_after)
+			if is_uint "$power_value" && [ "$power_value" -le 3600 ]; then
+				power_lock_after=$power_value
+			fi
+			;;
+		esac
+	done <"$power_config_file"
+}
+
+write_power_config() {
+	mkdir -p "$dwm_config_dir"
+	power_tmp=$(mktemp "${TMPDIR:-/tmp}/dwm-power.XXXXXX")
+	{
+		printf '%s\n' '# dwm-titus power settings'
+		printf 'dpms_enabled=%s\n' "$power_dpms_enabled"
+		printf 'dpms_timeout=%s\n' "$power_dpms_timeout"
+		printf 'lock_enabled=%s\n' "$power_lock_enabled"
+		printf 'lock_managed=%s\n' "$power_lock_managed"
+		printf 'lock_timeout=%s\n' "$power_lock_timeout"
+		printf 'lock_after=%s\n' "$power_lock_after"
+	} >"$power_tmp"
+	mv "$power_tmp" "$power_config_file"
+}
+
+start_configured_light_locker() {
+	command -v light-locker >/dev/null 2>&1 || return 0
+
+	if command -v pgrep >/dev/null 2>&1 &&
+		pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
+		return 0
+	fi
+
+	light-locker >/dev/null 2>&1 &
+}
+
+power_apply_dpms_settings() {
+	command -v xset >/dev/null 2>&1 || return 1
+
+	if [ "$power_dpms_enabled" = 1 ]; then
+		xset +dpms
+		xset dpms "$power_dpms_timeout" "$power_dpms_timeout" "$power_dpms_timeout"
+	else
+		xset -dpms
+	fi
+}
+
+power_apply_lock_settings() {
+	power_status=0
+
+	if command -v xset >/dev/null 2>&1; then
+		if [ "$power_lock_enabled" = 1 ]; then
+			xset s "$power_lock_timeout"
+		else
+			xset s off
+			xset s noblank
+		fi
+	else
+		power_status=1
+	fi
+
+	if [ "$power_lock_enabled" = 1 ]; then
+		if command -v light-locker >/dev/null 2>&1 &&
+			command -v gsettings >/dev/null 2>&1 &&
+			gsettings set apps.light-locker lock-after-screensaver "$power_lock_after"; then
+			start_configured_light_locker
+		else
+			power_status=1
+		fi
+	elif [ "${power_lock_managed:-0}" = 1 ] && command -v gsettings >/dev/null 2>&1; then
+		gsettings set apps.light-locker lock-after-screensaver 0 || power_status=1
+	fi
+
+	return "$power_status"
+}
+
+power_apply() {
+	read_power_config
+	power_status=0
+	power_apply_dpms_settings || power_status=1
+	power_apply_lock_settings || power_status=1
+	return "$power_status"
+}
+
+power_status() {
+	read_power_config
+
+	power_xset_available=0
+	power_live_dpms_enabled=$power_dpms_enabled
+	power_live_dpms_timeout=$power_dpms_timeout
+	power_live_lock_timeout=$power_lock_timeout
+
+	if command -v xset >/dev/null 2>&1 && power_xset_out=$(xset q 2>/dev/null); then
+		power_xset_available=1
+
+		power_value=$(printf '%s\n' "$power_xset_out" |
+			awk '/DPMS is/ { print $3; exit }')
+		case $power_value in
+		Enabled | enabled) power_live_dpms_enabled=1 ;;
+		Disabled | disabled) power_live_dpms_enabled=0 ;;
+		esac
+
+		power_value=$(printf '%s\n' "$power_xset_out" |
+			awk '/Standby:/ { for (i = 1; i <= NF; i++) if ($i == "Off:") { print $(i + 1); exit } }')
+		if is_uint "$power_value"; then
+			power_live_dpms_timeout=$power_value
+		fi
+
+		power_value=$(printf '%s\n' "$power_xset_out" |
+			awk '/timeout:/ { for (i = 1; i <= NF; i++) if ($i == "timeout:") { print $(i + 1); exit } }')
+		if is_uint "$power_value" && [ "$power_value" -gt 0 ]; then
+			power_live_lock_timeout=$power_value
+		fi
+	fi
+
+	power_lock_available=0
+	power_live_lock_after=$power_lock_after
+	if command -v light-locker >/dev/null 2>&1 &&
+		command -v gsettings >/dev/null 2>&1 &&
+		power_gsettings_value=$(gsettings get apps.light-locker lock-after-screensaver 2>/dev/null); then
+		power_lock_available=1
+		power_value=$(printf '%s\n' "$power_gsettings_value" | awk '{ print $NF }')
+		if is_uint "$power_value"; then
+			power_live_lock_after=$power_value
+		fi
+	fi
+
+	power_live_lock_enabled=$power_lock_enabled
+	if [ "$power_xset_available" = 1 ] && [ "$power_lock_available" = 1 ]; then
+		if [ "$power_live_lock_after" -gt 0 ] && [ "$power_live_lock_timeout" -gt 0 ]; then
+			power_live_lock_enabled=1
+		else
+			power_live_lock_enabled=0
+		fi
+	fi
+
+	power_lock_running=0
+	if command -v pgrep >/dev/null 2>&1 &&
+		pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
+		power_lock_running=1
+	fi
+
+	printf 'dpms_available\t%s\n' "$power_xset_available"
+	printf 'dpms_enabled\t%s\n' "$power_live_dpms_enabled"
+	printf 'dpms_timeout\t%s\n' "$power_live_dpms_timeout"
+	printf 'lock_available\t%s\n' "$power_lock_available"
+	printf 'lock_enabled\t%s\n' "$power_live_lock_enabled"
+	printf 'lock_timeout\t%s\n' "$power_live_lock_timeout"
+	printf 'lock_after\t%s\n' "$power_live_lock_after"
+	printf 'lock_running\t%s\n' "$power_lock_running"
+	printf 'config_file\t%s\n' "$power_config_file"
+}
+
+power_set_dpms() {
+	case ${1:-} in
+	on | enable | enabled | 1) power_new_enabled=1 ;;
+	off | disable | disabled | 0) power_new_enabled=0 ;;
+	*)
+		printf 'usage: %s power-dpms on|off\n' "$0" >&2
+		return 2
+		;;
+	esac
+
+	read_power_config
+	power_dpms_enabled=$power_new_enabled
+	write_power_config
+	power_apply_dpms_settings
+	notify "Display power updated" "DPMS $([ "$power_dpms_enabled" = 1 ] && printf enabled || printf disabled)"
+	printf 'power-dpms\t%s\n' "$power_dpms_enabled"
+}
+
+power_set_dpms_timeout() {
+	read_power_config
+	power_new_timeout=$(normalize_seconds "${1:-}" "$power_dpms_timeout")
+	power_dpms_enabled=1
+	power_dpms_timeout=$power_new_timeout
+	write_power_config
+	power_apply_dpms_settings
+	notify "Display power updated" "DPMS timeout ${power_dpms_timeout}s"
+	printf 'power-dpms-timeout\t%s\n' "$power_dpms_timeout"
+}
+
+power_set_lock() {
+	case ${1:-} in
+	on | enable | enabled | 1) power_new_enabled=1 ;;
+	off | disable | disabled | 0) power_new_enabled=0 ;;
+	*)
+		printf 'usage: %s power-lock on|off\n' "$0" >&2
+		return 2
+		;;
+	esac
+
+	read_power_config
+	power_lock_enabled=$power_new_enabled
+	power_lock_managed=1
+	write_power_config
+	power_apply_lock_settings
+	notify "Locking updated" "Auto lock $([ "$power_lock_enabled" = 1 ] && printf enabled || printf disabled)"
+	printf 'power-lock\t%s\n' "$power_lock_enabled"
+}
+
+power_set_lock_timeout() {
+	read_power_config
+	power_new_timeout=$(normalize_seconds "${1:-}" "$power_lock_timeout")
+	power_lock_enabled=1
+	power_lock_managed=1
+	power_lock_timeout=$power_new_timeout
+	write_power_config
+	power_apply_lock_settings
+	notify "Locking updated" "Auto lock timeout ${power_lock_timeout}s"
+	printf 'power-lock-timeout\t%s\n' "$power_lock_timeout"
+}
+
 notify() {
 	if command -v notify-send >/dev/null 2>&1; then
 		notify-send -a "DWM Control Center" "$@" 2>/dev/null || true
@@ -81,6 +355,9 @@ health() {
 	status_command "Notifications" notify-send warn
 	status_command "Audio control" pactl warn
 	status_command "Brightness control" brightnessctl warn
+	status_command "Display power control" xset warn
+	status_command "Lock settings" gsettings warn
+	status_command "Session locker" light-locker warn
 	status_path "Hotkeys config" "$(config_file hotkeys.toml)" error
 	status_path "Themes config" "$(config_file themes.toml)" error
 	status_path "Quickshell config" "$config_home/quickshell/shell.qml" error
@@ -352,7 +629,7 @@ action() {
 }
 
 usage() {
-	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|action <name>\n' "$0" >&2
+	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|power-status|power-apply|power-dpms on|off|power-dpms-timeout <seconds>|power-lock on|off|power-lock-timeout <seconds>|action <name>\n' "$0" >&2
 }
 
 case ${1:-} in
@@ -367,6 +644,36 @@ theme-set)
 	theme_set "$2"
 	;;
 keybinds) keybinds ;;
+power-status) power_status ;;
+power-apply) power_apply ;;
+power-dpms)
+	if [ $# -ne 2 ]; then
+		usage
+		exit 2
+	fi
+	power_set_dpms "$2"
+	;;
+power-dpms-timeout)
+	if [ $# -ne 2 ]; then
+		usage
+		exit 2
+	fi
+	power_set_dpms_timeout "$2"
+	;;
+power-lock)
+	if [ $# -ne 2 ]; then
+		usage
+		exit 2
+	fi
+	power_set_lock "$2"
+	;;
+power-lock-timeout)
+	if [ $# -ne 2 ]; then
+		usage
+		exit 2
+	fi
+	power_set_lock_timeout "$2"
+	;;
 action)
 	if [ $# -ne 2 ]; then
 		usage

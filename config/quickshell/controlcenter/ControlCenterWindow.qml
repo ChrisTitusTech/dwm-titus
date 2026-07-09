@@ -15,6 +15,7 @@ FloatingWindow {
         { "id": "actions", "label": "Quick Actions", "detail": "Restart desktop services and open common tools" },
         { "id": "appearance", "label": "Appearance", "detail": "Switch active dwm-titus themes" },
         { "id": "keybinds", "label": "Keybinds", "detail": "Browse live hotkeys from hotkeys.toml" },
+        { "id": "power", "label": "Power", "detail": "Screen DPMS and auto-lock timing" },
         { "id": "info", "label": "System Info", "detail": "View session and host details" }
     ]
     readonly property var actions: [
@@ -26,6 +27,13 @@ FloatingWindow {
         { "id": "install-missing-deps", "label": "Install Missing Deps", "detail": "Run the installer in a terminal" },
         { "id": "open-wallpapers", "label": "Wallpaper Folder", "detail": "Open the wallpaper directory" },
         { "id": "gtk-settings", "label": "GTK Settings", "detail": "Open nwg-look when installed" }
+    ]
+    readonly property var powerPresets: [
+        { "label": "5m", "seconds": 300 },
+        { "label": "10m", "seconds": 600 },
+        { "label": "15m", "seconds": 900 },
+        { "label": "30m", "seconds": 1800 },
+        { "label": "1h", "seconds": 3600 }
     ]
 
     title: "dwm control center"
@@ -51,9 +59,21 @@ FloatingWindow {
             controlCenterModel.openAppearance();
         } else if (page === "keybinds") {
             controlCenterModel.openKeybinds();
+        } else if (page === "power") {
+            controlCenterModel.openPower();
         } else if (page === "info") {
             controlCenterModel.openInfo();
         }
+    }
+
+    function formatDuration(seconds) {
+        if (seconds >= 3600 && seconds % 3600 === 0) {
+            return (seconds / 3600) + "h";
+        }
+        if (seconds >= 60 && seconds % 60 === 0) {
+            return (seconds / 60) + "m";
+        }
+        return seconds + "s";
     }
 
     ShellSurface {
@@ -215,6 +235,200 @@ FloatingWindow {
                     title: modelData.keys
                     detail: modelData.description
                     status: ""
+                }
+            }
+
+            Flickable {
+                id: powerFlick
+
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: root.controlCenterModel.page === "power"
+                clip: true
+                contentWidth: width
+                contentHeight: powerColumn.implicitHeight
+
+                ColumnLayout {
+                    id: powerColumn
+
+                    width: powerFlick.width
+                    spacing: Theme.sectionSpacing
+
+                    SectionLabel {
+                        label: "Display"
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 150
+                        color: Theme.surface
+                        border.color: root.controlCenterModel.powerDpmsEnabled ? Theme.accent : Theme.border
+                        border.width: 1
+                        radius: Theme.radius
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: Theme.rowSpacing
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.rowSpacing
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.tightSpacing
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: "Screen DPMS"
+                                        color: Theme.textStrong
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.panelFontSize
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.controlCenterModel.powerDpmsEnabled ? "Display off after " + root.formatDuration(root.controlCenterModel.powerDpmsTimeout) : "Disabled"
+                                        color: Theme.textMuted
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.smallFontSize
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                ControlCenterOptionButton {
+                                    Layout.preferredWidth: 96
+                                    Layout.preferredHeight: 44
+                                    label: root.controlCenterModel.powerDpmsEnabled ? "Disable" : "Enable"
+                                    active: root.controlCenterModel.powerDpmsEnabled
+                                    enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
+                                    onActivated: root.controlCenterModel.setPowerDpms(!root.controlCenterModel.powerDpmsEnabled)
+                                }
+                            }
+
+                            Flow {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Theme.buttonHeight
+                                spacing: Theme.listSpacing * 2
+
+                                Repeater {
+                                    model: root.powerPresets
+
+                                    ControlCenterOptionButton {
+                                        required property var modelData
+
+                                        width: 74
+                                        height: Theme.buttonHeight
+                                        label: modelData.label
+                                        active: root.controlCenterModel.powerDpmsEnabled && root.controlCenterModel.powerDpmsTimeout === modelData.seconds
+                                        enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
+                                        onActivated: root.controlCenterModel.setPowerDpmsTimeout(modelData.seconds)
+                                    }
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: !root.controlCenterModel.powerDpmsAvailable
+                                text: "xset unavailable"
+                                color: Theme.danger
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.smallFontSize
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    SectionLabel {
+                        label: "Locking"
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 150
+                        color: Theme.surface
+                        border.color: root.controlCenterModel.powerLockEnabled ? Theme.accent : Theme.border
+                        border.width: 1
+                        radius: Theme.radius
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: Theme.rowSpacing
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.rowSpacing
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.tightSpacing
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: "Auto Lock"
+                                        color: Theme.textStrong
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.panelFontSize
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.controlCenterModel.powerLockEnabled ? "Lock after " + root.formatDuration(root.controlCenterModel.powerLockTimeout) : "Disabled"
+                                        color: Theme.textMuted
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.smallFontSize
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                ControlCenterOptionButton {
+                                    Layout.preferredWidth: 96
+                                    Layout.preferredHeight: 44
+                                    label: root.controlCenterModel.powerLockEnabled ? "Disable" : "Enable"
+                                    active: root.controlCenterModel.powerLockEnabled
+                                    enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
+                                    onActivated: root.controlCenterModel.setPowerLock(!root.controlCenterModel.powerLockEnabled)
+                                }
+                            }
+
+                            Flow {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Theme.buttonHeight
+                                spacing: Theme.listSpacing * 2
+
+                                Repeater {
+                                    model: root.powerPresets
+
+                                    ControlCenterOptionButton {
+                                        required property var modelData
+
+                                        width: 74
+                                        height: Theme.buttonHeight
+                                        label: modelData.label
+                                        active: root.controlCenterModel.powerLockEnabled && root.controlCenterModel.powerLockTimeout === modelData.seconds
+                                        enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
+                                        onActivated: root.controlCenterModel.setPowerLockTimeout(modelData.seconds)
+                                    }
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: !root.controlCenterModel.powerLockAvailable
+                                text: "light-locker unavailable"
+                                color: Theme.danger
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.smallFontSize
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
                 }
             }
 
