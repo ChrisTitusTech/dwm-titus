@@ -28,3 +28,6 @@ program.log
 
 # Local CI validation virtualenv
 /.ci-pykickstart/
+
+# Local Serena project metadata/cache
+/.serena/
