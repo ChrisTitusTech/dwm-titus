@@ -38,6 +38,10 @@ Singleton {
         }
     }
 
+    function looksLikeIconFilePath(path) {
+        return /\.(ico|png|svg|tga|webp|xpm)$/i.test(path);
+    }
+
     function iconNameFallbacks(iconName) {
         const names = [iconName];
 
@@ -66,7 +70,7 @@ Singleton {
 
         const rootPath = themeRoot.replace(/\/+$/, "");
         const names = iconNameFallbacks(iconName);
-        const sizes = ["24x24", "32x32", "22x22", "16x16", "48x48", "64x64", "96x96", "128x128", "192x192", "256x256", "512x512", "scalable"];
+        const sizes = ["24x24", "32x32", "22x22", "16x16", "48x48", "scalable"];
         const categories = ["status", "apps", "devices", "actions", "emblems"];
         const extensions = ["svg", "png"];
 
@@ -160,6 +164,8 @@ Singleton {
 
             if (iconName.indexOf("/") === 0) {
                 addIconSource(sources, "file://" + iconName);
+                addIconSource(sources, icon);
+                return sources;
             }
 
             if (queryIndex >= 0) {
@@ -172,6 +178,10 @@ Singleton {
 
                 iconPath = decodeIconPart(iconPath);
                 if (iconName.indexOf("/") !== 0) {
+                    if (iconPath.indexOf("/") === 0 && looksLikeIconFilePath(iconPath)) {
+                        addIconSource(sources, "file://" + iconPath);
+                    }
+
                     addIconSource(sources, "file://" + iconPath + "/" + iconName);
                     addIconSource(sources, "file://" + iconPath + "/" + iconName + ".png");
                     addIconSource(sources, "file://" + iconPath + "/" + iconName + ".svg");
