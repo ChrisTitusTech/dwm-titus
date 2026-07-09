@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
+pragma ComponentBehavior: Bound
+
 PopupWindow {
     id: root
 

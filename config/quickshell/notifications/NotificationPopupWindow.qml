@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
+pragma ComponentBehavior: Bound
+
 PopupWindow {
     id: root
 
@@ -31,11 +33,13 @@ PopupWindow {
             model: root.notificationModel.notifications
 
             delegate: NotificationCard {
+                id: notificationCard
+
                 required property var modelData
 
-                item: modelData
-                onDismiss: root.notificationModel.dismiss(modelData.key)
-                onExpired: root.notificationModel.expire(modelData.key)
+                item: notificationCard.modelData
+                onDismiss: root.notificationModel.dismiss(notificationCard.modelData.key)
+                onExpired: root.notificationModel.expire(notificationCard.modelData.key)
             }
         }
     }

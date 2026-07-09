@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 import qs.core
 
+pragma ComponentBehavior: Bound
+
 Flickable {
     id: root
 
@@ -22,22 +24,24 @@ Flickable {
             model: root.launcherModel.categories
 
             delegate: Rectangle {
+                id: categoryDelegate
+
                 required property var modelData
 
                 Layout.preferredHeight: Theme.chipHeight
                 Layout.preferredWidth: launcherCategoryLabel.width + 22
                 radius: Theme.radius
-                color: root.launcherModel.category === modelData.id ? Theme.accent : launcherCategoryMouse.containsMouse ? Theme.surfaceHover : Theme.surface
+                color: root.launcherModel.category === categoryDelegate.modelData.id ? Theme.accent : launcherCategoryMouse.containsMouse ? Theme.surfaceHover : Theme.surface
 
                 Text {
                     id: launcherCategoryLabel
 
                     anchors.centerIn: parent
-                    text: modelData.label + " " + modelData.count
-                    color: root.launcherModel.category === parent.modelData.id ? Theme.accentText : Theme.text
+                    text: categoryDelegate.modelData.label + " " + categoryDelegate.modelData.count
+                    color: root.launcherModel.category === categoryDelegate.modelData.id ? Theme.accentText : Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallFontSize
-                    font.bold: root.launcherModel.category === parent.modelData.id
+                    font.bold: root.launcherModel.category === categoryDelegate.modelData.id
                 }
 
                 MouseArea {
@@ -46,7 +50,7 @@ Flickable {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.launcherModel.setCategory(parent.modelData.id)
+                    onClicked: root.launcherModel.setCategory(categoryDelegate.modelData.id)
                 }
             }
         }

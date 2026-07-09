@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Widgets
 import qs.core
 
+pragma ComponentBehavior: Bound
+
+// qmllint disable uncreatable-type
 PanelWindow {
     id: root
 
