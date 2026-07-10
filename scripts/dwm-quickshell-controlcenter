@@ -319,49 +319,23 @@ terminal_run() {
 	fi
 }
 
-status_command() {
-	label=$1
-	command_name=$2
-	severity=$3
-
-	if command -v "$command_name" >/dev/null 2>&1; then
-		printf 'ok\t%s\t%s found\n' "$label" "$command_name"
-	else
-		printf '%s\t%s\t%s missing\n' "$severity" "$label" "$command_name"
-	fi
-}
-
-status_path() {
-	label=$1
-	path=$2
-	severity=$3
-
-	if [ -e "$path" ]; then
-		printf 'ok\t%s\t%s\n' "$label" "$path"
-	else
-		printf '%s\t%s\t%s missing\n' "$severity" "$label" "$path"
-	fi
-}
-
 health() {
-	status_command "Quickshell" quickshell error
-	status_command "X property tools" xprop error
-	status_command "App launcher helper" dwm-quickshell-launcher error
-	status_command "Control helper" dwm-quickshell-controlcenter error
-	status_command "Desktop launcher" dex warn
-	status_command "Compositor" picom warn
-	status_command "Wallpaper setter" feh warn
-	status_command "Screenshot tool" flameshot warn
-	status_command "Notifications" notify-send warn
-	status_command "Audio control" pactl warn
-	status_command "Brightness control" brightnessctl warn
-	status_command "Display power control" xset warn
-	status_command "Lock settings" gsettings warn
-	status_command "Session locker" light-locker warn
-	status_path "Hotkeys config" "$(config_file hotkeys.toml)" error
-	status_path "Themes config" "$(config_file themes.toml)" error
-	status_path "Quickshell config" "$config_home/quickshell/shell.qml" error
-	status_path "Wallpaper folder" "${HOME:-}/Pictures/backgrounds" warn
+	health_helper=$repo_dir/scripts/dwm-system-health
+	if [ ! -x "$health_helper" ]; then
+		health_helper=$(command -v dwm-system-health 2>/dev/null || true)
+	fi
+	if [ -z "$health_helper" ]; then
+		printf 'error\tSystem health helper\tdwm-system-health missing\n'
+		return 1
+	fi
+
+	"$health_helper" scan-user | awk -F '\t' '
+		$1 == "check" {
+			status = $3
+			if (status == "info") status = "ok"
+			printf "%s\t%s\t%s\n", status, $5, $6
+		}
+	'
 }
 
 info() {

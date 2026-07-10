@@ -25,7 +25,7 @@ SH
 	chmod +x "$work/bin/$name"
 }
 
-for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh flameshot notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps xdg-open nwg-look pkill pgrep; do
+for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh flameshot notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps xdg-open nwg-look pkill pgrep dnf; do
 	stub_command "$name"
 done
 
@@ -168,16 +168,17 @@ run_helper() {
 		XDG_CONFIG_HOME="$work/config" \
 		XDG_DATA_HOME="$work/data" \
 		DWM_TEST_POWER_STATE="$work/power-state" \
+		DWM_HEALTH_COMMAND_TIMEOUT=2 \
 		PATH="$work/bin:/usr/bin:/bin" \
 		"$repo/scripts/dwm-quickshell-controlcenter" "$@"
 }
 
 health=$(run_helper health)
-printf '%s\n' "$health" | grep -Fqx 'ok	Quickshell	quickshell found'
-printf '%s\n' "$health" | grep -Fqx 'ok	Control helper	dwm-quickshell-controlcenter found'
-printf '%s\n' "$health" | grep -Fqx 'ok	Display power control	xset found'
-printf '%s\n' "$health" | grep -Fqx 'ok	Session locker	light-locker found'
-printf '%s\n' "$health" | grep -Fqx "ok	Themes config	$work/config/dwm-titus/themes.toml"
+printf '%s\n' "$health" | grep -Fqx 'ok	Quickshell	Available'
+printf '%s\n' "$health" | grep -Fqx 'ok	xset	xset is available'
+printf '%s\n' "$health" | grep -Fqx 'ok	light-locker	light-locker is available'
+printf '%s\n' "$health" | grep -Fqx 'ok	Themes configuration	Readable'
+printf '%s\n' "$health" | grep -Fqx 'ok	Quickshell configuration	Readable'
 
 info=$(run_helper info)
 printf '%s\n' "$info" | grep -Fqx 'Theme	nord'

@@ -6,6 +6,7 @@ import Quickshell.Io
 import Quickshell.Services.SystemTray
 import qs.controlcenter
 import qs.controls
+import qs.health
 import qs.launcher
 import qs.network
 import qs.notifications
@@ -46,6 +47,10 @@ ShellRoot {
 
     ControlCenterModel {
         id: controlCenterModel
+    }
+
+    SystemHealthModel {
+        id: systemHealthModel
     }
 
     LazyLoader {
@@ -244,6 +249,30 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "systemhealth"
+
+        function close(): void {
+            systemHealthModel.close();
+        }
+
+        function open(): void {
+            systemHealthModel.openOnScreen(panelWindow.screen);
+        }
+
+        function refresh(): void {
+            systemHealthModel.refresh();
+        }
+
+        function toggle(): void {
+            if (systemHealthModel.visible) {
+                systemHealthModel.close();
+            } else {
+                systemHealthModel.openOnScreen(panelWindow.screen);
+            }
+        }
+    }
+
+    IpcHandler {
         target: "tray"
 
         function count(): int {
@@ -318,5 +347,11 @@ ShellRoot {
 
     ControlCenterWindow {
         controlCenterModel: controlCenterModel
+        healthModel: systemHealthModel
+    }
+
+    SystemHealthWindow {
+        healthModel: systemHealthModel
+        screen: systemHealthModel.targetScreen ? systemHealthModel.targetScreen : panelWindow.screen
     }
 }

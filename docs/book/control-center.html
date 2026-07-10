@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-f97e23b9.js";
+            window.path_to_searchindex_js = "searchindex-939c3747.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e4ab374d.js"></script>
@@ -194,17 +194,47 @@ NetworkManager profiles, so they reconnect normally in later sessions.</p>
 <hr>
 <h2 id="modules"><a class="header" href="#modules">Modules</a></h2>
 <h3 id="system-health"><a class="header" href="#system-health">System Health</a></h3>
-<p>Runs a full dependency check and reports:</p>
+<p>System Health opens as a separate full-screen dashboard on the current
+monitor. It starts two read-only scans: session checks run immediately, and a
+privileged scan completes current-boot journal, kernel, system-service, and
+drive checks. If cached or <code>NOPASSWD</code> sudo access is available, the scan runs
+without a prompt. Otherwise the running polkit agent requests graphical
+authorization. Cancelling the prompt leaves a partial report and marks its
+coverage as incomplete.</p>
+<p>The dashboard groups checks into:</p>
 <ul>
-<li>Build tools (<code>cc</code>, <code>make</code>) and required libraries</li>
-<li>Xorg / Xlibre installation</li>
-<li>Runtime programs: quickshell, picom, feh, flameshot</li>
-<li>Terminal emulators (alacritty, kitty, st)</li>
-<li>Fonts: MesloLGS Nerd, Noto Color Emoji</li>
-<li>Running services: picom, NetworkManager</li>
-<li>Config paths: <code>.xinitrc</code>, Quickshell config, wallpaper folder</li>
+<li>Boot and kernel errors from <code>journalctl</code>, with <code>dmesg</code> as a fallback</li>
+<li>Failed user and system services, one service per row</li>
+<li>Memory, pressure, load, swap, filesystem space, and inode use</li>
+<li>Local routing, resolver, and NetworkManager state</li>
+<li>X11, D-Bus, dwm, Quickshell, Picom, audio, and managed configuration</li>
+<li>Required commands, libraries, terminals, and package-database consistency</li>
+<li>Available battery, thermal, and SMART drive-health data</li>
 </ul>
-<p>Selecting a failed item offers to run <code>install.sh</code> (auto-fix) or <code>check-deps.sh</code> (details).</p>
+<p>Use <strong>Issues Only</strong> to hide passing checks. Expand any card to see bounded
+evidence; the dashboard counts the complete matching log set even when only a
+sample is displayed. It does not contact an external service to test Internet
+connectivity and does not scan previous boots.</p>
+<p>Boot-journal and kernel-error cards with matching entries include <strong>Copy</strong> and
+<strong>Export</strong>. Copy sends the card’s readable bounded evidence to the X11
+clipboard with <code>xclip</code>. Export saves the same content in the user’s home
+directory as a private timestamped file, such as
+<code>boot2026-07-09-143000.txt</code> or <code>kernel-errors2026-07-09-143000.txt</code>. Existing
+files are never overwritten.</p>
+<p>Repair buttons always require confirmation. Each failed service row offers
+Start, Stop, Restart, Disable, and Enable. User units are managed with
+<code>systemctl --user</code>; system units request administrator authorization through
+polkit. An action is accepted only while that exact service remains failed.
+The dashboard can also restart known desktop/audio components, launch the
+interactive dependency installer, restart NetworkManager or Bluetooth, and
+repair the detected time-synchronization provider.</p>
+<p>Installing the health helper in a root-owned system path remains recommended:</p>
+<pre><code class="language-bash">sudo make install-system
+</code></pre>
+<p>The managed copy under <code>~/.local/share/dwm-titus</code> is never elevated itself. If
+the installed helper is unavailable, cached or <code>NOPASSWD</code> sudo can still run
+the validated root-owned system commands. Polkit authorization requires the
+root-owned installed helper.</p>
 <h3 id="quick-actions"><a class="header" href="#quick-actions">Quick Actions</a></h3>
 <div class="table-wrapper">
 <table>
@@ -245,7 +275,14 @@ as pressing <kbd>Super</kbd> + <kbd>/</kbd>.</p>
 <p>The script is a compatibility wrapper around the Quickshell IPC target:</p>
 <pre><code class="language-bash">quickshell ipc --path "${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml" call controlcenter toggle
 </code></pre>
-<footer id="last-change">Last change: <time datetime="2026-06-26">2026-06-26</time></footer>
+<p>Open or refresh System Health directly through its IPC target:</p>
+<pre><code class="language-bash">quickshell ipc --path "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml" call systemhealth open
+quickshell ipc --path "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml" call systemhealth refresh
+</code></pre>
+<p>The diagnostic helper can also produce its structured snapshot in a terminal:</p>
+<pre><code class="language-bash">dwm-system-health scan-user
+</code></pre>
+<footer id="last-change">Last change: <time datetime="2026-06-29">2026-06-29</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">

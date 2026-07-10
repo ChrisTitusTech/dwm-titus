@@ -1,21 +1,77 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+format=human
 required_fail=0
 optional_fail=0
 
+usage() {
+	printf 'usage: %s [--format human|health-tsv]\n' "$0" >&2
+}
+
+sanitize_field() {
+	local value=${1:-}
+
+	value=${value//$'\t'/ }
+	value=${value//$'\r'/ }
+	value=${value//$'\n'/ | }
+	printf '%s' "$value" | tr -d '\000-\010\013\014\016-\037' | cut -c 1-8192
+}
+
+emit_health() {
+	local status=$1
+	local id=$2
+	local label=$3
+	local detail=$4
+	local repair_id=${5:-}
+	local repair_label=${6:-}
+
+	printf 'check\tdependencies\t%s\t%s\t%s\t%s\t%s\t%s\t%s\tuser\n' \
+		"$(sanitize_field "$status")" \
+		"$(sanitize_field "$id")" \
+		"$(sanitize_field "$label")" \
+		"$(sanitize_field "$detail")" \
+		"$(sanitize_field "$detail")" \
+		"$(sanitize_field "$repair_id")" \
+		"$(sanitize_field "$repair_label")"
+}
+
 ok() {
-	printf '  ok      %s\n' "$1"
+	local id=$1
+	local label=$2
+	local detail=${3:-$2}
+
+	if [[ $format == health-tsv ]]; then
+		emit_health ok "$id" "$label" "$detail"
+	else
+		printf '  ok      %s\n' "$label"
+	fi
 }
 
 required_missing() {
-	printf '  missing %s\n' "$1"
+	local id=$1
+	local label=$2
+	local detail=${3:-$2}
+
 	required_fail=$((required_fail + 1))
+	if [[ $format == health-tsv ]]; then
+		emit_health error "$id" "$label" "$detail" install-dependencies "Open dependency installer"
+	else
+		printf '  missing %s\n' "$label"
+	fi
 }
 
 optional_missing() {
-	printf '  degraded %s\n' "$1"
+	local id=$1
+	local label=$2
+	local detail=${3:-$2}
+
 	optional_fail=$((optional_fail + 1))
+	if [[ $format == health-tsv ]]; then
+		emit_health warn "$id" "$label" "$detail" install-dependencies "Open dependency installer"
+	else
+		printf '  degraded %s\n' "$label"
+	fi
 }
 
 have_cmd() {
@@ -24,25 +80,26 @@ have_cmd() {
 
 check_required_cmd() {
 	if have_cmd "$1"; then
-		ok "$1"
+		ok "dependency-command-$1" "$1" "$1 is available"
 	else
-		required_missing "$1"
+		required_missing "dependency-command-$1" "$1" "$1 is required but missing"
 	fi
 }
 
 check_optional_cmd() {
 	if have_cmd "$1"; then
-		ok "$1"
+		ok "desktop-command-$1" "$1" "$1 is available"
 	else
-		optional_missing "$1"
+		optional_missing "desktop-command-$1" "$1" "$1 is optional and missing"
 	fi
 }
 
 check_pkg_config() {
+	local id=${1//[^[:alnum:]]/-}
 	if have_cmd pkg-config && pkg-config --exists "$1" 2>/dev/null; then
-		ok "pkg-config:$1"
+		ok "pkg-config-$id" "pkg-config:$1" "$1 development files are available"
 	else
-		required_missing "pkg-config:$1"
+		required_missing "pkg-config-$id" "pkg-config:$1" "$1 development files are missing"
 	fi
 }
 
@@ -53,12 +110,12 @@ check_any_required_cmd() {
 
 	for cmd in "$@"; do
 		if have_cmd "$cmd"; then
-			ok "$label ($cmd)"
+			ok "dependency-any-${label//[^[:alnum:]]/-}" "$label ($cmd)" "$cmd provides $label"
 			return
 		fi
 	done
 
-	required_missing "$label (${*})"
+	required_missing "dependency-any-${label//[^[:alnum:]]/-}" "$label (${*})" "Install one of: ${*}"
 }
 
 check_any_optional_cmd() {
@@ -68,41 +125,48 @@ check_any_optional_cmd() {
 
 	for cmd in "$@"; do
 		if have_cmd "$cmd"; then
-			ok "$label ($cmd)"
+			ok "desktop-any-${label//[^[:alnum:]]/-}" "$label ($cmd)" "$cmd provides $label"
 			return
 		fi
 	done
 
-	optional_missing "$label (${*})"
+	optional_missing "desktop-any-${label//[^[:alnum:]]/-}" "$label (${*})" "Install one of: ${*}"
 }
 
 check_terminal() {
-	if have_cmd dwm-terminal && dwm-terminal --print-command >/dev/null 2>&1; then
-		ok "terminal ($(dwm-terminal --print-command))"
+	local cmd
+
+	if have_cmd dwm-terminal && cmd=$(dwm-terminal --print-command 2>/dev/null) && [[ -n $cmd ]]; then
+		ok terminal "terminal ($cmd)" "dwm-terminal selected $cmd"
 		return
 	fi
 
 	for cmd in alacritty kitty st warp-terminal xterm; do
 		if have_cmd "$cmd"; then
-			ok "terminal ($cmd)"
+			ok terminal "terminal ($cmd)" "$cmd is available"
 			return
 		fi
 	done
 
-	required_missing "terminal (alacritty kitty st warp-terminal xterm)"
+	required_missing terminal "terminal (alacritty kitty st warp-terminal xterm)" "No supported terminal is available"
 }
 
 check_path_optional() {
-	if [[ -e $1 ]]; then
-		ok "$1"
+	local id=$1
+	local path=$2
+
+	if [[ -e $path ]]; then
+		ok "$id" "$path" "$path exists"
 	else
-		optional_missing "$1"
+		optional_missing "$id" "$path" "$path is missing"
 	fi
 }
 
 main() {
-	printf 'dwm-titus diagnostics\n'
-	printf '\nRequired\n'
+	if [[ $format == human ]]; then
+		printf 'dwm-titus diagnostics\n'
+		printf '\nRequired\n'
+	fi
 
 	check_required_cmd cc
 	check_required_cmd make
@@ -116,28 +180,64 @@ main() {
 	done
 	check_terminal
 
-	printf '\nOptional desktop\n'
-	for cmd in quickshell picom feh flameshot xdg-open notify-send amixer brightnessctl; do
+	if [[ $format == human ]]; then
+		printf '\nOptional desktop\n'
+	fi
+	for cmd in quickshell picom feh flameshot xdg-open notify-send amixer brightnessctl light-locker gsettings xprop; do
 		check_optional_cmd "$cmd"
 	done
 	check_optional_cmd blueman-applet
 	check_any_optional_cmd "XDG autostart runner" dex dex-autostart
 	check_any_optional_cmd "audio control" pactl wpctl amixer
-	check_path_optional "$HOME/.xinitrc"
-	check_path_optional "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
+	check_path_optional xinitrc "$HOME/.xinitrc"
+	check_path_optional quickshell-config "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
 
-	printf '\nSummary\n'
-	printf '  required_failures=%d\n' "$required_fail"
-	printf '  optional_degraded=%d\n' "$optional_fail"
+	if [[ $format == human ]]; then
+		printf '\nSummary\n'
+		printf '  required_failures=%d\n' "$required_fail"
+		printf '  optional_degraded=%d\n' "$optional_fail"
+	else
+		printf 'meta\tdependencies\tinfo\tdependency-summary\tDependency summary\t%d required failures, %d optional gaps\t\t\t\tuser\n' \
+			"$required_fail" "$optional_fail"
+	fi
 
 	if ((required_fail > 0)); then
-		printf '\nRequired failures must be fixed before dwm-titus is fully usable.\n' >&2
+		if [[ $format == human ]]; then
+			printf '\nRequired failures must be fixed before dwm-titus is fully usable.\n' >&2
+		fi
 		return 1
 	fi
 
-	if ((optional_fail > 0)); then
+	if ((optional_fail > 0)) && [[ $format == human ]]; then
 		printf '\nOptional desktop features are degraded, but core dwm should remain usable.\n'
 	fi
 }
 
-main "$@"
+if (($# > 0)); then
+	case ${1:-} in
+	--format)
+		[[ $# -eq 2 ]] || {
+			usage
+			exit 2
+		}
+		format=$2
+		;;
+	--format=*)
+		format=${1#*=}
+		;;
+	*)
+		usage
+		exit 2
+		;;
+	esac
+fi
+
+case $format in
+human | health-tsv) ;;
+*)
+	usage
+	exit 2
+	;;
+esac
+
+main

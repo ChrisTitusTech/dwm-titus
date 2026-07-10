@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-f97e23b9.js";
+            window.path_to_searchindex_js = "searchindex-939c3747.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e4ab374d.js"></script>
@@ -177,7 +177,9 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
-<p>dwm-titus uses two TOML config files that <strong>live-reload on save</strong> — no recompile needed for most changes.</p>
+<p>dwm-titus keeps user configuration under
+<code>${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/</code>. Hotkeys and themes
+<strong>live-reload on save</strong> — no recompile needed for most changes.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -186,6 +188,7 @@
 <tbody>
 <tr><td><code>config/hotkeys.toml</code></td><td>All keybindings</td></tr>
 <tr><td><code>config/themes.toml</code></td><td>Colors, themes, border size</td></tr>
+<tr><td><code>power.conf</code></td><td>Control Center screen DPMS and auto-lock choices</td></tr>
 </tbody>
 </table>
 </div>
@@ -243,6 +246,10 @@ for other file types.</p>
 <code>dwm-display-profile template</code> to print the format, <code>dwm-display-profile list</code>
 to show profiles, and <code>dwm-display-profile apply &lt;name&gt;</code> to run the profile
 through <code>xrandr</code>.</p>
+<p>Power settings are managed from Control Center -&gt; Power. The generated
+<code>power.conf</code> persists screen DPMS state, display-off timing, and automatic
+locking timing. Startup applies this file before background session services
+are launched.</p>
 <h3 id="modifier-syntax"><a class="header" href="#modifier-syntax">Modifier Syntax</a></h3>
 <p>Use space-separated modifiers: <code>"SUPER"</code>, <code>"SUPER SHIFT"</code>, <code>"SUPER CTRL"</code>, <code>"SUPER CTRL SHIFT"</code>.</p>
 <h3 id="available-functions"><a class="header" href="#available-functions">Available Functions</a></h3>
@@ -293,7 +300,7 @@ Hidden=false
 X-GNOME-Autostart-enabled=true
 Name=Set Refresh
 </code></pre>
-<footer id="last-change">Last change: <time datetime="2026-06-24">2026-06-24</time></footer>
+<footer id="last-change">Last change: <time datetime="2026-07-09">2026-07-09</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">

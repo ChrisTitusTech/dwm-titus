@@ -190,6 +190,11 @@ Key things to customize in `config.h`:
   profiles under `~/.config/dwm-titus/display-profiles/`
 - Diagnostics: run `dwm-diagnostics` to separate required failures from
   optional degraded desktop features
+- Full system snapshot: open Control Center -> System Health, or run
+  `dwm-system-health scan-user` for the unprivileged structured report. The
+  privileged scan uses cached or `NOPASSWD` sudo access first, then falls back
+  to the running polkit agent and root-owned installed helper for graphical
+  authorization.
 
 **Multi-monitor issues:**
 - If tags don't switch correctly across monitors, run `dwm-diagnostics`

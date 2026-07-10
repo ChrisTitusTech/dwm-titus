@@ -33,4 +33,8 @@ Singleton {
     function controlCenterHelperCommand(action, args) {
         return helperCommand("dwm-quickshell-controlcenter", action, args, true);
     }
+
+    function systemHealthHelperCommand(action, args) {
+        return helperCommand("dwm-system-health", action, args, true);
+    }
 }

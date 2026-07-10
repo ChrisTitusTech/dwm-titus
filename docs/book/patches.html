@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-f97e23b9.js";
+            window.path_to_searchindex_js = "searchindex-939c3747.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e4ab374d.js"></script>
@@ -232,7 +232,9 @@
 <h2 id="bar--ewmh"><a class="header" href="#bar--ewmh">Bar &amp; EWMH</a></h2>
 <h3 id="quickshell-integration"><a class="header" href="#quickshell-integration">Quickshell Integration</a></h3>
 <p>The managed Quickshell layer reads dwm workspace and active-window state through
-EWMH-compatible helpers so the panel stays synchronized with X11 state.</p>
+EWMH-compatible helpers so the panel stays synchronized with X11 state.
+The Control Center includes a Power page for screen DPMS and automatic locking
+settings backed by <code>${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/power.conf</code>.</p>
 <h3 id="ewmh-compliance"><a class="header" href="#ewmh-compliance">EWMH Compliance</a></h3>
 <p>Implements <code>_NET_WM_STATE</code>, <code>_NET_CURRENT_DESKTOP</code>, <code>_NET_NUMBER_OF_DESKTOPS</code>, and related atoms so external tools and taskbars work correctly.</p>
 <h3 id="window-icons"><a class="header" href="#window-icons">Window Icons</a></h3>
@@ -276,7 +278,7 @@ Save the file to apply a new theme instantly across supported apps.</p>
 <h2 id="multi-monitor"><a class="header" href="#multi-monitor">Multi-Monitor</a></h2>
 <p>Xinerama support keeps tags independent per monitor. Windows can be moved
 between monitors with <code>Super</code> + <code>Shift</code> + <code>,</code>/<code>.</code>.</p>
-<footer id="last-change">Last change: <time datetime="2026-06-26">2026-06-26</time></footer>
+<footer id="last-change">Last change: <time datetime="2026-07-09">2026-07-09</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">

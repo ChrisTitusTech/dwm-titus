@@ -39,6 +39,7 @@ rules = [
   { title="dwm controls",             isfloating=1, alwaysontop=1 },
   { title="dwm network",              isfloating=1, alwaysontop=1 },
   { title="dwm control center",       isfloating=1, alwaysontop=1 },
+  { title="dwm system health",        isfloating=1, alwaysontop=1 },
   { title="dwm notification history", isfloating=1, alwaysontop=1 },
   # { class="Gimp",           isfloating=1 },
   # { class="pavucontrol",    isfloating=1 },

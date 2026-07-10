@@ -9,9 +9,10 @@ FloatingWindow {
     id: root
 
     required property var controlCenterModel
+    required property var healthModel
 
     readonly property var overviewPages: [
-        { "id": "health", "label": "System Health", "detail": "Check required commands, config paths, and desktop tools" },
+        { "id": "health", "label": "System Health", "detail": "Full-screen boot, service, resource, storage, and dependency dashboard" },
         { "id": "actions", "label": "Quick Actions", "detail": "Restart desktop services and open common tools" },
         { "id": "appearance", "label": "Appearance", "detail": "Switch active dwm-titus themes" },
         { "id": "keybinds", "label": "Keybinds", "detail": "Browse live hotkeys from hotkeys.toml" },
@@ -52,7 +53,8 @@ FloatingWindow {
 
     function openPage(page) {
         if (page === "health") {
-            controlCenterModel.openHealth();
+            controlCenterModel.close();
+            healthModel.openOnScreen(root.screen);
         } else if (page === "actions") {
             controlCenterModel.openActions();
         } else if (page === "appearance") {
@@ -152,24 +154,6 @@ FloatingWindow {
                     label: modelData.label
                     detail: modelData.detail
                     onActivated: root.openPage(modelData.id)
-                }
-            }
-
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "health"
-                clip: true
-                spacing: Theme.listSpacing
-                model: root.controlCenterModel.healthRows
-
-                delegate: ControlCenterRow {
-                    required property var modelData
-
-                    width: ListView.view.width
-                    title: modelData.label
-                    detail: modelData.detail
-                    status: modelData.status
                 }
             }
 

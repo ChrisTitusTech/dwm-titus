@@ -9,7 +9,6 @@ Scope {
     property bool busy: false
     property string page: "overview"
     property string message: ""
-    property var healthRows: []
     property var infoRows: []
     property var themeRows: []
     property var keybindRows: []
@@ -57,10 +56,6 @@ Scope {
         root.openPage("overview", "", null);
     }
 
-    function openHealth() {
-        root.openPage("health", "Checking system health...", healthProcess);
-    }
-
     function openActions() {
         root.openPage("actions", "", null);
     }
@@ -83,9 +78,7 @@ Scope {
     }
 
     function refreshCurrentPage() {
-        if (root.page === "health") {
-            root.openHealth();
-        } else if (root.page === "appearance") {
+        if (root.page === "appearance") {
             root.openAppearance();
         } else if (root.page === "keybinds") {
             root.openKeybinds();
@@ -194,20 +187,6 @@ Scope {
 
     function setPowerLockTimeout(seconds) {
         root.runPowerAction("power-lock-timeout", [seconds.toString()]);
-    }
-
-    Process {
-        id: healthProcess
-
-        command: Commands.controlCenterHelperCommand("health")
-        running: false
-
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.healthRows = root.parseRows(this.text, ["status", "label", "detail"]);
-                root.message = root.healthRows.length + " checks";
-            }
-        }
     }
 
     Process {

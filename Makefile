@@ -36,6 +36,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-quickshell-network \
 	scripts/dwm-quickshell-state \
 	scripts/dwm-status \
+	scripts/dwm-system-health \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
 	scripts/dwm-titus-release \
@@ -246,10 +247,10 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -292,6 +293,12 @@ check-quickshell-controls:
 
 check-quickshell-controlcenter:
 	tests/test-quickshell-controlcenter.sh
+
+check-quickshell-health-xvfb:
+	tests/test-quickshell-health-xvfb.sh
+
+check-system-health:
+	tests/test-system-health.sh
 
 check-lightdm-config:
 	tests/test-lightdm-config.sh
@@ -417,6 +424,7 @@ check:
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-controlcenter
+	$(MAKE) check-system-health
 	$(MAKE) check-quickshell-network
 	$(MAKE) check-terminal
 	$(MAKE) check-lock
@@ -432,6 +440,6 @@ check:
 	check-container-smoke \
 	check-display-profile check-fedora-iso-builder check-format check-install \
 	check-install-manifest check-install-preservation check-kickstart check-lock \
-	check-session-guards check-shell check-diagnostics check-status \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-network check-lightdm-config check-terminal clean install install-system install-user \
+	check-session-guards check-shell check-diagnostics check-status check-system-health \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-health-xvfb check-quickshell-network check-lightdm-config check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall

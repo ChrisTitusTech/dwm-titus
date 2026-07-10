@@ -348,6 +348,53 @@ Runtime dependencies are classified as:
 - Optional: file manager, network tray, theme utilities, display-manager
   greeter customization, wallpapers, and hardware-specific helpers.
 
+### 5.9 System Health Dashboard
+
+The Control Center must open System Health as a separate full-screen
+Quickshell window on the selected X11 monitor. The dashboard must remain
+on-demand: opening or explicitly refreshing it starts a bounded snapshot, and
+closing it stops active diagnostics. It must not add idle polling.
+
+The snapshot must provide an overall state and categorized details for:
+
+- Current-boot journal and kernel errors, with `journalctl` preferred and
+  privileged `dmesg` used as a fallback.
+- Failed system and user services, time synchronization, networking, audio,
+  and the dwm-titus desktop session.
+- Memory, pressure, load, swap, local filesystem capacity, inode use,
+  read-only mounts, and available battery, thermal, and drive-health data.
+- Required and optional dwm-titus commands, libraries, configuration, and the
+  distribution package database.
+
+The dashboard must begin user-readable checks immediately and request a
+privileged read-only scan. It must first use non-interactive `sudo` when the
+session already has cached or `NOPASSWD` authorization; otherwise it must use
+the running polkit agent and trusted installed helper for graphical
+authorization. Denied, cancelled, or unavailable authorization must produce a
+clearly incomplete report rather than prevent the dashboard from opening.
+Journal evidence must be bounded while retaining the total matching count.
+
+Boot-journal and kernel-error rows with matching entries must provide Copy and
+Export actions. Copy uses the X11 clipboard through `xclip`. Export writes the
+displayed bounded evidence to a private, non-overwriting timestamped file in
+the invoking user's home directory, using `boot$DATE.txt` or
+`kernel-errors$DATE.txt` naming.
+
+Repairs require an explicit confirmation. User repairs are limited to known
+desktop and audio components plus launching the interactive dependency flow.
+Failed user and system services are displayed as individual rows with Start,
+Stop, Restart, Disable, and Enable actions. A service action is allowed only
+while that exact `.service` unit is in the corresponding failed-unit set;
+system actions require polkit authorization. Other privileged repairs are
+limited to NetworkManager, Bluetooth, and the detected systemd
+time-synchronization provider. Filesystem repair, cleanup, reboot, and
+unattended package changes are not allowed.
+Only a root-owned, non-writable system installation of the health helper may
+itself be executed through `sudo` or `pkexec`; repository and XDG copies must
+never be elevated. Without an installed helper, the unprivileged copy may use
+non-interactive `sudo` to execute only validated root-owned system commands
+needed for a bounded scan or confirmed repair.
+
 ## 6. Filesystem and Installation Contract
 
 Default system installation locations:
