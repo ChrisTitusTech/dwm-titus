@@ -68,6 +68,11 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 	grep -Fq "url --metalink=\"https://mirrors.fedoraproject.org/metalink?repo=fedora-\$releasever&arch=\$basearch\"" "$ks"
 	grep -Fq 'firstboot --disable' "$ks"
 	grep -Fq 'selinux --disabled' "$ks"
+	grep -Fq './install.sh --non-interactive --profile core' "$ks"
+	if grep -Eq 'systemctl --user (enable|start).*(dwm|wm)-graphical-session' "$ks"; then
+		printf 'Kickstart starts graphical autostart before the first dwm session: %s\n' "$ks" >&2
+		exit 1
+	fi
 done
 
 if grep -Eq 'akmod-nvidia|xorg-x11-drv-nvidia|nvidia-drm|nouveau' "$standard_ks"; then

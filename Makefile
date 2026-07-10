@@ -255,6 +255,9 @@ check-format:
 check-session-guards:
 	tests/test-autostart.sh
 
+check-screenshot:
+	tests/test-dwm-screenshot.sh
+
 check-xvfb-runtime: all
 	tests/test-xvfb-runtime.sh
 
@@ -429,6 +432,7 @@ check:
 	$(MAKE) check-terminal
 	$(MAKE) check-lock
 	$(MAKE) check-session-guards
+	$(MAKE) check-screenshot
 	$(MAKE) check-kickstart
 	$(MAKE) check-install
 	$(MAKE) check-install-manifest
@@ -440,6 +444,6 @@ check:
 	check-container-smoke \
 	check-display-profile check-fedora-iso-builder check-format check-install \
 	check-install-manifest check-install-preservation check-kickstart check-lock \
-	check-session-guards check-shell check-diagnostics check-status check-system-health \
+	check-session-guards check-screenshot check-shell check-diagnostics check-status check-system-health \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-health-xvfb check-quickshell-network check-lightdm-config check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall

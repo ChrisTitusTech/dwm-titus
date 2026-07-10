@@ -80,14 +80,18 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
 fi
 wait
 
+xdg_autostart_started=0
+
 # Activate user graphical-session.target through the wm shim so portal services
-# with Requisite=graphical-session.target can start under standalone dwm.
+# and XDG autostart entries start only after the display environment is ready.
 if command -v systemctl >/dev/null 2>&1; then
-	systemctl --user start "$WM_GRAPHICAL_SESSION" 2>/dev/null ||
+	if systemctl --user start "$WM_GRAPHICAL_SESSION" 2>/dev/null ||
 		{
 			systemctl --user daemon-reload 2>/dev/null &&
 				systemctl --user start "$WM_GRAPHICAL_SESSION" 2>/dev/null
-		} || true
+		}; then
+		xdg_autostart_started=1
+	fi
 fi
 
 # ── Phase 2: Background services ───────────────────────────────────────────────
@@ -133,8 +137,11 @@ for agent in \
 	fi
 done
 
-if command -v dex >/dev/null 2>&1; then
-	dex -a 2>/dev/null
-elif command -v dex-autostart >/dev/null 2>&1; then
-	dex-autostart -a 2>/dev/null
+# Systems without a usable systemd user session still need XDG autostart.
+if [ "$xdg_autostart_started" -eq 0 ]; then
+	if command -v dex >/dev/null 2>&1; then
+		dex -a 2>/dev/null
+	elif command -v dex-autostart >/dev/null 2>&1; then
+		dex-autostart -a 2>/dev/null
+	fi
 fi

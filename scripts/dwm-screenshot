@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────
 # dwm-screenshot — Portable flameshot wrapper for dwm-titus
 # Detects screenshot directory at runtime via XDG.
@@ -9,30 +9,60 @@
 #   dwm-screenshot clip    — region select to clipboard
 # ─────────────────────────────────────────────────────────
 
-# Determine screenshot directory
+set -euo pipefail
+
+sync_activation_environment() {
+	local -a activation_vars=(DISPLAY)
+
+	if [[ -z "${DISPLAY:-}" ]]; then
+		printf 'dwm-screenshot: DISPLAY is not set\n' >&2
+		return 1
+	fi
+
+	[[ -z "${XAUTHORITY:-}" ]] || activation_vars+=(XAUTHORITY)
+	[[ -z "${XDG_SESSION_TYPE:-}" ]] || activation_vars+=(XDG_SESSION_TYPE)
+	[[ -z "${XDG_CURRENT_DESKTOP:-}" ]] || activation_vars+=(XDG_CURRENT_DESKTOP)
+
+	# Flameshot uses D-Bus activation. Keep the user manager on the current
+	# X11 display so an old login or nested-X test cannot launch it elsewhere.
+	if command -v systemctl >/dev/null 2>&1; then
+		systemctl --user import-environment "${activation_vars[@]}" >/dev/null 2>&1 || true
+	fi
+	if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+		dbus-update-activation-environment --systemd \
+			"${activation_vars[@]}" >/dev/null 2>&1 || true
+	fi
+}
+
+if ! command -v flameshot >/dev/null 2>&1; then
+	printf 'dwm-screenshot: flameshot is not installed\n' >&2
+	exit 127
+fi
+
+sync_activation_environment
+
 SCREENSHOT_DIR=""
-if command -v xdg-user-dir &>/dev/null; then
-    SCREENSHOT_DIR="$(xdg-user-dir PICTURES 2>/dev/null)/Screenshots"
+if command -v xdg-user-dir >/dev/null 2>&1; then
+	pictures_dir=$(xdg-user-dir PICTURES 2>/dev/null || true)
+	[[ -z "$pictures_dir" ]] || SCREENSHOT_DIR="$pictures_dir/Screenshots"
 fi
 SCREENSHOT_DIR="${SCREENSHOT_DIR:-$HOME/Pictures/Screenshots}"
-
-# Create directory if it doesn't exist
 mkdir -p "$SCREENSHOT_DIR"
 
 ACTION="${1:-gui}"
 
 case "$ACTION" in
-    full)
-        flameshot full -p "$SCREENSHOT_DIR"
-        ;;
-    gui)
-        flameshot gui -p "$SCREENSHOT_DIR"
-        ;;
-    clip)
-        flameshot gui --clipboard
-        ;;
-    *)
-        echo "Usage: $0 {full|gui|clip}"
-        exit 1
-        ;;
+full)
+	exec flameshot full -p "$SCREENSHOT_DIR"
+	;;
+gui)
+	exec flameshot gui -p "$SCREENSHOT_DIR"
+	;;
+clip)
+	exec flameshot gui --clipboard
+	;;
+*)
+	printf 'Usage: %s {full|gui|clip}\n' "$0" >&2
+	exit 1
+	;;
 esac
