@@ -116,23 +116,35 @@ mkdir -p "$state"
 
 case ${1:-} in
 get)
-	if [ "${2:-}" = apps.light-locker ] && [ "${3:-}" = lock-after-screensaver ]; then
+	case ${2:-}:${3:-} in
+	apps.light-locker:lock-after-screensaver)
 		if [ -f "$state/lock_after" ]; then
 			printf 'uint32 %s\n' "$(cat "$state/lock_after")"
 		else
 			printf 'uint32 0\n'
 		fi
-	else
-		exit 1
-	fi
+		;;
+	apps.light-locker:lock-on-suspend)
+		if [ -f "$state/lock_on_suspend" ]; then
+			cat "$state/lock_on_suspend"
+		else
+			printf 'true\n'
+		fi
+		;;
+	*) exit 1 ;;
+	esac
 	;;
 set)
 	printf 'gsettings %s\n' "$*" >>"$log"
-	if [ "${2:-}" = apps.light-locker ] && [ "${3:-}" = lock-after-screensaver ]; then
+	case ${2:-}:${3:-} in
+	apps.light-locker:lock-after-screensaver)
 		printf '%s\n' "${4:-0}" >"$state/lock_after"
-	else
-		exit 1
-	fi
+		;;
+	apps.light-locker:lock-on-suspend)
+		printf '%s\n' "${4:-false}" >"$state/lock_on_suspend"
+		;;
+	*) exit 1 ;;
+	esac
 	;;
 *)
 	printf 'gsettings %s\n' "$*" >>"$log"
@@ -225,6 +237,7 @@ grep -Fq 'lock_enabled=1' "$work/config/dwm-titus/power.conf"
 grep -Fq 'lock_timeout=300' "$work/config/dwm-titus/power.conf"
 grep -Fqx 'xset s 300' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 5' "$work/actions.log"
+grep -Fqx 'gsettings set apps.light-locker lock-on-suspend true' "$work/actions.log"
 grep -Fqx 'light-locker ' "$work/actions.log"
 power=$(run_helper power-status)
 printf '%s\n' "$power" | grep -Fqx 'lock_enabled	1'
@@ -238,6 +251,23 @@ grep -Fq 'lock_enabled=0' "$work/config/dwm-titus/power.conf"
 grep -Fqx 'xset s off' "$work/actions.log"
 grep -Fqx 'xset s noblank' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 0' "$work/actions.log"
+grep -Fqx 'gsettings set apps.light-locker lock-on-suspend false' "$work/actions.log"
+
+# Persisted settings remain authoritative when X11 or light-locker state drifts.
+printf '0\n' >"$work/power-state/dpms_enabled"
+printf '60\n' >"$work/power-state/dpms_timeout"
+printf '600\n' >"$work/power-state/saver_timeout"
+printf '5\n' >"$work/power-state/lock_after"
+printf 'true\n' >"$work/power-state/lock_on_suspend"
+: >"$work/actions.log"
+run_helper power-apply
+grep -Fqx 'xset +dpms' "$work/actions.log"
+grep -Fqx 'xset dpms 900 900 900' "$work/actions.log"
+grep -Fqx 'xset s off' "$work/actions.log"
+grep -Fqx 'xset s noblank' "$work/actions.log"
+grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 0' "$work/actions.log"
+grep -Fqx 'gsettings set apps.light-locker lock-on-suspend false' "$work/actions.log"
+grep -Fqx 'false' "$work/power-state/lock_on_suspend"
 
 : >"$work/actions.log"
 run_helper action restart-quickshell >"$work/quickshell.out"

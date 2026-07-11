@@ -78,9 +78,10 @@ to show profiles, and `dwm-display-profile apply <name>` to run the profile
 through `xrandr`.
 
 Power settings are managed from Control Center -> Power. The generated
-`power.conf` persists screen DPMS state, display-off timing, and automatic
-locking timing. Startup applies this file before background session services
-are launched.
+`power.conf` is authoritative once created and persists screen DPMS state,
+display-off timing, and automatic idle and suspend locking. Startup reapplies
+this file before background session services are launched. Manual locking
+remains available when automatic locking is disabled.
 
 ### Modifier Syntax
 

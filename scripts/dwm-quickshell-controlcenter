@@ -62,8 +62,10 @@ read_power_config() {
 	power_lock_managed=0
 	power_lock_timeout=600
 	power_lock_after=5
+	power_config_managed=0
 
 	[ -r "$power_config_file" ] || return 0
+	power_config_managed=1
 
 	while IFS='=' read -r power_key power_value || [ -n "$power_key" ]; do
 		power_key=$(strip_space "$power_key")
@@ -102,6 +104,7 @@ write_power_config() {
 		printf 'lock_after=%s\n' "$power_lock_after"
 	} >"$power_tmp"
 	mv "$power_tmp" "$power_config_file"
+	power_config_managed=1
 }
 
 start_configured_light_locker() {
@@ -143,13 +146,18 @@ power_apply_lock_settings() {
 	if [ "$power_lock_enabled" = 1 ]; then
 		if command -v light-locker >/dev/null 2>&1 &&
 			command -v gsettings >/dev/null 2>&1 &&
-			gsettings set apps.light-locker lock-after-screensaver "$power_lock_after"; then
+			gsettings set apps.light-locker lock-after-screensaver "$power_lock_after" &&
+			gsettings set apps.light-locker lock-on-suspend true; then
 			start_configured_light_locker
 		else
 			power_status=1
 		fi
-	elif [ "${power_lock_managed:-0}" = 1 ] && command -v gsettings >/dev/null 2>&1; then
-		gsettings set apps.light-locker lock-after-screensaver 0 || power_status=1
+	elif { [ "${power_config_managed:-0}" = 1 ] || [ "${power_lock_managed:-0}" = 1 ]; } &&
+		command -v gsettings >/dev/null 2>&1; then
+		if ! gsettings set apps.light-locker lock-after-screensaver 0 ||
+			! gsettings set apps.light-locker lock-on-suspend false; then
+			power_status=1
+		fi
 	fi
 
 	return "$power_status"
