@@ -7,6 +7,7 @@ repo=$(
 )
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+test_uid=$(id -u)
 
 mkdir -p "$work/bin" "$work/config/dwm-titus" "$work/home/Pictures/backgrounds" "$work/data/dwm-titus/config/quickshell" "$work/power-state"
 mkdir -p "$work/config/quickshell"
@@ -261,7 +262,7 @@ grep -Fqx 'xset s off' "$work/actions.log"
 grep -Fqx 'xset s noblank' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 0' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-on-suspend false' "$work/actions.log"
-grep -Fqx 'pkill -u 1000 -x light-locker' "$work/actions.log"
+grep -Fqx "pkill -u $test_uid -x light-locker" "$work/actions.log"
 test ! -e "$work/power-state/light-locker.running"
 
 # Persisted settings remain authoritative when X11 or light-locker state drifts.
@@ -280,7 +281,7 @@ grep -Fqx 'xset s noblank' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 0' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-on-suspend false' "$work/actions.log"
 grep -Fqx 'false' "$work/power-state/lock_on_suspend"
-grep -Fqx 'pkill -u 1000 -x light-locker' "$work/actions.log"
+grep -Fqx "pkill -u $test_uid -x light-locker" "$work/actions.log"
 test ! -e "$work/power-state/light-locker.running"
 
 : >"$work/actions.log"
