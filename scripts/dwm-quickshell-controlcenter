@@ -118,6 +118,15 @@ start_configured_light_locker() {
 	light-locker >/dev/null 2>&1 &
 }
 
+stop_configured_light_locker() {
+	command -v pgrep >/dev/null 2>&1 || return 0
+	command -v pkill >/dev/null 2>&1 || return 0
+
+	if pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
+		pkill -u "$(id -u)" -x light-locker
+	fi
+}
+
 power_apply_dpms_settings() {
 	command -v xset >/dev/null 2>&1 || return 1
 
@@ -158,6 +167,10 @@ power_apply_lock_settings() {
 			! gsettings set apps.light-locker lock-on-suspend false; then
 			power_status=1
 		fi
+	fi
+
+	if [ "$power_lock_enabled" = 0 ]; then
+		stop_configured_light_locker || power_status=1
 	fi
 
 	return "$power_status"

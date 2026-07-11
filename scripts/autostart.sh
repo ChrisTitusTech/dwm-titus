@@ -109,9 +109,6 @@ start_detached_once picom picom --backend "$PICOM_BACKEND"
 # dwm root-window status publisher for Quickshell's event-driven panel.
 start_detached_once dwm-status dwm-status
 
-# Session locker for the power menu lock action and loginctl lock requests.
-start_once light-locker light-locker
-
 # Quickshell is the managed shell for this session.
 QUICKSHELL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
 if [ -f "$QUICKSHELL_CONFIG" ]; then
@@ -145,3 +142,8 @@ if [ "$xdg_autostart_started" -eq 0 ]; then
 		dex-autostart -a 2>/dev/null
 	fi
 fi
+
+# Distribution packages may provide their own light-locker XDG autostart
+# entry. Reapply the persisted policy after XDG startup so disabled locking
+# cannot leave an independently started locker attached to DPMS events.
+apply_power_settings

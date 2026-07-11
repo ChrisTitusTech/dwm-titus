@@ -29,6 +29,15 @@ for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcente
 	stub_command "$name"
 done
 
+cat >"$work/bin/pkill" <<'SH'
+#!/bin/sh
+printf 'pkill %s\n' "$*" >>"${DWM_TEST_LOG:?}"
+case $* in
+*"-x light-locker"*) rm -f "${DWM_TEST_POWER_STATE:?}/light-locker.running" ;;
+esac
+SH
+chmod +x "$work/bin/pkill"
+
 cat >"$work/bin/pgrep" <<'SH'
 #!/bin/sh
 case "$*" in
@@ -252,6 +261,8 @@ grep -Fqx 'xset s off' "$work/actions.log"
 grep -Fqx 'xset s noblank' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 0' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-on-suspend false' "$work/actions.log"
+grep -Fqx 'pkill -u 1000 -x light-locker' "$work/actions.log"
+test ! -e "$work/power-state/light-locker.running"
 
 # Persisted settings remain authoritative when X11 or light-locker state drifts.
 printf '0\n' >"$work/power-state/dpms_enabled"
@@ -259,6 +270,7 @@ printf '60\n' >"$work/power-state/dpms_timeout"
 printf '600\n' >"$work/power-state/saver_timeout"
 printf '5\n' >"$work/power-state/lock_after"
 printf 'true\n' >"$work/power-state/lock_on_suspend"
+: >"$work/power-state/light-locker.running"
 : >"$work/actions.log"
 run_helper power-apply
 grep -Fqx 'xset +dpms' "$work/actions.log"
@@ -268,6 +280,8 @@ grep -Fqx 'xset s noblank' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 0' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-on-suspend false' "$work/actions.log"
 grep -Fqx 'false' "$work/power-state/lock_on_suspend"
+grep -Fqx 'pkill -u 1000 -x light-locker' "$work/actions.log"
+test ! -e "$work/power-state/light-locker.running"
 
 : >"$work/actions.log"
 run_helper action restart-quickshell >"$work/quickshell.out"

@@ -135,9 +135,10 @@ run_duplicate_case() {
 		wait_for_marker "$state/quickshell.running"
 	done
 
-	for name in feh picom light-locker quickshell; do
+	for name in feh picom quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
+	test ! -e "$state/light-locker.count"
 	test ! -e "$state/dex.count"
 	test ! -e "$state/dex-autostart.count"
 	awk '

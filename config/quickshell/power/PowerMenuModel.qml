@@ -1,5 +1,6 @@
 import Quickshell
 import Quickshell.Io
+import qs.core
 
 Scope {
     id: root
@@ -14,7 +15,7 @@ Scope {
             "id": "lock",
             "label": "Lock",
             "detail": "Secure this session",
-            "command": ["sh", "-c", "loginctl lock-session ${XDG_SESSION_ID:-} 2>/dev/null || dwm-lock 2>/dev/null || light-locker-command -l"],
+            "command": Commands.lockHelperCommand(),
             "confirm": false
         },
         {

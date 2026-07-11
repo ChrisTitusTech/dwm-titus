@@ -22,11 +22,33 @@ SCRIPT
 cat >"$work/bin/light-locker" <<'SCRIPT'
 #!/bin/sh
 printf '%s\n' started >"${DWM_LOCK_TEST_DIR:?}/light-locker"
+: >"${DWM_LOCK_TEST_DIR:?}/light-locker.running"
+trap '/bin/rm -f "${DWM_LOCK_TEST_DIR:?}/light-locker.running"; exit 0' TERM
+while :; do
+	:
+done
 SCRIPT
 
 cat >"$work/bin/light-locker-command" <<'SCRIPT'
 #!/bin/sh
-printf '%s\n' "$*" >"${DWM_LOCK_TEST_DIR:?}/light-locker-command"
+case $* in
+--lock)
+	printf '%s\n' "$*" >"${DWM_LOCK_TEST_DIR:?}/light-locker-command"
+	;;
+--query)
+	if [ -f "${DWM_LOCK_TEST_DIR:?}/light-locker.queried" ]; then
+		printf '%s\n' 'The screensaver is inactive'
+	else
+		: >"${DWM_LOCK_TEST_DIR:?}/light-locker.queried"
+		printf '%s\n' 'The screensaver is active'
+	fi
+	;;
+esac
+SCRIPT
+
+cat >"$work/bin/sleep" <<'SCRIPT'
+#!/bin/sh
+exit 0
 SCRIPT
 
 chmod +x "$work/bin/"*
@@ -37,6 +59,16 @@ DWM_LOCK_TEST_DIR="$work" \
 	"$helper"
 grep -Fxq started "$work/light-locker"
 grep -Fxq -- "--lock" "$work/light-locker-command"
+i=0
+while [ -e "$work/light-locker.running" ] && [ "$i" -lt 100 ]; do
+	i=$((i + 1))
+	/bin/sleep 0.01
+done
+test ! -e "$work/light-locker.running"
+grep -Fq '"command": Commands.lockHelperCommand()' \
+	"$repo_dir/config/quickshell/power/PowerMenuModel.qml"
+grep -Fq 'return helperCommand("dwm-lock", undefined, [], true)' \
+	"$repo_dir/config/quickshell/core/Commands.qml"
 
 rm -f "$work/bin/light-locker" "$work/bin/light-locker-command" \
 	"$work/light-locker" "$work/light-locker-command"
