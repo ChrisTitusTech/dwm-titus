@@ -5,7 +5,7 @@ Scope {
     id: root
 
     property int currentWorkspace: 0
-    property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
     property string activeWindowTitle: "Desktop"
     property string statusText: ""
     property var statusSegments: []

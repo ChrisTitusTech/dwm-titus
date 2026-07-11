@@ -141,6 +141,50 @@ install_optional_profile() {
 	[[ $INSTALL_PROFILE == "full" ]]
 }
 
+install_arch_dank_aur_integrations() {
+	local package
+	local build_dir
+	local package_dir
+	local built_packages=()
+
+	[[ $DISTRO_FAMILY == "arch" ]] || return 0
+
+	while IFS= read -r package; do
+		[[ -n $package ]] || continue
+		if pacman -Q "$package" &>/dev/null; then
+			ok "$package is already installed."
+			continue
+		fi
+
+		build_dir="$(mktemp -d)"
+		package_dir="$build_dir/$package"
+		info "Building AUR integration: $package"
+		if ! git clone --depth 1 "https://aur.archlinux.org/$package.git" "$package_dir"; then
+			rm -rf "$build_dir"
+			err "Failed to clone AUR package: $package"
+			return 1
+		fi
+		if ! (
+			cd "$package_dir"
+			makepkg --syncdeps --needed --noconfirm
+		); then
+			rm -rf "$build_dir"
+			err "Failed to build AUR package: $package"
+			return 1
+		fi
+
+		mapfile -t built_packages < <(find "$package_dir" -maxdepth 1 -type f -name '*.pkg.tar.*' ! -name '*-debug-*.pkg.tar.*' -print)
+		if ((${#built_packages[@]} == 0)); then
+			rm -rf "$build_dir"
+			err "No installable package was produced for: $package"
+			return 1
+		fi
+		sudo pacman -U --needed --noconfirm "${built_packages[@]}"
+		rm -rf "$build_dir"
+		ok "$package installed from the AUR."
+	done < <(dwm_packages arch dank-aur)
+}
+
 package_line() {
 	local profile=$1
 
@@ -176,6 +220,9 @@ print_install_summary() {
 	fi
 	if install_optional_profile; then
 		print_summary_profile "Optional extras" optional
+		if [[ $DISTRO_FAMILY == "arch" ]]; then
+			print_summary_profile "DankShell AUR integrations" dank-aur
+		fi
 	else
 		printf '  Optional extras: skipped\n'
 	fi
@@ -448,6 +495,10 @@ if install_optional_profile; then
 	if ! dwm_install_available_package_profile optional; then
 		warn "Some optional desktop extras were unavailable in enabled repositories."
 	fi
+	if ! install_arch_dank_aur_integrations; then
+		err "DankShell AUR integrations could not be installed."
+		exit 1
+	fi
 	ok "Optional desktop extras processed."
 else
 	warn "Skipping optional desktop extras for $INSTALL_PROFILE profile."
@@ -570,6 +621,9 @@ info "Detected: $DISTRO_NAME"
 echo "  • Build configuration: $REPO_DIR/config.h"
 echo "  • Reconfigure by removing config.h and running the installer again"
 echo "  • Log out and select 'dwm', or start with: startx"
+if [[ $currentdm == "lightdm" ]]; then
+	echo "  • To start run: sudo systemctl start lightdm"
+fi
 echo ""
 echo "  SUPER+/   keybind viewer     SUPER+X  terminal"
 echo "  SUPER+F1  control center     SUPER+R  app launcher"

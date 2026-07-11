@@ -264,6 +264,7 @@ ShellRoot {
 
     PowerMenuWindow {
         powerMenuModel: powerMenuModel
+        panelWindow: panelWindow
     }
 
     DwmPanel {
@@ -273,6 +274,8 @@ ShellRoot {
         clock: clock
         networkModel: networkModel
         controlsModel: controlsModel
+        controlCenterModel: controlCenterModel
+        powerMenuModel: powerMenuModel
     }
 
     NetworkWindow {

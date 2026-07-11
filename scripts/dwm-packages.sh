@@ -22,7 +22,7 @@ dwm_packages() {
 		;;
 	arch:desktop)
 		printf '%s\n' \
-			picom feh flameshot dex mate-polkit alsa-utils \
+			quickshell picom feh flameshot dex mate-polkit alsa-utils \
 			brightnessctl pipewire pipewire-pulse wireplumber pavucontrol \
 			libnotify light-locker bluez-utils blueman
 		;;
@@ -30,7 +30,10 @@ dwm_packages() {
 		printf '%s\n' \
 			thunar gvfs tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
 			xdg-desktop-portal-gtk gnome-keyring networkmanager \
-			rsync
+			rsync matugen dgop accountsservice upower power-profiles-daemon
+		;;
+	arch:dank-aur)
+		printf '%s\n' dsearch-bin dankcalendar-bin
 		;;
 	arch:theme)
 		printf '%s\n' dconf

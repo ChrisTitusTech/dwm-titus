@@ -9,9 +9,11 @@ Rectangle {
     property int margin: Theme.popupMargin
 
     color: Theme.bg
-    border.color: Theme.border
-    border.width: 1
+    border.color: Theme.borderStrong
+    border.width: Theme.pillBorderWidth
     radius: Theme.radius
+
+    PillShadow {}
 
     Item {
         id: body

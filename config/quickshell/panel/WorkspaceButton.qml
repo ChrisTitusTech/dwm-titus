@@ -12,12 +12,12 @@ Rectangle {
     Layout.preferredWidth: Theme.workspaceButtonSize
     Layout.preferredHeight: Theme.workspaceButtonSize
     radius: Theme.smallRadius
-    color: selected ? Theme.surface : "transparent"
+    color: selected ? Theme.surfaceActive : (workspaceMouse.containsMouse ? Theme.surfaceHover : "transparent")
 
     Text {
         anchors.centerIn: parent
         text: root.label
-        color: root.selected ? Theme.accent : Theme.text
+        color: root.selected ? Theme.accent : Theme.textMuted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.panelFontSize
         font.bold: root.selected
@@ -25,7 +25,9 @@ Rectangle {
     }
 
     MouseArea {
+        id: workspaceMouse
         anchors.fill: parent
+        hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: root.clicked()
     }
