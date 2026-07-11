@@ -52,7 +52,7 @@ Profiles:
 |---------|-------------------|
 | `core` | dwm, required X11/session packages, and one terminal |
 | `recommended` | `core` plus Quickshell, Picom, fonts, theming, screenshots, audio, and brightness tools |
-| `full` | `recommended` plus optional extras such as file manager integration, portals, wallpapers, and display-manager setup |
+| `full` | `recommended` plus optional extras such as Thunar with SMB-share browsing, portals, wallpapers, and display-manager setup |
 
 The installer detects the distribution from `/etc/os-release`, resolves package
 names for the detected family, preserves existing `config.h` and user TOML

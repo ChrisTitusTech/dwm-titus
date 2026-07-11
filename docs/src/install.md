@@ -60,8 +60,9 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   Quickshell, Picom, Feh, Dex, fonts, theming, screenshot, audio, Bluetooth
   control and tray tools, and brightness tools. It also installs portable GTK theme packages where available and
   installs Nordic system-wide for the default Nord theme.
-- `full`: `recommended` plus optional extras such as file-manager integration,
-  network tray utilities, portals, wallpapers, and display-manager setup.
+- `full`: `recommended` plus optional extras such as Thunar with SMB-share
+  browsing, network tray utilities, portals, wallpapers, and display-manager
+  setup.
 
 The default is `full` to preserve the historical automated installer behavior.
 For a minimal install:

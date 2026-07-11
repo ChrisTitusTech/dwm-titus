@@ -28,7 +28,7 @@ dwm_packages() {
 		;;
 	arch:desktop-optional)
 		printf '%s\n' \
-			thunar gvfs tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
+			thunar gvfs gvfs-smb tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
 			xdg-desktop-portal-gtk gnome-keyring networkmanager \
 			rsync
 		;;
@@ -88,7 +88,7 @@ dwm_packages() {
 		;;
 	rhel:desktop-optional)
 		printf '%s\n' \
-			Thunar gvfs tumbler thunar-archive-plugin file-roller \
+			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring NetworkManager \
 			rsync nwg-look
 		;;
@@ -138,7 +138,7 @@ dwm_packages() {
 		;;
 	debian:desktop-optional)
 		printf '%s\n' \
-			thunar gvfs tumbler thunar-archive-plugin file-roller \
+			thunar gvfs gvfs-backends tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring \
 			network-manager rsync
 		;;

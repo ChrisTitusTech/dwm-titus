@@ -30,6 +30,7 @@ required_packages=(
 	quickshell
 	Thunar
 	gvfs
+	gvfs-smb
 	tumbler
 	thunar-archive-plugin
 	file-roller
@@ -50,6 +51,13 @@ required_packages=(
 mapfile -t mapped_fedora_packages < <(
 	DISTRO_ID=fedora dwm_packages rhel full | awk 'NF' | sort -u
 )
+
+for mapping in arch:gvfs-smb rhel:gvfs-smb debian:gvfs-backends; do
+	family=${mapping%%:*}
+	package=${mapping#*:}
+	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
+		dwm_packages "$family" full | grep -Fxq "$package"
+done
 
 for ks in "$standard_ks" "$nvidia_ks"; do
 	for repo_line in "${required_repos[@]}"; do

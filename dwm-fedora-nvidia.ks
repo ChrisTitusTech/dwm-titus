@@ -95,6 +95,7 @@ NetworkManager
 rsync
 Thunar
 gvfs
+gvfs-smb
 tumbler
 thunar-archive-plugin
 file-roller
