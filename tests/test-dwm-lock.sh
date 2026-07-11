@@ -93,4 +93,40 @@ if DWM_LOCK_TEST_DIR="$work" PATH="$work/bin" "$helper" 2>"$work/err"; then
 fi
 grep -Fq "no usable screen locker found" "$work/err"
 
+cat >"$work/bin/busctl" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' "$*" >"${DWM_LOCK_TEST_DIR:?}/busctl"
+printf '%s\n' '{"type":"o","data":["/org/freedesktop/login1/session/_37"]}'
+SCRIPT
+
+cat >"$work/bin/loginctl" <<'SCRIPT'
+#!/bin/sh
+case $* in
+"show-session self -p Id --value") printf '%s\n' 7 ;;
+*) exit 1 ;;
+esac
+SCRIPT
+
+cat >"$work/bin/dbus-monitor" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' "$*" >"${DWM_LOCK_TEST_DIR:?}/dbus-monitor"
+printf '%s\n' 'signal path=/org/freedesktop/login1/session/_37; interface=org.freedesktop.login1.Session; member=Lock'
+SCRIPT
+
+cat >"$work/bin/dwm-lock" <<'SCRIPT'
+#!/bin/sh
+printf 'no_loginctl=%s\n' "${DWM_LOCK_NO_LOGINCTL:-0}" >"${DWM_LOCK_TEST_DIR:?}/watch-lock"
+SCRIPT
+chmod +x "$work/bin/busctl" "$work/bin/dbus-monitor" "$work/bin/dwm-lock" "$work/bin/loginctl"
+
+DWM_LOCK_TEST_DIR="$work" \
+	DWM_LOCK_HELPER="$work/bin/dwm-lock" \
+	DWM_LOCK_WATCH_SYNC=1 \
+	XDG_SESSION_ID='' \
+	PATH="$work/bin:/usr/bin:/bin" \
+	"$repo_dir/scripts/dwm-lock-watch"
+grep -Fq 'GetSession s 7' "$work/busctl"
+grep -Fq "path='/org/freedesktop/login1/session/_37'" "$work/dbus-monitor"
+grep -Fxq 'no_loginctl=1' "$work/watch-lock"
+
 printf '%s\n' "dwm-lock fallback behavior: PASS"

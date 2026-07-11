@@ -95,7 +95,7 @@ EOF
 
 chmod +x "$work/bin/"*
 
-for name in feh picom dwm-status light-locker quickshell dex dex-autostart; do
+for name in feh picom dwm-status dwm-lock-watch light-locker quickshell dex dex-autostart; do
 	make_mock_command "$name"
 done
 
@@ -132,10 +132,11 @@ run_duplicate_case() {
 		wait_for_marker "$state/feh.running"
 		wait_for_marker "$state/picom.running"
 		wait_for_marker "$state/dwm-status.running"
+		wait_for_marker "$state/dwm-lock-watch.running"
 		wait_for_marker "$state/quickshell.running"
 	done
 
-	for name in feh picom quickshell; do
+	for name in feh picom dwm-lock-watch quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
 	test ! -e "$state/light-locker.count"

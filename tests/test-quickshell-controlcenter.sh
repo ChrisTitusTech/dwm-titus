@@ -229,6 +229,16 @@ printf '%s\n' "$power" | grep -Fqx 'dpms_enabled	0'
 printf '%s\n' "$power" | grep -Fqx 'lock_available	1'
 printf '%s\n' "$power" | grep -Fqx 'lock_enabled	0'
 
+# Without a managed power.conf, preserve a user or distro-managed locker.
+: >"$work/power-state/light-locker.running"
+: >"$work/actions.log"
+run_helper power-apply
+test -e "$work/power-state/light-locker.running"
+if grep -Fq 'pkill -u ' "$work/actions.log"; then
+	exit 1
+fi
+rm -f "$work/power-state/light-locker.running"
+
 : >"$work/actions.log"
 run_helper power-dpms-timeout 900 >"$work/power-dpms-timeout.out"
 grep -Fqx 'power-dpms-timeout	900' "$work/power-dpms-timeout.out"

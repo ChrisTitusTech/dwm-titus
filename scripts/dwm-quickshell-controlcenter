@@ -169,7 +169,8 @@ power_apply_lock_settings() {
 		fi
 	fi
 
-	if [ "$power_lock_enabled" = 0 ]; then
+	if [ "$power_lock_enabled" = 0 ] &&
+		{ [ "${power_config_managed:-0}" = 1 ] || [ "${power_lock_managed:-0}" = 1 ]; }; then
 		stop_configured_light_locker || power_status=1
 	fi
 

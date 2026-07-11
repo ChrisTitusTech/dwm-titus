@@ -109,6 +109,18 @@ start_detached_once picom picom --backend "$PICOM_BACKEND"
 # dwm root-window status publisher for Quickshell's event-driven panel.
 start_detached_once dwm-status dwm-status
 
+# Event-driven bridge for loginctl/logind lock requests. This keeps external
+# lock commands working without leaving light-locker resident for DPMS events.
+lock_watch=dwm-lock-watch
+if ! command -v "$lock_watch" >/dev/null 2>&1; then
+	case $0 in
+	*/*)
+		lock_watch=${0%/*}/dwm-lock-watch
+		;;
+	esac
+fi
+start_detached_once dwm-lock-watch "$lock_watch"
+
 # Quickshell is the managed shell for this session.
 QUICKSHELL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
 if [ -f "$QUICKSHELL_CONFIG" ]; then
