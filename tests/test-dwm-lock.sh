@@ -32,9 +32,10 @@ SCRIPT
 cat >"$work/bin/light-locker-command" <<'SCRIPT'
 #!/bin/sh
 case $* in
---lock)
-	printf '%s\n' "$*" >"${DWM_LOCK_TEST_DIR:?}/light-locker-command"
-	;;
+	--lock)
+		printf '%s\n' "$*" >"${DWM_LOCK_TEST_DIR:?}/light-locker-command"
+		[ "${DWM_LOCK_TEST_FAIL:-0}" != 1 ]
+		;;
 --query)
 	if [ -f "${DWM_LOCK_TEST_DIR:?}/light-locker.queried" ]; then
 		printf '%s\n' 'The screensaver is inactive'
@@ -69,6 +70,23 @@ grep -Fq '"command": Commands.lockHelperCommand()' \
 	"$repo_dir/config/quickshell/power/PowerMenuModel.qml"
 grep -Fq 'return helperCommand("dwm-lock", undefined, [], true)' \
 	"$repo_dir/config/quickshell/core/Commands.qml"
+
+cat >"$work/bin/loginctl" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' "$*" >"${DWM_LOCK_TEST_DIR:?}/loginctl"
+SCRIPT
+chmod +x "$work/bin/loginctl"
+
+DWM_LOCK_TEST_DIR="$work" \
+	DWM_LOCK_START_DELAY=0 \
+	DWM_LOCK_TEST_FAIL=1 \
+	XDG_SESSION_ID=8 \
+	PATH="$work/bin" \
+	"$helper"
+grep -Fxq 'lock-session 8' "$work/loginctl"
+test ! -e "$work/light-locker.running"
+
+rm -f "$work/bin/loginctl" "$work/loginctl" "$work/light-locker-command"
 
 rm -f "$work/bin/light-locker" "$work/bin/light-locker-command" \
 	"$work/light-locker" "$work/light-locker-command"

@@ -21,6 +21,16 @@ start_light_locker() {
 	fi
 }
 
+stop_started_light_locker() {
+	[ "$light_locker_started" = 1 ] || return 0
+	[ -n "$light_locker_pid" ] || return 0
+
+	kill "$light_locker_pid" 2>/dev/null || true
+	wait "$light_locker_pid" 2>/dev/null || true
+	light_locker_pid=
+	light_locker_started=0
+}
+
 stop_started_light_locker_after_unlock() {
 	[ "$light_locker_started" = 1 ] || return 0
 	[ -n "$light_locker_pid" ] || return 0
@@ -61,6 +71,7 @@ if command -v light-locker-command >/dev/null 2>&1; then
 		stop_started_light_locker_after_unlock
 		exit 0
 	fi
+	stop_started_light_locker
 fi
 
 if command -v xdg-screensaver >/dev/null 2>&1 &&
