@@ -11,7 +11,6 @@ PopupWindow {
 
     readonly property int popupWidth: 360
     readonly property int popupHeight: 420
-    property bool receivedFocus: false
 
     visible: bluetoothModel.visible
     implicitWidth: popupWidth
@@ -22,12 +21,7 @@ PopupWindow {
     grabFocus: true
     color: Theme.transparent
 
-    onActiveChanged: {
-        if (active) root.receivedFocus = true;
-        else if (visible && root.receivedFocus) root.bluetoothModel.close();
-    }
-
-    onVisibleChanged: if (!visible) receivedFocus = false
+    onVisibleChanged: if (!visible) root.bluetoothModel.close()
 
     ShellSurface {
         anchors.fill: parent

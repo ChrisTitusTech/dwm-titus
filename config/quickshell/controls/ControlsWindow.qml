@@ -18,7 +18,6 @@ PopupWindow {
     readonly property int volumeControlHeight: 46
     readonly property int volumePercentWidth: 42
     readonly property int muteButtonWidth: 84
-    property bool receivedFocus: false
 
     visible: controlsModel.visible
     implicitWidth: popupWidth
@@ -29,18 +28,13 @@ PopupWindow {
     grabFocus: true
     color: Theme.transparent
 
-    onActiveChanged: {
-        if (active) root.receivedFocus = true;
-        else if (visible && root.receivedFocus) root.controlsModel.close();
-    }
-
     onVisibleChanged: {
         if (visible) {
             Qt.callLater(function() {
                 content.forceActiveFocus();
             });
         } else {
-            receivedFocus = false;
+            root.controlsModel.close();
         }
     }
 

@@ -17,7 +17,6 @@ PopupWindow {
     readonly property int gap: 8
     property string sidePanel: "none"
     property bool splitsOpen: false
-    property bool receivedFocus: false
 
     function sideTitle() {
         if (sidePanel === "utilities") return "Utilities";
@@ -35,17 +34,12 @@ PopupWindow {
     grabFocus: true
     color: Theme.transparent
 
-    onActiveChanged: {
-        if (active) root.receivedFocus = true;
-        else if (visible && root.receivedFocus) root.controlCenterModel.close();
-    }
-
     onVisibleChanged: {
         if (visible) {
             sidePanel = "none";
             splitsOpen = false;
         } else {
-            receivedFocus = false;
+            root.controlCenterModel.close();
         }
     }
 
