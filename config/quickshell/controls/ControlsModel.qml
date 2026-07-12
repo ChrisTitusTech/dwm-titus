@@ -41,6 +41,9 @@ Scope {
             root.volumeMuted = false;
             root.outputDeviceName = "";
             root.outputDeviceDescription = "";
+            if (!volumeStatusProcess.running) {
+                volumeStatusProcess.running = true;
+            }
         }
 
         const source = root.audioSource;
@@ -48,6 +51,9 @@ Scope {
             root.micText = source.audio.muted ? "MIC muted" : "MIC on";
         } else {
             root.micText = "MIC unavailable";
+            if (!micStatusProcess.running) {
+                micStatusProcess.running = true;
+            }
         }
     }
 
@@ -122,6 +128,20 @@ Scope {
         }
 
         root.mediaText = (labelParts.length > 0 ? labelParts.join(" ") : "MEDIA") + (titleParts.length > 0 ? ": " + titleParts.join(" - ") : "");
+    }
+
+    function parseVolume(text) {
+        const trimmed = text.trim();
+
+        if (trimmed.length > 0) {
+            root.volumeText = trimmed;
+        }
+
+        const match = trimmed.match(/([0-9]+)%/);
+        if (match !== null) {
+            root.volumePercent = root.clampPercent(parseInt(match[1], 10));
+        }
+        root.volumeMuted = trimmed.indexOf("VOL muted") === 0;
     }
 
     function parseOutputDevices(text) {
@@ -238,6 +258,22 @@ Scope {
     }
 
     Connections {
+        target: Pipewire.nodes
+
+        function onObjectInsertedPost(object, index) {
+            if (root.visible) {
+                root.refreshOutputDevices();
+            }
+        }
+
+        function onObjectRemovedPost(object, index) {
+            if (root.visible) {
+                root.refreshOutputDevices();
+            }
+        }
+    }
+
+    Connections {
         target: root.audioSink
 
         function onReadyChanged() {
@@ -270,6 +306,39 @@ Scope {
 
         function onMutedChanged() {
             root.refreshAudioStatus();
+        }
+    }
+
+    Process {
+        id: volumeStatusProcess
+
+        command: Commands.controlsHelperCommand("volume-status")
+        running: false
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const sink = root.audioSink;
+                if (sink === null || !sink.ready || sink.audio === null) {
+                    root.parseVolume(this.text.length > 0 ? this.text : "VOL unavailable");
+                }
+            }
+        }
+    }
+
+    Process {
+        id: micStatusProcess
+
+        command: Commands.controlsHelperCommand("mic-status")
+        running: false
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const source = root.audioSource;
+                if (source === null || !source.ready || source.audio === null) {
+                    const text = this.text.trim();
+                    root.micText = text.length > 0 ? text : "MIC unavailable";
+                }
+            }
         }
     }
 
