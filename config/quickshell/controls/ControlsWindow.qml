@@ -204,15 +204,17 @@ PopupWindow {
                 spacing: root.rowSpacing
 
                 SectionLabel {
-                    label: "Bluetooth"
+                    label: "Output device"
                 }
 
                 Text {
-                    text: root.controlsModel.bluetoothText
+                    Layout.fillWidth: true
+                    text: root.controlsModel.outputText
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.panelFontSize
                     font.bold: true
+                    elide: Text.ElideRight
                 }
             }
 

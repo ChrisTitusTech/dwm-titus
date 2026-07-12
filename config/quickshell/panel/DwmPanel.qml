@@ -10,6 +10,7 @@ PanelWindow {
     required property var clock
     required property var networkModel
     required property var controlsModel
+    required property var bluetoothModel
     required property var controlCenterModel
     required property var powerMenuModel
 
@@ -51,8 +52,11 @@ PanelWindow {
                 Layout.minimumWidth: 0
 
                 RowLayout {
-                    anchors.fill: parent
-                    spacing: Theme.panelGap
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: implicitWidth
+                    height: parent.height
+                    spacing: 0
 
                     LogoButton {
                         onActivated: root.controlCenterModel.toggle()
@@ -155,7 +159,7 @@ PanelWindow {
                     PanelPill {
                         Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.pillHorizontalPadding * 2
                         Layout.preferredHeight: Theme.pillHeight
-                        active: root.controlsModel.visible
+                        active: root.bluetoothModel.visible
                         hovered: bluetoothMouse.containsMouse
 
                         RowLayout {
@@ -172,7 +176,7 @@ PanelWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.controlsModel.toggle()
+                            onClicked: root.bluetoothModel.toggle()
                         }
                     }
 

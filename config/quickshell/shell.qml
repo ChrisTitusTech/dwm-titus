@@ -40,6 +40,10 @@ ShellRoot {
         id: controlsModel
     }
 
+    BluetoothModel {
+        id: bluetoothModel
+    }
+
     ControlCenterModel {
         id: controlCenterModel
     }
@@ -274,6 +278,7 @@ ShellRoot {
         clock: clock
         networkModel: networkModel
         controlsModel: controlsModel
+        bluetoothModel: bluetoothModel
         controlCenterModel: controlCenterModel
         powerMenuModel: powerMenuModel
     }
@@ -297,10 +302,18 @@ ShellRoot {
         panelWindow: panelWindow
     }
 
+    BluetoothWindow {
+        bluetoothModel: bluetoothModel
+        panelWindow: panelWindow
+    }
+
     ControlCenterWindow {
         controlCenterModel: controlCenterModel
         panelWindow: panelWindow
         powerMenuModel: powerMenuModel
+        controlsModel: controlsModel
+        bluetoothModel: bluetoothModel
+        networkModel: networkModel
     }
 
     UtilityDetailWindow {

@@ -9,10 +9,14 @@ PopupWindow {
     required property var controlCenterModel
     required property var panelWindow
     required property var powerMenuModel
+    required property var controlsModel
+    required property var bluetoothModel
+    required property var networkModel
 
     readonly property int cardWidth: 276
     readonly property int gap: 8
-    property string sidePanel: "widgets"
+    property string sidePanel: "none"
+    property bool splitsOpen: false
 
     function sideTitle() {
         if (sidePanel === "utilities") return "Utilities";
@@ -22,13 +26,20 @@ PopupWindow {
     }
 
     visible: controlCenterModel.visible
-    implicitWidth: cardWidth * 2 + gap
-    implicitHeight: Math.max(controlCard.implicitHeight, sideCard.implicitHeight)
+    implicitWidth: cardWidth + (sidePanel === "none" ? 0 : cardWidth + gap)
+    implicitHeight: sidePanel === "none" ? controlCard.implicitHeight : Math.max(controlCard.implicitHeight, sideCard.implicitHeight)
     anchor.window: panelWindow
     anchor.rect.x: 6
     anchor.rect.y: Theme.panelHeight
     grabFocus: true
     color: Theme.transparent
+
+    onVisibleChanged: {
+        if (visible) {
+            sidePanel = "none";
+            splitsOpen = false;
+        }
+    }
 
     component Tile: Rectangle {
         id: tile
@@ -73,6 +84,7 @@ PopupWindow {
             id: controlCard
 
             Layout.preferredWidth: root.cardWidth
+            Layout.maximumHeight: implicitHeight
             Layout.alignment: Qt.AlignTop
             margin: 12
             implicitHeight: controlColumn.implicitHeight + margin * 2
@@ -136,14 +148,19 @@ PopupWindow {
                             required property string modelData
                             Layout.fillWidth: true
                             label: modelData
-                            active: modelData === "Accent"
+                            active: false
                         }
                     }
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
                 UiText { text: "Splits"; color: Theme.textMuted; font.letterSpacing: 1 }
-                Tile { Layout.fillWidth: true; label: "Splits  ▸" }
+                Tile {
+                    Layout.fillWidth: true
+                    label: root.splitsOpen ? "Splits  ◂" : "Splits  ▸"
+                    active: root.splitsOpen
+                    onActivated: root.splitsOpen = !root.splitsOpen
+                }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
                 UiText { text: "Bar Functions"; color: Theme.textMuted; font.letterSpacing: 1 }
@@ -151,7 +168,7 @@ PopupWindow {
                     Layout.fillWidth: true
                     label: root.sidePanel === "widgets" ? "Bar Functions  ◂" : "Bar Functions  ▸"
                     active: root.sidePanel === "widgets"
-                    onActivated: root.sidePanel = "widgets"
+                    onActivated: root.sidePanel = root.sidePanel === "widgets" ? "none" : "widgets"
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
@@ -160,7 +177,7 @@ PopupWindow {
                     Layout.fillWidth: true
                     label: root.sidePanel === "utilities" ? "Utilities  ◂" : "Utilities  ▸"
                     active: root.sidePanel === "utilities"
-                    onActivated: root.sidePanel = "utilities"
+                    onActivated: root.sidePanel = root.sidePanel === "utilities" ? "none" : "utilities"
                 }
             }
         }
@@ -169,9 +186,11 @@ PopupWindow {
             id: sideCard
 
             Layout.preferredWidth: root.cardWidth
+            Layout.maximumHeight: implicitHeight
             Layout.alignment: Qt.AlignTop
             margin: 12
             implicitHeight: sideColumn.implicitHeight + margin * 2
+            visible: root.sidePanel !== "none"
 
             ColumnLayout {
                 id: sideColumn
@@ -199,6 +218,12 @@ PopupWindow {
                             Layout.fillWidth: true
                             label: modelData
                             active: true
+                            onActivated: {
+                                if (modelData === "Volume") root.controlsModel.open();
+                                else if (modelData === "Bluetooth") root.bluetoothModel.open();
+                                else if (modelData === "Network") root.networkModel.open();
+                                else if (modelData === "Power") root.powerMenuModel.open();
+                            }
                         }
                     }
                 }

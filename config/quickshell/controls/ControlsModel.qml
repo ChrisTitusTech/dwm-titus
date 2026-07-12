@@ -11,6 +11,7 @@ Scope {
     property int volumePercent: 0
     property bool volumeMuted: false
     property string micText: "MIC unavailable"
+    property string outputText: "Output unavailable"
     property string mediaText: "MEDIA none"
     property string mediaPlayer: ""
     property string mediaState: ""
@@ -43,6 +44,9 @@ Scope {
         }
         if (!micStatusProcess.running) {
             micStatusProcess.running = true;
+        }
+        if (!outputStatusProcess.running) {
+            outputStatusProcess.running = true;
         }
         if (!mediaStatusProcess.running) {
             mediaStatusProcess.running = true;
@@ -186,6 +190,20 @@ Scope {
                 const text = this.text.trim();
 
                 root.micText = text.length > 0 ? text : "MIC unavailable";
+            }
+        }
+    }
+
+    Process {
+        id: outputStatusProcess
+
+        command: Commands.controlsHelperCommand("output-status")
+        running: false
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const text = this.text.trim();
+                root.outputText = text.length > 0 ? text : "Output unavailable";
             }
         }
     }
