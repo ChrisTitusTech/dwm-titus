@@ -18,18 +18,18 @@ dwm_packages() {
 		printf '%s\n' xorg-server
 		;;
 	arch:runtime-required)
-		printf '%s\n' dbus curl git procps-ng psmisc unzip xclip xdotool xorg-xprop xdg-utils
+		printf '%s\n' dbus curl git procps-ng psmisc unzip wmctrl xclip xdotool xorg-xprop xdg-utils
 		;;
 	arch:desktop)
 		printf '%s\n' \
 			quickshell picom feh flameshot dex mate-polkit alsa-utils \
 			brightnessctl pipewire pipewire-pulse wireplumber pavucontrol \
-			libnotify light-locker bluez-utils blueman
+			libnotify light-locker bluez bluez-utils blueman playerctl
 		;;
 	arch:desktop-optional)
 		printf '%s\n' \
 			thunar gvfs tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
-			xdg-desktop-portal-gtk gnome-keyring networkmanager \
+			xdg-desktop-portal-gtk gnome-keyring networkmanager network-manager-applet \
 			rsync matugen dgop accountsservice upower power-profiles-daemon
 		;;
 	arch:dank-aur)
@@ -39,7 +39,7 @@ dwm_packages() {
 		printf '%s\n' dconf
 		;;
 	arch:theme-gtk)
-		printf '%s\n' arc-gtk-theme materia-gtk-theme numix-themes yaru-gtk-theme
+		printf '%s\n' adapta-gtk-theme materia-gtk-theme orchis-theme yaru-gtk-theme
 		;;
 	arch:theme-optional)
 		printf '%s\n' qt6ct qt5ct

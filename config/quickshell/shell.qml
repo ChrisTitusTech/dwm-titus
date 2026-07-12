@@ -299,5 +299,11 @@ ShellRoot {
 
     ControlCenterWindow {
         controlCenterModel: controlCenterModel
+        panelWindow: panelWindow
+        powerMenuModel: powerMenuModel
+    }
+
+    UtilityDetailWindow {
+        controlCenterModel: controlCenterModel
     }
 }

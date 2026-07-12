@@ -219,6 +219,7 @@ static Monitor *recttomon(int x, int y, int w, int h);
 static void resize(Client *c, int x, int y, int w, int h, int interact);
 static void resizeclient(Client *c, int x, int y, int w, int h);
 static void resizemouse(const Arg *arg);
+static void resizetiledmouse(const Arg *arg);
 static void raisealwaysontop(Monitor *m);
 static void restack(Monitor *m);
 static int sendevent(Client *c, Atom proto);
@@ -2268,6 +2269,10 @@ resizemouse(const Arg *arg)
 		return;
 	if (c->isfullscreen && c->fakefullscreen != 1) /* no support resizing fullscreen windows by mouse */
 		return;
+	if (!c->isfloating && selmon->lt[selmon->sellt]->arrange) {
+		resizetiledmouse(arg);
+		return;
+	}
 	restack(selmon);
 	nx = ocx = c->x;
 	ny = ocy = c->y;
@@ -2299,14 +2304,6 @@ resizemouse(const Arg *arg)
 			ny = vertcorner ? (ocy + ev.xmotion.y - opy) : c->y;
 			nw = MAX(horizcorner ? (ocx + ocw - nx) : (ocw + (ev.xmotion.x - opx)), 1);
 			nh = MAX(vertcorner ? (ocy + och - ny) : (och + (ev.xmotion.y - opy)), 1);
-			if (c->mon->wx + nw >= selmon->wx && c->mon->wx + nw <= selmon->wx + selmon->ww
-			&& c->mon->wy + nh >= selmon->wy && c->mon->wy + nh <= selmon->wy + selmon->wh)
-			{
-				if (!c->isfloating && selmon->lt[selmon->sellt]->arrange
-				&& (abs(nw - c->w) > snap || abs(nh - c->h) > snap)) {
-					togglefloating(NULL);
-				}
-			}
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
 				resize(c, nx, ny, nw, nh, 1);
 			}
@@ -2320,6 +2317,83 @@ resizemouse(const Arg *arg)
 		selmon = m;
 		focus(NULL);
 	}
+}
+
+/* Resize a tiled client by changing the active layout's split factors.
+ * Neighbours are re-tiled immediately; mouse resizing never floats a client. */
+void
+resizetiledmouse(const Arg *arg)
+{
+	int index, n, opx, opy, px, py, horizcorner, vertcorner;
+	int horizontal_split;
+	float initial_cfact, group_facts;
+	unsigned int dui;
+	Window dummy;
+	Client *c, *it;
+	XEvent ev;
+	Time lasttime = 0;
+
+	(void)arg;
+	if (!(c = selmon->sel))
+		return;
+
+	for (n = 0, index = -1, it = nexttiled(selmon->clients); it; it = nexttiled(it->next), n++) {
+		if (it == c)
+			index = n;
+	}
+	if (index < 0)
+		return;
+	if (!XQueryPointer(dpy, c->win, &dummy, &dummy, &opx, &opy, &px, &py, &dui))
+		return;
+
+	horizcorner = px < c->w / 2;
+	vertcorner = py < c->h / 2;
+	horizontal_split = n > selmon->nmaster && selmon->nmaster > 0
+		&& ((index < selmon->nmaster && !horizcorner)
+			|| (index >= selmon->nmaster && horizcorner));
+	initial_cfact = c->cfact;
+	group_facts = 0.0f;
+	for (int i = 0; (it = nexttiled(i ? it->next : selmon->clients)); i++) {
+		if ((index < selmon->nmaster && i < selmon->nmaster)
+		|| (index >= selmon->nmaster && i >= selmon->nmaster))
+			group_facts += it->cfact;
+	}
+
+	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+		None, cursor[horizcorner | (vertcorner << 1)]->cursor, CurrentTime) != GrabSuccess)
+		return;
+	do {
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		switch (ev.type) {
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handler[ev.type](&ev);
+			break;
+		case MotionNotify:
+			if ((ev.xmotion.time - lasttime) <= (1000 / refresh_rate))
+				continue;
+			lasttime = ev.xmotion.time;
+			if (horizontal_split) {
+				float f = (float)(ev.xmotion.x - selmon->wx) / (float)selmon->ww;
+				if (f >= 0.05f && f <= 0.95f)
+					selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag] = f;
+			}
+			if (group_facts > 0.0f) {
+				float delta = ((float)(ev.xmotion.y - opy) / (float)selmon->wh) * group_facts;
+				float f = initial_cfact + (vertcorner ? -delta : delta);
+				if (f < 0.25f)
+					f = 0.25f;
+				else if (f > 4.0f)
+					f = 4.0f;
+				c->cfact = f;
+			}
+			arrange(selmon);
+			break;
+		}
+	} while (ev.type != ButtonRelease);
+	XUngrabPointer(dpy, CurrentTime);
+	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 }
 
 void

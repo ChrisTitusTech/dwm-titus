@@ -66,7 +66,7 @@ PanelWindow {
                             id: workspaceRow
 
                             anchors.centerIn: parent
-                            spacing: Theme.compactSpacing
+                            spacing: 1
 
                             Repeater {
                                 model: root.state.workspaceNames.slice(0, 5)
@@ -112,15 +112,35 @@ PanelWindow {
                     Item { Layout.fillWidth: true }
 
                     PanelPill {
-                        Layout.preferredWidth: volumeLabel.implicitWidth + Theme.pillHorizontalPadding * 2
+                        Layout.preferredWidth: volumeRow.implicitWidth + Theme.pillHorizontalPadding * 2
                         Layout.preferredHeight: Theme.pillHeight
                         active: root.controlsModel.visible
                         hovered: controlsMouse.containsMouse
 
-                        UiText {
-                            id: volumeLabel
+                        RowLayout {
+                            id: volumeRow
+
                             anchors.centerIn: parent
-                            text: root.controlsModel.volumeText
+                            spacing: Theme.compactSpacing + 2
+
+                            Rectangle {
+                                Layout.preferredWidth: 30
+                                Layout.preferredHeight: 6
+                                radius: 3
+                                color: Theme.borderStrong
+
+                                Rectangle {
+                                    width: Math.max(4, parent.width * root.controlsModel.volumePercent / 100)
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: Theme.accentSecondary
+                                }
+                            }
+
+                            UiText {
+                                text: root.controlsModel.volumeMuted ? "Muted" : root.controlsModel.volumePercent.toString() + "%"
+                                color: Theme.accentSecondary
+                            }
                         }
 
                         MouseArea {
@@ -184,15 +204,15 @@ PanelWindow {
                     }
 
                     PanelPill {
-                        Layout.preferredWidth: powerLabel.implicitWidth + Theme.pillHorizontalPadding * 2
+                        Layout.preferredWidth: Theme.pillHeight
                         Layout.preferredHeight: Theme.pillHeight
                         active: root.powerMenuModel.visible
                         hovered: powerMouse.containsMouse
 
-                        UiText {
-                            id: powerLabel
+                        IconText {
                             anchors.centerIn: parent
-                            text: "Power"
+                            text: "󰐥"
+                            color: Theme.accentSecondary
                         }
 
                         MouseArea {

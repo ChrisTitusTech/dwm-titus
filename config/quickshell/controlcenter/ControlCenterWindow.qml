@@ -3,232 +3,275 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
-FloatingWindow {
+PopupWindow {
     id: root
 
     required property var controlCenterModel
+    required property var panelWindow
+    required property var powerMenuModel
 
-    readonly property var overviewPages: [
-        { "id": "health", "label": "System Health", "detail": "Check required commands, config paths, and desktop tools" },
-        { "id": "actions", "label": "Quick Actions", "detail": "Restart desktop services and open common tools" },
-        { "id": "appearance", "label": "Appearance", "detail": "Switch active dwm-titus themes" },
-        { "id": "keybinds", "label": "Keybinds", "detail": "Browse live hotkeys from hotkeys.toml" },
-        { "id": "info", "label": "System Info", "detail": "View session and host details" }
-    ]
-    readonly property var actions: [
-        { "id": "restart-picom", "label": "Restart Picom", "detail": "Restart the compositor" },
-        { "id": "restart-quickshell", "label": "Restart Quickshell", "detail": "Restart the desktop shell" },
-        { "id": "reload-wallpaper", "label": "Reload Wallpaper", "detail": "Randomize the wallpaper folder" },
-        { "id": "restart-networkmanager", "label": "Restart NetworkManager", "detail": "Open a terminal for the privileged restart" },
-        { "id": "dependency-check", "label": "Dependency Check", "detail": "Run check-deps.sh in a terminal" },
-        { "id": "install-missing-deps", "label": "Install Missing Deps", "detail": "Run the installer in a terminal" },
-        { "id": "open-wallpapers", "label": "Wallpaper Folder", "detail": "Open the wallpaper directory" },
-        { "id": "gtk-settings", "label": "GTK Settings", "detail": "Open nwg-look when installed" }
-    ]
+    readonly property int cardWidth: 276
+    readonly property int gap: 8
+    property string sidePanel: "widgets"
 
-    title: "dwm control center"
+    function sideTitle() {
+        if (sidePanel === "utilities") return "Utilities";
+        if (sidePanel === "actions") return "Quick Actions";
+        if (sidePanel === "appearance") return "Appearance";
+        return "Widgets";
+    }
+
     visible: controlCenterModel.visible
-    implicitWidth: 760
-    implicitHeight: 620
+    implicitWidth: cardWidth * 2 + gap
+    implicitHeight: Math.max(controlCard.implicitHeight, sideCard.implicitHeight)
+    anchor.window: panelWindow
+    anchor.rect.x: 6
+    anchor.rect.y: Theme.panelHeight
+    grabFocus: true
     color: Theme.transparent
 
-    function pageTitle() {
-        if (controlCenterModel.page === "overview") {
-            return "Control Center";
+    component Tile: Rectangle {
+        id: tile
+
+        property string label: ""
+        property bool active: false
+        signal activated()
+
+        implicitHeight: 26
+        radius: Theme.smallRadius
+        color: active ? Theme.surfaceActive : (tileMouse.containsMouse ? Theme.surfaceHover : Theme.surface)
+        border.color: active || tileMouse.containsMouse ? Theme.accentSecondary : Theme.border
+        border.width: Theme.pillBorderWidth
+
+        UiText {
+            anchors.centerIn: parent
+            text: tile.label
+            color: tile.active || tileMouse.containsMouse ? Theme.accentSecondary : Theme.text
         }
 
-        return controlCenterModel.page.charAt(0).toUpperCase() + controlCenterModel.page.slice(1);
-    }
-
-    function openPage(page) {
-        if (page === "health") {
-            controlCenterModel.openHealth();
-        } else if (page === "actions") {
-            controlCenterModel.openActions();
-        } else if (page === "appearance") {
-            controlCenterModel.openAppearance();
-        } else if (page === "keybinds") {
-            controlCenterModel.openKeybinds();
-        } else if (page === "info") {
-            controlCenterModel.openInfo();
-        }
-    }
-
-    ShellSurface {
-        anchors.fill: parent
-        focus: true
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                if (root.controlCenterModel.page === "overview") {
-                    root.controlCenterModel.close();
-                } else {
-                    root.controlCenterModel.openOverview();
-                }
-                event.accepted = true;
-            }
-        }
-
-        ColumnLayout {
+        MouseArea {
+            id: tileMouse
             anchors.fill: parent
-            spacing: Theme.popupSpacing
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: tile.activated()
+        }
+    }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.rowSpacing
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Escape) {
+            root.controlCenterModel.close();
+            event.accepted = true;
+        }
+    }
 
-                Text {
+    RowLayout {
+        anchors.fill: parent
+        spacing: root.gap
+
+        ShellSurface {
+            id: controlCard
+
+            Layout.preferredWidth: root.cardWidth
+            Layout.alignment: Qt.AlignTop
+            margin: 12
+            implicitHeight: controlColumn.implicitHeight + margin * 2
+
+            ColumnLayout {
+                id: controlColumn
+                width: parent.width
+                spacing: 8
+
+                RowLayout {
                     Layout.fillWidth: true
-                    text: root.pageTitle()
-                    color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.titleFontSize
-                    font.bold: true
-                    elide: Text.ElideRight
-                }
 
-                ShellButton {
-                    Layout.preferredWidth: implicitWidth
-                    Layout.preferredHeight: Theme.buttonHeight
-                    visible: root.controlCenterModel.page !== "overview"
-                    label: "Back"
-                    onActivated: root.controlCenterModel.openOverview()
-                }
+                    UiText {
+                        Layout.fillWidth: true
+                        text: "Control"
+                        color: Theme.textStrong
+                        font.letterSpacing: 2
+                    }
 
-                ShellButton {
-                    Layout.preferredWidth: implicitWidth
-                    Layout.preferredHeight: Theme.buttonHeight
-                    visible: root.controlCenterModel.page !== "overview"
-                    label: "Refresh"
-                    onActivated: root.controlCenterModel.refresh()
-                }
-            }
+                    UiText {
+                        text: "×"
+                        color: closeMouse.containsMouse ? Theme.accent : Theme.textMuted
 
-            Text {
-                Layout.fillWidth: true
-                visible: root.controlCenterModel.message.length > 0
-                text: root.controlCenterModel.message
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallFontSize
-                elide: Text.ElideRight
-            }
-
-            GridView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "overview"
-                clip: true
-                cellWidth: Math.max(220, width / 2)
-                cellHeight: 74
-                model: root.overviewPages
-
-                delegate: ControlCenterActionButton {
-                    required property var modelData
-
-                    width: GridView.view.cellWidth - Theme.listSpacing
-                    label: modelData.label
-                    detail: modelData.detail
-                    onActivated: root.openPage(modelData.id)
-                }
-            }
-
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "health"
-                clip: true
-                spacing: Theme.listSpacing
-                model: root.controlCenterModel.healthRows
-
-                delegate: ControlCenterRow {
-                    required property var modelData
-
-                    width: ListView.view.width
-                    title: modelData.label
-                    detail: modelData.detail
-                    status: modelData.status
-                }
-            }
-
-            GridView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "actions"
-                clip: true
-                cellWidth: Math.max(230, width / 2)
-                cellHeight: 70
-                model: root.actions
-
-                delegate: ControlCenterActionButton {
-                    required property var modelData
-
-                    width: GridView.view.cellWidth - Theme.listSpacing
-                    enabled: !root.controlCenterModel.busy
-                    label: modelData.label
-                    detail: modelData.detail
-                    onActivated: root.controlCenterModel.runAction(modelData.id)
-                }
-            }
-
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "appearance"
-                clip: true
-                spacing: Theme.listSpacing
-                model: root.controlCenterModel.themeRows
-
-                delegate: ControlCenterRow {
-                    required property var modelData
-
-                    width: ListView.view.width
-                    title: modelData.name
-                    detail: modelData.status === "active" ? "Active theme" : "Click to apply"
-                    status: modelData.status === "active" ? "ok" : ""
-
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: modelData.status !== "active" && !root.controlCenterModel.busy
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.controlCenterModel.setTheme(modelData.name)
+                        MouseArea {
+                            id: closeMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.controlCenterModel.close()
+                        }
                     }
                 }
-            }
 
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "keybinds"
-                clip: true
-                spacing: Theme.listSpacing
-                model: root.controlCenterModel.keybindRows
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
-                delegate: ControlCenterRow {
-                    required property var modelData
+                UiText { text: "Actions"; color: Theme.textMuted; font.letterSpacing: 1 }
+                Tile {
+                    Layout.fillWidth: true
+                    label: "Reload QS-Config"
+                    onActivated: root.controlCenterModel.runAction("restart-quickshell")
+                }
+                Tile {
+                    Layout.fillWidth: true
+                    label: "Power  ▸"
+                    onActivated: {
+                        root.controlCenterModel.close();
+                        root.powerMenuModel.open();
+                    }
+                }
 
-                    width: ListView.view.width
-                    title: modelData.keys
-                    detail: modelData.description
-                    status: ""
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+                UiText { text: "Bar Color"; color: Theme.textMuted; font.letterSpacing: 1 }
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: 8
+                    rowSpacing: 8
+                    Repeater {
+                        model: ["Red", "Accent", "Color 02", "Color 03"]
+                        delegate: Tile {
+                            required property string modelData
+                            Layout.fillWidth: true
+                            label: modelData
+                            active: modelData === "Accent"
+                        }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+                UiText { text: "Splits"; color: Theme.textMuted; font.letterSpacing: 1 }
+                Tile { Layout.fillWidth: true; label: "Splits  ▸" }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+                UiText { text: "Bar Functions"; color: Theme.textMuted; font.letterSpacing: 1 }
+                Tile {
+                    Layout.fillWidth: true
+                    label: root.sidePanel === "widgets" ? "Bar Functions  ◂" : "Bar Functions  ▸"
+                    active: root.sidePanel === "widgets"
+                    onActivated: root.sidePanel = "widgets"
+                }
+
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+                UiText { text: "Utilities"; color: Theme.textMuted; font.letterSpacing: 1 }
+                Tile {
+                    Layout.fillWidth: true
+                    label: root.sidePanel === "utilities" ? "Utilities  ◂" : "Utilities  ▸"
+                    active: root.sidePanel === "utilities"
+                    onActivated: root.sidePanel = "utilities"
                 }
             }
+        }
 
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "info"
-                clip: true
-                spacing: Theme.listSpacing
-                model: root.controlCenterModel.infoRows
+        ShellSurface {
+            id: sideCard
 
-                delegate: ControlCenterRow {
-                    required property var modelData
+            Layout.preferredWidth: root.cardWidth
+            Layout.alignment: Qt.AlignTop
+            margin: 12
+            implicitHeight: sideColumn.implicitHeight + margin * 2
 
-                    width: ListView.view.width
-                    title: modelData.label
-                    detail: modelData.value
-                    status: ""
+            ColumnLayout {
+                id: sideColumn
+                width: parent.width
+                spacing: 8
+
+                UiText {
+                    text: root.sideTitle()
+                    color: Theme.textStrong
+                    font.letterSpacing: 2
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    visible: root.sidePanel === "widgets"
+                    columns: 2
+                    columnSpacing: 8
+                    rowSpacing: 8
+
+                    Repeater {
+                        model: ["Volume", "Bluetooth", "Network", "Power", "Workspaces"]
+                        delegate: Tile {
+                            required property string modelData
+                            Layout.fillWidth: true
+                            label: modelData
+                            active: true
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.sidePanel === "utilities"
+                    spacing: 8
+
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "System Health  ›"
+                        onActivated: root.controlCenterModel.openHealth()
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "Quick Actions  ›"
+                        onActivated: {
+                            root.controlCenterModel.openActions();
+                            root.sidePanel = "actions";
+                        }
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "Appearance  ›"
+                        onActivated: {
+                            root.controlCenterModel.openAppearance();
+                            root.sidePanel = "appearance";
+                        }
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "Keybinds  ›"
+                        onActivated: root.controlCenterModel.openKeybinds()
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "System Info  ›"
+                        onActivated: root.controlCenterModel.openInfo()
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.sidePanel === "actions"
+                    spacing: 8
+
+                    Repeater {
+                        model: root.controlCenterModel.actions
+                        delegate: Tile {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            label: modelData.label
+                            onActivated: root.controlCenterModel.runAction(modelData.id)
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.sidePanel === "appearance"
+                    spacing: 8
+
+                    Repeater {
+                        model: root.controlCenterModel.themeRows
+                        delegate: Tile {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            label: modelData.name
+                            active: modelData.status === "active"
+                            onActivated: root.controlCenterModel.setTheme(modelData.name)
+                        }
+                    }
                 }
             }
         }

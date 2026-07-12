@@ -34,7 +34,7 @@
 #          setcfact          → resize window in stack slot      (f=0.25 / f=-0.25 / f=0.00)
 #          setlayout         → switch layout                    (layout_idx=0/1/2)
 #                               0=tiling  1=floating  2=monocle
-#          togglefloating    → float or tile focused window
+#          togglefloating    → float or tile focused window (SUPER+T only)
 #          fullscreen        → true fullscreen (hides bar)
 #          togglefakefullscreen → fullscreen look, bar still works
 #          togglebar         → show/hide the status bar
@@ -112,11 +112,8 @@ keys = [
   { mod="SUPER SHIFT",      key="o",       desc="Cfact reset",             func="setcfact",    f=0.00 },
 
   # ── Layouts  (0=tiling  1=floating  2=monocle) ───────────────────────────────
-  { mod="SUPER",            key="t",       desc="Tile layout",             func="setlayout",   layout_idx=0 },
-  { mod="SUPER",            key="f",       desc="Float layout",            func="setlayout",   layout_idx=1 },
+  { mod="SUPER",            key="t",       desc="Toggle tiled/floating",   func="togglefloating" },
   { mod="SUPER",            key="m",       desc="Fullscreen",              func="fullscreen" },
-  { mod="SUPER SHIFT",      key="m",       desc="Toggle floating window",  func="togglefloating" },
-  { mod="SUPER",            key="space",   desc="Toggle float/tile",       func="togglefloating" },
   { mod="SUPER SHIFT",      key="y",       desc="Fake fullscreen",         func="togglefakefullscreen" },
   { mod="SUPER SHIFT",      key="b",       desc="Toggle bar",              func="togglebar" },
 

@@ -29,10 +29,10 @@ Singleton {
     readonly property string fontFamily: "MesloLGS Nerd Font Mono"
     readonly property string iconFontFamily: fontFamily
 
-    readonly property int panelHeight: 38
-    readonly property int panelMargin: 4
-    readonly property int panelEdgeMargin: 8
-    readonly property int panelGap: 6
+    readonly property int panelHeight: 36
+    readonly property int panelMargin: 0
+    readonly property int panelEdgeMargin: 0
+    readonly property int panelGap: 4
     readonly property int popupMargin: 18
     readonly property int popupSpacing: 12
     readonly property int rowSpacing: 10
@@ -40,11 +40,11 @@ Singleton {
     readonly property int compactSpacing: 2
     readonly property int tightSpacing: 3
     readonly property int sectionSpacing: 14
-    readonly property int radius: 8
+    readonly property int radius: 6
     readonly property int smallRadius: 6
-    readonly property int barRadius: 11
-    readonly property int pillRadius: 8
-    readonly property int pillHeight: 28
+    readonly property int barRadius: 0
+    readonly property int pillRadius: 6
+    readonly property int pillHeight: 26
     readonly property int pillHorizontalPadding: 9
     readonly property int pillBorderWidth: 1
     readonly property int animationFast: 120

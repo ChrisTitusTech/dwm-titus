@@ -8,11 +8,23 @@ Scope {
     property bool visible: false
     property bool busy: false
     property string page: "overview"
+    property bool utilityVisible: false
+    property string utilityPage: ""
     property string message: ""
     property var healthRows: []
     property var infoRows: []
     property var themeRows: []
     property var keybindRows: []
+    readonly property var actions: [
+        { "id": "restart-picom", "label": "Restart Picom" },
+        { "id": "restart-quickshell", "label": "Restart Quickshell" },
+        { "id": "reload-wallpaper", "label": "Reload Wallpaper" },
+        { "id": "restart-networkmanager", "label": "Restart NetworkManager" },
+        { "id": "dependency-check", "label": "Dependency Check" },
+        { "id": "install-missing-deps", "label": "Install Missing Deps" },
+        { "id": "open-wallpapers", "label": "Wallpaper Folder" },
+        { "id": "gtk-settings", "label": "GTK Settings" }
+    ]
 
     function openPage(name, message, process) {
         root.page = name;
@@ -29,6 +41,12 @@ Scope {
 
     function close() {
         root.visible = false;
+        root.message = "";
+    }
+
+    function closeUtility() {
+        root.utilityVisible = false;
+        root.utilityPage = "";
         root.message = "";
     }
 
@@ -49,6 +67,8 @@ Scope {
     }
 
     function openHealth() {
+        root.utilityPage = "health";
+        root.utilityVisible = true;
         root.openPage("health", "Checking system health...", healthProcess);
     }
 
@@ -61,11 +81,14 @@ Scope {
     }
 
     function openKeybinds() {
-        root.visible = true;
+        root.utilityPage = "keybinds";
+        root.utilityVisible = true;
         root.openPage("keybinds", "Loading keybinds...", keybindsProcess);
     }
 
     function openInfo() {
+        root.utilityPage = "info";
+        root.utilityVisible = true;
         root.openPage("info", "Loading system info...", infoProcess);
     }
 

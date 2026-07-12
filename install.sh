@@ -495,6 +495,10 @@ if install_optional_profile; then
 	if ! dwm_install_available_package_profile optional; then
 		warn "Some optional desktop extras were unavailable in enabled repositories."
 	fi
+	if [[ $DISTRO_FAMILY == "arch" ]]; then
+		sudo systemctl enable NetworkManager.service
+		sudo systemctl enable bluetooth.service
+	fi
 	if ! install_arch_dank_aur_integrations; then
 		err "DankShell AUR integrations could not be installed."
 		exit 1

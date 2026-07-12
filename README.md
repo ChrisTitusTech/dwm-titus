@@ -124,6 +124,7 @@ See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 | <kbd>SUPER</kbd> + <kbd>Q</kbd> | Close window |
 | <kbd>SUPER</kbd> + <kbd>J</kbd> / <kbd>K</kbd> | Focus next / previous window |
 | <kbd>SUPER</kbd> + <kbd>H</kbd> / <kbd>L</kbd> | Resize master area |
+| <kbd>SUPER</kbd> + <kbd>T</kbd> | Toggle focused window tiled/floating |
 | <kbd>SUPER</kbd> + <kbd>1-9</kbd> / <kbd>0</kbd> | Switch to tag (workspace 10 uses <kbd>0</kbd>) |
 | <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>1-9</kbd> / <kbd>0</kbd> | Move window to tag (workspace 10 uses <kbd>0</kbd>) |
 | <kbd>SUPER</kbd> + <kbd>T</kbd> | Tile layout |
