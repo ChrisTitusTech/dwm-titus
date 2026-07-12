@@ -2,6 +2,9 @@
 
 set -eu
 
+light_locker_pid=
+light_locker_started=0
+
 start_light_locker() {
 	command -v light-locker >/dev/null 2>&1 || return 0
 
@@ -11,9 +14,51 @@ start_light_locker() {
 	fi
 
 	light-locker >/dev/null 2>&1 &
+	light_locker_pid=$!
+	light_locker_started=1
 	if command -v sleep >/dev/null 2>&1; then
 		sleep "${DWM_LOCK_START_DELAY:-0.2}"
 	fi
+}
+
+stop_started_light_locker() {
+	[ "$light_locker_started" = 1 ] || return 0
+	[ -n "$light_locker_pid" ] || return 0
+
+	kill "$light_locker_pid" 2>/dev/null || true
+	wait "$light_locker_pid" 2>/dev/null || true
+	light_locker_pid=
+	light_locker_started=0
+}
+
+stop_started_light_locker_after_unlock() {
+	[ "$light_locker_started" = 1 ] || return 0
+	[ -n "$light_locker_pid" ] || return 0
+	command -v sleep >/dev/null 2>&1 || return 0
+
+	(
+		active_seen=0
+		attempts=0
+		while kill -0 "$light_locker_pid" 2>/dev/null; do
+			locker_state=$(LC_ALL=C light-locker-command --query 2>/dev/null || true)
+			case $locker_state in
+			*" is active") active_seen=1 ;;
+			*" is inactive")
+				if [ "$active_seen" = 1 ]; then
+					kill "$light_locker_pid" 2>/dev/null || true
+					exit 0
+				fi
+				;;
+			esac
+
+			attempts=$((attempts + 1))
+			if [ "$active_seen" = 0 ] && [ "$attempts" -ge 30 ]; then
+				kill "$light_locker_pid" 2>/dev/null || true
+				exit 0
+			fi
+			sleep 1
+		done
+	) >/dev/null 2>&1 &
 }
 
 try_lock() {
@@ -23,8 +68,10 @@ try_lock() {
 if command -v light-locker-command >/dev/null 2>&1; then
 	start_light_locker
 	if try_lock light-locker-command --lock; then
+		stop_started_light_locker_after_unlock
 		exit 0
 	fi
+	stop_started_light_locker
 fi
 
 if command -v xdg-screensaver >/dev/null 2>&1 &&
@@ -32,7 +79,8 @@ if command -v xdg-screensaver >/dev/null 2>&1 &&
 	exit 0
 fi
 
-if command -v loginctl >/dev/null 2>&1; then
+if [ "${DWM_LOCK_NO_LOGINCTL:-0}" != 1 ] &&
+	command -v loginctl >/dev/null 2>&1; then
 	if [ -n "${XDG_SESSION_ID:-}" ]; then
 		if try_lock loginctl lock-session "$XDG_SESSION_ID"; then
 			exit 0

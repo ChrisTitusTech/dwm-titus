@@ -7,6 +7,7 @@ repo=$(
 )
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+test_uid=$(id -u)
 
 mkdir -p "$work/bin" "$work/config/dwm-titus" "$work/home/Pictures/backgrounds" "$work/data/dwm-titus/config/quickshell" "$work/power-state"
 mkdir -p "$work/config/quickshell"
@@ -28,6 +29,15 @@ SH
 for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh flameshot notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps xdg-open nwg-look pkill pgrep dnf; do
 	stub_command "$name"
 done
+
+cat >"$work/bin/pkill" <<'SH'
+#!/bin/sh
+printf 'pkill %s\n' "$*" >>"${DWM_TEST_LOG:?}"
+case $* in
+*"-x light-locker"*) rm -f "${DWM_TEST_POWER_STATE:?}/light-locker.running" ;;
+esac
+SH
+chmod +x "$work/bin/pkill"
 
 cat >"$work/bin/pgrep" <<'SH'
 #!/bin/sh
@@ -219,6 +229,16 @@ printf '%s\n' "$power" | grep -Fqx 'dpms_enabled	0'
 printf '%s\n' "$power" | grep -Fqx 'lock_available	1'
 printf '%s\n' "$power" | grep -Fqx 'lock_enabled	0'
 
+# Without a managed power.conf, preserve a user or distro-managed locker.
+: >"$work/power-state/light-locker.running"
+: >"$work/actions.log"
+run_helper power-apply
+test -e "$work/power-state/light-locker.running"
+if grep -Fq 'pkill -u ' "$work/actions.log"; then
+	exit 1
+fi
+rm -f "$work/power-state/light-locker.running"
+
 : >"$work/actions.log"
 run_helper power-dpms-timeout 900 >"$work/power-dpms-timeout.out"
 grep -Fqx 'power-dpms-timeout	900' "$work/power-dpms-timeout.out"
@@ -252,6 +272,8 @@ grep -Fqx 'xset s off' "$work/actions.log"
 grep -Fqx 'xset s noblank' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 0' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-on-suspend false' "$work/actions.log"
+grep -Fqx "pkill -u $test_uid -x light-locker" "$work/actions.log"
+test ! -e "$work/power-state/light-locker.running"
 
 # Persisted settings remain authoritative when X11 or light-locker state drifts.
 printf '0\n' >"$work/power-state/dpms_enabled"
@@ -259,6 +281,7 @@ printf '60\n' >"$work/power-state/dpms_timeout"
 printf '600\n' >"$work/power-state/saver_timeout"
 printf '5\n' >"$work/power-state/lock_after"
 printf 'true\n' >"$work/power-state/lock_on_suspend"
+: >"$work/power-state/light-locker.running"
 : >"$work/actions.log"
 run_helper power-apply
 grep -Fqx 'xset +dpms' "$work/actions.log"
@@ -268,6 +291,8 @@ grep -Fqx 'xset s noblank' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-after-screensaver 0' "$work/actions.log"
 grep -Fqx 'gsettings set apps.light-locker lock-on-suspend false' "$work/actions.log"
 grep -Fqx 'false' "$work/power-state/lock_on_suspend"
+grep -Fqx "pkill -u $test_uid -x light-locker" "$work/actions.log"
+test ! -e "$work/power-state/light-locker.running"
 
 : >"$work/actions.log"
 run_helper action restart-quickshell >"$work/quickshell.out"
