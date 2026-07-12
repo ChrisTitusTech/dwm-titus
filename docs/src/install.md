@@ -30,7 +30,8 @@ names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
 
 Use `core` for the required build/X11/session packages and one terminal,
 `recommended` for the desktop layer, or `full` for optional extras such as
-file-manager integration, portals, wallpapers, and display-manager setup.
+file-manager integration, portals, wallpapers, and display-manager setup. On
+Fedora, `full` also installs Steam, Gamescope, GameMode, and MangoHud.
 
 ### 2. Clone and Build
 
@@ -62,7 +63,10 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   installs Nordic system-wide for the default Nord theme.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
   browsing, network tray utilities, portals, wallpapers, and display-manager
-  setup.
+  setup. Fedora full installs also include Steam, Gamescope, and 64-bit and
+  32-bit GameMode and MangoHud support. The installer adds the invoking user to
+  the `gamemode` group; log out and back in before using its privileged tuning
+  helpers.
 
 The default is `full` to preserve the historical automated installer behavior.
 For a minimal install:

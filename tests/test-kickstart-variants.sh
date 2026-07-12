@@ -27,6 +27,12 @@ required_repos=(
 )
 
 required_packages=(
+	steam
+	gamescope
+	gamemode.x86_64
+	gamemode.i686
+	mangohud.x86_64
+	mangohud.i686
 	quickshell
 	Thunar
 	gvfs
@@ -77,8 +83,18 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 	grep -Fq 'firstboot --disable' "$ks"
 	grep -Fq 'selinux --disabled' "$ks"
 	grep -Fq './install.sh --non-interactive --profile core' "$ks"
+	# shellcheck disable=SC2016
+	grep -Fq 'usermod -aG gamemode "$target_user"' "$ks"
 	if grep -Eq 'systemctl --user (enable|start).*(dwm|wm)-graphical-session' "$ks"; then
 		printf 'Kickstart starts graphical autostart before the first dwm session: %s\n' "$ks" >&2
+		exit 1
+	fi
+done
+
+for package in steam gamescope gamemode.x86_64 gamemode.i686 mangohud.x86_64 mangohud.i686; do
+	DISTRO_ID=fedora dwm_packages rhel full | grep -Fxq "$package"
+	if DISTRO_ID=rocky dwm_packages rhel full | grep -Fxq "$package"; then
+		printf 'Fedora gaming package leaked into generic RHEL mapping: %s\n' "$package" >&2
 		exit 1
 	fi
 done

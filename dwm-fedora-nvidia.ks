@@ -57,6 +57,12 @@ xclip
 xdotool
 xprop
 xdg-utils
+steam
+gamescope
+gamemode.x86_64
+gamemode.i686
+mangohud.x86_64
+mangohud.i686
 quickshell
 lightdm
 slick-greeter
@@ -156,6 +162,10 @@ install -m 0440 /dev/null "$install_sudoers"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$target_user" > "$install_sudoers"
 
 su - "$target_user" -c 'cd "$HOME/.local/share/dwm-titus" && ./install.sh --non-interactive --profile core'
+
+if getent group gamemode >/dev/null 2>&1; then
+	usermod -aG gamemode "$target_user"
+fi
 
 install -d -m 0755 /etc/modprobe.d
 printf '%s\n' 'options nvidia-drm modeset=1 fbdev=1' >/etc/modprobe.d/nvidia-drm.conf

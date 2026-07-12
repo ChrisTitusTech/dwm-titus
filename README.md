@@ -52,11 +52,15 @@ Profiles:
 |---------|-------------------|
 | `core` | dwm, required X11/session packages, and one terminal |
 | `recommended` | `core` plus Quickshell, Picom, fonts, theming, screenshots, audio, and brightness tools |
-| `full` | `recommended` plus optional extras such as Thunar with SMB-share browsing, portals, wallpapers, and display-manager setup |
+| `full` | `recommended` plus optional extras such as Thunar with SMB-share browsing, portals, wallpapers, and display-manager setup; Fedora also adds Steam, Gamescope, GameMode, and MangoHud |
 
 The installer detects the distribution from `/etc/os-release`, resolves package
 names for the detected family, preserves existing `config.h` and user TOML
 files, and installs the managed Quickshell config.
+
+On Fedora, the full profile installs both 64-bit and 32-bit GameMode and
+MangoHud libraries and adds the invoking user to the `gamemode` group. Log out
+and back in before expecting GameMode's privileged tuning helpers to work.
 
 For unattended runs:
 

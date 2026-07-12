@@ -141,6 +141,28 @@ install_optional_profile() {
 	[[ $INSTALL_PROFILE == "full" ]]
 }
 
+configure_fedora_gamemode_access() {
+	local target_user
+
+	if [[ $DISTRO_ID != "fedora" || $INSTALL_PROFILE != "full" ]]; then
+		return
+	fi
+	if ! getent group gamemode >/dev/null 2>&1; then
+		warn "GameMode was not installed; skipping privileged tuning access."
+		return
+	fi
+
+	target_user=$(id -un)
+	if id -nG "$target_user" | tr ' ' '\n' | command grep -Fxq gamemode; then
+		ok "$target_user already has GameMode tuning access."
+		return
+	fi
+
+	info "Adding $target_user to the gamemode group..."
+	sudo usermod -aG gamemode "$target_user"
+	warn "Log out and back in before using GameMode privileged tuning."
+}
+
 package_line() {
 	local profile=$1
 
@@ -448,6 +470,7 @@ if install_optional_profile; then
 	if ! dwm_install_available_package_profile optional; then
 		warn "Some optional desktop extras were unavailable in enabled repositories."
 	fi
+	configure_fedora_gamemode_access
 	ok "Optional desktop extras processed."
 else
 	warn "Skipping optional desktop extras for $INSTALL_PROFILE profile."
