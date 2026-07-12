@@ -581,6 +581,7 @@ sudo make install \
 	DATADIR="/usr/share" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
 	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+"$REPO_DIR/scripts/migrate-graphical-session.sh"
 configure_seeded_terminal "$HOTKEYS_FILE" "$terminal"
 
 # ── Done ─────────────────────────────────────────────────

@@ -51,7 +51,10 @@ sudo make install
 
 The script detects the distribution family and handles dependency
 installation, font copying, display-manager integration, and config placement.
-Existing user configuration and `.xinitrc` files are preserved.
+Existing user configuration and `.xinitrc` files are preserved. Upgrades remove
+the known legacy `dwm-graphical-session.service` early-start configuration so
+XDG applications start only after the X11 display environment is available;
+customized user units are disabled from early startup but otherwise preserved.
 
 Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
 

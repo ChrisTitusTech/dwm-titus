@@ -56,7 +56,9 @@ Profiles:
 
 The installer detects the distribution from `/etc/os-release`, resolves package
 names for the detected family, preserves existing `config.h` and user TOML
-files, and installs the managed Quickshell config.
+files, and installs the managed Quickshell config. Upgrades also remove the
+legacy graphical-session enablement that could start XDG applications before
+the X11 display environment was imported.
 
 On Fedora, the full profile installs both 64-bit and 32-bit GameMode and
 MangoHud libraries and adds the invoking user to the `gamemode` group. Log out
