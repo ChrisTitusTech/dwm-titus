@@ -1,5 +1,7 @@
+import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.Pipewire
 import qs.core
 
 Scope {
@@ -22,6 +24,32 @@ Scope {
     property string mediaTitle: ""
     property string bluetoothText: "BT unavailable"
     property string message: ""
+    readonly property var audioSink: Pipewire.defaultAudioSink
+    readonly property var audioSource: Pipewire.defaultAudioSource
+
+    function refreshAudioStatus() {
+        const sink = root.audioSink;
+
+        if (sink !== null && sink.ready && sink.audio !== null) {
+            root.volumePercent = root.clampPercent(sink.audio.volume * 100);
+            root.volumeMuted = sink.audio.muted;
+            root.volumeText = (root.volumeMuted ? "VOL muted " : "VOL ") + root.volumePercent.toString() + "%";
+            root.outputDeviceName = sink.name;
+            root.outputDeviceDescription = sink.description.length > 0 ? sink.description : sink.name;
+        } else {
+            root.volumeText = "VOL unavailable";
+            root.volumeMuted = false;
+            root.outputDeviceName = "";
+            root.outputDeviceDescription = "";
+        }
+
+        const source = root.audioSource;
+        if (source !== null && source.ready && source.audio !== null) {
+            root.micText = source.audio.muted ? "MIC muted" : "MIC on";
+        } else {
+            root.micText = "MIC unavailable";
+        }
+    }
 
     function open() {
         root.visible = true;
@@ -42,12 +70,7 @@ Scope {
     }
 
     function refresh() {
-        if (!volumeStatusProcess.running) {
-            volumeStatusProcess.running = true;
-        }
-        if (!micStatusProcess.running) {
-            micStatusProcess.running = true;
-        }
+        root.refreshAudioStatus();
         root.refreshOutputDevices();
         if (!mediaStatusProcess.running) {
             mediaStatusProcess.running = true;
@@ -99,20 +122,6 @@ Scope {
         }
 
         root.mediaText = (labelParts.length > 0 ? labelParts.join(" ") : "MEDIA") + (titleParts.length > 0 ? ": " + titleParts.join(" - ") : "");
-    }
-
-    function parseVolume(text) {
-        const trimmed = text.trim();
-
-        if (trimmed.length > 0) {
-            root.volumeText = trimmed;
-        }
-
-        const match = trimmed.match(/([0-9]+)%/);
-        if (match !== null) {
-            root.volumePercent = root.clampPercent(parseInt(match[1], 10));
-        }
-        root.volumeMuted = trimmed.indexOf("VOL muted") === 0;
     }
 
     function parseOutputDevices(text) {
@@ -207,41 +216,60 @@ Scope {
         root.runAction("media-previous");
     }
 
-    Process {
-        id: volumeStatusProcess
+    PwObjectTracker {
+        objects: [root.audioSink, root.audioSource]
+    }
 
-        command: Commands.controlsHelperCommand("volume-status")
-        running: false
+    Connections {
+        target: Pipewire
 
-        stdout: StdioCollector {
-            onStreamFinished: root.parseVolume(this.text.length > 0 ? this.text : "VOL unavailable")
+        function onDefaultAudioSinkChanged() {
+            root.refreshAudioStatus();
+            root.refreshOutputDevices();
+        }
+
+        function onDefaultAudioSourceChanged() {
+            root.refreshAudioStatus();
+        }
+
+        function onReadyChanged() {
+            root.refreshAudioStatus();
         }
     }
 
-    Process {
-        command: Commands.controlsHelperCommand("volume-watch")
-        running: true
+    Connections {
+        target: root.audioSink
 
-        stdout: SplitParser {
-            onRead: function(data) {
-                root.parseVolume(data);
-                root.refreshOutputDevices();
-            }
+        function onReadyChanged() {
+            root.refreshAudioStatus();
         }
     }
 
-    Process {
-        id: micStatusProcess
+    Connections {
+        target: root.audioSink !== null ? root.audioSink.audio : null
 
-        command: Commands.controlsHelperCommand("mic-status")
-        running: false
+        function onMutedChanged() {
+            root.refreshAudioStatus();
+        }
 
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const text = this.text.trim();
+        function onVolumesChanged() {
+            root.refreshAudioStatus();
+        }
+    }
 
-                root.micText = text.length > 0 ? text : "MIC unavailable";
-            }
+    Connections {
+        target: root.audioSource
+
+        function onReadyChanged() {
+            root.refreshAudioStatus();
+        }
+    }
+
+    Connections {
+        target: root.audioSource !== null ? root.audioSource.audio : null
+
+        function onMutedChanged() {
+            root.refreshAudioStatus();
         }
     }
 
@@ -306,4 +334,6 @@ Scope {
             }
         }
     }
+
+    Component.onCompleted: root.refreshAudioStatus()
 }
