@@ -17,6 +17,7 @@ PopupWindow {
     readonly property int gap: 8
     property string sidePanel: "none"
     property bool splitsOpen: false
+    property bool receivedFocus: false
 
     function sideTitle() {
         if (sidePanel === "utilities") return "Utilities";
@@ -34,10 +35,17 @@ PopupWindow {
     grabFocus: true
     color: Theme.transparent
 
+    onActiveChanged: {
+        if (active) root.receivedFocus = true;
+        else if (visible && root.receivedFocus) root.controlCenterModel.close();
+    }
+
     onVisibleChanged: {
         if (visible) {
             sidePanel = "none";
             splitsOpen = false;
+        } else {
+            receivedFocus = false;
         }
     }
 
@@ -148,7 +156,8 @@ PopupWindow {
                             required property string modelData
                             Layout.fillWidth: true
                             label: modelData
-                            active: false
+                            active: modelData === root.controlCenterModel.barColorSelection
+                            onActivated: root.controlCenterModel.barColorSelection = modelData
                         }
                     }
                 }
@@ -217,13 +226,8 @@ PopupWindow {
                             required property string modelData
                             Layout.fillWidth: true
                             label: modelData
-                            active: true
-                            onActivated: {
-                                if (modelData === "Volume") root.controlsModel.open();
-                                else if (modelData === "Bluetooth") root.bluetoothModel.open();
-                                else if (modelData === "Network") root.networkModel.open();
-                                else if (modelData === "Power") root.powerMenuModel.open();
-                            }
+                            active: root.controlCenterModel.widgetEnabled(modelData)
+                            onActivated: root.controlCenterModel.toggleWidget(modelData)
                         }
                     }
                 }

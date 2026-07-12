@@ -13,6 +13,7 @@ PopupWindow {
     readonly property int menuHeight: 292
     readonly property int confirmHeight: 210
     readonly property int edgeMargin: Theme.rowSpacing
+    property bool receivedFocus: false
 
     visible: powerMenuModel.visible
     implicitWidth: popupWidth
@@ -22,6 +23,13 @@ PopupWindow {
     anchor.rect.y: Theme.panelHeight
     grabFocus: true
     color: Theme.transparent
+
+    onActiveChanged: {
+        if (active) root.receivedFocus = true;
+        else if (visible && root.receivedFocus) root.powerMenuModel.close();
+    }
+
+    onVisibleChanged: if (!visible) receivedFocus = false
 
     readonly property var cancelAction: {
         "label": "Cancel",

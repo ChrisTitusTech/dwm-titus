@@ -63,6 +63,7 @@ PanelWindow {
                     }
 
                     PanelPill {
+                        visible: root.controlCenterModel.showWorkspaceWidget
                         Layout.preferredWidth: workspaceRow.implicitWidth + 8
                         Layout.preferredHeight: Theme.pillHeight
 
@@ -116,6 +117,7 @@ PanelWindow {
                     Item { Layout.fillWidth: true }
 
                     PanelPill {
+                        visible: root.controlCenterModel.showVolumeWidget
                         Layout.preferredWidth: volumeRow.implicitWidth + Theme.pillHorizontalPadding * 2
                         Layout.preferredHeight: Theme.pillHeight
                         active: root.controlsModel.visible
@@ -157,6 +159,7 @@ PanelWindow {
                     }
 
                     PanelPill {
+                        visible: root.controlCenterModel.showBluetoothWidget
                         Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.pillHorizontalPadding * 2
                         Layout.preferredHeight: Theme.pillHeight
                         active: root.bluetoothModel.visible
@@ -181,6 +184,7 @@ PanelWindow {
                     }
 
                     PanelPill {
+                        visible: root.controlCenterModel.showNetworkWidget
                         Layout.preferredWidth: networkRow.implicitWidth + Theme.pillHorizontalPadding * 2
                         Layout.preferredHeight: Theme.pillHeight
                         active: root.networkModel.visible
@@ -208,6 +212,7 @@ PanelWindow {
                     }
 
                     PanelPill {
+                        visible: root.controlCenterModel.showPowerWidget
                         Layout.preferredWidth: Theme.pillHeight
                         Layout.preferredHeight: Theme.pillHeight
                         active: root.powerMenuModel.visible

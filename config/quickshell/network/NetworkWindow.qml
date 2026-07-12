@@ -12,6 +12,7 @@ PopupWindow {
     readonly property int popupWidth: 620
     readonly property int popupHeight: 680
     readonly property int edgeMargin: Theme.rowSpacing
+    property bool receivedFocus: false
 
     visible: networkModel.visible
     implicitWidth: popupWidth
@@ -21,6 +22,13 @@ PopupWindow {
     anchor.rect.y: Theme.panelHeight
     grabFocus: true
     color: Theme.transparent
+
+    onActiveChanged: {
+        if (active) root.receivedFocus = true;
+        else if (visible && root.receivedFocus) root.networkModel.close();
+    }
+
+    onVisibleChanged: if (!visible) receivedFocus = false
 
     ShellSurface {
         id: content

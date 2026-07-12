@@ -10,6 +10,12 @@ Scope {
     property string page: "overview"
     property bool utilityVisible: false
     property string utilityPage: ""
+    property string barColorSelection: "Accent"
+    property bool showVolumeWidget: true
+    property bool showBluetoothWidget: true
+    property bool showNetworkWidget: true
+    property bool showPowerWidget: true
+    property bool showWorkspaceWidget: true
     property string message: ""
     property var healthRows: []
     property var infoRows: []
@@ -48,6 +54,22 @@ Scope {
         root.utilityVisible = false;
         root.utilityPage = "";
         root.message = "";
+    }
+
+    function widgetEnabled(name) {
+        if (name === "Volume") return root.showVolumeWidget;
+        if (name === "Bluetooth") return root.showBluetoothWidget;
+        if (name === "Network") return root.showNetworkWidget;
+        if (name === "Power") return root.showPowerWidget;
+        return root.showWorkspaceWidget;
+    }
+
+    function toggleWidget(name) {
+        if (name === "Volume") root.showVolumeWidget = !root.showVolumeWidget;
+        else if (name === "Bluetooth") root.showBluetoothWidget = !root.showBluetoothWidget;
+        else if (name === "Network") root.showNetworkWidget = !root.showNetworkWidget;
+        else if (name === "Power") root.showPowerWidget = !root.showPowerWidget;
+        else if (name === "Workspaces") root.showWorkspaceWidget = !root.showWorkspaceWidget;
     }
 
     function toggle() {

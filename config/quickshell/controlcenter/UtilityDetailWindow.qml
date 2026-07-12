@@ -7,12 +7,20 @@ FloatingWindow {
     id: root
 
     required property var controlCenterModel
+    property bool receivedFocus: false
 
     visible: controlCenterModel.utilityVisible
     implicitWidth: 680
     implicitHeight: 500
     color: Theme.transparent
     title: "dwm utility"
+
+    onActiveChanged: {
+        if (active) root.receivedFocus = true;
+        else if (visible && root.receivedFocus) root.controlCenterModel.closeUtility();
+    }
+
+    onVisibleChanged: if (!visible) receivedFocus = false
 
     function titleForPage() {
         if (controlCenterModel.utilityPage === "health") return "System Health";
