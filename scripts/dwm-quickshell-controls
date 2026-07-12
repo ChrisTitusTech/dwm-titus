@@ -121,20 +121,10 @@ volume_status() {
 }
 
 volume_watch() {
+	# Compatibility snapshot for older deployed QML. Audio change notifications
+	# are handled by Quickshell.Services.Pipewire; keeping a pactl subscription
+	# here would orphan one client every time Quickshell reloads.
 	volume_status
-
-	if ! command -v pactl >/dev/null 2>&1; then
-		return 0
-	fi
-
-	pactl subscribe 2>/dev/null |
-		while IFS= read -r event; do
-			case "$event" in
-			*" on sink"* | *" on server"* | *" on card"*)
-				volume_status
-				;;
-			esac
-		done
 }
 
 volume_up() {

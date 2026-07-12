@@ -47,10 +47,7 @@ list\ short\ sink-inputs)
 	printf 'Mute: %s\n' "${DWM_TEST_SOURCE_MUTE:-no}"
 	;;
 "subscribe")
-	if [ -n "${DWM_TEST_SINK_VOLUME_FILE:-}" ]; then
-		printf '45\n' >"$DWM_TEST_SINK_VOLUME_FILE"
-	fi
-	printf "Event 'change' on sink #1\n"
+	: >"$DWM_TEST_SUBSCRIBE_MARKER"
 	;;
 "set-sink-volume @DEFAULT_SINK@ +5%")
 	printf 'volume up\n' >>"$DWM_TEST_PACTL_LOG"
@@ -178,11 +175,12 @@ grep -Fqx "alsa_output.pci-0000_00_1f.3.analog-stereo	Built-in Audio Analog Ster
 grep -Fqx "bluez_output.00_11_22_33_44_55.a2dp-sink	Wireless Headphones	1" "$work/output-devices-bluez.out"
 
 printf '40\n' >"$work/volume-state"
-DWM_TEST_SINK_VOLUME_FILE="$work/volume-state" \
+DWM_TEST_SUBSCRIBE_MARKER="$work/subscribed" \
+	DWM_TEST_SINK_VOLUME_FILE="$work/volume-state" \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" volume-watch >"$work/volume-watch.out"
 grep -Fqx "VOL 40%" "$work/volume-watch.out"
-grep -Fqx "VOL 45%" "$work/volume-watch.out"
+[ ! -e "$work/subscribed" ]
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" mic-status >"$work/mic.out"
 grep -Fqx "MIC on" "$work/mic.out"
