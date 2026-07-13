@@ -61,10 +61,10 @@ the known legacy `dwm-graphical-session.service` and
 start only after the X11 display environment is available; customized user
 units are disabled from early startup but otherwise preserved.
 
-The installer also seeds non-destructive XDG overrides for Picom, the polkit
-agent, and Light Locker. This leaves the unified dwm autostart script as the
-single startup owner and prevents distribution-provided desktop entries from
-launching duplicate or out-of-session processes. Existing user overrides are
+The installer also seeds non-destructive, session-scoped XDG entries for Picom,
+the polkit agent, and Light Locker. They exclude only the dwm session, leaving
+the unified dwm autostart script as its single startup owner without disabling
+those components in other desktop sessions. Existing user entries are
 preserved.
 
 Installer package profiles are selected with `DWM_INSTALL_PROFILE`:

@@ -132,6 +132,8 @@ for entry in light-locker.desktop picom.desktop polkit-mate-authentication-agent
 		printf 'Install did not seed XDG autostart override: %s\n' "$entry" >&2
 		exit 1
 	fi
+	grep -Fq 'Exec=' "$XDG_CONFIG_HOME/autostart/$entry"
+	grep -Fqx 'NotShowIn=X-DWM;' "$XDG_CONFIG_HOME/autostart/$entry"
 done
 
 printf 'Repeated install preservation: PASS\n'

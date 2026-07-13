@@ -1,4 +1,6 @@
 [Desktop Entry]
 Type=Application
 Name=PolicyKit Authentication Agent
-Hidden=true
+Exec=dwm-polkit
+TryExec=dwm-polkit
+NotShowIn=X-DWM;

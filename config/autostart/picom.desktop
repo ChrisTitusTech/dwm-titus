@@ -1,4 +1,6 @@
 [Desktop Entry]
 Type=Application
 Name=picom
-Hidden=true
+Exec=picom
+TryExec=picom
+NotShowIn=X-DWM;
