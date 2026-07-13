@@ -1,0 +1,1125 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+config_path="${DWM_XORG_CONFIG:-/etc/X11/xorg.conf.d/90-dwm-titus-display.conf}"
+main_config="${DWM_XORG_MAIN_CONFIG:-/etc/X11/xorg.conf}"
+drm_root="${DWM_DRM_SYSFS_ROOT:-/sys/class/drm}"
+tearfree_policy=auto
+preview=true
+assume_yes=false
+confirm_seconds=15
+
+work=
+query_file=
+verbose_file=
+properties_file=
+
+declare -a cfg_outputs=()
+declare -a cfg_enabled=()
+declare -a cfg_modes=()
+declare -a cfg_rates=()
+declare -a cfg_x=()
+declare -a cfg_y=()
+declare -a cfg_rotations=()
+declare -a cfg_primary=()
+declare -a cfg_mode_names=()
+declare -a cfg_timings=()
+declare -a cfg_kernel_drivers=()
+declare -a cfg_tearfree_properties=()
+
+usage() {
+	cat <<'EOF'
+Usage:
+  dwm-display-setup
+  dwm-display-setup wizard [options]
+  dwm-display-setup detect
+  dwm-display-setup generate <profile> [options]
+  dwm-display-setup preview <profile> [options]
+  dwm-display-setup install <profile> [options]
+  dwm-display-setup status [options]
+  dwm-display-setup rollback [options]
+
+Commands:
+  wizard             Interactively choose modes, positions, rotations, primary
+                     display, and TearFree. This is the default command.
+  detect             Show connected outputs, modes, drivers, and TearFree.
+  generate PROFILE   Print the generated Xorg configuration to stdout.
+  preview PROFILE    Apply the profile temporarily with timed rollback.
+  install PROFILE    Preview and install persistent Xorg configuration.
+  status             Show the managed config and current RandR layout.
+  rollback           Restore the newest managed-config backup.
+
+Options:
+  --config PATH      Managed Xorg fragment path.
+  --tearfree POLICY  auto, on, or off. Default: auto.
+  --no-preview       Install without changing the current live layout.
+  --timeout SECONDS  Preview confirmation timeout. Default: 15.
+  --yes              Accept install/rollback prompts and keep a successful
+                     preview without waiting for confirmation.
+  -h, --help         Show this help.
+
+Profile format:
+  HDMI-1 --primary --mode 1920x1080 --rate 60 --pos 0x0 --rotate normal
+  DP-1 --mode 2560x1440 --rate 60 --pos 1920x0 --rotate normal
+  DP-2 --off
+
+The setup tool uses xrandr only for detection and a reversible live preview.
+Persistence is provided by the generated Xorg configuration, not a login script.
+EOF
+}
+
+info() {
+	printf 'dwm-display-setup: %s\n' "$*"
+}
+
+warn() {
+	printf 'dwm-display-setup: warning: %s\n' "$*" >&2
+}
+
+die() {
+	printf 'dwm-display-setup: error: %s\n' "$*" >&2
+	exit 1
+}
+
+cleanup() {
+	if [[ -n ${work:-} && -d $work ]]; then
+		rm -rf "$work"
+	fi
+}
+
+init_work() {
+	if [[ -n ${work:-} ]]; then
+		return
+	fi
+	work=$(mktemp -d)
+	query_file="$work/xrandr-query"
+	verbose_file="$work/xrandr-verbose"
+	properties_file="$work/xrandr-properties"
+}
+
+need_xrandr() {
+	command -v xrandr >/dev/null 2>&1 || die "missing required command: xrandr"
+	[[ -n ${DISPLAY:-} ]] || die "DISPLAY is not set; run this from an X11 session"
+}
+
+load_display_data() {
+	need_xrandr
+	init_work
+	xrandr --query >"$query_file" || die "could not query the X11 display"
+	xrandr --verbose >"$verbose_file" || die "could not read detailed X11 modes"
+	xrandr --prop >"$properties_file" || die "could not read X11 output properties"
+}
+
+connected_outputs() {
+	awk '$2 == "connected" { print $1 }' "$query_file"
+}
+
+output_is_connected() {
+	local output=$1
+	awk -v output="$output" '$1 == output && $2 == "connected" { found = 1 } END { exit !found }' "$query_file"
+}
+
+output_kernel_driver() {
+	local output=$1
+	local connector card driver driver_link
+	local -A detected=()
+
+	if [[ -n ${DWM_KERNEL_DRIVER:-} ]]; then
+		printf '%s\n' "$DWM_KERNEL_DRIVER"
+		return
+	fi
+	for connector in "$drm_root"/card*-"$output"; do
+		[[ -e $connector/status ]] || continue
+		card=${connector##*/}
+		card=${card%%-*}
+		driver_link="$drm_root/$card/device/driver"
+		if [[ -L $driver_link ]]; then
+			basename "$(readlink -f "$driver_link")"
+			return
+		fi
+	done
+	# Proprietary drivers do not always use the same connector numbering for
+	# RandR and DRM sysfs. If exactly one DRM driver owns connected outputs,
+	# that driver is an unambiguous fallback.
+	for connector in "$drm_root"/card*-*; do
+		[[ -e $connector/status ]] || continue
+		[[ $(<"$connector/status") == connected ]] || continue
+		card=${connector##*/}
+		card=${card%%-*}
+		driver_link="$drm_root/$card/device/driver"
+		[[ -L $driver_link ]] || continue
+		driver=$(basename "$(readlink -f "$driver_link")")
+		detected[$driver]=1
+	done
+	if ((${#detected[@]} == 1)); then
+		printf '%s\n' "${!detected[@]}"
+		return
+	fi
+	printf '%s\n' unknown
+}
+
+xorg_driver_for_kernel() {
+	local kernel_driver=$1
+	local active_driver
+
+	active_driver=$(current_xorg_driver)
+	case "$kernel_driver:$active_driver" in
+	amdgpu:amdgpu | i915:intel | nvidia:nvidia | nouveau:nouveau | radeon:radeon | vmwgfx:vmware)
+		printf '%s\n' "$active_driver"
+		return
+		;;
+	esac
+	case $kernel_driver in
+	nvidia)
+		printf '%s\n' nvidia
+		;;
+	*)
+		# The Xorg modesetting DDX supports DRM KMS devices and is the safest
+		# portable fallback for xe, i915, amdgpu, nouveau, and virtual KMS.
+		printf '%s\n' modesetting
+		;;
+	esac
+}
+
+output_has_tearfree_property() {
+	local output=$1
+	awk -v output="$output" '
+		$1 == output && ($2 == "connected" || $2 == "disconnected") {
+			in_output = 1
+			next
+		}
+		/^[^[:space:]]/ { in_output = 0 }
+		in_output && $1 == "TearFree:" { found = 1 }
+		END { exit !found }
+	' "$properties_file"
+}
+
+current_xorg_driver() {
+	local display_number log candidate
+
+	if [[ -n ${DWM_XORG_DRIVER:-} ]]; then
+		printf '%s\n' "$DWM_XORG_DRIVER"
+		return
+	fi
+	display_number=${DISPLAY#:}
+	display_number=${display_number%%.*}
+	for candidate in \
+		"/var/log/Xorg.${display_number}.log" \
+		"$HOME/.local/share/xorg/Xorg.${display_number}.log"; do
+		[[ -r $candidate ]] || continue
+		log=$candidate
+		if grep -q 'AMDGPU(0):' "$log"; then
+			printf '%s\n' amdgpu
+			return
+		fi
+		if grep -q 'intel(0):' "$log"; then
+			printf '%s\n' intel
+			return
+		fi
+		if grep -q 'NVIDIA(0):' "$log"; then
+			printf '%s\n' nvidia
+			return
+		fi
+		if grep -q 'RADEON(0):' "$log"; then
+			printf '%s\n' radeon
+			return
+		fi
+		if grep -q 'NOUVEAU(0):' "$log"; then
+			printf '%s\n' nouveau
+			return
+		fi
+		if grep -q 'vmware(0):' "$log"; then
+			printf '%s\n' vmware
+			return
+		fi
+		if grep -q 'modeset(0):' "$log"; then
+			printf '%s\n' modesetting
+			return
+		fi
+	done
+	printf '%s\n' unknown
+}
+
+output_tearfree_compatible() {
+	local index=$1
+	local driver=${cfg_kernel_drivers[$index]}
+	local xorg_driver
+
+	if [[ ${DWM_TEARFREE_COMPATIBLE:-} == 1 ]]; then
+		return 0
+	fi
+	if [[ ${cfg_tearfree_properties[$index]} == 1 ]]; then
+		return 0
+	fi
+	xorg_driver=$(current_xorg_driver)
+	case "$xorg_driver:$driver" in
+	amdgpu:amdgpu | intel:i915)
+		return 0
+		;;
+	esac
+	return 1
+}
+
+tearfree_compatible() {
+	local index
+
+	for index in "${!cfg_outputs[@]}"; do
+		[[ ${cfg_enabled[$index]} == 1 ]] || continue
+		if output_tearfree_compatible "$index"; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+default_mode_rate() {
+	local output=$1
+	awk -v output="$output" '
+		$1 == output && $2 == "connected" { in_output = 1; next }
+		/^[^[:space:]]/ { in_output = 0 }
+		in_output && NF > 1 {
+			mode = $1
+			for (i = 2; i <= NF; i++) {
+				rate = $i
+				if (rate ~ /[+*]/) {
+					preferred = (rate ~ /\+/)
+					current = (rate ~ /\*/)
+					gsub(/[+*]/, "", rate)
+					if (preferred) { print mode "|" rate; exit }
+					if (current && current_value == "") current_value = mode "|" rate
+				}
+				if (first_value == "" && rate ~ /^[0-9.]+$/) first_value = mode "|" rate
+			}
+		}
+		END {
+			if (current_value != "") print current_value
+			else if (first_value != "") print first_value
+		}
+	' "$query_file" | head -n 1
+}
+
+default_rate_for_mode() {
+	local output=$1
+	local wanted_mode=$2
+	awk -v output="$output" -v wanted="$wanted_mode" '
+		$1 == output && $2 == "connected" { in_output = 1; next }
+		/^[^[:space:]]/ { in_output = 0 }
+		in_output && $1 == wanted {
+			for (i = 2; i <= NF; i++) {
+				rate = $i
+				preferred = (rate ~ /\+/)
+				current = (rate ~ /\*/)
+				gsub(/[+*]/, "", rate)
+				if (preferred) { print rate; exit }
+				if (current && current_value == "") current_value = rate
+				if (first_value == "" && rate ~ /^[0-9.]+$/) first_value = rate
+			}
+		}
+		END {
+			if (current_value != "") print current_value
+			else if (first_value != "") print first_value
+		}
+	' "$query_file" | head -n 1
+}
+
+extract_modeline() {
+	local output=$1
+	local wanted_mode=$2
+	local wanted_rate=$3
+	awk -v output="$output" -v wanted_mode="$wanted_mode" -v wanted_rate="$wanted_rate" '
+		function abs(value) { return value < 0 ? -value : value }
+		$1 == output && $2 == "connected" { in_output = 1; candidate = 0; next }
+		/^[^[:space:]]/ { in_output = 0; candidate = 0 }
+		in_output && $1 == wanted_mode && $2 ~ /^\(0x/ && $3 ~ /MHz$/ {
+			candidate = 1
+			clock = $3
+			sub(/MHz$/, "", clock)
+			flags = ""
+			for (i = 4; i <= NF; i++) {
+				if ($i !~ /^\*current$/ && $i !~ /^\+preferred$/)
+					flags = flags (flags == "" ? "" : " ") $i
+			}
+			next
+		}
+		candidate && $1 == "h:" {
+			hdisplay = $3; hstart = $5; hend = $7; htotal = $9
+			hsync = $NF; sub(/KHz$/, "", hsync)
+			next
+		}
+		candidate && $1 == "v:" {
+			vdisplay = $3; vstart = $5; vend = $7; vtotal = $9
+			rate = $NF; sub(/Hz$/, "", rate)
+			if (abs((rate + 0) - (wanted_rate + 0)) < 0.11) {
+				printf "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n", \
+					clock, hdisplay, hstart, hend, htotal, \
+					vdisplay, vstart, vend, vtotal, flags, hsync, rate
+				exit
+			}
+			candidate = 0
+		}
+	' "$verbose_file"
+}
+
+reset_config_arrays() {
+	cfg_outputs=()
+	cfg_enabled=()
+	cfg_modes=()
+	cfg_rates=()
+	cfg_x=()
+	cfg_y=()
+	cfg_rotations=()
+	cfg_primary=()
+	cfg_mode_names=()
+	cfg_timings=()
+	cfg_kernel_drivers=()
+	cfg_tearfree_properties=()
+}
+
+parse_profile() {
+	local profile=$1
+	local line output token mode rate position rotation
+	local enabled primary auto_mode x y default timing kernel_driver
+	local primary_count=0
+	local enabled_count=0
+	local index
+	local -a words=()
+	local -A seen=()
+
+	[[ -r $profile ]] || die "profile is not readable: $profile"
+	reset_config_arrays
+
+	while IFS= read -r line || [[ -n $line ]]; do
+		line=${line%%#*}
+		[[ $line =~ ^[[:space:]]*$ ]] && continue
+		read -r -a words <<<"$line"
+		output=${words[0]:-}
+		[[ $output =~ ^[A-Za-z0-9_.:-]+$ ]] || die "invalid output name: $output"
+		[[ -z ${seen[$output]:-} ]] || die "duplicate output in profile: $output"
+		seen[$output]=1
+		output_is_connected "$output" || die "output is not connected: $output"
+
+		enabled=1
+		primary=0
+		auto_mode=0
+		mode=
+		rate=
+		position=0x0
+		rotation=normal
+		index=1
+		while ((index < ${#words[@]})); do
+			token=${words[$index]}
+			case $token in
+			--off)
+				enabled=0
+				((index += 1))
+				;;
+			--auto | --preferred)
+				auto_mode=1
+				((index += 1))
+				;;
+			--primary)
+				primary=1
+				((index += 1))
+				;;
+			--mode | --rate | --pos | --rotate)
+				((index + 1 < ${#words[@]})) || die "$token requires a value for $output"
+				case $token in
+				--mode) mode=${words[$((index + 1))]} ;;
+				--rate) rate=${words[$((index + 1))]} ;;
+				--pos) position=${words[$((index + 1))]} ;;
+				--rotate) rotation=${words[$((index + 1))]} ;;
+				esac
+				((index += 2))
+				;;
+			*)
+				die "unsupported profile option for $output: $token"
+				;;
+			esac
+		done
+
+		if [[ $enabled == 1 ]]; then
+			((enabled_count += 1))
+			[[ $position =~ ^-?[0-9]+x-?[0-9]+$ ]] || die "invalid position for $output: $position"
+			x=${position%x*}
+			y=${position#*x}
+			case $rotation in normal | left | right | inverted) ;; *) die "invalid rotation for $output: $rotation" ;; esac
+			if [[ $auto_mode == 1 || -z $mode ]]; then
+				default=$(default_mode_rate "$output")
+				[[ -n $default ]] || die "no usable mode found for $output"
+				mode=${default%%|*}
+				[[ -n $rate ]] || rate=${default#*|}
+			fi
+			[[ $mode =~ ^[A-Za-z0-9_.:+-]+$ ]] || die "invalid mode for $output: $mode"
+			if [[ -z $rate ]]; then
+				rate=$(default_rate_for_mode "$output" "$mode")
+			fi
+			[[ $rate =~ ^[0-9]+([.][0-9]+)?$ ]] || die "invalid refresh rate for $output: $rate"
+			timing=$(extract_modeline "$output" "$mode" "$rate")
+			[[ -n $timing ]] || die "mode is not advertised by $output: $mode at $rate Hz"
+			if [[ $primary == 1 ]]; then
+				((primary_count += 1))
+			fi
+		else
+			mode=
+			rate=
+			x=0
+			y=0
+			timing=
+			primary=0
+		fi
+
+		kernel_driver=$(output_kernel_driver "$output")
+		cfg_outputs+=("$output")
+		cfg_enabled+=("$enabled")
+		cfg_modes+=("$mode")
+		cfg_rates+=("$rate")
+		cfg_x+=("$x")
+		cfg_y+=("$y")
+		cfg_rotations+=("$rotation")
+		cfg_primary+=("$primary")
+		cfg_mode_names+=("${mode:+${mode}_${rate}}")
+		cfg_timings+=("$timing")
+		cfg_kernel_drivers+=("$kernel_driver")
+		if output_has_tearfree_property "$output"; then
+			cfg_tearfree_properties+=(1)
+		else
+			cfg_tearfree_properties+=(0)
+		fi
+	done <"$profile"
+
+	((enabled_count > 0)) || die "profile must enable at least one connected output"
+	((primary_count <= 1)) || die "profile selects more than one primary output"
+	if ((primary_count == 0)); then
+		for index in "${!cfg_outputs[@]}"; do
+			if [[ ${cfg_enabled[$index]} == 1 ]]; then
+				cfg_primary[index]=1
+				break
+			fi
+		done
+	fi
+}
+
+resolved_tearfree() {
+	case $tearfree_policy in
+	off)
+		return 1
+		;;
+	auto)
+		tearfree_compatible
+		;;
+	on)
+		if ! tearfree_compatible; then
+			die "TearFree was requested, but the active Xorg driver exposes no compatible interface"
+		fi
+		return 0
+		;;
+	*)
+		die "invalid TearFree policy: $tearfree_policy"
+		;;
+	esac
+}
+
+generate_config() {
+	local destination=$1
+	local index output identifier mode_name timing
+	local clock hdisplay hstart hend htotal vdisplay vstart vend vtotal flags hsync rate
+	local hlow hhigh vlow vhigh
+	local tearfree_enabled=0
+	local -A tearfree_drivers=()
+	local -A output_drivers=()
+	local driver
+	local xorg_driver
+
+	if resolved_tearfree; then
+		tearfree_enabled=1
+	fi
+	for index in "${!cfg_outputs[@]}"; do
+		driver=${cfg_kernel_drivers[$index]}
+		[[ $driver != unknown ]] || die "cannot map ${cfg_outputs[$index]} to a DRM driver"
+		output_drivers[$driver]=1
+	done
+
+	{
+		printf '%s\n' '# Managed by dwm-display-setup. Re-run the tool instead of editing this file.'
+		printf '%s\n' '# Exact timings are copied from the active X server for the selected outputs.'
+		for driver in "${!output_drivers[@]}"; do
+			xorg_driver=$(xorg_driver_for_kernel "$driver")
+			printf '\nSection "OutputClass"\n'
+			printf '\tIdentifier "dwm-titus-display-map-%s"\n' "$driver"
+			printf '\tMatchDriver "%s"\n' "$driver"
+			printf '\tDriver "%s"\n' "$xorg_driver"
+			for index in "${!cfg_outputs[@]}"; do
+				[[ ${cfg_kernel_drivers[$index]} == "$driver" ]] || continue
+				output=${cfg_outputs[$index]}
+				identifier="dwm-titus-$output"
+				printf '\tOption "Monitor-%s" "%s"\n' "$output" "$identifier"
+			done
+			printf 'EndSection\n'
+		done
+
+		if [[ $tearfree_enabled == 1 ]]; then
+			for index in "${!cfg_outputs[@]}"; do
+				[[ ${cfg_enabled[$index]} == 1 ]] || continue
+				output_tearfree_compatible "$index" || continue
+				driver=${cfg_kernel_drivers[$index]}
+				if [[ $driver != unknown ]]; then
+					tearfree_drivers[$driver]=1
+				fi
+			done
+			if ((${#tearfree_drivers[@]} == 0)); then
+				printf '\nSection "OutputClass"\n'
+				printf '\tIdentifier "dwm-titus-tearfree"\n'
+				printf '\tOption "TearFree" "true"\n'
+				printf 'EndSection\n'
+			else
+				for driver in "${!tearfree_drivers[@]}"; do
+					printf '\nSection "OutputClass"\n'
+					printf '\tIdentifier "dwm-titus-tearfree-%s"\n' "$driver"
+					printf '\tMatchDriver "%s"\n' "$driver"
+					printf '\tOption "TearFree" "true"\n'
+					printf 'EndSection\n'
+				done
+			fi
+		fi
+
+		for index in "${!cfg_outputs[@]}"; do
+			output=${cfg_outputs[$index]}
+			identifier="dwm-titus-$output"
+			printf '\nSection "Monitor"\n'
+			printf '\tIdentifier "%s"\n' "$identifier"
+			if [[ ${cfg_enabled[$index]} == 0 ]]; then
+				printf '\tOption "Enable" "false"\n'
+				printf 'EndSection\n'
+				continue
+			fi
+
+			mode_name=${cfg_mode_names[$index]}
+			timing=${cfg_timings[$index]}
+			IFS='|' read -r clock hdisplay hstart hend htotal vdisplay vstart vend vtotal flags hsync rate <<<"$timing"
+			read -r hlow hhigh < <(awk -v value="$hsync" 'BEGIN { printf "%.2f %.2f\n", value - 0.50, value + 0.50 }')
+			read -r vlow vhigh < <(awk -v value="$rate" 'BEGIN { printf "%.2f %.2f\n", value - 0.50, value + 0.50 }')
+			printf '\tHorizSync %s-%s\n' "$hlow" "$hhigh"
+			printf '\tVertRefresh %s-%s\n' "$vlow" "$vhigh"
+			printf '\tModeline "%s" %s %s %s %s %s %s %s %s %s' \
+				"$mode_name" "$clock" "$hdisplay" "$hstart" "$hend" "$htotal" \
+				"$vdisplay" "$vstart" "$vend" "$vtotal"
+			if [[ -n $flags ]]; then
+				printf ' %s' "$flags"
+			fi
+			printf '\n'
+			printf '\tOption "PreferredMode" "%s"\n' "$mode_name"
+			printf '\tOption "Position" "%s %s"\n' "${cfg_x[$index]}" "${cfg_y[$index]}"
+			printf '\tOption "Rotate" "%s"\n' "${cfg_rotations[$index]}"
+			printf '\tOption "Primary" "%s"\n' "$([[ ${cfg_primary[$index]} == 1 ]] && printf true || printf false)"
+			printf '\tOption "Enable" "true"\n'
+			printf 'EndSection\n'
+		done
+	} >"$destination"
+}
+
+xrandr_args() {
+	local index
+	local -n args_ref=$1
+
+	args_ref=()
+	for index in "${!cfg_outputs[@]}"; do
+		args_ref+=(--output "${cfg_outputs[$index]}")
+		if [[ ${cfg_enabled[$index]} == 0 ]]; then
+			args_ref+=(--off)
+			continue
+		fi
+		args_ref+=(
+			--mode "${cfg_modes[$index]}"
+			--rate "${cfg_rates[$index]}"
+			--pos "${cfg_x[$index]}x${cfg_y[$index]}"
+			--rotate "${cfg_rotations[$index]}"
+		)
+		if [[ ${cfg_primary[$index]} == 1 ]]; then
+			args_ref+=(--primary)
+		fi
+		if [[ ${cfg_tearfree_properties[$index]} == 1 ]] && resolved_tearfree; then
+			args_ref+=(--set TearFree on)
+		fi
+	done
+}
+
+capture_current_profile() {
+	local profile_file=$1
+	local output_line output geometry mode x y rotation primary rate token
+	local -a fields=()
+
+	: >"$profile_file"
+	while IFS= read -r output; do
+		output_line=$(awk -v output="$output" '$1 == output && $2 == "connected" { print; exit }' "$query_file")
+		read -r -a fields <<<"$output_line"
+		geometry=
+		rotation=normal
+		primary=
+		for token in "${fields[@]}"; do
+			if [[ $token =~ ^[0-9]+x[0-9]+[-+][0-9]+[-+][0-9]+$ ]]; then
+				geometry=$token
+			fi
+			case $token in
+			primary) primary=--primary ;;
+			\(normal | \(left | \(right | \(inverted) rotation=${token#\(} ;;
+			esac
+		done
+		if [[ -z $geometry ]]; then
+			printf '%s --off\n' "$output" >>"$profile_file"
+			continue
+		fi
+		mode=${geometry%%+*}
+		mode=${mode%%-*}
+		x=${geometry#"$mode"}
+		x=${x%%+*}
+		x=${x%%-*}
+		# Geometry offsets may contain either + or - signs. Normalize with sed.
+		read -r x y < <(printf '%s\n' "$geometry" | sed -E 's/^[0-9]+x[0-9]+([+-][0-9]+)([+-][0-9]+)$/\1 \2/; s/^\+//; s/ \+/ /')
+		rate=$(awk -v output="$output" -v mode="$mode" '
+			$1 == output && $2 == "connected" { in_output = 1; next }
+			/^[^[:space:]]/ { in_output = 0 }
+			in_output && $1 == mode {
+				for (i = 2; i <= NF; i++) if ($i ~ /\*/) { rate = $i; gsub(/[+*]/, "", rate); print rate; exit }
+			}
+		' "$query_file")
+		[[ -n $rate ]] || rate=$(default_rate_for_mode "$output" "$mode")
+		printf '%s %s --mode %s --rate %s --pos %sx%s --rotate %s\n' \
+			"$output" "$primary" "$mode" "$rate" "$x" "$y" "$rotation" >>"$profile_file"
+	done < <(connected_outputs)
+}
+
+apply_loaded_profile() {
+	local dryrun=${1:-false}
+	local -a args=()
+
+	xrandr_args args
+	if [[ $dryrun == true ]]; then
+		xrandr --dryrun "${args[@]}"
+	else
+		xrandr "${args[@]}"
+	fi
+}
+
+preview_profile() {
+	local profile=$1
+	local generated=$2
+	local current_profile answer
+
+	current_profile="$work/current-profile.conf"
+	capture_current_profile "$current_profile"
+	parse_profile "$profile"
+	generate_config "$generated"
+	apply_loaded_profile true || die "xrandr rejected the proposed layout"
+	apply_loaded_profile false || die "could not apply the proposed layout"
+
+	if [[ $assume_yes == true ]]; then
+		info "live preview applied and accepted"
+		return
+	fi
+	printf 'Keep this display layout? It will revert in %s seconds. [y/N] ' "$confirm_seconds"
+	if read -r -t "$confirm_seconds" answer; then
+		case $answer in
+		y | Y | yes | YES)
+			info "live preview accepted"
+			return
+			;;
+		esac
+	fi
+	warn "restoring the previous live layout"
+	parse_profile "$current_profile"
+	apply_loaded_profile false || warn "automatic live-layout rollback failed"
+	return 1
+}
+
+run_root() {
+	if [[ ${DWM_DISPLAY_NO_SUDO:-0} == 1 || $EUID -eq 0 ]]; then
+		"$@"
+		return
+	fi
+	command -v sudo >/dev/null 2>&1 || die "sudo is required to install system Xorg configuration"
+	sudo "$@"
+}
+
+confirm_action() {
+	local prompt=$1
+	local answer
+
+	if [[ $assume_yes == true ]]; then
+		return 0
+	fi
+	[[ -t 0 && -t 1 ]] || die "confirmation requires a terminal; re-run with --yes"
+	printf '%s [y/N] ' "$prompt"
+	read -r answer
+	case $answer in y | Y | yes | YES) return 0 ;; *) return 1 ;; esac
+}
+
+install_generated_config() {
+	local generated=$1
+	local directory timestamp backup
+
+	if [[ -e $main_config && $config_path != "$main_config" ]]; then
+		warn "existing $main_config may conflict with the managed display fragment"
+		confirm_action "Continue without replacing $main_config?" || return 1
+	fi
+	if [[ -r $config_path ]] && cmp -s "$generated" "$config_path"; then
+		info "persistent Xorg configuration is already current: $config_path"
+		return
+	fi
+	confirm_action "Install persistent display configuration at $config_path?" || return 1
+
+	directory=${config_path%/*}
+	[[ $directory != "$config_path" ]] || directory=.
+	timestamp=${DWM_DISPLAY_TIMESTAMP:-$(date +%Y%m%d-%H%M%S)}
+	backup="${config_path}.backup.${timestamp}"
+	run_root install -d -m 0755 "$directory"
+	if [[ -e $config_path ]]; then
+		run_root cp -a "$config_path" "$backup"
+	else
+		backup="${backup}.absent"
+		run_root install -m 0644 /dev/null "$backup"
+	fi
+	run_root install -m 0644 "$generated" "$config_path"
+	if command -v restorecon >/dev/null 2>&1; then
+		run_root restorecon "$config_path" >/dev/null 2>&1 || true
+	fi
+	info "installed $config_path"
+	info "backup marker: $backup"
+	info "log out and back in to verify the persistent Xorg layout"
+}
+
+newest_backup() {
+	local candidate newest=
+
+	for candidate in "${config_path}.backup."*; do
+		[[ -e $candidate ]] || continue
+		# The timestamp format sorts oldest to newest, and Bash expands this
+		# glob lexically. Keeping the last entry also makes tests deterministic.
+		newest=$candidate
+	done
+	[[ -n $newest ]] || return 1
+	printf '%s\n' "$newest"
+}
+
+rollback_config() {
+	local backup
+
+	backup=$(newest_backup) || die "no backup found for $config_path"
+	confirm_action "Restore display configuration from $backup?" || return 1
+	if [[ $backup == *.absent ]]; then
+		run_root rm -f "$config_path"
+		info "removed managed config; no config existed before the last install"
+	else
+		run_root cp -a "$backup" "$config_path"
+		if command -v restorecon >/dev/null 2>&1; then
+			run_root restorecon "$config_path" >/dev/null 2>&1 || true
+		fi
+		info "restored $config_path from $backup"
+	fi
+	info "log out and back in to use the restored Xorg configuration"
+}
+
+list_output_modes() {
+	local output=$1
+	awk -v output="$output" '
+		$1 == output && $2 == "connected" { in_output = 1; next }
+		/^[^[:space:]]/ { in_output = 0 }
+		in_output && NF > 1 {
+			mode = $1
+			for (i = 2; i <= NF; i++) {
+				rate = $i
+				marker = ""
+				if (rate ~ /\+/) marker = marker " preferred"
+				if (rate ~ /\*/) marker = marker " current"
+				gsub(/[+*]/, "", rate)
+				if (rate ~ /^[0-9.]+$/) print mode "@" rate marker
+			}
+		}
+	' "$query_file"
+}
+
+detect_displays() {
+	local output default driver tearfree xorg_driver
+
+	load_display_data
+	if ! connected_outputs | grep -q .; then
+		die "no connected X11 outputs were detected"
+	fi
+	xorg_driver=$(current_xorg_driver)
+	printf 'Connected X11 outputs:\n'
+	while IFS= read -r output; do
+		default=$(default_mode_rate "$output")
+		driver=$(output_kernel_driver "$output")
+		if output_has_tearfree_property "$output"; then
+			tearfree=supported-randr-property
+		else
+			case "$xorg_driver:$driver" in
+			amdgpu:amdgpu | intel:i915)
+				tearfree=supported-xorg-option
+				;;
+			*)
+				tearfree=unsupported
+				;;
+			esac
+		fi
+		printf '\n%s  default=%s  kernel-driver=%s  TearFree=%s\n' \
+			"$output" "${default/|/@}" "$driver" "$tearfree"
+		list_output_modes "$output" | sed 's/^/  /'
+	done < <(connected_outputs)
+	printf '\nActive Xorg driver: %s\n' "$xorg_driver"
+}
+
+prompt_yes_no() {
+	local prompt=$1
+	local default_yes=$2
+	local answer
+
+	if [[ $default_yes == true ]]; then
+		printf '%s [Y/n] ' "$prompt" >&2
+	else
+		printf '%s [y/N] ' "$prompt" >&2
+	fi
+	read -r answer
+	case $answer in
+	y | Y | yes | YES) return 0 ;;
+	n | N | no | NO) return 1 ;;
+	"") [[ $default_yes == true ]] ;;
+	*) return 1 ;;
+	esac
+}
+
+prompt_value() {
+	local prompt=$1
+	local default=$2
+	local answer
+
+	printf '%s [%s]: ' "$prompt" "$default" >&2
+	read -r answer
+	printf '%s\n' "${answer:-$default}"
+}
+
+wizard_profile() {
+	local profile_file=$1
+	local output selection rotation x y width height next_x=0
+	local mode rate default default_selection answer index=1 primary_index enabled_count=0
+	local tearfree_available=false
+	local -a outputs=() enabled_outputs=() modes=() selected_lines=()
+
+	[[ -t 0 && -t 1 ]] || die "the wizard requires a terminal"
+	mapfile -t outputs < <(connected_outputs)
+	((${#outputs[@]} > 0)) || die "no connected X11 outputs were detected"
+	: >"$profile_file"
+
+	for output in "${outputs[@]}"; do
+		printf '\nConfigure %s\n' "$output"
+		if ! prompt_yes_no "Enable $output?" true; then
+			printf '%s --off\n' "$output" >>"$profile_file"
+			continue
+		fi
+		mapfile -t modes < <(list_output_modes "$output")
+		((${#modes[@]} > 0)) || die "no modes are available for $output"
+		default=$(default_mode_rate "$output")
+		printf 'Available modes for %s:\n' "$output"
+		default_selection=1
+		for index in "${!modes[@]}"; do
+			printf '  %d) %s\n' "$((index + 1))" "${modes[$index]}"
+			if [[ ${modes[$index]%% *} == "${default/|/@}" ]]; then
+				default_selection=$((index + 1))
+			fi
+		done
+		selection=$(prompt_value "Mode number" "$default_selection")
+		[[ $selection =~ ^[0-9]+$ ]] || die "invalid mode selection: $selection"
+		((selection >= 1 && selection <= ${#modes[@]})) || die "mode selection is out of range"
+		answer=${modes[$((selection - 1))]%% *}
+		mode=${answer%@*}
+		rate=${answer#*@}
+		rotation=$(prompt_value "Rotation (normal, left, right, inverted)" normal)
+		case $rotation in normal | left | right | inverted) ;; *) die "invalid rotation: $rotation" ;; esac
+		x=$(prompt_value "Horizontal position for $output" "$next_x")
+		y=$(prompt_value "Vertical position for $output" 0)
+		[[ $x =~ ^[0-9]+$ && $y =~ ^[0-9]+$ ]] || die "wizard positions must be non-negative integers"
+		selected_lines+=("$output --mode $mode --rate $rate --pos ${x}x${y} --rotate $rotation")
+		enabled_outputs+=("$output")
+		((enabled_count += 1))
+		width=${mode%x*}
+		height=${mode#*x}
+		if [[ $rotation == left || $rotation == right ]]; then
+			next_x=$((x + height))
+		else
+			next_x=$((x + width))
+		fi
+	done
+
+	((enabled_count > 0)) || die "at least one output must be enabled"
+	printf '\nChoose the primary display:\n'
+	for index in "${!enabled_outputs[@]}"; do
+		printf '  %d) %s\n' "$((index + 1))" "${enabled_outputs[$index]}"
+	done
+	primary_index=$(prompt_value "Primary display number" 1)
+	[[ $primary_index =~ ^[0-9]+$ ]] || die "invalid primary display selection"
+	((primary_index >= 1 && primary_index <= ${#enabled_outputs[@]})) || die "primary selection is out of range"
+
+	for index in "${!selected_lines[@]}"; do
+		if ((index + 1 == primary_index)); then
+			printf '%s --primary\n' "${selected_lines[$index]}" >>"$profile_file"
+		else
+			printf '%s\n' "${selected_lines[$index]}" >>"$profile_file"
+		fi
+	done
+
+	parse_profile "$profile_file"
+	if tearfree_compatible; then
+		tearfree_available=true
+	fi
+	if [[ $tearfree_available == true ]]; then
+		if prompt_yes_no "Compatible TearFree support detected. Enable it?" true; then
+			tearfree_policy=on
+		else
+			tearfree_policy=off
+		fi
+	else
+		tearfree_policy=off
+		info "TearFree is not exposed by the active Xorg driver; leaving it disabled"
+	fi
+
+	printf '\nProposed display profile:\n'
+	sed 's/^/  /' "$profile_file"
+}
+
+show_status() {
+	printf 'Managed Xorg config: %s\n' "$config_path"
+	if [[ -r $config_path ]]; then
+		sed -n '1,260p' "$config_path"
+	else
+		printf '%s\n' '(not installed)'
+	fi
+	if command -v xrandr >/dev/null 2>&1 && [[ -n ${DISPLAY:-} ]]; then
+		printf '\nCurrent X11 layout:\n'
+		xrandr --query
+	fi
+}
+
+main() {
+	local command=wizard
+	local profile=
+	local generated wizard_file
+	local -a positional=()
+
+	trap cleanup EXIT HUP INT TERM
+	if (($# > 0)); then
+		case $1 in
+		wizard | detect | generate | preview | install | status | rollback)
+			command=$1
+			shift
+			;;
+		-h | --help | help)
+			usage
+			return
+			;;
+		esac
+	fi
+
+	while (($# > 0)); do
+		case $1 in
+		--config)
+			(($# >= 2)) || die "--config requires a path"
+			config_path=$2
+			shift 2
+			;;
+		--config=*)
+			config_path=${1#*=}
+			shift
+			;;
+		--tearfree)
+			(($# >= 2)) || die "--tearfree requires auto, on, or off"
+			tearfree_policy=$2
+			shift 2
+			;;
+		--tearfree=*)
+			tearfree_policy=${1#*=}
+			shift
+			;;
+		--timeout)
+			(($# >= 2)) || die "--timeout requires seconds"
+			confirm_seconds=$2
+			shift 2
+			;;
+		--timeout=*)
+			confirm_seconds=${1#*=}
+			shift
+			;;
+		--no-preview)
+			preview=false
+			shift
+			;;
+		--yes)
+			assume_yes=true
+			shift
+			;;
+		-h | --help)
+			usage
+			return
+			;;
+		--*)
+			die "unknown option: $1"
+			;;
+		*)
+			positional+=("$1")
+			shift
+			;;
+		esac
+	done
+
+	case $tearfree_policy in auto | on | off) ;; *) die "invalid TearFree policy: $tearfree_policy" ;; esac
+	[[ $confirm_seconds =~ ^[1-9][0-9]*$ ]] || die "preview timeout must be a positive integer"
+
+	case $command in
+	detect)
+		((${#positional[@]} == 0)) || die "detect takes no profile"
+		detect_displays
+		;;
+	status)
+		((${#positional[@]} == 0)) || die "status takes no profile"
+		show_status
+		;;
+	rollback)
+		((${#positional[@]} == 0)) || die "rollback takes no profile"
+		rollback_config
+		;;
+	generate | preview | install)
+		((${#positional[@]} == 1)) || die "$command requires exactly one profile"
+		profile=${positional[0]}
+		load_display_data
+		parse_profile "$profile"
+		generated="$work/90-dwm-titus-display.conf"
+		generate_config "$generated"
+		case $command in
+		generate)
+			cat "$generated"
+			;;
+		preview)
+			preview_profile "$profile" "$generated"
+			;;
+		install)
+			if [[ $preview == true ]]; then
+				preview_profile "$profile" "$generated" || die "display preview was not accepted"
+			fi
+			install_generated_config "$generated"
+			;;
+		esac
+		;;
+	wizard)
+		((${#positional[@]} == 0)) || die "wizard takes no profile"
+		load_display_data
+		wizard_file="$work/wizard-profile.conf"
+		wizard_profile "$wizard_file"
+		generated="$work/90-dwm-titus-display.conf"
+		generate_config "$generated"
+		if [[ $preview == true ]]; then
+			preview_profile "$wizard_file" "$generated" || die "display preview was not accepted"
+		fi
+		install_generated_config "$generated"
+		;;
+	esac
+}
+
+main "$@"

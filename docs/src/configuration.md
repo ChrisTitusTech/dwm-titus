@@ -77,6 +77,21 @@ Display profiles are optional files under
 to show profiles, and `dwm-display-profile apply <name>` to run the profile
 through `xrandr`.
 
+For persistent Xorg configuration, run `dwm-display-setup`. The interactive
+wizard detects connected outputs and their exact advertised timings, then asks
+for resolution, refresh rate, rotation, absolute position, and the primary
+display. It checks whether the active Xorg driver exposes compatible TearFree
+support and offers to enable it only when supported. The proposed layout is
+applied as a live preview and automatically restored unless it is confirmed.
+
+Accepted layouts are installed as the isolated managed fragment
+`/etc/X11/xorg.conf.d/90-dwm-titus-display.conf`; existing Xorg files are not
+replaced. Each change creates a versioned backup. Use
+`dwm-display-setup rollback` to restore the newest backup, or
+`dwm-display-setup status` to inspect the managed file and current layout.
+Advanced users can pass an existing display-profile file to
+`dwm-display-setup generate`, `preview`, or `install`.
+
 Power settings are managed from Control Center -> Power. The generated
 `power.conf` is authoritative once created and persists screen DPMS state,
 display-off timing, and automatic idle and suspend locking. Startup reapplies

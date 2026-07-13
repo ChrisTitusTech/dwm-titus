@@ -171,6 +171,12 @@ The supported installation flow must:
 9. Set ownership to the invoking user for files in that user's home.
 10. Support repeated execution without destructive side effects.
 11. Print a summary, skipped optional features, and actionable next steps.
+12. Offer interactive Xorg display setup when installation runs inside an
+    active X11 session. The setup must support resolution, refresh rate,
+    position, rotation, primary-output selection, and compatible TearFree
+    drivers; preview changes with rollback; and preserve existing system Xorg
+    configuration through an isolated managed fragment and backups. When no
+    X11 session is available, print the deferred setup command instead.
 
 The installer must not require an AUR helper. On RHEL-family systems it may
 explain when an optional component requires EPEL or another repository, but it

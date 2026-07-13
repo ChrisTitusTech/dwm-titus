@@ -75,6 +75,13 @@ Or use the [Control Center](./control-center.md) → **System Health**.
 
 - Tags not syncing across monitors: run `dwm-diagnostics`
 - Cursor doesn't follow focus: verify cursor warp is enabled in `config.h` (`cursorwarp = 1`)
+- Persistent resolution or positioning: run `dwm-display-setup detect`, then
+  `dwm-display-setup`. The wizard previews changes before writing Xorg config.
+- Bad persistent layout: run `dwm-display-setup rollback`, then log out and
+  back in. From a TTY, remove
+  `/etc/X11/xorg.conf.d/90-dwm-titus-display.conf` if Xorg cannot start.
+- TearFree is enabled only when the active Xorg driver exposes a compatible
+  option or RandR property. Unsupported drivers are left unchanged.
 - Display layout profiles: run `dwm-display-profile dir` and
   `dwm-display-profile template` to create optional `xrandr` profiles
 

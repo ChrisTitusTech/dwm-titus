@@ -106,6 +106,16 @@ Steam, Gamescope, GameMode, and MangoHud rather than changing repository trust.
 
 **Display manager** (SDDM, GDM, LightDM): log out and select **dwm** from the session list.
 
+When the interactive installer runs inside an active X11 session, it offers
+the `dwm-display-setup` wizard after installation. The wizard previews the
+chosen resolution and multi-monitor layout, then installs a backed-up Xorg
+fragment. Installations run from a TTY or in non-interactive mode defer this
+step; after the first X11 login, run:
+
+```bash
+dwm-display-setup
+```
+
 **startx:**
 ```bash
 startx

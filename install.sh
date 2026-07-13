@@ -430,6 +430,39 @@ configure_seeded_terminal() {
 	ok "Configured the default terminal: $terminal"
 }
 
+configure_displays_after_install() {
+	local answer
+
+	if [[ $NON_INTERACTIVE == true ]]; then
+		warn "Display setup deferred for non-interactive installation."
+		warn "Run dwm-display-setup from an X11 session after login."
+		return 0
+	fi
+	if [[ -z ${DISPLAY:-} ]] || ! command -v xrandr >/dev/null 2>&1; then
+		warn "Display setup needs an active X11 session and was deferred."
+		warn "After login, run: dwm-display-setup"
+		return 0
+	fi
+	if ! xrandr --query 2>/dev/null | awk '$2 == "connected" { found = 1 } END { exit !found }'; then
+		warn "No connected X11 outputs were detected; display setup was deferred."
+		return 0
+	fi
+
+	printf 'Configure persistent display resolution and positioning now? [Y/n] '
+	read -r answer
+	case $answer in
+	n | N | no | NO)
+		warn "Display setup skipped. Run dwm-display-setup when ready."
+		;;
+	*)
+		if ! "$REPO_DIR/scripts/dwm-display-setup" wizard; then
+			warn "Display setup did not complete. Existing Xorg configuration was preserved."
+			warn "Run dwm-display-setup to try again."
+		fi
+		;;
+	esac
+}
+
 detect_display_manager() {
 	local unit
 
@@ -704,6 +737,7 @@ sudo make install \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
 	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 configure_seeded_terminal "$HOTKEYS_FILE" "$terminal"
+configure_displays_after_install
 
 # ── Done ─────────────────────────────────────────────────
 echo ""
@@ -714,6 +748,7 @@ echo ""
 info "Detected: $DISTRO_NAME"
 echo "  • Build configuration: $REPO_DIR/config.h"
 echo "  • Reconfigure by removing config.h and running the installer again"
+echo "  • Display setup: dwm-display-setup"
 echo "  • Log out and select 'dwm', or start with: startx"
 if [[ $currentdm == "lightdm" ]]; then
 	echo "  • Start LightDM now (optional): sudo systemctl start lightdm.service"

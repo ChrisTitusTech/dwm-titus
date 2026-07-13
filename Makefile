@@ -28,6 +28,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-default-apps \
 	scripts/dwm-diagnostics \
 	scripts/dwm-display-profile \
+	scripts/dwm-display-setup \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
@@ -250,10 +251,10 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -281,6 +282,9 @@ check-default-apps:
 
 check-display-profile:
 	tests/test-dwm-display-profile.sh
+
+check-display-setup:
+	tests/test-dwm-display-setup.sh
 
 check-diagnostics:
 	tests/test-dwm-diagnostics.sh
@@ -430,6 +434,7 @@ check:
 	$(MAKE) check-diagnostics
 	$(MAKE) check-status
 	$(MAKE) check-display-profile
+	$(MAKE) check-display-setup
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-controlcenter
@@ -449,7 +454,7 @@ check:
 
 .PHONY: all check check-build-config check-build-deps check-default-apps \
 	check-container-smoke \
-	check-display-profile check-fedora-iso-builder check-format check-install \
+	check-display-profile check-display-setup check-fedora-iso-builder check-format check-install \
 	check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-shell check-diagnostics check-status check-system-health \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-health-xvfb check-quickshell-network check-lightdm-config check-terminal clean install install-system install-user \

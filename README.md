@@ -58,7 +58,10 @@ The installer detects the distribution from `/etc/os-release`, resolves package
 names for the detected family, preserves existing `config.h` and user TOML
 files, and installs the managed Quickshell config. Upgrades also remove the
 legacy graphical-session enablement that could start XDG applications before
-the X11 display environment was imported.
+the X11 display environment was imported. Interactive installs running inside
+X11 also offer the `dwm-display-setup` wizard for persistent resolution,
+refresh rate, position, rotation, primary-display, and compatible TearFree
+configuration. If installation runs from a TTY, run the wizard after login.
 
 On x86_64 Fedora, the full profile can enable the
 [`christitustech/copr-fedora`](https://copr.fedorainfracloud.org/coprs/christitustech/copr-fedora/package/gamescope/)
@@ -201,6 +204,8 @@ Key things to customize in `config.h`:
 - Or set `DWM_TERMINAL` / edit `hotkeys.toml` to use your preferred terminal
 - Browser defaults: run `dwm-default-apps browsers`, then
   `dwm-default-apps set-browser <desktop-id>`
+- Persistent display setup: run `dwm-display-setup`; use
+  `dwm-display-setup detect` first to inspect outputs and TearFree support
 - Display profiles: run `dwm-display-profile template` and save optional
   profiles under `~/.config/dwm-titus/display-profiles/`
 - Diagnostics: run `dwm-diagnostics` to separate required failures from
