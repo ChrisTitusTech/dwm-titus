@@ -89,7 +89,7 @@ wait_for_active_window() {
 	return 1
 }
 
-require_cmd Xvfb cc pkg-config xdotool xprop sed grep
+require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep
 pkg-config --exists x11
 
 work=$(mktemp -d)
@@ -239,6 +239,8 @@ printf '%s\n' \
 	'keys = [' \
 	'  { mod="SUPER", key="1", desc="Xvfb tag 1", func="view", ui=1 },' \
 	'  { mod="SUPER", key="m", desc="Xvfb fullscreen", func="fullscreen" },' \
+	'  { mod="SUPER", key="o", desc="Xvfb monocle", func="setlayout", layout_idx=2 },' \
+	'  { mod="SUPER", key="v", desc="Xvfb mouse resize", func="resizemouse" },' \
 	'  { mod="SUPER", key="u", desc="Xvfb reload tag", func="view", ui=16 },' \
 	']' >"$home/.config/dwm-titus/hotkeys.toml"
 kill -USR1 "$dwm_pid"
@@ -258,6 +260,27 @@ DISPLAY=$display xdotool key Super+1
 wait_for_current_desktop 0
 
 wait_for_active_window "$win"
+DISPLAY=$display xdotool key Super+o
+sleep 0.2
+monocle_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$win")
+monocle_width=$(printf '%s\n' "$monocle_geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
+monocle_height=$(printf '%s\n' "$monocle_geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+
+DISPLAY=$display xdotool mousemove --window "$win" 100 100
+DISPLAY=$display xdotool key Super+v
+sleep 0.05
+DISPLAY=$display xdotool mousemove_relative --sync 120 90
+DISPLAY=$display xdotool click 3
+sleep 0.2
+
+floating_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$win")
+floating_width=$(printf '%s\n' "$floating_geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
+floating_height=$(printf '%s\n' "$floating_geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+if [ "$floating_width" -ge "$monocle_width" ] || [ "$floating_height" -ge "$monocle_height" ]; then
+	printf '%s\n' "monocle mouse resize did not fall back to floating resize" >&2
+	exit 1
+fi
+
 DISPLAY=$display "$work/xclient" fullscreen "$win"
 wait_for_window_state "$win" _NET_WM_STATE_FULLSCREEN
 

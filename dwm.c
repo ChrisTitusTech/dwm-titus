@@ -2269,7 +2269,7 @@ resizemouse(const Arg *arg)
 		return;
 	if (c->isfullscreen && c->fakefullscreen != 1) /* no support resizing fullscreen windows by mouse */
 		return;
-	if (!c->isfloating && selmon->lt[selmon->sellt]->arrange) {
+	if (!c->isfloating && selmon->lt[selmon->sellt]->arrange == tile) {
 		resizetiledmouse(arg);
 		return;
 	}
@@ -2304,6 +2304,14 @@ resizemouse(const Arg *arg)
 			ny = vertcorner ? (ocy + ev.xmotion.y - opy) : c->y;
 			nw = MAX(horizcorner ? (ocx + ocw - nx) : (ocw + (ev.xmotion.x - opx)), 1);
 			nh = MAX(vertcorner ? (ocy + och - ny) : (och + (ev.xmotion.y - opy)), 1);
+			if (c->mon->wx + nw >= selmon->wx && c->mon->wx + nw <= selmon->wx + selmon->ww
+			&& c->mon->wy + nh >= selmon->wy && c->mon->wy + nh <= selmon->wy + selmon->wh)
+			{
+				if (!c->isfloating && selmon->lt[selmon->sellt]->arrange
+				&& (abs(nw - c->w) > snap || abs(nh - c->h) > snap)) {
+					togglefloating(NULL);
+				}
+			}
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
 				resize(c, nx, ny, nw, nh, 1);
 			}
@@ -2319,7 +2327,7 @@ resizemouse(const Arg *arg)
 	}
 }
 
-/* Resize a tiled client by changing the active layout's split factors.
+/* Resize a tiled client by changing the tile layout's split factors.
  * Neighbours are re-tiled immediately; mouse resizing never floats a client. */
 static void
 resizetiledmouse(const Arg *arg)
