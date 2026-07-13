@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|output-status|output-devices|output-set-default <sink>|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status|bluetooth-devices|bluetooth-scan|bluetooth-power on|off|bluetooth-pair <address>|bluetooth-connect <address>|bluetooth-disconnect <address>" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|output-status|output-devices|output-set-default <sink>|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status|bluetooth-devices|bluetooth-scan|bluetooth-power <on|off>|bluetooth-pair <address>|bluetooth-connect <address>|bluetooth-disconnect <address>" >&2
 	exit 2
 }
 

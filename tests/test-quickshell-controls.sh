@@ -177,6 +177,12 @@ esac
 SH
 chmod +x "$work/bin/bluetoothctl"
 
+if PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" 2>"$work/usage.out"; then
+	printf 'Control helper accepted a missing subcommand.\n' >&2
+	exit 1
+fi
+grep -Fq 'bluetooth-power <on|off>|bluetooth-pair <address>' "$work/usage.out"
+
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" volume-status >"$work/volume.out"
 grep -Fqx "VOL 40%" "$work/volume.out"
 

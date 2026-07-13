@@ -2321,7 +2321,7 @@ resizemouse(const Arg *arg)
 
 /* Resize a tiled client by changing the active layout's split factors.
  * Neighbours are re-tiled immediately; mouse resizing never floats a client. */
-void
+static void
 resizetiledmouse(const Arg *arg)
 {
 	int index, n, opx, opy, px, py, horizcorner, vertcorner;

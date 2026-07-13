@@ -11,6 +11,14 @@ XDG_CONFIG_HOME="$TEST_HOME/.config"
 XDG_DATA_HOME="$TEST_HOME/.local/share"
 OWNER="$(id -un)"
 
+if grep -Eq 'sudo systemctl enable (NetworkManager|bluetooth)\.service' "$REPO_DIR/install.sh"; then
+	printf 'Optional Arch services are enabled without the non-fatal guard.\n' >&2
+	exit 1
+fi
+for service in NetworkManager.service bluetooth.service; do
+	grep -Fq "enable_optional_service $service" "$REPO_DIR/install.sh"
+done
+
 cp -a "$REPO_DIR/." "$TEST_REPO/"
 mkdir -p \
 	"$XDG_CONFIG_HOME/dwm-titus" \

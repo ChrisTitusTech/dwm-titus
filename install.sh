@@ -149,6 +149,16 @@ install_optional_profile() {
 	[[ $INSTALL_PROFILE == "full" ]]
 }
 
+enable_optional_service() {
+	local service=$1
+
+	if sudo systemctl enable "$service"; then
+		ok "Optional service enabled: $service"
+	else
+		warn "Could not enable optional service $service; continuing installation."
+	fi
+}
+
 fedora_gaming_profile() {
 	[[ $DISTRO_ID == "fedora" && $INSTALL_PROFILE == "full" && $ARCH == "x86_64" ]]
 }
@@ -567,8 +577,8 @@ if install_optional_profile; then
 		warn "Some optional desktop extras were unavailable in enabled repositories."
 	fi
 	if [[ $DISTRO_FAMILY == "arch" ]]; then
-		sudo systemctl enable NetworkManager.service
-		sudo systemctl enable bluetooth.service
+		enable_optional_service NetworkManager.service
+		enable_optional_service bluetooth.service
 	fi
 	if fedora_gaming_profile; then
 		if [[ $FEDORA_GAMING_REPOS_APPROVED != true ]]; then
