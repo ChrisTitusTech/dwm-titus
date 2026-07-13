@@ -62,6 +62,7 @@ printf '%s\n' "$*" >>"${TEST_STATE:?}/systemctl.log"
 case $* in
 *"start wm-graphical-session.service"*)
 	[ "${TEST_SYSTEMD_START_FAIL:-0}" != 1 ] || exit 1
+	[ -f "${TEST_STATE:?}/quickshell-tray.ready" ] || exit 1
 	;;
 esac
 exit 0
@@ -95,9 +96,26 @@ EOF
 
 chmod +x "$work/bin/"*
 
-for name in feh picom dwm-status dwm-lock-watch light-locker quickshell dex dex-autostart; do
+for name in feh picom dwm-status dwm-lock-watch light-locker dex dex-autostart; do
 	make_mock_command "$name"
 done
+
+cat >"$work/bin/quickshell" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = ipc ]; then
+	test -f "${TEST_STATE:?}/quickshell.running"
+	: >"${TEST_STATE:?}/quickshell-tray.ready"
+	exit 0
+fi
+
+count_file="${TEST_STATE:?}/quickshell.count"
+count=0
+[ ! -f "$count_file" ] || count=$(cat "$count_file")
+count=$((count + 1))
+printf '%s\n' "$count" >"$count_file"
+: >"${TEST_STATE:?}/quickshell.running"
+EOF
+chmod +x "$work/bin/quickshell"
 
 run_duplicate_case() {
 	mode=$1

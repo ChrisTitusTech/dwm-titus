@@ -80,6 +80,25 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
 fi
 wait
 
+# Start Quickshell before XDG autostart applications. Tray clients such as
+# Flameshot only register reliably when the StatusNotifier host is already
+# available, so wait for the tray IPC endpoint before activating the session.
+QUICKSHELL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
+if [ -f "$QUICKSHELL_CONFIG" ]; then
+	start_detached_once quickshell quickshell --no-duplicate
+	if command -v quickshell >/dev/null 2>&1; then
+		i=0
+		while [ "$i" -lt 50 ]; do
+			if quickshell ipc --path "$QUICKSHELL_CONFIG" call tray count \
+				>/dev/null 2>&1; then
+				break
+			fi
+			i=$((i + 1))
+			sleep 0.1
+		done
+	fi
+fi
+
 xdg_autostart_started=0
 
 # Activate user graphical-session.target through the wm shim so portal services
@@ -120,12 +139,6 @@ if ! command -v "$lock_watch" >/dev/null 2>&1; then
 	esac
 fi
 start_detached_once dwm-lock-watch "$lock_watch"
-
-# Quickshell is the managed shell for this session.
-QUICKSHELL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
-if [ -f "$QUICKSHELL_CONFIG" ]; then
-	start_detached_once quickshell quickshell --no-duplicate
-fi
 
 # Polkit authentication agent (try common agents)
 for agent in \
