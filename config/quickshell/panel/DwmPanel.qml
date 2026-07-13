@@ -13,9 +13,12 @@ PanelWindow {
     required property var clock
     required property var networkModel
     required property var controlsModel
+    required property var bluetoothModel
+    required property var controlCenterModel
+    required property var powerMenuModel
 
     implicitHeight: Theme.panelHeight
-    color: Theme.bg
+    color: Theme.transparent
     exclusiveZone: Theme.panelHeight
     aboveWindows: true
 
@@ -25,130 +28,244 @@ PanelWindow {
         right: true
     }
 
-    RowLayout {
+    Rectangle {
+        id: island
+
         anchors.fill: parent
-        anchors.leftMargin: 10
-        anchors.rightMargin: 10
-        spacing: Theme.rowSpacing
+        anchors.leftMargin: Theme.panelEdgeMargin
+        anchors.rightMargin: Theme.panelEdgeMargin
+        anchors.topMargin: Theme.panelMargin
+        anchors.bottomMargin: Theme.panelMargin
+        color: Theme.barBackground
+        border.color: Theme.border
+        border.width: Theme.pillBorderWidth
+        radius: Theme.barRadius
 
-        Text {
-            text: "dwm"
-            color: Theme.text
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.panelFontSize
-            font.bold: true
-            verticalAlignment: Text.AlignVCenter
-        }
+        PillShadow { cornerRadius: island.radius }
 
-        Repeater {
-            model: root.state.workspaceNames
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.panelGap
+            anchors.rightMargin: Theme.panelGap
+            spacing: Theme.panelGap
 
-            delegate: WorkspaceButton {
-                required property int index
-                required property string modelData
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumWidth: 0
 
-                label: modelData
-                selected: index === root.state.currentWorkspace
-                onClicked: root.state.switchWorkspace(index)
-            }
-        }
+                RowLayout {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, parent.width)
+                    height: parent.height
+                    spacing: Theme.panelGap
 
-        Text {
-            Layout.maximumWidth: 360
-            text: root.state.activeWindowTitle
-            color: Theme.text
-            elide: Text.ElideRight
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.panelFontSize
-            verticalAlignment: Text.AlignVCenter
-        }
+                    LogoButton {
+                        onActivated: root.controlCenterModel.toggle()
+                    }
 
-        Item {
-            Layout.fillWidth: true
-        }
+                    PanelPill {
+                        visible: root.controlCenterModel.showWorkspaceWidget
+                        Layout.preferredWidth: workspaceRow.implicitWidth + 8
+                        Layout.preferredHeight: Theme.pillHeight
 
-        Repeater {
-            model: root.state.statusSegments
+                        RowLayout {
+                            id: workspaceRow
 
-            delegate: Text {
-                required property string modelData
+                            anchors.centerIn: parent
+                            spacing: 1
 
-                text: modelData
-                color: Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.panelFontSize
-                verticalAlignment: Text.AlignVCenter
-            }
-        }
+                            Repeater {
+                                model: root.state.workspaceNames
 
-        Rectangle {
-            Layout.preferredWidth: Math.min(volumeLabel.implicitWidth + 18, 260)
-            Layout.preferredHeight: Theme.pillHeight
-            color: controlsMouse.containsMouse || root.controlsModel.visible ? Theme.surfaceHover : Theme.surface
-            radius: Theme.radius
+                                delegate: WorkspaceButton {
+                                    required property int index
+                                    required property string modelData
 
-            Text {
-                id: volumeLabel
+                                    label: modelData
+                                    selected: index === root.state.currentWorkspace
+                                    onClicked: root.state.switchWorkspace(index)
+                                }
+                            }
+                        }
+                    }
 
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 9
-                anchors.rightMargin: 9
-                text: root.controlsModel.volumeDisplayText
-                color: Theme.text
-                elide: Text.ElideRight
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.panelFontSize
-                verticalAlignment: Text.AlignVCenter
-            }
+                    PanelPill {
+                        Layout.preferredWidth: Math.min(280, activeWindowLabel.implicitWidth + Theme.pillHorizontalPadding * 2)
+                        Layout.preferredHeight: Theme.pillHeight
 
-            MouseArea {
-                id: controlsMouse
+                        UiText {
+                            id: activeWindowLabel
 
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.controlsModel.toggle()
-            }
-        }
-
-        Rectangle {
-            Layout.preferredWidth: networkLabel.implicitWidth + 18
-            Layout.preferredHeight: Theme.pillHeight
-            color: networkMouse.containsMouse || root.networkModel.visible ? Theme.surfaceHover : Theme.surface
-            radius: Theme.radius
-
-            Text {
-                id: networkLabel
-
-                anchors.centerIn: parent
-                text: root.networkModel.statusText
-                color: Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.panelFontSize
-                verticalAlignment: Text.AlignVCenter
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: Theme.pillHorizontalPadding
+                            anchors.rightMargin: Theme.pillHorizontalPadding
+                            text: root.state.activeWindowTitle
+                            color: Theme.text
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
             }
 
-            MouseArea {
-                id: networkMouse
+            PanelPill {
+                Layout.preferredWidth: clockLabel.implicitWidth + Theme.pillHorizontalPadding * 2
+                Layout.preferredHeight: Theme.pillHeight
 
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.networkModel.toggle()
+                UiText {
+                    id: clockLabel
+
+                    anchors.centerIn: parent
+                    text: Qt.formatDateTime(root.clock.date, "ddd dd MMM  HH:mm")
+                    color: Theme.textStrong
+                    font.bold: true
+                }
             }
-        }
 
-        TrayArea {
-        }
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumWidth: 0
 
-        Text {
-            text: Qt.formatDateTime(root.clock.date, "ddd MMM dd  hh:mm")
-            color: Theme.accent
-            font.family: Theme.fontFamily
-            font.pixelSize: Theme.panelFontSize
-            verticalAlignment: Text.AlignVCenter
+                RowLayout {
+                    anchors.fill: parent
+                    spacing: Theme.panelGap
+
+                    Item { Layout.fillWidth: true }
+
+                    Repeater {
+                        model: root.state.statusSegments
+
+                        delegate: UiText {
+                            required property string modelData
+                            text: modelData
+                            color: Theme.text
+                        }
+                    }
+
+                    TrayArea {}
+
+                    PanelPill {
+                        visible: root.controlCenterModel.showVolumeWidget
+                        Layout.preferredWidth: volumeRow.implicitWidth + Theme.pillHorizontalPadding * 2
+                        Layout.preferredHeight: Theme.pillHeight
+                        active: root.controlsModel.visible
+                        hovered: controlsMouse.containsMouse
+
+                        RowLayout {
+                            id: volumeRow
+
+                            anchors.centerIn: parent
+                            spacing: Theme.compactSpacing + 2
+
+                            Rectangle {
+                                Layout.preferredWidth: 30
+                                Layout.preferredHeight: 6
+                                radius: 3
+                                color: Theme.borderStrong
+
+                                Rectangle {
+                                    width: Math.max(4, parent.width * root.controlsModel.volumePercent / 100)
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: Theme.accentSecondary
+                                }
+                            }
+
+                            UiText {
+                                text: root.controlsModel.volumeMuted ? "Muted" : root.controlsModel.volumePercent.toString() + "%"
+                                color: Theme.accentSecondary
+                            }
+                        }
+
+                        MouseArea {
+                            id: controlsMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.controlsModel.toggle()
+                        }
+                    }
+
+                    PanelPill {
+                        visible: root.controlCenterModel.showBluetoothWidget
+                        Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.pillHorizontalPadding * 2
+                        Layout.preferredHeight: Theme.pillHeight
+                        active: root.bluetoothModel.visible
+                        hovered: bluetoothMouse.containsMouse
+
+                        RowLayout {
+                            id: bluetoothRow
+                            anchors.centerIn: parent
+                            spacing: Theme.compactSpacing
+
+                            IconText { text: "󰂯" }
+                            UiText { text: "BT" }
+                        }
+
+                        MouseArea {
+                            id: bluetoothMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.bluetoothModel.toggle()
+                        }
+                    }
+
+                    PanelPill {
+                        visible: root.controlCenterModel.showNetworkWidget
+                        Layout.preferredWidth: networkRow.implicitWidth + Theme.pillHorizontalPadding * 2
+                        Layout.preferredHeight: Theme.pillHeight
+                        active: root.networkModel.visible
+                        hovered: networkMouse.containsMouse
+
+                        RowLayout {
+                            id: networkRow
+                            anchors.centerIn: parent
+                            spacing: Theme.compactSpacing
+
+                            UiText { text: "NET" }
+                            IconText {
+                                text: root.networkModel.statusText.indexOf("offline") >= 0
+                                    || root.networkModel.statusText.indexOf("unavailable") >= 0 ? "󰤭" : "󰤨"
+                            }
+                        }
+
+                        MouseArea {
+                            id: networkMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.networkModel.toggle()
+                        }
+                    }
+
+                    PanelPill {
+                        visible: root.controlCenterModel.showPowerWidget
+                        Layout.preferredWidth: Theme.pillHeight
+                        Layout.preferredHeight: Theme.pillHeight
+                        active: root.powerMenuModel.visible
+                        hovered: powerMouse.containsMouse
+
+                        IconText {
+                            anchors.centerIn: parent
+                            text: "󰐥"
+                            color: Theme.accentSecondary
+                        }
+
+                        MouseArea {
+                            id: powerMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.powerMenuModel.toggle()
+                        }
+                    }
+                }
+            }
         }
     }
 }

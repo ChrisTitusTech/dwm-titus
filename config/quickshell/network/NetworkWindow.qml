@@ -24,6 +24,8 @@ PopupWindow {
     grabFocus: true
     color: Theme.transparent
 
+    onVisibleChanged: if (!visible) root.networkModel.close()
+
     ShellSurface {
         id: content
 

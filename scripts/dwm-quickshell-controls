@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|output-devices|output-set-default <sink>|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|output-status|output-devices|output-set-default <sink>|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status|bluetooth-devices|bluetooth-scan|bluetooth-power <on|off>|bluetooth-pair <address>|bluetooth-connect <address>|bluetooth-disconnect <address>" >&2
 	exit 2
 }
 
@@ -382,6 +382,16 @@ mic_status() {
 	printf '%s\n' "MIC unavailable"
 }
 
+output_status() {
+	if command -v pactl >/dev/null 2>&1; then
+		pactl get-default-sink 2>/dev/null || printf '%s\n' "Output unavailable"
+	elif command -v wpctl >/dev/null 2>&1; then
+		wpctl status -n 2>/dev/null | awk '/\*/ { print; exit }' || printf '%s\n' "Output unavailable"
+	else
+		printf '%s\n' "Output unavailable"
+	fi
+}
+
 media_status() {
 	if ! command -v playerctl >/dev/null 2>&1; then
 		printf '%s\n' "MEDIA unavailable"
@@ -449,6 +459,43 @@ bluetooth_status() {
 	printf 'BT %s\n' "$count"
 }
 
+bluetooth_devices() {
+	command -v bluetoothctl >/dev/null 2>&1 || return 0
+	bluetoothctl devices | while IFS=' ' read -r _ address name; do
+		[ -n "$address" ] || continue
+		info=$(bluetoothctl info "$address" 2>/dev/null || true)
+		paired=$(printf '%s\n' "$info" | awk '/Paired:/ { print $2; exit }')
+		connected=$(printf '%s\n' "$info" | awk '/Connected:/ { print $2; exit }')
+		printf '%s\t%s\t%s\t%s\n' "$address" "$name" "${paired:-no}" "${connected:-no}"
+	done
+}
+
+bluetooth_scan() {
+	command -v bluetoothctl >/dev/null 2>&1 || return 1
+	bluetoothctl --timeout 8 scan on >/dev/null 2>&1 || true
+	bluetooth_devices
+}
+
+bluetooth_power() {
+	[ "$#" -eq 1 ] || usage
+	case $1 in on | off) bluetoothctl power "$1" ;; *) usage ;; esac
+}
+
+bluetooth_pair() {
+	[ "$#" -eq 1 ] || usage
+	bluetoothctl pair "$1" && bluetoothctl trust "$1" && bluetoothctl connect "$1"
+}
+
+bluetooth_connect() {
+	[ "$#" -eq 1 ] || usage
+	bluetoothctl connect "$1"
+}
+
+bluetooth_disconnect() {
+	[ "$#" -eq 1 ] || usage
+	bluetoothctl disconnect "$1"
+}
+
 [ "$#" -ge 1 ] || usage
 
 command=$1
@@ -491,6 +538,10 @@ mic-status)
 	[ "$#" -eq 0 ] || usage
 	mic_status
 	;;
+output-status)
+	[ "$#" -eq 0 ] || usage
+	output_status
+	;;
 media-status)
 	[ "$#" -eq 0 ] || usage
 	media_status
@@ -514,6 +565,26 @@ media-previous)
 bluetooth-status)
 	[ "$#" -eq 0 ] || usage
 	bluetooth_status
+	;;
+bluetooth-devices)
+	[ "$#" -eq 0 ] || usage
+	bluetooth_devices
+	;;
+bluetooth-scan)
+	[ "$#" -eq 0 ] || usage
+	bluetooth_scan
+	;;
+bluetooth-power)
+	bluetooth_power "$@"
+	;;
+bluetooth-pair)
+	bluetooth_pair "$@"
+	;;
+bluetooth-connect)
+	bluetooth_connect "$@"
+	;;
+bluetooth-disconnect)
+	bluetooth_disconnect "$@"
 	;;
 *)
 	usage

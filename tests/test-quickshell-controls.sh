@@ -148,6 +148,27 @@ show)
 		;;
 	esac
 	;;
+devices)
+	printf 'Device AA:BB:CC:DD:EE:01 Headphones\n'
+	printf 'Device AA:BB:CC:DD:EE:02 Keyboard\n'
+	;;
+"info AA:BB:CC:DD:EE:01")
+	printf 'Device AA:BB:CC:DD:EE:01\n'
+	printf '\tPaired: yes\n'
+	printf '\tConnected: yes\n'
+	;;
+"info AA:BB:CC:DD:EE:02")
+	printf 'Device AA:BB:CC:DD:EE:02\n'
+	printf '\tPaired: no\n'
+	printf '\tConnected: no\n'
+	;;
+"--timeout 8 scan on")
+	printf 'scan\n' >>"$DWM_TEST_BLUETOOTHCTL_LOG"
+	;;
+"power on" | "power off" | "pair AA:BB:CC:DD:EE:02" | "trust AA:BB:CC:DD:EE:02" | \
+	"connect AA:BB:CC:DD:EE:02" | "disconnect AA:BB:CC:DD:EE:01")
+	printf '%s\n' "$*" >>"$DWM_TEST_BLUETOOTHCTL_LOG"
+	;;
 *)
 	printf 'unexpected bluetoothctl call: %s\n' "$*" >&2
 	exit 1
@@ -155,6 +176,12 @@ show)
 esac
 SH
 chmod +x "$work/bin/bluetoothctl"
+
+if PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" 2>"$work/usage.out"; then
+	printf 'Control helper accepted a missing subcommand.\n' >&2
+	exit 1
+fi
+grep -Fq 'bluetooth-power <on|off>|bluetooth-pair <address>' "$work/usage.out"
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" volume-status >"$work/volume.out"
 grep -Fqx "VOL 40%" "$work/volume.out"
@@ -241,6 +268,35 @@ DWM_TEST_BT_MODE=none \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" bluetooth-status >"$work/bluetooth-none.out"
 grep -Fqx "BT unavailable" "$work/bluetooth-none.out"
+
+PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" bluetooth-devices >"$work/bluetooth-devices.out"
+grep -Fqx "$(printf 'AA:BB:CC:DD:EE:01\tHeadphones\tyes\tyes')" "$work/bluetooth-devices.out"
+grep -Fqx "$(printf 'AA:BB:CC:DD:EE:02\tKeyboard\tno\tno')" "$work/bluetooth-devices.out"
+
+: >"$work/bluetoothctl.log"
+DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-scan >"$work/bluetooth-scan.out"
+grep -Fqx "scan" "$work/bluetoothctl.log"
+grep -Fqx "$(printf 'AA:BB:CC:DD:EE:01\tHeadphones\tyes\tyes')" "$work/bluetooth-scan.out"
+
+: >"$work/bluetoothctl.log"
+DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-power on
+DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-power off
+DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-pair AA:BB:CC:DD:EE:02
+DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-connect AA:BB:CC:DD:EE:02
+DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-disconnect AA:BB:CC:DD:EE:01
+grep -Fqx "power on" "$work/bluetoothctl.log"
+grep -Fqx "power off" "$work/bluetoothctl.log"
+grep -Fqx "pair AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
+grep -Fqx "trust AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
+grep -Fqx "connect AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
+grep -Fqx "disconnect AA:BB:CC:DD:EE:01" "$work/bluetoothctl.log"
 
 DWM_TEST_PACTL_LOG="$work/pactl.log" \
 	PATH="$work/bin:$PATH" \

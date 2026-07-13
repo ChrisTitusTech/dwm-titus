@@ -3,31 +3,38 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
-FloatingWindow {
+pragma ComponentBehavior: Bound
+
+PopupWindow {
     id: root
 
     required property var powerMenuModel
+    required property var panelWindow
 
-    title: "dwm power menu"
+    readonly property int popupWidth: 240
+    readonly property int menuHeight: 292
+    readonly property int confirmHeight: 210
+    readonly property int edgeMargin: Theme.rowSpacing
+
     visible: powerMenuModel.visible
-    implicitWidth: 520
-    implicitHeight: powerMenuModel.confirming ? 250 : 520
+    implicitWidth: popupWidth
+    implicitHeight: powerMenuModel.confirming ? confirmHeight : menuHeight
+    anchor.window: panelWindow
+    anchor.rect.x: Math.max(edgeMargin, panelWindow.width - popupWidth - edgeMargin)
+    anchor.rect.y: Theme.panelHeight
+    grabFocus: true
     color: Theme.transparent
+
+    onVisibleChanged: if (!visible) root.powerMenuModel.close()
 
     readonly property var cancelAction: {
         "label": "Cancel",
-        "detail": "Return to menu"
+        "detail": "Return to power menu"
     }
 
     readonly property var confirmButtonAction: {
         "label": "Confirm",
         "detail": powerMenuModel.pendingAction ? powerMenuModel.pendingAction.label : ""
-    }
-
-    onVisibleChanged: {
-        if (visible) {
-            Qt.callLater(content.forceActiveFocus);
-        }
     }
 
     ShellSurface {
@@ -49,109 +56,19 @@ FloatingWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: Theme.popupSpacing
+            spacing: Theme.listSpacing
 
-            Text {
-                text: root.powerMenuModel.confirming ? "Confirm Action" : "Power Menu"
-                color: Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.titleFontSize
-                font.bold: true
-                verticalAlignment: Text.AlignVCenter
-            }
+            Repeater {
+                model: root.powerMenuModel.confirming ? [] : root.powerMenuModel.sessionActions
 
-            ColumnLayout {
-                visible: !root.powerMenuModel.confirming
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: Theme.sectionSpacing
+                delegate: PowerMenuActionButton {
+                    required property var modelData
 
-                SectionLabel {
-                    label: "Session"
-                }
-
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: 2
-                        columnSpacing: Theme.listSpacing * 2
-                        rowSpacing: Theme.listSpacing * 2
-
-                    PowerMenuActionButton {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 74
-                        action: root.powerMenuModel.sessionActions[0]
-                        onActivated: root.powerMenuModel.requestAction(action)
-                    }
-
-                    PowerMenuActionButton {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 74
-                        action: root.powerMenuModel.sessionActions[1]
-                        onActivated: root.powerMenuModel.requestAction(action)
-                    }
-
-                    PowerMenuActionButton {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 74
-                        action: root.powerMenuModel.sessionActions[2]
-                        onActivated: root.powerMenuModel.requestAction(action)
-                    }
-
-                    PowerMenuActionButton {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 74
-                        action: root.powerMenuModel.sessionActions[3]
-                        onActivated: root.powerMenuModel.requestAction(action)
-                    }
-                }
-
-                SectionLabel {
-                    label: "Quick Actions"
-                }
-
-                ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: Theme.listSpacing
-
-                    PowerMenuActionButton {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.compactButtonHeight
-                        compact: true
-                        action: root.powerMenuModel.quickActions[0]
-                        onActivated: root.powerMenuModel.requestAction(action)
-                    }
-
-                    PowerMenuActionButton {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.compactButtonHeight
-                        compact: true
-                        action: root.powerMenuModel.quickActions[1]
-                        onActivated: root.powerMenuModel.requestAction(action)
-                    }
-
-                    PowerMenuActionButton {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.compactButtonHeight
-                        compact: true
-                        action: root.powerMenuModel.quickActions[2]
-                        onActivated: root.powerMenuModel.requestAction(action)
-                    }
-
-                    PowerMenuActionButton {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.compactButtonHeight
-                        compact: true
-                        action: root.powerMenuModel.quickActions[3]
-                        onActivated: root.powerMenuModel.requestAction(action)
-                    }
-
-                    PowerMenuActionButton {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.compactButtonHeight
-                        compact: true
-                        action: root.powerMenuModel.quickActions[4]
-                        onActivated: root.powerMenuModel.requestAction(action)
-                    }
+                    Layout.preferredHeight: 58
+                    action: modelData
+                    danger: modelData.id === "shutdown"
+                    onActivated: root.powerMenuModel.requestAction(modelData)
                 }
             }
 
@@ -183,7 +100,7 @@ FloatingWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignBottom
-                    spacing: Theme.listSpacing * 2
+                    spacing: Theme.listSpacing
 
                     PowerMenuActionButton {
                         Layout.fillWidth: true

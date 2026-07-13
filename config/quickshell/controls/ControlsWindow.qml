@@ -36,6 +36,8 @@ PopupWindow {
             Qt.callLater(function() {
                 content.forceActiveFocus();
             });
+        } else {
+            root.controlsModel.close();
         }
     }
 
@@ -275,23 +277,6 @@ PopupWindow {
                 Text {
                     text: root.controlsModel.micText
                     color: root.controlsModel.micText === "MIC muted" ? Theme.danger : Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.panelFontSize
-                    font.bold: true
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: root.rowSpacing
-
-                SectionLabel {
-                    label: "Bluetooth"
-                }
-
-                Text {
-                    text: root.controlsModel.bluetoothText
-                    color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.panelFontSize
                     font.bold: true

@@ -102,6 +102,7 @@ wireplumber
 pavucontrol
 bluez
 blueman
+playerctl
 libnotify
 light-locker
 xorg-x11-drv-libinput

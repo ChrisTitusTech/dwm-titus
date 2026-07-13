@@ -45,6 +45,10 @@ ShellRoot {
         id: controlsModel
     }
 
+    BluetoothModel {
+        id: bluetoothModel
+    }
+
     ControlCenterModel {
         id: controlCenterModel
     }
@@ -315,6 +319,7 @@ ShellRoot {
 
     PowerMenuWindow {
         powerMenuModel: powerMenuModel
+        panelWindow: panelWindow
     }
 
     DwmPanel {
@@ -324,6 +329,9 @@ ShellRoot {
         clock: clock
         networkModel: networkModel
         controlsModel: controlsModel
+        bluetoothModel: bluetoothModel
+        controlCenterModel: controlCenterModel
+        powerMenuModel: powerMenuModel
     }
 
     NetworkWindow {
@@ -345,9 +353,20 @@ ShellRoot {
         panelWindow: panelWindow
     }
 
+    BluetoothWindow {
+        bluetoothModel: bluetoothModel
+        panelWindow: panelWindow
+    }
+
     ControlCenterWindow {
         controlCenterModel: controlCenterModel
+        panelWindow: panelWindow
+        powerMenuModel: powerMenuModel
         healthModel: systemHealthModel
+    }
+
+    UtilityDetailWindow {
+        controlCenterModel: controlCenterModel
     }
 
     SystemHealthWindow {

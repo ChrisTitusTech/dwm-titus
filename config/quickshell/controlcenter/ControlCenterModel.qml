@@ -8,10 +8,27 @@ Scope {
     property bool visible: false
     property bool busy: false
     property string page: "overview"
+    property bool utilityVisible: false
+    property string utilityPage: ""
+    property bool showVolumeWidget: true
+    property bool showBluetoothWidget: true
+    property bool showNetworkWidget: true
+    property bool showPowerWidget: true
+    property bool showWorkspaceWidget: true
     property string message: ""
     property var infoRows: []
     property var themeRows: []
     property var keybindRows: []
+    readonly property var actions: [
+        { "id": "restart-picom", "label": "Restart Picom" },
+        { "id": "restart-quickshell", "label": "Restart Quickshell" },
+        { "id": "reload-wallpaper", "label": "Reload Wallpaper" },
+        { "id": "restart-networkmanager", "label": "Restart NetworkManager" },
+        { "id": "dependency-check", "label": "Dependency Check" },
+        { "id": "install-missing-deps", "label": "Install Missing Deps" },
+        { "id": "open-wallpapers", "label": "Wallpaper Folder" },
+        { "id": "gtk-settings", "label": "GTK Settings" }
+    ]
     property var powerRows: []
     property bool powerDpmsAvailable: false
     property bool powerDpmsEnabled: false
@@ -40,6 +57,28 @@ Scope {
         root.message = "";
     }
 
+    function closeUtility() {
+        root.utilityVisible = false;
+        root.utilityPage = "";
+        root.message = "";
+    }
+
+    function widgetEnabled(name) {
+        if (name === "Volume") return root.showVolumeWidget;
+        if (name === "Bluetooth") return root.showBluetoothWidget;
+        if (name === "Network") return root.showNetworkWidget;
+        if (name === "Power") return root.showPowerWidget;
+        return root.showWorkspaceWidget;
+    }
+
+    function toggleWidget(name) {
+        if (name === "Volume") root.showVolumeWidget = !root.showVolumeWidget;
+        else if (name === "Bluetooth") root.showBluetoothWidget = !root.showBluetoothWidget;
+        else if (name === "Network") root.showNetworkWidget = !root.showNetworkWidget;
+        else if (name === "Power") root.showPowerWidget = !root.showPowerWidget;
+        else if (name === "Workspaces") root.showWorkspaceWidget = !root.showWorkspaceWidget;
+    }
+
     function toggle() {
         if (root.visible) {
             root.close();
@@ -65,7 +104,8 @@ Scope {
     }
 
     function openKeybinds() {
-        root.visible = true;
+        root.utilityPage = "keybinds";
+        root.utilityVisible = true;
         root.openPage("keybinds", "Loading keybinds...", keybindsProcess);
     }
 
@@ -74,6 +114,8 @@ Scope {
     }
 
     function openInfo() {
+        root.utilityPage = "info";
+        root.utilityVisible = true;
         root.openPage("info", "Loading system info...", infoProcess);
     }
 

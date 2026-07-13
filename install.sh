@@ -149,6 +149,16 @@ install_optional_profile() {
 	[[ $INSTALL_PROFILE == "full" ]]
 }
 
+enable_optional_service() {
+	local service=$1
+
+	if sudo systemctl enable "$service"; then
+		ok "Optional service enabled: $service"
+	else
+		warn "Could not enable optional service $service; continuing installation."
+	fi
+}
+
 fedora_gaming_profile() {
 	[[ $DISTRO_ID == "fedora" && $INSTALL_PROFILE == "full" && $ARCH == "x86_64" ]]
 }
@@ -566,6 +576,10 @@ if install_optional_profile; then
 	if ! dwm_install_available_package_profile optional; then
 		warn "Some optional desktop extras were unavailable in enabled repositories."
 	fi
+	if [[ $DISTRO_FAMILY == "arch" ]]; then
+		enable_optional_service NetworkManager.service
+		enable_optional_service bluetooth.service
+	fi
 	if fedora_gaming_profile; then
 		if [[ $FEDORA_GAMING_REPOS_APPROVED != true ]]; then
 			warn "Fedora gaming packages were skipped because their repositories were not approved."
@@ -701,6 +715,9 @@ info "Detected: $DISTRO_NAME"
 echo "  • Build configuration: $REPO_DIR/config.h"
 echo "  • Reconfigure by removing config.h and running the installer again"
 echo "  • Log out and select 'dwm', or start with: startx"
+if [[ $currentdm == "lightdm" ]]; then
+	echo "  • Start LightDM now (optional): sudo systemctl start lightdm.service"
+fi
 echo ""
 echo "  SUPER+/   keybind viewer     SUPER+X  terminal"
 echo "  SUPER+F1  control center     SUPER+R  app launcher"

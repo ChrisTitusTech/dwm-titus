@@ -140,6 +140,7 @@ See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 | <kbd>SUPER</kbd> + <kbd>H</kbd> / <kbd>L</kbd> | Resize master area |
 | <kbd>SUPER</kbd> + <kbd>1-9</kbd> | Switch to tag (workspace) |
 | <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>1-9</kbd> | Move window to tag |
+| <kbd>SUPER</kbd> + <kbd>0</kbd> | Show windows from all nine tags at once |
 | <kbd>SUPER</kbd> + <kbd>T</kbd> | Tile layout |
 | <kbd>SUPER</kbd> + <kbd>F</kbd> | Floating layout |
 | <kbd>SUPER</kbd> + <kbd>M</kbd> | Fullscreen |

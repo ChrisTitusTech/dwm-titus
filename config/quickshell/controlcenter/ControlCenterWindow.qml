@@ -5,30 +5,16 @@ import qs.core
 
 pragma ComponentBehavior: Bound
 
-FloatingWindow {
+PopupWindow {
     id: root
 
     required property var controlCenterModel
     required property var healthModel
+    required property var panelWindow
+    required property var powerMenuModel
 
-    readonly property var overviewPages: [
-        { "id": "health", "label": "System Health", "detail": "Full-screen boot, service, resource, storage, and dependency dashboard" },
-        { "id": "actions", "label": "Quick Actions", "detail": "Restart desktop services and open common tools" },
-        { "id": "appearance", "label": "Appearance", "detail": "Switch active dwm-titus themes" },
-        { "id": "keybinds", "label": "Keybinds", "detail": "Browse live hotkeys from hotkeys.toml" },
-        { "id": "power", "label": "Power", "detail": "Screen DPMS and auto-lock timing" },
-        { "id": "info", "label": "System Info", "detail": "View session and host details" }
-    ]
-    readonly property var actions: [
-        { "id": "restart-picom", "label": "Restart Picom", "detail": "Restart the compositor" },
-        { "id": "restart-quickshell", "label": "Restart Quickshell", "detail": "Restart the desktop shell" },
-        { "id": "reload-wallpaper", "label": "Reload Wallpaper", "detail": "Randomize the wallpaper folder" },
-        { "id": "restart-networkmanager", "label": "Restart NetworkManager", "detail": "Open a terminal for the privileged restart" },
-        { "id": "dependency-check", "label": "Dependency Check", "detail": "Run check-deps.sh in a terminal" },
-        { "id": "install-missing-deps", "label": "Install Missing Deps", "detail": "Run the installer in a terminal" },
-        { "id": "open-wallpapers", "label": "Wallpaper Folder", "detail": "Open the wallpaper directory" },
-        { "id": "gtk-settings", "label": "GTK Settings", "detail": "Open nwg-look when installed" }
-    ]
+    readonly property int cardWidth: 276
+    readonly property int gap: 8
     readonly property var powerPresets: [
         { "label": "5m", "seconds": 300 },
         { "label": "10m", "seconds": 600 },
@@ -36,36 +22,14 @@ FloatingWindow {
         { "label": "30m", "seconds": 1800 },
         { "label": "1h", "seconds": 3600 }
     ]
+    property string sidePanel: "none"
 
-    title: "dwm control center"
-    visible: controlCenterModel.visible
-    implicitWidth: 760
-    implicitHeight: 620
-    color: Theme.transparent
-
-    function pageTitle() {
-        if (controlCenterModel.page === "overview") {
-            return "Control Center";
-        }
-
-        return controlCenterModel.page.charAt(0).toUpperCase() + controlCenterModel.page.slice(1);
-    }
-
-    function openPage(page) {
-        if (page === "health") {
-            controlCenterModel.close();
-            healthModel.openOnScreen(root.screen);
-        } else if (page === "actions") {
-            controlCenterModel.openActions();
-        } else if (page === "appearance") {
-            controlCenterModel.openAppearance();
-        } else if (page === "keybinds") {
-            controlCenterModel.openKeybinds();
-        } else if (page === "power") {
-            controlCenterModel.openPower();
-        } else if (page === "info") {
-            controlCenterModel.openInfo();
-        }
+    function sideTitle() {
+        if (sidePanel === "utilities") return "Utilities";
+        if (sidePanel === "actions") return "Quick Actions";
+        if (sidePanel === "appearance") return "Appearance";
+        if (sidePanel === "power") return "Power Settings";
+        return "Widgets";
     }
 
     function formatDuration(seconds) {
@@ -78,359 +42,355 @@ FloatingWindow {
         return seconds + "s";
     }
 
-    ShellSurface {
-        anchors.fill: parent
-        focus: true
+    function openSystemHealth() {
+        root.controlCenterModel.close();
+        root.healthModel.openOnScreen(root.panelWindow.screen);
+    }
 
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                if (root.controlCenterModel.page === "overview") {
-                    root.controlCenterModel.close();
-                } else {
-                    root.controlCenterModel.openOverview();
-                }
-                event.accepted = true;
-            }
+    function openPowerSettings() {
+        root.controlCenterModel.openPower();
+        root.sidePanel = "power";
+    }
+
+    visible: controlCenterModel.visible
+    implicitWidth: cardWidth + (sidePanel === "none" ? 0 : cardWidth + gap)
+    implicitHeight: sidePanel === "none" ? controlCard.implicitHeight : Math.max(controlCard.implicitHeight, sideCard.implicitHeight)
+    anchor.window: panelWindow
+    anchor.rect.x: 6
+    anchor.rect.y: Theme.panelHeight
+    grabFocus: true
+    color: Theme.transparent
+
+    onVisibleChanged: {
+        if (visible) {
+            sidePanel = "none";
+            Qt.callLater(function() {
+                controlCard.forceActiveFocus();
+            });
+        } else {
+            root.controlCenterModel.close();
+        }
+    }
+
+    component Tile: Rectangle {
+        id: tile
+
+        property string label: ""
+        property bool active: false
+        signal activated()
+
+        implicitHeight: 26
+        opacity: enabled ? 1 : 0.5
+        radius: Theme.smallRadius
+        color: active ? Theme.surfaceActive : (tileMouse.containsMouse ? Theme.surfaceHover : Theme.surface)
+        border.color: active || tileMouse.containsMouse ? Theme.accentSecondary : Theme.border
+        border.width: Theme.pillBorderWidth
+
+        UiText {
+            anchors.centerIn: parent
+            text: tile.label
+            color: tile.active || tileMouse.containsMouse ? Theme.accentSecondary : Theme.text
         }
 
-        ColumnLayout {
+        MouseArea {
+            id: tileMouse
             anchors.fill: parent
-            spacing: Theme.popupSpacing
+            enabled: tile.enabled
+            hoverEnabled: true
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: tile.activated()
+        }
+    }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.rowSpacing
+    RowLayout {
+        anchors.fill: parent
+        spacing: root.gap
 
-                Text {
+        ShellSurface {
+            id: controlCard
+
+            Layout.preferredWidth: root.cardWidth
+            Layout.maximumHeight: implicitHeight
+            Layout.alignment: Qt.AlignTop
+            margin: 12
+            implicitHeight: controlColumn.implicitHeight + margin * 2
+            focus: true
+
+            Keys.onPressed: function(event) {
+                if (event.key === Qt.Key_Escape) {
+                    root.controlCenterModel.close();
+                    event.accepted = true;
+                }
+            }
+
+            ColumnLayout {
+                id: controlColumn
+                width: parent.width
+                spacing: 8
+
+                RowLayout {
                     Layout.fillWidth: true
-                    text: root.pageTitle()
-                    color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.titleFontSize
-                    font.bold: true
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: "Control"
+                        color: Theme.textStrong
+                        font.letterSpacing: 2
+                    }
+
+                    UiText {
+                        text: "x"
+                        color: closeMouse.containsMouse ? Theme.accent : Theme.textMuted
+
+                        MouseArea {
+                            id: closeMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.controlCenterModel.close()
+                        }
+                    }
+                }
+
+                UiText {
+                    Layout.fillWidth: true
+                    visible: root.controlCenterModel.message.length > 0
+                    text: root.controlCenterModel.message
+                    color: Theme.textMuted
                     elide: Text.ElideRight
                 }
 
-                ShellButton {
-                    Layout.preferredWidth: implicitWidth
-                    Layout.preferredHeight: Theme.buttonHeight
-                    visible: root.controlCenterModel.page !== "overview"
-                    label: "Back"
-                    onActivated: root.controlCenterModel.openOverview()
-                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
-                ShellButton {
-                    Layout.preferredWidth: implicitWidth
-                    Layout.preferredHeight: Theme.buttonHeight
-                    visible: root.controlCenterModel.page !== "overview"
-                    label: "Refresh"
-                    onActivated: root.controlCenterModel.refresh()
-                }
-            }
-
-            Text {
-                Layout.fillWidth: true
-                visible: root.controlCenterModel.message.length > 0
-                text: root.controlCenterModel.message
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallFontSize
-                elide: Text.ElideRight
-            }
-
-            GridView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "overview"
-                clip: true
-                cellWidth: Math.max(220, width / 2)
-                cellHeight: 74
-                model: root.overviewPages
-
-                delegate: ControlCenterActionButton {
-                    required property var modelData
-
-                    width: GridView.view.cellWidth - Theme.listSpacing
-                    label: modelData.label
-                    detail: modelData.detail
-                    onActivated: root.openPage(modelData.id)
-                }
-            }
-
-            GridView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "actions"
-                clip: true
-                cellWidth: Math.max(230, width / 2)
-                cellHeight: 70
-                model: root.actions
-
-                delegate: ControlCenterActionButton {
-                    required property var modelData
-
-                    width: GridView.view.cellWidth - Theme.listSpacing
+                UiText { text: "Actions"; color: Theme.textMuted; font.letterSpacing: 1 }
+                Tile {
+                    Layout.fillWidth: true
+                    label: "Reload QS-Config"
                     enabled: !root.controlCenterModel.busy
-                    label: modelData.label
-                    detail: modelData.detail
-                    onActivated: root.controlCenterModel.runAction(modelData.id)
+                    onActivated: root.controlCenterModel.runAction("restart-quickshell")
                 }
-            }
-
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "appearance"
-                clip: true
-                spacing: Theme.listSpacing
-                model: root.controlCenterModel.themeRows
-
-                delegate: ControlCenterRow {
-                    id: appearanceThemeRow
-
-                    required property var modelData
-
-                    width: ListView.view.width
-                    title: appearanceThemeRow.modelData.name
-                    detail: appearanceThemeRow.modelData.status === "active" ? "Active theme" : "Click to apply"
-                    status: appearanceThemeRow.modelData.status === "active" ? "ok" : ""
-
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: appearanceThemeRow.modelData.status !== "active" && !root.controlCenterModel.busy
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.controlCenterModel.setTheme(appearanceThemeRow.modelData.name)
+                Tile {
+                    Layout.fillWidth: true
+                    label: "Power  >"
+                    onActivated: {
+                        root.controlCenterModel.close();
+                        root.powerMenuModel.open();
                     }
                 }
-            }
 
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "keybinds"
-                clip: true
-                spacing: Theme.listSpacing
-                model: root.controlCenterModel.keybindRows
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+                UiText { text: "Bar Functions"; color: Theme.textMuted; font.letterSpacing: 1 }
+                Tile {
+                    Layout.fillWidth: true
+                    label: root.sidePanel === "widgets" ? "Bar Functions  <" : "Bar Functions  >"
+                    active: root.sidePanel === "widgets"
+                    onActivated: root.sidePanel = root.sidePanel === "widgets" ? "none" : "widgets"
+                }
 
-                delegate: ControlCenterRow {
-                    required property var modelData
-
-                    width: ListView.view.width
-                    title: modelData.keys
-                    detail: modelData.description
-                    status: ""
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+                UiText { text: "Utilities"; color: Theme.textMuted; font.letterSpacing: 1 }
+                Tile {
+                    Layout.fillWidth: true
+                    label: root.sidePanel === "utilities" ? "Utilities  <" : "Utilities  >"
+                    active: root.sidePanel === "utilities"
+                    onActivated: root.sidePanel = root.sidePanel === "utilities" ? "none" : "utilities"
                 }
             }
+        }
 
-            Flickable {
-                id: powerFlick
+        ShellSurface {
+            id: sideCard
 
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "power"
-                clip: true
-                contentWidth: width
-                contentHeight: powerColumn.implicitHeight
+            Layout.preferredWidth: root.cardWidth
+            Layout.maximumHeight: implicitHeight
+            Layout.alignment: Qt.AlignTop
+            margin: 12
+            implicitHeight: sideColumn.implicitHeight + margin * 2
+            visible: root.sidePanel !== "none"
+
+            ColumnLayout {
+                id: sideColumn
+                width: parent.width
+                spacing: 8
+
+                UiText {
+                    text: root.sideTitle()
+                    color: Theme.textStrong
+                    font.letterSpacing: 2
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    visible: root.sidePanel === "widgets"
+                    columns: 2
+                    columnSpacing: 8
+                    rowSpacing: 8
+
+                    Repeater {
+                        model: ["Volume", "Bluetooth", "Network", "Power", "Workspaces"]
+                        delegate: Tile {
+                            required property string modelData
+                            Layout.fillWidth: true
+                            label: modelData
+                            active: root.controlCenterModel.widgetEnabled(modelData)
+                            onActivated: root.controlCenterModel.toggleWidget(modelData)
+                        }
+                    }
+                }
 
                 ColumnLayout {
-                    id: powerColumn
+                    Layout.fillWidth: true
+                    visible: root.sidePanel === "utilities"
+                    spacing: 8
 
-                    width: powerFlick.width
-                    spacing: Theme.sectionSpacing
-
-                    SectionLabel {
-                        label: "Display"
-                    }
-
-                    Rectangle {
+                    Tile {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 150
-                        color: Theme.surface
-                        border.color: root.controlCenterModel.powerDpmsEnabled ? Theme.accent : Theme.border
-                        border.width: 1
-                        radius: Theme.radius
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            spacing: Theme.rowSpacing
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: Theme.rowSpacing
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: Theme.tightSpacing
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: "Screen DPMS"
-                                        color: Theme.textStrong
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.panelFontSize
-                                        font.bold: true
-                                        elide: Text.ElideRight
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.controlCenterModel.powerDpmsEnabled ? "Display off after " + root.formatDuration(root.controlCenterModel.powerDpmsTimeout) : "Disabled"
-                                        color: Theme.textMuted
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.smallFontSize
-                                        elide: Text.ElideRight
-                                    }
-                                }
-
-                                ControlCenterOptionButton {
-                                    Layout.preferredWidth: 96
-                                    Layout.preferredHeight: 44
-                                    label: root.controlCenterModel.powerDpmsEnabled ? "Disable" : "Enable"
-                                    active: root.controlCenterModel.powerDpmsEnabled
-                                    enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
-                                    onActivated: root.controlCenterModel.setPowerDpms(!root.controlCenterModel.powerDpmsEnabled)
-                                }
-                            }
-
-                            Flow {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: Theme.buttonHeight
-                                spacing: Theme.listSpacing * 2
-
-                                Repeater {
-                                    model: root.powerPresets
-
-                                    ControlCenterOptionButton {
-                                        required property var modelData
-
-                                        width: 74
-                                        height: Theme.buttonHeight
-                                        label: modelData.label
-                                        active: root.controlCenterModel.powerDpmsEnabled && root.controlCenterModel.powerDpmsTimeout === modelData.seconds
-                                        enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
-                                        onActivated: root.controlCenterModel.setPowerDpmsTimeout(modelData.seconds)
-                                    }
-                                }
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                visible: !root.controlCenterModel.powerDpmsAvailable
-                                text: "xset unavailable"
-                                color: Theme.danger
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.smallFontSize
-                                elide: Text.ElideRight
-                            }
+                        label: "System Health  >"
+                        onActivated: root.openSystemHealth()
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "Quick Actions  >"
+                        onActivated: {
+                            root.controlCenterModel.openActions();
+                            root.sidePanel = "actions";
                         }
                     }
-
-                    SectionLabel {
-                        label: "Locking"
-                    }
-
-                    Rectangle {
+                    Tile {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 150
-                        color: Theme.surface
-                        border.color: root.controlCenterModel.powerLockEnabled ? Theme.accent : Theme.border
-                        border.width: 1
-                        radius: Theme.radius
+                        label: "Appearance  >"
+                        onActivated: {
+                            root.controlCenterModel.openAppearance();
+                            root.sidePanel = "appearance";
+                        }
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "Keybinds  >"
+                        onActivated: root.controlCenterModel.openKeybinds()
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "Power Settings  >"
+                        onActivated: root.openPowerSettings()
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "System Info  >"
+                        onActivated: root.controlCenterModel.openInfo()
+                    }
+                }
 
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            spacing: Theme.rowSpacing
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.sidePanel === "actions"
+                    spacing: 8
 
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: Theme.rowSpacing
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: Theme.tightSpacing
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: "Auto Lock"
-                                        color: Theme.textStrong
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.panelFontSize
-                                        font.bold: true
-                                        elide: Text.ElideRight
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.controlCenterModel.powerLockEnabled ? "Lock after " + root.formatDuration(root.controlCenterModel.powerLockTimeout) : "Disabled"
-                                        color: Theme.textMuted
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.smallFontSize
-                                        elide: Text.ElideRight
-                                    }
-                                }
-
-                                ControlCenterOptionButton {
-                                    Layout.preferredWidth: 96
-                                    Layout.preferredHeight: 44
-                                    label: root.controlCenterModel.powerLockEnabled ? "Disable" : "Enable"
-                                    active: root.controlCenterModel.powerLockEnabled
-                                    enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
-                                    onActivated: root.controlCenterModel.setPowerLock(!root.controlCenterModel.powerLockEnabled)
-                                }
-                            }
-
-                            Flow {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: Theme.buttonHeight
-                                spacing: Theme.listSpacing * 2
-
-                                Repeater {
-                                    model: root.powerPresets
-
-                                    ControlCenterOptionButton {
-                                        required property var modelData
-
-                                        width: 74
-                                        height: Theme.buttonHeight
-                                        label: modelData.label
-                                        active: root.controlCenterModel.powerLockEnabled && root.controlCenterModel.powerLockTimeout === modelData.seconds
-                                        enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
-                                        onActivated: root.controlCenterModel.setPowerLockTimeout(modelData.seconds)
-                                    }
-                                }
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                visible: !root.controlCenterModel.powerLockAvailable
-                                text: "light-locker unavailable"
-                                color: Theme.danger
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.smallFontSize
-                                elide: Text.ElideRight
-                            }
+                    Repeater {
+                        model: root.controlCenterModel.actions
+                        delegate: Tile {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            label: modelData.label
+                            enabled: !root.controlCenterModel.busy
+                            onActivated: root.controlCenterModel.runAction(modelData.id)
                         }
                     }
                 }
-            }
 
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: root.controlCenterModel.page === "info"
-                clip: true
-                spacing: Theme.listSpacing
-                model: root.controlCenterModel.infoRows
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.sidePanel === "appearance"
+                    spacing: 8
 
-                delegate: ControlCenterRow {
-                    required property var modelData
+                    Repeater {
+                        model: root.controlCenterModel.themeRows
+                        delegate: Tile {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            label: modelData.name
+                            active: modelData.status === "active"
+                            enabled: !root.controlCenterModel.busy
+                            onActivated: root.controlCenterModel.setTheme(modelData.name)
+                        }
+                    }
+                }
 
-                    width: ListView.view.width
-                    title: modelData.label
-                    detail: modelData.value
-                    status: ""
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.sidePanel === "power"
+                    spacing: 8
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: root.controlCenterModel.powerDpmsEnabled
+                            ? "Screen off after " + root.formatDuration(root.controlCenterModel.powerDpmsTimeout)
+                            : "Screen DPMS disabled"
+                        color: Theme.textMuted
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: root.controlCenterModel.powerDpmsEnabled ? "Disable Screen DPMS" : "Enable Screen DPMS"
+                        active: root.controlCenterModel.powerDpmsEnabled
+                        enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
+                        onActivated: root.controlCenterModel.setPowerDpms(!root.controlCenterModel.powerDpmsEnabled)
+                    }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 3
+                        columnSpacing: 6
+                        rowSpacing: 6
+
+                        Repeater {
+                            model: root.powerPresets
+                            delegate: Tile {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                label: modelData.label
+                                active: root.controlCenterModel.powerDpmsEnabled
+                                    && root.controlCenterModel.powerDpmsTimeout === modelData.seconds
+                                enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
+                                onActivated: root.controlCenterModel.setPowerDpmsTimeout(modelData.seconds)
+                            }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: root.controlCenterModel.powerLockEnabled
+                            ? "Lock after " + root.formatDuration(root.controlCenterModel.powerLockTimeout)
+                            : "Auto Lock disabled"
+                        color: Theme.textMuted
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: root.controlCenterModel.powerLockEnabled ? "Disable Auto Lock" : "Enable Auto Lock"
+                        active: root.controlCenterModel.powerLockEnabled
+                        enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
+                        onActivated: root.controlCenterModel.setPowerLock(!root.controlCenterModel.powerLockEnabled)
+                    }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 3
+                        columnSpacing: 6
+                        rowSpacing: 6
+
+                        Repeater {
+                            model: root.powerPresets
+                            delegate: Tile {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                label: modelData.label
+                                active: root.controlCenterModel.powerLockEnabled
+                                    && root.controlCenterModel.powerLockTimeout === modelData.seconds
+                                enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
+                                onActivated: root.controlCenterModel.setPowerLockTimeout(modelData.seconds)
+                            }
+                        }
+                    }
                 }
             }
         }

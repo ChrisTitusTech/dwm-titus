@@ -74,7 +74,7 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | `Super` + `Ctrl` + `1`–`9` | Also show tag alongside current |
 | `Super` + `Shift` + `1`–`9` | Move window to tag |
 | `Super` + `Ctrl` + `Shift` + `1`–`9` | Also show window on that tag |
-| `Super` + `0` | Show all tags |
+| `Super` + `0` | Show windows from all nine tags; `0` is not a tag |
 | `Super` + `Tab` | Previous tag |
 
 ## Multi-Monitor

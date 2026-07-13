@@ -6,22 +6,33 @@ Singleton {
     readonly property bool dark: true
 
     readonly property string transparent: "#00000000"
-    readonly property string bg: dark ? "#2e3440" : "#eceff4"
-    readonly property string surface: dark ? "#3b4252" : "#e5e9f0"
-    readonly property string surfaceHover: dark ? "#434c5e" : "#d8dee9"
-    readonly property string border: dark ? "#4c566a" : "#b8c0cc"
-    readonly property string text: dark ? "#d8dee9" : "#2e3440"
-    readonly property string textStrong: dark ? "#eceff4" : "#1f2630"
-    readonly property string textMuted: dark ? "#aeb7c4" : "#5d6778"
-    readonly property string placeholder: dark ? "#8f9aa8" : "#687386"
-    readonly property string accent: dark ? "#81a1c1" : "#5e81ac"
-    readonly property string accentText: dark ? "#2e3440" : "#eceff4"
-    readonly property string danger: "#bf616a"
-    readonly property string dangerSurface: dark ? "#4a2f35" : "#f0d5da"
+    readonly property string bg: dark ? "#181616" : "#f2ecdc"
+    readonly property string barBackground: dark ? "#e6181616" : "#eef2ecdc"
+    readonly property string surface: dark ? "#252323" : "#e7dfcc"
+    readonly property string surfaceHover: dark ? "#343131" : "#ddd3bd"
+    readonly property string surfaceActive: dark ? "#3b2928" : "#ead6cf"
+    readonly property string border: dark ? "#403c3b" : "#c7bda7"
+    readonly property string borderStrong: dark ? "#5a5552" : "#aaa087"
+    readonly property string text: dark ? "#c5c9c5" : "#545464"
+    readonly property string textStrong: dark ? "#dcd7ba" : "#363646"
+    readonly property string textMuted: dark ? "#a6a69c" : "#727169"
+    readonly property string placeholder: dark ? "#727169" : "#8a8980"
+    readonly property string accent: dark ? "#c4746e" : "#c84053"
+    readonly property string accentSecondary: dark ? "#658594" : "#4d699b"
+    readonly property string accentText: dark ? "#181616" : "#f2ecdc"
+    readonly property string success: dark ? "#8a9a73" : "#6f894e"
+    readonly property string warning: dark ? "#c8b36a" : "#b6923f"
+    readonly property string danger: dark ? "#e46876" : "#c84053"
+    readonly property string dangerSurface: dark ? "#452b2e" : "#f0d5da"
+    readonly property string shadow: "#70000000"
 
-    readonly property string fontFamily: "Maple Mono NF"
+    readonly property string fontFamily: "MesloLGS Nerd Font Mono"
+    readonly property string iconFontFamily: fontFamily
 
-    readonly property int panelHeight: 30
+    readonly property int panelHeight: 36
+    readonly property int panelMargin: 0
+    readonly property int panelEdgeMargin: 0
+    readonly property int panelGap: 4
     readonly property int popupMargin: 18
     readonly property int popupSpacing: 12
     readonly property int rowSpacing: 10
@@ -29,9 +40,15 @@ Singleton {
     readonly property int compactSpacing: 2
     readonly property int tightSpacing: 3
     readonly property int sectionSpacing: 14
-    readonly property int radius: 4
-    readonly property int smallRadius: 3
-    readonly property int pillHeight: 24
+    readonly property int radius: 6
+    readonly property int smallRadius: 6
+    readonly property int barRadius: 0
+    readonly property int pillRadius: 6
+    readonly property int pillHeight: 26
+    readonly property int pillHorizontalPadding: 9
+    readonly property int pillBorderWidth: 1
+    readonly property int animationFast: 120
+    readonly property int animationNormal: 180
     readonly property int buttonHeight: 30
     readonly property int chipHeight: 28
     readonly property int workspaceButtonSize: 22

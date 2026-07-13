@@ -18,25 +18,27 @@ dwm_packages() {
 		printf '%s\n' xorg-server
 		;;
 	arch:runtime-required)
-		printf '%s\n' dbus curl git procps-ng psmisc unzip xclip xdotool xorg-xprop xdg-utils
+		printf '%s\n' dbus curl git procps-ng psmisc unzip wmctrl xclip xdotool xorg-xprop xdg-utils
 		;;
 	arch:desktop)
 		printf '%s\n' \
-			picom feh flameshot dex mate-polkit alsa-utils \
+			quickshell picom feh flameshot dex mate-polkit alsa-utils \
 			brightnessctl pipewire pipewire-pulse wireplumber pavucontrol \
-			libnotify light-locker bluez-utils blueman
+			libnotify light-locker bluez bluez-utils blueman playerctl
 		;;
 	arch:desktop-optional)
 		printf '%s\n' \
 			thunar gvfs gvfs-smb tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
-			xdg-desktop-portal-gtk gnome-keyring networkmanager \
-			rsync
+			xdg-desktop-portal-gtk gnome-keyring networkmanager network-manager-applet \
+			rsync matugen accountsservice upower power-profiles-daemon
 		;;
 	arch:theme)
 		printf '%s\n' dconf
 		;;
 	arch:theme-gtk)
-		printf '%s\n' arc-gtk-theme materia-gtk-theme numix-themes yaru-gtk-theme
+		printf '%s\n' \
+			adapta-gtk-theme arc-gtk-theme materia-gtk-theme numix-themes \
+			orchis-theme yaru-gtk-theme
 		;;
 	arch:theme-optional)
 		printf '%s\n' qt6ct qt5ct
@@ -85,12 +87,18 @@ dwm_packages() {
 			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
 			bluez blueman
+		if [[ ${DISTRO_ID:-} == fedora ]]; then
+			printf '%s\n' playerctl
+		fi
 		;;
 	rhel:desktop-optional)
 		printf '%s\n' \
 			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring NetworkManager \
 			rsync nwg-look
+		if [[ ${DISTRO_ID:-} != fedora ]]; then
+			printf '%s\n' playerctl
+		fi
 		;;
 	rhel:gaming)
 		if [[ ${DISTRO_ID:-} == fedora && ${ARCH:-$(uname -m)} == x86_64 ]]; then
@@ -141,7 +149,7 @@ dwm_packages() {
 		printf '%s\n' \
 			picom feh flameshot dex mate-polkit alsa-utils \
 			brightnessctl pulseaudio-utils pipewire pipewire-pulse \
-			wireplumber pavucontrol libnotify-bin light-locker bluez blueman
+			wireplumber pavucontrol libnotify-bin light-locker bluez blueman playerctl
 		;;
 	debian:desktop-optional)
 		printf '%s\n' \

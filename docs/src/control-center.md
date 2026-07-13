@@ -1,13 +1,15 @@
 # Control Center
 
-The Control Center is a Quickshell utility window for system health, quick
-actions, appearance settings, and keybind discovery.
+The Control Center is an anchored Quickshell popup for panel settings, system
+health, quick actions, appearance settings, power management, and keybind
+discovery.
 
 **Open:** <kbd>Super</kbd> + <kbd>F1</kbd>, or run `dwm-controlcenter` from a
 terminal.
 
-The window floats above normal clients like the launcher, network popover, and
-power menu. Press <kbd>Esc</kbd> to close it.
+The popup opens from the panel logo. Its side card contains panel widget
+visibility, utilities, quick actions, appearance controls, and persisted DPMS
+and auto-lock timing. Press <kbd>Esc</kbd> to close it.
 
 ---
 
@@ -20,6 +22,19 @@ NetworkManager profiles, so they reconnect normally in later sessions.
 
 Hidden SSIDs and enterprise Wi-Fi are handled through the optional
 `nm-connection-editor` fallback when it is installed.
+
+## Bluetooth Popover
+
+The panel Bluetooth indicator opens a compact device manager. It can power the
+adapter on or off, scan for devices, pair and trust a new device, connect a
+paired device, and disconnect a connected device through `bluetoothctl`.
+
+## Panel Widgets
+
+The Bar Functions card can show or hide the workspace, volume, Bluetooth,
+network, and power widgets for the current Quickshell session. The redesigned
+panel retains the active-window title, status segments, and system tray, and
+shows all nine dwm tags (workspaces).
 
 ---
 
@@ -95,6 +110,12 @@ root-owned installed helper.
 | Randomize Wallpaper | Random image from `~/Pictures/backgrounds/` |
 | Open Wallpaper Folder | Open folder in file manager |
 | GTK Theme Settings | Launch `nwg-look` for GTK theming |
+
+### Power Settings
+
+The Power Settings card retains the existing persisted screen-DPMS and
+auto-lock controls. Each feature can be enabled or disabled and assigned a
+5-minute, 10-minute, 15-minute, 30-minute, or 1-hour timeout.
 
 ### Keybind Viewer
 

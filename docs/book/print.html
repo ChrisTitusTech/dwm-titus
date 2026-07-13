@@ -16,8 +16,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-0392ca55.css">
-        <link rel="stylesheet" href="css/chrome-fc474251.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -38,7 +38,7 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-939c3747.js";
+            window.path_to_searchindex_js = "searchindex-f93fb025.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e4ab374d.js"></script>
@@ -188,7 +188,7 @@ required.</p>
 </code></pre>
 <p>In the TUI, press <code>v</code> to multi-select, then select <strong>dwm</strong>, <strong>bash prompt</strong>,
 and <strong>alacritty</strong>. Press <code>Enter</code> to install.</p>
-<p><img src="images/linutil-applications.png" alt="linutil-appinstall"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/linutil-applications.png" alt="linutil-appinstall"><span class="img-wrapper"><img src="images/linutil-applications.png" alt="linutil-appinstall"></span></label></p>
 <h2 id="manual-install"><a class="header" href="#manual-install">Manual Install</a></h2>
 <h3 id="1-dependencies"><a class="header" href="#1-dependencies">1. Dependencies</a></h3>
 <p>The supported dependency path is the installer because it resolves package
@@ -198,7 +198,12 @@ names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:</p
 </code></pre>
 <p>Use <code>core</code> for the required build/X11/session packages and one terminal,
 <code>recommended</code> for the desktop layer, or <code>full</code> for optional extras such as
-file-manager integration, portals, wallpapers, and display-manager setup.</p>
+file-manager integration, portals, wallpapers, and display-manager setup. On
+x86_64 Fedora, <code>full</code> can also install Steam, Gamescope, GameMode, and MangoHud
+after repository approval.
+The installer separately asks before enabling the <code>christitustech/copr-fedora</code>
+COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
+gaming subset without affecting other full-profile extras.</p>
 <h3 id="2-clone-and-build"><a class="header" href="#2-clone-and-build">2. Clone and Build</a></h3>
 <pre><code class="language-bash">git clone https://github.com/ChrisTitusTech/dwm-titus.git
 cd dwm-titus
@@ -211,7 +216,11 @@ sudo make install
 </code></pre>
 <p>The script detects the distribution family and handles dependency
 installation, font copying, display-manager integration, and config placement.
-Existing user configuration and <code>.xinitrc</code> files are preserved.</p>
+Existing user configuration and <code>.xinitrc</code> files are preserved. Upgrades remove
+the known legacy <code>dwm-graphical-session.service</code> and
+<code>wm-graphical-session.service</code> early-start configuration so XDG applications
+start only after the X11 display environment is available; customized user
+units are disabled from early startup but otherwise preserved.</p>
 <p>Installer package profiles are selected with <code>DWM_INSTALL_PROFILE</code>:</p>
 <ul>
 <li><code>core</code>: required build packages, X11/session runtime, and one supported
@@ -220,8 +229,13 @@ terminal.</li>
 Quickshell, Picom, Feh, Dex, fonts, theming, screenshot, audio, Bluetooth
 control and tray tools, and brightness tools. It also installs portable GTK theme packages where available and
 installs Nordic system-wide for the default Nord theme.</li>
-<li><code>full</code>: <code>recommended</code> plus optional extras such as file-manager integration,
-network tray utilities, portals, wallpapers, and display-manager setup.</li>
+<li><code>full</code>: <code>recommended</code> plus optional extras such as Thunar with SMB-share
+browsing, network tray utilities, portals, wallpapers, and display-manager
+setup. x86_64 Fedora full installs also include Steam, Gamescope, and 64-bit
+and 32-bit GameMode and MangoHud support after separate repository approval.
+The installer enables the <code>christitustech/copr-fedora</code> COPR for Gamescope and
+RPM Fusion nonfree for Steam, then adds the invoking user to the <code>gamemode</code>
+group; log out and back in before using its privileged tuning helpers.</li>
 </ul>
 <p>The default is <code>full</code> to preserve the historical automated installer behavior.
 For a minimal install:</p>
@@ -234,7 +248,10 @@ For a minimal install:</p>
 packaging checks, or scripted validation, use the non-interactive flags:</p>
 <pre><code class="language-bash">./install.sh --dry-run --non-interactive --profile core
 ./install.sh --non-interactive --yes --profile recommended
+./install.sh --non-interactive --yes --profile full --enable-fedora-gaming-repos
 </code></pre>
+<p>Without <code>--enable-fedora-gaming-repos</code>, unattended Fedora full installs skip
+Steam, Gamescope, GameMode, and MangoHud rather than changing repository trust.</p>
 <h2 id="starting-dwm"><a class="header" href="#starting-dwm">Starting dwm</a></h2>
 <p><strong>Display manager</strong> (SDDM, GDM, LightDM): log out and select <strong>dwm</strong> from the session list.</p>
 <p><strong>startx:</strong></p>
@@ -271,7 +288,7 @@ dwm-terminal --print-command
 </code></pre>
 <p><code>dwm-diagnostics</code> must report zero required failures before treating the
 minimal profile as ready. Optional degraded features can remain unresolved.</p>
-<footer id="last-change">Last change: <time datetime="2026-06-29">2026-06-29</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change">Last change: <time datetime="2026-07-12">2026-07-12</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
 <p>After installing, the first thing to know: <strong>Super</strong> = the Windows key.</p>
 <p>Press <kbd>Super</kbd> + <kbd>/</kbd> at any time to open the interactive keybind viewer.</p>
@@ -292,7 +309,8 @@ minimal profile as ready. Optional degraded features can remain unresolved.</p>
 </table>
 </div>
 <h2 id="switching-tags-workspaces"><a class="header" href="#switching-tags-workspaces">Switching Tags (Workspaces)</a></h2>
-<p>Tags 1–9 act as workspaces. Use <code>Super</code> + a number to switch.</p>
+<p>Tags 1-9 act as workspaces. Use <code>Super</code> + a number from <code>1</code> through <code>9</code> to switch.
+<code>Super</code> + <code>0</code> shows windows from all nine tags at once; <code>0</code> is not a tenth tag.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -320,7 +338,7 @@ minimal profile as ready. Optional degraded features can remain unresolved.</p>
 </table>
 </div>
 <p>See <a href="#keybindings">Keybindings</a> for the full reference.</p>
-<footer id="last-change-1">Last change: <time datetime="2026-06-26">2026-06-26</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change-1">Last change: <time datetime="2026-07-13">2026-07-13</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="keybindings"><a class="header" href="#keybindings">Keybindings</a></h1>
 <blockquote>
 <p>Press <kbd>Super</kbd> + <kbd>/</kbd> inside dwm to open a live, searchable
@@ -422,7 +440,7 @@ Quickshell keybind viewer.</p>
 <tr><td><code>Super</code> + <code>Ctrl</code> + <code>1</code>–<code>9</code></td><td>Also show tag alongside current</td></tr>
 <tr><td><code>Super</code> + <code>Shift</code> + <code>1</code>–<code>9</code></td><td>Move window to tag</td></tr>
 <tr><td><code>Super</code> + <code>Ctrl</code> + <code>Shift</code> + <code>1</code>–<code>9</code></td><td>Also show window on that tag</td></tr>
-<tr><td><code>Super</code> + <code>0</code></td><td>Show all tags</td></tr>
+<tr><td><code>Super</code> + <code>0</code></td><td>Show windows from all nine tags; <code>0</code> is not a tag</td></tr>
 <tr><td><code>Super</code> + <code>Tab</code></td><td>Previous tag</td></tr>
 </tbody>
 </table>
@@ -496,7 +514,7 @@ keys = [
 <p>See the comments in <code>hotkeys.toml</code> for a full list of <code>func</code> values and modifier syntax.</p>
 <p>The browser binding uses <code>dwm-default-apps open</code>. Configure it with
 <code>dwm-default-apps browsers</code> and <code>dwm-default-apps set-browser &lt;desktop-id&gt;</code>.</p>
-<footer id="last-change-2">Last change: <time datetime="2026-06-30">2026-06-30</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change-2">Last change: <time datetime="2026-07-13">2026-07-13</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
 <p>dwm-titus keeps user configuration under
 <code>${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/</code>. Hotkeys and themes
@@ -568,9 +586,15 @@ for other file types.</p>
 to show profiles, and <code>dwm-display-profile apply &lt;name&gt;</code> to run the profile
 through <code>xrandr</code>.</p>
 <p>Power settings are managed from Control Center -&gt; Power. The generated
-<code>power.conf</code> persists screen DPMS state, display-off timing, and automatic
-locking timing. Startup applies this file before background session services
-are launched.</p>
+<code>power.conf</code> is authoritative once created and persists screen DPMS state,
+display-off timing, and automatic idle and suspend locking. Startup reapplies
+this file before background session services are launched. Manual locking
+remains available when automatic locking is disabled. The screen locker runs
+only while automatic locking is enabled or for the duration of an explicit
+manual lock, so DPMS display-off events remain independent from locking.
+External <code>loginctl lock-session</code> requests are forwarded to <code>dwm-lock</code> by an
+event-driven session listener. Until <code>power.conf</code> exists, dwm-titus leaves any
+user or distribution-managed locker untouched.</p>
 <h3 id="modifier-syntax"><a class="header" href="#modifier-syntax">Modifier Syntax</a></h3>
 <p>Use space-separated modifiers: <code>"SUPER"</code>, <code>"SUPER SHIFT"</code>, <code>"SUPER CTRL"</code>, <code>"SUPER CTRL SHIFT"</code>.</p>
 <h3 id="available-functions"><a class="header" href="#available-functions">Available Functions</a></h3>
@@ -621,7 +645,7 @@ Hidden=false
 X-GNOME-Autostart-enabled=true
 Name=Set Refresh
 </code></pre>
-<footer id="last-change-3">Last change: <time datetime="2026-07-09">2026-07-09</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change-3">Last change: <time datetime="2026-07-11">2026-07-11</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="theming"><a class="header" href="#theming">Theming</a></h1>
 <p>Themes are defined in <code>config/themes.toml</code>. Change the active theme and <strong>save</strong>
 to update dwm, terminal, GTK, and Qt styling. No restart needed.</p>
@@ -717,12 +741,14 @@ gtk_theme       = "Nordic"
 </code></pre>
 <footer id="last-change-4">Last change: <time datetime="2026-06-28">2026-06-28</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="control-center"><a class="header" href="#control-center">Control Center</a></h1>
-<p>The Control Center is a Quickshell utility window for system health, quick
-actions, appearance settings, and keybind discovery.</p>
+<p>The Control Center is an anchored Quickshell popup for panel settings, system
+health, quick actions, appearance settings, power management, and keybind
+discovery.</p>
 <p><strong>Open:</strong> <kbd>Super</kbd> + <kbd>F1</kbd>, or run <code>dwm-controlcenter</code> from a
 terminal.</p>
-<p>The window floats above normal clients like the launcher, network popover, and
-power menu. Press <kbd>Esc</kbd> to close it.</p>
+<p>The popup opens from the panel logo. Its side card contains panel widget
+visibility, utilities, quick actions, appearance controls, and persisted DPMS
+and auto-lock timing. Press <kbd>Esc</kbd> to close it.</p>
 <hr>
 <h2 id="network-popover"><a class="header" href="#network-popover">Network Popover</a></h2>
 <p>The panel network indicator opens a Quickshell network popover. It shows active
@@ -731,6 +757,15 @@ or WPA personal networks directly. Successful Wi-Fi connections are saved as
 NetworkManager profiles, so they reconnect normally in later sessions.</p>
 <p>Hidden SSIDs and enterprise Wi-Fi are handled through the optional
 <code>nm-connection-editor</code> fallback when it is installed.</p>
+<h2 id="bluetooth-popover"><a class="header" href="#bluetooth-popover">Bluetooth Popover</a></h2>
+<p>The panel Bluetooth indicator opens a compact device manager. It can power the
+adapter on or off, scan for devices, pair and trust a new device, connect a
+paired device, and disconnect a connected device through <code>bluetoothctl</code>.</p>
+<h2 id="panel-widgets"><a class="header" href="#panel-widgets">Panel Widgets</a></h2>
+<p>The Bar Functions card can show or hide the workspace, volume, Bluetooth,
+network, and power widgets for the current Quickshell session. The redesigned
+panel retains the active-window title, status segments, and system tray, and
+shows all nine dwm tags (workspaces).</p>
 <hr>
 <h2 id="modules"><a class="header" href="#modules">Modules</a></h2>
 <h3 id="system-health"><a class="header" href="#system-health">System Health</a></h3>
@@ -805,6 +840,10 @@ root-owned installed helper.</p>
 </tbody>
 </table>
 </div>
+<h3 id="power-settings"><a class="header" href="#power-settings">Power Settings</a></h3>
+<p>The Power Settings card retains the existing persisted screen-DPMS and
+auto-lock controls. Each feature can be enabled or disabled and assigned a
+5-minute, 10-minute, 15-minute, 30-minute, or 1-hour timeout.</p>
 <h3 id="keybind-viewer"><a class="header" href="#keybind-viewer">Keybind Viewer</a></h3>
 <p>Displays all bindings from <code>hotkeys.toml</code> in a searchable Quickshell list. Same
 as pressing <kbd>Super</kbd> + <kbd>/</kbd>.</p>
@@ -822,7 +861,7 @@ quickshell ipc --path "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml" c
 <p>The diagnostic helper can also produce its structured snapshot in a terminal:</p>
 <pre><code class="language-bash">dwm-system-health scan-user
 </code></pre>
-<footer id="last-change-5">Last change: <time datetime="2026-06-29">2026-06-29</time></footer><div style="break-before: page; page-break-before: always;"></div>
+<footer id="last-change-5">Last change: <time datetime="2026-07-13">2026-07-13</time></footer><div style="break-before: page; page-break-before: always;"></div>
 <h1 id="patches--features"><a class="header" href="#patches--features">Patches &amp; Features</a></h1>
 <p>dwm-titus is a heavily patched build. Below is every addition on top of stock dwm.</p>
 <hr>
@@ -1054,7 +1093,7 @@ session</li>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-c22b7243.js"></script>
+        <script src="book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 
