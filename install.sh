@@ -716,7 +716,7 @@ echo "  • Build configuration: $REPO_DIR/config.h"
 echo "  • Reconfigure by removing config.h and running the installer again"
 echo "  • Log out and select 'dwm', or start with: startx"
 if [[ $currentdm == "lightdm" ]]; then
-	echo "  • To start run: sudo systemctl start lightdm"
+	echo "  • Start LightDM now (optional): sudo systemctl start lightdm.service"
 fi
 echo ""
 echo "  SUPER+/   keybind viewer     SUPER+X  terminal"

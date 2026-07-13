@@ -18,6 +18,8 @@ fi
 for service in NetworkManager.service bluetooth.service; do
 	grep -Fq "enable_optional_service $service" "$REPO_DIR/install.sh"
 done
+grep -Fq 'Start LightDM now (optional): sudo systemctl start lightdm.service' \
+	"$REPO_DIR/install.sh"
 
 cp -a "$REPO_DIR/." "$TEST_REPO/"
 mkdir -p \

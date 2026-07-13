@@ -34,7 +34,7 @@ paired device, and disconnect a connected device through `bluetoothctl`.
 The Bar Functions card can show or hide the workspace, volume, Bluetooth,
 network, and power widgets for the current Quickshell session. The redesigned
 panel retains the active-window title, status segments, and system tray, and
-shows all 10 dwm workspaces.
+shows all nine dwm tags (workspaces).
 
 ---
 
