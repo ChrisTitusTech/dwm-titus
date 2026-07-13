@@ -1,6 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=picom
-Exec=picom
-TryExec=picom
-NotShowIn=X-DWM;

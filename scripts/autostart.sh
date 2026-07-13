@@ -63,11 +63,16 @@ THEME_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/theme-env.sh"
 # shellcheck disable=SC1090
 [ -f "$THEME_ENV" ] && . "$THEME_ENV"
 
-case :${XDG_CURRENT_DESKTOP:-}: in
-*:X-DWM:*) ;;
-::) XDG_CURRENT_DESKTOP=X-DWM ;;
-*) XDG_CURRENT_DESKTOP="X-DWM:$XDG_CURRENT_DESKTOP" ;;
+desktop_tokens=${XDG_CURRENT_DESKTOP:-}
+case :$desktop_tokens: in
+*:dwm:*) ;;
+*) desktop_tokens="${desktop_tokens:+$desktop_tokens:}dwm" ;;
 esac
+case :$desktop_tokens: in
+*:X-DWM:*) ;;
+*) desktop_tokens="X-DWM:$desktop_tokens" ;;
+esac
+XDG_CURRENT_DESKTOP=$desktop_tokens
 export XDG_CURRENT_DESKTOP
 export DESKTOP_SESSION="${DESKTOP_SESSION:-dwm}"
 export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-x11}"

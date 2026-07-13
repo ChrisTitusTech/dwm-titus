@@ -9,6 +9,7 @@ TEST_REPO="$WORK_DIR/repo"
 TEST_HOME="$WORK_DIR/home"
 XDG_CONFIG_HOME="$TEST_HOME/.config"
 XDG_DATA_HOME="$TEST_HOME/.local/share"
+XDG_CONFIG_DIRS="$WORK_DIR/etc-xdg"
 OWNER="$(id -un)"
 
 if grep -Eq 'sudo systemctl enable (NetworkManager|bluetooth)\.service' "$REPO_DIR/install.sh"; then
@@ -26,7 +27,9 @@ mkdir -p \
 	"$XDG_CONFIG_HOME/dwm-titus" \
 	"$XDG_CONFIG_HOME/picom" \
 	"$XDG_CONFIG_HOME/quickshell" \
+	"$XDG_CONFIG_HOME/autostart" \
 	"$XDG_CONFIG_HOME/systemd/user/default.target.wants" \
+	"$XDG_CONFIG_DIRS/autostart" \
 	"$XDG_DATA_HOME"
 
 printf '%s\n' '/* local config marker */' >"$TEST_REPO/config.h"
@@ -36,6 +39,30 @@ printf '%s\n' '# existing themes marker' >"$XDG_CONFIG_HOME/dwm-titus/themes.tom
 printf '%s\n' '# existing rules marker' >"$XDG_CONFIG_HOME/dwm-titus/window-rules.toml"
 printf '%s\n' '# existing picom marker' >"$XDG_CONFIG_HOME/picom/picom.conf"
 printf '%s\n' '# unrelated user service marker' >"$XDG_CONFIG_HOME/systemd/user/custom.service"
+cat >"$XDG_CONFIG_HOME/autostart/picom.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Custom compositor
+Exec=custom-picom
+OnlyShowIn=XFCE;
+EOF
+cat >"$XDG_CONFIG_DIRS/autostart/light-locker.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Vendor screen locker
+Exec=light-locker --lock-after-screensaver=5
+OnlyShowIn=MATE;XFCE;
+AutostartCondition=GSettings org.mate.lockdown disable-lock-screen
+EOF
+cat >"$XDG_CONFIG_DIRS/autostart/polkit-mate-authentication-agent-1.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Vendor PolicyKit agent
+Exec=/usr/libexec/polkit-mate-authentication-agent-1
+OnlyShowIn=MATE;
+NotShowIn=GNOME;KDE;
+X-MATE-Autostart-Phase=Initialization
+EOF
 cat >"$XDG_CONFIG_HOME/systemd/user/dwm-graphical-session.service" <<'EOF'
 [Unit]
 Description=DWM Graphical Session
@@ -82,6 +109,7 @@ snapshot_file "$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml" "$WORK_DIR/hotkeys.befor
 snapshot_file "$XDG_CONFIG_HOME/dwm-titus/themes.toml" "$WORK_DIR/themes.before"
 snapshot_file "$XDG_CONFIG_HOME/dwm-titus/window-rules.toml" "$WORK_DIR/window-rules.before"
 snapshot_file "$XDG_CONFIG_HOME/picom/picom.conf" "$WORK_DIR/picom.before"
+snapshot_file "$XDG_CONFIG_HOME/autostart/picom.desktop" "$WORK_DIR/picom-autostart.before"
 snapshot_file "$XDG_CONFIG_HOME/systemd/user/custom.service" "$WORK_DIR/custom-service.before"
 
 for _ in 1 2; do
@@ -89,6 +117,7 @@ for _ in 1 2; do
 		USER_HOME="$TEST_HOME" \
 		OWNER="$OWNER" \
 		XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
+		XDG_CONFIG_DIRS="$XDG_CONFIG_DIRS" \
 		XDG_DATA_HOME="$XDG_DATA_HOME"
 done
 
@@ -98,6 +127,8 @@ assert_preserved hotkeys "$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml" "$WORK_DIR/ho
 assert_preserved themes "$XDG_CONFIG_HOME/dwm-titus/themes.toml" "$WORK_DIR/themes.before"
 assert_preserved window-rules "$XDG_CONFIG_HOME/dwm-titus/window-rules.toml" "$WORK_DIR/window-rules.before"
 assert_preserved picom "$XDG_CONFIG_HOME/picom/picom.conf" "$WORK_DIR/picom.before"
+assert_preserved picom-autostart "$XDG_CONFIG_HOME/autostart/picom.desktop" \
+	"$WORK_DIR/picom-autostart.before"
 assert_preserved custom-service "$XDG_CONFIG_HOME/systemd/user/custom.service" "$WORK_DIR/custom-service.before"
 
 if [ -e "$XDG_CONFIG_HOME/systemd/user/dwm-graphical-session.service" ] ||
@@ -126,14 +157,29 @@ if [ -e "$XDG_CONFIG_HOME/quickshell/stale.txt" ]; then
 	exit 1
 fi
 
-for entry in light-locker.desktop picom.desktop polkit-mate-authentication-agent-1.desktop; do
-	if ! cmp -s "$TEST_REPO/config/autostart/$entry" \
-		"$XDG_CONFIG_HOME/autostart/$entry"; then
-		printf 'Install did not seed XDG autostart override: %s\n' "$entry" >&2
-		exit 1
-	fi
-	grep -Fq 'Exec=' "$XDG_CONFIG_HOME/autostart/$entry"
-	grep -Fqx 'NotShowIn=X-DWM;' "$XDG_CONFIG_HOME/autostart/$entry"
-done
+LOCKER_OVERRIDE="$XDG_CONFIG_HOME/autostart/light-locker.desktop"
+grep -Fqx 'Exec=light-locker --lock-after-screensaver=5' "$LOCKER_OVERRIDE"
+grep -Fqx 'OnlyShowIn=MATE;XFCE;' "$LOCKER_OVERRIDE"
+grep -Fqx 'AutostartCondition=GSettings org.mate.lockdown disable-lock-screen' \
+	"$LOCKER_OVERRIDE"
+grep -Fqx 'NotShowIn=X-DWM;' "$LOCKER_OVERRIDE"
+
+POLKIT_OVERRIDE="$XDG_CONFIG_HOME/autostart/polkit-mate-authentication-agent-1.desktop"
+grep -Fqx 'Exec=/usr/libexec/polkit-mate-authentication-agent-1' "$POLKIT_OVERRIDE"
+grep -Fqx 'OnlyShowIn=MATE;' "$POLKIT_OVERRIDE"
+grep -Fqx 'X-MATE-Autostart-Phase=Initialization' "$POLKIT_OVERRIDE"
+grep -Fqx 'NotShowIn=GNOME;KDE;X-DWM;' "$POLKIT_OVERRIDE"
+test "$(grep -o 'X-DWM;' "$POLKIT_OVERRIDE" | wc -l)" -eq 1
+
+EMPTY_CONFIG_HOME="$WORK_DIR/empty-config"
+EMPTY_CONFIG_DIRS="$WORK_DIR/empty-etc-xdg"
+mkdir -p "$EMPTY_CONFIG_DIRS/autostart"
+HOME="$TEST_HOME" XDG_CONFIG_HOME="$EMPTY_CONFIG_HOME" \
+	XDG_CONFIG_DIRS="$EMPTY_CONFIG_DIRS" \
+	"$TEST_REPO/scripts/seed-autostart-overrides.sh"
+if find "$EMPTY_CONFIG_HOME/autostart" -type f -print -quit | grep -q .; then
+	printf 'Autostart override created without a matching vendor entry.\n' >&2
+	exit 1
+fi
 
 printf 'Repeated install preservation: PASS\n'

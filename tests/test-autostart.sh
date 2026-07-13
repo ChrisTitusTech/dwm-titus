@@ -165,7 +165,10 @@ run_duplicate_case() {
 		/--user start wm-graphical-session.service/ && !started { started = NR }
 		END { exit !(imported && started && imported < started) }
 	' "$state/systemctl.log"
-	grep -Eq '^X-DWM(:|[[:space:]])' "$state/systemctl.log"
+	awk -F '\t' '
+		index(":" $1 ":", ":X-DWM:") && index(":" $1 ":", ":dwm:") { found = 1 }
+		END { exit !found }
+	' "$state/systemctl.log"
 }
 
 run_dex_fallback_case() {

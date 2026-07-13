@@ -58,14 +58,14 @@ The installer detects the distribution from `/etc/os-release`, resolves package
 names for the detected family, preserves existing `config.h` and user TOML
 files, and installs the managed Quickshell config. Upgrades also remove the
 legacy graphical-session enablement that could start XDG applications before
-the X11 display environment was imported. New installs seed non-destructive,
-session-scoped XDG entries so the unified dwm startup path owns Picom, polkit,
-and optional Light Locker startup without disabling those components in other
-desktop sessions; existing user entries remain untouched. Interactive installs
-running inside X11 also offer the `dwm-display-setup` wizard for persistent
-resolution, refresh rate, position, rotation, primary-display, and compatible
-TearFree configuration. If installation runs from a TTY, run the wizard after
-login.
+the X11 display environment was imported. New installs add the dwm exclusion
+to matching vendor Picom, polkit, and Light Locker XDG entries while preserving
+their original commands and session guards. No override is created when the
+vendor entry is absent, and existing user entries remain untouched. Interactive
+installs running inside X11 also offer the `dwm-display-setup` wizard for
+persistent resolution, refresh rate, position, rotation, primary-display, and
+compatible TearFree configuration. If installation runs from a TTY, run the
+wizard after login.
 
 On x86_64 Fedora, the full profile can enable the
 [`christitustech/copr-fedora`](https://copr.fedorainfracloud.org/coprs/christitustech/copr-fedora/package/gamescope/)

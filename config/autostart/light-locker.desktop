@@ -1,6 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Screen Locker
-Exec=light-locker
-TryExec=light-locker
-NotShowIn=X-DWM;
