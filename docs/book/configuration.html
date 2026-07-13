@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-0392ca55.css">
-        <link rel="stylesheet" href="css/chrome-fc474251.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-f97e23b9.js";
+            window.path_to_searchindex_js = "searchindex-d3a7b99f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e4ab374d.js"></script>
@@ -177,7 +177,9 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
-<p>dwm-titus uses two TOML config files that <strong>live-reload on save</strong> — no recompile needed for most changes.</p>
+<p>dwm-titus keeps user configuration under
+<code>${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/</code>. Hotkeys and themes
+<strong>live-reload on save</strong> — no recompile needed for most changes.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -186,6 +188,7 @@
 <tbody>
 <tr><td><code>config/hotkeys.toml</code></td><td>All keybindings</td></tr>
 <tr><td><code>config/themes.toml</code></td><td>Colors, themes, border size</td></tr>
+<tr><td><code>power.conf</code></td><td>Control Center screen DPMS and auto-lock choices</td></tr>
 </tbody>
 </table>
 </div>
@@ -243,6 +246,16 @@ for other file types.</p>
 <code>dwm-display-profile template</code> to print the format, <code>dwm-display-profile list</code>
 to show profiles, and <code>dwm-display-profile apply &lt;name&gt;</code> to run the profile
 through <code>xrandr</code>.</p>
+<p>Power settings are managed from Control Center -&gt; Power. The generated
+<code>power.conf</code> is authoritative once created and persists screen DPMS state,
+display-off timing, and automatic idle and suspend locking. Startup reapplies
+this file before background session services are launched. Manual locking
+remains available when automatic locking is disabled. The screen locker runs
+only while automatic locking is enabled or for the duration of an explicit
+manual lock, so DPMS display-off events remain independent from locking.
+External <code>loginctl lock-session</code> requests are forwarded to <code>dwm-lock</code> by an
+event-driven session listener. Until <code>power.conf</code> exists, dwm-titus leaves any
+user or distribution-managed locker untouched.</p>
 <h3 id="modifier-syntax"><a class="header" href="#modifier-syntax">Modifier Syntax</a></h3>
 <p>Use space-separated modifiers: <code>"SUPER"</code>, <code>"SUPER SHIFT"</code>, <code>"SUPER CTRL"</code>, <code>"SUPER CTRL SHIFT"</code>.</p>
 <h3 id="available-functions"><a class="header" href="#available-functions">Available Functions</a></h3>
@@ -342,7 +355,7 @@ Name=Set Refresh
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-c22b7243.js"></script>
+        <script src="book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

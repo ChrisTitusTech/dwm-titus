@@ -28,18 +28,17 @@ dwm_packages() {
 		;;
 	arch:desktop-optional)
 		printf '%s\n' \
-			thunar gvfs tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
+			thunar gvfs gvfs-smb tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
 			xdg-desktop-portal-gtk gnome-keyring networkmanager network-manager-applet \
-			rsync matugen dgop accountsservice upower power-profiles-daemon
-		;;
-	arch:dank-aur)
-		printf '%s\n' dsearch-bin dankcalendar-bin
+			rsync matugen accountsservice upower power-profiles-daemon
 		;;
 	arch:theme)
 		printf '%s\n' dconf
 		;;
 	arch:theme-gtk)
-		printf '%s\n' adapta-gtk-theme materia-gtk-theme orchis-theme yaru-gtk-theme
+		printf '%s\n' \
+			adapta-gtk-theme arc-gtk-theme materia-gtk-theme numix-themes \
+			orchis-theme yaru-gtk-theme
 		;;
 	arch:theme-optional)
 		printf '%s\n' qt6ct qt5ct
@@ -87,13 +86,20 @@ dwm_packages() {
 			quickshell picom feh flameshot dex-autostart mate-polkit \
 			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
-			bluez blueman
+			bluez blueman playerctl
 		;;
 	rhel:desktop-optional)
 		printf '%s\n' \
-			Thunar gvfs tumbler thunar-archive-plugin file-roller \
+			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring NetworkManager \
 			rsync nwg-look
+		;;
+	rhel:gaming)
+		if [[ ${DISTRO_ID:-} == fedora && ${ARCH:-$(uname -m)} == x86_64 ]]; then
+			printf '%s\n' \
+				steam gamescope gamemode.x86_64 gamemode.i686 \
+				mangohud.x86_64 mangohud.i686
+		fi
 		;;
 	rhel:theme)
 		printf '%s\n' dconf
@@ -137,11 +143,11 @@ dwm_packages() {
 		printf '%s\n' \
 			picom feh flameshot dex mate-polkit alsa-utils \
 			brightnessctl pulseaudio-utils pipewire pipewire-pulse \
-			wireplumber pavucontrol libnotify-bin light-locker bluez blueman
+			wireplumber pavucontrol libnotify-bin light-locker bluez blueman playerctl
 		;;
 	debian:desktop-optional)
 		printf '%s\n' \
-			thunar gvfs tumbler thunar-archive-plugin file-roller \
+			thunar gvfs gvfs-backends tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring \
 			network-manager rsync
 		;;
@@ -183,6 +189,9 @@ dwm_packages() {
 		dwm_packages "$family" required
 		dwm_packages "$family" recommended
 		dwm_packages "$family" optional
+		if [[ $family == rhel && ${DISTRO_ID:-} == fedora ]]; then
+			dwm_packages "$family" gaming
+		fi
 		;;
 	*)
 		return 1

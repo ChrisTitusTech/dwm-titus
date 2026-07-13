@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Widgets
 import qs.core
 
@@ -7,20 +8,29 @@ Rectangle {
     id: root
 
     required property var trayItem
-    signal openMenu(var trayItem)
+    property var iconSources: Icons.trayIconSources(root.trayItem)
+    property int iconSourceIndex: 0
+
+    function openContextMenu() {
+        if (root.trayItem && root.trayItem.hasMenu) {
+            trayMenu.open();
+        }
+    }
 
     function handleClick(button) {
         if (button === Qt.LeftButton) {
             if (!root.trayItem.onlyMenu) {
                 root.trayItem.activate();
             } else if (root.trayItem.hasMenu) {
-                root.openMenu(root.trayItem);
+                root.openContextMenu();
             }
         } else if (button === Qt.MiddleButton) {
             root.trayItem.secondaryActivate();
-        } else if (button === Qt.RightButton && root.trayItem.hasMenu) {
-            root.openMenu(root.trayItem);
         }
+    }
+
+    onIconSourcesChanged: {
+        iconSourceIndex = 0;
     }
 
     Layout.preferredWidth: Theme.trayItemSize
@@ -28,17 +38,30 @@ Rectangle {
     radius: Theme.smallRadius
     color: trayMouse.containsMouse ? Theme.surfaceHover : "transparent"
 
+    QsMenuAnchor {
+        id: trayMenu
+
+        menu: root.trayItem ? root.trayItem.menu : null
+        anchor.item: root
+    }
+
     IconImage {
         id: trayIcon
 
         anchors.centerIn: parent
         width: Theme.trayIconSize
         height: Theme.trayIconSize
-        source: Icons.trayIconSource(root.trayItem)
+        source: root.iconSources.length > root.iconSourceIndex ? root.iconSources[root.iconSourceIndex] : ""
+        implicitSize: Theme.trayIconSize
         asynchronous: true
-        smooth: true
         mipmap: true
         visible: status === Image.Ready
+
+        onStatusChanged: {
+            if (status === Image.Error && root.iconSourceIndex < root.iconSources.length - 1) {
+                root.iconSourceIndex += 1;
+            }
+        }
     }
 
     Text {
@@ -62,6 +85,17 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         cursorShape: Qt.PointingHandCursor
 
-        onClicked: mouse => root.handleClick(mouse.button)
+        onPressed: mouse => {
+            if (mouse.button === Qt.RightButton) {
+                root.openContextMenu();
+                mouse.accepted = true;
+            }
+        }
+
+        onClicked: mouse => {
+            if (mouse.button !== Qt.RightButton) {
+                root.handleClick(mouse.button);
+            }
+        }
     }
 }

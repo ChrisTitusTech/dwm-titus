@@ -21,5 +21,5 @@ Rectangle {
         ColorAnimation { duration: Theme.animationNormal }
     }
 
-    PillShadow {}
+    PillShadow { cornerRadius: root.radius }
 }

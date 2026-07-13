@@ -3,6 +3,9 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
+pragma ComponentBehavior: Bound
+
+// qmllint disable uncreatable-type
 PanelWindow {
     id: root
 
@@ -38,7 +41,7 @@ PanelWindow {
         border.width: Theme.pillBorderWidth
         radius: Theme.barRadius
 
-        PillShadow {}
+        PillShadow { cornerRadius: island.radius }
 
         RowLayout {
             anchors.fill: parent
@@ -54,9 +57,9 @@ PanelWindow {
                 RowLayout {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    width: implicitWidth
+                    width: Math.min(implicitWidth, parent.width)
                     height: parent.height
-                    spacing: 0
+                    spacing: Theme.panelGap
 
                     LogoButton {
                         onActivated: root.controlCenterModel.toggle()
@@ -74,7 +77,7 @@ PanelWindow {
                             spacing: 1
 
                             Repeater {
-                                model: root.state.workspaceNames.slice(0, 5)
+                                model: root.state.workspaceNames
 
                                 delegate: WorkspaceButton {
                                     required property int index
@@ -88,6 +91,23 @@ PanelWindow {
                         }
                     }
 
+                    PanelPill {
+                        Layout.preferredWidth: Math.min(280, activeWindowLabel.implicitWidth + Theme.pillHorizontalPadding * 2)
+                        Layout.preferredHeight: Theme.pillHeight
+
+                        UiText {
+                            id: activeWindowLabel
+
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: Theme.pillHorizontalPadding
+                            anchors.rightMargin: Theme.pillHorizontalPadding
+                            text: root.state.activeWindowTitle
+                            color: Theme.text
+                            elide: Text.ElideRight
+                        }
+                    }
                 }
             }
 
@@ -115,6 +135,18 @@ PanelWindow {
                     spacing: Theme.panelGap
 
                     Item { Layout.fillWidth: true }
+
+                    Repeater {
+                        model: root.state.statusSegments
+
+                        delegate: UiText {
+                            required property string modelData
+                            text: modelData
+                            color: Theme.text
+                        }
+                    }
+
+                    TrayArea {}
 
                     PanelPill {
                         visible: root.controlCenterModel.showVolumeWidget

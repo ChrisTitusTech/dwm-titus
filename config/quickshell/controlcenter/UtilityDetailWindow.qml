@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
+pragma ComponentBehavior: Bound
+
 FloatingWindow {
     id: root
 
@@ -15,13 +17,11 @@ FloatingWindow {
     title: "dwm utility"
 
     function titleForPage() {
-        if (controlCenterModel.utilityPage === "health") return "System Health";
         if (controlCenterModel.utilityPage === "keybinds") return "Keybinds";
         return "System Info";
     }
 
     function rowsForPage() {
-        if (controlCenterModel.utilityPage === "health") return controlCenterModel.healthRows;
         if (controlCenterModel.utilityPage === "keybinds") return controlCenterModel.keybindRows;
         return controlCenterModel.infoRows;
     }

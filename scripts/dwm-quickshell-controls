@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|output-status|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status|bluetooth-devices|bluetooth-scan|bluetooth-power on|off|bluetooth-pair <address>|bluetooth-connect <address>|bluetooth-disconnect <address>" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|output-status|output-devices|output-set-default <sink>|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status|bluetooth-devices|bluetooth-scan|bluetooth-power on|off|bluetooth-pair <address>|bluetooth-connect <address>|bluetooth-disconnect <address>" >&2
 	exit 2
 }
 
@@ -121,20 +121,10 @@ volume_status() {
 }
 
 volume_watch() {
+	# Compatibility snapshot for older deployed QML. Audio change notifications
+	# are handled by Quickshell.Services.Pipewire; keeping a pactl subscription
+	# here would orphan one client every time Quickshell reloads.
 	volume_status
-
-	if ! command -v pactl >/dev/null 2>&1; then
-		return 0
-	fi
-
-	pactl subscribe 2>/dev/null |
-		while IFS= read -r event; do
-			case "$event" in
-			*" on sink"* | *" on server"* | *" on card"*)
-				volume_status
-				;;
-			esac
-		done
 }
 
 volume_up() {
@@ -181,6 +171,155 @@ volume_toggle_mute() {
 		pactl set-sink-mute @DEFAULT_SINK@ toggle
 	elif command -v wpctl >/dev/null 2>&1; then
 		wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+	else
+		printf '%s\n' "pactl or wpctl not found" >&2
+		exit 127
+	fi
+}
+
+default_sink_pactl() {
+	pactl info 2>/dev/null |
+		awk -F': ' '
+			$1 == "Default Sink" {
+				print $2
+				found = 1
+				exit
+			}
+			END {
+				if (!found) {
+					exit 1
+				}
+			}
+		'
+}
+
+output_devices_pactl() {
+	command -v pactl >/dev/null 2>&1 || return 1
+
+	default_sink=$(default_sink_pactl) || default_sink=
+
+	pactl list sinks 2>/dev/null |
+		awk -v default_sink="$default_sink" '
+			function emit() {
+				if (name == "") {
+					return
+				}
+				if (description == "") {
+					description = name
+				}
+				is_default = (name == default_sink) ? "1" : "0"
+				printf "%s\t%s\t%s\n", name, description, is_default
+			}
+			/^Sink #[0-9]+/ {
+				emit()
+				name = ""
+				description = ""
+				next
+			}
+			/^[[:space:]]*Name:/ {
+				sub(/^[[:space:]]*Name:[[:space:]]*/, "")
+				name = $0
+				next
+			}
+			/^[[:space:]]*Description:/ {
+				sub(/^[[:space:]]*Description:[[:space:]]*/, "")
+				description = $0
+				next
+			}
+			END {
+				emit()
+				if (!seen) {
+					exit 1
+				}
+			}
+			name != "" {
+				seen = 1
+			}
+		'
+}
+
+output_devices_wpctl() {
+	command -v wpctl >/dev/null 2>&1 || return 1
+
+	wpctl status 2>/dev/null |
+		awk '
+			function trim(value) {
+				sub(/^[[:space:]]+/, "", value)
+				sub(/[[:space:]]+$/, "", value)
+				return value
+			}
+			$0 == "Audio" {
+				audio = 1
+				next
+			}
+			audio && /Sinks:/ {
+				sinks = 1
+				next
+			}
+			sinks && (/Sources:/ || /Filters:/ || /Streams:/ || $0 == "Video" || $0 == "Settings") {
+				exit
+			}
+			sinks {
+				line = $0
+				if (line !~ /[0-9]+\./) {
+					next
+				}
+				is_default = (line ~ /\*/) ? "1" : "0"
+				sub(/^[^0-9]*/, "", line)
+				id = line
+				sub(/\..*/, "", id)
+				description = line
+				sub(/^[0-9]+\.[[:space:]]*/, "", description)
+				sub(/[[:space:]]*\[vol:.*/, "", description)
+				description = trim(description)
+				if (id != "" && description != "") {
+					printf "%s\t%s\t%s\n", id, description, is_default
+					seen = 1
+				}
+			}
+			END {
+				if (!seen) {
+					exit 1
+				}
+			}
+		'
+}
+
+output_devices() {
+	if output_devices_pactl; then
+		return 0
+	fi
+
+	if output_devices_wpctl; then
+		return 0
+	fi
+
+	printf '%s\n' "OUTPUT unavailable"
+}
+
+move_sink_inputs_pactl() {
+	sink=$1
+
+	pactl list short sink-inputs 2>/dev/null |
+		awk 'NF > 0 { print $1 }' |
+		while IFS= read -r input; do
+			[ -n "$input" ] || continue
+			pactl move-sink-input "$input" "$sink" >/dev/null 2>&1 || true
+		done
+}
+
+output_set_default() {
+	[ "$#" -eq 1 ] || usage
+
+	if command -v pactl >/dev/null 2>&1; then
+		if pactl set-default-sink "$1"; then
+			move_sink_inputs_pactl "$1"
+			return 0
+		fi
+	fi
+
+	if command -v wpctl >/dev/null 2>&1; then
+		wpctl set-default "$1"
 	else
 		printf '%s\n' "pactl or wpctl not found" >&2
 		exit 127
@@ -339,7 +478,7 @@ bluetooth_scan() {
 
 bluetooth_power() {
 	[ "$#" -eq 1 ] || usage
-	case $1 in on|off) bluetoothctl power "$1" ;; *) usage ;; esac
+	case $1 in on | off) bluetoothctl power "$1" ;; *) usage ;; esac
 }
 
 bluetooth_pair() {
@@ -386,6 +525,14 @@ volume-set)
 volume-toggle-mute)
 	[ "$#" -eq 0 ] || usage
 	volume_toggle_mute
+	;;
+output-devices)
+	[ "$#" -eq 0 ] || usage
+	output_devices
+	;;
+output-set-default)
+	[ "$#" -eq 1 ] || usage
+	output_set_default "$1"
 	;;
 mic-status)
 	[ "$#" -eq 0 ] || usage

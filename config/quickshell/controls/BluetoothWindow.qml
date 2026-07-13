@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
+pragma ComponentBehavior: Bound
+
 PopupWindow {
     id: root
 
@@ -58,6 +60,8 @@ PopupWindow {
                 model: root.bluetoothModel.devices
 
                 delegate: Rectangle {
+                    id: deviceRow
+
                     required property var modelData
                     width: ListView.view.width
                     height: 58
@@ -71,12 +75,12 @@ PopupWindow {
                         anchors.margins: 10
                         UiText {
                             Layout.fillWidth: true
-                            text: modelData.name.length > 0 ? modelData.name : modelData.address
+                            text: deviceRow.modelData.name.length > 0 ? deviceRow.modelData.name : deviceRow.modelData.address
                             elide: Text.ElideRight
                         }
                         ShellButton {
-                            label: modelData.connected ? "Disconnect" : (modelData.paired ? "Connect" : "Pair")
-                            onActivated: root.bluetoothModel.action(modelData.connected ? "bluetooth-disconnect" : (modelData.paired ? "bluetooth-connect" : "bluetooth-pair"), [modelData.address])
+                            label: deviceRow.modelData.connected ? "Disconnect" : (deviceRow.modelData.paired ? "Connect" : "Pair")
+                            onActivated: root.bluetoothModel.action(deviceRow.modelData.connected ? "bluetooth-disconnect" : (deviceRow.modelData.paired ? "bluetooth-connect" : "bluetooth-pair"), [deviceRow.modelData.address])
                         }
                     }
                 }

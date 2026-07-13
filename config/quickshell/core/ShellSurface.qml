@@ -13,7 +13,7 @@ Rectangle {
     border.width: Theme.pillBorderWidth
     radius: Theme.radius
 
-    PillShadow {}
+    PillShadow { cornerRadius: root.radius }
 
     Item {
         id: body

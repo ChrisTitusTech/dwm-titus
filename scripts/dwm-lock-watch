@@ -1,0 +1,52 @@
+#!/bin/sh
+
+set -eu
+
+session_id=${XDG_SESSION_ID:-}
+[ -n "$session_id" ] || {
+	command -v loginctl >/dev/null 2>&1 || exit 0
+	session_id=$(loginctl show-session self -p Id --value 2>/dev/null) || exit 0
+}
+[ -n "$session_id" ] || exit 0
+
+command -v busctl >/dev/null 2>&1 || exit 0
+command -v dbus-monitor >/dev/null 2>&1 || exit 0
+
+lock_helper=${DWM_LOCK_HELPER:-}
+if [ -z "$lock_helper" ]; then
+	lock_helper=dwm-lock
+	case $0 in
+	*/*)
+		managed_helper=${0%/*}/dwm-lock
+		[ ! -x "$managed_helper" ] || lock_helper=$managed_helper
+		;;
+	esac
+fi
+command -v "$lock_helper" >/dev/null 2>&1 || exit 0
+
+session_json=$(busctl --system --json=short call \
+	org.freedesktop.login1 \
+	/org/freedesktop/login1 \
+	org.freedesktop.login1.Manager \
+	GetSession s "$session_id" 2>/dev/null) || exit 0
+session_path=$(printf '%s\n' "$session_json" |
+	sed -n 's/.*"data":\["\([^"]*\)"\].*/\1/p')
+[ -n "$session_path" ] || exit 0
+
+run_lock_helper() {
+	if [ "${DWM_LOCK_WATCH_SYNC:-0}" = 1 ]; then
+		DWM_LOCK_NO_LOGINCTL=1 "$lock_helper" >/dev/null 2>&1
+	else
+		DWM_LOCK_NO_LOGINCTL=1 "$lock_helper" >/dev/null 2>&1 &
+	fi
+}
+
+dbus-monitor --system \
+	"type='signal',path='$session_path',interface='org.freedesktop.login1.Session',member='Lock'" 2>/dev/null |
+	while IFS= read -r line; do
+		case $line in
+		*"interface=org.freedesktop.login1.Session; member=Lock"*)
+			run_lock_helper || true
+			;;
+		esac
+	done

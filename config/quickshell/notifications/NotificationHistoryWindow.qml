@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
+pragma ComponentBehavior: Bound
+
 FloatingWindow {
     id: root
 
@@ -78,13 +80,15 @@ FloatingWindow {
                         model: root.notificationModel.history
 
                         delegate: Rectangle {
+                            id: historyEntry
+
                             required property var modelData
 
                             Layout.fillWidth: true
                             Layout.preferredHeight: Math.max(74, historyContent.implicitHeight + 22)
                             radius: Theme.radius
-                            color: modelData.urgencyName === "critical" ? Theme.dangerSurface : Theme.surface
-                            border.color: modelData.urgencyName === "critical" ? Theme.danger : Theme.border
+                            color: historyEntry.modelData.urgencyName === "critical" ? Theme.dangerSurface : Theme.surface
+                            border.color: historyEntry.modelData.urgencyName === "critical" ? Theme.danger : Theme.border
                             border.width: 1
 
                             ColumnLayout {
@@ -100,7 +104,7 @@ FloatingWindow {
 
                                     Text {
                                         Layout.fillWidth: true
-                                        text: modelData.appName || "Notification"
+                                        text: historyEntry.modelData.appName || "Notification"
                                         color: Theme.textMuted
                                         font.family: Theme.fontFamily
                                         font.pixelSize: Theme.smallFontSize
@@ -108,7 +112,7 @@ FloatingWindow {
                                     }
 
                                     Text {
-                                        text: Qt.formatTime(new Date(modelData.timestamp || Date.now()), "hh:mm")
+                                        text: Qt.formatTime(new Date(historyEntry.modelData.timestamp || Date.now()), "hh:mm")
                                         color: Theme.textMuted
                                         font.family: Theme.fontFamily
                                         font.pixelSize: Theme.smallFontSize
@@ -117,7 +121,7 @@ FloatingWindow {
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: modelData.summary || modelData.urgencyName || ""
+                                    text: historyEntry.modelData.summary || historyEntry.modelData.urgencyName || ""
                                     color: Theme.textStrong
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.bodyFontSize
@@ -128,7 +132,7 @@ FloatingWindow {
                                 Text {
                                     Layout.fillWidth: true
                                     visible: text.length > 0
-                                    text: modelData.body || ""
+                                    text: historyEntry.modelData.body || ""
                                     color: Theme.text
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.smallFontSize

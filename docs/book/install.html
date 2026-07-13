@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-0392ca55.css">
-        <link rel="stylesheet" href="css/chrome-fc474251.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "latte";
             const default_dark_theme = "frappe";
-            window.path_to_searchindex_js = "searchindex-f97e23b9.js";
+            window.path_to_searchindex_js = "searchindex-d3a7b99f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-e4ab374d.js"></script>
@@ -187,7 +187,7 @@ required.</p>
 </code></pre>
 <p>In the TUI, press <code>v</code> to multi-select, then select <strong>dwm</strong>, <strong>bash prompt</strong>,
 and <strong>alacritty</strong>. Press <code>Enter</code> to install.</p>
-<p><img src="images/linutil-applications.png" alt="linutil-appinstall"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/linutil-applications.png" alt="linutil-appinstall"><span class="img-wrapper"><img src="images/linutil-applications.png" alt="linutil-appinstall"></span></label></p>
 <h2 id="manual-install"><a class="header" href="#manual-install">Manual Install</a></h2>
 <h3 id="1-dependencies"><a class="header" href="#1-dependencies">1. Dependencies</a></h3>
 <p>The supported dependency path is the installer because it resolves package
@@ -197,7 +197,12 @@ names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:</p
 </code></pre>
 <p>Use <code>core</code> for the required build/X11/session packages and one terminal,
 <code>recommended</code> for the desktop layer, or <code>full</code> for optional extras such as
-file-manager integration, portals, wallpapers, and display-manager setup.</p>
+file-manager integration, portals, wallpapers, and display-manager setup. On
+x86_64 Fedora, <code>full</code> can also install Steam, Gamescope, GameMode, and MangoHud
+after repository approval.
+The installer separately asks before enabling the <code>christitustech/copr-fedora</code>
+COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
+gaming subset without affecting other full-profile extras.</p>
 <h3 id="2-clone-and-build"><a class="header" href="#2-clone-and-build">2. Clone and Build</a></h3>
 <pre><code class="language-bash">git clone https://github.com/ChrisTitusTech/dwm-titus.git
 cd dwm-titus
@@ -210,16 +215,26 @@ sudo make install
 </code></pre>
 <p>The script detects the distribution family and handles dependency
 installation, font copying, display-manager integration, and config placement.
-Existing user configuration and <code>.xinitrc</code> files are preserved.</p>
+Existing user configuration and <code>.xinitrc</code> files are preserved. Upgrades remove
+the known legacy <code>dwm-graphical-session.service</code> and
+<code>wm-graphical-session.service</code> early-start configuration so XDG applications
+start only after the X11 display environment is available; customized user
+units are disabled from early startup but otherwise preserved.</p>
 <p>Installer package profiles are selected with <code>DWM_INSTALL_PROFILE</code>:</p>
 <ul>
 <li><code>core</code>: required build packages, X11/session runtime, and one supported
 terminal.</li>
 <li><code>recommended</code>: <code>core</code> plus the recommended desktop layer such as Quickshell,
-Quickshell, Picom, Feh, Dex, fonts, theming, screenshot, audio, and brightness
-tools.</li>
-<li><code>full</code>: <code>recommended</code> plus optional extras such as file-manager integration,
-network tray utilities, portals, wallpapers, and display-manager setup.</li>
+Quickshell, Picom, Feh, Dex, fonts, theming, screenshot, audio, Bluetooth
+control and tray tools, and brightness tools. It also installs portable GTK theme packages where available and
+installs Nordic system-wide for the default Nord theme.</li>
+<li><code>full</code>: <code>recommended</code> plus optional extras such as Thunar with SMB-share
+browsing, network tray utilities, portals, wallpapers, and display-manager
+setup. x86_64 Fedora full installs also include Steam, Gamescope, and 64-bit
+and 32-bit GameMode and MangoHud support after separate repository approval.
+The installer enables the <code>christitustech/copr-fedora</code> COPR for Gamescope and
+RPM Fusion nonfree for Steam, then adds the invoking user to the <code>gamemode</code>
+group; log out and back in before using its privileged tuning helpers.</li>
 </ul>
 <p>The default is <code>full</code> to preserve the historical automated installer behavior.
 For a minimal install:</p>
@@ -232,7 +247,10 @@ For a minimal install:</p>
 packaging checks, or scripted validation, use the non-interactive flags:</p>
 <pre><code class="language-bash">./install.sh --dry-run --non-interactive --profile core
 ./install.sh --non-interactive --yes --profile recommended
+./install.sh --non-interactive --yes --profile full --enable-fedora-gaming-repos
 </code></pre>
+<p>Without <code>--enable-fedora-gaming-repos</code>, unattended Fedora full installs skip
+Steam, Gamescope, GameMode, and MangoHud rather than changing repository trust.</p>
 <h2 id="starting-dwm"><a class="header" href="#starting-dwm">Starting dwm</a></h2>
 <p><strong>Display manager</strong> (SDDM, GDM, LightDM): log out and select <strong>dwm</strong> from the session list.</p>
 <p><strong>startx:</strong></p>
@@ -269,7 +287,7 @@ dwm-terminal --print-command
 </code></pre>
 <p><code>dwm-diagnostics</code> must report zero required failures before treating the
 minimal profile as ready. Optional degraded features can remain unresolved.</p>
-<footer id="last-change">Last change: <time datetime="2026-06-26">2026-06-26</time></footer>
+<footer id="last-change">Last change: <time datetime="2026-06-29">2026-06-29</time></footer>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
@@ -312,7 +330,7 @@ minimal profile as ready. Optional degraded features can remain unresolved.</p>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-c22b7243.js"></script>
+        <script src="book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

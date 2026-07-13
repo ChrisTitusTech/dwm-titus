@@ -110,21 +110,25 @@ After=basic.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/true
-
-[Install]
-WantedBy=default.target
 UNIT
 
 pass "Created ${SERVICE_FILE}"
 
 # ─── Enable the service ──────────────────────────────────────────────────────
-header "Enabling Service"
+header "Configuring Service Ordering"
 
 systemctl --user daemon-reload
 pass "Reloaded systemd user daemon"
 
-systemctl --user enable "$SERVICE_NAME.service" 2>/dev/null
-pass "Enabled ${SERVICE_NAME}.service"
+# The dwm autostart script starts this unit only after importing DISPLAY.
+# Older releases enabled one of these units under default.target, which races
+# graphical applications against display environment initialization.
+for early_service in "$SERVICE_NAME.service" dwm-graphical-session.service; do
+	if systemctl --user is-enabled "$early_service" &>/dev/null; then
+		systemctl --user disable "$early_service" 2>/dev/null
+		pass "Removed early-boot enablement for ${early_service}"
+	fi
+done
 
 # ─── Activate now if in a graphical session ──────────────────────────────────
 header "Activating"
@@ -226,7 +230,7 @@ header "Verification"
 GS_FINAL=$(systemctl --user is-active graphical-session.target 2>/dev/null || echo "inactive")
 XDG_FINAL=$(systemctl --user is-active xdg-desktop-autostart.target 2>/dev/null || echo "inactive")
 SVC_FINAL=$(systemctl --user is-active "$SERVICE_NAME.service" 2>/dev/null || echo "inactive")
-SVC_ENABLED=$(systemctl --user is-enabled "$SERVICE_NAME.service" 2>/dev/null || echo "disabled")
+SVC_ENABLED=$(systemctl --user is-enabled "$SERVICE_NAME.service" 2>/dev/null || echo "static")
 
 info "${SERVICE_NAME}.service: ${SVC_FINAL} (${SVC_ENABLED})"
 info "graphical-session.target: ${GS_FINAL}"
@@ -251,14 +255,13 @@ echo -e "${BOLD}═════════════════════�
 echo -e "${BOLD}  XDG Autostart Setup Complete${RESET}"
 echo -e "${BOLD}════════════════════════════════════════════════════════════${RESET}"
 if [[ "$GS_FINAL" == "active" ]]; then
-	echo -e "  ${GREEN}XDG autostart is active and will persist across logins.${RESET}"
+	echo -e "  ${GREEN}XDG autostart is active and will start through dwm on login.${RESET}"
 else
-	echo -e "  ${YELLOW}Service installed and enabled — will activate on next login.${RESET}"
+	echo -e "  ${YELLOW}Service installed and will activate through dwm on next login.${RESET}"
 fi
 echo ""
 echo -e "  Manage autostart apps by adding/removing .desktop files in:"
 echo -e "    ${CYAN}~/.config/autostart/${RESET}"
 echo ""
-echo -e "  To disable:  ${CYAN}systemctl --user disable ${SERVICE_NAME}.service${RESET}"
-echo -e "  To remove:   ${CYAN}rm ${SERVICE_FILE} && systemctl --user daemon-reload${RESET}"
+echo -e "  To remove: ${CYAN}rm ${SERVICE_FILE} && systemctl --user daemon-reload${RESET}"
 echo ""

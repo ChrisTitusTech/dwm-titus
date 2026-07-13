@@ -22,9 +22,34 @@ repo --name="rpmfusion-nonfree-updates" --metalink="https://mirrors.rpmfusion.or
 repo --name="rpmfusion-nonfree-tainted" --metalink="https://mirrors.rpmfusion.org/metalink?repo=nonfree-fedora-tainted-$releasever&arch=$basearch" --install
 repo --name="brave-browser" --baseurl="https://brave-browser-rpm-release.s3.brave.com/$basearch" --install
 repo --name="mwt-packages" --baseurl="https://mirror.mwt.me/shiftkey-desktop/rpm" --install
+%include /tmp/dwm-titus-gaming-repo
 
 bootloader --location=mbr --append="rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1"
 services --enabled=NetworkManager
+
+%pre --interpreter=/bin/sh
+gaming_repo=/tmp/dwm-titus-gaming-repo
+gaming_packages=/tmp/dwm-titus-gaming-packages
+case "$(uname -m)" in
+x86_64)
+	cat >"$gaming_repo" <<'EOF'
+repo --name="christitustech-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/christitustech/copr-fedora/fedora-$releasever-$basearch/" --install
+EOF
+	cat >"$gaming_packages" <<'EOF'
+steam
+gamescope
+gamemode.x86_64
+gamemode.i686
+mangohud.x86_64
+mangohud.i686
+EOF
+	;;
+*)
+	: >"$gaming_repo"
+	: >"$gaming_packages"
+	;;
+esac
+%end
 
 %packages
 @core
@@ -57,6 +82,7 @@ xclip
 xdotool
 xprop
 xdg-utils
+%include /tmp/dwm-titus-gaming-packages
 quickshell
 lightdm
 slick-greeter
@@ -74,6 +100,9 @@ pipewire
 pipewire-pulseaudio
 wireplumber
 pavucontrol
+bluez
+blueman
+playerctl
 libnotify
 light-locker
 xorg-x11-drv-libinput
@@ -93,12 +122,14 @@ NetworkManager
 rsync
 Thunar
 gvfs
+gvfs-smb
 tumbler
 thunar-archive-plugin
 file-roller
 xdg-user-dirs
 xdg-desktop-portal-gtk
 gnome-keyring
+nwg-look
 kernel-devel
 kernel-headers
 perl
@@ -152,6 +183,10 @@ install -m 0440 /dev/null "$install_sudoers"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$target_user" > "$install_sudoers"
 
 su - "$target_user" -c 'cd "$HOME/.local/share/dwm-titus" && ./install.sh --non-interactive --profile core'
+
+if getent group gamemode >/dev/null 2>&1; then
+	usermod -aG gamemode "$target_user"
+fi
 
 install -d -m 0755 /etc/modprobe.d
 printf '%s\n' 'options nvidia-drm modeset=1 fbdev=1' >/etc/modprobe.d/nvidia-drm.conf

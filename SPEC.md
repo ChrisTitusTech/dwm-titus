@@ -225,6 +225,65 @@ The Qt tools are installed from distribution packages:
 Some distributions install Qt helper binaries outside the default `PATH`, such
 as `/usr/lib/qt6/bin`. Development environments should either add that
 directory to `PATH` or create user/system symlinks for `qmllint` and `qmlls`.
+On Fedora/RHEL-family systems the executable may also be named `qmllint-qt6`.
+
+`qmllint` must be run with explicit Qt and Quickshell QML import roots. Without
+those roots it can report false import failures for modules such as
+`Quickshell`, even when the shell runs correctly. Typical roots are:
+
+| Family | Common QML import roots |
+| --- | --- |
+| Debian | `/usr/lib/*/qt6/qml`, `/usr/lib/qt6/qml` |
+| Arch | `/usr/lib/qt6/qml` |
+| RHEL/Fedora | `/usr/lib64/qt6/qml`, `/usr/lib/qt6/qml` |
+| Nix | `${qtdeclarative}/lib/qt-6/qml`, `${quickshell}/lib/qt-6/qml` |
+
+Language-server environments should expose the same roots:
+
+```sh
+export QMLLS_BUILD_DIRS="/usr/lib64/qt6/qml:/usr/lib/qt6/qml"
+export QML_IMPORT_PATH="$PWD/config/quickshell"
+```
+
+The repository uses `import qs.core` for local shared QML helpers under
+`config/quickshell/core/`. Quickshell resolves that module at runtime from the
+configuration root, but stock `qmllint` may require a `qmldir` module map. Use
+a temporary lint-only import tree rather than changing the runtime layout:
+
+```sh
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/qs/core"
+ln -s "$PWD/config/quickshell/core/Commands.qml" "$tmp/qs/core/Commands.qml"
+ln -s "$PWD/config/quickshell/core/Icons.qml" "$tmp/qs/core/Icons.qml"
+ln -s "$PWD/config/quickshell/core/Theme.qml" "$tmp/qs/core/Theme.qml"
+ln -s "$PWD/config/quickshell/core/ShellButton.qml" "$tmp/qs/core/ShellButton.qml"
+ln -s "$PWD/config/quickshell/core/ShellSurface.qml" "$tmp/qs/core/ShellSurface.qml"
+ln -s "$PWD/config/quickshell/core/SectionLabel.qml" "$tmp/qs/core/SectionLabel.qml"
+cat >"$tmp/qs/core/qmldir" <<'EOF'
+module qs.core
+singleton Commands 1.0 Commands.qml
+singleton Icons 1.0 Icons.qml
+singleton Theme 1.0 Theme.qml
+ShellButton 1.0 ShellButton.qml
+ShellSurface 1.0 ShellSurface.qml
+SectionLabel 1.0 SectionLabel.qml
+EOF
+
+QMLLS_BUILD_DIRS="/usr/lib64/qt6/qml:/usr/lib/qt6/qml" \
+QML_IMPORT_PATH="$PWD/config/quickshell" \
+qmllint-qt6 \
+  -I /usr/lib64/qt6/qml \
+  -I /usr/lib/qt6/qml \
+  -I "$tmp" \
+  -I config/quickshell \
+  config/quickshell/controls/ControlsModel.qml
+```
+
+When using Nix, the same rule applies: include both the Qt declarative QML root
+and the Quickshell QML root in the lint command or `QMLLS_BUILD_DIRS`. This
+matches the known workaround for `qmllint`/`qmlls` not discovering Quickshell
+type declarations automatically.
 
 Install the Quickshell-aware server with one of these supported methods:
 
@@ -288,6 +347,53 @@ Runtime dependencies are classified as:
   notification tools, audio controls, screenshot tooling, and Nerd/emoji fonts.
 - Optional: file manager, network tray, theme utilities, display-manager
   greeter customization, wallpapers, and hardware-specific helpers.
+
+### 5.9 System Health Dashboard
+
+The Control Center must open System Health as a separate full-screen
+Quickshell window on the selected X11 monitor. The dashboard must remain
+on-demand: opening or explicitly refreshing it starts a bounded snapshot, and
+closing it stops active diagnostics. It must not add idle polling.
+
+The snapshot must provide an overall state and categorized details for:
+
+- Current-boot journal and kernel errors, with `journalctl` preferred and
+  privileged `dmesg` used as a fallback.
+- Failed system and user services, time synchronization, networking, audio,
+  and the dwm-titus desktop session.
+- Memory, pressure, load, swap, local filesystem capacity, inode use,
+  read-only mounts, and available battery, thermal, and drive-health data.
+- Required and optional dwm-titus commands, libraries, configuration, and the
+  distribution package database.
+
+The dashboard must begin user-readable checks immediately and request a
+privileged read-only scan. It must first use non-interactive `sudo` when the
+session already has cached or `NOPASSWD` authorization; otherwise it must use
+the running polkit agent and trusted installed helper for graphical
+authorization. Denied, cancelled, or unavailable authorization must produce a
+clearly incomplete report rather than prevent the dashboard from opening.
+Journal evidence must be bounded while retaining the total matching count.
+
+Boot-journal and kernel-error rows with matching entries must provide Copy and
+Export actions. Copy uses the X11 clipboard through `xclip`. Export writes the
+displayed bounded evidence to a private, non-overwriting timestamped file in
+the invoking user's home directory, using `boot$DATE.txt` or
+`kernel-errors$DATE.txt` naming.
+
+Repairs require an explicit confirmation. User repairs are limited to known
+desktop and audio components plus launching the interactive dependency flow.
+Failed user and system services are displayed as individual rows with Start,
+Stop, Restart, Disable, and Enable actions. A service action is allowed only
+while that exact `.service` unit is in the corresponding failed-unit set;
+system actions require polkit authorization. Other privileged repairs are
+limited to NetworkManager, Bluetooth, and the detected systemd
+time-synchronization provider. Filesystem repair, cleanup, reboot, and
+unattended package changes are not allowed.
+Only a root-owned, non-writable system installation of the health helper may
+itself be executed through `sudo` or `pkexec`; repository and XDG copies must
+never be elevated. Without an installed helper, the unprivileged copy may use
+non-interactive `sudo` to execute only validated root-owned system commands
+needed for a bounded scan or confirmed repair.
 
 ## 6. Filesystem and Installation Contract
 

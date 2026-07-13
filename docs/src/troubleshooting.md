@@ -83,7 +83,9 @@ Or use the [Control Center](./control-center.md) → **System Health**.
 ## NVIDIA / Suspend Issues
 
 - Black screen on wake: run `scripts/nvidia-suspend-test.sh` to diagnose
-- DPMS/screensaver issues: run `scripts/disable-powersaving` or add it to autostart
+- DPMS/screensaver issues: use Control Center -> Power, or run
+  `scripts/disable-powersaving` to disable blanking and DPMS for the current
+  session
 
 ---
 

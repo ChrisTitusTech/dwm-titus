@@ -78,13 +78,24 @@ install_packages() {
 }
 
 package_available() {
+	local package_arch
+
 	case "$DISTRO_FAMILY" in
 	arch)
 		pacman -Si "$1" &>/dev/null
 		;;
 	rhel)
-		dnf -q repoquery --available --qf '%{name}' "$1" 2>/dev/null |
-			command grep -Fxq "$1"
+		package_arch=${1##*.}
+		case "$package_arch" in
+		i686 | x86_64 | aarch64)
+			dnf -q repoquery --available --qf '%{name}.%{arch}' "$1" 2>/dev/null |
+				command grep -Fxq "$1"
+			;;
+		*)
+			dnf -q repoquery --available --qf '%{name}' "$1" 2>/dev/null |
+				command grep -Fxq "$1"
+			;;
+		esac
 		;;
 	debian)
 		apt-cache show "$1" &>/dev/null

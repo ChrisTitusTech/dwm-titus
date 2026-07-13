@@ -15,7 +15,12 @@ Singleton {
             : [runPath, runManaged, fallback];
         const script = [dataDir].concat(orderedChecks).join("; ");
 
-        return ["sh", "-c", script, helper, action].concat(argv);
+        const command = ["sh", "-c", script, helper];
+        if (action !== undefined && action !== null) {
+            command.push(action);
+        }
+
+        return command.concat(argv);
     }
 
     function launcherHelperCommand(action, args) {
@@ -27,10 +32,18 @@ Singleton {
     }
 
     function controlsHelperCommand(action, args) {
-        return helperCommand("dwm-quickshell-controls", action, args, false);
+        return helperCommand("dwm-quickshell-controls", action, args, true);
     }
 
     function controlCenterHelperCommand(action, args) {
         return helperCommand("dwm-quickshell-controlcenter", action, args, true);
+    }
+
+    function lockHelperCommand() {
+        return helperCommand("dwm-lock", undefined, [], true);
+    }
+
+    function systemHealthHelperCommand(action, args) {
+        return helperCommand("dwm-system-health", action, args, true);
     }
 }

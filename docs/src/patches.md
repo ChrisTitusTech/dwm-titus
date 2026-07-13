@@ -50,6 +50,8 @@ Three fullscreen modes available:
 ### Quickshell Integration
 The managed Quickshell layer reads dwm workspace and active-window state through
 EWMH-compatible helpers so the panel stays synchronized with X11 state.
+The Control Center includes a Power page for screen DPMS and automatic locking
+settings backed by `${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/power.conf`.
 
 ### EWMH Compliance
 Implements `_NET_WM_STATE`, `_NET_CURRENT_DESKTOP`, `_NET_NUMBER_OF_DESKTOPS`, and related atoms so external tools and taskbars work correctly.

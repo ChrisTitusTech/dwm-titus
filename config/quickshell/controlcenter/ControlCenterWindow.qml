@@ -3,26 +3,53 @@ import QtQuick.Layouts
 import Quickshell
 import qs.core
 
+pragma ComponentBehavior: Bound
+
 PopupWindow {
     id: root
 
     required property var controlCenterModel
+    required property var healthModel
     required property var panelWindow
     required property var powerMenuModel
-    required property var controlsModel
-    required property var bluetoothModel
-    required property var networkModel
 
     readonly property int cardWidth: 276
     readonly property int gap: 8
+    readonly property var powerPresets: [
+        { "label": "5m", "seconds": 300 },
+        { "label": "10m", "seconds": 600 },
+        { "label": "15m", "seconds": 900 },
+        { "label": "30m", "seconds": 1800 },
+        { "label": "1h", "seconds": 3600 }
+    ]
     property string sidePanel: "none"
-    property bool splitsOpen: false
 
     function sideTitle() {
         if (sidePanel === "utilities") return "Utilities";
         if (sidePanel === "actions") return "Quick Actions";
         if (sidePanel === "appearance") return "Appearance";
+        if (sidePanel === "power") return "Power Settings";
         return "Widgets";
+    }
+
+    function formatDuration(seconds) {
+        if (seconds >= 3600 && seconds % 3600 === 0) {
+            return (seconds / 3600) + "h";
+        }
+        if (seconds >= 60 && seconds % 60 === 0) {
+            return (seconds / 60) + "m";
+        }
+        return seconds + "s";
+    }
+
+    function openSystemHealth() {
+        root.controlCenterModel.close();
+        root.healthModel.openOnScreen(root.panelWindow.screen);
+    }
+
+    function openPowerSettings() {
+        root.controlCenterModel.openPower();
+        root.sidePanel = "power";
     }
 
     visible: controlCenterModel.visible
@@ -37,7 +64,6 @@ PopupWindow {
     onVisibleChanged: {
         if (visible) {
             sidePanel = "none";
-            splitsOpen = false;
         } else {
             root.controlCenterModel.close();
         }
@@ -51,6 +77,7 @@ PopupWindow {
         signal activated()
 
         implicitHeight: 26
+        opacity: enabled ? 1 : 0.5
         radius: Theme.smallRadius
         color: active ? Theme.surfaceActive : (tileMouse.containsMouse ? Theme.surfaceHover : Theme.surface)
         border.color: active || tileMouse.containsMouse ? Theme.accentSecondary : Theme.border
@@ -65,8 +92,9 @@ PopupWindow {
         MouseArea {
             id: tileMouse
             anchors.fill: parent
+            enabled: tile.enabled
             hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
             onClicked: tile.activated()
         }
     }
@@ -107,7 +135,7 @@ PopupWindow {
                     }
 
                     UiText {
-                        text: "×"
+                        text: "x"
                         color: closeMouse.containsMouse ? Theme.accent : Theme.textMuted
 
                         MouseArea {
@@ -120,17 +148,26 @@ PopupWindow {
                     }
                 }
 
+                UiText {
+                    Layout.fillWidth: true
+                    visible: root.controlCenterModel.message.length > 0
+                    text: root.controlCenterModel.message
+                    color: Theme.textMuted
+                    elide: Text.ElideRight
+                }
+
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
                 UiText { text: "Actions"; color: Theme.textMuted; font.letterSpacing: 1 }
                 Tile {
                     Layout.fillWidth: true
                     label: "Reload QS-Config"
+                    enabled: !root.controlCenterModel.busy
                     onActivated: root.controlCenterModel.runAction("restart-quickshell")
                 }
                 Tile {
                     Layout.fillWidth: true
-                    label: "Power  ▸"
+                    label: "Power  >"
                     onActivated: {
                         root.controlCenterModel.close();
                         root.powerMenuModel.open();
@@ -138,38 +175,10 @@ PopupWindow {
                 }
 
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-                UiText { text: "Bar Color"; color: Theme.textMuted; font.letterSpacing: 1 }
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: 2
-                    columnSpacing: 8
-                    rowSpacing: 8
-                    Repeater {
-                        model: ["Red", "Accent", "Color 02", "Color 03"]
-                        delegate: Tile {
-                            required property string modelData
-                            Layout.fillWidth: true
-                            label: modelData
-                            active: modelData === root.controlCenterModel.barColorSelection
-                            onActivated: root.controlCenterModel.barColorSelection = modelData
-                        }
-                    }
-                }
-
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-                UiText { text: "Splits"; color: Theme.textMuted; font.letterSpacing: 1 }
-                Tile {
-                    Layout.fillWidth: true
-                    label: root.splitsOpen ? "Splits  ◂" : "Splits  ▸"
-                    active: root.splitsOpen
-                    onActivated: root.splitsOpen = !root.splitsOpen
-                }
-
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
                 UiText { text: "Bar Functions"; color: Theme.textMuted; font.letterSpacing: 1 }
                 Tile {
                     Layout.fillWidth: true
-                    label: root.sidePanel === "widgets" ? "Bar Functions  ◂" : "Bar Functions  ▸"
+                    label: root.sidePanel === "widgets" ? "Bar Functions  <" : "Bar Functions  >"
                     active: root.sidePanel === "widgets"
                     onActivated: root.sidePanel = root.sidePanel === "widgets" ? "none" : "widgets"
                 }
@@ -178,7 +187,7 @@ PopupWindow {
                 UiText { text: "Utilities"; color: Theme.textMuted; font.letterSpacing: 1 }
                 Tile {
                     Layout.fillWidth: true
-                    label: root.sidePanel === "utilities" ? "Utilities  ◂" : "Utilities  ▸"
+                    label: root.sidePanel === "utilities" ? "Utilities  <" : "Utilities  >"
                     active: root.sidePanel === "utilities"
                     onActivated: root.sidePanel = root.sidePanel === "utilities" ? "none" : "utilities"
                 }
@@ -233,12 +242,12 @@ PopupWindow {
 
                     Tile {
                         Layout.fillWidth: true
-                        label: "System Health  ›"
-                        onActivated: root.controlCenterModel.openHealth()
+                        label: "System Health  >"
+                        onActivated: root.openSystemHealth()
                     }
                     Tile {
                         Layout.fillWidth: true
-                        label: "Quick Actions  ›"
+                        label: "Quick Actions  >"
                         onActivated: {
                             root.controlCenterModel.openActions();
                             root.sidePanel = "actions";
@@ -246,7 +255,7 @@ PopupWindow {
                     }
                     Tile {
                         Layout.fillWidth: true
-                        label: "Appearance  ›"
+                        label: "Appearance  >"
                         onActivated: {
                             root.controlCenterModel.openAppearance();
                             root.sidePanel = "appearance";
@@ -254,12 +263,17 @@ PopupWindow {
                     }
                     Tile {
                         Layout.fillWidth: true
-                        label: "Keybinds  ›"
+                        label: "Keybinds  >"
                         onActivated: root.controlCenterModel.openKeybinds()
                     }
                     Tile {
                         Layout.fillWidth: true
-                        label: "System Info  ›"
+                        label: "Power Settings  >"
+                        onActivated: root.openPowerSettings()
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "System Info  >"
                         onActivated: root.controlCenterModel.openInfo()
                     }
                 }
@@ -275,6 +289,7 @@ PopupWindow {
                             required property var modelData
                             Layout.fillWidth: true
                             label: modelData.label
+                            enabled: !root.controlCenterModel.busy
                             onActivated: root.controlCenterModel.runAction(modelData.id)
                         }
                     }
@@ -292,7 +307,84 @@ PopupWindow {
                             Layout.fillWidth: true
                             label: modelData.name
                             active: modelData.status === "active"
+                            enabled: !root.controlCenterModel.busy
                             onActivated: root.controlCenterModel.setTheme(modelData.name)
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.sidePanel === "power"
+                    spacing: 8
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: root.controlCenterModel.powerDpmsEnabled
+                            ? "Screen off after " + root.formatDuration(root.controlCenterModel.powerDpmsTimeout)
+                            : "Screen DPMS disabled"
+                        color: Theme.textMuted
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: root.controlCenterModel.powerDpmsEnabled ? "Disable Screen DPMS" : "Enable Screen DPMS"
+                        active: root.controlCenterModel.powerDpmsEnabled
+                        enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
+                        onActivated: root.controlCenterModel.setPowerDpms(!root.controlCenterModel.powerDpmsEnabled)
+                    }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 3
+                        columnSpacing: 6
+                        rowSpacing: 6
+
+                        Repeater {
+                            model: root.powerPresets
+                            delegate: Tile {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                label: modelData.label
+                                active: root.controlCenterModel.powerDpmsEnabled
+                                    && root.controlCenterModel.powerDpmsTimeout === modelData.seconds
+                                enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
+                                onActivated: root.controlCenterModel.setPowerDpmsTimeout(modelData.seconds)
+                            }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: root.controlCenterModel.powerLockEnabled
+                            ? "Lock after " + root.formatDuration(root.controlCenterModel.powerLockTimeout)
+                            : "Auto Lock disabled"
+                        color: Theme.textMuted
+                    }
+                    Tile {
+                        Layout.fillWidth: true
+                        label: root.controlCenterModel.powerLockEnabled ? "Disable Auto Lock" : "Enable Auto Lock"
+                        active: root.controlCenterModel.powerLockEnabled
+                        enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
+                        onActivated: root.controlCenterModel.setPowerLock(!root.controlCenterModel.powerLockEnabled)
+                    }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 3
+                        columnSpacing: 6
+                        rowSpacing: 6
+
+                        Repeater {
+                            model: root.powerPresets
+                            delegate: Tile {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                label: modelData.label
+                                active: root.controlCenterModel.powerLockEnabled
+                                    && root.controlCenterModel.powerLockTimeout === modelData.seconds
+                                enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
+                                onActivated: root.controlCenterModel.setPowerLockTimeout(modelData.seconds)
+                            }
                         }
                     }
                 }

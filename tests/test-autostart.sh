@@ -58,6 +58,12 @@ EOF
 
 cat >"$work/bin/systemctl" <<'EOF'
 #!/bin/sh
+printf '%s\n' "$*" >>"${TEST_STATE:?}/systemctl.log"
+case $* in
+*"start wm-graphical-session.service"*)
+	[ "${TEST_SYSTEMD_START_FAIL:-0}" != 1 ] || exit 1
+	;;
+esac
 exit 0
 EOF
 
@@ -87,19 +93,9 @@ fi
 exec "$@"
 EOF
 
-cat >"$work/bin/dex-autostart" <<'EOF'
-#!/bin/sh
-exit 0
-EOF
-
-cat >"$work/bin/dex" <<'EOF'
-#!/bin/sh
-exit 0
-EOF
-
 chmod +x "$work/bin/"*
 
-for name in feh picom dwm-status light-locker quickshell; do
+for name in feh picom dwm-status dwm-lock-watch light-locker quickshell dex dex-autostart; do
 	make_mock_command "$name"
 done
 
@@ -136,12 +132,39 @@ run_duplicate_case() {
 		wait_for_marker "$state/feh.running"
 		wait_for_marker "$state/picom.running"
 		wait_for_marker "$state/dwm-status.running"
+		wait_for_marker "$state/dwm-lock-watch.running"
 		wait_for_marker "$state/quickshell.running"
 	done
 
-	for name in feh picom light-locker quickshell; do
+	for name in feh picom dwm-lock-watch quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
+	test ! -e "$state/light-locker.count"
+	test ! -e "$state/dex.count"
+	test ! -e "$state/dex-autostart.count"
+	awk '
+		/--user import-environment/ && !imported { imported = NR }
+		/--user start wm-graphical-session.service/ && !started { started = NR }
+		END { exit !(imported && started && imported < started) }
+	' "$state/systemctl.log"
+}
+
+run_dex_fallback_case() {
+	home="$work/fallback/home"
+	state="$work/fallback/state"
+	mkdir -p "$home" "$state"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+
+	HOME=$home \
+		TEST_STATE=$state \
+		TEST_SYSTEMD_START_FAIL=1 \
+		PATH="$work/bin:/usr/bin:/bin" \
+		XDG_CONFIG_HOME="$home/.config" \
+		DWM_AUTOSTART_NO_SETSID=1 \
+		sh "$repo_dir/scripts/autostart.sh"
+
+	test "$(cat "$state/dex.count")" -eq 1
+	test ! -e "$state/dex-autostart.count"
 }
 
 run_missing_optional_case() {
@@ -170,6 +193,18 @@ run_missing_optional_case() {
 
 run_duplicate_case display-manager
 run_duplicate_case startx
+run_dex_fallback_case
 run_missing_optional_case
+
+if grep -q '^WantedBy=default.target$' \
+	"$repo_dir/config/systemd/user/wm-graphical-session.service"; then
+	printf '%s\n' "Graphical session service must not start before dwm imports DISPLAY" >&2
+	exit 1
+fi
+if grep -q 'systemctl --user enable.*SERVICE_NAME' \
+	"$repo_dir/scripts/xdg-enable-autostart.sh"; then
+	printf '%s\n' "XDG setup must not enable the graphical session at early boot" >&2
+	exit 1
+fi
 
 printf '%s\n' "Autostart duplicate and missing-optional command guards: PASS"

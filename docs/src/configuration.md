@@ -1,11 +1,14 @@
 # Configuration
 
-dwm-titus uses two TOML config files that **live-reload on save** — no recompile needed for most changes.
+dwm-titus keeps user configuration under
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/`. Hotkeys and themes
+**live-reload on save** — no recompile needed for most changes.
 
 | File | Purpose |
 |------|---------|
 | `config/hotkeys.toml` | All keybindings |
 | `config/themes.toml` | Colors, themes, border size |
+| `power.conf` | Control Center screen DPMS and auto-lock choices |
 
 For deeper changes (window rules, fonts, refresh rate), edit `config.h` and run `make && sudo make install`.
 
@@ -73,6 +76,17 @@ Display profiles are optional files under
 `dwm-display-profile template` to print the format, `dwm-display-profile list`
 to show profiles, and `dwm-display-profile apply <name>` to run the profile
 through `xrandr`.
+
+Power settings are managed from Control Center -> Power. The generated
+`power.conf` is authoritative once created and persists screen DPMS state,
+display-off timing, and automatic idle and suspend locking. Startup reapplies
+this file before background session services are launched. Manual locking
+remains available when automatic locking is disabled. The screen locker runs
+only while automatic locking is enabled or for the duration of an explicit
+manual lock, so DPMS display-off events remain independent from locking.
+External `loginctl lock-session` requests are forwarded to `dwm-lock` by an
+event-driven session listener. Until `power.conf` exists, dwm-titus leaves any
+user or distribution-managed locker untouched.
 
 ### Modifier Syntax
 

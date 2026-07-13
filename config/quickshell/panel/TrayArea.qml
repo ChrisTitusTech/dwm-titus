@@ -6,8 +6,6 @@ import qs.core
 RowLayout {
     id: root
 
-    signal openMenu(var trayItem, var anchorItem)
-
     visible: SystemTray.items.values.length > 0
     spacing: Theme.compactSpacing
 
@@ -18,7 +16,6 @@ RowLayout {
             required property var modelData
 
             trayItem: modelData
-            onOpenMenu: trayItem => root.openMenu(trayItem, this)
         }
     }
 }

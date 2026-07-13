@@ -1,0 +1,1029 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+COMMAND_TIMEOUT=${DWM_HEALTH_COMMAND_TIMEOUT:-12}
+
+usage() {
+	printf '%s\n' \
+		"usage: dwm-system-health scan-user|scan-privileged|scan-system|repair-user <id>|repair-privileged <id>|repair-system <id>|share-evidence <copy|export> <journal-errors|kernel-errors> <title> <summary> <evidence>" >&2
+}
+
+sanitize_field() {
+	local value=${1:-}
+
+	value=${value//$'\t'/ }
+	value=${value//$'\r'/ }
+	value=${value//$'\n'/ | }
+	printf '%s' "$value" | tr -d '\000-\010\013\014\016-\037' | cut -c 1-8192
+}
+
+emit_record() {
+	local kind=$1
+	local category=$2
+	local status=$3
+	local id=$4
+	local title=$5
+	local summary=$6
+	local evidence=${7:-}
+	local repair_id=${8:-}
+	local repair_label=${9:-}
+	local privilege=${10:-user}
+
+	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+		"$(sanitize_field "$kind")" \
+		"$(sanitize_field "$category")" \
+		"$(sanitize_field "$status")" \
+		"$(sanitize_field "$id")" \
+		"$(sanitize_field "$title")" \
+		"$(sanitize_field "$summary")" \
+		"$(sanitize_field "$evidence")" \
+		"$(sanitize_field "$repair_id")" \
+		"$(sanitize_field "$repair_label")" \
+		"$(sanitize_field "$privilege")"
+}
+
+emit_check() {
+	emit_record check "$@"
+}
+
+emit_meta() {
+	emit_record meta "$@"
+}
+
+render_evidence() {
+	local title=$1
+	local summary=$2
+	local evidence=$3
+
+	evidence=${evidence// | /$'\n'}
+	printf '%s\n%s\n\n%s\n' "$title" "$summary" "$evidence"
+}
+
+share_evidence() {
+	local mode=$1
+	local id=$2
+	local title=$3
+	local summary=$4
+	local evidence=$5
+	local stem export_dir stamp candidate suffix=0
+
+	case $id in
+	journal-errors) stem=boot ;;
+	kernel-errors) stem=kernel-errors ;;
+	*)
+		printf 'unsupported evidence record: %s\n' "$id" >&2
+		return 2
+		;;
+	esac
+	case $mode in
+	copy)
+		command -v xclip >/dev/null 2>&1 || {
+			printf 'xclip is unavailable; install xclip to copy diagnostics\n' >&2
+			return 1
+		}
+		render_evidence "$title" "$summary" "$evidence" | xclip -selection clipboard
+		printf 'Copied %s to the clipboard\n' "$title"
+		;;
+	export)
+		export_dir=${DWM_HEALTH_EXPORT_DIR:-$HOME}
+		[[ -d $export_dir && -w $export_dir ]] || {
+			printf 'export directory is not writable: %s\n' "$export_dir" >&2
+			return 1
+		}
+		stamp=$(date +%Y-%m-%d-%H%M%S)
+		umask 077
+		while :; do
+			candidate=$export_dir/$stem$stamp
+			((suffix > 0)) && candidate+=-$suffix
+			candidate+=.txt
+			if (
+				set -o noclobber
+				render_evidence "$title" "$summary" "$evidence" >"$candidate"
+			) 2>/dev/null; then
+				printf 'Exported %s to %s\n' "$title" "$candidate"
+				return
+			fi
+			suffix=$((suffix + 1))
+			((suffix <= 100)) || {
+				printf 'could not create a unique export file in %s\n' "$export_dir" >&2
+				return 1
+			}
+		done
+		;;
+	*)
+		printf 'unsupported evidence action: %s\n' "$mode" >&2
+		return 2
+		;;
+	esac
+}
+
+run_bounded() {
+	if command -v timeout >/dev/null 2>&1; then
+		timeout "$COMMAND_TIMEOUT" "$@"
+	else
+		"$@"
+	fi
+}
+
+first_lines() {
+	local count=${1:-20}
+	awk -v count="$count" 'NF { print; seen++; if (seen >= count) exit }'
+}
+
+find_sibling_command() {
+	local name=$1
+
+	if [[ -x $SCRIPT_DIR/$name ]]; then
+		printf '%s\n' "$SCRIPT_DIR/$name"
+	elif command -v "$name" >/dev/null 2>&1; then
+		command -v "$name"
+	else
+		return 1
+	fi
+}
+
+trusted_system_command() {
+	local name=$1
+	local candidate resolved owner
+
+	candidate=$(command -v "$name" 2>/dev/null || true)
+	if [[ ${DWM_HEALTH_TEST_ROOT:-0} == 1 && -n $candidate && -x $candidate ]]; then
+		printf '%s\n' "$candidate"
+		return
+	fi
+	if [[ $candidate != /* ]]; then
+		if [[ -x /usr/bin/$name ]]; then
+			candidate=/usr/bin/$name
+		elif [[ -x /bin/$name ]]; then
+			candidate=/bin/$name
+		fi
+	fi
+	[[ -n $candidate ]] || return 1
+	resolved=$(readlink -f -- "$candidate" 2>/dev/null || true)
+	[[ -n $resolved && -f $resolved && -x $resolved ]] || return 1
+	case $resolved in
+	"${HOME:-/nonexistent}"/* | "${XDG_DATA_HOME:-${HOME:-/nonexistent}/.local/share}"/* | "${XDG_CONFIG_HOME:-${HOME:-/nonexistent}/.config}"/*) return 1 ;;
+	esac
+	owner=$(stat -c %u -- "$resolved" 2>/dev/null || printf 1)
+	[[ $owner == 0 ]] || return 1
+	find "$resolved" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q . || return 1
+	printf '%s\n' "$resolved"
+}
+
+privilege_mode() {
+	if ((EUID == 0)) || [[ ${DWM_HEALTH_TEST_ROOT:-0} == 1 ]]; then
+		printf 'direct\n'
+		return
+	fi
+	case ${DWM_HEALTH_ELEVATOR:-} in
+	sudo) printf '%s\n' "$DWM_HEALTH_ELEVATOR" ;;
+	*) printf 'none\n' ;;
+	esac
+}
+
+run_privileged_bounded() {
+	local name=$1
+	shift
+	local executable elevator
+
+	if [[ ${DWM_HEALTH_TEST_ROOT:-0} == 1 ]]; then
+		executable=$(command -v "$name" 2>/dev/null || true)
+	else
+		executable=$(trusted_system_command "$name" || true)
+	fi
+	[[ -n $executable ]] || {
+		printf 'trusted system command is unavailable: %s\n' "$name" >&2
+		return 127
+	}
+	case $(privilege_mode) in
+	direct) run_bounded "$executable" "$@" ;;
+	sudo)
+		elevator=$(trusted_system_command sudo) || return 127
+		run_bounded "$elevator" -n -- "$executable" "$@"
+		;;
+	*)
+		printf 'privileged authorization is unavailable\n' >&2
+		return 1
+		;;
+	esac
+}
+
+scan_identity() {
+	local os_name=unknown
+	local uptime_text=unknown
+
+	if [[ -r ${DWM_HEALTH_OS_RELEASE:-/etc/os-release} ]]; then
+		os_name=$(awk -F= '$1 == "PRETTY_NAME" { gsub(/^"|"$/, "", $2); print $2; exit }' "${DWM_HEALTH_OS_RELEASE:-/etc/os-release}")
+	fi
+	if command -v uptime >/dev/null 2>&1; then
+		uptime_text=$(uptime -p 2>/dev/null || uptime 2>/dev/null || printf unknown)
+	fi
+
+	emit_check overview info host-os "Operating system" "$os_name" "Kernel $(uname -sr 2>/dev/null || printf unknown)"
+	emit_check overview info host-uptime "Uptime" "$uptime_text" "Host $(hostname 2>/dev/null || printf unknown)"
+}
+
+scan_memory() {
+	local values mem_total mem_available swap_total swap_free memory_used swap_used status=ok
+
+	if [[ ! -r /proc/meminfo ]]; then
+		emit_check resources restricted memory "Memory" "Memory information unavailable" "/proc/meminfo is not readable"
+		return
+	fi
+
+	values=$(awk '
+		$1 == "MemTotal:" { mt = $2 }
+		$1 == "MemAvailable:" { ma = $2 }
+		$1 == "SwapTotal:" { st = $2 }
+		$1 == "SwapFree:" { sf = $2 }
+		END { printf "%d %d %d %d", mt, ma, st, sf }
+	' /proc/meminfo)
+	read -r mem_total mem_available swap_total swap_free <<<"$values"
+
+	if ((mem_total > 0)); then
+		memory_used=$(((mem_total - mem_available) * 100 / mem_total))
+	else
+		memory_used=0
+	fi
+	if ((memory_used >= 97)); then
+		status=error
+	elif ((memory_used >= 90)); then
+		status=warn
+	fi
+	emit_check resources "$status" memory "Memory" "$memory_used% used" "$((mem_available / 1024)) MiB available"
+
+	if ((swap_total > 0)); then
+		swap_used=$(((swap_total - swap_free) * 100 / swap_total))
+		status=ok
+		if ((swap_used >= 80 && memory_used >= 90)); then
+			status=warn
+		fi
+		emit_check resources "$status" swap "Swap" "$swap_used% used" "$((swap_free / 1024)) MiB available"
+	else
+		emit_check resources info swap "Swap" "No swap configured" "This can be intentional on systems with sufficient memory"
+	fi
+
+	if [[ -r /proc/pressure/memory ]]; then
+		local pressure
+		pressure=$(awk '$1 == "some" { for (i = 1; i <= NF; i++) if ($i ~ /^avg10=/) { sub(/^avg10=/, "", $i); print $i; exit } }' /proc/pressure/memory)
+		status=ok
+		awk -v value="${pressure:-0}" 'BEGIN { exit !(value >= 25) }' && status=error
+		if [[ $status == ok ]]; then
+			awk -v value="${pressure:-0}" 'BEGIN { exit !(value >= 10) }' && status=warn
+		fi
+		emit_check resources "$status" memory-pressure "Memory pressure" "${pressure:-0}% avg10" "Kernel pressure stall information"
+	fi
+}
+
+scan_load() {
+	local load5=0 cpu_count=1 ratio status=ok
+
+	if [[ -r /proc/loadavg ]]; then
+		load5=$(awk '{ print $2 }' /proc/loadavg)
+	fi
+	if command -v nproc >/dev/null 2>&1; then
+		cpu_count=$(nproc 2>/dev/null || printf 1)
+	fi
+	ratio=$(awk -v metric="$load5" -v cpus="$cpu_count" 'BEGIN { if (cpus < 1) cpus = 1; printf "%.2f", metric / cpus }')
+	awk -v value="$ratio" 'BEGIN { exit !(value >= 2) }' && status=error
+	if [[ $status == ok ]]; then
+		awk -v value="$ratio" 'BEGIN { exit !(value >= 1) }' && status=warn
+	fi
+	emit_check resources "$status" cpu-load "System load" "$load5 load over 5 minutes" "$cpu_count logical CPUs; $ratio load per CPU"
+}
+
+scan_storage() {
+	local output source percent mount usage status id
+
+	if ! output=$(run_bounded df -P -l -x tmpfs -x devtmpfs -x squashfs 2>/dev/null); then
+		emit_check storage restricted storage-usage "Filesystem usage" "Unable to read local filesystems" "df failed or timed out"
+		return
+	fi
+
+	while read -r source _ _ _ percent mount; do
+		[[ $source == Filesystem ]] && continue
+		usage=${percent%%%}
+		[[ $usage =~ ^[0-9]+$ ]] || continue
+		status=ok
+		if ((usage >= 95)); then
+			status=error
+		elif ((usage >= 85)); then
+			status=warn
+		fi
+		id=$(printf '%s' "$mount" | tr -cs '[:alnum:]' '-' | sed 's/^-//; s/-$//')
+		[[ -n $id ]] || id=root
+		emit_check storage "$status" "disk-$id" "Filesystem $mount" "$usage% used" "$source"
+	done <<<"$output"
+
+	if output=$(run_bounded df -Pi -l -x tmpfs -x devtmpfs -x squashfs 2>/dev/null); then
+		while read -r source _ _ _ percent mount; do
+			[[ $source == Filesystem ]] && continue
+			usage=${percent%%%}
+			[[ $usage =~ ^[0-9]+$ ]] || continue
+			status=ok
+			if ((usage >= 95)); then
+				status=error
+			elif ((usage >= 85)); then
+				status=warn
+			fi
+			id=$(printf '%s' "$mount" | tr -cs '[:alnum:]' '-' | sed 's/^-//; s/-$//')
+			[[ -n $id ]] || id=root
+			emit_check storage "$status" "inodes-$id" "Inodes $mount" "$usage% used" "$source"
+		done <<<"$output"
+	fi
+
+	if command -v findmnt >/dev/null 2>&1; then
+		local options
+		options=$(findmnt -n -o OPTIONS / 2>/dev/null || true)
+		if [[ ,$options, == *,ro,* ]]; then
+			emit_check storage error root-mount "Root filesystem" "Mounted read-only" "$options"
+		else
+			emit_check storage ok root-mount "Root filesystem" "Mounted read-write" "$options"
+		fi
+	fi
+}
+
+scan_user_services() {
+	local status
+
+	if ! command -v systemctl >/dev/null 2>&1; then
+		emit_check services restricted user-failed-units "User services" "systemctl is unavailable" "User service failures cannot be inspected"
+		return
+	fi
+
+	emit_failed_services user warn
+
+	local audio_units=() unit
+	for unit in pipewire.service pipewire-pulse.service wireplumber.service; do
+		if systemctl --user cat "$unit" >/dev/null 2>&1; then
+			audio_units+=("$unit")
+		fi
+	done
+	if ((${#audio_units[@]} > 0)); then
+		status=ok
+		for unit in "${audio_units[@]}"; do
+			systemctl --user is-active --quiet "$unit" || status=warn
+		done
+		emit_check services "$status" audio-services "Audio services" "$([[ $status == ok ]] && printf running || printf degraded)" "${audio_units[*]}" restart-audio "Restart audio services" user
+	else
+		emit_check services info audio-services "Audio services" "No managed PipeWire units detected" "Audio may use another backend"
+	fi
+}
+
+emit_failed_services() {
+	local scope=$1
+	local failure_status=$2
+	local output count unit load active sub description id privilege repair_id
+	local systemctl_args=()
+
+	if [[ $scope == user ]]; then
+		systemctl_args+=(--user)
+		privilege=user
+	else
+		privilege=system
+	fi
+
+	output=$(run_bounded systemctl "${systemctl_args[@]}" --failed --type=service --no-legend --plain --no-pager 2>/dev/null || true)
+	count=$(awk '$1 ~ /[.]service$/ { count++ } END { print count + 0 }' <<<"$output")
+	if ((count == 0)); then
+		emit_check services ok "$scope-failed-units" "Failed $scope services" "No failed services" "systemctl ${systemctl_args[*]} --failed --type=service"
+		return
+	fi
+
+	while read -r unit load active sub description; do
+		[[ $unit == *.service ]] || continue
+		id=$(printf '%s' "$unit" | tr -cs '[:alnum:]' '-')
+		repair_id="manage-$scope-service|$unit"
+		emit_check services "$failure_status" "$scope-failed-$id" "$unit ($scope)" \
+			"${description:-Failed $scope service}" "Load: ${load:-unknown}; state: ${active:-unknown}/${sub:-unknown}" \
+			"$repair_id" "Service actions" "$privilege"
+	done <<<"$output"
+}
+
+scan_desktop() {
+	local status detail
+
+	if [[ -n ${DISPLAY:-} ]]; then
+		emit_check desktop ok x11-display "X11 display" "${DISPLAY}" "X11 session display is set"
+	else
+		emit_check desktop warn x11-display "X11 display" "DISPLAY is not set" "The dashboard may be running outside the desktop session"
+	fi
+
+	if [[ -n ${DBUS_SESSION_BUS_ADDRESS:-} ]]; then
+		emit_check desktop ok session-dbus "D-Bus session" "Available" "$DBUS_SESSION_BUS_ADDRESS"
+	else
+		emit_check desktop warn session-dbus "D-Bus session" "Unavailable" "DBUS_SESSION_BUS_ADDRESS is not set"
+	fi
+
+	if pgrep -x dwm >/dev/null 2>&1; then
+		emit_check desktop ok dwm-process "dwm" "Running" "The window manager process is active"
+	else
+		emit_check desktop warn dwm-process "dwm" "Not detected" "No process named dwm was found"
+	fi
+
+	if command -v quickshell >/dev/null 2>&1; then
+		detail=$(quickshell --version 2>/dev/null | first_lines 1 || printf available)
+		emit_check desktop ok quickshell-version "Quickshell" "Available" "$detail" restart-quickshell "Restart Quickshell" user
+	else
+		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed dashboard requires Quickshell 0.2.1 or newer" install-dependencies "Open dependency installer" user
+	fi
+
+	if command -v picom >/dev/null 2>&1; then
+		status=warn
+		pgrep -x picom >/dev/null 2>&1 && status=ok
+		emit_check desktop "$status" picom-process "Picom" "$([[ $status == ok ]] && printf running || printf stopped)" "Optional compositor" restart-picom "Restart Picom" user
+	else
+		emit_check desktop info picom-process "Picom" "Not installed" "The compositor is optional" install-dependencies "Open dependency installer" user
+	fi
+
+	local config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+	for detail in \
+		"hotkeys:$config_home/dwm-titus/hotkeys.toml" \
+		"themes:$config_home/dwm-titus/themes.toml" \
+		"rules:$config_home/dwm-titus/window-rules.toml" \
+		"quickshell:$config_home/quickshell/shell.qml"; do
+		local name=${detail%%:*}
+		local path=${detail#*:}
+		if [[ -r $path ]]; then
+			emit_check desktop ok "config-$name" "${name^} configuration" "Readable" "$path"
+		else
+			emit_check desktop error "config-$name" "${name^} configuration" "Missing or unreadable" "$path"
+		fi
+	done
+}
+
+scan_network() {
+	local output
+
+	if command -v ip >/dev/null 2>&1; then
+		output=$(run_bounded ip route show default 2>/dev/null | first_lines 3 || true)
+		if [[ -n $output ]]; then
+			emit_check network ok default-route "Default route" "Configured" "$output"
+		else
+			emit_check network warn default-route "Default route" "Not configured" "The system may be intentionally offline"
+		fi
+	else
+		emit_check network info default-route "Default route" "ip command unavailable" "Route state was not checked"
+	fi
+
+	if command -v nmcli >/dev/null 2>&1; then
+		output=$(run_bounded nmcli -t -f STATE,CONNECTIVITY general 2>/dev/null | first_lines 1 || true)
+		if [[ $output == connected:* ]]; then
+			emit_check network ok networkmanager-state "NetworkManager" "$output" "NetworkManager reports a connected state" restart-networkmanager "Restart NetworkManager" system
+		else
+			emit_check network warn networkmanager-state "NetworkManager" "${output:-unavailable}" "NetworkManager is disconnected or unavailable" restart-networkmanager "Restart NetworkManager" system
+		fi
+	else
+		emit_check network info networkmanager-state "NetworkManager" "nmcli not installed" "Another network manager may be in use"
+	fi
+
+	if command -v resolvectl >/dev/null 2>&1; then
+		output=$(run_bounded resolvectl status 2>/dev/null | awk '/DNS Servers:/ { sub(/^[[:space:]]*/, ""); print; exit }' || true)
+		if [[ -n $output ]]; then
+			emit_check network ok resolver "DNS resolver" "Configured" "$output"
+		else
+			emit_check network warn resolver "DNS resolver" "No resolver reported" "resolvectl did not report DNS servers"
+		fi
+	elif [[ -s /etc/resolv.conf ]]; then
+		emit_check network ok resolver "DNS resolver" "resolv.conf is populated" "$(awk '/^nameserver/ { print; found++; if (found >= 3) exit }' /etc/resolv.conf)"
+	else
+		emit_check network warn resolver "DNS resolver" "No resolver configuration found" "/etc/resolv.conf is empty or missing"
+	fi
+}
+
+scan_package_database() {
+	local os_file=${DWM_HEALTH_OS_RELEASE:-/etc/os-release}
+	local id=unknown id_like='' output='' family=unknown status=ok
+
+	if [[ -r $os_file ]]; then
+		# shellcheck disable=SC1090
+		source "$os_file"
+		id=${ID:-unknown}
+		id_like=${ID_LIKE:-}
+	fi
+	case " $id $id_like " in
+	*" arch "*) family=arch ;;
+	*" fedora "* | *" rhel "* | *" centos "*) family=rhel ;;
+	*" debian "* | *" ubuntu "*) family=debian ;;
+	esac
+
+	case $family in
+	debian)
+		if command -v dpkg >/dev/null 2>&1; then
+			output=$(run_bounded dpkg --audit 2>&1 || true)
+			[[ -z $output ]] || status=warn
+		else
+			output="dpkg is unavailable"
+			status=restricted
+		fi
+		;;
+	arch)
+		if command -v pacman >/dev/null 2>&1; then
+			if ! output=$(run_bounded pacman -Dk 2>&1); then
+				status=warn
+			fi
+		else
+			output="pacman is unavailable"
+			status=restricted
+		fi
+		;;
+	rhel)
+		if command -v dnf >/dev/null 2>&1; then
+			if ! output=$(run_bounded dnf -q --cacheonly check 2>&1); then
+				status=warn
+			fi
+		else
+			output="dnf is unavailable"
+			status=restricted
+		fi
+		;;
+	*)
+		emit_check dependencies info package-database "Package database" "Unsupported distribution family" "$id"
+		return
+		;;
+	esac
+
+	if [[ $status == ok ]]; then
+		emit_check dependencies ok package-database "Package database" "No consistency problems reported" "$family package audit"
+	else
+		emit_check dependencies "$status" package-database "Package database" "Package audit needs attention" "$(first_lines 20 <<<"$output")"
+	fi
+}
+
+scan_hardware_snapshot() {
+	local battery path capacity status
+
+	for path in /sys/class/power_supply/BAT*; do
+		[[ -d $path ]] || continue
+		battery=${path##*/}
+		capacity=$(cat "$path/capacity" 2>/dev/null || printf unknown)
+		status=$(cat "$path/status" 2>/dev/null || printf unknown)
+		emit_check resources info "battery-$battery" "Battery $battery" "$capacity% - $status" "Current charge state"
+	done
+
+	local max_temp=0 temp_file temp
+	for temp_file in /sys/class/thermal/thermal_zone*/temp; do
+		[[ -r $temp_file ]] || continue
+		temp=$(<"$temp_file")
+		[[ $temp =~ ^[0-9]+$ ]] || continue
+		((temp > max_temp)) && max_temp=$temp
+	done
+	if ((max_temp > 0)); then
+		emit_check resources info temperature "Thermal sensors" "$((max_temp / 1000)) C maximum" "Highest readable kernel thermal zone"
+	else
+		emit_check resources info temperature "Thermal sensors" "No readable thermal zones" "Optional sensor coverage is unavailable"
+	fi
+}
+
+scan_dependencies() {
+	local diagnostics
+
+	if diagnostics=$(find_sibling_command dwm-diagnostics); then
+		"$diagnostics" --format health-tsv || true
+	else
+		emit_check dependencies restricted diagnostics "Dependency diagnostics" "dwm-diagnostics is unavailable" "Install the dwm-titus helper scripts"
+	fi
+}
+
+scan_user() {
+	emit_meta overview info scan-user "User scan" "Running" "Read-only session and resource diagnostics"
+	scan_identity
+	scan_memory
+	scan_load
+	scan_storage
+	scan_user_services
+	scan_desktop
+	scan_network
+	scan_package_database
+	scan_hardware_snapshot
+	scan_dependencies
+	emit_meta overview ok scan-user-complete "User scan" "Complete" "Snapshot finished at $(date --iso-8601=seconds 2>/dev/null || date)"
+}
+
+log_evidence() {
+	local file=$1
+	local recurring recent
+
+	recurring=$(sort "$file" | uniq -c | sort -nr | head -25 || true)
+	recent=$(tail -25 "$file" || true)
+	printf 'Recurring: %s | Recent: %s' "$recurring" "$recent"
+}
+
+scan_boot_logs() {
+	local work=$1
+	local journal_file=$work/journal-errors
+	local kernel_file=$work/kernel-errors
+	local count evidence patterns pattern_count kernel_available=0
+
+	if command -v journalctl >/dev/null 2>&1 && run_privileged_bounded journalctl -b -p err --no-pager -q -o cat >"$journal_file" 2>/dev/null; then
+		count=$(awk 'NF { count++ } END { print count + 0 }' "$journal_file")
+		if ((count > 0)); then
+			evidence=$(log_evidence "$journal_file")
+			emit_check boot warn journal-errors "Boot journal errors" "$count current-boot entries" "$evidence"
+		else
+			emit_check boot ok journal-errors "Boot journal errors" "No priority error entries" "journalctl -b -p err"
+		fi
+	else
+		emit_check boot restricted journal-errors "Boot journal errors" "Journal unavailable" "journalctl could not read the current boot"
+		: >"$journal_file"
+	fi
+
+	if command -v journalctl >/dev/null 2>&1 && run_privileged_bounded journalctl -k -b -p err --no-pager -q -o cat >"$kernel_file" 2>/dev/null; then
+		kernel_available=1
+	elif command -v dmesg >/dev/null 2>&1 && run_privileged_bounded dmesg --level=emerg,alert,crit,err >"$kernel_file" 2>/dev/null; then
+		kernel_available=1
+	else
+		emit_check boot restricted kernel-errors "Kernel errors" "Kernel log unavailable" "Neither journalctl nor dmesg returned readable kernel errors"
+		: >"$kernel_file"
+	fi
+
+	count=$(awk 'NF { count++ } END { print count + 0 }' "$kernel_file")
+	if ((count > 0)); then
+		emit_check boot warn kernel-errors "Kernel errors" "$count current-boot entries" "$(log_evidence "$kernel_file")"
+	elif ((kernel_available == 1)); then
+		emit_check boot ok kernel-errors "Kernel errors" "No priority error entries" "Current kernel log"
+	fi
+
+	patterns='out of memory|oom-kill|I/O error|filesystem error|read-only file system|kernel panic|critical temperature|thermal.*critical|EXT4-fs error|BTRFS.*error|XFS.*error'
+	pattern_count=$(cat "$journal_file" "$kernel_file" | grep -Eic "$patterns" || true)
+	if ((pattern_count > 0)); then
+		evidence=$(cat "$journal_file" "$kernel_file" | grep -Ei "$patterns" | first_lines 30 || true)
+		emit_check boot error critical-kernel-events "Critical kernel events" "$pattern_count high-impact entries" "$evidence"
+	else
+		emit_check boot ok critical-kernel-events "Critical kernel events" "No high-impact patterns found" "Checked OOM, filesystem, I/O, panic, and thermal patterns"
+	fi
+
+	if [[ -r /proc/sys/kernel/tainted ]]; then
+		local taint
+		taint=$(</proc/sys/kernel/tainted)
+		if [[ $taint == 0 ]]; then
+			emit_check boot ok kernel-taint "Kernel taint" "Not tainted" "Kernel taint value 0"
+		else
+			emit_check boot warn kernel-taint "Kernel taint" "Taint value $taint" "A proprietary module or kernel fault may have tainted the kernel"
+		fi
+	fi
+}
+
+scan_system_services() {
+	local state ntp synchronized
+
+	if command -v systemctl >/dev/null 2>&1; then
+		emit_failed_services system error
+	else
+		emit_check services restricted system-failed-units "Failed system services" "systemctl unavailable" "System service state was not checked"
+	fi
+
+	if command -v timedatectl >/dev/null 2>&1; then
+		ntp=$(timedatectl show -p NTP --value 2>/dev/null || printf unknown)
+		synchronized=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || printf unknown)
+		if [[ $ntp == yes && $synchronized == yes ]]; then
+			emit_check services ok time-sync "Time synchronization" "Synchronized" "NTP enabled and synchronized" repair-time-sync "Repair time synchronization" system
+		else
+			emit_check services warn time-sync "Time synchronization" "NTP $ntp, synchronized $synchronized" "Clock synchronization needs attention" repair-time-sync "Repair time synchronization" system
+		fi
+	fi
+
+	if systemctl cat NetworkManager.service >/dev/null 2>&1; then
+		state=$(systemctl is-active NetworkManager.service 2>/dev/null || true)
+		emit_check services "$([[ $state == active ]] && printf ok || printf warn)" networkmanager-service "NetworkManager service" "${state:-unknown}" "Known system network service" restart-networkmanager "Restart NetworkManager" system
+	fi
+	if systemctl cat bluetooth.service >/dev/null 2>&1; then
+		state=$(systemctl is-active bluetooth.service 2>/dev/null || true)
+		emit_check services "$([[ $state == active ]] && printf ok || printf warn)" bluetooth-service "Bluetooth service" "${state:-unknown}" "Known system Bluetooth service" restart-bluetooth "Restart Bluetooth" system
+	fi
+}
+
+scan_smart() {
+	local devices device option device_type output device_status count=0
+	local smart_args=()
+
+	if ! command -v smartctl >/dev/null 2>&1; then
+		emit_check storage info smart-health "Drive SMART" "smartctl not installed" "Optional drive health coverage is unavailable"
+		return
+	fi
+
+	devices=$(run_privileged_bounded smartctl --scan-open 2>/dev/null || true)
+	while read -r device option device_type _; do
+		[[ -n $device ]] || continue
+		count=$((count + 1))
+		device_status=ok
+		smart_args=(-H)
+		if [[ $option == -d && -n $device_type ]]; then
+			smart_args+=(-d "$device_type")
+		fi
+		smart_args+=("$device")
+		if ! output=$(run_privileged_bounded smartctl "${smart_args[@]}" 2>&1); then
+			device_status=warn
+		elif grep -Eqi 'FAILED|BAD|critical warning.*0x[1-9a-f]' <<<"$output"; then
+			device_status=error
+		fi
+		local smart_summary=passed
+		[[ $device_status == error ]] && smart_summary=failing
+		[[ $device_status == warn ]] && smart_summary="could not be verified"
+		emit_check storage "$device_status" "smart-${device//\//-}" "Drive health $device" "$smart_summary" "$(first_lines 12 <<<"$output")"
+	done <<<"$devices"
+	if ((count == 0)); then
+		emit_check storage info smart-health "Drive SMART" "No supported devices found" "smartctl did not discover readable devices"
+	fi
+}
+
+scan_system() {
+	if [[ $(privilege_mode) == none ]]; then
+		emit_meta overview restricted scan-system "Privileged scan" "Root authorization required" "Run through scan-privileged"
+		return 1
+	fi
+
+	work=$(mktemp -d)
+	trap 'rm -rf "$work"' EXIT INT HUP TERM
+	emit_meta overview info scan-system "Privileged scan" "Running" "Current-boot system diagnostics"
+	scan_boot_logs "$work"
+	scan_system_services
+	scan_smart
+	emit_meta overview ok scan-system-complete "Privileged scan" "Complete" "Snapshot finished at $(date --iso-8601=seconds 2>/dev/null || date)"
+}
+
+trusted_system_helper() {
+	local candidate resolved owner
+	local candidates=()
+
+	command -v dwm-system-health >/dev/null 2>&1 && candidates+=("$(command -v dwm-system-health)")
+	candidates+=(/usr/local/bin/dwm-system-health /usr/bin/dwm-system-health)
+
+	for candidate in "${candidates[@]}"; do
+		[[ -e $candidate ]] || continue
+		resolved=$(readlink -f -- "$candidate" 2>/dev/null || true)
+		[[ -n $resolved && -f $resolved ]] || continue
+		case $resolved in
+		"${HOME:-/nonexistent}"/* | "${XDG_DATA_HOME:-${HOME:-/nonexistent}/.local/share}"/* | "${XDG_CONFIG_HOME:-${HOME:-/nonexistent}/.config}"/*) continue ;;
+		esac
+		owner=$(stat -c %u -- "$resolved" 2>/dev/null || printf 1)
+		[[ $owner == 0 ]] || continue
+		find "$resolved" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q . || continue
+		printf '%s\n' "$resolved"
+		return 0
+	done
+	return 1
+}
+
+scan_privileged() {
+	local helper sudo_command pkexec_command
+
+	if sudo_command=$(trusted_system_command sudo); then
+		if "$sudo_command" -n -v >/dev/null 2>&1; then
+			DWM_HEALTH_ELEVATOR=sudo "$SCRIPT_DIR/dwm-system-health" scan-system
+			return
+		fi
+	fi
+
+	pkexec_command=$(trusted_system_command pkexec || true)
+	if [[ -z $pkexec_command ]]; then
+		emit_meta overview restricted scan-system "Privileged scan" "No authorization method available" "Install sudo or polkit, then refresh"
+		return 1
+	fi
+	if helper=$(trusted_system_helper); then
+		"$pkexec_command" "$helper" scan-system
+		return
+	fi
+	emit_meta overview restricted scan-system "Privileged scan" "No trusted installed helper" "Run sudo make install-system, then refresh to request polkit authorization"
+	return 1
+}
+
+control_helper_action() {
+	local action=$1
+	local helper
+
+	if helper=$(find_sibling_command dwm-quickshell-controlcenter); then
+		"$helper" action "$action"
+	else
+		printf 'control center helper is unavailable\n' >&2
+		return 1
+	fi
+}
+
+manage_failed_service() {
+	local scope=$1
+	local verb=$2
+	local unit=$3
+	local failed_unit output
+	local systemctl_args=()
+
+	case $scope in
+	user) systemctl_args+=(--user) ;;
+	system) ;;
+	*)
+		printf 'unsupported service scope: %s\n' "$scope" >&2
+		return 2
+		;;
+	esac
+	case $verb in
+	start | stop | restart | disable | enable) ;;
+	*)
+		printf 'unsupported service action: %s\n' "$verb" >&2
+		return 2
+		;;
+	esac
+	if [[ ! $unit =~ ^[^[:space:]/\|]+[.]service$ ]]; then
+		printf 'invalid service unit: %s\n' "$unit" >&2
+		return 2
+	fi
+
+	if [[ $scope == system ]]; then
+		output=$(run_privileged_bounded systemctl --failed --type=service --no-legend --plain --no-pager 2>/dev/null || true)
+	else
+		output=$(run_bounded systemctl "${systemctl_args[@]}" --failed --type=service --no-legend --plain --no-pager 2>/dev/null || true)
+	fi
+	while read -r failed_unit _; do
+		if [[ $failed_unit == "$unit" ]]; then
+			if [[ $scope == system ]]; then
+				run_privileged_bounded systemctl "$verb" -- "$unit"
+			else
+				systemctl "${systemctl_args[@]}" "$verb" -- "$unit"
+			fi
+			return
+		fi
+	done <<<"$output"
+
+	printf 'service is no longer failed: %s\n' "$unit" >&2
+	return 1
+}
+
+run_service_action() {
+	local expected_scope=$1
+	local action=$2
+	local prefix verb unit extra
+
+	IFS='|' read -r prefix verb unit extra <<<"$action"
+	if [[ $prefix != "manage-$expected_scope-service" || -n ${extra:-} ]]; then
+		printf 'invalid %s service repair request\n' "$expected_scope" >&2
+		return 2
+	fi
+	manage_failed_service "$expected_scope" "$verb" "$unit"
+}
+
+repair_user() {
+	local action=${1:-}
+	local unit units=()
+
+	case $action in
+	manage-user-service\|*) run_service_action user "$action" ;;
+	restart-picom) control_helper_action restart-picom ;;
+	restart-quickshell) control_helper_action restart-quickshell ;;
+	restart-audio)
+		command -v systemctl >/dev/null 2>&1 || {
+			printf 'systemctl is unavailable\n' >&2
+			return 1
+		}
+		for unit in pipewire.service pipewire-pulse.service wireplumber.service; do
+			systemctl --user cat "$unit" >/dev/null 2>&1 && units+=("$unit")
+		done
+		((${#units[@]} > 0)) || {
+			printf 'no managed audio services found\n' >&2
+			return 1
+		}
+		systemctl --user restart "${units[@]}"
+		;;
+	install-dependencies)
+		local installer=$SCRIPT_DIR/../install.sh
+		if [[ -x $installer ]] && command -v dwm-terminal >/dev/null 2>&1; then
+			local quoted_dir
+			printf -v quoted_dir '%q' "${installer%/*}"
+			dwm-terminal -e bash -lc "cd $quoted_dir && exec ./install.sh"
+		else
+			control_helper_action dependency-check
+		fi
+		;;
+	*)
+		printf 'unsupported user repair: %s\n' "$action" >&2
+		return 2
+		;;
+	esac
+	emit_record repair overview ok "$action" "Repair completed" "$action completed" "The dashboard will rescan"
+}
+
+repair_system() {
+	local action=${1:-}
+
+	case $action in
+	manage-system-service\|* | restart-networkmanager | restart-bluetooth | repair-time-sync) ;;
+	*)
+		printf 'unsupported system repair: %s\n' "$action" >&2
+		return 2
+		;;
+	esac
+	if [[ $(privilege_mode) == none ]]; then
+		printf 'system repair requires root authorization\n' >&2
+		return 1
+	fi
+
+	case $action in
+	manage-system-service\|*) run_service_action system "$action" ;;
+	restart-networkmanager)
+		run_privileged_bounded systemctl cat NetworkManager.service >/dev/null 2>&1
+		run_privileged_bounded systemctl restart NetworkManager.service
+		;;
+	restart-bluetooth)
+		run_privileged_bounded systemctl cat bluetooth.service >/dev/null 2>&1
+		run_privileged_bounded systemctl restart bluetooth.service
+		;;
+	repair-time-sync)
+		if run_privileged_bounded systemctl cat systemd-timesyncd.service >/dev/null 2>&1; then
+			run_privileged_bounded systemctl enable --now systemd-timesyncd.service
+		elif run_privileged_bounded systemctl cat chronyd.service >/dev/null 2>&1; then
+			run_privileged_bounded systemctl enable --now chronyd.service
+		elif trusted_system_command timedatectl >/dev/null 2>&1; then
+			run_privileged_bounded timedatectl set-ntp true
+		else
+			printf 'no supported time synchronization provider found\n' >&2
+			return 1
+		fi
+		;;
+	esac
+	emit_record repair overview ok "$action" "Repair completed" "$action completed" "The dashboard will rescan" "" "" system
+}
+
+repair_privileged() {
+	local action=${1:-}
+	local helper sudo_command pkexec_command
+
+	case $action in
+	manage-system-service\|* | restart-networkmanager | restart-bluetooth | repair-time-sync) ;;
+	*)
+		printf 'unsupported privileged repair: %s\n' "$action" >&2
+		return 2
+		;;
+	esac
+	if sudo_command=$(trusted_system_command sudo); then
+		if "$sudo_command" -n -v >/dev/null 2>&1; then
+			DWM_HEALTH_ELEVATOR=sudo "$SCRIPT_DIR/dwm-system-health" repair-system "$action"
+			return
+		fi
+	fi
+	pkexec_command=$(trusted_system_command pkexec || true)
+	[[ -n $pkexec_command ]] || {
+		printf 'neither passwordless sudo nor pkexec is available\n' >&2
+		return 1
+	}
+	if helper=$(trusted_system_helper); then
+		"$pkexec_command" "$helper" repair-system "$action"
+	else
+		printf 'no trusted installed health helper found\n' >&2
+		return 1
+	fi
+}
+
+case ${1:-} in
+scan-user)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	scan_user
+	;;
+scan-privileged)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	scan_privileged
+	;;
+scan-system)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	scan_system
+	;;
+repair-user)
+	[[ $# -eq 2 ]] || {
+		usage
+		exit 2
+	}
+	repair_user "$2"
+	;;
+repair-privileged)
+	[[ $# -eq 2 ]] || {
+		usage
+		exit 2
+	}
+	repair_privileged "$2"
+	;;
+repair-system)
+	[[ $# -eq 2 ]] || {
+		usage
+		exit 2
+	}
+	repair_system "$2"
+	;;
+share-evidence)
+	[[ $# -eq 6 ]] || {
+		usage
+		exit 2
+	}
+	share_evidence "$2" "$3" "$4" "$5" "$6"
+	;;
+*)
+	usage
+	exit 2
+	;;
+esac

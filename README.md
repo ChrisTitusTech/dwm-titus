@@ -52,16 +52,30 @@ Profiles:
 |---------|-------------------|
 | `core` | dwm, required X11/session packages, and one terminal |
 | `recommended` | `core` plus Quickshell, Picom, fonts, theming, screenshots, audio, and brightness tools |
-| `full` | `recommended` plus optional extras such as file manager integration, portals, wallpapers, and display-manager setup |
+| `full` | `recommended` plus optional extras such as Thunar with SMB-share browsing, portals, wallpapers, and display-manager setup; x86_64 Fedora can also add Steam, Gamescope, GameMode, and MangoHud after repository approval |
 
 The installer detects the distribution from `/etc/os-release`, resolves package
 names for the detected family, preserves existing `config.h` and user TOML
-files, and installs the managed Quickshell config.
+files, and installs the managed Quickshell config. Upgrades also remove the
+legacy graphical-session enablement that could start XDG applications before
+the X11 display environment was imported.
+
+On x86_64 Fedora, the full profile can enable the
+[`christitustech/copr-fedora`](https://copr.fedorainfracloud.org/coprs/christitustech/copr-fedora/package/gamescope/)
+COPR for the patched Gamescope package and RPM Fusion nonfree for Steam. These
+third-party repositories require a separate interactive confirmation or the
+explicit `--enable-fedora-gaming-repos` flag. After approval, the installer also
+installs both 64-bit and 32-bit GameMode and MangoHud libraries and adds the
+invoking user to the `gamemode` group. Log out and back in before expecting
+GameMode's privileged tuning helpers to work.
 
 For unattended runs:
 
 ```bash
 ./install.sh --non-interactive --yes --profile recommended
+
+# Explicitly approve Fedora gaming repositories for an unattended full install.
+./install.sh --non-interactive --yes --profile full --enable-fedora-gaming-repos
 ```
 
 ### Option 2: Install from the Fedora ISO
@@ -124,13 +138,13 @@ See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 | <kbd>SUPER</kbd> + <kbd>Q</kbd> | Close window |
 | <kbd>SUPER</kbd> + <kbd>J</kbd> / <kbd>K</kbd> | Focus next / previous window |
 | <kbd>SUPER</kbd> + <kbd>H</kbd> / <kbd>L</kbd> | Resize master area |
-| <kbd>SUPER</kbd> + <kbd>T</kbd> | Toggle focused window tiled/floating |
 | <kbd>SUPER</kbd> + <kbd>1-9</kbd> / <kbd>0</kbd> | Switch to tag (workspace 10 uses <kbd>0</kbd>) |
 | <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>1-9</kbd> / <kbd>0</kbd> | Move window to tag (workspace 10 uses <kbd>0</kbd>) |
 | <kbd>SUPER</kbd> + <kbd>T</kbd> | Tile layout |
 | <kbd>SUPER</kbd> + <kbd>F</kbd> | Floating layout |
 | <kbd>SUPER</kbd> + <kbd>M</kbd> | Fullscreen |
 | <kbd>SUPER</kbd> + <kbd>Space</kbd> | Toggle floating |
+| <kbd>SUPER</kbd> + <kbd>Alt</kbd> + <kbd>0</kbd> | Show all tags |
 | <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | Quit dwm |
 | <kbd>SUPER</kbd> + <kbd>Ctrl</kbd> + <kbd>Q</kbd> | Power menu |
 
@@ -191,6 +205,11 @@ Key things to customize in `config.h`:
   profiles under `~/.config/dwm-titus/display-profiles/`
 - Diagnostics: run `dwm-diagnostics` to separate required failures from
   optional degraded desktop features
+- Full system snapshot: open Control Center -> System Health, or run
+  `dwm-system-health scan-user` for the unprivileged structured report. The
+  privileged scan uses cached or `NOPASSWD` sudo access first, then falls back
+  to the running polkit agent and root-owned installed helper for graphical
+  authorization.
 
 **Multi-monitor issues:**
 - If tags don't switch correctly across monitors, run `dwm-diagnostics`

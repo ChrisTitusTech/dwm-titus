@@ -1,15 +1,20 @@
+//@ pragma UseQApplication
+
 import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.SystemTray
 import qs.controlcenter
 import qs.controls
+import qs.health
 import qs.launcher
 import qs.network
 import qs.notifications
 import qs.panel
 import qs.power
 import qs.state
+
+pragma ComponentBehavior: Bound
 
 ShellRoot {
     id: root
@@ -46,6 +51,10 @@ ShellRoot {
 
     ControlCenterModel {
         id: controlCenterModel
+    }
+
+    SystemHealthModel {
+        id: systemHealthModel
     }
 
     LazyLoader {
@@ -167,7 +176,7 @@ ShellRoot {
         }
 
         function volumeStatus(): string {
-            return controlsModel.volumeText;
+            return controlsModel.volumeDisplayText;
         }
 
         function volumeSet(percent: int): void {
@@ -244,6 +253,30 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "systemhealth"
+
+        function close(): void {
+            systemHealthModel.close();
+        }
+
+        function open(): void {
+            systemHealthModel.openOnScreen(panelWindow.screen);
+        }
+
+        function refresh(): void {
+            systemHealthModel.refresh();
+        }
+
+        function toggle(): void {
+            if (systemHealthModel.visible) {
+                systemHealthModel.close();
+            } else {
+                systemHealthModel.openOnScreen(panelWindow.screen);
+            }
+        }
+    }
+
+    IpcHandler {
         target: "tray"
 
         function count(): int {
@@ -259,6 +292,24 @@ ShellRoot {
             }
 
             return ids.join("\n");
+        }
+
+        function details(): string {
+            const items = SystemTray.items.values;
+            const rows = [];
+
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                rows.push([
+                    item.id || "unknown",
+                    item.title || "",
+                    item.icon || "",
+                    item.hasMenu ? "menu" : "no-menu",
+                    item.status || ""
+                ].join("\t"));
+            }
+
+            return rows.join("\n");
         }
     }
 
@@ -311,12 +362,15 @@ ShellRoot {
         controlCenterModel: controlCenterModel
         panelWindow: panelWindow
         powerMenuModel: powerMenuModel
-        controlsModel: controlsModel
-        bluetoothModel: bluetoothModel
-        networkModel: networkModel
+        healthModel: systemHealthModel
     }
 
     UtilityDetailWindow {
         controlCenterModel: controlCenterModel
+    }
+
+    SystemHealthWindow {
+        healthModel: systemHealthModel
+        screen: systemHealthModel.targetScreen ? systemHealthModel.targetScreen : panelWindow.screen
     }
 }

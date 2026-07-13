@@ -9,6 +9,3 @@ After=basic.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/true
-
-[Install]
-WantedBy=default.target

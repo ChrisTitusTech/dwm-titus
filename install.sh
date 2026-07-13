@@ -24,6 +24,8 @@ Options:
                          Defaults to DWM_INSTALL_PROFILE or full.
   --non-interactive      Use unattended defaults and do not prompt.
   --yes                  Accept the interactive install summary.
+  --enable-fedora-gaming-repos
+                         Approve the Gamescope COPR and RPM Fusion nonfree.
   --dry-run              Print the resolved plan and exit before changes.
   -h, --help             Show this help.
 EOF
@@ -62,9 +64,11 @@ MESLO_SHA256="13b502ac8c2bd9d3161018064560e23cd42b175bb730780a270975265a19ad57"
 NORDIC_THEME_URL="https://github.com/EliverLara/Nordic.git"
 NORDIC_THEME_REF="master"
 ARCH="$(uname -m)"
+FEDORA_GAMING_COPR="christitustech/copr-fedora"
 INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
 NON_INTERACTIVE=false
 ASSUME_YES=false
+FEDORA_GAMING_REPOS_APPROVED=false
 DRY_RUN=false
 
 while (($# > 0)); do
@@ -88,6 +92,10 @@ while (($# > 0)); do
 		;;
 	--yes)
 		ASSUME_YES=true
+		shift
+		;;
+	--enable-fedora-gaming-repos)
+		FEDORA_GAMING_REPOS_APPROVED=true
 		shift
 		;;
 	--dry-run)
@@ -141,48 +149,105 @@ install_optional_profile() {
 	[[ $INSTALL_PROFILE == "full" ]]
 }
 
-install_arch_dank_aur_integrations() {
-	local package
-	local build_dir
-	local package_dir
-	local built_packages=()
+fedora_gaming_profile() {
+	[[ $DISTRO_ID == "fedora" && $INSTALL_PROFILE == "full" && $ARCH == "x86_64" ]]
+}
 
-	[[ $DISTRO_FAMILY == "arch" ]] || return 0
+confirm_fedora_gaming_repositories() {
+	local answer
 
-	while IFS= read -r package; do
-		[[ -n $package ]] || continue
-		if pacman -Q "$package" &>/dev/null; then
-			ok "$package is already installed."
-			continue
-		fi
+	if ! fedora_gaming_profile || [[ $FEDORA_GAMING_REPOS_APPROVED == true ]]; then
+		return
+	fi
+	if [[ $NON_INTERACTIVE == true ]]; then
+		warn "Skipping Fedora gaming packages because third-party repositories were not approved."
+		warn "Re-run with --enable-fedora-gaming-repos to approve the Gamescope COPR and RPM Fusion nonfree."
+		return
+	fi
 
-		build_dir="$(mktemp -d)"
-		package_dir="$build_dir/$package"
-		info "Building AUR integration: $package"
-		if ! git clone --depth 1 "https://aur.archlinux.org/$package.git" "$package_dir"; then
-			rm -rf "$build_dir"
-			err "Failed to clone AUR package: $package"
+	printf 'Enable the %s COPR and RPM Fusion nonfree for Fedora gaming packages? [y/N] ' \
+		"$FEDORA_GAMING_COPR"
+	read -r answer
+	case "$answer" in
+	y | Y | yes | YES)
+		FEDORA_GAMING_REPOS_APPROVED=true
+		;;
+	*)
+		warn "Fedora gaming repositories declined; skipping Steam, Gamescope, GameMode, and MangoHud."
+		;;
+	esac
+}
+
+configure_fedora_gaming_repositories() {
+	local fedora_release
+	local plugin_package
+	local rpmfusion_release_url
+
+	if [[ $DISTRO_ID != "fedora" || $INSTALL_PROFILE != "full" || $ARCH != "x86_64" ]]; then
+		return 1
+	fi
+	if [[ $FEDORA_GAMING_REPOS_APPROVED != true ]]; then
+		return 1
+	fi
+
+	if ! dnf copr --help &>/dev/null; then
+		info "Installing the DNF COPR plugin..."
+		for plugin_package in dnf5-plugins dnf-plugins-core; do
+			if install_packages "$plugin_package"; then
+				break
+			fi
+		done
+		if ! dnf copr --help &>/dev/null; then
+			warn "Could not install a working DNF COPR plugin; skipping Fedora gaming packages."
 			return 1
 		fi
-		if ! (
-			cd "$package_dir"
-			makepkg --syncdeps --needed --noconfirm
-		); then
-			rm -rf "$build_dir"
-			err "Failed to build AUR package: $package"
-			return 1
-		fi
+	fi
 
-		mapfile -t built_packages < <(find "$package_dir" -maxdepth 1 -type f -name '*.pkg.tar.*' ! -name '*-debug-*.pkg.tar.*' -print)
-		if ((${#built_packages[@]} == 0)); then
-			rm -rf "$build_dir"
-			err "No installable package was produced for: $package"
-			return 1
-		fi
-		sudo pacman -U --needed --noconfirm "${built_packages[@]}"
-		rm -rf "$build_dir"
-		ok "$package installed from the AUR."
-	done < <(dwm_packages arch dank-aur)
+	if ! command -v rpm &>/dev/null; then
+		warn "rpm is unavailable; cannot determine the Fedora release for RPM Fusion."
+		return 1
+	fi
+	fedora_release=$(rpm -E '%fedora')
+	case "$fedora_release" in
+	'' | *[!0-9]*)
+		warn "Could not determine the numeric Fedora release for RPM Fusion."
+		return 1
+		;;
+	esac
+	rpmfusion_release_url="https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${fedora_release}.noarch.rpm"
+	info "Enabling RPM Fusion nonfree for Steam..."
+	if ! sudo dnf install -y "$rpmfusion_release_url"; then
+		warn "Could not enable RPM Fusion nonfree; skipping Fedora gaming packages."
+		return 1
+	fi
+
+	info "Enabling the $FEDORA_GAMING_COPR COPR for the patched Gamescope package..."
+	if ! sudo dnf copr enable -y "$FEDORA_GAMING_COPR"; then
+		warn "Could not enable $FEDORA_GAMING_COPR; skipping Fedora gaming packages."
+		return 1
+	fi
+}
+
+configure_fedora_gamemode_access() {
+	local target_user
+
+	if [[ $DISTRO_ID != "fedora" || $INSTALL_PROFILE != "full" ]]; then
+		return
+	fi
+	if ! getent group gamemode >/dev/null 2>&1; then
+		warn "GameMode was not installed; skipping privileged tuning access."
+		return
+	fi
+
+	target_user=$(id -un)
+	if id -nG "$target_user" | tr ' ' '\n' | command grep -Fxq gamemode; then
+		ok "$target_user already has GameMode tuning access."
+		return
+	fi
+
+	info "Adding $target_user to the gamemode group..."
+	sudo usermod -aG gamemode "$target_user"
+	warn "Log out and back in before using GameMode privileged tuning."
 }
 
 package_line() {
@@ -220,8 +285,13 @@ print_install_summary() {
 	fi
 	if install_optional_profile; then
 		print_summary_profile "Optional extras" optional
-		if [[ $DISTRO_FAMILY == "arch" ]]; then
-			print_summary_profile "DankShell AUR integrations" dank-aur
+		if fedora_gaming_profile; then
+			print_summary_profile "Fedora gaming packages" gaming
+			if [[ $FEDORA_GAMING_REPOS_APPROVED == true ]]; then
+				printf '  Third-party repositories: approved\n'
+			else
+				printf '  Third-party repositories: require separate confirmation\n'
+			fi
 		fi
 	else
 		printf '  Optional extras: skipped\n'
@@ -437,6 +507,7 @@ info "Family: $DISTRO_FAMILY"
 info "Package manager: $PKG_CMD"
 info "Install profile: $INSTALL_PROFILE"
 confirm_install_summary
+confirm_fedora_gaming_repositories
 
 if [[ $NON_INTERACTIVE != true ]]; then
 	"$REPO_DIR/scripts/configure-build.sh"
@@ -499,9 +570,18 @@ if install_optional_profile; then
 		sudo systemctl enable NetworkManager.service
 		sudo systemctl enable bluetooth.service
 	fi
-	if ! install_arch_dank_aur_integrations; then
-		err "DankShell AUR integrations could not be installed."
-		exit 1
+	if fedora_gaming_profile; then
+		if [[ $FEDORA_GAMING_REPOS_APPROVED != true ]]; then
+			warn "Fedora gaming packages were skipped because their repositories were not approved."
+		elif configure_fedora_gaming_repositories; then
+			info "Installing Fedora gaming packages..."
+			if ! dwm_install_available_package_profile gaming; then
+				warn "Some Fedora gaming packages were unavailable in the approved repositories."
+			fi
+			configure_fedora_gamemode_access
+		else
+			warn "Fedora gaming repository setup failed; no gaming packages were installed."
+		fi
 	fi
 	ok "Optional desktop extras processed."
 else

@@ -102,6 +102,13 @@ startup, configuration deployment, and the core runtime checks in `SPEC.md`.
   the managed shell. After Quickshell changes, validate `quickshell --no-duplicate`
   in a real or nested X11 session and confirm the Quickshell process is near
   idle when the launcher is closed.
+- For Quickshell QML linting, stock `qmllint` must be given explicit Qt and
+  Quickshell QML import roots, such as `/usr/lib64/qt6/qml` or
+  `/usr/lib/qt6/qml`, and a lint-only `qs.core/qmldir` module map when checking
+  files that import this repository's `qs.core` helpers. `QMLLS_BUILD_DIRS`
+  and `QML_IMPORT_PATH` should mirror those roots for language-server tooling.
+  Do not treat plain `qmllint` import failures as runtime failures until the
+  configured import paths have been verified.
 - Keep existing keybindings, window rules, EWMH behavior, multi-monitor
   behavior, and autostart behavior unless the task explicitly changes them.
 - When changing defaults, update the relevant documentation and migration
@@ -151,6 +158,10 @@ For shell changes:
 shellcheck install.sh install-arm.sh scripts/*.sh
 shfmt -d install.sh install-arm.sh scripts/*.sh
 ```
+
+For Quickshell QML changes, run `qmllint` with the explicit Qt/Quickshell QML
+module roots documented in `SPEC.md`, and validate the managed shell in a real
+or nested X11 session before declaring runtime behavior verified.
 
 For installer or portability changes, validate in clean containers or virtual
 machines representing:

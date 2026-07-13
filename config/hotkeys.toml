@@ -34,7 +34,7 @@
 #          setcfact          → resize window in stack slot      (f=0.25 / f=-0.25 / f=0.00)
 #          setlayout         → switch layout                    (layout_idx=0/1/2)
 #                               0=tiling  1=floating  2=monocle
-#          togglefloating    → float or tile focused window (SUPER+T only)
+#          togglefloating    → float or tile focused window
 #          fullscreen        → true fullscreen (hides bar)
 #          togglefakefullscreen → fullscreen look, bar still works
 #          togglebar         → show/hide the status bar
@@ -63,7 +63,7 @@ keys = [
   { mod="SUPER",            key="r",       desc="App launcher",            func="spawn",       cmd="quickshell ipc --path \"${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml\" call launcher toggle" },
   { mod="SUPER",            key="x",       desc="Terminal",                func="spawn",       exec=["$terminal"] },
   { mod="SUPER",            key="w",       desc="Looking Glass (VM)",      func="spawn",       cmd="looking-glass-client -F" },
-  { mod="SUPER SHIFT",      key="w",       desc="Randomize wallpaper",     func="spawn",       cmd="feh --randomize --bg-fill ~/Pictures/backgrounds/*" },
+  { mod="SUPER SHIFT",      key="w",       desc="Randomize wallpaper",     func="spawn",       cmd="dwm-quickshell-controlcenter action reload-wallpaper" },
 
   # ── Web apps ─────────────────────────────────────────────────────────────────
   { mod="SUPER",            key="a",       desc="ChatGPT",                 func="spawn",       exec=["$webapp", "https://chatgpt.com"] },
@@ -112,8 +112,11 @@ keys = [
   { mod="SUPER SHIFT",      key="o",       desc="Cfact reset",             func="setcfact",    f=0.00 },
 
   # ── Layouts  (0=tiling  1=floating  2=monocle) ───────────────────────────────
-  { mod="SUPER",            key="t",       desc="Toggle tiled/floating",   func="togglefloating" },
+  { mod="SUPER",            key="t",       desc="Tile layout",             func="setlayout",   layout_idx=0 },
+  { mod="SUPER",            key="f",       desc="Float layout",            func="setlayout",   layout_idx=1 },
   { mod="SUPER",            key="m",       desc="Fullscreen",              func="fullscreen" },
+  { mod="SUPER SHIFT",      key="m",       desc="Toggle floating window",  func="togglefloating" },
+  { mod="SUPER",            key="space",   desc="Toggle float/tile",       func="togglefloating" },
   { mod="SUPER SHIFT",      key="y",       desc="Fake fullscreen",         func="togglefakefullscreen" },
   { mod="SUPER SHIFT",      key="b",       desc="Toggle bar",              func="togglebar" },
 

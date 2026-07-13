@@ -30,12 +30,14 @@ INSTALL_COMMANDS = \
 	scripts/dwm-display-profile \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
+	scripts/dwm-lock-watch \
 	scripts/dwm-quickshell-launcher \
 	scripts/dwm-quickshell-controls \
 	scripts/dwm-quickshell-controlcenter \
 	scripts/dwm-quickshell-network \
 	scripts/dwm-quickshell-state \
 	scripts/dwm-status \
+	scripts/dwm-system-health \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
 	scripts/dwm-titus-release \
@@ -164,6 +166,8 @@ install-user:
 	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
 	test -f ${CFG_DIR}/dwm-titus/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
 	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
+	@echo "==> Migrating legacy graphical-session startup..."
+	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/migrate-graphical-session.sh
 	@echo "==> Installing font aliases for cross-distro naming..."
 	mkdir -p ${CFG_DIR}/fontconfig/conf.d
 	if [ ! -f ${CFG_DIR}/fontconfig/conf.d/50-meslolgs-nerd-font-aliases.conf ]; then \
@@ -246,13 +250,19 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-terminal scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
+
+check-session-migration:
+	tests/test-graphical-session-migration.sh
+
+check-screenshot:
+	tests/test-dwm-screenshot.sh
 
 check-xvfb-runtime: all
 	tests/test-xvfb-runtime.sh
@@ -293,6 +303,12 @@ check-quickshell-controls:
 check-quickshell-controlcenter:
 	tests/test-quickshell-controlcenter.sh
 
+check-quickshell-health-xvfb:
+	tests/test-quickshell-health-xvfb.sh
+
+check-system-health:
+	tests/test-system-health.sh
+
 check-lightdm-config:
 	tests/test-lightdm-config.sh
 
@@ -309,6 +325,10 @@ check-kickstart:
 		grep -Fqx 'firstboot --disable' "$$ks"; \
 	done
 	tests/test-kickstart-variants.sh
+	$(MAKE) check-fedora-iso-builder
+
+check-fedora-iso-builder:
+	tests/test-fedora-iso-builder.sh
 
 check-install: all
 	@set -eu; \
@@ -413,10 +433,13 @@ check:
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-controlcenter
+	$(MAKE) check-system-health
 	$(MAKE) check-quickshell-network
 	$(MAKE) check-terminal
 	$(MAKE) check-lock
 	$(MAKE) check-session-guards
+	$(MAKE) check-session-migration
+	$(MAKE) check-screenshot
 	$(MAKE) check-kickstart
 	$(MAKE) check-install
 	$(MAKE) check-install-manifest
@@ -426,8 +449,8 @@ check:
 
 .PHONY: all check check-build-config check-build-deps check-default-apps \
 	check-container-smoke \
-	check-display-profile check-format check-install \
+	check-display-profile check-fedora-iso-builder check-format check-install \
 	check-install-manifest check-install-preservation check-kickstart check-lock \
-	check-session-guards check-shell check-diagnostics check-status \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-network check-lightdm-config check-terminal clean install install-system install-user \
+	check-session-guards check-session-migration check-screenshot check-shell check-diagnostics check-status check-system-health \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-health-xvfb check-quickshell-network check-lightdm-config check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall
