@@ -105,6 +105,11 @@ done
 
 for package in steam gamescope gamemode.x86_64 gamemode.i686 mangohud.x86_64 mangohud.i686; do
 	DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel full | grep -Fx "$package" >/dev/null
+	DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel gaming | grep -Fx "$package" >/dev/null
+	if DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel optional | grep -Fx "$package" >/dev/null; then
+		printf 'Fedora gaming package leaked into the generic optional profile: %s\n' "$package" >&2
+		exit 1
+	fi
 	if DISTRO_ID=fedora ARCH=aarch64 dwm_packages rhel full | grep -Fx "$package" >/dev/null; then
 		printf 'x86-only Fedora gaming package leaked into aarch64 mapping: %s\n' "$package" >&2
 		exit 1

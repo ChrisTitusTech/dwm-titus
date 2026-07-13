@@ -182,14 +182,14 @@ dwm_packages() {
 	*:optional)
 		dwm_packages "$family" theme-optional
 		dwm_packages "$family" desktop-optional
-		if [[ $family == rhel && ${DISTRO_ID:-} == fedora ]]; then
-			dwm_packages "$family" gaming
-		fi
 		;;
 	*:full)
 		dwm_packages "$family" required
 		dwm_packages "$family" recommended
 		dwm_packages "$family" optional
+		if [[ $family == rhel && ${DISTRO_ID:-} == fedora ]]; then
+			dwm_packages "$family" gaming
+		fi
 		;;
 	*)
 		return 1

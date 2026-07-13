@@ -52,7 +52,7 @@ Profiles:
 |---------|-------------------|
 | `core` | dwm, required X11/session packages, and one terminal |
 | `recommended` | `core` plus Quickshell, Picom, fonts, theming, screenshots, audio, and brightness tools |
-| `full` | `recommended` plus optional extras such as Thunar with SMB-share browsing, portals, wallpapers, and display-manager setup; x86_64 Fedora also adds Steam, Gamescope, GameMode, and MangoHud |
+| `full` | `recommended` plus optional extras such as Thunar with SMB-share browsing, portals, wallpapers, and display-manager setup; x86_64 Fedora can also add Steam, Gamescope, GameMode, and MangoHud after repository approval |
 
 The installer detects the distribution from `/etc/os-release`, resolves package
 names for the detected family, preserves existing `config.h` and user TOML
@@ -60,17 +60,22 @@ files, and installs the managed Quickshell config. Upgrades also remove the
 legacy graphical-session enablement that could start XDG applications before
 the X11 display environment was imported.
 
-On x86_64 Fedora, the full profile enables the
+On x86_64 Fedora, the full profile can enable the
 [`christitustech/copr-fedora`](https://copr.fedorainfracloud.org/coprs/christitustech/copr-fedora/package/gamescope/)
-COPR for the patched Gamescope package. It also installs both 64-bit and 32-bit
-GameMode and MangoHud libraries and adds the invoking user to the `gamemode`
-group. Log out and back in before expecting GameMode's privileged tuning
-helpers to work.
+COPR for the patched Gamescope package and RPM Fusion nonfree for Steam. These
+third-party repositories require a separate interactive confirmation or the
+explicit `--enable-fedora-gaming-repos` flag. After approval, the installer also
+installs both 64-bit and 32-bit GameMode and MangoHud libraries and adds the
+invoking user to the `gamemode` group. Log out and back in before expecting
+GameMode's privileged tuning helpers to work.
 
 For unattended runs:
 
 ```bash
 ./install.sh --non-interactive --yes --profile recommended
+
+# Explicitly approve Fedora gaming repositories for an unattended full install.
+./install.sh --non-interactive --yes --profile full --enable-fedora-gaming-repos
 ```
 
 ### Option 2: Install from the Fedora ISO

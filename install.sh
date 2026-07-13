@@ -24,6 +24,8 @@ Options:
                          Defaults to DWM_INSTALL_PROFILE or full.
   --non-interactive      Use unattended defaults and do not prompt.
   --yes                  Accept the interactive install summary.
+  --enable-fedora-gaming-repos
+                         Approve the Gamescope COPR and RPM Fusion nonfree.
   --dry-run              Print the resolved plan and exit before changes.
   -h, --help             Show this help.
 EOF
@@ -66,6 +68,7 @@ FEDORA_GAMING_COPR="christitustech/copr-fedora"
 INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
 NON_INTERACTIVE=false
 ASSUME_YES=false
+FEDORA_GAMING_REPOS_APPROVED=false
 DRY_RUN=false
 
 while (($# > 0)); do
@@ -89,6 +92,10 @@ while (($# > 0)); do
 		;;
 	--yes)
 		ASSUME_YES=true
+		shift
+		;;
+	--enable-fedora-gaming-repos)
+		FEDORA_GAMING_REPOS_APPROVED=true
 		shift
 		;;
 	--dry-run)
@@ -142,9 +149,44 @@ install_optional_profile() {
 	[[ $INSTALL_PROFILE == "full" ]]
 }
 
-configure_fedora_gaming_repository() {
-	if [[ $DISTRO_ID != "fedora" || $INSTALL_PROFILE != "full" || $ARCH != "x86_64" ]]; then
+fedora_gaming_profile() {
+	[[ $DISTRO_ID == "fedora" && $INSTALL_PROFILE == "full" && $ARCH == "x86_64" ]]
+}
+
+confirm_fedora_gaming_repositories() {
+	local answer
+
+	if ! fedora_gaming_profile || [[ $FEDORA_GAMING_REPOS_APPROVED == true ]]; then
 		return
+	fi
+	if [[ $NON_INTERACTIVE == true ]]; then
+		warn "Skipping Fedora gaming packages because third-party repositories were not approved."
+		warn "Re-run with --enable-fedora-gaming-repos to approve the Gamescope COPR and RPM Fusion nonfree."
+		return
+	fi
+
+	printf 'Enable the %s COPR and RPM Fusion nonfree for Fedora gaming packages? [y/N] ' \
+		"$FEDORA_GAMING_COPR"
+	read -r answer
+	case "$answer" in
+	y | Y | yes | YES)
+		FEDORA_GAMING_REPOS_APPROVED=true
+		;;
+	*)
+		warn "Fedora gaming repositories declined; skipping Steam, Gamescope, GameMode, and MangoHud."
+		;;
+	esac
+}
+
+configure_fedora_gaming_repositories() {
+	local fedora_release
+	local rpmfusion_release_url
+
+	if [[ $DISTRO_ID != "fedora" || $INSTALL_PROFILE != "full" || $ARCH != "x86_64" ]]; then
+		return 1
+	fi
+	if [[ $FEDORA_GAMING_REPOS_APPROVED != true ]]; then
+		return 1
 	fi
 
 	if ! dnf copr --help &>/dev/null; then
@@ -155,9 +197,27 @@ configure_fedora_gaming_repository() {
 		fi
 	fi
 
+	if ! command -v rpm &>/dev/null; then
+		warn "rpm is unavailable; cannot determine the Fedora release for RPM Fusion."
+		return 1
+	fi
+	fedora_release=$(rpm -E '%fedora')
+	case "$fedora_release" in
+	'' | *[!0-9]*)
+		warn "Could not determine the numeric Fedora release for RPM Fusion."
+		return 1
+		;;
+	esac
+	rpmfusion_release_url="https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${fedora_release}.noarch.rpm"
+	info "Enabling RPM Fusion nonfree for Steam..."
+	if ! sudo dnf install -y "$rpmfusion_release_url"; then
+		warn "Could not enable RPM Fusion nonfree; skipping Fedora gaming packages."
+		return 1
+	fi
+
 	info "Enabling the $FEDORA_GAMING_COPR COPR for the patched Gamescope package..."
 	if ! sudo dnf copr enable -y "$FEDORA_GAMING_COPR"; then
-		warn "Could not enable $FEDORA_GAMING_COPR; Gamescope may be unavailable."
+		warn "Could not enable $FEDORA_GAMING_COPR; skipping Fedora gaming packages."
 		return 1
 	fi
 }
@@ -219,8 +279,13 @@ print_install_summary() {
 	fi
 	if install_optional_profile; then
 		print_summary_profile "Optional extras" optional
-		if [[ $DISTRO_ID == "fedora" && $ARCH == "x86_64" ]]; then
-			printf '  Third-party repository: COPR %s\n' "$FEDORA_GAMING_COPR"
+		if fedora_gaming_profile; then
+			print_summary_profile "Fedora gaming packages" gaming
+			if [[ $FEDORA_GAMING_REPOS_APPROVED == true ]]; then
+				printf '  Third-party repositories: approved\n'
+			else
+				printf '  Third-party repositories: require separate confirmation\n'
+			fi
 		fi
 	else
 		printf '  Optional extras: skipped\n'
@@ -436,6 +501,7 @@ info "Family: $DISTRO_FAMILY"
 info "Package manager: $PKG_CMD"
 info "Install profile: $INSTALL_PROFILE"
 confirm_install_summary
+confirm_fedora_gaming_repositories
 
 if [[ $NON_INTERACTIVE != true ]]; then
 	"$REPO_DIR/scripts/configure-build.sh"
@@ -491,11 +557,22 @@ fi
 # ── Optional desktop extras ──────────────────────────────
 if install_optional_profile; then
 	info "Installing optional desktop extras..."
-	configure_fedora_gaming_repository || true
 	if ! dwm_install_available_package_profile optional; then
 		warn "Some optional desktop extras were unavailable in enabled repositories."
 	fi
-	configure_fedora_gamemode_access
+	if fedora_gaming_profile; then
+		if [[ $FEDORA_GAMING_REPOS_APPROVED != true ]]; then
+			warn "Fedora gaming packages were skipped because their repositories were not approved."
+		elif configure_fedora_gaming_repositories; then
+			info "Installing Fedora gaming packages..."
+			if ! dwm_install_available_package_profile gaming; then
+				warn "Some Fedora gaming packages were unavailable in the approved repositories."
+			fi
+			configure_fedora_gamemode_access
+		else
+			warn "Fedora gaming repository setup failed; no gaming packages were installed."
+		fi
+	fi
 	ok "Optional desktop extras processed."
 else
 	warn "Skipping optional desktop extras for $INSTALL_PROFILE profile."
@@ -606,7 +683,6 @@ sudo make install \
 	DATADIR="/usr/share" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
 	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-"$REPO_DIR/scripts/migrate-graphical-session.sh"
 configure_seeded_terminal "$HOTKEYS_FILE" "$terminal"
 
 # ── Done ─────────────────────────────────────────────────
