@@ -64,6 +64,9 @@ PopupWindow {
     onVisibleChanged: {
         if (visible) {
             sidePanel = "none";
+            Qt.callLater(function() {
+                controlCard.forceActiveFocus();
+            });
         } else {
             root.controlCenterModel.close();
         }
@@ -99,13 +102,6 @@ PopupWindow {
         }
     }
 
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-            root.controlCenterModel.close();
-            event.accepted = true;
-        }
-    }
-
     RowLayout {
         anchors.fill: parent
         spacing: root.gap
@@ -118,6 +114,14 @@ PopupWindow {
             Layout.alignment: Qt.AlignTop
             margin: 12
             implicitHeight: controlColumn.implicitHeight + margin * 2
+            focus: true
+
+            Keys.onPressed: function(event) {
+                if (event.key === Qt.Key_Escape) {
+                    root.controlCenterModel.close();
+                    event.accepted = true;
+                }
+            }
 
             ColumnLayout {
                 id: controlColumn

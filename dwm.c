@@ -2269,7 +2269,8 @@ resizemouse(const Arg *arg)
 		return;
 	if (c->isfullscreen && c->fakefullscreen != 1) /* no support resizing fullscreen windows by mouse */
 		return;
-	if (!c->isfloating && selmon->lt[selmon->sellt]->arrange == tile) {
+	if (!c->isfloating && selmon->lt[selmon->sellt]->arrange == tile
+	&& (nexttiled(selmon->clients) != c || nexttiled(c->next))) {
 		resizetiledmouse(arg);
 		return;
 	}

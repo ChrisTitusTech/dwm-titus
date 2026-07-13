@@ -240,6 +240,8 @@ printf '%s\n' \
 	'  { mod="SUPER", key="1", desc="Xvfb tag 1", func="view", ui=1 },' \
 	'  { mod="SUPER", key="m", desc="Xvfb fullscreen", func="fullscreen" },' \
 	'  { mod="SUPER", key="o", desc="Xvfb monocle", func="setlayout", layout_idx=2 },' \
+	'  { mod="SUPER", key="t", desc="Xvfb tile", func="setlayout", layout_idx=0 },' \
+	'  { mod="SUPER", key="f", desc="Xvfb toggle floating", func="togglefloating" },' \
 	'  { mod="SUPER", key="v", desc="Xvfb mouse resize", func="resizemouse" },' \
 	'  { mod="SUPER", key="u", desc="Xvfb reload tag", func="view", ui=16 },' \
 	']' >"$home/.config/dwm-titus/hotkeys.toml"
@@ -278,6 +280,28 @@ floating_width=$(printf '%s\n' "$floating_geometry" | awk -F= '$1 == "WIDTH" { p
 floating_height=$(printf '%s\n' "$floating_geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
 if [ "$floating_width" -ge "$monocle_width" ] || [ "$floating_height" -ge "$monocle_height" ]; then
 	printf '%s\n' "monocle mouse resize did not fall back to floating resize" >&2
+	exit 1
+fi
+
+DISPLAY=$display xdotool key Super+t
+DISPLAY=$display xdotool key Super+f
+sleep 0.2
+single_tiled_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$win")
+single_tiled_width=$(printf '%s\n' "$single_tiled_geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
+single_tiled_height=$(printf '%s\n' "$single_tiled_geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+
+DISPLAY=$display xdotool mousemove --window "$win" 100 100
+DISPLAY=$display xdotool key Super+v
+sleep 0.05
+DISPLAY=$display xdotool mousemove_relative --sync 120 90
+DISPLAY=$display xdotool click 3
+sleep 0.2
+
+single_floating_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$win")
+single_floating_width=$(printf '%s\n' "$single_floating_geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
+single_floating_height=$(printf '%s\n' "$single_floating_geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+if [ "$single_floating_width" -ge "$single_tiled_width" ] || [ "$single_floating_height" -ge "$single_tiled_height" ]; then
+	printf '%s\n' "single tiled client mouse resize did not fall back to floating resize" >&2
 	exit 1
 fi
 
