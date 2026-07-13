@@ -24,9 +24,16 @@ required_repos=(
 	'repo --name="rpmfusion-nonfree-tainted"'
 	'repo --name="brave-browser"'
 	'repo --name="mwt-packages"'
+	'repo --name="christitustech-copr-fedora"'
 )
 
 required_packages=(
+	steam
+	gamescope
+	gamemode.x86_64
+	gamemode.i686
+	mangohud.x86_64
+	mangohud.i686
 	quickshell
 	Thunar
 	gvfs
@@ -49,14 +56,14 @@ required_packages=(
 )
 
 mapfile -t mapped_fedora_packages < <(
-	DISTRO_ID=fedora dwm_packages rhel full | awk 'NF' | sort -u
+	DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel full | awk 'NF' | sort -u
 )
 
 for mapping in arch:gvfs-smb rhel:gvfs-smb debian:gvfs-backends; do
 	family=${mapping%%:*}
 	package=${mapping#*:}
 	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
-		dwm_packages "$family" full | grep -Fxq "$package"
+		dwm_packages "$family" full | grep -Fx "$package" >/dev/null
 done
 
 for ks in "$standard_ks" "$nvidia_ks"; do
@@ -77,8 +84,38 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 	grep -Fq 'firstboot --disable' "$ks"
 	grep -Fq 'selinux --disabled' "$ks"
 	grep -Fq './install.sh --non-interactive --profile core' "$ks"
+	grep -Fq '%include /tmp/dwm-titus-gaming-repo' "$ks"
+	grep -Fq '%include /tmp/dwm-titus-gaming-packages' "$ks"
+	# shellcheck disable=SC2016
+	grep -Fq 'fedora-$releasever-$basearch/' "$ks"
+	# shellcheck disable=SC2016
+	if grep -Fq 'fedora-$releasever-x86_64/' "$ks"; then
+		printf 'COPR repository is hardcoded to x86_64 outside architecture expansion: %s\n' "$ks" >&2
+		exit 1
+	fi
+	# shellcheck disable=SC2016
+	grep -Fq 'case "$(uname -m)" in' "$ks"
+	# shellcheck disable=SC2016
+	grep -Fq 'usermod -aG gamemode "$target_user"' "$ks"
 	if grep -Eq 'systemctl --user (enable|start).*(dwm|wm)-graphical-session' "$ks"; then
 		printf 'Kickstart starts graphical autostart before the first dwm session: %s\n' "$ks" >&2
+		exit 1
+	fi
+done
+
+for package in steam gamescope gamemode.x86_64 gamemode.i686 mangohud.x86_64 mangohud.i686; do
+	DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel full | grep -Fx "$package" >/dev/null
+	DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel gaming | grep -Fx "$package" >/dev/null
+	if DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel optional | grep -Fx "$package" >/dev/null; then
+		printf 'Fedora gaming package leaked into the generic optional profile: %s\n' "$package" >&2
+		exit 1
+	fi
+	if DISTRO_ID=fedora ARCH=aarch64 dwm_packages rhel full | grep -Fx "$package" >/dev/null; then
+		printf 'x86-only Fedora gaming package leaked into aarch64 mapping: %s\n' "$package" >&2
+		exit 1
+	fi
+	if DISTRO_ID=rocky dwm_packages rhel full | grep -Fx "$package" >/dev/null; then
+		printf 'Fedora gaming package leaked into generic RHEL mapping: %s\n' "$package" >&2
 		exit 1
 	fi
 done

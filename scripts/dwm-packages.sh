@@ -92,6 +92,13 @@ dwm_packages() {
 			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring NetworkManager \
 			rsync nwg-look
 		;;
+	rhel:gaming)
+		if [[ ${DISTRO_ID:-} == fedora && ${ARCH:-$(uname -m)} == x86_64 ]]; then
+			printf '%s\n' \
+				steam gamescope gamemode.x86_64 gamemode.i686 \
+				mangohud.x86_64 mangohud.i686
+		fi
+		;;
 	rhel:theme)
 		printf '%s\n' dconf
 		;;
@@ -180,6 +187,9 @@ dwm_packages() {
 		dwm_packages "$family" required
 		dwm_packages "$family" recommended
 		dwm_packages "$family" optional
+		if [[ $family == rhel && ${DISTRO_ID:-} == fedora ]]; then
+			dwm_packages "$family" gaming
+		fi
 		;;
 	*)
 		return 1

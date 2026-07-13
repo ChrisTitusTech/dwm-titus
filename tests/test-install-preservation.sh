@@ -16,7 +16,7 @@ mkdir -p \
 	"$XDG_CONFIG_HOME/dwm-titus" \
 	"$XDG_CONFIG_HOME/picom" \
 	"$XDG_CONFIG_HOME/quickshell" \
-	"$XDG_CONFIG_HOME/systemd/user" \
+	"$XDG_CONFIG_HOME/systemd/user/default.target.wants" \
 	"$XDG_DATA_HOME"
 
 printf '%s\n' '/* local config marker */' >"$TEST_REPO/config.h"
@@ -26,6 +26,23 @@ printf '%s\n' '# existing themes marker' >"$XDG_CONFIG_HOME/dwm-titus/themes.tom
 printf '%s\n' '# existing rules marker' >"$XDG_CONFIG_HOME/dwm-titus/window-rules.toml"
 printf '%s\n' '# existing picom marker' >"$XDG_CONFIG_HOME/picom/picom.conf"
 printf '%s\n' '# unrelated user service marker' >"$XDG_CONFIG_HOME/systemd/user/custom.service"
+cat >"$XDG_CONFIG_HOME/systemd/user/dwm-graphical-session.service" <<'EOF'
+[Unit]
+Description=DWM Graphical Session
+BindsTo=graphical-session.target
+Wants=graphical-session.target xdg-desktop-autostart.target
+After=basic.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+[Install]
+WantedBy=default.target
+EOF
+ln -s ../dwm-graphical-session.service \
+	"$XDG_CONFIG_HOME/systemd/user/default.target.wants/dwm-graphical-session.service"
+ln -s ../wm-graphical-session.service \
+	"$XDG_CONFIG_HOME/systemd/user/default.target.wants/wm-graphical-session.service"
 printf '%s\n' '// stale quickshell marker' >"$XDG_CONFIG_HOME/quickshell/shell.qml"
 printf '%s\n' 'stale quickshell file' >"$XDG_CONFIG_HOME/quickshell/stale.txt"
 
@@ -72,6 +89,13 @@ assert_preserved themes "$XDG_CONFIG_HOME/dwm-titus/themes.toml" "$WORK_DIR/them
 assert_preserved window-rules "$XDG_CONFIG_HOME/dwm-titus/window-rules.toml" "$WORK_DIR/window-rules.before"
 assert_preserved picom "$XDG_CONFIG_HOME/picom/picom.conf" "$WORK_DIR/picom.before"
 assert_preserved custom-service "$XDG_CONFIG_HOME/systemd/user/custom.service" "$WORK_DIR/custom-service.before"
+
+if [ -e "$XDG_CONFIG_HOME/systemd/user/dwm-graphical-session.service" ] ||
+	[ -e "$XDG_CONFIG_HOME/systemd/user/default.target.wants/dwm-graphical-session.service" ] ||
+	[ -e "$XDG_CONFIG_HOME/systemd/user/default.target.wants/wm-graphical-session.service" ]; then
+	printf 'Makefile install did not migrate legacy graphical-session startup.\n' >&2
+	exit 1
+fi
 
 SESSION_UNIT="$XDG_CONFIG_HOME/systemd/user/wm-graphical-session.service"
 if ! cmp -s "$TEST_REPO/config/systemd/user/wm-graphical-session.service" "$SESSION_UNIT"; then

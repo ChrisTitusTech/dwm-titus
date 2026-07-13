@@ -21,9 +21,34 @@ repo --name="rpmfusion-nonfree-updates" --metalink="https://mirrors.rpmfusion.or
 repo --name="rpmfusion-nonfree-tainted" --metalink="https://mirrors.rpmfusion.org/metalink?repo=nonfree-fedora-tainted-$releasever&arch=$basearch" --install
 repo --name="brave-browser" --baseurl="https://brave-browser-rpm-release.s3.brave.com/$basearch" --install
 repo --name="mwt-packages" --baseurl="https://mirror.mwt.me/shiftkey-desktop/rpm" --install
+%include /tmp/dwm-titus-gaming-repo
 
 bootloader --location=mbr
 services --enabled=NetworkManager
+
+%pre --interpreter=/bin/sh
+gaming_repo=/tmp/dwm-titus-gaming-repo
+gaming_packages=/tmp/dwm-titus-gaming-packages
+case "$(uname -m)" in
+x86_64)
+	cat >"$gaming_repo" <<'EOF'
+repo --name="christitustech-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/christitustech/copr-fedora/fedora-$releasever-$basearch/" --install
+EOF
+	cat >"$gaming_packages" <<'EOF'
+steam
+gamescope
+gamemode.x86_64
+gamemode.i686
+mangohud.x86_64
+mangohud.i686
+EOF
+	;;
+*)
+	: >"$gaming_repo"
+	: >"$gaming_packages"
+	;;
+esac
+%end
 
 %packages
 @core
@@ -56,6 +81,7 @@ xclip
 xdotool
 xprop
 xdg-utils
+%include /tmp/dwm-titus-gaming-packages
 quickshell
 lightdm
 slick-greeter
@@ -147,6 +173,10 @@ install -m 0440 /dev/null "$install_sudoers"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$target_user" > "$install_sudoers"
 
 su - "$target_user" -c 'cd "$HOME/.local/share/dwm-titus" && ./install.sh --non-interactive --profile core'
+
+if getent group gamemode >/dev/null 2>&1; then
+	usermod -aG gamemode "$target_user"
+fi
 
 find /usr/share/xsessions -mindepth 1 -maxdepth 1 -type f ! -name dwm.desktop -delete 2>/dev/null || true
 find /usr/share/wayland-sessions -mindepth 1 -maxdepth 1 -type f -delete 2>/dev/null || true

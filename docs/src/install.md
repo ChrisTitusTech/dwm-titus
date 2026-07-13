@@ -30,7 +30,12 @@ names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
 
 Use `core` for the required build/X11/session packages and one terminal,
 `recommended` for the desktop layer, or `full` for optional extras such as
-file-manager integration, portals, wallpapers, and display-manager setup.
+file-manager integration, portals, wallpapers, and display-manager setup. On
+x86_64 Fedora, `full` can also install Steam, Gamescope, GameMode, and MangoHud
+after repository approval.
+The installer separately asks before enabling the `christitustech/copr-fedora`
+COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
+gaming subset without affecting other full-profile extras.
 
 ### 2. Clone and Build
 
@@ -50,7 +55,11 @@ sudo make install
 
 The script detects the distribution family and handles dependency
 installation, font copying, display-manager integration, and config placement.
-Existing user configuration and `.xinitrc` files are preserved.
+Existing user configuration and `.xinitrc` files are preserved. Upgrades remove
+the known legacy `dwm-graphical-session.service` and
+`wm-graphical-session.service` early-start configuration so XDG applications
+start only after the X11 display environment is available; customized user
+units are disabled from early startup but otherwise preserved.
 
 Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
 
@@ -62,7 +71,11 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   installs Nordic system-wide for the default Nord theme.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
   browsing, network tray utilities, portals, wallpapers, and display-manager
-  setup.
+  setup. x86_64 Fedora full installs also include Steam, Gamescope, and 64-bit
+  and 32-bit GameMode and MangoHud support after separate repository approval.
+  The installer enables the `christitustech/copr-fedora` COPR for Gamescope and
+  RPM Fusion nonfree for Steam, then adds the invoking user to the `gamemode`
+  group; log out and back in before using its privileged tuning helpers.
 
 The default is `full` to preserve the historical automated installer behavior.
 For a minimal install:
@@ -83,7 +96,11 @@ packaging checks, or scripted validation, use the non-interactive flags:
 ```bash
 ./install.sh --dry-run --non-interactive --profile core
 ./install.sh --non-interactive --yes --profile recommended
+./install.sh --non-interactive --yes --profile full --enable-fedora-gaming-repos
 ```
+
+Without `--enable-fedora-gaming-repos`, unattended Fedora full installs skip
+Steam, Gamescope, GameMode, and MangoHud rather than changing repository trust.
 
 ## Starting dwm
 
