@@ -38,3 +38,4 @@ Edit `slick-greeter.conf` before running `sudo make install`:
 - **clock-format** — strftime-style format string
 - **theme-name** — GTK theme for the panel (e.g. `Adwaita-dark`)
 - **show-clock** / **show-hostname** — toggle status bar items
+- **activate-numlock** — enable only when `numlockx` is installed

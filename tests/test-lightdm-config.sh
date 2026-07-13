@@ -37,4 +37,7 @@ user-session=dwm
 CONF
 cmp -s "$work/rhel.expected" "$rhel_stage/etc/lightdm/lightdm.conf"
 
+grep -Fqx 'xft-dpi=96.0' "$rhel_stage/etc/lightdm/slick-greeter.conf"
+grep -Fqx 'activate-numlock=false' "$rhel_stage/etc/lightdm/slick-greeter.conf"
+
 printf 'LightDM config rendering: PASS\n'

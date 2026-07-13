@@ -126,4 +126,12 @@ if [ -e "$XDG_CONFIG_HOME/quickshell/stale.txt" ]; then
 	exit 1
 fi
 
+for entry in light-locker.desktop picom.desktop polkit-mate-authentication-agent-1.desktop; do
+	if ! cmp -s "$TEST_REPO/config/autostart/$entry" \
+		"$XDG_CONFIG_HOME/autostart/$entry"; then
+		printf 'Install did not seed XDG autostart override: %s\n' "$entry" >&2
+		exit 1
+	fi
+done
+
 printf 'Repeated install preservation: PASS\n'

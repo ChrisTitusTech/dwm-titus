@@ -748,7 +748,9 @@ trusted_system_helper() {
 	local candidates=()
 
 	command -v dwm-system-health >/dev/null 2>&1 && candidates+=("$(command -v dwm-system-health)")
-	candidates+=(/usr/local/bin/dwm-system-health /usr/bin/dwm-system-health)
+	if [[ ${DWM_HEALTH_TEST_ROOT:-0} != 1 ]]; then
+		candidates+=(/usr/local/bin/dwm-system-health /usr/bin/dwm-system-health)
+	fi
 
 	for candidate in "${candidates[@]}"; do
 		[[ -e $candidate ]] || continue

@@ -445,7 +445,6 @@ struct NumTags { char limitexceeded[LENGTH(tags) > 31 ? -1 : 1]; };
 /* monitor-specific tag management */
 static int monitorcount = 1;
 static unsigned int getmontagmask(int monnum);
-static int getmonitorforselectedtag(void);
 static void updatemonitorcount(void);
 static void initmonitortags(void);
 
@@ -4923,28 +4922,6 @@ getmontagmask(int monnum)
 		mask |= 1 << i;
 	
 	return mask ? mask : (1 << (monnum % LENGTH(tags)));
-}
-
-int
-getmonitorforselectedtag(void)
-{
-	unsigned int curtag = selmon->tagset[selmon->seltags];
-	int tagspermon, i;
-	
-	if (monitorcount <= 1 || !curtag)
-		return 0;
-		
-	tagspermon = LENGTH(tags) / monitorcount;
-	if (tagspermon == 0) tagspermon = 1;
-	
-	/* Find which tag bit is set */
-	for (i = 0; i < LENGTH(tags); i++) {
-		if (curtag & (1 << i)) {
-			return i / tagspermon >= monitorcount ? monitorcount - 1 : i / tagspermon;
-		}
-	}
-	
-	return 0;
 }
 
 /* Initialize monitor-specific tags after all monitors are created */
