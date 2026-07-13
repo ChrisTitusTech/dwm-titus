@@ -21,15 +21,19 @@ repo --name="rpmfusion-nonfree-updates" --metalink="https://mirrors.rpmfusion.or
 repo --name="rpmfusion-nonfree-tainted" --metalink="https://mirrors.rpmfusion.org/metalink?repo=nonfree-fedora-tainted-$releasever&arch=$basearch" --install
 repo --name="brave-browser" --baseurl="https://brave-browser-rpm-release.s3.brave.com/$basearch" --install
 repo --name="mwt-packages" --baseurl="https://mirror.mwt.me/shiftkey-desktop/rpm" --install
-repo --name="christitustech-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/christitustech/copr-fedora/fedora-$releasever-x86_64/" --install
+%include /tmp/dwm-titus-gaming-repo
 
 bootloader --location=mbr
 services --enabled=NetworkManager
 
 %pre --interpreter=/bin/sh
+gaming_repo=/tmp/dwm-titus-gaming-repo
 gaming_packages=/tmp/dwm-titus-gaming-packages
 case "$(uname -m)" in
 x86_64)
+	cat >"$gaming_repo" <<'EOF'
+repo --name="christitustech-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/christitustech/copr-fedora/fedora-$releasever-$basearch/" --install
+EOF
 	cat >"$gaming_packages" <<'EOF'
 steam
 gamescope
@@ -40,6 +44,7 @@ mangohud.i686
 EOF
 	;;
 *)
+	: >"$gaming_repo"
 	: >"$gaming_packages"
 	;;
 esac

@@ -84,7 +84,15 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 	grep -Fq 'firstboot --disable' "$ks"
 	grep -Fq 'selinux --disabled' "$ks"
 	grep -Fq './install.sh --non-interactive --profile core' "$ks"
+	grep -Fq '%include /tmp/dwm-titus-gaming-repo' "$ks"
 	grep -Fq '%include /tmp/dwm-titus-gaming-packages' "$ks"
+	# shellcheck disable=SC2016
+	grep -Fq 'fedora-$releasever-$basearch/' "$ks"
+	# shellcheck disable=SC2016
+	if grep -Fq 'fedora-$releasever-x86_64/' "$ks"; then
+		printf 'COPR repository is hardcoded to x86_64 outside architecture expansion: %s\n' "$ks" >&2
+		exit 1
+	fi
 	# shellcheck disable=SC2016
 	grep -Fq 'case "$(uname -m)" in' "$ks"
 	# shellcheck disable=SC2016
