@@ -180,6 +180,7 @@ confirm_fedora_gaming_repositories() {
 
 configure_fedora_gaming_repositories() {
 	local fedora_release
+	local plugin_package
 	local rpmfusion_release_url
 
 	if [[ $DISTRO_ID != "fedora" || $INSTALL_PROFILE != "full" || $ARCH != "x86_64" ]]; then
@@ -191,8 +192,13 @@ configure_fedora_gaming_repositories() {
 
 	if ! dnf copr --help &>/dev/null; then
 		info "Installing the DNF COPR plugin..."
-		if ! install_packages dnf5-plugins; then
-			warn "Could not install the DNF COPR plugin; Gamescope may be unavailable."
+		for plugin_package in dnf5-plugins dnf-plugins-core; do
+			if install_packages "$plugin_package"; then
+				break
+			fi
+		done
+		if ! dnf copr --help &>/dev/null; then
+			warn "Could not install a working DNF COPR plugin; skipping Fedora gaming packages."
 			return 1
 		fi
 	fi
