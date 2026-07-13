@@ -14,7 +14,9 @@ FloatingWindow {
     implicitWidth: 680
     implicitHeight: 500
     color: Theme.transparent
-    title: "dwm utility"
+    // The prefix keeps this window compatible with preserved user rules that
+    // already float the dwm control center by title substring.
+    title: "dwm control center utility"
 
     function titleForPage() {
         if (controlCenterModel.utilityPage === "keybinds") return "Keybinds";

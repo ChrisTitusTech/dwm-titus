@@ -33,6 +33,9 @@ mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" "$data_home/dwm-titu
 chmod 700 "$runtime"
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
 cp "$repo/config/"*.toml "$config_home/dwm-titus/"
+# Simulate an existing preserved rule file. The generic control-center title
+# rule must also cover the newly added utility window.
+sed -i '/title="dwm control center utility"/d' "$config_home/dwm-titus/window-rules.toml"
 cp "$repo/scripts/dwm-system-health" "$repo/scripts/dwm-diagnostics" \
 	"$repo/scripts/dwm-quickshell-controlcenter" "$data_home/dwm-titus/scripts/"
 
@@ -105,6 +108,45 @@ while [ "$i" -lt 100 ]; do
 done
 if DISPLAY=$display xdotool search --onlyvisible --name '^dwm system health$' >/dev/null 2>&1; then
 	printf 'System Health window did not close\n' >&2
+	exit 1
+fi
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	quickshell ipc --path "$config" call controlcenter openKeybinds >/dev/null
+
+window=
+i=0
+while [ "$i" -lt 200 ]; do
+	window=$(DISPLAY=$display xdotool search --onlyvisible --name '^dwm control center utility$' 2>/dev/null | head -1 || true)
+	[ -n "$window" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+
+if [ -z "$window" ]; then
+	printf 'Control-center utility window did not open\n' >&2
+	tail -40 "$work/quickshell.log" >&2
+	exit 1
+fi
+
+geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$window")
+width=$(printf '%s\n' "$geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
+height=$(printf '%s\n' "$geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+[ "$width" = 680 ]
+[ "$height" = 500 ]
+
+DISPLAY=$display xdotool windowactivate --sync "$window"
+DISPLAY=$display xdotool key Escape
+i=0
+while [ "$i" -lt 100 ]; do
+	if ! DISPLAY=$display xdotool search --onlyvisible --name '^dwm control center utility$' >/dev/null 2>&1; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.05
+done
+if DISPLAY=$display xdotool search --onlyvisible --name '^dwm control center utility$' >/dev/null 2>&1; then
+	printf 'Control-center utility window did not close\n' >&2
 	exit 1
 fi
 kill -0 "$quickshell_pid"

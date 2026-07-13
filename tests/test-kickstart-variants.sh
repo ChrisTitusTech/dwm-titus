@@ -59,6 +59,13 @@ mapfile -t mapped_fedora_packages < <(
 	DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel full | awk 'NF' | sort -u
 )
 
+DISTRO_ID=fedora dwm_packages rhel recommended | grep -Fx playerctl >/dev/null
+if DISTRO_ID=rocky dwm_packages rhel recommended | grep -Fx playerctl >/dev/null; then
+	printf 'EPEL-only playerctl leaked into required RHEL desktop packages.\n' >&2
+	exit 1
+fi
+DISTRO_ID=rocky dwm_packages rhel optional | grep -Fx playerctl >/dev/null
+
 for mapping in arch:gvfs-smb rhel:gvfs-smb debian:gvfs-backends; do
 	family=${mapping%%:*}
 	package=${mapping#*:}

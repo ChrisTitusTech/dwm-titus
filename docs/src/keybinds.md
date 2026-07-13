@@ -70,11 +70,11 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 
 | Keys | Action |
 |------|--------|
-| `Super` + `1`–`9` / `0` | Switch to tag (workspace 10 uses `0`) |
-| `Super` + `Ctrl` + `1`–`9` / `0` | Also show tag alongside current |
-| `Super` + `Shift` + `1`–`9` / `0` | Move window to tag |
-| `Super` + `Ctrl` + `Shift` + `1`–`9` / `0` | Also show window on that tag |
-| `Super` + `Alt` + `0` | Show all tags |
+| `Super` + `1`–`9` | Switch to tag |
+| `Super` + `Ctrl` + `1`–`9` | Also show tag alongside current |
+| `Super` + `Shift` + `1`–`9` | Move window to tag |
+| `Super` + `Ctrl` + `Shift` + `1`–`9` | Also show window on that tag |
+| `Super` + `0` | Show windows from all nine tags; `0` is not a tag |
 | `Super` + `Tab` | Previous tag |
 
 ## Multi-Monitor

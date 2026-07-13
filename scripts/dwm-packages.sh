@@ -86,13 +86,19 @@ dwm_packages() {
 			quickshell picom feh flameshot dex-autostart mate-polkit \
 			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
-			bluez blueman playerctl
+			bluez blueman
+		if [[ ${DISTRO_ID:-} == fedora ]]; then
+			printf '%s\n' playerctl
+		fi
 		;;
 	rhel:desktop-optional)
 		printf '%s\n' \
 			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring NetworkManager \
 			rsync nwg-look
+		if [[ ${DISTRO_ID:-} != fedora ]]; then
+			printf '%s\n' playerctl
+		fi
 		;;
 	rhel:gaming)
 		if [[ ${DISTRO_ID:-} == fedora && ${ARCH:-$(uname -m)} == x86_64 ]]; then

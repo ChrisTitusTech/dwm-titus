@@ -138,13 +138,13 @@ See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 | <kbd>SUPER</kbd> + <kbd>Q</kbd> | Close window |
 | <kbd>SUPER</kbd> + <kbd>J</kbd> / <kbd>K</kbd> | Focus next / previous window |
 | <kbd>SUPER</kbd> + <kbd>H</kbd> / <kbd>L</kbd> | Resize master area |
-| <kbd>SUPER</kbd> + <kbd>1-9</kbd> / <kbd>0</kbd> | Switch to tag (workspace 10 uses <kbd>0</kbd>) |
-| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>1-9</kbd> / <kbd>0</kbd> | Move window to tag (workspace 10 uses <kbd>0</kbd>) |
+| <kbd>SUPER</kbd> + <kbd>1-9</kbd> | Switch to tag (workspace) |
+| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>1-9</kbd> | Move window to tag |
+| <kbd>SUPER</kbd> + <kbd>0</kbd> | Show windows from all nine tags at once |
 | <kbd>SUPER</kbd> + <kbd>T</kbd> | Tile layout |
 | <kbd>SUPER</kbd> + <kbd>F</kbd> | Floating layout |
 | <kbd>SUPER</kbd> + <kbd>M</kbd> | Fullscreen |
 | <kbd>SUPER</kbd> + <kbd>Space</kbd> | Toggle floating |
-| <kbd>SUPER</kbd> + <kbd>Alt</kbd> + <kbd>0</kbd> | Show all tags |
 | <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | Quit dwm |
 | <kbd>SUPER</kbd> + <kbd>Ctrl</kbd> + <kbd>Q</kbd> | Power menu |
 

@@ -222,6 +222,15 @@ grep -Fqx 'unknown theme: missing-theme' "$work/theme-set.err"
 keybinds=$(run_helper keybinds)
 printf '%s\n' "$keybinds" | grep -Fqx 'Super + r	App launcher'
 printf '%s\n' "$keybinds" | grep -Fqx 'Super + F1	Control center'
+printf '%s\n' "$keybinds" | grep -Fqx 'Super + 0	Show all tags'
+if printf '%s\n' "$keybinds" | grep -Fq 'Super + Alt + 0'; then
+	printf 'Legacy tag-10 show-all binding is still exposed.\n' >&2
+	exit 1
+fi
+grep -Fq 'title: "dwm control center utility"' \
+	"$repo/config/quickshell/controlcenter/UtilityDetailWindow.qml"
+grep -Fq '{ title="dwm control center utility", isfloating=1, alwaysontop=1 }' \
+	"$repo/config/window-rules.toml"
 
 power=$(run_helper power-status)
 printf '%s\n' "$power" | grep -Fqx 'dpms_available	1'

@@ -127,7 +127,7 @@ keys = [
   { mod="SUPER SHIFT",      key="period",  desc="Send to right monitor",   func="tagmon",      i=1 },
 
   # ── Session / power ───────────────────────────────────────────────────────────
-  { mod="SUPER ALT",        key="0",       desc="Show all tags",           func="view",        ui=-1 },
+  { mod="SUPER",            key="0",       desc="Show all tags",           func="view",        ui=-1 },
   { mod="SUPER SHIFT",      key="q",       desc="Quit dwm",                func="quit" },
   { mod="SUPER CTRL",       key="q",       desc="Power menu",              func="spawn",       cmd="quickshell ipc --path \"${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml\" call power toggle" },
   { mod="SUPER CTRL SHIFT", key="r",       desc="Reboot",                  func="spawn",       cmd="systemctl reboot" },
@@ -142,7 +142,7 @@ keys = [
 #   SUPER + SHIFT + key          → send focused window to this tag
 #   SUPER + CTRL + SHIFT + key   → also show window on that tag
 #
-# key = X11 key name    tag = 0-based index  (0 = tag 1,  9 = tag 10)
+# key = X11 key name    tag = 0-based index  (0 = tag 1,  8 = tag 9)
 
 tag_keys = [
   { key="1", tag=0 },
@@ -154,7 +154,6 @@ tag_keys = [
   { key="7", tag=6 },
   { key="8", tag=7 },
   { key="9", tag=8 },
-  { key="0", tag=9 },
 ]
 
 # ── CUSTOM SHORTCUTS ──────────────────────────────────────────────────────────
