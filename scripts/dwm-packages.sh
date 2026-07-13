@@ -93,7 +93,7 @@ dwm_packages() {
 			rsync nwg-look
 		;;
 	rhel:gaming)
-		if [[ ${DISTRO_ID:-} == fedora ]]; then
+		if [[ ${DISTRO_ID:-} == fedora && ${ARCH:-$(uname -m)} == x86_64 ]]; then
 			printf '%s\n' \
 				steam gamescope gamemode.x86_64 gamemode.i686 \
 				mangohud.x86_64 mangohud.i686

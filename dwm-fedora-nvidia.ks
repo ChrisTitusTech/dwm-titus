@@ -22,9 +22,29 @@ repo --name="rpmfusion-nonfree-updates" --metalink="https://mirrors.rpmfusion.or
 repo --name="rpmfusion-nonfree-tainted" --metalink="https://mirrors.rpmfusion.org/metalink?repo=nonfree-fedora-tainted-$releasever&arch=$basearch" --install
 repo --name="brave-browser" --baseurl="https://brave-browser-rpm-release.s3.brave.com/$basearch" --install
 repo --name="mwt-packages" --baseurl="https://mirror.mwt.me/shiftkey-desktop/rpm" --install
+repo --name="christitustech-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/christitustech/copr-fedora/fedora-$releasever-x86_64/" --install
 
 bootloader --location=mbr --append="rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1"
 services --enabled=NetworkManager
+
+%pre --interpreter=/bin/sh
+gaming_packages=/tmp/dwm-titus-gaming-packages
+case "$(uname -m)" in
+x86_64)
+	cat >"$gaming_packages" <<'EOF'
+steam
+gamescope
+gamemode.x86_64
+gamemode.i686
+mangohud.x86_64
+mangohud.i686
+EOF
+	;;
+*)
+	: >"$gaming_packages"
+	;;
+esac
+%end
 
 %packages
 @core
@@ -57,12 +77,7 @@ xclip
 xdotool
 xprop
 xdg-utils
-steam
-gamescope
-gamemode.x86_64
-gamemode.i686
-mangohud.x86_64
-mangohud.i686
+%include /tmp/dwm-titus-gaming-packages
 quickshell
 lightdm
 slick-greeter

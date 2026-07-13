@@ -31,7 +31,9 @@ names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
 Use `core` for the required build/X11/session packages and one terminal,
 `recommended` for the desktop layer, or `full` for optional extras such as
 file-manager integration, portals, wallpapers, and display-manager setup. On
-Fedora, `full` also installs Steam, Gamescope, GameMode, and MangoHud.
+x86_64 Fedora, `full` also installs Steam, Gamescope, GameMode, and MangoHud.
+The installer visibly enables the `christitustech/copr-fedora` COPR to obtain
+the patched Gamescope package.
 
 ### 2. Clone and Build
 
@@ -52,9 +54,10 @@ sudo make install
 The script detects the distribution family and handles dependency
 installation, font copying, display-manager integration, and config placement.
 Existing user configuration and `.xinitrc` files are preserved. Upgrades remove
-the known legacy `dwm-graphical-session.service` early-start configuration so
-XDG applications start only after the X11 display environment is available;
-customized user units are disabled from early startup but otherwise preserved.
+the known legacy `dwm-graphical-session.service` and
+`wm-graphical-session.service` early-start configuration so XDG applications
+start only after the X11 display environment is available; customized user
+units are disabled from early startup but otherwise preserved.
 
 Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
 
@@ -66,8 +69,9 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   installs Nordic system-wide for the default Nord theme.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
   browsing, network tray utilities, portals, wallpapers, and display-manager
-  setup. Fedora full installs also include Steam, Gamescope, and 64-bit and
-  32-bit GameMode and MangoHud support. The installer adds the invoking user to
+  setup. x86_64 Fedora full installs also include Steam, Gamescope, and 64-bit
+  and 32-bit GameMode and MangoHud support. The installer enables the
+  `christitustech/copr-fedora` COPR for Gamescope and adds the invoking user to
   the `gamemode` group; log out and back in before using its privileged tuning
   helpers.
 

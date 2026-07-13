@@ -5,6 +5,7 @@ set -eu
 systemd_user_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 legacy_unit="$systemd_user_dir/dwm-graphical-session.service"
 legacy_wants="$systemd_user_dir/default.target.wants/dwm-graphical-session.service"
+renamed_wants="$systemd_user_dir/default.target.wants/wm-graphical-session.service"
 
 info() {
 	printf '%s\n' "dwm-titus: $*"
@@ -37,15 +38,19 @@ WantedBy=default.target'
 }
 
 if command -v systemctl >/dev/null 2>&1; then
-	systemctl --user disable dwm-graphical-session.service >/dev/null 2>&1 || true
+	for service in dwm-graphical-session.service wm-graphical-session.service; do
+		systemctl --user disable "$service" >/dev/null 2>&1 || true
+	done
 fi
 
-if [ -L "$legacy_wants" ]; then
-	rm -f "$legacy_wants"
-	info "removed legacy graphical-session early-start link"
-elif [ -e "$legacy_wants" ]; then
-	warn "preserving non-symlink path at $legacy_wants"
-fi
+for wants in "$legacy_wants" "$renamed_wants"; do
+	if [ -L "$wants" ]; then
+		rm -f "$wants"
+		info "removed legacy graphical-session early-start link"
+	elif [ -e "$wants" ]; then
+		warn "preserving non-symlink path at $wants"
+	fi
+done
 
 if legacy_unit_is_managed; then
 	rm -f "$legacy_unit"

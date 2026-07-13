@@ -62,6 +62,7 @@ MESLO_SHA256="13b502ac8c2bd9d3161018064560e23cd42b175bb730780a270975265a19ad57"
 NORDIC_THEME_URL="https://github.com/EliverLara/Nordic.git"
 NORDIC_THEME_REF="master"
 ARCH="$(uname -m)"
+FEDORA_GAMING_COPR="christitustech/copr-fedora"
 INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
 NON_INTERACTIVE=false
 ASSUME_YES=false
@@ -141,6 +142,26 @@ install_optional_profile() {
 	[[ $INSTALL_PROFILE == "full" ]]
 }
 
+configure_fedora_gaming_repository() {
+	if [[ $DISTRO_ID != "fedora" || $INSTALL_PROFILE != "full" || $ARCH != "x86_64" ]]; then
+		return
+	fi
+
+	if ! dnf copr --help &>/dev/null; then
+		info "Installing the DNF COPR plugin..."
+		if ! install_packages dnf5-plugins; then
+			warn "Could not install the DNF COPR plugin; Gamescope may be unavailable."
+			return 1
+		fi
+	fi
+
+	info "Enabling the $FEDORA_GAMING_COPR COPR for the patched Gamescope package..."
+	if ! sudo dnf copr enable -y "$FEDORA_GAMING_COPR"; then
+		warn "Could not enable $FEDORA_GAMING_COPR; Gamescope may be unavailable."
+		return 1
+	fi
+}
+
 configure_fedora_gamemode_access() {
 	local target_user
 
@@ -198,6 +219,9 @@ print_install_summary() {
 	fi
 	if install_optional_profile; then
 		print_summary_profile "Optional extras" optional
+		if [[ $DISTRO_ID == "fedora" && $ARCH == "x86_64" ]]; then
+			printf '  Third-party repository: COPR %s\n' "$FEDORA_GAMING_COPR"
+		fi
 	else
 		printf '  Optional extras: skipped\n'
 	fi
@@ -467,6 +491,7 @@ fi
 # ── Optional desktop extras ──────────────────────────────
 if install_optional_profile; then
 	info "Installing optional desktop extras..."
+	configure_fedora_gaming_repository || true
 	if ! dwm_install_available_package_profile optional; then
 		warn "Some optional desktop extras were unavailable in enabled repositories."
 	fi

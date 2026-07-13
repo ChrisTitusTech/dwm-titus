@@ -40,6 +40,10 @@ EOF
 write_legacy_unit
 ln -s ../dwm-graphical-session.service \
 	"$user_dir/default.target.wants/dwm-graphical-session.service"
+printf '%s\n' '# renamed graphical session service' \
+	>"$user_dir/wm-graphical-session.service"
+ln -s ../wm-graphical-session.service \
+	"$user_dir/default.target.wants/wm-graphical-session.service"
 printf '%s\n' '# unrelated service' >"$user_dir/custom.service"
 ln -s ../custom.service "$user_dir/default.target.wants/custom.service"
 
@@ -51,9 +55,12 @@ HOME=$home \
 
 test ! -e "$user_dir/dwm-graphical-session.service"
 test ! -e "$user_dir/default.target.wants/dwm-graphical-session.service"
+test -f "$user_dir/wm-graphical-session.service"
+test ! -e "$user_dir/default.target.wants/wm-graphical-session.service"
 test -f "$user_dir/custom.service"
 test -L "$user_dir/default.target.wants/custom.service"
 grep -Fqx -- '--user disable dwm-graphical-session.service' "$state/systemctl.log"
+grep -Fqx -- '--user disable wm-graphical-session.service' "$state/systemctl.log"
 grep -Fqx -- '--user daemon-reload' "$state/systemctl.log"
 
 # Repeated migration remains successful and leaves unrelated files untouched.
