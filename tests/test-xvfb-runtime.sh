@@ -74,18 +74,18 @@ wait_for_window_state() {
 }
 
 wait_for_active_window() {
-	win=$1
+	expected_win=$1
 	i=0
 	while [ "$i" -lt 100 ]; do
 		active=$(DISPLAY=$display xprop -root _NET_ACTIVE_WINDOW 2>/dev/null |
 			sed -n 's/.*# //p')
-		if [ "$active" = "$win" ]; then
+		if [ "$active" = "$expected_win" ]; then
 			return 0
 		fi
 		i=$((i + 1))
 		sleep 0.05
 	done
-	printf '%s\n' "window $win did not become active" >&2
+	printf '%s\n' "window $expected_win did not become active" >&2
 	return 1
 }
 
@@ -93,7 +93,7 @@ require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep
 pkg-config --exists x11
 
 work=$(mktemp -d)
-trap 'set +e; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
+trap 'set +e; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
 mkdir -p "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/config"
@@ -304,6 +304,43 @@ if [ "$single_floating_width" -ge "$single_tiled_width" ] || [ "$single_floating
 	printf '%s\n' "single tiled client mouse resize did not fall back to floating resize" >&2
 	exit 1
 fi
+
+DISPLAY=$display xdotool key Super+f
+DISPLAY=$display "$work/xclient" >"$work/second-window-id" 2>"$work/second-client.log" &
+second_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/second-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+second_win=$(cat "$work/second-window-id")
+[ -n "$second_win" ]
+wait_for_active_window "$second_win"
+
+two_tiled_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$second_win")
+two_tiled_width=$(printf '%s\n' "$two_tiled_geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
+two_tiled_height=$(printf '%s\n' "$two_tiled_geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+outer_x=$((two_tiled_width - 100))
+
+DISPLAY=$display xdotool mousemove --window "$second_win" "$outer_x" 100
+DISPLAY=$display xdotool key Super+v
+sleep 0.05
+DISPLAY=$display xdotool mousemove_relative --sync -- -120 90
+DISPLAY=$display xdotool click 3
+sleep 0.2
+
+two_floating_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$second_win")
+two_floating_width=$(printf '%s\n' "$two_floating_geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
+two_floating_height=$(printf '%s\n' "$two_floating_geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+if [ "$two_floating_width" -ge "$two_tiled_width" ] || [ "$two_floating_height" -ge "$two_tiled_height" ]; then
+	printf '%s\n' "outer-edge tiled resize without an adjustable split did not fall back to floating resize" >&2
+	exit 1
+fi
+
+kill "$second_client_pid"
+wait "$second_client_pid" 2>/dev/null || true
+second_client_pid=
+wait_for_active_window "$win"
 
 DISPLAY=$display "$work/xclient" fullscreen "$win"
 wait_for_window_state "$win" _NET_WM_STATE_FULLSCREEN
