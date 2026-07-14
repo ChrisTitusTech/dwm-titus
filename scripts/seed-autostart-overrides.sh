@@ -5,8 +5,14 @@ set -eu
 config_home=${XDG_CONFIG_HOME:-${HOME:?HOME is not set}/.config}
 config_dirs=${XDG_CONFIG_DIRS:-/etc/xdg}
 destination_dir=$config_home/autostart
+target_owner=${DWM_INSTALL_OWNER:-}
+target_group=
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
+
+if [ -n "$target_owner" ]; then
+	target_group=$(id -gn "$target_owner")
+fi
 
 find_vendor_entry() {
 	entry=$1
@@ -68,7 +74,16 @@ add_dwm_exclusion() {
 	' "$1"
 }
 
-mkdir -p "$destination_dir"
+if [ ! -e "$destination_dir" ] && [ ! -L "$destination_dir" ]; then
+	if [ -n "$target_owner" ]; then
+		install -d -o "$target_owner" -g "$target_group" -m 755 \
+			"$destination_dir"
+	else
+		mkdir -p "$destination_dir"
+	fi
+else
+	mkdir -p "$destination_dir"
+fi
 
 for entry in \
 	light-locker.desktop \
@@ -89,6 +104,11 @@ for entry in \
 		continue
 	fi
 
-	install -m 644 "$tmp" "$destination"
+	if [ -n "$target_owner" ]; then
+		install -o "$target_owner" -g "$target_group" -m 644 \
+			"$tmp" "$destination"
+	else
+		install -m 644 "$tmp" "$destination"
+	fi
 	printf '  Seeded dwm-scoped autostart override: %s\n' "$entry"
 done

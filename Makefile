@@ -159,7 +159,8 @@ install-user:
 	done
 	@echo "==> Seeding dwm-scoped XDG autostart overrides..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
-		XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS}" scripts/seed-autostart-overrides.sh
+		XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS}" DWM_INSTALL_OWNER="${OWNER}" \
+		scripts/seed-autostart-overrides.sh
 	@echo "==> Replacing managed Quickshell config..."
 	test -n "${CFG_DIR}"
 	rm -rf "${CFG_DIR}/quickshell"

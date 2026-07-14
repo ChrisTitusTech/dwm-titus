@@ -170,16 +170,21 @@ grep -Fqx 'OnlyShowIn=MATE;' "$POLKIT_OVERRIDE"
 grep -Fqx 'X-MATE-Autostart-Phase=Initialization' "$POLKIT_OVERRIDE"
 grep -Fqx 'NotShowIn=GNOME;KDE;X-DWM;' "$POLKIT_OVERRIDE"
 test "$(grep -o 'X-DWM;' "$POLKIT_OVERRIDE" | wc -l)" -eq 1
+test "$(stat -c %U "$LOCKER_OVERRIDE")" = "$OWNER"
+test "$(stat -c %U "$POLKIT_OVERRIDE")" = "$OWNER"
+test "$(stat -c %U "$XDG_CONFIG_HOME/autostart")" = "$OWNER"
 
 EMPTY_CONFIG_HOME="$WORK_DIR/empty-config"
 EMPTY_CONFIG_DIRS="$WORK_DIR/empty-etc-xdg"
 mkdir -p "$EMPTY_CONFIG_DIRS/autostart"
 HOME="$TEST_HOME" XDG_CONFIG_HOME="$EMPTY_CONFIG_HOME" \
 	XDG_CONFIG_DIRS="$EMPTY_CONFIG_DIRS" \
+	DWM_INSTALL_OWNER="$OWNER" \
 	"$TEST_REPO/scripts/seed-autostart-overrides.sh"
 if find "$EMPTY_CONFIG_HOME/autostart" -type f -print -quit | grep -q .; then
 	printf 'Autostart override created without a matching vendor entry.\n' >&2
 	exit 1
 fi
+test "$(stat -c %U "$EMPTY_CONFIG_HOME/autostart")" = "$OWNER"
 
 printf 'Repeated install preservation: PASS\n'
