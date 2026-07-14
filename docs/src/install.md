@@ -61,6 +61,12 @@ the known legacy `dwm-graphical-session.service` and
 start only after the X11 display environment is available; customized user
 units are disabled from early startup but otherwise preserved.
 
+When matching vendor XDG entries exist for Picom, the polkit agent, or Light
+Locker, the installer copies each entry to the user autostart directory and
+adds only the dwm session exclusion. Original commands and vendor session
+guards remain intact, no entry is created when the vendor entry is absent, and
+existing user entries are preserved.
+
 Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
 
 - `core`: required build packages, X11/session runtime, and one supported

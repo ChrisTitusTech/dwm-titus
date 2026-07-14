@@ -58,7 +58,7 @@ EOF
 
 cat >"$work/bin/systemctl" <<'EOF'
 #!/bin/sh
-printf '%s\n' "$*" >>"${TEST_STATE:?}/systemctl.log"
+printf '%s\t%s\n' "${XDG_CURRENT_DESKTOP:-}" "$*" >>"${TEST_STATE:?}/systemctl.log"
 case $* in
 *"start wm-graphical-session.service"*)
 	[ "${TEST_SYSTEMD_START_FAIL:-0}" != 1 ] || exit 1
@@ -164,6 +164,10 @@ run_duplicate_case() {
 		/--user import-environment/ && !imported { imported = NR }
 		/--user start wm-graphical-session.service/ && !started { started = NR }
 		END { exit !(imported && started && imported < started) }
+	' "$state/systemctl.log"
+	awk -F '\t' '
+		index(":" $1 ":", ":X-DWM:") && index(":" $1 ":", ":dwm:") { found = 1 }
+		END { exit !found }
 	' "$state/systemctl.log"
 }
 

@@ -25,7 +25,7 @@ NATIVE_OPTIMISATIONS ?= -O3 -march=native -mtune=native -flto=auto
 
 # flags
 CPPFLAGS += -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_XOPEN_SOURCE=700L -DVERSION=\"${VERSION}\" ${XINERAMAFLAGS} ${INCS}
-CFLAGS ?= ${OPTIMISATIONS} -std=c99 -pedantic -Wall -Wno-unused-function -Wno-deprecated-declarations
+CFLAGS ?= ${OPTIMISATIONS} -std=c99 -pedantic -Wall -Wno-deprecated-declarations
 LDLIBS += ${LIBS}
 
 # Solaris
