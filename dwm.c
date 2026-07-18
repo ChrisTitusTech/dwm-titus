@@ -78,7 +78,7 @@
 enum { CurResizeBR, CurResizeBL, CurResizeTR, CurResizeTL, CurNormal, CurResize, CurMove, CurLast }; /* cursor */
 enum { SchemeNorm, SchemeSel }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
-       NetWMFullscreen, NetActiveWindow, NetWMWindowType, NetWMIcon,
+       NetWMFullscreen, NetWMAbove, NetWMStaysOnTop, NetActiveWindow, NetWMWindowType, NetWMIcon,
        NetWMWindowTypeDialog, NetWMWindowTypeDock, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
@@ -110,7 +110,7 @@ struct Client {
 	int basew, baseh, incw, inch, maxw, maxh, minw, minh;
 	int bw, oldbw;
 	unsigned int tags;
-	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, noswallow, alwaysontop;
+	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, noswallow, alwaysontop, ewmhabove;
 	int issteam;
 	int beingmoved;
 	int fakefullscreen;
@@ -195,6 +195,7 @@ static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
 static pid_t getparentprocess(pid_t p);
 static int getrootptr(int *x, int *y);
+static int hasatomprop(Client *c, Atom prop, Atom atom);
 static long getstate(Window w);
 static pid_t getstatusbarpid();
 static int gettextprop(Window w, Atom atom, char *text, unsigned int size);
@@ -225,6 +226,7 @@ static void restack(Monitor *m);
 static int sendevent(Client *c, Atom proto);
 static void sendmon(Client *c, Monitor *m);
 static void setclientstate(Client *c, long state);
+static void setatomprop(Client *c, Atom prop, Atom atom, int enabled);
 static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
 static void fullscreen(const Arg *arg);
@@ -847,6 +849,8 @@ clientmessage(XEvent *e)
 {
 	XClientMessageEvent *cme = &e->xclient;
 	Client *c = wintoclient(cme->window);
+	Atom state;
+	int enabled, i, updateabove = 0;
 
 	if (cme->message_type == netatom[NetCurrentDesktop]) {
 		long desktop = cme->data.l[0];
@@ -866,6 +870,22 @@ clientmessage(XEvent *e)
 				c->fakefullscreen = 3;
 			setfullscreen(c, (cme->data.l[0] == 1 /* _NET_WM_STATE_ADD    */
 				|| (cme->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ && !c->isfullscreen)));
+		}
+		for (i = 1; i <= 2; i++) {
+			state = (Atom)cme->data.l[i];
+			if (state != netatom[NetWMAbove] && state != netatom[NetWMStaysOnTop])
+				continue;
+			if (cme->data.l[0] < 0 || cme->data.l[0] > 2)
+				continue;
+			enabled = cme->data.l[0] == 1
+				|| (cme->data.l[0] == 2 && !hasatomprop(c, netatom[NetWMState], state));
+			setatomprop(c, netatom[NetWMState], state, enabled);
+			updateabove = 1;
+		}
+		if (updateabove) {
+			c->ewmhabove = hasatomprop(c, netatom[NetWMState], netatom[NetWMAbove])
+				|| hasatomprop(c, netatom[NetWMState], netatom[NetWMStaysOnTop]);
+			restack(c->mon);
 		}
 	} else if (cme->message_type == netatom[NetActiveWindow]) {
 		if (c != selmon->sel && !c->isurgent)
@@ -1359,6 +1379,73 @@ getatomprop(Client *c, Atom prop)
 		XFree(p);
 	}
 	return atom;
+}
+
+static Atom *
+getatomproplist(Client *c, Atom prop, unsigned long *nitems)
+{
+	int format;
+	unsigned long extra;
+	unsigned char *data = NULL;
+	Atom actual;
+
+	*nitems = 0;
+	if (XGetWindowProperty(dpy, c->win, prop, 0L, LONG_MAX, False, XA_ATOM,
+	    &actual, &format, nitems, &extra, &data) != Success)
+		return NULL;
+	if (actual != XA_ATOM || format != 32) {
+		if (data)
+			XFree(data);
+		*nitems = 0;
+		return NULL;
+	}
+	return (Atom *)data;
+}
+
+int
+hasatomprop(Client *c, Atom prop, Atom atom)
+{
+	Atom *atoms;
+	unsigned long i, nitems;
+	int found = 0;
+
+	atoms = getatomproplist(c, prop, &nitems);
+	for (i = 0; atoms && i < nitems; i++)
+		if (atoms[i] == atom) {
+			found = 1;
+			break;
+		}
+	if (atoms)
+		XFree(atoms);
+	return found;
+}
+
+void
+setatomprop(Client *c, Atom prop, Atom atom, int enabled)
+{
+	Atom *atoms;
+	unsigned long i, nitems, out;
+	int found = 0;
+
+	atoms = getatomproplist(c, prop, &nitems);
+	for (i = 0; atoms && i < nitems; i++)
+		if (atoms[i] == atom) {
+			found = 1;
+			break;
+		}
+	if (enabled && !found) {
+		XChangeProperty(dpy, c->win, prop, XA_ATOM, 32,
+			atoms ? PropModeAppend : PropModeReplace,
+			(unsigned char *)&atom, 1);
+	} else if (!enabled && found) {
+		for (i = 0, out = 0; i < nitems; i++)
+			if (atoms[i] != atom)
+				atoms[out++] = atoms[i];
+		XChangeProperty(dpy, c->win, prop, XA_ATOM, 32, PropModeReplace,
+			(unsigned char *)atoms, (int)out);
+	}
+	if (atoms)
+		XFree(atoms);
 }
 
 Atom
@@ -2441,7 +2528,7 @@ raisealwaysontop(Monitor *m)
 	Client *c;
 
 	for (c = m->stack; c; c = c->snext)
-		if (c->alwaysontop && ISVISIBLE(c))
+		if ((c->alwaysontop || c->ewmhabove) && ISVISIBLE(c))
 			XRaiseWindow(dpy, c->win);
 }
 
@@ -2707,12 +2794,7 @@ ewmh_set_desktop_names(void)
 static void
 ewmh_set_fullscreen_state(Client *c, int fullscreen)
 {
-	if (fullscreen)
-		XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
-			PropModeReplace, (unsigned char *)&netatom[NetWMFullscreen], 1);
-	else
-		XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
-			PropModeReplace, (unsigned char *)0, 0);
+	setatomprop(c, netatom[NetWMState], netatom[NetWMFullscreen], fullscreen);
 }
 
 void
@@ -3652,6 +3734,8 @@ setup(void)
 	netatom[NetWMState] = XInternAtom(dpy, "_NET_WM_STATE", False);
 	netatom[NetWMCheck] = XInternAtom(dpy, "_NET_SUPPORTING_WM_CHECK", False);
 	netatom[NetWMFullscreen] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+	netatom[NetWMAbove] = XInternAtom(dpy, "_NET_WM_STATE_ABOVE", False);
+	netatom[NetWMStaysOnTop] = XInternAtom(dpy, "_NET_WM_STATE_STAYS_ON_TOP", False);
 	netatom[NetWMWindowType] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
 	netatom[NetWMWindowTypeDialog] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
 	netatom[NetWMWindowTypeDock] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
@@ -4532,11 +4616,12 @@ updatetitle(Client *c)
 void
 updatewindowtype(Client *c)
 {
-	Atom state = getatomprop(c, netatom[NetWMState]);
 	Atom wtype = getatomprop(c, netatom[NetWMWindowType]);
 
-	if (state == netatom[NetWMFullscreen])
+	if (hasatomprop(c, netatom[NetWMState], netatom[NetWMFullscreen]))
 		setfullscreen(c, 1);
+	c->ewmhabove = hasatomprop(c, netatom[NetWMState], netatom[NetWMAbove])
+		|| hasatomprop(c, netatom[NetWMState], netatom[NetWMStaysOnTop]);
 	if (wtype == netatom[NetWMWindowTypeDialog])
 		c->isfloating = 1;
 }

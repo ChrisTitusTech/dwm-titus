@@ -73,6 +73,38 @@ wait_for_window_state() {
 	return 1
 }
 
+wait_for_window_state_absent() {
+	win=$1
+	needle=$2
+	i=0
+	while [ "$i" -lt 100 ]; do
+		if ! DISPLAY=$display xprop -id "$win" _NET_WM_STATE 2>/dev/null |
+			grep -q "$needle"; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "window $win retained state $needle" >&2
+	return 1
+}
+
+wait_for_top_window() {
+	expected=$1
+	i=0
+	while [ "$i" -lt 100 ]; do
+		top=$(DISPLAY=$display xdotool search --class '^DwmXvfbRuntime$' 2>/dev/null |
+			tail -n 1 || true)
+		if [ -n "$top" ] && [ "$(printf '0x%x' "$top")" = "$expected" ]; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "window $expected did not reach the top of the stack" >&2
+	return 1
+}
+
 wait_for_active_window() {
 	expected_win=$1
 	i=0
@@ -89,11 +121,11 @@ wait_for_active_window() {
 	return 1
 }
 
-require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep
+require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep tail
 pkg-config --exists x11
 
 work=$(mktemp -d)
-trap 'set +e; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
+trap 'set +e; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
 mkdir -p "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/config"
@@ -131,6 +163,8 @@ main(int argc, char **argv)
 	XEvent ev;
 	int set_hints = 1;
 	int malformed_icon = 0;
+	int initial_above = 0;
+	int override_redirect = 0;
 
 	signal(SIGTERM, stop);
 	signal(SIGINT, stop);
@@ -138,20 +172,27 @@ main(int argc, char **argv)
 	dpy = XOpenDisplay(NULL);
 	if (!dpy)
 		return 2;
-
-	if (argc == 3 && strcmp(argv[1], "fullscreen") == 0) {
+	if ((argc == 3 && strcmp(argv[1], "fullscreen") == 0)
+	|| (argc == 5 && strcmp(argv[1], "state") == 0)) {
 		XEvent ev;
 		Atom state = XInternAtom(dpy, "_NET_WM_STATE", False);
-		Atom fullscreen = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+		Atom requested;
+		long action = 1;
 
 		win = strtoul(argv[2], NULL, 0);
+		if (strcmp(argv[1], "fullscreen") == 0) {
+			requested = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+		} else {
+			action = strtol(argv[3], NULL, 10);
+			requested = XInternAtom(dpy, argv[4], False);
+		}
 		memset(&ev, 0, sizeof(ev));
 		ev.xclient.type = ClientMessage;
 		ev.xclient.window = win;
 		ev.xclient.message_type = state;
 		ev.xclient.format = 32;
-		ev.xclient.data.l[0] = 1;
-		ev.xclient.data.l[1] = fullscreen;
+		ev.xclient.data.l[0] = action;
+		ev.xclient.data.l[1] = requested;
 		XSendEvent(dpy, DefaultRootWindow(dpy), False,
 			SubstructureRedirectMask | SubstructureNotifyMask, &ev);
 		XFlush(dpy);
@@ -162,9 +203,18 @@ main(int argc, char **argv)
 		set_hints = 0;
 	else if (argc == 2 && strcmp(argv[1], "malformed-icon") == 0)
 		malformed_icon = 1;
+	else if (argc == 2 && strcmp(argv[1], "initial-above") == 0)
+		initial_above = 1;
+	else if (argc == 2 && strcmp(argv[1], "override") == 0)
+		override_redirect = 1;
 
 	win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy),
 		20, 20, 320, 180, 0, 0, WhitePixel(dpy, DefaultScreen(dpy)));
+	if (override_redirect) {
+		XSetWindowAttributes attributes = { .override_redirect = True };
+
+		XChangeWindowAttributes(dpy, win, CWOverrideRedirect, &attributes);
+	}
 	if (set_hints) {
 		XStoreName(dpy, win, "dwm-xvfb-runtime");
 		classhint.res_name = "dwm-xvfb-runtime";
@@ -176,6 +226,14 @@ main(int argc, char **argv)
 		Atom net_wm_icon = XInternAtom(dpy, "_NET_WM_ICON", False);
 		XChangeProperty(dpy, win, net_wm_icon, XA_CARDINAL, 32,
 			PropModeReplace, (unsigned char *)icon, 3);
+	}
+	if (initial_above) {
+		Atom states[2];
+
+		states[0] = XInternAtom(dpy, "_NET_WM_STATE_ABOVE", False);
+		states[1] = XInternAtom(dpy, "_NET_WM_STATE_STAYS_ON_TOP", False);
+		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STATE", False),
+			XA_ATOM, 32, PropModeReplace, (unsigned char *)states, 2);
 	}
 	wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
 	XSetWMProtocols(dpy, win, &wm_delete, 1);
@@ -218,6 +276,8 @@ dwm_pid=$!
 wait_for_root_property _NET_SUPPORTED
 wait_for_root_property _NET_NUMBER_OF_DESKTOPS
 wait_for_current_desktop 0
+DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_ABOVE
+DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_STAYS_ON_TOP
 
 DISPLAY=$display "$work/xclient" >"$work/window-id" 2>"$work/xclient.log" &
 client_pid=$!
@@ -377,5 +437,55 @@ icon_win=$(cat "$work/icon-window-id")
 wait_for_active_window "$icon_win"
 DISPLAY=$display xprop -root _NET_CLIENT_LIST | grep -q "$icon_win"
 kill -0 "$dwm_pid"
+
+DISPLAY=$display "$work/xclient" initial-above >"$work/above-window-id" 2>"$work/above-client.log" &
+above_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/above-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+above_win=$(cat "$work/above-window-id")
+[ -n "$above_win" ]
+wait_for_window_state "$above_win" _NET_WM_STATE_ABOVE
+wait_for_window_state "$above_win" _NET_WM_STATE_STAYS_ON_TOP
+DISPLAY=$display "$work/xclient" override >"$work/stack-window-id" 2>"$work/stack-client.log" &
+stack_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/stack-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+stack_win=$(cat "$work/stack-window-id")
+[ -n "$stack_win" ]
+wait_for_top_window "$stack_win"
+DISPLAY=$display xdotool key Super+t
+wait_for_top_window "$above_win"
+
+DISPLAY=$display "$work/xclient" state "$above_win" 0 _NET_WM_STATE_STAYS_ON_TOP
+wait_for_window_state_absent "$above_win" _NET_WM_STATE_STAYS_ON_TOP
+wait_for_top_window "$above_win"
+
+DISPLAY=$display "$work/xclient" state "$above_win" 0 _NET_WM_STATE_ABOVE
+wait_for_window_state_absent "$above_win" _NET_WM_STATE_ABOVE
+DISPLAY=$display xdotool windowraise "$stack_win"
+wait_for_top_window "$stack_win"
+
+DISPLAY=$display "$work/xclient" state "$above_win" 1 _NET_WM_STATE_STAYS_ON_TOP
+wait_for_window_state "$above_win" _NET_WM_STATE_STAYS_ON_TOP
+wait_for_top_window "$above_win"
+DISPLAY=$display "$work/xclient" fullscreen "$above_win"
+wait_for_window_state "$above_win" _NET_WM_STATE_FULLSCREEN
+wait_for_window_state "$above_win" _NET_WM_STATE_STAYS_ON_TOP
+DISPLAY=$display "$work/xclient" state "$above_win" 0 _NET_WM_STATE_FULLSCREEN
+wait_for_window_state_absent "$above_win" _NET_WM_STATE_FULLSCREEN
+wait_for_window_state "$above_win" _NET_WM_STATE_STAYS_ON_TOP
+
+kill "$stack_client_pid"
+wait "$stack_client_pid" 2>/dev/null || true
+stack_client_pid=
+kill "$above_client_pid"
+wait "$above_client_pid" 2>/dev/null || true
+above_client_pid=
 
 printf '%s\n' "Xvfb runtime smoke: PASS"
