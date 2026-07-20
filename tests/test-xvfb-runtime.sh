@@ -93,7 +93,7 @@ wait_for_top_window() {
 	expected=$1
 	i=0
 	while [ "$i" -lt 100 ]; do
-		top=$(DISPLAY=$display xdotool search --class '^DwmXvfbRuntime$' 2>/dev/null |
+		top=$(DISPLAY=$display xdotool search --class '^DwmXvfb(Runtime|Terminal)$' 2>/dev/null |
 			tail -n 1 || true)
 		if [ -n "$top" ] && [ "$(printf '0x%x' "$top")" = "$expected" ]; then
 			return 0
@@ -121,11 +121,26 @@ wait_for_active_window() {
 	return 1
 }
 
+wait_for_client_window() {
+	expected_win=$1
+	i=0
+	while [ "$i" -lt 100 ]; do
+		if DISPLAY=$display xprop -root _NET_CLIENT_LIST 2>/dev/null |
+			grep -q "$expected_win"; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "window $expected_win did not enter the client list" >&2
+	return 1
+}
+
 require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep tail
 pkg-config --exists x11
 
 work=$(mktemp -d)
-trap 'set +e; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
+trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
 mkdir -p "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/config"
@@ -133,6 +148,8 @@ cp "$repo_dir/config/hotkeys.toml" "$home/.config/dwm-titus/hotkeys.toml"
 cp "$repo_dir/config/themes.toml" "$home/.config/dwm-titus/themes.toml"
 cp "$repo_dir/config/window-rules.toml" "$home/.config/dwm-titus/window-rules.toml"
 cp "$repo_dir/config/"*.toml "$home/.local/share/dwm-titus/config/"
+sed -i '/^rules = \[/a\  { class="DwmXvfbTerminal", isterminal=1 },' \
+	"$home/.config/dwm-titus/window-rules.toml"
 
 cat >"$work/xclient.c" <<'EOF'
 #include <X11/Xlib.h>
@@ -142,6 +159,7 @@ cat >"$work/xclient.c" <<'EOF'
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 static volatile sig_atomic_t running = 1;
@@ -165,6 +183,8 @@ main(int argc, char **argv)
 	int malformed_icon = 0;
 	int initial_above = 0;
 	int override_redirect = 0;
+	int swallow_terminal = 0;
+	pid_t child_pid = -1;
 
 	signal(SIGTERM, stop);
 	signal(SIGINT, stop);
@@ -207,6 +227,8 @@ main(int argc, char **argv)
 		initial_above = 1;
 	else if (argc == 2 && strcmp(argv[1], "override") == 0)
 		override_redirect = 1;
+	else if (argc == 2 && strcmp(argv[1], "swallow-terminal") == 0)
+		swallow_terminal = 1;
 
 	win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy),
 		20, 20, 320, 180, 0, 0, WhitePixel(dpy, DefaultScreen(dpy)));
@@ -218,8 +240,14 @@ main(int argc, char **argv)
 	if (set_hints) {
 		XStoreName(dpy, win, "dwm-xvfb-runtime");
 		classhint.res_name = "dwm-xvfb-runtime";
-		classhint.res_class = "DwmXvfbRuntime";
+		classhint.res_class = swallow_terminal ? "DwmXvfbTerminal" : "DwmXvfbRuntime";
 		XSetClassHint(dpy, win, &classhint);
+	}
+	if (swallow_terminal) {
+		unsigned long pid = (unsigned long)getpid();
+
+		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_PID", False),
+			XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&pid, 1);
 	}
 	if (malformed_icon) {
 		unsigned long icon[] = { 8, 8, 0xff00ff00 };
@@ -243,6 +271,47 @@ main(int argc, char **argv)
 
 	printf("0x%lx\n", win);
 	fflush(stdout);
+	if (swallow_terminal && (child_pid = fork()) == 0) {
+		Atom states[1];
+		Display *child_dpy;
+		Window child_win;
+		unsigned long pid = (unsigned long)getpid();
+
+		close(ConnectionNumber(dpy));
+		usleep(200000);
+		child_dpy = XOpenDisplay(NULL);
+		if (!child_dpy)
+			return 3;
+		child_win = XCreateSimpleWindow(child_dpy, DefaultRootWindow(child_dpy),
+			40, 40, 320, 180, 0, 0, WhitePixel(child_dpy, DefaultScreen(child_dpy)));
+		XStoreName(child_dpy, child_win, "dwm-xvfb-swallowed");
+		classhint.res_name = "dwm-xvfb-swallowed";
+		classhint.res_class = "DwmXvfbRuntime";
+		XSetClassHint(child_dpy, child_win, &classhint);
+		XChangeProperty(child_dpy, child_win,
+			XInternAtom(child_dpy, "_NET_WM_PID", False), XA_CARDINAL, 32,
+			PropModeReplace, (unsigned char *)&pid, 1);
+		states[0] = XInternAtom(child_dpy, "_NET_WM_STATE_ABOVE", False);
+		XChangeProperty(child_dpy, child_win,
+			XInternAtom(child_dpy, "_NET_WM_STATE", False), XA_ATOM, 32,
+			PropModeReplace, (unsigned char *)states, 1);
+		XSelectInput(child_dpy, child_win, StructureNotifyMask);
+		XMapWindow(child_dpy, child_win);
+		XFlush(child_dpy);
+		printf("0x%lx\n", child_win);
+		fflush(stdout);
+		while (running) {
+			while (XPending(child_dpy)) {
+				XNextEvent(child_dpy, &ev);
+				if (ev.type == DestroyNotify)
+					running = 0;
+			}
+			usleep(50000);
+		}
+		XDestroyWindow(child_dpy, child_win);
+		XCloseDisplay(child_dpy);
+		return 0;
+	}
 
 	while (running) {
 		while (XPending(dpy)) {
@@ -251,6 +320,10 @@ main(int argc, char **argv)
 				running = 0;
 		}
 		usleep(50000);
+	}
+	if (child_pid > 0) {
+		kill(child_pid, SIGTERM);
+		waitpid(child_pid, NULL, 0);
 	}
 
 	XDestroyWindow(dpy, win);
@@ -302,6 +375,7 @@ printf '%s\n' \
 	'  { mod="SUPER", key="o", desc="Xvfb monocle", func="setlayout", layout_idx=2 },' \
 	'  { mod="SUPER", key="t", desc="Xvfb tile", func="setlayout", layout_idx=0 },' \
 	'  { mod="SUPER", key="f", desc="Xvfb toggle floating", func="togglefloating" },' \
+	'  { mod="SUPER", key="k", desc="Xvfb focus previous", func="focusstack", i=-1 },' \
 	'  { mod="SUPER", key="v", desc="Xvfb mouse resize", func="resizemouse" },' \
 	'  { mod="SUPER", key="u", desc="Xvfb reload tag", func="view", ui=16 },' \
 	']' >"$home/.config/dwm-titus/hotkeys.toml"
@@ -449,6 +523,20 @@ above_win=$(cat "$work/above-window-id")
 [ -n "$above_win" ]
 wait_for_window_state "$above_win" _NET_WM_STATE_ABOVE
 wait_for_window_state "$above_win" _NET_WM_STATE_STAYS_ON_TOP
+DISPLAY=$display "$work/xclient" initial-above >"$work/second-above-window-id" 2>"$work/second-above-client.log" &
+second_above_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/second-above-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+second_above_win=$(cat "$work/second-above-window-id")
+[ -n "$second_above_win" ]
+wait_for_top_window "$second_above_win"
+DISPLAY=$display xdotool key Super+k
+wait_for_active_window "$above_win"
+wait_for_top_window "$above_win"
+
 DISPLAY=$display "$work/xclient" override >"$work/stack-window-id" 2>"$work/stack-client.log" &
 stack_client_pid=$!
 i=0
@@ -474,6 +562,27 @@ wait_for_top_window "$stack_win"
 DISPLAY=$display "$work/xclient" state "$above_win" 1 _NET_WM_STATE_STAYS_ON_TOP
 wait_for_window_state "$above_win" _NET_WM_STATE_STAYS_ON_TOP
 wait_for_top_window "$above_win"
+
+DISPLAY=$display "$work/xclient" >"$work/fullscreen-window-id" 2>"$work/fullscreen-client.log" &
+fullscreen_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/fullscreen-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+fullscreen_win=$(cat "$work/fullscreen-window-id")
+[ -n "$fullscreen_win" ]
+wait_for_active_window "$fullscreen_win"
+DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
+wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+DISPLAY=$display xdotool key Super+t
+wait_for_top_window "$fullscreen_win"
+DISPLAY=$display "$work/xclient" state "$fullscreen_win" 0 _NET_WM_STATE_FULLSCREEN
+wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+kill "$fullscreen_client_pid"
+wait "$fullscreen_client_pid" 2>/dev/null || true
+fullscreen_client_pid=
+
 DISPLAY=$display "$work/xclient" fullscreen "$above_win"
 wait_for_window_state "$above_win" _NET_WM_STATE_FULLSCREEN
 wait_for_window_state "$above_win" _NET_WM_STATE_STAYS_ON_TOP
@@ -481,11 +590,53 @@ DISPLAY=$display "$work/xclient" state "$above_win" 0 _NET_WM_STATE_FULLSCREEN
 wait_for_window_state_absent "$above_win" _NET_WM_STATE_FULLSCREEN
 wait_for_window_state "$above_win" _NET_WM_STATE_STAYS_ON_TOP
 
+kill "$second_above_client_pid"
+wait "$second_above_client_pid" 2>/dev/null || true
+second_above_client_pid=
 kill "$stack_client_pid"
 wait "$stack_client_pid" 2>/dev/null || true
 stack_client_pid=
 kill "$above_client_pid"
 wait "$above_client_pid" 2>/dev/null || true
 above_client_pid=
+
+DISPLAY=$display "$work/xclient" override >"$work/restore-stack-window-id" 2>"$work/restore-stack-client.log" &
+stack_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/restore-stack-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+stack_win=$(cat "$work/restore-stack-window-id")
+[ -n "$stack_win" ]
+
+DISPLAY=$display "$work/xclient" swallow-terminal >"$work/swallow-window-ids" 2>"$work/swallow-client.log" &
+swallow_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ "$(wc -l <"$work/swallow-window-ids")" -lt 2 ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+terminal_win=$(sed -n '1p' "$work/swallow-window-ids")
+swallowed_win=$(sed -n '2p' "$work/swallow-window-ids")
+[ -n "$terminal_win" ]
+[ -n "$swallowed_win" ]
+wait_for_active_window "$swallowed_win"
+DISPLAY=$display xdotool windowraise "$stack_win"
+DISPLAY=$display xdotool key Super+t
+wait_for_top_window "$swallowed_win"
+
+DISPLAY=$display xdotool windowkill "$swallowed_win"
+wait_for_client_window "$terminal_win"
+DISPLAY=$display xdotool windowraise "$stack_win"
+DISPLAY=$display xdotool key Super+t
+wait_for_top_window "$stack_win"
+
+kill "$swallow_client_pid"
+wait "$swallow_client_pid" 2>/dev/null || true
+swallow_client_pid=
+kill "$stack_client_pid"
+wait "$stack_client_pid" 2>/dev/null || true
+stack_client_pid=
 
 printf '%s\n' "Xvfb runtime smoke: PASS"
