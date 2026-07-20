@@ -140,7 +140,7 @@ require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep tail
 pkg-config --exists x11
 
 work=$(mktemp -d)
-trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
+trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
 mkdir -p "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/config"
@@ -182,6 +182,7 @@ main(int argc, char **argv)
 	int set_hints = 1;
 	int malformed_icon = 0;
 	int initial_above = 0;
+	int initial_many_states = 0;
 	int override_redirect = 0;
 	int swallow_terminal = 0;
 	pid_t child_pid = -1;
@@ -225,6 +226,8 @@ main(int argc, char **argv)
 		malformed_icon = 1;
 	else if (argc == 2 && strcmp(argv[1], "initial-above") == 0)
 		initial_above = 1;
+	else if (argc == 2 && strcmp(argv[1], "initial-many-states") == 0)
+		initial_many_states = 1;
 	else if (argc == 2 && strcmp(argv[1], "override") == 0)
 		override_redirect = 1;
 	else if (argc == 2 && strcmp(argv[1], "swallow-terminal") == 0)
@@ -255,7 +258,20 @@ main(int argc, char **argv)
 		XChangeProperty(dpy, win, net_wm_icon, XA_CARDINAL, 32,
 			PropModeReplace, (unsigned char *)icon, 3);
 	}
-	if (initial_above) {
+	if (initial_many_states) {
+		Atom states[65];
+		char name[64];
+		int i;
+
+		states[0] = XInternAtom(dpy, "_NET_WM_STATE_ABOVE", False);
+		for (i = 1; i < 64; i++) {
+			snprintf(name, sizeof(name), "_DWM_XVFB_STATE_%d", i);
+			states[i] = XInternAtom(dpy, name, False);
+		}
+		states[64] = XInternAtom(dpy, "_NET_WM_STATE_STAYS_ON_TOP", False);
+		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STATE", False),
+			XA_ATOM, 32, PropModeReplace, (unsigned char *)states, 65);
+	} else if (initial_above) {
 		Atom states[2];
 
 		states[0] = XInternAtom(dpy, "_NET_WM_STATE_ABOVE", False);
@@ -378,6 +394,7 @@ printf '%s\n' \
 	'  { mod="SUPER", key="k", desc="Xvfb focus previous", func="focusstack", i=-1 },' \
 	'  { mod="SUPER", key="v", desc="Xvfb mouse resize", func="resizemouse" },' \
 	'  { mod="SUPER", key="u", desc="Xvfb reload tag", func="view", ui=16 },' \
+	'  { mod="SUPER SHIFT", key="y", desc="Xvfb fake fullscreen", func="togglefakefullscreen" },' \
 	']' >"$home/.config/dwm-titus/hotkeys.toml"
 kill -USR1 "$dwm_pid"
 sleep 0.2
@@ -573,6 +590,14 @@ done
 fullscreen_win=$(cat "$work/fullscreen-window-id")
 [ -n "$fullscreen_win" ]
 wait_for_active_window "$fullscreen_win"
+DISPLAY=$display xdotool key Super+Shift+y
+wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+DISPLAY=$display xdotool windowraise "$stack_win"
+DISPLAY=$display xdotool key Super+t
+wait_for_top_window "$above_win"
+DISPLAY=$display xdotool key Super+Shift+y
+wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+
 DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
 DISPLAY=$display xdotool key Super+t
@@ -582,6 +607,25 @@ wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
 kill "$fullscreen_client_pid"
 wait "$fullscreen_client_pid" 2>/dev/null || true
 fullscreen_client_pid=
+
+DISPLAY=$display "$work/xclient" initial-many-states >"$work/many-state-window-id" 2>"$work/many-state-client.log" &
+many_state_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/many-state-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+many_state_win=$(cat "$work/many-state-window-id")
+[ -n "$many_state_win" ]
+wait_for_window_state "$many_state_win" _NET_WM_STATE_ABOVE
+wait_for_window_state "$many_state_win" _NET_WM_STATE_STAYS_ON_TOP
+DISPLAY=$display "$work/xclient" state "$many_state_win" 0 _NET_WM_STATE_ABOVE
+sleep 0.2
+wait_for_window_state "$many_state_win" _NET_WM_STATE_ABOVE
+wait_for_window_state "$many_state_win" _NET_WM_STATE_STAYS_ON_TOP
+kill "$many_state_client_pid"
+wait "$many_state_client_pid" 2>/dev/null || true
+many_state_client_pid=
 
 DISPLAY=$display "$work/xclient" fullscreen "$above_win"
 wait_for_window_state "$above_win" _NET_WM_STATE_FULLSCREEN
