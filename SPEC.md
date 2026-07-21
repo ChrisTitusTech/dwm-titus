@@ -2,23 +2,30 @@
 
 ## 1. Product Definition
 
-dwm-titus is a maintained, opinionated fork of suckless dwm for X11. It
-combines a small C window-manager core with runtime-configurable hotkeys,
-themes, and window rules, plus a Quickshell shell layer and optional desktop
-helpers such as Rofi, Picom, and supporting scripts.
+dwm-titus is a Fedora-first desktop environment for X11. It combines a small,
+maintained fork of suckless dwm with runtime-configurable hotkeys, themes, and
+window rules, a managed Quickshell shell and Settings layer, and supporting
+desktop services and helpers.
 
-The product target is one repository and one documented installation workflow
-that works across Debian-family, Arch-family, and RHEL-family Linux
-distributions without requiring users to translate package names or repair
-distribution-specific paths manually.
+The primary product is a cohesive desktop installed from the official Fedora
+Server Network Install ISO. A supported existing-system installer continues to
+provide the core desktop on Debian-family, Arch-family, Fedora, and generic
+RHEL-family systems without requiring users to translate package names or
+repair distribution-specific paths manually.
 
 ## 2. Goals
 
-- Build and run dwm-titus on supported Debian, Arch, and RHEL distribution
-  families.
+- Install a complete, daily-usable Fedora desktop from a minimal network
+  installer base.
+- Provide one cohesive Settings experience for common display, input,
+  connectivity, audio, power, appearance, default-application, update, and
+  system-information workflows.
+- Build and run the core dwm-titus desktop on supported Debian, Arch, and RHEL
+  distribution families.
 - Provide safe, idempotent dependency installation and system integration.
 - Preserve the speed, simplicity, and direct configuration model of dwm.
-- Provide consistent defaults and core behavior across distributions.
+- Provide consistent defaults and core behavior across distributions while
+  allowing Fedora-first Settings providers to degrade cleanly elsewhere.
 - Support display-manager login and `startx`.
 - Support common x86_64 and ARM Linux systems where the required X11 libraries
   are available.
@@ -29,15 +36,29 @@ distribution-specific paths manually.
 - A Wayland compositor or Wayland-native session.
 - Pixel-identical behavior across every theme, driver, display manager, or
   third-party desktop utility.
-- Automatic installation of proprietary GPU drivers.
-- Automatic bootloader, Plymouth, SELinux policy, firewall, or kernel changes.
+- Automatic installation of proprietary GPU drivers outside the explicitly
+  selected Fedora NVIDIA image.
+- Automatic bootloader, Plymouth, firewall, or kernel changes outside a
+  dedicated image flow that documents and validates them.
+- Turning the Settings frontend into a general-purpose root shell, service
+  editor, firewall editor, or partition manager.
 - Bundling every optional desktop application.
 - Supporting end-of-life distributions whose repositories no longer provide
   the required build dependencies.
 
-## 4. Supported Distribution Contract
+## 4. Supported Platform Contract
 
-The following families are first-class targets:
+The primary release target is the Fedora desktop image:
+
+| Target | Current contract |
+| --- | --- |
+| Base media | Fedora 44 Server Network Install ISO |
+| Session | Xorg with dwm and the managed Quickshell shell |
+| Variants | Standard and explicitly selected NVIDIA image |
+| Initial release architecture | x86_64 |
+
+The existing-system installer remains a supported secondary path for these
+families:
 
 | Family | Package interface | Representative systems |
 | --- | --- | --- |
@@ -45,7 +66,7 @@ The following families are first-class targets:
 | Arch | `pacman` | Arch Linux, EndeavourOS, Manjaro, Arch Linux ARM |
 | RHEL | `dnf` / RPM | RHEL, Rocky Linux, AlmaLinux, Fedora |
 
-A compatible derivative is supported when it:
+A compatible derivative is supported for the core desktop when it:
 
 - Provides the family's standard package interface.
 - Provides X11 and the required development libraries.
@@ -55,6 +76,12 @@ A compatible derivative is supported when it:
 The installer must report the detected distribution ID and family. Unknown
 derivatives may continue through a confirmed compatible-family path, but must
 not be silently misidentified.
+
+Secondary-platform support does not imply immediate parity with every Fedora
+Settings provider. Unsupported capabilities must be hidden or reported clearly
+without breaking the window manager, shell, installer, or other Settings
+sections. Full parity may be claimed only after the provider and runtime checks
+are validated on that platform.
 
 ## 5. Functional Requirements
 
@@ -132,9 +159,8 @@ Missing optional components must be logged or skipped without terminating dwm.
 
 ### 5.4 Quickshell Launcher
 
-The Quickshell shell layer must provide an X11-compatible application launcher
-that can become the normal app-launching workflow while Rofi remains available
-as a fallback during migration.
+The Quickshell shell layer must provide the normal X11-compatible application
+launching workflow.
 
 The launcher must:
 
@@ -354,7 +380,7 @@ Runtime dependencies are classified as:
 
 - Core: an X11 server/session, D-Bus session support, one usable terminal, and
   the tools required by configured core keybindings.
-- Recommended desktop: Quickshell, Rofi, Picom, Feh, Dex, a polkit agent,
+- Recommended desktop: Quickshell, Picom, Feh, Dex, a polkit agent,
   notification tools, audio controls, screenshot tooling, and Nerd/emoji fonts.
 - Optional: file manager, network tray, theme utilities, display-manager
   greeter customization, wallpapers, and hardware-specific helpers.
@@ -406,6 +432,82 @@ never be elevated. Without an installed helper, the unprivileged copy may use
 non-interactive `sudo` to execute only validated root-owned system commands
 needed for a bounded scan or confirmed repair.
 
+### 5.10 Desktop Settings Platform
+
+The managed Quickshell layer must grow into one discoverable Settings
+application. The application must use a hybrid integration model:
+
+- Common desktop state and controls are presented through consistent
+  Quickshell sections.
+- Small project helpers may expose stable, machine-readable state and narrowly
+  scoped user-session changes.
+- Privileged or high-risk administration is performed only through allowlisted,
+  installed helpers or delegated to trusted Fedora tools.
+- Fedora providers may be implemented first. Other platforms must expose a
+  clean unsupported state rather than failing the entire application.
+
+The Settings platform must distinguish:
+
+1. Read-only state available without authorization.
+2. User-session changes that affect only the invoking user.
+3. Privileged system changes requiring explicit confirmation and narrow
+   authorization.
+4. Delegated operations opened in a trusted platform tool.
+5. Unsupported capabilities with an actionable explanation.
+
+QML must not construct arbitrary privileged commands. Elevated helpers must be
+root-owned, non-writable by unprivileged users, validate every argument, expose
+only documented operations, and remain safe when authorization is denied or
+cancelled. Repository and XDG copies must never be elevated.
+
+Settings providers must prefer event-driven updates and stop unnecessary
+watches and processes when their section closes. A failure in one provider
+must not prevent other sections from opening. Risky changes must provide
+preview, confirmation, rollback, or recovery behavior appropriate to their
+impact.
+
+The planned Settings surface covers:
+
+- Displays and monitor profiles.
+- Keyboard, pointer, touchpad, and other supported input devices.
+- NetworkManager connections, VPN entry points, and Bluetooth devices.
+- PipeWire/WirePlumber-compatible audio devices and application streams.
+- Power profiles, battery, idle, DPMS, suspend, lid, and lock behavior.
+- Default applications, MIME handlers, and user-visible autostart entries.
+- Themes, wallpaper, fonts, cursors, toolkit integration, notifications, and
+  practical X11 accessibility controls.
+- Updates, software-source entry points, regional and time settings, user and
+  printer entry points, system information, storage overview, diagnostics, and
+  recovery guidance.
+
+Advanced partitioning, unrestricted service control, firewall policy editing,
+and similarly high-risk administration remain delegated unless a later
+specification defines a narrow safe interface.
+
+### 5.11 Fedora Image Contract
+
+Released Fedora images must be based on the Fedora Server Network Install ISO,
+not a Live ISO. The image builder embeds this repository and the selected
+Kickstart while preserving the upstream Anaconda installation environment.
+
+The standard image must not include NVIDIA-only packages or kernel arguments.
+The NVIDIA image is an explicit opt-in variant and may install the documented
+RPM Fusion NVIDIA packages, blacklist Nouveau, and configure NVIDIA DRM
+modesetting. Both variants may enable the documented third-party repositories
+needed by the selected desktop package set; choosing the dedicated image is
+the user's consent to that image policy.
+
+The Fedora image currently sets SELinux to disabled. This is an explicit image
+policy and a known reduction from Fedora's default security posture. The
+existing-system installer must not change host SELinux state. Changing the
+image policy requires updated requirements, migration guidance, and real image
+validation.
+
+Kickstart syntax and static ISO construction checks are necessary but not
+sufficient. A released image must record its Fedora source image and checksum,
+architecture, firmware mode, variant, package-resolution result, completed
+Anaconda install, first boot, and hardware limitations.
+
 ## 6. Filesystem and Installation Contract
 
 Default system installation locations:
@@ -432,6 +534,10 @@ configuration and unrelated application configuration by default.
 ## 7. User Experience Requirements
 
 - The default session must remain usable when optional visual components fail.
+- Common desktop settings must be discoverable from one Settings application;
+  unsupported sections must not make the rest of Settings unusable.
+- System changes must show pending state, success, failure, and recovery
+  guidance rather than relying on silent background commands.
 - Error messages must identify the missing command, library, package
   capability, or file and provide the next action.
 - The terminal command must select an installed supported terminal or provide a
@@ -455,10 +561,17 @@ configuration and unrelated application configuration by default.
 - Avoid broad recursive ownership or permission changes outside project-owned
   directories.
 - Preserve existing user files or create explicit backups before replacement.
+- Keep the Quickshell Settings frontend unprivileged.
+- Require explicit confirmation for privileged or destructive settings.
+- Use polkit or an equivalently narrow authorization mechanism rather than
+  broad passwordless sudo access for desktop settings.
+- Continue showing readable state when authorization is denied, cancelled, or
+  unavailable.
 
 ## 9. Validation and Acceptance Criteria
 
-A release is cross-distro ready only when all of the following pass:
+A core desktop release is cross-distro ready only when all of the following
+pass. A Fedora desktop image additionally requires the image checks below.
 
 ### 9.1 Static Validation
 
@@ -495,11 +608,34 @@ In a real or nested X11 session:
 - Multi-monitor behavior is tested where suitable hardware or nested displays
   are available.
 
+### 9.4 Fedora Image Validation
+
+- Both Kickstarts pass `ksvalidator` and repository-owned invariant tests.
+- The ISO builder embeds the checkout and selected Kickstart without dropping
+  the upstream boot behavior.
+- The documented Fedora Server Network Install source checksum is verified.
+- At least the standard image completes Anaconda installation in a VM, reboots,
+  reaches LightDM and a usable dwm session, and starts the managed Quickshell
+  shell.
+- NVIDIA image behavior is not described as hardware-verified unless tested on
+  representative NVIDIA hardware.
+- The validation record states firmware mode, architecture, image variant,
+  Fedora release, and any untested paths.
+
 ## 10. Current Gap
 
-The primary installer contains Debian-, Arch-, and Fedora/RHEL-family package
-mappings. The build uses `pkg-config`, supports staged installation with
-`DESTDIR`, and avoids writing user configuration during package builds.
+The existing desktop already provides dwm, a managed Quickshell panel and
+launcher, notifications, quick controls, power actions, network and Bluetooth
+surfaces, display helpers, and a system-health dashboard. It does not yet
+provide the unified Settings platform or the full desktop settings surface in
+Section 5.10; those outcomes are sequenced in `ROADMAP.md` and the active phase
+is defined in `TASKS.md`.
+
+The installer contains Debian-, Arch-, and Fedora/RHEL-family package mappings.
+The build uses `pkg-config`, supports staged installation with `DESTDIR`, and
+avoids writing user configuration during package builds. Fedora 44 Server
+Network Install is the current documented image base, while real image and
+hardware validation must continue to be recorded per release.
 
 Arch ARM handling is part of the primary installer; some manual package
 examples remain Arch-specific. Debian package resolution and clean compilation
@@ -510,11 +646,13 @@ universally verified.
 
 ## 11. Definition of Done
 
-A portability change is complete when:
+A roadmap feature is complete when:
 
-- Its behavior is implemented for all three distribution families or is
+- Its behavior meets the active roadmap phase and task acceptance criteria.
+- Fedora behavior is implemented and runtime validated, or the change is
   explicitly scoped as preparatory work.
-- Existing Arch behavior remains functional.
+- Secondary-platform behavior is implemented or exposes a tested clean
+  unsupported state without regressing the core desktop.
 - Relevant automated and manual validation is recorded.
 - User-facing installation and troubleshooting documentation is updated.
 - No existing user configuration is overwritten.
