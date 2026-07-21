@@ -240,9 +240,10 @@ nested X server is required before declaring runtime behavior fully validated.
 If a required platform cannot be tested, state exactly what was not tested and
 do not describe the change as universally verified.
 
-For Fedora image changes, run the Kickstart and ISO-builder checks and validate
-the affected image in Anaconda. Static validation alone does not prove package
-resolution, `%post` behavior, first boot, or hardware support.
+For Fedora image changes, follow the complete validation contract in
+[SPEC.md Section 9.4](SPEC.md#94-fedora-image-validation). Static validation
+alone does not prove package resolution, `%post` behavior, first boot, or
+hardware support.
 
 ## Change Discipline
 

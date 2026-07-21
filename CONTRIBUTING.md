@@ -40,7 +40,7 @@ submitting a pull request.
 | Quickshell QML | `make check-quickshell-qml` plus real or nested X11 runtime validation |
 | Documentation | `mdbook build docs && mdbook test docs` |
 | Installer or package mapping | `make check-container-smoke` |
-| Fedora Kickstart or ISO | `make check-kickstart` plus a recorded Anaconda install |
+| Fedora Kickstart or ISO | `make check-kickstart` plus all evidence required by [SPEC.md Section 9.4](SPEC.md#94-fedora-image-validation) |
 | Release automation | `make release-check` and a dry run of the release helper |
 
 Container and X11 checks require their documented host tools. If a required
