@@ -281,31 +281,35 @@ PanelWindow {
         visible: bluetoothMouse.containsMouse
         anchorWindow: root
         label: root.bluetoothModel.statusText
-        anchorX: bluetoothMouse.mapToItem(island, bluetoothMouse.width / 2, 0).x
+        anchorX: bluetoothMouse.mapToItem(island, bluetoothMouse.width, 0).x
         anchorY: Theme.panelHeight
+        rightAligned: true
     }
 
     PanelTooltip {
         visible: networkMouse.containsMouse
         anchorWindow: root
         label: root.networkModel.statusText
-        anchorX: networkMouse.mapToItem(island, networkMouse.width / 2, 0).x
+        anchorX: networkMouse.mapToItem(island, networkMouse.width, 0).x
         anchorY: Theme.panelHeight
+        rightAligned: true
     }
 
     PanelTooltip {
         visible: controlsMouse.containsMouse
         anchorWindow: root
         label: root.controlsModel.volumeDisplayText
-        anchorX: controlsMouse.mapToItem(island, controlsMouse.width / 2, 0).x
+        anchorX: controlsMouse.mapToItem(island, controlsMouse.width, 0).x
         anchorY: Theme.panelHeight
+        rightAligned: true
     }
 
     PanelTooltip {
         visible: powerMouse.containsMouse
         anchorWindow: root
         label: "Power"
-        anchorX: powerMouse.mapToItem(island, powerMouse.width / 2, 0).x
+        anchorX: powerMouse.mapToItem(island, powerMouse.width, 0).x
         anchorY: Theme.panelHeight
+        rightAligned: true
     }
 }

@@ -343,6 +343,7 @@ grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/cont
 grep -Fq 'PanelTooltip {' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'anchor.edges: Edges.Bottom' "$repo/config/quickshell/core/PanelTooltip.qml"
 grep -Fq 'anchor.gravity: Edges.Bottom' "$repo/config/quickshell/core/PanelTooltip.qml"
+grep -Fq 'rightAligned: true' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/PanelPill.qml"
 grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/ShellSurface.qml"
 grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/ClickAwayPopup.qml"
