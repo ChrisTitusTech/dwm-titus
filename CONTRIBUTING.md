@@ -1,14 +1,16 @@
 # Contributing
 
 Thanks for helping improve dwm-titus. Changes should preserve the small X11
-window-manager core, existing user workflows, and the supported Debian, Arch,
-and RHEL distribution families.
+window-manager core, existing user workflows, the Fedora-first desktop target,
+and the supported core install on Debian, Arch, Fedora, and RHEL families.
 
 ## Before You Start
 
-- Read `AGENTS.md` for repository conventions and `SPEC.md` for product scope.
+- Read `AGENTS.md` for repository conventions, `SPEC.md` for product scope,
+  `ROADMAP.md` for phase outcomes, and `TASKS.md` for active work.
 - Search existing issues and pull requests before starting overlapping work.
-- Keep product requirements in `SPEC.md`; use `tasks.md` for active work.
+- Keep durable requirements in `SPEC.md`; do not copy future roadmap phases
+  into `TASKS.md` before they become active.
 - Do not commit `config.h`, build products, release artifacts, ISO images, or
   generated mdBook output.
 
@@ -38,6 +40,7 @@ submitting a pull request.
 | Quickshell QML | `make check-quickshell-qml` plus real or nested X11 runtime validation |
 | Documentation | `mdbook build docs && mdbook test docs` |
 | Installer or package mapping | `make check-container-smoke` |
+| Fedora Kickstart or ISO | `make check-kickstart` plus a recorded Anaconda install |
 | Release automation | `make release-check` and a dry run of the release helper |
 
 Container and X11 checks require their documented host tools. If a required

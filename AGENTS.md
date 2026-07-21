@@ -2,9 +2,11 @@
 
 ## Purpose
 
-This repository is a heavily patched fork of suckless dwm for X11. The project
-must build, install, launch, and provide its documented core desktop experience
-on supported Debian-family, Arch-family, and RHEL-family distributions.
+This repository is a Fedora-first X11 desktop environment built around a
+heavily patched fork of suckless dwm and a managed Quickshell shell. The
+primary product is a complete desktop installed from Fedora Server Network
+Install media. The existing Debian-, Arch-, Fedora-, and RHEL-family installer
+remains a supported secondary path for the core desktop experience.
 
 Read `SPEC.md` before making product, portability, installer, dependency, or
 packaging changes. Treat `SPEC.md` as the source of truth for project scope and
@@ -14,14 +16,21 @@ acceptance criteria.
 
 1. Preserve dwm stability and existing user workflows.
 2. Keep the C window-manager core small, understandable, and dependency-light.
-3. Maintain equivalent behavior across the three supported distribution
-   families.
-4. Keep installation safe, repeatable, and non-destructive.
-5. Prefer focused changes that can be reviewed and tested independently.
+3. Build a cohesive Fedora desktop without moving desktop policy into the C
+   event loop.
+4. Preserve the core install and session contract across the three supported
+   distribution families.
+5. Keep installation and settings changes safe, repeatable, reversible, and
+   explicit.
+6. Prefer focused changes that can be reviewed and tested independently.
 
 ## Supported Platforms
 
-Changes must account for these distribution families:
+The platform contract has two tiers:
+
+- Primary desktop image: the current documented Fedora Server Network Install
+  release, with separate standard and NVIDIA variants.
+- Secondary existing-system install: these distribution families:
 
 - Debian family: Debian, Ubuntu, Linux Mint, Pop!_OS, and compatible
   derivatives using `apt`.
@@ -30,9 +39,11 @@ Changes must account for these distribution families:
 - RHEL family: RHEL, Rocky Linux, AlmaLinux, Fedora, and compatible
   derivatives using `dnf`.
 
-Do not claim that a distribution is supported solely because the C binary
-compiles. Support includes dependency discovery, installation, X session
-startup, configuration deployment, and the core runtime checks in `SPEC.md`.
+Do not claim full desktop-environment parity on a secondary platform unless its
+settings providers and runtime behavior were tested there. Core support still
+requires dependency discovery, installation, X session startup, configuration
+deployment, and the core runtime checks in `SPEC.md`; a successful C build is
+not sufficient.
 
 ## Repository Map
 
@@ -44,11 +55,61 @@ startup, configuration deployment, and the core runtime checks in `SPEC.md`.
 - `config/`: application configuration and default TOML runtime settings.
 - `scripts/`: session startup, dependency checks, desktop helpers, and
   operational scripts.
-- `install.sh`, `install-arm.sh`: existing Arch-focused installers. Any
-  portability work must either generalize or replace these without breaking
-  documented Arch workflows.
+- `install.sh`: supported existing-system installer for all distribution
+  families.
+- `dwm-fedora.ks`, `dwm-fedora-nvidia.ks`: Fedora image installation profiles.
 - `dwm.desktop`: display-manager X session entry.
-- `docs/`: user documentation and roadmap material.
+- `AGENTS.md`: durable engineering and agent-execution rules.
+- `SPEC.md`: product scope, interfaces, and acceptance criteria.
+- `ROADMAP.md`: ordered desktop-environment outcomes.
+- `TASKS.md`: implementation work for the active roadmap phase only.
+- `docs/`: user, contributor, and release documentation.
+
+## Planning Workflow
+
+- Use `SPEC.md` for durable product requirements and compatibility contracts.
+- Use `ROADMAP.md` for ordered phase objectives and exit criteria.
+- Use `TASKS.md` only for detailed work in the active phase. Replace its task
+  set when a phase completes instead of accumulating historical checklists.
+- Record completed user-visible behavior in `CHANGELOG.md` and releases.
+- Do not mark a task or phase complete without its required validation or a
+  precise statement of what could not be tested.
+- Treat phase boundaries as review and rollback points. Do not begin the next
+  phase in a change that was scoped only to complete the current one.
+
+## Fedora Image Rules
+
+- Base released images on the Fedora Server Network Install ISO documented in
+  `SPEC.md` and `docs/RELEASING.md`, not on a Fedora Live image.
+- Preserve separate standard and NVIDIA Kickstarts. Proprietary NVIDIA changes
+  belong only to the explicitly selected NVIDIA image.
+- Keep Kickstart package capabilities aligned with the shared dependency map.
+- Run `make check-kickstart` for Kickstart or ISO-builder changes, then validate
+  a real or virtual install before claiming the image boots or reaches a usable
+  desktop.
+- Record the Fedora release, source image checksum, architecture, firmware
+  mode, image variant, and untested hardware in release evidence.
+- The dedicated Fedora images currently set SELinux disabled by explicit
+  product policy. Existing-system installs must not change host SELinux state.
+  Any change to this policy requires a specification and migration update.
+
+## Desktop Settings Rules
+
+- Keep the Settings frontend and all QML unprivileged.
+- Read state through stable service APIs, D-Bus, signals, subscriptions, or
+  bounded helpers. Do not parse human-oriented output when a machine interface
+  exists.
+- Separate read-only state, user-session changes, privileged system changes,
+  delegated tools, and unsupported capabilities.
+- Privileged helpers must be installed root-owned and non-writable, expose only
+  allowlisted operations, validate every argument, and require explicit user
+  intent through polkit or an equally narrow authorization path.
+- Repository or user-writable helper copies must never be elevated.
+- Risky changes require preview, confirmation, rollback, or recovery behavior
+  appropriate to their impact. Authorization denial must not hide readable
+  state.
+- Fedora providers may land first. Secondary platforms must hide or explain
+  unavailable capabilities without breaking the rest of Settings.
 
 ## Portability Rules
 
@@ -136,7 +197,9 @@ startup, configuration deployment, and the core runtime checks in `SPEC.md`.
 
 - Keep the existing C99 style and compile with warnings enabled.
 - Avoid adding a new library dependency unless it materially improves a
-  required feature and is available on all supported distribution families.
+  required feature. Dependencies for the core desktop must remain portable;
+  Fedora-first Settings dependencies must have explicit fallback behavior on
+  secondary platforms.
 - Check allocation, file, Xlib/XCB, parser, and process-launch failures.
 - Do not introduce blocking work into the X event loop.
 - Keep Linux-specific functionality, such as inotify, explicit and documented.
@@ -176,6 +239,10 @@ nested X server is required before declaring runtime behavior fully validated.
 
 If a required platform cannot be tested, state exactly what was not tested and
 do not describe the change as universally verified.
+
+For Fedora image changes, run the Kickstart and ISO-builder checks and validate
+the affected image in Anaconda. Static validation alone does not prove package
+resolution, `%post` behavior, first boot, or hardware support.
 
 ## Change Discipline
 

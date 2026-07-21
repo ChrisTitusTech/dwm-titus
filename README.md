@@ -8,7 +8,11 @@
 
 ---
 
-This is a **heavily modified** version of dwm based on the original [suckless.org](https://dwm.suckless.org/) dwm. It includes numerous patches and customizations for a productive, user-friendly X11 desktop on Debian-, Arch-, and Fedora/RHEL-family distributions.
+This is a Fedora-first X11 desktop environment built around a **heavily
+modified** version of dwm from [suckless.org](https://dwm.suckless.org/), a
+managed Quickshell shell, and supporting desktop services. Fedora Server
+Network Install is the primary image base; Debian-, Arch-, Fedora-, and
+RHEL-family existing-system installs retain the supported core desktop.
 
 ### Patches & Features
 
@@ -255,8 +259,9 @@ bash scripts/check-deps.sh
 | `CONTRIBUTING.md` | Development and validation workflow |
 | `SECURITY.md` | Private vulnerability reporting policy |
 | `CHANGELOG.md` | User-facing release history |
-| `docs/ROADMAP.md` | Completed Quickshell migration record |
-| `tasks.md` | Active and recurring project tasks |
+| `SPEC.md` | Durable product scope and acceptance criteria |
+| `ROADMAP.md` | Fedora-first desktop-environment phases |
+| `TASKS.md` | Detailed work for the active roadmap phase |
 | `docs/RELEASING.md` | Release validation and publication checklist |
 
 ---
@@ -274,8 +279,8 @@ autostart guard tests, staged install/uninstall checks, and release artifact
 validation. Use `make native` only for a binary intended for the current
 machine; normal builds remain portable across compatible CPUs.
 
-Current implementation tasks are tracked in `tasks.md`. Product scope and
-acceptance criteria remain in `SPEC.md`.
+Current implementation tasks are tracked in `TASKS.md`, phase outcomes in
+`ROADMAP.md`, and durable product requirements in `SPEC.md`.
 
 Additional environment-specific gates are available:
 
