@@ -122,6 +122,8 @@ section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
 [ "$section" = power ]
 
+# These offsets target the first "displays" section entry; update them if the
+# SettingsWindow navigation layout changes.
 DISPLAY=$display xdotool mousemove "$((x + 120))" "$((y + 170))" click 1
 section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
@@ -132,6 +134,13 @@ DISPLAY=$display xdotool type --delay 20 network
 section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
 [ "$section" = network ]
+
+# IPC selection clears a search that hides the requested section.
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
+[ "$section" = audio ]
 
 DISPLAY=$display xdotool key Escape
 i=0

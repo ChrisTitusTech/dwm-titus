@@ -15,7 +15,7 @@ usage() {
 }
 
 clean_field() {
-	printf '%s' "$1" | tr '\t\r\n' '   '
+	printf '%s' "$1" | tr '\011\015\012' '   '
 }
 
 os_value() {
@@ -43,9 +43,28 @@ platform_family() {
 	esac
 }
 
-provider_available() {
+provider_path() {
 	command_name=$1
-	command -v "$command_name" >/dev/null 2>&1 || [ -x "$script_dir/$command_name" ]
+	if command -v "$command_name" >/dev/null 2>&1; then
+		command -v "$command_name"
+	elif [ -x "$script_dir/$command_name" ]; then
+		printf '%s\n' "$script_dir/$command_name"
+	else
+		return 1
+	fi
+}
+
+provider_available() {
+	provider_path "$1" >/dev/null 2>&1
+}
+
+# Keep discovery responsive even when a service client cannot reach its daemon.
+run_bounded_probe() {
+	command_name=$1
+	shift
+	command_path=$(provider_path "$command_name") || return 1
+	timeout_path=$(command -v timeout 2>/dev/null) || return 1
+	"$timeout_path" 2 "$command_path" "$@" >/dev/null 2>&1
 }
 
 emit_capability() {
@@ -67,25 +86,32 @@ emit_capability() {
 		"$(clean_field "$detail")"
 }
 
-emit_command_capability() {
+emit_probed_command_capability() {
 	section=$1
 	id=$2
 	label=$3
 	class=$4
 	command_name=$5
 	available_detail=$6
-	unavailable_detail=$7
+	missing_detail=$7
+	unready_detail=$8
+	shift 8
 
-	if provider_available "$command_name"; then
+	if ! provider_available "$command_name"; then
+		emit_capability "$section" "$id" "$label" unavailable "$class" "$command_name" "$missing_detail"
+	elif run_bounded_probe "$command_name" "$@"; then
 		emit_capability "$section" "$id" "$label" available "$class" "$command_name" "$available_detail"
 	else
-		emit_capability "$section" "$id" "$label" unavailable "$class" "$command_name" "$unavailable_detail"
+		emit_capability "$section" "$id" "$label" unavailable "$class" "$command_name" "$unready_detail"
 	fi
 }
 
 trusted_health_helper() {
-	for candidate in /usr/local/bin/dwm-system-health /usr/bin/dwm-system-health; do
+	path_candidate=$(command -v dwm-system-health 2>/dev/null || true)
+	for candidate in "$path_candidate" /usr/local/bin/dwm-system-health /usr/bin/dwm-system-health; do
+		[ -n "$candidate" ] || continue
 		[ -f "$candidate" ] || continue
+		[ ! -L "$candidate" ] || continue
 		[ "$(stat -c %u -- "$candidate" 2>/dev/null || printf 1)" = 0 ] || continue
 		find "$candidate" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q . || continue
 		return 0
@@ -113,37 +139,49 @@ discover() {
 		"$(clean_field "$platform_family_name")" \
 		"$(clean_field "$platform_pretty")"
 
-	emit_command_capability displays randr 'Display discovery' read-only xrandr \
+	emit_probed_command_capability displays randr 'Display discovery' read-only xrandr \
 		'RandR display state is available' \
-		'Install the X11 RandR tools and open Settings from X11'
+		'Install the X11 RandR tools and open Settings from X11' \
+		'RandR tools are installed, but no responsive X11 display is available' \
+		--query
 	emit_capability displays display-changes 'Display changes' unsupported user-session \
 		dwm-display-setup 'Display changes begin in Phase 2'
 
 	emit_capability input input-devices 'Input devices' unsupported user-session \
 		xinput 'Input device settings begin in Phase 2'
 
-	emit_command_capability network networkmanager NetworkManager delegated nmcli \
+	emit_probed_command_capability network networkmanager NetworkManager delegated nmcli \
 		'NetworkManager state is available' \
-		'Install and start NetworkManager to enable this section'
-	emit_command_capability bluetooth bluez Bluetooth delegated bluetoothctl \
+		'Install NetworkManager to enable this section' \
+		'NetworkManager is installed, but its service is not responding' \
+		-t -f RUNNING general
+	emit_probed_command_capability bluetooth bluez Bluetooth delegated bluetoothctl \
 		'BlueZ state is available' \
-		'Install BlueZ tools and start Bluetooth to enable this section'
+		'Install BlueZ tools to enable this section' \
+		'BlueZ tools are installed, but no daemon or adapter is responding' \
+		show
 
-	if provider_available pactl; then
+	if run_bounded_probe pactl info; then
 		emit_capability audio pipewire-audio Audio available user-session pactl \
 			'PipeWire Pulse-compatible session controls are available'
-	elif provider_available wpctl; then
+	elif run_bounded_probe wpctl status; then
 		emit_capability audio pipewire-audio Audio available user-session wpctl \
 			'WirePlumber session controls are available'
+	elif provider_available pactl || provider_available wpctl; then
+		emit_capability audio pipewire-audio Audio unavailable user-session pipewire \
+			'Audio tools are installed, but no PipeWire or Pulse session is responding'
 	else
 		emit_capability audio pipewire-audio Audio unavailable user-session pipewire \
 			'Start PipeWire and install pactl or wpctl'
 	fi
 
-	emit_command_capability power dpms 'Display power management' user-session xset \
+	emit_probed_command_capability power dpms 'Display power management' user-session xset \
 		'X11 DPMS state is available' \
-		'Install xset and open Settings from X11'
-	if provider_available xset && provider_available gsettings && provider_available light-locker; then
+		'Install xset and open Settings from X11' \
+		'xset is installed, but no responsive X11 display is available' \
+		q
+	if run_bounded_probe xset q && provider_available light-locker &&
+		run_bounded_probe gsettings get apps.light-locker lock-after-screensaver; then
 		emit_capability power auto-lock 'Automatic locking' available user-session light-locker \
 			'Light-locker session policy is available'
 	else
@@ -151,9 +189,13 @@ discover() {
 			'Install xset, GLib settings, and light-locker for full support'
 	fi
 
-	if provider_available xdg-settings && provider_available xdg-mime; then
+	if run_bounded_probe xdg-settings get default-web-browser &&
+		run_bounded_probe xdg-mime query default text/html; then
 		emit_capability defaults xdg-defaults 'Default applications' available user-session xdg-utils \
 			'Browser and MIME defaults are readable'
+	elif provider_available xdg-settings && provider_available xdg-mime; then
+		emit_capability defaults xdg-defaults 'Default applications' unavailable user-session xdg-utils \
+			'XDG tools are installed, but the current desktop defaults are not readable'
 	else
 		emit_capability defaults xdg-defaults 'Default applications' unavailable user-session xdg-utils \
 			'Install xdg-utils to inspect desktop defaults'

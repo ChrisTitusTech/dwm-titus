@@ -64,6 +64,15 @@ Scope {
     }
 
     function selectSection(id) {
+        const exists = root.sections.some(function(section) {
+            return section.id === id;
+        });
+        if (!exists) return;
+        if (root.searchQuery.length > 0 && !root.filteredSections.some(function(section) {
+            return section.id === id;
+        })) {
+            root.searchQuery = "";
+        }
         for (let index = 0; index < root.filteredSections.length; index++) {
             if (root.filteredSections[index].id === id) {
                 root.selectedIndex = index;

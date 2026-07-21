@@ -275,13 +275,15 @@ FloatingWindow {
                                 required property var modelData
 
                                 width: capabilityList.width
-                                height: 92
+                                height: Math.max(92, cardColumn.implicitHeight + 22)
                                 color: Theme.bg
                                 border.color: root.statusColor(capabilityCard.modelData.status)
                                 border.width: 1
                                 radius: Theme.radius
 
                                 ColumnLayout {
+                                    id: cardColumn
+
                                     anchors.fill: parent
                                     anchors.margins: 11
                                     spacing: Theme.tightSpacing

@@ -7,8 +7,13 @@ if [ ! -f "$config" ]; then
 	config=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml
 fi
 
+if [ ! -f "$config" ]; then
+	printf 'dwm-settings: managed Quickshell configuration not found\n' >&2
+	exit 1
+fi
+
 action=${1:-toggle}
-case $action in
+case "$action" in
 open | close | toggle | refresh | status) ;;
 *)
 	printf 'usage: %s [open|close|toggle|refresh|status]\n' "$0" >&2

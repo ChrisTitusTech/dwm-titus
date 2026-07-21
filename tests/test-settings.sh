@@ -24,9 +24,16 @@ make_stub() {
 	chmod +x "$path"
 }
 
+make_failing_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' 'exit 1' >"$path"
+	chmod +x "$path"
+}
+
 base_bin=$work/base-bin
 fedora_bin=$work/fedora-bin
-make_tools "$base_bin" dirname awk tr stat find grep
+make_tools "$base_bin" dirname awk tr stat find grep timeout
 cp -a "$base_bin" "$fedora_bin"
 
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
@@ -38,11 +45,8 @@ mkdir -p "$work/fedora-config/dwm-titus" "$work/debian-config/dwm-titus"
 cp "$repo/config/themes.toml" "$work/fedora-config/dwm-titus/themes.toml"
 cp "$repo/config/themes.toml" "$work/debian-config/dwm-titus/themes.toml"
 
-cat >"$work/fedora-os-release" <<'EOF'
-ID=fedora
-ID_LIKE="rhel"
-PRETTY_NAME="Fedora Linux 44"
-EOF
+printf 'ID=fedora\nID_LIKE="rhel"\nPRETTY_NAME="Fedora\tLinux 44"\n' \
+	>"$work/fedora-os-release"
 
 fedora_output=$(PATH="$fedora_bin" XDG_CONFIG_HOME="$work/fedora-config" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
@@ -68,11 +72,27 @@ debian_output=$(PATH="$base_bin" XDG_CONFIG_HOME="$work/debian-config" \
 	DWM_SETTINGS_OS_RELEASE="$work/debian-os-release" "$provider" discover)
 printf '%s\n' "$debian_output" | grep -Fqx 'platform	debian	debian	Debian GNU/Linux 13'
 printf '%s\n' "$debian_output" | grep -Fqx \
-	'capability	network	networkmanager	NetworkManager	unavailable	delegated	nmcli	Install and start NetworkManager to enable this section'
+	'capability	network	networkmanager	NetworkManager	unavailable	delegated	nmcli	Install NetworkManager to enable this section'
 printf '%s\n' "$debian_output" | grep -Fqx \
-	'capability	bluetooth	bluez	Bluetooth	unavailable	delegated	bluetoothctl	Install BlueZ tools and start Bluetooth to enable this section'
+	'capability	bluetooth	bluez	Bluetooth	unavailable	delegated	bluetoothctl	Install BlueZ tools to enable this section'
 printf '%s\n' "$debian_output" | grep -Fqx \
 	'capability	system	authorization	Administrative authorization	restricted	privileged	polkit	Read-only state remains available; install the trusted system helper for authorized actions'
+
+runtime_down_bin=$work/runtime-down-bin
+cp -a "$fedora_bin" "$runtime_down_bin"
+for command_name in xrandr nmcli bluetoothctl pactl xset; do
+	make_failing_stub "$runtime_down_bin/$command_name"
+done
+runtime_down_output=$(PATH="$runtime_down_bin" XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$runtime_down_output" | grep -Fqx \
+	'capability	displays	randr	Display discovery	unavailable	read-only	xrandr	RandR tools are installed, but no responsive X11 display is available'
+printf '%s\n' "$runtime_down_output" | grep -Fqx \
+	'capability	network	networkmanager	NetworkManager	unavailable	delegated	nmcli	NetworkManager is installed, but its service is not responding'
+printf '%s\n' "$runtime_down_output" | grep -Fqx \
+	'capability	bluetooth	bluez	Bluetooth	unavailable	delegated	bluetoothctl	BlueZ tools are installed, but no daemon or adapter is responding'
+printf '%s\n' "$runtime_down_output" | grep -Fqx \
+	'capability	audio	pipewire-audio	Audio	unavailable	user-session	pipewire	Audio tools are installed, but no PipeWire or Pulse session is responding'
 
 if "$provider" unknown 2>"$work/provider.err"; then
 	exit 1
@@ -103,9 +123,18 @@ if PATH="$work/launcher-bin:$PATH" HOME="$work/home" \
 fi
 grep -Fq 'usage:' "$work/launcher.err"
 
+rm -f "$work/home/.config/quickshell/shell.qml"
+if PATH="$work/launcher-bin:$PATH" HOME="$work/home" \
+	XDG_CONFIG_HOME="$work/home/.config" XDG_DATA_HOME="$work/home/.local/share" \
+	DWM_SETTINGS_LAUNCH_LOG="$work/launch.log" "$launcher" status 2>"$work/missing-config.err"; then
+	exit 1
+fi
+grep -Fq 'managed Quickshell configuration not found' "$work/missing-config.err"
+
 grep -Fq 'target: "settings"' "$repo/config/quickshell/shell.qml"
 grep -Fq 'providerProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'Commands.settingsProviderCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'root.searchQuery = ""' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'title: "dwm settings"' "$repo/config/quickshell/settings/SettingsWindow.qml"
 grep -Fq 'label: "Settings  >"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'root.settingsModel.open()' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"

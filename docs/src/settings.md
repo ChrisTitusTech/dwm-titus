@@ -7,7 +7,7 @@ Open Control Center with `Super+F1`, select **Utilities**,
 then select **Settings**. You can also run:
 
 ```bash
-dwm-settings
+dwm-settings open
 ```
 
 Phase 1 is a read-only foundation. It discovers display, input, network,
@@ -29,6 +29,16 @@ dwm-settings refresh
 dwm-settings status
 dwm-settings close
 ```
+
+Existing `window-rules.toml` files are preserved during upgrades. If your file
+predates Settings, add this entry inside its `rules` array:
+
+```toml
+{ title="dwm settings", isfloating=1, alwaysontop=1 },
+```
+
+Saving the file applies the rule through dwm's normal hot reload. A customized
+rule with the same title can be retained instead.
 
 Phase 2 adds display and input controls. Later phases add connectivity, audio,
 power, defaults, personalization, and system-management operations while
