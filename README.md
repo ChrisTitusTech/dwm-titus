@@ -152,7 +152,7 @@ See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
 | <kbd>SUPER</kbd> + <kbd>F</kbd> | Floating layout |
 | <kbd>SUPER</kbd> + <kbd>M</kbd> | Fullscreen |
 | <kbd>SUPER</kbd> + <kbd>Space</kbd> | Toggle floating |
-| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | Quit dwm |
+| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | Quit dwm and cleanly end the graphical session |
 | <kbd>SUPER</kbd> + <kbd>Ctrl</kbd> + <kbd>Q</kbd> | Power menu |
 
 ---

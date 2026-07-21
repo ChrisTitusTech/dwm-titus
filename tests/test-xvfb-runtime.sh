@@ -683,4 +683,38 @@ kill "$stack_client_pid"
 wait "$stack_client_pid" 2>/dev/null || true
 stack_client_pid=
 
+# Restore the normal key map and verify that Super+Shift+Q exits cleanly and
+# launches the session-stop hook. Use an isolated marker instead of touching
+# the host's real graphical-session targets from the nested X11 test.
+mkdir -p "$home/.local/share/dwm-titus/scripts"
+cat >"$home/.local/share/dwm-titus/scripts/autostop.sh" <<EOF
+#!/bin/sh
+: >"$work/autostop.called"
+EOF
+chmod +x "$home/.local/share/dwm-titus/scripts/autostop.sh"
+cp "$repo_dir/config/hotkeys.toml" "$home/.config/dwm-titus/hotkeys.toml"
+kill -USR1 "$dwm_pid"
+sleep 0.2
+DISPLAY=$display xdotool key Super+Shift+q
+i=0
+while [ "$i" -lt 100 ] && kill -0 "$dwm_pid" 2>/dev/null; do
+	i=$((i + 1))
+	sleep 0.05
+done
+if kill -0 "$dwm_pid" 2>/dev/null; then
+	printf '%s\n' 'Super+Shift+Q did not exit dwm' >&2
+	exit 1
+fi
+wait "$dwm_pid"
+dwm_pid=
+i=0
+while [ "$i" -lt 100 ] && [ ! -f "$work/autostop.called" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ ! -f "$work/autostop.called" ]; then
+	printf '%s\n' 'dwm did not launch the session-stop hook' >&2
+	exit 1
+fi
+
 printf '%s\n' "Xvfb runtime smoke: PASS"

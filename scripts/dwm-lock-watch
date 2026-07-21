@@ -41,7 +41,8 @@ run_lock_helper() {
 	fi
 }
 
-dbus-monitor --system \
+DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket \
+	dbus-monitor --system \
 	"type='signal',path='$session_path',interface='org.freedesktop.login1.Session',member='Lock'" 2>/dev/null |
 	while IFS= read -r line; do
 		case $line in

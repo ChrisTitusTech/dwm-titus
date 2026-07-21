@@ -127,7 +127,8 @@ SCRIPT
 
 cat >"$work/bin/dbus-monitor" <<'SCRIPT'
 #!/bin/sh
-printf '%s\n' "$*" >"${DWM_LOCK_TEST_DIR:?}/dbus-monitor"
+printf 'address=%s\nargs=%s\n' \
+	"${DBUS_SYSTEM_BUS_ADDRESS:-}" "$*" >"${DWM_LOCK_TEST_DIR:?}/dbus-monitor"
 printf '%s\n' 'signal path=/org/freedesktop/login1/session/_37; interface=org.freedesktop.login1.Session; member=Lock'
 SCRIPT
 
@@ -144,6 +145,7 @@ DWM_LOCK_TEST_DIR="$work" \
 	PATH="$work/bin:/usr/bin:/bin" \
 	"$repo_dir/scripts/dwm-lock-watch"
 grep -Fq 'GetSession s 7' "$work/busctl"
+grep -Fxq 'address=unix:path=/run/dbus/system_bus_socket' "$work/dbus-monitor"
 grep -Fq "path='/org/freedesktop/login1/session/_37'" "$work/dbus-monitor"
 grep -Fxq 'no_loginctl=1' "$work/watch-lock"
 

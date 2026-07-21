@@ -101,7 +101,7 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | Keys | Action |
 |------|--------|
 | `Super` + `Ctrl` + `Q` | Power menu |
-| `Super` + `Shift` + `Q` | Quit dwm |
+| `Super` + `Shift` + `Q` | Quit dwm and cleanly end the graphical session |
 | `Super` + `Ctrl` + `Shift` + `R` | Reboot |
 | `Super` + `Ctrl` + `Shift` + `S` | Suspend |
 

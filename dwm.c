@@ -289,7 +289,9 @@ static void maprequest(XEvent *e);
 static void motionnotify(XEvent *e);
 static void propertynotify(XEvent *e);
 static void run(void);
+static void runautoscript(const char *script);
 static void runautostart(void);
+static void runautostop(void);
 static void scan(void);
 static void sigchld(int unused);
 static void sigstatusbar(const Arg *arg);
@@ -343,6 +345,7 @@ static void *toml_alloc(size_t sz);
 
 /* variables */
 static const char autostartsh[] = "scripts/autostart.sh";
+static const char autostopsh[] = "scripts/autostop.sh";
 static const char broken[] = "broken";
 static const char dwmdir[] = "dwm-titus";
 static const char localshare[] = ".local/share";
@@ -2605,7 +2608,7 @@ run(void)
 }
 
 void
-runautostart(void)
+runautoscript(const char *script)
 {
 	char *pathpfx;
 	char *path;
@@ -2659,10 +2662,11 @@ runautostart(void)
 	}
 
 	/* try the autostart script */
-	path = ecalloc(1, strlen(pathpfx) + strlen(autostartsh) + 2);
-	if (sprintf(path, "%s/%s", pathpfx, autostartsh) <= 0) {
+	path = ecalloc(1, strlen(pathpfx) + strlen(script) + 2);
+	if (sprintf(path, "%s/%s", pathpfx, script) <= 0) {
 		free(path);
 		free(pathpfx);
+		return;
 	}
 
 	if (access(path, X_OK) == 0) {
@@ -2677,6 +2681,18 @@ runautostart(void)
 
 	free(pathpfx);
 	free(path);
+}
+
+void
+runautostart(void)
+{
+	runautoscript(autostartsh);
+}
+
+void
+runautostop(void)
+{
+	runautoscript(autostopsh);
 }
 
 void
@@ -5099,5 +5115,6 @@ main(int argc, char *argv[])
 	run();
 	cleanup();
 	XCloseDisplay(dpy);
+	runautostop();
 	return EXIT_SUCCESS;
 }

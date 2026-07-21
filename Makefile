@@ -262,6 +262,7 @@ check-format:
 
 check-session-guards:
 	tests/test-autostart.sh
+	tests/test-autostop.sh
 
 check-session-migration:
 	tests/test-graphical-session-migration.sh
