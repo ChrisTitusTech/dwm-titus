@@ -9,7 +9,7 @@ Rectangle {
 
     implicitHeight: Theme.pillHeight
     color: active ? Theme.surfaceActive : hovered ? Theme.surfaceHover : Theme.surface
-    border.color: active ? Theme.accent : hovered ? Theme.borderStrong : Theme.border
+    border.color: active ? Theme.accent : hovered ? Theme.borderStrong : Theme.barBackground
     border.width: Theme.pillBorderWidth
     radius: Theme.pillRadius
 

@@ -15,7 +15,8 @@ PopupWindow {
     color: Theme.transparent
 
     anchor.window: root.anchorWindow
-    anchor.rect.x: root.anchorX
+    anchor.rect.x: Math.max(0, Math.min(root.anchorWindow.width - root.implicitWidth,
+                                       root.anchorX - root.implicitWidth / 2))
     anchor.rect.y: root.anchorY
 
     PanelPill {

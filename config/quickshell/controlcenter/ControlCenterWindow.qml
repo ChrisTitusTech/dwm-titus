@@ -172,7 +172,7 @@ ClickAwayPopup {
                     label: "Power  >"
                     onActivated: {
                         root.controlCenterModel.close();
-                        root.powerMenuModel.open();
+                        root.powerMenuModel.open("controlcenter");
                     }
                 }
 

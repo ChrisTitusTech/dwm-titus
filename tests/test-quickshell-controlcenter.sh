@@ -346,5 +346,11 @@ grep -Fq 'onFocusRequested: windowId => root.state.focusWindow(windowId)' "$repo
 grep -Fq 'root.nativeMenuItem && root.nativeMenuItem.hasMenu' "$repo/config/quickshell/panel/RunningAppItem.qml"
 grep -Fq 'root.state.activeWindowTitle' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'root.state.statusSegments' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'trimmed !== "AC"' "$repo/config/quickshell/state/DwmState.qml"
+grep -Fq 'root.powerMenuModel.open("controlcenter")' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'powerMenuModel.anchorSource === "controlcenter"' "$repo/config/quickshell/power/PowerMenuWindow.qml"
+if grep -Fq 'danger: modelData.id === "shutdown"' "$repo/config/quickshell/power/PowerMenuWindow.qml"; then
+	exit 1
+fi
 
 printf 'Quickshell control center helper: PASS\n'

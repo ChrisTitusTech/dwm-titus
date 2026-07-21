@@ -9,6 +9,7 @@ Scope {
     property bool confirming: false
     property var pendingAction: null
     property string status: ""
+    property string anchorSource: "panel"
 
     readonly property var sessionActions: [
         {
@@ -41,7 +42,8 @@ Scope {
         }
     ]
 
-    function open() {
+    function open(source) {
+        root.anchorSource = source || "panel";
         root.visible = true;
         root.confirming = false;
         root.pendingAction = null;
@@ -55,11 +57,11 @@ Scope {
         root.status = "";
     }
 
-    function toggle() {
+    function toggle(source) {
         if (root.visible) {
             root.close();
         } else {
-            root.open();
+            root.open(source);
         }
     }
 

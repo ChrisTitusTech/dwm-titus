@@ -12,7 +12,7 @@
 set -euo pipefail
 
 sync_activation_environment() {
-	local -a activation_vars=(DISPLAY)
+	local -a activation_vars=(DISPLAY XDG_SESSION_TYPE QT_QPA_PLATFORM)
 
 	if [[ -z "${DISPLAY:-}" ]]; then
 		printf 'dwm-screenshot: DISPLAY is not set\n' >&2
@@ -20,12 +20,18 @@ sync_activation_environment() {
 	fi
 
 	[[ -z "${XAUTHORITY:-}" ]] || activation_vars+=(XAUTHORITY)
-	[[ -z "${XDG_SESSION_TYPE:-}" ]] || activation_vars+=(XDG_SESSION_TYPE)
 	[[ -z "${XDG_CURRENT_DESKTOP:-}" ]] || activation_vars+=(XDG_CURRENT_DESKTOP)
+
+	# dwm-titus is an X11 session. Force Flameshot onto its native XCB capture
+	# path instead of allowing stale Wayland session state to select a portal.
+	export XDG_SESSION_TYPE=x11
+	export QT_QPA_PLATFORM=xcb
+	unset WAYLAND_DISPLAY
 
 	# Flameshot uses D-Bus activation. Keep the user manager on the current
 	# X11 display so an old login or nested-X test cannot launch it elsewhere.
 	if command -v systemctl >/dev/null 2>&1; then
+		systemctl --user unset-environment WAYLAND_DISPLAY >/dev/null 2>&1 || true
 		systemctl --user import-environment "${activation_vars[@]}" >/dev/null 2>&1 || true
 	fi
 	if command -v dbus-update-activation-environment >/dev/null 2>&1; then

@@ -30,7 +30,8 @@ EOF
 chmod +x "$work/bin/"*
 
 log=$work/calls.log
-DISPLAY=:99 \
+env -u XDG_CURRENT_DESKTOP -u WAYLAND_DISPLAY \
+	DISPLAY=:99 \
 	XAUTHORITY=$work/Xauthority \
 	XDG_SESSION_TYPE=x11 \
 	HOME=$work/home \
@@ -38,8 +39,9 @@ DISPLAY=:99 \
 	TEST_LOG=$log \
 	"$repo_dir/scripts/dwm-screenshot" clip
 
-grep -Fqx 'systemctl:--user import-environment DISPLAY XAUTHORITY XDG_SESSION_TYPE' "$log"
-grep -Fqx 'dbus:--systemd DISPLAY XAUTHORITY XDG_SESSION_TYPE' "$log"
+grep -Fqx 'systemctl:--user unset-environment WAYLAND_DISPLAY' "$log"
+grep -Fqx 'systemctl:--user import-environment DISPLAY XDG_SESSION_TYPE QT_QPA_PLATFORM XAUTHORITY' "$log"
+grep -Fqx 'dbus:--systemd DISPLAY XDG_SESSION_TYPE QT_QPA_PLATFORM XAUTHORITY' "$log"
 grep -Fqx 'flameshot:gui --clipboard' "$log"
 test -d "$work/home/Pictures/Screenshots"
 
