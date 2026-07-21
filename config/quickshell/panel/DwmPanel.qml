@@ -169,7 +169,10 @@ PanelWindow {
                             anchors.centerIn: parent
                             spacing: Theme.compactSpacing
 
-                            IconText { text: "󰂯" }
+                            IconText {
+                                text: "󰂯"
+                                color: Theme.textStrong
+                            }
                         }
 
                         MouseArea {
@@ -196,6 +199,7 @@ PanelWindow {
                             IconText {
                                 text: root.networkModel.statusText.indexOf("offline") >= 0
                                     || root.networkModel.statusText.indexOf("unavailable") >= 0 ? "󰤭" : "󰤨"
+                                color: Theme.textStrong
                             }
                         }
 
@@ -218,7 +222,7 @@ PanelWindow {
                         IconText {
                             anchors.centerIn: parent
                             text: root.controlsModel.volumeMuted ? "󰝟" : "󰕾"
-                            color: Theme.accentSecondary
+                            color: Theme.textStrong
                         }
 
                         MouseArea {
@@ -240,7 +244,7 @@ PanelWindow {
                         IconText {
                             anchors.centerIn: parent
                             text: "󰐥"
-                            color: Theme.accentSecondary
+                            color: Theme.textStrong
                         }
 
                         MouseArea {

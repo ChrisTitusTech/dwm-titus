@@ -118,7 +118,6 @@ ClickAwayPopup {
                         Layout.preferredHeight: Theme.confirmButtonHeight
                         action: root.confirmButtonAction
                         compact: true
-                        danger: true
                         onActivated: root.powerMenuModel.confirmAction()
                     }
                 }

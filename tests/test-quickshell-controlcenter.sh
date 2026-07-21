@@ -352,5 +352,8 @@ grep -Fq 'powerMenuModel.anchorSource === "controlcenter"' "$repo/config/quicksh
 if grep -Fq 'danger: modelData.id === "shutdown"' "$repo/config/quickshell/power/PowerMenuWindow.qml"; then
 	exit 1
 fi
+if grep -Fq 'danger: true' "$repo/config/quickshell/power/PowerMenuWindow.qml"; then
+	exit 1
+fi
 
 printf 'Quickshell control center helper: PASS\n'
