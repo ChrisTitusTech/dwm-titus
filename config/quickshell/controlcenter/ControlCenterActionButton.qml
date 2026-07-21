@@ -12,7 +12,6 @@ Rectangle {
     signal activated
 
     implicitHeight: 58
-    opacity: enabled ? 1 : 0.55
     color: Theme.surface
     border.color: Theme.border
     border.width: 1

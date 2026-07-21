@@ -5,23 +5,22 @@ import qs.core
 
 pragma ComponentBehavior: Bound
 
-PopupWindow {
+ClickAwayPopup {
     id: root
 
     required property var bluetoothModel
     required property var panelWindow
 
-    readonly property int popupWidth: 360
-    readonly property int popupHeight: 420
+    readonly property int cardWidth: 360
+    readonly property int cardHeight: 420
 
     visible: bluetoothModel.visible
-    implicitWidth: popupWidth
-    implicitHeight: popupHeight
-    anchor.window: panelWindow
-    anchor.rect.x: Math.max(Theme.rowSpacing, panelWindow.width - popupWidth - Theme.rowSpacing)
-    anchor.rect.y: Theme.panelHeight
-    grabFocus: true
-    color: Theme.transparent
+    targetWindow: panelWindow
+    popupWidth: cardWidth
+    popupHeight: cardHeight
+    popupX: Math.max(Theme.rowSpacing, panelWindow.width - cardWidth - Theme.rowSpacing)
+    popupY: Theme.panelHeight
+    onDismissed: bluetoothModel.close()
 
     onVisibleChanged: if (!visible) root.bluetoothModel.close()
 

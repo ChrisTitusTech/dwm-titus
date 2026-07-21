@@ -12,7 +12,6 @@ Rectangle {
     color: Theme.surface
     border.color: Theme.border
     border.width: 1
-    opacity: root.enabled ? 1 : 0.5
 
     Text {
         anchors.centerIn: parent

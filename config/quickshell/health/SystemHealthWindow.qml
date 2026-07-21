@@ -264,7 +264,7 @@ FloatingWindow {
         Rectangle {
             anchors.fill: parent
             visible: root.healthModel.confirming
-            color: "#99000000"
+            color: Theme.bg
             z: 10
 
             Rectangle {

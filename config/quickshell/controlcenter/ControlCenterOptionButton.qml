@@ -15,7 +15,6 @@ Rectangle {
 
     implicitWidth: Math.max(76, optionLabel.implicitWidth + 22)
     implicitHeight: root.detail.length > 0 ? 48 : Theme.buttonHeight
-    opacity: enabled ? 1 : 0.52
     color: root.active ? Theme.accent : root.hovered && enabled ? Theme.surfaceHover : Theme.surface
     border.color: root.danger ? Theme.danger : root.active ? Theme.accent : Theme.border
     border.width: 1

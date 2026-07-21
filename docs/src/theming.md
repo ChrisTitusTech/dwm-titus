@@ -1,7 +1,7 @@
 # Theming
 
 Themes are defined in `config/themes.toml`. Change the active theme and **save**
-to update dwm, terminal, GTK, and Qt styling. No restart needed.
+to update dwm, Quickshell, terminal, GTK, and Qt styling. No restart needed.
 
 ```toml
 [active]
@@ -60,6 +60,10 @@ Each `[theme.name]` section sets colors for all components:
 | `term_color0`–`term_color15` | Full 16-color terminal palette |
 | `dark_mode` | GTK dark preference and Capitaine cursor variant (`true` / `false`) |
 | `gtk_theme` | Optional installed GTK theme name for GTK apps such as Thunar |
+
+Quickshell derives its opaque surfaces, text, borders, accent, success,
+warning, and danger colors from the active theme's existing dwm and terminal
+color keys.
 
 ---
 

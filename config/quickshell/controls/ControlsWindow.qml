@@ -5,14 +5,14 @@ import qs.core
 
 pragma ComponentBehavior: Bound
 
-PopupWindow {
+ClickAwayPopup {
     id: root
 
     required property var controlsModel
     required property var panelWindow
 
-    readonly property int popupWidth: 360
-    readonly property int popupHeight: 560
+    readonly property int cardWidth: 360
+    readonly property int cardHeight: 560
     readonly property int edgeMargin: Theme.rowSpacing
     readonly property int contentSpacing: Theme.popupSpacing
     readonly property int rowSpacing: Theme.rowSpacing
@@ -23,13 +23,12 @@ PopupWindow {
     readonly property int outputDeviceRowHeight: 34
 
     visible: controlsModel.visible
-    implicitWidth: popupWidth
-    implicitHeight: popupHeight
-    anchor.window: panelWindow
-    anchor.rect.x: Math.max(edgeMargin, panelWindow.width - popupWidth - edgeMargin)
-    anchor.rect.y: Theme.panelHeight
-    grabFocus: true
-    color: Theme.transparent
+    targetWindow: panelWindow
+    popupWidth: cardWidth
+    popupHeight: cardHeight
+    popupX: Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin)
+    popupY: Theme.panelHeight
+    onDismissed: controlsModel.close()
 
     onVisibleChanged: {
         if (visible) {
@@ -221,7 +220,6 @@ PopupWindow {
                         color: outputMouse.containsMouse && !outputDeviceRow.modelData.isDefault && !root.controlsModel.busy ? Theme.surfaceHover : Theme.surface
                         border.color: outputDeviceRow.modelData.isDefault ? Theme.accent : Theme.border
                         border.width: 1
-                        opacity: root.controlsModel.busy && !outputDeviceRow.modelData.isDefault ? 0.5 : 1
 
                         RowLayout {
                             anchors.fill: parent

@@ -5,7 +5,7 @@ import qs.core
 
 pragma ComponentBehavior: Bound
 
-PopupWindow {
+ClickAwayPopup {
     id: root
 
     required property var controlCenterModel
@@ -53,13 +53,12 @@ PopupWindow {
     }
 
     visible: controlCenterModel.visible
-    implicitWidth: cardWidth + (sidePanel === "none" ? 0 : cardWidth + gap)
-    implicitHeight: sidePanel === "none" ? controlCard.implicitHeight : Math.max(controlCard.implicitHeight, sideCard.implicitHeight)
-    anchor.window: panelWindow
-    anchor.rect.x: 6
-    anchor.rect.y: Theme.panelHeight
-    grabFocus: true
-    color: Theme.transparent
+    targetWindow: panelWindow
+    popupX: 6
+    popupY: Theme.panelHeight
+    popupWidth: cardWidth + (sidePanel === "none" ? 0 : cardWidth + gap)
+    popupHeight: sidePanel === "none" ? controlCard.implicitHeight : Math.max(controlCard.implicitHeight, sideCard.implicitHeight)
+    onDismissed: controlCenterModel.close()
 
     onVisibleChanged: {
         if (visible) {
@@ -80,7 +79,6 @@ PopupWindow {
         signal activated()
 
         implicitHeight: 26
-        opacity: enabled ? 1 : 0.5
         radius: Theme.smallRadius
         color: active ? Theme.surfaceActive : Theme.surface
         border.color: active ? Theme.accentSecondary : Theme.border

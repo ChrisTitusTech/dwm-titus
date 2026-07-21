@@ -426,7 +426,7 @@ scan_desktop() {
 		detail=$(quickshell --version 2>/dev/null | first_lines 1 || printf available)
 		emit_check desktop ok quickshell-version "Quickshell" "Available" "$detail" restart-quickshell "Restart Quickshell" user
 	else
-		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed dashboard requires Quickshell 0.2.1 or newer" install-dependencies "Open dependency installer" user
+		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed shell requires Quickshell 0.3.0 or newer" install-dependencies "Open dependency installer" user
 	fi
 
 	if command -v picom >/dev/null 2>&1; then

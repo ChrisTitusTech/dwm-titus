@@ -70,7 +70,6 @@ Rectangle {
             Layout.preferredHeight: Theme.chipHeight
             color: Theme.border
             radius: Theme.radius
-            opacity: root.busy ? 0.5 : 1
 
             Text {
                 id: actionText

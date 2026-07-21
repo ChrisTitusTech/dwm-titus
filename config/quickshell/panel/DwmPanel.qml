@@ -63,6 +63,7 @@ PanelWindow {
                     spacing: Theme.panelGap
 
                     LogoButton {
+                        id: logoButton
                         onActivated: root.controlCenterModel.toggle()
                     }
 
@@ -89,6 +90,22 @@ PanelWindow {
                                     onClicked: root.state.switchWorkspace(index)
                                 }
                             }
+                        }
+                    }
+
+                    PanelPill {
+                        Layout.preferredWidth: Math.min(activeTitle.implicitWidth + Theme.pillHorizontalPadding * 2, 260)
+                        Layout.preferredHeight: Theme.pillHeight
+
+                        UiText {
+                            id: activeTitle
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.pillHorizontalPadding
+                            anchors.rightMargin: Theme.pillHorizontalPadding
+                            text: root.state.activeWindowTitle
+                            color: Theme.text
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
                         }
                     }
 
@@ -120,17 +137,44 @@ PanelWindow {
 
                     Item { Layout.fillWidth: true }
 
+                    Repeater {
+                        model: root.state.statusSegments
+
+                        delegate: PanelPill {
+                            required property string modelData
+                            Layout.preferredWidth: statusLabel.implicitWidth + Theme.pillHorizontalPadding * 2
+                            Layout.preferredHeight: Theme.pillHeight
+
+                            UiText {
+                                id: statusLabel
+                                anchors.centerIn: parent
+                                text: parent.modelData
+                                color: Theme.text
+                            }
+                        }
+                    }
+
                     PanelPill {
+                        id: appPill
                         Layout.preferredWidth: Theme.pillHeight
                         Layout.preferredHeight: Theme.pillHeight
+                        hovered: appMouse.containsMouse
 
                         IconImage {
                             anchors.centerIn: parent
-                            width: Theme.iconSize
-                            height: Theme.iconSize
+                            width: Theme.trayIconSize
+                            height: Theme.trayIconSize
                             source: Icons.launcherIcon(root.state.activeWindowClass)
                         }
+
+                        MouseArea {
+                            id: appMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                        }
                     }
+
+                    TrayArea {}
 
                     PanelPill {
                         visible: root.controlCenterModel.showBluetoothWidget
@@ -229,5 +273,53 @@ PanelWindow {
                 }
             }
         }
+    }
+
+    PanelTooltip {
+        visible: logoButton.hovered
+        anchorWindow: root
+        label: "Control Center"
+        anchorX: logoButton.mapToItem(island, 0, 0).x
+        anchorY: Theme.panelHeight
+    }
+
+    PanelTooltip {
+        visible: appMouse.containsMouse
+        anchorWindow: root
+        label: root.state.activeWindowTitle
+        anchorX: appPill.mapToItem(island, 0, 0).x
+        anchorY: Theme.panelHeight
+    }
+
+    PanelTooltip {
+        visible: bluetoothMouse.containsMouse
+        anchorWindow: root
+        label: root.bluetoothModel.statusText
+        anchorX: bluetoothMouse.mapToItem(island, 0, 0).x
+        anchorY: Theme.panelHeight
+    }
+
+    PanelTooltip {
+        visible: networkMouse.containsMouse
+        anchorWindow: root
+        label: root.networkModel.statusText
+        anchorX: networkMouse.mapToItem(island, 0, 0).x
+        anchorY: Theme.panelHeight
+    }
+
+    PanelTooltip {
+        visible: controlsMouse.containsMouse
+        anchorWindow: root
+        label: root.controlsModel.volumeDisplayText
+        anchorX: controlsMouse.mapToItem(island, 0, 0).x
+        anchorY: Theme.panelHeight
+    }
+
+    PanelTooltip {
+        visible: powerMouse.containsMouse
+        anchorWindow: root
+        label: "Power"
+        anchorX: powerMouse.mapToItem(island, 0, 0).x
+        anchorY: Theme.panelHeight
     }
 }

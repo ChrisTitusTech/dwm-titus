@@ -336,4 +336,13 @@ if run_helper action not-real 2>"$work/action.err"; then
 fi
 grep -Fqx 'unknown action: not-real' "$work/action.err"
 
+grep -Fq 'watchChanges: true' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'themes.toml' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'ClickAwayPopup {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'PanelTooltip {' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'TrayArea {}' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'root.state.activeWindowTitle' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'root.state.statusSegments' "$repo/config/quickshell/panel/DwmPanel.qml"
+
 printf 'Quickshell control center helper: PASS\n'
