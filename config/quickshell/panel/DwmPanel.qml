@@ -87,6 +87,7 @@ PanelWindow {
 
                                     label: modelData
                                     selected: index === root.state.currentWorkspace
+                                    occupied: root.state.workspaceOccupied(index)
                                     onClicked: root.state.switchWorkspace(index)
                                 }
                             }
@@ -154,27 +155,7 @@ PanelWindow {
                         }
                     }
 
-                    PanelPill {
-                        id: appPill
-                        Layout.preferredWidth: Theme.pillHeight
-                        Layout.preferredHeight: Theme.pillHeight
-                        hovered: appMouse.containsMouse
-
-                        IconImage {
-                            anchors.centerIn: parent
-                            width: Theme.trayIconSize
-                            height: Theme.trayIconSize
-                            source: Icons.launcherIcon(root.state.activeWindowClass)
-                        }
-
-                        MouseArea {
-                            id: appMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                        }
-                    }
-
-                    TrayArea {}
+                    RunningAppsArea { state: root.state }
 
                     PanelPill {
                         visible: root.controlCenterModel.showBluetoothWidget
@@ -280,14 +261,6 @@ PanelWindow {
         anchorWindow: root
         label: "Control Center"
         anchorX: logoButton.mapToItem(island, 0, 0).x
-        anchorY: Theme.panelHeight
-    }
-
-    PanelTooltip {
-        visible: appMouse.containsMouse
-        anchorWindow: root
-        label: root.state.activeWindowTitle
-        anchorX: appPill.mapToItem(island, 0, 0).x
         anchorY: Theme.panelHeight
     }
 
