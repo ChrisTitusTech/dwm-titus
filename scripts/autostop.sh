@@ -2,12 +2,13 @@
 
 set -eu
 
-session_id=${XDG_SESSION_ID:-}
 command -v loginctl >/dev/null 2>&1 || exit 0
-if [ -z "$session_id" ]; then
-	session_id=$(loginctl show-session self -p Id --value 2>/dev/null) || exit 0
-fi
-[ -n "$session_id" ] || exit 0
+self_session_id=$(loginctl show-session self -p Id --value 2>/dev/null) || exit 0
+[ -n "$self_session_id" ] || exit 0
+case "${XDG_SESSION_ID:-$self_session_id}" in
+"$self_session_id") session_id=$self_session_id ;;
+*) exit 0 ;;
+esac
 
 session_details=$(loginctl show-session "$session_id" \
 	-p Name -p Type -p Class -p Active -p Display 2>/dev/null) || exit 0
@@ -36,7 +37,7 @@ if [ "$stop_targets" -eq 1 ]; then
 		other_type=$(printf '%s\n' "$other_details" | sed -n 's/^Type=//p')
 		other_class=$(printf '%s\n' "$other_details" | sed -n 's/^Class=//p')
 		other_active=$(printf '%s\n' "$other_details" | sed -n 's/^Active=//p')
-		case $other_type:$other_class:$other_active in
+		case "$other_type:$other_class:$other_active" in
 		x11:user:yes | wayland:user:yes)
 			if [ "$other_owner" = "$user_name" ]; then
 				stop_targets=0
@@ -61,6 +62,6 @@ fi
 # A display-manager X11 session has its own logind scope, so terminate it to
 # remove detached helpers before LightDM starts the next login. startx inherits
 # a TTY session instead; let dwm return to that TTY without logging the user out.
-case $session_type:$session_class:$session_display in
+case "$session_type:$session_class:$session_display" in
 x11:user:?*) loginctl terminate-session "$session_id" >/dev/null 2>&1 || true ;;
 esac

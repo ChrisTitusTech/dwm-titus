@@ -17,10 +17,11 @@ EOF
 cat >"$work/bin/loginctl" <<'EOF'
 #!/bin/sh
 printf 'loginctl %s\n' "$*" >>"${TEST_LOG:?}"
-case $* in
+case "$*" in
 "show-session self -p Id --value")
-	[ -n "${TEST_SELF_SESSION:-}" ] || exit 1
-	printf '%s\n' "$TEST_SELF_SESSION"
+	self_session=${TEST_SELF_SESSION-${XDG_SESSION_ID:-}}
+	[ -n "$self_session" ] || exit 1
+	printf '%s\n' "$self_session"
 	;;
 "show-session "*" -p Name -p Type -p Class -p Active -p Display")
 	if [ "${2:-}" = "${TEST_OTHER_SESSION_ID:-not-an-id}" ]; then
@@ -58,7 +59,7 @@ EOF
 
 cat >"$work/bin/id" <<'EOF'
 #!/bin/sh
-case ${1:-} in
+case "${1:-}" in
 -u) printf '%s\n' 1000 ;;
 -un) printf '%s\n' test-user ;;
 *) exit 1 ;;
@@ -78,6 +79,7 @@ run_case() {
 
 run_case normal env XDG_SESSION_ID=42
 cat >"$work/normal.expected" <<'EOF'
+loginctl show-session self -p Id --value
 loginctl show-session 42 -p Name -p Type -p Class -p Active -p Display
 loginctl show-user 1000 -p Sessions --value
 systemctl --user stop xdg-desktop-autostart.target wm-graphical-session.service graphical-session.target
@@ -119,22 +121,29 @@ if grep -q '^systemctl \|^loginctl terminate-session ' "$work/no_session.log"; t
 	exit 1
 fi
 
-run_case wrong_owner env XDG_SESSION_ID=47 TEST_SESSION_OWNER=another-user
-grep -Fqx 'loginctl show-session 47 -p Name -p Type -p Class -p Active -p Display' \
+run_case mismatched_session env XDG_SESSION_ID=47 TEST_SELF_SESSION=48
+grep -Fqx 'loginctl show-session self -p Id --value' "$work/mismatched_session.log"
+if grep -q '^systemctl \|^loginctl terminate-session ' "$work/mismatched_session.log"; then
+	printf '%s\n' 'autostop must not clean up a mismatched environment session' >&2
+	exit 1
+fi
+
+run_case wrong_owner env XDG_SESSION_ID=49 TEST_SESSION_OWNER=another-user
+grep -Fqx 'loginctl show-session 49 -p Name -p Type -p Class -p Active -p Display' \
 	"$work/wrong_owner.log"
 if grep -q '^systemctl \|^loginctl terminate-session ' "$work/wrong_owner.log"; then
 	printf '%s\n' 'autostop must not clean up another user session' >&2
 	exit 1
 fi
 
-run_case topology_failure env XDG_SESSION_ID=48 TEST_SHOW_USER_STATUS=1
-grep -Fqx 'loginctl terminate-session 48' "$work/topology_failure.log"
+run_case topology_failure env XDG_SESSION_ID=50 TEST_SHOW_USER_STATUS=1
+grep -Fqx 'loginctl terminate-session 50' "$work/topology_failure.log"
 if grep -q '^systemctl ' "$work/topology_failure.log"; then
 	printf '%s\n' 'autostop must preserve shared targets when session discovery fails' >&2
 	exit 1
 fi
 
-run_case systemctl_failure env XDG_SESSION_ID=49 TEST_SYSTEMCTL_STATUS=1
-grep -Fqx 'loginctl terminate-session 49' "$work/systemctl_failure.log"
+run_case systemctl_failure env XDG_SESSION_ID=51 TEST_SYSTEMCTL_STATUS=1
+grep -Fqx 'loginctl terminate-session 51' "$work/systemctl_failure.log"
 
 printf '%s\n' 'Autostop graphical target and login session cleanup: PASS'
