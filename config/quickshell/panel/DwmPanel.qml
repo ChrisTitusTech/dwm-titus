@@ -122,7 +122,7 @@ PanelWindow {
                     id: clockLabel
 
                     anchors.centerIn: parent
-                    text: Qt.formatDateTime(root.clock.date, "ddd dd MMM  HH:mm")
+                    text: Qt.formatDateTime(root.clock.date, "ddd dd MMM - HH:mm")
                     color: Theme.textStrong
                     font.bold: true
                 }
@@ -160,8 +160,8 @@ PanelWindow {
 
                     PanelPill {
                         visible: root.controlCenterModel.showBluetoothWidget
-                        Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.pillHorizontalPadding * 2
-                        Layout.preferredHeight: Theme.pillHeight
+                        Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
+                        Layout.preferredHeight: Theme.compactWidgetSize
                         active: root.bluetoothModel.visible
                         hovered: bluetoothMouse.containsMouse
 
@@ -187,8 +187,8 @@ PanelWindow {
 
                     PanelPill {
                         visible: root.controlCenterModel.showNetworkWidget
-                        Layout.preferredWidth: networkRow.implicitWidth + Theme.pillHorizontalPadding * 2
-                        Layout.preferredHeight: Theme.pillHeight
+                        Layout.preferredWidth: networkRow.implicitWidth + Theme.networkWidgetHorizontalPadding * 2
+                        Layout.preferredHeight: Theme.compactWidgetSize
                         active: root.networkModel.visible
                         hovered: networkMouse.containsMouse
 
@@ -215,8 +215,8 @@ PanelWindow {
 
                     PanelPill {
                         visible: root.controlCenterModel.showVolumeWidget
-                        Layout.preferredWidth: Theme.pillHeight
-                        Layout.preferredHeight: Theme.pillHeight
+                        Layout.preferredWidth: Theme.compactWidgetSize
+                        Layout.preferredHeight: Theme.compactWidgetSize
                         active: root.controlsModel.visible
                         hovered: controlsMouse.containsMouse
 
@@ -272,40 +272,44 @@ PanelWindow {
     PanelTooltip {
         visible: logoButton.hovered
         anchorWindow: root
+        anchorItem: logoButton
         label: "Control Center"
-        anchorX: logoButton.mapToItem(root.contentItem, logoButton.width / 2, 0).x
         anchorY: Theme.panelHeight
     }
 
     PanelTooltip {
         visible: bluetoothMouse.containsMouse
         anchorWindow: root
+        anchorItem: bluetoothMouse
         label: root.bluetoothModel.statusText
-        anchorX: bluetoothMouse.mapToItem(root.contentItem, bluetoothMouse.width / 2, 0).x
         anchorY: Theme.panelHeight
+        rightAligned: true
     }
 
     PanelTooltip {
         visible: networkMouse.containsMouse
         anchorWindow: root
+        anchorItem: networkMouse
         label: root.networkModel.statusText
-        anchorX: networkMouse.mapToItem(root.contentItem, networkMouse.width / 2, 0).x
         anchorY: Theme.panelHeight
+        rightAligned: true
     }
 
     PanelTooltip {
         visible: controlsMouse.containsMouse
         anchorWindow: root
+        anchorItem: controlsMouse
         label: root.controlsModel.volumeDisplayText
-        anchorX: controlsMouse.mapToItem(root.contentItem, controlsMouse.width / 2, 0).x
         anchorY: Theme.panelHeight
+        rightAligned: true
     }
 
     PanelTooltip {
         visible: powerMouse.containsMouse
         anchorWindow: root
+        anchorItem: powerMouse
         label: "Power"
-        anchorX: powerMouse.mapToItem(root.contentItem, powerMouse.width / 2, 0).x
         anchorY: Theme.panelHeight
+        rightAligned: true
     }
 }

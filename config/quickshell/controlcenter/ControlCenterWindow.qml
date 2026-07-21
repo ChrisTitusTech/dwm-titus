@@ -171,7 +171,6 @@ ClickAwayPopup {
                     Layout.fillWidth: true
                     label: "Power  >"
                     onActivated: {
-                        root.controlCenterModel.close();
                         root.powerMenuModel.open("controlcenter");
                     }
                 }

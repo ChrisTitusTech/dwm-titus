@@ -105,6 +105,9 @@ Singleton {
     readonly property int pillRadius: 6
     readonly property int pillHeight: 26
     readonly property int pillHorizontalPadding: 9
+    readonly property int compactWidgetSize: 22
+    readonly property int compactWidgetHorizontalPadding: 6
+    readonly property real networkWidgetHorizontalPadding: 4.5
     readonly property int pillBorderWidth: 1
     readonly property int animationFast: 120
     readonly property int animationNormal: 180
