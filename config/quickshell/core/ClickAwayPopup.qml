@@ -36,6 +36,7 @@ PopupWindow {
         y: root.popupY
         width: root.popupWidth
         height: root.popupHeight
+        opacity: 1.0
         z: 1
 
         MouseArea {

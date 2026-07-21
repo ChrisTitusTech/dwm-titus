@@ -14,6 +14,7 @@ Rectangle {
     Layout.fillWidth: true
     Layout.preferredHeight: Math.max(72, content.implicitHeight + 24)
 
+    opacity: 1.0
     radius: Theme.radius
     color: item.urgency === NotificationUrgency.Critical ? Theme.dangerSurface : Theme.surface
     border.color: item.urgency === NotificationUrgency.Critical ? Theme.danger : Theme.border

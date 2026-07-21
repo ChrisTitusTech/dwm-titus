@@ -37,6 +37,7 @@ PanelWindow {
         anchors.rightMargin: Theme.panelEdgeMargin
         anchors.topMargin: Theme.panelMargin
         anchors.bottomMargin: Theme.panelMargin
+        opacity: 1.0
         color: Theme.barBackground
         border.color: Theme.border
         border.width: Theme.pillBorderWidth
@@ -231,6 +232,14 @@ PanelWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.controlsModel.toggle()
+                            onWheel: function(wheel) {
+                                if (wheel.angleDelta.y > 0) {
+                                    root.controlsModel.volumeUp();
+                                } else if (wheel.angleDelta.y < 0) {
+                                    root.controlsModel.volumeDown();
+                                }
+                                wheel.accepted = true;
+                            }
                         }
                     }
 

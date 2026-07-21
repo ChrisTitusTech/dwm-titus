@@ -8,6 +8,7 @@ Rectangle {
     property alias contentItem: body
     property int margin: Theme.popupMargin
 
+    opacity: 1.0
     color: Theme.bg
     border.color: Theme.borderStrong
     border.width: Theme.pillBorderWidth

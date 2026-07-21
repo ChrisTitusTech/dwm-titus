@@ -26,6 +26,7 @@ PopupWindow {
         id: notificationsColumn
 
         anchors.fill: parent
+        opacity: 1.0
         spacing: Theme.listSpacing * 2
 
         Repeater {

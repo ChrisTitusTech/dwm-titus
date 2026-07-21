@@ -8,6 +8,7 @@ Rectangle {
     property bool hovered: false
 
     implicitHeight: Theme.pillHeight
+    opacity: 1.0
     color: active ? Theme.surfaceActive : hovered ? Theme.surfaceHover : Theme.surface
     border.color: active ? Theme.accent : hovered ? Theme.borderStrong : Theme.barBackground
     border.width: Theme.pillBorderWidth
