@@ -13,7 +13,7 @@ Rectangle {
 
     implicitWidth: buttonLabel.implicitWidth + 18
     implicitHeight: Theme.buttonHeight
-    color: hovered && enabled ? Theme.surfaceHover : Theme.surface
+    color: Theme.surface
     border.color: danger ? Theme.danger : Theme.border
     border.width: 1
     radius: Theme.radius

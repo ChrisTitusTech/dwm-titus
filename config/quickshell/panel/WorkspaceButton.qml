@@ -12,7 +12,7 @@ Rectangle {
     Layout.preferredWidth: Theme.workspaceButtonSize
     Layout.preferredHeight: Theme.workspaceButtonSize
     radius: Theme.smallRadius
-    color: selected ? Theme.surfaceActive : (workspaceMouse.containsMouse ? Theme.surfaceHover : "transparent")
+    color: selected ? Theme.surfaceActive : "transparent"
 
     Text {
         anchors.centerIn: parent

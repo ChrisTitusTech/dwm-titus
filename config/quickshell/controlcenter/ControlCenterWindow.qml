@@ -82,14 +82,14 @@ PopupWindow {
         implicitHeight: 26
         opacity: enabled ? 1 : 0.5
         radius: Theme.smallRadius
-        color: active ? Theme.surfaceActive : (tileMouse.containsMouse ? Theme.surfaceHover : Theme.surface)
-        border.color: active || tileMouse.containsMouse ? Theme.accentSecondary : Theme.border
+        color: active ? Theme.surfaceActive : Theme.surface
+        border.color: active ? Theme.accentSecondary : Theme.border
         border.width: Theme.pillBorderWidth
 
         UiText {
             anchors.centerIn: parent
             text: tile.label
-            color: tile.active || tileMouse.containsMouse ? Theme.accentSecondary : Theme.text
+            color: tile.active ? Theme.accentSecondary : Theme.text
         }
 
         MouseArea {

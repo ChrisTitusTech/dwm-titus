@@ -7,6 +7,7 @@ Scope {
     property int currentWorkspace: 0
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
     property string activeWindowTitle: "Desktop"
+    property string activeWindowClass: "application-x-executable"
     property string statusText: ""
     property var statusSegments: []
 
@@ -31,6 +32,8 @@ Scope {
                 root.workspaceNames = value.length > 0 ? value.split("|") : [];
             } else if (key === "title") {
                 root.activeWindowTitle = value.length > 0 ? value : "Desktop";
+            } else if (key === "class") {
+                root.activeWindowClass = value.length > 0 ? value : "application-x-executable";
             } else if (key === "status") {
                 root.statusText = value;
                 root.updateStatusSegments();

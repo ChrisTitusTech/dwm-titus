@@ -13,7 +13,7 @@ Rectangle {
 
     implicitHeight: 58
     opacity: enabled ? 1 : 0.55
-    color: enabled && hovered ? Theme.surfaceHover : Theme.surface
+    color: Theme.surface
     border.color: Theme.border
     border.width: 1
     radius: Theme.radius

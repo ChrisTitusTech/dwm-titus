@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Widgets
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -91,23 +92,6 @@ PanelWindow {
                         }
                     }
 
-                    PanelPill {
-                        Layout.preferredWidth: Math.min(280, activeWindowLabel.implicitWidth + Theme.pillHorizontalPadding * 2)
-                        Layout.preferredHeight: Theme.pillHeight
-
-                        UiText {
-                            id: activeWindowLabel
-
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: Theme.pillHorizontalPadding
-                            anchors.rightMargin: Theme.pillHorizontalPadding
-                            text: root.state.activeWindowTitle
-                            color: Theme.text
-                            elide: Text.ElideRight
-                        }
-                    }
                 }
             }
 
@@ -136,57 +120,15 @@ PanelWindow {
 
                     Item { Layout.fillWidth: true }
 
-                    Repeater {
-                        model: root.state.statusSegments
-
-                        delegate: UiText {
-                            required property string modelData
-                            text: modelData
-                            color: Theme.text
-                        }
-                    }
-
-                    TrayArea {}
-
                     PanelPill {
-                        visible: root.controlCenterModel.showVolumeWidget
-                        Layout.preferredWidth: volumeRow.implicitWidth + Theme.pillHorizontalPadding * 2
+                        Layout.preferredWidth: Theme.pillHeight
                         Layout.preferredHeight: Theme.pillHeight
-                        active: root.controlsModel.visible
-                        hovered: controlsMouse.containsMouse
 
-                        RowLayout {
-                            id: volumeRow
-
+                        IconImage {
                             anchors.centerIn: parent
-                            spacing: Theme.compactSpacing + 2
-
-                            Rectangle {
-                                Layout.preferredWidth: 30
-                                Layout.preferredHeight: 6
-                                radius: 3
-                                color: Theme.borderStrong
-
-                                Rectangle {
-                                    width: Math.max(4, parent.width * root.controlsModel.volumePercent / 100)
-                                    height: parent.height
-                                    radius: parent.radius
-                                    color: Theme.accentSecondary
-                                }
-                            }
-
-                            UiText {
-                                text: root.controlsModel.volumeMuted ? "Muted" : root.controlsModel.volumePercent.toString() + "%"
-                                color: Theme.accentSecondary
-                            }
-                        }
-
-                        MouseArea {
-                            id: controlsMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.controlsModel.toggle()
+                            width: Theme.iconSize
+                            height: Theme.iconSize
+                            source: Icons.launcherIcon(root.state.activeWindowClass)
                         }
                     }
 
@@ -203,7 +145,6 @@ PanelWindow {
                             spacing: Theme.compactSpacing
 
                             IconText { text: "󰂯" }
-                            UiText { text: "BT" }
                         }
 
                         MouseArea {
@@ -227,7 +168,6 @@ PanelWindow {
                             anchors.centerIn: parent
                             spacing: Theme.compactSpacing
 
-                            UiText { text: "NET" }
                             IconText {
                                 text: root.networkModel.statusText.indexOf("offline") >= 0
                                     || root.networkModel.statusText.indexOf("unavailable") >= 0 ? "󰤭" : "󰤨"
@@ -240,6 +180,28 @@ PanelWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.networkModel.toggle()
+                        }
+                    }
+
+                    PanelPill {
+                        visible: root.controlCenterModel.showVolumeWidget
+                        Layout.preferredWidth: Theme.pillHeight
+                        Layout.preferredHeight: Theme.pillHeight
+                        active: root.controlsModel.visible
+                        hovered: controlsMouse.containsMouse
+
+                        IconText {
+                            anchors.centerIn: parent
+                            text: root.controlsModel.volumeMuted ? "󰝟" : "󰕾"
+                            color: Theme.accentSecondary
+                        }
+
+                        MouseArea {
+                            id: controlsMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.controlsModel.toggle()
                         }
                     }
 

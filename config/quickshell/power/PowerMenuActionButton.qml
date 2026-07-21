@@ -11,7 +11,7 @@ Rectangle {
     signal activated
 
     radius: Theme.radius
-    color: actionMouse.containsMouse ? Theme.surfaceHover : Theme.surface
+    color: Theme.surface
     border.color: danger ? Theme.danger : Theme.border
     border.width: 1
 

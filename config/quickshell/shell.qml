@@ -3,7 +3,6 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import Quickshell.Services.SystemTray
 import qs.controlcenter
 import qs.controls
 import qs.health
@@ -273,43 +272,6 @@ ShellRoot {
             } else {
                 systemHealthModel.openOnScreen(panelWindow.screen);
             }
-        }
-    }
-
-    IpcHandler {
-        target: "tray"
-
-        function count(): int {
-            return SystemTray.items.values.length;
-        }
-
-        function ids(): string {
-            const items = SystemTray.items.values;
-            const ids = [];
-
-            for (let i = 0; i < items.length; i++) {
-                ids.push(items[i].id || items[i].title || items[i].tooltipTitle || "unknown");
-            }
-
-            return ids.join("\n");
-        }
-
-        function details(): string {
-            const items = SystemTray.items.values;
-            const rows = [];
-
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                rows.push([
-                    item.id || "unknown",
-                    item.title || "",
-                    item.icon || "",
-                    item.hasMenu ? "menu" : "no-menu",
-                    item.status || ""
-                ].join("\t"));
-            }
-
-            return rows.join("\n");
         }
     }
 

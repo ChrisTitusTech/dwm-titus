@@ -94,6 +94,13 @@ window_title() {
 		' | clean_line
 }
 
+window_class() {
+	window_id=$1
+	[ -n "$window_id" ] || return 1
+	xprop -id "$window_id" WM_CLASS 2>/dev/null |
+		awk -F'= ' '/^WM_CLASS/ { gsub(/"/, "", $2); split($2, classes, /, /); print tolower(classes[2]); exit }'
+}
+
 show_state() {
 	current=$(root_property_value _NET_CURRENT_DESKTOP | awk '{ print $1; exit }')
 	count=$(root_property_value _NET_NUMBER_OF_DESKTOPS | awk '{ print $1; exit }')
@@ -103,6 +110,8 @@ show_state() {
 	window_id=$(active_window_id)
 	title=$(window_title "$window_id" || true)
 	title=${title:-Desktop}
+	class=$(window_class "$window_id" || true)
+	class=${class:-application-x-executable}
 	status=$(root_status)
 
 	printf 'current=%s\n' "$current"
@@ -110,6 +119,7 @@ show_state() {
 	printf 'names=%s\n' "$names"
 	printf 'active_window=%s\n' "$window_id"
 	printf 'title=%s\n' "$title"
+	printf 'class=%s\n' "$class"
 	printf 'status=%s\n' "$status"
 }
 

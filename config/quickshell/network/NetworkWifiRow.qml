@@ -12,7 +12,7 @@ Rectangle {
     signal connectRequested(var network)
 
     height: 54
-    color: root.selected ? Theme.surfaceHover : (rowMouse.containsMouse ? Theme.surfaceHover : Theme.surface)
+    color: root.selected ? Theme.surfaceActive : Theme.surface
     border.color: root.selected ? Theme.accent : Theme.border
     border.width: root.selected ? 1 : 0
     radius: Theme.radius
@@ -68,7 +68,7 @@ Rectangle {
         Rectangle {
             Layout.preferredWidth: actionText.implicitWidth + 18
             Layout.preferredHeight: Theme.chipHeight
-            color: actionMouse.containsMouse && !root.busy ? Theme.accent : Theme.border
+            color: Theme.border
             radius: Theme.radius
             opacity: root.busy ? 0.5 : 1
 
