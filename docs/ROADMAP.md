@@ -1,4 +1,7 @@
-# Quickshell Migration Roadmap
+# Completed Quickshell Migration Roadmap
+
+Status: completed. This document preserves the migration decisions and exit
+criteria. Current and recurring work is tracked in `../tasks.md`.
 
 ## Goal
 

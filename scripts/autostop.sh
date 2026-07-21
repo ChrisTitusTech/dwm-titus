@@ -20,6 +20,19 @@ user_name=$(id -un)
 user_id=$(id -u)
 [ "$session_owner" = "$user_name" ] || exit 0
 
+# A nested X server inherits the parent login's logind and XDG session IDs.
+# Refuse to clean up that login unless this dwm instance is attached to the
+# display that logind records for it. Accept an explicit X11 screen suffix,
+# such as :0.0, in addition to the session-wide :0 display name.
+case "$session_type:$session_class:$session_display" in
+x11:user:?*)
+	case "${DISPLAY:-}" in
+	"$session_display" | "$session_display".[0-9]*) ;;
+	*) exit 0 ;;
+	esac
+	;;
+esac
+
 # The systemd user manager and its graphical targets are shared across all
 # sessions for this user. Leave them active when another graphical login still
 # needs them.

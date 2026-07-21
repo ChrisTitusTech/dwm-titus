@@ -29,5 +29,9 @@ program.log
 # Local CI validation virtualenv
 /.ci-pykickstart/
 
+# Generated mdBook output. Documentation source lives under docs/src/.
+/docs/book/
+/docs/docs/
+
 # Local Serena project metadata/cache
 /.serena/

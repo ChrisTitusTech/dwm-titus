@@ -26,6 +26,7 @@ esac
 DEBIAN_IMAGE="${DWM_CONTAINER_DEBIAN_IMAGE:-debian:stable-slim}"
 ARCH_IMAGE="${DWM_CONTAINER_ARCH_IMAGE:-archlinux:latest}"
 RHEL_IMAGE="${DWM_CONTAINER_RHEL_IMAGE:-fedora:latest}"
+FAMILIES="${DWM_CONTAINER_FAMILIES:-debian arch rhel}"
 
 run_container() {
 	local family=$1
@@ -98,8 +99,16 @@ make check-install-manifest
 '
 }
 
-run_container debian "$DEBIAN_IMAGE"
-run_container arch "$ARCH_IMAGE"
-run_container rhel "$RHEL_IMAGE"
+for family in $FAMILIES; do
+	case "$family" in
+	debian) run_container debian "$DEBIAN_IMAGE" ;;
+	arch) run_container arch "$ARCH_IMAGE" ;;
+	rhel) run_container rhel "$RHEL_IMAGE" ;;
+	*)
+		printf 'Unsupported DWM_CONTAINER_FAMILIES entry: %s\n' "$family" >&2
+		exit 1
+		;;
+	esac
+done
 
 printf '==> Container smoke validation completed.\n'

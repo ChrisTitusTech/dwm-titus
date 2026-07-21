@@ -9,7 +9,7 @@ Create a GitHub release for the current config.mk VERSION, then bump config.mk
 to the next minor version.
 
 Options:
-  --version VERSION       Release this version instead of config.mk VERSION.
+  --version VERSION       Confirm the committed config.mk VERSION to release.
                           Accepts 0.5.0 or v0.5.0.
   --iso PATH              Upload an installer ISO alongside the source archive.
   --notes FILE            Use FILE as release notes.
@@ -189,6 +189,12 @@ next_version="$major.$((minor + 1)).0"
 release_archive="$repo_root/release/dwm-titus-$release_version.tar.gz"
 checksums="$repo_root/release/dwm-titus-$release_version-SHA256SUMS"
 
+if [[ $release_version != "$current_version" ]]; then
+	err "requested version $release_version does not match committed config.mk VERSION $current_version"
+	err "update config.mk and CHANGELOG.md, commit them, then rerun the release"
+	exit 1
+fi
+
 if [[ -z $iso_path ]]; then
 	if [[ -f $default_iso_path ]]; then
 		iso_path=$default_iso_path
@@ -217,31 +223,19 @@ fi
 cd "$repo_root"
 
 release_exists=false
+head_sha="$(git rev-parse HEAD)"
 
-if [[ $dry_run == true ]]; then
-	run gh api "repos/:owner/:repo/git/ref/tags/$tag"
-	run gh api -X POST repos/:owner/:repo/git/refs \
-		-f "ref=refs/tags/$tag" \
-		-f "sha=$(git rev-parse HEAD)"
-	run gh release view "$tag"
-else
-	if remote_tag_exists; then
-		printf 'Remote tag %s already exists.\n' "$tag"
-	else
-		head_sha="$(git rev-parse HEAD)"
-		printf 'Remote tag %s does not exist; creating it at %s.\n' "$tag" "$head_sha"
-		run gh api -X POST repos/:owner/:repo/git/refs \
-			-f "ref=refs/tags/$tag" \
-			-f "sha=$head_sha" >/dev/null
+if [[ $dry_run != true ]]; then
+	if [[ -n $(git status --porcelain --untracked-files=normal) ]]; then
+		err "release worktree is not clean"
+		err "commit or remove local changes before creating $tag"
+		exit 1
 	fi
-
-	if remote_release_exists; then
-		release_exists=true
+	if ! gh api "repos/:owner/:repo/commits/$head_sha" >/dev/null 2>&1; then
+		err "release commit $head_sha is not available on GitHub"
+		err "push the release commit before creating $tag"
+		exit 1
 	fi
-fi
-
-if [[ $release_version != "$current_version" ]]; then
-	run sed -i -E "s/^[[:space:]]*VERSION[[:space:]]*=.*/VERSION = $release_version/" "$config_mk"
 fi
 
 if [[ $skip_checks != true ]]; then
@@ -264,6 +258,27 @@ else
 	sha256sum "${assets[@]}" >"$checksums"
 fi
 assets+=("$checksums")
+
+if [[ $dry_run == true ]]; then
+	run gh api "repos/:owner/:repo/git/ref/tags/$tag"
+	run gh api -X POST repos/:owner/:repo/git/refs \
+		-f "ref=refs/tags/$tag" \
+		-f "sha=$head_sha"
+	run gh release view "$tag"
+else
+	if remote_tag_exists; then
+		printf 'Remote tag %s already exists.\n' "$tag"
+	else
+		printf 'Remote tag %s does not exist; creating it at %s.\n' "$tag" "$head_sha"
+		run gh api -X POST repos/:owner/:repo/git/refs \
+			-f "ref=refs/tags/$tag" \
+			-f "sha=$head_sha" >/dev/null
+	fi
+
+	if remote_release_exists; then
+		release_exists=true
+	fi
+fi
 
 if [[ $release_exists == true ]]; then
 	run gh release upload "$tag" "${assets[@]}" --clobber

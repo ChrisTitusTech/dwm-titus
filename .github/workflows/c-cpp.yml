@@ -1,13 +1,22 @@
-name: C/C++ CI
+name: CI
 
 on:
   push:
     branches: ["main"]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +26,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential pkg-config shellcheck shfmt python3-venv \
+            xvfb xdotool x11-utils \
             libx11-dev libxft-dev libxinerama-dev libxrender-dev \
             libimlib2-dev libx11-xcb-dev libxcb1-dev libxcb-res0-dev \
             libfontconfig-dev libfreetype-dev
@@ -26,3 +36,42 @@ jobs:
 
       - name: Validate
         run: make check
+
+      - name: Validate nested X11 runtime
+        run: make check-xvfb-runtime check-monitor-tags
+
+  clang-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Clang and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang pkg-config \
+            libx11-dev libxft-dev libxinerama-dev libxrender-dev \
+            libimlib2-dev libx11-xcb-dev libxcb1-dev libxcb-res0-dev \
+            libfontconfig-dev libfreetype-dev
+
+      - name: Build with Clang
+        run: make clean all CC=clang
+
+  distro-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [debian, arch, rhel]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate ${{ matrix.family }} family
+        env:
+          CONTAINER_ENGINE: docker
+          DWM_CONTAINER_FAMILIES: ${{ matrix.family }}
+        run: make check-container-smoke

@@ -73,7 +73,7 @@ run_case() {
 	shift
 	case_log=$work/$case_name.log
 	: >"$case_log"
-	env TEST_LOG="$case_log" PATH="$work/bin:/usr/bin:/bin" "$@" \
+	env TEST_LOG="$case_log" PATH="$work/bin:/usr/bin:/bin" DISPLAY=:0 "$@" \
 		sh "$repo_dir/scripts/autostop.sh"
 }
 
@@ -127,6 +127,17 @@ if grep -q '^systemctl \|^loginctl terminate-session ' "$work/mismatched_session
 	printf '%s\n' 'autostop must not clean up a mismatched environment session' >&2
 	exit 1
 fi
+
+run_case mismatched_display env XDG_SESSION_ID=48 DISPLAY=:150
+grep -Fqx 'loginctl show-session 48 -p Name -p Type -p Class -p Active -p Display' \
+	"$work/mismatched_display.log"
+if grep -q '^systemctl \|^loginctl terminate-session ' "$work/mismatched_display.log"; then
+	printf '%s\n' 'autostop must not clean up a login from a nested X display' >&2
+	exit 1
+fi
+
+run_case screen_suffix env XDG_SESSION_ID=48 DISPLAY=:0.1
+grep -Fqx 'loginctl terminate-session 48' "$work/screen_suffix.log"
 
 run_case wrong_owner env XDG_SESSION_ID=49 TEST_SESSION_OWNER=another-user
 grep -Fqx 'loginctl show-session 49 -p Name -p Type -p Class -p Active -p Display' \

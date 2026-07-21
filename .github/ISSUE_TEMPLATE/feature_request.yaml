@@ -6,16 +6,39 @@ body:
   - type: markdown
     attributes:
       value: |
-        # ✨ **Feature request**
-        Thank you for taking the time to suggest a feature! Please provide as much detail as possible to help us understand and evaluate your request.
+        # Feature request
+        Explain the user problem and how the proposal fits the X11 scope in
+        `SPEC.md`. Use an issue for general questions because Discussions are
+        not enabled for this repository.
 
-        ## ⚠️ **IMPORTANT**
-        - 💡 For general questions, use the [Discussions section](https://github.com/Christitustech/dwm-titus/discussions).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      placeholder: "What workflow is difficult or unavailable today?"
+    validations:
+      required: true
 
   - type: textarea
     id: proposed_solution
     attributes:
-      label: 💡 Describe the solution you'd like
+      label: Describe the solution you'd like
       placeholder: "Provide a clear and concise description."
     validations:
       required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and portability impact
+      description: Explain alternatives and effects on Debian, Arch, and RHEL families.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This request is compatible with the project's X11 scope.
+          required: true
+        - label: I checked for an existing issue or pull request.
+          required: true

@@ -1,0 +1,222 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	printf '%s\n' \
+		"usage: quickshell-qmllint [--root PATH] [--qml-root PATH] [--qmllint COMMAND] [qml-file ...]" >&2
+	exit 2
+}
+
+root=
+qmllint_cmd=
+extra_roots=
+files=
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--root)
+		[ "$#" -ge 2 ] || usage
+		root=$2
+		shift 2
+		;;
+	--qml-root)
+		[ "$#" -ge 2 ] || usage
+		extra_roots=${extra_roots:+$extra_roots
+}$2
+		shift 2
+		;;
+	--qmllint)
+		[ "$#" -ge 2 ] || usage
+		qmllint_cmd=$2
+		shift 2
+		;;
+	-h | --help)
+		usage
+		;;
+	--)
+		shift
+		break
+		;;
+	-*) usage ;;
+	*)
+		files=${files:+$files
+}$1
+		shift
+		;;
+	esac
+done
+
+while [ "$#" -gt 0 ]; do
+	files=${files:+$files
+}$1
+	shift
+done
+
+find_qmllint() {
+	if [ -n "$qmllint_cmd" ]; then
+		printf '%s\n' "$qmllint_cmd"
+		return 0
+	fi
+
+	for cmd in qmllint-qt6 qmllint /usr/lib64/qt6/bin/qmllint /usr/lib/qt6/bin/qmllint; do
+		if command -v "$cmd" >/dev/null 2>&1; then
+			printf '%s\n' "$cmd"
+			return 0
+		fi
+	done
+
+	printf '%s\n' \
+		"qmllint not found; install the Qt 6 declarative development tools." >&2
+	exit 127
+}
+
+abs_path() {
+	path=$1
+	if [ -d "$path" ]; then
+		(cd "$path" && pwd)
+	else
+		dir=$(dirname -- "$path")
+		base=$(basename -- "$path")
+		printf '%s/%s\n' "$(cd "$dir" && pwd)" "$base"
+	fi
+}
+
+find_root() {
+	if [ -n "$root" ]; then
+		abs_path "$root"
+		return 0
+	fi
+
+	dir=$PWD
+	while :; do
+		if [ -f "$dir/shell.qml" ]; then
+			printf '%s\n' "$dir"
+			return 0
+		fi
+		[ "$dir" != / ] || break
+		dir=$(dirname -- "$dir")
+	done
+
+	if [ -n "$files" ]; then
+		first=$(printf '%s\n' "$files" | sed -n '1p')
+		dir=$(dirname -- "$(abs_path "$first")")
+		while :; do
+			if [ -f "$dir/shell.qml" ]; then
+				printf '%s\n' "$dir"
+				return 0
+			fi
+			[ "$dir" != / ] || break
+			dir=$(dirname -- "$dir")
+		done
+	fi
+
+	printf '%s\n' "could not find shell.qml; pass --root PATH" >&2
+	exit 2
+}
+
+append_root_if_exists() {
+	[ -d "$1" ] && printf '%s\n' "$1"
+}
+
+discover_qml_roots() {
+	if [ -n "$extra_roots" ]; then
+		printf '%s\n' "$extra_roots"
+	fi
+
+	append_root_if_exists /usr/lib64/qt6/qml
+	append_root_if_exists /usr/lib/qt6/qml
+	append_root_if_exists /usr/local/lib64/qt6/qml
+	append_root_if_exists /usr/local/lib/qt6/qml
+
+	if command -v qmake6 >/dev/null 2>&1; then
+		qmake6 -query QT_INSTALL_QML 2>/dev/null || true
+	fi
+}
+
+make_qmldir_for_module() {
+	module=$1
+	module_path=$(printf '%s\n' "$module" | sed 's/^qs//; s/^\.//; s/\./\//g')
+	source_dir=$project_root
+	target_dir=$tmp/qs
+
+	if [ -n "$module_path" ]; then
+		source_dir=$project_root/$module_path
+		target_dir=$tmp/qs/$module_path
+	fi
+
+	[ -d "$source_dir" ] || return 0
+	mkdir -p "$target_dir"
+	printf 'module %s\n' "$module" >"$target_dir/qmldir"
+
+	find "$source_dir" -maxdepth 1 -type f -name '[A-Z]*.qml' | sort |
+		while IFS= read -r qml; do
+			name=$(basename -- "$qml" .qml)
+			file=$(basename -- "$qml")
+			ln -sf "$qml" "$target_dir/$file"
+			if sed -n '1,8p' "$qml" |
+				grep -Eq '^[[:space:]]*pragma[[:space:]]+Singleton([[:space:]]|$)'; then
+				printf 'singleton %s 1.0 %s\n' "$name" "$file" >>"$target_dir/qmldir"
+			else
+				printf '%s 1.0 %s\n' "$name" "$file" >>"$target_dir/qmldir"
+			fi
+		done
+}
+
+qmllint=$(find_qmllint)
+project_root=$(find_root)
+
+if [ -z "$files" ]; then
+	files=$(find "$project_root" -type f -name '*.qml' | sort)
+fi
+
+[ -n "$files" ] || {
+	printf '%s\n' "no QML files found" >&2
+	exit 2
+}
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+
+imports=$(
+	printf '%s\n' "$files" |
+		while IFS= read -r file; do
+			[ -f "$file" ] || continue
+			sed -n 's/^[[:space:]]*import[[:space:]]\+\(qs\(\.[A-Za-z0-9_]\+\)*\)\([[:space:]].*\)\{0,1\}$/\1/p' "$file"
+		done |
+		sort -u
+)
+
+if [ -n "$imports" ]; then
+	printf '%s\n' "$imports" |
+		while IFS= read -r module; do
+			make_qmldir_for_module "$module"
+		done
+fi
+
+qml_roots=$(discover_qml_roots | awk 'NF && !seen[$0]++')
+build_dirs=
+set --
+
+if [ -n "$qml_roots" ]; then
+	while IFS= read -r qml_root; do
+		set -- "$@" -I "$qml_root"
+		build_dirs=${build_dirs:+$build_dirs:}$qml_root
+	done <<EOF
+$qml_roots
+EOF
+fi
+
+set -- "$@" -I "$tmp" -I "$project_root"
+
+export QML_IMPORT_PATH="$project_root"
+if [ -n "$build_dirs" ]; then
+	export QMLLS_BUILD_DIRS="$build_dirs"
+fi
+
+while IFS= read -r file; do
+	set -- "$@" "$file"
+done <<EOF
+$files
+EOF
+
+exec "$qmllint" "$@"
