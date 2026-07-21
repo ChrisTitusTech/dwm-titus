@@ -244,8 +244,11 @@ bash scripts/check-deps.sh
 | `config/` | Quickshell, terminal, and app configurations |
 | `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |
 | `docs/src/keybinds.md` | Full keybinding reference |
-| `docs/ROADMAP.md` | Quickshell migration roadmap |
-| `tasks.md` | Active Quickshell migration tasks |
+| `CONTRIBUTING.md` | Development and validation workflow |
+| `SECURITY.md` | Private vulnerability reporting policy |
+| `CHANGELOG.md` | User-facing release history |
+| `docs/ROADMAP.md` | Completed Quickshell migration record |
+| `tasks.md` | Active and recurring project tasks |
 | `docs/RELEASING.md` | Release validation and publication checklist |
 
 ---
@@ -265,3 +268,15 @@ machine; normal builds remain portable across compatible CPUs.
 
 Current implementation tasks are tracked in `tasks.md`. Product scope and
 acceptance criteria remain in `SPEC.md`.
+
+Additional environment-specific gates are available:
+
+```bash
+make check-xvfb-runtime check-monitor-tags
+make check-quickshell-qml
+make check-container-smoke
+mdbook build docs && mdbook test docs
+```
+
+See `CONTRIBUTING.md` for required validation by change type and
+`SECURITY.md` for private vulnerability reporting.

@@ -4,6 +4,9 @@ language = "en"
 src = "src"
 title = "DWM for Everyone"
 
+[build]
+build-dir = "book"
+
 [output.html]
 additional-css = ["./theme/catppuccin.css","./theme/last-changed.css"]
 default-theme = "latte"

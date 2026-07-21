@@ -3,6 +3,12 @@ description: "Report a bug to help us identify and fix issues in the project."
 labels: ["bug"]
 
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include passwords, tokens, private keys, or other secrets. Report
+        security issues privately using the instructions in `SECURITY.md`.
+
   - type: textarea
     id: issue_description
     attributes:
@@ -10,8 +16,55 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Include the release version or `git rev-parse --short HEAD`.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: distro_family
+    attributes:
+      label: Distribution family
+      options:
+        - Debian or Ubuntu family
+        - Arch family
+        - Fedora, RHEL, Rocky, or Alma family
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Distribution, architecture, and session
+      placeholder: "Fedora 44, x86_64, X11 via LightDM"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: "List the smallest reliable sequence that reproduces the issue."
+    validations:
+      required: true
+
   - type: textarea
     id: error_output
     attributes:
-      label: Paste the full error output (if available) or Screenshot or Video.
-      placeholder: "Include any relevant logs or error messages."
+      label: Relevant diagnostics
+      description: Include bounded logs and `dwm-diagnostics` output when applicable.
+      placeholder: "Paste text directly; attach screenshots only when the issue is visual."
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I removed credentials and unrelated personal data.
+          required: true
+        - label: I checked for an existing issue describing the same problem.
+          required: true
