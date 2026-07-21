@@ -113,7 +113,8 @@ grep -Fq "no usable screen locker found" "$work/err"
 
 cat >"$work/bin/busctl" <<'SCRIPT'
 #!/bin/sh
-printf '%s\n' "$*" >"${DWM_LOCK_TEST_DIR:?}/busctl"
+printf 'address=%s\nargs=%s\n' \
+	"${DBUS_SYSTEM_BUS_ADDRESS:-}" "$*" >"${DWM_LOCK_TEST_DIR:?}/busctl"
 printf '%s\n' '{"type":"o","data":["/org/freedesktop/login1/session/_37"]}'
 SCRIPT
 
@@ -144,6 +145,8 @@ DWM_LOCK_TEST_DIR="$work" \
 	XDG_SESSION_ID='' \
 	PATH="$work/bin:/usr/bin:/bin" \
 	"$repo_dir/scripts/dwm-lock-watch"
+grep -Fxq 'address=unix:path=/run/dbus/system_bus_socket' "$work/busctl"
+grep -Fq 'args=--system --json=short call org.freedesktop.login1' "$work/busctl"
 grep -Fq 'GetSession s 7' "$work/busctl"
 grep -Fxq 'address=unix:path=/run/dbus/system_bus_socket' "$work/dbus-monitor"
 grep -Fq "path='/org/freedesktop/login1/session/_37'" "$work/dbus-monitor"

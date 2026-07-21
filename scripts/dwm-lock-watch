@@ -24,7 +24,8 @@ if [ -z "$lock_helper" ]; then
 fi
 command -v "$lock_helper" >/dev/null 2>&1 || exit 0
 
-session_json=$(busctl --system --json=short call \
+session_json=$(DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket \
+	busctl --system --json=short call \
 	org.freedesktop.login1 \
 	/org/freedesktop/login1 \
 	org.freedesktop.login1.Manager \
