@@ -20,7 +20,7 @@ Rectangle {
     Text {
         anchors.centerIn: parent
         text: root.label
-        color: root.selected ? Theme.accent : root.occupied ? Theme.textMuted : Theme.placeholder
+        color: root.selected ? Theme.accent : Theme.textMuted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.panelFontSize
         font.bold: root.selected
