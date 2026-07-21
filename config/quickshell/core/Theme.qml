@@ -88,7 +88,7 @@ Singleton {
     readonly property string fontFamily: "MesloLGS Nerd Font Mono"
     readonly property string iconFontFamily: fontFamily
 
-    readonly property int panelHeight: 36
+    readonly property int panelHeight: 30
     readonly property int panelMargin: 0
     readonly property int panelEdgeMargin: 0
     readonly property int panelGap: 4

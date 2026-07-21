@@ -173,6 +173,7 @@ PanelWindow {
                             IconText {
                                 text: "󰂯"
                                 color: Theme.textStrong
+                                font.pixelSize: Math.round((Theme.panelFontSize + 1) * 0.9)
                             }
                         }
 
@@ -201,6 +202,7 @@ PanelWindow {
                                 text: root.networkModel.statusText.indexOf("offline") >= 0
                                     || root.networkModel.statusText.indexOf("unavailable") >= 0 ? "󰤭" : "󰤨"
                                 color: Theme.textStrong
+                                font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.2)
                             }
                         }
 
@@ -224,6 +226,7 @@ PanelWindow {
                             anchors.centerIn: parent
                             text: root.controlsModel.volumeMuted ? "󰝟" : "󰕾"
                             color: Theme.textStrong
+                            font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.5)
                         }
 
                         MouseArea {
@@ -254,6 +257,7 @@ PanelWindow {
                             anchors.centerIn: parent
                             text: "󰐥"
                             color: Theme.textStrong
+                            font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.08)
                         }
 
                         MouseArea {
