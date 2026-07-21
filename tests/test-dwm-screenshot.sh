@@ -41,6 +41,7 @@ env -u XDG_CURRENT_DESKTOP -u WAYLAND_DISPLAY \
 
 grep -Fqx 'systemctl:--user unset-environment WAYLAND_DISPLAY' "$log"
 grep -Fqx 'systemctl:--user import-environment DISPLAY XDG_SESSION_TYPE QT_QPA_PLATFORM XAUTHORITY' "$log"
+grep -Fqx 'dbus:WAYLAND_DISPLAY=' "$log"
 grep -Fqx 'dbus:--systemd DISPLAY XDG_SESSION_TYPE QT_QPA_PLATFORM XAUTHORITY' "$log"
 grep -Fqx 'flameshot:gui --clipboard' "$log"
 test -d "$work/home/Pictures/Screenshots"

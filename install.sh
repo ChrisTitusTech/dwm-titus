@@ -433,24 +433,26 @@ configure_seeded_terminal() {
 configure_quickshell_picom_opacity() {
 	local config="/etc/xdg/picom.conf"
 	local backup="${config}.dwm-titus.bak"
+	local tooltip_rule="^([[:space:]]*\"[0-9]+([.][0-9]+)?:window_type = 'tooltip')(\"[[:space:]]*,?[[:space:]]*)$"
+	local configured_rule="^[[:space:]]*\"[0-9]+([.][0-9]+)?:window_type = 'tooltip' && name != 'quickshell'\"[[:space:]]*,?[[:space:]]*$"
 	local tmp
 
 	if [[ ! -f $config ]]; then
 		warn "Picom system config not found; skipping Quickshell opacity override."
 		return
 	fi
-	if sudo grep -Fq "window_type = 'tooltip' && name != 'quickshell'" "$config"; then
+	if sudo grep -Eq "$configured_rule" "$config"; then
 		ok "Quickshell Picom opacity is already configured."
 		return
 	fi
-	if ! sudo grep -Fq "window_type = 'tooltip'" "$config"; then
-		warn "Picom tooltip rule not found; preserving $config."
+	if ! sudo grep -Eq "$tooltip_rule" "$config"; then
+		warn "Recognized Picom tooltip opacity rule not found; preserving $config."
 		return
 	fi
 
 	tmp="$(mktemp)"
-	if ! sudo sed \
-		"s/window_type = 'tooltip'/window_type = 'tooltip' \&\& name != 'quickshell'/" \
+	if ! sudo sed -E \
+		"s/${tooltip_rule}/\\1 \&\& name != 'quickshell'\\3/" \
 		"$config" | tee "$tmp" >/dev/null; then
 		rm -f "$tmp"
 		warn "Could not prepare the Quickshell Picom opacity override."

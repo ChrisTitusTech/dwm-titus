@@ -15,6 +15,7 @@ PopupWindow {
     signal dismissed
 
     color: Theme.transparent
+    grabFocus: true
     implicitWidth: targetWindow.width
     implicitHeight: targetWindow.screen.height
 

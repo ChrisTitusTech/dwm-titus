@@ -68,14 +68,14 @@ Rectangle {
         Rectangle {
             Layout.preferredWidth: actionText.implicitWidth + 18
             Layout.preferredHeight: Theme.chipHeight
-            color: Theme.border
+            color: root.busy ? Theme.surface : Theme.border
             radius: Theme.radius
 
             Text {
                 id: actionText
 
                 anchors.centerIn: parent
-                text: "Connect"
+                text: root.busy ? "Connecting..." : "Connect"
                 color: Theme.textStrong
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize

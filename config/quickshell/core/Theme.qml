@@ -4,6 +4,8 @@ import Quickshell
 import Quickshell.Io
 
 Singleton {
+    id: root
+
     property bool dark: true
 
     readonly property string transparent: "#00000000"
@@ -50,38 +52,38 @@ Singleton {
         return fallback;
     }
 
-    function applyThemes(text) {
-        const activeTheme = sectionValue(text, "active", "theme", "nord");
+    function applyThemes(themeText) {
+        const activeTheme = sectionValue(themeText, "active", "theme", "nord");
         const section = "theme." + activeTheme;
-        const value = function(key, fallback) { return sectionValue(text, section, key, fallback); };
+        const value = function(key, fallback) { return sectionValue(themeText, section, key, fallback); };
 
-        dark = value("dark_mode", "true") !== "false";
-        bg = value("term_bg", bg);
-        barBackground = value("normbgcolor", bg);
-        surface = value("normbgcolor", bg);
-        surfaceHover = value("term_color8", value("selbgcolor", surface));
-        surfaceActive = value("selbgcolor", surfaceHover);
-        border = value("normbordercolor", surface);
-        borderStrong = value("selbordercolor", border);
-        text = value("normfgcolor", text);
-        textStrong = value("selfgcolor", text);
-        textMuted = value("term_fg", text);
-        placeholder = value("term_color8", textMuted);
-        accent = value("selbordercolor", accent);
-        accentSecondary = value("term_color4", accent);
-        accentText = bg;
-        success = value("term_color2", success);
-        warning = value("term_color3", warning);
-        danger = value("term_color1", danger);
-        dangerSurface = value("term_color0", surface);
+        root.dark = value("dark_mode", "true") !== "false";
+        root.bg = value("term_bg", root.bg);
+        root.barBackground = value("normbgcolor", root.bg);
+        root.surface = value("normbgcolor", root.bg);
+        root.surfaceHover = value("term_color8", value("selbgcolor", root.surface));
+        root.surfaceActive = value("selbgcolor", root.surfaceHover);
+        root.border = value("normbordercolor", root.surface);
+        root.borderStrong = value("selbordercolor", root.border);
+        root.text = value("normfgcolor", root.text);
+        root.textStrong = value("selfgcolor", root.text);
+        root.textMuted = value("term_fg", root.text);
+        root.placeholder = value("term_color8", root.textMuted);
+        root.accent = value("selbordercolor", root.accent);
+        root.accentSecondary = value("term_color4", root.accent);
+        root.accentText = root.bg;
+        root.success = value("term_color2", root.success);
+        root.warning = value("term_color3", root.warning);
+        root.danger = value("term_color1", root.danger);
+        root.dangerSurface = value("term_color0", root.surface);
     }
 
     FileView {
         id: themesFile
-        path: themesPath
+        path: root.themesPath
         watchChanges: true
         printErrors: false
-        onLoaded: applyThemes(text())
+        onLoaded: root.applyThemes(text())
         onFileChanged: reload()
     }
 
@@ -94,6 +96,9 @@ Singleton {
     readonly property int panelGap: 4
     readonly property int popupMargin: 18
     readonly property int popupSpacing: 12
+    readonly property int controlCenterX: 6
+    readonly property int controlCenterWidth: 276
+    readonly property int controlCenterGap: 8
     readonly property int rowSpacing: 10
     readonly property int listSpacing: 4
     readonly property int compactSpacing: 2

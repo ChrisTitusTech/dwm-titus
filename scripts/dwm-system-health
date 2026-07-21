@@ -131,6 +131,24 @@ first_lines() {
 	awk -v count="$count" 'NF { print; seen++; if (seen >= count) exit }'
 }
 
+version_at_least() {
+	local current=$1 required=$2 index current_part required_part
+	local -a current_parts required_parts
+
+	IFS=. read -r -a current_parts <<<"$current"
+	IFS=. read -r -a required_parts <<<"$required"
+	for index in 0 1 2; do
+		current_part=${current_parts[$index]:-0}
+		required_part=${required_parts[$index]:-0}
+		[[ $current_part =~ ^[0-9]+$ && $required_part =~ ^[0-9]+$ ]] || return 1
+		current_part=$((10#$current_part))
+		required_part=$((10#$required_part))
+		((current_part > required_part)) && return 0
+		((current_part < required_part)) && return 1
+	done
+	return 0
+}
+
 find_sibling_command() {
 	local name=$1
 
@@ -402,7 +420,7 @@ emit_failed_services() {
 }
 
 scan_desktop() {
-	local status detail
+	local status detail version
 
 	if [[ -n ${DISPLAY:-} ]]; then
 		emit_check desktop ok x11-display "X11 display" "${DISPLAY}" "X11 session display is set"
@@ -423,8 +441,15 @@ scan_desktop() {
 	fi
 
 	if command -v quickshell >/dev/null 2>&1; then
-		detail=$(quickshell --version 2>/dev/null | first_lines 1 || printf available)
-		emit_check desktop ok quickshell-version "Quickshell" "Available" "$detail" restart-quickshell "Restart Quickshell" user
+		detail=$(quickshell --version 2>/dev/null | first_lines 1 || true)
+		version=$(grep -oE '[0-9]+([.][0-9]+){1,2}' <<<"$detail" | first_lines 1 || true)
+		if [[ -n $version ]] && version_at_least "$version" 0.3.0; then
+			emit_check desktop ok quickshell-version "Quickshell" "Available" "$detail" restart-quickshell "Restart Quickshell" user
+		elif [[ -n $version ]]; then
+			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or newer is required" install-dependencies "Open dependency installer" user
+		else
+			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or newer" install-dependencies "Open dependency installer" user
+		fi
 	else
 		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed shell requires Quickshell 0.3.0 or newer" install-dependencies "Open dependency installer" user
 	fi

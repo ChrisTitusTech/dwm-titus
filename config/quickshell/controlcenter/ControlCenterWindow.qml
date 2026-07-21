@@ -13,8 +13,8 @@ ClickAwayPopup {
     required property var panelWindow
     required property var powerMenuModel
 
-    readonly property int cardWidth: 276
-    readonly property int gap: 8
+    readonly property int cardWidth: Theme.controlCenterWidth
+    readonly property int gap: Theme.controlCenterGap
     readonly property var powerPresets: [
         { "label": "5m", "seconds": 300 },
         { "label": "10m", "seconds": 600 },
@@ -54,7 +54,7 @@ ClickAwayPopup {
 
     visible: controlCenterModel.visible
     targetWindow: panelWindow
-    popupX: 6
+    popupX: Theme.controlCenterX
     popupY: Theme.panelHeight
     popupWidth: cardWidth + (sidePanel === "none" ? 0 : cardWidth + gap)
     popupHeight: sidePanel === "none" ? controlCard.implicitHeight : Math.max(controlCard.implicitHeight, sideCard.implicitHeight)
@@ -80,14 +80,14 @@ ClickAwayPopup {
 
         implicitHeight: 26
         radius: Theme.smallRadius
-        color: active ? Theme.surfaceActive : Theme.surface
-        border.color: active ? Theme.accentSecondary : Theme.border
+        color: active ? Theme.surfaceActive : tileMouse.containsMouse ? Theme.surfaceHover : Theme.surface
+        border.color: active ? Theme.accentSecondary : tileMouse.containsMouse ? Theme.borderStrong : Theme.border
         border.width: Theme.pillBorderWidth
 
         UiText {
             anchors.centerIn: parent
             text: tile.label
-            color: tile.active ? Theme.accentSecondary : Theme.text
+            color: tile.active ? Theme.accentSecondary : tileMouse.containsMouse ? Theme.textStrong : Theme.text
         }
 
         MouseArea {

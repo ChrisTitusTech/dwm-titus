@@ -30,6 +30,15 @@ for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcente
 	stub_command "$name"
 done
 
+cat >"$work/bin/quickshell" <<'SH'
+#!/bin/sh
+case ${1:-} in
+--version) printf 'quickshell %s\n' "${DWM_TEST_QUICKSHELL_VERSION:-0.3.0}" ;;
+*) printf 'quickshell %s\n' "$*" >>"${DWM_TEST_LOG:?}" ;;
+esac
+SH
+chmod +x "$work/bin/quickshell"
+
 cat >"$work/bin/pkill" <<'SH'
 #!/bin/sh
 printf 'pkill %s\n' "$*" >>"${DWM_TEST_LOG:?}"
@@ -190,6 +199,7 @@ run_helper() {
 		XDG_CONFIG_HOME="$work/config" \
 		XDG_DATA_HOME="$work/data" \
 		DWM_TEST_POWER_STATE="$work/power-state" \
+		DWM_TEST_QUICKSHELL_VERSION="${DWM_TEST_QUICKSHELL_VERSION:-0.3.0}" \
 		DWM_HEALTH_COMMAND_TIMEOUT=2 \
 		PATH="$work/bin:/usr/bin:/bin" \
 		"$repo/scripts/dwm-quickshell-controlcenter" "$@"
@@ -201,6 +211,9 @@ printf '%s\n' "$health" | grep -Fqx 'ok	xset	xset is available'
 printf '%s\n' "$health" | grep -Fqx 'ok	light-locker	light-locker is available'
 printf '%s\n' "$health" | grep -Fqx 'ok	Themes configuration	Readable'
 printf '%s\n' "$health" | grep -Fqx 'ok	Quickshell configuration	Readable'
+
+outdated_health=$(DWM_TEST_QUICKSHELL_VERSION=0.2.1 run_helper health)
+printf '%s\n' "$outdated_health" | grep -Fqx 'error	Quickshell	Outdated'
 
 info=$(run_helper info)
 printf '%s\n' "$info" | grep -Fqx 'Theme	nord'
@@ -340,6 +353,13 @@ grep -Fq 'watchChanges: true' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'themes.toml' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'ClickAwayPopup {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'grabFocus: true' "$repo/config/quickshell/core/ClickAwayPopup.qml"
+grep -Fq 'function applyThemes(themeText)' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'root.text = value("normfgcolor", root.text)' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'text: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
+grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq '? Theme.controlCenterX + Theme.controlCenterWidth + Theme.controlCenterGap' "$repo/config/quickshell/power/PowerMenuWindow.qml"
+grep -Fq 'tileMouse.containsMouse ? Theme.surfaceHover' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'PanelTooltip {' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'mask: Region {}' "$repo/config/quickshell/core/PanelTooltip.qml"
 grep -Fq 'anchor.edges: Edges.Left | Edges.Top' "$repo/config/quickshell/core/PanelTooltip.qml"
