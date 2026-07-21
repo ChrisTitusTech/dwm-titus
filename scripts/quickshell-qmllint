@@ -115,7 +115,8 @@ find_root() {
 }
 
 append_root_if_exists() {
-	[ -d "$1" ] && printf '%s\n' "$1"
+	[ -d "$1" ] || return 0
+	printf '%s\n' "$1"
 }
 
 discover_qml_roots() {
@@ -125,6 +126,9 @@ discover_qml_roots() {
 
 	append_root_if_exists /usr/lib64/qt6/qml
 	append_root_if_exists /usr/lib/qt6/qml
+	for qml_root in /usr/lib/*/qt6/qml; do
+		append_root_if_exists "$qml_root"
+	done
 	append_root_if_exists /usr/local/lib64/qt6/qml
 	append_root_if_exists /usr/local/lib/qt6/qml
 

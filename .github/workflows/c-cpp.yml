@@ -20,6 +20,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install build and validation dependencies
         run: |
@@ -46,6 +48,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install Clang and build dependencies
         run: |
@@ -69,9 +73,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Validate ${{ matrix.family }} family
         env:
           CONTAINER_ENGINE: docker
           DWM_CONTAINER_FAMILIES: ${{ matrix.family }}
         run: make check-container-smoke
+
+  quickshell-qml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: fedora:44
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Quickshell QML lint dependencies
+        run: dnf install -y --setopt=install_weak_deps=False make quickshell qt6-qtdeclarative-devel
+
+      - name: Validate Quickshell QML
+        run: make check-quickshell-qml
