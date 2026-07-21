@@ -24,7 +24,8 @@ if [ -z "$lock_helper" ]; then
 fi
 command -v "$lock_helper" >/dev/null 2>&1 || exit 0
 
-session_json=$(busctl --system --json=short call \
+session_json=$(DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket \
+	busctl --system --json=short call \
 	org.freedesktop.login1 \
 	/org/freedesktop/login1 \
 	org.freedesktop.login1.Manager \
@@ -41,7 +42,8 @@ run_lock_helper() {
 	fi
 }
 
-dbus-monitor --system \
+DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket \
+	dbus-monitor --system \
 	"type='signal',path='$session_path',interface='org.freedesktop.login1.Session',member='Lock'" 2>/dev/null |
 	while IFS= read -r line; do
 		case $line in

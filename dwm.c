@@ -289,7 +289,9 @@ static void maprequest(XEvent *e);
 static void motionnotify(XEvent *e);
 static void propertynotify(XEvent *e);
 static void run(void);
+static pid_t runautoscript(const char *script);
 static void runautostart(void);
+static void runautostop(void);
 static void scan(void);
 static void sigchld(int unused);
 static void sigstatusbar(const Arg *arg);
@@ -343,6 +345,7 @@ static void *toml_alloc(size_t sz);
 
 /* variables */
 static const char autostartsh[] = "scripts/autostart.sh";
+static const char autostopsh[] = "scripts/autostop.sh";
 static const char broken[] = "broken";
 static const char dwmdir[] = "dwm-titus";
 static const char localshare[] = ".local/share";
@@ -2604,18 +2607,19 @@ run(void)
 	}
 }
 
-void
-runautostart(void)
+pid_t
+runautoscript(const char *script)
 {
 	char *pathpfx;
 	char *path;
 	char *xdgdatahome;
 	char *home;
+	pid_t pid = 0;
 	struct stat sb;
 
 	if ((home = getenv("HOME")) == NULL)
 		/* this is almost impossible */
-		return;
+		return 0;
 
 	/* if $XDG_DATA_HOME is set and not empty, use $XDG_DATA_HOME/dwm,
 	 * otherwise use ~/.local/share/dwm as autostart script directory
@@ -2627,7 +2631,7 @@ runautostart(void)
 
 		if (sprintf(pathpfx, "%s/%s", xdgdatahome, dwmdir) <= 0) {
 			free(pathpfx);
-			return;
+			return 0;
 		}
 	} else {
 		/* space for path segments, separators and nul */
@@ -2636,7 +2640,7 @@ runautostart(void)
 
 		if (sprintf(pathpfx, "%s/%s/%s", home, localshare, dwmdir) < 0) {
 			free(pathpfx);
-			return;
+			return 0;
 		}
 	}
 
@@ -2648,35 +2652,109 @@ runautostart(void)
 		char *pathpfx_new = realloc(pathpfx, strlen(home) + strlen(dwmdir) + 3);
 		if(pathpfx_new == NULL) {
 			free(pathpfx);
-			return;
+			return 0;
 		}
 		pathpfx = pathpfx_new;
 
 		if (sprintf(pathpfx, "%s/.%s", home, dwmdir) <= 0) {
 			free(pathpfx);
-			return;
+			return 0;
 		}
 	}
 
-	/* try the autostart script */
-	path = ecalloc(1, strlen(pathpfx) + strlen(autostartsh) + 2);
-	if (sprintf(path, "%s/%s", pathpfx, autostartsh) <= 0) {
+	/* try the requested session script */
+	path = ecalloc(1, strlen(pathpfx) + strlen(script) + 2);
+	if (sprintf(path, "%s/%s", pathpfx, script) <= 0) {
 		free(path);
 		free(pathpfx);
+		return 0;
 	}
 
 	if (access(path, X_OK) == 0) {
-		pid_t pid = fork();
+		pid = fork();
 		if (pid == 0) {
+			sigset_t mask;
+
 			setsid();
+			/* A synchronous caller blocks SIGCHLD while it waits. Do not
+			 * leak that temporary mask into the session script. */
+			if (sigprocmask(SIG_SETMASK, NULL, &mask) == 0) {
+				sigdelset(&mask, SIGCHLD);
+				sigprocmask(SIG_SETMASK, &mask, NULL);
+			}
 			execl(path, path, (char *)NULL);
 			_exit(127);
 		}
-		/* parent returns immediately — dwm is not blocked by autostart */
+		if (pid < 0) {
+			perror("dwm: cannot launch session script");
+			pid = 0;
+		}
+		/* The caller decides whether it needs to wait for completion. */
 	}
 
 	free(pathpfx);
 	free(path);
+	return pid;
+}
+
+void
+runautostart(void)
+{
+	runautoscript(autostartsh);
+}
+
+void
+runautostop(void)
+{
+	const int timeout_ms = 5000;
+	const int interval_us = 50000;
+	int elapsed_ms = 0;
+	int status;
+	pid_t result;
+	pid_t pid;
+	sigset_t mask, oldmask;
+	int restore_mask = 0;
+
+	/* sigchld() reaps detached startup helpers. Block it here so this
+	 * completion-aware shutdown path can inspect the hook's exit status. */
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGCHLD);
+	if (sigprocmask(SIG_BLOCK, &mask, &oldmask) == 0)
+		restore_mask = 1;
+
+	pid = runautoscript(autostopsh);
+
+	if (pid <= 0)
+		goto restore;
+
+	while (elapsed_ms < timeout_ms) {
+		result = waitpid(pid, &status, WNOHANG);
+		if (result == pid) {
+			if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+				fprintf(stderr, "dwm: autostop failed with status %d\n",
+					WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+			goto restore;
+		}
+		if (result < 0) {
+			if (errno == EINTR)
+				continue;
+			/* The SIGCHLD handler may have reaped a completed hook. */
+			if (errno == ECHILD)
+				goto restore;
+			perror("dwm: cannot wait for autostop");
+			goto restore;
+		}
+		usleep(interval_us);
+		elapsed_ms += interval_us / 1000;
+	}
+
+	fprintf(stderr, "dwm: autostop timed out after %d ms\n", timeout_ms);
+	if (kill(-pid, SIGTERM) < 0 && errno == ESRCH)
+		kill(pid, SIGTERM);
+
+restore:
+	if (restore_mask)
+		sigprocmask(SIG_SETMASK, &oldmask, NULL);
 }
 
 void
@@ -5099,5 +5177,6 @@ main(int argc, char *argv[])
 	run();
 	cleanup();
 	XCloseDisplay(dpy);
+	runautostop();
 	return EXIT_SUCCESS;
 }
