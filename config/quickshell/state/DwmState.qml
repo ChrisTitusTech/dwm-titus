@@ -6,7 +6,10 @@ Scope {
 
     property int currentWorkspace: 0
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    property var occupiedWorkspaces: []
+    property var runningApps: []
     property string activeWindowTitle: "Desktop"
+    property string activeWindowClass: "application-x-executable"
     property string statusText: ""
     property var statusSegments: []
 
@@ -29,13 +32,28 @@ Scope {
                 root.currentWorkspace = isNaN(parsed) ? 0 : parsed;
             } else if (key === "names") {
                 root.workspaceNames = value.length > 0 ? value.split("|") : [];
+            } else if (key === "occupied") {
+                root.occupiedWorkspaces = value.length > 0 ? value.split("|").map(function(workspace) {
+                    return parseInt(workspace, 10);
+                }) : [];
+            } else if (key === "apps") {
+                root.runningApps = value.length > 0 ? value.split("|").map(function(app) {
+                    const separator = app.indexOf(":");
+                    return { "windowId": app.slice(0, separator), "appClass": app.slice(separator + 1) };
+                }) : [];
             } else if (key === "title") {
                 root.activeWindowTitle = value.length > 0 ? value : "Desktop";
+            } else if (key === "class") {
+                root.activeWindowClass = value.length > 0 ? value : "application-x-executable";
             } else if (key === "status") {
                 root.statusText = value;
                 root.updateStatusSegments();
             }
         }
+    }
+
+    function workspaceOccupied(index) {
+        return root.occupiedWorkspaces.indexOf(index) !== -1;
     }
 
     function updateStatusSegments() {
@@ -49,13 +67,19 @@ Scope {
         root.statusSegments = text.split(/\s+\|\s+| {2,}/).filter(function(segment) {
             const trimmed = segment.trim();
 
-            return trimmed.length > 0 && trimmed.indexOf("NET ") !== 0 && trimmed.indexOf("VOL ") !== 0;
+            return trimmed.length > 0 && trimmed !== "AC"
+                && trimmed.indexOf("NET ") !== 0 && trimmed.indexOf("VOL ") !== 0;
         });
     }
 
     function switchWorkspace(index) {
         switchWorkspaceProcess.command = ["dwm-quickshell-state", "switch", index.toString()];
         switchWorkspaceProcess.running = true;
+    }
+
+    function focusWindow(windowId) {
+        focusWindowProcess.command = ["dwm-quickshell-state", "focus", windowId];
+        focusWindowProcess.running = true;
     }
 
     Process {
@@ -74,6 +98,13 @@ Scope {
         id: switchWorkspaceProcess
 
         command: ["dwm-quickshell-state", "switch", root.currentWorkspace.toString()]
+        running: false
+    }
+
+    Process {
+        id: focusWindowProcess
+
+        command: ["dwm-quickshell-state", "focus", "0"]
         running: false
     }
 }

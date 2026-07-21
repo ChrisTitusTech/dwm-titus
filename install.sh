@@ -430,6 +430,43 @@ configure_seeded_terminal() {
 	ok "Configured the default terminal: $terminal"
 }
 
+configure_quickshell_picom_opacity() {
+	local config="/etc/xdg/picom.conf"
+	local backup="${config}.dwm-titus.bak"
+	local tooltip_rule="^([[:space:]]*\"[0-9]+([.][0-9]+)?:window_type = 'tooltip')(\"[[:space:]]*,?[[:space:]]*)$"
+	local configured_rule="^[[:space:]]*\"[0-9]+([.][0-9]+)?:window_type = 'tooltip' && name != 'quickshell'\"[[:space:]]*,?[[:space:]]*$"
+	local tmp
+
+	if [[ ! -f $config ]]; then
+		warn "Picom system config not found; skipping Quickshell opacity override."
+		return
+	fi
+	if sudo grep -Eq "$configured_rule" "$config"; then
+		ok "Quickshell Picom opacity is already configured."
+		return
+	fi
+	if ! sudo grep -Eq "$tooltip_rule" "$config"; then
+		warn "Recognized Picom tooltip opacity rule not found; preserving $config."
+		return
+	fi
+
+	tmp="$(mktemp)"
+	if ! sudo sed -E \
+		"s/${tooltip_rule}/\\1 \&\& name != 'quickshell'\\3/" \
+		"$config" | tee "$tmp" >/dev/null; then
+		rm -f "$tmp"
+		warn "Could not prepare the Quickshell Picom opacity override."
+		return
+	fi
+
+	if [[ ! -f $backup ]]; then
+		sudo install -o root -g root -m 0644 "$config" "$backup"
+	fi
+	sudo install -o root -g root -m 0644 "$tmp" "$config"
+	rm -f "$tmp"
+	ok "Configured fully opaque Quickshell windows in Picom."
+}
+
 configure_displays_after_install() {
 	local answer
 
@@ -601,6 +638,10 @@ if install_recommended_profile; then
 	ok "Recommended desktop dependencies installed."
 else
 	warn "Skipping recommended desktop dependencies for core profile."
+fi
+
+if command -v picom >/dev/null 2>&1; then
+	configure_quickshell_picom_opacity
 fi
 
 # ── Optional desktop extras ──────────────────────────────

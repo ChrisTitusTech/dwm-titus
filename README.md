@@ -202,6 +202,14 @@ Key things to customize in `config.h`:
 - Verify the managed shell config exists: `ls ~/.config/quickshell/shell.qml`
 - Run manually: `quickshell --no-duplicate`
 
+**Restore the Picom configuration:**
+- The installer preserves the original system Picom configuration as
+  `/etc/xdg/picom.conf.dwm-titus.bak` before excluding Quickshell from any
+  translucent tooltip rule.
+- Restore it with:
+  `sudo install -o root -g root -m 0644 /etc/xdg/picom.conf.dwm-titus.bak /etc/xdg/picom.conf`
+- Restart Picom or log out and back in after restoring it.
+
 **Terminal doesn't open (SUPER+X):**
 - Install a terminal emulator (`alacritty`, `kitty`, `st`,
   `warp-terminal`, or `xterm`)

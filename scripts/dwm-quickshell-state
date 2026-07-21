@@ -67,6 +67,41 @@ active_window_id() {
 	}
 }
 
+occupied_workspaces() {
+	root_property_value _NET_CLIENT_LIST |
+		tr ',' '\n' |
+		while IFS= read -r window_id; do
+			window_id=$(printf '%s\n' "$window_id" | awk '{ print $NF }')
+			[ -n "$window_id" ] || continue
+			xprop -id "$window_id" _NET_WM_DESKTOP 2>/dev/null |
+				awk -F'= ' '$2 ~ /^[0-9]+$/ && $2 != 4294967295 { print $2 }'
+		done |
+		sort -nu |
+		paste -sd '|' -
+}
+
+running_apps() {
+	seen='|'
+	root_property_value _NET_CLIENT_LIST |
+		tr ',' '\n' |
+		while IFS= read -r window_id; do
+			window_id=$(printf '%s\n' "$window_id" | awk '{ print $NF }')
+			[ -n "$window_id" ] || continue
+			pid=$(xprop -id "$window_id" _NET_WM_PID 2>/dev/null | awk -F'= ' '$2 ~ /^[0-9]+$/ { print $2; exit }')
+			if [ -n "$pid" ] && [ "$(ps -o uid= -p "$pid" 2>/dev/null | awk '{ print $1 }')" = 0 ]; then
+				continue
+			fi
+			class=$(window_class "$window_id" || true)
+			[ -n "$class" ] || continue
+			case $seen in
+			*"|$class|"*) continue ;;
+			esac
+			seen="$seen$class|"
+			printf '%s:%s\n' "$window_id" "$class"
+		done |
+		paste -sd '|' -
+}
+
 window_title() {
 	window_id=$1
 	[ -n "$window_id" ] || return 1
@@ -94,6 +129,13 @@ window_title() {
 		' | clean_line
 }
 
+window_class() {
+	window_id=$1
+	[ -n "$window_id" ] || return 1
+	xprop -id "$window_id" WM_CLASS 2>/dev/null |
+		awk -F'= ' '/^WM_CLASS/ { gsub(/"/, "", $2); split($2, classes, /, /); print tolower(classes[2]); exit }'
+}
+
 show_state() {
 	current=$(root_property_value _NET_CURRENT_DESKTOP | awk '{ print $1; exit }')
 	count=$(root_property_value _NET_NUMBER_OF_DESKTOPS | awk '{ print $1; exit }')
@@ -103,13 +145,20 @@ show_state() {
 	window_id=$(active_window_id)
 	title=$(window_title "$window_id" || true)
 	title=${title:-Desktop}
+	class=$(window_class "$window_id" || true)
+	class=${class:-application-x-executable}
 	status=$(root_status)
+	occupied=$(occupied_workspaces)
+	apps=$(running_apps)
 
 	printf 'current=%s\n' "$current"
 	printf 'count=%s\n' "$count"
 	printf 'names=%s\n' "$names"
+	printf 'occupied=%s\n' "$occupied"
+	printf 'apps=%s\n' "$apps"
 	printf 'active_window=%s\n' "$window_id"
 	printf 'title=%s\n' "$title"
+	printf 'class=%s\n' "$class"
 	printf 'status=%s\n' "$status"
 }
 
@@ -146,6 +195,18 @@ switch_workspace() {
 	wmctrl -s "$target"
 }
 
+focus_window() {
+	target=${1:-}
+	case $target in
+	0x[0-9a-fA-F]* | [0-9]*) ;;
+	*)
+		printf 'usage: %s focus <window-id>\n' "$0" >&2
+		return 2
+		;;
+	esac
+	wmctrl -ia "$target"
+}
+
 case ${1:-state} in
 state)
 	show_state
@@ -156,8 +217,11 @@ watch)
 switch)
 	switch_workspace "${2:-}"
 	;;
+focus)
+	focus_window "${2:-}"
+	;;
 *)
-	printf 'usage: %s [state|watch|switch <zero-based-workspace>]\n' "$0" >&2
+	printf 'usage: %s [state|watch|switch <zero-based-workspace>|focus <window-id>]\n' "$0" >&2
 	exit 2
 	;;
 esac

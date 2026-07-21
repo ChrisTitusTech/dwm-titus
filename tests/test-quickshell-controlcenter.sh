@@ -30,6 +30,15 @@ for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcente
 	stub_command "$name"
 done
 
+cat >"$work/bin/quickshell" <<'SH'
+#!/bin/sh
+case ${1:-} in
+--version) printf 'quickshell %s\n' "${DWM_TEST_QUICKSHELL_VERSION:-0.3.0}" ;;
+*) printf 'quickshell %s\n' "$*" >>"${DWM_TEST_LOG:?}" ;;
+esac
+SH
+chmod +x "$work/bin/quickshell"
+
 cat >"$work/bin/pkill" <<'SH'
 #!/bin/sh
 printf 'pkill %s\n' "$*" >>"${DWM_TEST_LOG:?}"
@@ -190,6 +199,7 @@ run_helper() {
 		XDG_CONFIG_HOME="$work/config" \
 		XDG_DATA_HOME="$work/data" \
 		DWM_TEST_POWER_STATE="$work/power-state" \
+		DWM_TEST_QUICKSHELL_VERSION="${DWM_TEST_QUICKSHELL_VERSION:-0.3.0}" \
 		DWM_HEALTH_COMMAND_TIMEOUT=2 \
 		PATH="$work/bin:/usr/bin:/bin" \
 		"$repo/scripts/dwm-quickshell-controlcenter" "$@"
@@ -201,6 +211,9 @@ printf '%s\n' "$health" | grep -Fqx 'ok	xset	xset is available'
 printf '%s\n' "$health" | grep -Fqx 'ok	light-locker	light-locker is available'
 printf '%s\n' "$health" | grep -Fqx 'ok	Themes configuration	Readable'
 printf '%s\n' "$health" | grep -Fqx 'ok	Quickshell configuration	Readable'
+
+outdated_health=$(DWM_TEST_QUICKSHELL_VERSION=0.2.1 run_helper health)
+printf '%s\n' "$outdated_health" | grep -Fqx 'error	Quickshell	Outdated'
 
 info=$(run_helper info)
 printf '%s\n' "$info" | grep -Fqx 'Theme	nord'
@@ -335,5 +348,45 @@ if run_helper action not-real 2>"$work/action.err"; then
 	exit 1
 fi
 grep -Fqx 'unknown action: not-real' "$work/action.err"
+
+grep -Fq 'watchChanges: true' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'themes.toml' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'ClickAwayPopup {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'grabFocus: true' "$repo/config/quickshell/core/ClickAwayPopup.qml"
+grep -Fq 'function applyThemes(themeText)' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'root.text = value("normfgcolor", root.text)' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'text: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
+grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq '? Theme.controlCenterX + Theme.controlCenterWidth + Theme.controlCenterGap' "$repo/config/quickshell/power/PowerMenuWindow.qml"
+grep -Fq 'tileMouse.containsMouse ? Theme.surfaceHover' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'PanelTooltip {' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'mask: Region {}' "$repo/config/quickshell/core/PanelTooltip.qml"
+grep -Fq 'anchor.edges: Edges.Left | Edges.Top' "$repo/config/quickshell/core/PanelTooltip.qml"
+grep -Fq 'anchor.gravity: Edges.Right | Edges.Bottom' "$repo/config/quickshell/core/PanelTooltip.qml"
+grep -Fq 'root.anchorItem.mapToGlobal(edge, 0)' "$repo/config/quickshell/core/PanelTooltip.qml"
+grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/PanelPill.qml"
+grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/ShellSurface.qml"
+grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/ClickAwayPopup.qml"
+grep -Fq 'RunningAppsArea { state: root.state }' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'onFocusRequested: windowId => root.state.focusWindow(windowId)' "$repo/config/quickshell/panel/RunningAppsArea.qml"
+grep -Fq 'root.nativeMenuItem && root.nativeMenuItem.hasMenu' "$repo/config/quickshell/panel/RunningAppItem.qml"
+grep -Fq 'root.state.activeWindowTitle' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'root.state.statusSegments' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'color: Theme.barBackground' "$repo/config/quickshell/panel/DwmPanel.qml"
+if grep -Fq 'color: Theme.transparent' "$repo/config/quickshell/panel/DwmPanel.qml"; then
+	exit 1
+fi
+grep -Fq 'root.controlsModel.volumeUp();' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'root.controlsModel.volumeDown();' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'trimmed !== "AC"' "$repo/config/quickshell/state/DwmState.qml"
+grep -Fq 'root.powerMenuModel.open("controlcenter")' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'powerMenuModel.anchorSource === "controlcenter"' "$repo/config/quickshell/power/PowerMenuWindow.qml"
+if grep -Fq 'danger: modelData.id === "shutdown"' "$repo/config/quickshell/power/PowerMenuWindow.qml"; then
+	exit 1
+fi
+if grep -Fq 'danger: true' "$repo/config/quickshell/power/PowerMenuWindow.qml"; then
+	exit 1
+fi
 
 printf 'Quickshell control center helper: PASS\n'

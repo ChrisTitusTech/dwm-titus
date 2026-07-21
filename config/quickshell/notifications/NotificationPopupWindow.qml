@@ -16,7 +16,7 @@ PopupWindow {
 
     visible: notificationModel.notifications.length > 0
     implicitWidth: popupWidth
-    implicitHeight: notificationsColumn.implicitHeight + 24
+    implicitHeight: notificationsColumn.implicitHeight
     anchor.window: panelWindow
     anchor.rect.x: Math.max(edgeMargin, panelWindow.width - popupWidth - edgeMargin)
     anchor.rect.y: Theme.panelHeight
@@ -26,7 +26,7 @@ PopupWindow {
         id: notificationsColumn
 
         anchors.fill: parent
-        anchors.margins: 12
+        opacity: 1.0
         spacing: Theme.listSpacing * 2
 
         Repeater {

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Widgets
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -18,7 +19,7 @@ PanelWindow {
     required property var powerMenuModel
 
     implicitHeight: Theme.panelHeight
-    color: Theme.transparent
+    color: Theme.barBackground
     exclusiveZone: Theme.panelHeight
     aboveWindows: true
 
@@ -36,6 +37,7 @@ PanelWindow {
         anchors.rightMargin: Theme.panelEdgeMargin
         anchors.topMargin: Theme.panelMargin
         anchors.bottomMargin: Theme.panelMargin
+        opacity: 1.0
         color: Theme.barBackground
         border.color: Theme.border
         border.width: Theme.pillBorderWidth
@@ -62,6 +64,7 @@ PanelWindow {
                     spacing: Theme.panelGap
 
                     LogoButton {
+                        id: logoButton
                         onActivated: root.controlCenterModel.toggle()
                     }
 
@@ -85,6 +88,7 @@ PanelWindow {
 
                                     label: modelData
                                     selected: index === root.state.currentWorkspace
+                                    occupied: root.state.workspaceOccupied(index)
                                     onClicked: root.state.switchWorkspace(index)
                                 }
                             }
@@ -92,22 +96,21 @@ PanelWindow {
                     }
 
                     PanelPill {
-                        Layout.preferredWidth: Math.min(280, activeWindowLabel.implicitWidth + Theme.pillHorizontalPadding * 2)
+                        Layout.preferredWidth: Math.min(activeTitle.implicitWidth + Theme.pillHorizontalPadding * 2, 260)
                         Layout.preferredHeight: Theme.pillHeight
 
                         UiText {
-                            id: activeWindowLabel
-
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
+                            id: activeTitle
+                            anchors.fill: parent
                             anchors.leftMargin: Theme.pillHorizontalPadding
                             anchors.rightMargin: Theme.pillHorizontalPadding
                             text: root.state.activeWindowTitle
                             color: Theme.text
                             elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
                         }
                     }
+
                 }
             }
 
@@ -119,7 +122,7 @@ PanelWindow {
                     id: clockLabel
 
                     anchors.centerIn: parent
-                    text: Qt.formatDateTime(root.clock.date, "ddd dd MMM  HH:mm")
+                    text: Qt.formatDateTime(root.clock.date, "ddd dd MMM - HH:mm")
                     color: Theme.textStrong
                     font.bold: true
                 }
@@ -139,61 +142,26 @@ PanelWindow {
                     Repeater {
                         model: root.state.statusSegments
 
-                        delegate: UiText {
+                        delegate: PanelPill {
                             required property string modelData
-                            text: modelData
-                            color: Theme.text
-                        }
-                    }
-
-                    TrayArea {}
-
-                    PanelPill {
-                        visible: root.controlCenterModel.showVolumeWidget
-                        Layout.preferredWidth: volumeRow.implicitWidth + Theme.pillHorizontalPadding * 2
-                        Layout.preferredHeight: Theme.pillHeight
-                        active: root.controlsModel.visible
-                        hovered: controlsMouse.containsMouse
-
-                        RowLayout {
-                            id: volumeRow
-
-                            anchors.centerIn: parent
-                            spacing: Theme.compactSpacing + 2
-
-                            Rectangle {
-                                Layout.preferredWidth: 30
-                                Layout.preferredHeight: 6
-                                radius: 3
-                                color: Theme.borderStrong
-
-                                Rectangle {
-                                    width: Math.max(4, parent.width * root.controlsModel.volumePercent / 100)
-                                    height: parent.height
-                                    radius: parent.radius
-                                    color: Theme.accentSecondary
-                                }
-                            }
+                            Layout.preferredWidth: statusLabel.implicitWidth + Theme.pillHorizontalPadding * 2
+                            Layout.preferredHeight: Theme.pillHeight
 
                             UiText {
-                                text: root.controlsModel.volumeMuted ? "Muted" : root.controlsModel.volumePercent.toString() + "%"
-                                color: Theme.accentSecondary
+                                id: statusLabel
+                                anchors.centerIn: parent
+                                text: parent.modelData
+                                color: Theme.text
                             }
                         }
-
-                        MouseArea {
-                            id: controlsMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.controlsModel.toggle()
-                        }
                     }
+
+                    RunningAppsArea { state: root.state }
 
                     PanelPill {
                         visible: root.controlCenterModel.showBluetoothWidget
-                        Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.pillHorizontalPadding * 2
-                        Layout.preferredHeight: Theme.pillHeight
+                        Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
+                        Layout.preferredHeight: Theme.compactWidgetSize
                         active: root.bluetoothModel.visible
                         hovered: bluetoothMouse.containsMouse
 
@@ -202,8 +170,11 @@ PanelWindow {
                             anchors.centerIn: parent
                             spacing: Theme.compactSpacing
 
-                            IconText { text: "󰂯" }
-                            UiText { text: "BT" }
+                            IconText {
+                                text: "󰂯"
+                                color: Theme.textStrong
+                                font.pixelSize: Math.round((Theme.panelFontSize + 1) * 0.9)
+                            }
                         }
 
                         MouseArea {
@@ -217,8 +188,8 @@ PanelWindow {
 
                     PanelPill {
                         visible: root.controlCenterModel.showNetworkWidget
-                        Layout.preferredWidth: networkRow.implicitWidth + Theme.pillHorizontalPadding * 2
-                        Layout.preferredHeight: Theme.pillHeight
+                        Layout.preferredWidth: networkRow.implicitWidth + Theme.networkWidgetHorizontalPadding * 2
+                        Layout.preferredHeight: Theme.compactWidgetSize
                         active: root.networkModel.visible
                         hovered: networkMouse.containsMouse
 
@@ -227,10 +198,11 @@ PanelWindow {
                             anchors.centerIn: parent
                             spacing: Theme.compactSpacing
 
-                            UiText { text: "NET" }
                             IconText {
                                 text: root.networkModel.statusText.indexOf("offline") >= 0
                                     || root.networkModel.statusText.indexOf("unavailable") >= 0 ? "󰤭" : "󰤨"
+                                color: Theme.textStrong
+                                font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.2)
                             }
                         }
 
@@ -244,6 +216,37 @@ PanelWindow {
                     }
 
                     PanelPill {
+                        visible: root.controlCenterModel.showVolumeWidget
+                        Layout.preferredWidth: Theme.compactWidgetSize
+                        Layout.preferredHeight: Theme.compactWidgetSize
+                        active: root.controlsModel.visible
+                        hovered: controlsMouse.containsMouse
+
+                        IconText {
+                            anchors.centerIn: parent
+                            text: root.controlsModel.volumeMuted ? "󰝟" : "󰕾"
+                            color: Theme.textStrong
+                            font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.5)
+                        }
+
+                        MouseArea {
+                            id: controlsMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.controlsModel.toggle()
+                            onWheel: function(wheel) {
+                                if (wheel.angleDelta.y > 0) {
+                                    root.controlsModel.volumeUp();
+                                } else if (wheel.angleDelta.y < 0) {
+                                    root.controlsModel.volumeDown();
+                                }
+                                wheel.accepted = true;
+                            }
+                        }
+                    }
+
+                    PanelPill {
                         visible: root.controlCenterModel.showPowerWidget
                         Layout.preferredWidth: Theme.pillHeight
                         Layout.preferredHeight: Theme.pillHeight
@@ -253,7 +256,8 @@ PanelWindow {
                         IconText {
                             anchors.centerIn: parent
                             text: "󰐥"
-                            color: Theme.accentSecondary
+                            color: Theme.textStrong
+                            font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.08)
                         }
 
                         MouseArea {
@@ -261,11 +265,55 @@ PanelWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.powerMenuModel.toggle()
+                            onClicked: root.powerMenuModel.toggle("panel")
                         }
                     }
                 }
             }
         }
+    }
+
+    PanelTooltip {
+        visible: logoButton.hovered
+        anchorWindow: root
+        anchorItem: logoButton
+        label: "Control Center"
+        anchorY: Theme.panelHeight
+    }
+
+    PanelTooltip {
+        visible: bluetoothMouse.containsMouse
+        anchorWindow: root
+        anchorItem: bluetoothMouse
+        label: root.bluetoothModel.statusText
+        anchorY: Theme.panelHeight
+        rightAligned: true
+    }
+
+    PanelTooltip {
+        visible: networkMouse.containsMouse
+        anchorWindow: root
+        anchorItem: networkMouse
+        label: root.networkModel.statusText
+        anchorY: Theme.panelHeight
+        rightAligned: true
+    }
+
+    PanelTooltip {
+        visible: controlsMouse.containsMouse
+        anchorWindow: root
+        anchorItem: controlsMouse
+        label: root.controlsModel.volumeDisplayText
+        anchorY: Theme.panelHeight
+        rightAligned: true
+    }
+
+    PanelTooltip {
+        visible: powerMouse.containsMouse
+        anchorWindow: root
+        anchorItem: powerMouse
+        label: "Power"
+        anchorY: Theme.panelHeight
+        rightAligned: true
     }
 }

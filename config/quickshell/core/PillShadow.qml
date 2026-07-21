@@ -10,6 +10,6 @@ Rectangle {
     height: parent ? parent.height : 0
     radius: cornerRadius
     color: Theme.shadow
-    opacity: 0.45
+    opacity: 0
     z: -1
 }

@@ -5,24 +5,23 @@ import qs.core
 
 pragma ComponentBehavior: Bound
 
-PopupWindow {
+ClickAwayPopup {
     id: root
 
     required property var networkModel
     required property var panelWindow
 
-    readonly property int popupWidth: 620
-    readonly property int popupHeight: 680
+    readonly property int cardWidth: 620
+    readonly property int cardHeight: 680
     readonly property int edgeMargin: Theme.rowSpacing
 
     visible: networkModel.visible
-    implicitWidth: popupWidth
-    implicitHeight: popupHeight
-    anchor.window: panelWindow
-    anchor.rect.x: Math.max(edgeMargin, panelWindow.width - popupWidth - edgeMargin)
-    anchor.rect.y: Theme.panelHeight
-    grabFocus: true
-    color: Theme.transparent
+    targetWindow: panelWindow
+    popupWidth: cardWidth
+    popupHeight: cardHeight
+    popupX: Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin)
+    popupY: Theme.panelHeight
+    onDismissed: networkModel.close()
 
     onVisibleChanged: if (!visible) root.networkModel.close()
 

@@ -13,18 +13,17 @@ Rectangle {
 
     implicitWidth: buttonLabel.implicitWidth + 18
     implicitHeight: Theme.buttonHeight
-    color: hovered && enabled ? Theme.surfaceHover : Theme.surface
-    border.color: danger ? Theme.danger : Theme.border
+    color: !root.enabled ? Theme.barBackground : root.hovered ? Theme.surfaceHover : Theme.surface
+    border.color: !root.enabled ? Theme.border : root.danger ? Theme.danger : root.hovered ? Theme.borderStrong : Theme.border
     border.width: 1
     radius: Theme.radius
-    opacity: enabled ? 1 : 0.5
 
     Text {
         id: buttonLabel
 
         anchors.centerIn: parent
         text: root.label
-        color: root.danger ? Theme.textStrong : Theme.text
+        color: !root.enabled ? Theme.textMuted : root.danger ? Theme.textStrong : Theme.text
         font.family: Theme.fontFamily
         font.pixelSize: root.compact ? Theme.smallFontSize : Theme.panelFontSize
         font.bold: true

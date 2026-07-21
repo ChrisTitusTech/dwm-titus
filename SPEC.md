@@ -111,6 +111,11 @@ single managed `PanelWindow` is the expected panel shape unless a per-screen
 Quickshell `Variants` design is explicitly profiled and shown not to consume
 idle CPU.
 
+The managed shell requires Quickshell 0.3.0 or newer. Anchored control popups
+must close on Escape and on a click outside their visible card under X11.
+Visible shell surfaces must be opaque and follow the active theme selected in
+the user `themes.toml` file.
+
 ### 5.3 Session Startup
 
 The project must support:

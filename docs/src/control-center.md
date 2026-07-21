@@ -9,7 +9,7 @@ terminal.
 
 The popup opens from the panel logo. Its side card contains panel widget
 visibility, utilities, quick actions, appearance controls, and persisted DPMS
-and auto-lock timing. Press <kbd>Esc</kbd> to close it.
+and auto-lock timing. Press <kbd>Esc</kbd> or click outside it to close it.
 
 ---
 
@@ -34,7 +34,12 @@ paired device, and disconnect a connected device through `bluetoothctl`.
 The Bar Functions card can show or hide the workspace, volume, Bluetooth,
 network, and power widgets for the current Quickshell session. The redesigned
 panel retains the active-window title, status segments, and system tray, and
-shows all nine dwm tags (workspaces).
+shows all nine dwm tags (workspaces). Hovering icon-only panel controls displays
+a text tooltip.
+
+The panel, popovers, and control-center cards use fully opaque colors. Their
+palette follows the active theme in `themes.toml` and updates when that file is
+changed.
 
 ---
 

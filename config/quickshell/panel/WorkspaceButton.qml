@@ -7,17 +7,20 @@ Rectangle {
 
     required property string label
     required property bool selected
+    required property bool occupied
     signal clicked()
 
     Layout.preferredWidth: Theme.workspaceButtonSize
     Layout.preferredHeight: Theme.workspaceButtonSize
     radius: Theme.smallRadius
-    color: selected ? Theme.surfaceActive : (workspaceMouse.containsMouse ? Theme.surfaceHover : "transparent")
+    color: Theme.transparent
+    border.color: selected ? Theme.accent : Theme.transparent
+    border.width: selected ? Theme.pillBorderWidth : 0
 
     Text {
         anchors.centerIn: parent
         text: root.label
-        color: root.selected ? Theme.accent : Theme.textMuted
+        color: root.selected ? Theme.accent : root.occupied ? Theme.textMuted : Theme.placeholder
         font.family: Theme.fontFamily
         font.pixelSize: Theme.panelFontSize
         font.bold: root.selected

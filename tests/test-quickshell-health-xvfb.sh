@@ -139,6 +139,43 @@ if [ -z "$window" ]; then
 	exit 1
 fi
 
+DISPLAY=$display xdotool mousemove 700 700 click 1
+i=0
+while [ "$i" -lt 100 ]; do
+	if ! DISPLAY=$display xdotool search --onlyvisible --pid "$quickshell_pid" 2>/dev/null | grep -Fqx "$window"; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.05
+done
+if DISPLAY=$display xdotool search --onlyvisible --pid "$quickshell_pid" 2>/dev/null | grep -Fqx "$window"; then
+	printf 'Control Center popup did not close on outside click\n' >&2
+	exit 1
+fi
+
+visible_windows=$(DISPLAY=$display xdotool search --onlyvisible --pid "$quickshell_pid" 2>/dev/null || true)
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	quickshell ipc --path "$config" call controlcenter open >/dev/null
+
+window=
+i=0
+while [ "$i" -lt 200 ]; do
+	for candidate in $(DISPLAY=$display xdotool search --onlyvisible --pid "$quickshell_pid" 2>/dev/null || true); do
+		was_visible=0
+		for existing in $visible_windows; do
+			[ "$candidate" = "$existing" ] && was_visible=1
+		done
+		if [ "$was_visible" = 0 ]; then
+			window=$candidate
+			break
+		fi
+	done
+	[ -n "$window" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -n "$window" ]
+
 DISPLAY=$display xdotool key Escape
 i=0
 while [ "$i" -lt 100 ]; do
