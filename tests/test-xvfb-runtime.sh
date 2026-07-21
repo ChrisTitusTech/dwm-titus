@@ -689,6 +689,7 @@ stack_client_pid=
 mkdir -p "$home/.local/share/dwm-titus/scripts"
 cat >"$home/.local/share/dwm-titus/scripts/autostop.sh" <<EOF
 #!/bin/sh
+sleep 0.2
 : >"$work/autostop.called"
 EOF
 chmod +x "$home/.local/share/dwm-titus/scripts/autostop.sh"
@@ -707,13 +708,8 @@ if kill -0 "$dwm_pid" 2>/dev/null; then
 fi
 wait "$dwm_pid"
 dwm_pid=
-i=0
-while [ "$i" -lt 100 ] && [ ! -f "$work/autostop.called" ]; do
-	i=$((i + 1))
-	sleep 0.05
-done
 if [ ! -f "$work/autostop.called" ]; then
-	printf '%s\n' 'dwm did not launch the session-stop hook' >&2
+	printf '%s\n' 'dwm exited before the session-stop hook completed' >&2
 	exit 1
 fi
 
