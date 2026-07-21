@@ -341,8 +341,9 @@ grep -Fq 'themes.toml' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'ClickAwayPopup {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'PanelTooltip {' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'anchor.edges: Edges.Bottom' "$repo/config/quickshell/core/PanelTooltip.qml"
-grep -Fq 'anchor.gravity: Edges.Bottom' "$repo/config/quickshell/core/PanelTooltip.qml"
+grep -Fq 'mask: Region {}' "$repo/config/quickshell/core/PanelTooltip.qml"
+grep -Fq 'anchor.edges: Edges.Left | Edges.Bottom' "$repo/config/quickshell/core/PanelTooltip.qml"
+grep -Fq 'anchor.gravity: Edges.Right | Edges.Bottom' "$repo/config/quickshell/core/PanelTooltip.qml"
 grep -Fq 'rightAligned: true' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/PanelPill.qml"
 grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/ShellSurface.qml"
@@ -352,6 +353,10 @@ grep -Fq 'onFocusRequested: windowId => root.state.focusWindow(windowId)' "$repo
 grep -Fq 'root.nativeMenuItem && root.nativeMenuItem.hasMenu' "$repo/config/quickshell/panel/RunningAppItem.qml"
 grep -Fq 'root.state.activeWindowTitle' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'root.state.statusSegments' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'color: Theme.barBackground' "$repo/config/quickshell/panel/DwmPanel.qml"
+if grep -Fq 'color: Theme.transparent' "$repo/config/quickshell/panel/DwmPanel.qml"; then
+	exit 1
+fi
 grep -Fq 'root.controlsModel.volumeUp();' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'root.controlsModel.volumeDown();' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'trimmed !== "AC"' "$repo/config/quickshell/state/DwmState.qml"

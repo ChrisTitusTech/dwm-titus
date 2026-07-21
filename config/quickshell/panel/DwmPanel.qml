@@ -19,7 +19,7 @@ PanelWindow {
     required property var powerMenuModel
 
     implicitHeight: Theme.panelHeight
-    color: Theme.transparent
+    color: Theme.barBackground
     exclusiveZone: Theme.panelHeight
     aboveWindows: true
 
