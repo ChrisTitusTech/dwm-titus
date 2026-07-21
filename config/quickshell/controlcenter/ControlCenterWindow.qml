@@ -12,6 +12,7 @@ ClickAwayPopup {
     required property var healthModel
     required property var panelWindow
     required property var powerMenuModel
+    required property var settingsModel
 
     readonly property int cardWidth: Theme.controlCenterWidth
     readonly property int gap: Theme.controlCenterGap
@@ -45,6 +46,11 @@ ClickAwayPopup {
     function openSystemHealth() {
         root.controlCenterModel.close();
         root.healthModel.openOnScreen(root.panelWindow.screen);
+    }
+
+    function openSettings() {
+        root.controlCenterModel.close();
+        root.settingsModel.open();
     }
 
     function openPowerSettings() {
@@ -241,6 +247,11 @@ ClickAwayPopup {
                     visible: root.sidePanel === "utilities"
                     spacing: 8
 
+                    Tile {
+                        Layout.fillWidth: true
+                        label: "Settings  >"
+                        onActivated: root.openSettings()
+                    }
                     Tile {
                         Layout.fillWidth: true
                         label: "System Health  >"

@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+config=${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml
+
+if [ ! -f "$config" ]; then
+	config=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml
+fi
+
+action=${1:-toggle}
+case $action in
+open | close | toggle | refresh | status) ;;
+*)
+	printf 'usage: %s [open|close|toggle|refresh|status]\n' "$0" >&2
+	exit 2
+	;;
+esac
+
+exec quickshell ipc --path "$config" call settings "$action"

@@ -37,6 +37,8 @@ and release history rather than in a permanent checked-off task list.
 
 ## Phase 1: Settings Platform Foundation
 
+Status: Complete (2026-07-21)
+
 ### Objective
 
 Establish the architecture and safety boundaries for one discoverable Settings
@@ -62,6 +64,22 @@ application without changing existing desktop behavior.
   covered by focused tests.
 - Existing Control Center, launcher, hotkeys, and runtime configuration remain
   compatible.
+
+### Completion Evidence
+
+- The managed Quickshell shell provides one searchable Settings window with
+  Control Center and IPC entry points and no polling timer.
+- `dwm-settings-provider` reports versioned read-only capability records and
+  clean unavailable, restricted, and unsupported states.
+- Fedora 44 X11 discovery, nested-X11 keyboard/mouse navigation, provider
+  cleanup, and a closed-window CPU sample passed. The full repository check and
+  existing nested-X11 runtime tests also passed.
+- Authorization, helper ownership, confirmation, cancellation, error, preview,
+  rollback, packaging, and validation contracts are recorded in
+  `docs/SETTINGS-PLATFORM.md`.
+- Arch and generic RHEL package mappings and Debian fallback records were
+  statically validated, but real secondary-platform Settings sessions and real
+  input/display hardware behavior remain Phase 2 qualification work.
 
 ## Phase 2: Displays and Input
 

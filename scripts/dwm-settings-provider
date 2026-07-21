@@ -1,0 +1,206 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(
+	unset CDPATH
+	cd -- "$(dirname -- "$0")" && pwd
+)
+repo_dir=$(
+	unset CDPATH
+	cd -- "$script_dir/.." && pwd
+)
+
+usage() {
+	printf 'usage: %s discover\n' "$0" >&2
+}
+
+clean_field() {
+	printf '%s' "$1" | tr '\t\r\n' '   '
+}
+
+os_value() {
+	key=$1
+	file=$2
+	awk -F= -v key="$key" '
+		$1 == key {
+			value = substr($0, index($0, "=") + 1)
+			gsub(/^"|"$/, "", value)
+			print value
+			exit
+		}
+	' "$file" 2>/dev/null || true
+}
+
+platform_family() {
+	id=$1
+	id_like=$2
+
+	case " $id $id_like " in
+	*" arch "*) printf '%s\n' arch ;;
+	*" debian "* | *" ubuntu "*) printf '%s\n' debian ;;
+	*" fedora "* | *" rhel "* | *" centos "*) printf '%s\n' rhel ;;
+	*) printf '%s\n' unknown ;;
+	esac
+}
+
+provider_available() {
+	command_name=$1
+	command -v "$command_name" >/dev/null 2>&1 || [ -x "$script_dir/$command_name" ]
+}
+
+emit_capability() {
+	section=$1
+	id=$2
+	label=$3
+	status=$4
+	class=$5
+	provider=$6
+	detail=$7
+
+	printf 'capability\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+		"$(clean_field "$section")" \
+		"$(clean_field "$id")" \
+		"$(clean_field "$label")" \
+		"$(clean_field "$status")" \
+		"$(clean_field "$class")" \
+		"$(clean_field "$provider")" \
+		"$(clean_field "$detail")"
+}
+
+emit_command_capability() {
+	section=$1
+	id=$2
+	label=$3
+	class=$4
+	command_name=$5
+	available_detail=$6
+	unavailable_detail=$7
+
+	if provider_available "$command_name"; then
+		emit_capability "$section" "$id" "$label" available "$class" "$command_name" "$available_detail"
+	else
+		emit_capability "$section" "$id" "$label" unavailable "$class" "$command_name" "$unavailable_detail"
+	fi
+}
+
+trusted_health_helper() {
+	for candidate in /usr/local/bin/dwm-system-health /usr/bin/dwm-system-health; do
+		[ -f "$candidate" ] || continue
+		[ "$(stat -c %u -- "$candidate" 2>/dev/null || printf 1)" = 0 ] || continue
+		find "$candidate" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q . || continue
+		return 0
+	done
+	return 1
+}
+
+discover() {
+	os_release=${DWM_SETTINGS_OS_RELEASE:-/etc/os-release}
+	platform_id=unknown
+	platform_like=
+	platform_pretty='Unknown Linux'
+	if [ -r "$os_release" ]; then
+		platform_id=$(os_value ID "$os_release")
+		platform_like=$(os_value ID_LIKE "$os_release")
+		platform_pretty=$(os_value PRETTY_NAME "$os_release")
+		[ -n "$platform_id" ] || platform_id=unknown
+		[ -n "$platform_pretty" ] || platform_pretty=$platform_id
+	fi
+	platform_family_name=$(platform_family "$platform_id" "$platform_like")
+
+	printf 'settings-protocol\t1\n'
+	printf 'platform\t%s\t%s\t%s\n' \
+		"$(clean_field "$platform_id")" \
+		"$(clean_field "$platform_family_name")" \
+		"$(clean_field "$platform_pretty")"
+
+	emit_command_capability displays randr 'Display discovery' read-only xrandr \
+		'RandR display state is available' \
+		'Install the X11 RandR tools and open Settings from X11'
+	emit_capability displays display-changes 'Display changes' unsupported user-session \
+		dwm-display-setup 'Display changes begin in Phase 2'
+
+	emit_capability input input-devices 'Input devices' unsupported user-session \
+		xinput 'Input device settings begin in Phase 2'
+
+	emit_command_capability network networkmanager NetworkManager delegated nmcli \
+		'NetworkManager state is available' \
+		'Install and start NetworkManager to enable this section'
+	emit_command_capability bluetooth bluez Bluetooth delegated bluetoothctl \
+		'BlueZ state is available' \
+		'Install BlueZ tools and start Bluetooth to enable this section'
+
+	if provider_available pactl; then
+		emit_capability audio pipewire-audio Audio available user-session pactl \
+			'PipeWire Pulse-compatible session controls are available'
+	elif provider_available wpctl; then
+		emit_capability audio pipewire-audio Audio available user-session wpctl \
+			'WirePlumber session controls are available'
+	else
+		emit_capability audio pipewire-audio Audio unavailable user-session pipewire \
+			'Start PipeWire and install pactl or wpctl'
+	fi
+
+	emit_command_capability power dpms 'Display power management' user-session xset \
+		'X11 DPMS state is available' \
+		'Install xset and open Settings from X11'
+	if provider_available xset && provider_available gsettings && provider_available light-locker; then
+		emit_capability power auto-lock 'Automatic locking' available user-session light-locker \
+			'Light-locker session policy is available'
+	else
+		emit_capability power auto-lock 'Automatic locking' partial user-session light-locker \
+			'Install xset, GLib settings, and light-locker for full support'
+	fi
+
+	if provider_available xdg-settings && provider_available xdg-mime; then
+		emit_capability defaults xdg-defaults 'Default applications' available user-session xdg-utils \
+			'Browser and MIME defaults are readable'
+	else
+		emit_capability defaults xdg-defaults 'Default applications' unavailable user-session xdg-utils \
+			'Install xdg-utils to inspect desktop defaults'
+	fi
+
+	themes_file=${XDG_CONFIG_HOME:-${HOME:-}/.config}/dwm-titus/themes.toml
+	if [ -r "$themes_file" ] || [ -r "$repo_dir/config/themes.toml" ]; then
+		emit_capability appearance themes Themes available user-session themes.toml \
+			'Theme state is available through the managed configuration'
+	else
+		emit_capability appearance themes Themes unavailable user-session themes.toml \
+			'Install or restore the managed theme configuration'
+	fi
+	emit_capability appearance accessibility Accessibility unsupported user-session x11 \
+		'Accessibility settings begin in Phase 5'
+
+	if provider_available dwm-system-health; then
+		emit_capability system health 'System health' available read-only dwm-system-health \
+			'Unprivileged health state is available'
+	else
+		emit_capability system health 'System health' unavailable read-only dwm-system-health \
+			'Install the dwm-system-health helper'
+	fi
+	if trusted_health_helper && { provider_available pkexec || provider_available sudo; }; then
+		emit_capability system authorization 'Administrative authorization' available privileged polkit \
+			'A trusted installed helper and authorization tool are available'
+	else
+		emit_capability system authorization 'Administrative authorization' restricted privileged polkit \
+			'Read-only state remains available; install the trusted system helper for authorized actions'
+	fi
+	emit_capability system administration 'Advanced administration' unsupported delegated fedora-tools \
+		'High-risk administration remains delegated to trusted tools'
+}
+
+case ${1:-} in
+discover)
+	[ "$#" -eq 1 ] || {
+		usage
+		exit 2
+	}
+	discover
+	;;
+-h | --help | help)
+	usage
+	;;
+*)
+	usage
+	exit 2
+	;;
+esac

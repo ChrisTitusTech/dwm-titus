@@ -17,6 +17,8 @@ RHEL-family existing-system installs retain the supported core desktop.
 ### Patches & Features
 
 - **Quickshell** panel and application launcher for the normal desktop workflow
+- **Settings foundation** with searchable capability discovery and explicit
+  unsupported-state reporting
 - **Window swallowing** — terminals absorb child GUI windows
 - **EWMH** compliance — proper desktop/tag reporting for external tools
 - **Pertag** — independent layouts, master counts, and sizing per tag
@@ -131,6 +133,9 @@ After login, use these first:
 | <kbd>SUPER</kbd> + <kbd>R</kbd> | Toggle Quickshell launcher |
 | <kbd>SUPER</kbd> + <kbd>F1</kbd> | Open control center |
 | <kbd>SUPER</kbd> + <kbd>/</kbd> | Open keybind viewer |
+
+Open Control Center -> Utilities -> Settings for the unified read-only
+capability overview, or run `dwm-settings` from a terminal.
 
 ---
 

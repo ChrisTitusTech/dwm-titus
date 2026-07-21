@@ -6,5 +6,6 @@
 - [Configuration](./configuration.md)
 - [Theming](./theming.md)
 - [Control Center](./control-center.md)
+- [Settings](./settings.md)
 - [Patches & Features](./patches.md)
 - [Troubleshooting](./troubleshooting.md)

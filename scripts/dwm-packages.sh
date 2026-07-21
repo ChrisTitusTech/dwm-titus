@@ -46,6 +46,9 @@ dwm_packages() {
 	arch:fonts)
 		printf '%s\n' noto-fonts-emoji ttf-meslo-nerd
 		;;
+	arch:qml-development)
+		printf '%s\n' qt6-declarative
+		;;
 	arch:lightdm)
 		printf '%s\n' lightdm lightdm-slick-greeter
 		;;
@@ -124,6 +127,9 @@ dwm_packages() {
 	rhel:fonts)
 		printf '%s\n' google-noto-color-emoji-fonts google-noto-sans-mono-fonts
 		;;
+	rhel:qml-development)
+		printf '%s\n' qt6-qtdeclarative-devel
+		;;
 	rhel:lightdm)
 		printf '%s\n' lightdm slick-greeter
 		;;
@@ -168,6 +174,9 @@ dwm_packages() {
 		;;
 	debian:fonts)
 		printf '%s\n' fonts-noto-color-emoji fonts-noto-mono
+		;;
+	debian:qml-development)
+		printf '%s\n' qt6-declarative-dev-tools
 		;;
 	debian:lightdm)
 		printf '%s\n' lightdm slick-greeter

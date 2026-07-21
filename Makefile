@@ -43,6 +43,8 @@ INSTALL_COMMANDS = \
 	scripts/dwm-packages.sh \
 	scripts/dwm-titus-release \
 	scripts/dwm-screenshot \
+	scripts/dwm-settings \
+	scripts/dwm-settings-provider \
 	scripts/dwm-terminal \
 	scripts/dwm-utils.sh \
 	scripts/nvidia-gpu \
@@ -255,10 +257,10 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/quickshell-qmllint scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/quickshell-qmllint scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/quickshell-qmllint scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/quickshell-qmllint scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -323,6 +325,12 @@ check-quickshell-qml:
 
 check-system-health:
 	tests/test-system-health.sh
+
+check-settings:
+	tests/test-settings.sh
+
+check-quickshell-settings-xvfb: all
+	tests/test-quickshell-settings-xvfb.sh
 
 check-lightdm-config:
 	tests/test-lightdm-config.sh
@@ -451,6 +459,7 @@ check:
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-controlcenter
 	$(MAKE) check-system-health
+	$(MAKE) check-settings
 	$(MAKE) check-quickshell-network
 	$(MAKE) check-terminal
 	$(MAKE) check-lock
@@ -469,6 +478,6 @@ check:
 	check-container-smoke \
 	check-display-profile check-display-setup check-fedora-iso-builder check-format check-install \
 	check-install-manifest check-install-preservation check-kickstart check-lock \
-	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-health-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal clean install install-system install-user \
+	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health check-settings \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall

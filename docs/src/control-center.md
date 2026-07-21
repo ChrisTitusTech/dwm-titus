@@ -11,6 +11,10 @@ The popup opens from the panel logo. Its side card contains panel widget
 visibility, utilities, quick actions, appearance controls, and persisted DPMS
 and auto-lock timing. Press <kbd>Esc</kbd> or click outside it to close it.
 
+The Utilities card opens the unified Settings application. Phase 1 Settings is
+a read-only capability overview with section search and keyboard/mouse
+navigation. It can also be opened directly with `dwm-settings`.
+
 ---
 
 ## Network Popover

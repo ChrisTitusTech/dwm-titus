@@ -11,6 +11,7 @@ import qs.network
 import qs.notifications
 import qs.panel
 import qs.power
+import qs.settings
 import qs.state
 
 pragma ComponentBehavior: Bound
@@ -54,6 +55,10 @@ ShellRoot {
 
     SystemHealthModel {
         id: systemHealthModel
+    }
+
+    SettingsModel {
+        id: settingsModel
     }
 
     LazyLoader {
@@ -275,6 +280,38 @@ ShellRoot {
         }
     }
 
+    IpcHandler {
+        target: "settings"
+
+        function close(): void {
+            settingsModel.close();
+        }
+
+        function currentSection(): string {
+            return settingsModel.selectedSectionId;
+        }
+
+        function open(): void {
+            settingsModel.open();
+        }
+
+        function refresh(): void {
+            settingsModel.refresh();
+        }
+
+        function select(section: string): void {
+            settingsModel.selectSection(section);
+        }
+
+        function status(): string {
+            return settingsModel.discoveryState;
+        }
+
+        function toggle(): void {
+            settingsModel.toggle();
+        }
+    }
+
     LauncherWindow {
         launcherModel: launcherModel
     }
@@ -325,6 +362,7 @@ ShellRoot {
         panelWindow: panelWindow
         powerMenuModel: powerMenuModel
         healthModel: systemHealthModel
+        settingsModel: settingsModel
     }
 
     UtilityDetailWindow {
@@ -334,5 +372,9 @@ ShellRoot {
     SystemHealthWindow {
         healthModel: systemHealthModel
         screen: systemHealthModel.targetScreen ? systemHealthModel.targetScreen : panelWindow.screen
+    }
+
+    SettingsWindow {
+        settingsModel: settingsModel
     }
 }
