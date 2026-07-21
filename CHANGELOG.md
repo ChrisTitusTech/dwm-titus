@@ -8,6 +8,14 @@ versions from `config.mk`.
 
 ### Added
 
+- A unified, read-only Quickshell Settings foundation with Control Center and
+  IPC entry points, searchable keyboard/mouse navigation, and explicit
+  provider availability and unsupported-state reporting.
+- A versioned `dwm-settings-provider` capability-discovery protocol with
+  Fedora-first detection, secondary-platform fallbacks, focused shell/QML/Xvfb
+  tests, and a centralized cross-family QML development package profile.
+- Settings platform contracts for helper lifecycle, UI states, authorization,
+  confirmation, rollback, packaging, and phase validation.
 - Cross-compiler, nested-X11, and Debian/Arch/RHEL container validation in CI.
 - Repository-owned Quickshell QML lint automation.
 - Contributor, security, ownership, dependency-update, and active-task guidance.

@@ -46,4 +46,8 @@ Singleton {
     function systemHealthHelperCommand(action, args) {
         return helperCommand("dwm-system-health", action, args, true);
     }
+
+    function settingsProviderCommand(action, args) {
+        return helperCommand("dwm-settings-provider", action, args, true);
+    }
 }

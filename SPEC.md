@@ -624,12 +624,13 @@ In a real or nested X11 session:
 
 ## 10. Current Gap
 
-The existing desktop already provides dwm, a managed Quickshell panel and
-launcher, notifications, quick controls, power actions, network and Bluetooth
-surfaces, display helpers, and a system-health dashboard. It does not yet
-provide the unified Settings platform or the full desktop settings surface in
-Section 5.10; those outcomes are sequenced in `ROADMAP.md` and the active phase
-is defined in `TASKS.md`.
+The existing desktop provides dwm, a managed Quickshell panel and launcher,
+notifications, quick controls, power actions, network and Bluetooth surfaces,
+display helpers, a system-health dashboard, and the unified read-only Settings
+foundation. Settings currently discovers provider capabilities and reports
+available, partial, restricted, unavailable, and unsupported state. It does not
+yet provide the full settings mutation surface in Section 5.10; those outcomes
+are sequenced in `ROADMAP.md` and the active phase is defined in `TASKS.md`.
 
 The installer contains Debian-, Arch-, and Fedora/RHEL-family package mappings.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and
