@@ -32,11 +32,11 @@ chmod +x "$work/bin/"*
 log=$work/calls.log
 env -u XDG_CURRENT_DESKTOP -u WAYLAND_DISPLAY \
 	DISPLAY=:99 \
-	XAUTHORITY=$work/Xauthority \
+	XAUTHORITY="$work/Xauthority" \
 	XDG_SESSION_TYPE=x11 \
-	HOME=$work/home \
-	PATH=$work/bin:/usr/bin:/bin \
-	TEST_LOG=$log \
+	HOME="$work/home" \
+	PATH="$work/bin:/usr/bin:/bin" \
+	TEST_LOG="$log" \
 	"$repo_dir/scripts/dwm-screenshot" clip
 
 grep -Fqx 'systemctl:--user unset-environment WAYLAND_DISPLAY' "$log"

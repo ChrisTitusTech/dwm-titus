@@ -451,7 +451,7 @@ configure_quickshell_picom_opacity() {
 	tmp="$(mktemp)"
 	if ! sudo sed \
 		"s/window_type = 'tooltip'/window_type = 'tooltip' \&\& name != 'quickshell'/" \
-		"$config" >"$tmp"; then
+		"$config" | tee "$tmp" >/dev/null; then
 		rm -f "$tmp"
 		warn "Could not prepare the Quickshell Picom opacity override."
 		return
