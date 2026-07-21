@@ -655,6 +655,7 @@ done
 stack_win=$(cat "$work/restore-stack-window-id")
 [ -n "$stack_win" ]
 
+: >"$work/swallow-window-ids"
 DISPLAY=$display "$work/xclient" swallow-terminal >"$work/swallow-window-ids" 2>"$work/swallow-client.log" &
 swallow_client_pid=$!
 i=0
