@@ -3,8 +3,8 @@
 The unified Settings application provides one place to inspect desktop
 capabilities and see which features are available, restricted, or planned.
 
-Open Control Center with `Super+F1`, select **Utilities**,
-then select **Settings**. You can also run:
+Open Control Center with `Super+F1`, then select **Settings** from the main
+menu. You can also run:
 
 ```bash
 dwm-settings open

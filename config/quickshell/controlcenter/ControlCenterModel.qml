@@ -54,6 +54,7 @@ Scope {
 
     function close() {
         root.visible = false;
+        root.page = "overview";
         root.message = "";
     }
 
@@ -93,6 +94,10 @@ Scope {
 
     function openOverview() {
         root.openPage("overview", "", null);
+    }
+
+    function openWidgets() {
+        root.openPage("widgets", "", null);
     }
 
     function openActions() {

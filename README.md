@@ -134,7 +134,7 @@ After login, use these first:
 | <kbd>SUPER</kbd> + <kbd>F1</kbd> | Open control center |
 | <kbd>SUPER</kbd> + <kbd>/</kbd> | Open keybind viewer |
 
-Open Control Center -> Utilities -> Settings for the unified read-only
+Open Control Center -> Settings for the unified read-only
 capability overview, or run `dwm-settings open` from a terminal.
 
 ---

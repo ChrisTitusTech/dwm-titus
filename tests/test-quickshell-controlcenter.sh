@@ -358,8 +358,25 @@ grep -Fq 'function applyThemes(themeText)' "$repo/config/quickshell/core/Theme.q
 grep -Fq 'root.text = value("normfgcolor", root.text)' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'text: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
 grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
-grep -Fq '? Theme.controlCenterX + Theme.controlCenterWidth + Theme.controlCenterGap' "$repo/config/quickshell/power/PowerMenuWindow.qml"
-grep -Fq 'tileMouse.containsMouse ? Theme.surfaceHover' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq '? Theme.controlCenterX' "$repo/config/quickshell/power/PowerMenuWindow.qml"
+grep -Fq 'property bool navigates: false' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'label: "Applications"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'root.launcherModel.open();' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'launcherModel: launcherModel' "$repo/config/quickshell/shell.qml"
+grep -Fq 'label: "Quick Actions"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'model: root.controlCenterModel.actions' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'function openWidgets()' "$repo/config/quickshell/controlcenter/ControlCenterModel.qml"
+grep -Fq 'label: "Settings"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'label: "System Health"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'label: "Keybinds"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'label: "System Info"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+if grep -Fq 'Reload QS-Config' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"; then
+	exit 1
+fi
+if grep -Fq 'property string sidePanel' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"; then
+	exit 1
+fi
+[ "$(grep -Fc 'ShellSurface {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml")" -eq 1 ]
 grep -Fq 'PanelTooltip {' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'mask: Region {}' "$repo/config/quickshell/core/PanelTooltip.qml"
 grep -Fq 'anchor.edges: Edges.Left | Edges.Top' "$repo/config/quickshell/core/PanelTooltip.qml"

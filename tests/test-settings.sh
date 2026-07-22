@@ -136,7 +136,7 @@ grep -Fq 'providerProcess.running = false' "$repo/config/quickshell/settings/Set
 grep -Fq 'Commands.settingsProviderCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.searchQuery = ""' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'title: "dwm settings"' "$repo/config/quickshell/settings/SettingsWindow.qml"
-grep -Fq 'label: "Settings  >"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'label: "Settings"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'root.settingsModel.open()' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq '{ title="dwm settings",             isfloating=1, alwaysontop=1 }' \
 	"$repo/config/window-rules.toml"

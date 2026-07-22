@@ -11,7 +11,7 @@ inventory that this design uses.
 
 The Settings application is one Quickshell `FloatingWindow` titled
 `dwm settings`. It is part of the managed Quickshell process and is opened from
-Control Center -> Utilities -> Settings, through the `settings` IPC target, or
+Control Center -> Settings, through the `settings` IPC target, or
 with `dwm-settings`.
 
 ### Navigation and Search
