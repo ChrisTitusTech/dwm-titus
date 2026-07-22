@@ -24,6 +24,7 @@ grep -Fq 'Qt.LeftButton | Qt.MiddleButton | Qt.RightButton' "$tray_item"
 grep -Fq 'import Quickshell.Services.SystemTray' "$shell"
 grep -Fq 'target: "tray"' "$shell"
 grep -Fq 'return SystemTray.items.values.length;' "$shell"
+grep -Fq 'item.status === undefined || item.status === null ? "" : item.status' "$shell"
 
 if grep -Fq 'SystemTray' "$running_area" || grep -Fq 'trayItems' "$running_item"; then
 	printf 'Running-window items must not replace the independent system tray.\n' >&2

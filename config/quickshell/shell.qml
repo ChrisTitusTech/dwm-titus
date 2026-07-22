@@ -342,7 +342,7 @@ ShellRoot {
                     item.title || "",
                     item.icon || "",
                     item.hasMenu ? "menu" : "no-menu",
-                    item.status || ""
+                    item.status === undefined || item.status === null ? "" : item.status
                 ].join("\t"));
             }
 
