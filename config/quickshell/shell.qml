@@ -397,6 +397,7 @@ ShellRoot {
 
     ControlCenterWindow {
         controlCenterModel: controlCenterModel
+        launcherModel: launcherModel
         panelWindow: panelWindow
         powerMenuModel: powerMenuModel
         healthModel: systemHealthModel

@@ -1,19 +1,21 @@
 # Control Center
 
-The Control Center is an anchored Quickshell popup for panel settings, system
-health, quick actions, appearance settings, power management, and keybind
-discovery.
+The Control Center is a single-card anchored Quickshell menu for launching
+applications, panel settings, system health, quick actions, appearance
+settings, power management, and keybind discovery.
 
 **Open:** <kbd>Super</kbd> + <kbd>F1</kbd>, or run `dwm-controlcenter` from a
 terminal.
 
-The popup opens from the panel logo. Its side card contains panel widget
-visibility, utilities, quick actions, appearance controls, and persisted DPMS
-and auto-lock timing. Press <kbd>Esc</kbd> or click outside it to close it.
+The popup opens from the panel logo. Applications, Power, Settings, System
+Health, Keybinds, and System Info are available directly from the main menu.
+Bar Widgets, Quick Actions, Appearance, and Power Settings replace the menu
+contents in the same card and provide a Back control. Press <kbd>Esc</kbd> or
+click outside the card to close it from any page.
 
-The Utilities card opens the unified Settings application. Phase 1 Settings is
-a read-only capability overview with section search and keyboard/mouse
-navigation. It can also be opened directly with `dwm-settings open`.
+The Utilities section opens the unified Settings application directly. Phase
+1 Settings is a read-only capability overview with section search and
+keyboard/mouse navigation. It can also be opened with `dwm-settings open`.
 
 ---
 
@@ -35,7 +37,7 @@ paired device, and disconnect a connected device through `bluetoothctl`.
 
 ## Panel Widgets
 
-The Bar Functions card can show or hide the workspace, volume, Bluetooth,
+The Bar Widgets page can show or hide the workspace, volume, Bluetooth,
 network, and power widgets for the current Quickshell session. The redesigned
 panel retains the active-window title, status segments, and system tray, and
 shows all nine dwm tags (workspaces). Hovering icon-only panel controls displays
@@ -105,11 +107,13 @@ root-owned installed helper.
 | Action | Description |
 |--------|-------------|
 | Restart Picom | Kill and relaunch the compositor |
+| Restart Quickshell | Reload the managed Quickshell shell |
 | Reload Wallpaper | Randomize from `~/Pictures/backgrounds/` |
-| Toggle Compositor | Start or stop picom |
 | Restart NetworkManager | `sudo systemctl restart NetworkManager` |
 | Run Dependency Check | Opens `check-deps.sh` in a terminal |
 | Install Missing Deps | Runs `install.sh` in a terminal |
+| Wallpaper Folder | Open `~/Pictures/backgrounds/` in the file manager |
+| GTK Settings | Launch `nwg-look` for GTK theming |
 
 ### Appearance
 

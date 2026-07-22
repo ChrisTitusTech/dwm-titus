@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import Quickshell
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -10,12 +9,13 @@ ClickAwayPopup {
 
     required property var controlCenterModel
     required property var healthModel
+    required property var launcherModel
     required property var panelWindow
     required property var powerMenuModel
     required property var settingsModel
 
     readonly property int cardWidth: Theme.controlCenterWidth
-    readonly property int gap: Theme.controlCenterGap
+    readonly property int maximumHeight: Math.max(240, panelWindow.screen.height - Theme.panelHeight - Theme.popupMargin)
     readonly property var powerPresets: [
         { "label": "5m", "seconds": 300 },
         { "label": "10m", "seconds": 600 },
@@ -23,14 +23,13 @@ ClickAwayPopup {
         { "label": "30m", "seconds": 1800 },
         { "label": "1h", "seconds": 3600 }
     ]
-    property string sidePanel: "none"
 
-    function sideTitle() {
-        if (sidePanel === "utilities") return "Utilities";
-        if (sidePanel === "actions") return "Quick Actions";
-        if (sidePanel === "appearance") return "Appearance";
-        if (sidePanel === "power") return "Power Settings";
-        return "Widgets";
+    function pageTitle() {
+        if (controlCenterModel.page === "widgets") return "Bar Widgets";
+        if (controlCenterModel.page === "actions") return "Quick Actions";
+        if (controlCenterModel.page === "appearance") return "Appearance";
+        if (controlCenterModel.page === "power") return "Power Settings";
+        return "Control Center";
     }
 
     function formatDuration(seconds) {
@@ -43,32 +42,59 @@ ClickAwayPopup {
         return seconds + "s";
     }
 
+    function openApplications() {
+        root.controlCenterModel.close();
+        Qt.callLater(function() {
+            root.launcherModel.open();
+        });
+    }
+
+    function openSessionPower() {
+        root.controlCenterModel.close();
+        Qt.callLater(function() {
+            root.powerMenuModel.open("controlcenter");
+        });
+    }
+
     function openSystemHealth() {
         root.controlCenterModel.close();
-        root.healthModel.openOnScreen(root.panelWindow.screen);
+        Qt.callLater(function() {
+            root.healthModel.openOnScreen(root.panelWindow.screen);
+        });
     }
 
     function openSettings() {
         root.controlCenterModel.close();
-        root.settingsModel.open();
+        Qt.callLater(function() {
+            root.settingsModel.open();
+        });
     }
 
-    function openPowerSettings() {
-        root.controlCenterModel.openPower();
-        root.sidePanel = "power";
+    function openKeybinds() {
+        root.controlCenterModel.close();
+        Qt.callLater(function() {
+            root.controlCenterModel.openKeybinds();
+        });
+    }
+
+    function openSystemInfo() {
+        root.controlCenterModel.close();
+        Qt.callLater(function() {
+            root.controlCenterModel.openInfo();
+        });
     }
 
     visible: controlCenterModel.visible
     targetWindow: panelWindow
     popupX: Theme.controlCenterX
     popupY: Theme.panelHeight
-    popupWidth: cardWidth + (sidePanel === "none" ? 0 : cardWidth + gap)
-    popupHeight: sidePanel === "none" ? controlCard.implicitHeight : Math.max(controlCard.implicitHeight, sideCard.implicitHeight)
+    popupWidth: cardWidth
+    popupHeight: Math.min(controlCard.implicitHeight, maximumHeight)
     onDismissed: controlCenterModel.close()
 
     onVisibleChanged: {
         if (visible) {
-            sidePanel = "none";
+            root.powerMenuModel.close();
             Qt.callLater(function() {
                 controlCard.forceActiveFocus();
             });
@@ -77,69 +103,148 @@ ClickAwayPopup {
         }
     }
 
-    component Tile: Rectangle {
-        id: tile
+    Connections {
+        target: root.controlCenterModel
+
+        function onPageChanged() {
+            menuFlick.contentY = 0;
+            Qt.callLater(function() {
+                controlCard.forceActiveFocus();
+            });
+        }
+    }
+
+    component MenuRow: Rectangle {
+        id: menuRow
+
+        property string label: ""
+        property string detail: ""
+        property bool active: false
+        property bool navigates: false
+        signal activated()
+
+        implicitHeight: 32
+        radius: Theme.smallRadius
+        color: rowMouse.containsMouse ? Theme.surfaceHover : Theme.transparent
+
+        UiText {
+            anchors.left: parent.left
+            anchors.leftMargin: 9
+            anchors.right: rowDetail.left
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            text: menuRow.label
+            color: menuRow.active ? Theme.accentSecondary : rowMouse.containsMouse ? Theme.textStrong : Theme.text
+            elide: Text.ElideRight
+        }
+
+        UiText {
+            id: rowDetail
+
+            anchors.right: parent.right
+            anchors.rightMargin: 9
+            anchors.verticalCenter: parent.verticalCenter
+            text: menuRow.detail.length > 0 ? menuRow.detail : menuRow.navigates ? ">" : ""
+            color: menuRow.active ? Theme.accentSecondary : Theme.textMuted
+        }
+
+        MouseArea {
+            id: rowMouse
+
+            anchors.fill: parent
+            enabled: menuRow.enabled
+            hoverEnabled: true
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: menuRow.activated()
+        }
+    }
+
+    component PresetButton: Rectangle {
+        id: presetButton
 
         property string label: ""
         property bool active: false
         signal activated()
 
-        implicitHeight: 26
+        implicitHeight: 28
         radius: Theme.smallRadius
-        color: active ? Theme.surfaceActive : tileMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-        border.color: active ? Theme.accentSecondary : tileMouse.containsMouse ? Theme.borderStrong : Theme.border
+        color: active ? Theme.surfaceActive : presetMouse.containsMouse ? Theme.surfaceHover : Theme.surface
+        border.color: active ? Theme.accentSecondary : presetMouse.containsMouse ? Theme.borderStrong : Theme.border
         border.width: Theme.pillBorderWidth
 
         UiText {
             anchors.centerIn: parent
-            text: tile.label
-            color: tile.active ? Theme.accentSecondary : tileMouse.containsMouse ? Theme.textStrong : Theme.text
+            text: presetButton.label
+            color: presetButton.active ? Theme.accentSecondary : Theme.text
         }
 
         MouseArea {
-            id: tileMouse
+            id: presetMouse
+
             anchors.fill: parent
-            enabled: tile.enabled
+            enabled: presetButton.enabled
             hoverEnabled: true
             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: tile.activated()
+            onClicked: presetButton.activated()
         }
     }
 
-    RowLayout {
+    ShellSurface {
+        id: controlCard
+
         anchors.fill: parent
-        spacing: root.gap
+        implicitHeight: menuColumn.implicitHeight + margin * 2
+        margin: 10
+        focus: true
 
-        ShellSurface {
-            id: controlCard
-
-            Layout.preferredWidth: root.cardWidth
-            Layout.maximumHeight: implicitHeight
-            Layout.alignment: Qt.AlignTop
-            margin: 12
-            implicitHeight: controlColumn.implicitHeight + margin * 2
-            focus: true
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    root.controlCenterModel.close();
-                    event.accepted = true;
-                }
+        Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Escape) {
+                root.controlCenterModel.close();
+                event.accepted = true;
             }
+        }
+
+        Flickable {
+            id: menuFlick
+
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: menuColumn.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            clip: true
 
             ColumnLayout {
-                id: controlColumn
-                width: parent.width
-                spacing: 8
+                id: menuColumn
+
+                width: menuFlick.width
+                spacing: 4
 
                 RowLayout {
                     Layout.fillWidth: true
+                    Layout.preferredHeight: 26
+                    spacing: 8
+
+                    UiText {
+                        visible: root.controlCenterModel.page !== "overview"
+                        text: "< Back"
+                        color: backMouse.containsMouse ? Theme.accent : Theme.textMuted
+
+                        MouseArea {
+                            id: backMouse
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.controlCenterModel.openOverview()
+                        }
+                    }
 
                     UiText {
                         Layout.fillWidth: true
-                        text: "Control"
+                        text: root.pageTitle()
                         color: Theme.textStrong
-                        font.letterSpacing: 2
+                        font.letterSpacing: root.controlCenterModel.page === "overview" ? 2 : 1
+                        elide: Text.ElideRight
                     }
 
                     UiText {
@@ -148,6 +253,7 @@ ClickAwayPopup {
 
                         MouseArea {
                             id: closeMouse
+
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
@@ -164,78 +270,112 @@ ClickAwayPopup {
                     elide: Text.ElideRight
                 }
 
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-
-                UiText { text: "Actions"; color: Theme.textMuted; font.letterSpacing: 1 }
-                Tile {
+                Rectangle {
                     Layout.fillWidth: true
-                    label: "Reload QS-Config"
-                    enabled: !root.controlCenterModel.busy
-                    onActivated: root.controlCenterModel.runAction("restart-quickshell")
+                    Layout.preferredHeight: 1
+                    color: Theme.border
                 }
-                Tile {
+
+                ColumnLayout {
                     Layout.fillWidth: true
-                    label: "Power  >"
-                    onActivated: {
-                        root.powerMenuModel.open("controlcenter");
+                    visible: root.controlCenterModel.page === "overview"
+                    spacing: 2
+
+                    SectionLabel { label: "Launch" }
+
+                    MenuRow {
+                        Layout.fillWidth: true
+                        label: "Applications"
+                        onActivated: root.openApplications()
+                    }
+                    MenuRow {
+                        Layout.fillWidth: true
+                        label: "Power"
+                        navigates: true
+                        onActivated: root.openSessionPower()
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        Layout.topMargin: 3
+                        Layout.bottomMargin: 3
+                        color: Theme.border
+                    }
+
+                    SectionLabel { label: "Desktop" }
+
+                    MenuRow {
+                        Layout.fillWidth: true
+                        label: "Bar Widgets"
+                        navigates: true
+                        onActivated: root.controlCenterModel.openWidgets()
+                    }
+                    MenuRow {
+                        Layout.fillWidth: true
+                        label: "Quick Actions"
+                        navigates: true
+                        onActivated: root.controlCenterModel.openActions()
+                    }
+                    MenuRow {
+                        Layout.fillWidth: true
+                        label: "Appearance"
+                        navigates: true
+                        onActivated: root.controlCenterModel.openAppearance()
+                    }
+                    MenuRow {
+                        Layout.fillWidth: true
+                        label: "Power Settings"
+                        navigates: true
+                        onActivated: root.controlCenterModel.openPower()
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        Layout.topMargin: 3
+                        Layout.bottomMargin: 3
+                        color: Theme.border
+                    }
+
+                    SectionLabel { label: "Utilities" }
+
+                    MenuRow {
+                        Layout.fillWidth: true
+                        label: "Settings"
+                        onActivated: root.openSettings()
+                    }
+                    MenuRow {
+                        Layout.fillWidth: true
+                        label: "System Health"
+                        onActivated: root.openSystemHealth()
+                    }
+                    MenuRow {
+                        Layout.fillWidth: true
+                        label: "Keybinds"
+                        onActivated: root.openKeybinds()
+                    }
+                    MenuRow {
+                        Layout.fillWidth: true
+                        label: "System Info"
+                        onActivated: root.openSystemInfo()
                     }
                 }
 
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-                UiText { text: "Bar Functions"; color: Theme.textMuted; font.letterSpacing: 1 }
-                Tile {
+                ColumnLayout {
                     Layout.fillWidth: true
-                    label: root.sidePanel === "widgets" ? "Bar Functions  <" : "Bar Functions  >"
-                    active: root.sidePanel === "widgets"
-                    onActivated: root.sidePanel = root.sidePanel === "widgets" ? "none" : "widgets"
-                }
-
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-                UiText { text: "Utilities"; color: Theme.textMuted; font.letterSpacing: 1 }
-                Tile {
-                    Layout.fillWidth: true
-                    label: root.sidePanel === "utilities" ? "Utilities  <" : "Utilities  >"
-                    active: root.sidePanel === "utilities"
-                    onActivated: root.sidePanel = root.sidePanel === "utilities" ? "none" : "utilities"
-                }
-            }
-        }
-
-        ShellSurface {
-            id: sideCard
-
-            Layout.preferredWidth: root.cardWidth
-            Layout.maximumHeight: implicitHeight
-            Layout.alignment: Qt.AlignTop
-            margin: 12
-            implicitHeight: sideColumn.implicitHeight + margin * 2
-            visible: root.sidePanel !== "none"
-
-            ColumnLayout {
-                id: sideColumn
-                width: parent.width
-                spacing: 8
-
-                UiText {
-                    text: root.sideTitle()
-                    color: Theme.textStrong
-                    font.letterSpacing: 2
-                }
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-
-                GridLayout {
-                    Layout.fillWidth: true
-                    visible: root.sidePanel === "widgets"
-                    columns: 2
-                    columnSpacing: 8
-                    rowSpacing: 8
+                    visible: root.controlCenterModel.page === "widgets"
+                    spacing: 2
 
                     Repeater {
                         model: ["Volume", "Bluetooth", "Network", "Power", "Workspaces"]
-                        delegate: Tile {
+
+                        delegate: MenuRow {
                             required property string modelData
+
                             Layout.fillWidth: true
                             label: modelData
+                            detail: root.controlCenterModel.widgetEnabled(modelData) ? "On" : "Off"
                             active: root.controlCenterModel.widgetEnabled(modelData)
                             onActivated: root.controlCenterModel.toggleWidget(modelData)
                         }
@@ -244,61 +384,15 @@ ClickAwayPopup {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: root.sidePanel === "utilities"
-                    spacing: 8
-
-                    Tile {
-                        Layout.fillWidth: true
-                        label: "Settings  >"
-                        onActivated: root.openSettings()
-                    }
-                    Tile {
-                        Layout.fillWidth: true
-                        label: "System Health  >"
-                        onActivated: root.openSystemHealth()
-                    }
-                    Tile {
-                        Layout.fillWidth: true
-                        label: "Quick Actions  >"
-                        onActivated: {
-                            root.controlCenterModel.openActions();
-                            root.sidePanel = "actions";
-                        }
-                    }
-                    Tile {
-                        Layout.fillWidth: true
-                        label: "Appearance  >"
-                        onActivated: {
-                            root.controlCenterModel.openAppearance();
-                            root.sidePanel = "appearance";
-                        }
-                    }
-                    Tile {
-                        Layout.fillWidth: true
-                        label: "Keybinds  >"
-                        onActivated: root.controlCenterModel.openKeybinds()
-                    }
-                    Tile {
-                        Layout.fillWidth: true
-                        label: "Power Settings  >"
-                        onActivated: root.openPowerSettings()
-                    }
-                    Tile {
-                        Layout.fillWidth: true
-                        label: "System Info  >"
-                        onActivated: root.controlCenterModel.openInfo()
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    visible: root.sidePanel === "actions"
-                    spacing: 8
+                    visible: root.controlCenterModel.page === "actions"
+                    spacing: 2
 
                     Repeater {
                         model: root.controlCenterModel.actions
-                        delegate: Tile {
+
+                        delegate: MenuRow {
                             required property var modelData
+
                             Layout.fillWidth: true
                             label: modelData.label
                             enabled: !root.controlCenterModel.busy
@@ -309,15 +403,18 @@ ClickAwayPopup {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: root.sidePanel === "appearance"
-                    spacing: 8
+                    visible: root.controlCenterModel.page === "appearance"
+                    spacing: 2
 
                     Repeater {
                         model: root.controlCenterModel.themeRows
-                        delegate: Tile {
+
+                        delegate: MenuRow {
                             required property var modelData
+
                             Layout.fillWidth: true
                             label: modelData.name
+                            detail: modelData.status === "active" ? "Active" : ""
                             active: modelData.status === "active"
                             enabled: !root.controlCenterModel.busy
                             onActivated: root.controlCenterModel.setTheme(modelData.name)
@@ -327,19 +424,20 @@ ClickAwayPopup {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: root.sidePanel === "power"
-                    spacing: 8
+                    visible: root.controlCenterModel.page === "power"
+                    spacing: 6
 
                     UiText {
                         Layout.fillWidth: true
                         text: root.controlCenterModel.powerDpmsEnabled
                             ? "Screen off after " + root.formatDuration(root.controlCenterModel.powerDpmsTimeout)
-                            : "Screen DPMS disabled"
+                            : "Screen timeout disabled"
                         color: Theme.textMuted
                     }
-                    Tile {
+                    MenuRow {
                         Layout.fillWidth: true
-                        label: root.controlCenterModel.powerDpmsEnabled ? "Disable Screen DPMS" : "Enable Screen DPMS"
+                        label: "Screen Timeout"
+                        detail: root.controlCenterModel.powerDpmsEnabled ? "On" : "Off"
                         active: root.controlCenterModel.powerDpmsEnabled
                         enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
                         onActivated: root.controlCenterModel.setPowerDpms(!root.controlCenterModel.powerDpmsEnabled)
@@ -352,8 +450,10 @@ ClickAwayPopup {
 
                         Repeater {
                             model: root.powerPresets
-                            delegate: Tile {
+
+                            delegate: PresetButton {
                                 required property var modelData
+
                                 Layout.fillWidth: true
                                 label: modelData.label
                                 active: root.controlCenterModel.powerDpmsEnabled
@@ -364,18 +464,25 @@ ClickAwayPopup {
                         }
                     }
 
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        Layout.topMargin: 3
+                        Layout.bottomMargin: 3
+                        color: Theme.border
+                    }
 
                     UiText {
                         Layout.fillWidth: true
                         text: root.controlCenterModel.powerLockEnabled
                             ? "Lock after " + root.formatDuration(root.controlCenterModel.powerLockTimeout)
-                            : "Auto Lock disabled"
+                            : "Auto lock disabled"
                         color: Theme.textMuted
                     }
-                    Tile {
+                    MenuRow {
                         Layout.fillWidth: true
-                        label: root.controlCenterModel.powerLockEnabled ? "Disable Auto Lock" : "Enable Auto Lock"
+                        label: "Auto Lock"
+                        detail: root.controlCenterModel.powerLockEnabled ? "On" : "Off"
                         active: root.controlCenterModel.powerLockEnabled
                         enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
                         onActivated: root.controlCenterModel.setPowerLock(!root.controlCenterModel.powerLockEnabled)
@@ -388,8 +495,10 @@ ClickAwayPopup {
 
                         Repeater {
                             model: root.powerPresets
-                            delegate: Tile {
+
+                            delegate: PresetButton {
                                 required property var modelData
+
                                 Layout.fillWidth: true
                                 label: modelData.label
                                 active: root.controlCenterModel.powerLockEnabled

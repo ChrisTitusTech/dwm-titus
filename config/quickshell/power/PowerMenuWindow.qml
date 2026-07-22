@@ -20,7 +20,7 @@ ClickAwayPopup {
     popupWidth: cardWidth
     popupHeight: powerMenuModel.confirming ? confirmHeight : menuHeight
     popupX: powerMenuModel.anchorSource === "controlcenter"
-        ? Theme.controlCenterX + Theme.controlCenterWidth + Theme.controlCenterGap
+        ? Theme.controlCenterX
         : Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin)
     popupY: Theme.panelHeight
     onDismissed: powerMenuModel.close()

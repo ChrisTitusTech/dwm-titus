@@ -98,7 +98,6 @@ Singleton {
     readonly property int popupSpacing: 12
     readonly property int controlCenterX: 6
     readonly property int controlCenterWidth: 276
-    readonly property int controlCenterGap: 8
     readonly property int rowSpacing: 10
     readonly property int listSpacing: 4
     readonly property int compactSpacing: 2
