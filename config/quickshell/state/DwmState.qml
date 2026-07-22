@@ -12,6 +12,9 @@ Scope {
     property string activeWindowClass: "application-x-executable"
     property string statusText: ""
     property var statusSegments: []
+    property bool batteryAvailable: false
+    property int batteryPercent: 0
+    property string batteryStatus: ""
 
     function parseState(text) {
         const lines = text.trim().split("\n");
@@ -59,6 +62,10 @@ Scope {
     function updateStatusSegments() {
         const text = root.statusText.trim();
 
+        root.batteryAvailable = false;
+        root.batteryPercent = 0;
+        root.batteryStatus = "";
+
         if (text.length === 0 || text.indexOf("dwm-titus:") === 0) {
             root.statusSegments = [];
             return;
@@ -66,6 +73,18 @@ Scope {
 
         root.statusSegments = text.split(/\s+\|\s+| {2,}/).filter(function(segment) {
             const trimmed = segment.trim();
+
+            if (trimmed.indexOf("BAT ") === 0) {
+                const battery = trimmed.match(/^BAT\s+([0-9]+)%\s*(.*)$/);
+
+                if (battery) {
+                    root.batteryAvailable = true;
+                    root.batteryPercent = Math.max(0, Math.min(100, parseInt(battery[1], 10)));
+                    root.batteryStatus = battery[2].trim();
+                }
+
+                return false;
+            }
 
             return trimmed.length > 0 && trimmed !== "AC"
                 && trimmed.indexOf("NET ") !== 0 && trimmed.indexOf("VOL ") !== 0;

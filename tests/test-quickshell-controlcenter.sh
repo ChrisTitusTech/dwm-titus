@@ -373,6 +373,10 @@ grep -Fq 'onFocusRequested: windowId => root.state.focusWindow(windowId)' "$repo
 grep -Fq 'source: Icons.launcherIcon(root.app.appClass)' "$repo/config/quickshell/panel/RunningAppItem.qml"
 grep -Fq 'root.state.activeWindowTitle' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'root.state.statusSegments' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'root.state.batteryPercent.toString() + "%"' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'visible: root.state.batteryAvailable' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'root.batteryAvailable = true;' "$repo/config/quickshell/state/DwmState.qml"
+grep -Fq 'trimmed.indexOf("BAT ") === 0' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'color: Theme.barBackground' "$repo/config/quickshell/panel/DwmPanel.qml"
 if grep -Fq 'color: Theme.transparent' "$repo/config/quickshell/panel/DwmPanel.qml"; then
 	exit 1

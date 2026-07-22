@@ -10,6 +10,23 @@ pragma ComponentBehavior: Bound
 PanelWindow {
     id: root
 
+    function batteryIcon(percent, status) {
+        if (status.toLowerCase() === "charging") {
+            return "󰂄";
+        }
+
+        if (percent >= 90) return "󰁹";
+        if (percent >= 80) return "󰂂";
+        if (percent >= 70) return "󰂁";
+        if (percent >= 60) return "󰂀";
+        if (percent >= 50) return "󰁿";
+        if (percent >= 40) return "󰁾";
+        if (percent >= 30) return "󰁽";
+        if (percent >= 20) return "󰁼";
+        if (percent >= 10) return "󰁻";
+        return "󰂎";
+    }
+
     required property var state
     required property var clock
     required property var networkModel
@@ -161,6 +178,37 @@ PanelWindow {
                     TrayArea {}
 
                     PanelPill {
+                        id: batteryPill
+                        visible: root.state.batteryAvailable
+                        Layout.preferredWidth: batteryRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
+                        Layout.preferredHeight: Theme.compactWidgetSize
+
+                        RowLayout {
+                            id: batteryRow
+                            anchors.centerIn: parent
+                            spacing: Theme.compactSpacing
+
+                            IconText {
+                                text: root.batteryIcon(root.state.batteryPercent, root.state.batteryStatus)
+                                color: Theme.textStrong
+                                font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.1)
+                            }
+
+                            UiText {
+                                text: root.state.batteryPercent.toString() + "%"
+                                color: Theme.textStrong
+                                font.pixelSize: Theme.panelFontSize
+                            }
+                        }
+
+                        MouseArea {
+                            id: batteryMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                        }
+                    }
+
+                    PanelPill {
                         visible: root.controlCenterModel.showBluetoothWidget
                         Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
                         Layout.preferredHeight: Theme.compactWidgetSize
@@ -281,6 +329,15 @@ PanelWindow {
         anchorItem: logoButton
         label: "Control Center"
         anchorY: Theme.panelHeight
+    }
+
+    PanelTooltip {
+        visible: root.state.batteryAvailable && batteryMouse.containsMouse
+        anchorWindow: root
+        anchorItem: batteryPill
+        label: root.state.batteryPercent.toString() + "% - " + root.state.batteryStatus
+        anchorY: Theme.panelHeight
+        rightAligned: true
     }
 
     PanelTooltip {
