@@ -29,6 +29,8 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Restore independent Quickshell StatusNotifier tray rendering and resilient
+  icon fallbacks for background-only tray clients.
 - Prevent nested dwm/Xvfb instances from terminating the active graphical login
   by verifying the logind display and isolating `XDG_DATA_HOME` in runtime tests.
 

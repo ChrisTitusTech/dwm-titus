@@ -317,6 +317,9 @@ check-quickshell-controls:
 check-quickshell-controlcenter:
 	tests/test-quickshell-controlcenter.sh
 
+check-quickshell-tray:
+	tests/test-quickshell-tray.sh
+
 check-quickshell-health-xvfb:
 	tests/test-quickshell-health-xvfb.sh
 
@@ -458,6 +461,7 @@ check:
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-controlcenter
+	$(MAKE) check-quickshell-tray
 	$(MAKE) check-system-health
 	$(MAKE) check-settings
 	$(MAKE) check-quickshell-network
@@ -479,5 +483,5 @@ check:
 	check-display-profile check-display-setup check-fedora-iso-builder check-format check-install \
 	check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health check-settings \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal clean install install-system install-user \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall
