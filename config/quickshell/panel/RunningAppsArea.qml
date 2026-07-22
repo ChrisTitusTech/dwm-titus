@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import Quickshell.Services.SystemTray
 import qs.core
 
 RowLayout {
@@ -15,7 +14,6 @@ RowLayout {
         delegate: RunningAppItem {
             required property var modelData
             app: modelData
-            trayItems: SystemTray.items.values
             active: modelData.appClass === root.state.activeWindowClass
             onFocusRequested: windowId => root.state.focusWindow(windowId)
         }

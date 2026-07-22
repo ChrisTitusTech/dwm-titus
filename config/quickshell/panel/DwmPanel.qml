@@ -158,6 +158,8 @@ PanelWindow {
 
                     RunningAppsArea { state: root.state }
 
+                    TrayArea {}
+
                     PanelPill {
                         visible: root.controlCenterModel.showBluetoothWidget
                         Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
