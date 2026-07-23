@@ -44,6 +44,7 @@ required_packages=(
 	xdg-user-dirs
 	xdg-desktop-portal-gtk
 	gnome-keyring
+	gnome-keyring-pam
 	qt6ct
 	qt5ct
 	arc-theme
@@ -67,6 +68,13 @@ fi
 DISTRO_ID=rocky dwm_packages rhel optional | grep -Fx playerctl >/dev/null
 
 for mapping in arch:gvfs-smb rhel:gvfs-smb debian:gvfs-backends; do
+	family=${mapping%%:*}
+	package=${mapping#*:}
+	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
+		dwm_packages "$family" full | grep -Fx "$package" >/dev/null
+done
+
+for mapping in arch:gnome-keyring rhel:gnome-keyring-pam debian:libpam-gnome-keyring; do
 	family=${mapping%%:*}
 	package=${mapping#*:}
 	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \

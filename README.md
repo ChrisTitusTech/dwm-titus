@@ -58,7 +58,7 @@ Profiles:
 |---------|-------------------|
 | `core` | dwm, required X11/session packages, and one terminal |
 | `recommended` | `core` plus Quickshell, Picom, fonts, theming, screenshots, audio, and brightness tools |
-| `full` | `recommended` plus optional extras such as Thunar with SMB-share browsing, portals, wallpapers, and display-manager setup; x86_64 Fedora can also add Steam, Gamescope, GameMode, and MangoHud after repository approval |
+| `full` | `recommended` plus optional extras such as Thunar with SMB-share browsing, portals, keyring login integration, wallpapers, and display-manager setup; x86_64 Fedora can also add Steam, Gamescope, GameMode, and MangoHud after repository approval |
 
 The installer detects the distribution from `/etc/os-release`, resolves package
 names for the detected family, preserves existing `config.h` and user TOML

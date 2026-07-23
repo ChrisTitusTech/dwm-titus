@@ -30,9 +30,9 @@ names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
 
 Use `core` for the required build/X11/session packages and one terminal,
 `recommended` for the desktop layer, or `full` for optional extras such as
-file-manager integration, portals, wallpapers, and display-manager setup. On
-x86_64 Fedora, `full` can also install Steam, Gamescope, GameMode, and MangoHud
-after repository approval.
+file-manager integration, portals, keyring login integration, wallpapers, and
+display-manager setup. On x86_64 Fedora, `full` can also install Steam,
+Gamescope, GameMode, and MangoHud after repository approval.
 The installer separately asks before enabling the `christitustech/copr-fedora`
 COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
 gaming subset without affecting other full-profile extras.
@@ -76,9 +76,10 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   control and tray tools, and brightness tools. It also installs portable GTK theme packages where available and
   installs Nordic system-wide for the default Nord theme.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
-  browsing, network tray utilities, portals, wallpapers, and display-manager
-  setup. x86_64 Fedora full installs also include Steam, Gamescope, and 64-bit
-  and 32-bit GameMode and MangoHud support after separate repository approval.
+  browsing, network tray utilities, portals, keyring login integration,
+  wallpapers, and display-manager setup. x86_64 Fedora full installs also
+  include Steam, Gamescope, and 64-bit and 32-bit GameMode and MangoHud support
+  after separate repository approval.
   The installer enables the `christitustech/copr-fedora` COPR for Gamescope and
   RPM Fusion nonfree for Steam, then adds the invoking user to the `gamemode`
   group; log out and back in before using its privileged tuning helpers.
