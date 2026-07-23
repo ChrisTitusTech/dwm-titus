@@ -358,8 +358,16 @@ grep -Fq 'function applyThemes(themeText)' "$repo/config/quickshell/core/Theme.q
 grep -Fq 'root.text = value("normfgcolor", root.text)' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'text: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
 grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/config/quickshell/power/PowerMenuWindow.qml"
 grep -Fq '? Theme.controlCenterX' "$repo/config/quickshell/power/PowerMenuWindow.qml"
-grep -Fq 'property bool navigates: false' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'property bool navigates: false' "$repo/config/quickshell/core/MenuRow.qml"
+grep -Fq 'MenuHeader {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'MenuHeader {' "$repo/config/quickshell/power/PowerMenuWindow.qml"
+grep -Fq 'delegate: MenuRow {' "$repo/config/quickshell/power/PowerMenuWindow.qml"
+grep -Fq 'popupHeight: powerCard.implicitHeight' "$repo/config/quickshell/power/PowerMenuWindow.qml"
+if [ -e "$repo/config/quickshell/power/PowerMenuActionButton.qml" ]; then
+	exit 1
+fi
 grep -Fq 'label: "Applications"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'root.launcherModel.open();' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'launcherModel: launcherModel' "$repo/config/quickshell/shell.qml"

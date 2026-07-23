@@ -114,51 +114,6 @@ ClickAwayPopup {
         }
     }
 
-    component MenuRow: Rectangle {
-        id: menuRow
-
-        property string label: ""
-        property string detail: ""
-        property bool active: false
-        property bool navigates: false
-        signal activated()
-
-        implicitHeight: 32
-        radius: Theme.smallRadius
-        color: rowMouse.containsMouse ? Theme.surfaceHover : Theme.transparent
-
-        UiText {
-            anchors.left: parent.left
-            anchors.leftMargin: 9
-            anchors.right: rowDetail.left
-            anchors.rightMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            text: menuRow.label
-            color: menuRow.active ? Theme.accentSecondary : rowMouse.containsMouse ? Theme.textStrong : Theme.text
-            elide: Text.ElideRight
-        }
-
-        UiText {
-            id: rowDetail
-
-            anchors.right: parent.right
-            anchors.rightMargin: 9
-            anchors.verticalCenter: parent.verticalCenter
-            text: menuRow.detail.length > 0 ? menuRow.detail : menuRow.navigates ? ">" : ""
-            color: menuRow.active ? Theme.accentSecondary : Theme.textMuted
-        }
-
-        MouseArea {
-            id: rowMouse
-
-            anchors.fill: parent
-            enabled: menuRow.enabled
-            hoverEnabled: true
-            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: menuRow.activated()
-        }
-    }
-
     component PresetButton: Rectangle {
         id: presetButton
 
@@ -219,47 +174,13 @@ ClickAwayPopup {
                 width: menuFlick.width
                 spacing: 4
 
-                RowLayout {
+                MenuHeader {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 26
-                    spacing: 8
-
-                    UiText {
-                        visible: root.controlCenterModel.page !== "overview"
-                        text: "< Back"
-                        color: backMouse.containsMouse ? Theme.accent : Theme.textMuted
-
-                        MouseArea {
-                            id: backMouse
-
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.controlCenterModel.openOverview()
-                        }
-                    }
-
-                    UiText {
-                        Layout.fillWidth: true
-                        text: root.pageTitle()
-                        color: Theme.textStrong
-                        font.letterSpacing: root.controlCenterModel.page === "overview" ? 2 : 1
-                        elide: Text.ElideRight
-                    }
-
-                    UiText {
-                        text: "x"
-                        color: closeMouse.containsMouse ? Theme.accent : Theme.textMuted
-
-                        MouseArea {
-                            id: closeMouse
-
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.controlCenterModel.close()
-                        }
-                    }
+                    title: root.pageTitle()
+                    showBack: root.controlCenterModel.page !== "overview"
+                    titleLetterSpacing: root.controlCenterModel.page === "overview" ? 2 : 1
+                    onBackRequested: root.controlCenterModel.openOverview()
+                    onCloseRequested: root.controlCenterModel.close()
                 }
 
                 UiText {

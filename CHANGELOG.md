@@ -25,6 +25,8 @@ versions from `config.mk`.
 - The Control Center now uses one clean dropdown card with direct Applications
   and utility entries, in-place secondary pages, and consistent click-away and
   Escape dismissal.
+- Power actions now use the same compact menu header, flat rows, spacing, and
+  confirmation layout as the Control Center.
 - Documentation is built and tested from `docs/src/`; generated mdBook output
   is no longer version controlled.
 - Release guidance requires validated, committed source and explicit platform
