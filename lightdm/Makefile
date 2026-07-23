@@ -32,4 +32,4 @@ install:
 	install -Dm644 "$$tmp"                           $(LIGHTDM_CONF)
 	install -Dm644 slick-greeter.conf                $(LIGHTDM_DIR)/slick-greeter.conf
 	install -Dm644 wallpaper.jpg                     $(PIXMAPS_DIR)/dwm-titus.jpg
-	install -Dm644 ../dwm-logo-bordered.png          $(PIXMAPS_DIR)/dwm-titus-logo.png
+	install -Dm644 ../dwm-titus.png                  $(PIXMAPS_DIR)/dwm-titus-logo.png

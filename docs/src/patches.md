@@ -1,6 +1,19 @@
-# Patches & Features
+# How dwm-titus Works
 
-dwm-titus is a heavily patched build. Below is every addition on top of stock dwm.
+dwm-titus uses a maintained fork of
+[dwm](https://dwm.suckless.org/), a compact window manager for X11. A window
+manager controls where application windows appear, how they are arranged, and
+which window receives input. Unlike a full desktop environment, upstream dwm
+focuses on this core job and is configured primarily in source code.
+
+The dwm community traditionally distributes optional features as source-code
+"patches." dwm-titus already integrates and maintains a curated set of those
+ideas alongside its own runtime configuration, Quickshell desktop layer,
+Settings experience, and system helpers. Users do not need to find or apply
+patches themselves.
+
+This page documents the major technical additions to the window-manager core
+and how they support the complete desktop experience.
 
 ---
 

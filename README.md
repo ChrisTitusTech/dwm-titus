@@ -1,48 +1,66 @@
 <div align="center">
-  <img src="./dwm-logo-bordered.png" alt="dwm-logo-bordered" width="195" height="90"/>
-
-  # dwm - dynamic window manager
-  ### dwm is an extremely ***fast***, ***small***, and ***dynamic*** window manager for X.
-
+  <img src="./dwm-titus.png" alt="dwm-titus logo" width="190" />
+  <h1>dwm-titus</h1>
+  <p><strong>A fast, focused Linux desktop built for keyboard-driven work.</strong></p>
+  <p>
+    <a href="https://dwm.christitus.com">Documentation</a> |
+    <a href="https://github.com/ChrisTitusTech/dwm-titus/releases/latest">Latest release</a> |
+    <a href="./CHANGELOG.md">Changelog</a> |
+    <a href="./CONTRIBUTING.md">Contributing</a>
+  </p>
 </div>
 
----
+![The dwm-titus desktop with its Quickshell panel](./dwm-titus-qs-4x.webp)
 
-This is a Fedora-first X11 desktop environment built around a **heavily
-modified** version of dwm from [suckless.org](https://dwm.suckless.org/), a
-managed Quickshell shell, and supporting desktop services. Fedora Server
-Network Install is the primary image base; Debian-, Arch-, Fedora-, and
-RHEL-family existing-system installs retain the supported core desktop.
+dwm-titus is a complete, lightweight X11 desktop with sensible defaults,
+guided installation, and powerful customization. It is designed for people who
+want a responsive keyboard-first workflow without having to assemble every
+part themselves.
 
-### Patches & Features
+Fedora is the primary desktop image. The existing-system installer also
+supports the core experience on Debian-, Arch-, Fedora-, and RHEL-family
+distributions.
 
-- **Quickshell** panel and application launcher for the normal desktop workflow
-- **Settings foundation** with searchable capability discovery and explicit
-  unsupported-state reporting
-- **Window swallowing** — terminals absorb child GUI windows
-- **EWMH** compliance — proper desktop/tag reporting for external tools
-- **Pertag** — independent layouts, master counts, and sizing per tag
-- **Cfact** — per-window sizing in tiled layouts
-- **Movestack** — reorder windows in the stack with keybinds
-- **Systray** — built-in system tray
-- **Fullscreen** — actual and fake fullscreen toggle (3-state)
-- **Window icons** — title bar icons via `_NET_WM_ICON`
-- **Cursor warp** — cursor follows focus across windows/monitors
-- **Noborder** — auto-remove borders when only one window is visible
-- **Multi-monitor** — Xinerama support with EWMH-aware tags
+## What You Get
 
----
+| Experience | What it includes |
+| --- | --- |
+| **A focused desktop** | Automatic window tiling, nine workspaces, fast keyboard navigation, multi-monitor support, and flexible fullscreen modes. |
+| **Everyday essentials** | A polished panel, application launcher, system tray, Control Center, Settings, notifications, screenshots, audio, brightness, and power controls. |
+| **Easy discovery** | An interactive keybind viewer, guided display setup, built-in diagnostics, and clear unsupported-feature reporting. |
+| **Personal configuration** | Live-reloading hotkeys, themes, and window rules, with local configuration preserved across upgrades. |
+| **Two installation paths** | A ready-to-install Fedora image or an installer for an existing supported Linux system. |
+
+> dwm-titus is an X11 desktop. A Wayland-native session is not currently part
+> of the project scope.
 
 ## Install
 
-Choose the path that matches what you are installing:
+Choose the path that matches your system:
 
-| Path | Best for | Result |
-|------|----------|--------|
-| `install.sh` | Existing Debian-, Arch-, Fedora-, or RHEL-family system | Installs dependencies, builds dwm, installs the session, and preserves local config |
-| Fedora ISO | Fresh Fedora install | Boots a Fedora installer with dwm-titus Kickstart and this repo embedded |
+| Installation | Best for | What it does |
+| --- | --- | --- |
+| [Fedora ISO](#fedora-iso) | A fresh, dedicated installation | Installs the complete Fedora-first desktop from bootable media. |
+| [Existing system](#existing-system) | A supported Linux installation you already use | Installs dependencies, the desktop session, and the selected feature set while preserving local configuration. |
 
-### Option 1: Install on an Existing System
+For complete requirements and installation details, see the
+[Installation Guide](https://dwm.christitus.com/install.html).
+
+### Fedora ISO
+
+Download the latest image:
+
+| Image | Download |
+| --- | --- |
+| Standard | [`dwm-titus.iso`](https://github.com/ChrisTitusTech/dwm-titus/releases/latest/download/dwm-titus.iso) |
+| NVIDIA | [`dwm-titus-nvidia.iso`](https://github.com/ChrisTitusTech/dwm-titus/releases/latest/download/dwm-titus-nvidia.iso) |
+| Checksums and release notes | [Latest release](https://github.com/ChrisTitusTech/dwm-titus/releases/latest) |
+
+Use the NVIDIA image only for systems that need the dedicated NVIDIA
+installation path. Write the selected ISO to a USB drive, boot it, complete the
+Fedora installer, and reboot into the `dwm` session.
+
+### Existing System
 
 ```bash
 git clone https://github.com/ChrisTitusTech/dwm-titus.git
@@ -52,249 +70,97 @@ cd dwm-titus
 ./install.sh --profile recommended
 ```
 
-Profiles:
+The dry run shows the dependency and installation plan before anything changes.
+The installer detects your distribution family, preserves existing personal
+configuration, and installs the managed desktop components.
 
-| Profile | Use when you want |
-|---------|-------------------|
-| `core` | dwm, required X11/session packages, and one terminal |
-| `recommended` | `core` plus Quickshell, Picom, fonts, theming, screenshots, audio, and brightness tools |
-| `full` | `recommended` plus optional extras such as Thunar with SMB-share browsing, portals, keyring login integration, wallpapers, and display-manager setup; x86_64 Fedora can also add Steam, Gamescope, GameMode, and MangoHud after repository approval |
+| Profile | Includes |
+| --- | --- |
+| `core` | The X11 session, required dependencies, and one terminal. |
+| `recommended` | The complete everyday desktop, including Quickshell, theming, screenshots, audio, and brightness tools. |
+| `full` | The recommended desktop plus optional file-manager, portal, keyring, wallpaper, display-manager, and supported Fedora gaming integrations. |
 
-The installer detects the distribution from `/etc/os-release`, resolves package
-names for the detected family, preserves existing `config.h` and user TOML
-files, and installs the managed Quickshell config. Upgrades also remove the
-legacy graphical-session enablement that could start XDG applications before
-the X11 display environment was imported. New installs add the dwm exclusion
-to matching vendor Picom, polkit, and Light Locker XDG entries while preserving
-their original commands and session guards. No override is created when the
-vendor entry is absent, and existing user entries remain untouched. Interactive
-installs running inside X11 also offer the `dwm-display-setup` wizard for
-persistent resolution, refresh rate, position, rotation, primary-display, and
-compatible TearFree configuration. If installation runs from a TTY, run the
-wizard after login.
+## First Login
 
-On x86_64 Fedora, the full profile can enable the
-[`christitustech/copr-fedora`](https://copr.fedorainfracloud.org/coprs/christitustech/copr-fedora/package/gamescope/)
-COPR for the patched Gamescope package and RPM Fusion nonfree for Steam. These
-third-party repositories require a separate interactive confirmation or the
-explicit `--enable-fedora-gaming-repos` flag. After approval, the installer also
-installs both 64-bit and 32-bit GameMode and MangoHud libraries and adds the
-invoking user to the `gamemode` group. Log out and back in before expecting
-GameMode's privileged tuning helpers to work.
+**Super** is the Windows key on most keyboards.
 
-For unattended runs:
+| Action | Keybind |
+| --- | --- |
+| Open the application launcher | <kbd>Super</kbd> + <kbd>R</kbd> |
+| Open a terminal | <kbd>Super</kbd> + <kbd>X</kbd> |
+| Open Control Center | <kbd>Super</kbd> + <kbd>F1</kbd> |
+| Show the interactive keybind viewer | <kbd>Super</kbd> + <kbd>/</kbd> |
+| Close the focused window | <kbd>Super</kbd> + <kbd>Q</kbd> |
+| Switch workspace | <kbd>Super</kbd> + <kbd>1-9</kbd> |
+| Open the power menu | <kbd>Super</kbd> + <kbd>Ctrl</kbd> + <kbd>Q</kbd> |
 
-```bash
-./install.sh --non-interactive --yes --profile recommended
-
-# Explicitly approve Fedora gaming repositories for an unattended full install.
-./install.sh --non-interactive --yes --profile full --enable-fedora-gaming-repos
-```
-
-### Option 2: Install from the Fedora ISO
-
-Download the latest installer image from the GitHub release:
-
-| ISO | Download |
-|-----|----------|
-| Standard | [`dwm-titus.iso`](https://github.com/ChrisTitusTech/dwm-titus/releases/latest/download/dwm-titus.iso) |
-| NVIDIA | [`dwm-titus-nvidia.iso`](https://github.com/ChrisTitusTech/dwm-titus/releases/latest/download/dwm-titus-nvidia.iso) |
-| Checksums | [latest release assets](https://github.com/ChrisTitusTech/dwm-titus/releases/latest) |
-
-Use the NVIDIA ISO when the machine needs the NVIDIA Kickstart and installer
-boot arguments. Otherwise use the standard ISO.
-
-Basic flow:
-
-1. Write the ISO to a USB drive.
-2. Boot the machine from the USB drive.
-3. Choose the Fedora install entry.
-4. Complete the installer.
-5. Reboot and select the `dwm` session if your display manager asks.
-
-The ISO exposes the embedded checkout at `/run/install/repo/dwm-titus` during
-installation and uses the included Fedora Kickstart.
-
-### Starting dwm
-
-With a display manager, log out, select the `dwm` session, and log back in.
-
-With `startx`, run:
+With a display manager, select the `dwm` session when logging in. From a TTY,
+start the session with:
 
 ```bash
 startx
 ```
 
-After login, use these first:
+## Customize Your Desktop
 
-| Keybind | Action |
-|---------|--------|
-| <kbd>SUPER</kbd> + <kbd>X</kbd> | Open terminal |
-| <kbd>SUPER</kbd> + <kbd>R</kbd> | Toggle Quickshell launcher |
-| <kbd>SUPER</kbd> + <kbd>F1</kbd> | Open control center |
-| <kbd>SUPER</kbd> + <kbd>/</kbd> | Open keybind viewer |
+Most personal settings live under:
 
-Open Control Center -> Settings for the unified read-only
-capability overview, or run `dwm-settings open` from a terminal.
-
----
-
-## ⌨️ Keybindings
-
-Press <kbd>SUPER</kbd> + <kbd>/</kbd> inside dwm for an **interactive keybind viewer**.
-
-See [docs/src/keybinds.md](docs/src/keybinds.md) for the full reference.
-
-### Essential Keybinds
-
-| Keybind | Action |
-|---------|--------|
-| <kbd>SUPER</kbd> + <kbd>X</kbd> | Open terminal |
-| <kbd>SUPER</kbd> + <kbd>R</kbd> | Toggle Quickshell launcher |
-| <kbd>SUPER</kbd> + <kbd>Q</kbd> | Close window |
-| <kbd>SUPER</kbd> + <kbd>J</kbd> / <kbd>K</kbd> | Focus next / previous window |
-| <kbd>SUPER</kbd> + <kbd>H</kbd> / <kbd>L</kbd> | Resize master area |
-| <kbd>SUPER</kbd> + <kbd>1-9</kbd> | Switch to tag (workspace) |
-| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>1-9</kbd> | Move window to tag |
-| <kbd>SUPER</kbd> + <kbd>0</kbd> | Show windows from all nine tags at once |
-| <kbd>SUPER</kbd> + <kbd>T</kbd> | Tile layout |
-| <kbd>SUPER</kbd> + <kbd>F</kbd> | Floating layout |
-| <kbd>SUPER</kbd> + <kbd>M</kbd> | Fullscreen |
-| <kbd>SUPER</kbd> + <kbd>Space</kbd> | Toggle floating |
-| <kbd>SUPER</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | Quit dwm and cleanly end the graphical session |
-| <kbd>SUPER</kbd> + <kbd>Ctrl</kbd> + <kbd>Q</kbd> | Power menu |
-
----
-
-## 🔧 Configuration
-
-dwm is configured by editing `config.h` and recompiling:
-
-```bash
-$EDITOR config.h
-make && sudo make install
+```text
+${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/
 ```
 
-> **Note:** `config.def.h` is the tracked default template. `config.h` is
-> ignored by Git and belongs to the local user. If it does not exist, `make`
-> creates it from `config.def.h`; pulls and upgrades do not replace it.
-> The installer creates it interactively on first installation, asking for
-> stable compile-time preferences such as refresh rate, font size, modifier
-> key, layout ratio, cursor warp, swallowing, and resize hints.
+Hotkeys, themes, and window rules reload when their TOML files are saved.
+Advanced compile-time preferences live in the user-owned `config.h`, which the
+installer and future upgrades preserve.
 
-For unattended installation, the same values can be supplied with
-`DWM_REFRESH_RATE`, `DWM_FONT_SIZE`, `DWM_MODKEY`, `DWM_MFACT`, `DWM_NMASTER`,
-`DWM_CURSORWARP`, `DWM_SWALLOWFLOATING`, and `DWM_RESIZEHINTS`. Existing
-`config.h` files are always preserved.
+See the [Configuration Guide](https://dwm.christitus.com/configuration.html)
+and [Theming Guide](https://dwm.christitus.com/theming.html) for examples and
+safe customization paths.
 
-Key things to customize in `config.h`:
-- **`refresh_rate`** — match your monitor (default: 60, set to 120 for high-refresh)
-- **`fonts[]`** — font family and size
-- **`colors[]`** — color scheme (Nord theme by default in config.h)
-- **`autostart[]`** — programs launched on startup
-- **`rules[]`** — per-application window rules (floating, tags, terminal detection)
-- **`keys[]`** — all keybindings
-- **`MODKEY`** — modifier key (`Mod4Mask` = Super, `Mod1Mask` = Alt)
+## Documentation
 
----
+- [Installation](https://dwm.christitus.com/install.html)
+- [Getting Started](https://dwm.christitus.com/getting-started.html)
+- [Keybindings](https://dwm.christitus.com/keybinds.html)
+- [Configuration](https://dwm.christitus.com/configuration.html)
+- [Theming](https://dwm.christitus.com/theming.html)
+- [Control Center](https://dwm.christitus.com/control-center.html)
+- [Settings](https://dwm.christitus.com/settings.html)
+- [How dwm-titus Works](https://dwm.christitus.com/patches.html)
+- [Troubleshooting](https://dwm.christitus.com/troubleshooting.html)
 
-## 🔍 Troubleshooting
+The technical guide explains the project architecture, what dwm is, and how
+the maintained enhancements fit together. You do not need to understand or
+apply dwm patches to install and use the desktop.
 
-**Black screen / dwm doesn't start:**
-- Run `dwm-diagnostics` and resolve any required X11/session failures.
-- Preview required packages with `./install.sh --dry-run --profile core`.
-- Check `.xinitrc` exists and ends with `exec dwm`
-- Try `startx` from a TTY to see error output
+## Troubleshooting
 
-**No status bar / Quickshell missing:**
-- Install the recommended desktop layer: `./install.sh --profile recommended`
-- Verify the managed shell config exists: `ls ~/.config/quickshell/shell.qml`
-- Run manually: `quickshell --no-duplicate`
+Start with the built-in diagnostic report:
 
-**Restore the Picom configuration:**
-- The installer preserves the original system Picom configuration as
-  `/etc/xdg/picom.conf.dwm-titus.bak` before excluding Quickshell from any
-  translucent tooltip rule.
-- Restore it with:
-  `sudo install -o root -g root -m 0644 /etc/xdg/picom.conf.dwm-titus.bak /etc/xdg/picom.conf`
-- Restart Picom or log out and back in after restoring it.
-
-**Terminal doesn't open (SUPER+X):**
-- Install a terminal emulator (`alacritty`, `kitty`, `st`,
-  `warp-terminal`, or `xterm`)
-- Or set `DWM_TERMINAL` / edit `hotkeys.toml` to use your preferred terminal
-- Browser defaults: run `dwm-default-apps browsers`, then
-  `dwm-default-apps set-browser <desktop-id>`
-- Persistent display setup: run `dwm-display-setup`; use
-  `dwm-display-setup detect` first to inspect outputs and TearFree support
-- Display profiles: run `dwm-display-profile template` and save optional
-  profiles under `~/.config/dwm-titus/display-profiles/`
-- Diagnostics: run `dwm-diagnostics` to separate required failures from
-  optional degraded desktop features
-- Full system snapshot: open Control Center -> System Health, or run
-  `dwm-system-health scan-user` for the unprivileged structured report. The
-  privileged scan uses cached or `NOPASSWD` sudo access first, then falls back
-  to the running polkit agent and root-owned installed helper for graphical
-  authorization.
-
-**Multi-monitor issues:**
-- If tags don't switch correctly across monitors, run `dwm-diagnostics`
-
-**Dependency check:**
 ```bash
-bash scripts/check-deps.sh
+dwm-diagnostics
 ```
 
----
+You can also open **Control Center -> System Health** for a graphical overview.
+If the session does not start, run `startx` from a TTY to see its error output.
+The [Troubleshooting Guide](https://dwm.christitus.com/troubleshooting.html)
+covers common session, panel, terminal, theme, display, and NVIDIA issues.
 
-## 📁 Project Structure
+If the problem remains, [open an issue](https://github.com/ChrisTitusTech/dwm-titus/issues)
+and include the relevant diagnostic output. Review it first and remove any
+private system information.
 
-| Path | Purpose |
-|------|---------|
-| `config.def.h` | Default configuration template |
-| `config.h` | Generated, untracked personal configuration (edit this) |
-| `dwm.c` | Main window manager source |
-| `Makefile` | Build and install system |
-| `.xinitrc` | Startup script for `startx` |
-| `dwm.desktop` | Session entry for display managers |
-| `install.sh` | Automated installer for Debian, Arch, and Fedora/RHEL families |
-| `config/` | Quickshell, terminal, and app configurations |
-| `scripts/` | Helper scripts (keybinds viewer, dep checker, etc.) |
-| `docs/src/keybinds.md` | Full keybinding reference |
-| `CONTRIBUTING.md` | Development and validation workflow |
-| `SECURITY.md` | Private vulnerability reporting policy |
-| `CHANGELOG.md` | User-facing release history |
-| `SPEC.md` | Durable product scope and acceptance criteria |
-| `ROADMAP.md` | Fedora-first desktop-environment phases |
-| `TASKS.md` | Detailed work for the active roadmap phase |
-| `docs/RELEASING.md` | Release validation and publication checklist |
+## Contributing
 
----
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the
+development workflow and validation requirements, and report security issues
+using [SECURITY.md](SECURITY.md).
 
-## Development
-
-Run the repository checks before submitting a change:
+The main repository check is:
 
 ```bash
 make check
 ```
 
-This performs a clean portable build, ShellCheck and shfmt validation,
-autostart guard tests, staged install/uninstall checks, and release artifact
-validation. Use `make native` only for a binary intended for the current
-machine; normal builds remain portable across compatible CPUs.
-
-Current implementation tasks are tracked in `TASKS.md`, phase outcomes in
-`ROADMAP.md`, and durable product requirements in `SPEC.md`.
-
-Additional environment-specific gates are available:
-
-```bash
-make check-xvfb-runtime check-monitor-tags
-make check-quickshell-qml
-make check-container-smoke
-mdbook build docs && mdbook test docs
-```
-
-See `CONTRIBUTING.md` for required validation by change type and
-`SECURITY.md` for private vulnerability reporting.
+Project requirements and active work are tracked in [SPEC.md](SPEC.md),
+[ROADMAP.md](ROADMAP.md), and [TASKS.md](TASKS.md).
