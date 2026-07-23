@@ -164,7 +164,7 @@ dwm_packages() {
 			network-manager rsync
 		;;
 	debian:theme)
-		printf '%s\n' dconf
+		printf '%s\n' dconf-cli
 		;;
 	debian:theme-gtk)
 		printf '%s\n' arc-theme materia-gtk-theme numix-gtk-theme yaru-theme-gtk
