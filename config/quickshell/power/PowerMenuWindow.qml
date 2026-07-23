@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import Quickshell
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -11,36 +10,35 @@ ClickAwayPopup {
     required property var powerMenuModel
     required property var panelWindow
 
-    readonly property int cardWidth: 240
-    readonly property int menuHeight: 292
-    readonly property int confirmHeight: 210
+    readonly property int cardWidth: Theme.controlCenterWidth
     readonly property int edgeMargin: Theme.rowSpacing
+
     visible: powerMenuModel.visible
     targetWindow: panelWindow
     popupWidth: cardWidth
-    popupHeight: powerMenuModel.confirming ? confirmHeight : menuHeight
+    popupHeight: powerCard.implicitHeight
     popupX: powerMenuModel.anchorSource === "controlcenter"
         ? Theme.controlCenterX
         : Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin)
     popupY: Theme.panelHeight
     onDismissed: powerMenuModel.close()
 
-    onVisibleChanged: if (!visible) root.powerMenuModel.close()
-
-    readonly property var cancelAction: {
-        "label": "Cancel",
-        "detail": "Return to power menu"
-    }
-
-    readonly property var confirmButtonAction: {
-        "label": "Confirm",
-        "detail": powerMenuModel.pendingAction ? powerMenuModel.pendingAction.label : ""
+    onVisibleChanged: {
+        if (visible) {
+            Qt.callLater(function() {
+                powerCard.forceActiveFocus();
+            });
+        } else {
+            root.powerMenuModel.close();
+        }
     }
 
     ShellSurface {
-        id: content
+        id: powerCard
 
         anchors.fill: parent
+        implicitHeight: powerColumn.implicitHeight + margin * 2
+        margin: 10
         focus: true
 
         Keys.onPressed: function(event) {
@@ -55,65 +53,79 @@ ClickAwayPopup {
         }
 
         ColumnLayout {
+            id: powerColumn
+
             anchors.fill: parent
             spacing: Theme.listSpacing
 
-            Repeater {
-                model: root.powerMenuModel.confirming ? [] : root.powerMenuModel.sessionActions
+            MenuHeader {
+                Layout.fillWidth: true
+                title: root.powerMenuModel.confirming && root.powerMenuModel.pendingAction
+                    ? root.powerMenuModel.pendingAction.label
+                    : "Power"
+                showBack: root.powerMenuModel.confirming
+                titleLetterSpacing: root.powerMenuModel.confirming ? 1 : 2
+                onBackRequested: root.powerMenuModel.cancelConfirmation()
+                onCloseRequested: root.powerMenuModel.close()
+            }
 
-                delegate: PowerMenuActionButton {
-                    required property var modelData
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Theme.border
+            }
 
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 58
-                    action: modelData
-                    onActivated: root.powerMenuModel.requestAction(modelData)
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: !root.powerMenuModel.confirming
+                spacing: 2
+
+                Repeater {
+                    model: root.powerMenuModel.sessionActions
+
+                    delegate: MenuRow {
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        label: modelData.label
+                        navigates: modelData.confirm
+                        onActivated: root.powerMenuModel.requestAction(modelData)
+                    }
                 }
             }
 
             ColumnLayout {
                 visible: root.powerMenuModel.confirming
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: Theme.sectionSpacing
+                spacing: Theme.rowSpacing
 
-                Text {
+                UiText {
                     Layout.fillWidth: true
-                    text: root.powerMenuModel.pendingAction ? root.powerMenuModel.pendingAction.label : ""
-                    color: Theme.textStrong
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.inputFontSize
-                    font.bold: true
+                    text: root.powerMenuModel.pendingAction ? root.powerMenuModel.pendingAction.detail : ""
+                    color: Theme.text
                     elide: Text.ElideRight
                 }
 
-                Text {
+                UiText {
                     Layout.fillWidth: true
                     text: "This action will affect the current session or system."
                     color: Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.smallFontSize
                     wrapMode: Text.WordWrap
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignBottom
                     spacing: Theme.listSpacing
 
-                    PowerMenuActionButton {
+                    ShellButton {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.confirmButtonHeight
-                        action: root.cancelAction
-                        compact: true
+                        label: "Cancel"
                         onActivated: root.powerMenuModel.cancelConfirmation()
                     }
 
-                    PowerMenuActionButton {
+                    ShellButton {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.confirmButtonHeight
-                        action: root.confirmButtonAction
-                        compact: true
+                        label: "Confirm"
                         onActivated: root.powerMenuModel.confirmAction()
                     }
                 }
