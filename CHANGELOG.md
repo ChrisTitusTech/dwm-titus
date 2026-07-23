@@ -32,6 +32,8 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Install the PAM integration package alongside GNOME Keyring so LightDM can
+  unlock the login keyring without a second password prompt.
 - Restore independent Quickshell StatusNotifier tray rendering and resilient
   icon fallbacks for background-only tray clients.
 - Prevent nested dwm/Xvfb instances from terminating the active graphical login

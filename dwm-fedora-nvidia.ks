@@ -129,6 +129,7 @@ file-roller
 xdg-user-dirs
 xdg-desktop-portal-gtk
 gnome-keyring
+gnome-keyring-pam
 nwg-look
 kernel-devel
 kernel-headers

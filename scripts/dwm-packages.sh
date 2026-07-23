@@ -97,7 +97,7 @@ dwm_packages() {
 	rhel:desktop-optional)
 		printf '%s\n' \
 			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
-			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring NetworkManager \
+			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring gnome-keyring-pam NetworkManager \
 			rsync nwg-look
 		if [[ ${DISTRO_ID:-} != fedora ]]; then
 			printf '%s\n' playerctl
@@ -160,7 +160,7 @@ dwm_packages() {
 	debian:desktop-optional)
 		printf '%s\n' \
 			thunar gvfs gvfs-backends tumbler thunar-archive-plugin file-roller \
-			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring \
+			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring libpam-gnome-keyring \
 			network-manager rsync
 		;;
 	debian:theme)
