@@ -541,6 +541,11 @@ install_lightdm_config() {
 		lightdm_logind_check=true
 	fi
 
+	if [[ $DISTRO_FAMILY == "debian" ]]; then
+		lightdm_greeter_session="slick-greeter"
+		lightdm_session_wrapper=""
+	fi
+
 	sudo make -C "$REPO_DIR/lightdm" \
 		LIGHTDM_SEAT_SECTION="$lightdm_seat_section" \
 		LIGHTDM_GREETER_SESSION="$lightdm_greeter_session" \
