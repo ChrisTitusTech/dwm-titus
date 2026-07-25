@@ -145,6 +145,12 @@ wifi_connect() {
 			key_mgmt=none
 			secret_property=802-11-wireless-security.wep-key0
 			;;
+		*WPA3*)
+			case "$security" in
+			*WPA2*) ;;
+			*) key_mgmt=sae ;;
+			esac
+			;;
 		esac
 
 		umask 077

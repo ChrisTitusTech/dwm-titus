@@ -90,6 +90,13 @@ case "$*" in
 	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
 	printf 'profile-add %s\n' "$connection_uuid" >>"$DWM_TEST_NMCLI_LOG"
 	;;
+"connection add type wifi ifname wlan0 con-name Cafe:WiFi ssid Cafe:WiFi 802-11-wireless.bssid AA:BB:CC:DD:EE:03 wifi-sec.key-mgmt sae connection.uuid "*)
+	for argument do
+		connection_uuid=$argument
+	done
+	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
+	printf 'profile-add %s\n' "$connection_uuid" >>"$DWM_TEST_NMCLI_LOG"
+	;;
 "connection up uuid "*" ifname wlan0 ap AA:BB:CC:DD:EE:01 passwd-file "*)
 	for argument do
 		password_file=$argument
@@ -118,6 +125,16 @@ case "$*" in
 	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
 	printf 'password-file %s\n' "$password_file" >>"$DWM_TEST_NMCLI_LOG"
 	printf 'wifi-wep\n' >>"$DWM_TEST_NMCLI_LOG"
+	;;
+"connection up uuid "*" ifname wlan0 ap AA:BB:CC:DD:EE:03 passwd-file "*)
+	for argument do
+		password_file=$argument
+	done
+	[ "$(stat -c '%a' "$password_file")" = "600" ]
+	[ "$(sed -n 's/^802-11-wireless-security\.psk://p' "$password_file")" = "wpa3 secret" ]
+	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
+	printf 'password-file %s\n' "$password_file" >>"$DWM_TEST_NMCLI_LOG"
+	printf 'wifi-wpa3\n' >>"$DWM_TEST_NMCLI_LOG"
 	;;
 "connection delete uuid "*)
 	printf 'profile-delete %s\n' "$*" >>"$DWM_TEST_NMCLI_LOG"
@@ -224,6 +241,21 @@ password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
 [ -n "$password_file" ]
 [ ! -e "$password_file" ]
 if grep -Fq "abcde" "$work/nmcli-argv.log"; then
+	exit 1
+fi
+
+: >"$work/nmcli.log"
+: >"$work/nmcli-argv.log"
+printf '%s\n' "wpa3 secret" |
+	DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
+		DWM_TEST_NMCLI_ARGV_LOG="$work/nmcli-argv.log" \
+		PATH="$work/bin:$PATH" \
+		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:03 "Cafe:WiFi" --password-stdin WPA3
+grep -Fqx "wifi-wpa3" "$work/nmcli.log"
+password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
+[ -n "$password_file" ]
+[ ! -e "$password_file" ]
+if grep -Fq "wpa3 secret" "$work/nmcli-argv.log"; then
 	exit 1
 fi
 
