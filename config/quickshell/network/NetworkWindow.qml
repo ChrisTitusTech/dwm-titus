@@ -15,7 +15,8 @@ ClickAwayPopup {
     readonly property int cardHeight: 680
     readonly property int edgeMargin: Theme.rowSpacing
 
-    visible: networkModel.visible
+    visible: networkModel.visible && !networkModel.wifiPasswordPromptVisible
+    grabFocus: !networkModel.wifiPasswordPromptVisible
     targetWindow: panelWindow
     popupWidth: cardWidth
     popupHeight: cardHeight
@@ -23,7 +24,13 @@ ClickAwayPopup {
     popupY: Theme.panelHeight
     onDismissed: networkModel.close()
 
-    onVisibleChanged: if (!visible) root.networkModel.close()
+    onVisibleChanged: {
+        if (visible) {
+            Qt.callLater(function() {
+                content.forceActiveFocus();
+            });
+        }
+    }
 
     ShellSurface {
         id: content
@@ -33,13 +40,18 @@ ClickAwayPopup {
 
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) {
-                root.networkModel.close();
+                if (root.networkModel.wifiPasswordPromptVisible) {
+                    root.networkModel.cancelWifiPasswordPrompt();
+                } else {
+                    root.networkModel.close();
+                }
                 event.accepted = true;
             }
         }
 
         ColumnLayout {
             anchors.fill: parent
+            enabled: !root.networkModel.wifiPasswordPromptVisible
             spacing: Theme.popupSpacing
 
             RowLayout {
@@ -142,63 +154,6 @@ ClickAwayPopup {
                 font.pixelSize: Theme.smallFontSize
             }
 
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: root.networkModel.selectedWifiNetwork() !== null && root.networkModel.selectedWifiNetwork().secured ? 44 : 0
-                visible: root.networkModel.selectedWifiNetwork() !== null && root.networkModel.selectedWifiNetwork().secured
-                color: Theme.surface
-                radius: Theme.radius
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: Theme.rowSpacing
-                    anchors.rightMargin: Theme.rowSpacing
-                    spacing: Theme.rowSpacing
-
-                    Item {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-
-                        TextInput {
-                            id: wifiPasswordInput
-
-                            anchors.fill: parent
-                            text: root.networkModel.wifiPassword
-                            echoMode: TextInput.Password
-                            color: Theme.textStrong
-                            selectionColor: Theme.accent
-                            selectedTextColor: Theme.accentText
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.inputFontSize
-                            clip: true
-                            verticalAlignment: TextInput.AlignVCenter
-                            enabled: !root.networkModel.busy
-
-                            onTextChanged: root.networkModel.wifiPassword = text
-                            onAccepted: root.networkModel.connectSelectedWifi()
-                        }
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: wifiPasswordInput.text.length === 0
-                            text: "Password"
-                            color: Theme.placeholder
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.inputFontSize
-                        }
-                    }
-
-                    ShellButton {
-                        Layout.preferredWidth: implicitWidth
-                        Layout.preferredHeight: Theme.buttonHeight
-                        label: "Connect"
-                        enabled: !root.networkModel.busy
-                        onActivated: root.networkModel.connectSelectedWifi()
-                    }
-                }
-            }
-
             SectionLabel {
                 label: "Saved"
             }
@@ -236,6 +191,174 @@ ClickAwayPopup {
                 label: "Edit Connections"
                 compact: false
                 onActivated: root.networkModel.openEditor()
+            }
+        }
+
+        FloatingWindow {
+            id: passwordPrompt
+
+            property bool revealPassword: false
+
+            title: "dwm network password"
+            screen: root.panelWindow.screen
+            visible: root.networkModel.wifiPasswordPromptVisible
+            implicitWidth: 440
+            implicitHeight: 210
+            color: Theme.transparent
+
+            onClosed: root.networkModel.cancelWifiPasswordPrompt()
+
+            onVisibleChanged: {
+                if (visible) {
+                    revealPassword = false;
+                    Qt.callLater(function() {
+                        wifiPasswordInput.forceActiveFocus();
+                    });
+                } else if (root.visible) {
+                    Qt.callLater(function() {
+                        content.forceActiveFocus();
+                    });
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                focus: true
+                color: Theme.surface
+                border.color: Theme.accent
+                border.width: 1
+                radius: Theme.radius
+
+                Keys.onPressed: function(event) {
+                    if (event.key === Qt.Key_Escape) {
+                        root.networkModel.cancelWifiPasswordPrompt();
+                        event.accepted = true;
+                    }
+                }
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: Theme.sectionSpacing
+                    spacing: Theme.popupSpacing
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: {
+                            const network = root.networkModel.selectedWifiNetwork();
+                            return network ? "Connect to " + network.ssid : "Connect to Wi-Fi";
+                        }
+                        color: Theme.textStrong
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.titleFontSize
+                        font.bold: true
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Enter the network password."
+                        color: Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.smallFontSize
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 44
+                        spacing: Theme.rowSpacing
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            color: Theme.bg
+                            border.color: wifiPasswordInput.activeFocus ? Theme.accent : Theme.border
+                            border.width: 1
+                            radius: Theme.radius
+
+                            TextInput {
+                                id: wifiPasswordInput
+
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.rowSpacing
+                                anchors.rightMargin: Theme.rowSpacing
+                                text: root.networkModel.wifiPassword
+                                echoMode: passwordPrompt.revealPassword ? TextInput.Normal : TextInput.Password
+                                color: Theme.textStrong
+                                selectionColor: Theme.accent
+                                selectedTextColor: Theme.accentText
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.inputFontSize
+                                clip: true
+                                verticalAlignment: TextInput.AlignVCenter
+                                enabled: !root.networkModel.busy
+
+                                onTextChanged: root.networkModel.wifiPassword = text
+                                Keys.onPressed: function(event) {
+                                    if (event.key === Qt.Key_Escape) {
+                                        root.networkModel.cancelWifiPasswordPrompt();
+                                        event.accepted = true;
+                                    }
+                                }
+                                onAccepted: {
+                                    if (text.length > 0) {
+                                        root.networkModel.connectSelectedWifi();
+                                    }
+                                }
+                            }
+
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: Theme.rowSpacing
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: wifiPasswordInput.text.length === 0
+                                text: "Password"
+                                color: Theme.placeholder
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.inputFontSize
+                            }
+                        }
+
+                        ShellButton {
+                            Layout.preferredWidth: 62
+                            Layout.fillHeight: true
+                            label: passwordPrompt.revealPassword ? "Hide" : "Show"
+                            enabled: !root.networkModel.busy
+                            onActivated: {
+                                passwordPrompt.revealPassword = !passwordPrompt.revealPassword;
+                                wifiPasswordInput.forceActiveFocus();
+                            }
+                        }
+                    }
+
+                    Item {
+                        Layout.fillHeight: true
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.rowSpacing
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        ShellButton {
+                            Layout.preferredWidth: implicitWidth
+                            Layout.preferredHeight: Theme.buttonHeight
+                            label: "Cancel"
+                            enabled: !root.networkModel.busy
+                            onActivated: root.networkModel.cancelWifiPasswordPrompt()
+                        }
+
+                        ShellButton {
+                            Layout.preferredWidth: implicitWidth
+                            Layout.preferredHeight: Theme.buttonHeight
+                            label: "Connect"
+                            enabled: !root.networkModel.busy && wifiPasswordInput.text.length > 0
+                            onActivated: root.networkModel.connectSelectedWifi()
+                        }
+                    }
+                }
             }
         }
     }

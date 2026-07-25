@@ -8,6 +8,8 @@ Scope {
     property bool visible: false
     property bool busy: false
     property bool editorAvailable: false
+    property bool actionUsesPasswordStdin: false
+    property bool wifiPasswordPromptVisible: false
     property int selectedIndex: 0
     property int selectedWifiIndex: -1
     property string statusText: "NET offline"
@@ -37,6 +39,7 @@ Scope {
         root.visible = false;
         root.selectedIndex = 0;
         root.selectedWifiIndex = -1;
+        root.wifiPasswordPromptVisible = false;
         root.message = "";
         root.wifiPassword = "";
     }
@@ -155,6 +158,10 @@ Scope {
                 break;
             }
         }
+
+        if (root.wifiPasswordPromptVisible && root.selectedWifiIndex < 0) {
+            root.cancelWifiPasswordPrompt();
+        }
     }
 
     function selectedWifiNetwork() {
@@ -170,13 +177,28 @@ Scope {
             return;
         }
 
+        if (root.selectedWifiIndex === index) {
+            return;
+        }
+
         root.selectedWifiIndex = index;
+        root.wifiPasswordPromptVisible = false;
+        root.wifiPassword = "";
+        root.message = "";
+    }
+
+    function cancelWifiPasswordPrompt() {
+        root.wifiPasswordPromptVisible = false;
+        root.selectedWifiIndex = -1;
         root.wifiPassword = "";
         root.message = "";
     }
 
     function connectWifi(network) {
         if (!network || network.device.length === 0 || network.bssid.length === 0 || network.ssid.length === 0) {
+            return;
+        }
+        if (root.busy || actionProcess.running) {
             return;
         }
 
@@ -187,16 +209,20 @@ Scope {
                     break;
                 }
             }
-            root.message = "Enter the Wi-Fi password for " + network.ssid;
+            root.wifiPasswordPromptVisible = true;
+            root.message = "";
             return;
         }
 
         const args = [network.device, network.bssid, network.ssid];
         if (network.secured) {
-            args.push(root.wifiPassword);
+            args.push("--password-stdin");
+            args.push(network.security);
         }
 
         root.busy = true;
+        root.actionUsesPasswordStdin = network.secured;
+        root.wifiPasswordPromptVisible = false;
         root.message = "Connecting " + network.ssid;
         actionProcess.command = Commands.networkHelperCommand("wifi-connect", args);
         actionProcess.running = true;
@@ -210,8 +236,12 @@ Scope {
         if (!profile || profile.uuid.length === 0) {
             return;
         }
+        if (root.busy || actionProcess.running) {
+            return;
+        }
 
         root.busy = true;
+        root.actionUsesPasswordStdin = false;
         root.message = "Connecting " + profile.name;
         actionProcess.command = Commands.networkHelperCommand("connect", [profile.uuid]);
         actionProcess.running = true;
@@ -221,8 +251,12 @@ Scope {
         if (!device || device.length === 0) {
             return;
         }
+        if (root.busy || actionProcess.running) {
+            return;
+        }
 
         root.busy = true;
+        root.actionUsesPasswordStdin = false;
         root.message = "Disconnecting " + device;
         actionProcess.command = Commands.networkHelperCommand("disconnect", [device]);
         actionProcess.running = true;
@@ -278,10 +312,20 @@ Scope {
 
         command: ["sh", "-c", "exit 0"]
         running: false
+        stdinEnabled: true
+
+        onStarted: {
+            if (root.actionUsesPasswordStdin) {
+                write(root.wifiPassword + "\n");
+                root.actionUsesPasswordStdin = false;
+                root.wifiPassword = "";
+            }
+        }
 
         onRunningChanged: {
             if (!running) {
                 root.busy = false;
+                root.actionUsesPasswordStdin = false;
                 root.wifiPassword = "";
                 root.message = "";
                 root.refresh(false);

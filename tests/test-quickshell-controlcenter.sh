@@ -357,6 +357,35 @@ grep -Fq 'grabFocus: true' "$repo/config/quickshell/core/ClickAwayPopup.qml"
 grep -Fq 'function applyThemes(themeText)' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'root.text = value("normfgcolor", root.text)' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'text: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
+grep -Fq 'property bool wifiPasswordPromptVisible: false' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'root.wifiPasswordPromptVisible = true;' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'root.networkModel.cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'wifiPasswordInput.forceActiveFocus();' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'visible: networkModel.visible && !networkModel.wifiPasswordPromptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'enabled: !root.networkModel.wifiPasswordPromptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'grabFocus: !networkModel.wifiPasswordPromptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'FloatingWindow {' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'title: "dwm network password"' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'screen: root.panelWindow.screen' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'onClosed: root.networkModel.cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'function cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'return profile.active;' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'root.wifiPasswordPromptVisible && root.selectedWifiIndex < 0' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'args.push("--password-stdin");' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'args.push(network.security);' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'stdinEnabled: true' "$repo/config/quickshell/network/NetworkModel.qml"
+test "$(grep -Fc 'if (root.busy || actionProcess.running) {' "$repo/config/quickshell/network/NetworkModel.qml")" -eq 3
+if grep -Fq 'args.push(root.wifiPassword)' "$repo/config/quickshell/network/NetworkModel.qml"; then
+	exit 1
+fi
+select_wifi_guard=$(
+	sed -n '/if (root.selectedWifiIndex === index) {/,/^[[:space:]]*}/p' \
+		"$repo/config/quickshell/network/NetworkModel.qml"
+)
+printf '%s\n' "$select_wifi_guard" | grep -Fq 'return;'
+if grep -Fq 'Layout.preferredHeight: root.networkModel.selectedWifiNetwork()' "$repo/config/quickshell/network/NetworkWindow.qml"; then
+	exit 1
+fi
 grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/config/quickshell/power/PowerMenuWindow.qml"
 grep -Fq '? Theme.controlCenterX' "$repo/config/quickshell/power/PowerMenuWindow.qml"

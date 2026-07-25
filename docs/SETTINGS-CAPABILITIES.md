@@ -82,7 +82,7 @@ action.
 | --- | --- | --- | --- |
 | Network status, devices, profiles, Wi-Fi scan | `dwm-quickshell-network` machine-oriented `nmcli` fields | Read-only | Missing NetworkManager tooling yields unavailable state without affecting other sections. |
 | Network change notifications | `dwm-quickshell-network monitor` using `nmcli monitor` | Read-only | The existing shared monitor serves the always-visible panel. A Settings-only watch must stop when its section closes. |
-| Connect saved profile, connect Wi-Fi, disconnect device | Fixed `nmcli connection` and `device` actions | Delegated | NetworkManager owns policy and secrets. Passwords remain argv data and must not be logged or persisted by QML. |
+| Connect saved profile, connect Wi-Fi, disconnect device | Fixed `nmcli connection` and `device` actions | Delegated | NetworkManager owns policy and secrets. QML clears passwords after passing them over helper stdin; the helper selects WPA, WPA3, or WEP settings from scan data, uses a mode-0600 temporary `passwd-file`, removes it after activation, and never puts the secret on argv. |
 | Hidden, enterprise, and advanced network editing | `nm-connection-editor` | Delegated | Hide the entry point when the tool is absent. |
 | Bluetooth status and known device list | `dwm-quickshell-controls bluetooth-status` and `bluetooth-devices` | Read-only | Missing `bluetoothctl`, daemon, or adapter is an unavailable capability. |
 | Scan, adapter power, pair/trust/connect, disconnect | Fixed `bluetoothctl` actions | Delegated | BlueZ owns device policy. Scan is bounded to eight seconds; failures must be attributed to the requested device/action. |
