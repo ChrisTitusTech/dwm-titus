@@ -40,7 +40,7 @@ case "$*" in
 "device status")
 	case "${DWM_TEST_NMCLI_MODE:-wired}" in
 	wired)
-		printf 'lo:loopback:connected (externally):lo\n'
+		printf 'lo:loopback:connected:lo\n'
 		printf 'enp6s0:ethernet:connected:Wired connection 1\n'
 		printf 'wlan0:wifi:disconnected:--\n'
 		;;
@@ -75,11 +75,28 @@ case "$*" in
 "device wifi connect Guest WiFi ifname wlan0 bssid AA:BB:CC:DD:EE:02")
 	printf 'wifi-open Guest WiFi\n' >>"$DWM_TEST_NMCLI_LOG"
 	;;
-"--ask device wifi connect Cafe:WiFi ifname wlan0 bssid AA:BB:CC:DD:EE:01")
-	IFS= read -r password
-	[ "$password" = "correct horse battery staple" ]
-	printf '%s\n' "$*" >"$DWM_TEST_NMCLI_ARGV_LOG"
-	printf 'wifi-secured Cafe:WiFi\n' >>"$DWM_TEST_NMCLI_LOG"
+"connection add type wifi ifname wlan0 con-name Cafe:WiFi ssid Cafe:WiFi 802-11-wireless.bssid AA:BB:CC:DD:EE:01 wifi-sec.key-mgmt wpa-psk connection.uuid "*)
+	for argument do
+		connection_uuid=$argument
+	done
+	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
+	printf 'profile-add %s\n' "$connection_uuid" >>"$DWM_TEST_NMCLI_LOG"
+	;;
+"connection up uuid "*" ifname wlan0 ap AA:BB:CC:DD:EE:01 passwd-file "*)
+	for argument do
+		password_file=$argument
+	done
+	[ "$(stat -c '%a' "$password_file")" = "600" ]
+	[ "$(sed -n 's/^802-11-wireless-security\.psk://p' "$password_file")" = "correct horse battery staple" ]
+	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
+	printf 'password-file %s\n' "$password_file" >>"$DWM_TEST_NMCLI_LOG"
+	if [ "${DWM_TEST_NMCLI_MODE:-}" = "wifi-fail" ]; then
+		exit 4
+	fi
+	printf 'wifi-secured\n' >>"$DWM_TEST_NMCLI_LOG"
+	;;
+"connection delete uuid "*)
+	printf 'profile-delete %s\n' "$*" >>"$DWM_TEST_NMCLI_LOG"
 	;;
 "connection up uuid uuid-wifi")
 	printf 'connect uuid-wifi\n' >>"$DWM_TEST_NMCLI_LOG"
@@ -144,8 +161,28 @@ printf '%s\n' "correct horse battery staple" |
 		DWM_TEST_NMCLI_ARGV_LOG="$work/nmcli-argv.log" \
 		PATH="$work/bin:$PATH" \
 		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:01 "Cafe:WiFi" --password-stdin
-grep -Fqx "wifi-secured Cafe:WiFi" "$work/nmcli.log"
-grep -Fqx -- "--ask device wifi connect Cafe:WiFi ifname wlan0 bssid AA:BB:CC:DD:EE:01" "$work/nmcli-argv.log"
+grep -Fqx "wifi-secured" "$work/nmcli.log"
+password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
+[ -n "$password_file" ]
+[ ! -e "$password_file" ]
+if grep -Fq "correct horse battery staple" "$work/nmcli-argv.log"; then
+	exit 1
+fi
+
+: >"$work/nmcli.log"
+: >"$work/nmcli-argv.log"
+if printf '%s\n' "correct horse battery staple" |
+	DWM_TEST_NMCLI_MODE=wifi-fail \
+		DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
+		DWM_TEST_NMCLI_ARGV_LOG="$work/nmcli-argv.log" \
+		PATH="$work/bin:$PATH" \
+		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:01 "Cafe:WiFi" --password-stdin; then
+	exit 1
+fi
+grep -Fq "profile-delete connection delete uuid " "$work/nmcli.log"
+password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
+[ -n "$password_file" ]
+[ ! -e "$password_file" ]
 if grep -Fq "correct horse battery staple" "$work/nmcli-argv.log"; then
 	exit 1
 fi

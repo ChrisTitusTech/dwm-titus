@@ -136,9 +136,39 @@ wifi_connect() {
 
 	if [ "$#" -eq 4 ]; then
 		[ "$4" = "--password-stdin" ] || usage
-		# device wifi connect can create a first-time profile but has no
-		# passwd-file option, so feed its single password prompt from stdin.
-		exec nmcli --ask device wifi connect "$ssid" ifname "$ifname" bssid "$bssid"
+
+		umask 077
+		password_file=$(mktemp "${TMPDIR:-/tmp}/dwm-network-password.XXXXXX")
+		trap 'rm -f "$password_file"' EXIT
+		trap 'rm -f "$password_file"; exit 1' HUP INT TERM
+
+		if ! IFS= read -r password || [ -z "$password" ]; then
+			printf '%s\n' "Wi-Fi password required on stdin" >&2
+			exit 2
+		fi
+		printf '802-11-wireless-security.psk:%s\n' "$password" >"$password_file"
+		unset password
+
+		connection_uuid=
+		IFS= read -r connection_uuid </proc/sys/kernel/random/uuid
+		if [ -z "$connection_uuid" ]; then
+			printf '%s\n' "could not generate a connection UUID" >&2
+			exit 1
+		fi
+
+		nmcli connection add type wifi ifname "$ifname" con-name "$ssid" ssid "$ssid" \
+			802-11-wireless.bssid "$bssid" wifi-sec.key-mgmt wpa-psk \
+			connection.uuid "$connection_uuid" >/dev/null
+
+		if nmcli connection up uuid "$connection_uuid" ifname "$ifname" ap "$bssid" \
+			passwd-file "$password_file"; then
+			return 0
+		else
+			status=$?
+		fi
+
+		nmcli connection delete uuid "$connection_uuid" >/dev/null 2>&1 || :
+		return "$status"
 	else
 		nmcli device wifi connect "$ssid" ifname "$ifname" bssid "$bssid"
 	fi

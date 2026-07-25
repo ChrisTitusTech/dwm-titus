@@ -16,7 +16,7 @@ ClickAwayPopup {
     readonly property int edgeMargin: Theme.rowSpacing
 
     visible: networkModel.visible
-    grabFocus: false
+    grabFocus: !networkModel.wifiPasswordPromptVisible
     targetWindow: panelWindow
     popupWidth: cardWidth
     popupHeight: cardHeight
@@ -200,10 +200,13 @@ ClickAwayPopup {
             property bool revealPassword: false
 
             title: "dwm network password"
+            screen: root.panelWindow.screen
             visible: root.networkModel.wifiPasswordPromptVisible
             implicitWidth: 440
             implicitHeight: 210
             color: Theme.transparent
+
+            onClosed: root.networkModel.cancelWifiPasswordPrompt()
 
             onVisibleChanged: {
                 if (visible) {

@@ -20,7 +20,7 @@ Scope {
     property var wifiNetworks: []
 
     readonly property var activeConnections: root.connections.filter(function(profile) {
-        return profile.active && root.isSupportedProfile(profile.type);
+        return profile.active;
     })
     readonly property var savedProfiles: root.connections.filter(function(profile) {
         return !profile.active && root.isSupportedProfile(profile.type);
@@ -158,6 +158,10 @@ Scope {
                 break;
             }
         }
+
+        if (root.wifiPasswordPromptVisible && root.selectedWifiIndex < 0) {
+            root.cancelWifiPasswordPrompt();
+        }
     }
 
     function selectedWifiNetwork() {
@@ -194,6 +198,9 @@ Scope {
         if (!network || network.device.length === 0 || network.bssid.length === 0 || network.ssid.length === 0) {
             return;
         }
+        if (root.busy || actionProcess.running) {
+            return;
+        }
 
         if (network.secured && root.wifiPassword.length === 0) {
             for (let i = 0; i < root.wifiNetworks.length; i++) {
@@ -228,6 +235,9 @@ Scope {
         if (!profile || profile.uuid.length === 0) {
             return;
         }
+        if (root.busy || actionProcess.running) {
+            return;
+        }
 
         root.busy = true;
         root.actionUsesPasswordStdin = false;
@@ -238,6 +248,9 @@ Scope {
 
     function disconnectDevice(device) {
         if (!device || device.length === 0) {
+            return;
+        }
+        if (root.busy || actionProcess.running) {
             return;
         }
 

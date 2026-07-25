@@ -362,12 +362,17 @@ grep -Fq 'root.wifiPasswordPromptVisible = true;' "$repo/config/quickshell/netwo
 grep -Fq 'root.networkModel.cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'wifiPasswordInput.forceActiveFocus();' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'enabled: !root.networkModel.wifiPasswordPromptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
-grep -Fq 'grabFocus: false' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'grabFocus: !networkModel.wifiPasswordPromptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'FloatingWindow {' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'title: "dwm network password"' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'screen: root.panelWindow.screen' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'onClosed: root.networkModel.cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'function cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'return profile.active;' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'root.wifiPasswordPromptVisible && root.selectedWifiIndex < 0' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'args.push("--password-stdin");' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'stdinEnabled: true' "$repo/config/quickshell/network/NetworkModel.qml"
+test "$(grep -Fc 'if (root.busy || actionProcess.running) {' "$repo/config/quickshell/network/NetworkModel.qml")" -eq 3
 if grep -Fq 'args.push(root.wifiPassword)' "$repo/config/quickshell/network/NetworkModel.qml"; then
 	exit 1
 fi
