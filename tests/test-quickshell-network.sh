@@ -40,9 +40,9 @@ case "$*" in
 "device status")
 	case "${DWM_TEST_NMCLI_MODE:-wired}" in
 	wired)
+		printf 'lo:loopback:connected (externally):lo\n'
 		printf 'enp6s0:ethernet:connected:Wired connection 1\n'
 		printf 'wlan0:wifi:disconnected:--\n'
-		printf 'lo:loopback:connected (externally):lo\n'
 		;;
 	offline)
 		printf 'enp6s0:ethernet:disconnected:--\n'
