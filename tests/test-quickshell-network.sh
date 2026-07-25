@@ -42,6 +42,7 @@ case "$*" in
 	wired)
 		printf 'enp6s0:ethernet:connected:Wired connection 1\n'
 		printf 'wlan0:wifi:disconnected:--\n'
+		printf 'lo:loopback:connected (externally):lo\n'
 		;;
 	offline)
 		printf 'enp6s0:ethernet:disconnected:--\n'
@@ -51,11 +52,14 @@ case "$*" in
 	;;
 "connection show --active")
 	printf 'Wired connection 1:uuid-wired:802-3-ethernet:enp6s0\n'
+	printf 'Loopback profile:uuid-loopback:loopback:lo\n'
 	;;
 "connection show")
 	printf 'Wired connection 1:uuid-wired:802-3-ethernet\n'
 	printf 'Home WiFi:uuid-wifi:802-11-wireless\n'
 	printf 'Work VPN:uuid-vpn:vpn\n'
+	printf 'lo:uuid-lo-name:802-3-ethernet\n'
+	printf 'Loopback profile:uuid-loopback:loopback\n'
 	;;
 "device wifi list --rescan no")
 	printf '*:AA\\:BB\\:CC\\:DD\\:EE\\:01:Cafe\\:WiFi:83:WPA2:6:wlan0\n'
@@ -102,11 +106,18 @@ grep -Fqx "NET offline" "$work/offline.out"
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" devices >"$work/devices.out"
 grep -Fqx "enp6s0	ethernet	connected	Wired connection 1" "$work/devices.out"
+if grep -Fq "loopback" "$work/devices.out"; then
+	exit 1
+fi
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" connections >"$work/connections.out"
 grep -Fqx "Wired connection 1	uuid-wired	802-3-ethernet	yes	enp6s0" "$work/connections.out"
 grep -Fqx "Home WiFi	uuid-wifi	802-11-wireless	no	" "$work/connections.out"
 grep -Fqx "Work VPN	uuid-vpn	vpn	no	" "$work/connections.out"
+grep -Fqx "lo	uuid-lo-name	802-3-ethernet	no	" "$work/connections.out"
+if grep -Fq "loopback" "$work/connections.out"; then
+	exit 1
+fi
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" wifi-scan >"$work/wifi-scan.out"
 grep -Fqx "*	AA:BB:CC:DD:EE:01	Cafe:WiFi	83	WPA2	6	wlan0" "$work/wifi-scan.out"

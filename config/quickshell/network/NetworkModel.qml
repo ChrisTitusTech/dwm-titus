@@ -18,7 +18,7 @@ Scope {
     property var wifiNetworks: []
 
     readonly property var activeConnections: root.connections.filter(function(profile) {
-        return profile.active;
+        return profile.active && root.isSupportedProfile(profile.type);
     })
     readonly property var savedProfiles: root.connections.filter(function(profile) {
         return !profile.active && root.isSupportedProfile(profile.type);
@@ -167,6 +167,10 @@ Scope {
 
     function selectWifi(index) {
         if (index < 0 || index >= root.wifiNetworks.length) {
+            return;
+        }
+
+        if (root.selectedWifiIndex === index) {
             return;
         }
 

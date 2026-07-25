@@ -46,7 +46,7 @@ status() {
 
 	nmcli_tab -f DEVICE,TYPE,STATE device status 2>/dev/null |
 		awk -F '\t' '
-			$1 != "lo" && $3 == "connected" {
+			$2 != "loopback" && $3 == "connected" {
 				print "NET " $1
 				found = 1
 				exit
@@ -61,7 +61,8 @@ status() {
 
 devices() {
 	need_nmcli
-	nmcli_tab -f DEVICE,TYPE,STATE,CONNECTION device status
+	nmcli_tab -f DEVICE,TYPE,STATE,CONNECTION device status |
+		awk -F '\t' '$2 != "loopback"'
 }
 
 connections() {
@@ -78,7 +79,7 @@ connections() {
 				device[$2] = $4
 				next
 			}
-			{
+			$3 != "loopback" {
 				print $1, $2, $3, (active[$2] ? "yes" : "no"), device[$2]
 			}
 		' "$active" -
