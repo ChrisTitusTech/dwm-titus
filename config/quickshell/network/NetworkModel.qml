@@ -8,6 +8,7 @@ Scope {
     property bool visible: false
     property bool busy: false
     property bool editorAvailable: false
+    property bool wifiPasswordPromptVisible: false
     property int selectedIndex: 0
     property int selectedWifiIndex: -1
     property string statusText: "NET offline"
@@ -37,6 +38,7 @@ Scope {
         root.visible = false;
         root.selectedIndex = 0;
         root.selectedWifiIndex = -1;
+        root.wifiPasswordPromptVisible = false;
         root.message = "";
         root.wifiPassword = "";
     }
@@ -175,6 +177,14 @@ Scope {
         }
 
         root.selectedWifiIndex = index;
+        root.wifiPasswordPromptVisible = false;
+        root.wifiPassword = "";
+        root.message = "";
+    }
+
+    function cancelWifiPasswordPrompt() {
+        root.wifiPasswordPromptVisible = false;
+        root.selectedWifiIndex = -1;
         root.wifiPassword = "";
         root.message = "";
     }
@@ -191,7 +201,8 @@ Scope {
                     break;
                 }
             }
-            root.message = "Enter the Wi-Fi password for " + network.ssid;
+            root.wifiPasswordPromptVisible = true;
+            root.message = "";
             return;
         }
 
@@ -201,6 +212,7 @@ Scope {
         }
 
         root.busy = true;
+        root.wifiPasswordPromptVisible = false;
         root.message = "Connecting " + network.ssid;
         actionProcess.command = Commands.networkHelperCommand("wifi-connect", args);
         actionProcess.running = true;

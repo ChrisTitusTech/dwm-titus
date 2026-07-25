@@ -357,6 +357,14 @@ grep -Fq 'grabFocus: true' "$repo/config/quickshell/core/ClickAwayPopup.qml"
 grep -Fq 'function applyThemes(themeText)' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'root.text = value("normfgcolor", root.text)' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'text: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
+grep -Fq 'property bool wifiPasswordPromptVisible: false' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'root.wifiPasswordPromptVisible = true;' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'root.networkModel.cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'wifiPasswordInput.forceActiveFocus();' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'enabled: !root.networkModel.wifiPasswordPromptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
+if grep -Fq 'Layout.preferredHeight: root.networkModel.selectedWifiNetwork()' "$repo/config/quickshell/network/NetworkWindow.qml"; then
+	exit 1
+fi
 grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/config/quickshell/power/PowerMenuWindow.qml"
 grep -Fq '? Theme.controlCenterX' "$repo/config/quickshell/power/PowerMenuWindow.qml"
