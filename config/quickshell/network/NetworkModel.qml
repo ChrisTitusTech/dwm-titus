@@ -217,6 +217,7 @@ Scope {
         const args = [network.device, network.bssid, network.ssid];
         if (network.secured) {
             args.push("--password-stdin");
+            args.push(network.security);
         }
 
         root.busy = true;

@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-network status|devices|connections|wifi-scan [--rescan yes|no] [ifname]|wifi-connect <ifname> <bssid> <ssid> [--password-stdin]|connect <uuid>|disconnect <device>|monitor|editor" >&2
+	printf '%s\n' "usage: dwm-quickshell-network status|devices|connections|wifi-scan [--rescan yes|no] [ifname]|wifi-connect <ifname> <bssid> <ssid> [--password-stdin <security>]|connect <uuid>|disconnect <device>|monitor|editor" >&2
 	exit 2
 }
 
@@ -122,7 +122,7 @@ wifi_scan() {
 
 wifi_connect() {
 	need_nmcli
-	if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+	if [ "$#" -ne 3 ] && [ "$#" -ne 5 ]; then
 		usage
 	fi
 
@@ -134,40 +134,71 @@ wifi_connect() {
 		usage
 	fi
 
-	if [ "$#" -eq 4 ]; then
+	if [ "$#" -eq 5 ]; then
 		[ "$4" = "--password-stdin" ] || usage
+		security=$5
+		key_mgmt=wpa-psk
+		secret_property=802-11-wireless-security.psk
+		wep_key_type=
+		case "$security" in
+		*WEP*)
+			key_mgmt=none
+			secret_property=802-11-wireless-security.wep-key0
+			;;
+		esac
 
 		umask 077
 		password_file=$(mktemp "${TMPDIR:-/tmp}/dwm-network-password.XXXXXX")
+		connection_uuid=
 		trap 'rm -f "$password_file"' EXIT
-		trap 'rm -f "$password_file"; exit 1' HUP INT TERM
+		trap 'rm -f "$password_file"; if [ -n "$connection_uuid" ]; then nmcli connection delete uuid "$connection_uuid" >/dev/null 2>&1 || :; fi; exit 1' HUP INT TERM
 
 		if ! IFS= read -r password || [ -z "$password" ]; then
 			printf '%s\n' "Wi-Fi password required on stdin" >&2
 			exit 2
 		fi
-		printf '802-11-wireless-security.psk:%s\n' "$password" >"$password_file"
+		if [ "$key_mgmt" = "none" ]; then
+			wep_key_type=passphrase
+			case ${#password} in
+			5 | 13)
+				wep_key_type=key
+				;;
+			10 | 26)
+				case "$password" in
+				*[!0123456789abcdefABCDEF]*) ;;
+				*) wep_key_type=key ;;
+				esac
+				;;
+			esac
+		fi
+		printf '%s:%s\n' "$secret_property" "$password" >"$password_file"
 		unset password
 
-		connection_uuid=
 		IFS= read -r connection_uuid </proc/sys/kernel/random/uuid
 		if [ -z "$connection_uuid" ]; then
 			printf '%s\n' "could not generate a connection UUID" >&2
 			exit 1
 		fi
 
-		nmcli connection add type wifi ifname "$ifname" con-name "$ssid" ssid "$ssid" \
-			802-11-wireless.bssid "$bssid" wifi-sec.key-mgmt wpa-psk \
-			connection.uuid "$connection_uuid" >/dev/null
+		set -- connection add type wifi ifname "$ifname" con-name "$ssid" ssid "$ssid" \
+			802-11-wireless.bssid "$bssid" wifi-sec.key-mgmt "$key_mgmt"
+		if [ -n "$wep_key_type" ]; then
+			set -- "$@" wifi-sec.wep-key-type "$wep_key_type"
+		fi
+		set -- "$@" connection.uuid "$connection_uuid"
+		nmcli "$@" >/dev/null
 
 		if nmcli connection up uuid "$connection_uuid" ifname "$ifname" ap "$bssid" \
 			passwd-file "$password_file"; then
+			trap - HUP INT TERM
+			connection_uuid=
 			return 0
 		else
 			status=$?
 		fi
 
 		nmcli connection delete uuid "$connection_uuid" >/dev/null 2>&1 || :
+		connection_uuid=
 		return "$status"
 	else
 		nmcli device wifi connect "$ssid" ifname "$ifname" bssid "$bssid"

@@ -371,6 +371,7 @@ grep -Fq 'function cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/
 grep -Fq 'return profile.active;' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'root.wifiPasswordPromptVisible && root.selectedWifiIndex < 0' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'args.push("--password-stdin");' "$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'args.push(network.security);' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'stdinEnabled: true' "$repo/config/quickshell/network/NetworkModel.qml"
 test "$(grep -Fc 'if (root.busy || actionProcess.running) {' "$repo/config/quickshell/network/NetworkModel.qml")" -eq 3
 if grep -Fq 'args.push(root.wifiPassword)' "$repo/config/quickshell/network/NetworkModel.qml"; then

@@ -65,6 +65,7 @@ case "$*" in
 	printf '*:AA\\:BB\\:CC\\:DD\\:EE\\:01:Cafe\\:WiFi:83:WPA2:6:wlan0\n'
 	printf ':AA\\:BB\\:CC\\:DD\\:EE\\:02:Guest WiFi:61:--:11:wlan0\n'
 	printf ':AA\\:BB\\:CC\\:DD\\:EE\\:03:Cafe\\:WiFi:50:WPA3:149:wlan0\n'
+	printf ':AA\\:BB\\:CC\\:DD\\:EE\\:06:Legacy WiFi:42:WEP:3:wlan0\n'
 	;;
 "device wifi list --rescan yes")
 	printf ':AA\\:BB\\:CC\\:DD\\:EE\\:04:New WiFi:74:WPA2:1:wlan0\n'
@@ -82,6 +83,13 @@ case "$*" in
 	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
 	printf 'profile-add %s\n' "$connection_uuid" >>"$DWM_TEST_NMCLI_LOG"
 	;;
+"connection add type wifi ifname wlan0 con-name Legacy WiFi ssid Legacy WiFi 802-11-wireless.bssid AA:BB:CC:DD:EE:06 wifi-sec.key-mgmt none wifi-sec.wep-key-type key connection.uuid "*)
+	for argument do
+		connection_uuid=$argument
+	done
+	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
+	printf 'profile-add %s\n' "$connection_uuid" >>"$DWM_TEST_NMCLI_LOG"
+	;;
 "connection up uuid "*" ifname wlan0 ap AA:BB:CC:DD:EE:01 passwd-file "*)
 	for argument do
 		password_file=$argument
@@ -90,10 +98,26 @@ case "$*" in
 	[ "$(sed -n 's/^802-11-wireless-security\.psk://p' "$password_file")" = "correct horse battery staple" ]
 	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
 	printf 'password-file %s\n' "$password_file" >>"$DWM_TEST_NMCLI_LOG"
-	if [ "${DWM_TEST_NMCLI_MODE:-}" = "wifi-fail" ]; then
+	case "${DWM_TEST_NMCLI_MODE:-}" in
+	wifi-fail)
 		exit 4
-	fi
+		;;
+	wifi-signal)
+		kill -TERM "$PPID"
+		exit 143
+		;;
+	esac
 	printf 'wifi-secured\n' >>"$DWM_TEST_NMCLI_LOG"
+	;;
+"connection up uuid "*" ifname wlan0 ap AA:BB:CC:DD:EE:06 passwd-file "*)
+	for argument do
+		password_file=$argument
+	done
+	[ "$(stat -c '%a' "$password_file")" = "600" ]
+	[ "$(sed -n 's/^802-11-wireless-security\.wep-key0://p' "$password_file")" = "abcde" ]
+	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
+	printf 'password-file %s\n' "$password_file" >>"$DWM_TEST_NMCLI_LOG"
+	printf 'wifi-wep\n' >>"$DWM_TEST_NMCLI_LOG"
 	;;
 "connection delete uuid "*)
 	printf 'profile-delete %s\n' "$*" >>"$DWM_TEST_NMCLI_LOG"
@@ -143,6 +167,7 @@ PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" wifi-scan >"$work/
 grep -Fqx "*	AA:BB:CC:DD:EE:01	Cafe:WiFi	83	WPA2	6	wlan0" "$work/wifi-scan.out"
 grep -Fqx "	AA:BB:CC:DD:EE:02	Guest WiFi	61	--	11	wlan0" "$work/wifi-scan.out"
 grep -Fqx "	AA:BB:CC:DD:EE:03	Cafe:WiFi	50	WPA3	149	wlan0" "$work/wifi-scan.out"
+grep -Fqx "	AA:BB:CC:DD:EE:06	Legacy WiFi	42	WEP	3	wlan0" "$work/wifi-scan.out"
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" wifi-scan --rescan yes >"$work/wifi-rescan.out"
 grep -Fqx "	AA:BB:CC:DD:EE:04	New WiFi	74	WPA2	1	wlan0" "$work/wifi-rescan.out"
@@ -160,7 +185,7 @@ printf '%s\n' "correct horse battery staple" |
 	DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
 		DWM_TEST_NMCLI_ARGV_LOG="$work/nmcli-argv.log" \
 		PATH="$work/bin:$PATH" \
-		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:01 "Cafe:WiFi" --password-stdin
+		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:01 "Cafe:WiFi" --password-stdin WPA2
 grep -Fqx "wifi-secured" "$work/nmcli.log"
 password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
 [ -n "$password_file" ]
@@ -176,7 +201,7 @@ if printf '%s\n' "correct horse battery staple" |
 		DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
 		DWM_TEST_NMCLI_ARGV_LOG="$work/nmcli-argv.log" \
 		PATH="$work/bin:$PATH" \
-		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:01 "Cafe:WiFi" --password-stdin; then
+		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:01 "Cafe:WiFi" --password-stdin WPA2; then
 	exit 1
 fi
 grep -Fq "profile-delete connection delete uuid " "$work/nmcli.log"
@@ -186,6 +211,36 @@ password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
 if grep -Fq "correct horse battery staple" "$work/nmcli-argv.log"; then
 	exit 1
 fi
+
+: >"$work/nmcli.log"
+: >"$work/nmcli-argv.log"
+printf '%s\n' "abcde" |
+	DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
+		DWM_TEST_NMCLI_ARGV_LOG="$work/nmcli-argv.log" \
+		PATH="$work/bin:$PATH" \
+		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:06 "Legacy WiFi" --password-stdin WEP
+grep -Fqx "wifi-wep" "$work/nmcli.log"
+password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
+[ -n "$password_file" ]
+[ ! -e "$password_file" ]
+if grep -Fq "abcde" "$work/nmcli-argv.log"; then
+	exit 1
+fi
+
+: >"$work/nmcli.log"
+: >"$work/nmcli-argv.log"
+if printf '%s\n' "correct horse battery staple" |
+	DWM_TEST_NMCLI_MODE=wifi-signal \
+		DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
+		DWM_TEST_NMCLI_ARGV_LOG="$work/nmcli-argv.log" \
+		PATH="$work/bin:$PATH" \
+		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:01 "Cafe:WiFi" --password-stdin WPA2; then
+	exit 1
+fi
+grep -Fq "profile-delete connection delete uuid " "$work/nmcli.log"
+password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
+[ -n "$password_file" ]
+[ ! -e "$password_file" ]
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" monitor >"$work/monitor.out"
 grep -Fqx changed "$work/monitor.out"
