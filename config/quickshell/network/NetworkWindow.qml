@@ -15,7 +15,7 @@ ClickAwayPopup {
     readonly property int cardHeight: 680
     readonly property int edgeMargin: Theme.rowSpacing
 
-    visible: networkModel.visible
+    visible: networkModel.visible && !networkModel.wifiPasswordPromptVisible
     grabFocus: !networkModel.wifiPasswordPromptVisible
     targetWindow: panelWindow
     popupWidth: cardWidth
