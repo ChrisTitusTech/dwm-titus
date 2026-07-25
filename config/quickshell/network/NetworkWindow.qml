@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -15,6 +16,7 @@ ClickAwayPopup {
     readonly property int edgeMargin: Theme.rowSpacing
 
     visible: networkModel.visible
+    grabFocus: false
     targetWindow: panelWindow
     popupWidth: cardWidth
     popupHeight: cardHeight
@@ -27,8 +29,6 @@ ClickAwayPopup {
             Qt.callLater(function() {
                 content.forceActiveFocus();
             });
-        } else {
-            root.networkModel.close();
         }
     }
 
@@ -194,15 +194,16 @@ ClickAwayPopup {
             }
         }
 
-        Rectangle {
+        FloatingWindow {
             id: passwordPrompt
 
             property bool revealPassword: false
 
-            anchors.fill: parent
+            title: "dwm network password"
             visible: root.networkModel.wifiPasswordPromptVisible
-            color: Theme.bg
-            z: 10
+            implicitWidth: 440
+            implicitHeight: 210
+            color: Theme.transparent
 
             onVisibleChanged: {
                 if (visible) {
@@ -217,18 +218,20 @@ ClickAwayPopup {
                 }
             }
 
-            MouseArea {
-                anchors.fill: parent
-            }
-
             Rectangle {
-                anchors.centerIn: parent
-                width: Math.min(440, parent.width - Theme.sectionSpacing * 2)
-                height: 210
+                anchors.fill: parent
+                focus: true
                 color: Theme.surface
                 border.color: Theme.accent
                 border.width: 1
                 radius: Theme.radius
+
+                Keys.onPressed: function(event) {
+                    if (event.key === Qt.Key_Escape) {
+                        root.networkModel.cancelWifiPasswordPrompt();
+                        event.accepted = true;
+                    }
+                }
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -287,6 +290,12 @@ ClickAwayPopup {
                                 enabled: !root.networkModel.busy
 
                                 onTextChanged: root.networkModel.wifiPassword = text
+                                Keys.onPressed: function(event) {
+                                    if (event.key === Qt.Key_Escape) {
+                                        root.networkModel.cancelWifiPasswordPrompt();
+                                        event.accepted = true;
+                                    }
+                                }
                                 onAccepted: {
                                     if (text.length > 0) {
                                         root.networkModel.connectSelectedWifi();

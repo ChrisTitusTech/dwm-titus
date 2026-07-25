@@ -75,7 +75,10 @@ case "$*" in
 "device wifi connect Guest WiFi ifname wlan0 bssid AA:BB:CC:DD:EE:02")
 	printf 'wifi-open Guest WiFi\n' >>"$DWM_TEST_NMCLI_LOG"
 	;;
-"device wifi connect Cafe:WiFi password correct horse battery staple ifname wlan0 bssid AA:BB:CC:DD:EE:01")
+"--ask device wifi connect Cafe:WiFi ifname wlan0 bssid AA:BB:CC:DD:EE:01")
+	IFS= read -r password
+	[ "$password" = "correct horse battery staple" ]
+	printf '%s\n' "$*" >"$DWM_TEST_NMCLI_ARGV_LOG"
 	printf 'wifi-secured Cafe:WiFi\n' >>"$DWM_TEST_NMCLI_LOG"
 	;;
 "connection up uuid uuid-wifi")
@@ -136,10 +139,16 @@ DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
 grep -Fqx "wifi-open Guest WiFi" "$work/nmcli.log"
 
 : >"$work/nmcli.log"
-DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
-	PATH="$work/bin:$PATH" \
-	"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:01 "Cafe:WiFi" "correct horse battery staple"
+printf '%s\n' "correct horse battery staple" |
+	DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
+		DWM_TEST_NMCLI_ARGV_LOG="$work/nmcli-argv.log" \
+		PATH="$work/bin:$PATH" \
+		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:01 "Cafe:WiFi" --password-stdin
 grep -Fqx "wifi-secured Cafe:WiFi" "$work/nmcli.log"
+grep -Fqx -- "--ask device wifi connect Cafe:WiFi ifname wlan0 bssid AA:BB:CC:DD:EE:01" "$work/nmcli-argv.log"
+if grep -Fq "correct horse battery staple" "$work/nmcli-argv.log"; then
+	exit 1
+fi
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" monitor >"$work/monitor.out"
 grep -Fqx changed "$work/monitor.out"

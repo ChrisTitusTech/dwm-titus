@@ -8,6 +8,7 @@ Scope {
     property bool visible: false
     property bool busy: false
     property bool editorAvailable: false
+    property bool actionUsesPasswordStdin: false
     property bool wifiPasswordPromptVisible: false
     property int selectedIndex: 0
     property int selectedWifiIndex: -1
@@ -208,10 +209,11 @@ Scope {
 
         const args = [network.device, network.bssid, network.ssid];
         if (network.secured) {
-            args.push(root.wifiPassword);
+            args.push("--password-stdin");
         }
 
         root.busy = true;
+        root.actionUsesPasswordStdin = network.secured;
         root.wifiPasswordPromptVisible = false;
         root.message = "Connecting " + network.ssid;
         actionProcess.command = Commands.networkHelperCommand("wifi-connect", args);
@@ -228,6 +230,7 @@ Scope {
         }
 
         root.busy = true;
+        root.actionUsesPasswordStdin = false;
         root.message = "Connecting " + profile.name;
         actionProcess.command = Commands.networkHelperCommand("connect", [profile.uuid]);
         actionProcess.running = true;
@@ -239,6 +242,7 @@ Scope {
         }
 
         root.busy = true;
+        root.actionUsesPasswordStdin = false;
         root.message = "Disconnecting " + device;
         actionProcess.command = Commands.networkHelperCommand("disconnect", [device]);
         actionProcess.running = true;
@@ -294,10 +298,20 @@ Scope {
 
         command: ["sh", "-c", "exit 0"]
         running: false
+        stdinEnabled: true
+
+        onStarted: {
+            if (root.actionUsesPasswordStdin) {
+                write(root.wifiPassword + "\n");
+                root.actionUsesPasswordStdin = false;
+                root.wifiPassword = "";
+            }
+        }
 
         onRunningChanged: {
             if (!running) {
                 root.busy = false;
+                root.actionUsesPasswordStdin = false;
                 root.wifiPassword = "";
                 root.message = "";
                 root.refresh(false);
