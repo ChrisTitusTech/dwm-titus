@@ -437,6 +437,7 @@ if grep -Fq 'color: Theme.transparent' "$repo/config/quickshell/panel/DwmPanel.q
 fi
 grep -Fq 'root.controlsModel.volumeUp();' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'root.controlsModel.volumeDown();' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'root.controlsModel.volumePercent.toString() + "%"' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'trimmed !== "AC"' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'root.powerMenuModel.open("controlcenter")' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'powerMenuModel.anchorSource === "controlcenter"' "$repo/config/quickshell/power/PowerMenuWindow.qml"
