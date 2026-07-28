@@ -166,10 +166,10 @@ detect_terminal() {
 }
 
 dwm_legacy_seeded_terminal_hotkey() {
-	local hotkeys_file=$1
+	local hotkeys_file="$1"
 	local terminal_value
 
-	[[ -f $hotkeys_file ]] || return 1
+	[[ -f "$hotkeys_file" ]] || return 1
 	terminal_value="$(
 		sed -n -E \
 			's/^[[:space:]]*terminal[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' \

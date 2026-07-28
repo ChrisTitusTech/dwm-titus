@@ -76,6 +76,37 @@ binary_matches_pin() {
 	[ "$actual_sha256" = "$asset_sha256" ]
 }
 
+wrapper_selected_herdr() {
+	if [ -n "${DWM_HERDR_COMMAND:-}" ]; then
+		if command -v "$DWM_HERDR_COMMAND" >/dev/null 2>&1; then
+			command -v "$DWM_HERDR_COMMAND"
+			return
+		fi
+		if [ -x "$DWM_HERDR_COMMAND" ]; then
+			printf '%s\n' "$DWM_HERDR_COMMAND"
+			return
+		fi
+		return 1
+	fi
+
+	if command -v herdr >/dev/null 2>&1; then
+		command -v herdr
+		return
+	fi
+
+	if [ -n "${HOME:-}" ] && [ -x "$HOME/.local/bin/herdr" ]; then
+		printf '%s\n' "$HOME/.local/bin/herdr"
+		return
+	fi
+
+	return 1
+}
+
+wrapper_selects_pinned_herdr() {
+	selected=$(wrapper_selected_herdr 2>/dev/null || true)
+	[ -n "$selected" ] && binary_matches_pin "$selected"
+}
+
 install_detected_integrations() {
 	integration_herdr=$1
 	integration_failed=false
@@ -107,7 +138,7 @@ if [ "$dry_run" = true ]; then
 	exit 0
 fi
 
-existing=$(command -v herdr 2>/dev/null || true)
+existing=$(wrapper_selected_herdr 2>/dev/null || true)
 if [ -z "$existing" ] && [ -x "$target" ]; then
 	existing=$target
 fi
@@ -124,11 +155,17 @@ if [ -n "$existing" ] && [ "$force" != true ]; then
 			"$target" >&2
 		exit 1
 	fi
-	if ! install_detected_integrations "$existing"; then
+	if ! wrapper_selects_pinned_herdr; then
+		printf 'install-herdr: Herdr is verified at %s, but the terminal wrapper would select an unverified executable: %s\n' \
+			"$existing" "${selected:-none}" >&2
+		printf 'Adjust PATH, HERDR_INSTALL_DIR, or DWM_HERDR_COMMAND so the verified executable is selected.\n' >&2
+		exit 1
+	fi
+	if ! install_detected_integrations "$selected"; then
 		printf 'install-herdr: Herdr is verified, but one or more detected agent integrations failed.\n' >&2
 		exit 2
 	fi
-	printf 'Herdr is already installed and verified: %s\n' "$existing"
+	printf 'Herdr is already installed and verified: %s\n' "$selected"
 	exit 0
 fi
 
@@ -188,14 +225,10 @@ else
 fi
 install -m 0755 "$staged_binary" "$target"
 
-selected=$(command -v herdr 2>/dev/null || true)
-if [ -z "$selected" ] && [ "$target" = "${HOME:-}/.local/bin/herdr" ]; then
-	selected=$target
-fi
-if [ -z "$selected" ] || ! binary_matches_pin "$selected"; then
+if ! wrapper_selects_pinned_herdr; then
 	printf 'install-herdr: installed verified Herdr %s to %s, but the terminal wrapper would select an unverified executable: %s\n' \
 		"$HERDR_VERSION" "$target" "${selected:-none}" >&2
-	printf 'Adjust PATH or HERDR_INSTALL_DIR so the verified executable is selected.\n' >&2
+	printf 'Adjust PATH, HERDR_INSTALL_DIR, or DWM_HERDR_COMMAND so the verified executable is selected.\n' >&2
 	exit 1
 fi
 

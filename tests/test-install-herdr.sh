@@ -177,6 +177,35 @@ grep -Fq "terminal wrapper would select an unverified executable" \
 	"$work/shadowed.err"
 test "$(stat -c '%a' "$work/home/.local/bin")" = "700"
 
+mkdir -p "$work/custom" "$work/custom-home"
+install -m 0755 "$work/herdr-binary" "$work/custom/herdr"
+
+if env \
+	HOME="$work/custom-home" \
+	HERDR_ALLOW_ROOT=1 \
+	HERDR_INSTALL_DIR="$work/custom" \
+	HERDR_ASSET_SHA256="$asset_sha256" \
+	PATH="$work/bin:/usr/bin:/bin" \
+	"$HELPER" >"$work/custom-unselected.out" 2>"$work/custom-unselected.err"; then
+	echo "install-herdr accepted a custom install the wrapper could not select" >&2
+	exit 1
+fi
+
+grep -Fq "terminal wrapper would select an unverified executable: none" \
+	"$work/custom-unselected.err"
+
+env \
+	HOME="$work/custom-home" \
+	HERDR_ALLOW_ROOT=1 \
+	HERDR_INSTALL_DIR="$work/custom" \
+	HERDR_ASSET_SHA256="$asset_sha256" \
+	DWM_HERDR_COMMAND="$work/custom/herdr" \
+	PATH="$work/bin:/usr/bin:/bin" \
+	"$HELPER" >"$work/custom-selected.out"
+
+grep -Fq "Herdr is already installed and verified: $work/custom/herdr" \
+	"$work/custom-selected.out"
+
 if env \
 	HOME="$work/home" \
 	HERDR_ALLOW_ROOT=1 \
@@ -195,20 +224,45 @@ grep -Fq "binary checksum verification failed" "$work/tampered.err"
 test "$("$work/home/.local/bin/herdr" --version)" = "herdr 0.7.5"
 test "$(stat -c '%a' "$work/home/.local/bin")" = "700"
 
-mkdir -p "$work/arm-bin"
-cat >"$work/arm-bin/uname" <<'SCRIPT'
+mkdir -p "$work/plan-bin"
+cat >"$work/plan-bin/uname" <<'SCRIPT'
 #!/bin/sh
-printf 'armv7l\n'
+printf '%s\n' "$DWM_TEST_UNAME"
 SCRIPT
-chmod +x "$work/arm-bin/uname"
+chmod +x "$work/plan-bin/uname"
 
 env \
 	HOME="$work/home" \
-	PATH="$work/arm-bin:$PATH" \
+	DWM_TEST_UNAME=armv7l \
+	PATH="$work/plan-bin:$PATH" \
 	"$ROOT_DIR/install.sh" --dry-run --non-interactive --profile recommended \
 	>"$work/arm-plan.out"
 
 grep -Fq "Herdr workspace: skipped (unsupported architecture: armv7l)" \
 	"$work/arm-plan.out"
+
+env \
+	HOME="$work/home" \
+	DWM_TEST_UNAME=x86_64 \
+	PATH="$work/plan-bin:$PATH" \
+	"$ROOT_DIR/install.sh" --dry-run --non-interactive --profile recommended \
+	>"$work/recommended-plan.out"
+grep -Fq "Herdr workspace: verified user install" "$work/recommended-plan.out"
+
+env \
+	HOME="$work/home" \
+	DWM_TEST_UNAME=x86_64 \
+	PATH="$work/plan-bin:$PATH" \
+	"$ROOT_DIR/install.sh" --dry-run --non-interactive --profile core \
+	--install-herdr >"$work/forced-plan.out"
+grep -Fq "Herdr workspace: verified user install" "$work/forced-plan.out"
+
+env \
+	HOME="$work/home" \
+	DWM_TEST_UNAME=x86_64 \
+	PATH="$work/plan-bin:$PATH" \
+	"$ROOT_DIR/install.sh" --dry-run --non-interactive --profile recommended \
+	--skip-herdr >"$work/skipped-plan.out"
+grep -Fq "Herdr workspace: skipped" "$work/skipped-plan.out"
 
 printf 'install-herdr tests: PASS\n'
