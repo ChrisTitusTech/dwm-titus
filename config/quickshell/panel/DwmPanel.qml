@@ -267,16 +267,28 @@ PanelWindow {
 
                     PanelPill {
                         visible: root.controlCenterModel.showVolumeWidget
-                        Layout.preferredWidth: Theme.compactWidgetSize
+                        Layout.preferredWidth: volumeRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
                         Layout.preferredHeight: Theme.compactWidgetSize
                         active: root.controlsModel.visible
                         hovered: controlsMouse.containsMouse
 
-                        IconText {
+                        RowLayout {
+                            id: volumeRow
                             anchors.centerIn: parent
-                            text: root.controlsModel.volumeMuted ? "󰝟" : "󰕾"
-                            color: Theme.textStrong
-                            font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.5)
+                            spacing: Theme.compactSpacing
+
+                            IconText {
+                                text: root.controlsModel.volumeMuted ? "󰝟" : "󰕾"
+                                color: Theme.textStrong
+                                font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.5)
+                            }
+
+                            UiText {
+                                visible: root.controlsModel.volumeText !== "VOL unavailable"
+                                text: root.controlsModel.volumePercent.toString() + "%"
+                                color: Theme.textStrong
+                                font.pixelSize: Theme.panelFontSize
+                            }
                         }
 
                         MouseArea {
