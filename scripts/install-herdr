@@ -52,15 +52,6 @@ fi
 
 install_dir=${HERDR_INSTALL_DIR:-"$HOME/.local/bin"}
 target="$install_dir/herdr"
-existing=$(command -v herdr 2>/dev/null || true)
-if [ -z "$existing" ] && [ -x "$target" ]; then
-	existing=$target
-fi
-
-if [ -n "$existing" ] && [ "$force" != true ]; then
-	printf 'Herdr is already installed: %s\n' "$existing"
-	exit 0
-fi
 
 case $(uname -m) in
 x86_64 | amd64)
@@ -78,6 +69,60 @@ esac
 
 installer_sha256=${HERDR_INSTALLER_SHA256:-$HERDR_INSTALLER_SHA256_DEFAULT}
 asset_sha256=${HERDR_ASSET_SHA256:-$asset_sha256}
+
+binary_matches_pin() {
+	actual_sha256=$(sha256sum "$1" 2>/dev/null) || return 1
+	actual_sha256=${actual_sha256%% *}
+	[ "$actual_sha256" = "$asset_sha256" ]
+}
+
+install_detected_integrations() {
+	integration_herdr=$1
+	integration_failed=false
+
+	if command -v codex >/dev/null 2>&1; then
+		printf 'Installing the Herdr integration for Codex...\n'
+		if ! "$integration_herdr" integration install codex; then
+			printf 'install-herdr: failed to install the Herdr integration for Codex.\n' >&2
+			integration_failed=true
+		fi
+	fi
+
+	if command -v claude >/dev/null 2>&1; then
+		printf 'Installing the Herdr integration for Claude Code...\n'
+		if ! "$integration_herdr" integration install claude; then
+			printf 'install-herdr: failed to install the Herdr integration for Claude Code.\n' >&2
+			integration_failed=true
+		fi
+	fi
+
+	[ "$integration_failed" = false ]
+}
+
+existing=$(command -v herdr 2>/dev/null || true)
+if [ -z "$existing" ] && [ -x "$target" ]; then
+	existing=$target
+fi
+
+if [ -n "$existing" ] && [ "$force" != true ]; then
+	if ! command -v sha256sum >/dev/null 2>&1; then
+		printf 'install-herdr: required command not found: sha256sum\n' >&2
+		exit 1
+	fi
+	if ! binary_matches_pin "$existing"; then
+		printf 'install-herdr: the selected Herdr executable is not the verified %s release: %s\n' \
+			"$HERDR_VERSION" "$existing" >&2
+		printf 'Remove it from PATH or rerun with --force after ensuring %s will be selected.\n' \
+			"$target" >&2
+		exit 1
+	fi
+	if ! install_detected_integrations "$existing"; then
+		printf 'install-herdr: Herdr is verified, but one or more detected agent integrations failed.\n' >&2
+		exit 2
+	fi
+	printf 'Herdr is already installed and verified: %s\n' "$existing"
+	exit 0
+fi
 
 if [ "$dry_run" = true ]; then
 	printf 'Herdr version: %s\n' "$HERDR_VERSION"
@@ -132,6 +177,31 @@ if ! printf '%s  %s\n' "$asset_sha256" "$staged_binary" |
 	exit 1
 fi
 
-install -d -m 0755 "$install_dir"
+if [ -e "$install_dir" ]; then
+	if [ ! -d "$install_dir" ]; then
+		printf 'install-herdr: install path exists but is not a directory: %s\n' \
+			"$install_dir" >&2
+		exit 1
+	fi
+else
+	install -d -m 0755 "$install_dir"
+fi
 install -m 0755 "$staged_binary" "$target"
+
+selected=$(command -v herdr 2>/dev/null || true)
+if [ -z "$selected" ] && [ "$target" = "${HOME:-}/.local/bin/herdr" ]; then
+	selected=$target
+fi
+if [ -z "$selected" ] || ! binary_matches_pin "$selected"; then
+	printf 'install-herdr: installed verified Herdr %s to %s, but the terminal wrapper would select an unverified executable: %s\n' \
+		"$HERDR_VERSION" "$target" "${selected:-none}" >&2
+	printf 'Adjust PATH or HERDR_INSTALL_DIR so the verified executable is selected.\n' >&2
+	exit 1
+fi
+
+if ! install_detected_integrations "$selected"; then
+	printf 'install-herdr: Herdr was installed and verified, but one or more detected agent integrations failed.\n' >&2
+	exit 2
+fi
+
 printf 'Installed verified Herdr %s to %s\n' "$HERDR_VERSION" "$target"

@@ -755,7 +755,12 @@ if install_herdr_profile; then
 	if "$REPO_DIR/scripts/install-herdr"; then
 		ok "Herdr is ready; plain dwm-terminal launches will open it in $terminal."
 	else
-		warn "Herdr installation failed; plain dwm-terminal launches will use $terminal directly."
+		herdr_status=$?
+		if [[ $herdr_status -eq 2 ]]; then
+			warn "Herdr is ready, but one or more detected agent integrations could not be installed."
+		else
+			warn "Herdr installation failed; plain dwm-terminal launches will use $terminal directly."
+		fi
 	fi
 else
 	warn "Skipping Herdr installation for the $INSTALL_PROFILE profile."

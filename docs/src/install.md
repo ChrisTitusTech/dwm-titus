@@ -75,6 +75,10 @@ workspace inside Alacritty. The repository downloads the official
 repository-pinned SHA-256 checksums for both that installer and its resulting
 Herdr binary before copying it into `~/.local/bin`. A checksum mismatch or
 network failure leaves Alacritty usable and reports that Herdr was skipped.
+When the `codex` or `claude` command is already available, the helper also runs
+Herdr's matching `integration install` command so native Codex and Claude Code
+sessions can be restored. Integration failures are reported separately from
+binary installation failures.
 
 When matching vendor XDG entries exist for Picom, the polkit agent, or Light
 Locker, the installer copies each entry to the user autostart directory and

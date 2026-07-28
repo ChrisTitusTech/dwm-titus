@@ -7,7 +7,8 @@ HELPER="$ROOT_DIR/scripts/install-herdr"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-mkdir -p "$work/bin" "$work/home"
+mkdir -p "$work/bin" "$work/agent-bin" "$work/home"
+install -d -m 0700 "$work/home/.local/bin"
 
 cat >"$work/remote-installer.sh" <<'SCRIPT'
 #!/bin/sh
@@ -18,9 +19,24 @@ SCRIPT
 
 cat >"$work/herdr-binary" <<'SCRIPT'
 #!/bin/sh
+if [ "${1:-}" = "integration" ] && [ "${2:-}" = "install" ]; then
+	if [ "${HERDR_TEST_FAIL_INTEGRATION:-}" = "${3:-}" ]; then
+		exit 1
+	fi
+	printf '%s\n' "$3" >>"$HERDR_TEST_INTEGRATION_LOG"
+	exit 0
+fi
 printf 'herdr 0.7.5\n'
 SCRIPT
 chmod +x "$work/herdr-binary"
+
+for agent in codex claude; do
+	cat >"$work/agent-bin/$agent" <<'SCRIPT'
+#!/bin/sh
+exit 0
+SCRIPT
+	chmod +x "$work/agent-bin/$agent"
+done
 
 cat >"$work/bin/curl" <<'SCRIPT'
 #!/bin/sh
@@ -53,21 +69,85 @@ env \
 	HERDR_ASSET_SHA256="$asset_sha256" \
 	HERDR_TEST_BINARY="$work/herdr-binary" \
 	HERDR_TEST_INSTALLER="$work/remote-installer.sh" \
-	PATH="$work/bin:/usr/bin:/bin" \
+	HERDR_TEST_INTEGRATION_LOG="$work/integrations.log" \
+	PATH="$work/agent-bin:$work/bin:/usr/bin:/bin" \
 	"$HELPER" >"$work/install.out"
 
 grep -Fq "Installed verified Herdr 0.7.5" "$work/install.out"
 test -x "$work/home/.local/bin/herdr"
 test "$("$work/home/.local/bin/herdr" --version)" = "herdr 0.7.5"
+test "$(stat -c '%a' "$work/home/.local/bin")" = "700"
+printf 'codex\nclaude\n' >"$work/expected-integrations"
+cmp "$work/expected-integrations" "$work/integrations.log"
 
+: >"$work/integrations.log"
 env \
 	HOME="$work/home" \
 	HERDR_ALLOW_ROOT=1 \
 	HERDR_INSTALL_DIR="$work/home/.local/bin" \
-	PATH="$work/home/.local/bin:$work/bin:/usr/bin:/bin" \
+	HERDR_ASSET_SHA256="$asset_sha256" \
+	HERDR_TEST_INTEGRATION_LOG="$work/integrations.log" \
+	PATH="$work/home/.local/bin:$work/agent-bin:$work/bin:/usr/bin:/bin" \
 	"$HELPER" >"$work/reinstall.out"
 
-grep -Fq "Herdr is already installed" "$work/reinstall.out"
+grep -Fq "Herdr is already installed and verified" "$work/reinstall.out"
+cmp "$work/expected-integrations" "$work/integrations.log"
+
+if env \
+	HOME="$work/home" \
+	HERDR_ALLOW_ROOT=1 \
+	HERDR_INSTALL_DIR="$work/home/.local/bin" \
+	HERDR_ASSET_SHA256="$asset_sha256" \
+	HERDR_TEST_FAIL_INTEGRATION=claude \
+	HERDR_TEST_INTEGRATION_LOG="$work/integrations.log" \
+	PATH="$work/home/.local/bin:$work/agent-bin:$work/bin:/usr/bin:/bin" \
+	"$HELPER" >"$work/integration-failure.out" 2>"$work/integration-failure.err"; then
+	echo "install-herdr ignored a detected agent integration failure" >&2
+	exit 1
+fi
+
+grep -Fq "integration for Claude Code" "$work/integration-failure.err"
+grep -Fq "one or more detected agent integrations failed" \
+	"$work/integration-failure.err"
+
+mkdir -p "$work/early"
+cat >"$work/early/herdr" <<'SCRIPT'
+#!/bin/sh
+printf 'herdr 0.6.0\n'
+SCRIPT
+chmod +x "$work/early/herdr"
+
+if env \
+	HOME="$work/home" \
+	HERDR_ALLOW_ROOT=1 \
+	HERDR_INSTALL_DIR="$work/home/.local/bin" \
+	HERDR_ASSET_SHA256="$asset_sha256" \
+	PATH="$work/early:$work/home/.local/bin:$work/bin:/usr/bin:/bin" \
+	"$HELPER" >"$work/unverified.out" 2>"$work/unverified.err"; then
+	echo "install-herdr accepted an unverified executable from PATH" >&2
+	exit 1
+fi
+
+grep -Fq "selected Herdr executable is not the verified 0.7.5 release" \
+	"$work/unverified.err"
+
+if env \
+	HOME="$work/home" \
+	HERDR_ALLOW_ROOT=1 \
+	HERDR_INSTALL_DIR="$work/home/.local/bin" \
+	HERDR_INSTALLER_SHA256="$installer_sha256" \
+	HERDR_ASSET_SHA256="$asset_sha256" \
+	HERDR_TEST_BINARY="$work/herdr-binary" \
+	HERDR_TEST_INSTALLER="$work/remote-installer.sh" \
+	PATH="$work/early:$work/home/.local/bin:$work/bin:/usr/bin:/bin" \
+	"$HELPER" --force >"$work/shadowed.out" 2>"$work/shadowed.err"; then
+	echo "install-herdr reported success while PATH selected another executable" >&2
+	exit 1
+fi
+
+grep -Fq "terminal wrapper would select an unverified executable" \
+	"$work/shadowed.err"
+test "$(stat -c '%a' "$work/home/.local/bin")" = "700"
 
 if env \
 	HOME="$work/home" \
@@ -85,5 +165,6 @@ fi
 
 grep -Fq "binary checksum verification failed" "$work/tampered.err"
 test "$("$work/home/.local/bin/herdr" --version)" = "herdr 0.7.5"
+test "$(stat -c '%a' "$work/home/.local/bin")" = "700"
 
 printf 'install-herdr tests: PASS\n'

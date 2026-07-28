@@ -9,7 +9,8 @@ versions from `config.mk`.
 ### Added
 
 - A checksum-verified Herdr installer and default Herdr-on-Alacritty terminal
-  workspace for recommended, full, and dedicated Fedora image installs.
+  workspace for recommended, full, and dedicated Fedora image installs, with
+  automatic integration setup for detected Codex and Claude Code CLIs.
 - A unified, read-only Quickshell Settings foundation with Control Center and
   IPC entry points, searchable keyboard/mouse navigation, and explicit
   provider availability and unsupported-state reporting.
