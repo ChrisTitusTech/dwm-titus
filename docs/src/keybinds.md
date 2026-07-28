@@ -14,7 +14,7 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | Keys | Action |
 |------|--------|
 | `Super` + `R` | App launcher (Quickshell) |
-| `Super` + `X` | Herdr terminal workspace |
+| `Super` + `X` | Terminal workspace (Herdr when available) |
 | `Super` + `E` | File manager |
 | `Super` + `B` | Browser |
 | `Super` + `/` | Keybind viewer |

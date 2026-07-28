@@ -87,7 +87,7 @@ configuration, and installs the managed desktop components.
 | Action | Keybind |
 | --- | --- |
 | Open the application launcher | <kbd>Super</kbd> + <kbd>R</kbd> |
-| Open Herdr in Alacritty | <kbd>Super</kbd> + <kbd>X</kbd> |
+| Open terminal workspace (Herdr when available) | <kbd>Super</kbd> + <kbd>X</kbd> |
 | Open Control Center | <kbd>Super</kbd> + <kbd>F1</kbd> |
 | Show the interactive keybind viewer | <kbd>Super</kbd> + <kbd>/</kbd> |
 | Close the focused window | <kbd>Super</kbd> + <kbd>Q</kbd> |
