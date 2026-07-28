@@ -8,6 +8,8 @@ versions from `config.mk`.
 
 ### Added
 
+- A checksum-verified Herdr installer and default Herdr-on-Alacritty terminal
+  workspace for recommended, full, and dedicated Fedora image installs.
 - A unified, read-only Quickshell Settings foundation with Control Center and
   IPC entry points, searchable keyboard/mouse navigation, and explicit
   provider availability and unsupported-state reporting.
@@ -22,6 +24,9 @@ versions from `config.mk`.
 
 ### Changed
 
+- Plain `dwm-terminal` launches now open Herdr when available, while explicit
+  command launches bypass Herdr and retain the existing terminal-emulator
+  contract.
 - The Control Center now uses one clean dropdown card with direct Applications
   and utility entries, in-place secondary pages, and consistent click-away and
   Escape dismissal.

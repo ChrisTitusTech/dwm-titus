@@ -14,6 +14,13 @@ curl -fsSL https://christitus.com/linux | sh
 In the TUI, press `v` to multi-select, then select **dwm**, **bash prompt**,
 and **alacritty**. Press `Enter` to install.
 
+Current dwm-titus installs provide the checksum-verified Herdr helper. Run it
+after the Linutil path:
+
+```bash
+install-herdr
+```
+
 ![linutil-appinstall](images/linutil-applications.png)
 
 ## Manual Install
@@ -28,11 +35,12 @@ names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
 ./install.sh --profile full
 ```
 
-Use `core` for the required build/X11/session packages and one terminal,
-`recommended` for the desktop layer, or `full` for optional extras such as
-file-manager integration, portals, keyring login integration, wallpapers, and
-display-manager setup. On x86_64 Fedora, `full` can also install Steam,
-Gamescope, GameMode, and MangoHud after repository approval.
+Use `core` for the required build/X11/session packages and one terminal
+emulator, `recommended` for the desktop layer plus Herdr on top of Alacritty,
+or `full` for optional extras such as file-manager integration, portals,
+keyring login integration, wallpapers, and display-manager setup. On x86_64
+Fedora, `full` can also install Steam, Gamescope, GameMode, and MangoHud after
+repository approval.
 The installer separately asks before enabling the `christitustech/copr-fedora`
 COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
 gaming subset without affecting other full-profile extras.
@@ -61,6 +69,13 @@ the known legacy `dwm-graphical-session.service` and
 start only after the X11 display environment is available; customized user
 units are disabled from early startup but otherwise preserved.
 
+Recommended and full profiles install Herdr as the default interactive
+workspace inside Alacritty. The repository downloads the official
+`https://herdr.dev/install.sh` into an isolated staging directory and verifies
+repository-pinned SHA-256 checksums for both that installer and its resulting
+Herdr binary before copying it into `~/.local/bin`. A checksum mismatch or
+network failure leaves Alacritty usable and reports that Herdr was skipped.
+
 When matching vendor XDG entries exist for Picom, the polkit agent, or Light
 Locker, the installer copies each entry to the user autostart directory and
 adds only the dwm session exclusion. Original commands and vendor session
@@ -70,11 +85,12 @@ existing user entries are preserved.
 Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
 
 - `core`: required build packages, X11/session runtime, and one supported
-  terminal.
+  terminal emulator. Herdr is skipped unless `--install-herdr` is provided.
 - `recommended`: `core` plus the recommended desktop layer such as Quickshell,
-  Quickshell, Picom, Feh, Dex, fonts, theming, screenshot, audio, Bluetooth
-  control and tray tools, and brightness tools. It also installs portable GTK theme packages where available and
-  installs Nordic system-wide for the default Nord theme.
+  Herdr on top of Alacritty, Picom, Feh, Dex, fonts, theming, screenshot,
+  audio, Bluetooth control and tray tools, and brightness tools. It also
+  installs portable GTK theme packages where available and installs Nordic
+  system-wide for the default Nord theme.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
   browsing, network tray utilities, portals, keyring login integration,
   wallpapers, and display-manager setup. x86_64 Fedora full installs also
@@ -108,6 +124,15 @@ packaging checks, or scripted validation, use the non-interactive flags:
 
 Without `--enable-fedora-gaming-repos`, unattended Fedora full installs skip
 Steam, Gamescope, GameMode, and MangoHud rather than changing repository trust.
+
+Use `--skip-herdr` or `DWM_INSTALL_HERDR=false` to keep plain Alacritty. Use
+`--install-herdr` or `DWM_INSTALL_HERDR=true` to include Herdr with the core
+profile. Herdr can also be installed or repaired separately:
+
+```bash
+install-herdr
+install-herdr --force
+```
 
 ## Starting dwm
 
@@ -169,3 +194,6 @@ dwm-terminal --print-command
 
 `dwm-diagnostics` must report zero required failures before treating the
 minimal profile as ready. Optional degraded features can remain unresolved.
+When Herdr is installed, a plain `dwm-terminal` opens it in Alacritty. Commands
+such as `dwm-terminal -e sh -c 'command'` bypass Herdr and run directly in the
+outer emulator.

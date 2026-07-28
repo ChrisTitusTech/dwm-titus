@@ -9,12 +9,46 @@ DEFAULT_TERMINALS=(
 	xterm
 )
 
+print_only=0
 if [[ ${1:-} == "--print-command" ]]; then
 	print_only=1
 	shift
-else
-	print_only=0
 fi
+
+find_herdr() {
+	local candidate
+
+	case ${DWM_HERDR:-1} in
+	0 | false | no)
+		return 1
+		;;
+	esac
+
+	if [[ -n ${DWM_HERDR_COMMAND:-} ]]; then
+		if command -v "$DWM_HERDR_COMMAND" >/dev/null 2>&1; then
+			command -v "$DWM_HERDR_COMMAND"
+			return
+		fi
+		if [[ -x $DWM_HERDR_COMMAND ]]; then
+			printf '%s\n' "$DWM_HERDR_COMMAND"
+			return
+		fi
+		return 1
+	fi
+
+	if candidate=$(command -v herdr 2>/dev/null); then
+		printf '%s\n' "$candidate"
+		return
+	fi
+
+	candidate="${HOME:-}/.local/bin/herdr"
+	if [[ -n ${HOME:-} && -x $candidate ]]; then
+		printf '%s\n' "$candidate"
+		return
+	fi
+
+	return 1
+}
 
 terminals=()
 
@@ -30,6 +64,11 @@ for terminal in "${terminals[@]}"; do
 			printf '%s\n' "$terminal"
 			exit 0
 		fi
+
+		if (($# == 0)) && herdr=$(find_herdr); then
+			exec "$terminal" -e "$herdr"
+		fi
+
 		exec "$terminal" "$@"
 	fi
 done

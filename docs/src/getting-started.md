@@ -8,7 +8,7 @@ Press <kbd>Super</kbd> + <kbd>/</kbd> at any time to open the interactive keybin
 
 | Action | Keys |
 |--------|------|
-| Open terminal | `Super` + `X` |
+| Open Herdr in Alacritty | `Super` + `X` |
 | App launcher (Quickshell) | `Super` + `R` |
 | Close window | `Super` + `Q` |
 | Power menu | `Super` + `Ctrl` + `Q` |

@@ -14,7 +14,7 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | Keys | Action |
 |------|--------|
 | `Super` + `R` | App launcher (Quickshell) |
-| `Super` + `X` | Terminal |
+| `Super` + `X` | Herdr terminal workspace |
 | `Super` + `E` | File manager |
 | `Super` + `B` | Browser |
 | `Super` + `/` | Keybind viewer |
@@ -132,3 +132,6 @@ See the comments in `hotkeys.toml` for a full list of `func` values and modifier
 
 The browser binding uses `dwm-default-apps open`. Configure it with
 `dwm-default-apps browsers` and `dwm-default-apps set-browser <desktop-id>`.
+
+The default `dwm-terminal` wrapper opens Herdr inside Alacritty when Herdr is
+installed. Set `DWM_HERDR=0` to keep the same binding as a plain terminal.

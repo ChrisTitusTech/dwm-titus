@@ -76,8 +76,8 @@ configuration, and installs the managed desktop components.
 
 | Profile | Includes |
 | --- | --- |
-| `core` | The X11 session, required dependencies, and one terminal. |
-| `recommended` | The complete everyday desktop, including Quickshell, theming, screenshots, audio, and brightness tools. |
+| `core` | The X11 session, required dependencies, and one terminal emulator. |
+| `recommended` | The complete everyday desktop, including Alacritty with Herdr, Quickshell, theming, screenshots, audio, and brightness tools. |
 | `full` | The recommended desktop plus optional file-manager, portal, keyring, wallpaper, display-manager, and supported Fedora gaming integrations. |
 
 ## First Login
@@ -87,7 +87,7 @@ configuration, and installs the managed desktop components.
 | Action | Keybind |
 | --- | --- |
 | Open the application launcher | <kbd>Super</kbd> + <kbd>R</kbd> |
-| Open a terminal | <kbd>Super</kbd> + <kbd>X</kbd> |
+| Open Herdr in Alacritty | <kbd>Super</kbd> + <kbd>X</kbd> |
 | Open Control Center | <kbd>Super</kbd> + <kbd>F1</kbd> |
 | Show the interactive keybind viewer | <kbd>Super</kbd> + <kbd>/</kbd> |
 | Close the focused window | <kbd>Super</kbd> + <kbd>Q</kbd> |

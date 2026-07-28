@@ -378,10 +378,13 @@ must be validated against each tested release.
 
 Runtime dependencies are classified as:
 
-- Core: an X11 server/session, D-Bus session support, one usable terminal, and
-  the tools required by configured core keybindings.
-- Recommended desktop: Quickshell, Picom, Feh, Dex, a polkit agent,
-  notification tools, audio controls, screenshot tooling, and Nerd/emoji fonts.
+- Core: an X11 server/session, D-Bus session support, one usable terminal
+  emulator, and the tools required by configured core keybindings. Alacritty
+  is the preferred emulator, with the existing supported-terminal fallback
+  chain retained when Alacritty is unavailable.
+- Recommended desktop: the Herdr terminal workspace layered over Alacritty,
+  Quickshell, Picom, Feh, Dex, a polkit agent, notification tools, audio
+  controls, screenshot tooling, and Nerd/emoji fonts.
 - Optional: file manager, network tray, theme utilities, display-manager
   greeter customization, wallpapers, and hardware-specific helpers.
 
@@ -540,8 +543,12 @@ configuration and unrelated application configuration by default.
   guidance rather than relying on silent background commands.
 - Error messages must identify the missing command, library, package
   capability, or file and provide the next action.
-- The terminal command must select an installed supported terminal or provide a
-  clear configuration path.
+- A plain `dwm-terminal` launch must open Herdr inside the selected terminal
+  emulator when Herdr is installed, and otherwise open the emulator directly.
+  Explicit terminal arguments such as `dwm-terminal -e command` must bypass
+  Herdr so delegated commands retain their existing execution contract.
+- The terminal command must prefer Alacritty, select another installed
+  supported emulator when needed, and provide a clear configuration path.
 - Font aliases must accommodate common Meslo Nerd Font naming differences.
 - Multi-monitor setup must expose EWMH tags correctly to Quickshell and EWMH
   inspection tools.
@@ -554,6 +561,9 @@ configuration and unrelated application configuration by default.
 - Do not execute remote scripts through a shell as part of the required
   installation path.
 - Do not download or execute unverified binaries.
+- Third-party executable installers must run as the target user in an isolated
+  staging directory. Both the reviewed installer and resulting binary must
+  match repository-pinned checksums before the binary is installed.
 - Do not run user configuration or desktop helpers as root.
 - Quote paths and arguments that may contain whitespace.
 - Prevent command injection through distribution metadata, configuration
@@ -597,6 +607,9 @@ On at least one current representative of each family:
 In a real or nested X11 session:
 
 - dwm starts and can launch a terminal.
+- With Herdr installed, the default terminal binding opens Herdr inside
+  Alacritty. Without Herdr, the same binding opens the selected emulator
+  directly, and explicit `dwm-terminal -e` commands bypass Herdr in both cases.
 - Tiling, floating, tags, focus, and close-window actions work.
 - Runtime TOML configuration loads and reloads.
 - A display-manager session and `startx` path both launch.

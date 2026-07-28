@@ -98,7 +98,7 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 	grep -Fq "url --metalink=\"https://mirrors.fedoraproject.org/metalink?repo=fedora-\$releasever&arch=\$basearch\"" "$ks"
 	grep -Fq 'firstboot --disable' "$ks"
 	grep -Fq 'selinux --disabled' "$ks"
-	grep -Fq './install.sh --non-interactive --profile core' "$ks"
+	grep -Fq './install.sh --non-interactive --profile core --install-herdr' "$ks"
 	grep -Fq '%include /tmp/dwm-titus-gaming-repo' "$ks"
 	grep -Fq '%include /tmp/dwm-titus-gaming-packages' "$ks"
 	# shellcheck disable=SC2016

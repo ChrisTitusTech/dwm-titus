@@ -184,6 +184,9 @@ dwm_packages() {
 	debian:terminal)
 		printf '%s\n' alacritty kitty
 		;;
+	*:terminal-primary)
+		printf '%s\n' alacritty
+		;;
 	*:required)
 		dwm_packages "$family" build
 		dwm_packages "$family" x11
