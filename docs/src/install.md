@@ -129,14 +129,24 @@ packaging checks, or scripted validation, use the non-interactive flags:
 Without `--enable-fedora-gaming-repos`, unattended Fedora full installs skip
 Steam, Gamescope, GameMode, and MangoHud rather than changing repository trust.
 
-Use `--skip-herdr` or `DWM_INSTALL_HERDR=false` to keep plain Alacritty. Use
-`--install-herdr` or `DWM_INSTALL_HERDR=true` to include Herdr with the core
-profile. Herdr can also be installed or repaired separately:
+Use `--skip-herdr` or `DWM_INSTALL_HERDR=false` to skip Herdr installation.
+These installation controls do not disable a Herdr executable that is already
+available; set `DWM_HERDR=0` in the session environment to bypass an existing
+Herdr installation at runtime. Use `--install-herdr` or
+`DWM_INSTALL_HERDR=true` to include Herdr with the core profile. Automatic
+recommended/full-profile installation is limited to x86_64 and aarch64 because
+those are the Linux architectures published by Herdr. Herdr can also be
+installed or repaired separately:
 
 ```bash
 install-herdr
 install-herdr --force
 ```
+
+Upgrades preserve an existing `hotkeys.toml`. If an earlier installer seeded
+its `terminal` variable to `alacritty`, `kitty`, or another direct terminal,
+the installer prints the exact change needed to use `dwm-terminal` and Herdr
+from Super+X without overwriting that user-owned file.
 
 ## Starting dwm
 

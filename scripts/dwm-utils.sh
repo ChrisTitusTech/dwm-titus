@@ -164,3 +164,24 @@ detect_terminal() {
 	done
 	echo "xterm"
 }
+
+dwm_legacy_seeded_terminal_hotkey() {
+	local hotkeys_file=$1
+	local terminal_value
+
+	[[ -f $hotkeys_file ]] || return 1
+	terminal_value="$(
+		sed -n -E \
+			's/^[[:space:]]*terminal[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' \
+			"$hotkeys_file" | head -n 1
+	)"
+
+	case $terminal_value in
+	alacritty | kitty | st | warp-terminal | xterm)
+		printf '%s\n' "$terminal_value"
+		;;
+	*)
+		return 1
+		;;
+	esac
+}

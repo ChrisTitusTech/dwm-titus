@@ -40,6 +40,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep `install-herdr --dry-run` side-effect free, skip unsupported automatic
+  ARMv7 installs, and warn when a preserved legacy terminal hotkey bypasses
+  Herdr.
 - Install the PAM integration package alongside GNOME Keyring so LightDM can
   unlock the login keyring without a second password prompt.
 - Restore independent Quickshell StatusNotifier tray rendering and resilient

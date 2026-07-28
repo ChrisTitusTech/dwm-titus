@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HELPER="$ROOT_DIR/scripts/install-herdr"
+# shellcheck source=scripts/dwm-utils.sh
+source "$ROOT_DIR/scripts/dwm-utils.sh"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -88,6 +90,21 @@ env \
 	HERDR_ASSET_SHA256="$asset_sha256" \
 	HERDR_TEST_INTEGRATION_LOG="$work/integrations.log" \
 	PATH="$work/home/.local/bin:$work/agent-bin:$work/bin:/usr/bin:/bin" \
+	"$HELPER" --dry-run >"$work/dry-run.out"
+
+grep -Fq "Herdr version: 0.7.5" "$work/dry-run.out"
+if [ -s "$work/integrations.log" ]; then
+	echo "install-herdr modified integrations during a dry run" >&2
+	exit 1
+fi
+
+env \
+	HOME="$work/home" \
+	HERDR_ALLOW_ROOT=1 \
+	HERDR_INSTALL_DIR="$work/home/.local/bin" \
+	HERDR_ASSET_SHA256="$asset_sha256" \
+	HERDR_TEST_INTEGRATION_LOG="$work/integrations.log" \
+	PATH="$work/home/.local/bin:$work/agent-bin:$work/bin:/usr/bin:/bin" \
 	"$HELPER" >"$work/reinstall.out"
 
 grep -Fq "Herdr is already installed and verified" "$work/reinstall.out"
@@ -109,6 +126,17 @@ fi
 grep -Fq "integration for Claude Code" "$work/integration-failure.err"
 grep -Fq "one or more detected agent integrations failed" \
 	"$work/integration-failure.err"
+
+for legacy_terminal in alacritty kitty st warp-terminal xterm; do
+	printf '[vars]\nterminal = "%s"\n' "$legacy_terminal" >"$work/hotkeys.toml"
+	test "$(dwm_legacy_seeded_terminal_hotkey "$work/hotkeys.toml")" = \
+		"$legacy_terminal"
+done
+printf '[vars]\nterminal = "dwm-terminal"\n' >"$work/hotkeys.toml"
+if dwm_legacy_seeded_terminal_hotkey "$work/hotkeys.toml" >/dev/null; then
+	echo "dwm-terminal was misidentified as a legacy seeded terminal" >&2
+	exit 1
+fi
 
 mkdir -p "$work/early"
 cat >"$work/early/herdr" <<'SCRIPT'
@@ -166,5 +194,21 @@ fi
 grep -Fq "binary checksum verification failed" "$work/tampered.err"
 test "$("$work/home/.local/bin/herdr" --version)" = "herdr 0.7.5"
 test "$(stat -c '%a' "$work/home/.local/bin")" = "700"
+
+mkdir -p "$work/arm-bin"
+cat >"$work/arm-bin/uname" <<'SCRIPT'
+#!/bin/sh
+printf 'armv7l\n'
+SCRIPT
+chmod +x "$work/arm-bin/uname"
+
+env \
+	HOME="$work/home" \
+	PATH="$work/arm-bin:$PATH" \
+	"$ROOT_DIR/install.sh" --dry-run --non-interactive --profile recommended \
+	>"$work/arm-plan.out"
+
+grep -Fq "Herdr workspace: skipped (unsupported architecture: armv7l)" \
+	"$work/arm-plan.out"
 
 printf 'install-herdr tests: PASS\n'

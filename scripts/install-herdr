@@ -99,6 +99,14 @@ install_detected_integrations() {
 	[ "$integration_failed" = false ]
 }
 
+if [ "$dry_run" = true ]; then
+	printf 'Herdr version: %s\n' "$HERDR_VERSION"
+	printf 'Official installer: %s\n' "$HERDR_INSTALLER_URL"
+	printf 'Install path: %s\n' "$target"
+	printf 'Verification: pinned SHA-256 checksums\n'
+	exit 0
+fi
+
 existing=$(command -v herdr 2>/dev/null || true)
 if [ -z "$existing" ] && [ -x "$target" ]; then
 	existing=$target
@@ -121,14 +129,6 @@ if [ -n "$existing" ] && [ "$force" != true ]; then
 		exit 2
 	fi
 	printf 'Herdr is already installed and verified: %s\n' "$existing"
-	exit 0
-fi
-
-if [ "$dry_run" = true ]; then
-	printf 'Herdr version: %s\n' "$HERDR_VERSION"
-	printf 'Official installer: %s\n' "$HERDR_INSTALLER_URL"
-	printf 'Install path: %s\n' "$target"
-	printf 'Verification: pinned SHA-256 checksums\n'
 	exit 0
 fi
 
