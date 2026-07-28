@@ -284,6 +284,7 @@ PanelWindow {
                             }
 
                             UiText {
+                                visible: root.controlsModel.volumeText !== "VOL unavailable"
                                 text: root.controlsModel.volumePercent.toString() + "%"
                                 color: Theme.textStrong
                                 font.pixelSize: Theme.panelFontSize

@@ -31,6 +31,8 @@ versions from `config.mk`.
 - The Control Center now uses one clean dropdown card with direct Applications
   and utility entries, in-place secondary pages, and consistent click-away and
   Escape dismissal.
+- The panel audio widget now shows the current volume percentage beside the
+  speaker icon and hides the percentage when audio is unavailable.
 - Power actions now use the same compact menu header, flat rows, spacing, and
   confirmation layout as the Control Center.
 - Documentation is built and tested from `docs/src/`; generated mdBook output
