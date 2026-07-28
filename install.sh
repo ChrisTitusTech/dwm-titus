@@ -24,6 +24,8 @@ Options:
                          Defaults to DWM_INSTALL_PROFILE or full.
   --non-interactive      Use unattended defaults and do not prompt.
   --yes                  Accept the interactive install summary.
+  --install-herdr        Install verified Herdr even with the core profile.
+  --skip-herdr           Do not install Herdr.
   --enable-fedora-gaming-repos
                          Approve the Gamescope COPR and RPM Fusion nonfree.
   --dry-run              Print the resolved plan and exit before changes.
@@ -66,10 +68,12 @@ NORDIC_THEME_REF="master"
 ARCH="$(uname -m)"
 FEDORA_GAMING_COPR="christitustech/copr-fedora"
 INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
+HERDR_INSTALL_MODE="${DWM_INSTALL_HERDR:-auto}"
 NON_INTERACTIVE=false
 ASSUME_YES=false
 FEDORA_GAMING_REPOS_APPROVED=false
 DRY_RUN=false
+HERDR_READY=false
 
 while (($# > 0)); do
 	case "$1" in
@@ -92,6 +96,14 @@ while (($# > 0)); do
 		;;
 	--yes)
 		ASSUME_YES=true
+		shift
+		;;
+	--install-herdr)
+		HERDR_INSTALL_MODE=true
+		shift
+		;;
+	--skip-herdr)
+		HERDR_INSTALL_MODE=false
 		shift
 		;;
 	--enable-fedora-gaming-repos)
@@ -126,6 +138,21 @@ recommended | full) ;;
 	;;
 esac
 
+case "$HERDR_INSTALL_MODE" in
+auto) ;;
+1 | true | yes)
+	HERDR_INSTALL_MODE=true
+	;;
+0 | false | no)
+	HERDR_INSTALL_MODE=false
+	;;
+*)
+	err "Unsupported DWM_INSTALL_HERDR: $HERDR_INSTALL_MODE"
+	err "Supported values: auto, true, false"
+	exit 1
+	;;
+esac
+
 if [[ ! -t 0 || ! -t 1 ]]; then
 	NON_INTERACTIVE=true
 	ASSUME_YES=true
@@ -147,6 +174,57 @@ install_recommended_profile() {
 
 install_optional_profile() {
 	[[ $INSTALL_PROFILE == "full" ]]
+}
+
+herdr_arch_supported() {
+	case $ARCH in
+	x86_64 | amd64 | aarch64 | arm64)
+		return 0
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+install_herdr_profile() {
+	case $HERDR_INSTALL_MODE in
+	true)
+		return 0
+		;;
+	false)
+		return 1
+		;;
+	esac
+
+	herdr_arch_supported && install_recommended_profile
+}
+
+report_herdr_hotkey_migration() {
+	local hotkeys_file="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/hotkeys.toml"
+	local legacy_terminal
+
+	if legacy_terminal="$(dwm_legacy_seeded_terminal_hotkey "$hotkeys_file")"; then
+		warn "Existing hotkeys still launch $legacy_terminal directly for Super+X."
+		warn "To use Herdr from Super+X, set terminal = \"dwm-terminal\" in $hotkeys_file."
+	fi
+}
+
+runtime_herdr_available() {
+	case ${DWM_HERDR:-1} in
+	0 | false | no)
+		return 1
+		;;
+	esac
+
+	if [[ -n ${DWM_HERDR_COMMAND:-} ]]; then
+		command -v "$DWM_HERDR_COMMAND" >/dev/null 2>&1 ||
+			[[ -x $DWM_HERDR_COMMAND ]]
+		return
+	fi
+
+	command -v herdr >/dev/null 2>&1 ||
+		[[ -x ${HOME:-}/.local/bin/herdr ]]
 }
 
 enable_optional_service() {
@@ -312,6 +390,14 @@ print_install_summary() {
 	else
 		print_summary_profile "Terminal candidates" terminal
 	fi
+	if install_herdr_profile; then
+		printf '  Herdr workspace: verified user install from https://herdr.dev/install.sh\n'
+	elif [[ $HERDR_INSTALL_MODE == auto ]] &&
+		install_recommended_profile && ! herdr_arch_supported; then
+		printf '  Herdr workspace: skipped (unsupported architecture: %s)\n' "$ARCH"
+	else
+		printf '  Herdr workspace: skipped\n'
+	fi
 	echo ""
 }
 
@@ -414,20 +500,6 @@ install_supported_terminal() {
 		err "No supported terminal is available in the enabled repositories."
 		return 1
 	fi
-}
-
-configure_seeded_terminal() {
-	local hotkeys_file=$1
-	local terminal=$2
-
-	if [[ $HOTKEYS_EXISTED == true ]]; then
-		return
-	fi
-
-	sed -i -E \
-		"s|^terminal = \"[^\"]*\"|terminal = \"$terminal\"|" \
-		"$hotkeys_file"
-	ok "Configured the default terminal: $terminal"
 }
 
 configure_quickshell_picom_opacity() {
@@ -698,17 +770,50 @@ fi
 
 # ── Terminal emulator ────────────────────────────────────
 terminal=""
-for t in alacritty kitty; do command -v "$t" &>/dev/null && {
-	terminal="$t"
-	break
-}; done
-
-if [ -n "$terminal" ]; then
-	ok "Terminal already installed: $terminal"
+if command -v alacritty &>/dev/null; then
+	terminal="alacritty"
+	ok "Preferred terminal already installed: $terminal"
 else
-	info "No supported terminal found - installing one from enabled repositories..."
-	install_supported_terminal
-	terminal="$(detect_terminal)"
+	info "Installing the preferred Alacritty terminal from enabled repositories..."
+	if dwm_install_first_available_profile terminal-primary; then
+		terminal="alacritty"
+		ok "Preferred terminal installed: $terminal"
+	else
+		warn "Alacritty is unavailable; falling back to another supported terminal."
+		for t in kitty st warp-terminal xterm; do command -v "$t" &>/dev/null && {
+			terminal="$t"
+			break
+		}; done
+		if [ -z "$terminal" ]; then
+			install_supported_terminal
+			terminal="$(detect_terminal)"
+		fi
+	fi
+fi
+
+# ── Herdr terminal workspace ─────────────────────────────
+if install_herdr_profile; then
+	info "Installing the verified Herdr workspace for interactive terminals..."
+	if "$REPO_DIR/scripts/install-herdr"; then
+		HERDR_READY=true
+		ok "Herdr is ready; plain dwm-terminal launches will open it in $terminal."
+	else
+		herdr_status=$?
+		if [[ $herdr_status -eq 2 ]]; then
+			HERDR_READY=true
+			warn "Herdr is ready, but one or more detected agent integrations could not be installed."
+		elif runtime_herdr_available; then
+			warn "Herdr setup failed, but dwm-terminal can still select an existing Herdr executable."
+			warn "Set DWM_HERDR=0 or remove the rejected executable to force plain $terminal."
+		else
+			warn "Herdr installation failed; plain dwm-terminal launches will use $terminal directly."
+		fi
+	fi
+elif [[ $HERDR_INSTALL_MODE == auto ]] &&
+	install_recommended_profile && ! herdr_arch_supported; then
+	warn "Skipping automatic Herdr installation on unsupported architecture: $ARCH."
+else
+	warn "Skipping Herdr installation for the $INSTALL_PROFILE profile."
 fi
 
 # ── XDG dirs + wallpapers ────────────────────────────────
@@ -766,13 +871,6 @@ if is_arch_arm; then
 fi
 
 # ── Build & Install ──────────────────────────────────────
-HOTKEYS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/hotkeys.toml"
-if [[ -f $HOTKEYS_FILE ]]; then
-	HOTKEYS_EXISTED=true
-else
-	HOTKEYS_EXISTED=false
-fi
-
 cd "$REPO_DIR"
 make clean
 make
@@ -782,7 +880,9 @@ sudo make install \
 	DATADIR="/usr/share" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
 	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-configure_seeded_terminal "$HOTKEYS_FILE" "$terminal"
+if [[ $HERDR_READY == true ]]; then
+	report_herdr_hotkey_migration
+fi
 configure_displays_after_install
 
 # ── Done ─────────────────────────────────────────────────

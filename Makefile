@@ -47,6 +47,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-settings-provider \
 	scripts/dwm-terminal \
 	scripts/dwm-utils.sh \
+	scripts/install-herdr \
 	scripts/nvidia-gpu \
 	scripts/nvidia-suspend-test.sh \
 	scripts/nvidia-temp \
@@ -257,10 +258,10 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/quickshell-qmllint scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/install-herdr scripts/quickshell-qmllint scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/quickshell-qmllint scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/install-herdr scripts/quickshell-qmllint scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -283,6 +284,9 @@ check-build-config:
 
 check-terminal:
 	tests/test-dwm-terminal.sh
+
+check-herdr-install:
+	tests/test-install-herdr.sh
 
 check-lock:
 	tests/test-dwm-lock.sh
@@ -466,6 +470,7 @@ check:
 	$(MAKE) check-settings
 	$(MAKE) check-quickshell-network
 	$(MAKE) check-terminal
+	$(MAKE) check-herdr-install
 	$(MAKE) check-lock
 	$(MAKE) check-session-guards
 	$(MAKE) check-session-migration
@@ -481,7 +486,7 @@ check:
 .PHONY: all check check-build-config check-build-deps check-default-apps \
 	check-container-smoke \
 	check-display-profile check-display-setup check-fedora-iso-builder check-format check-install \
-	check-install-manifest check-install-preservation check-kickstart check-lock \
+	check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health check-settings \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal clean install install-system install-user \
 	install-cursors native release release-check uninstall

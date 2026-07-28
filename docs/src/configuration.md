@@ -62,9 +62,14 @@ keys = [
 ]
 ```
 
-`dwm-terminal` selects the first installed supported terminal at launch time.
-Set `DWM_TERMINAL` or replace `terminal` with a specific command if you want a
-fixed terminal.
+`dwm-terminal` prefers Alacritty and opens Herdr inside it for a plain
+interactive launch. If Herdr is unavailable, it opens the selected emulator
+directly. Explicit arguments such as `dwm-terminal -e command` always bypass
+Herdr so application launchers and maintenance actions keep working.
+
+Set `DWM_TERMINAL` to choose another outer emulator, set `DWM_HERDR=0` to
+disable the Herdr layer, or set `DWM_HERDR_COMMAND` to another Herdr binary
+path.
 
 Default applications use freedesktop settings. Run `dwm-default-apps browsers`
 to list browser desktop files, `dwm-default-apps set-browser firefox.desktop`

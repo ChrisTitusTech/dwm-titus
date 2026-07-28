@@ -1,0 +1,252 @@
+#!/bin/sh
+set -eu
+
+HERDR_VERSION="0.7.5"
+HERDR_INSTALLER_URL="https://herdr.dev/install.sh"
+HERDR_INSTALLER_SHA256_DEFAULT="57c35622122f672ac311cbd7784be6af60912910287229492679033162b4604c"
+HERDR_X86_64_SHA256="3dc83288073e4c2d3c679a30e7be97bcca9141c6fd17dbbb9219142e95c59253"
+HERDR_AARCH64_SHA256="32e763a1499a6b694b1d708e4f062b743be1da9f34fcfa4d212d6db6fe09a8b9"
+
+usage() {
+	cat <<EOF
+Usage: install-herdr [--dry-run] [--force]
+
+Install the pinned Herdr ${HERDR_VERSION} release through the official installer.
+The installer and staged binary are checksum-verified before Herdr is installed.
+
+Options:
+  --dry-run  Print the verified source and destination without downloading.
+  --force    Replace an existing Herdr installation after verification.
+  -h, --help Show this help.
+EOF
+}
+
+dry_run=false
+force=false
+
+while [ "$#" -gt 0 ]; do
+	case $1 in
+	--dry-run)
+		dry_run=true
+		;;
+	--force)
+		force=true
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		printf 'install-herdr: unknown option: %s\n' "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+	shift
+done
+
+if [ "$(id -u)" -eq 0 ] && [ "${HERDR_ALLOW_ROOT:-0}" != 1 ]; then
+	printf 'install-herdr: run as the target user, not as root.\n' >&2
+	exit 1
+fi
+
+install_dir=${HERDR_INSTALL_DIR:-"$HOME/.local/bin"}
+target="$install_dir/herdr"
+
+case $(uname -m) in
+x86_64 | amd64)
+	asset_sha256=$HERDR_X86_64_SHA256
+	;;
+aarch64 | arm64)
+	asset_sha256=$HERDR_AARCH64_SHA256
+	;;
+*)
+	printf 'install-herdr: unsupported architecture: %s\n' "$(uname -m)" >&2
+	printf 'Herdr publishes Linux binaries for x86_64 and aarch64.\n' >&2
+	exit 1
+	;;
+esac
+
+installer_sha256=${HERDR_INSTALLER_SHA256:-$HERDR_INSTALLER_SHA256_DEFAULT}
+asset_sha256=${HERDR_ASSET_SHA256:-$asset_sha256}
+
+binary_matches_pin() {
+	actual_sha256=$(sha256sum "$1" 2>/dev/null) || return 1
+	actual_sha256=${actual_sha256%% *}
+	[ "$actual_sha256" = "$asset_sha256" ]
+}
+
+wrapper_selected_herdr() {
+	if [ -n "${DWM_HERDR_COMMAND:-}" ]; then
+		if command -v "$DWM_HERDR_COMMAND" >/dev/null 2>&1; then
+			command -v "$DWM_HERDR_COMMAND"
+			return
+		fi
+		if [ -x "$DWM_HERDR_COMMAND" ]; then
+			printf '%s\n' "$DWM_HERDR_COMMAND"
+			return
+		fi
+		return 1
+	fi
+
+	if command -v herdr >/dev/null 2>&1; then
+		command -v herdr
+		return
+	fi
+
+	if [ -n "${HOME:-}" ] && [ -x "$HOME/.local/bin/herdr" ]; then
+		printf '%s\n' "$HOME/.local/bin/herdr"
+		return
+	fi
+
+	return 1
+}
+
+wrapper_selects_pinned_herdr() {
+	selected=$(wrapper_selected_herdr 2>/dev/null || true)
+	[ -n "$selected" ] && binary_matches_pin "$selected"
+}
+
+install_detected_integrations() {
+	integration_herdr=$1
+	integration_failed=false
+
+	if command -v codex >/dev/null 2>&1; then
+		printf 'Installing the Herdr integration for Codex...\n'
+		if ! "$integration_herdr" integration install codex; then
+			printf 'install-herdr: failed to install the Herdr integration for Codex.\n' >&2
+			integration_failed=true
+		fi
+	fi
+
+	if command -v claude >/dev/null 2>&1; then
+		printf 'Installing the Herdr integration for Claude Code...\n'
+		if ! "$integration_herdr" integration install claude; then
+			printf 'install-herdr: failed to install the Herdr integration for Claude Code.\n' >&2
+			integration_failed=true
+		fi
+	fi
+
+	[ "$integration_failed" = false ]
+}
+
+if [ "$dry_run" = true ]; then
+	printf 'Herdr version: %s\n' "$HERDR_VERSION"
+	printf 'Official installer: %s\n' "$HERDR_INSTALLER_URL"
+	printf 'Install path: %s\n' "$target"
+	printf 'Verification: pinned SHA-256 checksums\n'
+	exit 0
+fi
+
+existing=$(wrapper_selected_herdr 2>/dev/null || true)
+if [ -z "$existing" ] && [ -x "$target" ]; then
+	existing=$target
+fi
+
+if [ -n "$existing" ] && [ "$force" != true ]; then
+	if ! command -v sha256sum >/dev/null 2>&1; then
+		printf 'install-herdr: required command not found: sha256sum\n' >&2
+		exit 1
+	fi
+	if ! binary_matches_pin "$existing"; then
+		printf 'install-herdr: the selected Herdr executable is not the verified %s release: %s\n' \
+			"$HERDR_VERSION" "$existing" >&2
+		printf 'Remove it from PATH or rerun with --force after ensuring %s will be selected.\n' \
+			"$target" >&2
+		exit 1
+	fi
+	if ! wrapper_selects_pinned_herdr; then
+		printf 'install-herdr: Herdr is verified at %s, but the terminal wrapper would select an unverified executable: %s\n' \
+			"$existing" "${selected:-none}" >&2
+		printf 'Adjust PATH, HERDR_INSTALL_DIR, or DWM_HERDR_COMMAND so the verified executable is selected.\n' >&2
+		exit 1
+	fi
+	if ! install_detected_integrations "$selected"; then
+		printf 'install-herdr: Herdr is verified, but one or more detected agent integrations failed.\n' >&2
+		exit 2
+	fi
+	printf 'Herdr is already installed and verified: %s\n' "$selected"
+	exit 0
+fi
+
+for command in curl install mktemp mv sha256sum; do
+	if ! command -v "$command" >/dev/null 2>&1; then
+		printf 'install-herdr: required command not found: %s\n' "$command" >&2
+		exit 1
+	fi
+done
+
+tmp_dir=$(mktemp -d)
+pending_target=
+trap 'rm -rf "$tmp_dir"; if [ -n "$pending_target" ]; then rm -f "$pending_target"; fi' \
+	EXIT HUP INT TERM
+installer="$tmp_dir/install.sh"
+stage_dir="$tmp_dir/stage"
+
+printf 'Downloading the official Herdr installer from %s\n' "$HERDR_INSTALLER_URL"
+if ! curl --fail --silent --show-error --location \
+	--retry 3 --connect-timeout 10 --max-time 30 \
+	"$HERDR_INSTALLER_URL" --output "$installer"; then
+	printf 'install-herdr: failed to download the official installer.\n' >&2
+	exit 1
+fi
+
+if ! printf '%s  %s\n' "$installer_sha256" "$installer" |
+	sha256sum --check --status; then
+	printf 'install-herdr: installer checksum verification failed.\n' >&2
+	printf 'The upstream installer may have changed; update the reviewed pins before installing.\n' >&2
+	exit 1
+fi
+
+mkdir -p "$stage_dir"
+if ! HERDR_INSTALL_DIR="$stage_dir" sh "$installer"; then
+	printf 'install-herdr: the official installer failed in the staging directory.\n' >&2
+	exit 1
+fi
+
+staged_binary="$stage_dir/herdr"
+if [ ! -f "$staged_binary" ]; then
+	printf 'install-herdr: the official installer did not produce a Herdr binary.\n' >&2
+	exit 1
+fi
+
+if ! printf '%s  %s\n' "$asset_sha256" "$staged_binary" |
+	sha256sum --check --status; then
+	printf 'install-herdr: Herdr %s binary checksum verification failed.\n' "$HERDR_VERSION" >&2
+	exit 1
+fi
+
+if [ -e "$install_dir" ]; then
+	if [ ! -d "$install_dir" ]; then
+		printf 'install-herdr: install path exists but is not a directory: %s\n' \
+			"$install_dir" >&2
+		exit 1
+	fi
+else
+	install -d -m 0755 "$install_dir"
+fi
+
+pending_target=$(mktemp "$install_dir/.herdr.XXXXXX")
+if ! install -m 0755 "$staged_binary" "$pending_target"; then
+	printf 'install-herdr: failed to copy the verified Herdr binary into the install directory.\n' >&2
+	exit 1
+fi
+if ! mv -f "$pending_target" "$target"; then
+	printf 'install-herdr: failed to atomically install the verified Herdr binary.\n' >&2
+	exit 1
+fi
+pending_target=
+
+if ! wrapper_selects_pinned_herdr; then
+	printf 'install-herdr: installed verified Herdr %s to %s, but the terminal wrapper would select an unverified executable: %s\n' \
+		"$HERDR_VERSION" "$target" "${selected:-none}" >&2
+	printf 'Adjust PATH, HERDR_INSTALL_DIR, or DWM_HERDR_COMMAND so the verified executable is selected.\n' >&2
+	exit 1
+fi
+
+if ! install_detected_integrations "$selected"; then
+	printf 'install-herdr: Herdr was installed and verified, but one or more detected agent integrations failed.\n' >&2
+	exit 2
+fi
+
+printf 'Installed verified Herdr %s to %s\n' "$HERDR_VERSION" "$target"

@@ -151,6 +151,18 @@ check_terminal() {
 	required_missing terminal "terminal (alacritty kitty st warp-terminal xterm)" "No supported terminal is available"
 }
 
+check_herdr() {
+	local path="${HOME:-}/.local/bin/herdr"
+
+	if have_cmd herdr; then
+		ok herdr "Herdr workspace" "Herdr is available on PATH"
+	elif [[ -n ${HOME:-} && -x $path ]]; then
+		ok herdr "Herdr workspace" "$path is available"
+	else
+		optional_missing herdr "Herdr workspace" "Install with install-herdr; dwm-terminal will use the outer terminal directly"
+	fi
+}
+
 check_path_optional() {
 	local id=$1
 	local path=$2
@@ -186,6 +198,7 @@ main() {
 	for cmd in quickshell picom feh flameshot xdg-open notify-send amixer brightnessctl light-locker gsettings xprop; do
 		check_optional_cmd "$cmd"
 	done
+	check_herdr
 	check_optional_cmd blueman-applet
 	check_any_optional_cmd "XDG autostart runner" dex dex-autostart
 	check_any_optional_cmd "audio control" pactl wpctl amixer

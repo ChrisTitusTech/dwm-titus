@@ -174,7 +174,7 @@ chown -R "$target_user:$target_group" "$target_repo_dir"
 install -m 0440 /dev/null "$install_sudoers"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$target_user" > "$install_sudoers"
 
-su - "$target_user" -c 'cd "$HOME/.local/share/dwm-titus" && ./install.sh --non-interactive --profile core'
+su - "$target_user" -c 'cd "$HOME/.local/share/dwm-titus" && ./install.sh --non-interactive --profile core --install-herdr'
 
 if getent group gamemode >/dev/null 2>&1; then
 	usermod -aG gamemode "$target_user"
