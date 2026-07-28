@@ -210,6 +210,23 @@ report_herdr_hotkey_migration() {
 	fi
 }
 
+runtime_herdr_available() {
+	case ${DWM_HERDR:-1} in
+	0 | false | no)
+		return 1
+		;;
+	esac
+
+	if [[ -n ${DWM_HERDR_COMMAND:-} ]]; then
+		command -v "$DWM_HERDR_COMMAND" >/dev/null 2>&1 ||
+			[[ -x $DWM_HERDR_COMMAND ]]
+		return
+	fi
+
+	command -v herdr >/dev/null 2>&1 ||
+		[[ -x ${HOME:-}/.local/bin/herdr ]]
+}
+
 enable_optional_service() {
 	local service=$1
 
@@ -785,6 +802,9 @@ if install_herdr_profile; then
 		if [[ $herdr_status -eq 2 ]]; then
 			HERDR_READY=true
 			warn "Herdr is ready, but one or more detected agent integrations could not be installed."
+		elif runtime_herdr_available; then
+			warn "Herdr setup failed, but dwm-terminal can still select an existing Herdr executable."
+			warn "Set DWM_HERDR=0 or remove the rejected executable to force plain $terminal."
 		else
 			warn "Herdr installation failed; plain dwm-terminal launches will use $terminal directly."
 		fi

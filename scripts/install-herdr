@@ -169,7 +169,7 @@ if [ -n "$existing" ] && [ "$force" != true ]; then
 	exit 0
 fi
 
-for command in curl install mktemp sha256sum; do
+for command in curl install mktemp mv sha256sum; do
 	if ! command -v "$command" >/dev/null 2>&1; then
 		printf 'install-herdr: required command not found: %s\n' "$command" >&2
 		exit 1
@@ -177,7 +177,9 @@ for command in curl install mktemp sha256sum; do
 done
 
 tmp_dir=$(mktemp -d)
-trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
+pending_target=
+trap 'rm -rf "$tmp_dir"; if [ -n "$pending_target" ]; then rm -f "$pending_target"; fi' \
+	EXIT HUP INT TERM
 installer="$tmp_dir/install.sh"
 stage_dir="$tmp_dir/stage"
 
@@ -223,7 +225,17 @@ if [ -e "$install_dir" ]; then
 else
 	install -d -m 0755 "$install_dir"
 fi
-install -m 0755 "$staged_binary" "$target"
+
+pending_target=$(mktemp "$install_dir/.herdr.XXXXXX")
+if ! install -m 0755 "$staged_binary" "$pending_target"; then
+	printf 'install-herdr: failed to copy the verified Herdr binary into the install directory.\n' >&2
+	exit 1
+fi
+if ! mv -f "$pending_target" "$target"; then
+	printf 'install-herdr: failed to atomically install the verified Herdr binary.\n' >&2
+	exit 1
+fi
+pending_target=
 
 if ! wrapper_selects_pinned_herdr; then
 	printf 'install-herdr: installed verified Herdr %s to %s, but the terminal wrapper would select an unverified executable: %s\n' \

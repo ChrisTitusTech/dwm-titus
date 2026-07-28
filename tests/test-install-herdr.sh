@@ -206,6 +206,42 @@ env \
 grep -Fq "Herdr is already installed and verified: $work/custom/herdr" \
 	"$work/custom-selected.out"
 
+cat >"$work/herdr-binary-new" <<'SCRIPT'
+#!/bin/sh
+printf 'herdr 0.7.5 replacement\n'
+SCRIPT
+chmod +x "$work/herdr-binary-new"
+replacement_sha256="$(sha256sum "$work/herdr-binary-new" | awk '{print $1}')"
+
+mkdir -p "$work/fail-bin"
+cat >"$work/fail-bin/mv" <<'SCRIPT'
+#!/bin/sh
+exit 1
+SCRIPT
+chmod +x "$work/fail-bin/mv"
+
+if env \
+	HOME="$work/home" \
+	HERDR_ALLOW_ROOT=1 \
+	HERDR_INSTALL_DIR="$work/home/.local/bin" \
+	HERDR_INSTALLER_SHA256="$installer_sha256" \
+	HERDR_ASSET_SHA256="$replacement_sha256" \
+	HERDR_TEST_BINARY="$work/herdr-binary-new" \
+	HERDR_TEST_INSTALLER="$work/remote-installer.sh" \
+	PATH="$work/home/.local/bin:$work/fail-bin:$work/bin:/usr/bin:/bin" \
+	"$HELPER" --force >"$work/atomic.out" 2>"$work/atomic.err"; then
+	echo "install-herdr ignored an atomic replacement failure" >&2
+	exit 1
+fi
+
+grep -Fq "failed to atomically install" "$work/atomic.err"
+test "$("$work/home/.local/bin/herdr" --version)" = "herdr 0.7.5"
+if find "$work/home/.local/bin" -maxdepth 1 -name '.herdr.*' -print -quit |
+	grep -q .; then
+	echo "install-herdr left a failed replacement temporary file" >&2
+	exit 1
+fi
+
 if env \
 	HOME="$work/home" \
 	HERDR_ALLOW_ROOT=1 \
