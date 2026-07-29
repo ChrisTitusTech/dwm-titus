@@ -77,8 +77,8 @@ Scope {
     function screenIndex(screen) {
         const pixelRatio = screen && screen.devicePixelRatio > 0
             ? screen.devicePixelRatio : 1;
-        const pixelX = screen ? Math.round(screen.x * pixelRatio) : 0;
-        const pixelY = screen ? Math.round(screen.y * pixelRatio) : 0;
+        const pixelX = screen ? Math.round(screen.x) : 0;
+        const pixelY = screen ? Math.round(screen.y) : 0;
         const pixelWidth = screen ? Math.round(screen.width * pixelRatio) : 0;
         const pixelHeight = screen ? Math.round(screen.height * pixelRatio) : 0;
 

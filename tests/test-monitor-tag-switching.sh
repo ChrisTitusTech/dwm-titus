@@ -28,7 +28,11 @@ grep -q 'XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False)' "$repo_dir/dwm.c"
 configure_body=$(sed -n '/^configurenotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$configure_body" | grep -q 'reconcilemonitortags();'
 reconcile_line=$(printf '%s\n' "$configure_body" | grep -n 'reconcilemonitortags();' | cut -d: -f1)
+client_list_line=$(printf '%s\n' "$configure_body" |
+	grep -n 'updateclientlist();' | cut -d: -f1 | sed -n '1p')
 publish_line=$(printf '%s\n' "$configure_body" | grep -n 'updatecurrentdesktop();' | cut -d: -f1)
+test "$reconcile_line" -lt "$client_list_line"
+test "$client_list_line" -lt "$publish_line"
 test "$reconcile_line" -lt "$publish_line"
 
 reconcile_body=$(sed -n '/^reconcilemonitortags(void)/,/^}$/p' "$repo_dir/dwm.c")

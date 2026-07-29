@@ -1014,6 +1014,7 @@ configurenotify(XEvent *e)
 			reconcilemonitortags();
 			drw_resize(drw, sw, bh);
 			updatebars();
+			updateclientlist();
 			for (m = mons; m; m = m->next) {
 				for (c = m->clients; c; c = c->next) {
 					if (c->isfullscreen && c->fakefullscreen != 1)
