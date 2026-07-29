@@ -25,6 +25,21 @@ printf '%s\n' "$update_current_body" | grep -q 'getmonlogicalindex(m)'
 printf '%s\n' "$update_current_body" | grep -q 'netatom\[NetDwmMonitorDesktops\]'
 grep -q 'XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False)' "$repo_dir/dwm.c"
 
+configure_body=$(sed -n '/^configurenotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$configure_body" | grep -q 'reconcilemonitortags();'
+reconcile_line=$(printf '%s\n' "$configure_body" | grep -n 'reconcilemonitortags();' | cut -d: -f1)
+publish_line=$(printf '%s\n' "$configure_body" | grep -n 'updatecurrentdesktop();' | cut -d: -f1)
+test "$reconcile_line" -lt "$publish_line"
+
+reconcile_body=$(sed -n '/^reconcilemonitortags(void)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$reconcile_body" | grep -q 'updatemonitorcount();'
+printf '%s\n' "$reconcile_body" | grep -q 'm->tagset\[s\] &= montags;'
+printf '%s\n' "$reconcile_body" | grep -q 'm->tagset\[s\] = fallbacktag;'
+printf '%s\n' "$reconcile_body" | grep -q 'm->nmaster = m->pertag->nmasters\[m->pertag->curtag\];'
+printf '%s\n' "$reconcile_body" | grep -q 'm->mfact = m->pertag->mfacts\[m->pertag->curtag\];'
+printf '%s\n' "$reconcile_body" | grep -q 'm->lt\[m->sellt\] = m->pertag->ltidxs'
+printf '%s\n' "$reconcile_body" | grep -q 'm->showbar = m->pertag->showbars\[m->pertag->curtag\];'
+
 mkdir -p "$work/bin"
 cat >"$work/bin/xprop" <<'SH'
 #!/bin/sh

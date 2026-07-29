@@ -36,6 +36,7 @@ PanelWindow {
     required property var bluetoothModel
     required property var controlCenterModel
     required property var powerMenuModel
+    required property bool primaryPanel
 
     implicitHeight: Theme.panelHeight
     color: Theme.barBackground
@@ -179,7 +180,10 @@ PanelWindow {
 
                     RunningAppsArea { state: root.state }
 
-                    TrayArea {}
+                    Loader {
+                        active: root.primaryPanel
+                        sourceComponent: TrayArea {}
+                    }
 
                     PanelPill {
                         id: batteryPill

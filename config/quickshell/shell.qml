@@ -397,6 +397,7 @@ ShellRoot {
             bluetoothModel: bluetoothModel
             controlCenterModel: controlCenterModel
             powerMenuModel: powerMenuModel
+            primaryPanel: modelData === Quickshell.screens[0]
             onPopupRequested: (panel, popupId) => root.selectPanelPopup(panel, popupId)
         }
     }

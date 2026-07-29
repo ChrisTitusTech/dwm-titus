@@ -455,7 +455,7 @@ static int monitorcount = 1;
 static int getmonlogicalindex(Monitor *target);
 static unsigned int getmontagmask(int monnum);
 static void updatemonitorcount(void);
-static void initmonitortags(void);
+static void reconcilemonitortags(void);
 
 /* common utility implementations */
 static void
@@ -1007,6 +1007,7 @@ configurenotify(XEvent *e)
 		sw = ev->width;
 		sh = ev->height;
 		if (updategeom() || dirty) {
+			reconcilemonitortags();
 			drw_resize(drw, sw, bh);
 			updatebars();
 			for (m = mons; m; m = m->next) {
@@ -3829,8 +3830,8 @@ setup(void)
 	lrpad = drw->fonts->h;
 	bh = 0; /* Quickshell provides the panel. */
 	updategeom();
-	/* Initialize monitor-specific tags after geometry is set up */
-	initmonitortags();
+	/* Reconcile monitor-specific tags after geometry is set up */
+	reconcilemonitortags();
 	/* init atoms */
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
 	wmatom[WMProtocols] = XInternAtom(dpy, "WM_PROTOCOLS", False);
@@ -5156,30 +5157,51 @@ getmontagmask(int monnum)
 	return mask ? mask : (1 << (monnum % LENGTH(tags)));
 }
 
-/* Initialize monitor-specific tags after all monitors are created */
+/* Keep each monitor on tags owned by its current logical monitor index. */
 void
-initmonitortags(void)
+reconcilemonitortags(void)
 {
 	Monitor *m;
-	unsigned int montags;
-	int i;
+	unsigned int fallbacktag, montags;
+	int i, s;
 	
 	updatemonitorcount();
 	
 	for (m = mons; m; m = m->next) {
 		montags = getmontagmask(m->num);
+		fallbacktag = 0;
 		
-		/* Set default tagset to first valid tag for this monitor */
 		for (i = 0; i < LENGTH(tags); i++) {
 			if (montags & (1 << i)) {
-				m->tagset[0] = m->tagset[1] = 1 << i;
+				fallbacktag = 1 << i;
 				break;
 			}
 		}
 		
-		/* Fallback to first tag if calculation fails */
-		if (!m->tagset[0])
-			m->tagset[0] = m->tagset[1] = 1;
+		if (!fallbacktag)
+			fallbacktag = 1;
+
+		for (s = 0; s < 2; s++) {
+			m->tagset[s] &= montags;
+			if (!m->tagset[s])
+				m->tagset[s] = fallbacktag;
+		}
+
+		for (i = 0; i < LENGTH(tags)
+		     && !(m->tagset[m->seltags] & (1 << i)); i++);
+		m->pertag->curtag = i < LENGTH(tags) ? i + 1 : 1;
+
+		for (i = 0; i < LENGTH(tags)
+		     && !(m->tagset[m->seltags ^ 1] & (1 << i)); i++);
+		m->pertag->prevtag = i < LENGTH(tags) ? i + 1 : m->pertag->curtag;
+
+		m->nmaster = m->pertag->nmasters[m->pertag->curtag];
+		m->mfact = m->pertag->mfacts[m->pertag->curtag];
+		m->sellt = m->pertag->sellts[m->pertag->curtag];
+		m->lt[m->sellt] = m->pertag->ltidxs[m->pertag->curtag][m->sellt];
+		m->lt[m->sellt ^ 1] = m->pertag->ltidxs[m->pertag->curtag][m->sellt ^ 1];
+		m->showbar = m->pertag->showbars[m->pertag->curtag];
+		updatebarpos(m);
 	}
 }
 
