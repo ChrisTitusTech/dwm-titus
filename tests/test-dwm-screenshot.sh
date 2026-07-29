@@ -155,6 +155,81 @@ cmp "$failure_home/flameshot-expected.ini" \
 test -L "$failure_home/.config/flameshot/flameshot.ini"
 test "$(stat -Lc %i "$failure_home/flameshot-target.ini")" = "$failure_inode"
 
+concurrent_bin=$work/concurrent-bin
+concurrent_home=$work/concurrent-home
+concurrent_state=$work/concurrent-state
+mkdir -p "$concurrent_bin" "$concurrent_home/.config/flameshot" \
+	"$concurrent_home/runtime" "$concurrent_state"
+cat >"$concurrent_home/.config/flameshot/flameshot.ini" <<'EOF'
+[General]
+showHelp=false
+
+[Shortcuts]
+TYPE_COPY=Ctrl+C
+EOF
+
+cat >"$concurrent_bin/cat" <<'EOF'
+#!/bin/sh
+case ${1:-} in
+*.tmp.*)
+	if (
+		set -C
+		: >"${CONCURRENCY_STATE:?}/writer-entered"
+	) 2>/dev/null; then
+		while [ ! -f "${CONCURRENCY_STATE:?}/release-writer" ]; do
+			sleep 0.01
+		done
+	else
+		: >"${CONCURRENCY_STATE:?}/second-writer-entered"
+	fi
+	;;
+esac
+exec /usr/bin/cat "$@"
+EOF
+chmod +x "$concurrent_bin/cat"
+
+env -u WAYLAND_DISPLAY \
+	DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	XDG_CONFIG_HOME="$concurrent_home/.config" \
+	XDG_RUNTIME_DIR="$concurrent_home/runtime" \
+	HOME="$concurrent_home" \
+	PATH="$concurrent_bin:$work/bin:/usr/bin:/bin" \
+	CONCURRENCY_STATE="$concurrent_state" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" setup &
+first_setup_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -f "$concurrent_state/writer-entered" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+test -f "$concurrent_state/writer-entered"
+
+env -u WAYLAND_DISPLAY \
+	DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	XDG_CONFIG_HOME="$concurrent_home/.config" \
+	XDG_RUNTIME_DIR="$concurrent_home/runtime" \
+	HOME="$concurrent_home" \
+	PATH="$concurrent_bin:$work/bin:/usr/bin:/bin" \
+	CONCURRENCY_STATE="$concurrent_state" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" setup &
+second_setup_pid=$!
+sleep 0.2
+test ! -e "$concurrent_state/second-writer-entered"
+: >"$concurrent_state/release-writer"
+wait "$first_setup_pid"
+wait "$second_setup_pid"
+test ! -e "$concurrent_state/second-writer-entered"
+grep -Fqx 'useX11LegacyScreenshot=true' \
+	"$concurrent_home/.config/flameshot/flameshot.ini"
+grep -Fqx 'showHelp=false' \
+	"$concurrent_home/.config/flameshot/flameshot.ini"
+grep -Fqx 'TYPE_COPY=Ctrl+C' \
+	"$concurrent_home/.config/flameshot/flameshot.ini"
+
 daemon_bin=$work/daemon-bin
 daemon_home=$work/daemon-home
 daemon_state=$work/daemon-state

@@ -11,6 +11,23 @@
 
 set -euo pipefail
 
+acquire_flameshot_lock() {
+	local lock_dir
+
+	if ! command -v flock >/dev/null 2>&1; then
+		printf 'dwm-screenshot: flock is required to manage Flameshot\n' >&2
+		return 1
+	fi
+
+	lock_dir="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/dwm-titus"
+	mkdir -p "$lock_dir"
+	exec {flameshot_lock_fd}>"$lock_dir/flameshot.lock"
+	if ! flock -w 5 "$flameshot_lock_fd"; then
+		printf 'dwm-screenshot: timed out waiting for the Flameshot lock\n' >&2
+		return 1
+	fi
+}
+
 sync_activation_environment() {
 	local -a activation_vars=(DISPLAY XDG_SESSION_TYPE QT_QPA_PLATFORM)
 
@@ -172,21 +189,8 @@ process_is_alive() {
 }
 
 manage_daemon() {
-	local action=$1 alive attempt lock_dir lock_fd pid user_id
+	local action=$1 alive attempt pid user_id
 	local -a all_pids daemon_pids
-
-	if ! command -v flock >/dev/null 2>&1; then
-		printf 'dwm-screenshot: flock is required to manage the Flameshot daemon\n' >&2
-		return 1
-	fi
-
-	lock_dir="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/dwm-titus"
-	mkdir -p "$lock_dir"
-	exec {lock_fd}>"$lock_dir/flameshot.lock"
-	if ! flock -w 5 "$lock_fd"; then
-		printf 'dwm-screenshot: timed out waiting for the Flameshot daemon lock\n' >&2
-		return 1
-	fi
 
 	user_id=$(id -u)
 	mapfile -t all_pids < <(pgrep -u "$user_id" -x flameshot 2>/dev/null || true)
@@ -225,7 +229,7 @@ manage_daemon() {
 
 	if command -v setsid >/dev/null 2>&1; then
 		(
-			exec {lock_fd}>&-
+			exec {flameshot_lock_fd}>&-
 			exec setsid -f env -u WAYLAND_DISPLAY \
 				XDG_SESSION_TYPE=x11 \
 				QT_QPA_PLATFORM=xcb \
@@ -233,7 +237,7 @@ manage_daemon() {
 		) >/dev/null 2>&1
 	else
 		(
-			exec {lock_fd}>&-
+			exec {flameshot_lock_fd}>&-
 			exec env -u WAYLAND_DISPLAY \
 				XDG_SESSION_TYPE=x11 \
 				QT_QPA_PLATFORM=xcb \
@@ -260,6 +264,7 @@ if ! command -v flameshot >/dev/null 2>&1; then
 fi
 
 sync_activation_environment
+acquire_flameshot_lock
 ensure_x11_capture_backend
 
 ACTION="${1:-gui}"
@@ -281,12 +286,15 @@ mkdir -p "$SCREENSHOT_DIR"
 
 case "$ACTION" in
 full)
+	exec {flameshot_lock_fd}>&-
 	exec flameshot full -p "$SCREENSHOT_DIR"
 	;;
 gui)
+	exec {flameshot_lock_fd}>&-
 	exec flameshot gui -p "$SCREENSHOT_DIR"
 	;;
 clip)
+	exec {flameshot_lock_fd}>&-
 	exec flameshot gui --clipboard
 	;;
 *)

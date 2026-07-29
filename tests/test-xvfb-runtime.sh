@@ -308,6 +308,10 @@ main(int argc, char **argv)
 		override_redirect = 1;
 		popup_type = "_NET_WM_WINDOW_TYPE_COMBO";
 	}
+	else if (argc == 2 && strcmp(argv[1], "override-dnd") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_DND";
+	}
 	else if (argc == 2 && strcmp(argv[1], "override-above") == 0) {
 		override_redirect = 1;
 		popup_state = "_NET_WM_STATE_ABOVE";
@@ -673,7 +677,7 @@ wait_for_top_window "$stack_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
 
-for popup_marker in tooltip kde notification menu popup-menu dropdown-menu combo above stays-on-top; do
+for popup_marker in tooltip kde notification menu popup-menu dropdown-menu combo dnd above stays-on-top; do
 	DISPLAY=$display "$work/xclient" "override-$popup_marker" \
 		>"$work/popup-$popup_marker-window-id" \
 		2>"$work/popup-$popup_marker-client.log" &
@@ -713,6 +717,10 @@ for popup_marker in tooltip kde notification menu popup-menu dropdown-menu combo
 		;;
 	combo)
 		popup_atom=_NET_WM_WINDOW_TYPE_COMBO
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	dnd)
+		popup_atom=_NET_WM_WINDOW_TYPE_DND
 		popup_property=_NET_WM_WINDOW_TYPE
 		;;
 	above)
