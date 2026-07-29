@@ -10,6 +10,7 @@ Scope {
     property string category: "all"
     property string status: "Loading applications..."
     property int selectedIndex: 0
+    property var targetScreen: null
     property var apps: []
     property var categories: []
     property var filteredApps: []
@@ -184,7 +185,7 @@ Scope {
         root.refreshFilteredApps();
     }
 
-    function open() {
+    function openWindow() {
         root.visible = true;
         root.query = "";
         root.category = "all";
@@ -194,6 +195,16 @@ Scope {
         if (!indexProcess.running) {
             indexProcess.running = true;
         }
+    }
+
+    function open() {
+        root.targetScreen = null;
+        root.openWindow();
+    }
+
+    function openOnScreen(screen) {
+        root.targetScreen = screen;
+        root.openWindow();
     }
 
     function close() {

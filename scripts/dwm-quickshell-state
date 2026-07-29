@@ -150,8 +150,14 @@ show_state() {
 	status=$(root_status)
 	occupied=$(occupied_workspaces)
 	apps=$(running_apps)
+	monitor_desktops=$(
+		root_property_value _DWM_MONITOR_DESKTOPS |
+			tr -d '[:space:]'
+	)
+	monitor_desktops=${monitor_desktops:-$current}
 
 	printf 'current=%s\n' "$current"
+	printf 'monitor_desktops=%s\n' "$monitor_desktops"
 	printf 'count=%s\n' "$count"
 	printf 'names=%s\n' "$names"
 	printf 'occupied=%s\n' "$occupied"
@@ -166,14 +172,26 @@ watch_state() {
 	show_state
 	printf '\n'
 
-	xprop -root -spy \
-		DWM_TAG_UPDATE \
-		_NET_CURRENT_DESKTOP \
-		_NET_NUMBER_OF_DESKTOPS \
-		_NET_DESKTOP_NAMES \
-		_NET_ACTIVE_WINDOW \
-		_NET_CLIENT_LIST \
-		WM_NAME 2>/dev/null |
+	if xprop -root _DWM_MONITOR_DESKTOPS >/dev/null 2>&1; then
+		xprop -root -spy \
+			DWM_TAG_UPDATE \
+			_DWM_MONITOR_DESKTOPS \
+			_NET_CURRENT_DESKTOP \
+			_NET_NUMBER_OF_DESKTOPS \
+			_NET_DESKTOP_NAMES \
+			_NET_ACTIVE_WINDOW \
+			_NET_CLIENT_LIST \
+			WM_NAME 2>/dev/null
+	else
+		xprop -root -spy \
+			DWM_TAG_UPDATE \
+			_NET_CURRENT_DESKTOP \
+			_NET_NUMBER_OF_DESKTOPS \
+			_NET_DESKTOP_NAMES \
+			_NET_ACTIVE_WINDOW \
+			_NET_CLIENT_LIST \
+			WM_NAME 2>/dev/null
+	fi |
 		while IFS= read -r _event; do
 			show_state
 			printf '\n'

@@ -10,6 +10,7 @@ Scope {
     property string page: "overview"
     property bool utilityVisible: false
     property string utilityPage: ""
+    property var utilityScreen: null
     property bool showVolumeWidget: true
     property bool showBluetoothWidget: true
     property bool showNetworkWidget: true
@@ -61,6 +62,7 @@ Scope {
     function closeUtility() {
         root.utilityVisible = false;
         root.utilityPage = "";
+        root.utilityScreen = null;
         root.message = "";
     }
 
@@ -109,6 +111,11 @@ Scope {
     }
 
     function openKeybinds() {
+        root.openKeybindsOnScreen(root.utilityScreen);
+    }
+
+    function openKeybindsOnScreen(screen) {
+        root.utilityScreen = screen;
         root.utilityPage = "keybinds";
         root.utilityVisible = true;
         root.openPage("keybinds", "Loading keybinds...", keybindsProcess);
@@ -119,6 +126,11 @@ Scope {
     }
 
     function openInfo() {
+        root.openInfoOnScreen(root.utilityScreen);
+    }
+
+    function openInfoOnScreen(screen) {
+        root.utilityScreen = screen;
         root.utilityPage = "info";
         root.utilityVisible = true;
         root.openPage("info", "Loading system info...", infoProcess);

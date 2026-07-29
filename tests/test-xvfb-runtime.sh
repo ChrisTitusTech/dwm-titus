@@ -57,6 +57,23 @@ wait_for_current_desktop() {
 	return 1
 }
 
+wait_for_monitor_desktops() {
+	expected=$1
+	i=0
+	while [ "$i" -lt 100 ]; do
+		desktops=$(DISPLAY=$display xprop -root _DWM_MONITOR_DESKTOPS 2>/dev/null |
+			sed -n 's/.*= //p' |
+			tr -d '[:space:]')
+		if [ "$desktops" = "$expected" ]; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "monitor desktops did not become $expected" >&2
+	return 1
+}
+
 wait_for_window_state() {
 	win=$1
 	needle=$2
@@ -365,7 +382,9 @@ dwm_pid=$!
 
 wait_for_root_property _NET_SUPPORTED
 wait_for_root_property _NET_NUMBER_OF_DESKTOPS
+wait_for_root_property _DWM_MONITOR_DESKTOPS
 wait_for_current_desktop 0
+wait_for_monitor_desktops 0,0,1024,768,0
 DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_ABOVE
 DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_STAYS_ON_TOP
 
@@ -384,6 +403,7 @@ DISPLAY=$display xprop -root _NET_CLIENT_LIST | grep -q "$win"
 
 DISPLAY=$display xdotool key Super+2
 wait_for_current_desktop 1
+wait_for_monitor_desktops 0,0,1024,768,1
 
 printf '%s\n' \
 	'keys = [' \

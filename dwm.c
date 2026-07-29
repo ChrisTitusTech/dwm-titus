@@ -80,7 +80,7 @@ enum { CurResizeBR, CurResizeBL, CurResizeTR, CurResizeTL, CurNormal, CurResize,
 enum { SchemeNorm, SchemeSel }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMFullscreen, NetWMAbove, NetWMStaysOnTop, NetActiveWindow, NetWMWindowType, NetWMIcon,
-       NetWMWindowTypeDialog, NetWMWindowTypeDock, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetLast }; /* EWMH atoms */
+       NetWMWindowTypeDialog, NetWMWindowTypeDock, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetDwmMonitorDesktops, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
@@ -452,6 +452,7 @@ struct NumTags { char limitexceeded[LENGTH(tags) > 31 ? -1 : 1]; };
 
 /* monitor-specific tag management */
 static int monitorcount = 1;
+static int getmonlogicalindex(Monitor *target);
 static unsigned int getmontagmask(int monnum);
 static void updatemonitorcount(void);
 static void initmonitortags(void);
@@ -1018,6 +1019,7 @@ configurenotify(XEvent *e)
 			}
 			arrange(NULL);
 			focus(NULL);
+			updatecurrentdesktop();
 		}
 	} else {
 		for (m = mons; m; m = m->next) {
@@ -3855,6 +3857,7 @@ setup(void)
 	netatom[NetCurrentDesktop] = XInternAtom(dpy, "_NET_CURRENT_DESKTOP", False);
 	netatom[NetDesktopNames] = XInternAtom(dpy, "_NET_DESKTOP_NAMES", False);
 	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
+	netatom[NetDwmMonitorDesktops] = XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False);
 	/* init cursors */
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
 	cursor[CurResize] = drw_cur_create(drw, XC_sizing);
@@ -4531,9 +4534,13 @@ updateclientlist(void)
 	}
 }
 
-void updatecurrentdesktop(void){
+void
+updatecurrentdesktop(void)
+{
 	long data[] = { 0 };
-	int i;
+	long *monitor_desktops;
+	Monitor *m;
+	int count, i, logicalindex;
 	unsigned int tagset = selmon->tagset[selmon->seltags];
 	
 	for (i = 0; i < TAGSLENGTH && !(tagset & 1 << i); i++);
@@ -4545,6 +4552,29 @@ void updatecurrentdesktop(void){
 	}
 	
 	ewmh_replace_root_cardinal(netatom[NetCurrentDesktop], data, 1);
+
+	for (count = 0, m = mons; m; m = m->next)
+		count++;
+	if (count == 0)
+		return;
+
+	monitor_desktops = ecalloc(count * 5, sizeof(long));
+	for (m = mons; m; m = m->next) {
+		logicalindex = getmonlogicalindex(m);
+		if (logicalindex < 0 || logicalindex >= count)
+			continue;
+
+		tagset = m->tagset[m->seltags];
+		for (i = 0; i < TAGSLENGTH && !(tagset & 1 << i); i++);
+		monitor_desktops[logicalindex * 5] = m->mx;
+		monitor_desktops[logicalindex * 5 + 1] = m->my;
+		monitor_desktops[logicalindex * 5 + 2] = m->mw;
+		monitor_desktops[logicalindex * 5 + 3] = m->mh;
+		monitor_desktops[logicalindex * 5 + 4] = i < TAGSLENGTH ? i : 0;
+	}
+	XChangeProperty(dpy, root, netatom[NetDwmMonitorDesktops], XA_INTEGER, 32,
+		PropModeReplace, (unsigned char *)monitor_desktops, count * 5);
+	free(monitor_desktops);
 }
 
 #if SHOWWINICON

@@ -29,6 +29,19 @@ ShellRoot {
         ? activePanelWindow.screen
         : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
 
+    function selectPanelPopup(panel, popupId) {
+        if (!panel || !panel.screen) {
+            return;
+        }
+
+        if (popupId !== "bluetooth") bluetoothModel.close();
+        if (popupId !== "controlcenter") controlCenterModel.close();
+        if (popupId !== "controls") controlsModel.close();
+        if (popupId !== "network") networkModel.close();
+        if (popupId !== "power") powerMenuModel.close();
+        root.selectedPanelWindow = panel;
+    }
+
     DwmState {
         id: dwmState
     }
@@ -384,7 +397,7 @@ ShellRoot {
             bluetoothModel: bluetoothModel
             controlCenterModel: controlCenterModel
             powerMenuModel: powerMenuModel
-            onPopupRequested: panel => root.selectedPanelWindow = panel
+            onPopupRequested: (panel, popupId) => root.selectPanelPopup(panel, popupId)
         }
     }
 

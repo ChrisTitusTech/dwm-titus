@@ -10,7 +10,7 @@ pragma ComponentBehavior: Bound
 PanelWindow {
     id: root
 
-    signal popupRequested(var panelWindow)
+    signal popupRequested(var panelWindow, string popupId)
 
     function batteryIcon(percent, status) {
         if (status.toLowerCase() === "charging") {
@@ -85,7 +85,7 @@ PanelWindow {
                     LogoButton {
                         id: logoButton
                         onActivated: {
-                            root.popupRequested(root);
+                            root.popupRequested(root, "controlcenter");
                             root.controlCenterModel.toggle();
                         }
                     }
@@ -102,16 +102,15 @@ PanelWindow {
                             spacing: 1
 
                             Repeater {
-                                model: root.state.workspaceNames
+                                model: root.state.workspaceIndexes(root.screen)
 
                                 delegate: WorkspaceButton {
-                                    required property int index
-                                    required property string modelData
+                                    required property int modelData
 
-                                    label: modelData
-                                    selected: index === root.state.currentWorkspace
-                                    occupied: root.state.workspaceOccupied(index)
-                                    onClicked: root.state.switchWorkspace(index)
+                                    label: root.state.workspaceNames[modelData]
+                                    selected: modelData === root.state.currentWorkspaceForScreen(root.screen)
+                                    occupied: root.state.workspaceOccupied(modelData)
+                                    onClicked: root.state.switchWorkspaceForScreen(root.screen, modelData)
                                 }
                             }
                         }
@@ -238,7 +237,7 @@ PanelWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                root.popupRequested(root);
+                                root.popupRequested(root, "bluetooth");
                                 root.bluetoothModel.toggle();
                             }
                         }
@@ -270,7 +269,7 @@ PanelWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                root.popupRequested(root);
+                                root.popupRequested(root, "network");
                                 root.networkModel.toggle();
                             }
                         }
@@ -308,7 +307,7 @@ PanelWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                root.popupRequested(root);
+                                root.popupRequested(root, "controls");
                                 root.controlsModel.toggle();
                             }
                             onWheel: function(wheel) {
@@ -342,7 +341,7 @@ PanelWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                root.popupRequested(root);
+                                root.popupRequested(root, "power");
                                 root.powerMenuModel.toggle("panel");
                             }
                         }

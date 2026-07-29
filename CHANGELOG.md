@@ -33,6 +33,8 @@ versions from `config.mk`.
   Escape dismissal.
 - The panel audio widget now shows the current volume percentage beside the
   speaker icon and hides the percentage when audio is unavailable.
+- Multi-monitor panels now keep popup and Control Center navigation on the
+  invoking screen and show only the workspaces owned by that monitor.
 - The managed Quickshell bar now appears on every active monitor, with
   panel-triggered popups anchored to the monitor where they were opened.
 - Power actions now use the same compact menu header, flat rows, spacing, and

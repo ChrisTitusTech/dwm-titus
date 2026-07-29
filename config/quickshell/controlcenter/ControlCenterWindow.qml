@@ -45,9 +45,10 @@ ClickAwayPopup {
     }
 
     function openApplications() {
+        const targetScreen = root.panelWindow ? root.panelWindow.screen : null;
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.launcherModel.open();
+            root.launcherModel.openOnScreen(targetScreen);
         });
     }
 
@@ -59,30 +60,34 @@ ClickAwayPopup {
     }
 
     function openSystemHealth() {
+        const targetScreen = root.panelWindow ? root.panelWindow.screen : null;
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.healthModel.openOnScreen(root.panelWindow ? root.panelWindow.screen : null);
+            root.healthModel.openOnScreen(targetScreen);
         });
     }
 
     function openSettings() {
+        const targetScreen = root.panelWindow ? root.panelWindow.screen : null;
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.settingsModel.open();
+            root.settingsModel.openOnScreen(targetScreen);
         });
     }
 
     function openKeybinds() {
+        const targetScreen = root.panelWindow ? root.panelWindow.screen : null;
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.controlCenterModel.openKeybinds();
+            root.controlCenterModel.openKeybindsOnScreen(targetScreen);
         });
     }
 
     function openSystemInfo() {
+        const targetScreen = root.panelWindow ? root.panelWindow.screen : null;
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.controlCenterModel.openInfo();
+            root.controlCenterModel.openInfoOnScreen(targetScreen);
         });
     }
 

@@ -552,6 +552,9 @@ configuration and unrelated application configuration by default.
 - Font aliases must accommodate common Meslo Nerd Font naming differences.
 - Multi-monitor setup must expose EWMH tags correctly to Quickshell and EWMH
   inspection tools.
+- Each Quickshell panel must show only the tags owned by its monitor, using the
+  `_DWM_MONITOR_DESKTOPS` root property to match screen geometry with dwm's
+  logical monitor order and current tag.
 - Defaults should work at 1080p and remain usable at lower and higher
   resolutions.
 - Installation output must be readable in both interactive terminals and logs.

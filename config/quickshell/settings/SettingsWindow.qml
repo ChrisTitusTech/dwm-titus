@@ -12,6 +12,7 @@ FloatingWindow {
 
     title: "dwm settings"
     visible: settingsModel.visible
+    screen: settingsModel.targetScreen
     implicitWidth: 980
     implicitHeight: 620
     color: Theme.bg

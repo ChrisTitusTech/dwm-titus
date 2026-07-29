@@ -14,6 +14,7 @@ Scope {
     property string platformId: "unknown"
     property string platformFamily: "unknown"
     property string platformName: "Unknown Linux"
+    property var targetScreen: null
     property var capabilities: []
     property int selectedIndex: 0
 
@@ -136,12 +137,22 @@ Scope {
         providerProcess.running = true;
     }
 
-    function open() {
+    function openWindow() {
         root.visible = true;
         root.searchQuery = "";
         root.selectedIndex = 0;
         root.selectedSectionId = root.sections[0].id;
         root.refresh();
+    }
+
+    function open() {
+        root.targetScreen = null;
+        root.openWindow();
+    }
+
+    function openOnScreen(screen) {
+        root.targetScreen = screen;
+        root.openWindow();
     }
 
     function close() {

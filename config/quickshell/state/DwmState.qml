@@ -5,6 +5,7 @@ Scope {
     id: root
 
     property int currentWorkspace: 0
+    property var monitorWorkspaceRows: []
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
     property var occupiedWorkspaces: []
     property var runningApps: []
@@ -33,6 +34,20 @@ Scope {
                 const parsed = parseInt(value, 10);
 
                 root.currentWorkspace = isNaN(parsed) ? 0 : parsed;
+            } else if (key === "monitor_desktops") {
+                const fields = value.length > 0 ? value.split(",") : [];
+                const rows = [];
+
+                for (let index = 0; index + 4 < fields.length; index += 5) {
+                    rows.push({
+                        "x": parseInt(fields[index], 10),
+                        "y": parseInt(fields[index + 1], 10),
+                        "width": parseInt(fields[index + 2], 10),
+                        "height": parseInt(fields[index + 3], 10),
+                        "desktop": parseInt(fields[index + 4], 10)
+                    });
+                }
+                root.monitorWorkspaceRows = rows;
             } else if (key === "names") {
                 root.workspaceNames = value.length > 0 ? value.split("|") : [];
             } else if (key === "occupied") {
@@ -57,6 +72,71 @@ Scope {
 
     function workspaceOccupied(index) {
         return root.occupiedWorkspaces.indexOf(index) !== -1;
+    }
+
+    function screenIndex(screen) {
+        for (let index = 0; index < root.monitorWorkspaceRows.length; index++) {
+            const row = root.monitorWorkspaceRows[index];
+
+            if (screen && row.x === screen.x && row.y === screen.y
+                    && row.width === screen.width && row.height === screen.height) {
+                return index;
+            }
+        }
+
+        for (let index = 0; index < Quickshell.screens.length; index++) {
+            if (Quickshell.screens[index] === screen
+                    || (screen && Quickshell.screens[index].name === screen.name)) {
+                return index;
+            }
+        }
+
+        return 0;
+    }
+
+    function workspaceIndexes(screen) {
+        const indexes = [];
+        const workspaceCount = root.workspaceNames.length;
+
+        if (workspaceCount === 0) {
+            return indexes;
+        }
+
+        const screenCount = Math.max(1, Quickshell.screens.length);
+        const logicalIndex = Math.min(root.screenIndex(screen), screenCount - 1);
+        const workspacesPerScreen = Math.max(1, Math.floor(workspaceCount / screenCount));
+        let start = logicalIndex * workspacesPerScreen;
+        let end = logicalIndex === screenCount - 1
+            ? workspaceCount : start + workspacesPerScreen;
+
+        if (start >= workspaceCount) {
+            start = workspaceCount - 1;
+        }
+        end = Math.min(end, workspaceCount);
+
+        for (let index = start; index < end; index++) {
+            indexes.push(index);
+        }
+
+        return indexes;
+    }
+
+    function currentWorkspaceForScreen(screen) {
+        const logicalIndex = root.screenIndex(screen);
+        const indexes = root.workspaceIndexes(screen);
+        const reported = logicalIndex < root.monitorWorkspaceRows.length
+            ? root.monitorWorkspaceRows[logicalIndex].desktop : root.currentWorkspace;
+
+        return indexes.indexOf(reported) !== -1
+            ? reported : (indexes.length > 0 ? indexes[0] : -1);
+    }
+
+    function switchWorkspaceForScreen(screen, index) {
+        if (root.workspaceIndexes(screen).indexOf(index) === -1) {
+            return;
+        }
+
+        root.switchWorkspace(index);
     }
 
     function updateStatusSegments() {
