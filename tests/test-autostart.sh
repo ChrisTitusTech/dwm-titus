@@ -195,7 +195,13 @@ run_duplicate_case() {
 	done
 
 	for name in feh flameshot picom dwm-lock-watch quickshell; do
-		test "$(cat "$state/$name.count")" -eq 1
+		expected=1
+		# Each startx fixture invocation has a fresh session bus, so the
+		# surviving Flameshot daemon must be replaced for the second bus.
+		if [ "$mode" = startx ] && [ "$name" = flameshot ]; then
+			expected=2
+		fi
+		test "$(cat "$state/$name.count")" -eq "$expected"
 	done
 	grep -Fqx 'useX11LegacyScreenshot=true' \
 		"$home/.config/flameshot/flameshot.ini"

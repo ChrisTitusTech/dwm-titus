@@ -234,11 +234,12 @@ test ! -f "${DAEMON_STATE:?}/count" ||
 count=$(cat "${DAEMON_STATE:?}/count")
 count=$((count + 1))
 printf '%s\n' "$count" >"${DAEMON_STATE:?}/count"
-printf 'daemon-env:%s:%s:%s:%s\n' \
+printf 'daemon-env:%s:%s:%s:%s:%s\n' \
 	"${DISPLAY-unset}" \
 	"${WAYLAND_DISPLAY-unset}" \
 	"${XDG_SESSION_TYPE-unset}" \
-	"${QT_QPA_PLATFORM-unset}" >>"${TEST_LOG:?}"
+	"${QT_QPA_PLATFORM-unset}" \
+	"${DBUS_SESSION_BUS_ADDRESS-unset}" >>"${TEST_LOG:?}"
 for descriptor in /proc/$$/fd/*; do
 	case $(readlink "$descriptor" 2>/dev/null || true) in
 	*/flameshot.lock)
@@ -254,6 +255,7 @@ EOF
 chmod +x "$daemon_bin/"*
 
 : >"$log"
+test_bus=${DBUS_SESSION_BUS_ADDRESS-unset}
 DISPLAY=:98 \
 	WAYLAND_DISPLAY=wayland-0 \
 	XDG_SESSION_TYPE=wayland \
@@ -267,7 +269,7 @@ DISPLAY=:98 \
 	"$repo_dir/scripts/dwm-screenshot" daemon
 
 test "$(cat "$daemon_state/count")" -eq 1
-grep -Fqx 'daemon-env::98:unset:x11:xcb' "$log"
+grep -Fqx "daemon-env::98:unset:x11:xcb:$test_bus" "$log"
 
 DISPLAY=:99 \
 	WAYLAND_DISPLAY=wayland-0 \
@@ -281,7 +283,7 @@ DISPLAY=:99 \
 	TEST_LOG="$log" \
 	"$repo_dir/scripts/dwm-screenshot" daemon
 test "$(cat "$daemon_state/count")" -eq 2
-grep -Fqx 'daemon-env::99:unset:x11:xcb' "$log"
+grep -Fqx "daemon-env::99:unset:x11:xcb:$test_bus" "$log"
 test "$(find "$daemon_state" -name 'pid.*' -type f | wc -l)" -eq 1
 
 DISPLAY=:99 \
@@ -349,6 +351,32 @@ kill -KILL "$zombie_mock_pid"
 wait "$zombie_mock_pid" 2>/dev/null || true
 rm -f "$daemon_state/pid.$zombie_mock_pid"
 zombie_mock_pid=
+
+replacement_bus="unix:path=$work/replacement-bus"
+DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	DBUS_SESSION_BUS_ADDRESS="$replacement_bus" \
+	XDG_CONFIG_HOME="$daemon_home/.config" \
+	XDG_RUNTIME_DIR="$daemon_home/runtime" \
+	HOME="$daemon_home" \
+	PATH="$daemon_bin:$work/bin:/usr/bin:/bin" \
+	DAEMON_STATE="$daemon_state" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" daemon
+test "$(cat "$daemon_state/count")" -eq 6
+grep -Fqx "daemon-env::99:unset:x11:xcb:$replacement_bus" "$log"
+
+DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	DBUS_SESSION_BUS_ADDRESS="$replacement_bus" \
+	XDG_CONFIG_HOME="$daemon_home/.config" \
+	XDG_RUNTIME_DIR="$daemon_home/runtime" \
+	HOME="$daemon_home" \
+	PATH="$daemon_bin:$work/bin:/usr/bin:/bin" \
+	DAEMON_STATE="$daemon_state" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" daemon
+test "$(cat "$daemon_state/count")" -eq 6
 
 theme_bin=$work/theme-bin
 theme_home=$work/theme-home

@@ -140,12 +140,20 @@ flameshot_daemon_pids() {
 	while IFS= read -r pid; do
 		process_is_alive "$pid" || continue
 		[[ -r "/proc/$pid/environ" ]] || continue
-		if awk -v expected_display="DISPLAY=$DISPLAY" '
+		if awk \
+			-v expected_display="DISPLAY=$DISPLAY" \
+			-v expected_bus="${DBUS_SESSION_BUS_ADDRESS:+DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS}" '
 			BEGIN { RS = "\0" }
 			$0 == expected_display { display = 1 }
 			$0 == "XDG_SESSION_TYPE=x11" { session = 1 }
 			$0 == "QT_QPA_PLATFORM=xcb" { platform = 1 }
-			END { exit !(display && session && platform) }
+			index($0, "DBUS_SESSION_BUS_ADDRESS=") == 1 { bus_present = 1 }
+			$0 == expected_bus { bus = 1 }
+			END {
+				if (expected_bus == "")
+					bus = !bus_present
+				exit !(display && session && platform && bus)
+			}
 		' "/proc/$pid/environ"; then
 			printf '%s\n' "$pid"
 		fi
@@ -188,7 +196,7 @@ manage_daemon() {
 	fi
 
 	# Flameshot is a per-user singleton on the session bus. Replace any stale
-	# daemon from another display so this managed X11 session owns it.
+	# daemon from another display or bus so this managed X11 session owns it.
 	if ((${#all_pids[@]})); then
 		kill "${all_pids[@]}" 2>/dev/null || true
 		attempt=0
