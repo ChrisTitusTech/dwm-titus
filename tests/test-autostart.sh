@@ -158,6 +158,7 @@ run_duplicate_case() {
 				PATH="$work/bin:/usr/bin:/bin" \
 				WAYLAND_DISPLAY=wayland-0 \
 				XDG_CONFIG_HOME="$home/.config" \
+				XDG_RUNTIME_DIR="$runtime" \
 				XDG_SESSION_TYPE=wayland \
 				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
@@ -246,6 +247,7 @@ run_flameshot_setup_failure_case() {
 		TEST_SYSTEMD_START_FAIL=1 \
 		PATH="$work/bin:/usr/bin:/bin" \
 		XDG_CONFIG_HOME=$config_path \
+		XDG_RUNTIME_DIR="$work/flameshot-failure/runtime" \
 		DWM_AUTOSTART_NO_SETSID=1 \
 		sh "$repo_dir/scripts/autostart.sh" \
 		2>"$state/autostart.err"

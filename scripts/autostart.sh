@@ -79,21 +79,23 @@ export XDG_SESSION_TYPE=x11
 export QT_QPA_PLATFORM=xcb
 unset WAYLAND_DISPLAY
 
-IMPORT_ENV="DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME XCURSOR_THEME XCURSOR_SIZE"
-
 # Export display and theme env to systemd/dbus in parallel (both are IPC round-trips).
 if command -v systemctl >/dev/null 2>&1; then
 	{
 		systemctl --user unset-environment WAYLAND_DISPLAY
-		# shellcheck disable=SC2086
-		systemctl --user import-environment $IMPORT_ENV
+		systemctl --user import-environment \
+			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION \
+			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
+			XCURSOR_THEME XCURSOR_SIZE
 	} &
 fi
 if command -v dbus-update-activation-environment >/dev/null 2>&1; then
 	{
 		dbus-update-activation-environment WAYLAND_DISPLAY=
-		# shellcheck disable=SC2086
-		dbus-update-activation-environment --systemd $IMPORT_ENV
+		dbus-update-activation-environment --systemd \
+			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION \
+			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
+			XCURSOR_THEME XCURSOR_SIZE
 	} 2>/dev/null &
 fi
 wait
@@ -125,14 +127,11 @@ if ! command -v "$screenshot_helper" >/dev/null 2>&1; then
 	*/*) screenshot_helper=${0%/*}/dwm-screenshot ;;
 	esac
 fi
-# Starting it explicitly avoids racing D-Bus activation against
-# StatusNotifier registration.
+# The helper serializes daemon startup with theme-driven restarts.
 if command -v flameshot >/dev/null 2>&1; then
 	if [ -x "$screenshot_helper" ] ||
 		command -v "$screenshot_helper" >/dev/null 2>&1; then
-		if "$screenshot_helper" setup >/dev/null; then
-			start_detached_once flameshot flameshot
-		else
+		if ! "$screenshot_helper" daemon >/dev/null; then
 			printf '%s\n' \
 				"autostart: failed to configure Flameshot's X11 backend; not starting Flameshot" >&2
 		fi

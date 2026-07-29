@@ -134,6 +134,63 @@ ensure_x11_capture_backend() {
 	rm -f -- "$backup_file" "$temp_file"
 }
 
+manage_daemon() {
+	local action=$1 attempt lock_dir lock_fd user_id
+
+	if ! command -v flock >/dev/null 2>&1; then
+		printf 'dwm-screenshot: flock is required to manage the Flameshot daemon\n' >&2
+		return 1
+	fi
+
+	lock_dir="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/dwm-titus"
+	mkdir -p "$lock_dir"
+	exec {lock_fd}>"$lock_dir/flameshot.lock"
+	if ! flock -w 5 "$lock_fd"; then
+		printf 'dwm-screenshot: timed out waiting for the Flameshot daemon lock\n' >&2
+		return 1
+	fi
+
+	user_id=$(id -u)
+	if [[ "$action" == restart-daemon ]]; then
+		pkill -u "$user_id" -x flameshot 2>/dev/null || true
+		attempt=0
+		while pgrep -u "$user_id" -x flameshot >/dev/null 2>&1; do
+			((attempt += 1))
+			if ((attempt >= 100)); then
+				printf 'dwm-screenshot: timed out waiting for Flameshot to exit\n' >&2
+				return 1
+			fi
+			sleep 0.05
+		done
+	fi
+
+	if pgrep -u "$user_id" -x flameshot >/dev/null 2>&1; then
+		return 0
+	fi
+
+	if command -v setsid >/dev/null 2>&1; then
+		setsid -f env -u WAYLAND_DISPLAY \
+			XDG_SESSION_TYPE=x11 \
+			QT_QPA_PLATFORM=xcb \
+			flameshot >/dev/null 2>&1
+	else
+		env -u WAYLAND_DISPLAY \
+			XDG_SESSION_TYPE=x11 \
+			QT_QPA_PLATFORM=xcb \
+			flameshot >/dev/null 2>&1 &
+	fi
+
+	attempt=0
+	until pgrep -u "$user_id" -x flameshot >/dev/null 2>&1; do
+		((attempt += 1))
+		if ((attempt >= 100)); then
+			printf 'dwm-screenshot: timed out waiting for Flameshot to start\n' >&2
+			return 1
+		fi
+		sleep 0.05
+	done
+}
+
 if ! command -v flameshot >/dev/null 2>&1; then
 	printf 'dwm-screenshot: flameshot is not installed\n' >&2
 	exit 127
@@ -145,6 +202,10 @@ ensure_x11_capture_backend
 ACTION="${1:-gui}"
 if [[ "$ACTION" == setup ]]; then
 	exit 0
+fi
+if [[ "$ACTION" == daemon || "$ACTION" == restart-daemon ]]; then
+	manage_daemon "$ACTION"
+	exit
 fi
 
 SCREENSHOT_DIR=""
@@ -166,7 +227,7 @@ clip)
 	exec flameshot gui --clipboard
 	;;
 *)
-	printf 'Usage: %s {full|gui|clip}\n' "$0" >&2
+	printf 'Usage: %s {full|gui|clip|setup|daemon|restart-daemon}\n' "$0" >&2
 	exit 1
 	;;
 esac

@@ -146,6 +146,106 @@ cmp "$failure_home/flameshot-expected.ini" \
 test -L "$failure_home/.config/flameshot/flameshot.ini"
 test "$(stat -Lc %i "$failure_home/flameshot-target.ini")" = "$failure_inode"
 
+daemon_bin=$work/daemon-bin
+daemon_home=$work/daemon-home
+daemon_state=$work/daemon-state
+mkdir -p "$daemon_bin" "$daemon_home" "$daemon_state"
+
+cat >"$daemon_bin/id" <<'EOF'
+#!/bin/sh
+printf '%s\n' 1000
+EOF
+
+cat >"$daemon_bin/flock" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+
+cat >"$daemon_bin/pgrep" <<'EOF'
+#!/bin/sh
+name=
+while [ "$#" -gt 0 ]; do
+	case $1 in
+	-x)
+		shift
+		name=${1:-}
+		break
+		;;
+	esac
+	shift
+done
+test "$name" = flameshot
+test -f "${DAEMON_STATE:?}/running"
+EOF
+
+cat >"$daemon_bin/pkill" <<'EOF'
+#!/bin/sh
+printf 'pkill:%s\n' "$*" >>"${TEST_LOG:?}"
+rm -f "${DAEMON_STATE:?}/running"
+EOF
+
+cat >"$daemon_bin/setsid" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = "-f" ]; then
+	shift
+fi
+exec "$@"
+EOF
+
+cat >"$daemon_bin/flameshot" <<'EOF'
+#!/bin/sh
+count=0
+test ! -f "${DAEMON_STATE:?}/count" ||
+	count=$(cat "${DAEMON_STATE:?}/count")
+count=$((count + 1))
+printf '%s\n' "$count" >"${DAEMON_STATE:?}/count"
+printf 'daemon-env:%s:%s:%s\n' \
+	"${WAYLAND_DISPLAY-unset}" \
+	"${XDG_SESSION_TYPE-unset}" \
+	"${QT_QPA_PLATFORM-unset}" >>"${TEST_LOG:?}"
+: >"${DAEMON_STATE:?}/running"
+EOF
+chmod +x "$daemon_bin/"*
+
+: >"$log"
+DISPLAY=:99 \
+	WAYLAND_DISPLAY=wayland-0 \
+	XDG_SESSION_TYPE=wayland \
+	QT_QPA_PLATFORM=wayland \
+	XDG_CONFIG_HOME="$daemon_home/.config" \
+	XDG_RUNTIME_DIR="$daemon_home/runtime" \
+	HOME="$daemon_home" \
+	PATH="$daemon_bin:$work/bin:/usr/bin:/bin" \
+	DAEMON_STATE="$daemon_state" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" daemon
+
+test "$(cat "$daemon_state/count")" -eq 1
+grep -Fqx 'daemon-env:unset:x11:xcb' "$log"
+
+DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	XDG_CONFIG_HOME="$daemon_home/.config" \
+	XDG_RUNTIME_DIR="$daemon_home/runtime" \
+	HOME="$daemon_home" \
+	PATH="$daemon_bin:$work/bin:/usr/bin:/bin" \
+	DAEMON_STATE="$daemon_state" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" daemon
+test "$(cat "$daemon_state/count")" -eq 1
+
+DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	XDG_CONFIG_HOME="$daemon_home/.config" \
+	XDG_RUNTIME_DIR="$daemon_home/runtime" \
+	HOME="$daemon_home" \
+	PATH="$daemon_bin:$work/bin:/usr/bin:/bin" \
+	DAEMON_STATE="$daemon_state" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" restart-daemon
+test "$(cat "$daemon_state/count")" -eq 2
+grep -Fqx 'pkill:-u 1000 -x flameshot' "$log"
+
 theme_bin=$work/theme-bin
 theme_home=$work/theme-home
 mkdir -p "$theme_bin" "$theme_home/.config/dwm-titus"
@@ -154,31 +254,18 @@ cp "$repo_dir/config/themes.toml" \
 
 cat >"$theme_bin/pgrep" <<'EOF'
 #!/bin/sh
-test "$1" = "-x" && test "$2" = "flameshot"
-EOF
-
-cat >"$theme_bin/pkill" <<'EOF'
-#!/bin/sh
-printf 'pkill:%s\n' "$*" >>"${TEST_LOG:?}"
+test "$1" = "-u" && test "$3" = "-x" && test "$4" = "flameshot"
 EOF
 
 cat >"$theme_bin/dwm-screenshot" <<'EOF'
 #!/bin/sh
-printf 'dwm-screenshot:%s\n' "$*" >>"${TEST_LOG:?}"
+printf 'dwm-screenshot:%s:%s\n' \
+	"$*" "${QT_QPA_PLATFORMTHEME-unset}" >>"${TEST_LOG:?}"
 test "${TEST_SETUP_FAIL:-0}" != "1"
 EOF
 
-cat >"$theme_bin/flameshot" <<'EOF'
-#!/bin/sh
-printf 'flameshot-env:%s:%s:%s:%s\n' \
-	"${WAYLAND_DISPLAY-unset}" \
-	"${XDG_SESSION_TYPE-unset}" \
-	"${QT_QPA_PLATFORM-unset}" \
-	"${QT_QPA_PLATFORMTHEME-unset}" >>"${TEST_LOG:?}"
-EOF
-
 for command_name in dbus-update-activation-environment gsettings qt6ct \
-	sleep systemctl xfconf-query xrdb; do
+	systemctl xfconf-query xrdb; do
 	cat >"$theme_bin/$command_name" <<'EOF'
 #!/bin/sh
 :
@@ -197,9 +284,7 @@ DISPLAY=:99 \
 	TEST_LOG="$log" \
 	"$repo_dir/scripts/theme-apply.sh"
 
-grep -Fqx 'dwm-screenshot:setup' "$log"
-grep -Fqx 'pkill:-x flameshot' "$log"
-grep -Fqx 'flameshot-env:unset:x11:xcb:qt6ct' "$log"
+grep -Fqx 'dwm-screenshot:restart-daemon:qt6ct' "$log"
 
 : >"$log"
 DISPLAY=:99 \
@@ -213,10 +298,6 @@ DISPLAY=:99 \
 	TEST_SETUP_FAIL=1 \
 	"$repo_dir/scripts/theme-apply.sh" 2>/dev/null
 
-grep -Fqx 'dwm-screenshot:setup' "$log"
-if grep -Eq '^(pkill|flameshot-env):' "$log"; then
-	printf '%s\n' "Theme reload must keep Flameshot running when X11 setup fails" >&2
-	exit 1
-fi
+grep -Fqx 'dwm-screenshot:restart-daemon:qt6ct' "$log"
 
 printf '%s\n' "Flameshot X11 backend, environment, and clipboard command: PASS"
