@@ -212,10 +212,9 @@ trap cleanup EXIT
 
 count=0
 test ! -f "${DAEMON_STATE:?}/count" ||
-	count=$(cat "${DAEMON_STATE:?}/count")
+count=$(cat "${DAEMON_STATE:?}/count")
 count=$((count + 1))
 printf '%s\n' "$count" >"${DAEMON_STATE:?}/count"
-printf '%s\n' "$$" >"$pid_file"
 printf 'daemon-env:%s:%s:%s:%s\n' \
 	"${DISPLAY-unset}" \
 	"${WAYLAND_DISPLAY-unset}" \
@@ -228,6 +227,7 @@ for descriptor in /proc/$$/fd/*; do
 		;;
 	esac
 done
+printf '%s\n' "$$" >"$pid_file"
 while :; do
 	sleep 0.1
 done
