@@ -102,4 +102,77 @@ if grep -Fqx 'useX11LegacyScreenshot=true' \
 	exit 1
 fi
 
+theme_bin=$work/theme-bin
+theme_home=$work/theme-home
+mkdir -p "$theme_bin" "$theme_home/.config/dwm-titus"
+cp "$repo_dir/config/themes.toml" \
+	"$theme_home/.config/dwm-titus/themes.toml"
+
+cat >"$theme_bin/pgrep" <<'EOF'
+#!/bin/sh
+test "$1" = "-x" && test "$2" = "flameshot"
+EOF
+
+cat >"$theme_bin/pkill" <<'EOF'
+#!/bin/sh
+printf 'pkill:%s\n' "$*" >>"${TEST_LOG:?}"
+EOF
+
+cat >"$theme_bin/dwm-screenshot" <<'EOF'
+#!/bin/sh
+printf 'dwm-screenshot:%s\n' "$*" >>"${TEST_LOG:?}"
+test "${TEST_SETUP_FAIL:-0}" != "1"
+EOF
+
+cat >"$theme_bin/flameshot" <<'EOF'
+#!/bin/sh
+printf 'flameshot-env:%s:%s:%s:%s\n' \
+	"${WAYLAND_DISPLAY-unset}" \
+	"${XDG_SESSION_TYPE-unset}" \
+	"${QT_QPA_PLATFORM-unset}" \
+	"${QT_QPA_PLATFORMTHEME-unset}" >>"${TEST_LOG:?}"
+EOF
+
+for command_name in dbus-update-activation-environment gsettings qt6ct \
+	sleep systemctl xfconf-query xrdb; do
+	cat >"$theme_bin/$command_name" <<'EOF'
+#!/bin/sh
+:
+EOF
+done
+chmod +x "$theme_bin/"*
+
+: >"$log"
+DISPLAY=:99 \
+	WAYLAND_DISPLAY=wayland-0 \
+	XDG_SESSION_TYPE=wayland \
+	QT_QPA_PLATFORM=wayland \
+	XDG_CONFIG_HOME="$theme_home/.config" \
+	HOME="$theme_home" \
+	PATH="$theme_bin:/usr/bin:/bin" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/theme-apply.sh"
+
+grep -Fqx 'dwm-screenshot:setup' "$log"
+grep -Fqx 'pkill:-x flameshot' "$log"
+grep -Fqx 'flameshot-env:unset:x11:xcb:qt6ct' "$log"
+
+: >"$log"
+DISPLAY=:99 \
+	WAYLAND_DISPLAY=wayland-0 \
+	XDG_SESSION_TYPE=wayland \
+	QT_QPA_PLATFORM=wayland \
+	XDG_CONFIG_HOME="$theme_home/.config" \
+	HOME="$theme_home" \
+	PATH="$theme_bin:/usr/bin:/bin" \
+	TEST_LOG="$log" \
+	TEST_SETUP_FAIL=1 \
+	"$repo_dir/scripts/theme-apply.sh" 2>/dev/null
+
+grep -Fqx 'dwm-screenshot:setup' "$log"
+if grep -Eq '^(pkill|flameshot-env):' "$log"; then
+	printf '%s\n' "Theme reload must keep Flameshot running when X11 setup fails" >&2
+	exit 1
+fi
+
 printf '%s\n' "Flameshot X11 backend, environment, and clipboard command: PASS"
