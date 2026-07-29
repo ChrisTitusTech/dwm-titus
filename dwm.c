@@ -307,6 +307,7 @@ static void ewmh_set_active_window(Window win);
 static void ewmh_set_desktop_names(void);
 static void ewmh_set_fullscreen_state(Client *c, int fullscreen);
 static Atom getatomprop(Client *c, Atom prop);
+static Atom getwinatomprop(Window win, Atom prop);
 static void setclientdesktop(Client *c);
 static void setcurrentdesktop(void);
 static void setdesktopnames(void);
@@ -317,6 +318,7 @@ static void updatecurrentdesktop(void);
 /* External dock and systray declarations */
 static void managealtbar(Window win, XWindowAttributes *wa);
 static void managetray(Window win, XWindowAttributes *wa);
+static void scanaltbars(void);
 static void scantray(void);
 static void unmanagealtbar(Window w);
 static void unmanagetray(Window w);
@@ -1000,7 +1002,7 @@ configure(Client *c)
 void
 configurenotify(XEvent *e)
 {
-	Monitor *m;
+	Monitor *m, *oldm;
 	Client *c;
 	XConfigureEvent *ev = &e->xconfigure;
 	XWindowAttributes wa;
@@ -1014,6 +1016,7 @@ configurenotify(XEvent *e)
 			reconcilemonitortags();
 			drw_resize(drw, sw, bh);
 			updatebars();
+			scanaltbars();
 			updateclientlist();
 			for (m = mons; m; m = m->next) {
 				for (c = m->clients; c; c = c->next) {
@@ -1027,16 +1030,27 @@ configurenotify(XEvent *e)
 			focus(NULL);
 			updatecurrentdesktop();
 		}
-	} else {
-		for (m = mons; m; m = m->next) {
-			if (m->barwin == ev->window &&
-			    XGetWindowAttributes(dpy, ev->window, &wa) &&
-			    updatealtbar(m, ev->window, &wa)) {
-				arrange(m);
-				XRaiseWindow(dpy, ev->window);
-				updateclientlist();
-				break;
-			}
+	} else if (XGetWindowAttributes(dpy, ev->window, &wa)) {
+		for (oldm = mons; oldm && oldm->barwin != ev->window;
+		     oldm = oldm->next);
+		if (getwinatomprop(ev->window, netatom[NetWMWindowType])
+		    == netatom[NetWMWindowTypeDock]) {
+			m = recttomon(wa.x, wa.y, wa.width, wa.height);
+			if (m && INTERSECT(wa.x, wa.y, wa.width, wa.height, m) <= 0)
+				m = NULL;
+		} else {
+			m = oldm;
+		}
+		if (oldm && m && oldm != m) {
+			oldm->barwin = 0;
+			oldm->bh = 0;
+			updatebarpos(oldm);
+			arrange(oldm);
+		}
+		if (m && updatealtbar(m, ev->window, &wa)) {
+			arrange(m);
+			XRaiseWindow(dpy, ev->window);
+			updateclientlist();
 		}
 	}
 }
@@ -2791,6 +2805,38 @@ scan(void)
 		}
 		XFree(wins);
 	}
+}
+
+void
+scanaltbars(void)
+{
+	unsigned int i, num;
+	Monitor *m;
+	Window d1, d2, *wins = NULL;
+	XWindowAttributes wa;
+
+	for (m = mons; m; m = m->next) {
+		m->barwin = 0;
+		m->bh = 0;
+		updatebarpos(m);
+	}
+
+	if (!XQueryTree(dpy, root, &d1, &d2, &wins, &num))
+		return;
+
+	for (i = 0; i < num; i++) {
+		if (!XGetWindowAttributes(dpy, wins[i], &wa)
+		    || wa.override_redirect || wa.map_state != IsViewable
+		    || getwinatomprop(wins[i], netatom[NetWMWindowType])
+		        != netatom[NetWMWindowTypeDock])
+			continue;
+
+		m = recttomon(wa.x, wa.y, wa.width, wa.height);
+		if (!m || INTERSECT(wa.x, wa.y, wa.width, wa.height, m) <= 0)
+			continue;
+		updatealtbar(m, wins[i], &wa);
+	}
+	XFree(wins);
 }
 
 /* Systray discovery implementation */

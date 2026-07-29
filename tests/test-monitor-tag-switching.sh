@@ -28,12 +28,20 @@ grep -q 'XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False)' "$repo_dir/dwm.c"
 configure_body=$(sed -n '/^configurenotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$configure_body" | grep -q 'reconcilemonitortags();'
 reconcile_line=$(printf '%s\n' "$configure_body" | grep -n 'reconcilemonitortags();' | cut -d: -f1)
+scan_bars_line=$(printf '%s\n' "$configure_body" | grep -n 'scanaltbars();' | cut -d: -f1)
 client_list_line=$(printf '%s\n' "$configure_body" |
 	grep -n 'updateclientlist();' | cut -d: -f1 | sed -n '1p')
 publish_line=$(printf '%s\n' "$configure_body" | grep -n 'updatecurrentdesktop();' | cut -d: -f1)
+test "$reconcile_line" -lt "$scan_bars_line"
+test "$scan_bars_line" -lt "$client_list_line"
 test "$reconcile_line" -lt "$client_list_line"
 test "$client_list_line" -lt "$publish_line"
 test "$reconcile_line" -lt "$publish_line"
+printf '%s\n' "$configure_body" | grep -q 'getwinatomprop(ev->window, netatom\[NetWMWindowType\])'
+printf '%s\n' "$configure_body" | grep -q 'm = recttomon(wa.x, wa.y, wa.width, wa.height);'
+printf '%s\n' "$configure_body" | grep -q 'oldm->barwin = 0;'
+printf '%s\n' "$configure_body" | grep -q 'oldm->bh = 0;'
+printf '%s\n' "$configure_body" | grep -q 'arrange(oldm);'
 
 reconcile_body=$(sed -n '/^reconcilemonitortags(void)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$reconcile_body" | grep -q 'updatemonitorcount();'
@@ -54,6 +62,12 @@ printf '%s\n' "$reconcile_body" | grep -q 'm->showbar = m->pertag->showbars\[m->
 update_client_list_body=$(sed -n '/^updateclientlist(void)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$update_client_list_body" | grep -q 'PropModeReplace'
 printf '%s\n' "$update_client_list_body" | grep -q 'memcmp(clients, clientlistcache'
+scan_alt_bars_body=$(sed -n '/^scanaltbars(void)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$scan_alt_bars_body" | grep -q 'm->barwin = 0;'
+printf '%s\n' "$scan_alt_bars_body" | grep -q 'wa.map_state != IsViewable'
+printf '%s\n' "$scan_alt_bars_body" | grep -q 'netatom\[NetWMWindowTypeDock\]'
+printf '%s\n' "$scan_alt_bars_body" | grep -q 'INTERSECT(wa.x, wa.y, wa.width, wa.height, m) <= 0'
+printf '%s\n' "$scan_alt_bars_body" | grep -q 'updatealtbar(m, wins\[i\], &wa);'
 grep -q 'ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1)' "$repo_dir/dwm.c"
 grep -q 'm->barwin, m->wx, m->by, m->ww, m->bh' "$repo_dir/dwm.c"
 grep -q 'selmon->barwin, selmon->wx, selmon->by, selmon->ww, selmon->bh' "$repo_dir/dwm.c"
