@@ -67,7 +67,7 @@ ensure_x11_capture_backend() {
 	fi
 
 	temp_file=$(mktemp "$config_file.tmp.XXXXXX")
-	awk '
+	if ! awk '
 		BEGIN {
 			in_general = 0
 			found_general = 0
@@ -106,8 +106,15 @@ ensure_x11_capture_backend() {
 				print "useX11LegacyScreenshot=true"
 			}
 		}
-	' "$config_file" >"$temp_file"
-	mv "$temp_file" "$config_file"
+	' "$config_file" >"$temp_file"; then
+		rm -f "$temp_file"
+		return 1
+	fi
+	if ! cat "$temp_file" >"$config_file"; then
+		rm -f "$temp_file"
+		return 1
+	fi
+	rm -f "$temp_file"
 }
 
 if ! command -v flameshot >/dev/null 2>&1; then

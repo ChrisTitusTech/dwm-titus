@@ -218,10 +218,34 @@ run_missing_optional_case() {
 		/bin/sh "$repo_dir/scripts/autostart.sh"
 }
 
+run_flameshot_setup_failure_case() {
+	home="$work/flameshot-failure/home"
+	state="$work/flameshot-failure/state"
+	config_path="$home/not-a-directory"
+	mkdir -p "$home" "$state"
+	: >"$config_path"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+
+	DISPLAY=:99 \
+		HOME=$home \
+		TEST_STATE=$state \
+		TEST_SYSTEMD_START_FAIL=1 \
+		PATH="$work/bin:/usr/bin:/bin" \
+		XDG_CONFIG_HOME=$config_path \
+		DWM_AUTOSTART_NO_SETSID=1 \
+		sh "$repo_dir/scripts/autostart.sh" \
+		2>"$state/autostart.err"
+
+	test ! -e "$state/flameshot.count"
+	grep -Fq "failed to configure Flameshot's X11 backend" \
+		"$state/autostart.err"
+}
+
 run_duplicate_case display-manager
 run_duplicate_case startx
 run_dex_fallback_case
 run_missing_optional_case
+run_flameshot_setup_failure_case
 
 if grep -q '^WantedBy=default.target$' \
 	"$repo_dir/config/systemd/user/wm-graphical-session.service"; then

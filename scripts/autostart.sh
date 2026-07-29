@@ -117,12 +117,22 @@ if ! command -v "$screenshot_helper" >/dev/null 2>&1; then
 	*/*) screenshot_helper=${0%/*}/dwm-screenshot ;;
 	esac
 fi
-if [ -x "$screenshot_helper" ] || command -v "$screenshot_helper" >/dev/null 2>&1; then
-	"$screenshot_helper" setup >/dev/null 2>&1 || true
-fi
 # Starting it explicitly avoids racing D-Bus activation against
 # StatusNotifier registration.
-start_detached_once flameshot flameshot
+if command -v flameshot >/dev/null 2>&1; then
+	if [ -x "$screenshot_helper" ] ||
+		command -v "$screenshot_helper" >/dev/null 2>&1; then
+		if "$screenshot_helper" setup >/dev/null; then
+			start_detached_once flameshot flameshot
+		else
+			printf '%s\n' \
+				"autostart: failed to configure Flameshot's X11 backend; not starting Flameshot" >&2
+		fi
+	else
+		printf '%s\n' \
+			"autostart: dwm-screenshot helper not found; not starting Flameshot" >&2
+	fi
+fi
 
 xdg_autostart_started=0
 

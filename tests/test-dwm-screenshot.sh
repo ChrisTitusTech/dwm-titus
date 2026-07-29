@@ -7,7 +7,7 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 
 mkdir -p "$work/bin" "$work/home/.config/flameshot" "$work/home/Pictures"
 
-cat >"$work/home/.config/flameshot/flameshot.ini" <<'EOF'
+cat >"$work/home/flameshot-target.ini" <<'EOF'
 [General]
 showHelp=false
 useX11LegacyScreenshot=false
@@ -15,6 +15,11 @@ useX11LegacyScreenshot=false
 [Shortcuts]
 TYPE_COPY=Ctrl+C
 EOF
+chmod 640 "$work/home/flameshot-target.ini"
+ln -s "$work/home/flameshot-target.ini" \
+	"$work/home/.config/flameshot/flameshot.ini"
+config_inode=$(stat -Lc %i "$work/home/flameshot-target.ini")
+config_mode=$(stat -Lc %a "$work/home/flameshot-target.ini")
 
 cat >"$work/bin/systemctl" <<'EOF'
 #!/bin/sh
@@ -58,6 +63,9 @@ grep -Fqx 'useX11LegacyScreenshot=true' \
 	"$work/home/.config/flameshot/flameshot.ini"
 grep -Fqx 'showHelp=false' "$work/home/.config/flameshot/flameshot.ini"
 grep -Fqx 'TYPE_COPY=Ctrl+C' "$work/home/.config/flameshot/flameshot.ini"
+test -L "$work/home/.config/flameshot/flameshot.ini"
+test "$(stat -Lc %i "$work/home/flameshot-target.ini")" = "$config_inode"
+test "$(stat -Lc %a "$work/home/flameshot-target.ini")" = "$config_mode"
 test -d "$work/home/Pictures/Screenshots"
 
 : >"$log"
