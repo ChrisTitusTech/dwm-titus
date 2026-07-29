@@ -6,8 +6,10 @@ work=$(mktemp -d)
 cleanup() {
 	for pid_file in "$work"/daemon-state/pid.*; do
 		[ -f "$pid_file" ] || continue
-		kill "$(cat "$pid_file")" 2>/dev/null || true
+		kill -KILL "$(cat "$pid_file")" 2>/dev/null || true
 	done
+	[ -z "${zombie_mock_pid:-}" ] ||
+		kill -KILL "$zombie_mock_pid" 2>/dev/null || true
 	rm -rf "$work"
 }
 trap cleanup EXIT HUP INT TERM
@@ -201,13 +203,30 @@ fi
 "$@" &
 EOF
 
+cat >"$daemon_bin/ps" <<'EOF'
+#!/bin/sh
+last=
+for arg; do
+	last=$arg
+done
+if [ -n "${TEST_ZOMBIE_PID:-}" ] && [ "$last" = "$TEST_ZOMBIE_PID" ]; then
+	printf 'Z\n'
+	exit 0
+fi
+exec /usr/bin/ps "$@"
+EOF
+
 cat >"$daemon_bin/flameshot" <<'EOF'
 #!/bin/sh
 pid_file="${DAEMON_STATE:?}/pid.$$"
 cleanup() {
 	rm -f "$pid_file"
 }
-trap 'cleanup; exit 0' TERM INT
+if [ "${TEST_IGNORE_TERM:-0}" = 1 ]; then
+	trap '' TERM
+else
+	trap 'cleanup; exit 0' TERM INT
+fi
 trap cleanup EXIT
 
 count=0
@@ -291,6 +310,45 @@ if grep -q '^inherited-lock:' "$log"; then
 	printf '%s\n' "Flameshot daemon inherited the serialization lock" >&2
 	exit 1
 fi
+
+for pid_file in "$daemon_state"/pid.*; do
+	[ -f "$pid_file" ] || continue
+	daemon_pid=$(cat "$pid_file")
+	kill "$daemon_pid"
+	wait "$daemon_pid" 2>/dev/null || true
+done
+
+DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	QT_QPA_PLATFORM=xcb \
+	DAEMON_STATE="$daemon_state" \
+	TEST_LOG="$log" \
+	TEST_IGNORE_TERM=1 \
+	"$daemon_bin/flameshot" &
+zombie_mock_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -f "$daemon_state/pid.$zombie_mock_pid" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+test -f "$daemon_state/pid.$zombie_mock_pid"
+
+DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	XDG_CONFIG_HOME="$daemon_home/.config" \
+	XDG_RUNTIME_DIR="$daemon_home/runtime" \
+	HOME="$daemon_home" \
+	PATH="$daemon_bin:$work/bin:/usr/bin:/bin" \
+	DAEMON_STATE="$daemon_state" \
+	TEST_LOG="$log" \
+	TEST_ZOMBIE_PID="$zombie_mock_pid" \
+	"$repo_dir/scripts/dwm-screenshot" daemon
+test "$(cat "$daemon_state/count")" -eq 5
+test -f "$daemon_state/pid.$zombie_mock_pid"
+kill -KILL "$zombie_mock_pid"
+wait "$zombie_mock_pid" 2>/dev/null || true
+rm -f "$daemon_state/pid.$zombie_mock_pid"
+zombie_mock_pid=
 
 theme_bin=$work/theme-bin
 theme_home=$work/theme-home

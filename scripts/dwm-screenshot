@@ -138,6 +138,7 @@ flameshot_daemon_pids() {
 	local pid user_id=$1
 
 	while IFS= read -r pid; do
+		process_is_alive "$pid" || continue
 		[[ -r "/proc/$pid/environ" ]] || continue
 		if awk -v expected_display="DISPLAY=$DISPLAY" '
 			BEGIN { RS = "\0" }
@@ -149,6 +150,17 @@ flameshot_daemon_pids() {
 			printf '%s\n' "$pid"
 		fi
 	done < <(pgrep -u "$user_id" -x flameshot 2>/dev/null || true)
+}
+
+process_is_alive() {
+	local pid=$1 state
+
+	state=$(ps -o stat= -p "$pid" 2>/dev/null || true)
+	state=${state//[[:space:]]/}
+	case "$state" in
+	Z* | X*) return 1 ;;
+	esac
+	kill -0 "$pid" 2>/dev/null
 }
 
 manage_daemon() {
@@ -183,7 +195,7 @@ manage_daemon() {
 		while :; do
 			alive=0
 			for pid in "${all_pids[@]}"; do
-				if kill -0 "$pid" 2>/dev/null; then
+				if process_is_alive "$pid"; then
 					alive=1
 					break
 				fi
