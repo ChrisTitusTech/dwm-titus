@@ -157,7 +157,7 @@ require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep tail
 pkg-config --exists x11
 
 work=$(mktemp -d)
-trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
+trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${popup_client_pid:-}" ] && kill "$popup_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
 mkdir -p "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/config"
@@ -201,6 +201,7 @@ main(int argc, char **argv)
 	int initial_above = 0;
 	int initial_many_states = 0;
 	int override_redirect = 0;
+	int popup_override = 0;
 	int swallow_terminal = 0;
 	pid_t child_pid = -1;
 
@@ -210,6 +211,18 @@ main(int argc, char **argv)
 	dpy = XOpenDisplay(NULL);
 	if (!dpy)
 		return 2;
+	if (argc == 3 && strcmp(argv[1], "attributes") == 0) {
+		XWindowAttributes attributes;
+
+		win = strtoul(argv[2], NULL, 0);
+		if (!XGetWindowAttributes(dpy, win, &attributes)) {
+			XCloseDisplay(dpy);
+			return 3;
+		}
+		printf("override_redirect=%d\n", attributes.override_redirect);
+		XCloseDisplay(dpy);
+		return 0;
+	}
 	if ((argc == 3 && strcmp(argv[1], "fullscreen") == 0)
 	|| (argc == 5 && strcmp(argv[1], "state") == 0)) {
 		XEvent ev;
@@ -247,6 +260,10 @@ main(int argc, char **argv)
 		initial_many_states = 1;
 	else if (argc == 2 && strcmp(argv[1], "override") == 0)
 		override_redirect = 1;
+	else if (argc == 2 && strcmp(argv[1], "override-popup") == 0) {
+		override_redirect = 1;
+		popup_override = 1;
+	}
 	else if (argc == 2 && strcmp(argv[1], "swallow-terminal") == 0)
 		swallow_terminal = 1;
 
@@ -274,6 +291,15 @@ main(int argc, char **argv)
 		Atom net_wm_icon = XInternAtom(dpy, "_NET_WM_ICON", False);
 		XChangeProperty(dpy, win, net_wm_icon, XA_CARDINAL, 32,
 			PropModeReplace, (unsigned char *)icon, 3);
+	}
+	if (popup_override) {
+		Atom types[3];
+
+		types[0] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_TOOLTIP", False);
+		types[1] = XInternAtom(dpy, "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE", False);
+		types[2] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NORMAL", False);
+		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False),
+			XA_ATOM, 32, PropModeReplace, (unsigned char *)types, 3);
 	}
 	if (initial_many_states) {
 		Atom states[65];
@@ -587,6 +613,25 @@ stack_win=$(cat "$work/stack-window-id")
 wait_for_top_window "$stack_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
+
+DISPLAY=$display "$work/xclient" override-popup >"$work/popup-window-id" 2>"$work/popup-client.log" &
+popup_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/popup-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+popup_win=$(cat "$work/popup-window-id")
+[ -n "$popup_win" ]
+[ "$(DISPLAY=$display "$work/xclient" attributes "$popup_win")" = "override_redirect=1" ]
+DISPLAY=$display xprop -id "$popup_win" _NET_WM_WINDOW_TYPE |
+	grep -q _KDE_NET_WM_WINDOW_TYPE_OVERRIDE
+wait_for_top_window "$popup_win"
+DISPLAY=$display xdotool key Super+t
+wait_for_top_window "$popup_win"
+kill "$popup_client_pid"
+wait "$popup_client_pid" 2>/dev/null || true
+popup_client_pid=
 
 DISPLAY=$display "$work/xclient" state "$above_win" 0 _NET_WM_STATE_STAYS_ON_TOP
 wait_for_window_state_absent "$above_win" _NET_WM_STATE_STAYS_ON_TOP

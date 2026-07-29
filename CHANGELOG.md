@@ -46,6 +46,8 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep Quickshell notifications, control popups, and tooltips above managed
+  client windows when dwm restacks the X11 session.
 - Keep `install-herdr --dry-run` side-effect free, have `install.sh` skip
   unsupported automatic ARMv7 installs, and warn when a preserved legacy
   terminal hotkey bypasses Herdr.

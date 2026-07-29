@@ -80,7 +80,9 @@ enum { CurResizeBR, CurResizeBL, CurResizeTR, CurResizeTL, CurNormal, CurResize,
 enum { SchemeNorm, SchemeSel }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMFullscreen, NetWMAbove, NetWMStaysOnTop, NetActiveWindow, NetWMWindowType, NetWMIcon,
-       NetWMWindowTypeDialog, NetWMWindowTypeDock, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetDwmMonitorDesktops, NetLast }; /* EWMH atoms */
+       NetWMWindowTypeDialog, NetWMWindowTypeDock, NetWMWindowTypeTooltip, NetWMWindowTypeNotification,
+       NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop,
+       NetWMDesktop, NetDwmMonitorDesktops, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
@@ -198,6 +200,7 @@ static pid_t getparentprocess(pid_t p);
 static int getrootptr(int *x, int *y);
 static int atomlistcontains(const Atom *atoms, unsigned long nitems, Atom atom);
 static unsigned long getatomproplist(Client *c, Atom prop, Atom *atoms, unsigned long maxitems, int *truncated);
+static unsigned long getwinatomproplist(Window win, Atom prop, Atom *atoms, unsigned long maxitems, int *truncated);
 static long getstate(Window w);
 static pid_t getstatusbarpid();
 static int gettextprop(Window w, Atom atom, char *text, unsigned int size);
@@ -225,6 +228,7 @@ static void resizemouse(const Arg *arg);
 static int resizetiledmouse(const Arg *arg);
 static void raisealwaysontop(Monitor *m);
 static void raisealwaysontopclients(Client *c);
+static void raiseoverridepopups(void);
 static void restack(Monitor *m);
 static int sendevent(Client *c, Atom proto);
 static void sendmon(Client *c, Monitor *m);
@@ -376,7 +380,7 @@ static void (*handler[LASTEvent]) (XEvent *) = {
 	[PropertyNotify] = propertynotify,
 	[UnmapNotify] = unmapnotify
 };
-static Atom wmatom[WMLast], netatom[NetLast];
+static Atom kdewindowtypeoverride, wmatom[WMLast], netatom[NetLast];
 static int running = 1;
 static Cur *cursor[CurLast];
 static Clr **scheme;
@@ -1442,6 +1446,12 @@ atomlistcontains(const Atom *atoms, unsigned long nitems, Atom atom)
 unsigned long
 getatomproplist(Client *c, Atom prop, Atom *atoms, unsigned long maxitems, int *truncated)
 {
+	return getwinatomproplist(c->win, prop, atoms, maxitems, truncated);
+}
+
+unsigned long
+getwinatomproplist(Window win, Atom prop, Atom *atoms, unsigned long maxitems, int *truncated)
+{
 	int format;
 	unsigned long extra, nitems = 0;
 	unsigned char *data = NULL;
@@ -1449,7 +1459,7 @@ getatomproplist(Client *c, Atom prop, Atom *atoms, unsigned long maxitems, int *
 
 	if (truncated)
 		*truncated = 0;
-	if (XGetWindowProperty(dpy, c->win, prop, 0L, maxitems, False, XA_ATOM,
+	if (XGetWindowProperty(dpy, win, prop, 0L, maxitems, False, XA_ATOM,
 	    &actual, &format, &nitems, &extra, &data) != Success)
 		return 0;
 	if (actual != XA_ATOM || format != 32) {
@@ -2548,8 +2558,10 @@ restack(Monitor *m)
 	XWindowChanges wc;
 
 	drawbar(m);
-	if (!m->sel)
+	if (!m->sel) {
+		raiseoverridepopups();
 		return;
+	}
 	if (m->sel->isfloating || !m->lt[m->sellt]->arrange)
 		XRaiseWindow(dpy, m->sel->win);
 	if (m->lt[m->sellt]->arrange) {
@@ -2562,6 +2574,7 @@ restack(Monitor *m)
 			}
 	}
 	raisealwaysontop(m);
+	raiseoverridepopups();
 	XSync(dpy, False);
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 }
@@ -2584,6 +2597,38 @@ raisealwaysontopclients(Client *c)
 	raisealwaysontopclients(c->snext);
 	if ((c->alwaysontop || c->ewmhabove) && ISVISIBLE(c))
 		XRaiseWindow(dpy, c->win);
+}
+
+void
+raiseoverridepopups(void)
+{
+	Atom states[NET_WM_STATE_MAX], types[NET_WM_STATE_MAX];
+	Window parent, root_return, *wins = NULL;
+	XWindowAttributes wa;
+	unsigned int i, nwins;
+	unsigned long nstates, ntypes;
+
+	if (!XQueryTree(dpy, root, &root_return, &parent, &wins, &nwins))
+		return;
+	/* These windows bypass normal management, so restore their declared
+	 * popup/above layer after managed clients have been restacked. */
+	for (i = 0; i < nwins; i++) {
+		if (!XGetWindowAttributes(dpy, wins[i], &wa)
+		    || !wa.override_redirect || wa.map_state != IsViewable)
+			continue;
+		nstates = getwinatomproplist(wins[i], netatom[NetWMState],
+			states, LENGTH(states), NULL);
+		ntypes = getwinatomproplist(wins[i], netatom[NetWMWindowType],
+			types, LENGTH(types), NULL);
+		if (atomlistcontains(states, nstates, netatom[NetWMAbove])
+		    || atomlistcontains(states, nstates, netatom[NetWMStaysOnTop])
+		    || atomlistcontains(types, ntypes, netatom[NetWMWindowTypeTooltip])
+		    || atomlistcontains(types, ntypes, netatom[NetWMWindowTypeNotification])
+		    || atomlistcontains(types, ntypes, kdewindowtypeoverride))
+			XRaiseWindow(dpy, wins[i]);
+	}
+	if (wins)
+		XFree(wins);
 }
 
 void
@@ -3911,6 +3956,9 @@ setup(void)
 	netatom[NetWMWindowType] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
 	netatom[NetWMWindowTypeDialog] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
 	netatom[NetWMWindowTypeDock] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
+	netatom[NetWMWindowTypeTooltip] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_TOOLTIP", False);
+	netatom[NetWMWindowTypeNotification] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
+	kdewindowtypeoverride = XInternAtom(dpy, "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE", False);
 	netatom[NetClientList] = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
 	netatom[NetDesktopViewport] = XInternAtom(dpy, "_NET_DESKTOP_VIEWPORT", False);
 	netatom[NetNumberOfDesktops] = XInternAtom(dpy, "_NET_NUMBER_OF_DESKTOPS", False);
