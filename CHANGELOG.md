@@ -49,8 +49,8 @@ versions from `config.mk`.
 - Keep Quickshell notifications, control popups, and tooltips above managed
   client windows when dwm restacks the X11 session.
 - Keep tray context menus above managed windows, start a single tray-owning
-  Flameshot daemon, and use its native X11 capture backend when portal capture
-  is unavailable in the dwm session.
+  Flameshot daemon with a sanitized X11 environment, and default to its native
+  X11 capture backend when no explicit backend preference is configured.
 - Keep `install-herdr --dry-run` side-effect free, have `install.sh` skip
   unsupported automatic ARMv7 installs, and warn when a preserved legacy
   terminal hotkey bypasses Herdr.

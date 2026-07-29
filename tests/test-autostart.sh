@@ -17,6 +17,13 @@ count=0
 count=$((count + 1))
 printf '%s\n' "$count" >"$count_file"
 : >"${TEST_STATE:?}/$name.running"
+if [ "$name" = flameshot ]; then
+	printf '%s|%s|%s\n' \
+		"${XDG_SESSION_TYPE:-}" \
+		"${QT_QPA_PLATFORM:-}" \
+		"${WAYLAND_DISPLAY:-}" \
+		>"${TEST_STATE:?}/flameshot.env"
+fi
 EOF
 	chmod +x "$work/bin/$name"
 }
@@ -135,17 +142,23 @@ run_duplicate_case() {
 			XDG_RUNTIME_DIR="$runtime" dbus-run-session -- env \
 				DISPLAY=:99 \
 				HOME="$home" \
+				QT_QPA_PLATFORM=wayland \
 				TEST_STATE="$state" \
 				PATH="$work/bin:/usr/bin:/bin" \
+				WAYLAND_DISPLAY=wayland-0 \
 				XDG_CONFIG_HOME="$home/.config" \
+				XDG_SESSION_TYPE=wayland \
 				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		else
 			DISPLAY=:99 \
 				HOME=$home \
+				QT_QPA_PLATFORM=wayland \
 				TEST_STATE=$state \
 				PATH="$work/bin:/usr/bin:/bin" \
+				WAYLAND_DISPLAY=wayland-0 \
 				XDG_CONFIG_HOME="$home/.config" \
+				XDG_SESSION_TYPE=wayland \
 				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		fi
@@ -162,6 +175,7 @@ run_duplicate_case() {
 	done
 	grep -Fqx 'useX11LegacyScreenshot=true' \
 		"$home/.config/flameshot/flameshot.ini"
+	grep -Fqx 'x11|xcb|' "$state/flameshot.env"
 	test ! -e "$state/light-locker.count"
 	test ! -e "$state/dex.count"
 	test ! -e "$state/dex-autostart.count"

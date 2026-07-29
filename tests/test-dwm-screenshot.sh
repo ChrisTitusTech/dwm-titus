@@ -10,7 +10,6 @@ mkdir -p "$work/bin" "$work/home/.config/flameshot" "$work/home/Pictures"
 cat >"$work/home/flameshot-target.ini" <<'EOF'
 [General]
 showHelp=false
-useX11LegacyScreenshot=false
 
 [Shortcuts]
 TYPE_COPY=Ctrl+C
@@ -79,6 +78,27 @@ env -u WAYLAND_DISPLAY \
 	"$repo_dir/scripts/dwm-screenshot" setup
 if grep -q '^flameshot:' "$log"; then
 	printf '%s\n' "Flameshot setup must not start a capture" >&2
+	exit 1
+fi
+
+mkdir -p "$work/explicit/.config/flameshot"
+cat >"$work/explicit/.config/flameshot/flameshot.ini" <<'EOF'
+[General]
+useX11LegacyScreenshot=false
+EOF
+env -u WAYLAND_DISPLAY \
+	DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	XDG_CONFIG_HOME="$work/explicit/.config" \
+	HOME="$work/explicit" \
+	PATH="$work/bin:/usr/bin:/bin" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" setup
+grep -Fqx 'useX11LegacyScreenshot=false' \
+	"$work/explicit/.config/flameshot/flameshot.ini"
+if grep -Fqx 'useX11LegacyScreenshot=true' \
+	"$work/explicit/.config/flameshot/flameshot.ini"; then
+	printf '%s\n' "Flameshot setup must preserve an explicit backend preference" >&2
 	exit 1
 fi
 

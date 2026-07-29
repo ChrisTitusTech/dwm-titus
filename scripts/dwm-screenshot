@@ -58,7 +58,7 @@ ensure_x11_capture_backend() {
 		/^\[General\][[:space:]]*$/ { in_general = 1; next }
 		/^\[[^]]+\][[:space:]]*$/ { in_general = 0 }
 		in_general &&
-			/^useX11LegacyScreenshot[[:space:]]*=[[:space:]]*true[[:space:]]*$/ {
+			/^useX11LegacyScreenshot[[:space:]]*=[[:space:]]*(true|false)[[:space:]]*$/ {
 			found = 1
 		}
 		END { exit !found }

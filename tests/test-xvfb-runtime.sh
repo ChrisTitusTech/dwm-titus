@@ -273,6 +273,18 @@ main(int argc, char **argv)
 		override_redirect = 1;
 		popup_type = "_NET_WM_WINDOW_TYPE_NOTIFICATION";
 	}
+	else if (argc == 2 && strcmp(argv[1], "override-menu") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_MENU";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-popup-menu") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_POPUP_MENU";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-dropdown-menu") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU";
+	}
 	else if (argc == 2 && strcmp(argv[1], "override-above") == 0) {
 		override_redirect = 1;
 		popup_state = "_NET_WM_STATE_ABOVE";
@@ -634,7 +646,7 @@ wait_for_top_window "$stack_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
 
-for popup_marker in tooltip kde notification above stays-on-top; do
+for popup_marker in tooltip kde notification menu popup-menu dropdown-menu above stays-on-top; do
 	DISPLAY=$display "$work/xclient" "override-$popup_marker" \
 		>"$work/popup-$popup_marker-window-id" \
 		2>"$work/popup-$popup_marker-client.log" &
@@ -658,6 +670,18 @@ for popup_marker in tooltip kde notification above stays-on-top; do
 		;;
 	notification)
 		popup_atom=_NET_WM_WINDOW_TYPE_NOTIFICATION
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	menu)
+		popup_atom=_NET_WM_WINDOW_TYPE_MENU
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	popup-menu)
+		popup_atom=_NET_WM_WINDOW_TYPE_POPUP_MENU
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	dropdown-menu)
+		popup_atom=_NET_WM_WINDOW_TYPE_DROPDOWN_MENU
 		popup_property=_NET_WM_WINDOW_TYPE
 		;;
 	above)

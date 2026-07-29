@@ -75,18 +75,26 @@ esac
 XDG_CURRENT_DESKTOP=$desktop_tokens
 export XDG_CURRENT_DESKTOP
 export DESKTOP_SESSION="${DESKTOP_SESSION:-dwm}"
-export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-x11}"
+export XDG_SESSION_TYPE=x11
+export QT_QPA_PLATFORM=xcb
+unset WAYLAND_DISPLAY
 
-IMPORT_ENV="DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION XDG_SESSION_TYPE QT_QPA_PLATFORMTHEME XCURSOR_THEME XCURSOR_SIZE"
+IMPORT_ENV="DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME XCURSOR_THEME XCURSOR_SIZE"
 
 # Export display and theme env to systemd/dbus in parallel (both are IPC round-trips).
 if command -v systemctl >/dev/null 2>&1; then
-	# shellcheck disable=SC2086
-	systemctl --user import-environment $IMPORT_ENV &
+	{
+		systemctl --user unset-environment WAYLAND_DISPLAY
+		# shellcheck disable=SC2086
+		systemctl --user import-environment $IMPORT_ENV
+	} &
 fi
 if command -v dbus-update-activation-environment >/dev/null 2>&1; then
-	# shellcheck disable=SC2086
-	dbus-update-activation-environment --systemd $IMPORT_ENV 2>/dev/null &
+	{
+		dbus-update-activation-environment WAYLAND_DISPLAY=
+		# shellcheck disable=SC2086
+		dbus-update-activation-environment --systemd $IMPORT_ENV
+	} 2>/dev/null &
 fi
 wait
 
