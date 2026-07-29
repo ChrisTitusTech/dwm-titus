@@ -23,8 +23,9 @@ ShellRoot {
     property var selectedPanelWindow: null
     readonly property var defaultPanelWindow: panelVariants.instances.length > 0
         ? panelVariants.instances[0] : null
-    readonly property var activePanelWindow: selectedPanelWindow || defaultPanelWindow
-    readonly property var activePanelScreen: activePanelWindow
+    readonly property var activePanelWindow: selectedPanelWindow && selectedPanelWindow.screen
+        ? selectedPanelWindow : defaultPanelWindow
+    readonly property var activePanelScreen: activePanelWindow && activePanelWindow.screen
         ? activePanelWindow.screen
         : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
 

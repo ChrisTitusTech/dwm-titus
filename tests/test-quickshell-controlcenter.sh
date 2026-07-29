@@ -370,6 +370,7 @@ grep -Fq 'screen: root.panelWindow ? root.panelWindow.screen : null' "$repo/conf
 grep -Fq 'model: Quickshell.screens' "$repo/config/quickshell/shell.qml"
 grep -Fq 'screen: modelData' "$repo/config/quickshell/shell.qml"
 grep -Fq 'onPopupRequested: panel => root.selectedPanelWindow = panel' "$repo/config/quickshell/shell.qml"
+grep -Fq 'readonly property var activePanelWindow: selectedPanelWindow && selectedPanelWindow.screen' "$repo/config/quickshell/shell.qml"
 grep -Fq 'onClosed: root.networkModel.cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'function cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'return profile.active;' "$repo/config/quickshell/network/NetworkModel.qml"
