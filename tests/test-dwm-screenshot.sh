@@ -5,7 +5,16 @@ repo_dir=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 
-mkdir -p "$work/bin" "$work/home/Pictures"
+mkdir -p "$work/bin" "$work/home/.config/flameshot" "$work/home/Pictures"
+
+cat >"$work/home/.config/flameshot/flameshot.ini" <<'EOF'
+[General]
+showHelp=false
+useX11LegacyScreenshot=false
+
+[Shortcuts]
+TYPE_COPY=Ctrl+C
+EOF
 
 cat >"$work/bin/systemctl" <<'EOF'
 #!/bin/sh
@@ -34,6 +43,7 @@ env -u XDG_CURRENT_DESKTOP -u WAYLAND_DISPLAY \
 	DISPLAY=:99 \
 	XAUTHORITY="$work/Xauthority" \
 	XDG_SESSION_TYPE=x11 \
+	XDG_CONFIG_HOME="$work/home/.config" \
 	HOME="$work/home" \
 	PATH="$work/bin:/usr/bin:/bin" \
 	TEST_LOG="$log" \
@@ -44,6 +54,24 @@ grep -Fqx 'systemctl:--user import-environment DISPLAY XDG_SESSION_TYPE QT_QPA_P
 grep -Fqx 'dbus:WAYLAND_DISPLAY=' "$log"
 grep -Fqx 'dbus:--systemd DISPLAY XDG_SESSION_TYPE QT_QPA_PLATFORM XAUTHORITY' "$log"
 grep -Fqx 'flameshot:gui --clipboard' "$log"
+grep -Fqx 'useX11LegacyScreenshot=true' \
+	"$work/home/.config/flameshot/flameshot.ini"
+grep -Fqx 'showHelp=false' "$work/home/.config/flameshot/flameshot.ini"
+grep -Fqx 'TYPE_COPY=Ctrl+C' "$work/home/.config/flameshot/flameshot.ini"
 test -d "$work/home/Pictures/Screenshots"
 
-printf '%s\n' "Flameshot environment and clipboard command: PASS"
+: >"$log"
+env -u WAYLAND_DISPLAY \
+	DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	XDG_CONFIG_HOME="$work/home/.config" \
+	HOME="$work/home" \
+	PATH="$work/bin:/usr/bin:/bin" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" setup
+if grep -q '^flameshot:' "$log"; then
+	printf '%s\n' "Flameshot setup must not start a capture" >&2
+	exit 1
+fi
+
+printf '%s\n' "Flameshot X11 backend, environment, and clipboard command: PASS"

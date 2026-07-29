@@ -96,7 +96,7 @@ EOF
 
 chmod +x "$work/bin/"*
 
-for name in feh picom dwm-status dwm-lock-watch light-locker dex dex-autostart; do
+for name in feh flameshot picom dwm-status dwm-lock-watch light-locker dex dex-autostart; do
 	make_mock_command "$name"
 done
 
@@ -133,6 +133,7 @@ run_duplicate_case() {
 	for _ in 1 2; do
 		if [ "$mode" = startx ]; then
 			XDG_RUNTIME_DIR="$runtime" dbus-run-session -- env \
+				DISPLAY=:99 \
 				HOME="$home" \
 				TEST_STATE="$state" \
 				PATH="$work/bin:/usr/bin:/bin" \
@@ -140,7 +141,8 @@ run_duplicate_case() {
 				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		else
-			HOME=$home \
+			DISPLAY=:99 \
+				HOME=$home \
 				TEST_STATE=$state \
 				PATH="$work/bin:/usr/bin:/bin" \
 				XDG_CONFIG_HOME="$home/.config" \
@@ -152,11 +154,14 @@ run_duplicate_case() {
 		wait_for_marker "$state/dwm-status.running"
 		wait_for_marker "$state/dwm-lock-watch.running"
 		wait_for_marker "$state/quickshell.running"
+		wait_for_marker "$state/flameshot.running"
 	done
 
-	for name in feh picom dwm-lock-watch quickshell; do
+	for name in feh flameshot picom dwm-lock-watch quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
+	grep -Fqx 'useX11LegacyScreenshot=true' \
+		"$home/.config/flameshot/flameshot.ini"
 	test ! -e "$state/light-locker.count"
 	test ! -e "$state/dex.count"
 	test ! -e "$state/dex-autostart.count"

@@ -109,6 +109,21 @@ if [ -f "$QUICKSHELL_CONFIG" ]; then
 	fi
 fi
 
+# Configure native X11 capture before the tray menu can request a screenshot,
+# then keep one tray-owning daemon ready before screenshot hotkeys run.
+screenshot_helper=dwm-screenshot
+if ! command -v "$screenshot_helper" >/dev/null 2>&1; then
+	case $0 in
+	*/*) screenshot_helper=${0%/*}/dwm-screenshot ;;
+	esac
+fi
+if [ -x "$screenshot_helper" ] || command -v "$screenshot_helper" >/dev/null 2>&1; then
+	"$screenshot_helper" setup >/dev/null 2>&1 || true
+fi
+# Starting it explicitly avoids racing D-Bus activation against
+# StatusNotifier registration.
+start_detached_once flameshot flameshot
+
 xdg_autostart_started=0
 
 # Activate user graphical-session.target through the wm shim so portal services

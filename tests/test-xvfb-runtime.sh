@@ -201,7 +201,8 @@ main(int argc, char **argv)
 	int initial_above = 0;
 	int initial_many_states = 0;
 	int override_redirect = 0;
-	int popup_override = 0;
+	const char *popup_state = NULL;
+	const char *popup_type = NULL;
 	int swallow_terminal = 0;
 	pid_t child_pid = -1;
 
@@ -260,9 +261,25 @@ main(int argc, char **argv)
 		initial_many_states = 1;
 	else if (argc == 2 && strcmp(argv[1], "override") == 0)
 		override_redirect = 1;
-	else if (argc == 2 && strcmp(argv[1], "override-popup") == 0) {
+	else if (argc == 2 && strcmp(argv[1], "override-tooltip") == 0) {
 		override_redirect = 1;
-		popup_override = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_TOOLTIP";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-kde") == 0) {
+		override_redirect = 1;
+		popup_type = "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-notification") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_NOTIFICATION";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-above") == 0) {
+		override_redirect = 1;
+		popup_state = "_NET_WM_STATE_ABOVE";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-stays-on-top") == 0) {
+		override_redirect = 1;
+		popup_state = "_NET_WM_STATE_STAYS_ON_TOP";
 	}
 	else if (argc == 2 && strcmp(argv[1], "swallow-terminal") == 0)
 		swallow_terminal = 1;
@@ -292,14 +309,17 @@ main(int argc, char **argv)
 		XChangeProperty(dpy, win, net_wm_icon, XA_CARDINAL, 32,
 			PropModeReplace, (unsigned char *)icon, 3);
 	}
-	if (popup_override) {
-		Atom types[3];
+	if (popup_type) {
+		Atom type = XInternAtom(dpy, popup_type, False);
 
-		types[0] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_TOOLTIP", False);
-		types[1] = XInternAtom(dpy, "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE", False);
-		types[2] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NORMAL", False);
 		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False),
-			XA_ATOM, 32, PropModeReplace, (unsigned char *)types, 3);
+			XA_ATOM, 32, PropModeReplace, (unsigned char *)&type, 1);
+	}
+	if (popup_state) {
+		Atom state = XInternAtom(dpy, popup_state, False);
+
+		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STATE", False),
+			XA_ATOM, 32, PropModeReplace, (unsigned char *)&state, 1);
 	}
 	if (initial_many_states) {
 		Atom states[65];
@@ -614,24 +634,50 @@ wait_for_top_window "$stack_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
 
-DISPLAY=$display "$work/xclient" override-popup >"$work/popup-window-id" 2>"$work/popup-client.log" &
-popup_client_pid=$!
-i=0
-while [ "$i" -lt 100 ] && [ ! -s "$work/popup-window-id" ]; do
-	i=$((i + 1))
-	sleep 0.05
+for popup_marker in tooltip kde notification above stays-on-top; do
+	DISPLAY=$display "$work/xclient" "override-$popup_marker" \
+		>"$work/popup-$popup_marker-window-id" \
+		2>"$work/popup-$popup_marker-client.log" &
+	popup_client_pid=$!
+	i=0
+	while [ "$i" -lt 100 ] && [ ! -s "$work/popup-$popup_marker-window-id" ]; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	popup_win=$(cat "$work/popup-$popup_marker-window-id")
+	[ -n "$popup_win" ]
+	[ "$(DISPLAY=$display "$work/xclient" attributes "$popup_win")" = "override_redirect=1" ]
+	case $popup_marker in
+	tooltip)
+		popup_atom=_NET_WM_WINDOW_TYPE_TOOLTIP
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	kde)
+		popup_atom=_KDE_NET_WM_WINDOW_TYPE_OVERRIDE
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	notification)
+		popup_atom=_NET_WM_WINDOW_TYPE_NOTIFICATION
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	above)
+		popup_atom=_NET_WM_STATE_ABOVE
+		popup_property=_NET_WM_STATE
+		;;
+	stays-on-top)
+		popup_atom=_NET_WM_STATE_STAYS_ON_TOP
+		popup_property=_NET_WM_STATE
+		;;
+	esac
+	DISPLAY=$display xprop -id "$popup_win" "$popup_property" |
+		grep -q "$popup_atom"
+	wait_for_top_window "$popup_win"
+	DISPLAY=$display xdotool key Super+t
+	wait_for_top_window "$popup_win"
+	kill "$popup_client_pid"
+	wait "$popup_client_pid" 2>/dev/null || true
+	popup_client_pid=
 done
-popup_win=$(cat "$work/popup-window-id")
-[ -n "$popup_win" ]
-[ "$(DISPLAY=$display "$work/xclient" attributes "$popup_win")" = "override_redirect=1" ]
-DISPLAY=$display xprop -id "$popup_win" _NET_WM_WINDOW_TYPE |
-	grep -q _KDE_NET_WM_WINDOW_TYPE_OVERRIDE
-wait_for_top_window "$popup_win"
-DISPLAY=$display xdotool key Super+t
-wait_for_top_window "$popup_win"
-kill "$popup_client_pid"
-wait "$popup_client_pid" 2>/dev/null || true
-popup_client_pid=
 
 DISPLAY=$display "$work/xclient" state "$above_win" 0 _NET_WM_STATE_STAYS_ON_TOP
 wait_for_window_state_absent "$above_win" _NET_WM_STATE_STAYS_ON_TOP

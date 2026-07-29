@@ -104,6 +104,7 @@ typedef struct {
 
 typedef struct Monitor Monitor;
 typedef struct Client Client;
+typedef struct OverrideWindow OverrideWindow;
 struct Client {
 	char name[256];
 	float mina, maxa;
@@ -125,6 +126,12 @@ struct Client {
 	Window win;
 	unsigned int icw, ich;
 	Picture icon;
+};
+
+struct OverrideWindow {
+	Window win;
+	int raise;
+	OverrideWindow *next;
 };
 
 typedef struct {
@@ -211,6 +218,7 @@ static int isaltbar(Window win, XWindowAttributes *wa);
 static int isdescprocess(pid_t p, pid_t c);
 static void killclient(const Arg *arg);
 static void manage(Window w, XWindowAttributes *wa);
+static void mapnotify(XEvent *e);
 static void monocle(Monitor *m);
 static void movemouse(const Arg *arg);
 static void movestack(const Arg *arg);
@@ -228,7 +236,6 @@ static void resizemouse(const Arg *arg);
 static int resizetiledmouse(const Arg *arg);
 static void raisealwaysontop(Monitor *m);
 static void raisealwaysontopclients(Client *c);
-static void raiseoverridepopups(void);
 static void restack(Monitor *m);
 static int sendevent(Client *c, Atom proto);
 static void sendmon(Client *c, Monitor *m);
@@ -254,14 +261,17 @@ static void togglefakefullscreen(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
+static void trackoverridewindow(Window win);
 static void unfocus(Client *c, int setfocus);
 static void unmanage(Client *c, int destroyed);
+static void untrackoverridewindow(Window win);
 static void unswallow(Client *c);
 static int updatealtbar(Monitor *m, Window win, XWindowAttributes *wa);
 static void updatebarpos(Monitor *m);
 static void updatebars(void);
 static void updateclientlist(void);
 static int updategeom(void);
+static void updateoverridewindow(Window win);
 static void updatenumlockmask(void);
 static void updatesizehints(Client *c);
 static void updatestatus(void);
@@ -375,6 +385,7 @@ static void (*handler[LASTEvent]) (XEvent *) = {
 	[FocusIn] = focusin,
 	[KeyPress] = keypress,
 	[MappingNotify] = mappingnotify,
+	[MapNotify] = mapnotify,
 	[MapRequest] = maprequest,
 	[MotionNotify] = motionnotify,
 	[PropertyNotify] = propertynotify,
@@ -387,6 +398,7 @@ static Clr **scheme;
 static Display *dpy;
 static Drw *drw;
 static Monitor *mons, *selmon;
+static OverrideWindow *overridewindows;
 static Window root, wmcheckwin;
 static xcb_connection_t *xcon;
 static Window *clientlistcache;
@@ -824,6 +836,7 @@ void
 cleanup(void)
 {
 	Monitor *m;
+	OverrideWindow *ow;
 	Layout foo = { "", NULL };
 	size_t i;
 
@@ -834,6 +847,11 @@ cleanup(void)
 	XUngrabKey(dpy, AnyKey, AnyModifier, root);
 	while (mons)
 		cleanupmon(mons);
+	while (overridewindows) {
+		ow = overridewindows;
+		overridewindows = overridewindows->next;
+		free(ow);
+	}
 	for (i = 0; i < CurLast; i++)
 		drw_cur_free(drw, cursor[i]);
 	for (i = 0; i < 2; i++)
@@ -1161,6 +1179,7 @@ destroynotify(XEvent *e)
 	Monitor *m;
 	XDestroyWindowEvent *ev = &e->xdestroywindow;
 
+	untrackoverridewindow(ev->window);
 	if ((c = wintoclient(ev->window)))
 		unmanage(c, 1);
 	else if ((c = swallowingclient(ev->window)))
@@ -1953,6 +1972,14 @@ mappingnotify(XEvent *e)
 }
 
 void
+mapnotify(XEvent *e)
+{
+	XMapEvent *ev = &e->xmap;
+
+	trackoverridewindow(ev->window);
+}
+
+void
 maprequest(XEvent *e)
 {
 	static XWindowAttributes wa;
@@ -2288,9 +2315,14 @@ void
 propertynotify(XEvent *e)
 {
 	Client *c;
+	OverrideWindow *ow;
 	Window trans;
 	XPropertyEvent *ev = &e->xproperty;
 
+	for (ow = overridewindows; ow && ow->win != ev->window; ow = ow->next);
+	if (ow && (ev->atom == netatom[NetWMState]
+	    || ev->atom == netatom[NetWMWindowType]))
+		updateoverridewindow(ev->window);
 	if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
 		updatestatus();
 	} else if (ev->state == PropertyDelete) {
@@ -2559,7 +2591,7 @@ restack(Monitor *m)
 
 	drawbar(m);
 	if (!m->sel) {
-		raiseoverridepopups();
+		raisealwaysontop(m);
 		return;
 	}
 	if (m->sel->isfloating || !m->lt[m->sellt]->arrange)
@@ -2574,7 +2606,6 @@ restack(Monitor *m)
 			}
 	}
 	raisealwaysontop(m);
-	raiseoverridepopups();
 	XSync(dpy, False);
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 }
@@ -2582,11 +2613,15 @@ restack(Monitor *m)
 void
 raisealwaysontop(Monitor *m)
 {
+	OverrideWindow *ow;
+
 	if (m->sel && m->sel->isfullscreen && m->sel->fakefullscreen != 1) {
 		XRaiseWindow(dpy, m->sel->win);
-		return;
-	}
-	raisealwaysontopclients(m->stack);
+	} else
+		raisealwaysontopclients(m->stack);
+	for (ow = overridewindows; ow; ow = ow->next)
+		if (ow->raise)
+			XRaiseWindow(dpy, ow->win);
 }
 
 void
@@ -2597,38 +2632,6 @@ raisealwaysontopclients(Client *c)
 	raisealwaysontopclients(c->snext);
 	if ((c->alwaysontop || c->ewmhabove) && ISVISIBLE(c))
 		XRaiseWindow(dpy, c->win);
-}
-
-void
-raiseoverridepopups(void)
-{
-	Atom states[NET_WM_STATE_MAX], types[NET_WM_STATE_MAX];
-	Window parent, root_return, *wins = NULL;
-	XWindowAttributes wa;
-	unsigned int i, nwins;
-	unsigned long nstates, ntypes;
-
-	if (!XQueryTree(dpy, root, &root_return, &parent, &wins, &nwins))
-		return;
-	/* These windows bypass normal management, so restore their declared
-	 * popup/above layer after managed clients have been restacked. */
-	for (i = 0; i < nwins; i++) {
-		if (!XGetWindowAttributes(dpy, wins[i], &wa)
-		    || !wa.override_redirect || wa.map_state != IsViewable)
-			continue;
-		nstates = getwinatomproplist(wins[i], netatom[NetWMState],
-			states, LENGTH(states), NULL);
-		ntypes = getwinatomproplist(wins[i], netatom[NetWMWindowType],
-			types, LENGTH(types), NULL);
-		if (atomlistcontains(states, nstates, netatom[NetWMAbove])
-		    || atomlistcontains(states, nstates, netatom[NetWMStaysOnTop])
-		    || atomlistcontains(types, ntypes, netatom[NetWMWindowTypeTooltip])
-		    || atomlistcontains(types, ntypes, netatom[NetWMWindowTypeNotification])
-		    || atomlistcontains(types, ntypes, kdewindowtypeoverride))
-			XRaiseWindow(dpy, wins[i]);
-	}
-	if (wins)
-		XFree(wins);
 }
 
 void
@@ -2830,8 +2833,14 @@ scan(void)
 
 	if (XQueryTree(dpy, root, &d1, &d2, &wins, &num)) {
 		for (i = 0; i < num; i++) {
-			if (!XGetWindowAttributes(dpy, wins[i], &wa)
-			|| wa.override_redirect || XGetTransientForHint(dpy, wins[i], &d1))
+			if (!XGetWindowAttributes(dpy, wins[i], &wa))
+				continue;
+			if (wa.override_redirect) {
+				if (wa.map_state == IsViewable)
+					trackoverridewindow(wins[i]);
+				continue;
+			}
+			if (XGetTransientForHint(dpy, wins[i], &d1))
 				continue;
 			if (isaltbar(wins[i], &wa))
 				managealtbar(wins[i], &wa);
@@ -4528,6 +4537,7 @@ unmapnotify(XEvent *e)
 	Monitor *m;
 	XUnmapEvent *ev = &e->xunmap;
 
+	untrackoverridewindow(ev->window);
 	if ((c = wintoclient(ev->window))) {
 		if (ev->send_event)
 			setclientstate(c, WithdrawnState);
@@ -4537,6 +4547,41 @@ unmapnotify(XEvent *e)
 		unmanagealtbar(ev->window);
 	else if (m && m->traywin == ev->window)
 		unmanagetray(ev->window);
+}
+
+void
+trackoverridewindow(Window win)
+{
+	OverrideWindow *ow;
+	OverrideWindow **tail;
+	XWindowAttributes wa;
+
+	if (!XGetWindowAttributes(dpy, win, &wa)
+	    || !wa.override_redirect || wa.map_state != IsViewable)
+		return;
+	for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
+	if (!ow) {
+		ow = ecalloc(1, sizeof(*ow));
+		ow->win = win;
+		for (tail = &overridewindows; *tail; tail = &(*tail)->next);
+		*tail = ow;
+		XSelectInput(dpy, win, PropertyChangeMask);
+	}
+	updateoverridewindow(win);
+}
+
+void
+untrackoverridewindow(Window win)
+{
+	OverrideWindow **ow;
+
+	for (ow = &overridewindows; *ow && (*ow)->win != win; ow = &(*ow)->next);
+	if (*ow) {
+		OverrideWindow *removed = *ow;
+
+		*ow = removed->next;
+		free(removed);
+	}
 }
 
 void
@@ -4909,6 +4954,27 @@ updatewindowtype(Client *c)
 		|| atomlistcontains(states, nstates, netatom[NetWMStaysOnTop]);
 	if (wtype == netatom[NetWMWindowTypeDialog])
 		c->isfloating = 1;
+}
+
+void
+updateoverridewindow(Window win)
+{
+	Atom states[NET_WM_STATE_MAX], types[NET_WM_STATE_MAX];
+	OverrideWindow *ow;
+	unsigned long nstates, ntypes;
+
+	for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
+	if (!ow)
+		return;
+	nstates = getwinatomproplist(win, netatom[NetWMState],
+		states, LENGTH(states), NULL);
+	ntypes = getwinatomproplist(win, netatom[NetWMWindowType],
+		types, LENGTH(types), NULL);
+	ow->raise = atomlistcontains(states, nstates, netatom[NetWMAbove])
+		|| atomlistcontains(states, nstates, netatom[NetWMStaysOnTop])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeTooltip])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeNotification])
+		|| atomlistcontains(types, ntypes, kdewindowtypeoverride);
 }
 
 void

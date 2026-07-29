@@ -43,12 +43,85 @@ sync_activation_environment() {
 	fi
 }
 
+ensure_x11_capture_backend() {
+	local config_dir config_file temp_file
+
+	config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/flameshot"
+	config_file="$config_dir/flameshot.ini"
+	mkdir -p "$config_dir"
+
+	if [[ ! -f "$config_file" ]]; then
+		printf '[General]\nuseX11LegacyScreenshot=true\n' >"$config_file"
+		return
+	fi
+	if awk '
+		/^\[General\][[:space:]]*$/ { in_general = 1; next }
+		/^\[[^]]+\][[:space:]]*$/ { in_general = 0 }
+		in_general &&
+			/^useX11LegacyScreenshot[[:space:]]*=[[:space:]]*true[[:space:]]*$/ {
+			found = 1
+		}
+		END { exit !found }
+	' "$config_file"; then
+		return
+	fi
+
+	temp_file=$(mktemp "$config_file.tmp.XXXXXX")
+	awk '
+		BEGIN {
+			in_general = 0
+			found_general = 0
+			wrote_setting = 0
+		}
+		/^\[General\][[:space:]]*$/ {
+			in_general = 1
+			found_general = 1
+			print
+			next
+		}
+		/^\[[^]]+\][[:space:]]*$/ {
+			if (in_general && !wrote_setting) {
+				print "useX11LegacyScreenshot=true"
+				wrote_setting = 1
+			}
+			in_general = 0
+			print
+			next
+		}
+		in_general &&
+			/^useX11LegacyScreenshot[[:space:]]*=/ {
+			if (!wrote_setting) {
+				print "useX11LegacyScreenshot=true"
+				wrote_setting = 1
+			}
+			next
+		}
+		{ print }
+		END {
+			if (in_general && !wrote_setting)
+				print "useX11LegacyScreenshot=true"
+			else if (!found_general) {
+				print ""
+				print "[General]"
+				print "useX11LegacyScreenshot=true"
+			}
+		}
+	' "$config_file" >"$temp_file"
+	mv "$temp_file" "$config_file"
+}
+
 if ! command -v flameshot >/dev/null 2>&1; then
 	printf 'dwm-screenshot: flameshot is not installed\n' >&2
 	exit 127
 fi
 
 sync_activation_environment
+ensure_x11_capture_backend
+
+ACTION="${1:-gui}"
+if [[ "$ACTION" == setup ]]; then
+	exit 0
+fi
 
 SCREENSHOT_DIR=""
 if command -v xdg-user-dir >/dev/null 2>&1; then
@@ -57,8 +130,6 @@ if command -v xdg-user-dir >/dev/null 2>&1; then
 fi
 SCREENSHOT_DIR="${SCREENSHOT_DIR:-$HOME/Pictures/Screenshots}"
 mkdir -p "$SCREENSHOT_DIR"
-
-ACTION="${1:-gui}"
 
 case "$ACTION" in
 full)
