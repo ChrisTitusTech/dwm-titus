@@ -176,7 +176,7 @@ require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep tail
 pkg-config --exists x11
 
 work=$(mktemp -d)
-trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${popup_client_pid:-}" ] && kill "$popup_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
+trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${panel_pid:-}" ] && kill "$panel_pid" 2>/dev/null; [ -n "${popup_client_pid:-}" ] && kill "$popup_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
 mkdir -p "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/config"
@@ -220,6 +220,7 @@ main(int argc, char **argv)
 	int initial_above = 0;
 	int initial_many_states = 0;
 	int override_redirect = 0;
+	int panel = 0;
 	const char *popup_state = NULL;
 	const char *popup_type = NULL;
 	int swallow_terminal = 0;
@@ -240,6 +241,32 @@ main(int argc, char **argv)
 			return 3;
 		}
 		printf("override_redirect=%d\n", attributes.override_redirect);
+		XCloseDisplay(dpy);
+		return 0;
+	}
+	if (argc == 4 && strcmp(argv[1], "above") == 0) {
+		Window root_return, parent_return, *children = NULL;
+		Window first = strtoul(argv[2], NULL, 0);
+		Window second = strtoul(argv[3], NULL, 0);
+		unsigned int child_count = 0;
+		int first_index = -1, second_index = -1;
+		unsigned int i;
+
+		if (!XQueryTree(dpy, DefaultRootWindow(dpy), &root_return,
+		    &parent_return, &children, &child_count)) {
+			XCloseDisplay(dpy);
+			return 3;
+		}
+		for (i = 0; i < child_count; i++) {
+			if (children[i] == first)
+				first_index = i;
+			if (children[i] == second)
+				second_index = i;
+		}
+		if (children)
+			XFree(children);
+		printf("%d\n", first_index >= 0 && second_index >= 0
+			&& first_index > second_index);
 		XCloseDisplay(dpy);
 		return 0;
 	}
@@ -278,6 +305,8 @@ main(int argc, char **argv)
 		initial_above = 1;
 	else if (argc == 2 && strcmp(argv[1], "initial-many-states") == 0)
 		initial_many_states = 1;
+	else if (argc == 2 && strcmp(argv[1], "panel") == 0)
+		panel = 1;
 	else if (argc == 2 && strcmp(argv[1], "override") == 0)
 		override_redirect = 1;
 	else if (argc == 2 && strcmp(argv[1], "override-tooltip") == 0) {
@@ -324,7 +353,9 @@ main(int argc, char **argv)
 		swallow_terminal = 1;
 
 	win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy),
-		20, 20, 320, 180, 0, 0, WhitePixel(dpy, DefaultScreen(dpy)));
+		panel ? 0 : 20, panel ? 0 : 20,
+		panel ? 1024 : 320, panel ? 24 : 180,
+		0, 0, WhitePixel(dpy, DefaultScreen(dpy)));
 	if (override_redirect) {
 		XSetWindowAttributes attributes = { .override_redirect = True };
 
@@ -332,8 +363,9 @@ main(int argc, char **argv)
 	}
 	if (set_hints) {
 		XStoreName(dpy, win, "dwm-xvfb-runtime");
-		classhint.res_name = "dwm-xvfb-runtime";
-		classhint.res_class = swallow_terminal ? "DwmXvfbTerminal" : "DwmXvfbRuntime";
+		classhint.res_name = panel ? "quickshell" : "dwm-xvfb-runtime";
+		classhint.res_class = panel ? "quickshell"
+			: (swallow_terminal ? "DwmXvfbTerminal" : "DwmXvfbRuntime");
 		XSetClassHint(dpy, win, &classhint);
 	}
 	if (swallow_terminal) {
@@ -677,6 +709,13 @@ wait_for_top_window "$stack_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
 
+DISPLAY=$display xprop -id "$stack_win" \
+	-f _NET_WM_WINDOW_TYPE 32a \
+	-set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_TOOLTIP
+wait_for_top_window "$stack_win"
+DISPLAY=$display xprop -id "$stack_win" -remove _NET_WM_WINDOW_TYPE
+wait_for_top_window "$above_win"
+
 for popup_marker in tooltip kde notification menu popup-menu dropdown-menu combo dnd above stays-on-top; do
 	DISPLAY=$display "$work/xclient" "override-$popup_marker" \
 		>"$work/popup-$popup_marker-window-id" \
@@ -765,6 +804,18 @@ done
 fullscreen_win=$(cat "$work/fullscreen-window-id")
 [ -n "$fullscreen_win" ]
 wait_for_active_window "$fullscreen_win"
+
+DISPLAY=$display "$work/xclient" panel >"$work/panel-window-id" 2>"$work/panel-client.log" &
+panel_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/panel-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+panel_win=$(cat "$work/panel-window-id")
+[ -n "$panel_win" ]
+DISPLAY=$display xprop -root _NET_CLIENT_LIST | grep -q "$panel_win"
+
 DISPLAY=$display xdotool key Super+Shift+y
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
 wait_for_fullscreen_monitors ''
@@ -778,6 +829,7 @@ wait_for_fullscreen_monitors ''
 DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
 wait_for_fullscreen_monitors 0
+
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$fullscreen_win"
 DISPLAY=$display xdotool key Super+2
@@ -788,12 +840,53 @@ wait_for_fullscreen_monitors 0
 DISPLAY=$display xdotool key Super+1
 wait_for_current_desktop 0
 wait_for_fullscreen_monitors 0
+
 DISPLAY=$display "$work/xclient" state "$fullscreen_win" 0 _NET_WM_STATE_FULLSCREEN
 wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
 wait_for_fullscreen_monitors ''
 kill "$fullscreen_client_pid"
 wait "$fullscreen_client_pid" 2>/dev/null || true
 fullscreen_client_pid=
+
+DISPLAY=$display "$work/xclient" >"$work/unselected-fullscreen-window-id" \
+	2>"$work/unselected-fullscreen-client.log" &
+fullscreen_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/unselected-fullscreen-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+fullscreen_win=$(cat "$work/unselected-fullscreen-window-id")
+[ -n "$fullscreen_win" ]
+wait_for_active_window "$fullscreen_win"
+DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
+wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_monitors 0
+
+DISPLAY=$display "$work/xclient" >"$work/fullscreen-peer-window-id" \
+	2>"$work/fullscreen-peer-client.log" &
+second_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/fullscreen-peer-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+fullscreen_peer_win=$(cat "$work/fullscreen-peer-window-id")
+[ -n "$fullscreen_peer_win" ]
+wait_for_active_window "$fullscreen_peer_win"
+wait_for_fullscreen_monitors 0
+DISPLAY=$display xdotool key Super+t
+[ "$(DISPLAY=$display "$work/xclient" above "$fullscreen_win" "$panel_win")" = 1 ]
+kill "$second_client_pid"
+wait "$second_client_pid" 2>/dev/null || true
+second_client_pid=
+kill "$fullscreen_client_pid"
+wait "$fullscreen_client_pid" 2>/dev/null || true
+fullscreen_client_pid=
+wait_for_fullscreen_monitors ''
+kill "$panel_pid"
+wait "$panel_pid" 2>/dev/null || true
+panel_pid=
 
 DISPLAY=$display "$work/xclient" initial-many-states >"$work/many-state-window-id" 2>"$work/many-state-client.log" &
 many_state_client_pid=$!

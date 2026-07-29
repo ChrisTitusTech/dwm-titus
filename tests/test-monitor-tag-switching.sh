@@ -93,11 +93,22 @@ set_fullscreen_body=$(sed -n '/^setfullscreen(Client \*c, int fullscreen)/,/^}$/
 printf '%s\n' "$set_fullscreen_body" | grep -q 'actualfullscreenchanged'
 printf '%s\n' "$set_fullscreen_body" | grep -q 'wasactualfullscreen'
 printf '%s\n' "$set_fullscreen_body" | grep -q 'updatefullscreenmonitors();'
+visible_fullscreen_body=$(sed -n '/^isvisiblefullscreen(Client \*c)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$visible_fullscreen_body" | grep -q 'c->isfullscreen'
+printf '%s\n' "$visible_fullscreen_body" | grep -q 'c->fakefullscreen != 1'
+printf '%s\n' "$visible_fullscreen_body" | grep -q 'ISVISIBLE(c)'
+monitor_has_fullscreen_body=$(sed -n '/^monitorhasfullscreen(Monitor \*m)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$monitor_has_fullscreen_body" | grep -q 'isvisiblefullscreen(c)'
 fullscreen_monitors_body=$(sed -n '/^updatefullscreenmonitors(void)/,/^}$/p' "$repo_dir/dwm.c")
-printf '%s\n' "$fullscreen_monitors_body" | grep -q 'c->fakefullscreen == 1'
-printf '%s\n' "$fullscreen_monitors_body" | grep -q '!ISVISIBLE(c)'
+printf '%s\n' "$fullscreen_monitors_body" | grep -q 'monitorhasfullscreen(m)'
 printf '%s\n' "$fullscreen_monitors_body" | grep -q 'getmonlogicalindex(m)'
 printf '%s\n' "$fullscreen_monitors_body" | grep -q 'dwmfullscreenmonitorsatom'
+raise_always_body=$(sed -n '/^raisealwaysontop(Monitor \*m)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$raise_always_body" | grep -q 'monitorhasfullscreen(m)'
+printf '%s\n' "$raise_always_body" | grep -q 'isvisiblefullscreen(c)'
+property_notify_body=$(sed -n '/^propertynotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$property_notify_body" | grep -q 'updateoverridewindow(ev->window);'
+printf '%s\n' "$property_notify_body" | grep -q 'restack(m);'
 tagmon_body=$(sed -n '/^tagmon(const Arg \*arg)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$tagmon_body" | grep -q 'c->isfullscreen = 1;'
 printf '%s\n' "$tagmon_body" | grep -q 'updatefullscreenmonitors();'
