@@ -78,10 +78,12 @@ wait_for_fullscreen_monitors() {
 	expected=$1
 	i=0
 	while [ "$i" -lt 100 ]; do
-		monitors=$(DISPLAY=$display xprop -root _DWM_FULLSCREEN_MONITORS 2>/dev/null |
+		property=$(DISPLAY=$display xprop -root _DWM_FULLSCREEN_MONITORS 2>/dev/null || true)
+		monitors=$(printf '%s\n' "$property" |
 			sed -n 's/^[^=]*=[[:space:]]*//p' |
 			tr -d '[:space:]')
-		if [ "$monitors" = "$expected" ]; then
+		if printf '%s\n' "$property" | grep -Fq '_DWM_FULLSCREEN_MONITORS(' &&
+			[ "$monitors" = "$expected" ]; then
 			return 0
 		fi
 		i=$((i + 1))
@@ -301,6 +303,10 @@ main(int argc, char **argv)
 	else if (argc == 2 && strcmp(argv[1], "override-dropdown-menu") == 0) {
 		override_redirect = 1;
 		popup_type = "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-combo") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_COMBO";
 	}
 	else if (argc == 2 && strcmp(argv[1], "override-above") == 0) {
 		override_redirect = 1;
@@ -667,7 +673,7 @@ wait_for_top_window "$stack_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
 
-for popup_marker in tooltip kde notification menu popup-menu dropdown-menu above stays-on-top; do
+for popup_marker in tooltip kde notification menu popup-menu dropdown-menu combo above stays-on-top; do
 	DISPLAY=$display "$work/xclient" "override-$popup_marker" \
 		>"$work/popup-$popup_marker-window-id" \
 		2>"$work/popup-$popup_marker-client.log" &
@@ -703,6 +709,10 @@ for popup_marker in tooltip kde notification menu popup-menu dropdown-menu above
 		;;
 	dropdown-menu)
 		popup_atom=_NET_WM_WINDOW_TYPE_DROPDOWN_MENU
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	combo)
+		popup_atom=_NET_WM_WINDOW_TYPE_COMBO
 		popup_property=_NET_WM_WINDOW_TYPE
 		;;
 	above)

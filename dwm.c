@@ -82,6 +82,7 @@ enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMFullscreen, NetWMAbove, NetWMStaysOnTop, NetActiveWindow, NetWMWindowType, NetWMIcon,
        NetWMWindowTypeDialog, NetWMWindowTypeDock, NetWMWindowTypeTooltip, NetWMWindowTypeNotification,
        NetWMWindowTypeMenu, NetWMWindowTypePopupMenu, NetWMWindowTypeDropdownMenu,
+       NetWMWindowTypeCombo,
        NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop,
        NetWMDesktop, NetDwmMonitorDesktops, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
@@ -3983,6 +3984,7 @@ setup(void)
 	netatom[NetWMWindowTypeMenu] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_MENU", False);
 	netatom[NetWMWindowTypePopupMenu] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_POPUP_MENU", False);
 	netatom[NetWMWindowTypeDropdownMenu] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU", False);
+	netatom[NetWMWindowTypeCombo] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_COMBO", False);
 	kdewindowtypeoverride = XInternAtom(dpy, "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE", False);
 	netatom[NetClientList] = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
 	netatom[NetDesktopViewport] = XInternAtom(dpy, "_NET_DESKTOP_VIEWPORT", False);
@@ -5024,6 +5026,7 @@ updateoverridewindow(Window win)
 		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeMenu])
 		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypePopupMenu])
 		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeDropdownMenu])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeCombo])
 		|| atomlistcontains(types, ntypes, kdewindowtypeoverride);
 }
 
@@ -5512,6 +5515,8 @@ reconcilemonitortags(void)
 		m->showbar = m->pertag->showbars[m->pertag->curtag];
 		updatebarpos(m);
 	}
+	if (dwmfullscreenmonitorsatom != None)
+		updatefullscreenmonitors();
 }
 
 int
