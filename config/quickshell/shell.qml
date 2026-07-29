@@ -20,6 +20,14 @@ pragma ComponentBehavior: Bound
 ShellRoot {
     id: root
 
+    property var selectedPanelWindow: null
+    readonly property var defaultPanelWindow: panelVariants.instances.length > 0
+        ? panelVariants.instances[0] : null
+    readonly property var activePanelWindow: selectedPanelWindow || defaultPanelWindow
+    readonly property var activePanelScreen: activePanelWindow
+        ? activePanelWindow.screen
+        : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
+
     DwmState {
         id: dwmState
     }
@@ -265,7 +273,7 @@ ShellRoot {
         }
 
         function open(): void {
-            systemHealthModel.openOnScreen(panelWindow.screen);
+            systemHealthModel.openOnScreen(root.activePanelScreen);
         }
 
         function refresh(): void {
@@ -276,7 +284,7 @@ ShellRoot {
             if (systemHealthModel.visible) {
                 systemHealthModel.close();
             } else {
-                systemHealthModel.openOnScreen(panelWindow.screen);
+                systemHealthModel.openOnScreen(root.activePanelScreen);
             }
         }
     }
@@ -356,29 +364,37 @@ ShellRoot {
 
     PowerMenuWindow {
         powerMenuModel: powerMenuModel
-        panelWindow: panelWindow
+        panelWindow: root.activePanelWindow
     }
 
-    DwmPanel {
-        id: panelWindow
+    Variants {
+        id: panelVariants
 
-        state: dwmState
-        clock: clock
-        networkModel: networkModel
-        controlsModel: controlsModel
-        bluetoothModel: bluetoothModel
-        controlCenterModel: controlCenterModel
-        powerMenuModel: powerMenuModel
+        model: Quickshell.screens
+
+        DwmPanel {
+            required property var modelData
+
+            screen: modelData
+            state: dwmState
+            clock: clock
+            networkModel: networkModel
+            controlsModel: controlsModel
+            bluetoothModel: bluetoothModel
+            controlCenterModel: controlCenterModel
+            powerMenuModel: powerMenuModel
+            onPopupRequested: panel => root.selectedPanelWindow = panel
+        }
     }
 
     NetworkWindow {
         networkModel: networkModel
-        panelWindow: panelWindow
+        panelWindow: root.activePanelWindow
     }
 
     NotificationPopupWindow {
         notificationModel: notificationModel
-        panelWindow: panelWindow
+        panelWindow: root.defaultPanelWindow
     }
 
     NotificationHistoryWindow {
@@ -387,18 +403,18 @@ ShellRoot {
 
     ControlsWindow {
         controlsModel: controlsModel
-        panelWindow: panelWindow
+        panelWindow: root.activePanelWindow
     }
 
     BluetoothWindow {
         bluetoothModel: bluetoothModel
-        panelWindow: panelWindow
+        panelWindow: root.activePanelWindow
     }
 
     ControlCenterWindow {
         controlCenterModel: controlCenterModel
         launcherModel: launcherModel
-        panelWindow: panelWindow
+        panelWindow: root.activePanelWindow
         powerMenuModel: powerMenuModel
         healthModel: systemHealthModel
         settingsModel: settingsModel
@@ -410,7 +426,7 @@ ShellRoot {
 
     SystemHealthWindow {
         healthModel: systemHealthModel
-        screen: systemHealthModel.targetScreen ? systemHealthModel.targetScreen : panelWindow.screen
+        screen: systemHealthModel.targetScreen ? systemHealthModel.targetScreen : root.activePanelScreen
     }
 
     SettingsWindow {

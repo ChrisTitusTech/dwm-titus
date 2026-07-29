@@ -10,6 +10,8 @@ pragma ComponentBehavior: Bound
 PanelWindow {
     id: root
 
+    signal popupRequested(var panelWindow)
+
     function batteryIcon(percent, status) {
         if (status.toLowerCase() === "charging") {
             return "󰂄";
@@ -82,7 +84,10 @@ PanelWindow {
 
                     LogoButton {
                         id: logoButton
-                        onActivated: root.controlCenterModel.toggle()
+                        onActivated: {
+                            root.popupRequested(root);
+                            root.controlCenterModel.toggle();
+                        }
                     }
 
                     PanelPill {
@@ -232,7 +237,10 @@ PanelWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.bluetoothModel.toggle()
+                            onClicked: {
+                                root.popupRequested(root);
+                                root.bluetoothModel.toggle();
+                            }
                         }
                     }
 
@@ -261,7 +269,10 @@ PanelWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.networkModel.toggle()
+                            onClicked: {
+                                root.popupRequested(root);
+                                root.networkModel.toggle();
+                            }
                         }
                     }
 
@@ -296,7 +307,10 @@ PanelWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.controlsModel.toggle()
+                            onClicked: {
+                                root.popupRequested(root);
+                                root.controlsModel.toggle();
+                            }
                             onWheel: function(wheel) {
                                 if (wheel.angleDelta.y > 0) {
                                     root.controlsModel.volumeUp();
@@ -327,7 +341,10 @@ PanelWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.powerMenuModel.toggle("panel")
+                            onClicked: {
+                                root.popupRequested(root);
+                                root.powerMenuModel.toggle("panel");
+                            }
                         }
                     }
                 }

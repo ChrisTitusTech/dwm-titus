@@ -13,13 +13,13 @@ ClickAwayPopup {
     readonly property int cardWidth: Theme.controlCenterWidth
     readonly property int edgeMargin: Theme.rowSpacing
 
-    visible: powerMenuModel.visible
+    visible: panelWindow !== null && panelWindow.screen !== null && powerMenuModel.visible
     targetWindow: panelWindow
     popupWidth: cardWidth
     popupHeight: powerCard.implicitHeight
     popupX: powerMenuModel.anchorSource === "controlcenter"
         ? Theme.controlCenterX
-        : Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin)
+        : (panelWindow ? Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin) : edgeMargin)
     popupY: Theme.panelHeight
     onDismissed: powerMenuModel.close()
 

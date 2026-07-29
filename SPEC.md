@@ -133,10 +133,10 @@ inherently sampled values, such as a clock or CPU load, or as documented
 fallbacks when no event source exists. The managed Quickshell shell must remain
 low overhead while idle: hidden launcher UI must not continuously filter or
 render application models, timer-triggered helper processes must not overlap,
-and only one shell provider should run in the dwm-titus session. On X11, a
-single managed `PanelWindow` is the expected panel shape unless a per-screen
-Quickshell `Variants` design is explicitly profiled and shown not to consume
-idle CPU.
+and only one shell provider should run in the dwm-titus session. On X11, the
+managed shell must create one `PanelWindow` for every active screen so each
+monitor has a bar. The per-screen Quickshell `Variants` design must share its
+state providers and be explicitly profiled to show that it remains near idle.
 
 The managed shell requires Quickshell 0.3.0 or newer. Anchored control popups
 must close on Escape and on a click outside their visible card under X11.
@@ -615,6 +615,7 @@ In a real or nested X11 session:
 - A display-manager session and `startx` path both launch.
 - Missing optional desktop processes do not terminate the session.
 - EWMH integration works with Quickshell or an equivalent inspection tool.
+- Each active monitor has one managed Quickshell panel.
 - With the launcher closed, the managed Quickshell process remains near idle
   in a short CPU sample, and no second Quickshell-based shell provider is
   running in the same session.

@@ -15,7 +15,9 @@ ClickAwayPopup {
     required property var settingsModel
 
     readonly property int cardWidth: Theme.controlCenterWidth
-    readonly property int maximumHeight: Math.max(240, panelWindow.screen.height - Theme.panelHeight - Theme.popupMargin)
+    readonly property int maximumHeight: panelWindow && panelWindow.screen
+        ? Math.max(240, panelWindow.screen.height - Theme.panelHeight - Theme.popupMargin)
+        : 240
     readonly property var powerPresets: [
         { "label": "5m", "seconds": 300 },
         { "label": "10m", "seconds": 600 },
@@ -59,7 +61,7 @@ ClickAwayPopup {
     function openSystemHealth() {
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.healthModel.openOnScreen(root.panelWindow.screen);
+            root.healthModel.openOnScreen(root.panelWindow ? root.panelWindow.screen : null);
         });
     }
 
@@ -84,7 +86,7 @@ ClickAwayPopup {
         });
     }
 
-    visible: controlCenterModel.visible
+    visible: panelWindow !== null && panelWindow.screen !== null && controlCenterModel.visible
     targetWindow: panelWindow
     popupX: Theme.controlCenterX
     popupY: Theme.panelHeight
