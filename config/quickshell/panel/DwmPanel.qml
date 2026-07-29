@@ -41,8 +41,8 @@ PanelWindow {
     implicitHeight: Theme.panelHeight
     color: Theme.barBackground
     exclusiveZone: Theme.panelHeight
-    aboveWindows: root.state.fullscreenWorkspaces.indexOf(
-        root.state.currentWorkspaceForScreen(root.screen)) === -1
+    aboveWindows: root.state.fullscreenMonitorIndexes.indexOf(
+        root.state.screenIndex(root.screen)) === -1
 
     anchors {
         top: true

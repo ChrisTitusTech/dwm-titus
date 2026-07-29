@@ -80,8 +80,8 @@ occupied_workspaces() {
 		paste -sd '|' -
 }
 
-fullscreen_workspaces() {
-	root_property_value _DWM_FULLSCREEN_DESKTOPS |
+fullscreen_monitors() {
+	root_property_value _DWM_FULLSCREEN_MONITORS |
 		tr ',' '\n' |
 		awk '$1 ~ /^[0-9]+$/ { print $1 }' |
 		sort -nu |
@@ -157,7 +157,7 @@ show_state() {
 	class=${class:-application-x-executable}
 	status=$(root_status)
 	occupied=$(occupied_workspaces)
-	fullscreen=$(fullscreen_workspaces)
+	fullscreen_monitors=$(fullscreen_monitors)
 	apps=$(running_apps)
 	monitor_desktops=$(
 		root_property_value _DWM_MONITOR_DESKTOPS |
@@ -170,7 +170,7 @@ show_state() {
 	printf 'count=%s\n' "$count"
 	printf 'names=%s\n' "$names"
 	printf 'occupied=%s\n' "$occupied"
-	printf 'fullscreen=%s\n' "$fullscreen"
+	printf 'fullscreen_monitors=%s\n' "$fullscreen_monitors"
 	printf 'apps=%s\n' "$apps"
 	printf 'active_window=%s\n' "$window_id"
 	printf 'title=%s\n' "$title"
@@ -191,7 +191,7 @@ watch_state() {
 			_NET_DESKTOP_NAMES \
 			_NET_ACTIVE_WINDOW \
 			_NET_CLIENT_LIST \
-			_DWM_FULLSCREEN_DESKTOPS \
+			_DWM_FULLSCREEN_MONITORS \
 			WM_NAME 2>/dev/null
 	else
 		xprop -root -spy \
@@ -201,7 +201,7 @@ watch_state() {
 			_NET_DESKTOP_NAMES \
 			_NET_ACTIVE_WINDOW \
 			_NET_CLIENT_LIST \
-			_DWM_FULLSCREEN_DESKTOPS \
+			_DWM_FULLSCREEN_MONITORS \
 			WM_NAME 2>/dev/null
 	fi |
 		while IFS= read -r _event; do

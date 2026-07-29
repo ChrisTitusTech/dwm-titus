@@ -271,7 +271,7 @@ static int updatealtbar(Monitor *m, Window win, XWindowAttributes *wa);
 static void updatebarpos(Monitor *m);
 static void updatebars(void);
 static void updateclientlist(void);
-static void updatefullscreendesktops(void);
+static void updatefullscreenmonitors(void);
 static int updategeom(void);
 static void updateoverridewindow(Window win);
 static void updatenumlockmask(void);
@@ -406,7 +406,7 @@ static xcb_connection_t *xcon;
 static Window *clientlistcache;
 static unsigned long clientlistcachelen;
 static int clientlistcachevalid;
-static Atom dwmfullscreendesktopsatom, dwmtagupdateatom;
+static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 static unsigned long tagupdatesequence;
 
 /* External dock integration */
@@ -3064,7 +3064,7 @@ setclientdesktop(Client *c)
     }
     
 	ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
-	updatefullscreendesktops();
+	updatefullscreenmonitors();
 	data[0] = ++tagupdatesequence;
 	ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1);
 }
@@ -3177,7 +3177,7 @@ setfullscreen(Client *c, int fullscreen)
 	if (!c->isfullscreen)
 		while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 	if (actualfullscreenchanged)
-		updatefullscreendesktops();
+		updatefullscreenmonitors();
 }
 
 Layout *last_layout;
@@ -3991,7 +3991,7 @@ setup(void)
 	netatom[NetDesktopNames] = XInternAtom(dpy, "_NET_DESKTOP_NAMES", False);
 	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
 	netatom[NetDwmMonitorDesktops] = XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False);
-	dwmfullscreendesktopsatom = XInternAtom(dpy, "_DWM_FULLSCREEN_DESKTOPS", False);
+	dwmfullscreenmonitorsatom = XInternAtom(dpy, "_DWM_FULLSCREEN_MONITORS", False);
 	dwmtagupdateatom = XInternAtom(dpy, "DWM_TAG_UPDATE", False);
 	/* init cursors */
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
@@ -4237,6 +4237,7 @@ tagmon(const Arg *arg)
 		c->isfullscreen = 0;
 		sendmon(c, dirtomon(arg->i));
 		c->isfullscreen = 1;
+		updatefullscreenmonitors();
 		if (c->fakefullscreen != 1) {
 			resizeclient(c, c->mon->mx, c->mon->my, c->mon->mw, c->mon->mh);
 			XRaiseWindow(dpy, c->win);
@@ -4732,31 +4733,34 @@ updateclientlist(void)
 	clientlistcache = clients;
 	clientlistcachelen = count;
 	clientlistcachevalid = 1;
-	updatefullscreendesktops();
+	updatefullscreenmonitors();
 }
 
 void
-updatefullscreendesktops(void)
+updatefullscreenmonitors(void)
 {
 	Client *c;
 	Monitor *m;
-	long desktops[TAGSLENGTH];
-	unsigned int count = 0, i, j;
+	long *monitors;
+	int logicalindex;
+	unsigned int count = 0;
 
 	for (m = mons; m; m = m->next)
+		count++;
+	monitors = count ? ecalloc(count, sizeof(*monitors)) : NULL;
+	count = 0;
+	for (m = mons; m; m = m->next)
 		for (c = m->clients; c; c = c->next) {
-			if (!c->isfullscreen || c->fakefullscreen == 1)
+			if (!c->isfullscreen || c->fakefullscreen == 1 || !ISVISIBLE(c))
 				continue;
-			for (i = 0; i < TAGSLENGTH; i++) {
-				if (!(c->tags & 1U << i))
-					continue;
-				for (j = 0; j < count && desktops[j] != (long)i; j++);
-				if (j == count)
-					desktops[count++] = i;
-			}
+			logicalindex = getmonlogicalindex(m);
+			if (logicalindex >= 0)
+				monitors[count++] = logicalindex;
+			break;
 		}
-	XChangeProperty(dpy, root, dwmfullscreendesktopsatom, XA_CARDINAL, 32,
-		PropModeReplace, (unsigned char *)desktops, count);
+	XChangeProperty(dpy, root, dwmfullscreenmonitorsatom, XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char *)monitors, count);
+	free(monitors);
 }
 
 void
@@ -4800,6 +4804,7 @@ updatecurrentdesktop(void)
 	XChangeProperty(dpy, root, netatom[NetDwmMonitorDesktops], XA_INTEGER, 32,
 		PropModeReplace, (unsigned char *)monitor_desktops, count * 5);
 	free(monitor_desktops);
+	updatefullscreenmonitors();
 }
 
 #if SHOWWINICON

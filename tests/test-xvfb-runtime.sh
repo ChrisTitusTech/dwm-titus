@@ -74,20 +74,20 @@ wait_for_monitor_desktops() {
 	return 1
 }
 
-wait_for_fullscreen_desktops() {
+wait_for_fullscreen_monitors() {
 	expected=$1
 	i=0
 	while [ "$i" -lt 100 ]; do
-		desktops=$(DISPLAY=$display xprop -root _DWM_FULLSCREEN_DESKTOPS 2>/dev/null |
+		monitors=$(DISPLAY=$display xprop -root _DWM_FULLSCREEN_MONITORS 2>/dev/null |
 			sed -n 's/^[^=]*=[[:space:]]*//p' |
 			tr -d '[:space:]')
-		if [ "$desktops" = "$expected" ]; then
+		if [ "$monitors" = "$expected" ]; then
 			return 0
 		fi
 		i=$((i + 1))
 		sleep 0.05
 	done
-	printf '%s\n' "fullscreen desktops did not become ${expected:-empty}" >&2
+	printf '%s\n' "fullscreen monitors did not become ${expected:-empty}" >&2
 	return 1
 }
 
@@ -458,10 +458,10 @@ dwm_pid=$!
 wait_for_root_property _NET_SUPPORTED
 wait_for_root_property _NET_NUMBER_OF_DESKTOPS
 wait_for_root_property _DWM_MONITOR_DESKTOPS
-wait_for_root_property _DWM_FULLSCREEN_DESKTOPS
+wait_for_root_property _DWM_FULLSCREEN_MONITORS
 wait_for_current_desktop 0
 wait_for_monitor_desktops 0,0,1024,768,0
-wait_for_fullscreen_desktops ''
+wait_for_fullscreen_monitors ''
 DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_ABOVE
 DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_STAYS_ON_TOP
 
@@ -484,7 +484,9 @@ wait_for_monitor_desktops 0,0,1024,768,1
 
 printf '%s\n' \
 	'keys = [' \
+	'  { mod="SUPER", key="0", desc="Xvfb all tags", func="view", ui=511 },' \
 	'  { mod="SUPER", key="1", desc="Xvfb tag 1", func="view", ui=1 },' \
+	'  { mod="SUPER", key="2", desc="Xvfb tag 2", func="view", ui=2 },' \
 	'  { mod="SUPER", key="m", desc="Xvfb fullscreen", func="fullscreen" },' \
 	'  { mod="SUPER", key="o", desc="Xvfb monocle", func="setlayout", layout_idx=2 },' \
 	'  { mod="SUPER", key="t", desc="Xvfb tile", func="setlayout", layout_idx=0 },' \
@@ -747,22 +749,30 @@ fullscreen_win=$(cat "$work/fullscreen-window-id")
 wait_for_active_window "$fullscreen_win"
 DISPLAY=$display xdotool key Super+Shift+y
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
-wait_for_fullscreen_desktops ''
+wait_for_fullscreen_monitors ''
 DISPLAY=$display xdotool windowraise "$stack_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
 DISPLAY=$display xdotool key Super+Shift+y
 wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
-wait_for_fullscreen_desktops ''
+wait_for_fullscreen_monitors ''
 
 DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
-wait_for_fullscreen_desktops 0
+wait_for_fullscreen_monitors 0
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$fullscreen_win"
+DISPLAY=$display xdotool key Super+2
+wait_for_current_desktop 1
+wait_for_fullscreen_monitors ''
+DISPLAY=$display xdotool key Super+0
+wait_for_fullscreen_monitors 0
+DISPLAY=$display xdotool key Super+1
+wait_for_current_desktop 0
+wait_for_fullscreen_monitors 0
 DISPLAY=$display "$work/xclient" state "$fullscreen_win" 0 _NET_WM_STATE_FULLSCREEN
 wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
-wait_for_fullscreen_desktops ''
+wait_for_fullscreen_monitors ''
 kill "$fullscreen_client_pid"
 wait "$fullscreen_client_pid" 2>/dev/null || true
 fullscreen_client_pid=
