@@ -299,7 +299,6 @@ static void setup(void);
 static void unmapnotify(XEvent *e);
 
 /* EWMH declarations */
-static void ewmh_append_client(Window win);
 static void ewmh_clear_active_window(void);
 static void ewmh_clear_client_list(void);
 static void ewmh_replace_root_cardinal(Atom prop, const long *data, int n);
@@ -384,6 +383,9 @@ static Drw *drw;
 static Monitor *mons, *selmon;
 static Window root, wmcheckwin;
 static xcb_connection_t *xcon;
+static Window *clientlistcache;
+static unsigned long clientlistcachelen;
+static int clientlistcachevalid;
 
 /* External dock integration */
 static const char *altbarclass = "quickshell";
@@ -1849,7 +1851,7 @@ manage(Window w, XWindowAttributes *wa)
 		XRaiseWindow(dpy, c->win);
 	attachbottom(c);
 	attachstack(c);
-	ewmh_append_client(c->win);
+	updateclientlist();
 	XMoveResizeWindow(dpy, c->win, c->x + 2 * sw, c->y, c->w, c->h); /* some windows require this */
 	setclientstate(c, NormalState);
 	setclientdesktop(c);
@@ -1913,7 +1915,7 @@ managetray(Window win, XWindowAttributes *wa)
 	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
 	XMoveResizeWindow(dpy, win, wa->x, wa->y, wa->width, wa->height);
 	XMapWindow(dpy, win);
-	ewmh_append_client(win);
+	updateclientlist();
 }
 
 void
@@ -2853,13 +2855,6 @@ sendmon(Client *c, Monitor *m)
 
 /* EWMH property implementations */
 static void
-ewmh_append_client(Window win)
-{
-	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32,
-		PropModeAppend, (unsigned char *)&win, 1);
-}
-
-static void
 ewmh_clear_active_window(void)
 {
 	XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
@@ -2869,6 +2864,7 @@ static void
 ewmh_clear_client_list(void)
 {
 	XDeleteProperty(dpy, root, netatom[NetClientList]);
+	clientlistcachevalid = 0;
 }
 
 static void
@@ -4522,17 +4518,46 @@ updateclientlist(void)
 	Client *c;
 	Monitor *m;
 	XWindowAttributes wa;
+	Window *clients;
+	unsigned long count, index;
 
-	ewmh_clear_client_list();
+	for (count = 0, m = mons; m; m = m->next) {
+		if (m->barwin)
+			count++;
+		if (m->traywin)
+			count++;
+		for (c = m->clients; c; c = c->next)
+			count++;
+	}
+	clients = ecalloc(count ? count : 1, sizeof(Window));
+	index = 0;
 	for (m = mons; m; m = m->next) {
 		if (m->barwin && XGetWindowAttributes(dpy, m->barwin, &wa) &&
 		    !wa.override_redirect)
-			ewmh_append_client(m->barwin);
+			clients[index++] = m->barwin;
 		if (m->traywin)
-			ewmh_append_client(m->traywin);
+			clients[index++] = m->traywin;
 		for (c = m->clients; c; c = c->next)
-			ewmh_append_client(c->win);
+			clients[index++] = c->win;
 	}
+	count = index;
+
+	if (clientlistcachevalid && count == clientlistcachelen
+	&& (!count || !memcmp(clients, clientlistcache, count * sizeof(Window)))) {
+		free(clients);
+		return;
+	}
+
+	if (count)
+		XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32,
+			PropModeReplace, (unsigned char *)clients, count);
+	else
+		XDeleteProperty(dpy, root, netatom[NetClientList]);
+
+	free(clientlistcache);
+	clientlistcache = clients;
+	clientlistcachelen = count;
+	clientlistcachevalid = 1;
 }
 
 void
@@ -5161,11 +5186,36 @@ getmontagmask(int monnum)
 void
 reconcilemonitortags(void)
 {
+	Client *c, *next;
 	Monitor *m;
+	Monitor *owner;
 	unsigned int fallbacktag, montags;
 	int i, s;
 	
 	updatemonitorcount();
+
+	for (m = mons; m; m = m->next) {
+		montags = getmontagmask(m->num);
+		for (c = m->clients; c; c = next) {
+			next = c->next;
+			if (c->tags & montags)
+				continue;
+
+			for (owner = mons; owner; owner = owner->next)
+				if (c->tags & getmontagmask(owner->num))
+					break;
+			if (!owner || owner == m)
+				continue;
+
+			detach(c);
+			detachstack(c);
+			c->mon = owner;
+			c->tags &= getmontagmask(owner->num);
+			setclientdesktop(c);
+			attachbottom(c);
+			attachstack(c);
+		}
+	}
 	
 	for (m = mons; m; m = m->next) {
 		montags = getmontagmask(m->num);

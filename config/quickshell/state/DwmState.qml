@@ -75,11 +75,21 @@ Scope {
     }
 
     function screenIndex(screen) {
+        const pixelRatio = screen && screen.devicePixelRatio > 0
+            ? screen.devicePixelRatio : 1;
+        const pixelX = screen ? Math.round(screen.x * pixelRatio) : 0;
+        const pixelY = screen ? Math.round(screen.y * pixelRatio) : 0;
+        const pixelWidth = screen ? Math.round(screen.width * pixelRatio) : 0;
+        const pixelHeight = screen ? Math.round(screen.height * pixelRatio) : 0;
+
         for (let index = 0; index < root.monitorWorkspaceRows.length; index++) {
             const row = root.monitorWorkspaceRows[index];
+            const logicalMatch = screen && row.x === screen.x && row.y === screen.y
+                && row.width === screen.width && row.height === screen.height;
+            const pixelMatch = screen && row.x === pixelX && row.y === pixelY
+                && row.width === pixelWidth && row.height === pixelHeight;
 
-            if (screen && row.x === screen.x && row.y === screen.y
-                    && row.width === screen.width && row.height === screen.height) {
+            if (logicalMatch || pixelMatch) {
                 return index;
             }
         }
