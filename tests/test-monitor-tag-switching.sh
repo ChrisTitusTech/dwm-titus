@@ -110,8 +110,15 @@ raise_fullscreen_clients_body=$(sed -n '/^raisefullscreenclients(Client \*c)/,/^
 printf '%s\n' "$raise_fullscreen_clients_body" | grep -q 'raisefullscreenclients(c->snext);'
 printf '%s\n' "$raise_fullscreen_clients_body" | grep -q 'isvisiblefullscreen(c)'
 property_notify_body=$(sed -n '/^propertynotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
-printf '%s\n' "$property_notify_body" | grep -q 'updateoverridewindow(ev->window);'
-printf '%s\n' "$property_notify_body" | grep -q 'restack(m);'
+override_property_block=$(printf '%s\n' "$property_notify_body" |
+	sed -n '/for (ow = overridewindows/,/if ((ev->window == root)/p')
+printf '%s\n' "$override_property_block" | grep -q 'updateoverridewindow(ev->window);'
+printf '%s\n' "$override_property_block" | grep -q 'restack(m);'
+update_override_line=$(printf '%s\n' "$override_property_block" |
+	grep -n 'updateoverridewindow(ev->window);' | cut -d: -f1)
+restack_override_line=$(printf '%s\n' "$override_property_block" |
+	grep -n 'restack(m);' | cut -d: -f1)
+test "$update_override_line" -lt "$restack_override_line"
 tagmon_body=$(sed -n '/^tagmon(const Arg \*arg)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$tagmon_body" | grep -q 'c->isfullscreen = 1;'
 printf '%s\n' "$tagmon_body" | grep -q 'updatefullscreenmonitors();'
