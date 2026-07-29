@@ -102,6 +102,50 @@ if grep -Fqx 'useX11LegacyScreenshot=true' \
 	exit 1
 fi
 
+failure_home=$work/failure
+failure_bin=$work/failure-bin
+mkdir -p "$failure_home/.config/flameshot" "$failure_bin"
+cat >"$failure_home/flameshot-target.ini" <<'EOF'
+[General]
+showHelp=false
+
+[Shortcuts]
+TYPE_COPY=Ctrl+C
+EOF
+cp "$failure_home/flameshot-target.ini" \
+	"$failure_home/flameshot-expected.ini"
+ln -s "$failure_home/flameshot-target.ini" \
+	"$failure_home/.config/flameshot/flameshot.ini"
+failure_inode=$(stat -Lc %i "$failure_home/flameshot-target.ini")
+
+cat >"$failure_bin/cat" <<'EOF'
+#!/bin/sh
+case ${1:-} in
+*.tmp.*)
+	printf '%s\n' "partial update"
+	exit 1
+	;;
+esac
+exec /usr/bin/cat "$@"
+EOF
+chmod +x "$failure_bin/cat"
+
+if env -u WAYLAND_DISPLAY \
+	DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	XDG_CONFIG_HOME="$failure_home/.config" \
+	HOME="$failure_home" \
+	PATH="$failure_bin:$work/bin:/usr/bin:/bin" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" setup; then
+	printf '%s\n' "Flameshot setup must report an in-place update failure" >&2
+	exit 1
+fi
+cmp "$failure_home/flameshot-expected.ini" \
+	"$failure_home/.config/flameshot/flameshot.ini"
+test -L "$failure_home/.config/flameshot/flameshot.ini"
+test "$(stat -Lc %i "$failure_home/flameshot-target.ini")" = "$failure_inode"
+
 theme_bin=$work/theme-bin
 theme_home=$work/theme-home
 mkdir -p "$theme_bin" "$theme_home/.config/dwm-titus"

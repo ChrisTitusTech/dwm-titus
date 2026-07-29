@@ -44,7 +44,7 @@ sync_activation_environment() {
 }
 
 ensure_x11_capture_backend() {
-	local config_dir config_file temp_file
+	local backup_file config_dir config_file target_file temp_file
 
 	config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/flameshot"
 	config_file="$config_dir/flameshot.ini"
@@ -107,14 +107,31 @@ ensure_x11_capture_backend() {
 			}
 		}
 	' "$config_file" >"$temp_file"; then
-		rm -f "$temp_file"
+		rm -f -- "$temp_file"
 		return 1
 	fi
-	if ! cat "$temp_file" >"$config_file"; then
-		rm -f "$temp_file"
+
+	if ! target_file=$(readlink -f -- "$config_file"); then
+		rm -f -- "$temp_file"
 		return 1
 	fi
-	rm -f "$temp_file"
+	if ! backup_file=$(mktemp "$target_file.backup.XXXXXX"); then
+		rm -f -- "$temp_file"
+		return 1
+	fi
+	if ! cat "$target_file" >"$backup_file"; then
+		rm -f -- "$backup_file" "$temp_file"
+		return 1
+	fi
+	if ! cat "$temp_file" >"$target_file"; then
+		if ! cat "$backup_file" >"$target_file"; then
+			printf 'dwm-screenshot: failed to restore %s after an update error\n' \
+				"$config_file" >&2
+		fi
+		rm -f -- "$backup_file" "$temp_file"
+		return 1
+	fi
+	rm -f -- "$backup_file" "$temp_file"
 }
 
 if ! command -v flameshot >/dev/null 2>&1; then
