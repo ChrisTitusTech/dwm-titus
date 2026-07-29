@@ -37,8 +37,14 @@ test "$scan_bars_line" -lt "$client_list_line"
 test "$reconcile_line" -lt "$client_list_line"
 test "$client_list_line" -lt "$publish_line"
 test "$reconcile_line" -lt "$publish_line"
-printf '%s\n' "$configure_body" | grep -q 'getwinatomprop(ev->window, netatom\[NetWMWindowType\])'
+managed_client_line=$(printf '%s\n' "$configure_body" |
+	grep -n '!wintoclient(ev->window)' | cut -d: -f1)
+attributes_line=$(printf '%s\n' "$configure_body" |
+	grep -n 'XGetWindowAttributes(dpy, ev->window, &wa)' | cut -d: -f1)
+test "$managed_client_line" -lt "$attributes_line"
+printf '%s\n' "$configure_body" | grep -q 'isaltbar(ev->window, &wa)'
 printf '%s\n' "$configure_body" | grep -q 'm = recttomon(wa.x, wa.y, wa.width, wa.height);'
+printf '%s\n' "$configure_body" | grep -q 'm = oldm;'
 printf '%s\n' "$configure_body" | grep -q 'oldm->barwin = 0;'
 printf '%s\n' "$configure_body" | grep -q 'oldm->bh = 0;'
 printf '%s\n' "$configure_body" | grep -q 'arrange(oldm);'
@@ -52,6 +58,10 @@ printf '%s\n' "$reconcile_body" | grep -q 'c->mon = owner;'
 printf '%s\n' "$reconcile_body" | grep -q 'c->tags &= getmontagmask(owner->num);'
 printf '%s\n' "$reconcile_body" | grep -q 'c->tags &= montags;'
 printf '%s\n' "$reconcile_body" | grep -q 'c->x = owner->mx + c->x - m->mx;'
+printf '%s\n' "$reconcile_body" | grep -q 'wasselected = c == m->sel;'
+printf '%s\n' "$reconcile_body" | grep -q 'wasfocused = wasselected && m == selmon;'
+printf '%s\n' "$reconcile_body" | grep -q 'owner->sel = c;'
+printf '%s\n' "$reconcile_body" | grep -q 'selmon = owner;'
 printf '%s\n' "$reconcile_body" | grep -q 'm->tagset\[m->seltags\] == montags'
 printf '%s\n' "$reconcile_body" | grep -q 'm->pertag->curtag == 0'
 printf '%s\n' "$reconcile_body" | grep -q 'm->nmaster = m->pertag->nmasters\[m->pertag->curtag\];'
@@ -63,10 +73,18 @@ update_client_list_body=$(sed -n '/^updateclientlist(void)/,/^}$/p' "$repo_dir/d
 printf '%s\n' "$update_client_list_body" | grep -q 'PropModeReplace'
 printf '%s\n' "$update_client_list_body" | grep -q 'memcmp(clients, clientlistcache'
 scan_alt_bars_body=$(sed -n '/^scanaltbars(void)/,/^}$/p' "$repo_dir/dwm.c")
+query_tree_line=$(printf '%s\n' "$scan_alt_bars_body" |
+	grep -n 'XQueryTree' | cut -d: -f1)
+clear_bars_line=$(printf '%s\n' "$scan_alt_bars_body" |
+	grep -n 'm->barwin = 0;' | cut -d: -f1)
+test "$query_tree_line" -lt "$clear_bars_line"
+printf '%s\n' "$scan_alt_bars_body" | grep -q 'knownbars\[i\] = m->barwin;'
 printf '%s\n' "$scan_alt_bars_body" | grep -q 'm->barwin = 0;'
 printf '%s\n' "$scan_alt_bars_body" | grep -q 'wa.map_state != IsViewable'
-printf '%s\n' "$scan_alt_bars_body" | grep -q 'netatom\[NetWMWindowTypeDock\]'
+printf '%s\n' "$scan_alt_bars_body" | grep -q '!isaltbar(wins\[i\], &wa)'
+printf '%s\n' "$scan_alt_bars_body" | grep -q 'knownbars\[j\] == wins\[i\]'
 printf '%s\n' "$scan_alt_bars_body" | grep -q 'INTERSECT(wa.x, wa.y, wa.width, wa.height, m) <= 0'
+printf '%s\n' "$scan_alt_bars_body" | grep -q 'm = oldm;'
 printf '%s\n' "$scan_alt_bars_body" | grep -q 'updatealtbar(m, wins\[i\], &wa);'
 grep -q 'ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1)' "$repo_dir/dwm.c"
 grep -q 'm->barwin, m->wx, m->by, m->ww, m->bh' "$repo_dir/dwm.c"

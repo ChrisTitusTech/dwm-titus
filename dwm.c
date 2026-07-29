@@ -1030,17 +1030,14 @@ configurenotify(XEvent *e)
 			focus(NULL);
 			updatecurrentdesktop();
 		}
-	} else if (XGetWindowAttributes(dpy, ev->window, &wa)) {
+	} else if (!wintoclient(ev->window)
+	    && XGetWindowAttributes(dpy, ev->window, &wa)
+	    && isaltbar(ev->window, &wa)) {
 		for (oldm = mons; oldm && oldm->barwin != ev->window;
 		     oldm = oldm->next);
-		if (getwinatomprop(ev->window, netatom[NetWMWindowType])
-		    == netatom[NetWMWindowTypeDock]) {
-			m = recttomon(wa.x, wa.y, wa.width, wa.height);
-			if (m && INTERSECT(wa.x, wa.y, wa.width, wa.height, m) <= 0)
-				m = NULL;
-		} else {
+		m = recttomon(wa.x, wa.y, wa.width, wa.height);
+		if (m && INTERSECT(wa.x, wa.y, wa.width, wa.height, m) <= 0)
 			m = oldm;
-		}
 		if (oldm && m && oldm != m) {
 			oldm->barwin = 0;
 			oldm->bh = 0;
@@ -2810,10 +2807,22 @@ scan(void)
 void
 scanaltbars(void)
 {
-	unsigned int i, num;
-	Monitor *m;
+	unsigned int i, j, monitorcount, num;
+	Monitor *m, *oldm;
 	Window d1, d2, *wins = NULL;
+	Window *knownbars;
 	XWindowAttributes wa;
+
+	for (monitorcount = 0, m = mons; m; m = m->next)
+		monitorcount++;
+	knownbars = ecalloc(monitorcount ? monitorcount : 1, sizeof(Window));
+	for (i = 0, m = mons; m; m = m->next, i++)
+		knownbars[i] = m->barwin;
+
+	if (!XQueryTree(dpy, root, &d1, &d2, &wins, &num)) {
+		free(knownbars);
+		return;
+	}
 
 	for (m = mons; m; m = m->next) {
 		m->barwin = 0;
@@ -2821,21 +2830,24 @@ scanaltbars(void)
 		updatebarpos(m);
 	}
 
-	if (!XQueryTree(dpy, root, &d1, &d2, &wins, &num))
-		return;
-
 	for (i = 0; i < num; i++) {
 		if (!XGetWindowAttributes(dpy, wins[i], &wa)
 		    || wa.override_redirect || wa.map_state != IsViewable
-		    || getwinatomprop(wins[i], netatom[NetWMWindowType])
-		        != netatom[NetWMWindowTypeDock])
+		    || !isaltbar(wins[i], &wa))
 			continue;
 
+		for (j = 0, oldm = mons; oldm && j < monitorcount;
+		     oldm = oldm->next, j++)
+			if (knownbars[j] == wins[i])
+				break;
 		m = recttomon(wa.x, wa.y, wa.width, wa.height);
 		if (!m || INTERSECT(wa.x, wa.y, wa.width, wa.height, m) <= 0)
+			m = oldm;
+		if (!m)
 			continue;
 		updatealtbar(m, wins[i], &wa);
 	}
+	free(knownbars);
 	XFree(wins);
 }
 
@@ -5242,7 +5254,7 @@ reconcilemonitortags(void)
 	Monitor *m;
 	Monitor *owner;
 	unsigned int fallbacktag, montags;
-	int i, s;
+	int i, s, wasfocused, wasselected;
 	
 	updatemonitorcount();
 
@@ -5264,6 +5276,8 @@ reconcilemonitortags(void)
 			if (!owner || owner == m)
 				continue;
 
+			wasselected = c == m->sel;
+			wasfocused = wasselected && m == selmon;
 			detach(c);
 			detachstack(c);
 			if (c->isfloating) {
@@ -5279,6 +5293,10 @@ reconcilemonitortags(void)
 			setclientdesktop(c);
 			attachbottom(c);
 			attachstack(c);
+			if (wasselected)
+				owner->sel = c;
+			if (wasfocused)
+				selmon = owner;
 			if (c->isfloating)
 				resizeclient(c, c->x, c->y, c->w, c->h);
 		}
