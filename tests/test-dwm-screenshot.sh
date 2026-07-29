@@ -3,7 +3,14 @@ set -eu
 
 repo_dir=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT HUP INT TERM
+cleanup() {
+	for pid_file in "$work"/daemon-state/pid.*; do
+		[ -f "$pid_file" ] || continue
+		kill "$(cat "$pid_file")" 2>/dev/null || true
+	done
+	rm -rf "$work"
+}
+trap cleanup EXIT HUP INT TERM
 
 mkdir -p "$work/bin" "$work/home/.config/flameshot" "$work/home/Pictures"
 
@@ -175,13 +182,15 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 test "$name" = flameshot
-test -f "${DAEMON_STATE:?}/running"
-EOF
-
-cat >"$daemon_bin/pkill" <<'EOF'
-#!/bin/sh
-printf 'pkill:%s\n' "$*" >>"${TEST_LOG:?}"
-rm -f "${DAEMON_STATE:?}/running"
+for pid_file in "${DAEMON_STATE:?}"/pid.*; do
+	test -f "$pid_file" || continue
+	pid=$(cat "$pid_file")
+	if kill -0 "$pid" 2>/dev/null; then
+		printf '%s\n' "$pid"
+	else
+		rm -f "$pid_file"
+	fi
+done
 EOF
 
 cat >"$daemon_bin/setsid" <<'EOF'
@@ -189,26 +198,44 @@ cat >"$daemon_bin/setsid" <<'EOF'
 if [ "${1:-}" = "-f" ]; then
 	shift
 fi
-exec "$@"
+"$@" &
 EOF
 
 cat >"$daemon_bin/flameshot" <<'EOF'
 #!/bin/sh
+pid_file="${DAEMON_STATE:?}/pid.$$"
+cleanup() {
+	rm -f "$pid_file"
+}
+trap 'cleanup; exit 0' TERM INT
+trap cleanup EXIT
+
 count=0
 test ! -f "${DAEMON_STATE:?}/count" ||
 	count=$(cat "${DAEMON_STATE:?}/count")
 count=$((count + 1))
 printf '%s\n' "$count" >"${DAEMON_STATE:?}/count"
-printf 'daemon-env:%s:%s:%s\n' \
+printf '%s\n' "$$" >"$pid_file"
+printf 'daemon-env:%s:%s:%s:%s\n' \
+	"${DISPLAY-unset}" \
 	"${WAYLAND_DISPLAY-unset}" \
 	"${XDG_SESSION_TYPE-unset}" \
 	"${QT_QPA_PLATFORM-unset}" >>"${TEST_LOG:?}"
-: >"${DAEMON_STATE:?}/running"
+for descriptor in /proc/$$/fd/*; do
+	case $(readlink "$descriptor" 2>/dev/null || true) in
+	*/flameshot.lock)
+		printf 'inherited-lock:%s\n' "$descriptor" >>"${TEST_LOG:?}"
+		;;
+	esac
+done
+while :; do
+	sleep 0.1
+done
 EOF
 chmod +x "$daemon_bin/"*
 
 : >"$log"
-DISPLAY=:99 \
+DISPLAY=:98 \
 	WAYLAND_DISPLAY=wayland-0 \
 	XDG_SESSION_TYPE=wayland \
 	QT_QPA_PLATFORM=wayland \
@@ -221,7 +248,22 @@ DISPLAY=:99 \
 	"$repo_dir/scripts/dwm-screenshot" daemon
 
 test "$(cat "$daemon_state/count")" -eq 1
-grep -Fqx 'daemon-env:unset:x11:xcb' "$log"
+grep -Fqx 'daemon-env::98:unset:x11:xcb' "$log"
+
+DISPLAY=:99 \
+	WAYLAND_DISPLAY=wayland-0 \
+	XDG_SESSION_TYPE=wayland \
+	QT_QPA_PLATFORM=wayland \
+	XDG_CONFIG_HOME="$daemon_home/.config" \
+	XDG_RUNTIME_DIR="$daemon_home/runtime" \
+	HOME="$daemon_home" \
+	PATH="$daemon_bin:$work/bin:/usr/bin:/bin" \
+	DAEMON_STATE="$daemon_state" \
+	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" daemon
+test "$(cat "$daemon_state/count")" -eq 2
+grep -Fqx 'daemon-env::99:unset:x11:xcb' "$log"
+test "$(find "$daemon_state" -name 'pid.*' -type f | wc -l)" -eq 1
 
 DISPLAY=:99 \
 	XDG_SESSION_TYPE=x11 \
@@ -232,7 +274,7 @@ DISPLAY=:99 \
 	DAEMON_STATE="$daemon_state" \
 	TEST_LOG="$log" \
 	"$repo_dir/scripts/dwm-screenshot" daemon
-test "$(cat "$daemon_state/count")" -eq 1
+test "$(cat "$daemon_state/count")" -eq 2
 
 DISPLAY=:99 \
 	XDG_SESSION_TYPE=x11 \
@@ -243,8 +285,12 @@ DISPLAY=:99 \
 	DAEMON_STATE="$daemon_state" \
 	TEST_LOG="$log" \
 	"$repo_dir/scripts/dwm-screenshot" restart-daemon
-test "$(cat "$daemon_state/count")" -eq 2
-grep -Fqx 'pkill:-u 1000 -x flameshot' "$log"
+test "$(cat "$daemon_state/count")" -eq 3
+test "$(find "$daemon_state" -name 'pid.*' -type f | wc -l)" -eq 1
+if grep -q '^inherited-lock:' "$log"; then
+	printf '%s\n' "Flameshot daemon inherited the serialization lock" >&2
+	exit 1
+fi
 
 theme_bin=$work/theme-bin
 theme_home=$work/theme-home

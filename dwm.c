@@ -4569,7 +4569,7 @@ trackoverridewindow(Window win)
 		ow->win = win;
 		for (tail = &overridewindows; *tail; tail = &(*tail)->next);
 		*tail = ow;
-		XSelectInput(dpy, win, PropertyChangeMask);
+		XSelectInput(dpy, win, wa.your_event_mask | PropertyChangeMask);
 	}
 	updateoverridewindow(win);
 }

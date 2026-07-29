@@ -4,7 +4,14 @@ set -eu
 
 repo_dir=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT HUP INT TERM
+cleanup() {
+	for pid_file in "$work"/*/state/flameshot.pid; do
+		[ -f "$pid_file" ] || continue
+		kill "$(cat "$pid_file")" 2>/dev/null || true
+	done
+	rm -rf "$work"
+}
+trap cleanup EXIT HUP INT TERM
 
 make_mock_command() {
 	name=$1
@@ -23,6 +30,15 @@ if [ "$name" = flameshot ]; then
 		"${QT_QPA_PLATFORM:-}" \
 		"${WAYLAND_DISPLAY:-}" \
 		>"${TEST_STATE:?}/flameshot.env"
+	printf '%s\n' "$$" >"${TEST_STATE:?}/flameshot.pid"
+	cleanup() {
+		rm -f "${TEST_STATE:?}/flameshot.pid"
+	}
+	trap 'cleanup; exit 0' TERM INT
+	trap cleanup EXIT
+	while :; do
+		sleep 1
+	done
 fi
 EOF
 	chmod +x "$work/bin/$name"
@@ -60,6 +76,13 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 [ -n "$name" ] || exit 1
+if [ "$name" = flameshot ]; then
+	test -f "${TEST_STATE:?}/flameshot.pid" || exit 1
+	pid=$(cat "${TEST_STATE:?}/flameshot.pid")
+	kill -0 "$pid" 2>/dev/null || exit 1
+	printf '%s\n' "$pid"
+	exit 0
+fi
 test -f "${TEST_STATE:?}/$name.running"
 EOF
 
@@ -98,7 +121,7 @@ cat >"$work/bin/setsid" <<'EOF'
 if [ "$1" = "-f" ]; then
 	shift
 fi
-exec "$@"
+"$@" &
 EOF
 
 chmod +x "$work/bin/"*

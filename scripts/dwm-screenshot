@@ -134,8 +134,26 @@ ensure_x11_capture_backend() {
 	rm -f -- "$backup_file" "$temp_file"
 }
 
+flameshot_daemon_pids() {
+	local pid user_id=$1
+
+	while IFS= read -r pid; do
+		[[ -r "/proc/$pid/environ" ]] || continue
+		if awk -v expected_display="DISPLAY=$DISPLAY" '
+			BEGIN { RS = "\0" }
+			$0 == expected_display { display = 1 }
+			$0 == "XDG_SESSION_TYPE=x11" { session = 1 }
+			$0 == "QT_QPA_PLATFORM=xcb" { platform = 1 }
+			END { exit !(display && session && platform) }
+		' "/proc/$pid/environ"; then
+			printf '%s\n' "$pid"
+		fi
+	done < <(pgrep -u "$user_id" -x flameshot 2>/dev/null || true)
+}
+
 manage_daemon() {
-	local action=$1 attempt lock_dir lock_fd user_id
+	local action=$1 alive attempt lock_dir lock_fd pid user_id
+	local -a all_pids daemon_pids
 
 	if ! command -v flock >/dev/null 2>&1; then
 		printf 'dwm-screenshot: flock is required to manage the Flameshot daemon\n' >&2
@@ -151,10 +169,26 @@ manage_daemon() {
 	fi
 
 	user_id=$(id -u)
-	if [[ "$action" == restart-daemon ]]; then
-		pkill -u "$user_id" -x flameshot 2>/dev/null || true
+	mapfile -t all_pids < <(pgrep -u "$user_id" -x flameshot 2>/dev/null || true)
+	mapfile -t daemon_pids < <(flameshot_daemon_pids "$user_id")
+	if [[ "$action" == daemon ]] && ((${#daemon_pids[@]})); then
+		return 0
+	fi
+
+	# Flameshot is a per-user singleton on the session bus. Replace any stale
+	# daemon from another display so this managed X11 session owns it.
+	if ((${#all_pids[@]})); then
+		kill "${all_pids[@]}" 2>/dev/null || true
 		attempt=0
-		while pgrep -u "$user_id" -x flameshot >/dev/null 2>&1; do
+		while :; do
+			alive=0
+			for pid in "${all_pids[@]}"; do
+				if kill -0 "$pid" 2>/dev/null; then
+					alive=1
+					break
+				fi
+			done
+			((alive)) || break
 			((attempt += 1))
 			if ((attempt >= 100)); then
 				printf 'dwm-screenshot: timed out waiting for Flameshot to exit\n' >&2
@@ -164,24 +198,33 @@ manage_daemon() {
 		done
 	fi
 
-	if pgrep -u "$user_id" -x flameshot >/dev/null 2>&1; then
+	mapfile -t daemon_pids < <(flameshot_daemon_pids "$user_id")
+	if ((${#daemon_pids[@]})); then
 		return 0
 	fi
 
 	if command -v setsid >/dev/null 2>&1; then
-		setsid -f env -u WAYLAND_DISPLAY \
-			XDG_SESSION_TYPE=x11 \
-			QT_QPA_PLATFORM=xcb \
-			flameshot >/dev/null 2>&1
+		(
+			exec {lock_fd}>&-
+			exec setsid -f env -u WAYLAND_DISPLAY \
+				XDG_SESSION_TYPE=x11 \
+				QT_QPA_PLATFORM=xcb \
+				flameshot
+		) >/dev/null 2>&1
 	else
-		env -u WAYLAND_DISPLAY \
-			XDG_SESSION_TYPE=x11 \
-			QT_QPA_PLATFORM=xcb \
-			flameshot >/dev/null 2>&1 &
+		(
+			exec {lock_fd}>&-
+			exec env -u WAYLAND_DISPLAY \
+				XDG_SESSION_TYPE=x11 \
+				QT_QPA_PLATFORM=xcb \
+				flameshot
+		) >/dev/null 2>&1 &
 	fi
 
 	attempt=0
-	until pgrep -u "$user_id" -x flameshot >/dev/null 2>&1; do
+	while :; do
+		mapfile -t daemon_pids < <(flameshot_daemon_pids "$user_id")
+		((${#daemon_pids[@]})) && break
 		((attempt += 1))
 		if ((attempt >= 100)); then
 			printf 'dwm-screenshot: timed out waiting for Flameshot to start\n' >&2
