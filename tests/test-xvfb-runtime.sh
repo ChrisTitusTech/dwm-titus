@@ -141,6 +141,21 @@ wait_for_top_window() {
 	return 1
 }
 
+wait_for_window_above() {
+	expected=$1
+	other=$2
+	i=0
+	while [ "$i" -lt 100 ]; do
+		if [ "$(DISPLAY=$display "$work/xclient" above "$expected" "$other")" = 1 ]; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "window $expected did not move above $other" >&2
+	return 1
+}
+
 wait_for_active_window() {
 	expected_win=$1
 	i=0
@@ -876,7 +891,14 @@ fullscreen_peer_win=$(cat "$work/fullscreen-peer-window-id")
 wait_for_active_window "$fullscreen_peer_win"
 wait_for_fullscreen_monitors 0
 DISPLAY=$display xdotool key Super+t
-[ "$(DISPLAY=$display "$work/xclient" above "$fullscreen_win" "$panel_win")" = 1 ]
+wait_for_window_above "$fullscreen_win" "$panel_win"
+
+DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_peer_win"
+wait_for_window_state "$fullscreen_peer_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_monitors 0
+DISPLAY=$display xdotool key Super+t
+wait_for_window_above "$fullscreen_peer_win" "$fullscreen_win"
+wait_for_window_above "$fullscreen_win" "$panel_win"
 kill "$second_client_pid"
 wait "$second_client_pid" 2>/dev/null || true
 second_client_pid=

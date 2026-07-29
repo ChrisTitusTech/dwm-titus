@@ -105,7 +105,10 @@ printf '%s\n' "$fullscreen_monitors_body" | grep -q 'getmonlogicalindex(m)'
 printf '%s\n' "$fullscreen_monitors_body" | grep -q 'dwmfullscreenmonitorsatom'
 raise_always_body=$(sed -n '/^raisealwaysontop(Monitor \*m)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$raise_always_body" | grep -q 'monitorhasfullscreen(m)'
-printf '%s\n' "$raise_always_body" | grep -q 'isvisiblefullscreen(c)'
+printf '%s\n' "$raise_always_body" | grep -q 'raisefullscreenclients(m->stack)'
+raise_fullscreen_clients_body=$(sed -n '/^raisefullscreenclients(Client \*c)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$raise_fullscreen_clients_body" | grep -q 'raisefullscreenclients(c->snext);'
+printf '%s\n' "$raise_fullscreen_clients_body" | grep -q 'isvisiblefullscreen(c)'
 property_notify_body=$(sed -n '/^propertynotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$property_notify_body" | grep -q 'updateoverridewindow(ev->window);'
 printf '%s\n' "$property_notify_body" | grep -q 'restack(m);'

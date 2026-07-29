@@ -238,6 +238,7 @@ static void resizemouse(const Arg *arg);
 static int resizetiledmouse(const Arg *arg);
 static int isvisiblefullscreen(Client *c);
 static int monitorhasfullscreen(Monitor *m);
+static void raisefullscreenclients(Client *c);
 static void raisealwaysontop(Monitor *m);
 static void raisealwaysontopclients(Client *c);
 static void restack(Monitor *m);
@@ -2640,15 +2641,22 @@ monitorhasfullscreen(Monitor *m)
 }
 
 void
+raisefullscreenclients(Client *c)
+{
+	if (!c)
+		return;
+	raisefullscreenclients(c->snext);
+	if (isvisiblefullscreen(c))
+		XRaiseWindow(dpy, c->win);
+}
+
+void
 raisealwaysontop(Monitor *m)
 {
-	Client *c;
 	OverrideWindow *ow;
 
 	if (monitorhasfullscreen(m)) {
-		for (c = m->stack; c; c = c->snext)
-			if (isvisiblefullscreen(c))
-				XRaiseWindow(dpy, c->win);
+		raisefullscreenclients(m->stack);
 	} else {
 		raisealwaysontopclients(m->stack);
 		if (m->barwin)
