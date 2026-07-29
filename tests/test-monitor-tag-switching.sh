@@ -52,6 +52,7 @@ printf '%s\n' "$update_client_list_body" | grep -q 'PropModeReplace'
 printf '%s\n' "$update_client_list_body" | grep -q 'memcmp(clients, clientlistcache'
 grep -q 'ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1)' "$repo_dir/dwm.c"
 grep -q 'm->barwin, m->wx, m->by, m->ww, m->bh' "$repo_dir/dwm.c"
+grep -q 'selmon->barwin, selmon->wx, selmon->by, selmon->ww, selmon->bh' "$repo_dir/dwm.c"
 
 mkdir -p "$work/bin"
 cat >"$work/bin/xprop" <<'SH'

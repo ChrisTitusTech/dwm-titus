@@ -112,7 +112,8 @@ Scope {
             return indexes;
         }
 
-        const screenCount = Math.max(1, Quickshell.screens.length);
+        const screenCount = Math.max(1, root.monitorWorkspaceRows.length > 0
+            ? root.monitorWorkspaceRows.length : Quickshell.screens.length);
         const logicalIndex = Math.min(root.screenIndex(screen), screenCount - 1);
         const workspacesPerScreen = Math.max(1, Math.floor(workspaceCount / screenCount));
         let start = logicalIndex * workspacesPerScreen;

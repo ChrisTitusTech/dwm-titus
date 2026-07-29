@@ -379,6 +379,7 @@ grep -Fq 'selected: modelData === root.state.currentWorkspaceForScreen(root.scre
 grep -Fq 'onClicked: root.state.switchWorkspaceForScreen(root.screen, modelData)' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'screen.devicePixelRatio' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'Math.round(screen.width * pixelRatio)' "$repo/config/quickshell/state/DwmState.qml"
+grep -Fq 'root.monitorWorkspaceRows.length > 0' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'property var monitorWorkspaceRows: []' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'function workspaceIndexes(screen)' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'function currentWorkspaceForScreen(screen)' "$repo/config/quickshell/state/DwmState.qml"
