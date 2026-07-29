@@ -12,6 +12,7 @@ FloatingWindow {
 
     title: "dwm launcher"
     visible: launcherModel.visible
+    screen: launcherModel.targetScreen
     implicitWidth: 760
     implicitHeight: 560
     color: Theme.transparent

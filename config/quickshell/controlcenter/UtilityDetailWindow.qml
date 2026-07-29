@@ -11,6 +11,7 @@ FloatingWindow {
     required property var controlCenterModel
 
     visible: controlCenterModel.utilityVisible
+    screen: controlCenterModel.utilityScreen
     implicitWidth: 680
     implicitHeight: 500
     color: Theme.transparent

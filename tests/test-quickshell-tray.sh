@@ -13,7 +13,10 @@ running_area=$repo/config/quickshell/panel/RunningAppsArea.qml
 running_item=$repo/config/quickshell/panel/RunningAppItem.qml
 shell=$repo/config/quickshell/shell.qml
 
-grep -Fq 'TrayArea {}' "$panel"
+grep -Fq 'required property bool primaryPanel' "$panel"
+grep -Fq 'active: root.primaryPanel' "$panel"
+grep -Fq 'sourceComponent: TrayArea {}' "$panel"
+grep -Fq 'primaryPanel: modelData === Quickshell.screens[0]' "$shell"
 grep -Fq 'model: SystemTray.items.values' "$tray_area"
 grep -Fq 'trayItem: modelData' "$tray_area"
 grep -Fq 'property var iconSources: Icons.trayIconSources(root.trayItem)' "$tray_item"

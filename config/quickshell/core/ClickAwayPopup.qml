@@ -16,8 +16,8 @@ PopupWindow {
 
     color: Theme.transparent
     grabFocus: true
-    implicitWidth: targetWindow.width
-    implicitHeight: targetWindow.screen.height
+    implicitWidth: targetWindow ? targetWindow.width : 0
+    implicitHeight: targetWindow && targetWindow.screen ? targetWindow.screen.height : 0
 
     anchor {
         window: targetWindow

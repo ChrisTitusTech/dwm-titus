@@ -22,11 +22,11 @@ ClickAwayPopup {
     readonly property int muteButtonWidth: 84
     readonly property int outputDeviceRowHeight: 34
 
-    visible: controlsModel.visible
+    visible: panelWindow !== null && panelWindow.screen !== null && controlsModel.visible
     targetWindow: panelWindow
     popupWidth: cardWidth
     popupHeight: cardHeight
-    popupX: Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin)
+    popupX: panelWindow ? Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin) : edgeMargin
     popupY: Theme.panelHeight
     onDismissed: controlsModel.close()
 

@@ -14,11 +14,14 @@ PopupWindow {
     readonly property int popupWidth: 380
     readonly property int edgeMargin: Theme.rowSpacing
 
-    visible: notificationModel.notifications.length > 0
+    visible: panelWindow !== null && panelWindow.screen !== null
+        && notificationModel.notifications.length > 0
     implicitWidth: popupWidth
     implicitHeight: notificationsColumn.implicitHeight
     anchor.window: panelWindow
-    anchor.rect.x: Math.max(edgeMargin, panelWindow.width - popupWidth - edgeMargin)
+    anchor.rect.x: panelWindow
+        ? Math.max(edgeMargin, panelWindow.width - popupWidth - edgeMargin)
+        : edgeMargin
     anchor.rect.y: Theme.panelHeight
     color: Theme.transparent
 

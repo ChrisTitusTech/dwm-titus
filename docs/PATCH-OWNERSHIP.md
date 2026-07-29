@@ -16,6 +16,8 @@ Invariants:
   `_NET_CURRENT_DESKTOP`, `_NET_DESKTOP_NAMES`, `_NET_DESKTOP_VIEWPORT`, and
   `_NET_ACTIVE_WINDOW` must reflect the current monitor/tag state after setup,
   client management changes, focus changes, and tag switches.
+- `_DWM_MONITOR_DESKTOPS` must expose `x`, `y`, `width`, `height`, and current
+  desktop tuples in the same logical order used by monitor tag ownership.
 - Cross-monitor tag changes must update selected monitor state, focus, cursor
   placement, and EWMH current desktop together.
 - Property updates must be synchronous with state changes and must not add

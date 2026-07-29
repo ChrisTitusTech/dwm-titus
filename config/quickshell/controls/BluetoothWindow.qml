@@ -14,11 +14,13 @@ ClickAwayPopup {
     readonly property int cardWidth: 360
     readonly property int cardHeight: 420
 
-    visible: bluetoothModel.visible
+    visible: panelWindow !== null && panelWindow.screen !== null && bluetoothModel.visible
     targetWindow: panelWindow
     popupWidth: cardWidth
     popupHeight: cardHeight
-    popupX: Math.max(Theme.rowSpacing, panelWindow.width - cardWidth - Theme.rowSpacing)
+    popupX: panelWindow
+        ? Math.max(Theme.rowSpacing, panelWindow.width - cardWidth - Theme.rowSpacing)
+        : Theme.rowSpacing
     popupY: Theme.panelHeight
     onDismissed: bluetoothModel.close()
 

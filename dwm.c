@@ -80,7 +80,7 @@ enum { CurResizeBR, CurResizeBL, CurResizeTR, CurResizeTL, CurNormal, CurResize,
 enum { SchemeNorm, SchemeSel }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMFullscreen, NetWMAbove, NetWMStaysOnTop, NetActiveWindow, NetWMWindowType, NetWMIcon,
-       NetWMWindowTypeDialog, NetWMWindowTypeDock, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetLast }; /* EWMH atoms */
+       NetWMWindowTypeDialog, NetWMWindowTypeDock, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetDwmMonitorDesktops, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
@@ -299,7 +299,6 @@ static void setup(void);
 static void unmapnotify(XEvent *e);
 
 /* EWMH declarations */
-static void ewmh_append_client(Window win);
 static void ewmh_clear_active_window(void);
 static void ewmh_clear_client_list(void);
 static void ewmh_replace_root_cardinal(Atom prop, const long *data, int n);
@@ -308,6 +307,7 @@ static void ewmh_set_active_window(Window win);
 static void ewmh_set_desktop_names(void);
 static void ewmh_set_fullscreen_state(Client *c, int fullscreen);
 static Atom getatomprop(Client *c, Atom prop);
+static Atom getwinatomprop(Window win, Atom prop);
 static void setclientdesktop(Client *c);
 static void setcurrentdesktop(void);
 static void setdesktopnames(void);
@@ -318,6 +318,7 @@ static void updatecurrentdesktop(void);
 /* External dock and systray declarations */
 static void managealtbar(Window win, XWindowAttributes *wa);
 static void managetray(Window win, XWindowAttributes *wa);
+static void scanaltbars(void);
 static void scantray(void);
 static void unmanagealtbar(Window w);
 static void unmanagetray(Window w);
@@ -384,6 +385,11 @@ static Drw *drw;
 static Monitor *mons, *selmon;
 static Window root, wmcheckwin;
 static xcb_connection_t *xcon;
+static Window *clientlistcache;
+static unsigned long clientlistcachelen;
+static int clientlistcachevalid;
+static Atom dwmtagupdateatom;
+static unsigned long tagupdatesequence;
 
 /* External dock integration */
 static const char *altbarclass = "quickshell";
@@ -452,9 +458,10 @@ struct NumTags { char limitexceeded[LENGTH(tags) > 31 ? -1 : 1]; };
 
 /* monitor-specific tag management */
 static int monitorcount = 1;
+static int getmonlogicalindex(Monitor *target);
 static unsigned int getmontagmask(int monnum);
 static void updatemonitorcount(void);
-static void initmonitortags(void);
+static void reconcilemonitortags(void);
 
 /* common utility implementations */
 static void
@@ -995,7 +1002,7 @@ configure(Client *c)
 void
 configurenotify(XEvent *e)
 {
-	Monitor *m;
+	Monitor *m, *oldm;
 	Client *c;
 	XConfigureEvent *ev = &e->xconfigure;
 	XWindowAttributes wa;
@@ -1006,29 +1013,41 @@ configurenotify(XEvent *e)
 		sw = ev->width;
 		sh = ev->height;
 		if (updategeom() || dirty) {
+			reconcilemonitortags();
 			drw_resize(drw, sw, bh);
 			updatebars();
+			scanaltbars();
+			updateclientlist();
 			for (m = mons; m; m = m->next) {
 				for (c = m->clients; c; c = c->next) {
 					if (c->isfullscreen && c->fakefullscreen != 1)
 						resizeclient(c, m->mx, m->my, m->mw, m->mh);
 				}
 				if (m->barwin)
-					XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, m->ww, bh);
+					XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, m->ww, m->bh);
 			}
 			arrange(NULL);
 			focus(NULL);
+			updatecurrentdesktop();
 		}
-	} else {
-		for (m = mons; m; m = m->next) {
-			if (m->barwin == ev->window &&
-			    XGetWindowAttributes(dpy, ev->window, &wa) &&
-			    updatealtbar(m, ev->window, &wa)) {
-				arrange(m);
-				XRaiseWindow(dpy, ev->window);
-				updateclientlist();
-				break;
-			}
+	} else if (!wintoclient(ev->window)
+	    && XGetWindowAttributes(dpy, ev->window, &wa)
+	    && isaltbar(ev->window, &wa)) {
+		for (oldm = mons; oldm && oldm->barwin != ev->window;
+		     oldm = oldm->next);
+		m = recttomon(wa.x, wa.y, wa.width, wa.height);
+		if (m && INTERSECT(wa.x, wa.y, wa.width, wa.height, m) <= 0)
+			m = oldm;
+		if (oldm && m && oldm != m) {
+			oldm->barwin = 0;
+			oldm->bh = 0;
+			updatebarpos(oldm);
+			arrange(oldm);
+		}
+		if (m && updatealtbar(m, ev->window, &wa)) {
+			arrange(m);
+			XRaiseWindow(dpy, ev->window);
+			updateclientlist();
 		}
 	}
 }
@@ -1846,7 +1865,7 @@ manage(Window w, XWindowAttributes *wa)
 		XRaiseWindow(dpy, c->win);
 	attachbottom(c);
 	attachstack(c);
-	ewmh_append_client(c->win);
+	updateclientlist();
 	XMoveResizeWindow(dpy, c->win, c->x + 2 * sw, c->y, c->w, c->h); /* some windows require this */
 	setclientstate(c, NormalState);
 	setclientdesktop(c);
@@ -1910,7 +1929,7 @@ managetray(Window win, XWindowAttributes *wa)
 	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
 	XMoveResizeWindow(dpy, win, wa->x, wa->y, wa->width, wa->height);
 	XMapWindow(dpy, win);
-	ewmh_append_client(win);
+	updateclientlist();
 }
 
 void
@@ -2785,6 +2804,53 @@ scan(void)
 	}
 }
 
+void
+scanaltbars(void)
+{
+	unsigned int i, j, monitorcount, num;
+	Monitor *m, *oldm;
+	Window d1, d2, *wins = NULL;
+	Window *knownbars;
+	XWindowAttributes wa;
+
+	for (monitorcount = 0, m = mons; m; m = m->next)
+		monitorcount++;
+	knownbars = ecalloc(monitorcount ? monitorcount : 1, sizeof(Window));
+	for (i = 0, m = mons; m; m = m->next, i++)
+		knownbars[i] = m->barwin;
+
+	if (!XQueryTree(dpy, root, &d1, &d2, &wins, &num)) {
+		free(knownbars);
+		return;
+	}
+
+	for (m = mons; m; m = m->next) {
+		m->barwin = 0;
+		m->bh = 0;
+		updatebarpos(m);
+	}
+
+	for (i = 0; i < num; i++) {
+		if (!XGetWindowAttributes(dpy, wins[i], &wa)
+		    || wa.override_redirect || wa.map_state != IsViewable
+		    || !isaltbar(wins[i], &wa))
+			continue;
+
+		for (j = 0, oldm = mons; oldm && j < monitorcount;
+		     oldm = oldm->next, j++)
+			if (knownbars[j] == wins[i])
+				break;
+		m = recttomon(wa.x, wa.y, wa.width, wa.height);
+		if (!m || INTERSECT(wa.x, wa.y, wa.width, wa.height, m) <= 0)
+			m = oldm;
+		if (!m)
+			continue;
+		updatealtbar(m, wins[i], &wa);
+	}
+	free(knownbars);
+	XFree(wins);
+}
+
 /* Systray discovery implementation */
 void
 scantray(void)
@@ -2850,13 +2916,6 @@ sendmon(Client *c, Monitor *m)
 
 /* EWMH property implementations */
 static void
-ewmh_append_client(Window win)
-{
-	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32,
-		PropModeAppend, (unsigned char *)&win, 1);
-}
-
-static void
 ewmh_clear_active_window(void)
 {
 	XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
@@ -2866,6 +2925,7 @@ static void
 ewmh_clear_client_list(void)
 {
 	XDeleteProperty(dpy, root, netatom[NetClientList]);
+	clientlistcachevalid = 0;
 }
 
 static void
@@ -2928,7 +2988,7 @@ void setdesktopnames(void){
 void
 setclientdesktop(Client *c)
 {
-    long data[] = { 0 };
+	long data[] = { 0 };
     int i;
     
     if (!c)
@@ -2942,7 +3002,9 @@ setclientdesktop(Client *c)
         data[0] = 0xFFFFFFFF;
     }
     
-    ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
+	ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
+	data[0] = ++tagupdatesequence;
+	ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1);
 }
 
 int
@@ -3827,8 +3889,8 @@ setup(void)
 	lrpad = drw->fonts->h;
 	bh = 0; /* Quickshell provides the panel. */
 	updategeom();
-	/* Initialize monitor-specific tags after geometry is set up */
-	initmonitortags();
+	/* Reconcile monitor-specific tags after geometry is set up */
+	reconcilemonitortags();
 	/* init atoms */
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
 	wmatom[WMProtocols] = XInternAtom(dpy, "WM_PROTOCOLS", False);
@@ -3855,6 +3917,8 @@ setup(void)
 	netatom[NetCurrentDesktop] = XInternAtom(dpy, "_NET_CURRENT_DESKTOP", False);
 	netatom[NetDesktopNames] = XInternAtom(dpy, "_NET_DESKTOP_NAMES", False);
 	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
+	netatom[NetDwmMonitorDesktops] = XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False);
+	dwmtagupdateatom = XInternAtom(dpy, "DWM_TAG_UPDATE", False);
 	/* init cursors */
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
 	cursor[CurResize] = drw_cur_create(drw, XC_sizing);
@@ -4202,7 +4266,7 @@ togglebar(const Arg *arg)
 
 	selmon->showbar = selmon->pertag->showbars[selmon->pertag->curtag] = !selmon->showbar;
 	updatebarpos(selmon);
-	XMoveResizeWindow(dpy, selmon->barwin, selmon->wx, selmon->by, selmon->ww, bh);
+	XMoveResizeWindow(dpy, selmon->barwin, selmon->wx, selmon->by, selmon->ww, selmon->bh);
 	XMoveResizeWindow(dpy, selmon->traywin, selmon->tx, selmon->by, selmon->tw, selmon->bh);
 	arrange(selmon);
 }
@@ -4518,22 +4582,55 @@ updateclientlist(void)
 	Client *c;
 	Monitor *m;
 	XWindowAttributes wa;
+	Window *clients;
+	unsigned long count, index;
 
-	ewmh_clear_client_list();
+	for (count = 0, m = mons; m; m = m->next) {
+		if (m->barwin)
+			count++;
+		if (m->traywin)
+			count++;
+		for (c = m->clients; c; c = c->next)
+			count++;
+	}
+	clients = ecalloc(count ? count : 1, sizeof(Window));
+	index = 0;
 	for (m = mons; m; m = m->next) {
 		if (m->barwin && XGetWindowAttributes(dpy, m->barwin, &wa) &&
 		    !wa.override_redirect)
-			ewmh_append_client(m->barwin);
+			clients[index++] = m->barwin;
 		if (m->traywin)
-			ewmh_append_client(m->traywin);
+			clients[index++] = m->traywin;
 		for (c = m->clients; c; c = c->next)
-			ewmh_append_client(c->win);
+			clients[index++] = c->win;
 	}
+	count = index;
+
+	if (clientlistcachevalid && count == clientlistcachelen
+	&& (!count || !memcmp(clients, clientlistcache, count * sizeof(Window)))) {
+		free(clients);
+		return;
+	}
+
+	if (count)
+		XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32,
+			PropModeReplace, (unsigned char *)clients, count);
+	else
+		XDeleteProperty(dpy, root, netatom[NetClientList]);
+
+	free(clientlistcache);
+	clientlistcache = clients;
+	clientlistcachelen = count;
+	clientlistcachevalid = 1;
 }
 
-void updatecurrentdesktop(void){
+void
+updatecurrentdesktop(void)
+{
 	long data[] = { 0 };
-	int i;
+	long *monitor_desktops;
+	Monitor *m;
+	int count, i, logicalindex;
 	unsigned int tagset = selmon->tagset[selmon->seltags];
 	
 	for (i = 0; i < TAGSLENGTH && !(tagset & 1 << i); i++);
@@ -4545,6 +4642,29 @@ void updatecurrentdesktop(void){
 	}
 	
 	ewmh_replace_root_cardinal(netatom[NetCurrentDesktop], data, 1);
+
+	for (count = 0, m = mons; m; m = m->next)
+		count++;
+	if (count == 0)
+		return;
+
+	monitor_desktops = ecalloc(count * 5, sizeof(long));
+	for (m = mons; m; m = m->next) {
+		logicalindex = getmonlogicalindex(m);
+		if (logicalindex < 0 || logicalindex >= count)
+			continue;
+
+		tagset = m->tagset[m->seltags];
+		for (i = 0; i < TAGSLENGTH && !(tagset & 1 << i); i++);
+		monitor_desktops[logicalindex * 5] = m->mx;
+		monitor_desktops[logicalindex * 5 + 1] = m->my;
+		monitor_desktops[logicalindex * 5 + 2] = m->mw;
+		monitor_desktops[logicalindex * 5 + 3] = m->mh;
+		monitor_desktops[logicalindex * 5 + 4] = i < TAGSLENGTH ? i : 0;
+	}
+	XChangeProperty(dpy, root, netatom[NetDwmMonitorDesktops], XA_INTEGER, 32,
+		PropModeReplace, (unsigned char *)monitor_desktops, count * 5);
+	free(monitor_desktops);
 }
 
 #if SHOWWINICON
@@ -5126,30 +5246,107 @@ getmontagmask(int monnum)
 	return mask ? mask : (1 << (monnum % LENGTH(tags)));
 }
 
-/* Initialize monitor-specific tags after all monitors are created */
+/* Keep each monitor on tags owned by its current logical monitor index. */
 void
-initmonitortags(void)
+reconcilemonitortags(void)
 {
+	Client *c, *next;
 	Monitor *m;
-	unsigned int montags;
-	int i;
+	Monitor *owner;
+	unsigned int fallbacktag, montags;
+	int i, s, wasfocused, wasselected;
 	
 	updatemonitorcount();
+
+	for (m = mons; m; m = m->next) {
+		montags = getmontagmask(m->num);
+		for (c = m->clients; c; c = next) {
+			next = c->next;
+			if (c->tags == TAGMASK)
+				continue;
+			if (c->tags & montags) {
+				c->tags &= montags;
+				setclientdesktop(c);
+				continue;
+			}
+
+			for (owner = mons; owner; owner = owner->next)
+				if (c->tags & getmontagmask(owner->num))
+					break;
+			if (!owner || owner == m)
+				continue;
+
+			wasselected = c == m->sel;
+			wasfocused = wasselected && m == selmon;
+			detach(c);
+			detachstack(c);
+			if (c->isfloating) {
+				c->x = owner->mx + c->x - m->mx;
+				c->y = owner->my + c->y - m->my;
+				c->x = MAX(owner->wx,
+					MIN(c->x, owner->wx + owner->ww - WIDTH(c)));
+				c->y = MAX(owner->wy,
+					MIN(c->y, owner->wy + owner->wh - HEIGHT(c)));
+			}
+			c->mon = owner;
+			c->tags &= getmontagmask(owner->num);
+			setclientdesktop(c);
+			attachbottom(c);
+			attachstack(c);
+			if (wasselected)
+				owner->sel = c;
+			if (wasfocused)
+				selmon = owner;
+			if (c->isfloating)
+				resizeclient(c, c->x, c->y, c->w, c->h);
+		}
+	}
 	
 	for (m = mons; m; m = m->next) {
 		montags = getmontagmask(m->num);
+		fallbacktag = 0;
 		
-		/* Set default tagset to first valid tag for this monitor */
 		for (i = 0; i < LENGTH(tags); i++) {
 			if (montags & (1 << i)) {
-				m->tagset[0] = m->tagset[1] = 1 << i;
+				fallbacktag = 1 << i;
 				break;
 			}
 		}
 		
-		/* Fallback to first tag if calculation fails */
-		if (!m->tagset[0])
-			m->tagset[0] = m->tagset[1] = 1;
+		if (!fallbacktag)
+			fallbacktag = 1;
+
+		for (s = 0; s < 2; s++) {
+			m->tagset[s] &= montags;
+			if (!m->tagset[s])
+				m->tagset[s] = fallbacktag;
+		}
+
+		if (m->tagset[m->seltags] == montags) {
+			m->pertag->curtag = 0;
+		} else if (m->pertag->curtag == 0
+		|| !(m->tagset[m->seltags] & (1 << (m->pertag->curtag - 1)))) {
+			for (i = 0; i < LENGTH(tags)
+			     && !(m->tagset[m->seltags] & (1 << i)); i++);
+			m->pertag->curtag = i < LENGTH(tags) ? i + 1 : 1;
+		}
+
+		if (m->tagset[m->seltags ^ 1] == montags) {
+			m->pertag->prevtag = 0;
+		} else if (m->pertag->prevtag == 0
+		|| !(m->tagset[m->seltags ^ 1] & (1 << (m->pertag->prevtag - 1)))) {
+			for (i = 0; i < LENGTH(tags)
+			     && !(m->tagset[m->seltags ^ 1] & (1 << i)); i++);
+			m->pertag->prevtag = i < LENGTH(tags) ? i + 1 : m->pertag->curtag;
+		}
+
+		m->nmaster = m->pertag->nmasters[m->pertag->curtag];
+		m->mfact = m->pertag->mfacts[m->pertag->curtag];
+		m->sellt = m->pertag->sellts[m->pertag->curtag];
+		m->lt[m->sellt] = m->pertag->ltidxs[m->pertag->curtag][m->sellt];
+		m->lt[m->sellt ^ 1] = m->pertag->ltidxs[m->pertag->curtag][m->sellt ^ 1];
+		m->showbar = m->pertag->showbars[m->pertag->curtag];
+		updatebarpos(m);
 	}
 }
 

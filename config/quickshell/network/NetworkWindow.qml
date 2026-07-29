@@ -15,12 +15,13 @@ ClickAwayPopup {
     readonly property int cardHeight: 680
     readonly property int edgeMargin: Theme.rowSpacing
 
-    visible: networkModel.visible && !networkModel.wifiPasswordPromptVisible
+    visible: panelWindow !== null && panelWindow.screen !== null
+        && networkModel.visible && !networkModel.wifiPasswordPromptVisible
     grabFocus: !networkModel.wifiPasswordPromptVisible
     targetWindow: panelWindow
     popupWidth: cardWidth
     popupHeight: cardHeight
-    popupX: Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin)
+    popupX: panelWindow ? Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin) : edgeMargin
     popupY: Theme.panelHeight
     onDismissed: networkModel.close()
 
@@ -200,7 +201,7 @@ ClickAwayPopup {
             property bool revealPassword: false
 
             title: "dwm network password"
-            screen: root.panelWindow.screen
+            screen: root.panelWindow ? root.panelWindow.screen : null
             visible: root.networkModel.wifiPasswordPromptVisible
             implicitWidth: 440
             implicitHeight: 210

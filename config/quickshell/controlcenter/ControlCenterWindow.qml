@@ -15,7 +15,9 @@ ClickAwayPopup {
     required property var settingsModel
 
     readonly property int cardWidth: Theme.controlCenterWidth
-    readonly property int maximumHeight: Math.max(240, panelWindow.screen.height - Theme.panelHeight - Theme.popupMargin)
+    readonly property int maximumHeight: panelWindow && panelWindow.screen
+        ? Math.max(240, panelWindow.screen.height - Theme.panelHeight - Theme.popupMargin)
+        : 240
     readonly property var powerPresets: [
         { "label": "5m", "seconds": 300 },
         { "label": "10m", "seconds": 600 },
@@ -43,9 +45,10 @@ ClickAwayPopup {
     }
 
     function openApplications() {
+        const targetScreen = root.panelWindow ? root.panelWindow.screen : null;
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.launcherModel.open();
+            root.launcherModel.openOnScreen(targetScreen);
         });
     }
 
@@ -57,34 +60,38 @@ ClickAwayPopup {
     }
 
     function openSystemHealth() {
+        const targetScreen = root.panelWindow ? root.panelWindow.screen : null;
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.healthModel.openOnScreen(root.panelWindow.screen);
+            root.healthModel.openOnScreen(targetScreen);
         });
     }
 
     function openSettings() {
+        const targetScreen = root.panelWindow ? root.panelWindow.screen : null;
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.settingsModel.open();
+            root.settingsModel.openOnScreen(targetScreen);
         });
     }
 
     function openKeybinds() {
+        const targetScreen = root.panelWindow ? root.panelWindow.screen : null;
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.controlCenterModel.openKeybinds();
+            root.controlCenterModel.openKeybindsOnScreen(targetScreen);
         });
     }
 
     function openSystemInfo() {
+        const targetScreen = root.panelWindow ? root.panelWindow.screen : null;
         root.controlCenterModel.close();
         Qt.callLater(function() {
-            root.controlCenterModel.openInfo();
+            root.controlCenterModel.openInfoOnScreen(targetScreen);
         });
     }
 
-    visible: controlCenterModel.visible
+    visible: panelWindow !== null && panelWindow.screen !== null && controlCenterModel.visible
     targetWindow: panelWindow
     popupX: Theme.controlCenterX
     popupY: Theme.panelHeight
