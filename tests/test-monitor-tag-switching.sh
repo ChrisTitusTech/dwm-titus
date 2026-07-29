@@ -38,6 +38,10 @@ printf '%s\n' "$reconcile_body" | grep -q 'm->tagset\[s\] = fallbacktag;'
 printf '%s\n' "$reconcile_body" | grep -q 'c->tags & getmontagmask(owner->num)'
 printf '%s\n' "$reconcile_body" | grep -q 'c->mon = owner;'
 printf '%s\n' "$reconcile_body" | grep -q 'c->tags &= getmontagmask(owner->num);'
+printf '%s\n' "$reconcile_body" | grep -q 'c->tags &= montags;'
+printf '%s\n' "$reconcile_body" | grep -q 'c->x = owner->mx + c->x - m->mx;'
+printf '%s\n' "$reconcile_body" | grep -q 'm->tagset\[m->seltags\] == montags'
+printf '%s\n' "$reconcile_body" | grep -q 'm->pertag->curtag == 0'
 printf '%s\n' "$reconcile_body" | grep -q 'm->nmaster = m->pertag->nmasters\[m->pertag->curtag\];'
 printf '%s\n' "$reconcile_body" | grep -q 'm->mfact = m->pertag->mfacts\[m->pertag->curtag\];'
 printf '%s\n' "$reconcile_body" | grep -q 'm->lt\[m->sellt\] = m->pertag->ltidxs'
@@ -46,6 +50,8 @@ printf '%s\n' "$reconcile_body" | grep -q 'm->showbar = m->pertag->showbars\[m->
 update_client_list_body=$(sed -n '/^updateclientlist(void)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$update_client_list_body" | grep -q 'PropModeReplace'
 printf '%s\n' "$update_client_list_body" | grep -q 'memcmp(clients, clientlistcache'
+grep -q 'ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1)' "$repo_dir/dwm.c"
+grep -q 'm->barwin, m->wx, m->by, m->ww, m->bh' "$repo_dir/dwm.c"
 
 mkdir -p "$work/bin"
 cat >"$work/bin/xprop" <<'SH'

@@ -386,6 +386,8 @@ static xcb_connection_t *xcon;
 static Window *clientlistcache;
 static unsigned long clientlistcachelen;
 static int clientlistcachevalid;
+static Atom dwmtagupdateatom;
+static unsigned long tagupdatesequence;
 
 /* External dock integration */
 static const char *altbarclass = "quickshell";
@@ -1018,7 +1020,7 @@ configurenotify(XEvent *e)
 						resizeclient(c, m->mx, m->my, m->mw, m->mh);
 				}
 				if (m->barwin)
-					XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, m->ww, bh);
+					XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, m->ww, m->bh);
 			}
 			arrange(NULL);
 			focus(NULL);
@@ -2927,7 +2929,7 @@ void setdesktopnames(void){
 void
 setclientdesktop(Client *c)
 {
-    long data[] = { 0 };
+	long data[] = { 0 };
     int i;
     
     if (!c)
@@ -2941,7 +2943,9 @@ setclientdesktop(Client *c)
         data[0] = 0xFFFFFFFF;
     }
     
-    ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
+	ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
+	data[0] = ++tagupdatesequence;
+	ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1);
 }
 
 int
@@ -3855,6 +3859,7 @@ setup(void)
 	netatom[NetDesktopNames] = XInternAtom(dpy, "_NET_DESKTOP_NAMES", False);
 	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
 	netatom[NetDwmMonitorDesktops] = XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False);
+	dwmtagupdateatom = XInternAtom(dpy, "DWM_TAG_UPDATE", False);
 	/* init cursors */
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
 	cursor[CurResize] = drw_cur_create(drw, XC_sizing);
@@ -5198,8 +5203,13 @@ reconcilemonitortags(void)
 		montags = getmontagmask(m->num);
 		for (c = m->clients; c; c = next) {
 			next = c->next;
-			if (c->tags & montags)
+			if (c->tags == TAGMASK)
 				continue;
+			if (c->tags & montags) {
+				c->tags &= montags;
+				setclientdesktop(c);
+				continue;
+			}
 
 			for (owner = mons; owner; owner = owner->next)
 				if (c->tags & getmontagmask(owner->num))
@@ -5209,11 +5219,21 @@ reconcilemonitortags(void)
 
 			detach(c);
 			detachstack(c);
+			if (c->isfloating) {
+				c->x = owner->mx + c->x - m->mx;
+				c->y = owner->my + c->y - m->my;
+				c->x = MAX(owner->wx,
+					MIN(c->x, owner->wx + owner->ww - WIDTH(c)));
+				c->y = MAX(owner->wy,
+					MIN(c->y, owner->wy + owner->wh - HEIGHT(c)));
+			}
 			c->mon = owner;
 			c->tags &= getmontagmask(owner->num);
 			setclientdesktop(c);
 			attachbottom(c);
 			attachstack(c);
+			if (c->isfloating)
+				resizeclient(c, c->x, c->y, c->w, c->h);
 		}
 	}
 	
@@ -5237,13 +5257,23 @@ reconcilemonitortags(void)
 				m->tagset[s] = fallbacktag;
 		}
 
-		for (i = 0; i < LENGTH(tags)
-		     && !(m->tagset[m->seltags] & (1 << i)); i++);
-		m->pertag->curtag = i < LENGTH(tags) ? i + 1 : 1;
+		if (m->tagset[m->seltags] == montags) {
+			m->pertag->curtag = 0;
+		} else if (m->pertag->curtag == 0
+		|| !(m->tagset[m->seltags] & (1 << (m->pertag->curtag - 1)))) {
+			for (i = 0; i < LENGTH(tags)
+			     && !(m->tagset[m->seltags] & (1 << i)); i++);
+			m->pertag->curtag = i < LENGTH(tags) ? i + 1 : 1;
+		}
 
-		for (i = 0; i < LENGTH(tags)
-		     && !(m->tagset[m->seltags ^ 1] & (1 << i)); i++);
-		m->pertag->prevtag = i < LENGTH(tags) ? i + 1 : m->pertag->curtag;
+		if (m->tagset[m->seltags ^ 1] == montags) {
+			m->pertag->prevtag = 0;
+		} else if (m->pertag->prevtag == 0
+		|| !(m->tagset[m->seltags ^ 1] & (1 << (m->pertag->prevtag - 1)))) {
+			for (i = 0; i < LENGTH(tags)
+			     && !(m->tagset[m->seltags ^ 1] & (1 << i)); i++);
+			m->pertag->prevtag = i < LENGTH(tags) ? i + 1 : m->pertag->curtag;
+		}
 
 		m->nmaster = m->pertag->nmasters[m->pertag->curtag];
 		m->mfact = m->pertag->mfacts[m->pertag->curtag];
