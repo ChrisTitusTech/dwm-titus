@@ -89,11 +89,26 @@ printf '%s\n' "$scan_alt_bars_body" | grep -q 'updatealtbar(m, wins\[i\], &wa);'
 grep -q 'ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1)' "$repo_dir/dwm.c"
 grep -q 'm->barwin, m->wx, m->by, m->ww, m->bh' "$repo_dir/dwm.c"
 grep -q 'selmon->barwin, selmon->wx, selmon->by, selmon->ww, selmon->bh' "$repo_dir/dwm.c"
+set_fullscreen_body=$(sed -n '/^setfullscreen(Client \*c, int fullscreen)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$set_fullscreen_body" | grep -q 'actualfullscreenchanged'
+printf '%s\n' "$set_fullscreen_body" | grep -q 'wasactualfullscreen'
+printf '%s\n' "$set_fullscreen_body" | grep -q 'updatefullscreendesktops();'
+fullscreen_desktops_body=$(sed -n '/^updatefullscreendesktops(void)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$fullscreen_desktops_body" | grep -q 'c->fakefullscreen == 1'
+printf '%s\n' "$fullscreen_desktops_body" | grep -q 'dwmfullscreendesktopsatom'
+grep -q 'XInternAtom(dpy, "_DWM_FULLSCREEN_DESKTOPS", False)' "$repo_dir/dwm.c"
 
 mkdir -p "$work/bin"
 cat >"$work/bin/xprop" <<'SH'
 #!/bin/sh
 case $* in
+*"_DWM_FULLSCREEN_DESKTOPS"*)
+	if [ "${DWM_TEST_FULLSCREEN_DESKTOPS+x}" = x ]; then
+		printf '_DWM_FULLSCREEN_DESKTOPS(CARDINAL) = %s\n' "$DWM_TEST_FULLSCREEN_DESKTOPS"
+	else
+		exit 1
+	fi
+	;;
 *"_DWM_MONITOR_DESKTOPS"*)
 	if [ "${DWM_TEST_MONITOR_DESKTOPS+x}" = x ]; then
 		printf '_DWM_MONITOR_DESKTOPS(CARDINAL) = %s\n' "$DWM_TEST_MONITOR_DESKTOPS"
@@ -116,9 +131,12 @@ exit 1
 SH
 chmod +x "$work/bin/xprop" "$work/bin/xdotool"
 
-DWM_TEST_MONITOR_DESKTOPS='2560, 0, 2560, 1440, 0, 0, 0, 2560, 1440, 4' PATH="$work/bin:$PATH" \
+DWM_TEST_FULLSCREEN_DESKTOPS='0, 4' \
+	DWM_TEST_MONITOR_DESKTOPS='2560, 0, 2560, 1440, 0, 0, 0, 2560, 1440, 4' \
+	PATH="$work/bin:$PATH" \
 	"$repo_dir/scripts/dwm-quickshell-state" state >"$work/state.out"
 grep -Fqx 'monitor_desktops=2560,0,2560,1440,0,0,0,2560,1440,4' "$work/state.out"
+grep -Fqx 'fullscreen=0|4' "$work/state.out"
 
 PATH="$work/bin:$PATH" \
 	"$repo_dir/scripts/dwm-quickshell-state" state >"$work/fallback.out"

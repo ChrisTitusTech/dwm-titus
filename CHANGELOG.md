@@ -51,6 +51,8 @@ versions from `config.mk`.
 - Keep tray context menus above managed windows, start a single tray-owning
   Flameshot daemon with a sanitized X11 environment, and default to its native
   X11 capture backend when no explicit backend preference is configured.
+- Keep the Quickshell bar above normal desktop windows while allowing true
+  fullscreen applications to cover it without panel redraw flashes.
 - Keep `install-herdr --dry-run` side-effect free, have `install.sh` skip
   unsupported automatic ARMv7 installs, and warn when a preserved legacy
   terminal hotkey bypasses Herdr.

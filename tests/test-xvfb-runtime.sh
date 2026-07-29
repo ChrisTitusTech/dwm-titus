@@ -74,6 +74,23 @@ wait_for_monitor_desktops() {
 	return 1
 }
 
+wait_for_fullscreen_desktops() {
+	expected=$1
+	i=0
+	while [ "$i" -lt 100 ]; do
+		desktops=$(DISPLAY=$display xprop -root _DWM_FULLSCREEN_DESKTOPS 2>/dev/null |
+			sed -n 's/^[^=]*=[[:space:]]*//p' |
+			tr -d '[:space:]')
+		if [ "$desktops" = "$expected" ]; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "fullscreen desktops did not become ${expected:-empty}" >&2
+	return 1
+}
+
 wait_for_window_state() {
 	win=$1
 	needle=$2
@@ -441,8 +458,10 @@ dwm_pid=$!
 wait_for_root_property _NET_SUPPORTED
 wait_for_root_property _NET_NUMBER_OF_DESKTOPS
 wait_for_root_property _DWM_MONITOR_DESKTOPS
+wait_for_root_property _DWM_FULLSCREEN_DESKTOPS
 wait_for_current_desktop 0
 wait_for_monitor_desktops 0,0,1024,768,0
+wait_for_fullscreen_desktops ''
 DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_ABOVE
 DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_STAYS_ON_TOP
 
@@ -728,18 +747,22 @@ fullscreen_win=$(cat "$work/fullscreen-window-id")
 wait_for_active_window "$fullscreen_win"
 DISPLAY=$display xdotool key Super+Shift+y
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_desktops ''
 DISPLAY=$display xdotool windowraise "$stack_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
 DISPLAY=$display xdotool key Super+Shift+y
 wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_desktops ''
 
 DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_desktops 0
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$fullscreen_win"
 DISPLAY=$display "$work/xclient" state "$fullscreen_win" 0 _NET_WM_STATE_FULLSCREEN
 wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_desktops ''
 kill "$fullscreen_client_pid"
 wait "$fullscreen_client_pid" 2>/dev/null || true
 fullscreen_client_pid=

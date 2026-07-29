@@ -271,6 +271,7 @@ static int updatealtbar(Monitor *m, Window win, XWindowAttributes *wa);
 static void updatebarpos(Monitor *m);
 static void updatebars(void);
 static void updateclientlist(void);
+static void updatefullscreendesktops(void);
 static int updategeom(void);
 static void updateoverridewindow(Window win);
 static void updatenumlockmask(void);
@@ -405,7 +406,7 @@ static xcb_connection_t *xcon;
 static Window *clientlistcache;
 static unsigned long clientlistcachelen;
 static int clientlistcachevalid;
-static Atom dwmtagupdateatom;
+static Atom dwmfullscreendesktopsatom, dwmtagupdateatom;
 static unsigned long tagupdatesequence;
 
 /* External dock integration */
@@ -2618,8 +2619,13 @@ raisealwaysontop(Monitor *m)
 
 	if (m->sel && m->sel->isfullscreen && m->sel->fakefullscreen != 1) {
 		XRaiseWindow(dpy, m->sel->win);
-	} else
+	} else {
 		raisealwaysontopclients(m->stack);
+		if (m->barwin)
+			XRaiseWindow(dpy, m->barwin);
+		if (m->traywin)
+			XRaiseWindow(dpy, m->traywin);
+	}
 	for (ow = overridewindows; ow; ow = ow->next)
 		if (ow->raise)
 			XRaiseWindow(dpy, ow->win);
@@ -3058,6 +3064,7 @@ setclientdesktop(Client *c)
     }
     
 	ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
+	updatefullscreendesktops();
 	data[0] = ++tagupdatesequence;
 	ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1);
 }
@@ -3107,7 +3114,8 @@ void
 setfullscreen(Client *c, int fullscreen)
 {
 	XEvent ev;
-	int savestate = 0, restorestate = 0;
+	int actualfullscreenchanged, savestate = 0, restorestate = 0;
+	int wasactualfullscreen = c->isfullscreen && c->fakefullscreen != 1;
 
 	if ((c->fakefullscreen == 0 && fullscreen && !c->isfullscreen) // normal fullscreen
 			|| (c->fakefullscreen == 2 && fullscreen)) // fake fullscreen --> actual fullscreen
@@ -3133,6 +3141,8 @@ setfullscreen(Client *c, int fullscreen)
 	}
 
 	c->isfullscreen = fullscreen;
+	actualfullscreenchanged = wasactualfullscreen
+		!= (c->isfullscreen && c->fakefullscreen != 1);
 
 	/* Some clients, e.g. firefox, will send a client message informing the window manager
 	 * that it is going into fullscreen after receiving the above signal. This has the side
@@ -3166,6 +3176,8 @@ setfullscreen(Client *c, int fullscreen)
 	 */
 	if (!c->isfullscreen)
 		while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
+	if (actualfullscreenchanged)
+		updatefullscreendesktops();
 }
 
 Layout *last_layout;
@@ -3979,6 +3991,7 @@ setup(void)
 	netatom[NetDesktopNames] = XInternAtom(dpy, "_NET_DESKTOP_NAMES", False);
 	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
 	netatom[NetDwmMonitorDesktops] = XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False);
+	dwmfullscreendesktopsatom = XInternAtom(dpy, "_DWM_FULLSCREEN_DESKTOPS", False);
 	dwmtagupdateatom = XInternAtom(dpy, "DWM_TAG_UPDATE", False);
 	/* init cursors */
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
@@ -4719,6 +4732,31 @@ updateclientlist(void)
 	clientlistcache = clients;
 	clientlistcachelen = count;
 	clientlistcachevalid = 1;
+	updatefullscreendesktops();
+}
+
+void
+updatefullscreendesktops(void)
+{
+	Client *c;
+	Monitor *m;
+	long desktops[TAGSLENGTH];
+	unsigned int count = 0, i, j;
+
+	for (m = mons; m; m = m->next)
+		for (c = m->clients; c; c = c->next) {
+			if (!c->isfullscreen || c->fakefullscreen == 1)
+				continue;
+			for (i = 0; i < TAGSLENGTH; i++) {
+				if (!(c->tags & 1U << i))
+					continue;
+				for (j = 0; j < count && desktops[j] != (long)i; j++);
+				if (j == count)
+					desktops[count++] = i;
+			}
+		}
+	XChangeProperty(dpy, root, dwmfullscreendesktopsatom, XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char *)desktops, count);
 }
 
 void
