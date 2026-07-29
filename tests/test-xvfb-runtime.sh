@@ -74,6 +74,25 @@ wait_for_monitor_desktops() {
 	return 1
 }
 
+wait_for_fullscreen_monitors() {
+	expected=$1
+	i=0
+	while [ "$i" -lt 100 ]; do
+		property=$(DISPLAY=$display xprop -root _DWM_FULLSCREEN_MONITORS 2>/dev/null || true)
+		monitors=$(printf '%s\n' "$property" |
+			sed -n 's/^[^=]*=[[:space:]]*//p' |
+			tr -d '[:space:]')
+		if printf '%s\n' "$property" | grep -Fq '_DWM_FULLSCREEN_MONITORS(' &&
+			[ "$monitors" = "$expected" ]; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "fullscreen monitors did not become ${expected:-empty}" >&2
+	return 1
+}
+
 wait_for_window_state() {
 	win=$1
 	needle=$2
@@ -157,7 +176,7 @@ require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep tail
 pkg-config --exists x11
 
 work=$(mktemp -d)
-trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
+trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${popup_client_pid:-}" ] && kill "$popup_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
 mkdir -p "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/config"
@@ -201,6 +220,8 @@ main(int argc, char **argv)
 	int initial_above = 0;
 	int initial_many_states = 0;
 	int override_redirect = 0;
+	const char *popup_state = NULL;
+	const char *popup_type = NULL;
 	int swallow_terminal = 0;
 	pid_t child_pid = -1;
 
@@ -210,6 +231,18 @@ main(int argc, char **argv)
 	dpy = XOpenDisplay(NULL);
 	if (!dpy)
 		return 2;
+	if (argc == 3 && strcmp(argv[1], "attributes") == 0) {
+		XWindowAttributes attributes;
+
+		win = strtoul(argv[2], NULL, 0);
+		if (!XGetWindowAttributes(dpy, win, &attributes)) {
+			XCloseDisplay(dpy);
+			return 3;
+		}
+		printf("override_redirect=%d\n", attributes.override_redirect);
+		XCloseDisplay(dpy);
+		return 0;
+	}
 	if ((argc == 3 && strcmp(argv[1], "fullscreen") == 0)
 	|| (argc == 5 && strcmp(argv[1], "state") == 0)) {
 		XEvent ev;
@@ -247,6 +280,46 @@ main(int argc, char **argv)
 		initial_many_states = 1;
 	else if (argc == 2 && strcmp(argv[1], "override") == 0)
 		override_redirect = 1;
+	else if (argc == 2 && strcmp(argv[1], "override-tooltip") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_TOOLTIP";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-kde") == 0) {
+		override_redirect = 1;
+		popup_type = "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-notification") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_NOTIFICATION";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-menu") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_MENU";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-popup-menu") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_POPUP_MENU";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-dropdown-menu") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-combo") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_COMBO";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-dnd") == 0) {
+		override_redirect = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_DND";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-above") == 0) {
+		override_redirect = 1;
+		popup_state = "_NET_WM_STATE_ABOVE";
+	}
+	else if (argc == 2 && strcmp(argv[1], "override-stays-on-top") == 0) {
+		override_redirect = 1;
+		popup_state = "_NET_WM_STATE_STAYS_ON_TOP";
+	}
 	else if (argc == 2 && strcmp(argv[1], "swallow-terminal") == 0)
 		swallow_terminal = 1;
 
@@ -274,6 +347,18 @@ main(int argc, char **argv)
 		Atom net_wm_icon = XInternAtom(dpy, "_NET_WM_ICON", False);
 		XChangeProperty(dpy, win, net_wm_icon, XA_CARDINAL, 32,
 			PropModeReplace, (unsigned char *)icon, 3);
+	}
+	if (popup_type) {
+		Atom type = XInternAtom(dpy, popup_type, False);
+
+		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False),
+			XA_ATOM, 32, PropModeReplace, (unsigned char *)&type, 1);
+	}
+	if (popup_state) {
+		Atom state = XInternAtom(dpy, popup_state, False);
+
+		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STATE", False),
+			XA_ATOM, 32, PropModeReplace, (unsigned char *)&state, 1);
 	}
 	if (initial_many_states) {
 		Atom states[65];
@@ -383,8 +468,10 @@ dwm_pid=$!
 wait_for_root_property _NET_SUPPORTED
 wait_for_root_property _NET_NUMBER_OF_DESKTOPS
 wait_for_root_property _DWM_MONITOR_DESKTOPS
+wait_for_root_property _DWM_FULLSCREEN_MONITORS
 wait_for_current_desktop 0
 wait_for_monitor_desktops 0,0,1024,768,0
+wait_for_fullscreen_monitors ''
 DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_ABOVE
 DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_STAYS_ON_TOP
 
@@ -407,7 +494,9 @@ wait_for_monitor_desktops 0,0,1024,768,1
 
 printf '%s\n' \
 	'keys = [' \
+	'  { mod="SUPER", key="0", desc="Xvfb all tags", func="view", ui=511 },' \
 	'  { mod="SUPER", key="1", desc="Xvfb tag 1", func="view", ui=1 },' \
+	'  { mod="SUPER", key="2", desc="Xvfb tag 2", func="view", ui=2 },' \
 	'  { mod="SUPER", key="m", desc="Xvfb fullscreen", func="fullscreen" },' \
 	'  { mod="SUPER", key="o", desc="Xvfb monocle", func="setlayout", layout_idx=2 },' \
 	'  { mod="SUPER", key="t", desc="Xvfb tile", func="setlayout", layout_idx=0 },' \
@@ -588,6 +677,71 @@ wait_for_top_window "$stack_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
 
+for popup_marker in tooltip kde notification menu popup-menu dropdown-menu combo dnd above stays-on-top; do
+	DISPLAY=$display "$work/xclient" "override-$popup_marker" \
+		>"$work/popup-$popup_marker-window-id" \
+		2>"$work/popup-$popup_marker-client.log" &
+	popup_client_pid=$!
+	i=0
+	while [ "$i" -lt 100 ] && [ ! -s "$work/popup-$popup_marker-window-id" ]; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	popup_win=$(cat "$work/popup-$popup_marker-window-id")
+	[ -n "$popup_win" ]
+	[ "$(DISPLAY=$display "$work/xclient" attributes "$popup_win")" = "override_redirect=1" ]
+	case $popup_marker in
+	tooltip)
+		popup_atom=_NET_WM_WINDOW_TYPE_TOOLTIP
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	kde)
+		popup_atom=_KDE_NET_WM_WINDOW_TYPE_OVERRIDE
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	notification)
+		popup_atom=_NET_WM_WINDOW_TYPE_NOTIFICATION
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	menu)
+		popup_atom=_NET_WM_WINDOW_TYPE_MENU
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	popup-menu)
+		popup_atom=_NET_WM_WINDOW_TYPE_POPUP_MENU
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	dropdown-menu)
+		popup_atom=_NET_WM_WINDOW_TYPE_DROPDOWN_MENU
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	combo)
+		popup_atom=_NET_WM_WINDOW_TYPE_COMBO
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	dnd)
+		popup_atom=_NET_WM_WINDOW_TYPE_DND
+		popup_property=_NET_WM_WINDOW_TYPE
+		;;
+	above)
+		popup_atom=_NET_WM_STATE_ABOVE
+		popup_property=_NET_WM_STATE
+		;;
+	stays-on-top)
+		popup_atom=_NET_WM_STATE_STAYS_ON_TOP
+		popup_property=_NET_WM_STATE
+		;;
+	esac
+	DISPLAY=$display xprop -id "$popup_win" "$popup_property" |
+		grep -q "$popup_atom"
+	wait_for_top_window "$popup_win"
+	DISPLAY=$display xdotool key Super+t
+	wait_for_top_window "$popup_win"
+	kill "$popup_client_pid"
+	wait "$popup_client_pid" 2>/dev/null || true
+	popup_client_pid=
+done
+
 DISPLAY=$display "$work/xclient" state "$above_win" 0 _NET_WM_STATE_STAYS_ON_TOP
 wait_for_window_state_absent "$above_win" _NET_WM_STATE_STAYS_ON_TOP
 wait_for_top_window "$above_win"
@@ -613,18 +767,30 @@ fullscreen_win=$(cat "$work/fullscreen-window-id")
 wait_for_active_window "$fullscreen_win"
 DISPLAY=$display xdotool key Super+Shift+y
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_monitors ''
 DISPLAY=$display xdotool windowraise "$stack_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
 DISPLAY=$display xdotool key Super+Shift+y
 wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_monitors ''
 
 DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_monitors 0
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$fullscreen_win"
+DISPLAY=$display xdotool key Super+2
+wait_for_current_desktop 1
+wait_for_fullscreen_monitors ''
+DISPLAY=$display xdotool key Super+0
+wait_for_fullscreen_monitors 0
+DISPLAY=$display xdotool key Super+1
+wait_for_current_desktop 0
+wait_for_fullscreen_monitors 0
 DISPLAY=$display "$work/xclient" state "$fullscreen_win" 0 _NET_WM_STATE_FULLSCREEN
 wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_monitors ''
 kill "$fullscreen_client_pid"
 wait "$fullscreen_client_pid" 2>/dev/null || true
 fullscreen_client_pid=

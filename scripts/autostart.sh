@@ -75,18 +75,28 @@ esac
 XDG_CURRENT_DESKTOP=$desktop_tokens
 export XDG_CURRENT_DESKTOP
 export DESKTOP_SESSION="${DESKTOP_SESSION:-dwm}"
-export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-x11}"
-
-IMPORT_ENV="DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION XDG_SESSION_TYPE QT_QPA_PLATFORMTHEME XCURSOR_THEME XCURSOR_SIZE"
+export XDG_SESSION_TYPE=x11
+export QT_QPA_PLATFORM=xcb
+unset WAYLAND_DISPLAY
 
 # Export display and theme env to systemd/dbus in parallel (both are IPC round-trips).
 if command -v systemctl >/dev/null 2>&1; then
-	# shellcheck disable=SC2086
-	systemctl --user import-environment $IMPORT_ENV &
+	{
+		systemctl --user unset-environment WAYLAND_DISPLAY
+		systemctl --user import-environment \
+			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION \
+			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
+			XCURSOR_THEME XCURSOR_SIZE
+	} &
 fi
 if command -v dbus-update-activation-environment >/dev/null 2>&1; then
-	# shellcheck disable=SC2086
-	dbus-update-activation-environment --systemd $IMPORT_ENV 2>/dev/null &
+	{
+		dbus-update-activation-environment WAYLAND_DISPLAY=
+		dbus-update-activation-environment --systemd \
+			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION \
+			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
+			XCURSOR_THEME XCURSOR_SIZE
+	} 2>/dev/null &
 fi
 wait
 
@@ -106,6 +116,28 @@ if [ -f "$QUICKSHELL_CONFIG" ]; then
 			i=$((i + 1))
 			sleep 0.1
 		done
+	fi
+fi
+
+# Configure native X11 capture before the tray menu can request a screenshot,
+# then keep one tray-owning daemon ready before screenshot hotkeys run.
+screenshot_helper=dwm-screenshot
+if ! command -v "$screenshot_helper" >/dev/null 2>&1; then
+	case $0 in
+	*/*) screenshot_helper=${0%/*}/dwm-screenshot ;;
+	esac
+fi
+# The helper serializes daemon startup with theme-driven restarts.
+if command -v flameshot >/dev/null 2>&1; then
+	if [ -x "$screenshot_helper" ] ||
+		command -v "$screenshot_helper" >/dev/null 2>&1; then
+		if ! "$screenshot_helper" daemon >/dev/null; then
+			printf '%s\n' \
+				"autostart: failed to configure Flameshot's X11 backend; not starting Flameshot" >&2
+		fi
+	else
+		printf '%s\n' \
+			"autostart: dwm-screenshot helper not found; not starting Flameshot" >&2
 	fi
 fi
 

@@ -330,10 +330,22 @@ if command -v dbus-update-activation-environment &>/dev/null; then
 fi
 
 # Restart flameshot so its tray icon picks up the new theme
-if pgrep -x flameshot &>/dev/null; then
-	pkill -x flameshot 2>/dev/null || true
-	sleep 0.3
-	QT_QPA_PLATFORMTHEME="$QT_PLATFORM_THEME" flameshot &
+if pgrep -u "$(id -u)" -x flameshot &>/dev/null; then
+	screenshot_helper=dwm-screenshot
+	if ! command -v "$screenshot_helper" >/dev/null 2>&1; then
+		case $0 in
+		*/*) screenshot_helper=${0%/*}/dwm-screenshot ;;
+		esac
+	fi
+
+	if { [[ -x "$screenshot_helper" ]] ||
+		command -v "$screenshot_helper" >/dev/null 2>&1; } &&
+		QT_QPA_PLATFORMTHEME="$QT_PLATFORM_THEME" \
+			"$screenshot_helper" restart-daemon >/dev/null; then
+		:
+	else
+		echo "theme-apply: Flameshot X11 restart failed" >&2
+	fi
 fi
 
 echo "theme-apply: applied theme '$THEME_NAME'"

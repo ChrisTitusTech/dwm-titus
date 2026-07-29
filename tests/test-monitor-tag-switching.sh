@@ -89,11 +89,35 @@ printf '%s\n' "$scan_alt_bars_body" | grep -q 'updatealtbar(m, wins\[i\], &wa);'
 grep -q 'ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1)' "$repo_dir/dwm.c"
 grep -q 'm->barwin, m->wx, m->by, m->ww, m->bh' "$repo_dir/dwm.c"
 grep -q 'selmon->barwin, selmon->wx, selmon->by, selmon->ww, selmon->bh' "$repo_dir/dwm.c"
+set_fullscreen_body=$(sed -n '/^setfullscreen(Client \*c, int fullscreen)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$set_fullscreen_body" | grep -q 'actualfullscreenchanged'
+printf '%s\n' "$set_fullscreen_body" | grep -q 'wasactualfullscreen'
+printf '%s\n' "$set_fullscreen_body" | grep -q 'updatefullscreenmonitors();'
+fullscreen_monitors_body=$(sed -n '/^updatefullscreenmonitors(void)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$fullscreen_monitors_body" | grep -q 'c->fakefullscreen == 1'
+printf '%s\n' "$fullscreen_monitors_body" | grep -q '!ISVISIBLE(c)'
+printf '%s\n' "$fullscreen_monitors_body" | grep -q 'getmonlogicalindex(m)'
+printf '%s\n' "$fullscreen_monitors_body" | grep -q 'dwmfullscreenmonitorsatom'
+tagmon_body=$(sed -n '/^tagmon(const Arg \*arg)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$tagmon_body" | grep -q 'c->isfullscreen = 1;'
+printf '%s\n' "$tagmon_body" | grep -q 'updatefullscreenmonitors();'
+reconcile_body=$(sed -n '/^reconcilemonitortags(void)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$reconcile_body" | grep -q 'dwmfullscreenmonitorsatom != None'
+printf '%s\n' "$reconcile_body" | grep -q 'updatefullscreenmonitors();'
+grep -q 'XInternAtom(dpy, "_DWM_FULLSCREEN_MONITORS", False)' "$repo_dir/dwm.c"
+grep -q 'XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_COMBO", False)' "$repo_dir/dwm.c"
 
 mkdir -p "$work/bin"
 cat >"$work/bin/xprop" <<'SH'
 #!/bin/sh
 case $* in
+*"_DWM_FULLSCREEN_MONITORS"*)
+	if [ "${DWM_TEST_FULLSCREEN_MONITORS+x}" = x ]; then
+		printf '_DWM_FULLSCREEN_MONITORS(CARDINAL) = %s\n' "$DWM_TEST_FULLSCREEN_MONITORS"
+	else
+		exit 1
+	fi
+	;;
 *"_DWM_MONITOR_DESKTOPS"*)
 	if [ "${DWM_TEST_MONITOR_DESKTOPS+x}" = x ]; then
 		printf '_DWM_MONITOR_DESKTOPS(CARDINAL) = %s\n' "$DWM_TEST_MONITOR_DESKTOPS"
@@ -116,9 +140,12 @@ exit 1
 SH
 chmod +x "$work/bin/xprop" "$work/bin/xdotool"
 
-DWM_TEST_MONITOR_DESKTOPS='2560, 0, 2560, 1440, 0, 0, 0, 2560, 1440, 4' PATH="$work/bin:$PATH" \
+DWM_TEST_FULLSCREEN_MONITORS='0, 1' \
+	DWM_TEST_MONITOR_DESKTOPS='2560, 0, 2560, 1440, 0, 0, 0, 2560, 1440, 4' \
+	PATH="$work/bin:$PATH" \
 	"$repo_dir/scripts/dwm-quickshell-state" state >"$work/state.out"
 grep -Fqx 'monitor_desktops=2560,0,2560,1440,0,0,0,2560,1440,4' "$work/state.out"
+grep -Fqx 'fullscreen_monitors=0|1' "$work/state.out"
 
 PATH="$work/bin:$PATH" \
 	"$repo_dir/scripts/dwm-quickshell-state" state >"$work/fallback.out"

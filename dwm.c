@@ -80,7 +80,11 @@ enum { CurResizeBR, CurResizeBL, CurResizeTR, CurResizeTL, CurNormal, CurResize,
 enum { SchemeNorm, SchemeSel }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMFullscreen, NetWMAbove, NetWMStaysOnTop, NetActiveWindow, NetWMWindowType, NetWMIcon,
-       NetWMWindowTypeDialog, NetWMWindowTypeDock, NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop, NetWMDesktop, NetDwmMonitorDesktops, NetLast }; /* EWMH atoms */
+       NetWMWindowTypeDialog, NetWMWindowTypeDock, NetWMWindowTypeTooltip, NetWMWindowTypeNotification,
+       NetWMWindowTypeMenu, NetWMWindowTypePopupMenu, NetWMWindowTypeDropdownMenu,
+       NetWMWindowTypeCombo, NetWMWindowTypeDnd,
+       NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop,
+       NetWMDesktop, NetDwmMonitorDesktops, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
@@ -102,6 +106,7 @@ typedef struct {
 
 typedef struct Monitor Monitor;
 typedef struct Client Client;
+typedef struct OverrideWindow OverrideWindow;
 struct Client {
 	char name[256];
 	float mina, maxa;
@@ -123,6 +128,12 @@ struct Client {
 	Window win;
 	unsigned int icw, ich;
 	Picture icon;
+};
+
+struct OverrideWindow {
+	Window win;
+	int raise;
+	OverrideWindow *next;
 };
 
 typedef struct {
@@ -198,6 +209,7 @@ static pid_t getparentprocess(pid_t p);
 static int getrootptr(int *x, int *y);
 static int atomlistcontains(const Atom *atoms, unsigned long nitems, Atom atom);
 static unsigned long getatomproplist(Client *c, Atom prop, Atom *atoms, unsigned long maxitems, int *truncated);
+static unsigned long getwinatomproplist(Window win, Atom prop, Atom *atoms, unsigned long maxitems, int *truncated);
 static long getstate(Window w);
 static pid_t getstatusbarpid();
 static int gettextprop(Window w, Atom atom, char *text, unsigned int size);
@@ -208,6 +220,7 @@ static int isaltbar(Window win, XWindowAttributes *wa);
 static int isdescprocess(pid_t p, pid_t c);
 static void killclient(const Arg *arg);
 static void manage(Window w, XWindowAttributes *wa);
+static void mapnotify(XEvent *e);
 static void monocle(Monitor *m);
 static void movemouse(const Arg *arg);
 static void movestack(const Arg *arg);
@@ -250,14 +263,18 @@ static void togglefakefullscreen(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
+static void trackoverridewindow(Window win);
 static void unfocus(Client *c, int setfocus);
 static void unmanage(Client *c, int destroyed);
+static void untrackoverridewindow(Window win);
 static void unswallow(Client *c);
 static int updatealtbar(Monitor *m, Window win, XWindowAttributes *wa);
 static void updatebarpos(Monitor *m);
 static void updatebars(void);
 static void updateclientlist(void);
+static void updatefullscreenmonitors(void);
 static int updategeom(void);
+static void updateoverridewindow(Window win);
 static void updatenumlockmask(void);
 static void updatesizehints(Client *c);
 static void updatestatus(void);
@@ -371,24 +388,26 @@ static void (*handler[LASTEvent]) (XEvent *) = {
 	[FocusIn] = focusin,
 	[KeyPress] = keypress,
 	[MappingNotify] = mappingnotify,
+	[MapNotify] = mapnotify,
 	[MapRequest] = maprequest,
 	[MotionNotify] = motionnotify,
 	[PropertyNotify] = propertynotify,
 	[UnmapNotify] = unmapnotify
 };
-static Atom wmatom[WMLast], netatom[NetLast];
+static Atom kdewindowtypeoverride, wmatom[WMLast], netatom[NetLast];
 static int running = 1;
 static Cur *cursor[CurLast];
 static Clr **scheme;
 static Display *dpy;
 static Drw *drw;
 static Monitor *mons, *selmon;
+static OverrideWindow *overridewindows;
 static Window root, wmcheckwin;
 static xcb_connection_t *xcon;
 static Window *clientlistcache;
 static unsigned long clientlistcachelen;
 static int clientlistcachevalid;
-static Atom dwmtagupdateatom;
+static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 static unsigned long tagupdatesequence;
 
 /* External dock integration */
@@ -820,6 +839,7 @@ void
 cleanup(void)
 {
 	Monitor *m;
+	OverrideWindow *ow;
 	Layout foo = { "", NULL };
 	size_t i;
 
@@ -830,6 +850,11 @@ cleanup(void)
 	XUngrabKey(dpy, AnyKey, AnyModifier, root);
 	while (mons)
 		cleanupmon(mons);
+	while (overridewindows) {
+		ow = overridewindows;
+		overridewindows = overridewindows->next;
+		free(ow);
+	}
 	for (i = 0; i < CurLast; i++)
 		drw_cur_free(drw, cursor[i]);
 	for (i = 0; i < 2; i++)
@@ -1157,6 +1182,7 @@ destroynotify(XEvent *e)
 	Monitor *m;
 	XDestroyWindowEvent *ev = &e->xdestroywindow;
 
+	untrackoverridewindow(ev->window);
 	if ((c = wintoclient(ev->window)))
 		unmanage(c, 1);
 	else if ((c = swallowingclient(ev->window)))
@@ -1442,6 +1468,12 @@ atomlistcontains(const Atom *atoms, unsigned long nitems, Atom atom)
 unsigned long
 getatomproplist(Client *c, Atom prop, Atom *atoms, unsigned long maxitems, int *truncated)
 {
+	return getwinatomproplist(c->win, prop, atoms, maxitems, truncated);
+}
+
+unsigned long
+getwinatomproplist(Window win, Atom prop, Atom *atoms, unsigned long maxitems, int *truncated)
+{
 	int format;
 	unsigned long extra, nitems = 0;
 	unsigned char *data = NULL;
@@ -1449,7 +1481,7 @@ getatomproplist(Client *c, Atom prop, Atom *atoms, unsigned long maxitems, int *
 
 	if (truncated)
 		*truncated = 0;
-	if (XGetWindowProperty(dpy, c->win, prop, 0L, maxitems, False, XA_ATOM,
+	if (XGetWindowProperty(dpy, win, prop, 0L, maxitems, False, XA_ATOM,
 	    &actual, &format, &nitems, &extra, &data) != Success)
 		return 0;
 	if (actual != XA_ATOM || format != 32) {
@@ -1943,6 +1975,14 @@ mappingnotify(XEvent *e)
 }
 
 void
+mapnotify(XEvent *e)
+{
+	XMapEvent *ev = &e->xmap;
+
+	trackoverridewindow(ev->window);
+}
+
+void
 maprequest(XEvent *e)
 {
 	static XWindowAttributes wa;
@@ -2278,9 +2318,14 @@ void
 propertynotify(XEvent *e)
 {
 	Client *c;
+	OverrideWindow *ow;
 	Window trans;
 	XPropertyEvent *ev = &e->xproperty;
 
+	for (ow = overridewindows; ow && ow->win != ev->window; ow = ow->next);
+	if (ow && (ev->atom == netatom[NetWMState]
+	    || ev->atom == netatom[NetWMWindowType]))
+		updateoverridewindow(ev->window);
 	if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
 		updatestatus();
 	} else if (ev->state == PropertyDelete) {
@@ -2548,8 +2593,10 @@ restack(Monitor *m)
 	XWindowChanges wc;
 
 	drawbar(m);
-	if (!m->sel)
+	if (!m->sel) {
+		raisealwaysontop(m);
 		return;
+	}
 	if (m->sel->isfloating || !m->lt[m->sellt]->arrange)
 		XRaiseWindow(dpy, m->sel->win);
 	if (m->lt[m->sellt]->arrange) {
@@ -2569,11 +2616,20 @@ restack(Monitor *m)
 void
 raisealwaysontop(Monitor *m)
 {
+	OverrideWindow *ow;
+
 	if (m->sel && m->sel->isfullscreen && m->sel->fakefullscreen != 1) {
 		XRaiseWindow(dpy, m->sel->win);
-		return;
+	} else {
+		raisealwaysontopclients(m->stack);
+		if (m->barwin)
+			XRaiseWindow(dpy, m->barwin);
+		if (m->traywin)
+			XRaiseWindow(dpy, m->traywin);
 	}
-	raisealwaysontopclients(m->stack);
+	for (ow = overridewindows; ow; ow = ow->next)
+		if (ow->raise)
+			XRaiseWindow(dpy, ow->win);
 }
 
 void
@@ -2785,8 +2841,14 @@ scan(void)
 
 	if (XQueryTree(dpy, root, &d1, &d2, &wins, &num)) {
 		for (i = 0; i < num; i++) {
-			if (!XGetWindowAttributes(dpy, wins[i], &wa)
-			|| wa.override_redirect || XGetTransientForHint(dpy, wins[i], &d1))
+			if (!XGetWindowAttributes(dpy, wins[i], &wa))
+				continue;
+			if (wa.override_redirect) {
+				if (wa.map_state == IsViewable)
+					trackoverridewindow(wins[i]);
+				continue;
+			}
+			if (XGetTransientForHint(dpy, wins[i], &d1))
 				continue;
 			if (isaltbar(wins[i], &wa))
 				managealtbar(wins[i], &wa);
@@ -3003,6 +3065,7 @@ setclientdesktop(Client *c)
     }
     
 	ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
+	updatefullscreenmonitors();
 	data[0] = ++tagupdatesequence;
 	ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1);
 }
@@ -3052,7 +3115,8 @@ void
 setfullscreen(Client *c, int fullscreen)
 {
 	XEvent ev;
-	int savestate = 0, restorestate = 0;
+	int actualfullscreenchanged, savestate = 0, restorestate = 0;
+	int wasactualfullscreen = c->isfullscreen && c->fakefullscreen != 1;
 
 	if ((c->fakefullscreen == 0 && fullscreen && !c->isfullscreen) // normal fullscreen
 			|| (c->fakefullscreen == 2 && fullscreen)) // fake fullscreen --> actual fullscreen
@@ -3078,6 +3142,8 @@ setfullscreen(Client *c, int fullscreen)
 	}
 
 	c->isfullscreen = fullscreen;
+	actualfullscreenchanged = wasactualfullscreen
+		!= (c->isfullscreen && c->fakefullscreen != 1);
 
 	/* Some clients, e.g. firefox, will send a client message informing the window manager
 	 * that it is going into fullscreen after receiving the above signal. This has the side
@@ -3111,6 +3177,8 @@ setfullscreen(Client *c, int fullscreen)
 	 */
 	if (!c->isfullscreen)
 		while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
+	if (actualfullscreenchanged)
+		updatefullscreenmonitors();
 }
 
 Layout *last_layout;
@@ -3911,6 +3979,14 @@ setup(void)
 	netatom[NetWMWindowType] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
 	netatom[NetWMWindowTypeDialog] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
 	netatom[NetWMWindowTypeDock] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
+	netatom[NetWMWindowTypeTooltip] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_TOOLTIP", False);
+	netatom[NetWMWindowTypeNotification] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
+	netatom[NetWMWindowTypeMenu] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_MENU", False);
+	netatom[NetWMWindowTypePopupMenu] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_POPUP_MENU", False);
+	netatom[NetWMWindowTypeDropdownMenu] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU", False);
+	netatom[NetWMWindowTypeCombo] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_COMBO", False);
+	netatom[NetWMWindowTypeDnd] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DND", False);
+	kdewindowtypeoverride = XInternAtom(dpy, "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE", False);
 	netatom[NetClientList] = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
 	netatom[NetDesktopViewport] = XInternAtom(dpy, "_NET_DESKTOP_VIEWPORT", False);
 	netatom[NetNumberOfDesktops] = XInternAtom(dpy, "_NET_NUMBER_OF_DESKTOPS", False);
@@ -3918,6 +3994,7 @@ setup(void)
 	netatom[NetDesktopNames] = XInternAtom(dpy, "_NET_DESKTOP_NAMES", False);
 	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
 	netatom[NetDwmMonitorDesktops] = XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False);
+	dwmfullscreenmonitorsatom = XInternAtom(dpy, "_DWM_FULLSCREEN_MONITORS", False);
 	dwmtagupdateatom = XInternAtom(dpy, "DWM_TAG_UPDATE", False);
 	/* init cursors */
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
@@ -4163,6 +4240,7 @@ tagmon(const Arg *arg)
 		c->isfullscreen = 0;
 		sendmon(c, dirtomon(arg->i));
 		c->isfullscreen = 1;
+		updatefullscreenmonitors();
 		if (c->fakefullscreen != 1) {
 			resizeclient(c, c->mon->mx, c->mon->my, c->mon->mw, c->mon->mh);
 			XRaiseWindow(dpy, c->win);
@@ -4480,6 +4558,7 @@ unmapnotify(XEvent *e)
 	Monitor *m;
 	XUnmapEvent *ev = &e->xunmap;
 
+	untrackoverridewindow(ev->window);
 	if ((c = wintoclient(ev->window))) {
 		if (ev->send_event)
 			setclientstate(c, WithdrawnState);
@@ -4489,6 +4568,41 @@ unmapnotify(XEvent *e)
 		unmanagealtbar(ev->window);
 	else if (m && m->traywin == ev->window)
 		unmanagetray(ev->window);
+}
+
+void
+trackoverridewindow(Window win)
+{
+	OverrideWindow *ow;
+	OverrideWindow **tail;
+	XWindowAttributes wa;
+
+	if (!XGetWindowAttributes(dpy, win, &wa)
+	    || !wa.override_redirect || wa.map_state != IsViewable)
+		return;
+	for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
+	if (!ow) {
+		ow = ecalloc(1, sizeof(*ow));
+		ow->win = win;
+		for (tail = &overridewindows; *tail; tail = &(*tail)->next);
+		*tail = ow;
+		XSelectInput(dpy, win, wa.your_event_mask | PropertyChangeMask);
+	}
+	updateoverridewindow(win);
+}
+
+void
+untrackoverridewindow(Window win)
+{
+	OverrideWindow **ow;
+
+	for (ow = &overridewindows; *ow && (*ow)->win != win; ow = &(*ow)->next);
+	if (*ow) {
+		OverrideWindow *removed = *ow;
+
+		*ow = removed->next;
+		free(removed);
+	}
 }
 
 void
@@ -4622,6 +4736,34 @@ updateclientlist(void)
 	clientlistcache = clients;
 	clientlistcachelen = count;
 	clientlistcachevalid = 1;
+	updatefullscreenmonitors();
+}
+
+void
+updatefullscreenmonitors(void)
+{
+	Client *c;
+	Monitor *m;
+	long *monitors;
+	int logicalindex;
+	unsigned int count = 0;
+
+	for (m = mons; m; m = m->next)
+		count++;
+	monitors = count ? ecalloc(count, sizeof(*monitors)) : NULL;
+	count = 0;
+	for (m = mons; m; m = m->next)
+		for (c = m->clients; c; c = c->next) {
+			if (!c->isfullscreen || c->fakefullscreen == 1 || !ISVISIBLE(c))
+				continue;
+			logicalindex = getmonlogicalindex(m);
+			if (logicalindex >= 0)
+				monitors[count++] = logicalindex;
+			break;
+		}
+	XChangeProperty(dpy, root, dwmfullscreenmonitorsatom, XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char *)monitors, count);
+	free(monitors);
 }
 
 void
@@ -4665,6 +4807,7 @@ updatecurrentdesktop(void)
 	XChangeProperty(dpy, root, netatom[NetDwmMonitorDesktops], XA_INTEGER, 32,
 		PropModeReplace, (unsigned char *)monitor_desktops, count * 5);
 	free(monitor_desktops);
+	updatefullscreenmonitors();
 }
 
 #if SHOWWINICON
@@ -4861,6 +5004,32 @@ updatewindowtype(Client *c)
 		|| atomlistcontains(states, nstates, netatom[NetWMStaysOnTop]);
 	if (wtype == netatom[NetWMWindowTypeDialog])
 		c->isfloating = 1;
+}
+
+void
+updateoverridewindow(Window win)
+{
+	Atom states[NET_WM_STATE_MAX], types[NET_WM_STATE_MAX];
+	OverrideWindow *ow;
+	unsigned long nstates, ntypes;
+
+	for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
+	if (!ow)
+		return;
+	nstates = getwinatomproplist(win, netatom[NetWMState],
+		states, LENGTH(states), NULL);
+	ntypes = getwinatomproplist(win, netatom[NetWMWindowType],
+		types, LENGTH(types), NULL);
+	ow->raise = atomlistcontains(states, nstates, netatom[NetWMAbove])
+		|| atomlistcontains(states, nstates, netatom[NetWMStaysOnTop])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeTooltip])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeNotification])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeMenu])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypePopupMenu])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeDropdownMenu])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeCombo])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeDnd])
+		|| atomlistcontains(types, ntypes, kdewindowtypeoverride);
 }
 
 void
@@ -5348,6 +5517,8 @@ reconcilemonitortags(void)
 		m->showbar = m->pertag->showbars[m->pertag->curtag];
 		updatebarpos(m);
 	}
+	if (dwmfullscreenmonitorsatom != None)
+		updatefullscreenmonitors();
 }
 
 int

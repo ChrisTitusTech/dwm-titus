@@ -8,6 +8,7 @@ Scope {
     property var monitorWorkspaceRows: []
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
     property var occupiedWorkspaces: []
+    property var fullscreenMonitorIndexes: []
     property var runningApps: []
     property string activeWindowTitle: "Desktop"
     property string activeWindowClass: "application-x-executable"
@@ -53,6 +54,10 @@ Scope {
             } else if (key === "occupied") {
                 root.occupiedWorkspaces = value.length > 0 ? value.split("|").map(function(workspace) {
                     return parseInt(workspace, 10);
+                }) : [];
+            } else if (key === "fullscreen_monitors") {
+                root.fullscreenMonitorIndexes = value.length > 0 ? value.split("|").map(function(monitor) {
+                    return parseInt(monitor, 10);
                 }) : [];
             } else if (key === "apps") {
                 root.runningApps = value.length > 0 ? value.split("|").map(function(app) {

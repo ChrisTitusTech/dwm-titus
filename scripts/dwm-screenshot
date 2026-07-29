@@ -11,6 +11,23 @@
 
 set -euo pipefail
 
+acquire_flameshot_lock() {
+	local lock_dir
+
+	if ! command -v flock >/dev/null 2>&1; then
+		printf 'dwm-screenshot: flock is required to manage Flameshot\n' >&2
+		return 1
+	fi
+
+	lock_dir="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/dwm-titus"
+	mkdir -p "$lock_dir"
+	exec {flameshot_lock_fd}>"$lock_dir/flameshot.lock"
+	if ! flock -w 5 "$flameshot_lock_fd"; then
+		printf 'dwm-screenshot: timed out waiting for the Flameshot lock\n' >&2
+		return 1
+	fi
+}
+
 sync_activation_environment() {
 	local -a activation_vars=(DISPLAY XDG_SESSION_TYPE QT_QPA_PLATFORM)
 
@@ -43,12 +60,221 @@ sync_activation_environment() {
 	fi
 }
 
+ensure_x11_capture_backend() {
+	local backup_file config_dir config_file target_file temp_file
+
+	config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/flameshot"
+	config_file="$config_dir/flameshot.ini"
+	mkdir -p "$config_dir"
+
+	if [[ ! -f "$config_file" ]]; then
+		printf '[General]\nuseX11LegacyScreenshot=true\n' >"$config_file"
+		return
+	fi
+	if awk '
+		/^\[General\][[:space:]]*$/ { in_general = 1; next }
+		/^\[[^]]+\][[:space:]]*$/ { in_general = 0 }
+		in_general &&
+			/^useX11LegacyScreenshot[[:space:]]*=[[:space:]]*(true|false)[[:space:]]*$/ {
+			found = 1
+		}
+		END { exit !found }
+	' "$config_file"; then
+		return
+	fi
+
+	temp_file=$(mktemp "$config_file.tmp.XXXXXX")
+	if ! awk '
+		BEGIN {
+			in_general = 0
+			found_general = 0
+			wrote_setting = 0
+		}
+		/^\[General\][[:space:]]*$/ {
+			in_general = 1
+			found_general = 1
+			print
+			next
+		}
+		/^\[[^]]+\][[:space:]]*$/ {
+			if (in_general && !wrote_setting) {
+				print "useX11LegacyScreenshot=true"
+				wrote_setting = 1
+			}
+			in_general = 0
+			print
+			next
+		}
+		in_general &&
+			/^useX11LegacyScreenshot[[:space:]]*=/ {
+			if (!wrote_setting) {
+				print "useX11LegacyScreenshot=true"
+				wrote_setting = 1
+			}
+			next
+		}
+		{ print }
+		END {
+			if (in_general && !wrote_setting)
+				print "useX11LegacyScreenshot=true"
+			else if (!found_general) {
+				print ""
+				print "[General]"
+				print "useX11LegacyScreenshot=true"
+			}
+		}
+	' "$config_file" >"$temp_file"; then
+		rm -f -- "$temp_file"
+		return 1
+	fi
+
+	if ! target_file=$(readlink -f -- "$config_file"); then
+		rm -f -- "$temp_file"
+		return 1
+	fi
+	if ! backup_file=$(mktemp "$target_file.backup.XXXXXX"); then
+		rm -f -- "$temp_file"
+		return 1
+	fi
+	if ! cat "$target_file" >"$backup_file"; then
+		rm -f -- "$backup_file" "$temp_file"
+		return 1
+	fi
+	if ! cat "$temp_file" >"$target_file"; then
+		if ! cat "$backup_file" >"$target_file"; then
+			printf 'dwm-screenshot: failed to restore %s after an update error\n' \
+				"$config_file" >&2
+		fi
+		rm -f -- "$backup_file" "$temp_file"
+		return 1
+	fi
+	rm -f -- "$backup_file" "$temp_file"
+}
+
+flameshot_daemon_pids() {
+	local pid user_id=$1
+
+	while IFS= read -r pid; do
+		process_is_alive "$pid" || continue
+		[[ -r "/proc/$pid/environ" ]] || continue
+		if awk \
+			-v expected_display="DISPLAY=$DISPLAY" \
+			-v expected_bus="${DBUS_SESSION_BUS_ADDRESS:+DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS}" '
+			BEGIN { RS = "\0" }
+			$0 == expected_display { display = 1 }
+			$0 == "XDG_SESSION_TYPE=x11" { session = 1 }
+			$0 == "QT_QPA_PLATFORM=xcb" { platform = 1 }
+			index($0, "DBUS_SESSION_BUS_ADDRESS=") == 1 { bus_present = 1 }
+			$0 == expected_bus { bus = 1 }
+			END {
+				if (expected_bus == "")
+					bus = !bus_present
+				exit !(display && session && platform && bus)
+			}
+		' "/proc/$pid/environ"; then
+			printf '%s\n' "$pid"
+		fi
+	done < <(pgrep -u "$user_id" -x flameshot 2>/dev/null || true)
+}
+
+process_is_alive() {
+	local pid=$1 state
+
+	state=$(ps -o stat= -p "$pid" 2>/dev/null || true)
+	state=${state//[[:space:]]/}
+	case "$state" in
+	Z* | X*) return 1 ;;
+	esac
+	kill -0 "$pid" 2>/dev/null
+}
+
+manage_daemon() {
+	local action=$1 alive attempt pid user_id
+	local -a all_pids daemon_pids
+
+	user_id=$(id -u)
+	mapfile -t all_pids < <(pgrep -u "$user_id" -x flameshot 2>/dev/null || true)
+	mapfile -t daemon_pids < <(flameshot_daemon_pids "$user_id")
+	if [[ "$action" == daemon ]] && ((${#daemon_pids[@]})); then
+		return 0
+	fi
+
+	# Flameshot is a per-user singleton on the session bus. Replace any stale
+	# daemon from another display or bus so this managed X11 session owns it.
+	if ((${#all_pids[@]})); then
+		kill "${all_pids[@]}" 2>/dev/null || true
+		attempt=0
+		while :; do
+			alive=0
+			for pid in "${all_pids[@]}"; do
+				if process_is_alive "$pid"; then
+					alive=1
+					break
+				fi
+			done
+			((alive)) || break
+			((attempt += 1))
+			if ((attempt >= 100)); then
+				printf 'dwm-screenshot: timed out waiting for Flameshot to exit\n' >&2
+				return 1
+			fi
+			sleep 0.05
+		done
+	fi
+
+	mapfile -t daemon_pids < <(flameshot_daemon_pids "$user_id")
+	if ((${#daemon_pids[@]})); then
+		return 0
+	fi
+
+	if command -v setsid >/dev/null 2>&1; then
+		(
+			exec {flameshot_lock_fd}>&-
+			exec setsid -f env -u WAYLAND_DISPLAY \
+				XDG_SESSION_TYPE=x11 \
+				QT_QPA_PLATFORM=xcb \
+				flameshot
+		) >/dev/null 2>&1
+	else
+		(
+			exec {flameshot_lock_fd}>&-
+			exec env -u WAYLAND_DISPLAY \
+				XDG_SESSION_TYPE=x11 \
+				QT_QPA_PLATFORM=xcb \
+				flameshot
+		) >/dev/null 2>&1 &
+	fi
+
+	attempt=0
+	while :; do
+		mapfile -t daemon_pids < <(flameshot_daemon_pids "$user_id")
+		((${#daemon_pids[@]})) && break
+		((attempt += 1))
+		if ((attempt >= 100)); then
+			printf 'dwm-screenshot: timed out waiting for Flameshot to start\n' >&2
+			return 1
+		fi
+		sleep 0.05
+	done
+}
+
 if ! command -v flameshot >/dev/null 2>&1; then
 	printf 'dwm-screenshot: flameshot is not installed\n' >&2
 	exit 127
 fi
 
 sync_activation_environment
+acquire_flameshot_lock
+ensure_x11_capture_backend
+
+ACTION="${1:-gui}"
+if [[ "$ACTION" == setup ]]; then
+	exit 0
+fi
+if [[ "$ACTION" == daemon || "$ACTION" == restart-daemon ]]; then
+	manage_daemon "$ACTION"
+	exit
+fi
 
 SCREENSHOT_DIR=""
 if command -v xdg-user-dir >/dev/null 2>&1; then
@@ -58,20 +284,21 @@ fi
 SCREENSHOT_DIR="${SCREENSHOT_DIR:-$HOME/Pictures/Screenshots}"
 mkdir -p "$SCREENSHOT_DIR"
 
-ACTION="${1:-gui}"
-
 case "$ACTION" in
 full)
+	exec {flameshot_lock_fd}>&-
 	exec flameshot full -p "$SCREENSHOT_DIR"
 	;;
 gui)
+	exec {flameshot_lock_fd}>&-
 	exec flameshot gui -p "$SCREENSHOT_DIR"
 	;;
 clip)
+	exec {flameshot_lock_fd}>&-
 	exec flameshot gui --clipboard
 	;;
 *)
-	printf 'Usage: %s {full|gui|clip}\n' "$0" >&2
+	printf 'Usage: %s {full|gui|clip|setup|daemon|restart-daemon}\n' "$0" >&2
 	exit 1
 	;;
 esac

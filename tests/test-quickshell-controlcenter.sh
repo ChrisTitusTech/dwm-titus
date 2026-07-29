@@ -461,6 +461,13 @@ grep -Fq 'visible: root.state.batteryAvailable' "$repo/config/quickshell/panel/D
 grep -Fq 'root.batteryAvailable = true;' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'trimmed.indexOf("BAT ") === 0' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'color: Theme.barBackground' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'aboveWindows: root.state.fullscreenMonitorIndexes.indexOf(' \
+	"$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'root.state.screenIndex(root.screen)) === -1' \
+	"$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'property var fullscreenMonitorIndexes: []' \
+	"$repo/config/quickshell/state/DwmState.qml"
+grep -Fq 'key === "fullscreen_monitors"' "$repo/config/quickshell/state/DwmState.qml"
 if grep -Fq 'color: Theme.transparent' "$repo/config/quickshell/panel/DwmPanel.qml"; then
 	exit 1
 fi
