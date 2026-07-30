@@ -150,7 +150,8 @@ map_notify_body=$(sed -n '/^mapnotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$map_notify_body" | grep -q 'trackoverridewindow(ev->window);'
 printf '%s\n' "$map_notify_body" | grep -q 'restackprioritywindows();'
 focus_in_body=$(sed -n '/^focusin(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
-printf '%s\n' "$focus_in_body" | grep -q 'focusfullscreenforoverride(ev->window);'
+printf '%s\n' "$focus_in_body" | grep -q 'focusfullscreenforoverride(ev->window)'
+printf '%s\n' "$focus_in_body" | grep -q 'istransientforbar(ev->window)'
 track_override_body=$(sed -n '/^trackoverridewindow(Window win)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$track_override_body" | grep -q 'FocusChangeMask'
 tagmon_body=$(sed -n '/^tagmon(const Arg \*arg)/,/^}$/p' "$repo_dir/dwm.c")

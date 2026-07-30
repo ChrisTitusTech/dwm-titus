@@ -829,6 +829,8 @@ for popup_marker in tooltip kde notification menu popup-menu dropdown-menu combo
 	DISPLAY=$display xprop -id "$popup_win" "$popup_property" |
 		grep -q "$popup_atom"
 	wait_for_top_window "$popup_win"
+	DISPLAY=$display xdotool windowfocus "$popup_win"
+	wait_for_input_focus "$above_win"
 	DISPLAY=$display xdotool key Super+t
 	wait_for_top_window "$popup_win"
 	kill "$popup_client_pid"
