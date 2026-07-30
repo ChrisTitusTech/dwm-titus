@@ -203,6 +203,7 @@ static Monitor *dirtomon(int dir);
 static void drawbar(Monitor *m);
 static void drawbars(void);
 static void focus(Client *c);
+static int focusfullscreenforoverride(Window win);
 static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
 static pid_t getparentprocess(pid_t p);
@@ -1375,12 +1376,39 @@ focus(Client *c)
 	drawbars();
 }
 
+int
+focusfullscreenforoverride(Window win)
+{
+	Client *c;
+	Monitor *m;
+	OverrideWindow *ow;
+	Window trans;
+
+	for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
+	if (!ow || !ow->raise || !XGetTransientForHint(dpy, win, &trans))
+		return 0;
+	for (m = mons; m && m->barwin != trans; m = m->next);
+	if (!m || !monitorhasfullscreen(m))
+		return 0;
+	for (c = m->stack; c && !isvisiblefullscreen(c); c = c->snext);
+	if (!c)
+		return 0;
+	focus(c);
+	return 1;
+}
+
 /* there are some broken focus acquiring clients needing extra handling */
 void
 focusin(XEvent *e)
 {
+	OverrideWindow *ow;
 	XFocusChangeEvent *ev = &e->xfocus;
 
+	for (ow = overridewindows; ow && ow->win != ev->window; ow = ow->next);
+	if (ow) {
+		focusfullscreenforoverride(ev->window);
+		return;
+	}
 	if (selmon->sel && ev->window != selmon->sel->win)
 		setfocus(selmon->sel);
 }
@@ -2664,9 +2692,14 @@ raisefullscreenclients(Client *c)
 void
 restackprioritywindows(void)
 {
+	int revert;
 	Monitor *m;
 	OverrideWindow *ow;
+	Window focused;
 
+	/* Raise order is the priority contract: always-on-top clients, bars and
+	 * trays, override popups, then real fullscreen clients above all shell
+	 * surfaces. */
 	for (m = mons; m; m = m->next)
 		raisealwaysontopclients(m->stack);
 	for (m = mons; m; m = m->next)
@@ -2681,6 +2714,8 @@ restackprioritywindows(void)
 			XRaiseWindow(dpy, ow->win);
 	for (m = mons; m; m = m->next)
 		raisefullscreenclients(m->stack);
+	if (XGetInputFocus(dpy, &focused, &revert))
+		focusfullscreenforoverride(focused);
 }
 
 void
@@ -3228,8 +3263,10 @@ setfullscreen(Client *c, int fullscreen)
 	 */
 	if (!c->isfullscreen)
 		while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
-	if (actualfullscreenchanged)
+	if (actualfullscreenchanged) {
 		updatefullscreenmonitors();
+		restackprioritywindows();
+	}
 }
 
 Layout *last_layout;
@@ -4637,7 +4674,8 @@ trackoverridewindow(Window win)
 		ow->win = win;
 		for (tail = &overridewindows; *tail; tail = &(*tail)->next);
 		*tail = ow;
-		XSelectInput(dpy, win, wa.your_event_mask | PropertyChangeMask);
+		XSelectInput(dpy, win,
+			wa.your_event_mask | FocusChangeMask | PropertyChangeMask);
 	}
 	updateoverridewindow(win);
 }

@@ -48,7 +48,8 @@ versions from `config.mk`.
 
 - Keep Quickshell notifications and panel-transient control popups above normal
   client windows while preserving true fullscreen applications above every
-  shell surface through one centralized X11 stacking pass.
+  shell surface through one centralized X11 stacking pass, returning input
+  focus to fullscreen when a hidden panel popup requests it.
 - Map Quickshell panels even when their geometry is reconciled before dwm
   receives the initial map request.
 - Keep tray context menus above managed windows, start a single tray-owning

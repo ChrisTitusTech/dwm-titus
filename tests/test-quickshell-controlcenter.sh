@@ -366,6 +366,8 @@ grep -Fq 'enabled: !root.networkModel.wifiPasswordPromptVisible' "$repo/config/q
 grep -Fq 'grabFocus: !networkModel.wifiPasswordPromptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'FloatingWindow {' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'title: "dwm network password"' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq '{ title="dwm network password",     isfloating=1, alwaysontop=1 }' \
+	"$repo/config/window-rules.toml"
 grep -Fq 'screen: root.panelWindow ? root.panelWindow.screen : null' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'model: Quickshell.screens' "$repo/config/quickshell/shell.qml"
 grep -Fq 'screen: modelData' "$repo/config/quickshell/shell.qml"

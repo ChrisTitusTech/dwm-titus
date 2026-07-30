@@ -93,6 +93,12 @@ manage_alt_bar_body=$(sed -n '/^managealtbar(Window win, XWindowAttributes \*wa)
 printf '%s\n' "$manage_alt_bar_body" | grep -q 'changed = updatealtbar(m, win, wa);'
 printf '%s\n' "$manage_alt_bar_body" | grep -q 'if (changed)'
 printf '%s\n' "$manage_alt_bar_body" | grep -q 'XMapWindow(dpy, win);'
+changed_arrange_block=$(printf '%s\n' "$manage_alt_bar_body" |
+	sed -n '/if (changed)/,/arrange(m);/p')
+if printf '%s\n' "$changed_arrange_block" | grep -q 'XMapWindow'; then
+	printf '%s\n' "XMapWindow must remain outside the changed-geometry branch." >&2
+	exit 1
+fi
 grep -q 'ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1)' "$repo_dir/dwm.c"
 grep -q 'm->barwin, m->wx, m->by, m->ww, m->bh' "$repo_dir/dwm.c"
 grep -q 'selmon->barwin, selmon->wx, selmon->by, selmon->ww, selmon->bh' "$repo_dir/dwm.c"
@@ -115,6 +121,7 @@ printf '%s\n' "$priority_body" | grep -q 'raisealwaysontopclients(m->stack)'
 printf '%s\n' "$priority_body" | grep -q '!monitorhasfullscreen(m)'
 printf '%s\n' "$priority_body" | grep -q 'ow->raise'
 printf '%s\n' "$priority_body" | grep -q 'raisefullscreenclients(m->stack)'
+printf '%s\n' "$priority_body" | grep -q 'focusfullscreenforoverride(focused)'
 override_line=$(printf '%s\n' "$priority_body" |
 	grep -n 'for (ow = overridewindows' | cut -d: -f1)
 fullscreen_line=$(printf '%s\n' "$priority_body" |
@@ -142,6 +149,10 @@ printf '%s\n' "$transient_bar_body" | grep -q 'isaltbar(trans, &wa)'
 map_notify_body=$(sed -n '/^mapnotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$map_notify_body" | grep -q 'trackoverridewindow(ev->window);'
 printf '%s\n' "$map_notify_body" | grep -q 'restackprioritywindows();'
+focus_in_body=$(sed -n '/^focusin(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$focus_in_body" | grep -q 'focusfullscreenforoverride(ev->window);'
+track_override_body=$(sed -n '/^trackoverridewindow(Window win)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$track_override_body" | grep -q 'FocusChangeMask'
 tagmon_body=$(sed -n '/^tagmon(const Arg \*arg)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$tagmon_body" | grep -q 'c->isfullscreen = 1;'
 printf '%s\n' "$tagmon_body" | grep -q 'updatefullscreenmonitors();'

@@ -172,6 +172,21 @@ wait_for_active_window() {
 	return 1
 }
 
+wait_for_input_focus() {
+	expected_win=$(printf '%d' "$1")
+	i=0
+	while [ "$i" -lt 100 ]; do
+		focused=$(DISPLAY=$display xdotool getwindowfocus 2>/dev/null || true)
+		if [ "$focused" = "$expected_win" ]; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "window $1 did not receive input focus" >&2
+	return 1
+}
+
 wait_for_client_window() {
 	expected_win=$1
 	i=0
@@ -882,15 +897,20 @@ popup_win=$(cat "$work/popup-panel-transient-window-id")
 DISPLAY=$display xprop -id "$popup_win" WM_TRANSIENT_FOR | grep -q "$panel_win"
 wait_for_window_above "$popup_win" "$above_win"
 wait_for_window_above "$popup_win" "$fullscreen_win"
+DISPLAY=$display xdotool windowfocus "$popup_win"
+wait_for_input_focus "$popup_win"
 
 DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
 wait_for_fullscreen_monitors 0
 wait_for_window_above "$fullscreen_win" "$popup_win"
+wait_for_input_focus "$fullscreen_win"
 
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$fullscreen_win"
 wait_for_window_above "$fullscreen_win" "$popup_win"
+DISPLAY=$display xdotool windowfocus "$popup_win"
+wait_for_input_focus "$fullscreen_win"
 kill "$popup_client_pid"
 wait "$popup_client_pid" 2>/dev/null || true
 popup_client_pid=
