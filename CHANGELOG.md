@@ -46,8 +46,12 @@ versions from `config.mk`.
 
 ### Fixed
 
-- Keep Quickshell notifications, control popups, and tooltips above managed
-  client windows when dwm restacks the X11 session.
+- Keep Quickshell notifications and panel-transient control popups above normal
+  client windows while preserving true fullscreen applications above every
+  shell surface through one centralized X11 stacking pass, returning input
+  focus to fullscreen when a hidden panel popup requests it.
+- Map Quickshell panels even when their geometry is reconciled before dwm
+  receives the initial map request.
 - Keep tray context menus above managed windows, start a single tray-owning
   Flameshot daemon with a sanitized X11 environment, and default to its native
   X11 capture backend when no explicit backend preference is configured.

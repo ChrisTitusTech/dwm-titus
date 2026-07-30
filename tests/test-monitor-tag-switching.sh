@@ -86,6 +86,19 @@ printf '%s\n' "$scan_alt_bars_body" | grep -q 'knownbars\[j\] == wins\[i\]'
 printf '%s\n' "$scan_alt_bars_body" | grep -q 'INTERSECT(wa.x, wa.y, wa.width, wa.height, m) <= 0'
 printf '%s\n' "$scan_alt_bars_body" | grep -q 'm = oldm;'
 printf '%s\n' "$scan_alt_bars_body" | grep -q 'updatealtbar(m, wins\[i\], &wa);'
+update_alt_bar_body=$(sed -n '/^updatealtbar(Monitor \*m, Window win, XWindowAttributes \*wa)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$update_alt_bar_body" | grep -q 'changed = m->barwin != win'
+printf '%s\n' "$update_alt_bar_body" | grep -q 'return changed;'
+manage_alt_bar_body=$(sed -n '/^managealtbar(Window win, XWindowAttributes \*wa)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$manage_alt_bar_body" | grep -q 'changed = updatealtbar(m, win, wa);'
+printf '%s\n' "$manage_alt_bar_body" | grep -q 'if (changed)'
+printf '%s\n' "$manage_alt_bar_body" | grep -q 'XMapWindow(dpy, win);'
+changed_arrange_block=$(printf '%s\n' "$manage_alt_bar_body" |
+	sed -n '/if (changed)/,/arrange(m);/p')
+if printf '%s\n' "$changed_arrange_block" | grep -q 'XMapWindow'; then
+	printf '%s\n' "XMapWindow must remain outside the changed-geometry branch." >&2
+	exit 1
+fi
 grep -q 'ewmh_replace_root_cardinal(dwmtagupdateatom, data, 1)' "$repo_dir/dwm.c"
 grep -q 'm->barwin, m->wx, m->by, m->ww, m->bh' "$repo_dir/dwm.c"
 grep -q 'selmon->barwin, selmon->wx, selmon->by, selmon->ww, selmon->bh' "$repo_dir/dwm.c"
@@ -103,9 +116,17 @@ fullscreen_monitors_body=$(sed -n '/^updatefullscreenmonitors(void)/,/^}$/p' "$r
 printf '%s\n' "$fullscreen_monitors_body" | grep -q 'monitorhasfullscreen(m)'
 printf '%s\n' "$fullscreen_monitors_body" | grep -q 'getmonlogicalindex(m)'
 printf '%s\n' "$fullscreen_monitors_body" | grep -q 'dwmfullscreenmonitorsatom'
-raise_always_body=$(sed -n '/^raisealwaysontop(Monitor \*m)/,/^}$/p' "$repo_dir/dwm.c")
-printf '%s\n' "$raise_always_body" | grep -q 'monitorhasfullscreen(m)'
-printf '%s\n' "$raise_always_body" | grep -q 'raisefullscreenclients(m->stack)'
+priority_body=$(sed -n '/^restackprioritywindows(void)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$priority_body" | grep -q 'raisealwaysontopclients(m->stack)'
+printf '%s\n' "$priority_body" | grep -q '!monitorhasfullscreen(m)'
+printf '%s\n' "$priority_body" | grep -q 'ow->raise'
+printf '%s\n' "$priority_body" | grep -q 'raisefullscreenclients(m->stack)'
+printf '%s\n' "$priority_body" | grep -q 'focusfullscreenforoverride(focused)'
+override_line=$(printf '%s\n' "$priority_body" |
+	grep -n 'for (ow = overridewindows' | cut -d: -f1)
+fullscreen_line=$(printf '%s\n' "$priority_body" |
+	grep -n 'raisefullscreenclients(m->stack)' | cut -d: -f1)
+test "$override_line" -lt "$fullscreen_line"
 raise_fullscreen_clients_body=$(sed -n '/^raisefullscreenclients(Client \*c)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$raise_fullscreen_clients_body" | grep -q 'raisefullscreenclients(c->snext);'
 printf '%s\n' "$raise_fullscreen_clients_body" | grep -q 'isvisiblefullscreen(c)'
@@ -113,12 +134,26 @@ property_notify_body=$(sed -n '/^propertynotify(XEvent \*e)/,/^}$/p' "$repo_dir/
 override_property_block=$(printf '%s\n' "$property_notify_body" |
 	sed -n '/for (ow = overridewindows/,/if ((ev->window == root)/p')
 printf '%s\n' "$override_property_block" | grep -q 'updateoverridewindow(ev->window);'
-printf '%s\n' "$override_property_block" | grep -q 'restack(m);'
+printf '%s\n' "$override_property_block" | grep -q 'XA_WM_TRANSIENT_FOR'
+printf '%s\n' "$override_property_block" | grep -q 'restackprioritywindows();'
 update_override_line=$(printf '%s\n' "$override_property_block" |
 	grep -n 'updateoverridewindow(ev->window);' | cut -d: -f1)
 restack_override_line=$(printf '%s\n' "$override_property_block" |
-	grep -n 'restack(m);' | cut -d: -f1)
+	grep -n 'restackprioritywindows();' | cut -d: -f1)
 test "$update_override_line" -lt "$restack_override_line"
+update_override_body=$(sed -n '/^updateoverridewindow(Window win)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$update_override_body" | grep -q 'istransientforbar(win)'
+transient_bar_body=$(sed -n '/^istransientforbar(Window win)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$transient_bar_body" | grep -q 'XGetTransientForHint'
+printf '%s\n' "$transient_bar_body" | grep -q 'isaltbar(trans, &wa)'
+map_notify_body=$(sed -n '/^mapnotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$map_notify_body" | grep -q 'trackoverridewindow(ev->window);'
+printf '%s\n' "$map_notify_body" | grep -q 'restackprioritywindows();'
+focus_in_body=$(sed -n '/^focusin(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$focus_in_body" | grep -q 'focusfullscreenforoverride(ev->window)'
+printf '%s\n' "$focus_in_body" | grep -q 'istransientforbar(ev->window)'
+track_override_body=$(sed -n '/^trackoverridewindow(Window win)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$track_override_body" | grep -q 'FocusChangeMask'
 tagmon_body=$(sed -n '/^tagmon(const Arg \*arg)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$tagmon_body" | grep -q 'c->isfullscreen = 1;'
 printf '%s\n' "$tagmon_body" | grep -q 'updatefullscreenmonitors();'
