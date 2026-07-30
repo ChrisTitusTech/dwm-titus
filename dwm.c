@@ -217,6 +217,7 @@ static void grabbuttons(Client *c, int focused);
 static void grabkeys(void);
 static void incnmaster(const Arg *arg);
 static int isaltbar(Window win, XWindowAttributes *wa);
+static int istransientforbar(Window win);
 static int isdescprocess(pid_t p, pid_t c);
 static void killclient(const Arg *arg);
 static void manage(Window w, XWindowAttributes *wa);
@@ -239,8 +240,8 @@ static int resizetiledmouse(const Arg *arg);
 static int isvisiblefullscreen(Client *c);
 static int monitorhasfullscreen(Monitor *m);
 static void raisefullscreenclients(Client *c);
-static void raisealwaysontop(Monitor *m);
 static void raisealwaysontopclients(Client *c);
+static void restackprioritywindows(void);
 static void restack(Monitor *m);
 static int sendevent(Client *c, Atom proto);
 static void sendmon(Client *c, Monitor *m);
@@ -1918,14 +1919,15 @@ manage(Window w, XWindowAttributes *wa)
 void
 managealtbar(Window win, XWindowAttributes *wa)
 {
+	int changed;
 	Monitor *m;
 	if (!(m = recttomon(wa->x, wa->y, wa->width, wa->height)))
 		return;
 
-	if (!updatealtbar(m, win, wa))
-		return;
+	changed = updatealtbar(m, win, wa);
 
-	arrange(m);
+	if (changed)
+		arrange(m);
 	XSelectInput(dpy, win, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask|ExposureMask);
 	XMoveResizeWindow(dpy, win, wa->x, wa->y, wa->width, wa->height);
 	XRaiseWindow(dpy, win);
@@ -1947,6 +1949,18 @@ isaltbar(Window win, XWindowAttributes *wa)
 
 	wtype = getwinatomprop(win, netatom[NetWMWindowType]);
 	return wtype == netatom[NetWMWindowTypeDock];
+}
+
+int
+istransientforbar(Window win)
+{
+	Window trans;
+	XWindowAttributes wa;
+
+	return XGetTransientForHint(dpy, win, &trans)
+		&& XGetWindowAttributes(dpy, trans, &wa)
+		&& !wa.override_redirect
+		&& isaltbar(trans, &wa);
 }
 
 void
@@ -1983,6 +1997,7 @@ mapnotify(XEvent *e)
 	XMapEvent *ev = &e->xmap;
 
 	trackoverridewindow(ev->window);
+	restackprioritywindows();
 }
 
 void
@@ -2321,20 +2336,16 @@ void
 propertynotify(XEvent *e)
 {
 	Client *c;
-	Monitor *m;
 	OverrideWindow *ow;
 	Window trans;
 	XPropertyEvent *ev = &e->xproperty;
-	XWindowAttributes wa;
 
 	for (ow = overridewindows; ow && ow->win != ev->window; ow = ow->next);
 	if (ow && (ev->atom == netatom[NetWMState]
-	    || ev->atom == netatom[NetWMWindowType])) {
+	    || ev->atom == netatom[NetWMWindowType]
+	    || ev->atom == XA_WM_TRANSIENT_FOR)) {
 		updateoverridewindow(ev->window);
-		m = XGetWindowAttributes(dpy, ev->window, &wa)
-			? recttomon(wa.x, wa.y, wa.width, wa.height) : selmon;
-		if (m)
-			restack(m);
+		restackprioritywindows();
 	}
 	if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
 		updatestatus();
@@ -2360,7 +2371,7 @@ propertynotify(XEvent *e)
 			updatetitle(c);
 			if (applytitlerules(c)) {
 				arrange(c->mon);
-				raisealwaysontop(c->mon);
+				restackprioritywindows();
 			}
 			if (c == c->mon->sel)
 				drawbar(c->mon);
@@ -2604,7 +2615,7 @@ restack(Monitor *m)
 
 	drawbar(m);
 	if (!m->sel) {
-		raisealwaysontop(m);
+		restackprioritywindows();
 		return;
 	}
 	if (m->sel->isfloating || !m->lt[m->sellt]->arrange)
@@ -2618,7 +2629,7 @@ restack(Monitor *m)
 				wc.sibling = c->win;
 			}
 	}
-	raisealwaysontop(m);
+	restackprioritywindows();
 	XSync(dpy, False);
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 }
@@ -2651,22 +2662,25 @@ raisefullscreenclients(Client *c)
 }
 
 void
-raisealwaysontop(Monitor *m)
+restackprioritywindows(void)
 {
+	Monitor *m;
 	OverrideWindow *ow;
 
-	if (monitorhasfullscreen(m)) {
-		raisefullscreenclients(m->stack);
-	} else {
+	for (m = mons; m; m = m->next)
 		raisealwaysontopclients(m->stack);
-		if (m->barwin)
-			XRaiseWindow(dpy, m->barwin);
-		if (m->traywin)
-			XRaiseWindow(dpy, m->traywin);
-	}
+	for (m = mons; m; m = m->next)
+		if (!monitorhasfullscreen(m)) {
+			if (m->barwin)
+				XRaiseWindow(dpy, m->barwin);
+			if (m->traywin)
+				XRaiseWindow(dpy, m->traywin);
+		}
 	for (ow = overridewindows; ow; ow = ow->next)
 		if (ow->raise)
 			XRaiseWindow(dpy, ow->win);
+	for (m = mons; m; m = m->next)
+		raisefullscreenclients(m->stack);
 }
 
 void
@@ -4714,17 +4728,22 @@ updatebarpos(Monitor *m)
 static int
 updatealtbar(Monitor *m, Window win, XWindowAttributes *wa)
 {
+	int changed, newbh, newtopbar;
+
 	if (!m || !wa)
 		return 0;
 	if (wa->override_redirect)
 		return 0;
 
+	newtopbar = wa->y < m->my + m->mh / 2;
+	newbh = wa->height > 0 ? wa->height : bh;
+	changed = m->barwin != win || m->topbar != newtopbar || m->bh != newbh;
 	m->barwin = win;
-	m->topbar = wa->y < m->my + m->mh / 2;
-	m->bh = wa->height > 0 ? wa->height : bh;
+	m->topbar = newtopbar;
+	m->bh = newbh;
 	bh = m->bh;
 	updatebarpos(m);
-	return 1;
+	return changed;
 }
 
 void
@@ -5063,7 +5082,8 @@ updateoverridewindow(Window win)
 		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeDropdownMenu])
 		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeCombo])
 		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeDnd])
-		|| atomlistcontains(types, ntypes, kdewindowtypeoverride);
+		|| atomlistcontains(types, ntypes, kdewindowtypeoverride)
+		|| istransientforbar(win);
 }
 
 void

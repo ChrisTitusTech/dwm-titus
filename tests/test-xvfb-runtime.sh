@@ -236,6 +236,8 @@ main(int argc, char **argv)
 	int initial_many_states = 0;
 	int override_redirect = 0;
 	int panel = 0;
+	int preconfigure_panel = 0;
+	Window transient_for = None;
 	const char *popup_state = NULL;
 	const char *popup_type = NULL;
 	int swallow_terminal = 0;
@@ -256,6 +258,18 @@ main(int argc, char **argv)
 			return 3;
 		}
 		printf("override_redirect=%d\n", attributes.override_redirect);
+		XCloseDisplay(dpy);
+		return 0;
+	}
+	if (argc == 3 && strcmp(argv[1], "map-state") == 0) {
+		XWindowAttributes attributes;
+
+		win = strtoul(argv[2], NULL, 0);
+		if (!XGetWindowAttributes(dpy, win, &attributes)) {
+			XCloseDisplay(dpy);
+			return 3;
+		}
+		printf("%d\n", attributes.map_state);
 		XCloseDisplay(dpy);
 		return 0;
 	}
@@ -321,9 +335,13 @@ main(int argc, char **argv)
 	else if (argc == 2 && strcmp(argv[1], "initial-many-states") == 0)
 		initial_many_states = 1;
 	else if (argc == 2 && strcmp(argv[1], "panel") == 0)
-		panel = 1;
+		panel = preconfigure_panel = 1;
 	else if (argc == 2 && strcmp(argv[1], "override") == 0)
 		override_redirect = 1;
+	else if (argc == 3 && strcmp(argv[1], "override-transient") == 0) {
+		override_redirect = 1;
+		transient_for = strtoul(argv[2], NULL, 0);
+	}
 	else if (argc == 2 && strcmp(argv[1], "override-tooltip") == 0) {
 		override_redirect = 1;
 		popup_type = "_NET_WM_WINDOW_TYPE_TOOLTIP";
@@ -368,8 +386,8 @@ main(int argc, char **argv)
 		swallow_terminal = 1;
 
 	win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy),
-		panel ? 0 : 20, panel ? 0 : 20,
-		panel ? 1024 : 320, panel ? 24 : 180,
+		panel ? 1 : 20, panel ? 1 : 20,
+		panel ? 1 : 320, panel ? 1 : 180,
 		0, 0, WhitePixel(dpy, DefaultScreen(dpy)));
 	if (override_redirect) {
 		XSetWindowAttributes attributes = { .override_redirect = True };
@@ -407,6 +425,8 @@ main(int argc, char **argv)
 		XChangeProperty(dpy, win, XInternAtom(dpy, "_NET_WM_STATE", False),
 			XA_ATOM, 32, PropModeReplace, (unsigned char *)&state, 1);
 	}
+	if (transient_for != None)
+		XSetTransientForHint(dpy, win, transient_for);
 	if (initial_many_states) {
 		Atom states[65];
 		char name[64];
@@ -431,6 +451,11 @@ main(int argc, char **argv)
 	wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
 	XSetWMProtocols(dpy, win, &wm_delete, 1);
 	XSelectInput(dpy, win, StructureNotifyMask);
+	if (preconfigure_panel) {
+		XMoveResizeWindow(dpy, win, 0, 0, 1024, 24);
+		XFlush(dpy);
+		usleep(100000);
+	}
 	XMapWindow(dpy, win);
 	XFlush(dpy);
 
@@ -720,7 +745,7 @@ while [ "$i" -lt 100 ] && [ ! -s "$work/stack-window-id" ]; do
 done
 stack_win=$(cat "$work/stack-window-id")
 [ -n "$stack_win" ]
-wait_for_top_window "$stack_win"
+wait_for_top_window "$above_win"
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$above_win"
 
@@ -830,6 +855,7 @@ done
 panel_win=$(cat "$work/panel-window-id")
 [ -n "$panel_win" ]
 DISPLAY=$display xprop -root _NET_CLIENT_LIST | grep -q "$panel_win"
+[ "$(DISPLAY=$display "$work/xclient" map-state "$panel_win")" = 2 ]
 
 DISPLAY=$display xdotool key Super+Shift+y
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
@@ -841,12 +867,33 @@ DISPLAY=$display xdotool key Super+Shift+y
 wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
 wait_for_fullscreen_monitors ''
 
+DISPLAY=$display "$work/xclient" override-transient "$panel_win" \
+	>"$work/popup-panel-transient-window-id" \
+	2>"$work/popup-panel-transient-client.log" &
+popup_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/popup-panel-transient-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+popup_win=$(cat "$work/popup-panel-transient-window-id")
+[ -n "$popup_win" ]
+[ "$(DISPLAY=$display "$work/xclient" attributes "$popup_win")" = "override_redirect=1" ]
+DISPLAY=$display xprop -id "$popup_win" WM_TRANSIENT_FOR | grep -q "$panel_win"
+wait_for_window_above "$popup_win" "$above_win"
+wait_for_window_above "$popup_win" "$fullscreen_win"
+
 DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
 wait_for_fullscreen_monitors 0
+wait_for_window_above "$fullscreen_win" "$popup_win"
 
 DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$fullscreen_win"
+wait_for_window_above "$fullscreen_win" "$popup_win"
+kill "$popup_client_pid"
+wait "$popup_client_pid" 2>/dev/null || true
+popup_client_pid=
 DISPLAY=$display xdotool key Super+2
 wait_for_current_desktop 1
 wait_for_fullscreen_monitors ''
