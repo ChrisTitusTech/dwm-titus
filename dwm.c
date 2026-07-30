@@ -236,6 +236,9 @@ static void resize(Client *c, int x, int y, int w, int h, int interact);
 static void resizeclient(Client *c, int x, int y, int w, int h);
 static void resizemouse(const Arg *arg);
 static int resizetiledmouse(const Arg *arg);
+static int isvisiblefullscreen(Client *c);
+static int monitorhasfullscreen(Monitor *m);
+static void raisefullscreenclients(Client *c);
 static void raisealwaysontop(Monitor *m);
 static void raisealwaysontopclients(Client *c);
 static void restack(Monitor *m);
@@ -2318,14 +2321,21 @@ void
 propertynotify(XEvent *e)
 {
 	Client *c;
+	Monitor *m;
 	OverrideWindow *ow;
 	Window trans;
 	XPropertyEvent *ev = &e->xproperty;
+	XWindowAttributes wa;
 
 	for (ow = overridewindows; ow && ow->win != ev->window; ow = ow->next);
 	if (ow && (ev->atom == netatom[NetWMState]
-	    || ev->atom == netatom[NetWMWindowType]))
+	    || ev->atom == netatom[NetWMWindowType])) {
 		updateoverridewindow(ev->window);
+		m = XGetWindowAttributes(dpy, ev->window, &wa)
+			? recttomon(wa.x, wa.y, wa.width, wa.height) : selmon;
+		if (m)
+			restack(m);
+	}
 	if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
 		updatestatus();
 	} else if (ev->state == PropertyDelete) {
@@ -2613,13 +2623,40 @@ restack(Monitor *m)
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 }
 
+int
+isvisiblefullscreen(Client *c)
+{
+	return c->isfullscreen && c->fakefullscreen != 1 && ISVISIBLE(c);
+}
+
+int
+monitorhasfullscreen(Monitor *m)
+{
+	Client *c;
+
+	for (c = m->clients; c; c = c->next)
+		if (isvisiblefullscreen(c))
+			return 1;
+	return 0;
+}
+
+void
+raisefullscreenclients(Client *c)
+{
+	if (!c)
+		return;
+	raisefullscreenclients(c->snext);
+	if (isvisiblefullscreen(c))
+		XRaiseWindow(dpy, c->win);
+}
+
 void
 raisealwaysontop(Monitor *m)
 {
 	OverrideWindow *ow;
 
-	if (m->sel && m->sel->isfullscreen && m->sel->fakefullscreen != 1) {
-		XRaiseWindow(dpy, m->sel->win);
+	if (monitorhasfullscreen(m)) {
+		raisefullscreenclients(m->stack);
 	} else {
 		raisealwaysontopclients(m->stack);
 		if (m->barwin)
@@ -4742,7 +4779,6 @@ updateclientlist(void)
 void
 updatefullscreenmonitors(void)
 {
-	Client *c;
 	Monitor *m;
 	long *monitors;
 	int logicalindex;
@@ -4752,15 +4788,13 @@ updatefullscreenmonitors(void)
 		count++;
 	monitors = count ? ecalloc(count, sizeof(*monitors)) : NULL;
 	count = 0;
-	for (m = mons; m; m = m->next)
-		for (c = m->clients; c; c = c->next) {
-			if (!c->isfullscreen || c->fakefullscreen == 1 || !ISVISIBLE(c))
-				continue;
-			logicalindex = getmonlogicalindex(m);
-			if (logicalindex >= 0)
-				monitors[count++] = logicalindex;
-			break;
-		}
+	for (m = mons; m; m = m->next) {
+		if (!monitorhasfullscreen(m))
+			continue;
+		logicalindex = getmonlogicalindex(m);
+		if (logicalindex >= 0)
+			monitors[count++] = logicalindex;
+	}
 	XChangeProperty(dpy, root, dwmfullscreenmonitorsatom, XA_CARDINAL, 32,
 		PropModeReplace, (unsigned char *)monitors, count);
 	free(monitors);
