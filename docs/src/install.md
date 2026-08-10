@@ -51,9 +51,13 @@ gaming subset without affecting other full-profile extras.
 git clone https://github.com/ChrisTitusTech/dwm-titus.git
 cd dwm-titus
 cp config.def.h config.h
-make
-sudo make install
+./scripts/dev-sync-install.sh
 ```
+
+For later source-checkout updates, run the same command so the binary,
+installed helpers, managed Quickshell configuration, and data copy stay at one
+revision. Run `./scripts/dev-sync-install.sh --check` after any requested
+session restart to verify the active runtime.
 
 ### Automated Installer
 

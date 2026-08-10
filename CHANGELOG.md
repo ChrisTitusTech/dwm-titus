@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Added
 
+- A developer live-install synchronization command that builds, backs up,
+  installs, verifies all managed files, safely coordinates Quickshell
+  activation, and reports the remaining dwm session-restart boundary.
 - A checksum-verified Herdr installer and default Herdr-on-Alacritty terminal
   workspace for recommended, full, and dedicated Fedora image installs, with
   automatic integration setup for detected Codex and Claude Code CLIs.

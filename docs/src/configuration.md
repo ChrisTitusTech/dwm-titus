@@ -10,7 +10,18 @@ dwm-titus keeps user configuration under
 | `config/themes.toml` | Colors, themes, border size |
 | `power.conf` | Control Center screen DPMS and auto-lock choices |
 
-For deeper changes (window rules, fonts, refresh rate), edit `config.h` and run `make && sudo make install`.
+For deeper changes (window rules, fonts, refresh rate), edit `config.h` and
+run the complete developer synchronization command:
+
+```bash
+./scripts/dev-sync-install.sh
+```
+
+It rebuilds dwm, updates all installed commands and managed Quickshell/data
+files when needed, verifies parity, and reports whether the dwm session must be
+restarted. When a session restart is already required, it activates Quickshell
+there so the tray host starts before tray clients. Use
+`./scripts/dev-sync-install.sh --check` for a non-mutating audit.
 
 ---
 
@@ -20,7 +31,7 @@ For deeper changes (window rules, fonts, refresh rate), edit `config.h` and run 
 
 ```bash
 $EDITOR config.h
-make && sudo make install
+./scripts/dev-sync-install.sh
 ```
 
 ### Key Options

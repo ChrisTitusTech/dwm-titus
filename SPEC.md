@@ -213,6 +213,34 @@ The installer must not require an AUR helper. On RHEL-family systems it may
 explain when an optional component requires EPEL or another repository, but it
 must not enable third-party repositories without user confirmation.
 
+A source-checkout update of an existing live installation must use the complete
+supported install path. Updating only the `dwm` executable is not a supported
+upgrade because it can leave installed helpers, session scripts, the managed
+Quickshell tree, and the user data copy at a different repository revision.
+When development is performed on a machine running dwm-titus, the
+repository-owned `scripts/dev-sync-install.sh` command must synchronize the
+checkout to that machine's local live installation before the work is handed
+off or considered complete. The command is idempotent and must enforce this
+contract for every developer deployment. Every live update must:
+
+1. Build the checked-out revision successfully before replacing installed
+   files.
+2. Install the system files and refresh
+   `${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/` and the managed
+   `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` tree from that same
+   revision while preserving the user-owned dwm TOML files.
+3. Verify the installed binary and the managed Quickshell, data, and script
+   trees against the checkout instead of inferring freshness from a clean Git
+   worktree.
+4. Restart Quickshell through the managed control path and verify its process,
+   IPC endpoints, and tray host when no full session restart is pending. If the
+   running dwm executable was replaced, defer Quickshell activation to the
+   required session restart so the tray host starts before tray clients, and
+   distinguish installed state from active runtime state.
+5. After a required session restart, verify that the new dwm executable is
+   active and that the graphical-session and XDG autostart lifecycle starts
+   tray clients for the new X11 session.
+
 ### 5.6 Build System
 
 The build must:
@@ -622,6 +650,10 @@ In a real or nested X11 session:
 - With the launcher closed, the managed Quickshell process remains near idle
   in a short CPU sample, and no second Quickshell-based shell provider is
   running in the same session.
+- A source-checkout update of a live installation leaves the installed binary,
+  commands, managed Quickshell tree, and user data copy at the same revision.
+  After any required dwm session restart, the new executable is active and XDG
+  autostart tray clients register with the managed Quickshell tray host.
 - Multi-monitor behavior is tested where suitable hardware or nested displays
   are available.
 
@@ -672,6 +704,10 @@ A roadmap feature is complete when:
 - Secondary-platform behavior is implemented or exposes a tested clean
   unsupported state without regressing the core desktop.
 - Relevant automated and manual validation is recorded.
+- On a development machine running dwm-titus, the checkout has been
+  synchronized to the local live installation with
+  `scripts/dev-sync-install.sh`, including the post-relogin check when one is
+  required.
 - User-facing installation and troubleshooting documentation is updated.
 - No existing user configuration is overwritten.
 - Known limitations and untested platforms are stated precisely.

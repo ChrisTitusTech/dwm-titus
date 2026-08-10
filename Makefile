@@ -282,6 +282,9 @@ check-xvfb-runtime: all
 check-build-config:
 	tests/test-configure-build.sh
 
+check-dev-sync-install:
+	tests/test-dev-sync-install.sh
+
 check-terminal:
 	tests/test-dwm-terminal.sh
 
@@ -456,6 +459,7 @@ check:
 	$(MAKE) check-shell
 	$(MAKE) check-format
 	$(MAKE) check-build-config
+	$(MAKE) check-dev-sync-install
 	$(MAKE) check-default-apps
 	$(MAKE) check-diagnostics
 	$(MAKE) check-status
@@ -483,7 +487,7 @@ check:
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: all check check-build-config check-build-deps check-default-apps \
+.PHONY: all check check-build-config check-build-deps check-default-apps check-dev-sync-install \
 	check-container-smoke \
 	check-display-profile check-display-setup check-fedora-iso-builder check-format check-install \
 	check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
