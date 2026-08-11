@@ -25,9 +25,11 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 
 | Keys | Action |
 |------|--------|
-| `Super` + `P` | Full screenshot |
+| `Super` + `P` | Screenshot active monitor (cursor omitted) |
 | `Super` + `Shift` + `P` | Screenshot selection → file |
 | `Super` + `Ctrl` + `P` | Screenshot selection → clipboard |
+
+All `dwm-screenshot` capture modes omit the mouse cursor.
 
 ## Web Apps
 

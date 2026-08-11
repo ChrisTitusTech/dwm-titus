@@ -72,7 +72,7 @@ keys = [
   { mod="SUPER",            key="b",       desc="Browser",                 func="spawn",       exec=["dwm-default-apps", "open", "https://"] },
 
   # ── Screenshots ───────────────────────────────────────────────────────────────
-  { mod="SUPER",            key="p",       desc="Screenshot (fullscreen)", func="spawn",       cmd="dwm-screenshot full" },
+  { mod="SUPER",            key="p",       desc="Screenshot active monitor", func="spawn",     cmd="dwm-screenshot screen" },
   { mod="SUPER SHIFT",      key="p",       desc="Screenshot area → file",  func="spawn",       cmd="dwm-screenshot gui" },
   { mod="SUPER CTRL",       key="p",       desc="Screenshot area → clip",  func="spawn",       cmd="dwm-screenshot clip" },
 

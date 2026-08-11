@@ -49,6 +49,20 @@ cat >"$work/bin/xdg-user-dir" <<EOF
 printf '%s\n' '$work/home/Pictures'
 EOF
 
+cat >"$work/bin/xrandr" <<'EOF'
+#!/bin/sh
+cat <<'MONITORS'
+Monitors: 2
+ 0: +LEFT 1920/520x1080/290+0+0 LEFT
+ 1: +*RIGHT 2560/600x1440/340+1920+0 RIGHT
+MONITORS
+EOF
+
+cat >"$work/bin/xdotool" <<'EOF'
+#!/bin/sh
+printf '%s\n' 'X=2400' 'Y=720' 'SCREEN=0' 'WINDOW=1'
+EOF
+
 chmod +x "$work/bin/"*
 
 log=$work/calls.log
@@ -84,6 +98,17 @@ env -u WAYLAND_DISPLAY \
 	HOME="$work/home" \
 	PATH="$work/bin:/usr/bin:/bin" \
 	TEST_LOG="$log" \
+	"$repo_dir/scripts/dwm-screenshot" screen
+grep -Fqx "flameshot:screen -n 1 -p $work/home/Pictures/Screenshots" "$log"
+
+: >"$log"
+env -u WAYLAND_DISPLAY \
+	DISPLAY=:99 \
+	XDG_SESSION_TYPE=x11 \
+	XDG_CONFIG_HOME="$work/home/.config" \
+	HOME="$work/home" \
+	PATH="$work/bin:/usr/bin:/bin" \
+	TEST_LOG="$log" \
 	"$repo_dir/scripts/dwm-screenshot" setup
 if grep -q '^flameshot:' "$log"; then
 	printf '%s\n' "Flameshot setup must not start a capture" >&2
@@ -104,12 +129,12 @@ env -u WAYLAND_DISPLAY \
 	TEST_LOG="$log" \
 	"$repo_dir/scripts/dwm-screenshot" setup
 grep -Fqx 'useX11LegacyScreenshot=false' \
-	"$work/explicit/.config/flameshot/flameshot.ini"
-if grep -Fqx 'useX11LegacyScreenshot=true' \
-	"$work/explicit/.config/flameshot/flameshot.ini"; then
-	printf '%s\n' "Flameshot setup must preserve an explicit backend preference" >&2
+	"$work/explicit/.config/flameshot/flameshot.ini" && {
+	printf '%s\n' "Flameshot setup must replace a portal backend preference" >&2
 	exit 1
-fi
+}
+grep -Fqx 'useX11LegacyScreenshot=true' \
+	"$work/explicit/.config/flameshot/flameshot.ini"
 
 failure_home=$work/failure
 failure_bin=$work/failure-bin

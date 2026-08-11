@@ -28,6 +28,8 @@ versions from `config.mk`.
 
 ### Changed
 
+- `Super`+`P` now captures only the active monitor instead of combining all
+  monitors into one Flameshot image, and all screenshot modes omit the cursor.
 - Plain `dwm-terminal` launches now open Herdr when available, while explicit
   command launches bypass Herdr and retain the existing terminal-emulator
   contract.

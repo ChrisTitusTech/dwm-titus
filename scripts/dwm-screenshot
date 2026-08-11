@@ -4,9 +4,11 @@
 # Detects screenshot directory at runtime via XDG.
 #
 # Usage:
-#   dwm-screenshot full    — capture full screen
+#   dwm-screenshot screen  - capture the monitor containing the cursor
+#   dwm-screenshot full    - capture all monitors
 #   dwm-screenshot gui     — interactive region select
 #   dwm-screenshot clip    — region select to clipboard
+# All capture modes use the native X11 backend so the cursor is not captured.
 # ─────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -75,7 +77,7 @@ ensure_x11_capture_backend() {
 		/^\[General\][[:space:]]*$/ { in_general = 1; next }
 		/^\[[^]]+\][[:space:]]*$/ { in_general = 0 }
 		in_general &&
-			/^useX11LegacyScreenshot[[:space:]]*=[[:space:]]*(true|false)[[:space:]]*$/ {
+			/^useX11LegacyScreenshot[[:space:]]*=[[:space:]]*true[[:space:]]*$/ {
 			found = 1
 		}
 		END { exit !found }
@@ -149,6 +151,58 @@ ensure_x11_capture_backend() {
 		return 1
 	fi
 	rm -f -- "$backup_file" "$temp_file"
+}
+
+active_monitor_number() {
+	local key monitor_count monitor_height monitor_line monitor_number
+	local monitor_width monitor_x monitor_y pointer_x pointer_y value
+	local monitor_list
+
+	if ! command -v xrandr >/dev/null 2>&1; then
+		printf 'dwm-screenshot: xrandr is required to select the active monitor\n' >&2
+		return 1
+	fi
+	if ! monitor_list=$(xrandr --listmonitors 2>/dev/null); then
+		printf 'dwm-screenshot: unable to list active monitors\n' >&2
+		return 1
+	fi
+	monitor_count=$(awk 'NR == 1 && $1 == "Monitors:" { print $2 }' <<<"$monitor_list")
+	if [[ "$monitor_count" == 1 ]]; then
+		printf '0\n'
+		return
+	fi
+	if ! command -v xdotool >/dev/null 2>&1; then
+		printf 'dwm-screenshot: xdotool is required to locate the active monitor\n' >&2
+		return 1
+	fi
+	while IFS='=' read -r key value; do
+		case "$key" in
+		X) pointer_x=$value ;;
+		Y) pointer_y=$value ;;
+		esac
+	done < <(xdotool getmouselocation --shell 2>/dev/null)
+	if [[ ! ${pointer_x:-} =~ ^-?[0-9]+$ || ! ${pointer_y:-} =~ ^-?[0-9]+$ ]]; then
+		printf 'dwm-screenshot: unable to locate the pointer\n' >&2
+		return 1
+	fi
+
+	while IFS= read -r monitor_line; do
+		if [[ $monitor_line =~ ^[[:space:]]*([0-9]+):.*[[:space:]]([0-9]+)/[0-9]+x([0-9]+)/[0-9]+([+-][0-9]+)([+-][0-9]+)[[:space:]] ]]; then
+			monitor_number=${BASH_REMATCH[1]}
+			monitor_width=${BASH_REMATCH[2]}
+			monitor_height=${BASH_REMATCH[3]}
+			monitor_x=${BASH_REMATCH[4]}
+			monitor_y=${BASH_REMATCH[5]}
+			if ((pointer_x >= monitor_x && pointer_x < monitor_x + monitor_width && \
+				pointer_y >= monitor_y && pointer_y < monitor_y + monitor_height)); then
+				printf '%s\n' "$monitor_number"
+				return
+			fi
+		fi
+	done <<<"$monitor_list"
+
+	printf 'dwm-screenshot: pointer is not on an active monitor\n' >&2
+	return 1
 }
 
 flameshot_daemon_pids() {
@@ -285,6 +339,11 @@ SCREENSHOT_DIR="${SCREENSHOT_DIR:-$HOME/Pictures/Screenshots}"
 mkdir -p "$SCREENSHOT_DIR"
 
 case "$ACTION" in
+screen)
+	SCREEN_NUMBER=$(active_monitor_number)
+	exec {flameshot_lock_fd}>&-
+	exec flameshot screen -n "$SCREEN_NUMBER" -p "$SCREENSHOT_DIR"
+	;;
 full)
 	exec {flameshot_lock_fd}>&-
 	exec flameshot full -p "$SCREENSHOT_DIR"
@@ -298,7 +357,7 @@ clip)
 	exec flameshot gui --clipboard
 	;;
 *)
-	printf 'Usage: %s {full|gui|clip|setup|daemon|restart-daemon}\n' "$0" >&2
+	printf 'Usage: %s {screen|full|gui|clip|setup|daemon|restart-daemon}\n' "$0" >&2
 	exit 1
 	;;
 esac
