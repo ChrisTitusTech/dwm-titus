@@ -45,6 +45,7 @@ rules = [
   # { class="pavucontrol",    isfloating=1 },
 
   # ── assign to tag ────────────────────────────────────────────────────────
+  { class="PlazmicLegends", tags=5, monitor=1, noswallow=1 },
   # { class="firefox",        tags=2 },
   # { class="discord",        tags=7 },
   # { class="Steam",          tags=8, monitor=1 },
