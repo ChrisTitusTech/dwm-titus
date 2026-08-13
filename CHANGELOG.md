@@ -6,6 +6,12 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Changed
+
+- Flameshot clipboard captures now default to JPEG to avoid a Qt/X11 image
+  paste crash in Chromium-based applications, while file captures retain the
+  user's configured save format.
+
 ## [0.6.0] - 2026-08-13
 
 ### Added

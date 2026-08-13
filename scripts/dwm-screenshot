@@ -9,6 +9,7 @@
 #   dwm-screenshot gui     — interactive region select
 #   dwm-screenshot clip    — region select to clipboard
 # All capture modes use the native X11 backend so the cursor is not captured.
+# Clipboard captures default to JPEG for compatibility with Chromium clients.
 # ─────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -62,7 +63,7 @@ sync_activation_environment() {
 	fi
 }
 
-ensure_x11_capture_backend() {
+ensure_flameshot_defaults() {
 	local backup_file config_dir config_file target_file temp_file
 
 	config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/flameshot"
@@ -70,27 +71,52 @@ ensure_x11_capture_backend() {
 	mkdir -p "$config_dir"
 
 	if [[ ! -f "$config_file" ]]; then
-		printf '[General]\nuseX11LegacyScreenshot=true\n' >"$config_file"
+		printf '%s\n' \
+			'[General]' \
+			'useJpgForClipboard=true' \
+			'useX11LegacyScreenshot=true' >"$config_file"
 		return
 	fi
 	if awk '
 		/^\[General\][[:space:]]*$/ { in_general = 1; next }
 		/^\[[^]]+\][[:space:]]*$/ { in_general = 0 }
 		in_general &&
-			/^useX11LegacyScreenshot[[:space:]]*=[[:space:]]*true[[:space:]]*$/ {
-			found = 1
+			/^useJpgForClipboard[[:space:]]*=/ {
+			jpeg_count++
+			if ($0 ~ /^useJpgForClipboard[[:space:]]*=[[:space:]]*true[[:space:]]*$/)
+				jpeg_true++
 		}
-		END { exit !found }
+		in_general &&
+			/^useX11LegacyScreenshot[[:space:]]*=/ {
+			x11_count++
+			if ($0 ~ /^useX11LegacyScreenshot[[:space:]]*=[[:space:]]*true[[:space:]]*$/)
+				x11_true++
+		}
+		END {
+			exit !(jpeg_count == 1 && jpeg_true == 1 &&
+				x11_count == 1 && x11_true == 1)
+		}
 	' "$config_file"; then
 		return
 	fi
 
 	temp_file=$(mktemp "$config_file.tmp.XXXXXX")
 	if ! awk '
+		function write_missing_defaults() {
+			if (!wrote_jpeg) {
+				print "useJpgForClipboard=true"
+				wrote_jpeg = 1
+			}
+			if (!wrote_x11) {
+				print "useX11LegacyScreenshot=true"
+				wrote_x11 = 1
+			}
+		}
 		BEGIN {
 			in_general = 0
 			found_general = 0
-			wrote_setting = 0
+			wrote_jpeg = 0
+			wrote_x11 = 0
 		}
 		/^\[General\][[:space:]]*$/ {
 			in_general = 1
@@ -99,29 +125,36 @@ ensure_x11_capture_backend() {
 			next
 		}
 		/^\[[^]]+\][[:space:]]*$/ {
-			if (in_general && !wrote_setting) {
-				print "useX11LegacyScreenshot=true"
-				wrote_setting = 1
-			}
+			if (in_general)
+				write_missing_defaults()
 			in_general = 0
 			print
 			next
 		}
 		in_general &&
+			/^useJpgForClipboard[[:space:]]*=/ {
+			if (!wrote_jpeg) {
+				print "useJpgForClipboard=true"
+				wrote_jpeg = 1
+			}
+			next
+		}
+		in_general &&
 			/^useX11LegacyScreenshot[[:space:]]*=/ {
-			if (!wrote_setting) {
+			if (!wrote_x11) {
 				print "useX11LegacyScreenshot=true"
-				wrote_setting = 1
+				wrote_x11 = 1
 			}
 			next
 		}
 		{ print }
 		END {
-			if (in_general && !wrote_setting)
-				print "useX11LegacyScreenshot=true"
+			if (in_general)
+				write_missing_defaults()
 			else if (!found_general) {
 				print ""
 				print "[General]"
+				print "useJpgForClipboard=true"
 				print "useX11LegacyScreenshot=true"
 			}
 		}
@@ -319,7 +352,7 @@ fi
 
 sync_activation_environment
 acquire_flameshot_lock
-ensure_x11_capture_backend
+ensure_flameshot_defaults
 
 ACTION="${1:-gui}"
 if [[ "$ACTION" == setup ]]; then

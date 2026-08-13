@@ -205,6 +205,8 @@ run_duplicate_case() {
 	done
 	grep -Fqx 'useX11LegacyScreenshot=true' \
 		"$home/.config/flameshot/flameshot.ini"
+	grep -Fqx 'useJpgForClipboard=true' \
+		"$home/.config/flameshot/flameshot.ini"
 	grep -Fqx 'x11|xcb|' "$state/flameshot.env"
 	test ! -e "$state/light-locker.count"
 	test ! -e "$state/dex.count"

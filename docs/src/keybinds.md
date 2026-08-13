@@ -30,6 +30,9 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | `Super` + `Ctrl` + `P` | Screenshot selection → clipboard |
 
 All `dwm-screenshot` capture modes omit the mouse cursor.
+Clipboard captures default to JPEG for compatibility with Chromium-based
+applications. Screenshots saved to disk keep Flameshot's configured file
+format.
 
 ## Web Apps
 

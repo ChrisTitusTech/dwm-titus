@@ -81,6 +81,8 @@ grep -Fqx 'systemctl:--user import-environment DISPLAY XDG_SESSION_TYPE QT_QPA_P
 grep -Fqx 'dbus:WAYLAND_DISPLAY=' "$log"
 grep -Fqx 'dbus:--systemd DISPLAY XDG_SESSION_TYPE QT_QPA_PLATFORM XAUTHORITY' "$log"
 grep -Fqx 'flameshot:gui --clipboard' "$log"
+grep -Fqx 'useJpgForClipboard=true' \
+	"$work/home/.config/flameshot/flameshot.ini"
 grep -Fqx 'useX11LegacyScreenshot=true' \
 	"$work/home/.config/flameshot/flameshot.ini"
 grep -Fqx 'showHelp=false' "$work/home/.config/flameshot/flameshot.ini"
@@ -118,6 +120,8 @@ fi
 mkdir -p "$work/explicit/.config/flameshot"
 cat >"$work/explicit/.config/flameshot/flameshot.ini" <<'EOF'
 [General]
+useJpgForClipboard=true
+useJpgForClipboard=false
 useX11LegacyScreenshot=false
 EOF
 env -u WAYLAND_DISPLAY \
@@ -135,6 +139,15 @@ grep -Fqx 'useX11LegacyScreenshot=false' \
 }
 grep -Fqx 'useX11LegacyScreenshot=true' \
 	"$work/explicit/.config/flameshot/flameshot.ini"
+grep -Fqx 'useJpgForClipboard=true' \
+	"$work/explicit/.config/flameshot/flameshot.ini"
+test "$(grep -Fxc 'useJpgForClipboard=true' \
+	"$work/explicit/.config/flameshot/flameshot.ini")" -eq 1
+if grep -Fq 'useJpgForClipboard=false' \
+	"$work/explicit/.config/flameshot/flameshot.ini"; then
+	printf '%s\n' "Flameshot setup must remove duplicate JPEG preferences" >&2
+	exit 1
+fi
 
 failure_home=$work/failure
 failure_bin=$work/failure-bin
@@ -249,6 +262,8 @@ wait "$first_setup_pid"
 wait "$second_setup_pid"
 test ! -e "$concurrent_state/second-writer-entered"
 grep -Fqx 'useX11LegacyScreenshot=true' \
+	"$concurrent_home/.config/flameshot/flameshot.ini"
+grep -Fqx 'useJpgForClipboard=true' \
 	"$concurrent_home/.config/flameshot/flameshot.ini"
 grep -Fqx 'showHelp=false' \
 	"$concurrent_home/.config/flameshot/flameshot.ini"
