@@ -6,6 +6,8 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-13
+
 ### Added
 
 - A developer live-install synchronization command that builds, backs up,
@@ -72,4 +74,5 @@ versions from `config.mk`.
 - Prevent nested dwm/Xvfb instances from terminating the active graphical login
   by verifying the logind display and isolating `XDG_DATA_HOME` in runtime tests.
 
-[Unreleased]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.5.2...v0.6.0

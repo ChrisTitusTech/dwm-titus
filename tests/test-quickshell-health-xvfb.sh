@@ -36,6 +36,11 @@ cp "$repo/config/"*.toml "$config_home/dwm-titus/"
 # Simulate an existing preserved rule file. The generic control-center title
 # rule must also cover the newly added utility window.
 sed -i '/title="dwm control center utility"/d' "$config_home/dwm-titus/window-rules.toml"
+sed -i '/title="dwm network password"/a\
+  { title="dwm control center",         isfloating=1, alwaysontop=1 },' \
+	"$config_home/dwm-titus/window-rules.toml"
+grep -Fqx '  { title="dwm control center",         isfloating=1, alwaysontop=1 },' \
+	"$config_home/dwm-titus/window-rules.toml"
 cp "$repo/scripts/dwm-system-health" "$repo/scripts/dwm-diagnostics" \
 	"$repo/scripts/dwm-quickshell-controlcenter" "$repo/scripts/dwm-quickshell-launcher" \
 	"$data_home/dwm-titus/scripts/"
