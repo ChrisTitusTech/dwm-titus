@@ -129,7 +129,6 @@ xdg-user-dirs
 xdg-desktop-portal-gtk
 gnome-keyring
 gnome-keyring-pam
-nwg-look
 %end
 
 %post --nochroot --erroronfail --log=/mnt/sysimage/root/dwm-titus-copy.log

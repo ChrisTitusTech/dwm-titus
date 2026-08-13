@@ -98,7 +98,7 @@ dwm_packages() {
 		printf '%s\n' \
 			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring gnome-keyring-pam NetworkManager \
-			rsync nwg-look
+			rsync
 		if [[ ${DISTRO_ID:-} != fedora ]]; then
 			printf '%s\n' playerctl
 		fi

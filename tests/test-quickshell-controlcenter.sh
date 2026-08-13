@@ -334,6 +334,16 @@ grep -Fqx 'action	open-wallpapers' "$work/wallpapers.out"
 grep -Fq "xdg-open $work/home/Pictures/backgrounds" "$work/actions.log"
 
 : >"$work/actions.log"
+run_helper action gtk-settings >"$work/gtk-settings.out"
+grep -Fqx 'action	gtk-settings' "$work/gtk-settings.out"
+grep -Fqx 'nwg-look ' "$work/actions.log"
+rm -f "$work/bin/nwg-look"
+if run_helper action gtk-settings 2>"$work/gtk-settings.err"; then
+	exit 1
+fi
+grep -Fqx 'nwg-look is unavailable' "$work/gtk-settings.err"
+
+: >"$work/actions.log"
 run_helper action reload-wallpaper >"$work/reload-wallpaper.out"
 grep -Fqx 'action	reload-wallpaper' "$work/reload-wallpaper.out"
 grep -Fq "feh --randomize --bg-fill $work/home/Pictures/backgrounds/wallpaper.png" "$work/actions.log"
@@ -433,6 +443,9 @@ grep -Fq 'root.launcherModel.openOnScreen(targetScreen);' "$repo/config/quickshe
 grep -Fq 'launcherModel: launcherModel' "$repo/config/quickshell/shell.qml"
 grep -Fq 'label: "Quick Actions"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'model: root.controlCenterModel.actions' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'root.gtkSettingsAvailable = false;' "$repo/config/quickshell/controlcenter/ControlCenterModel.qml"
+grep -Fq 'root.actionSucceeded = this.text.indexOf("action\t") === 0' "$repo/config/quickshell/controlcenter/ControlCenterModel.qml"
+grep -Fq 'root.message = root.actionSucceeded' "$repo/config/quickshell/controlcenter/ControlCenterModel.qml"
 grep -Fq 'function openWidgets()' "$repo/config/quickshell/controlcenter/ControlCenterModel.qml"
 grep -Fq 'label: "Settings"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'label: "System Health"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"

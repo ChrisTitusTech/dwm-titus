@@ -53,6 +53,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Remove the unavailable `nwg-look` package from Fedora/RHEL dependency and
+  Kickstart package sets so Fedora 44 Anaconda installations can resolve the
+  complete desktop package transaction. The GTK settings action remains an
+  optional delegated tool and is shown only when `nwg-look` is installed.
 - Keep Quickshell notifications and panel-transient control popups above normal
   client windows while preserving true fullscreen applications above every
   shell surface through one centralized X11 stacking pass, returning input

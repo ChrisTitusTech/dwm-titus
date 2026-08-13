@@ -66,6 +66,10 @@ if DISTRO_ID=rocky dwm_packages rhel recommended | grep -Fx playerctl >/dev/null
 	exit 1
 fi
 DISTRO_ID=rocky dwm_packages rhel optional | grep -Fx playerctl >/dev/null
+if DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel full | grep -Fx nwg-look >/dev/null; then
+	printf 'Unavailable Fedora package leaked into the image package set: nwg-look\n' >&2
+	exit 1
+fi
 
 for mapping in arch:gvfs-smb rhel:gvfs-smb debian:gvfs-backends; do
 	family=${mapping%%:*}
@@ -82,6 +86,10 @@ for mapping in arch:gnome-keyring rhel:gnome-keyring-pam debian:libpam-gnome-key
 done
 
 for ks in "$standard_ks" "$nvidia_ks"; do
+	if grep -Fxq nwg-look "$ks"; then
+		printf 'Unavailable Fedora package found in %s: nwg-look\n' "$ks" >&2
+		exit 1
+	fi
 	for repo_line in "${required_repos[@]}"; do
 		grep -Fq "$repo_line" "$ks"
 	done

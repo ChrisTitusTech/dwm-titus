@@ -17,19 +17,27 @@ Scope {
     property bool showPowerWidget: true
     property bool showWorkspaceWidget: true
     property string message: ""
+    property string pendingAction: ""
+    property bool actionSucceeded: false
     property var infoRows: []
     property var themeRows: []
     property var keybindRows: []
-    readonly property var actions: [
-        { "id": "restart-picom", "label": "Restart Picom" },
-        { "id": "restart-quickshell", "label": "Restart Quickshell" },
-        { "id": "reload-wallpaper", "label": "Reload Wallpaper" },
-        { "id": "restart-networkmanager", "label": "Restart NetworkManager" },
-        { "id": "dependency-check", "label": "Dependency Check" },
-        { "id": "install-missing-deps", "label": "Install Missing Deps" },
-        { "id": "open-wallpapers", "label": "Wallpaper Folder" },
-        { "id": "gtk-settings", "label": "GTK Settings" }
-    ]
+    property bool gtkSettingsAvailable: false
+    readonly property var actions: {
+        const availableActions = [
+            { "id": "restart-picom", "label": "Restart Picom" },
+            { "id": "restart-quickshell", "label": "Restart Quickshell" },
+            { "id": "reload-wallpaper", "label": "Reload Wallpaper" },
+            { "id": "restart-networkmanager", "label": "Restart NetworkManager" },
+            { "id": "dependency-check", "label": "Dependency Check" },
+            { "id": "install-missing-deps", "label": "Install Missing Deps" },
+            { "id": "open-wallpapers", "label": "Wallpaper Folder" }
+        ];
+        if (root.gtkSettingsAvailable) {
+            availableActions.push({ "id": "gtk-settings", "label": "GTK Settings" });
+        }
+        return availableActions;
+    }
     property var powerRows: []
     property bool powerDpmsAvailable: false
     property bool powerDpmsEnabled: false
@@ -104,6 +112,10 @@ Scope {
 
     function openActions() {
         root.openPage("actions", "", null);
+        if (!gtkSettingsCheckProcess.running) {
+            root.gtkSettingsAvailable = false;
+            gtkSettingsCheckProcess.running = true;
+        }
     }
 
     function openAppearance() {
@@ -205,6 +217,8 @@ Scope {
         }
 
         root.busy = true;
+        root.pendingAction = action;
+        root.actionSucceeded = false;
         root.message = "Running " + action + "...";
         actionProcess.command = Commands.controlCenterHelperCommand("action", [action]);
         actionProcess.running = true;
@@ -306,15 +320,33 @@ Scope {
     }
 
     Process {
+        id: gtkSettingsCheckProcess
+
+        command: ["sh", "-c", "command -v nwg-look >/dev/null 2>&1 && printf yes || printf no"]
+        running: false
+
+        stdout: StdioCollector {
+            onStreamFinished: root.gtkSettingsAvailable = this.text.trim() === "yes"
+        }
+    }
+
+    Process {
         id: actionProcess
 
         command: ["sh", "-c", "exit 0"]
         running: false
 
+        stdout: StdioCollector {
+            onStreamFinished: root.actionSucceeded = this.text.indexOf("action\t") === 0
+        }
+
         onRunningChanged: {
             if (!running && root.busy) {
                 root.busy = false;
-                root.message = "Action dispatched";
+                root.message = root.actionSucceeded
+                    ? "Action dispatched"
+                    : "Action failed: " + root.pendingAction;
+                root.pendingAction = "";
                 root.refreshCurrentPage();
             }
         }
