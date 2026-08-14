@@ -8,6 +8,8 @@ versions from `config.mk`.
 
 ### Changed
 
+- Thunar's seeded **Open Terminal Here** action now launches Alacritty directly
+  instead of entering the Herdr workspace.
 - Flameshot clipboard captures now default to JPEG to avoid a Qt/X11 image
   paste crash in Chromium-based applications, while file captures retain the
   user's configured save format.

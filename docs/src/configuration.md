@@ -78,6 +78,11 @@ interactive launch. If Herdr is unavailable, it opens the selected emulator
 directly. Explicit arguments such as `dwm-terminal -e command` always bypass
 Herdr so application launchers and maintenance actions keep working.
 
+Thunar's seeded **Open Terminal Here** action launches Alacritty directly in
+the selected directory. It intentionally bypasses Herdr while leaving the
+normal `Super` + `X` terminal workspace unchanged. Existing Thunar custom
+actions are preserved during installation and upgrades.
+
 Set `DWM_TERMINAL` to choose another outer emulator, set `DWM_HERDR=0` to
 disable the Herdr layer, or set `DWM_HERDR_COMMAND` to another Herdr binary
 path.

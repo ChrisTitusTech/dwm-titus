@@ -26,6 +26,7 @@ cp -a "$REPO_DIR/." "$TEST_REPO/"
 mkdir -p \
 	"$XDG_CONFIG_HOME/dwm-titus" \
 	"$XDG_CONFIG_HOME/picom" \
+	"$XDG_CONFIG_HOME/Thunar" \
 	"$XDG_CONFIG_HOME/quickshell" \
 	"$XDG_CONFIG_HOME/autostart" \
 	"$XDG_CONFIG_HOME/systemd/user/default.target.wants" \
@@ -38,6 +39,7 @@ printf '%s\n' '# existing hotkeys marker' >"$XDG_CONFIG_HOME/dwm-titus/hotkeys.t
 printf '%s\n' '# existing themes marker' >"$XDG_CONFIG_HOME/dwm-titus/themes.toml"
 printf '%s\n' '# existing rules marker' >"$XDG_CONFIG_HOME/dwm-titus/window-rules.toml"
 printf '%s\n' '# existing picom marker' >"$XDG_CONFIG_HOME/picom/picom.conf"
+printf '%s\n' '<!-- existing Thunar actions marker -->' >"$XDG_CONFIG_HOME/Thunar/uca.xml"
 printf '%s\n' '# unrelated user service marker' >"$XDG_CONFIG_HOME/systemd/user/custom.service"
 cat >"$XDG_CONFIG_HOME/autostart/picom.desktop" <<'EOF'
 [Desktop Entry]
@@ -109,6 +111,7 @@ snapshot_file "$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml" "$WORK_DIR/hotkeys.befor
 snapshot_file "$XDG_CONFIG_HOME/dwm-titus/themes.toml" "$WORK_DIR/themes.before"
 snapshot_file "$XDG_CONFIG_HOME/dwm-titus/window-rules.toml" "$WORK_DIR/window-rules.before"
 snapshot_file "$XDG_CONFIG_HOME/picom/picom.conf" "$WORK_DIR/picom.before"
+snapshot_file "$XDG_CONFIG_HOME/Thunar/uca.xml" "$WORK_DIR/thunar-uca.before"
 snapshot_file "$XDG_CONFIG_HOME/autostart/picom.desktop" "$WORK_DIR/picom-autostart.before"
 snapshot_file "$XDG_CONFIG_HOME/systemd/user/custom.service" "$WORK_DIR/custom-service.before"
 
@@ -127,6 +130,8 @@ assert_preserved hotkeys "$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml" "$WORK_DIR/ho
 assert_preserved themes "$XDG_CONFIG_HOME/dwm-titus/themes.toml" "$WORK_DIR/themes.before"
 assert_preserved window-rules "$XDG_CONFIG_HOME/dwm-titus/window-rules.toml" "$WORK_DIR/window-rules.before"
 assert_preserved picom "$XDG_CONFIG_HOME/picom/picom.conf" "$WORK_DIR/picom.before"
+assert_preserved thunar-uca "$XDG_CONFIG_HOME/Thunar/uca.xml" \
+	"$WORK_DIR/thunar-uca.before"
 assert_preserved picom-autostart "$XDG_CONFIG_HOME/autostart/picom.desktop" \
 	"$WORK_DIR/picom-autostart.before"
 assert_preserved custom-service "$XDG_CONFIG_HOME/systemd/user/custom.service" "$WORK_DIR/custom-service.before"
@@ -173,6 +178,21 @@ test "$(grep -o 'X-DWM;' "$POLKIT_OVERRIDE" | wc -l)" -eq 1
 test "$(stat -c %U "$LOCKER_OVERRIDE")" = "$OWNER"
 test "$(stat -c %U "$POLKIT_OVERRIDE")" = "$OWNER"
 test "$(stat -c %U "$XDG_CONFIG_HOME/autostart")" = "$OWNER"
+
+FRESH_HOME="$WORK_DIR/fresh-home"
+FRESH_CONFIG_HOME="$FRESH_HOME/.config"
+FRESH_DATA_HOME="$FRESH_HOME/.local/share"
+FRESH_CONFIG_DIRS="$WORK_DIR/fresh-etc-xdg"
+mkdir -p "$FRESH_CONFIG_DIRS/autostart" "$FRESH_DATA_HOME"
+make -C "$TEST_REPO" install-user \
+	USER_HOME="$FRESH_HOME" \
+	OWNER="$OWNER" \
+	XDG_CONFIG_HOME="$FRESH_CONFIG_HOME" \
+	XDG_CONFIG_DIRS="$FRESH_CONFIG_DIRS" \
+	XDG_DATA_HOME="$FRESH_DATA_HOME"
+cmp "$TEST_REPO/config/Thunar/uca.xml" "$FRESH_CONFIG_HOME/Thunar/uca.xml"
+grep -Fqx '    <command>alacritty --working-directory %f</command>' \
+	"$FRESH_CONFIG_HOME/Thunar/uca.xml"
 
 EMPTY_CONFIG_HOME="$WORK_DIR/empty-config"
 EMPTY_CONFIG_DIRS="$WORK_DIR/empty-etc-xdg"
