@@ -130,7 +130,10 @@ Per-device input values kept in Settings are stored in
 event-driven input provider uses a hardware serial or path when available,
 re-resolves that identity before every change, and skips a disconnected device
 rather than applying its settings to another XInput ID. Session startup runs
-`dwm-settings-input apply-saved`; repeating it is safe.
+`dwm-settings-input apply-saved` and starts an event-driven, debounced hotplug
+replay so returning devices regain saved values. Repeating the apply is safe.
+The replay watcher is scoped to the owning dwm process and exits at logout,
+including when dwm was launched through `startx`.
 
 Power settings are managed from Control Center -> Power. The generated
 `power.conf` is authoritative once created and persists screen DPMS state,

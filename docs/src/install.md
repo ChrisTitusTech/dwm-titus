@@ -182,7 +182,7 @@ dwm-settings-display preview TOKEN SECONDS SPEC...
 dwm-settings-display preview-profile TOKEN SECONDS NAME
 dwm-settings-display keep TOKEN [NAME]
 dwm-settings-display revert TOKEN
-dwm-settings-display preview-status TOKEN
+dwm-settings-display preview-status [TOKEN]
 dwm-settings-display install-profile NAME
 dwm-settings-display rollback-system
 ```
@@ -202,19 +202,23 @@ The input provider exposes the corresponding session actions:
 ```text
 dwm-settings-input discover
 dwm-settings-input watch
+dwm-settings-input watch-apply
 dwm-settings-input apply-saved
 dwm-settings-input preview TOKEN SECONDS DEVICE SETTING VALUE
 dwm-settings-input keep TOKEN
 dwm-settings-input revert TOKEN
+dwm-settings-input preview-status [TOKEN]
 dwm-settings-input reset DEVICE SETTING
 ```
 
 All input actions require `xinput`; keyboard layout and modifier operations
 also require `setxkbmap`; stable hardware identity and hotplug watching use
-`udevadm`. Kept values default to
+`udevadm`, and the session watcher uses `flock` from `util-linux` to prevent
+duplicate replay workers. Kept values default to
 `${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/input-settings.conf`. Set
 `DWM_INPUT_SETTINGS_FILE` to use a different file. The normal session startup
-invokes `apply-saved` idempotently.
+invokes `apply-saved` idempotently and runs `watch-apply` to debounce input
+hotplug events before replaying saved values for returning devices.
 
 **startx:**
 ```bash

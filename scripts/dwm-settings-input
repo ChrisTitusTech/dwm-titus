@@ -11,10 +11,13 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 self="$script_dir/${BASH_SOURCE[0]##*/}"
 
 declare -a device_ids=() device_keys=() device_kinds=() device_names=() device_persistable=()
+watch_event_fifo=
+watch_monitor_pid=
+watch_session_guard_pid=
 
 usage() {
 	cat >&2 <<'EOF'
-usage: dwm-settings-input discover|watch|apply-saved
+usage: dwm-settings-input discover|watch|watch-apply|apply-saved
        dwm-settings-input preview TOKEN SECONDS DEVICE SETTING VALUE
        dwm-settings-input keep TOKEN
        dwm-settings-input revert TOKEN
@@ -163,7 +166,7 @@ emit_unsupported() {
 }
 
 discover() {
-	local index id key kind name properties value default layout options
+	local index id key kind name properties value default layout options keyboard_query
 	scan_devices
 	printf 'input-protocol\t1\n'
 	for index in "${!device_ids[@]}"; do
@@ -203,13 +206,27 @@ discover() {
 				emit_unsupported "$key" tap-to-click "The X11 driver does not expose tap-to-click"
 			fi
 		fi
-		if [[ $kind == keyboard ]] && command -v setxkbmap >/dev/null 2>&1; then
-			layout=$(setxkbmap -device "$id" -query 2>/dev/null | awk '$1 == "layout:" {print $2; exit}')
-			options=$(setxkbmap -device "$id" -query 2>/dev/null | awk '$1 == "options:" {$1=""; sub(/^[[:space:]]+/, ""); print; exit}')
-			if ! default=$(persisted_default "$key" keyboard-layout); then default=$layout; fi
-			[[ -z $layout ]] || emit_setting "$key" keyboard-layout "Keyboard layout" text "$layout" "$default" 0 0
-			if ! default=$(persisted_default "$key" modifier-options); then default=$options; fi
-			emit_setting "$key" modifier-options "Modifier options" text "$options" "$default" 0 0
+		if [[ $kind == keyboard ]]; then
+			if command -v setxkbmap >/dev/null 2>&1; then
+				if keyboard_query=$(setxkbmap -device "$id" -query 2>/dev/null); then
+					layout=$(awk '$1 == "layout:" {print $2; exit}' <<<"$keyboard_query")
+					options=$(awk '$1 == "options:" {$1=""; sub(/^[[:space:]]+/, ""); print; exit}' <<<"$keyboard_query")
+					if [[ -n $layout ]]; then
+						if ! default=$(persisted_default "$key" keyboard-layout); then default=$layout; fi
+						emit_setting "$key" keyboard-layout "Keyboard layout" text "$layout" "$default" 0 0
+					else
+						emit_unsupported "$key" keyboard-layout "setxkbmap did not report a keyboard layout"
+					fi
+					if ! default=$(persisted_default "$key" modifier-options); then default=$options; fi
+					emit_setting "$key" modifier-options "Modifier options" text "$options" "$default" 0 0
+				else
+					emit_unsupported "$key" keyboard-layout "setxkbmap could not query this keyboard"
+					emit_unsupported "$key" modifier-options "setxkbmap could not query this keyboard"
+				fi
+			else
+				emit_unsupported "$key" keyboard-layout "setxkbmap is unavailable"
+				emit_unsupported "$key" modifier-options "setxkbmap is unavailable"
+			fi
 			emit_unsupported "$key" repeat "Per-device key repeat is not exposed by X11"
 		fi
 		rm -f "$properties"
@@ -341,6 +358,19 @@ ensure_state_dir() {
 	[[ $(stat -c %u "$state_dir") == "$UID" ]] || die "preview state directory has the wrong owner"
 	[[ $(stat -c %a "$state_dir") == 700 ]] || die "preview state directory is too permissive"
 }
+
+acquire_mutation_lock() {
+	local mutation_lock
+	command -v flock >/dev/null 2>&1 || die "flock is unavailable"
+	ensure_state_dir
+	mutation_lock=$state_dir/input-mutation.lock
+	[[ ! -e $mutation_lock || (-f $mutation_lock && ! -L $mutation_lock) ]] || die "unsafe input mutation lock"
+	: >>"$mutation_lock"
+	chmod 600 "$mutation_lock"
+	exec 7>"$mutation_lock"
+	flock 7
+}
+
 token_file() {
 	[[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || die "invalid preview token"
 	printf '%s/%s.%s\n' "$state_dir" "$1" "$2"
@@ -387,7 +417,10 @@ preview_value() {
 		cleanup_preview "$token"
 		die "input preview failed; recovery state was cleared"
 	fi
-	("$self" _watch "$token" "$seconds" >/dev/null 2>&1) &
+	(
+		exec 7>&-
+		"$self" _watch "$token" "$seconds" >/dev/null 2>&1
+	) &
 	printf 'preview\t%s\t%s\n' "$token" "$seconds"
 }
 
@@ -408,13 +441,18 @@ finish_preview() {
 		die "input device is unavailable; preview state was retained for rollback retry"
 	fi
 	cleanup_preview "$token"
+	if [[ $action == keep ]]; then
+		apply_pending_hotplug
+	else
+		apply_pending_hotplug "$key" "$setting"
+	fi
 	printf 'result\t%s\t%s\n' "$action" "$token"
 }
 
 watchdog() {
 	local token=$1 seconds=$2 state key setting previous value claim failed
 	sleep "$seconds"
-	ensure_state_dir
+	acquire_mutation_lock
 	state=$(token_file "$token" state)
 	if [[ -f $state ]]; then
 		claim=$(token_file "$token" claim)
@@ -422,6 +460,7 @@ watchdog() {
 		IFS='|' read -r key setting previous value <"$state"
 		if (apply_value "$key" "$setting" "$previous"); then
 			cleanup_preview "$token"
+			apply_pending_hotplug "$key" "$setting"
 		else
 			failed=$(token_file "$token" failed)
 			printf 'Automatic input rollback failed; the captured value is retained for retry.\n' >"$failed"
@@ -480,7 +519,14 @@ reset_setting() {
 }
 
 apply_saved() {
-	local line key setting value baseline remainder
+	local skip_key=${1:-} skip_setting=${2:-} line key setting value baseline remainder pending
+	pending=$state_dir/hotplug-replay.pending
+	if [[ -f $state_dir/current ]]; then
+		: >"$pending"
+		chmod 600 "$pending"
+		return 0
+	fi
+	rm -f "$pending"
 	[[ -f $settings_file ]] || return 0
 	while IFS= read -r line <&3; do
 		[[ $line == *$'\t'*$'\t'* ]] || continue
@@ -496,15 +542,103 @@ apply_saved() {
 			baseline=
 		fi
 		[[ -n $key && -n $setting ]] || continue
+		[[ $key != "$skip_key" || $setting != "$skip_setting" ]] || continue
 		(apply_value "$key" "$setting" "$value") ||
 			printf 'dwm-settings-input: skipped unavailable %s/%s\n' "$key" "$setting" >&2
 	done 3<"$settings_file"
+}
+
+apply_pending_hotplug() {
+	local skip_key=${1:-} skip_setting=${2:-}
+	[[ -f $state_dir/hotplug-replay.pending ]] || return 0
+	apply_saved "$skip_key" "$skip_setting"
+}
+
+session_parent_alive() {
+	local session_pid=${DWM_INPUT_SESSION_PID:-} expected_start=${DWM_INPUT_SESSION_START:-} actual_start
+	[[ -n $session_pid && -r /proc/$session_pid/stat ]] || return 1
+	[[ -n $expected_start ]] || return 0
+	actual_start=$(awk '{ print $22 }' "/proc/$session_pid/stat" 2>/dev/null) || return 1
+	[[ $actual_start == "$expected_start" ]]
+}
+
+cleanup_watch_apply() {
+	if [[ -n $watch_session_guard_pid ]]; then
+		kill "$watch_session_guard_pid" 2>/dev/null || true
+		wait "$watch_session_guard_pid" 2>/dev/null || true
+	fi
+	if [[ -n $watch_monitor_pid ]]; then
+		kill "$watch_monitor_pid" 2>/dev/null || true
+		wait "$watch_monitor_pid" 2>/dev/null || true
+	fi
+	[[ -z $watch_event_fifo ]] || rm -f "$watch_event_fifo"
 }
 
 watch_events() {
 	command -v udevadm >/dev/null 2>&1 || die "udevadm is unavailable"
 	udevadm monitor --udev --subsystem-match=input --property 2>/dev/null |
 		while IFS= read -r line; do case $line in ACTION=*) printf 'changed\n' ;; esac done
+}
+
+watch_apply_events() {
+	local line read_status stream_open=1 watch_lock watcher_pid session_pid session_start
+	need_tools
+	command -v udevadm >/dev/null 2>&1 || die "udevadm is unavailable"
+	command -v flock >/dev/null 2>&1 || die "flock is unavailable"
+	ensure_state_dir
+	hotplug_settle_seconds=${DWM_INPUT_HOTPLUG_SETTLE_SECONDS:-1}
+	[[ $hotplug_settle_seconds =~ ^[0-9]+([.][0-9]+)?$ ]] &&
+		[[ ! $hotplug_settle_seconds =~ ^0+([.]0+)?$ ]] || die "hotplug settle interval must be positive"
+	watch_lock=$state_dir/hotplug-watch.lock
+	[[ ! -e $watch_lock || (-f $watch_lock && ! -L $watch_lock) ]] || die "unsafe input hotplug watcher lock"
+	: >>"$watch_lock"
+	chmod 600 "$watch_lock"
+	exec 9>"$watch_lock"
+	flock -n 9 || die "input hotplug watcher is already running"
+	session_pid=${DWM_INPUT_SESSION_PID:-}
+	session_start=${DWM_INPUT_SESSION_START:-}
+	if [[ -n $session_pid || -n $session_start ]]; then
+		[[ $session_pid =~ ^[1-9][0-9]*$ ]] || die "invalid input watcher session PID"
+		[[ -z $session_start || $session_start =~ ^[1-9][0-9]*$ ]] ||
+			die "invalid input watcher session start identity"
+		session_parent_alive || die "input watcher session process is unavailable"
+		watcher_pid=$BASHPID
+		(
+			while session_parent_alive; do sleep 0.25; done
+			kill -TERM "$watcher_pid" 2>/dev/null || true
+		) &
+		watch_session_guard_pid=$!
+	fi
+	watch_event_fifo=$state_dir/hotplug-events.$BASHPID
+	[[ ! -e $watch_event_fifo ]] || die "unsafe input hotplug event pipe"
+	mkfifo -m 600 "$watch_event_fifo"
+	udevadm monitor --udev --subsystem-match=input --property >"$watch_event_fifo" 2>/dev/null &
+	watch_monitor_pid=$!
+	trap 'exit 0' HUP INT TERM
+	trap cleanup_watch_apply EXIT
+	exec 8<"$watch_event_fifo"
+	rm -f "$watch_event_fifo"
+	watch_event_fifo=
+	while IFS= read -r line <&8; do
+		case $line in
+		ACTION=add | ACTION=bind | ACTION=change)
+			while :; do
+				if IFS= read -r -t "$hotplug_settle_seconds" line <&8; then
+					continue
+				else
+					read_status=$?
+				fi
+				if ((read_status < 128)); then
+					sleep "$hotplug_settle_seconds"
+					stream_open=0
+				fi
+				break
+			done
+			"$self" apply-saved || true
+			((stream_open == 1)) || break
+			;;
+		esac
+	done
 }
 
 case ${1:-} in
@@ -516,16 +650,23 @@ watch)
 	[[ $# == 1 ]] || die "watch takes no arguments"
 	watch_events
 	;;
+watch-apply)
+	[[ $# == 1 ]] || die "watch-apply takes no arguments"
+	watch_apply_events
+	;;
 apply-saved)
 	[[ $# == 1 ]] || die "apply-saved takes no arguments"
+	acquire_mutation_lock
 	apply_saved
 	;;
 preview)
 	[[ $# == 6 ]] || die "preview requires token, timeout, device, setting, and value"
+	acquire_mutation_lock
 	preview_value "$2" "$3" "$4" "$5" "$6"
 	;;
 keep | revert)
 	[[ $# == 2 ]] || die "$1 requires a token"
+	acquire_mutation_lock
 	finish_preview "$1" "$2"
 	;;
 preview-status)
@@ -534,6 +675,7 @@ preview-status)
 	;;
 reset)
 	[[ $# == 3 ]] || die "reset requires device and setting"
+	acquire_mutation_lock
 	reset_setting "$2" "$3"
 	;;
 _watch)

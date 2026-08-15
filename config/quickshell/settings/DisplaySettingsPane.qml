@@ -56,7 +56,7 @@ Flickable {
 					font.family: Theme.fontFamily
 					wrapMode: Text.WordWrap
 				}
-                ShellButton { label: "Keep"; onActivated: root.settingsModel.keepPreview(root.profileName.trim()) }
+				ShellButton { label: root.settingsModel.previewRollbackFailed ? "Accept current" : "Keep"; onActivated: root.settingsModel.keepPreview(root.profileName.trim()) }
                 ShellButton { label: "Revert"; danger: true; onActivated: root.settingsModel.revertPreview() }
             }
         }
@@ -148,10 +148,20 @@ Flickable {
 			ShellButton { label: "Save profile"; enabled: root.profileName.trim().length > 0; onActivated: root.settingsModel.saveDisplay(root.profileName.trim()) }
 			ShellButton {
 				label: "Install persistent"
-				enabled: root.settingsModel.displayProfiles.indexOf(root.profileName.trim()) >= 0
+				enabled: root.settingsModel.displayPersistenceAvailable && root.settingsModel.displayProfiles.indexOf(root.profileName.trim()) >= 0
 				onActivated: root.confirmation = "install"
 			}
-            ShellButton { label: "Rollback system"; danger: true; onActivated: root.confirmation = "rollback" }
+            ShellButton { label: "Rollback system"; danger: true; enabled: root.settingsModel.displayPersistenceAvailable; onActivated: root.confirmation = "rollback" }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: !root.settingsModel.displayPersistenceAvailable
+            text: root.settingsModel.displayPersistenceCapability.detail
+            color: Theme.warning
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallFontSize
+            wrapMode: Text.WordWrap
         }
 
         Rectangle {
@@ -188,6 +198,19 @@ Flickable {
             Repeater {
                 model: root.settingsModel.displayProfiles
                 delegate: ShellButton { required property string modelData; label: "Preview " + modelData; enabled: !root.settingsModel.previewOperationLocked; onActivated: root.settingsModel.previewDisplayProfile(modelData) }
+            }
+        }
+
+        Repeater {
+            model: root.settingsModel.displayUnsupportedProfiles
+            delegate: Text {
+                required property var modelData
+                Layout.fillWidth: true
+                text: "Profile " + modelData.name + ": " + modelData.detail
+                color: Theme.warning
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallFontSize
+                wrapMode: Text.WordWrap
             }
         }
     }

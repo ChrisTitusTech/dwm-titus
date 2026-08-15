@@ -72,6 +72,9 @@ PROPS
 	;;
 set-prop)
 	[ "${TEST_FAIL_SET:-0}" != 1 ] || exit 1
+	if [ -n "${TEST_TIMING_LOG:-}" ]; then
+		printf 'apply %s\n' "$(date +%s%N)" >>"$TEST_TIMING_LOG"
+	fi
 	printf 'xinput %s\n' "$*" >>"$TEST_LOG"
 	;;
 *) exit 2 ;;
@@ -81,7 +84,10 @@ EOF
 cat >"$work/bin/setxkbmap" <<'EOF'
 #!/bin/sh
 case " $* " in
-*' -query '*) printf 'rules: evdev\nmodel: pc105\nlayout: %s\noptions: %s\n' "${TEST_LAYOUT:-us}" "${TEST_OPTIONS-caps:escape}" ;;
+*' -query '*)
+	[ "${TEST_FAIL_QUERY:-0}" != 1 ] || exit 1
+	printf 'rules: evdev\nmodel: pc105\nlayout: %s\noptions: %s\n' "${TEST_LAYOUT-us}" "${TEST_OPTIONS-caps:escape}"
+	;;
 *) [ "${TEST_FAIL_SET:-0}" != 1 ] || exit 1; printf 'setxkbmap %s\n' "$*" >>"$TEST_LOG" ;;
 esac
 EOF
@@ -99,7 +105,22 @@ info)
 	*event11*) printf 'ID_PATH=pci-test-touchpad\n' ;;
 	esac
 	;;
-monitor) printf 'ACTION=add\n' ;;
+monitor)
+		if [ "${TEST_UDEV_BLOCK:-0}" = 1 ]; then
+			trap 'exit 0' HUP INT TERM
+			while :; do sleep 0.1; done
+		fi
+		if [ -n "${TEST_UDEV_DELAY:-}" ]; then
+			printf 'ACTION=add\n'
+			sleep "$TEST_UDEV_DELAY"
+			if [ -n "${TEST_TIMING_LOG:-}" ]; then
+				printf 'event %s\n' "$(date +%s%N)" >>"$TEST_TIMING_LOG"
+			fi
+			printf 'ACTION=change\n'
+		else
+			printf '%b\n' "${TEST_UDEV_EVENTS:-ACTION=add}"
+		fi
+		;;
 *) exit 2 ;;
 esac
 EOF
@@ -130,6 +151,29 @@ nodeless_key=$(awk -F '\t' '$1 == "device" && $5 == "Node-less Pointer" {print $
 [[ $mouse_key =~ ^[0-9a-f]{16}$ ]]
 [[ $keyboard_key =~ ^[0-9a-f]{16}$ ]]
 grep -Fq $'unsupported\t'"$nodeless_key"$'\tpersistence\tNo stable udev serial' "$work/discover"
+
+no_setxkbmap_bin="$work/no-setxkbmap-bin"
+mkdir -p "$no_setxkbmap_bin"
+cp "$work/bin/xinput" "$work/bin/udevadm" "$no_setxkbmap_bin/"
+for tool in awk cat dirname mktemp rm sed sha256sum tr; do
+	ln -s "$(command -v "$tool")" "$no_setxkbmap_bin/$tool"
+done
+env "${env_common[@]}" PATH="$no_setxkbmap_bin" \
+	/usr/bin/bash "$helper" discover >"$work/discover-no-setxkbmap"
+grep -Fq $'unsupported\t'"$keyboard_key"$'\tkeyboard-layout\tsetxkbmap is unavailable' \
+	"$work/discover-no-setxkbmap"
+grep -Fq $'unsupported\t'"$keyboard_key"$'\tmodifier-options\tsetxkbmap is unavailable' \
+	"$work/discover-no-setxkbmap"
+env "${env_common[@]}" TEST_FAIL_QUERY=1 "$helper" discover >"$work/discover-query-failure"
+grep -Fq $'unsupported\t'"$keyboard_key"$'\tkeyboard-layout\tsetxkbmap could not query this keyboard' \
+	"$work/discover-query-failure"
+grep -Fq $'unsupported\t'"$keyboard_key"$'\tmodifier-options\tsetxkbmap could not query this keyboard' \
+	"$work/discover-query-failure"
+env "${env_common[@]}" TEST_LAYOUT= "$helper" discover >"$work/discover-empty-layout"
+grep -Fq $'unsupported\t'"$keyboard_key"$'\tkeyboard-layout\tsetxkbmap did not report a keyboard layout' \
+	"$work/discover-empty-layout"
+grep -Fq $'setting\t'"$keyboard_key"$'\tmodifier-options\tModifier options\ttext\tcaps:escape' \
+	"$work/discover-empty-layout"
 expected_mouse_key=$(printf '%s' 'pointer|Mouse, Wild [Name]|1133, 49291|path:pci-test-mouse' | sha256sum | awk '{print substr($1, 1, 16)}')
 expected_keyboard_key=$(printf '%s' 'keyboard|Keyboard with spaces|1234, 5678|serial:test-keyboard' | sha256sum | awk '{print substr($1, 1, 16)}')
 [[ $mouse_key == "$expected_mouse_key" ]]
@@ -162,6 +206,98 @@ grep -Fqx "$mouse_key"$'\tpointer-speed\t0.25\t0.000000' \
 
 env "${env_common[@]}" "$helper" apply-saved
 grep -Fq 'xinput set-prop 12 libinput Accel Speed 0.25' "$work/actions.log"
+
+for invalid_settle in 0 0.0; do
+	if env "${env_common[@]}" DWM_INPUT_HOTPLUG_SETTLE_SECONDS="$invalid_settle" \
+		"$helper" watch-apply 2>"$work/invalid-settle.err"; then
+		printf 'zero hotplug settle interval was accepted\n' >&2
+		exit 1
+	fi
+	grep -Fq 'hotplug settle interval must be positive' "$work/invalid-settle.err"
+done
+
+rm -f "$work/actions.log"
+env "${env_common[@]}" DWM_INPUT_HOTPLUG_SETTLE_SECONDS=0.15 \
+	TEST_UDEV_DELAY=0.12 TEST_TIMING_LOG="$work/hotplug-timing.log" "$helper" watch-apply
+[[ $(grep -Fc 'xinput set-prop 12 libinput Accel Speed 0.25' "$work/actions.log") == 1 ]]
+event_time=$(awk '$1 == "event" { print $2; exit }' "$work/hotplug-timing.log")
+apply_time=$(awk '$1 == "apply" { print $2; exit }' "$work/hotplug-timing.log")
+((apply_time - event_time >= 100000000))
+test -f "$work/runtime/dwm-settings-input/hotplug-watch.lock"
+[[ $(stat -c %a "$work/runtime/dwm-settings-input/hotplug-watch.lock") == 600 ]]
+
+exec 9>"$work/runtime/dwm-settings-input/hotplug-watch.lock"
+flock -n 9
+if env "${env_common[@]}" "$helper" watch-apply 2>"$work/duplicate-watcher.err"; then
+	printf 'duplicate input hotplug watcher was accepted\n' >&2
+	exit 1
+fi
+grep -Fq 'input hotplug watcher is already running' "$work/duplicate-watcher.err"
+flock -u 9
+exec 9>&-
+
+sleep 1 &
+session_pid=$!
+session_start=$(awk '{ print $22 }' "/proc/$session_pid/stat")
+env "${env_common[@]}" TEST_UDEV_BLOCK=1 \
+	DWM_INPUT_SESSION_PID="$session_pid" DWM_INPUT_SESSION_START="$session_start" \
+	"$helper" watch-apply &
+session_watcher_pid=$!
+for _ in {1..30}; do
+	test -f "$work/runtime/dwm-settings-input/hotplug-watch.lock" && break
+	sleep 0.1
+done
+wait "$session_pid"
+for _ in {1..30}; do
+	if ! kill -0 "$session_watcher_pid" 2>/dev/null ||
+		[[ $(awk '{ print $3 }' "/proc/$session_watcher_pid/stat" 2>/dev/null || true) == Z ]]; then
+		break
+	fi
+	sleep 0.1
+done
+if kill -0 "$session_watcher_pid" 2>/dev/null &&
+	[[ $(awk '{ print $3 }' "/proc/$session_watcher_pid/stat" 2>/dev/null || true) != Z ]]; then
+	kill "$session_watcher_pid" 2>/dev/null || true
+	printf 'input hotplug watcher survived its X11 session process\n' >&2
+	exit 1
+fi
+wait "$session_watcher_pid" 2>/dev/null || true
+
+rm -f "$work/actions.log"
+env "${env_common[@]}" "$helper" preview hotplug-preview 5 "$mouse_key" pointer-speed 0.5 >/dev/null
+env "${env_common[@]}" DWM_INPUT_HOTPLUG_SETTLE_SECONDS=0.01 \
+	TEST_UDEV_EVENTS=ACTION=add "$helper" watch-apply
+[[ $(grep -Fc 'xinput set-prop 12 libinput Accel Speed 0.5' "$work/actions.log") == 1 ]]
+if grep -Fq 'xinput set-prop 12 libinput Accel Speed 0.25' "$work/actions.log"; then
+	printf 'hotplug replay overwrote an active input preview\n' >&2
+	exit 1
+fi
+test -f "$work/runtime/dwm-settings-input/hotplug-replay.pending"
+env "${env_common[@]}" "$helper" keep hotplug-preview >/dev/null
+[[ $(grep -Fc 'xinput set-prop 12 libinput Accel Speed 0.5' "$work/actions.log") == 2 ]]
+test ! -e "$work/runtime/dwm-settings-input/hotplug-replay.pending"
+env "${env_common[@]}" "$helper" preview hotplug-restore 5 "$mouse_key" pointer-speed 0.25 >/dev/null
+env "${env_common[@]}" "$helper" keep hotplug-restore >/dev/null
+
+rm -f "$work/actions.log"
+env "${env_common[@]}" "$helper" preview hotplug-revert 5 "$mouse_key" pointer-speed 0.5 >/dev/null
+env "${env_common[@]}" DWM_INPUT_HOTPLUG_SETTLE_SECONDS=0.01 \
+	TEST_UDEV_EVENTS=ACTION=change "$helper" watch-apply
+env "${env_common[@]}" "$helper" revert hotplug-revert >/dev/null
+[[ $(grep 'xinput set-prop 12 libinput Accel Speed' "$work/actions.log" | tail -n 1) == 'xinput set-prop 12 libinput Accel Speed 0.000000' ]]
+test ! -e "$work/runtime/dwm-settings-input/hotplug-replay.pending"
+
+rm -f "$work/actions.log"
+env "${env_common[@]}" "$helper" preview hotplug-timeout 1 "$mouse_key" pointer-speed 0.5 >/dev/null
+env "${env_common[@]}" DWM_INPUT_HOTPLUG_SETTLE_SECONDS=0.01 \
+	TEST_UDEV_EVENTS=ACTION=change "$helper" watch-apply
+for _ in {1..30}; do
+	test ! -e "$work/runtime/dwm-settings-input/hotplug-timeout.state" && break
+	sleep 0.1
+done
+test ! -e "$work/runtime/dwm-settings-input/hotplug-timeout.state"
+[[ $(grep 'xinput set-prop 12 libinput Accel Speed' "$work/actions.log" | tail -n 1) == 'xinput set-prop 12 libinput Accel Speed 0.000000' ]]
+test ! -e "$work/runtime/dwm-settings-input/hotplug-replay.pending"
 
 override_file="$work/override/nested/input.conf"
 env "${env_common[@]}" DWM_INPUT_SETTINGS_FILE="$override_file" \

@@ -55,7 +55,8 @@ done
 DISPLAY=$display xprop -root >/dev/null
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime "$repo/dwm" >"$work/dwm.log" 2>&1 &
+	XDG_RUNTIME_DIR=$runtime DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+	"$repo/dwm" >"$work/dwm.log" 2>&1 &
 dwm_pid=$!
 
 env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \

@@ -349,6 +349,9 @@ rm -f "$work/xrandr.log"
 env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" preview settings-test 5 \
 	"$spec_hdmi" "$spec_dp1" "$spec_dp2" >"$work/settings-preview"
 grep -Fqx 'preview	settings-test	5' "$work/settings-preview"
+env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" preview-status \
+	>"$work/settings-recovered-preview"
+grep -Fqx 'preview-active	settings-test' "$work/settings-recovered-preview"
 if grep -Fq -- '--set TearFree' "$work/xrandr.log"; then
 	printf 'Settings layout preview changed TearFree without capturing its prior state\n' >&2
 	exit 1
@@ -378,6 +381,23 @@ done
 grep -Fq $'preview-failed\trollback-failure\tAutomatic rollback failed' \
 	"$work/settings-timeout-status"
 test -f "$work/runtime/dwm-settings-display/rollback-failure.previous"
+env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" preview-status \
+	>"$work/settings-recovered-failure"
+grep -Fq $'preview-failed\trollback-failure\tAutomatic rollback failed' \
+	"$work/settings-recovered-failure"
+if env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" keep rollback-failure unsafe-name \
+	2>"$work/settings-failed-keep.err"; then
+	printf 'rollback failure saved a stale proposed profile\n' >&2
+	exit 1
+fi
+grep -Fq 'cannot save a named profile after rollback failure' "$work/settings-failed-keep.err"
+test ! -e "$work/home/.config/dwm-titus/display-profiles/unsafe-name.conf"
+test -f "$work/runtime/dwm-settings-display/rollback-failure.previous"
+# shellcheck disable=SC2016 # These patterns intentionally match literal shell source.
+claim_line=$(grep -n 'claim=$(claim_preview "$token")' "$SETTINGS_HELPER" | head -n 1 | cut -d: -f1)
+# shellcheck disable=SC2016 # These patterns intentionally match literal shell source.
+failed_line=$(grep -n '\[\[ -z \$name || ! -f \$failed \]\]' "$SETTINGS_HELPER" | cut -d: -f1)
+test "$claim_line" -lt "$failed_line"
 env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" revert rollback-failure >/dev/null
 test ! -e "$work/runtime/dwm-settings-display/rollback-failure.previous"
 

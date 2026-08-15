@@ -143,8 +143,20 @@ grep -Fq 'Commands.settingsProviderCommand("discover")' "$repo/config/quickshell
 grep -Fq 'Commands.settingsDisplayCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'Commands.settingsInputCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.runInput("preview-status", [])' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'root.runDisplay("preview-status", [])' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'if (!root.visible) root.closeRollbackPending = true;' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.previewKind = "input"; root.previewToken = fields[1]; root.previewOperationLocked = true;' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'root.previewKind = "display"; root.previewToken = fields[1]; root.previewOperationLocked = true;' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'property var displayUnsupportedProfiles: []' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'readonly property bool displayPersistenceAvailable:' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'root.settingsModel.displayPersistenceAvailable' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'root.settingsModel.displayUnsupportedProfiles' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq -- '--no-preview --yes --tearfree auto' \
+	"$repo/scripts/dwm-settings-display-root"
+grep -Fq 'watch-apply' "$repo/scripts/autostart.sh"
 grep -Fq 'displayWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'inputWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.searchQuery = ""' "$repo/config/quickshell/settings/SettingsModel.qml"
@@ -165,6 +177,10 @@ debian_qml=$(bash -c '. "$1"; dwm_packages debian qml-development' sh \
 [ "$arch_qml" = qt6-declarative ]
 [ "$rhel_qml" = qt6-qtdeclarative-devel ]
 [ "$debian_qml" = qt6-declarative-dev-tools ]
+for family in arch rhel debian; do
+	bash -c '. "$1"; dwm_packages "$2" runtime-required' sh \
+		"$repo/scripts/dwm-packages.sh" "$family" | grep -Fx util-linux >/dev/null
+done
 
 if grep -Eq '^[[:space:]]*(sudo|pkexec)([[:space:]]|$)' "$provider"; then
 	printf 'Settings discovery must not execute an elevation tool.\n' >&2

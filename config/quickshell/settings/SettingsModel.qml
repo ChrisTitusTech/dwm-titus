@@ -21,6 +21,7 @@ Scope {
     property var displayOutputs: []
     property var displayModes: []
     property var displayProfiles: []
+    property var displayUnsupportedProfiles: []
     property string displayState: "idle"
     property string displayMessage: ""
     property var inputDevices: []
@@ -33,12 +34,20 @@ Scope {
     property int previewSeconds: 0
     property int displayPreviewStatusAttempts: 0
 	property int inputPreviewStatusAttempts: 0
+    property bool previewRollbackFailed: false
     property bool previewOperationLocked: false
     property bool closeRollbackPending: false
     property string pendingAction: ""
 
-    readonly property int maxDisplayPreviewStatusAttempts: 10
-	readonly property int maxInputPreviewStatusAttempts: 10
+    readonly property int maxDisplayPreviewStatusAttempts: 120
+	readonly property int maxInputPreviewStatusAttempts: 120
+    readonly property var displayPersistenceCapability: {
+        for (const capability of root.capabilities) {
+            if (capability.id === "display-persistence") return capability;
+        }
+        return { "status": "restricted", "detail": "Persistent display controls are unavailable" };
+    }
+    readonly property bool displayPersistenceAvailable: root.displayPersistenceCapability.status === "available"
 
     readonly property var sections: [
         { "id": "displays", "label": "Displays", "description": "Monitors, layouts, and profiles" },
@@ -89,6 +98,7 @@ Scope {
         const outputs = [];
         const modes = [];
         const profiles = [];
+        const unsupportedProfiles = [];
         let valid = false;
         for (const line of text.trim().split("\n")) {
             const fields = line.split("\t");
@@ -108,6 +118,8 @@ Scope {
                 });
             } else if (fields[0] === "profile" && fields.length >= 2) {
                 profiles.push(fields[1]);
+            } else if (fields[0] === "profile-unsupported" && fields.length >= 3) {
+                unsupportedProfiles.push({ "name": fields[1], "detail": fields.slice(2).join("\t") });
             }
         }
         for (let index = 0; index < outputs.length; index++) {
@@ -130,6 +142,7 @@ Scope {
         root.displayOutputs = outputs;
         root.displayModes = modes;
         root.displayProfiles = profiles;
+        root.displayUnsupportedProfiles = unsupportedProfiles;
         root.displayState = valid ? "ready" : "failure";
         root.displayMessage = valid ? outputs.length + " connected outputs" : "Unsupported display provider response";
     }
@@ -233,7 +246,7 @@ Scope {
     }
 
     function keepPreview(name) {
-        if (root.previewKind === "display") root.runDisplay("keep", [root.previewToken].concat(name ? [name] : []));
+        if (root.previewKind === "display") root.runDisplay("keep", [root.previewToken].concat(name && !root.previewRollbackFailed ? [name] : []));
         else if (root.previewKind === "input") root.runInput("keep", [root.previewToken]);
     }
 
@@ -297,6 +310,15 @@ Scope {
 	function recoverInputPreview() {
 		if (!root.previewToken && !inputActionProcess.running)
 			root.runInput("preview-status", []);
+	}
+
+	function recoverDisplayPreview() {
+		if (!root.previewToken && !displayActionProcess.running)
+			root.runDisplay("preview-status", []);
+	}
+
+	function requireRecoveredPreviewRollback() {
+		if (!root.visible) root.closeRollbackPending = true;
 	}
 
     function previewInput(device, setting, value) {
@@ -414,6 +436,7 @@ Scope {
         root.selectedSectionId = root.sections[0].id;
         root.refresh();
         root.activateSection(root.selectedSectionId);
+		root.recoverDisplayPreview();
 		root.recoverInputPreview();
     }
 
@@ -509,9 +532,13 @@ Scope {
 					const fields = line.split("\t");
 					if (fields[0] === "preview") {
 						root.previewKind = "display"; root.previewToken = fields[1]; root.previewSeconds = Number(fields[2]);
+						root.previewRollbackFailed = false;
 						root.displayPreviewStatusAttempts = 0;
 						root.displayMessage = "Display preview active";
-					} else if (fields[0] === "preview-active") {
+						} else if (fields[0] === "preview-active") {
+							root.previewKind = "display"; root.previewToken = fields[1]; root.previewOperationLocked = true;
+							root.previewRollbackFailed = false;
+							root.requireRecoveredPreviewRollback();
 						if (root.displayPreviewStatusAttempts >= root.maxDisplayPreviewStatusAttempts) {
 							root.previewSeconds = 0; root.previewOperationLocked = true;
 							root.displayMessage = "Automatic rollback status timed out; use Revert to retry the captured layout";
@@ -519,14 +546,17 @@ Scope {
 							root.previewSeconds = 1;
 							root.displayMessage = "Waiting for automatic rollback";
 						}
-					} else if (fields[0] === "preview-failed") {
-						root.previewKind = "display"; root.previewToken = fields[1]; root.previewSeconds = 0;
+						} else if (fields[0] === "preview-failed") {
+							root.previewKind = "display"; root.previewToken = fields[1]; root.previewSeconds = 0;
+							root.previewRollbackFailed = true;
+							root.requireRecoveredPreviewRollback();
 						root.displayPreviewStatusAttempts = 0;
 						root.previewOperationLocked = true; root.displayMessage = fields.slice(2).join("\t");
 					} else if (fields[0] === "result") {
 						const finalizesPreview = fields[1] === "kept" || fields[1] === "reverted" || fields[1] === "expired";
 						if (finalizesPreview) {
 							root.previewKind = ""; root.previewToken = ""; root.previewSeconds = 0; root.previewOperationLocked = false;
+							root.previewRollbackFailed = false;
 							root.displayPreviewStatusAttempts = 0;
 						}
 						root.displayMessage = fields.slice(1).join(" ");
@@ -555,10 +585,12 @@ Scope {
 					const fields = line.split("\t");
 					if (fields[0] === "preview") {
 						root.previewKind = "input"; root.previewToken = fields[1]; root.previewSeconds = Number(fields[2]);
+						root.previewRollbackFailed = false;
 						root.inputPreviewStatusAttempts = 0;
 						root.inputMessage = "Input preview active";
-					} else if (fields[0] === "preview-active") {
-						root.previewKind = "input"; root.previewToken = fields[1]; root.previewOperationLocked = true;
+						} else if (fields[0] === "preview-active") {
+							root.previewKind = "input"; root.previewToken = fields[1]; root.previewOperationLocked = true;
+							root.requireRecoveredPreviewRollback();
 						if (root.inputPreviewStatusAttempts >= root.maxInputPreviewStatusAttempts) {
 							root.previewSeconds = 0; root.previewOperationLocked = true;
 							root.inputMessage = "Automatic rollback status timed out; use Revert to retry the captured value";
@@ -566,8 +598,9 @@ Scope {
 							root.previewSeconds = 1;
 							root.inputMessage = "Waiting for automatic input rollback";
 						}
-					} else if (fields[0] === "preview-failed") {
-						root.previewKind = "input"; root.previewToken = fields[1]; root.previewSeconds = 0;
+						} else if (fields[0] === "preview-failed") {
+							root.previewKind = "input"; root.previewToken = fields[1]; root.previewSeconds = 0;
+							root.requireRecoveredPreviewRollback();
 						root.inputPreviewStatusAttempts = 0;
 						root.previewOperationLocked = true; root.inputMessage = fields.slice(2).join("\t");
 					} else if (fields[0] === "result") {

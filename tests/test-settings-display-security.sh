@@ -85,10 +85,22 @@ EOF
 chmod 0755 "$work/bin/pkexec"
 
 chmod 0644 "$installed"
+if env PKEXEC_UID=1000 /usr/bin/bash "$installed" rollback 2>"$work/non-executable-root.err"; then
+	printf 'non-executable installed helper was accepted by its trust check\n' >&2
+	exit 1
+fi
+grep -Fq 'trusted root-owned executable' "$work/non-executable-root.err"
 env PATH="$work/bin:$custom_prefix/bin:/usr/bin:/bin" \
 	"$repo/scripts/dwm-settings-provider" discover >"$work/non-executable-provider"
 grep -Fq $'capability\tdisplays\tdisplay-persistence\tPersistent display profiles\trestricted\tprivileged' \
 	"$work/non-executable-provider"
+if env DISPLAY=:99 HOME="$work/home" DWM_DISPLAY_PROFILE_DIR="$work/home/display-profiles" \
+	PATH="$work/bin:$custom_prefix/bin:/usr/bin:/bin" \
+	"$repo/scripts/dwm-settings-display" install-profile desk 2>"$work/non-executable-client.err"; then
+	printf 'non-executable installed helper was accepted by the client\n' >&2
+	exit 1
+fi
+grep -Fq 'trusted persistent-display helper is unavailable' "$work/non-executable-client.err"
 chmod 0755 "$installed"
 
 if env DISPLAY=:99 HOME="$work/home" DWM_DISPLAY_PROFILE_DIR="$work/home/display-profiles" \
@@ -138,6 +150,14 @@ fi
 grep -Fq 'trusted dwm-display-setup is unavailable' "$work/symlink-bin-parent.err"
 rm -f "$custom_prefix/bin"
 mv "$work/real-bin" "$custom_prefix/bin"
+
+chmod 0644 "$setup"
+if env PKEXEC_UID=1000 "$installed" rollback 2>"$work/non-executable-setup.err"; then
+	printf 'non-executable display setup helper was accepted\n' >&2
+	exit 1
+fi
+grep -Fq 'trusted dwm-display-setup is unavailable' "$work/non-executable-setup.err"
+chmod 0755 "$setup"
 
 if "$installed" rollback 2>"$work/direct-root.err"; then
 	printf 'direct root execution without a polkit caller marker was accepted\n' >&2

@@ -27,7 +27,7 @@ trusted_file() {
 	canonical=$(readlink -f -- "$path" 2>/dev/null || true)
 	[[ -n $canonical && $canonical == "$path" ]] || return 1
 	trusted_parent_chain "$canonical" || return 1
-	[[ -f $canonical && ! -L $canonical ]] || return 1
+	[[ -f $canonical && ! -L $canonical && -x $canonical ]] || return 1
 	[[ $(stat -c %u "$canonical") == 0 ]] || return 1
 	find "$canonical" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q .
 }
@@ -97,7 +97,7 @@ install)
 		validate_profile_line "$line" || die "invalid structured display record"
 		printf '%s\n' "$line" >>"$profile"
 	done
-	run_setup "$display" "$xauthority" install "$profile" --no-preview --yes
+	run_setup "$display" "$xauthority" install "$profile" --no-preview --yes --tearfree auto
 	;;
 rollback)
 	[[ $# == 1 ]] || die "rollback takes no arguments"

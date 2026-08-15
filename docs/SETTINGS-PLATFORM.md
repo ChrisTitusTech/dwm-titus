@@ -41,8 +41,9 @@ through the fixed `Commands.settingsProviderCommand()` wrapper. Phase 2 uses
 equally fixed display actions (`discover`, `watch`, `save`, `preview`,
 `preview-profile`, `keep`, `revert`, `install-profile`, and `rollback-system`)
 plus the read-only `preview-status` recovery query,
-and equally fixed input actions (`discover`, `watch`, `preview`, `keep`, `revert`, `reset`,
-and `apply-saved`). QML cannot supply command strings, executables, arbitrary
+and equally fixed input actions (`discover`, `watch`, `watch-apply`, `preview`,
+`keep`, `revert`, `preview-status`, `reset`, and `apply-saved`). QML cannot
+supply command strings, executables, arbitrary
 paths, or elevation flags; every argument is validated by the owning helper.
 
 The version 1 output is UTF-8, tab-separated, and line-oriented:
@@ -214,8 +215,10 @@ device-scoped unsupported settings. Tabs and line breaks in external names are
 sanitized. QML passes complete structured argv to fixed helper actions and
 does not implement RandR, Xorg, XInput, or libinput policy.
 
-Both sections own event-driven udev watches only while active. Display and
-input previews capture prior state, expose Keep and Revert, and run an external
+Both sections own event-driven udev discovery watches only while active. A
+separate session input watcher debounces add/change events and reapplies saved
+values when stable devices return. Display and input previews capture prior
+state, expose Keep and Revert, and run an external
 watchdog so timeout recovery does not depend on the QML process. Closing
 Settings requests immediate rollback; the watchdog remains the final recovery
 path if the action process is busy or the shell exits. Display finalization is

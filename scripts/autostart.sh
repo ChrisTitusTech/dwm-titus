@@ -72,6 +72,22 @@ if [ -z "$input_helper" ] && command -v dwm-settings-input >/dev/null 2>&1; then
 fi
 if [ -n "$input_helper" ]; then
 	"$input_helper" apply-saved >/dev/null 2>&1 || true
+	if [ "${DWM_AUTOSTART_NO_INPUT_WATCH:-0}" != 1 ]; then
+		input_session_pid=${DWM_INPUT_SESSION_PID:-$PPID}
+		input_session_start=${DWM_INPUT_SESSION_START:-}
+		if [ -z "$input_session_start" ] && [ -r "/proc/$input_session_pid/stat" ]; then
+			input_session_start=$(awk '{ print $22 }' "/proc/$input_session_pid/stat" 2>/dev/null || true)
+		fi
+		if [ "${DWM_AUTOSTART_NO_SETSID:-0}" != 1 ] && command -v setsid >/dev/null 2>&1; then
+			DWM_INPUT_SESSION_PID=$input_session_pid \
+				DWM_INPUT_SESSION_START=$input_session_start \
+				setsid -f "$input_helper" watch-apply >/dev/null 2>&1
+		else
+			DWM_INPUT_SESSION_PID=$input_session_pid \
+				DWM_INPUT_SESSION_START=$input_session_start \
+				"$input_helper" watch-apply >/dev/null 2>&1 &
+		fi
+	fi
 fi
 
 # Source the persisted toolkit theme environment.
@@ -97,6 +113,8 @@ export QT_QPA_PLATFORM=xcb
 unset WAYLAND_DISPLAY
 
 # Export display and theme env to systemd/dbus in parallel (both are IPC round-trips).
+systemctl_import_pid=
+dbus_import_pid=
 if command -v systemctl >/dev/null 2>&1; then
 	{
 		systemctl --user unset-environment WAYLAND_DISPLAY
@@ -105,6 +123,7 @@ if command -v systemctl >/dev/null 2>&1; then
 			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
 			XCURSOR_THEME XCURSOR_SIZE
 	} &
+	systemctl_import_pid=$!
 fi
 if command -v dbus-update-activation-environment >/dev/null 2>&1; then
 	{
@@ -114,8 +133,10 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
 			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
 			XCURSOR_THEME XCURSOR_SIZE
 	} 2>/dev/null &
+	dbus_import_pid=$!
 fi
-wait
+[ -z "$systemctl_import_pid" ] || wait "$systemctl_import_pid"
+[ -z "$dbus_import_pid" ] || wait "$dbus_import_pid"
 
 # Start Quickshell before XDG autostart applications, then wait for the tray IPC
 # endpoint before activating the rest of the graphical session.

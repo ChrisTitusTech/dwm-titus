@@ -57,6 +57,7 @@ sudo
 git
 curl
 unzip
+util-linux
 make
 gcc
 pkgconf-pkg-config

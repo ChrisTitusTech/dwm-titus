@@ -2,9 +2,19 @@
 
 set -eu
 
+DWM_AUTOSTART_NO_INPUT_WATCH=1
+export DWM_AUTOSTART_NO_INPUT_WATCH
+
 repo_dir=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 cleanup() {
+	if [ -f "$work/watcher-fallback/state/watcher.pid" ]; then
+		watcher_pid=$(cat "$work/watcher-fallback/state/watcher.pid")
+		case $watcher_pid in
+		'' | *[!0-9]*) ;;
+		*) kill "$watcher_pid" 2>/dev/null || true ;;
+		esac
+	fi
 	rm -rf "$work"
 }
 trap cleanup EXIT HUP INT TERM
@@ -144,6 +154,7 @@ run_duplicate_case() {
 				WAYLAND_DISPLAY=wayland-0 \
 				XDG_CONFIG_HOME="$home/.config" \
 				XDG_SESSION_TYPE=wayland \
+				DWM_AUTOSTART_NO_INPUT_WATCH=1 \
 				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		else
@@ -156,6 +167,7 @@ run_duplicate_case() {
 				XDG_CONFIG_HOME="$home/.config" \
 				XDG_RUNTIME_DIR="$runtime" \
 				XDG_SESSION_TYPE=wayland \
+				DWM_AUTOSTART_NO_INPUT_WATCH=1 \
 				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		fi
@@ -225,10 +237,47 @@ run_missing_optional_case() {
 		/bin/sh "$repo_dir/scripts/autostart.sh"
 }
 
+run_input_watcher_fallback_case() {
+	case_dir="$work/watcher-fallback"
+	home="$case_dir/home"
+	state="$case_dir/state"
+	mkdir -p "$case_dir/scripts" "$home" "$state"
+	cp "$repo_dir/scripts/autostart.sh" "$case_dir/scripts/autostart.sh"
+	cat >"$case_dir/scripts/dwm-settings-input" <<'EOF'
+#!/bin/sh
+case ${1:-} in
+apply-saved) exit 0 ;;
+watch-apply)
+	printf '%s\n' "$$" >"${TEST_STATE:?}/watcher.pid"
+	printf '%s\t%s\n' "${DWM_INPUT_SESSION_PID:-}" "${DWM_INPUT_SESSION_START:-}" \
+		>"${TEST_STATE:?}/watcher.session"
+	trap 'exit 0' HUP INT TERM
+	while :; do sleep 10; done
+	;;
+*) exit 1 ;;
+esac
+EOF
+	chmod +x "$case_dir/scripts/autostart.sh" "$case_dir/scripts/dwm-settings-input"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+
+	DWM_AUTOSTART_NO_INPUT_WATCH=0 \
+		DWM_AUTOSTART_NO_SETSID=1 \
+		DWM_INPUT_SESSION_PID=$$ \
+		HOME=$home \
+		TEST_STATE=$state \
+		PATH="$work/bin:/usr/bin:/bin" \
+		XDG_CONFIG_HOME="$home/.config" \
+		timeout 5 sh "$case_dir/scripts/autostart.sh"
+	wait_for_marker "$state/watcher.pid"
+	wait_for_marker "$state/watcher.session"
+	grep -Eq "^$$[[:space:]]+[1-9][0-9]*$" "$state/watcher.session"
+}
+
 run_duplicate_case display-manager
 run_duplicate_case startx
 run_dex_fallback_case
 run_missing_optional_case
+run_input_watcher_fallback_case
 
 if grep -q '^WantedBy=default.target$' \
 	"$repo_dir/config/systemd/user/wm-graphical-session.service"; then

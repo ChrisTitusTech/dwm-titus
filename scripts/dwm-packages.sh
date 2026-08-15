@@ -18,7 +18,7 @@ dwm_packages() {
 		printf '%s\n' xorg-server
 		;;
 	arch:runtime-required)
-		printf '%s\n' dbus curl git procps-ng psmisc unzip wmctrl xclip xdotool xorg-xprop xdg-utils
+		printf '%s\n' dbus curl git procps-ng psmisc unzip util-linux wmctrl xclip xdotool xorg-xprop xdg-utils
 		;;
 	arch:desktop)
 		printf '%s\n' \
@@ -83,7 +83,7 @@ dwm_packages() {
 		:
 		;;
 	rhel:runtime-required)
-		printf '%s\n' dbus-x11 curl git procps-ng psmisc unzip xclip xdotool xprop xdg-utils
+		printf '%s\n' dbus-x11 curl git procps-ng psmisc unzip util-linux xclip xdotool xprop xdg-utils
 		;;
 	rhel:desktop)
 		printf '%s\n' \
@@ -150,7 +150,7 @@ dwm_packages() {
 		:
 		;;
 	debian:runtime-required)
-		printf '%s\n' dbus-x11 curl git procps psmisc unzip xclip xdotool x11-utils xdg-utils
+		printf '%s\n' dbus-x11 curl git procps psmisc unzip util-linux xclip xdotool x11-utils xdg-utils
 		;;
 	debian:desktop)
 		printf '%s\n' \

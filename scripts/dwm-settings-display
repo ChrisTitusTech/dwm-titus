@@ -18,7 +18,7 @@ usage: dwm-settings-display discover|watch
        dwm-settings-display preview-profile TOKEN SECONDS NAME
        dwm-settings-display keep TOKEN [NAME]
        dwm-settings-display revert TOKEN
-       dwm-settings-display preview-status TOKEN
+       dwm-settings-display preview-status [TOKEN]
        dwm-settings-display install-profile NAME
        dwm-settings-display rollback-system
 
@@ -233,7 +233,7 @@ trusted_root_helper() {
 		canonical=$(readlink -f -- "$candidate" 2>/dev/null || true)
 		[[ -n $canonical && $canonical == "$candidate" ]] || continue
 		trusted_parent_chain "$canonical" || continue
-		[[ -f $candidate && ! -L $candidate ]] || continue
+		[[ -f $candidate && ! -L $candidate && -x $candidate ]] || continue
 		[[ $(stat -c %u "$candidate") == 0 ]] || continue
 		find "$candidate" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q . || continue
 		printf '%s\n' "$candidate"
@@ -353,18 +353,22 @@ claim_preview() {
 }
 
 keep_preview() {
-	local token=$1 name=${2:-} proposed marker claim
+	local token=$1 name=${2:-} proposed marker failed claim
 	ensure_state_dir
 	marker=$(token_path "$token" active)
 	proposed=$(token_path "$token" proposed)
-	[[ -f $marker && -f $proposed ]] || die "display preview is not active"
+	failed=$(token_path "$token" failed)
 	[[ -z $name ]] || valid_name "$name" || die "invalid profile name: $name"
 	claim=$(claim_preview "$token")
-	trap 'rmdir "$claim" 2>/dev/null || true' RETURN
+	trap 'rmdir "$claim" 2>/dev/null || true' RETURN EXIT
+	[[ -f $marker && -f $proposed ]] || die "display preview is not active"
+	[[ -z $name || ! -f $failed ]] ||
+		die "cannot save a named profile after rollback failure; accept the current layout without a name or retry Revert"
 	if [[ -n $name ]]; then
 		atomic_save "$proposed" "$name"
 	fi
 	cleanup_preview "$token"
+	trap - RETURN EXIT
 	printf 'result\tkept\t%s\n' "$token"
 }
 
@@ -402,8 +406,16 @@ watchdog() {
 }
 
 preview_status() {
-	local token=$1 marker failed
+	local token=${1:-} marker failed
 	ensure_state_dir
+	if [[ -z $token ]]; then
+		if [[ ! -f $state_dir/current ]]; then
+			printf 'result\tnone\n'
+			return
+		fi
+		IFS= read -r token <"$state_dir/current"
+		[[ -n $token ]] || die "active display preview token is empty"
+	fi
 	marker=$(token_path "$token" active)
 	failed=$(token_path "$token" failed)
 	if [[ -f $failed ]]; then
@@ -455,8 +467,8 @@ revert)
 	revert_preview "$2"
 	;;
 preview-status)
-	[[ $# == 2 ]] || die "preview-status requires token"
-	preview_status "$2"
+	[[ $# == 1 || $# == 2 ]] || die "preview-status accepts an optional token"
+	preview_status "${2:-}"
 	;;
 install-profile)
 	[[ $# == 2 ]] || die "install-profile requires a profile name"
