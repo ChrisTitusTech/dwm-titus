@@ -3,6 +3,8 @@ set -euo pipefail
 
 config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus"
 settings_file="${DWM_INPUT_SETTINGS_FILE:-$config_dir/input-settings.conf}"
+settings_dir=${settings_file%/*}
+[[ $settings_dir != "$settings_file" ]] || settings_dir=.
 runtime_base="${XDG_RUNTIME_DIR:-/tmp/dwm-titus-$UID}"
 state_dir="$runtime_base/dwm-settings-input"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +18,7 @@ usage: dwm-settings-input discover|watch|apply-saved
        dwm-settings-input preview TOKEN SECONDS DEVICE SETTING VALUE
        dwm-settings-input keep TOKEN
        dwm-settings-input revert TOKEN
+       dwm-settings-input preview-status [TOKEN]
        dwm-settings-input reset DEVICE SETTING
 EOF
 }
@@ -286,9 +289,9 @@ persist_value() {
 		printf 'dwm-settings-input: device %s has no stable persistence identity; keeping the session value only\n' "$key" >&2
 		return 0
 	fi
-	mkdir -p "$config_dir"
-	chmod 700 "$config_dir"
-	temporary=$(mktemp "$config_dir/.input-settings.XXXXXX")
+	mkdir -p "$settings_dir"
+	[[ $settings_dir != "$config_dir" ]] || chmod 700 "$settings_dir"
+	temporary=$(mktemp "$settings_dir/.input-settings.XXXXXX")
 	if [[ -f $settings_file ]]; then
 		if existing_baseline=$(persisted_default "$key" "$setting"); then
 			baseline=$existing_baseline
@@ -312,7 +315,9 @@ persisted_default() {
 remove_persisted_value() {
 	local key=$1 setting=$2 temporary
 	[[ -f $settings_file ]] || return 0
-	temporary=$(mktemp "$config_dir/.input-settings.XXXXXX")
+	mkdir -p "$settings_dir"
+	[[ $settings_dir != "$config_dir" ]] || chmod 700 "$settings_dir"
+	temporary=$(mktemp "$settings_dir/.input-settings.XXXXXX")
 	awk -F '\t' -v key="$key" -v setting="$setting" '!($1 == key && $2 == setting)' "$settings_file" >"$temporary"
 	if [[ -s $temporary ]]; then
 		chmod 600 "$temporary"
@@ -341,7 +346,7 @@ token_file() {
 	printf '%s/%s.%s\n' "$state_dir" "$1" "$2"
 }
 cleanup_preview() {
-	rm -f "$(token_file "$1" state)" "$state_dir/current"
+	rm -f "$(token_file "$1" state)" "$(token_file "$1" failed)" "$state_dir/current"
 	rmdir "$(token_file "$1" claim)" 2>/dev/null || true
 }
 
@@ -378,11 +383,11 @@ preview_value() {
 		rm -f "$state"
 		die "another input preview is active"
 	fi
-	("$self" _watch "$token" "$seconds" >/dev/null 2>&1) &
-	if ! apply_value "$key" "$setting" "$value"; then
+	if ! (apply_value "$key" "$setting" "$value"); then
 		cleanup_preview "$token"
 		die "input preview failed; recovery state was cleared"
 	fi
+	("$self" _watch "$token" "$seconds" >/dev/null 2>&1) &
 	printf 'preview\t%s\t%s\n' "$token" "$seconds"
 }
 
@@ -397,15 +402,17 @@ finish_preview() {
 	if [[ $action == keep ]]; then
 		persist_value "$key" "$setting" "$value" "$previous"
 	elif ! (apply_value "$key" "$setting" "$previous"); then
-		cleanup_preview "$token"
-		die "input device is unavailable; preview state was cleared without rollback"
+		printf 'Input rollback failed; the captured value is retained for retry.\n' >"$(token_file "$token" failed)"
+		chmod 600 "$(token_file "$token" failed)"
+		rmdir "$claim" 2>/dev/null || true
+		die "input device is unavailable; preview state was retained for rollback retry"
 	fi
 	cleanup_preview "$token"
 	printf 'result\t%s\t%s\n' "$action" "$token"
 }
 
 watchdog() {
-	local token=$1 seconds=$2 state key setting previous value claim
+	local token=$1 seconds=$2 state key setting previous value claim failed
 	sleep "$seconds"
 	ensure_state_dir
 	state=$(token_file "$token" state)
@@ -413,8 +420,36 @@ watchdog() {
 		claim=$(token_file "$token" claim)
 		mkdir "$claim" 2>/dev/null || return 0
 		IFS='|' read -r key setting previous value <"$state"
-		(apply_value "$key" "$setting" "$previous") || true
-		cleanup_preview "$token"
+		if (apply_value "$key" "$setting" "$previous"); then
+			cleanup_preview "$token"
+		else
+			failed=$(token_file "$token" failed)
+			printf 'Automatic input rollback failed; the captured value is retained for retry.\n' >"$failed"
+			chmod 600 "$failed"
+			rmdir "$claim" 2>/dev/null || true
+		fi
+	fi
+}
+
+preview_status() {
+	local token=${1:-} state failed
+	ensure_state_dir
+	if [[ -z $token ]]; then
+		if [[ ! -f $state_dir/current ]]; then
+			printf 'result\tnone\n'
+			return
+		fi
+		IFS= read -r token <"$state_dir/current"
+		[[ -n $token ]] || die "active input preview token is empty"
+	fi
+	state=$(token_file "$token" state)
+	failed=$(token_file "$token" failed)
+	if [[ -f $failed ]]; then
+		printf 'preview-failed\t%s\t%s\n' "$token" "$(clean_field "$(<"$failed")")"
+	elif [[ -f $state ]]; then
+		printf 'preview-active\t%s\n' "$token"
+	else
+		printf 'result\texpired\t%s\n' "$token"
 	fi
 }
 
@@ -445,9 +480,21 @@ reset_setting() {
 }
 
 apply_saved() {
-	local key setting value baseline
+	local line key setting value baseline remainder
 	[[ -f $settings_file ]] || return 0
-	while IFS=$'\t' read -r key setting value baseline <&3; do
+	while IFS= read -r line <&3; do
+		[[ $line == *$'\t'*$'\t'* ]] || continue
+		key=${line%%$'\t'*}
+		remainder=${line#*$'\t'}
+		setting=${remainder%%$'\t'*}
+		remainder=${remainder#*$'\t'}
+		if [[ $remainder == *$'\t'* ]]; then
+			value=${remainder%%$'\t'*}
+			baseline=${remainder#*$'\t'}
+		else
+			value=$remainder
+			baseline=
+		fi
 		[[ -n $key && -n $setting ]] || continue
 		(apply_value "$key" "$setting" "$value") ||
 			printf 'dwm-settings-input: skipped unavailable %s/%s\n' "$key" "$setting" >&2
@@ -480,6 +527,10 @@ preview)
 keep | revert)
 	[[ $# == 2 ]] || die "$1 requires a token"
 	finish_preview "$1" "$2"
+	;;
+preview-status)
+	[[ $# == 1 || $# == 2 ]] || die "preview-status accepts an optional token"
+	preview_status "${2:-}"
 	;;
 reset)
 	[[ $# == 3 ]] || die "reset requires device and setting"

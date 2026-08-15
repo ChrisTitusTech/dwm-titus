@@ -37,6 +37,21 @@ DP-1 connected 1440x2560+0+1080 left (normal left inverted right x axis y axis) 
 DP-2 connected (normal left inverted right x axis y axis)
 EOF
 
+cat >"$work/query-no-current-marker" <<'EOF'
+Screen 0: minimum 320 x 200, current 1920 x 1080, maximum 16384 x 16384
+HDMI-1 connected primary 1920x1080+0+0 (normal left inverted right x axis y axis) 527mm x 296mm
+   1920x1080     60.00+ 120.00
+EOF
+
+cat >"$work/query-rotated-no-current-marker" <<'EOF'
+Screen 0: minimum 320 x 200, current 1920 x 3640, maximum 16384 x 16384
+HDMI-1 connected primary 1920x1080+0+0 (normal left inverted right x axis y axis) 527mm x 296mm
+   1920x1080     60.00*+
+DP-1 connected 1440x2560+0+1080 left (normal left inverted right x axis y axis) 600mm x 340mm
+   2560x1440     60.00+
+DP-2 connected (normal left inverted right x axis y axis)
+EOF
+
 cat >"$work/query-malformed" <<'EOF'
 this is not RandR state
 EOF
@@ -60,6 +75,23 @@ DP-1 connected 2560x1440+1920+0 (0x50) normal (normal left inverted right x axis
         h: width  1920 start 2008 end 2052 total 2200 skew    0 clock  67.50KHz
         v: height 1080 start 1084 end 1089 total 1125           clock  60.00Hz
 DP-2 connected (normal left inverted right x axis y axis)
+EOF
+
+cat >"$work/verbose-no-current" <<'EOF'
+HDMI-1 connected primary 1920x1080+0+0 (0x46) normal (normal left inverted right x axis y axis) 527mm x 296mm
+  1920x1080 (0x47) 148.500MHz +HSync +VSync +preferred
+        h: width  1920 start 2008 end 2052 total 2200 skew    0 clock  67.50KHz
+        v: height 1080 start 1084 end 1089 total 1125           clock  60.00Hz
+  1920x1080 (0x48) 297.000MHz +HSync +VSync
+        h: width  1920 start 2008 end 2052 total 2200 skew    0 clock 135.00KHz
+        v: height 1080 start 1084 end 1089 total 1125           clock 120.00Hz
+EOF
+
+cat >"$work/verbose-rotated-no-current" <<'EOF'
+DP-1 connected 1440x2560+0+1080 (0x50) left (normal left inverted right x axis y axis) 600mm x 340mm
+  2560x1440 (0x51) 241.500MHz +HSync -VSync +preferred
+        h: width  2560 start 2608 end 2640 total 2720 skew    0 clock  88.79KHz
+        v: height 1440 start 1443 end 1448 total 1481           clock  60.00Hz
 EOF
 
 cat >"$work/properties-supported" <<'EOF'
@@ -154,6 +186,23 @@ env "${env_common[@]}" TEST_QUERY="$work/query-rotated" \
 	"$BASH_BIN" "$HELPER" capture >"$work/captured-rotated.conf"
 grep -Fq 'DP-1 --mode 2560x1440 --rate 60.00 --pos 0x1080 --rotate left' \
 	"$work/captured-rotated.conf"
+
+env "${env_common[@]}" TEST_QUERY="$work/query-no-current-marker" \
+	"$BASH_BIN" "$HELPER" capture >"$work/captured-no-current-marker.conf"
+grep -Fq 'HDMI-1 --primary --mode 1920x1080 --rate 60.00 --pos 0x0 --rotate normal' \
+	"$work/captured-no-current-marker.conf"
+env "${env_common[@]}" TEST_QUERY="$work/query-rotated-no-current-marker" \
+	TEST_VERBOSE="$work/verbose-rotated-no-current" "$BASH_BIN" "$HELPER" capture \
+	>"$work/captured-rotated-no-current-marker.conf"
+grep -Fq 'DP-1 --mode 2560x1440 --rate 60.00 --pos 0x1080 --rotate left' \
+	"$work/captured-rotated-no-current-marker.conf"
+if env "${env_common[@]}" TEST_QUERY="$work/query-no-current-marker" \
+	TEST_VERBOSE="$work/verbose-no-current" "$BASH_BIN" "$HELPER" capture \
+	2>"$work/captured-ambiguous.err"; then
+	printf 'ambiguous active refresh rate was guessed during capture\n' >&2
+	exit 1
+fi
+grep -Fq 'could not unambiguously capture the active refresh rate' "$work/captured-ambiguous.err"
 
 rm -f "$work/xrandr.log"
 env "${env_common[@]}" "$BASH_BIN" "$HELPER" validate "$work/profile-60.conf" >/dev/null
@@ -296,9 +345,14 @@ grep -Fqx 'occupied' "$work/runtime/dwm-settings-display/current"
 rm -f "$work/runtime/dwm-settings-display/current"
 grep -Fqx 'result	saved	desk' "$work/settings-save"
 
+rm -f "$work/xrandr.log"
 env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" preview settings-test 5 \
 	"$spec_hdmi" "$spec_dp1" "$spec_dp2" >"$work/settings-preview"
 grep -Fqx 'preview	settings-test	5' "$work/settings-preview"
+if grep -Fq -- '--set TearFree' "$work/xrandr.log"; then
+	printf 'Settings layout preview changed TearFree without capturing its prior state\n' >&2
+	exit 1
+fi
 mkdir "$work/runtime/dwm-settings-display/settings-test.claim"
 if env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" keep settings-test \
 	2>"$work/settings-claim.err"; then
@@ -315,9 +369,12 @@ env "${settings_env[@]}" TEST_FAIL_DP_NORMAL=1 \
 	"$BASH_BIN" "$SETTINGS_HELPER" preview rollback-failure 1 \
 	"$spec_hdmi" "$spec_dp1" "$spec_dp2" >"$work/settings-timeout-preview"
 grep -Fqx 'preview	rollback-failure	1' "$work/settings-timeout-preview"
-sleep 1.5
-env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" preview-status rollback-failure \
-	>"$work/settings-timeout-status"
+for _ in {1..30}; do
+	env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" preview-status rollback-failure \
+		>"$work/settings-timeout-status"
+	grep -Fq $'preview-failed\trollback-failure\t' "$work/settings-timeout-status" && break
+	sleep 0.1
+done
 grep -Fq $'preview-failed\trollback-failure\tAutomatic rollback failed' \
 	"$work/settings-timeout-status"
 test -f "$work/runtime/dwm-settings-display/rollback-failure.previous"

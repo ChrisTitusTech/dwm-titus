@@ -32,7 +32,15 @@ Flickable {
             radius: Theme.radius
             RowLayout {
                 anchors.fill: parent; anchors.margins: 7
-                Text { Layout.fillWidth: true; text: "Input preview reverts in " + root.settingsModel.previewSeconds + " seconds"; color: Theme.textStrong; font.family: Theme.fontFamily }
+				Text {
+					Layout.fillWidth: true
+					text: root.settingsModel.previewSeconds > 0
+						? "Input preview reverts in " + root.settingsModel.previewSeconds + " seconds"
+						: "Automatic rollback needs attention; retry Revert"
+					elide: Text.ElideRight
+					color: Theme.textStrong
+					font.family: Theme.fontFamily
+				}
                 ShellButton { label: "Keep"; onActivated: root.settingsModel.keepPreview("") }
                 ShellButton { label: "Revert"; danger: true; onActivated: root.settingsModel.revertPreview() }
             }

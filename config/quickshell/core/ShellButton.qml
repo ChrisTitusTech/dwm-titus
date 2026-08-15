@@ -13,10 +13,19 @@ Rectangle {
 
     implicitWidth: buttonLabel.implicitWidth + 18
     implicitHeight: Theme.buttonHeight
+	activeFocusOnTab: root.enabled
     color: !root.enabled ? Theme.barBackground : root.hovered ? Theme.surfaceHover : Theme.surface
-    border.color: !root.enabled ? Theme.border : root.danger ? Theme.danger : root.hovered ? Theme.borderStrong : Theme.border
-    border.width: 1
+	border.color: root.activeFocus ? Theme.accent : !root.enabled ? Theme.border : root.danger ? Theme.danger : root.hovered ? Theme.borderStrong : Theme.border
+	border.width: root.activeFocus ? 2 : 1
     radius: Theme.radius
+
+	Keys.onPressed: event => {
+		if (root.enabled && !event.isAutoRepeat
+				&& (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)) {
+			root.activated();
+			event.accepted = true;
+		}
+	}
 
     Text {
         id: buttonLabel

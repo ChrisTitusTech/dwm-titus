@@ -651,7 +651,7 @@ xrandr_args() {
 
 capture_current_profile() {
 	local profile_file=$1
-	local output_line output geometry mode x y rotation primary rate token current
+	local output_line output geometry mode width height x y rotation primary rate token current
 	local geometry_index index
 	local -a fields=()
 
@@ -691,9 +691,50 @@ capture_current_profile() {
 				for (i = 2; i <= NF; i++) if ($i ~ /\*/) { rate = $i; gsub(/[+*]/, "", rate); print $1 "|" rate; exit }
 			}
 		' "$query_file")
-		[[ -n $current ]] || die "could not capture the active mode for $output"
-		mode=${current%%|*}
-		rate=${current#*|}
+		if [[ -z $current ]]; then
+			current=$(awk -v output="$output" '
+				$1 == output && $2 == "connected" { in_output = 1; candidate = 0; next }
+				/^[^[:space:]]/ { in_output = 0; candidate = 0 }
+				in_output && $2 ~ /^\(0x/ {
+					candidate = ($0 ~ /\*current/)
+					mode = $1
+					next
+				}
+				candidate && $1 == "v:" {
+					rate = $NF
+					sub(/Hz$/, "", rate)
+					if (rate ~ /^[0-9]+([.][0-9]+)?$/) print mode "|" rate
+					exit
+				}
+			' "$verbose_file")
+		fi
+		if [[ -n $current ]]; then
+			mode=${current%%|*}
+			rate=${current#*|}
+		else
+			mode=${geometry%%[+-]*}
+			if [[ $rotation == left || $rotation == right ]]; then
+				width=${mode%x*}
+				height=${mode#*x}
+				mode=${height}x${width}
+			fi
+			rate=$(awk -v output="$output" -v wanted="$mode" '
+				$1 == output && $2 == "connected" { in_output = 1; next }
+				/^[^[:space:]]/ { in_output = 0 }
+				in_output && $1 == wanted {
+					for (i = 2; i <= NF; i++) {
+						value = $i
+						gsub(/[+*]/, "", value)
+						if (value ~ /^[0-9]+([.][0-9]+)?$/ && !seen[value]++) {
+							count++
+							rate = value
+						}
+					}
+				}
+				END { if (count == 1) print rate }
+			' "$query_file")
+			[[ -n $rate ]] || die "could not unambiguously capture the active refresh rate for $output"
+		fi
 		printf '%s' "$output" >>"$profile_file"
 		[[ -z $primary ]] || printf ' %s' "$primary" >>"$profile_file"
 		printf ' --mode %s --rate %s --pos %sx%s --rotate %s\n' \

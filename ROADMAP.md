@@ -124,12 +124,16 @@ Make common monitor and input changes available from the Settings application.
 - Debian 13, current Arch, and Fedora 44 containers resolved the new XInput
   packages, built the project, validated staged install/uninstall symmetry, and
   passed the root-helper trust and authorization-denial tests.
+- The full Rocky Linux 9 container smoke remains blocked by package-source
+  availability in the qualification environment. Package mapping and shell
+  fixtures pass, but a complete Rocky install is not claimed.
 - Named profile persistence, generated managed-fragment install/backup/rollback,
   and idempotent input startup apply are automated. A real logout/login with
   the generated Xorg fragment was not performed because it would terminate the
   active qualification workspace; that remains a release-session check.
 - NVIDIA ForceFullCompositionPipeline support remains outstanding, so Phase 2
-  is not complete even where the other display and input outcomes are ready.
+  is not complete or NVIDIA-qualified even where the other display and input
+  outcomes are ready.
 
 ## Phase 3: Connectivity and Audio
 

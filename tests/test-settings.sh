@@ -33,13 +33,15 @@ make_failing_stub() {
 
 base_bin=$work/base-bin
 fedora_bin=$work/fedora-bin
-make_tools "$base_bin" dirname awk tr stat find grep timeout
+make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
 cp -a "$base_bin" "$fedora_bin"
 
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
-	xdg-settings xdg-mime xinput pkexec sudo; do
+	xdg-settings xdg-mime xinput; do
 	make_stub "$fedora_bin/$command_name"
 done
+make_failing_stub "$fedora_bin/pkexec"
+make_failing_stub "$fedora_bin/sudo"
 
 mkdir -p "$work/fedora-config/dwm-titus" "$work/debian-config/dwm-titus"
 cp "$repo/config/themes.toml" "$work/fedora-config/dwm-titus/themes.toml"
@@ -140,9 +142,14 @@ grep -Fq 'providerProcess.running = false' "$repo/config/quickshell/settings/Set
 grep -Fq 'Commands.settingsProviderCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'Commands.settingsDisplayCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'Commands.settingsInputCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'root.runInput("preview-status", [])' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'root.previewKind = "input"; root.previewToken = fields[1]; root.previewOperationLocked = true;' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'displayWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'inputWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.searchQuery = ""' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'activeFocusOnTab: root.enabled' "$repo/config/quickshell/core/ShellButton.qml"
+grep -Fq 'event.key === Qt.Key_Return' "$repo/config/quickshell/core/ShellButton.qml"
 grep -Fq 'title: "dwm settings"' "$repo/config/quickshell/settings/SettingsWindow.qml"
 grep -Fq 'label: "Settings"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'root.settingsModel.openOnScreen(targetScreen)' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"

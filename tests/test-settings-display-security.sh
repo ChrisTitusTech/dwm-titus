@@ -33,14 +33,14 @@ install -o root -g root -m 0755 "$repo/scripts/dwm-display-setup" "$setup"
 install -o root -g root -m 0755 "$repo/scripts/dwm-settings-display" \
 	"$custom_prefix/bin/dwm-settings-display"
 
-if "$repo/scripts/dwm-settings-display-root" rollback 2>"$work/repository.err"; then
+if env PKEXEC_UID=1000 "$repo/scripts/dwm-settings-display-root" rollback 2>"$work/repository.err"; then
 	printf 'repository helper copy was accepted\n' >&2
 	exit 1
 fi
 grep -Fq 'trusted installed path' "$work/repository.err"
 
 chmod 0775 "$installed"
-if "$installed" rollback 2>"$work/writable.err"; then
+if env PKEXEC_UID=1000 "$installed" rollback 2>"$work/writable.err"; then
 	printf 'writable installed helper was accepted\n' >&2
 	exit 1
 fi
@@ -48,7 +48,7 @@ grep -Fq 'trusted root-owned executable' "$work/writable.err"
 chmod 0755 "$installed"
 
 chown 65534:65534 "$installed"
-if "$installed" rollback 2>"$work/owner.err"; then
+if env PKEXEC_UID=1000 "$installed" rollback 2>"$work/owner.err"; then
 	printf 'non-root-owned helper was accepted\n' >&2
 	exit 1
 fi
@@ -57,7 +57,7 @@ chown root:root "$installed"
 
 mv "$installed" "$work/real-helper"
 ln -s "$work/real-helper" "$installed"
-if "$installed" rollback 2>"$work/symlink.err"; then
+if env PKEXEC_UID=1000 "$installed" rollback 2>"$work/symlink.err"; then
 	printf 'symlinked helper was accepted\n' >&2
 	exit 1
 fi
@@ -66,7 +66,7 @@ rm -f "$installed"
 sed "s|@PREFIX@|$custom_prefix|g" "$repo/scripts/dwm-settings-display-root" |
 	install -o root -g root -m 0755 /dev/stdin "$installed"
 
-if "$installed" install :99 '' "HDMI-1 --mode 1920x1080;touch $work/injected" \
+if env PKEXEC_UID=1000 "$installed" install :99 '' "HDMI-1 --mode 1920x1080;touch $work/injected" \
 	2>"$work/structured.err"; then
 	printf 'unstructured display input was accepted\n' >&2
 	exit 1
@@ -113,7 +113,31 @@ grep -Fq 'trusted persistent-display helper is unavailable' "$work/symlink-paren
 rm -f "$custom_prefix/libexec/dwm-titus"
 mv "$work/real-libexec" "$custom_prefix/libexec/dwm-titus"
 
-if "$installed" rollback 2>"$work/custom-prefix.err"; then
+chmod 0777 "$custom_prefix/bin"
+if env PKEXEC_UID=1000 "$installed" rollback 2>"$work/writable-bin-parent.err"; then
+	printf 'setup under a writable parent was accepted\n' >&2
+	exit 1
+fi
+grep -Fq 'trusted dwm-display-setup is unavailable' "$work/writable-bin-parent.err"
+chmod 0755 "$custom_prefix/bin"
+
+mv "$custom_prefix/bin" "$work/real-bin"
+ln -s "$work/real-bin" "$custom_prefix/bin"
+if env PKEXEC_UID=1000 "$installed" rollback 2>"$work/symlink-bin-parent.err"; then
+	printf 'setup under a symlinked parent was accepted\n' >&2
+	exit 1
+fi
+grep -Fq 'trusted dwm-display-setup is unavailable' "$work/symlink-bin-parent.err"
+rm -f "$custom_prefix/bin"
+mv "$work/real-bin" "$custom_prefix/bin"
+
+if "$installed" rollback 2>"$work/direct-root.err"; then
+	printf 'direct root execution without a polkit caller marker was accepted\n' >&2
+	exit 1
+fi
+grep -Fq 'must run through polkit as root' "$work/direct-root.err"
+
+if env PKEXEC_UID=1000 "$installed" rollback 2>"$work/custom-prefix.err"; then
 	printf 'custom-prefix rollback unexpectedly found a backup\n' >&2
 	exit 1
 fi

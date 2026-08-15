@@ -10,14 +10,30 @@ die() {
 	exit 1
 }
 
-trusted_file() {
-	local path=$1
-	[[ -f $path && ! -L $path ]] || return 1
-	[[ $(stat -c %u "$path") == 0 ]] || return 1
-	find "$path" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q .
+trusted_parent_chain() {
+	local parent=${1%/*}
+	while :; do
+		[[ -d $parent && ! -L $parent ]] || return 1
+		[[ $(stat -c %u "$parent") == 0 ]] || return 1
+		find "$parent" -maxdepth 0 -type d ! -perm /022 -print -quit 2>/dev/null | grep -q . || return 1
+		[[ $parent == / ]] && return 0
+		parent=${parent%/*}
+		[[ -n $parent ]] || parent=/
+	done
 }
 
-[[ $EUID == 0 ]] || die "this helper must run through polkit as root"
+trusted_file() {
+	local path=$1 canonical
+	canonical=$(readlink -f -- "$path" 2>/dev/null || true)
+	[[ -n $canonical && $canonical == "$path" ]] || return 1
+	trusted_parent_chain "$canonical" || return 1
+	[[ -f $canonical && ! -L $canonical ]] || return 1
+	[[ $(stat -c %u "$canonical") == 0 ]] || return 1
+	find "$canonical" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q .
+}
+
+[[ $EUID == 0 && ${PKEXEC_UID:-} =~ ^[0-9]+$ ]] ||
+	die "this helper must run through polkit as root"
 self=$(readlink -f "${BASH_SOURCE[0]}")
 [[ $self == "$install_prefix/libexec/dwm-titus/dwm-settings-display-root" ]] ||
 	die "helper is not running from its trusted installed path"

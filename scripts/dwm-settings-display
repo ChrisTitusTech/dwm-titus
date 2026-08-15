@@ -290,14 +290,13 @@ preview_file() {
 	proposed=$(token_path "$token" proposed)
 	marker=$(token_path "$token" active)
 	failed=$(token_path "$token" failed)
-	"$setup_helper" validate "$proposed"
+	"$setup_helper" validate "$proposed" --tearfree off
 	"$setup_helper" capture >"$previous"
 	chmod 600 "$previous" "$proposed"
 	: >"$marker"
 	chmod 600 "$marker"
-	("$self" _watch "$token" "$seconds" >/dev/null 2>&1) &
-	if ! "$setup_helper" apply "$proposed"; then
-		if "$setup_helper" apply "$previous"; then
+	if ! "$setup_helper" apply "$proposed" --tearfree off; then
+		if "$setup_helper" apply "$previous" --tearfree off; then
 			cleanup_preview "$token"
 			die "display preview failed; the previous layout was restored"
 		fi
@@ -306,6 +305,7 @@ preview_file() {
 		printf 'preview-failed\t%s\t%s\n' "$token" "$(clean_field "$(<"$failed")")"
 		return 0
 	fi
+	("$self" _watch "$token" "$seconds" >/dev/null 2>&1) &
 	printf 'preview\t%s\t%s\n' "$token" "$seconds"
 }
 
@@ -376,7 +376,7 @@ revert_preview() {
 	[[ -f $marker && -f $previous ]] || die "display preview is not active"
 	claim=$(claim_preview "$token")
 	trap 'rmdir "$claim" 2>/dev/null || true' RETURN
-	"$setup_helper" apply "$previous"
+	"$setup_helper" apply "$previous" --tearfree off
 	cleanup_preview "$token"
 	printf 'result\treverted\t%s\n' "$token"
 }
@@ -391,7 +391,7 @@ watchdog() {
 	if [[ -f $marker && -f $previous ]]; then
 		claim=$(token_path "$token" claim)
 		mkdir "$claim" 2>/dev/null || return 0
-		if "$setup_helper" apply "$previous"; then
+		if "$setup_helper" apply "$previous" --tearfree off; then
 			cleanup_preview "$token"
 		else
 			printf 'Automatic rollback failed; the captured layout is retained for retry.\n' >"$failed"
@@ -432,7 +432,7 @@ save)
 	temporary=$(mktemp)
 	trap 'rm -f "$temporary"' EXIT
 	write_specs "$temporary" "$@"
-	"$setup_helper" validate "$temporary"
+	"$setup_helper" validate "$temporary" --tearfree off
 	atomic_save "$temporary" "$name"
 	;;
 preview)

@@ -32,11 +32,13 @@ Scope {
     property string previewToken: ""
     property int previewSeconds: 0
     property int displayPreviewStatusAttempts: 0
+	property int inputPreviewStatusAttempts: 0
     property bool previewOperationLocked: false
     property bool closeRollbackPending: false
     property string pendingAction: ""
 
     readonly property int maxDisplayPreviewStatusAttempts: 10
+	readonly property int maxInputPreviewStatusAttempts: 10
 
     readonly property var sections: [
         { "id": "displays", "label": "Displays", "description": "Monitors, layouts, and profiles" },
@@ -277,6 +279,26 @@ Scope {
         inputActionProcess.running = true;
     }
 
+	function pollInputPreviewStatus() {
+		if (root.inputPreviewStatusAttempts >= root.maxInputPreviewStatusAttempts) {
+			root.previewSeconds = 0;
+			root.previewOperationLocked = true;
+			root.inputMessage = "Automatic rollback status timed out; use Revert to retry the captured value";
+			return;
+		}
+		root.inputPreviewStatusAttempts++;
+		if (inputActionProcess.running) {
+			root.previewSeconds = 1;
+			return;
+		}
+		root.runInput("preview-status", [root.previewToken]);
+	}
+
+	function recoverInputPreview() {
+		if (!root.previewToken && !inputActionProcess.running)
+			root.runInput("preview-status", []);
+	}
+
     function previewInput(device, setting, value) {
         if (root.previewOperationLocked || displayActionProcess.running || inputActionProcess.running) return;
         root.previewOperationLocked = true;
@@ -392,6 +414,7 @@ Scope {
         root.selectedSectionId = root.sections[0].id;
         root.refresh();
         root.activateSection(root.selectedSectionId);
+		root.recoverInputPreview();
     }
 
     function open() {
@@ -532,10 +555,25 @@ Scope {
 					const fields = line.split("\t");
 					if (fields[0] === "preview") {
 						root.previewKind = "input"; root.previewToken = fields[1]; root.previewSeconds = Number(fields[2]);
+						root.inputPreviewStatusAttempts = 0;
 						root.inputMessage = "Input preview active";
+					} else if (fields[0] === "preview-active") {
+						root.previewKind = "input"; root.previewToken = fields[1]; root.previewOperationLocked = true;
+						if (root.inputPreviewStatusAttempts >= root.maxInputPreviewStatusAttempts) {
+							root.previewSeconds = 0; root.previewOperationLocked = true;
+							root.inputMessage = "Automatic rollback status timed out; use Revert to retry the captured value";
+						} else {
+							root.previewSeconds = 1;
+							root.inputMessage = "Waiting for automatic input rollback";
+						}
+					} else if (fields[0] === "preview-failed") {
+						root.previewKind = "input"; root.previewToken = fields[1]; root.previewSeconds = 0;
+						root.inputPreviewStatusAttempts = 0;
+						root.previewOperationLocked = true; root.inputMessage = fields.slice(2).join("\t");
 					} else if (fields[0] === "result") {
-						if (fields[1] === "keep" || fields[1] === "revert") {
+						if (fields[1] === "keep" || fields[1] === "revert" || fields[1] === "expired") {
 							root.previewKind = ""; root.previewToken = ""; root.previewSeconds = 0; root.previewOperationLocked = false;
+							root.inputPreviewStatusAttempts = 0;
 						}
 						root.inputMessage = fields.slice(1).join(" ");
 						root.refreshInput();
@@ -561,12 +599,7 @@ Scope {
             root.previewSeconds = Math.max(0, root.previewSeconds - 1);
             if (root.previewSeconds === 0) {
 				if (root.previewKind === "display") root.pollDisplayPreviewStatus();
-				else {
-					root.previewKind = "";
-					root.previewToken = "";
-					root.previewOperationLocked = false;
-					inputSettleTimer.restart();
-				}
+				else root.pollInputPreviewStatus();
             }
         }
     }

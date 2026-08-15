@@ -119,6 +119,28 @@ trusted_health_helper() {
 	return 1
 }
 
+trusted_parent_chain() {
+	parent=${1%/*}
+	while :; do
+		[ -d "$parent" ] && [ ! -L "$parent" ] || return 1
+		[ "$(stat -c %u -- "$parent" 2>/dev/null || printf 1)" = 0 ] || return 1
+		find "$parent" -maxdepth 0 -type d ! -perm /022 -print -quit 2>/dev/null | grep -q . || return 1
+		[ "$parent" = / ] && return 0
+		parent=${parent%/*}
+		[ -n "$parent" ] || parent=/
+	done
+}
+
+trusted_installed_file() {
+	candidate=$1
+	canonical=$(readlink -f -- "$candidate" 2>/dev/null || true)
+	[ -n "$canonical" ] && [ "$canonical" = "$candidate" ] || return 1
+	trusted_parent_chain "$canonical" || return 1
+	[ -f "$canonical" ] && [ ! -L "$canonical" ] || return 1
+	[ "$(stat -c %u -- "$canonical" 2>/dev/null || printf 1)" = 0 ] || return 1
+	find "$canonical" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q .
+}
+
 trusted_display_helper() {
 	display_command=$(command -v dwm-settings-display 2>/dev/null || true)
 	display_helper=
@@ -130,10 +152,7 @@ trusted_display_helper() {
 	for candidate in "$display_helper" /usr/local/libexec/dwm-titus/dwm-settings-display-root \
 		/usr/libexec/dwm-titus/dwm-settings-display-root; do
 		[ -n "$candidate" ] || continue
-		[ -f "$candidate" ] || continue
-		[ ! -L "$candidate" ] || continue
-		[ "$(stat -c %u -- "$candidate" 2>/dev/null || printf 1)" = 0 ] || continue
-		find "$candidate" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q . || continue
+		trusted_installed_file "$candidate" || continue
 		return 0
 	done
 	return 1

@@ -252,7 +252,13 @@ Evidence recorded on 2026-08-15:
 - Debian 13, current Arch, and Fedora 44 containers resolved dependencies,
   built, validated staged install/uninstall, and passed privilege tests. This
   qualifies package/build behavior, not real secondary-platform hardware UI.
+- A full Rocky Linux 9 container smoke run is blocked pending a reachable
+  package source in the qualification environment; its package map and shell
+  fixtures are covered, but the complete Rocky install path is not claimed.
 - Generated display persistence, backup, rollback, and input startup reapply
   are automated. A real Xorg logout/login using the generated fragment remains
   a release-session check because performing it would terminate the active
   qualification workspace.
+- NVIDIA ForceFullCompositionPipeline remains unimplemented and unqualified;
+  the current Phase 2 evidence covers RandR layout handling and supported
+  TearFree properties only.

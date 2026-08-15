@@ -2,10 +2,10 @@
 
 <!-- markdownlint-disable MD013 -->
 
-This document is the Phase 1 `SET-001` inventory for the Settings platform.
-It records the interfaces that exist before the unified Settings application
-is introduced. It is an implementation map, not a promise that every listed
-operation is ready to expose in Settings.
+This document is the Settings capability inventory. It records the Phase 1
+platform foundation and the Phase 2 display and input controls now built on it.
+It is an implementation map of current and delegated interfaces, not a promise
+that every listed operation is ready to expose in Settings.
 
 `SPEC.md` and `ROADMAP.md` remain authoritative. The completed application,
 helper, authorization, packaging, and validation contracts are recorded in

@@ -60,13 +60,17 @@ apply_power_settings
 # Reapply persisted per-device input settings after X11 is ready. The helper
 # resolves each stable device identity again, so enumeration changes cannot
 # redirect a saved setting to a different device.
-input_helper=dwm-settings-input
-if ! command -v "$input_helper" >/dev/null 2>&1; then
-	case $0 in
-	*/*) input_helper=${0%/*}/dwm-settings-input ;;
-	esac
+input_helper=
+case $0 in
+*/*)
+	candidate=${0%/*}/dwm-settings-input
+	[ ! -x "$candidate" ] || input_helper=$candidate
+	;;
+esac
+if [ -z "$input_helper" ] && command -v dwm-settings-input >/dev/null 2>&1; then
+	input_helper=dwm-settings-input
 fi
-if [ -x "$input_helper" ] || command -v "$input_helper" >/dev/null 2>&1; then
+if [ -n "$input_helper" ]; then
 	"$input_helper" apply-saved >/dev/null 2>&1 || true
 fi
 

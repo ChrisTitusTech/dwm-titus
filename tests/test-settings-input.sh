@@ -71,6 +71,7 @@ PROPS
 	esac
 	;;
 set-prop)
+	[ "${TEST_FAIL_SET:-0}" != 1 ] || exit 1
 	printf 'xinput %s\n' "$*" >>"$TEST_LOG"
 	;;
 *) exit 2 ;;
@@ -81,7 +82,7 @@ cat >"$work/bin/setxkbmap" <<'EOF'
 #!/bin/sh
 case " $* " in
 *' -query '*) printf 'rules: evdev\nmodel: pc105\nlayout: %s\noptions: %s\n' "${TEST_LAYOUT:-us}" "${TEST_OPTIONS-caps:escape}" ;;
-*) printf 'setxkbmap %s\n' "$*" >>"$TEST_LOG" ;;
+*) [ "${TEST_FAIL_SET:-0}" != 1 ] || exit 1; printf 'setxkbmap %s\n' "$*" >>"$TEST_LOG" ;;
 esac
 EOF
 
@@ -161,6 +162,22 @@ grep -Fqx "$mouse_key"$'\tpointer-speed\t0.25\t0.000000' \
 
 env "${env_common[@]}" "$helper" apply-saved
 grep -Fq 'xinput set-prop 12 libinput Accel Speed 0.25' "$work/actions.log"
+
+override_file="$work/override/nested/input.conf"
+env "${env_common[@]}" DWM_INPUT_SETTINGS_FILE="$override_file" \
+	"$helper" preview override-path 5 "$mouse_key" pointer-speed 0.4 >/dev/null
+env "${env_common[@]}" DWM_INPUT_SETTINGS_FILE="$override_file" \
+	"$helper" keep override-path >/dev/null
+grep -Fqx "$mouse_key"$'\tpointer-speed\t0.4\t0.000000' "$override_file"
+
+if env "${env_common[@]}" TEST_FAIL_SET=1 "$helper" preview apply-failure 5 \
+	"$mouse_key" pointer-speed 0.5 2>"$work/apply-failure.err"; then
+	printf 'failed input preview reported success\n' >&2
+	exit 1
+fi
+grep -Fq 'input preview failed' "$work/apply-failure.err"
+test ! -e "$work/runtime/dwm-settings-input/apply-failure.state"
+test ! -e "$work/runtime/dwm-settings-input/current"
 
 cp "$work/home/.config/dwm-titus/input-settings.conf" "$work/saved-connected"
 {
@@ -261,14 +278,24 @@ env "${env_common[@]}" "$helper" preview disconnect-test 1 "$mouse_key" pointer-
 cp "$work/devices" "$work/devices-all"
 sed '/Mouse, Wild/d' "$work/devices-all" >"$work/devices"
 for _ in {1..30}; do
-	[[ -e $work/runtime/dwm-settings-input/current ]] || break
+	env "${env_common[@]}" "$helper" preview-status disconnect-test >"$work/disconnect-status"
+	grep -Fq $'preview-failed\tdisconnect-test\t' "$work/disconnect-status" && break
 	sleep 0.1
 done
-if [[ -e $work/runtime/dwm-settings-input/current ]]; then
-	printf 'input watchdog did not clear the preview reservation\n' >&2
+grep -Fq $'preview-failed\tdisconnect-test\tAutomatic input rollback failed' "$work/disconnect-status"
+test -f "$work/runtime/dwm-settings-input/disconnect-test.state"
+env "${env_common[@]}" "$helper" preview-status >"$work/recovered-disconnect-status"
+grep -Fq $'preview-failed\tdisconnect-test\tAutomatic input rollback failed' \
+	"$work/recovered-disconnect-status"
+if env "${env_common[@]}" "$helper" revert disconnect-test 2>"$work/disconnect-revert.err"; then
+	printf 'rollback unexpectedly succeeded while the input device was disconnected\n' >&2
 	exit 1
 fi
+grep -Fq 'preview state was retained for rollback retry' "$work/disconnect-revert.err"
+test ! -e "$work/runtime/dwm-settings-input/disconnect-test.claim"
 cp "$work/devices-all" "$work/devices"
+env "${env_common[@]}" "$helper" revert disconnect-test >/dev/null
+test ! -e "$work/runtime/dwm-settings-input/current"
 env "${env_common[@]}" "$helper" preview after-disconnect 5 "$mouse_key" pointer-speed 0.5 >/dev/null
 env "${env_common[@]}" "$helper" revert after-disconnect >/dev/null
 
@@ -277,6 +304,12 @@ env "${env_common[@]}" TEST_OPTIONS= "$helper" preview empty-options 5 \
 env "${env_common[@]}" "$helper" keep empty-options >/dev/null
 grep -Fqx "$keyboard_key"$'\tmodifier-options\tctrl:nocaps\t' \
 	"$work/home/.config/dwm-titus/input-settings.conf"
+env "${env_common[@]}" "$helper" reset "$keyboard_key" modifier-options >/dev/null
+printf '%s\tmodifier-options\t\t\n' "$keyboard_key" \
+	>>"$work/home/.config/dwm-titus/input-settings.conf"
+rm -f "$work/actions.log"
+env "${env_common[@]}" "$helper" apply-saved
+grep -Fq 'setxkbmap -device 13 -option  -option ' "$work/actions.log"
 
 env "${env_common[@]}" TEST_LAYOUT=de "$helper" preview keyboard-reset 5 \
 	"$keyboard_key" keyboard-layout fr >/dev/null
