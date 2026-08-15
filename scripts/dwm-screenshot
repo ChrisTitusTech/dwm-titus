@@ -9,6 +9,12 @@
 
 set -euo pipefail
 
+CLIP_CAPTURE_FILE=
+
+cleanup_clip_capture() {
+	[[ -z ${CLIP_CAPTURE_FILE:-} ]] || rm -f -- "$CLIP_CAPTURE_FILE"
+}
+
 active_monitor_geometry() {
 	local key monitor_count monitor_height monitor_line monitor_width
 	local monitor_x monitor_y pointer_x pointer_y value
@@ -51,8 +57,8 @@ active_monitor_geometry() {
 			monitor_height=${BASH_REMATCH[2]}
 			monitor_x=${BASH_REMATCH[3]}
 			monitor_y=${BASH_REMATCH[4]}
-			if ((monitor_count == 1 ||
-				pointer_x >= monitor_x && pointer_x < monitor_x + monitor_width &&
+			if ((monitor_count == 1 || \
+				pointer_x >= monitor_x && pointer_x < monitor_x + monitor_width && \
 				pointer_y >= monitor_y && pointer_y < monitor_y + monitor_height)); then
 				printf '%sx%s%s%s\n' \
 					"$monitor_width" "$monitor_height" "$monitor_x" "$monitor_y"
@@ -118,14 +124,12 @@ copy_capture_to_clipboard() {
 	runtime_dir="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/dwm-titus"
 	mkdir -p "$runtime_dir"
 	chmod 700 "$runtime_dir"
-	capture_file=$(mktemp "$runtime_dir/clipboard.XXXXXX.png")
-	cleanup_clip_capture() {
-		rm -f -- "$capture_file"
-	}
 	trap cleanup_clip_capture EXIT
 	trap 'exit 129' HUP
 	trap 'exit 130' INT
 	trap 'exit 143' TERM
+	CLIP_CAPTURE_FILE=$(mktemp "$runtime_dir/clipboard.XXXXXX.png")
+	capture_file=$CLIP_CAPTURE_FILE
 
 	if maim --hidecursor --select "$capture_file"; then
 		if [[ ! -s $capture_file ]]; then
@@ -136,7 +140,10 @@ copy_capture_to_clipboard() {
 		capture_status=$?
 	fi
 	if ((capture_status == 0)); then
-		if xclip -selection clipboard -target image/png -loops 0 -in <"$capture_file"; then
+		# Silent mode reads stdin, forks, and returns while the child owns the
+		# clipboard. Spell it out so -loops 0 cannot be mistaken for foreground
+		# operation (xclip's -quiet mode).
+		if xclip -selection clipboard -target image/png -loops 0 -silent -in <"$capture_file"; then
 			:
 		else
 			capture_status=$?
@@ -144,6 +151,7 @@ copy_capture_to_clipboard() {
 	fi
 
 	cleanup_clip_capture
+	CLIP_CAPTURE_FILE=
 	trap - EXIT HUP INT TERM
 	return "$capture_status"
 }

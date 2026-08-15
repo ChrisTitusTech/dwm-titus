@@ -65,6 +65,8 @@ for family in arch debian rhel; do
 	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
 		dwm_packages "$family" runtime-required | grep -Fx xclip >/dev/null
 	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
+		dwm_packages "$family" runtime-required | grep -Fx xdotool >/dev/null
+	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
 		dwm_packages "$family" recommended | grep -Fx maim >/dev/null
 done
 

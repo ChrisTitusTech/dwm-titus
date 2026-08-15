@@ -73,7 +73,7 @@ run_capture() {
 
 run_capture clip
 grep -Eq '^maim:--hidecursor --select .*/clipboard\.[^/]+\.png$' "$log"
-grep -Fqx 'xclip:-selection clipboard -target image/png -loops 0 -in' "$log"
+grep -Fqx 'xclip:-selection clipboard -target image/png -loops 0 -silent -in' "$log"
 test "$(cat "$work/clipboard.png")" = 'mock-png-capture'
 if find "$work/runtime/dwm-titus" -type f -name 'clipboard.*.png' | grep -q .; then
 	printf '%s\n' 'Clipboard temporary file was not removed' >&2
@@ -142,7 +142,7 @@ grep -Fqx 'dwm-screenshot: DISPLAY is not set' "$work/no-display.err"
 
 missing_bin=$work/missing-bin
 mkdir -p "$missing_bin"
-for command in awk bash date mkdir xdg-user-dir; do
+for command in awk bash date mkdir; do
 	ln -s "$(command -v "$command")" "$missing_bin/$command"
 done
 if DISPLAY=:99 HOME="$work/home" PATH="$missing_bin" \
