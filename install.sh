@@ -706,6 +706,13 @@ ok "Required build and runtime dependencies installed."
 if install_recommended_profile; then
 	info "Installing recommended desktop dependencies..."
 	dwm_install_package_profile desktop
+	if ! dwm_install_available_package_profile screenshot-optional; then
+		warn "maim is unavailable in the enabled repositories; screenshot hotkeys will remain disabled."
+		if [[ $DISTRO_FAMILY == rhel && $DISTRO_ID != fedora &&
+			(${VERSION_ID:-} == 9 || ${VERSION_ID:-} == 9.*) ]]; then
+			warn "On Enterprise Linux 9, enable EPEL and rerun the installer to add maim."
+		fi
+	fi
 	dwm_install_package_profile theme
 	if ! dwm_install_available_package_profile theme-gtk; then
 		warn "Some GTK theme packages were unavailable in enabled repositories."

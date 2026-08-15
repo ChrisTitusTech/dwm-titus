@@ -134,12 +134,6 @@ Singleton {
             addIconSource(sources, "file:///usr/share/icons/Adwaita/symbolic/status/dialog-password-symbolic.svg");
             addIconSource(sources, "file:///usr/share/icons/AdwaitaLegacy/24x24/legacy/dialog-password.png");
             addIconSource(sources, "image://icon/dialog-password-symbolic");
-        } else if (iconName === "flameshot-tray") {
-            addIconSource(sources, "file:///usr/share/icons/hicolor/48x48/apps/flameshot.png");
-            addIconSource(sources, "file:///usr/share/icons/hicolor/scalable/apps/flameshot.svg");
-            addIconSource(sources, "image://icon/flameshot-tray-symbolic");
-            addIconSource(sources, "image://icon/flameshot");
-            addIconSource(sources, "image://icon/org.flameshot.Flameshot");
         } else if (iconName === "steam_tray_mono") {
             addIconSource(sources, "file:///usr/share/pixmaps/steam_tray_mono.png");
         }

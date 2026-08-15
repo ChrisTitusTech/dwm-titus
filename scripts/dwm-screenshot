@@ -1,198 +1,21 @@
 #!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────
-# dwm-screenshot — Portable flameshot wrapper for dwm-titus
-# Detects screenshot directory at runtime via XDG.
+# Portable maim screenshot wrapper for dwm-titus.
 #
 # Usage:
-#   dwm-screenshot screen  - capture the monitor containing the cursor
-#   dwm-screenshot full    - capture all monitors
-#   dwm-screenshot gui     — interactive region select
-#   dwm-screenshot clip    — region select to clipboard
-# All capture modes use the native X11 backend so the cursor is not captured.
-# Clipboard captures default to JPEG for compatibility with Chromium clients.
-# ─────────────────────────────────────────────────────────
+#   dwm-screenshot screen  - save the monitor containing the cursor as JPEG
+#   dwm-screenshot full    - save all monitors as JPEG
+#   dwm-screenshot gui     - select a region and save it as JPEG
+#   dwm-screenshot clip    - select a region and copy it as PNG
 
 set -euo pipefail
 
-acquire_flameshot_lock() {
-	local lock_dir
-
-	if ! command -v flock >/dev/null 2>&1; then
-		printf 'dwm-screenshot: flock is required to manage Flameshot\n' >&2
-		return 1
-	fi
-
-	lock_dir="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/dwm-titus"
-	mkdir -p "$lock_dir"
-	exec {flameshot_lock_fd}>"$lock_dir/flameshot.lock"
-	if ! flock -w 5 "$flameshot_lock_fd"; then
-		printf 'dwm-screenshot: timed out waiting for the Flameshot lock\n' >&2
-		return 1
-	fi
-}
-
-sync_activation_environment() {
-	local -a activation_vars=(DISPLAY XDG_SESSION_TYPE QT_QPA_PLATFORM)
-
-	if [[ -z "${DISPLAY:-}" ]]; then
-		printf 'dwm-screenshot: DISPLAY is not set\n' >&2
-		return 1
-	fi
-
-	[[ -z "${XAUTHORITY:-}" ]] || activation_vars+=(XAUTHORITY)
-	[[ -z "${XDG_CURRENT_DESKTOP:-}" ]] || activation_vars+=(XDG_CURRENT_DESKTOP)
-
-	# dwm-titus is an X11 session. Force Flameshot onto its native XCB capture
-	# path instead of allowing stale Wayland session state to select a portal.
-	export XDG_SESSION_TYPE=x11
-	export QT_QPA_PLATFORM=xcb
-	unset WAYLAND_DISPLAY
-
-	# Flameshot uses D-Bus activation. Keep the user manager on the current
-	# X11 display so an old login or nested-X test cannot launch it elsewhere.
-	if command -v systemctl >/dev/null 2>&1; then
-		systemctl --user unset-environment WAYLAND_DISPLAY >/dev/null 2>&1 || true
-		systemctl --user import-environment "${activation_vars[@]}" >/dev/null 2>&1 || true
-	fi
-	if command -v dbus-update-activation-environment >/dev/null 2>&1; then
-		# The D-Bus API cannot delete a variable, so clear the legacy activation
-		# value explicitly before importing the current X11 environment.
-		dbus-update-activation-environment WAYLAND_DISPLAY= >/dev/null 2>&1 || true
-		dbus-update-activation-environment --systemd \
-			"${activation_vars[@]}" >/dev/null 2>&1 || true
-	fi
-}
-
-ensure_flameshot_defaults() {
-	local backup_file config_dir config_file target_file temp_file
-
-	config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/flameshot"
-	config_file="$config_dir/flameshot.ini"
-	mkdir -p "$config_dir"
-
-	if [[ ! -f "$config_file" ]]; then
-		printf '%s\n' \
-			'[General]' \
-			'useJpgForClipboard=true' \
-			'useX11LegacyScreenshot=true' >"$config_file"
-		return
-	fi
-	if awk '
-		/^\[General\][[:space:]]*$/ { in_general = 1; next }
-		/^\[[^]]+\][[:space:]]*$/ { in_general = 0 }
-		in_general &&
-			/^useJpgForClipboard[[:space:]]*=/ {
-			jpeg_count++
-			if ($0 ~ /^useJpgForClipboard[[:space:]]*=[[:space:]]*true[[:space:]]*$/)
-				jpeg_true++
-		}
-		in_general &&
-			/^useX11LegacyScreenshot[[:space:]]*=/ {
-			x11_count++
-			if ($0 ~ /^useX11LegacyScreenshot[[:space:]]*=[[:space:]]*true[[:space:]]*$/)
-				x11_true++
-		}
-		END {
-			exit !(jpeg_count == 1 && jpeg_true == 1 &&
-				x11_count == 1 && x11_true == 1)
-		}
-	' "$config_file"; then
-		return
-	fi
-
-	temp_file=$(mktemp "$config_file.tmp.XXXXXX")
-	if ! awk '
-		function write_missing_defaults() {
-			if (!wrote_jpeg) {
-				print "useJpgForClipboard=true"
-				wrote_jpeg = 1
-			}
-			if (!wrote_x11) {
-				print "useX11LegacyScreenshot=true"
-				wrote_x11 = 1
-			}
-		}
-		BEGIN {
-			in_general = 0
-			found_general = 0
-			wrote_jpeg = 0
-			wrote_x11 = 0
-		}
-		/^\[General\][[:space:]]*$/ {
-			in_general = 1
-			found_general = 1
-			print
-			next
-		}
-		/^\[[^]]+\][[:space:]]*$/ {
-			if (in_general)
-				write_missing_defaults()
-			in_general = 0
-			print
-			next
-		}
-		in_general &&
-			/^useJpgForClipboard[[:space:]]*=/ {
-			if (!wrote_jpeg) {
-				print "useJpgForClipboard=true"
-				wrote_jpeg = 1
-			}
-			next
-		}
-		in_general &&
-			/^useX11LegacyScreenshot[[:space:]]*=/ {
-			if (!wrote_x11) {
-				print "useX11LegacyScreenshot=true"
-				wrote_x11 = 1
-			}
-			next
-		}
-		{ print }
-		END {
-			if (in_general)
-				write_missing_defaults()
-			else if (!found_general) {
-				print ""
-				print "[General]"
-				print "useJpgForClipboard=true"
-				print "useX11LegacyScreenshot=true"
-			}
-		}
-	' "$config_file" >"$temp_file"; then
-		rm -f -- "$temp_file"
-		return 1
-	fi
-
-	if ! target_file=$(readlink -f -- "$config_file"); then
-		rm -f -- "$temp_file"
-		return 1
-	fi
-	if ! backup_file=$(mktemp "$target_file.backup.XXXXXX"); then
-		rm -f -- "$temp_file"
-		return 1
-	fi
-	if ! cat "$target_file" >"$backup_file"; then
-		rm -f -- "$backup_file" "$temp_file"
-		return 1
-	fi
-	if ! cat "$temp_file" >"$target_file"; then
-		if ! cat "$backup_file" >"$target_file"; then
-			printf 'dwm-screenshot: failed to restore %s after an update error\n' \
-				"$config_file" >&2
-		fi
-		rm -f -- "$backup_file" "$temp_file"
-		return 1
-	fi
-	rm -f -- "$backup_file" "$temp_file"
-}
-
-active_monitor_number() {
-	local key monitor_count monitor_height monitor_line monitor_number
-	local monitor_width monitor_x monitor_y pointer_x pointer_y value
+active_monitor_geometry() {
+	local key monitor_count monitor_height monitor_line monitor_width
+	local monitor_x monitor_y pointer_x pointer_y value
 	local monitor_list
 
 	if ! command -v xrandr >/dev/null 2>&1; then
-		printf 'dwm-screenshot: xrandr is required to select the active monitor\n' >&2
+		printf 'dwm-screenshot: xrandr is required to locate the active monitor\n' >&2
 		return 1
 	fi
 	if ! monitor_list=$(xrandr --listmonitors 2>/dev/null); then
@@ -200,35 +23,39 @@ active_monitor_number() {
 		return 1
 	fi
 	monitor_count=$(awk 'NR == 1 && $1 == "Monitors:" { print $2 }' <<<"$monitor_list")
-	if [[ "$monitor_count" == 1 ]]; then
-		printf '0\n'
-		return
-	fi
-	if ! command -v xdotool >/dev/null 2>&1; then
-		printf 'dwm-screenshot: xdotool is required to locate the active monitor\n' >&2
-		return 1
-	fi
-	while IFS='=' read -r key value; do
-		case "$key" in
-		X) pointer_x=$value ;;
-		Y) pointer_y=$value ;;
-		esac
-	done < <(xdotool getmouselocation --shell 2>/dev/null)
-	if [[ ! ${pointer_x:-} =~ ^-?[0-9]+$ || ! ${pointer_y:-} =~ ^-?[0-9]+$ ]]; then
-		printf 'dwm-screenshot: unable to locate the pointer\n' >&2
+	if [[ ! $monitor_count =~ ^[1-9][0-9]*$ ]]; then
+		printf 'dwm-screenshot: xrandr returned no active monitors\n' >&2
 		return 1
 	fi
 
+	if ((monitor_count > 1)); then
+		if ! command -v xdotool >/dev/null 2>&1; then
+			printf 'dwm-screenshot: xdotool is required to locate the pointer\n' >&2
+			return 1
+		fi
+		while IFS='=' read -r key value; do
+			case "$key" in
+			X) pointer_x=$value ;;
+			Y) pointer_y=$value ;;
+			esac
+		done < <(xdotool getmouselocation --shell 2>/dev/null)
+		if [[ ! ${pointer_x:-} =~ ^-?[0-9]+$ || ! ${pointer_y:-} =~ ^-?[0-9]+$ ]]; then
+			printf 'dwm-screenshot: unable to locate the pointer\n' >&2
+			return 1
+		fi
+	fi
+
 	while IFS= read -r monitor_line; do
-		if [[ $monitor_line =~ ^[[:space:]]*([0-9]+):.*[[:space:]]([0-9]+)/[0-9]+x([0-9]+)/[0-9]+([+-][0-9]+)([+-][0-9]+)[[:space:]] ]]; then
-			monitor_number=${BASH_REMATCH[1]}
-			monitor_width=${BASH_REMATCH[2]}
-			monitor_height=${BASH_REMATCH[3]}
-			monitor_x=${BASH_REMATCH[4]}
-			monitor_y=${BASH_REMATCH[5]}
-			if ((pointer_x >= monitor_x && pointer_x < monitor_x + monitor_width && \
+		if [[ $monitor_line =~ ^[[:space:]]*[0-9]+:.*[[:space:]]([0-9]+)/[0-9]+x([0-9]+)/[0-9]+([+-][0-9]+)([+-][0-9]+)[[:space:]] ]]; then
+			monitor_width=${BASH_REMATCH[1]}
+			monitor_height=${BASH_REMATCH[2]}
+			monitor_x=${BASH_REMATCH[3]}
+			monitor_y=${BASH_REMATCH[4]}
+			if ((monitor_count == 1 ||
+				pointer_x >= monitor_x && pointer_x < monitor_x + monitor_width &&
 				pointer_y >= monitor_y && pointer_y < monitor_y + monitor_height)); then
-				printf '%s\n' "$monitor_number"
+				printf '%sx%s%s%s\n' \
+					"$monitor_width" "$monitor_height" "$monitor_x" "$monitor_y"
 				return
 			fi
 		fi
@@ -238,159 +65,120 @@ active_monitor_number() {
 	return 1
 }
 
-flameshot_daemon_pids() {
-	local pid user_id=$1
+next_capture_path() {
+	local stamp
 
-	while IFS= read -r pid; do
-		process_is_alive "$pid" || continue
-		[[ -r "/proc/$pid/environ" ]] || continue
-		if awk \
-			-v expected_display="DISPLAY=$DISPLAY" \
-			-v expected_bus="${DBUS_SESSION_BUS_ADDRESS:+DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS}" '
-			BEGIN { RS = "\0" }
-			$0 == expected_display { display = 1 }
-			$0 == "XDG_SESSION_TYPE=x11" { session = 1 }
-			$0 == "QT_QPA_PLATFORM=xcb" { platform = 1 }
-			index($0, "DBUS_SESSION_BUS_ADDRESS=") == 1 { bus_present = 1 }
-			$0 == expected_bus { bus = 1 }
-			END {
-				if (expected_bus == "")
-					bus = !bus_present
-				exit !(display && session && platform && bus)
-			}
-		' "/proc/$pid/environ"; then
-			printf '%s\n' "$pid"
-		fi
-	done < <(pgrep -u "$user_id" -x flameshot 2>/dev/null || true)
+	stamp=$(date '+%Y-%m-%d_%H-%M-%S')
+	mktemp "$SCREENSHOT_DIR/screenshot_${stamp}.XXXXXX.jpg"
 }
 
-process_is_alive() {
-	local pid=$1 state
+save_capture() {
+	local mode=$1 capture_file capture_status=0 geometry
+	local -a maim_args=(--hidecursor)
 
-	state=$(ps -o stat= -p "$pid" 2>/dev/null || true)
-	state=${state//[[:space:]]/}
-	case "$state" in
-	Z* | X*) return 1 ;;
+	case "$mode" in
+	screen)
+		geometry=$(active_monitor_geometry)
+		maim_args+=(--geometry "$geometry")
+		;;
+	full) ;;
+	gui) maim_args+=(--select) ;;
 	esac
-	kill -0 "$pid" 2>/dev/null
-}
 
-manage_daemon() {
-	local action=$1 alive attempt pid user_id
-	local -a all_pids daemon_pids
-
-	user_id=$(id -u)
-	mapfile -t all_pids < <(pgrep -u "$user_id" -x flameshot 2>/dev/null || true)
-	mapfile -t daemon_pids < <(flameshot_daemon_pids "$user_id")
-	if [[ "$action" == daemon ]] && ((${#daemon_pids[@]})); then
-		return 0
-	fi
-
-	# Flameshot is a per-user singleton on the session bus. Replace any stale
-	# daemon from another display or bus so this managed X11 session owns it.
-	if ((${#all_pids[@]})); then
-		kill "${all_pids[@]}" 2>/dev/null || true
-		attempt=0
-		while :; do
-			alive=0
-			for pid in "${all_pids[@]}"; do
-				if process_is_alive "$pid"; then
-					alive=1
-					break
-				fi
-			done
-			((alive)) || break
-			((attempt += 1))
-			if ((attempt >= 100)); then
-				printf 'dwm-screenshot: timed out waiting for Flameshot to exit\n' >&2
-				return 1
-			fi
-			sleep 0.05
-		done
-	fi
-
-	mapfile -t daemon_pids < <(flameshot_daemon_pids "$user_id")
-	if ((${#daemon_pids[@]})); then
-		return 0
-	fi
-
-	if command -v setsid >/dev/null 2>&1; then
-		(
-			exec {flameshot_lock_fd}>&-
-			exec setsid -f env -u WAYLAND_DISPLAY \
-				XDG_SESSION_TYPE=x11 \
-				QT_QPA_PLATFORM=xcb \
-				flameshot
-		) >/dev/null 2>&1
-	else
-		(
-			exec {flameshot_lock_fd}>&-
-			exec env -u WAYLAND_DISPLAY \
-				XDG_SESSION_TYPE=x11 \
-				QT_QPA_PLATFORM=xcb \
-				flameshot
-		) >/dev/null 2>&1 &
-	fi
-
-	attempt=0
-	while :; do
-		mapfile -t daemon_pids < <(flameshot_daemon_pids "$user_id")
-		((${#daemon_pids[@]})) && break
-		((attempt += 1))
-		if ((attempt >= 100)); then
-			printf 'dwm-screenshot: timed out waiting for Flameshot to start\n' >&2
-			return 1
+	capture_file=$(next_capture_path)
+	if maim "${maim_args[@]}" "$capture_file"; then
+		if [[ ! -s $capture_file ]]; then
+			printf 'dwm-screenshot: maim produced an empty capture\n' >&2
+			capture_status=1
 		fi
-		sleep 0.05
-	done
+	else
+		capture_status=$?
+	fi
+
+	if ((capture_status != 0)); then
+		rm -f -- "$capture_file"
+		return "$capture_status"
+	fi
+
+	if command -v notify-send >/dev/null 2>&1; then
+		notify-send -a dwm-titus 'Screenshot saved' "$capture_file" \
+			>/dev/null 2>&1 || true
+	fi
+	printf '%s\n' "$capture_file"
 }
 
-if ! command -v flameshot >/dev/null 2>&1; then
-	printf 'dwm-screenshot: flameshot is not installed\n' >&2
+copy_capture_to_clipboard() {
+	local capture_file capture_status=0 runtime_dir
+
+	if ! command -v xclip >/dev/null 2>&1; then
+		printf 'dwm-screenshot: xclip is required for clipboard captures\n' >&2
+		return 127
+	fi
+
+	runtime_dir="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/dwm-titus"
+	mkdir -p "$runtime_dir"
+	chmod 700 "$runtime_dir"
+	capture_file=$(mktemp "$runtime_dir/clipboard.XXXXXX.png")
+	cleanup_clip_capture() {
+		rm -f -- "$capture_file"
+	}
+	trap cleanup_clip_capture EXIT
+	trap 'exit 129' HUP
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+
+	if maim --hidecursor --select "$capture_file"; then
+		if [[ ! -s $capture_file ]]; then
+			printf 'dwm-screenshot: maim produced an empty capture\n' >&2
+			capture_status=1
+		fi
+	else
+		capture_status=$?
+	fi
+	if ((capture_status == 0)); then
+		if xclip -selection clipboard -target image/png -loops 0 -in <"$capture_file"; then
+			:
+		else
+			capture_status=$?
+		fi
+	fi
+
+	cleanup_clip_capture
+	trap - EXIT HUP INT TERM
+	return "$capture_status"
+}
+
+ACTION=${1:-gui}
+
+# Compatibility no-ops allow a rolling update from older autostart and theme
+# scripts that managed the removed Flameshot daemon.
+case "$ACTION" in
+setup | daemon | restart-daemon) exit 0 ;;
+screen | full | gui | clip) ;;
+*)
+	printf 'Usage: %s {screen|full|gui|clip}\n' "$0" >&2
+	exit 1
+	;;
+esac
+
+if [[ -z ${DISPLAY:-} ]]; then
+	printf 'dwm-screenshot: DISPLAY is not set\n' >&2
+	exit 1
+fi
+if ! command -v maim >/dev/null 2>&1; then
+	printf 'dwm-screenshot: maim is not installed\n' >&2
 	exit 127
-fi
-
-sync_activation_environment
-acquire_flameshot_lock
-ensure_flameshot_defaults
-
-ACTION="${1:-gui}"
-if [[ "$ACTION" == setup ]]; then
-	exit 0
-fi
-if [[ "$ACTION" == daemon || "$ACTION" == restart-daemon ]]; then
-	manage_daemon "$ACTION"
-	exit
 fi
 
 SCREENSHOT_DIR=""
 if command -v xdg-user-dir >/dev/null 2>&1; then
 	pictures_dir=$(xdg-user-dir PICTURES 2>/dev/null || true)
-	[[ -z "$pictures_dir" ]] || SCREENSHOT_DIR="$pictures_dir/Screenshots"
+	[[ -z $pictures_dir ]] || SCREENSHOT_DIR="$pictures_dir/Screenshots"
 fi
 SCREENSHOT_DIR="${SCREENSHOT_DIR:-$HOME/Pictures/Screenshots}"
 mkdir -p "$SCREENSHOT_DIR"
 
 case "$ACTION" in
-screen)
-	SCREEN_NUMBER=$(active_monitor_number)
-	exec {flameshot_lock_fd}>&-
-	exec flameshot screen -n "$SCREEN_NUMBER" -p "$SCREENSHOT_DIR"
-	;;
-full)
-	exec {flameshot_lock_fd}>&-
-	exec flameshot full -p "$SCREENSHOT_DIR"
-	;;
-gui)
-	exec {flameshot_lock_fd}>&-
-	exec flameshot gui -p "$SCREENSHOT_DIR"
-	;;
-clip)
-	exec {flameshot_lock_fd}>&-
-	exec flameshot gui --clipboard
-	;;
-*)
-	printf 'Usage: %s {screen|full|gui|clip|setup|daemon|restart-daemon}\n' "$0" >&2
-	exit 1
-	;;
+screen | full | gui) save_capture "$ACTION" ;;
+clip) copy_capture_to_clipboard ;;
 esac

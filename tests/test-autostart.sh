@@ -5,10 +5,6 @@ set -eu
 repo_dir=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 cleanup() {
-	for pid_file in "$work"/*/state/flameshot.pid; do
-		[ -f "$pid_file" ] || continue
-		kill "$(cat "$pid_file")" 2>/dev/null || true
-	done
 	rm -rf "$work"
 }
 trap cleanup EXIT HUP INT TERM
@@ -24,22 +20,6 @@ count=0
 count=$((count + 1))
 printf '%s\n' "$count" >"$count_file"
 : >"${TEST_STATE:?}/$name.running"
-if [ "$name" = flameshot ]; then
-	printf '%s|%s|%s\n' \
-		"${XDG_SESSION_TYPE:-}" \
-		"${QT_QPA_PLATFORM:-}" \
-		"${WAYLAND_DISPLAY:-}" \
-		>"${TEST_STATE:?}/flameshot.env"
-	printf '%s\n' "$$" >"${TEST_STATE:?}/flameshot.pid"
-	cleanup() {
-		rm -f "${TEST_STATE:?}/flameshot.pid"
-	}
-	trap 'cleanup; exit 0' TERM INT
-	trap cleanup EXIT
-	while :; do
-		sleep 1
-	done
-fi
 EOF
 	chmod +x "$work/bin/$name"
 }
@@ -76,13 +56,6 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 [ -n "$name" ] || exit 1
-if [ "$name" = flameshot ]; then
-	test -f "${TEST_STATE:?}/flameshot.pid" || exit 1
-	pid=$(cat "${TEST_STATE:?}/flameshot.pid")
-	kill -0 "$pid" 2>/dev/null || exit 1
-	printf '%s\n' "$pid"
-	exit 0
-fi
 test -f "${TEST_STATE:?}/$name.running"
 EOF
 
@@ -126,7 +99,7 @@ EOF
 
 chmod +x "$work/bin/"*
 
-for name in feh flameshot picom dwm-status dwm-lock-watch light-locker dex dex-autostart; do
+for name in feh picom dwm-status dwm-lock-watch light-locker dex dex-autostart; do
 	make_mock_command "$name"
 done
 
@@ -191,23 +164,11 @@ run_duplicate_case() {
 		wait_for_marker "$state/dwm-status.running"
 		wait_for_marker "$state/dwm-lock-watch.running"
 		wait_for_marker "$state/quickshell.running"
-		wait_for_marker "$state/flameshot.running"
 	done
 
-	for name in feh flameshot picom dwm-lock-watch quickshell; do
-		expected=1
-		# Each startx fixture invocation has a fresh session bus, so the
-		# surviving Flameshot daemon must be replaced for the second bus.
-		if [ "$mode" = startx ] && [ "$name" = flameshot ]; then
-			expected=2
-		fi
-		test "$(cat "$state/$name.count")" -eq "$expected"
+	for name in feh picom dwm-status dwm-lock-watch quickshell; do
+		test "$(cat "$state/$name.count")" -eq 1
 	done
-	grep -Fqx 'useX11LegacyScreenshot=true' \
-		"$home/.config/flameshot/flameshot.ini"
-	grep -Fqx 'useJpgForClipboard=true' \
-		"$home/.config/flameshot/flameshot.ini"
-	grep -Fqx 'x11|xcb|' "$state/flameshot.env"
 	test ! -e "$state/light-locker.count"
 	test ! -e "$state/dex.count"
 	test ! -e "$state/dex-autostart.count"
@@ -264,35 +225,10 @@ run_missing_optional_case() {
 		/bin/sh "$repo_dir/scripts/autostart.sh"
 }
 
-run_flameshot_setup_failure_case() {
-	home="$work/flameshot-failure/home"
-	state="$work/flameshot-failure/state"
-	config_path="$home/not-a-directory"
-	mkdir -p "$home" "$state"
-	: >"$config_path"
-	: >"$state/polkit-mate-authentication-agent-1.running"
-
-	DISPLAY=:99 \
-		HOME=$home \
-		TEST_STATE=$state \
-		TEST_SYSTEMD_START_FAIL=1 \
-		PATH="$work/bin:/usr/bin:/bin" \
-		XDG_CONFIG_HOME=$config_path \
-		XDG_RUNTIME_DIR="$work/flameshot-failure/runtime" \
-		DWM_AUTOSTART_NO_SETSID=1 \
-		sh "$repo_dir/scripts/autostart.sh" \
-		2>"$state/autostart.err"
-
-	test ! -e "$state/flameshot.count"
-	grep -Fq "failed to configure Flameshot's X11 backend" \
-		"$state/autostart.err"
-}
-
 run_duplicate_case display-manager
 run_duplicate_case startx
 run_dex_fallback_case
 run_missing_optional_case
-run_flameshot_setup_failure_case
 
 if grep -q '^WantedBy=default.target$' \
 	"$repo_dir/config/systemd/user/wm-graphical-session.service"; then

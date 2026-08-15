@@ -10,9 +10,17 @@ versions from `config.mk`.
 
 - Thunar's seeded **Open Terminal Here** action now launches Alacritty directly
   instead of entering the Herdr workspace.
-- Flameshot clipboard captures now default to JPEG to avoid a Qt/X11 image
-  paste crash in Chromium-based applications, while file captures retain the
-  user's configured save format.
+- Replace Flameshot with the X11-native `maim` capture tool. Saved captures use
+  JPEG, active-monitor captures use the monitor under the pointer, and region
+  clipboard captures use an `xclip`-owned PNG selection that pastes reliably
+  into Chromium-based applications without a monitor chooser or resident
+  screenshot daemon.
+
+### Fixed
+
+- Remove Quickshell notification cards when their sender closes the underlying
+  notification, and dismiss overflow notifications instead of retaining hidden
+  objects that can accumulate during a long session.
 
 ## [0.6.0] - 2026-08-13
 

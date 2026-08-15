@@ -187,7 +187,7 @@ main() {
 		check_pkg_config "$module"
 	done
 	check_any_required_cmd "X11 server" Xorg Xlibre
-	for cmd in startx xrandr xset xsetroot; do
+	for cmd in startx xrandr xset xsetroot xclip xdotool; do
 		check_required_cmd "$cmd"
 	done
 	check_terminal
@@ -195,7 +195,7 @@ main() {
 	if [[ $format == human ]]; then
 		printf '\nOptional desktop\n'
 	fi
-	for cmd in quickshell picom feh flameshot xdg-open notify-send amixer brightnessctl light-locker gsettings xprop; do
+	for cmd in quickshell picom feh maim xdg-open notify-send amixer brightnessctl light-locker gsettings xprop; do
 		check_optional_cmd "$cmd"
 	done
 	check_herdr

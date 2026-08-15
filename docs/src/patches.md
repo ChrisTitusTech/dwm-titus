@@ -104,7 +104,7 @@ Save the file to apply a new theme instantly across supported apps.
 |--------|-------------|
 | `dwm-controlcenter` | Quickshell control center (`Super`+`F1`) |
 | `dwm-keybinds` | Searchable keybind viewer (`Super`+`/`) |
-| `dwm-screenshot` | Cursor-free Flameshot wrapper (screen, full, gui, clip modes) |
+| `dwm-screenshot` | Cursor-free `maim` wrapper (screen, full, gui, clip modes) |
 | `theme-apply.sh` | Applies active theme from `themes.toml` to all apps |
 | `webapp-create` | Creates a web app shortcut |
 | `webapp-launch` | Launches a URL as a standalone web app window |
