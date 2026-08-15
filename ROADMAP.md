@@ -83,6 +83,8 @@ application without changing existing desktop behavior.
 
 ## Phase 2: Displays and Input
 
+Status: Implementation in progress (2026-08-15); release qualification pending
+
 ### Objective
 
 Make common monitor and input changes available from the Settings application.
@@ -106,6 +108,28 @@ Make common monitor and input changes available from the Settings application.
 - Rejected or unconfirmed display previews return to the previous layout.
 - Input changes affect only the selected device and preserve a recovery path.
 - Nested-X11 tests cover safe behavior; hardware limitations are recorded.
+
+### Implementation and Qualification Evidence
+
+- Fedora Linux 44 x86_64 X11 discovered two active outputs. A complete no-op
+  two-monitor preview applied and returned to the byte-equivalent captured
+  layout after the two-second watchdog timeout.
+- A Logitech G502 pointer-speed preview and a Glorious GMMK3 keyboard-layout
+  preview both changed only the selected stable device and automatically
+  restored the prior value. No touchpad was connected, so touchpad behavior is
+  fixture- and nested-X11-tested but not hardware-qualified.
+- Nested X11 at 1280x800 discovered one output and two virtual input devices,
+  exercised Displays and Input section lifecycle, closed cleanly, and measured
+  0.00 percent Quickshell CPU while closed.
+- Debian 13, current Arch, and Fedora 44 containers resolved the new XInput
+  packages, built the project, validated staged install/uninstall symmetry, and
+  passed the root-helper trust and authorization-denial tests.
+- Named profile persistence, generated managed-fragment install/backup/rollback,
+  and idempotent input startup apply are automated. A real logout/login with
+  the generated Xorg fragment was not performed because it would terminate the
+  active qualification workspace; that remains a release-session check.
+- NVIDIA ForceFullCompositionPipeline support remains outstanding, so Phase 2
+  is not complete even where the other display and input outcomes are ready.
 
 ## Phase 3: Connectivity and Audio
 

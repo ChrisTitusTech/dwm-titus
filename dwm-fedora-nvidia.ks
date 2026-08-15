@@ -75,6 +75,8 @@ xorg-x11-xinit
 xrandr
 xset
 xsetroot
+xinput
+setxkbmap
 dbus-x11
 procps-ng
 psmisc

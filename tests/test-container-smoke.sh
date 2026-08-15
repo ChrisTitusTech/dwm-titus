@@ -95,6 +95,7 @@ make clean
 make
 make check-install
 make check-install-manifest
+DWM_SECURITY_CONTAINER=1 tests/test-settings-display-security.sh
 '"'"'
 '
 }

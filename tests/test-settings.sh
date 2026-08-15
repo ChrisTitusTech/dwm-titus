@@ -37,7 +37,7 @@ make_tools "$base_bin" dirname awk tr stat find grep timeout
 cp -a "$base_bin" "$fedora_bin"
 
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
-	xdg-settings xdg-mime pkexec sudo; do
+	xdg-settings xdg-mime xinput pkexec sudo; do
 	make_stub "$fedora_bin/$command_name"
 done
 
@@ -55,7 +55,11 @@ printf '%s\n' "$fedora_output" | grep -Fqx 'platform	fedora	rhel	Fedora Linux 44
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	displays	randr	Display discovery	available	read-only	xrandr	RandR display state is available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	input	input-devices	Input devices	unsupported	user-session	xinput	Input device settings begin in Phase 2'
+	'capability	displays	display-changes	Display changes	available	user-session	dwm-settings-display	Validated layout previews, rollback, and user profiles are available'
+printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	displays	display-persistence	Persistent display profiles	restricted	privileged	dwm-settings-display-root	Live previews remain available; install the trusted root helper for persistence'
+printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	input	input-devices	Input devices	available	user-session	dwm-settings-input	Stable device discovery, preview, reset, and persistence are available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	network	networkmanager	NetworkManager	available	delegated	nmcli	NetworkManager state is available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
@@ -134,6 +138,10 @@ grep -Fq 'managed Quickshell configuration not found' "$work/missing-config.err"
 grep -Fq 'target: "settings"' "$repo/config/quickshell/shell.qml"
 grep -Fq 'providerProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'Commands.settingsProviderCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'Commands.settingsDisplayCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'Commands.settingsInputCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'displayWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'inputWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.searchQuery = ""' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'title: "dwm settings"' "$repo/config/quickshell/settings/SettingsWindow.qml"
 grep -Fq 'label: "Settings"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
@@ -155,5 +163,11 @@ if grep -Eq '^[[:space:]]*(sudo|pkexec)([[:space:]]|$)' "$provider"; then
 	printf 'Settings discovery must not execute an elevation tool.\n' >&2
 	exit 1
 fi
+
+if "$repo/scripts/dwm-settings-display-root" rollback 2>"$work/root-helper.err"; then
+	printf 'Privileged display helper ran without root authorization.\n' >&2
+	exit 1
+fi
+grep -Fq 'must run through polkit as root' "$work/root-helper.err"
 
 printf 'Settings capability provider and shell contract: PASS\n'

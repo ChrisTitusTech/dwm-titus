@@ -35,6 +35,8 @@ chmod 700 "$runtime"
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
 cp "$repo/config/"*.toml "$config_home/dwm-titus/"
 cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
+	"$repo/scripts/dwm-settings-display" "$repo/scripts/dwm-settings-input" \
+	"$repo/scripts/dwm-display-setup" \
 	"$repo/scripts/dwm-quickshell-controlcenter" "$repo/scripts/dwm-quickshell-controls" \
 	"$repo/scripts/dwm-quickshell-network" "$repo/scripts/dwm-diagnostics" \
 	"$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
@@ -106,6 +108,19 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$status" = ready ]
 
+i=0
+while [ "$i" -lt 100 ]; do
+	display_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings displayStatus 2>/dev/null || true)
+	[ "$display_status" = ready ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$display_status" = ready ]
+display_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings displayCount)
+[ "$display_count" -ge 1 ]
+
 section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
 [ "$section" = displays ]
@@ -115,6 +130,24 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
 [ "$section" = audio ]
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select input >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	input_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings inputStatus 2>/dev/null || true)
+	[ "$input_status" = ready ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$input_status" = ready ]
+input_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings inputCount)
+[ "$input_count" -ge 1 ]
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
 
 DISPLAY=$display xdotool windowactivate --sync "$window"
 DISPLAY=$display xdotool key Down

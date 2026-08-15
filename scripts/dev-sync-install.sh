@@ -93,6 +93,7 @@ quickshell_dir=$config_home/quickshell
 binary_target=$prefix/bin/dwm
 man_target=$manprefix/man1/dwm.1
 xsession_target=$xsessions_dir/dwm.desktop
+display_root_helper_target=$prefix/libexec/dwm-titus/dwm-settings-display-root
 make_command=${MAKE:-make}
 
 validate_live_root USER_HOME "$user_home"
@@ -115,6 +116,7 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 install_sources_file=$work/install-sources
 expected_man=$work/dwm.1
 expected_xsession=$work/dwm.desktop
+expected_display_root_helper=$work/dwm-settings-display-root
 tree_diff=$work/tree.diff
 
 prepare_expected_files() {
@@ -129,6 +131,8 @@ prepare_expected_files() {
 	[ -n "$version" ] || die "could not read VERSION from config.mk"
 	sed "s/VERSION/$version/g" "$repo_dir/dwm.1" >"$expected_man"
 	sed "s|@PREFIX@|$prefix|g" "$repo_dir/dwm.desktop" >"$expected_xsession"
+	sed "s|@PREFIX@|$prefix|g" "$repo_dir/scripts/dwm-settings-display-root" \
+		>"$expected_display_root_helper"
 }
 
 verification_failed=0
@@ -192,6 +196,20 @@ verify_install() {
 		verify_executable "$repo_dir/$install_source" "$prefix/bin/$install_name" \
 			"installed command $install_name"
 	done <"$install_sources_file"
+	verify_executable "$expected_display_root_helper" \
+		"$display_root_helper_target" "privileged display helper"
+	verify_privileged_helper_trust=1
+	if [ "${DWM_DEV_SYNC_SKIP_PRIVILEGED_TRUST:-0}" = 1 ]; then
+		verify_privileged_helper_trust=0
+	fi
+	if [ "$verify_privileged_helper_trust" -eq 1 ] && [ -e "$display_root_helper_target" ]; then
+		if [ "$(stat -c %u "$display_root_helper_target")" -ne 0 ] ||
+			find "$display_root_helper_target" -maxdepth 0 -perm /022 -print -quit | grep -q .; then
+			printf 'UNTRUSTED: privileged display helper ownership or mode (%s)\n' \
+				"$display_root_helper_target" >&2
+			verification_failed=1
+		fi
+	fi
 
 	verify_file "$expected_man" "$man_target" "dwm man page"
 	verify_file "$expected_xsession" "$xsession_target" "dwm X session"
@@ -253,6 +271,7 @@ backup_live_install() {
 		[ -n "$install_source" ] || continue
 		add_system_backup_path "$prefix/bin/${install_source##*/}"
 	done <"$install_sources_file"
+	add_system_backup_path "$display_root_helper_target"
 	for cursor_source in "$repo_dir"/assets/cursors/Capitaine-Cursors*; do
 		[ -d "$cursor_source" ] || continue
 		add_system_backup_path "$data_root/icons/${cursor_source##*/}"

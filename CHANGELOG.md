@@ -6,6 +6,17 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Added
+
+- Interactive Displays and Input Settings panes with versioned, event-driven
+  providers; complete display layout previews and named profiles; stable
+  per-device input controls; timed rollback; reset; and session persistence.
+- A narrow root-owned display helper for confirmed managed Xorg fragment
+  installation and rollback, with installed-path, ownership, permission,
+  symlink, structured-input, and authorization-denial coverage.
+- Fedora hardware, nested-X11, and Debian/Arch/Fedora container validation for
+  the Phase 2 provider, packaging, recovery, and privilege contracts.
+
 ### Changed
 
 - Thunar's seeded **Open Terminal Here** action now launches Alacritty directly

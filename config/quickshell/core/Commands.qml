@@ -50,4 +50,12 @@ Singleton {
     function settingsProviderCommand(action, args) {
         return helperCommand("dwm-settings-provider", action, args, true);
     }
+
+    function settingsDisplayCommand(action, args) {
+        return helperCommand("dwm-settings-display", action, args, true);
+    }
+
+    function settingsInputCommand(action, args) {
+        return helperCommand("dwm-settings-input", action, args, true);
+    }
 }

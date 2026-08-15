@@ -33,6 +33,9 @@ Usage:
   dwm-display-setup
   dwm-display-setup wizard [options]
   dwm-display-setup detect
+  dwm-display-setup capture
+  dwm-display-setup validate <profile>
+  dwm-display-setup apply <profile>
   dwm-display-setup generate <profile> [options]
   dwm-display-setup preview <profile> [options]
   dwm-display-setup install <profile> [options]
@@ -43,6 +46,9 @@ Commands:
   wizard             Interactively choose modes, positions, rotations, primary
                      display, and TearFree. This is the default command.
   detect             Show connected outputs, modes, drivers, and TearFree.
+  capture            Print the current complete RandR layout as a profile.
+  validate PROFILE   Validate a complete profile with xrandr --dryrun.
+  apply PROFILE      Apply a validated complete profile to this X11 session.
   generate PROFILE   Print the generated Xorg configuration to stdout.
   preview PROFILE    Apply the profile temporarily with timed rollback.
   install PROFILE    Preview and install persistent Xorg configuration.
@@ -645,7 +651,8 @@ xrandr_args() {
 
 capture_current_profile() {
 	local profile_file=$1
-	local output_line output geometry mode x y rotation primary rate token
+	local output_line output geometry mode x y rotation primary rate token current
+	local geometry_index index
 	local -a fields=()
 
 	: >"$profile_file"
@@ -653,38 +660,44 @@ capture_current_profile() {
 		output_line=$(awk -v output="$output" '$1 == output && $2 == "connected" { print; exit }' "$query_file")
 		read -r -a fields <<<"$output_line"
 		geometry=
+		geometry_index=-1
 		rotation=normal
 		primary=
-		for token in "${fields[@]}"; do
+		for index in "${!fields[@]}"; do
+			token=${fields[$index]}
 			if [[ $token =~ ^[0-9]+x[0-9]+[-+][0-9]+[-+][0-9]+$ ]]; then
 				geometry=$token
+				geometry_index=$index
 			fi
 			case $token in
 			primary) primary=--primary ;;
-			\(normal | \(left | \(right | \(inverted) rotation=${token#\(} ;;
 			esac
 		done
 		if [[ -z $geometry ]]; then
 			printf '%s --off\n' "$output" >>"$profile_file"
 			continue
 		fi
-		mode=${geometry%%+*}
-		mode=${mode%%-*}
-		x=${geometry#"$mode"}
-		x=${x%%+*}
-		x=${x%%-*}
+		if ((geometry_index + 1 < ${#fields[@]})); then
+			case ${fields[$((geometry_index + 1))]} in
+			normal | left | right | inverted) rotation=${fields[$((geometry_index + 1))]} ;;
+			esac
+		fi
 		# Geometry offsets may contain either + or - signs. Normalize with sed.
 		read -r x y < <(printf '%s\n' "$geometry" | sed -E 's/^[0-9]+x[0-9]+([+-][0-9]+)([+-][0-9]+)$/\1 \2/; s/^\+//; s/ \+/ /')
-		rate=$(awk -v output="$output" -v mode="$mode" '
+		current=$(awk -v output="$output" '
 			$1 == output && $2 == "connected" { in_output = 1; next }
 			/^[^[:space:]]/ { in_output = 0 }
-			in_output && $1 == mode {
-				for (i = 2; i <= NF; i++) if ($i ~ /\*/) { rate = $i; gsub(/[+*]/, "", rate); print rate; exit }
+			in_output {
+				for (i = 2; i <= NF; i++) if ($i ~ /\*/) { rate = $i; gsub(/[+*]/, "", rate); print $1 "|" rate; exit }
 			}
 		' "$query_file")
-		[[ -n $rate ]] || rate=$(default_rate_for_mode "$output" "$mode")
-		printf '%s %s --mode %s --rate %s --pos %sx%s --rotate %s\n' \
-			"$output" "$primary" "$mode" "$rate" "$x" "$y" "$rotation" >>"$profile_file"
+		[[ -n $current ]] || die "could not capture the active mode for $output"
+		mode=${current%%|*}
+		rate=${current#*|}
+		printf '%s' "$output" >>"$profile_file"
+		[[ -z $primary ]] || printf ' %s' "$primary" >>"$profile_file"
+		printf ' --mode %s --rate %s --pos %sx%s --rotate %s\n' \
+			"$mode" "$rate" "$x" "$y" "$rotation" >>"$profile_file"
 	done < <(connected_outputs)
 }
 
@@ -694,9 +707,9 @@ apply_loaded_profile() {
 
 	xrandr_args args
 	if [[ $dryrun == true ]]; then
-		xrandr --dryrun "${args[@]}"
+		xrandr --dryrun "${args[@]}" >/dev/null
 	else
-		xrandr "${args[@]}"
+		xrandr "${args[@]}" >/dev/null
 	fi
 }
 
@@ -1007,7 +1020,7 @@ main() {
 	trap cleanup EXIT HUP INT TERM
 	if (($# > 0)); then
 		case $1 in
-		wizard | detect | generate | preview | install | status | rollback)
+		wizard | detect | capture | validate | apply | generate | preview | install | status | rollback)
 			command=$1
 			shift
 			;;
@@ -1077,6 +1090,13 @@ main() {
 		((${#positional[@]} == 0)) || die "detect takes no profile"
 		detect_displays
 		;;
+	capture)
+		((${#positional[@]} == 0)) || die "capture takes no profile"
+		load_display_data
+		profile="$work/current-profile.conf"
+		capture_current_profile "$profile"
+		cat "$profile"
+		;;
 	status)
 		((${#positional[@]} == 0)) || die "status takes no profile"
 		show_status
@@ -1085,21 +1105,32 @@ main() {
 		((${#positional[@]} == 0)) || die "rollback takes no profile"
 		rollback_config
 		;;
-	generate | preview | install)
+	validate | apply | generate | preview | install)
 		((${#positional[@]} == 1)) || die "$command requires exactly one profile"
 		profile=${positional[0]}
 		load_display_data
 		parse_profile "$profile"
-		generated="$work/90-dwm-titus-display.conf"
-		generate_config "$generated"
 		case $command in
+		validate)
+			apply_loaded_profile true
+			;;
+		apply)
+			apply_loaded_profile true || die "xrandr rejected the proposed layout"
+			apply_loaded_profile false
+			;;
 		generate)
+			generated="$work/90-dwm-titus-display.conf"
+			generate_config "$generated"
 			cat "$generated"
 			;;
 		preview)
+			generated="$work/90-dwm-titus-display.conf"
+			generate_config "$generated"
 			preview_profile "$profile" "$generated"
 			;;
 		install)
+			generated="$work/90-dwm-titus-display.conf"
+			generate_config "$generated"
 			if [[ $preview == true ]]; then
 				preview_profile "$profile" "$generated" || die "display preview was not accepted"
 			fi

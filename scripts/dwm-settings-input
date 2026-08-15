@@ -1,0 +1,497 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus"
+settings_file="${DWM_INPUT_SETTINGS_FILE:-$config_dir/input-settings.conf}"
+runtime_base="${XDG_RUNTIME_DIR:-/tmp/dwm-titus-$UID}"
+state_dir="$runtime_base/dwm-settings-input"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+self="$script_dir/${BASH_SOURCE[0]##*/}"
+
+declare -a device_ids=() device_keys=() device_kinds=() device_names=() device_persistable=()
+
+usage() {
+	cat >&2 <<'EOF'
+usage: dwm-settings-input discover|watch|apply-saved
+       dwm-settings-input preview TOKEN SECONDS DEVICE SETTING VALUE
+       dwm-settings-input keep TOKEN
+       dwm-settings-input revert TOKEN
+       dwm-settings-input reset DEVICE SETTING
+EOF
+}
+
+die() {
+	printf 'dwm-settings-input: %s\n' "$*" >&2
+	exit 1
+}
+clean_field() { printf '%s' "$1" | tr '\011\015\012' '   '; }
+
+need_tools() {
+	command -v xinput >/dev/null 2>&1 || die "xinput is unavailable"
+	[[ -n ${DISPLAY:-} ]] || die "DISPLAY is not set"
+}
+
+need_setxkbmap() {
+	command -v setxkbmap >/dev/null 2>&1 || die "setxkbmap is unavailable"
+}
+
+trim() {
+	local value=$1
+	value=${value#"${value%%[![:space:]]*}"}
+	value=${value%"${value##*[![:space:]]}"}
+	printf '%s' "$value"
+}
+
+property_value() {
+	local properties=$1 name=$2
+	awk -v name="$name" '
+		index($0, name " (") == 1 || index($0, "\t" name " (") == 1 {
+			value = substr($0, index($0, ":") + 1)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			print value; exit
+		}
+	' "$properties"
+}
+
+stable_device_source() {
+	local node=$1 properties serial path devpath
+	[[ -n $node ]] || return 1
+	if command -v udevadm >/dev/null 2>&1; then
+		properties=$(udevadm info --query=property --name="$node" 2>/dev/null || true)
+		serial=$(awk -F= '$1 == "ID_SERIAL" {print substr($0, index($0, "=") + 1); exit}' <<<"$properties")
+		path=$(awk -F= '$1 == "ID_PATH" {print substr($0, index($0, "=") + 1); exit}' <<<"$properties")
+		devpath=$(awk -F= '$1 == "DEVPATH" {print substr($0, index($0, "=") + 1); exit}' <<<"$properties")
+		if [[ -n $serial ]]; then
+			printf 'serial:%s' "$serial"
+			return
+		fi
+		if [[ -n $path ]]; then
+			printf 'path:%s' "$path"
+			return
+		fi
+		devpath=${devpath%/input/input[0-9]*/event[0-9]*}
+		if [[ -n $devpath && $devpath != /devices/virtual* ]]; then
+			printf 'sysfs:%s' "$devpath"
+			return
+		fi
+	fi
+	return 1
+}
+
+scan_devices() {
+	local line id kind name properties product node source identity key persistable
+	need_tools
+	device_ids=()
+	device_keys=()
+	device_kinds=()
+	device_names=()
+	device_persistable=()
+	while IFS= read -r line; do
+		if [[ $line =~ id=([0-9]+)[[:space:]]+\[(slave|floating)[[:space:]]+(pointer|keyboard) ]]; then
+			id=${BASH_REMATCH[1]}
+			kind=${BASH_REMATCH[3]}
+			name=${line%%id=*}
+			name=${name#*↳}
+			name=$(trim "$name")
+			[[ $name != *"XTEST"* ]] || continue
+			properties=$(mktemp)
+			xinput list-props "$id" >"$properties" 2>/dev/null || {
+				rm -f "$properties"
+				continue
+			}
+			product=$(property_value "$properties" "Device Product ID")
+			node=$(property_value "$properties" "Device Node")
+			node=${node#\"}
+			node=${node%\"}
+			if [[ $kind == pointer && $name =~ ([Tt]ouch[Pp]ad|[Tt]rack[Pp]ad) ]]; then
+				kind=touchpad
+			fi
+			if source=$(stable_device_source "$node"); then
+				persistable=1
+			else
+				source=unstable
+				persistable=0
+			fi
+			identity="$kind|$name|$product|$source"
+			key=$(printf '%s' "$identity" | sha256sum | awk '{print substr($1, 1, 16)}')
+			device_ids+=("$id")
+			device_keys+=("$key")
+			device_kinds+=("$kind")
+			device_names+=("$name")
+			device_persistable+=("$persistable")
+			rm -f "$properties"
+		fi
+	done < <(xinput --list --short)
+}
+
+device_can_persist() {
+	local wanted=$1 index
+	scan_devices
+	for index in "${!device_keys[@]}"; do
+		[[ ${device_keys[$index]} == "$wanted" ]] || continue
+		[[ ${device_persistable[$index]} == 1 ]] || return 1
+		return 0
+	done
+	return 1
+}
+
+resolve_device() {
+	local wanted=$1 index found=
+	scan_devices
+	for index in "${!device_keys[@]}"; do
+		[[ ${device_keys[$index]} == "$wanted" ]] || continue
+		[[ -z $found ]] || die "stable device identity is ambiguous"
+		found=${device_ids[$index]}
+	done
+	[[ -n $found ]] || die "device is disconnected or unavailable: $wanted"
+	printf '%s\n' "$found"
+}
+
+emit_setting() {
+	printf 'setting\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+		"$(clean_field "$1")" "$(clean_field "$2")" "$(clean_field "$3")" \
+		"$(clean_field "$4")" "$(clean_field "$5")" "$(clean_field "$6")" \
+		"$(clean_field "$7")" "$(clean_field "$8")"
+}
+
+emit_unsupported() {
+	printf 'unsupported\t%s\t%s\t%s\n' \
+		"$(clean_field "$1")" "$(clean_field "$2")" "$(clean_field "$3")"
+}
+
+discover() {
+	local index id key kind name properties value default layout options
+	scan_devices
+	printf 'input-protocol\t1\n'
+	for index in "${!device_ids[@]}"; do
+		id=${device_ids[$index]}
+		key=${device_keys[$index]}
+		kind=${device_kinds[$index]}
+		name=${device_names[$index]}
+		properties=$(mktemp)
+		if ! xinput list-props "$id" >"$properties" 2>/dev/null; then
+			rm -f "$properties"
+			continue
+		fi
+		printf 'device\t%s\t%s\t%s\t%s\n' "$key" "$id" "$kind" "$(clean_field "$name")"
+		if [[ ${device_persistable[$index]} != 1 ]]; then
+			emit_unsupported "$key" persistence "No stable udev serial, path, or physical sysfs identity; changes are session-only"
+		fi
+		if [[ $kind == pointer || $kind == touchpad ]]; then
+			value=$(property_value "$properties" "libinput Accel Speed")
+			default=$(property_value "$properties" "libinput Accel Speed Default")
+			if [[ -n $value ]]; then
+				emit_setting "$key" pointer-speed "Pointer acceleration / speed" number "$value" "${default:-0}" -1 1
+			else
+				emit_unsupported "$key" pointer-speed "The X11 driver does not expose libinput acceleration"
+			fi
+			value=$(property_value "$properties" "libinput Natural Scrolling Enabled")
+			default=$(property_value "$properties" "libinput Natural Scrolling Enabled Default")
+			if [[ -n $value ]]; then
+				emit_setting "$key" natural-scroll "Natural scrolling" boolean "$value" "${default:-0}" 0 1
+			else
+				emit_unsupported "$key" natural-scroll "The X11 driver does not expose natural scrolling"
+			fi
+			value=$(property_value "$properties" "libinput Tapping Enabled")
+			default=$(property_value "$properties" "libinput Tapping Enabled Default")
+			if [[ -n $value ]]; then
+				emit_setting "$key" tap-to-click "Tap to click" boolean "$value" "${default:-0}" 0 1
+			else
+				emit_unsupported "$key" tap-to-click "The X11 driver does not expose tap-to-click"
+			fi
+		fi
+		if [[ $kind == keyboard ]] && command -v setxkbmap >/dev/null 2>&1; then
+			layout=$(setxkbmap -device "$id" -query 2>/dev/null | awk '$1 == "layout:" {print $2; exit}')
+			options=$(setxkbmap -device "$id" -query 2>/dev/null | awk '$1 == "options:" {$1=""; sub(/^[[:space:]]+/, ""); print; exit}')
+			if ! default=$(persisted_default "$key" keyboard-layout); then default=$layout; fi
+			[[ -z $layout ]] || emit_setting "$key" keyboard-layout "Keyboard layout" text "$layout" "$default" 0 0
+			if ! default=$(persisted_default "$key" modifier-options); then default=$options; fi
+			emit_setting "$key" modifier-options "Modifier options" text "$options" "$default" 0 0
+			emit_unsupported "$key" repeat "Per-device key repeat is not exposed by X11"
+		fi
+		rm -f "$properties"
+	done
+}
+
+setting_property() {
+	case $1 in
+	pointer-speed) printf '%s\n' "libinput Accel Speed" ;;
+	natural-scroll) printf '%s\n' "libinput Natural Scrolling Enabled" ;;
+	tap-to-click) printf '%s\n' "libinput Tapping Enabled" ;;
+	*) return 1 ;;
+	esac
+}
+
+validate_value() {
+	local setting=$1 value=$2
+	case $setting in
+	pointer-speed)
+		[[ $value =~ ^-?[0-9]+([.][0-9]+)?$ ]] || return 1
+		awk -v value="$value" 'BEGIN { exit !(value >= -1 && value <= 1) }'
+		;;
+	natural-scroll | tap-to-click) [[ $value == 0 || $value == 1 ]] ;;
+	keyboard-layout) [[ $value =~ ^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$ ]] ;;
+	modifier-options) [[ $value =~ ^[A-Za-z0-9_:+,.-]*$ ]] ;;
+	*) return 1 ;;
+	esac
+}
+
+read_value() {
+	local key=$1 setting=$2 id properties property value
+	id=$(resolve_device "$key") || return 1
+	case $setting in
+	keyboard-layout)
+		need_setxkbmap
+		setxkbmap -device "$id" -query | awk '$1 == "layout:" {print $2; exit}'
+		;;
+	modifier-options)
+		need_setxkbmap
+		setxkbmap -device "$id" -query | awk '$1 == "options:" {$1=""; sub(/^[[:space:]]+/, ""); print; exit}'
+		;;
+	*)
+		property=$(setting_property "$setting") || die "unsupported setting: $setting"
+		properties=$(mktemp)
+		trap 'rm -f "$properties"' RETURN
+		xinput list-props "$id" >"$properties"
+		value=$(property_value "$properties" "$property")
+		[[ -n $value ]] || die "$setting is unsupported by device $key"
+		printf '%s\n' "$value"
+		;;
+	esac
+}
+
+apply_value() {
+	local key=$1 setting=$2 value=$3 id property
+	validate_value "$setting" "$value" || die "invalid value for $setting"
+	id=$(resolve_device "$key") || return 1
+	case $setting in
+	keyboard-layout)
+		need_setxkbmap
+		setxkbmap -device "$id" -layout "$value"
+		;;
+	modifier-options)
+		need_setxkbmap
+		setxkbmap -device "$id" -option '' -option "$value"
+		;;
+	*)
+		property=$(setting_property "$setting") || die "unsupported setting: $setting"
+		xinput set-prop "$id" "$property" "$value"
+		;;
+	esac
+}
+
+persist_value() {
+	local key=$1 setting=$2 value=$3 baseline=${4-} temporary existing_baseline
+	if ! device_can_persist "$key"; then
+		printf 'dwm-settings-input: device %s has no stable persistence identity; keeping the session value only\n' "$key" >&2
+		return 0
+	fi
+	mkdir -p "$config_dir"
+	chmod 700 "$config_dir"
+	temporary=$(mktemp "$config_dir/.input-settings.XXXXXX")
+	if [[ -f $settings_file ]]; then
+		if existing_baseline=$(persisted_default "$key" "$setting"); then
+			baseline=$existing_baseline
+		fi
+		awk -F '\t' -v key="$key" -v setting="$setting" '!($1 == key && $2 == setting)' "$settings_file" >"$temporary"
+	fi
+	printf '%s\t%s\t%s\t%s\n' "$key" "$setting" "$value" "$baseline" >>"$temporary"
+	chmod 600 "$temporary"
+	mv -f "$temporary" "$settings_file"
+}
+
+persisted_default() {
+	local key=$1 setting=$2
+	[[ -f $settings_file ]] || return 1
+	awk -F '\t' -v key="$key" -v setting="$setting" '
+		$1 == key && $2 == setting && NF >= 4 { print $4; found = 1; exit }
+		END { exit !found }
+	' "$settings_file"
+}
+
+remove_persisted_value() {
+	local key=$1 setting=$2 temporary
+	[[ -f $settings_file ]] || return 0
+	temporary=$(mktemp "$config_dir/.input-settings.XXXXXX")
+	awk -F '\t' -v key="$key" -v setting="$setting" '!($1 == key && $2 == setting)' "$settings_file" >"$temporary"
+	if [[ -s $temporary ]]; then
+		chmod 600 "$temporary"
+		mv -f "$temporary" "$settings_file"
+	else
+		rm -f "$temporary" "$settings_file"
+	fi
+}
+
+ensure_state_dir() {
+	if [[ ! -e $runtime_base ]]; then
+		mkdir -m 700 "$runtime_base" 2>/dev/null || true
+	fi
+	[[ -d $runtime_base && ! -L $runtime_base ]] || die "unsafe runtime base directory"
+	[[ $(stat -c %u "$runtime_base") == "$UID" ]] || die "runtime base directory has the wrong owner"
+	[[ $(stat -c %a "$runtime_base") == 700 ]] || die "runtime base directory is too permissive"
+	if [[ ! -e $state_dir ]]; then
+		mkdir -m 700 "$state_dir" 2>/dev/null || true
+	fi
+	[[ -d $state_dir && ! -L $state_dir ]] || die "unsafe preview state directory"
+	[[ $(stat -c %u "$state_dir") == "$UID" ]] || die "preview state directory has the wrong owner"
+	[[ $(stat -c %a "$state_dir") == 700 ]] || die "preview state directory is too permissive"
+}
+token_file() {
+	[[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || die "invalid preview token"
+	printf '%s/%s.%s\n' "$state_dir" "$1" "$2"
+}
+cleanup_preview() {
+	rm -f "$(token_file "$1" state)" "$state_dir/current"
+	rmdir "$(token_file "$1" claim)" 2>/dev/null || true
+}
+
+claim_preview() {
+	local token=$1 claim
+	claim=$(token_file "$token" claim)
+	mkdir "$claim" 2>/dev/null || die "input preview is already being finalized"
+	printf '%s\n' "$claim"
+}
+
+preview_value() {
+	local token=$1 seconds=$2 key=$3 setting=$4 value=$5 previous state
+	[[ $seconds =~ ^[1-9][0-9]?$ ]] || die "preview timeout must be between 1 and 99 seconds"
+	ensure_state_dir
+	validate_value "$setting" "$value" || die "invalid value for $setting"
+	state=$(token_file "$token" state)
+	previous=$(read_value "$key" "$setting")
+	[[ $previous != *'|'* ]] || die "captured value contains the reserved preview-state separator"
+	if ! (
+		set -o noclobber
+		: >"$state"
+	) 2>/dev/null; then
+		die "preview token is already in use"
+	fi
+	if ! printf '%s|%s|%s|%s\n' "$key" "$setting" "$previous" "$value" >"$state"; then
+		rm -f "$state"
+		die "could not write input preview recovery state"
+	fi
+	chmod 600 "$state"
+	if ! (
+		set -o noclobber
+		printf '%s\n' "$token" >"$state_dir/current"
+	) 2>/dev/null; then
+		rm -f "$state"
+		die "another input preview is active"
+	fi
+	("$self" _watch "$token" "$seconds" >/dev/null 2>&1) &
+	if ! apply_value "$key" "$setting" "$value"; then
+		cleanup_preview "$token"
+		die "input preview failed; recovery state was cleared"
+	fi
+	printf 'preview\t%s\t%s\n' "$token" "$seconds"
+}
+
+finish_preview() {
+	local action=$1 token=$2 state key setting previous value claim
+	ensure_state_dir
+	state=$(token_file "$token" state)
+	[[ -f $state ]] || die "input preview is not active"
+	claim=$(claim_preview "$token")
+	trap 'rmdir "$claim" 2>/dev/null || true' RETURN
+	IFS='|' read -r key setting previous value <"$state"
+	if [[ $action == keep ]]; then
+		persist_value "$key" "$setting" "$value" "$previous"
+	elif ! (apply_value "$key" "$setting" "$previous"); then
+		cleanup_preview "$token"
+		die "input device is unavailable; preview state was cleared without rollback"
+	fi
+	cleanup_preview "$token"
+	printf 'result\t%s\t%s\n' "$action" "$token"
+}
+
+watchdog() {
+	local token=$1 seconds=$2 state key setting previous value claim
+	sleep "$seconds"
+	ensure_state_dir
+	state=$(token_file "$token" state)
+	if [[ -f $state ]]; then
+		claim=$(token_file "$token" claim)
+		mkdir "$claim" 2>/dev/null || return 0
+		IFS='|' read -r key setting previous value <"$state"
+		(apply_value "$key" "$setting" "$previous") || true
+		cleanup_preview "$token"
+	fi
+}
+
+reset_setting() {
+	local key=$1 setting=$2 id properties default_name default
+	case $setting in
+	pointer-speed) default_name="libinput Accel Speed Default" ;;
+	natural-scroll) default_name="libinput Natural Scrolling Enabled Default" ;;
+	tap-to-click) default_name="libinput Tapping Enabled Default" ;;
+	keyboard-layout | modifier-options)
+		if ! default=$(persisted_default "$key" "$setting"); then
+			default=$(read_value "$key" "$setting")
+		fi
+		;;
+	*) die "unsupported setting: $setting" ;;
+	esac
+	if [[ -z ${default+x} ]]; then
+		id=$(resolve_device "$key") || return 1
+		properties=$(mktemp)
+		trap 'rm -f "$properties"' RETURN
+		xinput list-props "$id" >"$properties"
+		default=$(property_value "$properties" "$default_name")
+		[[ -n $default ]] || die "default is unavailable for $setting"
+	fi
+	apply_value "$key" "$setting" "$default"
+	remove_persisted_value "$key" "$setting"
+	printf 'result\treset\t%s\n' "$setting"
+}
+
+apply_saved() {
+	local key setting value baseline
+	[[ -f $settings_file ]] || return 0
+	while IFS=$'\t' read -r key setting value baseline <&3; do
+		[[ -n $key && -n $setting ]] || continue
+		(apply_value "$key" "$setting" "$value") ||
+			printf 'dwm-settings-input: skipped unavailable %s/%s\n' "$key" "$setting" >&2
+	done 3<"$settings_file"
+}
+
+watch_events() {
+	command -v udevadm >/dev/null 2>&1 || die "udevadm is unavailable"
+	udevadm monitor --udev --subsystem-match=input --property 2>/dev/null |
+		while IFS= read -r line; do case $line in ACTION=*) printf 'changed\n' ;; esac done
+}
+
+case ${1:-} in
+discover)
+	[[ $# == 1 ]] || die "discover takes no arguments"
+	discover
+	;;
+watch)
+	[[ $# == 1 ]] || die "watch takes no arguments"
+	watch_events
+	;;
+apply-saved)
+	[[ $# == 1 ]] || die "apply-saved takes no arguments"
+	apply_saved
+	;;
+preview)
+	[[ $# == 6 ]] || die "preview requires token, timeout, device, setting, and value"
+	preview_value "$2" "$3" "$4" "$5" "$6"
+	;;
+keep | revert)
+	[[ $# == 2 ]] || die "$1 requires a token"
+	finish_preview "$1" "$2"
+	;;
+reset)
+	[[ $# == 3 ]] || die "reset requires device and setting"
+	reset_setting "$2" "$3"
+	;;
+_watch)
+	[[ $# == 3 ]] || exit 2
+	watchdog "$2" "$3"
+	;;
+-h | --help | help) usage ;;
+*)
+	usage
+	exit 2
+	;;
+esac
