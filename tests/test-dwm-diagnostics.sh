@@ -10,7 +10,7 @@ trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/bin" "$work/home/.config"
 
-for cmd in cc make Xorg startx xrandr xset xsetroot alacritty; do
+for cmd in cc make Xorg startx xrandr xset xsetroot xclip xdotool alacritty; do
 	cat >"$work/bin/$cmd" <<'SCRIPT'
 #!/bin/sh
 exit 0
@@ -34,6 +34,7 @@ env HOME="$work/home" PATH="$work/bin" "$BASH_BIN" "$HELPER" >"$work/ok"
 grep -Fqx "  required_failures=0" "$work/ok"
 grep -Fq "Optional desktop" "$work/ok"
 grep -Fq "degraded quickshell" "$work/ok"
+grep -Fq "degraded maim" "$work/ok"
 
 rm -f "$work/bin/alacritty" "$work/bin/Xorg"
 

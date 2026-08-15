@@ -157,6 +157,18 @@ The project must support:
 
 Missing optional components must be logged or skipped without terminating dwm.
 
+The default screenshot-to-clipboard binding must capture through the managed
+`dwm-screenshot` helper. On X11, the helper must use `maim` to capture without
+the mouse cursor and transfer region captures as raw PNG data to an
+`xclip`-owned clipboard selection. It must not depend on a resident screenshot
+daemon or a GUI-toolkit clipboard owner. Saved captures use JPEG, and a full
+monitor capture targets the monitor under the pointer. The recommended desktop
+profile must install `maim` when it is available and keep the core install
+usable when it is not. On non-Fedora RHEL-family systems, the installer must
+explain how to enable the screenshot hotkeys through EPEL where a compatible
+package exists. `xclip` remains a required runtime package because other shell
+features also use the X11 clipboard.
+
 ### 5.4 Quickshell Launcher
 
 The Quickshell shell layer must provide the normal X11-compatible application
@@ -656,6 +668,10 @@ In a real or nested X11 session:
   autostart tray clients register with the managed Quickshell tray host.
 - Multi-monitor behavior is tested where suitable hardware or nested displays
   are available.
+- The default screenshot-to-clipboard binding invokes the managed helper, and
+  its completed capture is advertised as `image/png` by an `xclip` clipboard
+  owner. Active-monitor and saved-region captures produce non-empty JPEG files
+  through `maim`.
 
 ### 9.4 Fedora Image Validation
 

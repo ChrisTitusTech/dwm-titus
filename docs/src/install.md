@@ -109,6 +109,12 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   group; log out and back in before using its privileged tuning helpers.
 
 The default is `full` to preserve the historical automated installer behavior.
+On non-Fedora RHEL-family systems, `maim` may not be present in the enabled
+repositories. The installer skips that add-on instead of failing the desktop
+install and reports that the screenshot hotkeys are unavailable. Enterprise
+Linux 9 users can enable EPEL and rerun the installer to add `maim` where the
+package is available.
+
 For a minimal install:
 
 ```bash

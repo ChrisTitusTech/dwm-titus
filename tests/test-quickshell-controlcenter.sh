@@ -26,7 +26,7 @@ SH
 	chmod +x "$work/bin/$name"
 }
 
-for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh flameshot notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps xdg-open nwg-look pkill pgrep dnf; do
+for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh maim notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps xdg-open nwg-look pkill pgrep dnf; do
 	stub_command "$name"
 done
 

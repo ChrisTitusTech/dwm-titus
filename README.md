@@ -80,6 +80,12 @@ configuration, and installs the managed desktop components.
 | `recommended` | The complete everyday desktop, including Alacritty with Herdr, Quickshell, theming, screenshots, audio, and brightness tools. |
 | `full` | The recommended desktop plus optional file-manager, portal, keyring, wallpaper, display-manager, and supported Fedora gaming integrations. |
 
+`maim` is an optional dependency used only by the screenshot hotkeys. If it is
+unavailable, installation continues and reports that the screenshot hotkeys
+remain disabled; invoking one makes `dwm-screenshot` exit with
+`dwm-screenshot: maim is not installed`. `xclip` and `xdotool` remain required
+runtime dependencies for the X11 desktop and its other managed helpers.
+
 ## First Login
 
 **Super** is the Windows key on most keyboards.

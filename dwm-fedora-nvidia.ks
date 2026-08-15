@@ -90,7 +90,7 @@ alacritty
 kitty
 picom
 feh
-flameshot
+maim
 dex-autostart
 mate-polkit
 alsa-utils

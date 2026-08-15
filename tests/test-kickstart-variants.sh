@@ -28,6 +28,7 @@ required_repos=(
 )
 
 required_packages=(
+	maim
 	steam
 	gamescope
 	gamemode.x86_64
@@ -59,6 +60,21 @@ required_packages=(
 mapfile -t mapped_fedora_packages < <(
 	DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel full | awk 'NF' | sort -u
 )
+
+for family in arch debian rhel; do
+	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
+		dwm_packages "$family" runtime-required | grep -Fx xclip >/dev/null
+	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
+		dwm_packages "$family" runtime-required | grep -Fx xdotool >/dev/null
+	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
+		dwm_packages "$family" recommended | grep -Fx maim >/dev/null
+done
+
+if DISTRO_ID=rocky dwm_packages rhel runtime-required | grep -Fx maim >/dev/null; then
+	printf 'Optional screenshot package leaked into required RHEL packages.\n' >&2
+	exit 1
+fi
+DISTRO_ID=rocky dwm_packages rhel screenshot-optional | grep -Fx maim >/dev/null
 
 DISTRO_ID=fedora dwm_packages rhel recommended | grep -Fx playerctl >/dev/null
 if DISTRO_ID=rocky dwm_packages rhel recommended | grep -Fx playerctl >/dev/null; then

@@ -22,7 +22,7 @@ dwm_packages() {
 		;;
 	arch:desktop)
 		printf '%s\n' \
-			quickshell picom feh flameshot dex mate-polkit alsa-utils \
+			quickshell picom feh dex mate-polkit alsa-utils \
 			brightnessctl pipewire pipewire-pulse wireplumber pavucontrol \
 			libnotify light-locker bluez bluez-utils blueman playerctl
 		;;
@@ -86,7 +86,7 @@ dwm_packages() {
 		;;
 	rhel:desktop)
 		printf '%s\n' \
-			quickshell picom feh flameshot dex-autostart mate-polkit \
+			quickshell picom feh dex-autostart mate-polkit \
 			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
 			bluez blueman
@@ -153,7 +153,7 @@ dwm_packages() {
 		;;
 	debian:desktop)
 		printf '%s\n' \
-			picom feh flameshot dex mate-polkit alsa-utils \
+			picom feh dex mate-polkit alsa-utils \
 			brightnessctl pulseaudio-utils pipewire pipewire-pulse \
 			wireplumber pavucontrol libnotify-bin light-locker bluez blueman playerctl
 		;;
@@ -187,6 +187,9 @@ dwm_packages() {
 	*:terminal-primary)
 		printf '%s\n' alacritty
 		;;
+	*:screenshot-optional)
+		printf '%s\n' maim
+		;;
 	*:required)
 		dwm_packages "$family" build
 		dwm_packages "$family" x11
@@ -195,6 +198,7 @@ dwm_packages() {
 		;;
 	*:recommended)
 		dwm_packages "$family" desktop
+		dwm_packages "$family" screenshot-optional
 		dwm_packages "$family" theme
 		dwm_packages "$family" theme-gtk
 		dwm_packages "$family" fonts

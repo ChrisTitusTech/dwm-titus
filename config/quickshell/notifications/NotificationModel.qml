@@ -51,8 +51,17 @@ Scope {
             "timeoutMs": notification.urgency === NotificationUrgency.Critical ? root.criticalTimeoutMs : root.popupTimeoutMs
         };
 
+        notification.closed.connect(() => root.remove(item.key));
+
         const existing = root.notifications.filter(n => n.notification && n.notification.id !== notification.id);
-        root.notifications = [item].concat(existing).slice(0, root.maxVisible);
+        const candidates = [item].concat(existing);
+        const overflow = candidates.slice(root.maxVisible);
+        root.notifications = candidates.slice(0, root.maxVisible);
+
+        for (const overflowItem of overflow) {
+            root.closeItem(overflowItem, false);
+        }
+
         root.addHistory(item);
     }
 
@@ -62,12 +71,11 @@ Scope {
 
     function clear() {
         const current = root.notifications.slice();
-        for (const item of current) {
-            if (item && item.notification) {
-                item.notification.dismiss();
-            }
-        }
         root.notifications = [];
+
+        for (const item of current) {
+            root.closeItem(item, false);
+        }
     }
 
     function addHistory(item) {
@@ -115,20 +123,29 @@ Scope {
         historyFile.writeAdapter();
     }
 
-    function dismiss(key) {
-        const item = root.notifications.find(n => n.key === key);
-        if (item && item.notification) {
+    function closeItem(item, expired) {
+        if (!item) {
+            return;
+        }
+
+        root.remove(item.key);
+        if (!item.notification) {
+            return;
+        }
+
+        if (expired) {
+            item.notification.expire();
+        } else {
             item.notification.dismiss();
         }
-        root.remove(key);
+    }
+
+    function dismiss(key) {
+        root.closeItem(root.notifications.find(n => n.key === key), false);
     }
 
     function expire(key) {
-        const item = root.notifications.find(n => n.key === key);
-        if (item && item.notification) {
-            item.notification.expire();
-        }
-        root.remove(key);
+        root.closeItem(root.notifications.find(n => n.key === key), true);
     }
 
     FileView {

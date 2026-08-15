@@ -30,9 +30,10 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | `Super` + `Ctrl` + `P` | Screenshot selection → clipboard |
 
 All `dwm-screenshot` capture modes omit the mouse cursor.
-Clipboard captures default to JPEG for compatibility with Chromium-based
-applications. Screenshots saved to disk keep Flameshot's configured file
-format.
+`maim` region captures start selection immediately without a monitor chooser.
+The active-monitor shortcut uses the monitor under the pointer. Clipboard
+captures are PNG selections owned by `xclip`, while captures saved to disk use
+JPEG. The lightweight capture flow intentionally has no annotation toolbar.
 
 ## Web Apps
 
