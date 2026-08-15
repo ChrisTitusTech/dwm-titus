@@ -83,6 +83,14 @@ printf 'authorization denied\n' >&2
 exit 126
 EOF
 chmod 0755 "$work/bin/pkexec"
+
+chmod 0644 "$installed"
+env PATH="$work/bin:$custom_prefix/bin:/usr/bin:/bin" \
+	"$repo/scripts/dwm-settings-provider" discover >"$work/non-executable-provider"
+grep -Fq $'capability\tdisplays\tdisplay-persistence\tPersistent display profiles\trestricted\tprivileged' \
+	"$work/non-executable-provider"
+chmod 0755 "$installed"
+
 if env DISPLAY=:99 HOME="$work/home" DWM_DISPLAY_PROFILE_DIR="$work/home/display-profiles" \
 	PATH="$work/bin:$custom_prefix/bin:/usr/bin:/bin" \
 	"$repo/scripts/dwm-settings-display" install-profile desk 2>"$work/polkit.err"; then

@@ -136,7 +136,7 @@ trusted_installed_file() {
 	canonical=$(readlink -f -- "$candidate" 2>/dev/null || true)
 	[ -n "$canonical" ] && [ "$canonical" = "$candidate" ] || return 1
 	trusted_parent_chain "$canonical" || return 1
-	[ -f "$canonical" ] && [ ! -L "$canonical" ] || return 1
+	[ -f "$canonical" ] && [ ! -L "$canonical" ] && [ -x "$canonical" ] || return 1
 	[ "$(stat -c %u -- "$canonical" 2>/dev/null || printf 1)" = 0 ] || return 1
 	find "$canonical" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q .
 }
