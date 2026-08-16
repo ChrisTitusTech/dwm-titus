@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+managed_config=/etc/X11/xorg.conf.d/90-dwm-titus-display.conf
+main_config=/etc/X11/xorg.conf
+install_prefix='@PREFIX@'
+
+die() {
+	printf 'dwm-settings-display-root: %s\n' "$*" >&2
+	exit 1
+}
+
+trusted_parent_chain() {
+	local parent=${1%/*}
+	while :; do
+		[[ -d $parent && ! -L $parent ]] || return 1
+		[[ $(stat -c %u "$parent") == 0 ]] || return 1
+		find "$parent" -maxdepth 0 -type d ! -perm /022 -print -quit 2>/dev/null | grep -q . || return 1
+		[[ $parent == / ]] && return 0
+		parent=${parent%/*}
+		[[ -n $parent ]] || parent=/
+	done
+}
+
+trusted_file() {
+	local path=$1 canonical
+	canonical=$(readlink -f -- "$path" 2>/dev/null || true)
+	[[ -n $canonical && $canonical == "$path" ]] || return 1
+	trusted_parent_chain "$canonical" || return 1
+	[[ -f $canonical && ! -L $canonical && -x $canonical ]] || return 1
+	[[ $(stat -c %u "$canonical") == 0 ]] || return 1
+	find "$canonical" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q .
+}
+
+[[ $EUID == 0 && ${PKEXEC_UID:-} =~ ^[0-9]+$ ]] ||
+	die "this helper must run through polkit as root"
+self=$(readlink -f "${BASH_SOURCE[0]}")
+[[ $self == "$install_prefix/libexec/dwm-titus/dwm-settings-display-root" ]] ||
+	die "helper is not running from its trusted installed path"
+trusted_file "$self" || die "helper is not a trusted root-owned executable"
+
+setup="$install_prefix/bin/dwm-display-setup"
+trusted_file "$setup" || setup=
+[[ -n $setup ]] || die "trusted dwm-display-setup is unavailable"
+
+validate_profile_line() {
+	local line=$1 output token index=1 enabled=1
+	local -a words=()
+	[[ $line != *$'\n'* && $line != *$'\r'* && $line != *$'\t'* ]] || return 1
+	read -r -a words <<<"$line"
+	output=${words[0]:-}
+	[[ $output =~ ^[A-Za-z0-9_.:-]+$ ]] || return 1
+	while ((index < ${#words[@]})); do
+		token=${words[$index]}
+		case $token in
+		--off)
+			enabled=0
+			((index += 1))
+			;;
+		--primary | --auto | --preferred) ((index += 1)) ;;
+		--mode | --rate | --pos | --rotate)
+			((index + 1 < ${#words[@]})) || return 1
+			[[ ${words[$((index + 1))]} =~ ^[A-Za-z0-9_.:+-]+$ ]] || return 1
+			((index += 2))
+			;;
+		*) return 1 ;;
+		esac
+	done
+	[[ $enabled == 0 || ${#words[@]} -gt 1 ]]
+}
+
+run_setup() {
+	local display=$1 xauthority=$2 home
+	shift 2
+	home=$(getent passwd "${PKEXEC_UID:-0}" | cut -d: -f6)
+	[[ -n $home ]] || home=/root
+	if [[ -n $xauthority ]]; then
+		[[ -f $xauthority && ! -L $xauthority ]] || die "unsafe Xauthority file"
+		[[ $(stat -c %u "$xauthority") == "${PKEXEC_UID:-0}" ]] || die "Xauthority has the wrong owner"
+	fi
+	env -i PATH=/usr/bin:/bin HOME="$home" DISPLAY="$display" XAUTHORITY="$xauthority" \
+		DWM_DISPLAY_NO_SUDO=1 DWM_XORG_CONFIG="$managed_config" \
+		DWM_XORG_MAIN_CONFIG="$main_config" "$setup" "$@"
+}
+
+case ${1:-} in
+install)
+	[[ $# -ge 4 ]] || die "install requires DISPLAY, XAUTHORITY, and structured output records"
+	display=$2
+	xauthority=$3
+	shift 3
+	[[ $display =~ ^:[0-9]+([.][0-9]+)?$ ]] || die "invalid X11 display"
+	profile=$(mktemp)
+	trap 'rm -f "$profile"' EXIT
+	chmod 600 "$profile"
+	for line in "$@"; do
+		validate_profile_line "$line" || die "invalid structured display record"
+		printf '%s\n' "$line" >>"$profile"
+	done
+	[[ ! -e $main_config ]] ||
+		die "existing $main_config may conflict; migrate or remove it before installing a managed display profile"
+	run_setup "$display" "$xauthority" install "$profile" --no-preview --yes --tearfree auto
+	;;
+rollback)
+	[[ $# == 1 ]] || die "rollback takes no arguments"
+	env -i PATH=/usr/bin:/bin HOME=/root DWM_DISPLAY_NO_SUDO=1 \
+		DWM_XORG_CONFIG="$managed_config" DWM_XORG_MAIN_CONFIG="$main_config" \
+		"$setup" rollback --yes
+	;;
+*) die "usage: dwm-settings-display-root install DISPLAY XAUTHORITY RECORD... | rollback" ;;
+esac

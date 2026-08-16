@@ -2,10 +2,10 @@
 
 <!-- markdownlint-disable MD013 -->
 
-This document is the Phase 1 `SET-001` inventory for the Settings platform.
-It records the interfaces that exist before the unified Settings application
-is introduced. It is an implementation map, not a promise that every listed
-operation is ready to expose in Settings.
+This document is the Settings capability inventory. It records the Phase 1
+platform foundation and the Phase 2 display and input controls now built on it.
+It is an implementation map of current and delegated interfaces, not a promise
+that every listed operation is ready to expose in Settings.
 
 `SPEC.md` and `ROADMAP.md` remain authoritative. The completed application,
 helper, authorization, packaging, and validation contracts are recorded in
@@ -36,8 +36,8 @@ provider work still required.
 
 | Section | Current owner and state source | Current mutation path | Class coverage | Failure and fallback | Validation |
 | --- | --- | --- | --- | --- | --- |
-| Displays | `dwm-display-setup`, `dwm-display-profile`, and RandR state from `xrandr` | RandR preview/profile apply; generated Xorg fragment for persistence | Read-only, user-session, privileged | Report missing X11/RandR; unsupported drivers omit TearFree; persistence must remain unavailable without the future trusted boundary | `make check-display-profile check-display-setup`; nested X11 preview and rollback |
-| Input | X11/libinput is installed on Fedora, but no Settings provider contract exists | None | Unsupported | Explain that device controls are not implemented; do not apply global guesses | Future provider unit tests plus nested X11 and real-device checks |
+| Displays | `dwm-settings-display` over `dwm-display-setup` and RandR state from `xrandr` | Complete timed RandR preview, named profiles, and allowlisted managed-fragment install/rollback | Read-only, user-session, privileged | Malformed or missing RandR fails only Displays; unsupported drivers report TearFree unavailable; persistence is restricted without the installed helper and polkit | `make check-display-setup check-settings check-quickshell-settings-xvfb`; real multi-monitor preview/rollback |
+| Input | `dwm-settings-input` over XInput/libinput, `setxkbmap`, and udev hotplug events | Timed per-device preview, reset, XDG persistence, idempotent session-start apply, and debounced hotplug replay | Read-only, user-session | Unsupported properties are reported per stable device; disconnects are skipped without affecting other devices or sections | `make check-settings check-quickshell-settings-xvfb`; representative real keyboard/pointer checks |
 | Network and VPN | `dwm-quickshell-network` over NetworkManager's `nmcli`; event stream from `nmcli monitor` | NetworkManager connection activation/deactivation; `nm-connection-editor` for advanced flows | Read-only, delegated | `NET unavailable` when NetworkManager or `nmcli` is absent; hide the editor action when unavailable | `make check-quickshell-network`; NetworkManager runtime exercise |
 | Bluetooth | `dwm-quickshell-controls` over `bluetoothctl` and the BlueZ daemon | BlueZ power, scan, pair/trust/connect, and disconnect operations | Read-only, delegated | `BT unavailable` when BlueZ tooling or an adapter is absent | `make check-quickshell-controls`; real adapter/device check |
 | Audio and media | Native `Quickshell.Services.Pipewire` signals with `pactl` or `wpctl` fallback; `playerctl --follow` for media | PipeWire/WirePlumber volume, mute, and default sink; MPRIS media actions | Read-only, user-session | Show unavailable state when the session services or tools are absent; audio and media fail independently | `make check-quickshell-controls`; live PipeWire and MPRIS exercise |
@@ -74,7 +74,17 @@ action.
 | Generate an Xorg fragment | `dwm-display-setup generate PROFILE` | Read-only | Parses and validates an allowlisted profile grammar without installing it. |
 | Apply a saved profile | `dwm-display-profile apply PROFILE` invokes `xrandr` with validated output names/options | User-session | Reject invalid profiles and disconnected outputs; failure leaves persistence unchanged. |
 | Timed live preview | `dwm-display-setup preview PROFILE` captures the current RandR layout before apply | User-session | Reverts after timeout or rejection; reports rollback failure explicitly. |
-| Wizard, persistent install, and rollback | `dwm-display-setup` writes the managed Xorg fragment and timestamped backups | Privileged | Existing terminal/sudo flow is not the final Settings boundary. Settings needs confirmation plus a root-owned allowlisted helper contract. |
+| Settings discovery and profile preview | `dwm-settings-display` version 1 records and section-owned udev watch | Read-only and user-session | QML passes structured argv only; validation and RandR policy stay in `dwm-display-setup`. Apply failure and timeout restore the captured layout. |
+| Persistent install and rollback | `dwm-settings-display-root` writes only the managed Xorg fragment through `pkexec` | Privileged | Requires confirmation, an exact installed libexec path, root ownership, non-writable files, structured records, and a safe caller Xauthority. Denial leaves readable state available. |
+
+### Input
+
+| Operations | Owner and state/mutation path | Class | Failure and safety behavior |
+| --- | --- | --- | --- |
+| Device/property discovery | `dwm-settings-input discover`; XInput properties plus udev serial/path identity | Read-only | Whitespace and punctuation are tab-safe. Missing acceleration, scrolling, tapping, or per-device repeat is an explicit device-scoped unsupported record. |
+| Hotplug watch | `udevadm monitor --subsystem-match=input` for Settings refresh and session replay | Read-only and user-session | Section-owned UI discovery stops on section change; the session watcher debounces add/change events, idempotently reapplies saved values, and exits with its owning dwm process. |
+| Preview and persistence | Fixed `preview`, `keep`, `revert`, and `apply-saved` actions | User-session | Every action re-resolves the stable identity. Timeout restores the prior value; disconnected devices cannot redirect a change to another XInput ID. Devices without a stable udev or physical sysfs identity remain session-only. |
+| Reset | Fixed `reset` action | User-session | Directly restores and persists the driver's default without creating a preview token. |
 
 ### Network and Bluetooth
 

@@ -75,6 +75,7 @@ if DISTRO_ID=rocky dwm_packages rhel runtime-required | grep -Fx maim >/dev/null
 	exit 1
 fi
 DISTRO_ID=rocky dwm_packages rhel screenshot-optional | grep -Fx maim >/dev/null
+DISTRO_ID=rocky dwm_packages rhel x11 | grep -Fx setxkbmap >/dev/null
 
 DISTRO_ID=fedora dwm_packages rhel recommended | grep -Fx playerctl >/dev/null
 if DISTRO_ID=rocky dwm_packages rhel recommended | grep -Fx playerctl >/dev/null; then

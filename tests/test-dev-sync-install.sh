@@ -19,7 +19,8 @@ data_dir="$xdg_data_home/dwm-titus"
 output="$work/output"
 install_sources="$work/install-sources"
 
-mkdir -p "$test_repo" "$prefix/bin" "$manprefix/man1" "$xsessions_dir" \
+mkdir -p "$test_repo" "$prefix/bin" "$prefix/libexec/dwm-titus" \
+	"$manprefix/man1" "$xsessions_dir" \
 	"$data_root/icons" "$data_root/licenses/dwm-titus/capitaine-cursors" \
 	"$config_home/systemd/user" "$data_dir"
 cp -a \
@@ -40,6 +41,8 @@ make -s -C "$test_repo" --no-print-directory \
 	test-print-install-sources >"$install_sources"
 
 install -Dm755 "$test_repo/dwm" "$prefix/bin/dwm"
+sed "s|@PREFIX@|$prefix|g" "$test_repo/scripts/dwm-settings-display-root" |
+	install -Dm755 /dev/stdin "$prefix/libexec/dwm-titus/dwm-settings-display-root"
 while IFS= read -r install_source; do
 	[ -n "$install_source" ] || continue
 	install -Dm755 "$test_repo/$install_source" \
@@ -62,6 +65,7 @@ install -Dm644 "$test_repo/assets/cursors/COPYING" \
 
 run_check() {
 	DWM_DEV_SYNC_SKIP_RUNTIME=1 \
+		DWM_DEV_SYNC_SKIP_PRIVILEGED_TRUST=1 \
 		USER_HOME="$test_home" \
 		PREFIX="$prefix" \
 		MANPREFIX="$manprefix" \

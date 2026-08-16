@@ -1,0 +1,490 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+profile_dir="${DWM_DISPLAY_PROFILE_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles}"
+runtime_base="${XDG_RUNTIME_DIR:-/tmp/dwm-titus-$UID}"
+state_dir="$runtime_base/dwm-settings-display"
+managed_config="${DWM_XORG_CONFIG:-/etc/X11/xorg.conf.d/90-dwm-titus-display.conf}"
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+setup_helper="${DWM_DISPLAY_SETUP:-$script_dir/dwm-display-setup}"
+self="$script_dir/${BASH_SOURCE[0]##*/}"
+
+usage() {
+	cat >&2 <<'EOF'
+usage: dwm-settings-display discover|watch
+       dwm-settings-display save NAME SPEC...
+       dwm-settings-display preview TOKEN SECONDS SPEC...
+       dwm-settings-display preview-profile TOKEN SECONDS NAME
+       dwm-settings-display keep TOKEN [NAME]
+       dwm-settings-display revert TOKEN
+       dwm-settings-display preview-status [TOKEN]
+       dwm-settings-display install-profile NAME
+       dwm-settings-display rollback-system
+
+SPEC is output|enabled|mode|rate|x|y|rotation|primary.
+EOF
+}
+
+die() {
+	printf 'dwm-settings-display: %s\n' "$*" >&2
+	exit 1
+}
+
+clean_field() {
+	printf '%s' "$1" | tr '\011\015\012' '   '
+}
+
+valid_name() {
+	[[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ && $1 != *..* ]]
+}
+
+profile_path() {
+	valid_name "$1" || die "invalid profile name: $1"
+	printf '%s/%s.conf\n' "$profile_dir" "$1"
+}
+
+ensure_state_dir() {
+	if [[ ! -e $runtime_base ]]; then
+		mkdir -m 700 "$runtime_base" 2>/dev/null || true
+	fi
+	[[ -d $runtime_base && ! -L $runtime_base ]] || die "unsafe runtime base directory"
+	[[ $(stat -c %u "$runtime_base") == "$UID" ]] || die "runtime base directory has the wrong owner"
+	[[ $(stat -c %a "$runtime_base") == 700 ]] || die "runtime base directory is too permissive"
+	if [[ ! -e $state_dir ]]; then
+		mkdir -m 700 "$state_dir" 2>/dev/null || true
+	fi
+	[[ -d $state_dir && ! -L $state_dir ]] || die "unsafe preview state directory"
+	[[ $(stat -c %u "$state_dir") == "$UID" ]] || die "preview state directory has the wrong owner"
+	[[ $(stat -c %a "$state_dir") == 700 ]] || die "preview state directory is too permissive"
+}
+
+token_path() {
+	local token=$1 suffix=$2
+	[[ $token =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || die "invalid preview token"
+	printf '%s/%s.%s\n' "$state_dir" "$token" "$suffix"
+}
+
+write_specs() {
+	local destination=$1
+	shift
+	local spec output enabled mode rate x y rotation primary extra
+	local enabled_count=0 primary_count=0
+	((${#@} > 0)) || die "a complete layout requires at least one output"
+	: >"$destination"
+	chmod 600 "$destination"
+	for spec in "$@"; do
+		IFS='|' read -r output enabled mode rate x y rotation primary extra <<<"$spec"
+		[[ -z ${extra:-} ]] || die "invalid display specification"
+		[[ $output =~ ^[A-Za-z0-9_.:-]+$ ]] || die "invalid output name"
+		case $enabled in
+		0)
+			printf '%s --off\n' "$output" >>"$destination"
+			;;
+		1)
+			[[ $mode =~ ^[A-Za-z0-9_.:+-]+$ ]] || die "invalid mode for $output"
+			[[ $rate =~ ^[0-9]+([.][0-9]+)?$ ]] || die "invalid refresh rate for $output"
+			[[ $x =~ ^-?[0-9]+$ && $y =~ ^-?[0-9]+$ ]] || die "invalid position for $output"
+			case $rotation in normal | left | right | inverted) ;; *) die "invalid rotation for $output" ;; esac
+			case $primary in 0 | 1) ;; *) die "invalid primary state for $output" ;; esac
+			printf '%s --mode %s --rate %s --pos %sx%s --rotate %s' \
+				"$output" "$mode" "$rate" "$x" "$y" "$rotation" >>"$destination"
+			if [[ $primary == 1 ]]; then
+				printf ' --primary' >>"$destination"
+				((primary_count += 1))
+			fi
+			printf '\n' >>"$destination"
+			((enabled_count += 1))
+			;;
+		*) die "invalid enabled state for $output" ;;
+		esac
+	done
+	((enabled_count > 0)) || die "a layout must keep at least one output enabled"
+	((primary_count <= 1)) || die "a layout may select only one primary output"
+}
+
+atomic_save() {
+	local source=$1 name=$2 destination temporary
+	destination=$(profile_path "$name")
+	mkdir -p "$profile_dir"
+	chmod 700 "$profile_dir"
+	temporary=$(mktemp "$profile_dir/.${name}.XXXXXX")
+	trap 'rm -f "${temporary:-}"' RETURN
+	install -m 600 "$source" "$temporary"
+	mv -f "$temporary" "$destination"
+	temporary=
+	printf 'result\tsaved\t%s\n' "$(clean_field "$name")"
+}
+
+profile_is_complete() {
+	local source=$1 line required record_count=0
+	while IFS= read -r line || [[ -n $line ]]; do
+		line=${line%%#*}
+		[[ $line =~ ^[[:space:]]*$ ]] && continue
+		((record_count += 1))
+		if [[ " $line " == *" --off " ]]; then
+			continue
+		fi
+		for required in --mode --rate --pos --rotate; do
+			[[ " $line " == *" $required "* ]] || return 1
+		done
+	done <"$source"
+	((record_count > 0))
+}
+
+discover() {
+	local query properties profile
+	command -v xrandr >/dev/null 2>&1 || die "xrandr is unavailable"
+	[[ -n ${DISPLAY:-} ]] || die "DISPLAY is not set"
+	query=$(mktemp)
+	properties=$(mktemp)
+	trap 'rm -f "$query" "$properties"' RETURN
+	xrandr --query >"$query"
+	grep -q '^Screen [0-9][0-9]*:' "$query" || die "xrandr returned malformed display state"
+	grep -Eq '^[A-Za-z0-9_.:+-]+ connected([[:space:]]|$)' "$query" || die "xrandr reported no connected outputs"
+	xrandr --prop >"$properties" 2>/dev/null || : >"$properties"
+	printf 'display-protocol\t1\n'
+	awk -v props="$properties" '
+		function yes(value) { return value ? "1" : "0" }
+		$2 == "connected" {
+			output = $1; primary = 0; enabled = 0; mode = ""; x = 0; y = 0; rotation = "normal"; geometry_index = 0
+			for (i = 3; i <= NF; i++) {
+				if ($i == "primary") primary = 1
+				if ($i ~ /^[0-9]+x[0-9]+[+-][0-9]+[+-][0-9]+$/) {
+					enabled = 1; match($i, /^[0-9]+x[0-9]+/); mode = substr($i, RSTART, RLENGTH); geometry_index = i
+					match($i, /[+-][0-9]+[+-][0-9]+$/); offsets = substr($i, RSTART)
+					match(offsets, /^[+-][0-9]+/); x = substr(offsets, RSTART, RLENGTH) + 0
+					y = substr(offsets, RLENGTH + 1) + 0
+				}
+			}
+			if (geometry_index > 0 && $(geometry_index + 1) ~ /^(normal|left|right|inverted)$/)
+				rotation = $(geometry_index + 1)
+			tearfree = "unsupported"
+			while ((getline property_line < props) > 0) {
+				if (property_line ~ ("^" output " connected")) in_output = 1
+				else if (property_line ~ /^[^[:space:]]/) in_output = 0
+				else if (in_output && property_line ~ /^[[:space:]]*TearFree:/) tearfree = "available"
+			}
+			close(props)
+			printf "output\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", output, enabled, primary, mode, x, y, rotation, tearfree
+			current_output = output
+			next
+		}
+		/^[^[:space:]]/ && $2 != "connected" { current_output = ""; next }
+		/^[[:space:]]/ && $1 ~ /^[A-Za-z0-9_.:+-]+$/ && current_output != "" {
+			mode = $1
+			for (i = 2; i <= NF; i++) {
+				rate = $i; current = index(rate, "*") > 0; preferred = index(rate, "+") > 0
+				gsub(/[+*]/, "", rate)
+				if (rate ~ /^[0-9]+([.][0-9]+)?$/)
+					printf "mode\t%s\t%s\t%s\t%s\t%s\n", current_output, mode, rate, yes(current), yes(preferred)
+			}
+		}
+	' "$query"
+	if [[ -d $profile_dir ]]; then
+		for profile in "$profile_dir"/*.conf; do
+			[[ -f $profile ]] || continue
+			if profile_is_complete "$profile"; then
+				profile=${profile##*/}
+				printf 'profile\t%s\n' "$(clean_field "${profile%.conf}")"
+			else
+				printf 'profile-unsupported\t%s\t%s\n' \
+					"$(clean_field "${profile##*/}")" \
+					'Legacy profile omits complete mode, rate, position, or rotation state'
+			fi
+		done
+	fi
+	if [[ -r $managed_config ]]; then
+		printf 'persistence\tinstalled\t%s\n' "$(clean_field "$managed_config")"
+	else
+		printf 'persistence\tabsent\t%s\n' "$(clean_field "$managed_config")"
+	fi
+}
+
+watch_events() {
+	command -v udevadm >/dev/null 2>&1 || die "udevadm is unavailable"
+	udevadm monitor --udev --subsystem-match=drm --property 2>/dev/null |
+		while IFS= read -r line; do
+			case $line in ACTION=*) printf 'changed\n' ;; esac
+		done
+}
+
+trusted_parent_chain() {
+	local parent=${1%/*}
+	while :; do
+		[[ -d $parent && ! -L $parent ]] || return 1
+		[[ $(stat -c %u "$parent") == 0 ]] || return 1
+		find "$parent" -maxdepth 0 -type d ! -perm /022 -print -quit 2>/dev/null | grep -q . || return 1
+		[[ $parent == / ]] && return 0
+		parent=${parent%/*}
+		[[ -n $parent ]] || parent=/
+	done
+}
+
+trusted_root_helper() {
+	local candidate canonical command_path derived=
+	command_path=$(command -v dwm-settings-display 2>/dev/null || true)
+	case $command_path in
+	*/bin/dwm-settings-display) derived=${command_path%/bin/dwm-settings-display}/libexec/dwm-titus/dwm-settings-display-root ;;
+	esac
+	for candidate in "$derived" /usr/local/libexec/dwm-titus/dwm-settings-display-root \
+		/usr/libexec/dwm-titus/dwm-settings-display-root; do
+		[[ -n $candidate ]] || continue
+		canonical=$(readlink -f -- "$candidate" 2>/dev/null || true)
+		[[ -n $canonical && $canonical == "$candidate" ]] || continue
+		trusted_parent_chain "$canonical" || continue
+		[[ -f $candidate && ! -L $candidate && -x $candidate ]] || continue
+		[[ $(stat -c %u "$candidate") == 0 ]] || continue
+		find "$candidate" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q . || continue
+		printf '%s\n' "$candidate"
+		return
+	done
+	return 1
+}
+
+install_profile() {
+	local name=$1 source helper line
+	local -a records=()
+	source=$(profile_path "$name")
+	[[ -f $source && ! -L $source ]] || die "profile not found: $name"
+	profile_is_complete "$source" || die "profile is incomplete; save it from Settings before persistent installation"
+	helper=$(trusted_root_helper) || die "trusted persistent-display helper is unavailable"
+	command -v pkexec >/dev/null 2>&1 || die "pkexec is unavailable"
+	while IFS= read -r line || [[ -n $line ]]; do
+		line=${line%%#*}
+		[[ $line =~ ^[[:space:]]*$ ]] || records+=("$line")
+	done <"$source"
+	((${#records[@]} > 0)) || die "profile is empty"
+	pkexec "$helper" install "${DISPLAY:-}" "${XAUTHORITY:-}" "${records[@]}"
+	printf 'result\tinstalled\t%s\n' "$name"
+}
+
+rollback_system() {
+	local helper
+	helper=$(trusted_root_helper) || die "trusted persistent-display helper is unavailable"
+	command -v pkexec >/dev/null 2>&1 || die "pkexec is unavailable"
+	pkexec "$helper" rollback
+	printf 'result\trolled-back\tsystem\n'
+}
+
+reserve_preview() {
+	local token=$1 active
+	ensure_state_dir
+	token_path "$token" active >/dev/null
+	active="$state_dir/current"
+	if ! (
+		set -o noclobber
+		printf '%s\n' "$token" >"$active"
+	) 2>/dev/null; then
+		die "another display preview is active"
+	fi
+	if ! chmod 600 "$active"; then
+		cleanup_preview "$token"
+		die "could not secure display preview reservation"
+	fi
+}
+
+preview_file() {
+	local token=$1 seconds=$2 proposed=$3 previous marker failed
+	previous=$(token_path "$token" previous)
+	proposed=$(token_path "$token" proposed)
+	marker=$(token_path "$token" active)
+	failed=$(token_path "$token" failed)
+	"$setup_helper" validate "$proposed" --tearfree off
+	"$setup_helper" capture >"$previous"
+	chmod 600 "$previous" "$proposed"
+	: >"$marker"
+	chmod 600 "$marker"
+	if ! "$setup_helper" apply "$proposed" --tearfree off; then
+		if "$setup_helper" apply "$previous" --tearfree off; then
+			cleanup_preview "$token"
+			die "display preview failed; the previous layout was restored"
+		fi
+		printf 'Display apply and immediate rollback both failed; the captured layout is retained for retry.\n' >"$failed"
+		chmod 600 "$failed"
+		printf 'preview-failed\t%s\t%s\n' "$token" "$(clean_field "$(<"$failed")")"
+		return 0
+	fi
+	("$self" _watch "$token" "$seconds" >/dev/null 2>&1) &
+	printf 'preview\t%s\t%s\n' "$token" "$seconds"
+}
+
+start_preview() {
+	local token=$1 seconds=$2 temporary
+	shift 2
+	[[ $seconds =~ ^[1-9][0-9]?$ ]] || die "preview timeout must be between 1 and 99 seconds"
+	reserve_preview "$token"
+	trap 'cleanup_preview "$token"' EXIT
+	temporary=$(mktemp "$state_dir/.proposed.XXXXXX")
+	write_specs "$temporary" "$@"
+	local destination
+	destination=$(token_path "$token" proposed)
+	mv -f "$temporary" "$destination"
+	preview_file "$token" "$seconds" "$destination"
+	trap - EXIT
+}
+
+preview_profile() {
+	local token=$1 seconds=$2 name=$3 source destination
+	[[ $seconds =~ ^[1-9][0-9]?$ ]] || die "preview timeout must be between 1 and 99 seconds"
+	source=$(profile_path "$name")
+	[[ -f $source && ! -L $source ]] || die "profile not found: $name"
+	profile_is_complete "$source" || die "profile is incomplete; save a complete layout from Settings before preview"
+	reserve_preview "$token"
+	trap 'cleanup_preview "$token"' EXIT
+	destination=$(token_path "$token" proposed)
+	install -m 600 "$source" "$destination"
+	preview_file "$token" "$seconds" "$destination"
+	trap - EXIT
+}
+
+cleanup_preview() {
+	local token=$1
+	rm -f "$(token_path "$token" active)" "$(token_path "$token" previous)" \
+		"$(token_path "$token" proposed)" "$(token_path "$token" failed)" "$state_dir/current"
+	rmdir "$(token_path "$token" claim)" 2>/dev/null || true
+}
+
+claim_preview() {
+	local token=$1 claim
+	claim=$(token_path "$token" claim)
+	mkdir "$claim" 2>/dev/null || die "display preview is already being finalized"
+	printf '%s\n' "$claim"
+}
+
+keep_preview() {
+	local token=$1 name=${2:-} proposed marker failed claim
+	ensure_state_dir
+	marker=$(token_path "$token" active)
+	proposed=$(token_path "$token" proposed)
+	failed=$(token_path "$token" failed)
+	[[ -z $name ]] || valid_name "$name" || die "invalid profile name: $name"
+	claim=$(claim_preview "$token")
+	trap 'rmdir "$claim" 2>/dev/null || true' RETURN EXIT
+	[[ -f $marker && -f $proposed ]] || die "display preview is not active"
+	[[ -z $name || ! -f $failed ]] ||
+		die "cannot save a named profile after rollback failure; accept the current layout without a name or retry Revert"
+	if [[ -n $name ]]; then
+		atomic_save "$proposed" "$name"
+	fi
+	cleanup_preview "$token"
+	trap - RETURN EXIT
+	printf 'result\tkept\t%s\n' "$token"
+}
+
+revert_preview() {
+	local token=$1 previous marker claim
+	ensure_state_dir
+	marker=$(token_path "$token" active)
+	previous=$(token_path "$token" previous)
+	[[ -f $marker && -f $previous ]] || die "display preview is not active"
+	claim=$(claim_preview "$token")
+	trap 'rmdir "$claim" 2>/dev/null || true' RETURN
+	"$setup_helper" apply "$previous" --tearfree off
+	cleanup_preview "$token"
+	printf 'result\treverted\t%s\n' "$token"
+}
+
+watchdog() {
+	local token=$1 seconds=$2 marker previous failed claim
+	sleep "$seconds"
+	ensure_state_dir
+	marker=$(token_path "$token" active)
+	previous=$(token_path "$token" previous)
+	failed=$(token_path "$token" failed)
+	if [[ -f $marker && -f $previous ]]; then
+		claim=$(token_path "$token" claim)
+		mkdir "$claim" 2>/dev/null || return 0
+		if "$setup_helper" apply "$previous" --tearfree off; then
+			cleanup_preview "$token"
+		else
+			printf 'Automatic rollback failed; the captured layout is retained for retry.\n' >"$failed"
+			chmod 600 "$failed"
+			rmdir "$claim" 2>/dev/null || true
+		fi
+	fi
+}
+
+preview_status() {
+	local token=${1:-} marker failed
+	ensure_state_dir
+	if [[ -z $token ]]; then
+		if [[ ! -f $state_dir/current ]]; then
+			printf 'result\tnone\n'
+			return
+		fi
+		IFS= read -r token <"$state_dir/current"
+		[[ -n $token ]] || die "active display preview token is empty"
+	fi
+	marker=$(token_path "$token" active)
+	failed=$(token_path "$token" failed)
+	if [[ -f $failed ]]; then
+		printf 'preview-failed\t%s\t%s\n' "$token" "$(clean_field "$(<"$failed")")"
+	elif [[ -f $marker ]]; then
+		printf 'preview-active\t%s\n' "$token"
+	else
+		printf 'result\texpired\t%s\n' "$token"
+	fi
+}
+
+command=${1:-}
+case $command in
+discover)
+	[[ $# == 1 ]] || die "discover takes no arguments"
+	discover
+	;;
+watch)
+	[[ $# == 1 ]] || die "watch takes no arguments"
+	watch_events
+	;;
+save)
+	[[ $# -ge 3 ]] || die "save requires a name and complete layout"
+	name=$2
+	shift 2
+	temporary=$(mktemp)
+	trap 'rm -f "$temporary"' EXIT
+	write_specs "$temporary" "$@"
+	"$setup_helper" validate "$temporary" --tearfree off
+	atomic_save "$temporary" "$name"
+	;;
+preview)
+	[[ $# -ge 4 ]] || die "preview requires a token, timeout, and complete layout"
+	token=$2
+	seconds=$3
+	shift 3
+	start_preview "$token" "$seconds" "$@"
+	;;
+preview-profile)
+	[[ $# == 4 ]] || die "preview-profile requires token, timeout, and name"
+	preview_profile "$2" "$3" "$4"
+	;;
+keep)
+	[[ $# == 2 || $# == 3 ]] || die "keep requires token and optional profile name"
+	keep_preview "$2" "${3:-}"
+	;;
+revert)
+	[[ $# == 2 ]] || die "revert requires token"
+	revert_preview "$2"
+	;;
+preview-status)
+	[[ $# == 1 || $# == 2 ]] || die "preview-status accepts an optional token"
+	preview_status "${2:-}"
+	;;
+install-profile)
+	[[ $# == 2 ]] || die "install-profile requires a profile name"
+	install_profile "$2"
+	;;
+rollback-system)
+	[[ $# == 1 ]] || die "rollback-system takes no arguments"
+	rollback_system
+	;;
+_watch)
+	[[ $# == 3 ]] || exit 2
+	watchdog "$2" "$3"
+	;;
+-h | --help | help) usage ;;
+*)
+	usage
+	exit 2
+	;;
+esac

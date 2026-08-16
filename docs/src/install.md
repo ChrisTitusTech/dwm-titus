@@ -172,6 +172,54 @@ step; after the first X11 login, run:
 dwm-display-setup
 ```
 
+The installed Settings display provider is machine-oriented. Its actions are:
+
+```text
+dwm-settings-display discover
+dwm-settings-display watch
+dwm-settings-display save NAME SPEC...
+dwm-settings-display preview TOKEN SECONDS SPEC...
+dwm-settings-display preview-profile TOKEN SECONDS NAME
+dwm-settings-display keep TOKEN [NAME]
+dwm-settings-display revert TOKEN
+dwm-settings-display preview-status [TOKEN]
+dwm-settings-display install-profile NAME
+dwm-settings-display rollback-system
+```
+
+Discovery and live previews require `xrandr`, and the hotplug watch requires
+`udevadm`. Persistent install and rollback additionally require `pkexec` plus
+the root-owned helper installed at `${PREFIX}/libexec/dwm-titus/`. Profiles are
+stored under
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles/`. No move is
+needed for profiles created by `dwm-display-profile`, which uses the same
+directory. If `DWM_DISPLAY_PROFILE_DIR` previously pointed elsewhere, either
+keep that environment override or move those `.conf` files into the default
+directory before using Settings.
+
+The input provider exposes the corresponding session actions:
+
+```text
+dwm-settings-input discover
+dwm-settings-input watch
+dwm-settings-input watch-apply
+dwm-settings-input apply-saved
+dwm-settings-input preview TOKEN SECONDS DEVICE SETTING VALUE
+dwm-settings-input keep TOKEN
+dwm-settings-input revert TOKEN
+dwm-settings-input preview-status [TOKEN]
+dwm-settings-input reset DEVICE SETTING
+```
+
+All input actions require `xinput`; keyboard layout and modifier operations
+also require `setxkbmap`; stable hardware identity and hotplug watching use
+`udevadm`, and the session watcher uses `flock` from `util-linux` to prevent
+duplicate replay workers. Kept values default to
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/input-settings.conf`. Set
+`DWM_INPUT_SETTINGS_FILE` to use a different file. The normal session startup
+invokes `apply-saved` idempotently and runs `watch-apply` to debounce input
+hotplug events before replaying saved values for returning devices.
+
 **startx:**
 ```bash
 startx

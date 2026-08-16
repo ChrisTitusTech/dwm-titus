@@ -71,7 +71,7 @@ FloatingWindow {
                     }
 
                     Text {
-                        text: root.settingsModel.platformName + " - Phase 1 capability overview"
+                        text: root.settingsModel.platformName + " - Displays and Input"
                         color: Theme.textMuted
                         font.family: Theme.fontFamily
                         font.pixelSize: Theme.smallFontSize
@@ -261,11 +261,27 @@ FloatingWindow {
 
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
+                        DisplaySettingsPane {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: root.settingsModel.selectedSectionId === "displays"
+                            settingsModel: root.settingsModel
+                        }
+
+                        InputSettingsPane {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: root.settingsModel.selectedSectionId === "input"
+                            settingsModel: root.settingsModel
+                        }
+
                         ListView {
                             id: capabilityList
 
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            visible: root.settingsModel.selectedSectionId !== "displays"
+                                && root.settingsModel.selectedSectionId !== "input"
                             clip: true
                             spacing: Theme.listSpacing * 2
                             model: root.settingsModel.capabilitiesForSection(root.settingsModel.selectedSectionId)
@@ -359,7 +375,7 @@ FloatingWindow {
 
             Text {
                 Layout.fillWidth: true
-                text: "Phase 1 is read-only. Unsupported controls are explicit and no Settings action requests elevation."
+                text: "Display and input previews revert automatically unless explicitly kept."
                 color: Theme.textMuted
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.tinyFontSize

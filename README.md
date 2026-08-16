@@ -119,6 +119,16 @@ Hotkeys, themes, and window rules reload when their TOML files are saved.
 Advanced compile-time preferences live in the user-owned `config.h`, which the
 installer and future upgrades preserve.
 
+The installer also provides `dwm-settings-display` and its root-owned
+`libexec/dwm-titus/dwm-settings-display-root` persistence helper. Live display
+discovery and previews require `xrandr`; hotplug watching requires `udevadm`;
+only persistent Xorg install and rollback require `pkexec`. Named profiles live
+under the `display-profiles/` directory in the XDG path above.
+The adjacent `dwm-settings-input` provider uses `xinput`, `setxkbmap` for
+keyboard settings, and `udevadm` for stable device identity and hotplug events.
+Kept values are stored in `input-settings.conf` in the same XDG directory;
+`DWM_INPUT_SETTINGS_FILE` can select another file.
+
 See the [Configuration Guide](https://dwm.christitus.com/configuration.html)
 and [Theming Guide](https://dwm.christitus.com/theming.html) for examples and
 safe customization paths.

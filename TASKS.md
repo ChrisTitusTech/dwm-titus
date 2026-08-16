@@ -9,11 +9,11 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`, and
 
 ### DISP-001: Display Provider Contract
 
-- [ ] Add a versioned display provider for connected outputs, modes, refresh
+- [x] Add a versioned display provider for connected outputs, modes, refresh
   rates, positions, rotations, primary state, profiles, and persistence state.
-- [ ] Reuse `dwm-display-profile` and `dwm-display-setup` parsing and validation
+- [x] Reuse `dwm-display-profile` and `dwm-display-setup` parsing and validation
   instead of duplicating RandR or Xorg policy in QML.
-- [ ] Report unsupported driver properties and missing X11 state explicitly.
+- [x] Report unsupported driver properties and missing X11 state explicitly.
 
 Acceptance:
 
@@ -25,10 +25,10 @@ Acceptance:
 
 ### DISP-002: Display Layout and Preview
 
-- [ ] Add Settings controls for resolution, refresh rate, position, rotation,
+- [x] Add Settings controls for resolution, refresh rate, position, rotation,
   primary output, output enablement, and saved profiles.
-- [ ] Generate a complete proposed layout and validate it before live apply.
-- [ ] Add explicit preview, Keep, Revert, timeout, and automatic rollback
+- [x] Generate a complete proposed layout and validate it before live apply.
+- [x] Add explicit preview, Keep, Revert, timeout, and automatic rollback
   states using the Phase 1 application contract.
 
 Acceptance:
@@ -40,10 +40,10 @@ Acceptance:
 
 ### DISP-003: Persistent Display Profiles
 
-- [ ] Save named user profiles under the existing XDG display-profile path.
-- [ ] Define and implement a narrow installed-helper operation for persistent
+- [x] Save named user profiles under the existing XDG display-profile path.
+- [x] Define and implement a narrow installed-helper operation for persistent
   managed Xorg fragment install and rollback.
-- [ ] Add confirmation, ownership, permission, backup, and polkit-denial tests.
+- [x] Add confirmation, ownership, permission, backup, and polkit-denial tests.
 
 Acceptance:
 
@@ -56,12 +56,12 @@ Acceptance:
 
 ### INPUT-001: Input Device Provider
 
-- [ ] Discover keyboards, pointers, touchpads, and relevant X11/libinput
+- [x] Discover keyboards, pointers, touchpads, and relevant X11/libinput
   properties by stable device ID.
-- [ ] Map layout, repeat, modifier, speed, acceleration, natural scrolling,
+- [x] Map layout, repeat, modifier, speed, acceleration, natural scrolling,
   tap-to-click, and other supported properties without assuming every driver
   exposes them.
-- [ ] Report unsupported properties per device.
+- [x] Report unsupported properties per device.
 
 Acceptance:
 
@@ -73,11 +73,11 @@ Acceptance:
 
 ### INPUT-002: Input Changes and Recovery
 
-- [ ] Add per-device Settings controls only for properties reported by the
+- [x] Add per-device Settings controls only for properties reported by the
   provider.
-- [ ] Apply session changes to the selected stable device ID and define the
+- [x] Apply session changes to the selected stable device ID and define the
   persistence format and startup application path.
-- [ ] Add reset, invalid-value, disconnected-device, and partial-failure
+- [x] Add reset, invalid-value, disconnected-device, and partial-failure
   behavior.
 
 Acceptance:
@@ -91,13 +91,16 @@ Acceptance:
 
 ### DI-VALIDATE: Phase 2 Validation
 
-- [ ] Run focused shell, QML, helper, and nested-X11 tests for display and input
+- [x] Run focused shell, QML, helper, and nested-X11 tests for display and input
   providers and interactions.
-- [ ] Validate single- and multi-monitor previews, persistence, restart, and
+- [x] Validate single- and multi-monitor previews, profile persistence, and
   rollback in a real Fedora X11 session.
-- [ ] Validate available input controls on representative keyboard, pointer,
+- [ ] Validate the generated Xorg fragment through a real logout/login session.
+- [ ] Implement and validate NVIDIA ForceFullCompositionPipeline with a safe
+  fallback for unsupported drivers.
+- [x] Validate available input controls on representative keyboard, pointer,
   and touchpad hardware and record absent hardware.
-- [ ] Run the full repository validation and record secondary-platform gaps.
+- [x] Run the full repository validation and record secondary-platform gaps.
 
 Acceptance:
 

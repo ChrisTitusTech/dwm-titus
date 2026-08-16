@@ -44,6 +44,8 @@ INSTALL_COMMANDS = \
 	scripts/dwm-titus-release \
 	scripts/dwm-screenshot \
 	scripts/dwm-settings \
+	scripts/dwm-settings-display \
+	scripts/dwm-settings-input \
 	scripts/dwm-settings-provider \
 	scripts/dwm-terminal \
 	scripts/dwm-utils.sh \
@@ -60,6 +62,8 @@ INSTALL_COMMANDS = \
 	scripts/xdg-enable-autostart.sh \
 	scripts/xscreensaver-setup.sh
 INSTALL_COMMAND_NAMES = $(notdir ${INSTALL_COMMANDS})
+PRIVILEGED_HELPERS = scripts/dwm-settings-display-root
+PRIVILEGED_HELPER_DIR = ${PREFIX}/libexec/dwm-titus
 
 RELEASE_NAME = dwm-titus-${VERSION}
 RELEASE_ARCHIVE = release/${RELEASE_NAME}.tar.gz
@@ -116,6 +120,11 @@ install-system: all install-cursors
 	@echo "==> Installing scripts to PATH..."
 	for f in ${INSTALL_COMMANDS}; do \
 		install -Dm755 "$$f" ${DESTDIR}${PREFIX}/bin/$$(basename "$$f"); \
+	done
+	@echo "==> Installing privileged helpers..."
+	for f in ${PRIVILEGED_HELPERS}; do \
+		sed "s|@PREFIX@|${PREFIX}|g" "$$f" | \
+			install -Dm755 /dev/stdin ${DESTDIR}${PRIVILEGED_HELPER_DIR}/$$(basename "$$f"); \
 	done
 
 install-cursors:
@@ -239,6 +248,7 @@ uninstall:
 	for name in ${INSTALL_COMMAND_NAMES}; do \
 		rm -f ${DESTDIR}${PREFIX}/bin/$$name; \
 	done
+	rm -f ${DESTDIR}${PRIVILEGED_HELPER_DIR}/dwm-settings-display-root
 
 release: dwm
 	@work="$$(mktemp -d)"; \
@@ -341,6 +351,7 @@ check-system-health:
 
 check-settings:
 	tests/test-settings.sh
+	tests/test-settings-input.sh
 
 check-quickshell-settings-xvfb: all
 	tests/test-quickshell-settings-xvfb.sh
@@ -376,6 +387,7 @@ check-install: all
 	for name in ${INSTALL_COMMAND_NAMES}; do \
 		test -x "$$stage/usr/bin/$$name"; \
 	done; \
+	test -x "$$stage/usr/libexec/dwm-titus/dwm-settings-display-root"; \
 	test -f "$$stage/usr/share/man/man1/dwm.1"; \
 	test -f "$$stage/usr/share/xsessions/dwm.desktop"; \
 	grep -Fqx 'Exec=/usr/bin/dwm' \
@@ -398,6 +410,7 @@ check-install-manifest: all
 		printf '%s\n' \
 			pre-existing \
 			usr/bin/dwm \
+			usr/libexec/dwm-titus/dwm-settings-display-root \
 			usr/share/man/man1/dwm.1 \
 			usr/share/xsessions/dwm.desktop; \
 		for name in ${INSTALL_COMMAND_NAMES}; do \

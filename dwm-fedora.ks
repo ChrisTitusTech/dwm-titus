@@ -57,6 +57,7 @@ sudo
 git
 curl
 unzip
+util-linux
 make
 gcc
 pkgconf-pkg-config
@@ -74,6 +75,8 @@ xorg-x11-xinit
 xrandr
 xset
 xsetroot
+xinput
+setxkbmap
 dbus-x11
 procps-ng
 psmisc

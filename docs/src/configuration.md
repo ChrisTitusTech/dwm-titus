@@ -112,6 +112,28 @@ replaced. Each change creates a versioned backup. Use
 `dwm-display-setup status` to inspect the managed file and current layout.
 Advanced users can pass an existing display-profile file to
 `dwm-display-setup generate`, `preview`, or `install`.
+For noninteractive session changes, `dwm-display-setup capture` prints the
+current complete RandR profile, `dwm-display-setup validate <profile>` checks a
+profile with `xrandr --dryrun`, and `dwm-display-setup apply <profile>` changes
+the current X11 layout after validation.
+
+The Settings Displays page uses the same profile grammar and validation through
+`dwm-settings-display`. Named profiles remain user-owned under the XDG path.
+Installing one persistently requires explicit confirmation and authorization;
+only the root-owned helper under `${PREFIX}/libexec/dwm-titus/` may update the
+managed Xorg fragment. Legacy profiles that omit complete position or rotation
+state remain usable with `dwm-display-profile`, but Settings will not preview or
+install them until they are resaved as a complete layout.
+
+Per-device input values kept in Settings are stored in
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/input-settings.conf`. The
+event-driven input provider uses a hardware serial or path when available,
+re-resolves that identity before every change, and skips a disconnected device
+rather than applying its settings to another XInput ID. Session startup runs
+`dwm-settings-input apply-saved` and starts an event-driven, debounced hotplug
+replay so returning devices regain saved values. Repeating the apply is safe.
+The replay watcher is scoped to the owning dwm process and exits at logout,
+including when dwm was launched through `startx`.
 
 Power settings are managed from Control Center -> Power. The generated
 `power.conf` is authoritative once created and persists screen DPMS state,

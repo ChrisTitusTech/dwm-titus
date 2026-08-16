@@ -314,6 +314,22 @@ ShellRoot {
             return settingsModel.selectedSectionId;
         }
 
+        function displayCount(): int {
+            return settingsModel.displayOutputs.length;
+        }
+
+        function displayStatus(): string {
+            return settingsModel.displayState;
+        }
+
+        function inputCount(): int {
+            return settingsModel.inputDevices.length;
+        }
+
+        function inputStatus(): string {
+            return settingsModel.inputState;
+        }
+
         function open(): void {
             settingsModel.open();
         }

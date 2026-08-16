@@ -2,10 +2,10 @@
 
 <!-- markdownlint-disable MD013 -->
 
-This document completes the Phase 1 architecture, safety, packaging, and
-validation contracts for the unified Settings application. `SPEC.md` remains
-the product contract, and `docs/SETTINGS-CAPABILITIES.md` records the provider
-inventory that this design uses.
+This document defines the architecture, safety, packaging, and validation
+contracts for the unified Settings application, including the Phase 2 display
+and input providers. `SPEC.md` remains the product contract, and
+`docs/SETTINGS-CAPABILITIES.md` records the provider inventory.
 
 ## Application Contract
 
@@ -18,8 +18,9 @@ with `dwm-settings`.
 
 - The left navigation contains Displays, Input, Network, Bluetooth, Audio,
   Power, Defaults, Appearance, and System in stable roadmap order.
-- Typing in the search field filters section names and descriptions. Search
-  never starts a provider or mutates state.
+- Typing in the search field filters section names and descriptions. When the
+  first match changes, Settings transitions the section-owned read/watch
+  providers; search never mutates desktop state.
 - Up and Down move between visible sections, Enter selects the highlighted
   section, Escape closes Settings, and clicking a section selects it.
 - Opening Settings resets navigation to Displays and starts one bounded
@@ -35,9 +36,15 @@ prevents another section from opening.
 
 ## Helper Protocol
 
-QML invokes only `dwm-settings-provider discover` through the fixed
-`Commands.settingsProviderCommand()` wrapper. The helper accepts no command
-strings, mutation names, file paths, or elevation flags.
+The Phase 1 capability snapshot invokes only `dwm-settings-provider discover`
+through the fixed `Commands.settingsProviderCommand()` wrapper. Phase 2 uses
+equally fixed display actions (`discover`, `watch`, `save`, `preview`,
+`preview-profile`, `keep`, `revert`, `install-profile`, and `rollback-system`)
+plus the read-only `preview-status` recovery query,
+and equally fixed input actions (`discover`, `watch`, `watch-apply`, `preview`,
+`keep`, `revert`, `preview-status`, `reset`, and `apply-saved`). QML cannot
+supply command strings, executables, arbitrary
+paths, or elevation flags; every argument is validated by the owning helper.
 
 The version 1 output is UTF-8, tab-separated, and line-oriented:
 
@@ -110,9 +117,9 @@ must follow this boundary:
 - Existing health actions remain limited to failed-service actions,
   NetworkManager, Bluetooth, and time synchronization as specified in
   `SPEC.md`; they are not automatically Settings actions.
-- Display persistence may later allow only validated generated-fragment
-  install and rollback operations. It may not accept arbitrary paths, Xorg
-  text, commands, or environment-selected executables.
+- Phase 2 display persistence allows only validated generated-fragment install
+  and rollback operations. It does not accept arbitrary paths, Xorg text,
+  commands, or environment-selected executables.
 - Repository, XDG, home-directory, symlinked, group-writable, and
   other-user-writable helper copies must never be elevated.
 - A trusted helper must resolve outside user-writable paths, be owned by root,
@@ -197,3 +204,64 @@ Evidence recorded on 2026-07-21:
 - The live Fedora check was read-only. No settings mutation, authorization
   prompt, hardware change, session restart, or managed-shell replacement was
   performed.
+
+## Phase 2 Provider and Qualification Evidence
+
+`dwm-settings-display` and `dwm-settings-input` use append-only, version 1,
+tab-separated protocols. Display records describe outputs, modes, current and
+preferred rates, rotation, primary state, TearFree capability, profiles, and
+persistence. Input records describe stable devices, supported settings, and
+device-scoped unsupported settings. Tabs and line breaks in external names are
+sanitized. QML passes complete structured argv to fixed helper actions and
+does not implement RandR, Xorg, XInput, or libinput policy.
+
+Both sections own event-driven udev discovery watches only while active. A
+separate session input watcher debounces add/change events and reapplies saved
+values when stable devices return. Display and input previews capture prior
+state, expose Keep and Revert, and run an external
+watchdog so timeout recovery does not depend on the QML process. Closing
+Settings requests immediate rollback; the watchdog remains the final recovery
+path if the action process is busy or the shell exits. Display finalization is
+atomically claimed so Keep cannot race the watchdog. A failed automatic
+rollback retains the captured profile, reports the failure in Settings, and
+keeps Revert available for retry.
+
+Input persistence requires a udev serial, physical path, or stable physical
+sysfs identity. A device without one remains configurable for the current
+session, but Settings reports persistence as unsupported and does not save an
+event-node-based identity.
+
+Persistent display installation requires a second UI confirmation and
+`pkexec`. The helper must be exactly under an installed project libexec path,
+root-owned, non-symlinked, and not writable by group or others. Its installed
+`dwm-display-setup` dependency has the same ownership checks. It accepts a
+validated X11 display, a caller-owned Xauthority file, and structured profile
+records only, then writes only
+`/etc/X11/xorg.conf.d/90-dwm-titus-display.conf`. Root-container tests cover
+repository copies, wrong ownership, writable files, symlinks, injected input,
+and authorization denial.
+
+Evidence recorded on 2026-08-15:
+
+- Fedora Linux 44 x86_64 X11 discovered HDMI-0 and DP-0. A complete current
+  two-monitor layout preview timed out and restored the exact captured layout.
+- A Logitech G502 pointer acceleration preview and a Glorious GMMK3 keyboard
+  layout preview changed the selected stable device and restored its prior
+  value after timeout. No touchpad was connected; touchpad discovery and
+  supported-property behavior are fixture- and nested-X11-tested only.
+- Nested X11 at 1280x800 discovered one display and two virtual input devices,
+  verified both section states and lifecycle, and measured 0.00 percent of one
+  CPU for Quickshell after Settings closed.
+- Debian 13, current Arch, and Fedora 44 containers resolved dependencies,
+  built, validated staged install/uninstall, and passed privilege tests. This
+  qualifies package/build behavior, not real secondary-platform hardware UI.
+- A full Rocky Linux 9 container smoke run is blocked pending a reachable
+  package source in the qualification environment; its package map and shell
+  fixtures are covered, but the complete Rocky install path is not claimed.
+- Generated display persistence, backup, rollback, and input startup reapply
+  are automated. A real Xorg logout/login using the generated fragment remains
+  a release-session check because performing it would terminate the active
+  qualification workspace.
+- NVIDIA ForceFullCompositionPipeline remains unimplemented and unqualified;
+  the current Phase 2 evidence covers RandR layout handling and supported
+  TearFree properties only.

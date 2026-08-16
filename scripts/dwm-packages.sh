@@ -12,13 +12,13 @@ dwm_packages() {
 			libxcb xcb-util freetype2 fontconfig pkgconf
 		;;
 	arch:x11)
-		printf '%s\n' xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset
+		printf '%s\n' xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset xorg-xinput xorg-setxkbmap
 		;;
 	arch:x11-server)
 		printf '%s\n' xorg-server
 		;;
 	arch:runtime-required)
-		printf '%s\n' dbus curl git procps-ng psmisc unzip wmctrl xclip xdotool xorg-xprop xdg-utils
+		printf '%s\n' dbus curl git procps-ng psmisc unzip util-linux wmctrl xclip xdotool xorg-xprop xdg-utils
 		;;
 	arch:desktop)
 		printf '%s\n' \
@@ -73,16 +73,17 @@ dwm_packages() {
 	rhel:x11)
 		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit
 		if [[ ${DISTRO_ID:-} == fedora ]]; then
-			printf '%s\n' xrandr xset xsetroot
+			printf '%s\n' xrandr xset xsetroot xinput setxkbmap
 		else
-			printf '%s\n' xorg-x11-server-utils
+			# Rocky/RHEL bundle xinput in xorg-x11-server-utils.
+			printf '%s\n' xorg-x11-server-utils setxkbmap
 		fi
 		;;
 	rhel:x11-server)
 		:
 		;;
 	rhel:runtime-required)
-		printf '%s\n' dbus-x11 curl git procps-ng psmisc unzip xclip xdotool xprop xdg-utils
+		printf '%s\n' dbus-x11 curl git procps-ng psmisc unzip util-linux xclip xdotool xprop xdg-utils
 		;;
 	rhel:desktop)
 		printf '%s\n' \
@@ -143,13 +144,13 @@ dwm_packages() {
 			libxcb1-dev libxcb-res0-dev libfontconfig-dev libfreetype-dev
 		;;
 	debian:x11)
-		printf '%s\n' xserver-xorg-core xinit x11-xserver-utils
+		printf '%s\n' xserver-xorg-core xinit x11-xserver-utils xinput x11-xkb-utils
 		;;
 	debian:x11-server)
 		:
 		;;
 	debian:runtime-required)
-		printf '%s\n' dbus-x11 curl git procps psmisc unzip xclip xdotool x11-utils xdg-utils
+		printf '%s\n' dbus-x11 curl git procps psmisc unzip util-linux xclip xdotool x11-utils xdg-utils
 		;;
 	debian:desktop)
 		printf '%s\n' \

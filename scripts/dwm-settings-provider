@@ -119,6 +119,47 @@ trusted_health_helper() {
 	return 1
 }
 
+trusted_parent_chain() {
+	parent=${1%/*}
+	while :; do
+		[ -d "$parent" ] && [ ! -L "$parent" ] || return 1
+		[ "$(stat -c %u -- "$parent" 2>/dev/null || printf 1)" = 0 ] || return 1
+		find "$parent" -maxdepth 0 -type d ! -perm /022 -print -quit 2>/dev/null | grep -q . || return 1
+		[ "$parent" = / ] && return 0
+		parent=${parent%/*}
+		[ -n "$parent" ] || parent=/
+	done
+}
+
+trusted_installed_file() {
+	candidate=$1
+	canonical=$(readlink -f -- "$candidate" 2>/dev/null || true)
+	[ -n "$canonical" ] && [ "$canonical" = "$candidate" ] || return 1
+	trusted_parent_chain "$canonical" || return 1
+	[ -f "$canonical" ] && [ ! -L "$canonical" ] && [ -x "$canonical" ] || return 1
+	[ "$(stat -c %u -- "$canonical" 2>/dev/null || printf 1)" = 0 ] || return 1
+	find "$canonical" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q .
+}
+
+trusted_display_helper() {
+	display_command=$(command -v dwm-settings-display 2>/dev/null || true)
+	display_helper=
+	case $display_command in
+	*/bin/dwm-settings-display)
+		display_helper=${display_command%/bin/dwm-settings-display}/libexec/dwm-titus/dwm-settings-display-root
+		;;
+	esac
+	for candidate in "$display_helper" /usr/local/libexec/dwm-titus/dwm-settings-display-root \
+		/usr/libexec/dwm-titus/dwm-settings-display-root; do
+		[ -n "$candidate" ] || continue
+		trusted_installed_file "$candidate" || continue
+		setup_candidate=${candidate%/libexec/dwm-titus/dwm-settings-display-root}/bin/dwm-display-setup
+		trusted_installed_file "$setup_candidate" || continue
+		return 0
+	done
+	return 1
+}
+
 discover() {
 	os_release=${DWM_SETTINGS_OS_RELEASE:-/etc/os-release}
 	platform_id=unknown
@@ -144,11 +185,28 @@ discover() {
 		'Install the X11 RandR tools and open Settings from X11' \
 		'RandR tools are installed, but no responsive X11 display is available' \
 		--query
-	emit_capability displays display-changes 'Display changes' unsupported user-session \
-		dwm-display-setup 'Display changes begin in Phase 2'
+	if provider_available dwm-settings-display; then
+		emit_capability displays display-changes 'Display changes' available user-session \
+			dwm-settings-display 'Validated layout previews, rollback, and user profiles are available'
+	else
+		emit_capability displays display-changes 'Display changes' unavailable user-session \
+			dwm-settings-display 'Install the managed display Settings provider'
+	fi
+	if trusted_display_helper && provider_available pkexec; then
+		emit_capability displays display-persistence 'Persistent display profiles' available privileged \
+			dwm-settings-display-root 'Managed Xorg install and rollback are available through polkit'
+	else
+		emit_capability displays display-persistence 'Persistent display profiles' restricted privileged \
+			dwm-settings-display-root 'Live previews remain available; install the trusted root helper for persistence'
+	fi
 
-	emit_capability input input-devices 'Input devices' unsupported user-session \
-		xinput 'Input device settings begin in Phase 2'
+	if provider_available dwm-settings-input && provider_available xinput; then
+		emit_capability input input-devices 'Input devices' available user-session \
+			dwm-settings-input 'Stable device discovery, preview, reset, and persistence are available'
+	else
+		emit_capability input input-devices 'Input devices' unavailable user-session \
+			dwm-settings-input 'Install xinput and the managed input Settings provider'
+	fi
 
 	emit_probed_command_capability network networkmanager NetworkManager delegated nmcli \
 		'NetworkManager state is available' \
