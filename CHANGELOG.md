@@ -16,6 +16,9 @@ versions from `config.mk`.
   symlink, structured-input, and authorization-denial coverage.
 - Fedora hardware, nested-X11, and Debian/Arch/Fedora container validation for
   the Phase 2 provider, packaging, recovery, and privilege contracts.
+- NVIDIA ForceFullCompositionPipeline capability discovery and safe persistent
+  defaults, with unsupported drivers left unchanged and incompatible forced-on
+  requests rejected.
 
 ### Changed
 
@@ -29,6 +32,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Match generated Xorg OutputClass rules against the DRM driver name, including
+  mapping virtio PCI devices to `virtio_gpu`, so saved display layouts survive
+  a real Xorg restart. Associate NVIDIA RandR names through per-display driver
+  targets so additional DRM providers do not hide supported anti-tearing.
 - Remove Quickshell notification cards when their sender closes the underlying
   notification, and dismiss overflow notifications instead of retaining hidden
   objects that can accumulate during a long session.

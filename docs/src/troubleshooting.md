@@ -88,6 +88,10 @@ as `Alacritty`, which is already covered by the terminal swallowing rules.
   `/etc/X11/xorg.conf.d/90-dwm-titus-display.conf` if Xorg cannot start.
 - TearFree is enabled only when the active Xorg driver exposes a compatible
   option or RandR property. Unsupported drivers are left unchanged.
+- NVIDIA Full Composition Pipeline is enabled in generated persistence only
+  when both the kernel and Xorg drivers are NVIDIA. Run
+  `dwm-display-setup capabilities` to inspect the detected fallback before
+  saving a layout.
 - Display layout profiles: run `dwm-display-profile dir` and
   `dwm-display-profile template` to create optional `xrandr` profiles
 

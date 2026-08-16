@@ -83,7 +83,7 @@ application without changing existing desktop behavior.
 
 ## Phase 2: Displays and Input
 
-Status: Implementation in progress (2026-08-15); release qualification pending
+Status: Complete (2026-08-15)
 
 ### Objective
 
@@ -99,8 +99,8 @@ Make common monitor and input changes available from the Settings application.
   natural scrolling, tap-to-click, and device-specific input controls where the
   X11 driver exposes them.
 - Clear reporting when a driver or device does not support a requested setting.
-- Default to TearFree and Full Composition Pipeline where the driver supports it, with a
-  fallback to the existing dwm behavior.
+- Default to TearFree and Full Composition Pipeline where the driver supports
+  it, with a fallback to the existing dwm behavior.
 
 ### Exit Criteria
 
@@ -128,14 +128,26 @@ Make common monitor and input changes available from the Settings application.
   availability in the qualification environment. Package mapping and shell
   fixtures pass, but a complete Rocky install is not claimed.
 - Named profile persistence, generated managed-fragment install/backup/rollback,
-  and idempotent input startup apply are automated. A real logout/login with
-  the generated Xorg fragment was not performed because it would terminate the
-  active qualification workspace; that remains a release-session check.
-- NVIDIA ForceFullCompositionPipeline support remains outstanding, so Phase 2
-  is not complete or NVIDIA-qualified even where the other display and input
-  outcomes are ready.
+  and idempotent input startup apply are automated. In a Fedora 44 UEFI VM,
+  root-owned mode-0644 generated fragments preserved both a non-default
+  single-output mode and a two-output 1024x768 plus 800x600 layout across real
+  LightDM/Xorg restarts. Xorg logs confirmed that the managed OutputClass and
+  both monitor sections were applied.
+- The restart qualification exposed and fixed a driver-matching defect: the
+  generated OutputClass now maps the virtio PCI bus driver to Xorg's
+  `virtio_gpu` DRM driver name.
+- On representative NVIDIA hardware, both active outputs reported
+  ForceFullCompositionPipeline availability and the active NVIDIA MetaMode
+  confirmed it enabled. Generated persistence enables the NVIDIA option by
+  default, leaves unsupported drivers unchanged, and rejects an explicit
+  forced-on request on incompatible drivers.
+- No physical touchpad was available, and complete Rocky Linux 9 runtime and
+  real secondary-platform X11 sessions remain unqualified. These limitations
+  do not affect the Fedora Phase 2 exit criteria.
 
 ## Phase 3: Connectivity and Audio
+
+Status: Ready to start (2026-08-15)
 
 ### Objective
 

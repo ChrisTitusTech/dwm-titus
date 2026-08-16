@@ -110,7 +110,8 @@ Scope {
                     "name": fields[1], "enabled": fields[2] === "1",
                     "primary": fields[3] === "1", "mode": fields[4],
                     "rate": "", "x": Number(fields[5]), "y": Number(fields[6]),
-                    "rotation": fields[7], "tearfree": fields[8]
+                    "rotation": fields[7], "tearfree": fields[8],
+                    "fullCompositionPipeline": fields.length >= 10 ? fields[9] : "unsupported"
                 });
             } else if (fields[0] === "mode" && fields.length >= 6) {
                 modes.push({

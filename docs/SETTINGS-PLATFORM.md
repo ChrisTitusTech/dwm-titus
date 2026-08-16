@@ -209,11 +209,12 @@ Evidence recorded on 2026-07-21:
 
 `dwm-settings-display` and `dwm-settings-input` use append-only, version 1,
 tab-separated protocols. Display records describe outputs, modes, current and
-preferred rates, rotation, primary state, TearFree capability, profiles, and
-persistence. Input records describe stable devices, supported settings, and
-device-scoped unsupported settings. Tabs and line breaks in external names are
-sanitized. QML passes complete structured argv to fixed helper actions and
-does not implement RandR, Xorg, XInput, or libinput policy.
+preferred rates, rotation, primary state, TearFree and NVIDIA Full Composition
+Pipeline capability, profiles, and persistence. Input records describe stable
+devices, supported settings, and device-scoped unsupported settings. Tabs and
+line breaks in external names are sanitized. QML passes complete structured
+argv to fixed helper actions and does not implement RandR, Xorg, XInput, or
+libinput policy.
 
 Both sections own event-driven udev discovery watches only while active. A
 separate session input watcher debounces add/change events and reapplies saved
@@ -259,9 +260,17 @@ Evidence recorded on 2026-08-15:
   package source in the qualification environment; its package map and shell
   fixtures are covered, but the complete Rocky install path is not claimed.
 - Generated display persistence, backup, rollback, and input startup reapply
-  are automated. A real Xorg logout/login using the generated fragment remains
-  a release-session check because performing it would terminate the active
-  qualification workspace.
-- NVIDIA ForceFullCompositionPipeline remains unimplemented and unqualified;
-  the current Phase 2 evidence covers RandR layout handling and supported
-  TearFree properties only.
+  are automated. A disposable Fedora 44 UEFI VM with LightDM verified a
+  root-owned mode-0644 managed fragment through real Xorg restarts. A
+  non-default single-output mode persisted, followed by a two-output
+  1024x768 plus 800x600 layout. The Xorg log confirmed the managed OutputClass
+  and both monitor sections were applied after restart.
+- That restart test exposed and fixed a virtio driver-name mismatch: generated
+  OutputClass rules use Xorg's `virtio_gpu` DRM name instead of the
+  `virtio-pci` bus driver name.
+- An NVIDIA GeForce RTX 4070 SUPER using driver 610.43.03 reported the NVIDIA
+  fallback available on both active outputs. The active MetaMode confirmed
+  ForceFullCompositionPipeline enabled, and generated persistence emits the
+  documented NVIDIA option only for a compatible NVIDIA kernel and Xorg
+  driver. Unsupported drivers remain unchanged; explicitly forcing the option
+  on an incompatible driver fails before installation.

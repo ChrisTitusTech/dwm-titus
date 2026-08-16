@@ -133,18 +133,24 @@ profile_is_complete() {
 }
 
 discover() {
-	local query properties profile
+	local query properties capabilities profile
 	command -v xrandr >/dev/null 2>&1 || die "xrandr is unavailable"
 	[[ -n ${DISPLAY:-} ]] || die "DISPLAY is not set"
 	query=$(mktemp)
 	properties=$(mktemp)
-	trap 'rm -f "$query" "$properties"' RETURN
+	capabilities=$(mktemp)
+	trap 'rm -f "$query" "$properties" "$capabilities"' RETURN
 	xrandr --query >"$query"
 	grep -q '^Screen [0-9][0-9]*:' "$query" || die "xrandr returned malformed display state"
 	grep -Eq '^[A-Za-z0-9_.:+-]+ connected([[:space:]]|$)' "$query" || die "xrandr reported no connected outputs"
 	xrandr --prop >"$properties" 2>/dev/null || : >"$properties"
+	if ! "$setup_helper" capabilities >"$capabilities" 2>/dev/null; then
+		printf 'display-capability-protocol\t1\n' >"$capabilities"
+	fi
+	grep -Fqx $'display-capability-protocol\t1' "$capabilities" ||
+		die "display setup returned an unsupported capability protocol"
 	printf 'display-protocol\t1\n'
-	awk -v props="$properties" '
+	awk -v props="$properties" -v capabilities="$capabilities" '
 		function yes(value) { return value ? "1" : "0" }
 		$2 == "connected" {
 			output = $1; primary = 0; enabled = 0; mode = ""; x = 0; y = 0; rotation = "normal"; geometry_index = 0
@@ -166,7 +172,17 @@ discover() {
 				else if (in_output && property_line ~ /^[[:space:]]*TearFree:/) tearfree = "available"
 			}
 			close(props)
-			printf "output\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", output, enabled, primary, mode, x, y, rotation, tearfree
+			full_composition_pipeline = "unsupported"
+			while ((getline capability_line < capabilities) > 0) {
+				split(capability_line, capability_fields, "\t")
+				if (capability_fields[1] == "output" && capability_fields[2] == output) {
+					tearfree = capability_fields[3]
+					full_composition_pipeline = capability_fields[4]
+					break
+				}
+			}
+			close(capabilities)
+			printf "output\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", output, enabled, primary, mode, x, y, rotation, tearfree, full_composition_pipeline
 			current_output = output
 			next
 		}

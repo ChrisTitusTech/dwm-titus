@@ -58,8 +58,13 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	displays	randr	Display discovery	available	read-only	xrandr	RandR display state is available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	displays	display-changes	Display changes	available	user-session	dwm-settings-display	Validated layout previews, rollback, and user profiles are available'
-printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	displays	display-persistence	Persistent display profiles	restricted	privileged	dwm-settings-display-root	Live previews remain available; install the trusted root helper for persistence'
+if ! printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	displays	display-persistence	Persistent display profiles	available	privileged	dwm-settings-display-root	Managed Xorg install and rollback are available through polkit' &&
+	! printf '%s\n' "$fedora_output" | grep -Fqx \
+		'capability	displays	display-persistence	Persistent display profiles	restricted	privileged	dwm-settings-display-root	Live previews remain available; install the trusted root helper for persistence'; then
+	printf '%s\n' 'unexpected display-persistence capability state' >&2
+	exit 1
+fi
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	input	input-devices	Input devices	available	user-session	dwm-settings-input	Stable device discovery, preview, reset, and persistence are available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
@@ -158,8 +163,14 @@ grep -Fq 'root.settingsModel.displayPersistenceAvailable' "$repo/config/quickshe
 grep -Fq 'root.settingsModel.displayUnsupportedProfiles' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'if (!visible) root.confirmation = "";' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
-grep -Fq -- '--no-preview --yes --tearfree auto' \
+grep -Fq -- '--no-preview --yes' \
 	"$repo/scripts/dwm-settings-display-root"
+grep -Fq -- '--tearfree auto --force-full-composition-pipeline auto' \
+	"$repo/scripts/dwm-settings-display-root"
+grep -Fq 'fields.length >= 10 ? fields[9] : "unsupported"' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'NVIDIA full composition on persistent install' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'migrate or remove it before installing a managed display profile' \
 	"$repo/scripts/dwm-settings-display-root"
 grep -Fq 'watch-apply' "$repo/scripts/autostart.sh"
