@@ -295,6 +295,21 @@ xorg_driver_for_kernel() {
 	esac
 }
 
+xorg_match_driver_for_kernel() {
+	local kernel_driver=$1
+
+	case $kernel_driver in
+	nvidia)
+		# Xorg OutputClass matches the NVIDIA DRM platform driver, while the
+		# display driver loaded by the class remains the nvidia DDX.
+		printf '%s\n' nvidia-drm
+		;;
+	*)
+		printf '%s\n' "$kernel_driver"
+		;;
+	esac
+}
+
 output_has_tearfree_property() {
 	local output=$1
 	awk -v output="$output" '
@@ -721,6 +736,7 @@ generate_config() {
 	local -A output_drivers=()
 	local driver
 	local xorg_driver
+	local match_driver
 
 	if resolved_tearfree; then
 		tearfree_enabled=1
@@ -739,9 +755,10 @@ generate_config() {
 		printf '%s\n' '# Exact timings are copied from the active X server for the selected outputs.'
 		for driver in "${!output_drivers[@]}"; do
 			xorg_driver=$(xorg_driver_for_kernel "$driver")
+			match_driver=$(xorg_match_driver_for_kernel "$driver")
 			printf '\nSection "OutputClass"\n'
 			printf '\tIdentifier "dwm-titus-display-map-%s"\n' "$driver"
-			printf '\tMatchDriver "%s"\n' "$driver"
+			printf '\tMatchDriver "%s"\n' "$match_driver"
 			printf '\tDriver "%s"\n' "$xorg_driver"
 			for index in "${!cfg_outputs[@]}"; do
 				[[ ${cfg_kernel_drivers[$index]} == "$driver" ]] || continue

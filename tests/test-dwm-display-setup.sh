@@ -311,10 +311,12 @@ env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
 	>"$work/generated-nvidia-hybrid.conf"
 grep -Fq 'Option "ForceFullCompositionPipeline" "true"' \
 	"$work/generated-nvidia-hybrid.conf"
+grep -Fq 'MatchDriver "nvidia-drm"' "$work/generated-nvidia-hybrid.conf"
+grep -Fq 'Driver "nvidia"' "$work/generated-nvidia-hybrid.conf"
 env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
 	DWM_KERNEL_DRIVER=nvidia DWM_XORG_DRIVER=nvidia \
 	"$BASH_BIN" "$HELPER" generate "$work/profile-60.conf" >"$work/generated-nvidia.conf"
-grep -Fq 'MatchDriver "nvidia"' "$work/generated-nvidia.conf"
+grep -Fq 'MatchDriver "nvidia-drm"' "$work/generated-nvidia.conf"
 grep -Fq 'Driver "nvidia"' "$work/generated-nvidia.conf"
 grep -Fq 'Option "ForceFullCompositionPipeline" "true"' "$work/generated-nvidia.conf"
 if grep -Fq 'Option "TearFree" "true"' "$work/generated-nvidia.conf"; then
@@ -403,7 +405,7 @@ env "${env_common[@]}" DWM_KERNEL_DRIVER= DWM_DRM_SYSFS_ROOT="$work/drm" \
 	DWM_XORG_DRIVER=nvidia TEST_NVIDIA_OUTPUTS='HDMI-1 DP-1 DP-2' \
 	"$BASH_BIN" "$HELPER" generate "$work/profile-60.conf" \
 	>"$work/generated-multi-provider-nvidia.conf"
-grep -Fq 'MatchDriver "nvidia"' "$work/generated-multi-provider-nvidia.conf"
+grep -Fq 'MatchDriver "nvidia-drm"' "$work/generated-multi-provider-nvidia.conf"
 grep -Fq 'Option "ForceFullCompositionPipeline" "true"' \
 	"$work/generated-multi-provider-nvidia.conf"
 if grep -Fq 'MatchDriver "unknown"' "$work/generated-multi-provider-nvidia.conf"; then
