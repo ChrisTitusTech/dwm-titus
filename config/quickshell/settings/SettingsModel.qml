@@ -451,9 +451,14 @@ Scope {
     }
 
     function close() {
-		if (root.previewToken) {
-			const actionBusy = root.previewKind === "display" ? displayActionProcess.running : inputActionProcess.running;
-			if (actionBusy) root.closeRollbackPending = true;
+			const displayPreviewStarting = displayActionProcess.running
+				&& (root.pendingAction === "display-preview" || root.pendingAction === "display-preview-profile");
+			const inputPreviewStarting = inputActionProcess.running && root.pendingAction === "input-preview";
+			if (!root.previewToken && (displayPreviewStarting || inputPreviewStarting)) {
+				root.closeRollbackPending = true;
+			} else if (root.previewToken) {
+				const actionBusy = root.previewKind === "display" ? displayActionProcess.running : inputActionProcess.running;
+				if (actionBusy) root.closeRollbackPending = true;
 			else {
 				root.closeRollbackPending = false;
 				root.revertPreview();

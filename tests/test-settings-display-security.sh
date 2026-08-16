@@ -18,7 +18,11 @@ repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 work=$(mktemp -d)
 custom_prefix=$(mktemp -d /opt/dwm-titus-security-test.XXXXXX)
+created_main_config=0
 cleanup() {
+	if [[ $created_main_config == 1 ]]; then
+		rm -f /etc/X11/xorg.conf
+	fi
 	rm -rf "$work" "$custom_prefix"
 }
 trap cleanup EXIT
@@ -73,6 +77,21 @@ if env PKEXEC_UID=1000 "$installed" install :99 '' "HDMI-1 --mode 1920x1080;touc
 fi
 grep -Fq 'invalid structured display record' "$work/structured.err"
 [[ ! -e $work/injected ]]
+
+if [[ ! -e /etc/X11/xorg.conf ]]; then
+	install -Dm644 /dev/null /etc/X11/xorg.conf
+	created_main_config=1
+fi
+if env PKEXEC_UID=1000 "$installed" install :99 '' "HDMI-1 --primary --mode 1920x1080 --rate 60 --pos 0x0 --rotate normal" \
+	2>"$work/main-config.err"; then
+	printf 'existing main Xorg configuration bypassed the conflict guard\n' >&2
+	exit 1
+fi
+grep -Fq 'may conflict; migrate or remove it' "$work/main-config.err"
+if [[ $created_main_config == 1 ]]; then
+	rm -f /etc/X11/xorg.conf
+	created_main_config=0
+fi
 
 cat >"$work/home/display-profiles/desk.conf" <<'EOF'
 HDMI-1 --primary --mode 1920x1080 --rate 60 --pos 0x0 --rotate normal

@@ -97,6 +97,8 @@ install)
 		validate_profile_line "$line" || die "invalid structured display record"
 		printf '%s\n' "$line" >>"$profile"
 	done
+	[[ ! -e $main_config ]] ||
+		die "existing $main_config may conflict; migrate or remove it before installing a managed display profile"
 	run_setup "$display" "$xauthority" install "$profile" --no-preview --yes --tearfree auto
 	;;
 rollback)

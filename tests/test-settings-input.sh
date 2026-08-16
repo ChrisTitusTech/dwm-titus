@@ -17,6 +17,15 @@ cat >"$work/devices" <<'EOF'
     ↳ Keyboard with spaces                 id=13   [slave  keyboard (3)]
 EOF
 
+cat >"$work/devices-ascii" <<'EOF'
++ Virtual core pointer                     id=2    [master pointer  (3)]
+|   + Mouse, Wild [Name]                   id=12   [slave  pointer  (2)]
+|   + Portable TouchPad                    id=14   [slave  pointer  (2)]
+|   + Node-less Pointer                    id=15   [slave  pointer  (2)]
++ Virtual core keyboard                    id=3    [master keyboard (2)]
+    + Keyboard with spaces                 id=13   [slave  keyboard (3)]
+EOF
+
 cat >"$work/bin/xinput" <<'EOF'
 #!/bin/sh
 case $1 in
@@ -179,6 +188,14 @@ expected_mouse_key=$(printf '%s' 'pointer|Mouse, Wild [Name]|1133, 49291|path:pc
 expected_keyboard_key=$(printf '%s' 'keyboard|Keyboard with spaces|1234, 5678|serial:test-keyboard' | sha256sum | awk '{print substr($1, 1, 16)}')
 [[ $mouse_key == "$expected_mouse_key" ]]
 [[ $keyboard_key == "$expected_keyboard_key" ]]
+
+env "${env_common[@]}" TEST_DEVICES="$work/devices-ascii" "$helper" discover >"$work/discover-ascii"
+ascii_mouse_key=$(awk -F '\t' '$1 == "device" && $4 == "pointer" {print $2; exit}' "$work/discover-ascii")
+ascii_keyboard_key=$(awk -F '\t' '$1 == "device" && $4 == "keyboard" {print $2}' "$work/discover-ascii")
+[[ $ascii_mouse_key == "$mouse_key" ]]
+[[ $ascii_keyboard_key == "$keyboard_key" ]]
+grep -Fq $'pointer\tMouse, Wild [Name]' "$work/discover-ascii"
+grep -Fq $'keyboard\tKeyboard with spaces' "$work/discover-ascii"
 
 rm -f "$work/list-props.count"
 env "${env_common[@]}" TEST_DISAPPEAR_ID=14 "$helper" discover >"$work/discover-hotplug"

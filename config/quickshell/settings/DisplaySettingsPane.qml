@@ -11,6 +11,10 @@ Flickable {
     property string profileName: ""
     property string confirmation: ""
 
+		onVisibleChanged: {
+			if (!visible) root.confirmation = "";
+		}
+
     contentWidth: width
     contentHeight: contentColumn.implicitHeight
     clip: true

@@ -146,6 +146,8 @@ grep -Fq 'root.runInput("preview-status", [])' "$repo/config/quickshell/settings
 grep -Fq 'root.runDisplay("preview-status", [])' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'if (!root.visible) root.closeRollbackPending = true;' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'if (!root.previewToken && (displayPreviewStarting || inputPreviewStarting)) {' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.previewKind = "input"; root.previewToken = fields[1]; root.previewOperationLocked = true;' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.previewKind = "display"; root.previewToken = fields[1]; root.previewOperationLocked = true;' \
@@ -154,7 +156,11 @@ grep -Fq 'property var displayUnsupportedProfiles: []' "$repo/config/quickshell/
 grep -Fq 'readonly property bool displayPersistenceAvailable:' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.settingsModel.displayPersistenceAvailable' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'root.settingsModel.displayUnsupportedProfiles' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'if (!visible) root.confirmation = "";' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq -- '--no-preview --yes --tearfree auto' \
+	"$repo/scripts/dwm-settings-display-root"
+grep -Fq 'migrate or remove it before installing a managed display profile' \
 	"$repo/scripts/dwm-settings-display-root"
 grep -Fq 'watch-apply' "$repo/scripts/autostart.sh"
 grep -Fq 'displayWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
