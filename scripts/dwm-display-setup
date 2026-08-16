@@ -145,22 +145,33 @@ driver_name_from_link() {
 	esac
 }
 
-nvidia_owns_output() {
+nvidia_output_ownership() {
 	local output=$1
 	local attribute
 
-	xorg_uses_driver nvidia || return 1
-	command -v nvidia-settings >/dev/null 2>&1 || return 1
+	if ! xorg_uses_driver nvidia; then
+		printf '%s\n' not-present
+		return
+	fi
+	if ! command -v nvidia-settings >/dev/null 2>&1; then
+		printf '%s\n' unavailable
+		return
+	fi
 	# NVIDIA RandR names do not necessarily match DRM connector names. Query a
 	# read-only per-display target so multi-provider sessions can associate the
 	# RandR output without treating another connected DRM card as NVIDIA.
 	for attribute in CurrentDithering DigitalVibrance; do
 		if nvidia-settings --terse \
 			--query "[dpy:$output]/$attribute" >/dev/null 2>&1; then
-			return 0
+			printf '%s\n' owned
+			return
 		fi
 	done
-	return 1
+	if nvidia-settings --terse --query gpus >/dev/null 2>&1; then
+		printf '%s\n' not-owned
+	else
+		printf '%s\n' unavailable
+	fi
 }
 
 output_edid_hex() {
@@ -205,7 +216,7 @@ output_driver_by_edid() {
 
 output_kernel_driver() {
 	local output=$1
-	local connector card driver driver_link provider_output
+	local connector card driver driver_link provider_output nvidia_ownership
 	local -A detected=() exact_detected=() provider_detected=()
 
 	if [[ -n ${DWM_KERNEL_DRIVER:-} ]]; then
@@ -221,7 +232,8 @@ output_kernel_driver() {
 		driver=$(driver_name_from_link "$driver_link")
 		exact_detected[$driver]=1
 	done
-	if nvidia_owns_output "$output"; then
+	nvidia_ownership=$(nvidia_output_ownership "$output")
+	if [[ $nvidia_ownership == owned ]]; then
 		printf '%s\n' nvidia
 		return
 	fi
@@ -229,8 +241,24 @@ output_kernel_driver() {
 		printf '%s\n' "$driver"
 		return
 	fi
+	for connector in "$drm_root"/card*-*; do
+		[[ -e $connector/status ]] || continue
+		[[ $(<"$connector/status") == connected ]] || continue
+		card=${connector##*/}
+		card=${card%%-*}
+		driver_link="$drm_root/$card/device/driver"
+		[[ -L $driver_link ]] || continue
+		driver=$(driver_name_from_link "$driver_link")
+		detected[$driver]=1
+	done
 	if ((${#exact_detected[@]} == 1)); then
-		printf '%s\n' "${!exact_detected[@]}"
+		driver=${!exact_detected[*]}
+		if [[ $nvidia_ownership == unavailable && $driver != nvidia &&
+			-n ${detected[nvidia]+present} ]]; then
+			printf '%s\n' unknown
+		else
+			printf '%s\n' "$driver"
+		fi
 		return
 	fi
 	# RandR appends a provider suffix when an offload/sink provider exports an
@@ -248,23 +276,19 @@ output_kernel_driver() {
 			provider_detected[$driver]=1
 		done
 		if ((${#provider_detected[@]} == 1)); then
-			printf '%s\n' "${!provider_detected[@]}"
+			driver=${!provider_detected[*]}
+			if [[ $nvidia_ownership == unavailable && $driver != nvidia &&
+				-n ${detected[nvidia]+present} ]]; then
+				printf '%s\n' unknown
+			else
+				printf '%s\n' "$driver"
+			fi
 			return
 		fi
 	fi
 	# Proprietary drivers do not always use the same connector numbering for
 	# RandR and DRM sysfs. If exactly one DRM driver owns connected outputs,
 	# that driver is an unambiguous fallback.
-	for connector in "$drm_root"/card*-*; do
-		[[ -e $connector/status ]] || continue
-		[[ $(<"$connector/status") == connected ]] || continue
-		card=${connector##*/}
-		card=${card%%-*}
-		driver_link="$drm_root/$card/device/driver"
-		[[ -L $driver_link ]] || continue
-		driver=$(driver_name_from_link "$driver_link")
-		detected[$driver]=1
-	done
 	if ((${#detected[@]} == 1)); then
 		printf '%s\n' "${!detected[@]}"
 		return

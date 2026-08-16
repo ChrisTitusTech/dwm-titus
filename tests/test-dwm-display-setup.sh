@@ -186,6 +186,11 @@ for output in ${TEST_NVIDIA_OUTPUTS:-}; do
 		;;
 	esac
 done
+if [ "${TEST_NVIDIA_SETTINGS_UNAVAILABLE:-0}" != 1 ] &&
+	[ "$*" = "--terse --query gpus" ]; then
+	printf '%s\n' '1 GPU'
+	exit 0
+fi
 exit 1
 EOF
 chmod +x "$work/bin/nvidia-settings"
@@ -396,6 +401,14 @@ env "${env_common[@]}" DWM_KERNEL_DRIVER= \
 	"$BASH_BIN" "$HELPER" detect >"$work/detect-mismatched-nvidia"
 grep -Fq 'DP-1  default=  kernel-driver=nvidia' \
 	"$work/detect-mismatched-nvidia"
+env "${env_common[@]}" DWM_KERNEL_DRIVER= \
+	DWM_DRM_SYSFS_ROOT="$work/drm-mismatched" \
+	DWM_XORG_DRIVERS='modesetting nvidia' TEST_NVIDIA_SETTINGS_UNAVAILABLE=1 \
+	TEST_QUERY="$work/query-exact-collision" \
+	TEST_PROPERTIES="$work/properties-unsupported" \
+	"$BASH_BIN" "$HELPER" detect >"$work/detect-mismatched-unavailable"
+grep -Fq 'DP-1  default=  kernel-driver=unknown' \
+	"$work/detect-mismatched-unavailable"
 
 mkdir -p "$work/drm/card1-DP-1" "$work/drm/card1/device" \
 	"$work/sys/drivers/nvidia"
