@@ -450,6 +450,23 @@ test ! -e "$work/runtime/dwm-settings-input/disconnect-test.claim"
 cp "$work/devices-all" "$work/devices"
 env "${env_common[@]}" "$helper" revert disconnect-test >/dev/null
 test ! -e "$work/runtime/dwm-settings-input/current"
+
+env "${env_common[@]}" "$helper" preview keep-disconnected 1 "$mouse_key" pointer-speed 0.6 >/dev/null
+sed '/Mouse, Wild/d' "$work/devices-all" >"$work/devices"
+for _ in {1..30}; do
+	env "${env_common[@]}" "$helper" preview-status keep-disconnected >"$work/keep-disconnected-status"
+	grep -Fq $'preview-failed\tkeep-disconnected\t' "$work/keep-disconnected-status" && break
+	sleep 0.1
+done
+env "${env_common[@]}" "$helper" keep keep-disconnected >/dev/null
+grep -Fqx "$mouse_key"$'\tpointer-speed\t0.6\t0.000000' \
+	"$work/home/.config/dwm-titus/input-settings.conf"
+test ! -e "$work/runtime/dwm-settings-input/keep-disconnected.state"
+cp "$work/devices-all" "$work/devices"
+rm -f "$work/actions.log"
+env "${env_common[@]}" "$helper" apply-saved
+grep -Fq 'xinput set-prop 12 libinput Accel Speed 0.6' "$work/actions.log"
+
 env "${env_common[@]}" "$helper" preview after-disconnect 5 "$mouse_key" pointer-speed 0.5 >/dev/null
 env "${env_common[@]}" "$helper" revert after-disconnect >/dev/null
 

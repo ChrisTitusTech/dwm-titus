@@ -306,8 +306,12 @@ apply_value() {
 }
 
 persist_value() {
-	local key=$1 setting=$2 value=$3 baseline=${4-} temporary existing_baseline
-	if ! device_can_persist "$key"; then
+	local key=$1 setting=$2 value=$3 baseline=${4-} persistable=${5:-} temporary existing_baseline
+	if [[ -z $persistable ]]; then
+		if device_can_persist "$key"; then persistable=1; else persistable=0; fi
+	fi
+	[[ $persistable == 0 || $persistable == 1 ]] || die "invalid captured persistence state"
+	if [[ $persistable == 0 ]]; then
 		printf 'dwm-settings-input: device %s has no stable persistence identity; keeping the session value only\n' "$key" >&2
 		return 0
 	fi
@@ -393,12 +397,13 @@ claim_preview() {
 }
 
 preview_value() {
-	local token=$1 seconds=$2 key=$3 setting=$4 value=$5 previous state
+	local token=$1 seconds=$2 key=$3 setting=$4 value=$5 previous state persistable=0
 	[[ $seconds =~ ^[1-9][0-9]?$ ]] || die "preview timeout must be between 1 and 99 seconds"
 	ensure_state_dir
 	validate_value "$setting" "$value" || die "invalid value for $setting"
 	state=$(token_file "$token" state)
 	previous=$(read_value "$key" "$setting")
+	device_can_persist "$key" && persistable=1
 	[[ $previous != *'|'* ]] || die "captured value contains the reserved preview-state separator"
 	if ! (
 		set -o noclobber
@@ -406,7 +411,7 @@ preview_value() {
 	) 2>/dev/null; then
 		die "preview token is already in use"
 	fi
-	if ! printf '%s|%s|%s|%s\n' "$key" "$setting" "$previous" "$value" >"$state"; then
+	if ! printf '%s|%s|%s|%s|%s\n' "$key" "$setting" "$previous" "$value" "$persistable" >"$state"; then
 		rm -f "$state"
 		die "could not write input preview recovery state"
 	fi
@@ -430,15 +435,15 @@ preview_value() {
 }
 
 finish_preview() {
-	local action=$1 token=$2 state key setting previous value claim
+	local action=$1 token=$2 state key setting previous value persistable claim
 	ensure_state_dir
 	state=$(token_file "$token" state)
 	[[ -f $state ]] || die "input preview is not active"
 	claim=$(claim_preview "$token")
 	trap 'rmdir "$claim" 2>/dev/null || true' RETURN
-	IFS='|' read -r key setting previous value <"$state"
+	IFS='|' read -r key setting previous value persistable <"$state"
 	if [[ $action == keep ]]; then
-		persist_value "$key" "$setting" "$value" "$previous"
+		persist_value "$key" "$setting" "$value" "$previous" "$persistable"
 	elif ! (apply_value "$key" "$setting" "$previous"); then
 		printf 'Input rollback failed; the captured value is retained for retry.\n' >"$(token_file "$token" failed)"
 		chmod 600 "$(token_file "$token" failed)"
@@ -455,14 +460,14 @@ finish_preview() {
 }
 
 watchdog() {
-	local token=$1 seconds=$2 state key setting previous value claim failed
+	local token=$1 seconds=$2 state key setting previous value persistable claim failed
 	sleep "$seconds"
 	acquire_mutation_lock
 	state=$(token_file "$token" state)
 	if [[ -f $state ]]; then
 		claim=$(token_file "$token" claim)
 		mkdir "$claim" 2>/dev/null || return 0
-		IFS='|' read -r key setting previous value <"$state"
+		IFS='|' read -r key setting previous value persistable <"$state"
 		if (apply_value "$key" "$setting" "$previous"); then
 			cleanup_preview "$token"
 			apply_pending_hotplug "$key" "$setting"

@@ -90,6 +90,7 @@ Scope {
     function activateSection(id) {
         displayWatchProcess.running = id === "displays" && root.visible;
         inputWatchProcess.running = id === "input" && root.visible;
+			if (id !== "input") inputSettleTimer.stop();
         if (id === "displays") root.refreshDisplays();
         if (id === "input") root.refreshInput();
     }
@@ -469,6 +470,7 @@ Scope {
         inputDiscoverProcess.running = false;
         displayWatchProcess.running = false;
         inputWatchProcess.running = false;
+			inputSettleTimer.stop();
         root.visible = false;
         root.busy = false;
         root.searchQuery = "";
@@ -524,7 +526,7 @@ Scope {
         id: inputWatchProcess
         command: Commands.settingsInputCommand("watch")
         running: false
-        stdout: SplitParser { onRead: root.refreshInput() }
+			stdout: SplitParser { onRead: inputSettleTimer.restart() }
     }
 
     Process {
@@ -645,6 +647,13 @@ Scope {
     Timer {
         id: inputSettleTimer
         interval: 1200
-        onTriggered: root.refreshInput()
+			onTriggered: {
+				if (!root.visible || root.selectedSectionId !== "input") return;
+				if (inputDiscoverProcess.running) {
+					inputSettleTimer.restart();
+					return;
+				}
+				root.refreshInput();
+			}
     }
 }

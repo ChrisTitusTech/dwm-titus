@@ -176,6 +176,10 @@ if env PKEXEC_UID=1000 "$installed" rollback 2>"$work/non-executable-setup.err";
 	exit 1
 fi
 grep -Fq 'trusted dwm-display-setup is unavailable' "$work/non-executable-setup.err"
+env PATH="$work/bin:$custom_prefix/bin:/usr/bin:/bin" \
+	"$repo/scripts/dwm-settings-provider" discover >"$work/non-executable-setup-provider"
+grep -Fq $'capability\tdisplays\tdisplay-persistence\tPersistent display profiles\trestricted\tprivileged' \
+	"$work/non-executable-setup-provider"
 chmod 0755 "$setup"
 
 if "$installed" rollback 2>"$work/direct-root.err"; then

@@ -153,6 +153,8 @@ trusted_display_helper() {
 		/usr/libexec/dwm-titus/dwm-settings-display-root; do
 		[ -n "$candidate" ] || continue
 		trusted_installed_file "$candidate" || continue
+		setup_candidate=${candidate%/libexec/dwm-titus/dwm-settings-display-root}/bin/dwm-display-setup
+		trusted_installed_file "$setup_candidate" || continue
 		return 0
 	done
 	return 1

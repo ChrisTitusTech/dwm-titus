@@ -165,6 +165,8 @@ grep -Fq 'migrate or remove it before installing a managed display profile' \
 grep -Fq 'watch-apply' "$repo/scripts/autostart.sh"
 grep -Fq 'displayWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'inputWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'stdout: SplitParser { onRead: inputSettleTimer.restart() }' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.searchQuery = ""' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'activeFocusOnTab: root.enabled' "$repo/config/quickshell/core/ShellButton.qml"
 grep -Fq 'event.key === Qt.Key_Return' "$repo/config/quickshell/core/ShellButton.qml"
