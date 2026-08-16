@@ -99,8 +99,9 @@ Make common monitor and input changes available from the Settings application.
   natural scrolling, tap-to-click, and device-specific input controls where the
   X11 driver exposes them.
 - Clear reporting when a driver or device does not support a requested setting.
-- Default to TearFree and Full Composition Pipeline where the driver supports
-  it, with a fallback to the existing dwm behavior.
+- Default to TearFree or Full Composition Pipeline where the driver supports
+  it, selecting the compatible option and falling back to existing dwm
+  behavior.
 
 ### Exit Criteria
 

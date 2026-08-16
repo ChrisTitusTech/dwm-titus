@@ -89,7 +89,8 @@ as `Alacritty`, which is already covered by the terminal swallowing rules.
 - TearFree is enabled only when the active Xorg driver exposes a compatible
   option or RandR property. Unsupported drivers are left unchanged.
 - NVIDIA Full Composition Pipeline is enabled in generated persistence only
-  when both the kernel and Xorg drivers are NVIDIA. Run
+  when the relevant output uses the NVIDIA kernel driver and an NVIDIA Xorg
+  provider is available, including supported hybrid configurations. Run
   `dwm-display-setup capabilities` to inspect the detected fallback before
   saving a layout.
 - Display layout profiles: run `dwm-display-profile dir` and
