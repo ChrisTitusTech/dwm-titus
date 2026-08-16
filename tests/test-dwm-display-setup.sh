@@ -38,6 +38,11 @@ Screen 0: minimum 320 x 200, current 1024 x 768, maximum 16384 x 16384
 DP-1-1 connected (normal left inverted right x axis y axis)
 EOF
 
+cat >"$work/query-exact-collision" <<'EOF'
+Screen 0: minimum 320 x 200, current 1024 x 768, maximum 16384 x 16384
+DP-1 connected (normal left inverted right x axis y axis)
+EOF
+
 cat >"$work/query-rotated" <<'EOF'
 Screen 0: minimum 320 x 200, current 1920 x 3640, maximum 16384 x 16384
 HDMI-1 connected primary 1920x1080+0+0 (normal left inverted right x axis y axis) 527mm x 296mm
@@ -122,6 +127,12 @@ EOF
 
 cat >"$work/properties-provider-collision" <<'EOF'
 DP-1-1 connected (normal left inverted right x axis y axis)
+	EDID:
+		aabbccdd
+EOF
+
+cat >"$work/properties-exact-collision" <<'EOF'
+DP-1 connected (normal left inverted right x axis y axis)
 	EDID:
 		aabbccdd
 EOF
@@ -360,6 +371,13 @@ env "${env_common[@]}" DWM_KERNEL_DRIVER= \
 	"$BASH_BIN" "$HELPER" detect >"$work/detect-provider-collision"
 grep -Fq 'DP-1-1  default=  kernel-driver=nvidia' \
 	"$work/detect-provider-collision"
+env "${env_common[@]}" DWM_KERNEL_DRIVER= \
+	DWM_DRM_SYSFS_ROOT="$work/drm-collision" DWM_XORG_DRIVER=nvidia \
+	TEST_QUERY="$work/query-exact-collision" \
+	TEST_PROPERTIES="$work/properties-exact-collision" \
+	"$BASH_BIN" "$HELPER" detect >"$work/detect-exact-collision"
+grep -Fq 'DP-1  default=  kernel-driver=nvidia' \
+	"$work/detect-exact-collision"
 
 mkdir -p "$work/drm/card1-DP-1" "$work/drm/card1/device" \
 	"$work/sys/drivers/nvidia"

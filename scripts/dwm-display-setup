@@ -206,7 +206,7 @@ output_driver_by_edid() {
 output_kernel_driver() {
 	local output=$1
 	local connector card driver driver_link provider_output
-	local -A detected=() provider_detected=()
+	local -A detected=() exact_detected=() provider_detected=()
 
 	if [[ -n ${DWM_KERNEL_DRIVER:-} ]]; then
 		printf '%s\n' "$DWM_KERNEL_DRIVER"
@@ -217,11 +217,14 @@ output_kernel_driver() {
 		card=${connector##*/}
 		card=${card%%-*}
 		driver_link="$drm_root/$card/device/driver"
-		if [[ -L $driver_link ]]; then
-			driver_name_from_link "$driver_link"
-			return
-		fi
+		[[ -L $driver_link ]] || continue
+		driver=$(driver_name_from_link "$driver_link")
+		exact_detected[$driver]=1
 	done
+	if ((${#exact_detected[@]} == 1)); then
+		printf '%s\n' "${!exact_detected[@]}"
+		return
+	fi
 	if driver=$(output_driver_by_edid "$output"); then
 		printf '%s\n' "$driver"
 		return
