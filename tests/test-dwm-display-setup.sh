@@ -28,6 +28,21 @@ HDMI-1 connected primary 1920x1080+0+0 (normal left inverted right x axis y axis
    1920x1080     60.00*+
 EOF
 
+cat >"$work/query-provider-suffix" <<'EOF'
+Screen 0: minimum 320 x 200, current 1024 x 768, maximum 16384 x 16384
+Virtual-1-1 connected (normal left inverted right x axis y axis)
+EOF
+
+cat >"$work/query-provider-collision" <<'EOF'
+Screen 0: minimum 320 x 200, current 1024 x 768, maximum 16384 x 16384
+DP-1-1 connected (normal left inverted right x axis y axis)
+EOF
+
+cat >"$work/query-exact-collision" <<'EOF'
+Screen 0: minimum 320 x 200, current 1024 x 768, maximum 16384 x 16384
+DP-1 connected (normal left inverted right x axis y axis)
+EOF
+
 cat >"$work/query-rotated" <<'EOF'
 Screen 0: minimum 320 x 200, current 1920 x 3640, maximum 16384 x 16384
 HDMI-1 connected primary 1920x1080+0+0 (normal left inverted right x axis y axis) 527mm x 296mm
@@ -110,6 +125,18 @@ DP-1 connected 2560x1440+1920+0 (normal left inverted right x axis y axis)
 DP-2 connected (normal left inverted right x axis y axis)
 EOF
 
+cat >"$work/properties-provider-collision" <<'EOF'
+DP-1-1 connected (normal left inverted right x axis y axis)
+	EDID:
+		aabbccdd
+EOF
+
+cat >"$work/properties-exact-collision" <<'EOF'
+DP-1 connected (normal left inverted right x axis y axis)
+	EDID:
+		aabbccdd
+EOF
+
 cat >"$work/bin/xrandr" <<'EOF'
 #!/bin/sh
 case ${1:-} in
@@ -124,6 +151,7 @@ case ${1:-} in
 	cat "$TEST_VERBOSE"
 	;;
 --prop)
+	[ "${TEST_PROPERTIES_UNAVAILABLE:-0}" != 1 ] || exit 1
 	cat "$TEST_PROPERTIES"
 	;;
 *)
@@ -147,6 +175,25 @@ case ${1:-} in
 esac
 EOF
 chmod +x "$work/bin/xrandr"
+
+cat >"$work/bin/nvidia-settings" <<'EOF'
+#!/bin/sh
+for output in ${TEST_NVIDIA_OUTPUTS:-}; do
+	case " $* " in
+	*"[dpy:$output]/"*)
+		printf '%s\n' 0
+		exit 0
+		;;
+	esac
+done
+if [ "${TEST_NVIDIA_SETTINGS_UNAVAILABLE:-0}" != 1 ] &&
+	[ "$*" = "--terse --query gpus" ]; then
+	printf '%s\n' '1 GPU'
+	exit 0
+fi
+exit 1
+EOF
+chmod +x "$work/bin/nvidia-settings"
 
 cat >"$work/profile-60.conf" <<'EOF'
 HDMI-1 --primary --mode 1920x1080 --rate 60 --pos 0x0 --rotate normal
@@ -177,6 +224,11 @@ env_common=(
 env "${env_common[@]}" "$BASH_BIN" "$HELPER" detect >"$work/detect"
 grep -Fq 'HDMI-1  default=1920x1080@60.00' "$work/detect"
 grep -Fq 'TearFree=supported' "$work/detect"
+grep -Fq 'ForceFullCompositionPipeline=unsupported' "$work/detect"
+
+env "${env_common[@]}" "$BASH_BIN" "$HELPER" capabilities >"$work/capabilities"
+grep -Fqx $'display-capability-protocol\t1' "$work/capabilities"
+grep -Fqx $'output\tHDMI-1\tavailable\tunsupported' "$work/capabilities"
 
 env "${env_common[@]}" "$BASH_BIN" "$HELPER" capture >"$work/captured.conf"
 grep -Fq 'HDMI-1 --primary --mode 1920x1080 --rate 60.00 --pos 0x0 --rotate normal' "$work/captured.conf"
@@ -242,6 +294,138 @@ if env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
 fi
 grep -Fq 'no compatible interface' "$work/tearfree-error"
 
+env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
+	DWM_KERNEL_DRIVER=nvidia DWM_XORG_DRIVER=nvidia \
+	"$BASH_BIN" "$HELPER" capabilities >"$work/capabilities-nvidia"
+grep -Fqx $'output\tHDMI-1\tunsupported\tavailable' "$work/capabilities-nvidia"
+env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
+	DWM_KERNEL_DRIVER=nvidia DWM_XORG_DRIVER=modesetting \
+	"$BASH_BIN" "$HELPER" capabilities >"$work/capabilities-nvidia-modesetting"
+grep -Fqx $'output\tHDMI-1\tunsupported\tunsupported' \
+	"$work/capabilities-nvidia-modesetting"
+env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
+	DWM_KERNEL_DRIVER=nvidia DWM_XORG_DRIVER=modesetting \
+	DWM_XORG_DRIVERS='modesetting nvidia' TEST_NVIDIA_OUTPUTS='HDMI-1 DP-1 DP-2' \
+	"$BASH_BIN" "$HELPER" capabilities >"$work/capabilities-nvidia-hybrid"
+grep -Fqx $'output\tHDMI-1\tunsupported\tavailable' \
+	"$work/capabilities-nvidia-hybrid"
+env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
+	DWM_KERNEL_DRIVER=nvidia DWM_XORG_DRIVER=modesetting \
+	DWM_XORG_DRIVERS='modesetting nvidia' TEST_NVIDIA_OUTPUTS='HDMI-1 DP-1 DP-2' \
+	"$BASH_BIN" "$HELPER" generate "$work/profile-60.conf" \
+	>"$work/generated-nvidia-hybrid.conf"
+grep -Fq 'Option "ForceFullCompositionPipeline" "true"' \
+	"$work/generated-nvidia-hybrid.conf"
+grep -Fq 'MatchDriver "nvidia-drm"' "$work/generated-nvidia-hybrid.conf"
+grep -Fq 'Driver "nvidia"' "$work/generated-nvidia-hybrid.conf"
+env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
+	DWM_KERNEL_DRIVER=nvidia DWM_XORG_DRIVER=nvidia \
+	"$BASH_BIN" "$HELPER" generate "$work/profile-60.conf" >"$work/generated-nvidia.conf"
+grep -Fq 'MatchDriver "nvidia-drm"' "$work/generated-nvidia.conf"
+grep -Fq 'Driver "nvidia"' "$work/generated-nvidia.conf"
+grep -Fq 'Option "ForceFullCompositionPipeline" "true"' "$work/generated-nvidia.conf"
+if grep -Fq 'Option "TearFree" "true"' "$work/generated-nvidia.conf"; then
+	printf '%s\n' 'TearFree was emitted for the NVIDIA Xorg driver' >&2
+	exit 1
+fi
+env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
+	DWM_KERNEL_DRIVER=nvidia DWM_XORG_DRIVER=nvidia \
+	"$BASH_BIN" "$HELPER" generate "$work/profile-60.conf" \
+	--force-full-composition-pipeline off >"$work/generated-nvidia-disabled.conf"
+if grep -Fq 'Option "ForceFullCompositionPipeline" "true"' \
+	"$work/generated-nvidia-disabled.conf"; then
+	printf '%s\n' 'disabled ForceFullCompositionPipeline was emitted' >&2
+	exit 1
+fi
+if env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
+	DWM_KERNEL_DRIVER=xe DWM_XORG_DRIVER=modesetting \
+	"$BASH_BIN" "$HELPER" generate "$work/profile-60.conf" \
+	--force-full-composition-pipeline on 2>"$work/full-composition-error"; then
+	printf '%s\n' 'forced unsupported ForceFullCompositionPipeline was accepted' >&2
+	exit 1
+fi
+grep -Fq 'do not use the NVIDIA Xorg driver' "$work/full-composition-error"
+
+mkdir -p "$work/drm/card0-Virtual-1" "$work/drm/card0/device" \
+	"$work/sys/drivers/virtio-pci"
+printf '%s\n' connected >"$work/drm/card0-Virtual-1/status"
+ln -s "$work/sys/drivers/virtio-pci" "$work/drm/card0/device/driver"
+env "${env_common[@]}" DWM_KERNEL_DRIVER= DWM_DRM_SYSFS_ROOT="$work/drm" \
+	DWM_XORG_DRIVER=modesetting "$BASH_BIN" "$HELPER" generate \
+	"$work/profile-60.conf" >"$work/generated-module-driver.conf"
+grep -Fq 'MatchDriver "virtio_gpu"' "$work/generated-module-driver.conf"
+grep -Fq 'Driver "modesetting"' "$work/generated-module-driver.conf"
+env "${env_common[@]}" DWM_KERNEL_DRIVER= DWM_DRM_SYSFS_ROOT="$work/drm" \
+	DWM_XORG_DRIVER=modesetting TEST_QUERY="$work/query-provider-suffix" \
+	"$BASH_BIN" "$HELPER" detect >"$work/detect-provider-suffix"
+grep -Fq 'Virtual-1-1  default=  kernel-driver=virtio_gpu' \
+	"$work/detect-provider-suffix"
+
+mkdir -p "$work/drm-collision/card0-DP-1" \
+	"$work/drm-collision/card0/device" "$work/drm-collision/card1-DP-1" \
+	"$work/drm-collision/card1/device" "$work/sys/drivers/amdgpu" \
+	"$work/sys/drivers/nvidia"
+printf '%s\n' connected >"$work/drm-collision/card0-DP-1/status"
+printf '%s\n' connected >"$work/drm-collision/card1-DP-1/status"
+printf '\001\002\003\004' >"$work/drm-collision/card0-DP-1/edid"
+printf '\252\273\314\335' >"$work/drm-collision/card1-DP-1/edid"
+ln -s "$work/sys/drivers/amdgpu" "$work/drm-collision/card0/device/driver"
+ln -s "$work/sys/drivers/nvidia" "$work/drm-collision/card1/device/driver"
+env "${env_common[@]}" DWM_KERNEL_DRIVER= \
+	DWM_DRM_SYSFS_ROOT="$work/drm-collision" DWM_XORG_DRIVER=nvidia \
+	TEST_QUERY="$work/query-provider-collision" \
+	TEST_PROPERTIES="$work/properties-provider-collision" \
+	"$BASH_BIN" "$HELPER" detect >"$work/detect-provider-collision"
+grep -Fq 'DP-1-1  default=  kernel-driver=nvidia' \
+	"$work/detect-provider-collision"
+env "${env_common[@]}" DWM_KERNEL_DRIVER= \
+	DWM_DRM_SYSFS_ROOT="$work/drm-collision" DWM_XORG_DRIVER=nvidia \
+	TEST_QUERY="$work/query-exact-collision" \
+	TEST_PROPERTIES="$work/properties-exact-collision" \
+	"$BASH_BIN" "$HELPER" detect >"$work/detect-exact-collision"
+grep -Fq 'DP-1  default=  kernel-driver=nvidia' \
+	"$work/detect-exact-collision"
+
+mkdir -p "$work/drm-mismatched/card0-DP-1" \
+	"$work/drm-mismatched/card0/device" "$work/drm-mismatched/card1-DP-2" \
+	"$work/drm-mismatched/card1/device"
+printf '%s\n' connected >"$work/drm-mismatched/card0-DP-1/status"
+printf '%s\n' connected >"$work/drm-mismatched/card1-DP-2/status"
+printf '\252\273\314\335' >"$work/drm-mismatched/card0-DP-1/edid"
+ln -s "$work/sys/drivers/amdgpu" "$work/drm-mismatched/card0/device/driver"
+ln -s "$work/sys/drivers/nvidia" "$work/drm-mismatched/card1/device/driver"
+env "${env_common[@]}" DWM_KERNEL_DRIVER= \
+	DWM_DRM_SYSFS_ROOT="$work/drm-mismatched" DWM_XORG_DRIVER=nvidia \
+	TEST_NVIDIA_OUTPUTS=DP-1 TEST_QUERY="$work/query-exact-collision" \
+	TEST_PROPERTIES="$work/properties-exact-collision" \
+	"$BASH_BIN" "$HELPER" detect >"$work/detect-mismatched-nvidia"
+grep -Fq 'DP-1  default=  kernel-driver=nvidia' \
+	"$work/detect-mismatched-nvidia"
+env "${env_common[@]}" DWM_KERNEL_DRIVER= \
+	DWM_DRM_SYSFS_ROOT="$work/drm-mismatched" \
+	DWM_XORG_DRIVERS='modesetting nvidia' TEST_NVIDIA_SETTINGS_UNAVAILABLE=1 \
+	TEST_QUERY="$work/query-exact-collision" \
+	TEST_PROPERTIES="$work/properties-unsupported" \
+	"$BASH_BIN" "$HELPER" detect >"$work/detect-mismatched-unavailable"
+grep -Fq 'DP-1  default=  kernel-driver=unknown' \
+	"$work/detect-mismatched-unavailable"
+
+mkdir -p "$work/drm/card1-DP-1" "$work/drm/card1/device" \
+	"$work/sys/drivers/nvidia"
+printf '%s\n' connected >"$work/drm/card1-DP-1/status"
+ln -s "$work/sys/drivers/nvidia" "$work/drm/card1/device/driver"
+env "${env_common[@]}" DWM_KERNEL_DRIVER= DWM_DRM_SYSFS_ROOT="$work/drm" \
+	DWM_XORG_DRIVER=nvidia TEST_NVIDIA_OUTPUTS='HDMI-1 DP-1 DP-2' \
+	"$BASH_BIN" "$HELPER" generate "$work/profile-60.conf" \
+	>"$work/generated-multi-provider-nvidia.conf"
+grep -Fq 'MatchDriver "nvidia-drm"' "$work/generated-multi-provider-nvidia.conf"
+grep -Fq 'Option "ForceFullCompositionPipeline" "true"' \
+	"$work/generated-multi-provider-nvidia.conf"
+if grep -Fq 'MatchDriver "unknown"' "$work/generated-multi-provider-nvidia.conf"; then
+	printf '%s\n' 'NVIDIA RandR outputs were ambiguous in a multi-provider session' >&2
+	exit 1
+fi
+
 rm -f "$work/xrandr.log"
 env "${env_common[@]}" "$BASH_BIN" "$HELPER" preview \
 	"$work/profile-60.conf" --yes >/dev/null
@@ -288,9 +472,13 @@ DP-1 --mode 2560x1440 --rate 60
 EOF
 env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" discover >"$work/settings-discover"
 grep -Fqx 'display-protocol	1' "$work/settings-discover"
-grep -Fqx 'output	HDMI-1	1	1	1920x1080	0	0	normal	available' "$work/settings-discover"
-grep -Fqx 'output	DP-2	0	0		0	0	normal	unsupported' "$work/settings-discover"
+grep -Fqx 'output	HDMI-1	1	1	1920x1080	0	0	normal	available	unsupported' "$work/settings-discover"
+grep -Fqx 'output	DP-2	0	0		0	0	normal	available	unsupported' "$work/settings-discover"
 grep -Fq $'profile-unsupported\tlegacy.conf\tLegacy profile omits complete' "$work/settings-discover"
+env "${settings_env[@]}" TEST_PROPERTIES_UNAVAILABLE=1 \
+	"$BASH_BIN" "$SETTINGS_HELPER" discover >"$work/settings-properties-unavailable"
+grep -Fqx $'output\tHDMI-1\t1\t1\t1920x1080\t0\t0\tnormal\tunsupported\tunsupported' \
+	"$work/settings-properties-unavailable"
 if env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" preview-profile legacy-test 5 legacy \
 	2>"$work/legacy-preview.err"; then
 	printf 'incomplete legacy display profile was accepted\n' >&2
@@ -411,4 +599,4 @@ fi
 grep -Fq 'previous layout was restored' "$work/settings-failure.err"
 grep -Fq -- '--output DP-1 --mode 2560x1440 --rate 60.00 --pos 1920x0 --rotate normal' "$work/xrandr.log"
 
-printf '%s\n' 'Display detection, Xorg generation, TearFree, preview, install, and rollback: PASS'
+printf '%s\n' 'Display detection, Xorg generation, anti-tearing policy, preview, install, and rollback: PASS'

@@ -124,6 +124,11 @@ The installer also provides `dwm-settings-display` and its root-owned
 discovery and previews require `xrandr`; hotplug watching requires `udevadm`;
 only persistent Xorg install and rollback require `pkexec`. Named profiles live
 under the `display-profiles/` directory in the XDG path above.
+Run `dwm-display-setup detect`, then `dwm-display-setup`, for a guided wizard
+that detects outputs and configures modes, positions, rotation, and the primary
+display with a reversible preview. Persistent generation selects compatible
+TearFree or NVIDIA Full Composition Pipeline behavior automatically; pass
+`--force-full-composition-pipeline off` to disable the NVIDIA default.
 The adjacent `dwm-settings-input` provider uses `xinput`, `setxkbmap` for
 keyboard settings, and `udevadm` for stable device identity and hotplug events.
 Kept values are stored in `input-settings.conf` in the same XDG directory;

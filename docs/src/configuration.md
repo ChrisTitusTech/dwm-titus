@@ -102,8 +102,11 @@ For persistent Xorg configuration, run `dwm-display-setup`. The interactive
 wizard detects connected outputs and their exact advertised timings, then asks
 for resolution, refresh rate, rotation, absolute position, and the primary
 display. It checks whether the active Xorg driver exposes compatible TearFree
-support and offers to enable it only when supported. The proposed layout is
-applied as a live preview and automatically restored unless it is confirmed.
+support or the NVIDIA Full Composition Pipeline and enables only the compatible
+default. The proposed layout is applied as a live preview and automatically
+restored unless it is confirmed. Advanced calls may pass
+`--force-full-composition-pipeline off` to disable the NVIDIA default; forcing
+it on with an incompatible kernel or Xorg driver is rejected.
 
 Accepted layouts are installed as the isolated managed fragment
 `/etc/X11/xorg.conf.d/90-dwm-titus-display.conf`; existing Xorg files are not

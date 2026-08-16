@@ -99,7 +99,8 @@ install)
 	done
 	[[ ! -e $main_config ]] ||
 		die "existing $main_config may conflict; migrate or remove it before installing a managed display profile"
-	run_setup "$display" "$xauthority" install "$profile" --no-preview --yes --tearfree auto
+	run_setup "$display" "$xauthority" install "$profile" --no-preview --yes \
+		--tearfree auto --force-full-composition-pipeline auto
 	;;
 rollback)
 	[[ $# == 1 ]] || die "rollback takes no arguments"

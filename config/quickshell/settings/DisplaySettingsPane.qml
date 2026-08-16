@@ -88,7 +88,14 @@ Flickable {
                     RowLayout {
                         Layout.fillWidth: true
                         Text { Layout.fillWidth: true; text: outputCard.modelData.name; color: Theme.textStrong; font.family: Theme.fontFamily; font.bold: true }
-                        Text { text: outputCard.modelData.tearfree === "available" ? "TearFree available" : "TearFree unsupported"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.tinyFontSize }
+                        Text {
+                            text: outputCard.modelData.fullCompositionPipeline === "available"
+                                ? "NVIDIA full composition on persistent install"
+                                : (outputCard.modelData.tearfree === "available" ? "TearFree available" : "Anti-tearing unsupported")
+                            color: Theme.textMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.tinyFontSize
+                        }
                         ShellButton { label: outputCard.modelData.enabled ? "Enabled" : "Disabled"; onActivated: root.settingsModel.updateDisplay(outputCard.index, "enabled", !outputCard.modelData.enabled) }
                         ShellButton { label: outputCard.modelData.primary ? "Primary" : "Make primary"; enabled: outputCard.modelData.enabled; onActivated: root.settingsModel.updateDisplay(outputCard.index, "primary", true) }
                     }

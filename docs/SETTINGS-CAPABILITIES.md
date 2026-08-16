@@ -36,7 +36,7 @@ provider work still required.
 
 | Section | Current owner and state source | Current mutation path | Class coverage | Failure and fallback | Validation |
 | --- | --- | --- | --- | --- | --- |
-| Displays | `dwm-settings-display` over `dwm-display-setup` and RandR state from `xrandr` | Complete timed RandR preview, named profiles, and allowlisted managed-fragment install/rollback | Read-only, user-session, privileged | Malformed or missing RandR fails only Displays; unsupported drivers report TearFree unavailable; persistence is restricted without the installed helper and polkit | `make check-display-setup check-settings check-quickshell-settings-xvfb`; real multi-monitor preview/rollback |
+| Displays | `dwm-settings-display` over `dwm-display-setup` and RandR state from `xrandr` | Complete timed RandR preview, named profiles, and allowlisted managed-fragment install/rollback | Read-only, user-session, privileged | Malformed or missing RandR fails only Displays; unsupported drivers report anti-tearing unavailable; persistence is restricted without the installed helper and polkit | `make check-display-setup check-settings check-quickshell-settings-xvfb`; real multi-monitor preview/rollback and Xorg restart |
 | Input | `dwm-settings-input` over XInput/libinput, `setxkbmap`, and udev hotplug events | Timed per-device preview, reset, XDG persistence, idempotent session-start apply, and debounced hotplug replay | Read-only, user-session | Unsupported properties are reported per stable device; disconnects are skipped without affecting other devices or sections | `make check-settings check-quickshell-settings-xvfb`; representative real keyboard/pointer checks |
 | Network and VPN | `dwm-quickshell-network` over NetworkManager's `nmcli`; event stream from `nmcli monitor` | NetworkManager connection activation/deactivation; `nm-connection-editor` for advanced flows | Read-only, delegated | `NET unavailable` when NetworkManager or `nmcli` is absent; hide the editor action when unavailable | `make check-quickshell-network`; NetworkManager runtime exercise |
 | Bluetooth | `dwm-quickshell-controls` over `bluetoothctl` and the BlueZ daemon | BlueZ power, scan, pair/trust/connect, and disconnect operations | Read-only, delegated | `BT unavailable` when BlueZ tooling or an adapter is absent | `make check-quickshell-controls`; real adapter/device check |
@@ -70,7 +70,7 @@ action.
 | Operations | Owner and state/mutation path | Class | Failure and safety behavior |
 | --- | --- | --- | --- |
 | Profile directory/list/current/template | `dwm-display-profile`; XDG profile files and `xrandr --query` | Read-only | Missing profiles produce an empty list; missing RandR is an actionable error. |
-| Detect outputs/modes/drivers/TearFree; show status | `dwm-display-setup detect` and `status` | Read-only | Driver-specific features are reported only when detected. |
+| Detect outputs, modes, drivers, TearFree, and NVIDIA Full Composition Pipeline; show status | `dwm-display-setup detect`, `capabilities`, and `status` | Read-only | Driver-specific features are reported only when the kernel and Xorg drivers are compatible. |
 | Generate an Xorg fragment | `dwm-display-setup generate PROFILE` | Read-only | Parses and validates an allowlisted profile grammar without installing it. |
 | Apply a saved profile | `dwm-display-profile apply PROFILE` invokes `xrandr` with validated output names/options | User-session | Reject invalid profiles and disconnected outputs; failure leaves persistence unchanged. |
 | Timed live preview | `dwm-display-setup preview PROFILE` captures the current RandR layout before apply | User-session | Reverts after timeout or rejection; reports rollback failure explicitly. |
@@ -146,7 +146,7 @@ duplicate distro-specific lists.
 | Provider capability | Fedora path | Secondary-platform behavior |
 | --- | --- | --- |
 | Quickshell Settings frontend | `rhel:desktop` supplies Quickshell on Fedora | Arch maps Quickshell in `arch:desktop`. The Debian map does not currently supply it, so the Settings UI is unsupported there unless a compatible Quickshell is installed separately; core dwm remains usable. |
-| X11 display state | `rhel:x11` supplies the RandR/X11 tools | `arch:x11` and `debian:x11` supply family equivalents. TearFree remains driver-dependent everywhere. |
+| X11 display state | `rhel:x11` supplies the RandR/X11 tools | `arch:x11` and `debian:x11` supply family equivalents. TearFree and the NVIDIA Full Composition Pipeline remain driver-dependent everywhere. |
 | NetworkManager | `rhel:desktop-optional`; enabled by the Fedora image | Arch and Debian optional profiles provide NetworkManager. Without it, the provider reports unavailable and other sections continue. |
 | BlueZ | `rhel:desktop` plus the Fedora image service/package set | Arch and Debian desktop profiles provide their BlueZ equivalents. Adapter absence is a runtime unsupported state. |
 | PipeWire/WirePlumber and controls | `rhel:desktop`; included by the Fedora image | Arch and Debian desktop profiles provide family equivalents. Helpers fall back between supported session commands. |

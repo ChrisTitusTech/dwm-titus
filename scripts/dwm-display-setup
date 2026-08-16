@@ -5,6 +5,7 @@ config_path="${DWM_XORG_CONFIG:-/etc/X11/xorg.conf.d/90-dwm-titus-display.conf}"
 main_config="${DWM_XORG_MAIN_CONFIG:-/etc/X11/xorg.conf}"
 drm_root="${DWM_DRM_SYSFS_ROOT:-/sys/class/drm}"
 tearfree_policy=auto
+full_composition_pipeline_policy=auto
 preview=true
 assume_yes=false
 confirm_seconds=15
@@ -33,6 +34,7 @@ Usage:
   dwm-display-setup
   dwm-display-setup wizard [options]
   dwm-display-setup detect
+  dwm-display-setup capabilities
   dwm-display-setup capture
   dwm-display-setup validate <profile>
   dwm-display-setup apply <profile>
@@ -46,6 +48,7 @@ Commands:
   wizard             Interactively choose modes, positions, rotations, primary
                      display, and TearFree. This is the default command.
   detect             Show connected outputs, modes, drivers, and TearFree.
+  capabilities       Print machine-readable anti-tearing capabilities.
   capture            Print the current complete RandR layout as a profile.
   validate PROFILE   Validate a complete profile with xrandr --dryrun.
   apply PROFILE      Apply a validated complete profile to this X11 session.
@@ -58,6 +61,8 @@ Commands:
 Options:
   --config PATH      Managed Xorg fragment path.
   --tearfree POLICY  auto, on, or off. Default: auto.
+  --force-full-composition-pipeline POLICY
+                     auto, on, or off. Default: auto.
   --no-preview       Install without changing the current live layout.
   --timeout SECONDS  Preview confirmation timeout. Default: 15.
   --yes              Accept install/rollback prompts and keep a successful
@@ -125,10 +130,94 @@ output_is_connected() {
 	awk -v output="$output" '$1 == output && $2 == "connected" { found = 1 } END { exit !found }' "$query_file"
 }
 
+driver_name_from_link() {
+	local driver_link=$1
+	local driver
+
+	driver=$(basename "$(readlink -f "$driver_link")")
+	case $driver in
+	# Virtio's PCI transport owns the device symlink, while the DRM driver
+	# name used by Xorg OutputClass matching is virtio_gpu.
+	virtio-pci | virtio_pci) printf '%s\n' virtio_gpu ;;
+	# VKMS devices use the generic faux bus but expose the vkms DRM driver.
+	faux_driver) printf '%s\n' vkms ;;
+	*) printf '%s\n' "$driver" ;;
+	esac
+}
+
+nvidia_output_ownership() {
+	local output=$1
+	local attribute
+
+	if ! xorg_uses_driver nvidia; then
+		printf '%s\n' not-present
+		return
+	fi
+	if ! command -v nvidia-settings >/dev/null 2>&1; then
+		printf '%s\n' unavailable
+		return
+	fi
+	# NVIDIA RandR names do not necessarily match DRM connector names. Query a
+	# read-only per-display target so multi-provider sessions can associate the
+	# RandR output without treating another connected DRM card as NVIDIA.
+	for attribute in CurrentDithering DigitalVibrance; do
+		if nvidia-settings --terse \
+			--query "[dpy:$output]/$attribute" >/dev/null 2>&1; then
+			printf '%s\n' owned
+			return
+		fi
+	done
+	if nvidia-settings --terse --query gpus >/dev/null 2>&1; then
+		printf '%s\n' not-owned
+	else
+		printf '%s\n' unavailable
+	fi
+}
+
+output_edid_hex() {
+	local output=$1
+
+	awk -v output="$output" '
+		$1 == output && ($2 == "connected" || $2 == "disconnected") {
+			in_output = 1
+			next
+		}
+		/^[^[:space:]]/ { in_output = 0; in_edid = 0 }
+		in_output && $1 == "EDID:" { in_edid = 1; next }
+		in_edid && $1 ~ /^[[:xdigit:]]+$/ { printf "%s", tolower($1); next }
+		in_edid { exit }
+	' "$properties_file"
+}
+
+output_driver_by_edid() {
+	local output=$1
+	local wanted connector card driver driver_link actual
+	local -A detected=()
+
+	wanted=$(output_edid_hex "$output")
+	[[ -n $wanted ]] || return 1
+	for connector in "$drm_root"/card*-*; do
+		[[ -r $connector/edid ]] || continue
+		actual=$(od -An -v -tx1 "$connector/edid" | tr -d '[:space:]')
+		[[ -n $actual && $actual == "$wanted" ]] || continue
+		card=${connector##*/}
+		card=${card%%-*}
+		driver_link="$drm_root/$card/device/driver"
+		[[ -L $driver_link ]] || continue
+		driver=$(driver_name_from_link "$driver_link")
+		detected[$driver]=1
+	done
+	if ((${#detected[@]} == 1)); then
+		printf '%s\n' "${!detected[@]}"
+		return 0
+	fi
+	return 1
+}
+
 output_kernel_driver() {
 	local output=$1
-	local connector card driver driver_link
-	local -A detected=()
+	local connector card driver driver_link provider_output nvidia_ownership
+	local -A detected=() exact_detected=() provider_detected=()
 
 	if [[ -n ${DWM_KERNEL_DRIVER:-} ]]; then
 		printf '%s\n' "$DWM_KERNEL_DRIVER"
@@ -139,14 +228,19 @@ output_kernel_driver() {
 		card=${connector##*/}
 		card=${card%%-*}
 		driver_link="$drm_root/$card/device/driver"
-		if [[ -L $driver_link ]]; then
-			basename "$(readlink -f "$driver_link")"
-			return
-		fi
+		[[ -L $driver_link ]] || continue
+		driver=$(driver_name_from_link "$driver_link")
+		exact_detected[$driver]=1
 	done
-	# Proprietary drivers do not always use the same connector numbering for
-	# RandR and DRM sysfs. If exactly one DRM driver owns connected outputs,
-	# that driver is an unambiguous fallback.
+	nvidia_ownership=$(nvidia_output_ownership "$output")
+	if [[ $nvidia_ownership == owned ]]; then
+		printf '%s\n' nvidia
+		return
+	fi
+	if driver=$(output_driver_by_edid "$output"); then
+		printf '%s\n' "$driver"
+		return
+	fi
 	for connector in "$drm_root"/card*-*; do
 		[[ -e $connector/status ]] || continue
 		[[ $(<"$connector/status") == connected ]] || continue
@@ -154,9 +248,47 @@ output_kernel_driver() {
 		card=${card%%-*}
 		driver_link="$drm_root/$card/device/driver"
 		[[ -L $driver_link ]] || continue
-		driver=$(basename "$(readlink -f "$driver_link")")
+		driver=$(driver_name_from_link "$driver_link")
 		detected[$driver]=1
 	done
+	if ((${#exact_detected[@]} == 1)); then
+		driver=${!exact_detected[*]}
+		if [[ $nvidia_ownership == unavailable && $driver != nvidia &&
+			-n ${detected[nvidia]+present} ]]; then
+			printf '%s\n' unknown
+		else
+			printf '%s\n' "$driver"
+		fi
+		return
+	fi
+	# RandR appends a provider suffix when an offload/sink provider exports an
+	# output whose name would otherwise collide. Retry the underlying connector
+	# name only when it resolves to one DRM driver.
+	provider_output=${output%-*}
+	if [[ $provider_output != "$output" && $provider_output == *-* ]]; then
+		for connector in "$drm_root"/card*-"$provider_output"; do
+			[[ -e $connector/status ]] || continue
+			card=${connector##*/}
+			card=${card%%-*}
+			driver_link="$drm_root/$card/device/driver"
+			[[ -L $driver_link ]] || continue
+			driver=$(driver_name_from_link "$driver_link")
+			provider_detected[$driver]=1
+		done
+		if ((${#provider_detected[@]} == 1)); then
+			driver=${!provider_detected[*]}
+			if [[ $nvidia_ownership == unavailable && $driver != nvidia &&
+				-n ${detected[nvidia]+present} ]]; then
+				printf '%s\n' unknown
+			else
+				printf '%s\n' "$driver"
+			fi
+			return
+		fi
+	fi
+	# Proprietary drivers do not always use the same connector numbering for
+	# RandR and DRM sysfs. If exactly one DRM driver owns connected outputs,
+	# that driver is an unambiguous fallback.
 	if ((${#detected[@]} == 1)); then
 		printf '%s\n' "${!detected[@]}"
 		return
@@ -183,6 +315,21 @@ xorg_driver_for_kernel() {
 		# The Xorg modesetting DDX supports DRM KMS devices and is the safest
 		# portable fallback for xe, i915, amdgpu, nouveau, and virtual KMS.
 		printf '%s\n' modesetting
+		;;
+	esac
+}
+
+xorg_match_driver_for_kernel() {
+	local kernel_driver=$1
+
+	case $kernel_driver in
+	nvidia)
+		# Xorg OutputClass matches the NVIDIA DRM platform driver, while the
+		# display driver loaded by the class remains the nvidia DDX.
+		printf '%s\n' nvidia-drm
+		;;
+	*)
+		printf '%s\n' "$kernel_driver"
 		;;
 	esac
 }
@@ -246,6 +393,38 @@ current_xorg_driver() {
 	printf '%s\n' unknown
 }
 
+xorg_uses_driver() {
+	local driver=$1 display_number candidate override
+
+	if [[ -n ${DWM_XORG_DRIVERS:-} ]]; then
+		override=${DWM_XORG_DRIVERS//,/ }
+		for candidate in $override; do
+			[[ $candidate == "$driver" ]] && return 0
+		done
+		return 1
+	fi
+	if [[ -n ${DWM_XORG_DRIVER:-} ]]; then
+		[[ $DWM_XORG_DRIVER == "$driver" ]]
+		return
+	fi
+	display_number=${DISPLAY#:}
+	display_number=${display_number%%.*}
+	for candidate in \
+		"/var/log/Xorg.${display_number}.log" \
+		"$HOME/.local/share/xorg/Xorg.${display_number}.log"; do
+		[[ -r $candidate ]] || continue
+		case $driver in
+		nvidia)
+			grep -Eq 'NVIDIA\(([0-9]+|G[0-9]+)\):' "$candidate" && return 0
+			;;
+		*)
+			[[ $(current_xorg_driver) == "$driver" ]] && return 0
+			;;
+		esac
+	done
+	return 1
+}
+
 output_tearfree_compatible() {
 	local index=$1
 	local driver=${cfg_kernel_drivers[$index]}
@@ -263,6 +442,31 @@ output_tearfree_compatible() {
 		return 0
 		;;
 	esac
+	return 1
+}
+
+driver_full_composition_pipeline_compatible() {
+	local kernel_driver=$1
+
+	[[ $kernel_driver == nvidia ]] || return 1
+	xorg_uses_driver nvidia
+}
+
+output_full_composition_pipeline_compatible() {
+	local index=$1
+
+	[[ ${cfg_enabled[$index]} == 1 ]] || return 1
+	driver_full_composition_pipeline_compatible "${cfg_kernel_drivers[$index]}"
+}
+
+full_composition_pipeline_compatible() {
+	local index
+
+	for index in "${!cfg_outputs[@]}"; do
+		if output_full_composition_pipeline_compatible "$index"; then
+			return 0
+		fi
+	done
 	return 1
 }
 
@@ -525,19 +729,44 @@ resolved_tearfree() {
 	esac
 }
 
+resolved_full_composition_pipeline() {
+	case $full_composition_pipeline_policy in
+	off)
+		return 1
+		;;
+	auto)
+		full_composition_pipeline_compatible
+		;;
+	on)
+		if ! full_composition_pipeline_compatible; then
+			die "ForceFullCompositionPipeline was requested, but the active outputs do not use the NVIDIA Xorg driver"
+		fi
+		return 0
+		;;
+	*)
+		die "invalid ForceFullCompositionPipeline policy: $full_composition_pipeline_policy"
+		;;
+	esac
+}
+
 generate_config() {
 	local destination=$1
 	local index output identifier mode_name timing
 	local clock hdisplay hstart hend htotal vdisplay vstart vend vtotal flags hsync rate
 	local hlow hhigh vlow vhigh
 	local tearfree_enabled=0
+	local full_composition_pipeline_enabled=0
 	local -A tearfree_drivers=()
 	local -A output_drivers=()
 	local driver
 	local xorg_driver
+	local match_driver
 
 	if resolved_tearfree; then
 		tearfree_enabled=1
+	fi
+	if resolved_full_composition_pipeline; then
+		full_composition_pipeline_enabled=1
 	fi
 	for index in "${!cfg_outputs[@]}"; do
 		driver=${cfg_kernel_drivers[$index]}
@@ -550,9 +779,10 @@ generate_config() {
 		printf '%s\n' '# Exact timings are copied from the active X server for the selected outputs.'
 		for driver in "${!output_drivers[@]}"; do
 			xorg_driver=$(xorg_driver_for_kernel "$driver")
+			match_driver=$(xorg_match_driver_for_kernel "$driver")
 			printf '\nSection "OutputClass"\n'
 			printf '\tIdentifier "dwm-titus-display-map-%s"\n' "$driver"
-			printf '\tMatchDriver "%s"\n' "$driver"
+			printf '\tMatchDriver "%s"\n' "$match_driver"
 			printf '\tDriver "%s"\n' "$xorg_driver"
 			for index in "${!cfg_outputs[@]}"; do
 				[[ ${cfg_kernel_drivers[$index]} == "$driver" ]] || continue
@@ -560,6 +790,10 @@ generate_config() {
 				identifier="dwm-titus-$output"
 				printf '\tOption "Monitor-%s" "%s"\n' "$output" "$identifier"
 			done
+			if [[ $full_composition_pipeline_enabled == 1 ]] &&
+				driver_full_composition_pipeline_compatible "$driver"; then
+				printf '\tOption "ForceFullCompositionPipeline" "true"\n'
+			fi
 			printf 'EndSection\n'
 		done
 
@@ -892,7 +1126,7 @@ list_output_modes() {
 }
 
 detect_displays() {
-	local output default driver tearfree xorg_driver
+	local output default driver tearfree full_composition_pipeline xorg_driver
 
 	load_display_data
 	if ! connected_outputs | grep -q .; then
@@ -915,11 +1149,45 @@ detect_displays() {
 				;;
 			esac
 		fi
-		printf '\n%s  default=%s  kernel-driver=%s  TearFree=%s\n' \
-			"$output" "${default/|/@}" "$driver" "$tearfree"
+		if driver_full_composition_pipeline_compatible "$driver"; then
+			full_composition_pipeline=supported-xorg-option
+		else
+			full_composition_pipeline=unsupported
+		fi
+		printf '\n%s  default=%s  kernel-driver=%s  TearFree=%s  ForceFullCompositionPipeline=%s\n' \
+			"$output" "${default/|/@}" "$driver" "$tearfree" "$full_composition_pipeline"
 		list_output_modes "$output" | sed 's/^/  /'
 	done < <(connected_outputs)
 	printf '\nActive Xorg driver: %s\n' "$xorg_driver"
+}
+
+display_capabilities() {
+	local output driver tearfree full_composition_pipeline xorg_driver
+
+	load_display_data
+	if ! connected_outputs | grep -q .; then
+		die "no connected X11 outputs were detected"
+	fi
+	xorg_driver=$(current_xorg_driver)
+	printf 'display-capability-protocol\t1\n'
+	while IFS= read -r output; do
+		driver=$(output_kernel_driver "$output")
+		if output_has_tearfree_property "$output"; then
+			tearfree=available
+		else
+			case "$xorg_driver:$driver" in
+			amdgpu:amdgpu | intel:i915) tearfree=available ;;
+			*) tearfree=unsupported ;;
+			esac
+		fi
+		if driver_full_composition_pipeline_compatible "$driver"; then
+			full_composition_pipeline=available
+		else
+			full_composition_pipeline=unsupported
+		fi
+		printf 'output\t%s\t%s\t%s\n' \
+			"$output" "$tearfree" "$full_composition_pipeline"
+	done < <(connected_outputs)
 }
 
 prompt_yes_no() {
@@ -1061,7 +1329,7 @@ main() {
 	trap cleanup EXIT HUP INT TERM
 	if (($# > 0)); then
 		case $1 in
-		wizard | detect | capture | validate | apply | generate | preview | install | status | rollback)
+		wizard | detect | capabilities | capture | validate | apply | generate | preview | install | status | rollback)
 			command=$1
 			shift
 			;;
@@ -1090,6 +1358,15 @@ main() {
 			;;
 		--tearfree=*)
 			tearfree_policy=${1#*=}
+			shift
+			;;
+		--force-full-composition-pipeline)
+			(($# >= 2)) || die "--force-full-composition-pipeline requires auto, on, or off"
+			full_composition_pipeline_policy=$2
+			shift 2
+			;;
+		--force-full-composition-pipeline=*)
+			full_composition_pipeline_policy=${1#*=}
 			shift
 			;;
 		--timeout)
@@ -1124,12 +1401,20 @@ main() {
 	done
 
 	case $tearfree_policy in auto | on | off) ;; *) die "invalid TearFree policy: $tearfree_policy" ;; esac
+	case $full_composition_pipeline_policy in
+	auto | on | off) ;;
+	*) die "invalid ForceFullCompositionPipeline policy: $full_composition_pipeline_policy" ;;
+	esac
 	[[ $confirm_seconds =~ ^[1-9][0-9]*$ ]] || die "preview timeout must be a positive integer"
 
 	case $command in
 	detect)
 		((${#positional[@]} == 0)) || die "detect takes no profile"
 		detect_displays
+		;;
+	capabilities)
+		((${#positional[@]} == 0)) || die "capabilities takes no profile"
+		display_capabilities
 		;;
 	capture)
 		((${#positional[@]} == 0)) || die "capture takes no profile"

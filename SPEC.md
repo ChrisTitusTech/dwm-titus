@@ -691,11 +691,12 @@ In a real or nested X11 session:
 
 The existing desktop provides dwm, a managed Quickshell panel and launcher,
 notifications, quick controls, power actions, network and Bluetooth surfaces,
-display helpers, a system-health dashboard, and the unified read-only Settings
-foundation. Settings currently discovers provider capabilities and reports
-available, partial, restricted, unavailable, and unsupported state. It does not
-yet provide the full settings mutation surface in Section 5.10; those outcomes
-are sequenced in `ROADMAP.md` and the active phase is defined in `TASKS.md`.
+display helpers, a system-health dashboard, and the unified Settings platform.
+Settings now includes the completed Phase 2 display and input mutation surface
+with preview, rollback, persistence, and capability reporting. It does not yet
+provide the remaining settings mutation surface in Section 5.10; those
+outcomes are sequenced in `ROADMAP.md`, and Phase 3 connectivity and audio work
+is defined in `TASKS.md`.
 
 The installer contains Debian-, Arch-, and Fedora/RHEL-family package mappings.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and
