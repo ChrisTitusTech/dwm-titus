@@ -152,6 +152,7 @@ nodeless_key=$(awk -F '\t' '$1 == "device" && $5 == "Node-less Pointer" {print $
 [[ $keyboard_key =~ ^[0-9a-f]{16}$ ]]
 grep -Fq $'unsupported\t'"$nodeless_key"$'\tpersistence\tNo stable udev serial' "$work/discover"
 
+bash_bin=$(command -v bash)
 no_setxkbmap_bin="$work/no-setxkbmap-bin"
 mkdir -p "$no_setxkbmap_bin"
 cp "$work/bin/xinput" "$work/bin/udevadm" "$no_setxkbmap_bin/"
@@ -159,7 +160,7 @@ for tool in awk cat dirname mktemp rm sed sha256sum tr; do
 	ln -s "$(command -v "$tool")" "$no_setxkbmap_bin/$tool"
 done
 env "${env_common[@]}" PATH="$no_setxkbmap_bin" \
-	/usr/bin/bash "$helper" discover >"$work/discover-no-setxkbmap"
+	"$bash_bin" "$helper" discover >"$work/discover-no-setxkbmap"
 grep -Fq $'unsupported\t'"$keyboard_key"$'\tkeyboard-layout\tsetxkbmap is unavailable' \
 	"$work/discover-no-setxkbmap"
 grep -Fq $'unsupported\t'"$keyboard_key"$'\tmodifier-options\tsetxkbmap is unavailable' \

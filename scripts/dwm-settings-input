@@ -595,6 +595,8 @@ watch_apply_events() {
 	chmod 600 "$watch_lock"
 	exec 9>"$watch_lock"
 	flock -n 9 || die "input hotplug watcher is already running"
+	trap 'exit 0' HUP INT TERM
+	trap cleanup_watch_apply EXIT
 	session_pid=${DWM_INPUT_SESSION_PID:-}
 	session_start=${DWM_INPUT_SESSION_START:-}
 	if [[ -n $session_pid || -n $session_start ]]; then
@@ -614,8 +616,6 @@ watch_apply_events() {
 	mkfifo -m 600 "$watch_event_fifo"
 	udevadm monitor --udev --subsystem-match=input --property >"$watch_event_fifo" 2>/dev/null &
 	watch_monitor_pid=$!
-	trap 'exit 0' HUP INT TERM
-	trap cleanup_watch_apply EXIT
 	exec 8<"$watch_event_fifo"
 	rm -f "$watch_event_fifo"
 	watch_event_fifo=
