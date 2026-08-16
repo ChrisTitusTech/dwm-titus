@@ -379,6 +379,22 @@ env "${env_common[@]}" DWM_KERNEL_DRIVER= \
 grep -Fq 'DP-1  default=  kernel-driver=nvidia' \
 	"$work/detect-exact-collision"
 
+mkdir -p "$work/drm-mismatched/card0-DP-1" \
+	"$work/drm-mismatched/card0/device" "$work/drm-mismatched/card1-DP-2" \
+	"$work/drm-mismatched/card1/device"
+printf '%s\n' connected >"$work/drm-mismatched/card0-DP-1/status"
+printf '%s\n' connected >"$work/drm-mismatched/card1-DP-2/status"
+printf '\252\273\314\335' >"$work/drm-mismatched/card0-DP-1/edid"
+ln -s "$work/sys/drivers/amdgpu" "$work/drm-mismatched/card0/device/driver"
+ln -s "$work/sys/drivers/nvidia" "$work/drm-mismatched/card1/device/driver"
+env "${env_common[@]}" DWM_KERNEL_DRIVER= \
+	DWM_DRM_SYSFS_ROOT="$work/drm-mismatched" DWM_XORG_DRIVER=nvidia \
+	TEST_NVIDIA_OUTPUTS=DP-1 TEST_QUERY="$work/query-exact-collision" \
+	TEST_PROPERTIES="$work/properties-exact-collision" \
+	"$BASH_BIN" "$HELPER" detect >"$work/detect-mismatched-nvidia"
+grep -Fq 'DP-1  default=  kernel-driver=nvidia' \
+	"$work/detect-mismatched-nvidia"
+
 mkdir -p "$work/drm/card1-DP-1" "$work/drm/card1/device" \
 	"$work/sys/drivers/nvidia"
 printf '%s\n' connected >"$work/drm/card1-DP-1/status"

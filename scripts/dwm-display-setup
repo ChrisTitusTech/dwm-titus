@@ -221,12 +221,16 @@ output_kernel_driver() {
 		driver=$(driver_name_from_link "$driver_link")
 		exact_detected[$driver]=1
 	done
-	if ((${#exact_detected[@]} == 1)); then
-		printf '%s\n' "${!exact_detected[@]}"
+	if nvidia_owns_output "$output"; then
+		printf '%s\n' nvidia
 		return
 	fi
 	if driver=$(output_driver_by_edid "$output"); then
 		printf '%s\n' "$driver"
+		return
+	fi
+	if ((${#exact_detected[@]} == 1)); then
+		printf '%s\n' "${!exact_detected[@]}"
 		return
 	fi
 	# RandR appends a provider suffix when an offload/sink provider exports an
@@ -247,10 +251,6 @@ output_kernel_driver() {
 			printf '%s\n' "${!provider_detected[@]}"
 			return
 		fi
-	fi
-	if nvidia_owns_output "$output"; then
-		printf '%s\n' nvidia
-		return
 	fi
 	# Proprietary drivers do not always use the same connector numbering for
 	# RandR and DRM sysfs. If exactly one DRM driver owns connected outputs,
