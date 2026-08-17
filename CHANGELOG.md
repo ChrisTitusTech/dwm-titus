@@ -6,6 +6,8 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-16
+
 ### Added
 
 - Interactive Displays and Input Settings panes with versioned, event-driven
@@ -44,7 +46,10 @@ versions from `config.mk`.
   notification, and dismiss overflow notifications instead of retaining hidden
   objects that can accumulate during a long session.
 
-## [0.6.0] - 2026-08-13
+## 0.6.0 - 2026-08-13 (withdrawn)
+
+> Withdrawn because Fedora image installations could create user XDG
+> directories as root. Superseded by v0.6.1.
 
 ### Added
 
@@ -116,5 +121,5 @@ versions from `config.mk`.
 - Prevent nested dwm/Xvfb instances from terminating the active graphical login
   by verifying the logind display and isolating `XDG_DATA_HOME` in runtime tests.
 
-[Unreleased]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.6.0...HEAD
-[0.6.0]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.5.2...v0.6.0
+[Unreleased]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.5.2...v0.6.1

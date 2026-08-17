@@ -23,10 +23,10 @@ use `make native` for published binaries.
 To create the GitHub release and bump to the next minor development version:
 
 ```sh
-scripts/dwm-titus-release --version v0.6.0 --iso ~/Downloads/dwm-titus.iso --notes RELEASE_NOTES.md
+scripts/dwm-titus-release --version v0.6.1 --iso ~/Downloads/dwm-titus.iso --notes RELEASE_NOTES.md
 ```
 
-After publishing `v0.6.0`, the script updates `config.mk` to `VERSION = 0.7.0`
+After publishing `v0.6.1`, the script updates `config.mk` to `VERSION = 0.7.0`
 unless `--no-bump` is provided.
 
 The helper validates and hashes local artifacts before it creates a remote tag
