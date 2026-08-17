@@ -14,7 +14,7 @@ static const int topbar             = 1;        /* 0 means bottom bar */
 #define ICONSIZE                      17        /* icon size */
 #define ICONSPACING                   5         /* space between icon and title */
 #define SHOWWINICON                   1         /* 0 means no winicon */
-/* Fonts: Install ttf-meslo-nerd and noto-fonts-emoji from pacman */
+/* Fonts: install.sh downloads MesloLGS Nerd Font and installs google-noto-color-emoji-fonts with dnf. */
 static const char dmenufont[]       = "MesloLGS Nerd Font Mono:size=12";
 /* Fonts for the bar */
 static const char *fonts[]          = { "MesloLGS Nerd Font Mono:size=12:antialias=true:autohint=true", "NotoColorEmoji:pixelsize=14:antialias=true:autohint=true" };

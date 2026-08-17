@@ -33,12 +33,9 @@ os_value() {
 
 platform_family() {
 	id=$1
-	id_like=$2
 
-	case " $id $id_like " in
-	*" arch "*) printf '%s\n' arch ;;
-	*" debian "* | *" ubuntu "*) printf '%s\n' debian ;;
-	*" fedora "* | *" rhel "* | *" centos "*) printf '%s\n' rhel ;;
+	case "$id" in
+	fedora) printf '%s\n' fedora ;;
 	*) printf '%s\n' unknown ;;
 	esac
 }
@@ -163,16 +160,14 @@ trusted_display_helper() {
 discover() {
 	os_release=${DWM_SETTINGS_OS_RELEASE:-/etc/os-release}
 	platform_id=unknown
-	platform_like=
 	platform_pretty='Unknown Linux'
 	if [ -r "$os_release" ]; then
 		platform_id=$(os_value ID "$os_release")
-		platform_like=$(os_value ID_LIKE "$os_release")
 		platform_pretty=$(os_value PRETTY_NAME "$os_release")
 		[ -n "$platform_id" ] || platform_id=unknown
 		[ -n "$platform_pretty" ] || platform_pretty=$platform_id
 	fi
-	platform_family_name=$(platform_family "$platform_id" "$platform_like")
+	platform_family_name=$(platform_family "$platform_id")
 
 	printf 'settings-protocol\t1\n'
 	printf 'platform\t%s\t%s\t%s\n' \

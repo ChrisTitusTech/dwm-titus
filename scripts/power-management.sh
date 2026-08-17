@@ -11,7 +11,7 @@
 #   ./power-management.sh --help      # show this help
 #
 # Hardware: Laptop-oriented Linux systems with ACPI power interfaces
-# OS:       Debian-, Arch-, and Fedora/RHEL-family systems
+# OS:       Fedora Linux
 # =============================================================================
 
 set -euo pipefail
@@ -58,14 +58,10 @@ read_sys() { cat "$1" 2>/dev/null || echo "N/A"; }
 package_install_hint() {
 	local package=$1
 
-	if command -v pacman &>/dev/null; then
-		printf 'sudo pacman -S %s' "$package"
-	elif command -v dnf &>/dev/null; then
+	if command -v dnf &>/dev/null; then
 		printf 'sudo dnf install %s' "$package"
-	elif command -v apt-get &>/dev/null; then
-		printf 'sudo apt-get install %s' "$package"
 	else
-		printf 'install package: %s' "$package"
+		printf 'install Fedora package: %s' "$package"
 	fi
 }
 

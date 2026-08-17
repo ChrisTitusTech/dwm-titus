@@ -6,7 +6,7 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
-## [0.6.1] - 2026-08-16
+## [0.6.1] - 2026-08-17
 
 ### Added
 
@@ -16,14 +16,17 @@ versions from `config.mk`.
 - A narrow root-owned display helper for confirmed managed Xorg fragment
   installation and rollback, with installed-path, ownership, permission,
   symlink, structured-input, and authorization-denial coverage.
-- Fedora hardware, nested-X11, and Debian/Arch/Fedora container validation for
-  the Phase 2 provider, packaging, recovery, and privilege contracts.
+- Fedora hardware, nested-X11, and Fedora 44 container validation for the
+  Phase 2 provider, packaging, recovery, and privilege contracts.
 - NVIDIA ForceFullCompositionPipeline capability discovery and safe persistent
   defaults, with unsupported drivers left unchanged and incompatible forced-on
   requests rejected.
 
 ### Changed
 
+- Narrow platform support, the installer, package mapping, fixtures, and CI to
+  Fedora only. Tests now run in a disposable workspace below `$HOME/tmp` and
+  remove it after success, failure, or interruption.
 - Thunar's seeded **Open Terminal Here** action now launches Alacritty directly
   instead of entering the Herdr workspace.
 - Replace Flameshot with the X11-native `maim` capture tool. Saved captures use
@@ -35,9 +38,10 @@ versions from `config.mk`.
 ### Fixed
 
 - Keep Fedora image XDG parents owned by the installer-created user, run the
-  user-scoped install stage without root privileges, preserve existing XDG
-  directory modes, make direct root installs drop privileges for the user
-  stage, and document a narrow v0.6.0 repair.
+  user-scoped install stage without root privileges or ownership-changing
+  syscalls, avoid rebuilding user-owned sources during the privileged system
+  stage, preserve existing XDG directory modes, make direct root installs drop
+  privileges for the user stage, and document a narrow v0.6.0 repair.
 - Match generated Xorg OutputClass rules against the DRM driver name, including
   mapping virtio PCI devices to `virtio_gpu`, so saved display layouts survive
   a real Xorg restart. Associate NVIDIA RandR names through per-display driver

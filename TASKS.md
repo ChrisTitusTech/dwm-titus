@@ -129,7 +129,8 @@ Acceptance:
   or overlapping commands. Compare a 30-second closed baseline with a
   30-second sample after opening and closing each section; the mean Quickshell
   CPU delta must be no more than 0.5 percentage points of one CPU.
-- [ ] Run the full repository validation and record secondary-platform gaps.
+- [ ] Run the full Fedora repository validation and record untested hardware
+  paths.
 
 Acceptance:
 

@@ -66,6 +66,14 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 [ -n "$name" ] || exit 1
+if [ "$name" = quickshell ] && [ "${TEST_QUICKSHELL_PGREP_RACE:-0}" = 1 ]; then
+	count_file="${TEST_STATE:?}/quickshell-pgrep-${TEST_AUTOSTART_ITERATION:?}.count"
+	count=0
+	[ ! -f "$count_file" ] || count=$(cat "$count_file")
+	count=$((count + 1))
+	printf '%s\n' "$count" >"$count_file"
+	[ "$count" -ne 2 ] || exit 1
+fi
 test -f "${TEST_STATE:?}/$name.running"
 EOF
 
@@ -115,6 +123,10 @@ done
 
 cat >"$work/bin/quickshell" <<'EOF'
 #!/bin/sh
+if [ "${1:-}" = --version ]; then
+	printf '%s\n' 'quickshell 0.3.0'
+	exit 0
+fi
 if [ "${1:-}" = ipc ]; then
 	test -f "${TEST_STATE:?}/quickshell.running"
 	: >"${TEST_STATE:?}/quickshell-tray.ready"
@@ -143,7 +155,7 @@ run_duplicate_case() {
 	# Prevent this isolated test from starting a host polkit agent.
 	: >"$state/polkit-mate-authentication-agent-1.running"
 
-	for _ in 1 2; do
+	for iteration in 1 2; do
 		if [ "$mode" = startx ]; then
 			XDG_RUNTIME_DIR="$runtime" dbus-run-session -- env \
 				DISPLAY=:99 \
@@ -155,6 +167,8 @@ run_duplicate_case() {
 				XDG_CONFIG_HOME="$home/.config" \
 				XDG_SESSION_TYPE=wayland \
 				DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+				TEST_AUTOSTART_ITERATION="$iteration" \
+				TEST_QUICKSHELL_PGREP_RACE="$([ "$iteration" = 1 ] && printf 1 || printf 0)" \
 				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		else
@@ -168,6 +182,8 @@ run_duplicate_case() {
 				XDG_RUNTIME_DIR="$runtime" \
 				XDG_SESSION_TYPE=wayland \
 				DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+				TEST_AUTOSTART_ITERATION="$iteration" \
+				TEST_QUICKSHELL_PGREP_RACE="$([ "$mode" = display-manager ] && [ "$iteration" = 1 ] && printf 1 || printf 0)" \
 				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		fi

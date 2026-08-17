@@ -25,21 +25,19 @@ body:
       required: true
 
   - type: dropdown
-    id: distro_family
+    id: fedora_release
     attributes:
-      label: Distribution family
+      label: Fedora release
       options:
-        - Debian or Ubuntu family
-        - Arch family
-        - Fedora, RHEL, Rocky, or Alma family
-        - Other
+        - Fedora 44
+        - Fedora Rawhide
     validations:
       required: true
 
   - type: input
     id: environment
     attributes:
-      label: Distribution, architecture, and session
+      label: Fedora release, architecture, and session
       placeholder: "Fedora 44, x86_64, X11 via LightDM"
     validations:
       required: true

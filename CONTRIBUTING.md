@@ -1,8 +1,7 @@
 # Contributing
 
 Thanks for helping improve dwm-titus. Changes should preserve the small X11
-window-manager core, existing user workflows, the Fedora-first desktop target,
-and the supported core install on Debian, Arch, Fedora, and RHEL families.
+window-manager core, existing user workflows, and the Fedora desktop target.
 
 ## Before You Start
 
@@ -21,7 +20,7 @@ Install the build dependencies for your distribution, then run:
 ```sh
 make clean
 make
-make check
+scripts/run-tests
 ```
 
 Use `./install.sh --dry-run --non-interactive --profile core` to inspect the
@@ -34,14 +33,14 @@ submitting a pull request.
 
 | Change | Required validation |
 | --- | --- |
-| C or build configuration | `make clean && make`, then `make check` |
-| Shell or installer | `make check-shell check-format` and focused tests |
-| X11 behavior | `make check-xvfb-runtime check-monitor-tags` |
-| Quickshell QML | `make check-quickshell-qml` plus real or nested X11 runtime validation |
+| C or build configuration | `scripts/run-tests make clean all`, then `scripts/run-tests` |
+| Shell or installer | `scripts/run-tests make check-shell check-format` and focused tests |
+| X11 behavior | `scripts/run-tests make check-xvfb-runtime check-monitor-tags` |
+| Quickshell QML | `scripts/run-tests make check-quickshell-qml` plus real or nested X11 runtime validation |
 | Documentation | `mdbook build docs && mdbook test docs` |
-| Installer or package mapping | `make check-container-smoke` |
-| Fedora Kickstart or ISO | `make check-kickstart` plus all evidence required by [SPEC.md Section 9.4](SPEC.md#94-fedora-image-validation) |
-| Release automation | `make release-check` and a dry run of the release helper |
+| Installer or package mapping | `scripts/run-tests make check-container-smoke` |
+| Fedora Kickstart or ISO | `scripts/run-tests make check-kickstart` plus all evidence required by [SPEC.md Section 9.4](SPEC.md#94-fedora-image-validation) |
+| Release automation | `scripts/run-tests make release-check` and a dry run of the release helper |
 
 Container and X11 checks require their documented host tools. If a required
 environment is unavailable, state exactly what was not tested in the pull
@@ -50,7 +49,7 @@ request instead of claiming universal validation.
 ## Change Guidelines
 
 - Preserve the C99 style and avoid new mandatory dependencies unless they are
-  available across all supported families.
+  available on supported Fedora releases.
 - Keep POSIX scripts under `#!/bin/sh`; use Bash only for scripts that need Bash
   features.
 - Preserve existing `config.h`, XDG user configuration, and `.xinitrc` files.

@@ -13,12 +13,12 @@
 
 ## Validation
 
-- [ ] `make clean && make`
-- [ ] `make check`
+- [ ] `scripts/run-tests make clean all`
+- [ ] `scripts/run-tests`
 - [ ] Focused X11, Quickshell, installer, or documentation checks as applicable
 - [ ] `git diff --check`
 
-Tested distributions, architectures, and X11 environments:
+Tested Fedora releases, architectures, and X11 environments:
 
 <!-- List exact coverage and clearly identify anything not tested. -->
 

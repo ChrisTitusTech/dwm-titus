@@ -30,8 +30,8 @@ body:
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives and portability impact
-      description: Explain alternatives and effects on Debian, Arch, and RHEL families.
+      label: Alternatives and Fedora impact
+      description: Explain alternatives and effects on supported Fedora installations.
 
   - type: checkboxes
     id: scope

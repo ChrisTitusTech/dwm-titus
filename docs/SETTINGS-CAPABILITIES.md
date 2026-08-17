@@ -141,20 +141,20 @@ action.
 
 Package names remain owned by `scripts/dwm-packages.sh`. This document names
 package profiles and runtime capabilities so future Settings code does not
-duplicate distro-specific lists.
+duplicate Fedora package lists.
 
-| Provider capability | Fedora path | Secondary-platform behavior |
+| Provider capability | Fedora path | Missing capability behavior |
 | --- | --- | --- |
-| Quickshell Settings frontend | `rhel:desktop` supplies Quickshell on Fedora | Arch maps Quickshell in `arch:desktop`. The Debian map does not currently supply it, so the Settings UI is unsupported there unless a compatible Quickshell is installed separately; core dwm remains usable. |
-| X11 display state | `rhel:x11` supplies the RandR/X11 tools | `arch:x11` and `debian:x11` supply family equivalents. TearFree and the NVIDIA Full Composition Pipeline remain driver-dependent everywhere. |
-| NetworkManager | `rhel:desktop-optional`; enabled by the Fedora image | Arch and Debian optional profiles provide NetworkManager. Without it, the provider reports unavailable and other sections continue. |
-| BlueZ | `rhel:desktop` plus the Fedora image service/package set | Arch and Debian desktop profiles provide their BlueZ equivalents. Adapter absence is a runtime unsupported state. |
-| PipeWire/WirePlumber and controls | `rhel:desktop`; included by the Fedora image | Arch and Debian desktop profiles provide family equivalents. Helpers fall back between supported session commands. |
-| DPMS and auto-lock | X11 tools plus `rhel:desktop` light-locker and GLib settings | Arch and Debian desktop profiles provide equivalents. Missing schemas or locker disable only lock controls. |
-| Defaults | `rhel:runtime-required` XDG utilities | Arch and Debian required profiles provide equivalents. |
-| Themes and GTK integration | `rhel:theme`, `rhel:theme-gtk`, and optional tool profiles | Family theme profiles provide available equivalents; missing optional theme packages do not disable Settings. |
-| Polkit authorization | Fedora desktop/image installs a polkit agent; health helper can use a trusted system install | Other desktop profiles provide a polkit agent where available. Without an agent or trusted helper, privileged capabilities are restricted while read-only state remains available. |
-| System health | Portable helper probes plus Fedora/systemd providers where present | The helper detects Debian, Arch, and RHEL families and emits partial/restricted records for missing commands, services, hardware, or authorization. |
+| Quickshell Settings frontend | `fedora:desktop` | Missing Quickshell makes the Settings UI unavailable. |
+| X11 display state | `fedora:x11` | Missing RandR tools disable display controls. TearFree and NVIDIA composition remain driver-dependent. |
+| NetworkManager | `fedora:desktop-optional`; enabled by the Fedora image | Missing service reports unavailable while other sections continue. |
+| BlueZ | `fedora:desktop` plus the image service/package set | Adapter absence is a runtime unsupported state. |
+| PipeWire/WirePlumber and controls | `fedora:desktop`; included by the image | Missing session services report unavailable. |
+| DPMS and auto-lock | X11 tools plus `fedora:desktop` | Missing schemas or locker disable only lock controls. |
+| Defaults | `fedora:runtime-required` | Missing XDG utilities disable default-application controls. |
+| Themes and GTK integration | `fedora:theme`, `fedora:theme-gtk`, and optional profiles | Missing optional theme packages do not disable Settings. |
+| Polkit authorization | Fedora desktop/image polkit agent and trusted helper | Missing authorization leaves read-only state available. |
+| System health | Fedora/systemd providers | Missing commands, services, hardware, or authorization emit partial or restricted records. |
 
 ## Phase 1 Constraints Derived From the Inventory
 

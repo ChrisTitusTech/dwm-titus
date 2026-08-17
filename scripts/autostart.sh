@@ -142,8 +142,24 @@ fi
 # endpoint before activating the rest of the graphical session.
 QUICKSHELL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml"
 if [ -f "$QUICKSHELL_CONFIG" ]; then
-	start_detached_once quickshell quickshell --no-duplicate
-	if command -v quickshell >/dev/null 2>&1; then
+	quickshell_check=
+	quickshell_compatible=0
+	case $0 in
+	*/*)
+		[ ! -x "${0%/*}/dwm-quickshell-version-check" ] ||
+			quickshell_check=${0%/*}/dwm-quickshell-version-check
+		;;
+	esac
+	if [ -z "$quickshell_check" ] && command -v dwm-quickshell-version-check >/dev/null 2>&1; then
+		quickshell_check=dwm-quickshell-version-check
+	fi
+	if [ -n "$quickshell_check" ] && "$quickshell_check"; then
+		quickshell_compatible=1
+		start_detached_once quickshell quickshell --no-duplicate
+	else
+		printf '%s\n' 'dwm-titus: compatible Quickshell 0.3.0 or Fedora 44 snapshot is required' >&2
+	fi
+	if [ "$quickshell_compatible" -eq 1 ]; then
 		i=0
 		while [ "$i" -lt 50 ]; do
 			if quickshell ipc --path "$QUICKSHELL_CONFIG" call tray count \

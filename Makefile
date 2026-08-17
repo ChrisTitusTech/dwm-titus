@@ -16,6 +16,7 @@ SYSTEMDUSERDIR ?= ${PREFIX}/lib/systemd/user
 CAPITAINE_DARK_THEME = Capitaine-Cursors
 CAPITAINE_LIGHT_THEME = Capitaine-Cursors-White
 CAPITAINE_LICENSE_DIR = ${DATADIR}/licenses/dwm-titus/capitaine-cursors
+run_managed_test = if [ -n "$${DWM_TEST_WORKSPACE:-}" ] && [ -n "$${DWM_TEST_RUNNER_TOKEN:-}" ] && [ "$${TMPDIR:-}" = "$${DWM_TEST_WORKSPACE}" ] && [ -f "$${DWM_TEST_WORKSPACE}/.runner" ] && [ ! -L "$${DWM_TEST_WORKSPACE}/.runner" ] && [ "$$(cat "$${DWM_TEST_WORKSPACE}/.runner" 2>/dev/null)" = "$${DWM_TEST_RUNNER_TOKEN}" ]; then $(1); else scripts/run-tests $(1); fi
 
 SRC = drw.c dwm.c util.c tomlparser.c
 OBJ = ${SRC:.c=.o}
@@ -37,6 +38,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-quickshell-controlcenter \
 	scripts/dwm-quickshell-network \
 	scripts/dwm-quickshell-state \
+	scripts/dwm-quickshell-version-check \
 	scripts/dwm-status \
 	scripts/dwm-system-health \
 	scripts/dwm-polkit \
@@ -74,7 +76,11 @@ all: dwm
 .c.o:
 	${CC} ${CPPFLAGS} ${CFLAGS} -c $<
 
-${OBJ}: config.h config.mk
+${OBJ}: config.h config.mk Makefile
+drw.o: drw.h util.h
+dwm.o: drw.h util.h tomlparser.h
+util.o: util.h
+tomlparser.o: tomlparser.h
 
 config.h:
 	cp config.def.h $@
@@ -103,7 +109,18 @@ native:
 	$(MAKE) clean
 	$(MAKE) OPTIMISATIONS="${NATIVE_OPTIMISATIONS}" all
 
-install: install-system
+install:
+	if [ "$$(id -u)" -eq 0 ] && [ -n "${OWNER}" ] && [ "${OWNER}" != root ]; then \
+		test -n "${USER_HOME}" || { echo "USER_HOME could not be determined." >&2; exit 1; }; \
+		command -v runuser >/dev/null 2>&1 || { \
+			echo "runuser is required to build user-owned sources without root privileges." >&2; \
+			exit 1; \
+		}; \
+		runuser -u "${OWNER}" -- env HOME="${USER_HOME}" $(MAKE) all; \
+	else \
+		$(MAKE) all; \
+	fi
+	$(MAKE) install-system
 	if [ -z "${DESTDIR}" ]; then \
 		if [ "$$(id -u)" -eq 0 ]; then \
 			target_user="${OWNER}"; \
@@ -129,7 +146,13 @@ install: install-system
 		echo "==> DESTDIR set; skipping user configuration."; \
 	fi
 
-install-system: all install-cursors
+install-system:
+	@test -x dwm || { echo "dwm is not built. Run make before install-system." >&2; exit 1; }
+	@for input in ${SRC} ${OBJ} drw.h util.h tomlparser.h config.h config.mk Makefile; do \
+		test -e "$$input" || { echo "dwm build input is missing: $$input. Run make before install-system." >&2; exit 1; }; \
+		test ! "$$input" -nt dwm || { echo "dwm is stale. Run make before install-system." >&2; exit 1; }; \
+	done
+	$(MAKE) install-cursors
 	@echo ""
 	@echo "==> Installing system files..."
 	install -Dm755 dwm ${DESTDIR}${PREFIX}/bin/dwm
@@ -161,6 +184,7 @@ install-cursors:
 
 install-user:
 	@test -n "${USER_HOME}" || { echo "USER_HOME could not be determined." >&2; exit 1; }
+	@test "$$(id -u)" -ne 0 || { echo "Refusing to install user files as root. Run install-user as the target user." >&2; exit 1; }
 	@echo "==> Installing user files for ${OWNER}..."
 	if [ ! -e "${USER_HOME}/.xinitrc" ]; then \
 		install -Dm644 scripts/.xinitrc "${USER_HOME}/.xinitrc"; \
@@ -171,7 +195,7 @@ install-user:
 	mkdir -p ${DATA_DIR}
 	if [ "$$(realpath .)" != "$$(realpath ${DATA_DIR})" ]; then \
 		rm -rf "${DATA_DIR}/config" "${DATA_DIR}/scripts"; \
-		cp -a config scripts "${DATA_DIR}/"; \
+		cp -a --no-preserve=ownership config scripts "${DATA_DIR}/"; \
 	fi
 	@echo "==> Seeding application config without overwriting user files..."
 	mkdir -p ${CFG_DIR}
@@ -186,17 +210,17 @@ install-user:
 			continue; \
 		fi; \
 		mkdir -p "$$dst"; \
-		cp -aL -n "$$dir"/. "$$dst"/; \
+		cp -aL -n --no-preserve=ownership "$$dir"/. "$$dst"/; \
 	done
 	@echo "==> Seeding dwm-scoped XDG autostart overrides..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
-		XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS}" DWM_INSTALL_OWNER="${OWNER}" \
+		XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS}" \
 		scripts/seed-autostart-overrides.sh
 	@echo "==> Replacing managed Quickshell config..."
 	test -n "${CFG_DIR}"
 	rm -rf "${CFG_DIR}/quickshell"
 	mkdir -p "${CFG_DIR}/quickshell"
-	cp -aL config/quickshell/. "${CFG_DIR}/quickshell"/
+	cp -aL --no-preserve=ownership config/quickshell/. "${CFG_DIR}/quickshell"/
 	@echo "==> Seeding user config (skipping existing files)..."
 	mkdir -p ${CFG_DIR}/dwm-titus
 	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
@@ -204,7 +228,7 @@ install-user:
 	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
 	@echo "==> Migrating legacy graphical-session startup..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/migrate-graphical-session.sh
-	@echo "==> Installing font aliases for cross-distro naming..."
+	@echo "==> Installing Meslo font aliases..."
 	mkdir -p ${CFG_DIR}/fontconfig/conf.d
 	if [ ! -f ${CFG_DIR}/fontconfig/conf.d/50-meslolgs-nerd-font-aliases.conf ]; then \
 		{ \
@@ -238,19 +262,14 @@ install-user:
 		echo "  Preserving existing Meslo font alias file."; \
 	fi
 	fc-cache -f >/dev/null 2>&1 || true
-	@echo "==> Fixing ownership and permissions..."
+	@echo "==> Fixing executable permissions..."
 	find ${DATA_DIR} \( -name '*.sh' -o -name '*.py' \) -print0 | xargs -0 -r chmod +x
 	for dir in config/*/; do \
 		b=$$(basename $$dir); \
 		if [ ! -L "${CFG_DIR}/$$b" ]; then \
 			find "${CFG_DIR}/$$b" \( -name '*.sh' -o -name '*.py' \) -print0 2>/dev/null | xargs -0 -r chmod +x; \
-			chown -R ${OWNER}: "${CFG_DIR}/$$b"; \
 		fi; \
 	done
-	chown -R ${OWNER}: ${CFG_DIR}/fontconfig 2>/dev/null || true
-	chown -R ${OWNER}: ${CFG_DIR}/dwm-titus
-	chown -R ${OWNER}: ${DATA_DIR}
-	if [ -e "${USER_HOME}/.xinitrc" ]; then chown ${OWNER}: "${USER_HOME}/.xinitrc"; fi
 	@echo ""
 	@echo "  dwm installed successfully."
 	@echo "  Log out and select 'dwm', or start with: startx"
@@ -287,10 +306,10 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/install-herdr scripts/quickshell-qmllint scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/install-herdr scripts/quickshell-qmllint scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -396,6 +415,9 @@ check-kickstart:
 check-fedora-iso-builder:
 	tests/test-fedora-iso-builder.sh
 
+check-fedora-platform:
+	@$(call run_managed_test,tests/test-fedora-platform.sh)
+
 check-install: all
 	@set -eu; \
 	stage="$$(mktemp -d)"; \
@@ -461,7 +483,10 @@ check-install-preservation:
 	tests/test-install-preservation.sh
 
 check-container-smoke:
-	tests/test-container-smoke.sh
+	@$(call run_managed_test,tests/test-container-smoke.sh)
+
+check-test-runner:
+	@$(call run_managed_test,tests/test-run-tests.sh)
 
 release-check: all
 	@set -eu; \
@@ -494,6 +519,7 @@ check:
 	$(MAKE) check-shell
 	$(MAKE) check-format
 	$(MAKE) check-build-config
+	$(MAKE) check-fedora-platform
 	$(MAKE) check-dev-sync-install
 	$(MAKE) check-default-apps
 	$(MAKE) check-diagnostics
@@ -520,13 +546,14 @@ check:
 	$(MAKE) check-install
 	$(MAKE) check-install-manifest
 	$(MAKE) check-install-preservation
+	$(MAKE) check-test-runner
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: all check check-build-config check-build-deps check-default-apps check-dev-sync-install \
-	check-container-smoke \
-	check-display-profile check-display-setup check-fedora-iso-builder check-format check-install \
+.PHONY: clean all check check-build-config check-build-deps check-default-apps check-dev-sync-install \
+	check-container-smoke check-test-runner \
+	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-platform check-format check-install \
 	check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health check-settings \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal clean install install-system install-user \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
 	install-cursors native release release-check uninstall

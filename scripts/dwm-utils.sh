@@ -7,45 +7,33 @@
 
 # ── Distribution and package manager ────────────────────
 DISTRO_ID="unknown"
-DISTRO_ID_LIKE=""
 DISTRO_NAME="Unknown Linux"
 DISTRO_FAMILY="unknown"
+DWM_PACKAGE_COMMAND=()
+OS_RELEASE_FILE="/etc/os-release"
+if [[ ${DWM_TEST_MODE:-0} == 1 && -n ${DWM_OS_RELEASE:-} ]]; then
+	OS_RELEASE_FILE=$DWM_OS_RELEASE
+fi
 
-if [[ -r /etc/os-release ]]; then
-	# shellcheck disable=SC1091
-	source /etc/os-release
+if [[ -r $OS_RELEASE_FILE ]]; then
+	# shellcheck disable=SC1090
+	source "$OS_RELEASE_FILE"
 	DISTRO_ID="${ID:-unknown}"
-	DISTRO_ID_LIKE="${ID_LIKE:-}"
 	DISTRO_NAME="${PRETTY_NAME:-${NAME:-Unknown Linux}}"
 fi
 
-case " ${DISTRO_ID} ${DISTRO_ID_LIKE} " in
-*" arch "*)
-	DISTRO_FAMILY="arch"
-	;;
-*" fedora "* | *" rhel "* | *" centos "*)
-	DISTRO_FAMILY="rhel"
-	;;
-*" debian "* | *" ubuntu "*)
-	DISTRO_FAMILY="debian"
-	;;
-esac
+if [[ $DISTRO_ID == "fedora" ]]; then
+	DISTRO_FAMILY="fedora"
+fi
 
 case "$DISTRO_FAMILY" in
-arch)
-	if command -v paru &>/dev/null && paru --version &>/dev/null; then
-		PKG_CMD="paru -S --needed --noconfirm"
-	elif command -v yay &>/dev/null && yay --version &>/dev/null; then
-		PKG_CMD="yay -S --needed --noconfirm"
+fedora)
+	if ((EUID == 0)); then
+		DWM_PACKAGE_COMMAND=(dnf install -y)
 	else
-		PKG_CMD="sudo pacman -S --needed --noconfirm"
+		DWM_PACKAGE_COMMAND=(sudo dnf install -y)
 	fi
-	;;
-rhel)
-	PKG_CMD="sudo dnf install -y"
-	;;
-debian)
-	PKG_CMD="sudo apt-get install -y"
+	PKG_CMD="${DWM_PACKAGE_COMMAND[*]}"
 	;;
 *)
 	PKG_CMD="unavailable"
@@ -55,23 +43,11 @@ export PKG_CMD
 
 install_packages() {
 	case "$DISTRO_FAMILY" in
-	arch)
-		if command -v paru &>/dev/null && paru --version &>/dev/null; then
-			paru -S --needed --noconfirm "$@"
-		elif command -v yay &>/dev/null && yay --version &>/dev/null; then
-			yay -S --needed --noconfirm "$@"
-		else
-			sudo pacman -S --needed --noconfirm "$@"
-		fi
-		;;
-	rhel)
-		sudo dnf install -y "$@"
-		;;
-	debian)
-		sudo apt-get install -y "$@"
+	fedora)
+		"${DWM_PACKAGE_COMMAND[@]}" "$@"
 		;;
 	*)
-		printf 'Unsupported distribution: %s\n' "$DISTRO_NAME" >&2
+		printf 'Unsupported distribution: %s (Fedora is required)\n' "$DISTRO_NAME" >&2
 		return 1
 		;;
 	esac
@@ -81,10 +57,7 @@ package_available() {
 	local package_arch
 
 	case "$DISTRO_FAMILY" in
-	arch)
-		pacman -Si "$1" &>/dev/null
-		;;
-	rhel)
+	fedora)
 		package_arch=${1##*.}
 		case "$package_arch" in
 		i686 | x86_64 | aarch64)
@@ -96,9 +69,6 @@ package_available() {
 				command grep -Fxq "$1"
 			;;
 		esac
-		;;
-	debian)
-		apt-cache show "$1" &>/dev/null
 		;;
 	*)
 		return 1

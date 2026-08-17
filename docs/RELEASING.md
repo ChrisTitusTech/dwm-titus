@@ -7,18 +7,26 @@ use `make native` for published binaries.
    entries from Unreleased into that version.
 2. Commit and push the release source. The helper refuses dirty worktrees,
    version mismatches, and commits that are unavailable on GitHub.
-3. Run `make check`.
-4. Run `make check-xvfb-runtime check-monitor-tags` in isolated X11.
-5. Run `make check-container-smoke` for the Debian, Arch, and RHEL families.
-6. Run `make check-quickshell-qml` and the managed-shell runtime validation
-   when QML changed.
-7. Run `mdbook build docs && mdbook test docs` when documentation changed.
-8. Run `make release-check` and confirm the artifact is named
+3. Run `scripts/run-tests`.
+4. Run `scripts/run-tests make check-xvfb-runtime check-monitor-tags` in isolated X11.
+5. Run `scripts/run-tests make check-container-smoke` against Fedora 44.
+6. Run `scripts/run-tests make check-quickshell-qml check-quickshell-health-xvfb
+   check-quickshell-settings-xvfb` when QML changed.
+7. Run `scripts/run-tests mdbook build docs` and
+   `scripts/run-tests mdbook test docs` when documentation changed.
+8. Run `scripts/run-tests make release-check` and confirm the artifact is named
    `release/dwm-titus-VERSION.tar.gz`.
-9. Record the tested distributions, architectures, X11 environments, known
+9. Record the tested Fedora release, architectures, X11 environments, known
    limitations, and SHA-256 checksum in the release notes.
 10. Tag the release only after all applicable `SPEC.md` acceptance criteria
     and required GitHub checks pass.
+
+`scripts/run-tests` creates an isolated directory below
+`${DWM_TEST_TMP_ROOT:-$HOME/tmp}` and removes it on success, failure, or
+interruption. Store
+disposable VM disks and installer logs under a separately named directory in
+that same root, then delete that exact directory after qualification. Do not
+use `/tmp` for ISO or VM qualification.
 
 To create the GitHub release and bump to the next minor development version:
 
@@ -56,7 +64,10 @@ scripts/build-dwm-fedora-installer-iso.sh \
   --variant nvidia
 ```
 
-Both spins install the enabled Fedora, RPM Fusion, Brave, and MWT package
-repositories used by this project. The NVIDIA spin additionally enables RPM
-Fusion NVIDIA driver packages, blacklists Nouveau, and sets NVIDIA DRM
-modesetting for first boot.
+Both Kickstart profiles share the Fedora, RPM Fusion, Brave, and MWT repository
+declarations used by this project. On x86_64, both also enable the
+`christitustech/copr-fedora` repository; other architectures omit that COPR and
+its x86-only gaming packages. The ISO builder selects the matching standard or
+NVIDIA profile. The NVIDIA profile additionally installs RPM Fusion NVIDIA
+driver packages, blacklists Nouveau, and sets NVIDIA DRM modesetting for first
+boot.

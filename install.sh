@@ -34,27 +34,15 @@ EOF
 }
 
 case "$DISTRO_FAMILY" in
-arch)
-	command -v pacman &>/dev/null || {
-		err "Arch-family distribution detected, but pacman was not found."
-		exit 1
-	}
-	;;
-rhel)
+fedora)
 	command -v dnf &>/dev/null || {
-		err "RHEL-family distribution detected, but dnf was not found."
-		exit 1
-	}
-	;;
-debian)
-	command -v apt-get &>/dev/null || {
-		err "Debian-family distribution detected, but apt-get was not found."
+		err "Fedora was detected, but dnf was not found."
 		exit 1
 	}
 	;;
 *)
 	err "Unsupported distribution: $DISTRO_NAME"
-	err "Supported installer families: Debian, Arch, and Fedora/RHEL."
+	err "dwm-titus supports Fedora only."
 	exit 1
 	;;
 esac
@@ -163,11 +151,6 @@ if [[ $EUID -eq 0 && $DRY_RUN != true ]]; then
 	exit 1
 fi
 
-is_arch_arm() {
-	[[ $DISTRO_FAMILY == "arch" &&
-		($ARCH == "aarch64" || $ARCH == "armv7h" || $ARCH == "armv7l") ]]
-}
-
 install_recommended_profile() {
 	[[ $INSTALL_PROFILE == "recommended" || $INSTALL_PROFILE == "full" ]]
 }
@@ -225,16 +208,6 @@ runtime_herdr_available() {
 
 	command -v herdr >/dev/null 2>&1 ||
 		[[ -x ${HOME:-}/.local/bin/herdr ]]
-}
-
-enable_optional_service() {
-	local service=$1
-
-	if sudo systemctl enable "$service"; then
-		ok "Optional service enabled: $service"
-	else
-		warn "Could not enable optional service $service; continuing installation."
-	fi
 }
 
 fedora_gaming_profile() {
@@ -384,12 +357,7 @@ print_install_summary() {
 	else
 		printf '  Optional extras: skipped\n'
 	fi
-	if is_arch_arm; then
-		print_summary_profile "Arch ARM terminal candidates" terminal-arm
-		print_summary_profile "Arch ARM video fallback" arm-video
-	else
-		print_summary_profile "Terminal candidates" terminal
-	fi
+	print_summary_profile "Terminal candidates" terminal
 	if install_herdr_profile; then
 		printf '  Herdr workspace: verified user install from https://herdr.dev/install.sh\n'
 	elif [[ $HERDR_INSTALL_MODE == auto ]] &&
@@ -490,13 +458,7 @@ install_nordic_gtk_theme() {
 }
 
 install_supported_terminal() {
-	local profile="terminal"
-
-	if is_arch_arm; then
-		profile="terminal-arm"
-	fi
-
-	if ! dwm_install_first_available_profile "$profile"; then
+	if ! dwm_install_first_available_profile terminal; then
 		err "No supported terminal is available in the enabled repositories."
 		return 1
 	fi
@@ -606,17 +568,10 @@ install_lightdm_config() {
 	local lightdm_session_wrapper="/etc/lightdm/Xsession"
 	local lightdm_logind_check=false
 
-	if [[ $DISTRO_FAMILY == "rhel" ]]; then
-		lightdm_seat_section="Seat:*"
-		lightdm_greeter_session="slick-greeter"
-		lightdm_session_wrapper=""
-		lightdm_logind_check=true
-	fi
-
-	if [[ $DISTRO_FAMILY == "debian" ]]; then
-		lightdm_greeter_session="slick-greeter"
-		lightdm_session_wrapper=""
-	fi
+	lightdm_seat_section="Seat:*"
+	lightdm_greeter_session="slick-greeter"
+	lightdm_session_wrapper=""
+	lightdm_logind_check=true
 
 	sudo make -C "$REPO_DIR/lightdm" \
 		LIGHTDM_SEAT_SECTION="$lightdm_seat_section" \
@@ -631,27 +586,6 @@ install_lightdm_config() {
 			/usr/share/pixmaps/dwm-titus.jpg \
 			/usr/share/pixmaps/dwm-titus-logo.png
 	fi
-}
-
-disable_selinux_for_fedora() {
-	local selinux_config="/etc/selinux/config"
-
-	if [[ $DISTRO_ID != "fedora" ]]; then
-		return
-	fi
-
-	info "Disabling SELinux for Fedora..."
-	if command -v getenforce &>/dev/null && [[ $(getenforce 2>/dev/null) == "Enforcing" ]]; then
-		sudo setenforce 0 || warn "Could not switch SELinux to permissive for this boot."
-	fi
-	if [[ -f $selinux_config ]]; then
-		sudo sed -i -E 's/^[[:space:]]*SELINUX=.*/SELINUX=disabled/' "$selinux_config"
-	else
-		sudo install -d -m 0755 /etc/selinux
-		printf '%s\n' 'SELINUX=disabled' 'SELINUXTYPE=targeted' |
-			sudo tee "$selinux_config" >/dev/null
-	fi
-	ok "SELinux disabled for future Fedora boots."
 }
 
 echo ""
@@ -672,46 +606,24 @@ else
 	"$REPO_DIR/scripts/configure-build.sh" --non-interactive
 fi
 
-if [[ $DISTRO_FAMILY == "debian" ]]; then
-	info "Refreshing apt package metadata..."
-	sudo apt-get update
-fi
-
-disable_selinux_for_fedora
-
 # ── Required build and runtime dependencies ──────────────
 info "Installing required build and runtime dependencies..."
 dwm_install_package_profile build
-if [[ $DISTRO_FAMILY == "arch" ]]; then
-	if pacman -Qq 2>/dev/null | command grep -q '^xlibre'; then
-		info "Xlibre detected - skipping xorg-server."
-	elif ! pacman -Qi xorg-server &>/dev/null; then
-		dwm_install_package_profile x11-server
-	fi
-else
-	dwm_install_package_profile x11-server
-fi
 dwm_install_package_profile x11
 dwm_install_package_profile runtime-required
-if is_arch_arm; then
-	if dwm_install_first_available_profile arm-video; then
-		ok "ARM framebuffer video driver installed."
-	else
-		warn "ARM framebuffer video driver unavailable; your board's GPU driver may already provide Xorg support."
-	fi
-fi
 ok "Required build and runtime dependencies installed."
 
 # ── Recommended desktop dependencies ─────────────────────
 if install_recommended_profile; then
 	info "Installing recommended desktop dependencies..."
 	dwm_install_package_profile desktop
+	if ! env -u DWM_TEST_MODE -u DWM_TEST_QUICKSHELL_VERSION \
+		"$REPO_DIR/scripts/dwm-quickshell-version-check"; then
+		err "The installed Quickshell build is incompatible with dwm-titus."
+		exit 1
+	fi
 	if ! dwm_install_available_package_profile screenshot-optional; then
 		warn "maim is unavailable in the enabled repositories; screenshot hotkeys will remain disabled."
-		if [[ $DISTRO_FAMILY == rhel && $DISTRO_ID != fedora &&
-			(${VERSION_ID:-} == 9 || ${VERSION_ID:-} == 9.*) ]]; then
-			warn "On Enterprise Linux 9, enable EPEL and rerun the installer to add maim."
-		fi
 	fi
 	dwm_install_package_profile theme
 	if ! dwm_install_available_package_profile theme-gtk; then
@@ -733,10 +645,6 @@ if install_optional_profile; then
 	info "Installing optional desktop extras..."
 	if ! dwm_install_available_package_profile optional; then
 		warn "Some optional desktop extras were unavailable in enabled repositories."
-	fi
-	if [[ $DISTRO_FAMILY == "arch" ]]; then
-		enable_optional_service NetworkManager.service
-		enable_optional_service bluetooth.service
 	fi
 	if fedora_gaming_profile; then
 		if [[ $FEDORA_GAMING_REPOS_APPROVED != true ]]; then
@@ -850,19 +758,11 @@ if [ -n "$currentdm" ]; then
 elif ! install_optional_profile; then
 	warn "No display manager found; skipping display-manager installation for $INSTALL_PROFILE profile."
 else
-	if is_arch_arm; then
-		info "No display manager found - installing SDDM for Arch ARM..."
-		dwm_install_package_profile arm-display-manager
-		sudo systemctl enable sddm.service
-		currentdm="sddm"
-		ok "SDDM installed and enabled."
-	else
-		info "No display manager found - installing LightDM..."
-		dwm_install_package_profile lightdm
-		sudo systemctl enable lightdm.service
-		currentdm="lightdm"
-		ok "LightDM installed and enabled."
-	fi
+	info "No display manager found - installing LightDM..."
+	dwm_install_package_profile lightdm
+	sudo systemctl enable lightdm.service
+	currentdm="lightdm"
+	ok "LightDM installed and enabled."
 fi
 
 # ── LightDM greeter config ───────────────────────────────
@@ -870,11 +770,6 @@ if [[ $currentdm == "lightdm" ]]; then
 	info "Deploying LightDM Slick Greeter config..."
 	install_lightdm_config
 	ok "LightDM config deployed."
-fi
-
-if is_arch_arm; then
-	warn "ARM NOTE: If picom causes display issues, set 'backend = \"xrender\"' in ~/.config/picom.conf"
-	warn "ARM NOTE: Some SBCs may need a board-specific KMS or GPU driver configuration for accelerated Xorg."
 fi
 
 # ── Build & Install ──────────────────────────────────────

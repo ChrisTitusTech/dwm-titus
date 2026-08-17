@@ -43,9 +43,9 @@ done
 make_failing_stub "$fedora_bin/pkexec"
 make_failing_stub "$fedora_bin/sudo"
 
-mkdir -p "$work/fedora-config/dwm-titus" "$work/debian-config/dwm-titus"
+mkdir -p "$work/fedora-config/dwm-titus" "$work/unsupported-config/dwm-titus"
 cp "$repo/config/themes.toml" "$work/fedora-config/dwm-titus/themes.toml"
-cp "$repo/config/themes.toml" "$work/debian-config/dwm-titus/themes.toml"
+cp "$repo/config/themes.toml" "$work/unsupported-config/dwm-titus/themes.toml"
 
 printf 'ID=fedora\nID_LIKE="rhel"\nPRETTY_NAME="Fedora\tLinux 44"\n' \
 	>"$work/fedora-os-release"
@@ -53,7 +53,7 @@ printf 'ID=fedora\nID_LIKE="rhel"\nPRETTY_NAME="Fedora\tLinux 44"\n' \
 fedora_output=$(PATH="$fedora_bin" XDG_CONFIG_HOME="$work/fedora-config" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$fedora_output" | grep -Fqx 'settings-protocol	1'
-printf '%s\n' "$fedora_output" | grep -Fqx 'platform	fedora	rhel	Fedora Linux 44'
+printf '%s\n' "$fedora_output" | grep -Fqx 'platform	fedora	fedora	Fedora Linux 44'
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	displays	randr	Display discovery	available	read-only	xrandr	RandR display state is available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
@@ -74,19 +74,20 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 printf '%s\n' "$fedora_output" | grep -Eq \
 	'^capability	system	authorization	Administrative authorization	(available|restricted)	privileged	polkit	'
 
-cat >"$work/debian-os-release" <<'EOF'
-ID=debian
-PRETTY_NAME="Debian GNU/Linux 13"
+cat >"$work/unsupported-os-release" <<'EOF'
+ID=example
+ID_LIKE="fedora rhel"
+PRETTY_NAME="Unsupported Linux"
 EOF
 
-debian_output=$(PATH="$base_bin" XDG_CONFIG_HOME="$work/debian-config" \
-	DWM_SETTINGS_OS_RELEASE="$work/debian-os-release" "$provider" discover)
-printf '%s\n' "$debian_output" | grep -Fqx 'platform	debian	debian	Debian GNU/Linux 13'
-printf '%s\n' "$debian_output" | grep -Fqx \
+unsupported_output=$(PATH="$base_bin" XDG_CONFIG_HOME="$work/unsupported-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/unsupported-os-release" "$provider" discover)
+printf '%s\n' "$unsupported_output" | grep -Fqx 'platform	example	unknown	Unsupported Linux'
+printf '%s\n' "$unsupported_output" | grep -Fqx \
 	'capability	network	networkmanager	NetworkManager	unavailable	delegated	nmcli	Install NetworkManager to enable this section'
-printf '%s\n' "$debian_output" | grep -Fqx \
+printf '%s\n' "$unsupported_output" | grep -Fqx \
 	'capability	bluetooth	bluez	Bluetooth	unavailable	delegated	bluetoothctl	Install BlueZ tools to enable this section'
-printf '%s\n' "$debian_output" | grep -Fqx \
+printf '%s\n' "$unsupported_output" | grep -Fqx \
 	'capability	system	authorization	Administrative authorization	restricted	privileged	polkit	Read-only state remains available; install the trusted system helper for authorized actions'
 
 runtime_down_bin=$work/runtime-down-bin
@@ -187,19 +188,16 @@ grep -Fq 'root.settingsModel.openOnScreen(targetScreen)' "$repo/config/quickshel
 grep -Fq '{ title="dwm settings",             isfloating=1, alwaysontop=1 }' \
 	"$repo/config/window-rules.toml"
 
-arch_qml=$(bash -c '. "$1"; dwm_packages arch qml-development' sh \
+fedora_qml=$(bash -c '. "$1"; dwm_packages fedora qml-development' sh \
 	"$repo/scripts/dwm-packages.sh")
-rhel_qml=$(bash -c '. "$1"; dwm_packages rhel qml-development' sh \
-	"$repo/scripts/dwm-packages.sh")
-debian_qml=$(bash -c '. "$1"; dwm_packages debian qml-development' sh \
-	"$repo/scripts/dwm-packages.sh")
-[ "$arch_qml" = qt6-declarative ]
-[ "$rhel_qml" = qt6-qtdeclarative-devel ]
-[ "$debian_qml" = qt6-declarative-dev-tools ]
-for family in arch rhel debian; do
-	bash -c '. "$1"; dwm_packages "$2" runtime-required' sh \
-		"$repo/scripts/dwm-packages.sh" "$family" | grep -Fx util-linux >/dev/null
-done
+[ "$fedora_qml" = qt6-qtdeclarative-devel ]
+bash -c '. "$1"; dwm_packages fedora runtime-required' sh \
+	"$repo/scripts/dwm-packages.sh" | grep -Fx util-linux >/dev/null
+if bash -c '. "$1"; dwm_packages unsupported runtime-required' sh \
+	"$repo/scripts/dwm-packages.sh"; then
+	printf 'Unsupported package family unexpectedly resolved.\n' >&2
+	exit 1
+fi
 
 if grep -Eq '^[[:space:]]*(sudo|pkexec)([[:space:]]|$)' "$provider"; then
 	printf 'Settings discovery must not execute an elevation tool.\n' >&2
