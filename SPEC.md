@@ -571,6 +571,12 @@ ${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/
 System paths must be overridable for packaging and staged installs. User data
 must not be written during a package build using `DESTDIR`.
 
+User-scoped installation runs as the target user. Any default XDG parent
+directory created by the Fedora image or installer must be owned by that user
+and their primary group. Existing XDG parent permissions must be preserved,
+and installation must not recursively change ownership outside project-managed
+directories.
+
 Uninstall must remove only files owned by this project. It must preserve user
 configuration and unrelated application configuration by default.
 

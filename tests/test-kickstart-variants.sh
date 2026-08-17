@@ -137,6 +137,20 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 	grep -Fq 'case "$(uname -m)" in' "$ks"
 	# shellcheck disable=SC2016
 	grep -Fq 'usermod -aG gamemode "$target_user"' "$ks"
+	grep -Fq "for xdg_dir in \\" "$ks"
+	for xdg_parent in \
+		"\"\$target_home/.local\"" \
+		"\"\$target_home/.local/share\"" \
+		"\"\$target_home/.config\""; do
+		grep -Fq "$xdg_parent" "$ks"
+	done
+	grep -Fq "if [ -e \"\$xdg_dir\" ] || [ -L \"\$xdg_dir\" ]; then" "$ks"
+	grep -Fq "if [ ! -d \"\$xdg_dir\" ]; then" "$ks"
+	grep -Fq "install -d -o \"\$target_user\" -g \"\$target_group\" -m 0755 \"\$xdg_dir\"" "$ks"
+	if grep -Fq "install -d -m 0755 \"\$target_home/.local/share\"" "$ks"; then
+		printf 'Kickstart creates the user data parent without ownership: %s\n' "$ks" >&2
+		exit 1
+	fi
 	if grep -Eq 'systemctl --user (enable|start).*(dwm|wm)-graphical-session' "$ks"; then
 		printf 'Kickstart starts graphical autostart before the first dwm session: %s\n' "$ks" >&2
 		exit 1

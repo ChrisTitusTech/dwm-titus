@@ -5,8 +5,8 @@
 
 include config.mk
 
-USER_HOME ?= $(shell getent passwd $(or $(SUDO_USER),$(USER)) 2>/dev/null | cut -d: -f6)
-OWNER     := $(or $(SUDO_USER),$(USER))
+OWNER ?= $(or $(SUDO_USER),$(USER))
+USER_HOME ?= $(shell getent passwd "${OWNER}" 2>/dev/null | cut -d: -f6)
 XDG_CONFIG_HOME ?= ${USER_HOME}/.config
 XDG_DATA_HOME ?= ${USER_HOME}/.local/share
 DATA_DIR  := ${XDG_DATA_HOME}/dwm-titus
@@ -105,7 +105,26 @@ native:
 
 install: install-system
 	if [ -z "${DESTDIR}" ]; then \
-		$(MAKE) install-user; \
+		if [ "$$(id -u)" -eq 0 ]; then \
+			target_user="${OWNER}"; \
+			if [ -z "$$target_user" ] || [ "$$target_user" = root ]; then \
+				echo "Refusing to install user files as root. Run install-user as the target user." >&2; \
+				exit 1; \
+			fi; \
+			command -v runuser >/dev/null 2>&1 || { \
+				echo "runuser is required to install user files without root privileges." >&2; \
+				exit 1; \
+			}; \
+			target_uid="$$(id -u "$$target_user")"; \
+			runuser -u "$$target_user" -- env -u DBUS_SESSION_BUS_ADDRESS \
+				HOME="${USER_HOME}" XDG_RUNTIME_DIR="/run/user/$$target_uid" \
+				$(MAKE) install-user \
+				USER_HOME="${USER_HOME}" OWNER="$$target_user" \
+				XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
+				XDG_DATA_HOME="${XDG_DATA_HOME}"; \
+		else \
+			$(MAKE) install-user; \
+		fi; \
 	else \
 		echo "==> DESTDIR set; skipping user configuration."; \
 	fi

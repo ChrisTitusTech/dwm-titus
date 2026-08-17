@@ -881,10 +881,13 @@ fi
 cd "$REPO_DIR"
 make clean
 make
-sudo make install \
+sudo make install-system \
 	USER_HOME="$HOME" \
 	OWNER="$(id -un)" \
-	DATADIR="/usr/share" \
+	DATADIR="/usr/share"
+make install-user \
+	USER_HOME="$HOME" \
+	OWNER="$(id -un)" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
 	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 if [[ $HERDR_READY == true ]]; then

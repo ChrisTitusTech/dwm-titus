@@ -177,7 +177,19 @@ target_home=$(getent passwd "$target_user" | cut -d: -f6)
 target_group=$(id -gn "$target_user")
 target_repo_dir="$target_home/.local/share/dwm-titus"
 
-install -d -m 0755 "$target_home/.local/share"
+for xdg_dir in \
+	"$target_home/.local" \
+	"$target_home/.local/share" \
+	"$target_home/.config"; do
+	if [ -e "$xdg_dir" ] || [ -L "$xdg_dir" ]; then
+		if [ ! -d "$xdg_dir" ]; then
+			echo "User XDG path exists but is not a directory: $xdg_dir" >&2
+			exit 1
+		fi
+		continue
+	fi
+	install -d -o "$target_user" -g "$target_group" -m 0755 "$xdg_dir"
+done
 rm -rf "$target_repo_dir"
 cp -a "$repo_dir" "$target_repo_dir"
 chown -R "$target_user:$target_group" "$target_repo_dir"
