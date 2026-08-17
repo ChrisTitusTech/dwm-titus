@@ -110,6 +110,11 @@ native:
 	$(MAKE) OPTIMISATIONS="${NATIVE_OPTIMISATIONS}" all
 
 install:
+	if [ -z "${DESTDIR}" ] && [ "$$(id -u)" -eq 0 ] && \
+		{ [ -z "${OWNER}" ] || [ "${OWNER}" = root ]; }; then \
+		echo "Refusing to install user files as root. Run install-user as the target user." >&2; \
+		exit 1; \
+	fi
 	if [ "$$(id -u)" -eq 0 ] && [ -n "${OWNER}" ] && [ "${OWNER}" != root ]; then \
 		test -n "${USER_HOME}" || { echo "USER_HOME could not be determined." >&2; exit 1; }; \
 		command -v runuser >/dev/null 2>&1 || { \

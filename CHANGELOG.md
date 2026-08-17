@@ -37,6 +37,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Reject non-Fedora power-management mutation modes before any status scan or
+  system change, and keep fixture overrides out of the privileged path.
+- Reject direct root `make install` calls without a target user before building
+  or writing any system files.
 - Keep Fedora image XDG parents owned by the installer-created user, run the
   user-scoped install stage without root privileges or ownership-changing
   syscalls, avoid rebuilding user-owned sources during the privileged system
