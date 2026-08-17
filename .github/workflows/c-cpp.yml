@@ -29,6 +29,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Trust the container checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Install build and validation dependencies
         run: |
           dnf install -y --setopt=install_weak_deps=False \
