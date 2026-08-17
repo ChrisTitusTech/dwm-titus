@@ -156,7 +156,7 @@ quickshell_compatible() {
 	version_at_least "$version" 0.3.0 && return 0
 	[[ $version == 0.2.1 ]] || return 1
 	case $detail in
-	*"0.2.1^git20260209.dacfa9d"*) return 0 ;;
+	*"0.2.1^git20260209.dacfa9d-"*.fc44) return 0 ;;
 	*) return 1 ;;
 	esac
 }

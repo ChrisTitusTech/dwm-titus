@@ -24,7 +24,7 @@ esac
 version=$(printf '%s\n' "$detail" | grep -oE '[0-9]+([.][0-9]+){1,2}' | sed -n '1p')
 if [ "$version" = 0.2.1 ]; then
 	case $detail in
-	0.2.1^git20260209.dacfa9d*) exit 0 ;;
+	0.2.1^git20260209.dacfa9d-*.fc44) exit 0 ;;
 	esac
 fi
 

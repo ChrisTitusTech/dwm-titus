@@ -223,6 +223,17 @@ DWM_TEST_MODE=1 DWM_TEST_QUICKSHELL_VERSION='quickshell pre-release, revision: d
 	"$repo/scripts/dwm-quickshell-version-check"
 DWM_TEST_MODE=1 DWM_TEST_QUICKSHELL_VERSION=0.3.0 \
 	"$repo/scripts/dwm-quickshell-version-check"
+for unsupported_snapshot in \
+	0.2.1^git20260209.dacfa9d-3.fc43 \
+	0.2.1^git20260209.dacfa9d-3.fc45 \
+	0.2.1^git20260209.dacfa9d; do
+	if DWM_TEST_MODE=1 DWM_TEST_QUICKSHELL_VERSION=$unsupported_snapshot \
+		"$repo/scripts/dwm-quickshell-version-check" 2>/dev/null; then
+		printf 'Version check accepted snapshot outside the Fedora 44 contract: %s.\n' \
+			"$unsupported_snapshot" >&2
+		exit 1
+	fi
+done
 if DWM_TEST_MODE=1 DWM_TEST_QUICKSHELL_VERSION=0.2.1 \
 	"$repo/scripts/dwm-quickshell-version-check" 2>"$work/quickshell-version.err"; then
 	printf 'Version check accepted unsupported upstream Quickshell 0.2.1.\n' >&2
@@ -232,6 +243,8 @@ grep -Fq 'unsupported Quickshell version: 0.2.1' "$work/quickshell-version.err"
 
 outdated_health=$(DWM_TEST_QUICKSHELL_VERSION=0.2.1 run_helper health)
 printf '%s\n' "$outdated_health" | grep -Fqx 'error	Quickshell	Outdated'
+fc43_health=$(DWM_TEST_QUICKSHELL_VERSION=0.2.1^git20260209.dacfa9d-3.fc43 run_helper health)
+printf '%s\n' "$fc43_health" | grep -Fqx 'error	Quickshell	Outdated'
 
 info=$(run_helper info)
 printf '%s\n' "$info" | grep -Fqx 'Theme	nord'
