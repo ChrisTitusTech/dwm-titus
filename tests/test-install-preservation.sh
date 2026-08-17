@@ -60,7 +60,8 @@ print-owner-home:
 EOF
 } >"$OWNER_HOME_MAKEFILE"
 RESOLVED_OWNER_HOME=$(env -u SUDO_USER -u USER_HOME -u XDG_CONFIG_HOME \
-	-u XDG_DATA_HOME USER=root make -s -C "$REPO_DIR" -f "$OWNER_HOME_MAKEFILE" \
+	-u XDG_DATA_HOME USER=root make -s --no-print-directory -C "$REPO_DIR" \
+	-f "$OWNER_HOME_MAKEFILE" \
 	print-owner-home OWNER="$PROBE_OWNER")
 if [[ $RESOLVED_OWNER_HOME != "$PROBE_HOME" ]]; then
 	printf 'OWNER home resolution mismatch: expected %s, got %s.\n' \
@@ -68,7 +69,7 @@ if [[ $RESOLVED_OWNER_HOME != "$PROBE_HOME" ]]; then
 	exit 1
 fi
 EXPLICIT_OWNER_HOME=$(env -u SUDO_USER -u XDG_CONFIG_HOME -u XDG_DATA_HOME \
-	USER=root make -s -C "$REPO_DIR" -f "$OWNER_HOME_MAKEFILE" \
+	USER=root make -s --no-print-directory -C "$REPO_DIR" -f "$OWNER_HOME_MAKEFILE" \
 	print-owner-home OWNER="$PROBE_OWNER" USER_HOME="$WORK_DIR/explicit-home")
 if [[ $EXPLICIT_OWNER_HOME != "$WORK_DIR/explicit-home" ]]; then
 	printf 'Explicit USER_HOME override mismatch: expected %s, got %s.\n' \
