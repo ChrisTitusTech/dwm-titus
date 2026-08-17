@@ -47,7 +47,7 @@ if grep -Eq 'sudo chown (-R|--recursive)' "$REPO_DIR/install.sh"; then
 fi
 
 PROBE_OWNER=$(id -un)
-if getent passwd nobody >/dev/null 2>&1; then
+if [[ $PROBE_OWNER == root ]] && getent passwd nobody >/dev/null 2>&1; then
 	PROBE_OWNER=nobody
 fi
 PROBE_HOME=$(getent passwd "$PROBE_OWNER" | cut -d: -f6)
@@ -62,11 +62,19 @@ EOF
 RESOLVED_OWNER_HOME=$(env -u SUDO_USER -u USER_HOME -u XDG_CONFIG_HOME \
 	-u XDG_DATA_HOME USER=root make -s -C "$REPO_DIR" -f "$OWNER_HOME_MAKEFILE" \
 	print-owner-home OWNER="$PROBE_OWNER")
-test "$RESOLVED_OWNER_HOME" = "$PROBE_HOME"
+if [[ $RESOLVED_OWNER_HOME != "$PROBE_HOME" ]]; then
+	printf 'OWNER home resolution mismatch: expected %s, got %s.\n' \
+		"$PROBE_HOME" "$RESOLVED_OWNER_HOME" >&2
+	exit 1
+fi
 EXPLICIT_OWNER_HOME=$(env -u SUDO_USER -u XDG_CONFIG_HOME -u XDG_DATA_HOME \
 	USER=root make -s -C "$REPO_DIR" -f "$OWNER_HOME_MAKEFILE" \
 	print-owner-home OWNER="$PROBE_OWNER" USER_HOME="$WORK_DIR/explicit-home")
-test "$EXPLICIT_OWNER_HOME" = "$WORK_DIR/explicit-home"
+if [[ $EXPLICIT_OWNER_HOME != "$WORK_DIR/explicit-home" ]]; then
+	printf 'Explicit USER_HOME override mismatch: expected %s, got %s.\n' \
+		"$WORK_DIR/explicit-home" "$EXPLICIT_OWNER_HOME" >&2
+	exit 1
+fi
 
 cp -a "$REPO_DIR/." "$TEST_REPO/"
 mkdir -p \
