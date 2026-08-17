@@ -32,6 +32,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep Fedora image XDG parents owned by the installer-created user, run the
+  user-scoped install stage without root privileges, preserve existing XDG
+  directory modes, make direct root installs drop privileges for the user
+  stage, and document a narrow v0.6.0 repair.
 - Match generated Xorg OutputClass rules against the DRM driver name, including
   mapping virtio PCI devices to `virtio_gpu`, so saved display layouts survive
   a real Xorg restart. Associate NVIDIA RandR names through per-display driver

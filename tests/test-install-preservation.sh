@@ -11,6 +11,7 @@ XDG_CONFIG_HOME="$TEST_HOME/.config"
 XDG_DATA_HOME="$TEST_HOME/.local/share"
 XDG_CONFIG_DIRS="$WORK_DIR/etc-xdg"
 OWNER="$(id -un)"
+OWNER_GROUP="$(id -gn)"
 
 if grep -Eq 'sudo systemctl enable (NetworkManager|bluetooth)\.service' "$REPO_DIR/install.sh"; then
 	printf 'Optional Arch services are enabled without the non-fatal guard.\n' >&2
@@ -21,6 +22,51 @@ for service in NetworkManager.service bluetooth.service; do
 done
 grep -Fq 'Start LightDM now (optional): sudo systemctl start lightdm.service' \
 	"$REPO_DIR/install.sh"
+grep -Fq "sudo make install-system \\" "$REPO_DIR/install.sh"
+grep -Fq "make install-user \\" "$REPO_DIR/install.sh"
+if grep -Fq "sudo make install \\" "$REPO_DIR/install.sh"; then
+	printf 'Installer still runs the user installation stage as root.\n' >&2
+	exit 1
+fi
+grep -Fq "runuser -u \"\$\$target_user\" -- env -u DBUS_SESSION_BUS_ADDRESS \\" \
+	"$REPO_DIR/Makefile"
+grep -Fq "HOME=\"\${USER_HOME}\" XDG_RUNTIME_DIR=\"/run/user/\$\$target_uid\" \\" \
+	"$REPO_DIR/Makefile"
+grep -Fq "\$(MAKE) install-user " "$REPO_DIR/Makefile"
+grep -Fq 'dwm.desktop not found (run '\''./install.sh'\'')' \
+	"$REPO_DIR/scripts/check-deps.sh"
+grep -Fq 'Run: make && sudo make install-system && make install-user' \
+	"$REPO_DIR/scripts/check-deps.sh"
+if grep -Eq 'sudo make install($|[[:space:]&;])' "$REPO_DIR/scripts/check-deps.sh"; then
+	printf 'Dependency check still recommends a root user-install stage.\n' >&2
+	exit 1
+fi
+if grep -Eq 'sudo chown (-R|--recursive)' "$REPO_DIR/install.sh"; then
+	printf 'Installer uses a broad recursive ownership repair.\n' >&2
+	exit 1
+fi
+
+PROBE_OWNER=$(id -un)
+if getent passwd nobody >/dev/null 2>&1; then
+	PROBE_OWNER=nobody
+fi
+PROBE_HOME=$(getent passwd "$PROBE_OWNER" | cut -d: -f6)
+OWNER_HOME_MAKEFILE="$WORK_DIR/owner-home.mk"
+{
+	printf 'include %s/Makefile\n' "$REPO_DIR"
+	cat <<'EOF'
+print-owner-home:
+	@printf '%s\n' "${USER_HOME}"
+EOF
+} >"$OWNER_HOME_MAKEFILE"
+RESOLVED_OWNER_HOME=$(env -u SUDO_USER -u USER_HOME -u XDG_CONFIG_HOME \
+	-u XDG_DATA_HOME USER=root make -s -C "$REPO_DIR" -f "$OWNER_HOME_MAKEFILE" \
+	print-owner-home OWNER="$PROBE_OWNER")
+test "$RESOLVED_OWNER_HOME" = "$PROBE_HOME"
+EXPLICIT_OWNER_HOME=$(env -u SUDO_USER -u XDG_CONFIG_HOME -u XDG_DATA_HOME \
+	USER=root make -s -C "$REPO_DIR" -f "$OWNER_HOME_MAKEFILE" \
+	print-owner-home OWNER="$PROBE_OWNER" USER_HOME="$WORK_DIR/explicit-home")
+test "$EXPLICIT_OWNER_HOME" = "$WORK_DIR/explicit-home"
 
 cp -a "$REPO_DIR/." "$TEST_REPO/"
 mkdir -p \
@@ -183,7 +229,7 @@ FRESH_HOME="$WORK_DIR/fresh-home"
 FRESH_CONFIG_HOME="$FRESH_HOME/.config"
 FRESH_DATA_HOME="$FRESH_HOME/.local/share"
 FRESH_CONFIG_DIRS="$WORK_DIR/fresh-etc-xdg"
-mkdir -p "$FRESH_CONFIG_DIRS/autostart" "$FRESH_DATA_HOME"
+mkdir -p "$FRESH_CONFIG_DIRS/autostart"
 make -C "$TEST_REPO" install-user \
 	USER_HOME="$FRESH_HOME" \
 	OWNER="$OWNER" \
@@ -193,6 +239,15 @@ make -C "$TEST_REPO" install-user \
 cmp "$TEST_REPO/config/Thunar/uca.xml" "$FRESH_CONFIG_HOME/Thunar/uca.xml"
 grep -Fqx '    <command>alacritty --working-directory %f</command>' \
 	"$FRESH_CONFIG_HOME/Thunar/uca.xml"
+for user_path in \
+	"$FRESH_HOME/.local" \
+	"$FRESH_DATA_HOME" \
+	"$FRESH_CONFIG_HOME" \
+	"$FRESH_CONFIG_HOME/dwm-titus" \
+	"$FRESH_DATA_HOME/dwm-titus"; do
+	test "$(stat -c %U "$user_path")" = "$OWNER"
+	test "$(stat -c %G "$user_path")" = "$OWNER_GROUP"
+done
 
 EMPTY_CONFIG_HOME="$WORK_DIR/empty-config"
 EMPTY_CONFIG_DIRS="$WORK_DIR/empty-etc-xdg"

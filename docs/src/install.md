@@ -73,6 +73,31 @@ the known legacy `dwm-graphical-session.service` and
 start only after the X11 display environment is available; customized user
 units are disabled from early startup but otherwise preserved.
 
+System files are installed with `sudo`, while configuration and data under the
+user's XDG directories are installed as that user.
+
+If a v0.6.0 Fedora image left the default XDG parents owned by root, first
+verify that none of them is a symbolic link, then repair only those parents and
+rerun the installer:
+
+```bash
+xdg_parents=()
+for path in "$HOME/.local" "$HOME/.local/share" "$HOME/.config"; do
+    test ! -L "$path" || {
+        printf 'Refusing symbolic link: %s\n' "$path" >&2
+        exit 1
+    }
+    test -e "$path" || continue
+    test -d "$path" || { printf 'Refusing non-directory: %s\n' "$path" >&2; exit 1; }
+    xdg_parents+=("$path")
+done
+((${#xdg_parents[@]} == 0)) || sudo chown "$(id -u):$(id -g)" -- "${xdg_parents[@]}"
+./install.sh
+```
+
+This repair is intentionally non-recursive so it does not change unrelated
+user files.
+
 Recommended and full profiles install Herdr as the default interactive
 workspace inside Alacritty. The repository downloads the official
 `https://herdr.dev/install.sh` into an isolated staging directory and verifies

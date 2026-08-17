@@ -170,7 +170,7 @@ echo "Session Setup:"
 if [ -f /usr/share/xsessions/dwm.desktop ]; then
 	printf "  ${GREEN}✓${NC} dwm.desktop in /usr/share/xsessions/\n"
 else
-	printf "  ${YELLOW}○${NC} dwm.desktop not found (run 'sudo make install')\n"
+	printf "  ${YELLOW}○${NC} dwm.desktop not found (run './install.sh')\n"
 fi
 if [ -f "$HOME/.xinitrc" ]; then
 	printf "  ${GREEN}✓${NC} ~/.xinitrc exists\n"
@@ -182,7 +182,7 @@ echo ""
 # ── Summary ─────────────────────────────────────────────
 if [ $MISSING -eq 0 ]; then
 	printf "${GREEN}All dependencies satisfied. Ready to build!${NC}\n"
-	echo "  Run: make && sudo make install"
+	echo "  Run: make && sudo make install-system && make install-user"
 	exit 0
 else
 	printf "${RED}$MISSING missing dependency/dependencies.${NC}\n"
