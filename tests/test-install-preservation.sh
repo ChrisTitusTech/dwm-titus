@@ -11,7 +11,26 @@ XDG_CONFIG_HOME="$TEST_HOME/.config"
 XDG_DATA_HOME="$TEST_HOME/.local/share"
 XDG_CONFIG_DIRS="$WORK_DIR/etc-xdg"
 OWNER="$(id -un)"
-OWNER_GROUP="$(id -gn)"
+if [[ $(id -u) -eq 0 ]]; then
+	command -v runuser >/dev/null 2>&1 || {
+		printf 'runuser is required for root-run install preservation tests.\n' >&2
+		exit 1
+	}
+	getent passwd nobody >/dev/null 2>&1 || {
+		printf 'The nobody fixture user is required for root-run tests.\n' >&2
+		exit 1
+	}
+	OWNER=nobody
+fi
+OWNER_GROUP="$(id -gn "$OWNER")"
+
+run_as_owner() {
+	if [[ $(id -u) -eq 0 ]]; then
+		runuser -u "$OWNER" -- "$@"
+	else
+		"$@"
+	fi
+}
 
 if grep -Eq 'sudo systemctl enable (NetworkManager|bluetooth)\.service' "$REPO_DIR/install.sh"; then
 	printf 'Optional Arch services are enabled without the non-fatal guard.\n' >&2
@@ -43,6 +62,35 @@ if grep -Eq 'sudo make install($|[[:space:]&;])' "$REPO_DIR/scripts/check-deps.s
 fi
 if grep -Eq 'sudo chown (-R|--recursive)' "$REPO_DIR/install.sh"; then
 	printf 'Installer uses a broad recursive ownership repair.\n' >&2
+	exit 1
+fi
+MAKE_DATABASE=$(make -qp -C "$REPO_DIR" 2>/dev/null || true)
+if awk '$1 == "install-system:" || $1 == "install:" { for (i = 2; i <= NF; i++) if ($i == "all") found = 1 } END { exit !found }' \
+	<<<"$MAKE_DATABASE"; then
+	printf 'The privileged system install still rebuilds user-owned sources.\n' >&2
+	exit 1
+fi
+grep -Fq "runuser -u \"\${OWNER}\" -- env HOME=\"\${USER_HOME}\" \$(MAKE) all" \
+	"$REPO_DIR/Makefile"
+grep -Fq 'dwm is not built. Run make before install-system.' "$REPO_DIR/Makefile"
+grep -Fq 'dwm build input is missing:' "$REPO_DIR/Makefile"
+grep -Fq 'dwm is stale. Run make before install-system.' "$REPO_DIR/Makefile"
+INSTALL_USER_RECIPE=$(sed -n '/^install-user:/,/^uninstall:/p' "$REPO_DIR/Makefile")
+if ! grep -Fq "@test \"\$\$(id -u)\" -ne 0" <<<"$INSTALL_USER_RECIPE"; then
+	printf 'Unprivileged user install does not reject direct root invocation.\n' >&2
+	exit 1
+fi
+if grep -Eq '(^|[[:space:]])chown([[:space:]]|$)' <<<"$INSTALL_USER_RECIPE"; then
+	printf 'Unprivileged user install still attempts to change ownership.\n' >&2
+	exit 1
+fi
+if grep -Fq 'DWM_INSTALL_OWNER=' <<<"$INSTALL_USER_RECIPE"; then
+	printf 'Unprivileged user install requests owner-setting helper behavior.\n' >&2
+	exit 1
+fi
+if grep -E 'cp[[:space:]].*-a' <<<"$INSTALL_USER_RECIPE" |
+	grep -Fv -- '--no-preserve=ownership' >/dev/null; then
+	printf 'Unprivileged user install preserves source ownership during a copy.\n' >&2
 	exit 1
 fi
 
@@ -78,6 +126,51 @@ if [[ $EXPLICIT_OWNER_HOME != "$WORK_DIR/explicit-home" ]]; then
 fi
 
 cp -a "$REPO_DIR/." "$TEST_REPO/"
+test -f "$TEST_REPO/config.h" || cp "$TEST_REPO/config.def.h" "$TEST_REPO/config.h"
+rm -f "$TEST_REPO/dwm"
+if make -C "$TEST_REPO" install-system \
+	DESTDIR="$WORK_DIR/stale-stage" >"$WORK_DIR/unbuilt-install.log" 2>&1; then
+	printf 'System install accepted a missing dwm binary.\n' >&2
+	exit 1
+fi
+grep -Fq 'dwm is not built. Run make before install-system.' \
+	"$WORK_DIR/unbuilt-install.log"
+test ! -e "$WORK_DIR/stale-stage"
+for object in drw.o dwm.o util.o tomlparser.o; do
+	install -Dm644 /dev/null "$TEST_REPO/$object"
+done
+install -Dm755 /bin/true "$TEST_REPO/dwm"
+mv "$TEST_REPO/config.h" "$TEST_REPO/config.h.saved"
+if make -C "$TEST_REPO" install-system \
+	DESTDIR="$WORK_DIR/stale-stage" >"$WORK_DIR/missing-input-install.log" 2>&1; then
+	printf 'System install accepted a missing build input.\n' >&2
+	exit 1
+fi
+grep -Fq 'dwm build input is missing: config.h. Run make before install-system.' \
+	"$WORK_DIR/missing-input-install.log"
+test ! -e "$WORK_DIR/stale-stage"
+mv "$TEST_REPO/config.h.saved" "$TEST_REPO/config.h"
+sleep 1
+touch "$TEST_REPO/drw.o"
+if make -C "$TEST_REPO" install-system \
+	DESTDIR="$WORK_DIR/stale-stage" >"$WORK_DIR/stale-object-install.log" 2>&1; then
+	printf 'System install accepted an object newer than dwm.\n' >&2
+	exit 1
+fi
+grep -Fq 'dwm is stale. Run make before install-system.' \
+	"$WORK_DIR/stale-object-install.log"
+test ! -e "$WORK_DIR/stale-stage"
+touch "$TEST_REPO/dwm"
+sleep 1
+touch "$TEST_REPO/dwm.c"
+if make -C "$TEST_REPO" install-system \
+	DESTDIR="$WORK_DIR/stale-stage" >"$WORK_DIR/stale-install.log" 2>&1; then
+	printf 'System install accepted a stale dwm binary.\n' >&2
+	exit 1
+fi
+grep -Fq 'dwm is stale. Run make before install-system.' \
+	"$WORK_DIR/stale-install.log"
+test ! -e "$WORK_DIR/stale-stage"
 mkdir -p \
 	"$XDG_CONFIG_HOME/dwm-titus" \
 	"$XDG_CONFIG_HOME/picom" \
@@ -170,8 +263,12 @@ snapshot_file "$XDG_CONFIG_HOME/Thunar/uca.xml" "$WORK_DIR/thunar-uca.before"
 snapshot_file "$XDG_CONFIG_HOME/autostart/picom.desktop" "$WORK_DIR/picom-autostart.before"
 snapshot_file "$XDG_CONFIG_HOME/systemd/user/custom.service" "$WORK_DIR/custom-service.before"
 
+if [[ $(id -u) -eq 0 ]]; then
+	chown -R "$OWNER:$OWNER_GROUP" "$WORK_DIR"
+fi
+
 for _ in 1 2; do
-	make -C "$TEST_REPO" install-user \
+	run_as_owner env HOME="$TEST_HOME" make -C "$TEST_REPO" install-user \
 		USER_HOME="$TEST_HOME" \
 		OWNER="$OWNER" \
 		XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
@@ -239,7 +336,10 @@ FRESH_CONFIG_HOME="$FRESH_HOME/.config"
 FRESH_DATA_HOME="$FRESH_HOME/.local/share"
 FRESH_CONFIG_DIRS="$WORK_DIR/fresh-etc-xdg"
 mkdir -p "$FRESH_CONFIG_DIRS/autostart"
-make -C "$TEST_REPO" install-user \
+if [[ $(id -u) -eq 0 ]]; then
+	chown -R "$OWNER:$OWNER_GROUP" "$FRESH_CONFIG_DIRS"
+fi
+run_as_owner env HOME="$FRESH_HOME" make -C "$TEST_REPO" install-user \
 	USER_HOME="$FRESH_HOME" \
 	OWNER="$OWNER" \
 	XDG_CONFIG_HOME="$FRESH_CONFIG_HOME" \

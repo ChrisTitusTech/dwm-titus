@@ -812,7 +812,7 @@ scan_privileged() {
 		"$pkexec_command" "$helper" scan-system
 		return
 	fi
-	emit_meta overview restricted scan-system "Privileged scan" "No trusted installed helper" "Run sudo make install-system, then refresh to request polkit authorization"
+	emit_meta overview restricted scan-system "Privileged scan" "No trusted installed helper" "Run make && sudo make install-system, then refresh to request polkit authorization"
 	return 1
 }
 

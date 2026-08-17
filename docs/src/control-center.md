@@ -94,6 +94,7 @@ repair the detected time-synchronization provider.
 Installing the health helper in a root-owned system path remains recommended:
 
 ```bash
+make
 sudo make install-system
 ```
 

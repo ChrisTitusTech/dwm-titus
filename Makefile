@@ -74,7 +74,11 @@ all: dwm
 .c.o:
 	${CC} ${CPPFLAGS} ${CFLAGS} -c $<
 
-${OBJ}: config.h config.mk
+${OBJ}: config.h config.mk Makefile
+drw.o: drw.h util.h
+dwm.o: drw.h util.h tomlparser.h
+util.o: util.h
+tomlparser.o: tomlparser.h
 
 config.h:
 	cp config.def.h $@
@@ -103,7 +107,18 @@ native:
 	$(MAKE) clean
 	$(MAKE) OPTIMISATIONS="${NATIVE_OPTIMISATIONS}" all
 
-install: install-system
+install:
+	if [ "$$(id -u)" -eq 0 ] && [ -n "${OWNER}" ] && [ "${OWNER}" != root ]; then \
+		test -n "${USER_HOME}" || { echo "USER_HOME could not be determined." >&2; exit 1; }; \
+		command -v runuser >/dev/null 2>&1 || { \
+			echo "runuser is required to build user-owned sources without root privileges." >&2; \
+			exit 1; \
+		}; \
+		runuser -u "${OWNER}" -- env HOME="${USER_HOME}" $(MAKE) all; \
+	else \
+		$(MAKE) all; \
+	fi
+	$(MAKE) install-system
 	if [ -z "${DESTDIR}" ]; then \
 		if [ "$$(id -u)" -eq 0 ]; then \
 			target_user="${OWNER}"; \
@@ -129,7 +144,13 @@ install: install-system
 		echo "==> DESTDIR set; skipping user configuration."; \
 	fi
 
-install-system: all install-cursors
+install-system:
+	@test -x dwm || { echo "dwm is not built. Run make before install-system." >&2; exit 1; }
+	@for input in ${SRC} ${OBJ} drw.h util.h tomlparser.h config.h config.mk Makefile; do \
+		test -e "$$input" || { echo "dwm build input is missing: $$input. Run make before install-system." >&2; exit 1; }; \
+		test ! "$$input" -nt dwm || { echo "dwm is stale. Run make before install-system." >&2; exit 1; }; \
+	done
+	$(MAKE) install-cursors
 	@echo ""
 	@echo "==> Installing system files..."
 	install -Dm755 dwm ${DESTDIR}${PREFIX}/bin/dwm
@@ -161,6 +182,7 @@ install-cursors:
 
 install-user:
 	@test -n "${USER_HOME}" || { echo "USER_HOME could not be determined." >&2; exit 1; }
+	@test "$$(id -u)" -ne 0 || { echo "Refusing to install user files as root. Run install-user as the target user." >&2; exit 1; }
 	@echo "==> Installing user files for ${OWNER}..."
 	if [ ! -e "${USER_HOME}/.xinitrc" ]; then \
 		install -Dm644 scripts/.xinitrc "${USER_HOME}/.xinitrc"; \
@@ -171,7 +193,7 @@ install-user:
 	mkdir -p ${DATA_DIR}
 	if [ "$$(realpath .)" != "$$(realpath ${DATA_DIR})" ]; then \
 		rm -rf "${DATA_DIR}/config" "${DATA_DIR}/scripts"; \
-		cp -a config scripts "${DATA_DIR}/"; \
+		cp -a --no-preserve=ownership config scripts "${DATA_DIR}/"; \
 	fi
 	@echo "==> Seeding application config without overwriting user files..."
 	mkdir -p ${CFG_DIR}
@@ -186,17 +208,17 @@ install-user:
 			continue; \
 		fi; \
 		mkdir -p "$$dst"; \
-		cp -aL -n "$$dir"/. "$$dst"/; \
+		cp -aL -n --no-preserve=ownership "$$dir"/. "$$dst"/; \
 	done
 	@echo "==> Seeding dwm-scoped XDG autostart overrides..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
-		XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS}" DWM_INSTALL_OWNER="${OWNER}" \
+		XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS}" \
 		scripts/seed-autostart-overrides.sh
 	@echo "==> Replacing managed Quickshell config..."
 	test -n "${CFG_DIR}"
 	rm -rf "${CFG_DIR}/quickshell"
 	mkdir -p "${CFG_DIR}/quickshell"
-	cp -aL config/quickshell/. "${CFG_DIR}/quickshell"/
+	cp -aL --no-preserve=ownership config/quickshell/. "${CFG_DIR}/quickshell"/
 	@echo "==> Seeding user config (skipping existing files)..."
 	mkdir -p ${CFG_DIR}/dwm-titus
 	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
@@ -238,19 +260,14 @@ install-user:
 		echo "  Preserving existing Meslo font alias file."; \
 	fi
 	fc-cache -f >/dev/null 2>&1 || true
-	@echo "==> Fixing ownership and permissions..."
+	@echo "==> Fixing executable permissions..."
 	find ${DATA_DIR} \( -name '*.sh' -o -name '*.py' \) -print0 | xargs -0 -r chmod +x
 	for dir in config/*/; do \
 		b=$$(basename $$dir); \
 		if [ ! -L "${CFG_DIR}/$$b" ]; then \
 			find "${CFG_DIR}/$$b" \( -name '*.sh' -o -name '*.py' \) -print0 2>/dev/null | xargs -0 -r chmod +x; \
-			chown -R ${OWNER}: "${CFG_DIR}/$$b"; \
 		fi; \
 	done
-	chown -R ${OWNER}: ${CFG_DIR}/fontconfig 2>/dev/null || true
-	chown -R ${OWNER}: ${CFG_DIR}/dwm-titus
-	chown -R ${OWNER}: ${DATA_DIR}
-	if [ -e "${USER_HOME}/.xinitrc" ]; then chown ${OWNER}: "${USER_HOME}/.xinitrc"; fi
 	@echo ""
 	@echo "  dwm installed successfully."
 	@echo "  Log out and select 'dwm', or start with: startx"
