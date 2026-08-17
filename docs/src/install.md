@@ -1,7 +1,6 @@
 # Installation
 
-> A supported Debian-, Arch-, or Fedora/RHEL-family distribution with Xorg is
-> required.
+> Fedora Linux with Xorg is required. Other distributions are not supported.
 
 ## Quick Install (Recommended)
 
@@ -27,8 +26,8 @@ install-herdr
 
 ### 1. Dependencies
 
-The supported dependency path is the installer because it resolves package
-names for Debian-, Arch-, and Fedora/RHEL-family systems from the shared map:
+The supported dependency path is the installer because it resolves Fedora
+package names from the shared map:
 
 ```bash
 ./install.sh --dry-run --non-interactive --profile core
@@ -65,8 +64,9 @@ session restart to verify the active runtime.
 ./install.sh
 ```
 
-The script detects the distribution family and handles dependency
-installation, font copying, display-manager integration, and config placement.
+The script verifies Fedora before handling dependency installation, font
+copying, display-manager integration, and config placement. Other
+distributions are rejected before changes are made.
 Existing user configuration and `.xinitrc` files are preserved. Upgrades remove
 the known legacy `dwm-graphical-session.service` and
 `wm-graphical-session.service` early-start configuration so XDG applications
@@ -134,11 +134,9 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   group; log out and back in before using its privileged tuning helpers.
 
 The default is `full` to preserve the historical automated installer behavior.
-On non-Fedora RHEL-family systems, `maim` may not be present in the enabled
-repositories. The installer skips that add-on instead of failing the desktop
-install and reports that the screenshot hotkeys are unavailable. Enterprise
-Linux 9 users can enable EPEL and rerun the installer to add `maim` where the
-package is available.
+If `maim` is unavailable in the enabled Fedora repositories, the installer
+skips that add-on instead of failing the desktop install and reports that the
+screenshot hotkeys are unavailable.
 
 For a minimal install:
 

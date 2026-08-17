@@ -20,20 +20,23 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    container: fedora:44
 
     steps:
+      - name: Install checkout dependency
+        run: dnf install -y --setopt=install_weak_deps=False git
+
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential pkg-config \
-            libx11-dev libxft-dev libxinerama-dev libxrender-dev \
-            libimlib2-dev libx11-xcb-dev libxcb1-dev libxcb-res0-dev \
-            libfontconfig-dev libfreetype-dev
+          dnf install -y --setopt=install_weak_deps=False \
+            gcc make pkgconf-pkg-config \
+            libX11-devel libXft-devel libXinerama-devel libXrender-devel \
+            imlib2-devel libxcb-devel xcb-util-devel \
+            fontconfig-devel freetype-devel
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4.37.4
@@ -42,7 +45,7 @@ jobs:
           build-mode: manual
 
       - name: Build
-        run: make clean all
+        run: scripts/run-tests make clean all
 
       - name: Analyze
         uses: github/codeql-action/analyze@v4.37.4

@@ -1,0 +1,45 @@
+#!/bin/sh
+set -eu
+
+detail=
+if [ "${DWM_TEST_MODE:-0}" = 1 ]; then
+	detail=${DWM_TEST_QUICKSHELL_VERSION:-}
+fi
+if [ -z "$detail" ]; then
+	command -v quickshell >/dev/null 2>&1 || {
+		printf 'quickshell is not installed\n' >&2
+		exit 1
+	}
+	detail=$(quickshell --version 2>/dev/null | sed -n '1p') || detail=
+	if [ -z "$detail" ]; then
+		printf 'unable to determine the Quickshell version\n' >&2
+		exit 1
+	fi
+fi
+
+case $detail in
+*"dacfa9de829ac7cb173825f593236bf2c21f637e"*) exit 0 ;;
+esac
+
+version=$(printf '%s\n' "$detail" | grep -oE '[0-9]+([.][0-9]+){1,2}' | sed -n '1p')
+if [ "$version" = 0.2.1 ]; then
+	case $detail in
+	0.2.1^git20260209.dacfa9d*) exit 0 ;;
+	esac
+fi
+
+if [ -n "$version" ] && awk -F. '
+	{
+		major = $1 + 0
+		minor = $2 + 0
+		patch = $3 + 0
+		exit !(major > 0 || minor > 3 || (minor == 3 && patch >= 0))
+	}
+' <<EOF; then
+$version
+EOF
+	exit 0
+fi
+
+printf 'unsupported Quickshell version: %s\n' "${detail:-unknown}" >&2
+exit 1

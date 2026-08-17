@@ -6,215 +6,92 @@ dwm_packages() {
 	local profile=$2
 
 	case "$family:$profile" in
-	arch:build)
-		printf '%s\n' \
-			base-devel libx11 libxft libxinerama libxrender imlib2 \
-			libxcb xcb-util freetype2 fontconfig pkgconf
-		;;
-	arch:x11)
-		printf '%s\n' xorg-xinit xorg-xrandr xorg-xsetroot xorg-xset xorg-xinput xorg-setxkbmap
-		;;
-	arch:x11-server)
-		printf '%s\n' xorg-server
-		;;
-	arch:runtime-required)
-		printf '%s\n' dbus curl git procps-ng psmisc unzip util-linux wmctrl xclip xdotool xorg-xprop xdg-utils
-		;;
-	arch:desktop)
-		printf '%s\n' \
-			quickshell picom feh dex mate-polkit alsa-utils \
-			brightnessctl pipewire pipewire-pulse wireplumber pavucontrol \
-			libnotify light-locker bluez bluez-utils blueman playerctl
-		;;
-	arch:desktop-optional)
-		printf '%s\n' \
-			thunar gvfs gvfs-smb tumbler thunar-archive-plugin nwg-look xdg-user-dirs \
-			xdg-desktop-portal-gtk gnome-keyring networkmanager network-manager-applet \
-			rsync matugen accountsservice upower power-profiles-daemon
-		;;
-	arch:theme)
-		printf '%s\n' dconf
-		;;
-	arch:theme-gtk)
-		printf '%s\n' \
-			adapta-gtk-theme arc-gtk-theme materia-gtk-theme numix-themes \
-			orchis-theme yaru-gtk-theme
-		;;
-	arch:theme-optional)
-		printf '%s\n' qt6ct qt5ct
-		;;
-	arch:fonts)
-		printf '%s\n' noto-fonts-emoji ttf-meslo-nerd
-		;;
-	arch:qml-development)
-		printf '%s\n' qt6-declarative
-		;;
-	arch:lightdm)
-		printf '%s\n' lightdm lightdm-slick-greeter
-		;;
-	arch:terminal)
-		printf '%s\n' alacritty kitty
-		;;
-	arch:terminal-arm)
-		printf '%s\n' alacritty kitty
-		;;
-	arch:arm-video)
-		printf '%s\n' xf86-video-fbdev
-		;;
-	arch:arm-display-manager)
-		printf '%s\n' sddm
-		;;
-	rhel:build)
+	fedora:build)
 		printf '%s\n' \
 			gcc make pkgconf-pkg-config libX11-devel libXft-devel \
 			libXinerama-devel libXrender-devel imlib2-devel libxcb-devel \
 			xcb-util-devel freetype-devel fontconfig-devel
 		;;
-	rhel:x11)
-		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit
-		if [[ ${DISTRO_ID:-} == fedora ]]; then
-			printf '%s\n' xrandr xset xsetroot xinput setxkbmap
-		else
-			# Rocky/RHEL bundle xinput in xorg-x11-server-utils.
-			printf '%s\n' xorg-x11-server-utils setxkbmap
-		fi
+	fedora:x11)
+		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot xinput setxkbmap
 		;;
-	rhel:x11-server)
-		:
-		;;
-	rhel:runtime-required)
+	fedora:runtime-required)
 		printf '%s\n' dbus-x11 curl git procps-ng psmisc unzip util-linux xclip xdotool xprop xdg-utils
 		;;
-	rhel:desktop)
+	fedora:desktop)
+		# Fedora 44 publishes the compatible Quickshell snapshot in its official
+		# fedora/updates repositories. It is required and belongs in the strict
+		# desktop transaction; the Fedora container smoke proves resolution.
 		printf '%s\n' \
 			quickshell picom feh dex-autostart mate-polkit \
 			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
-			bluez blueman
-		if [[ ${DISTRO_ID:-} == fedora ]]; then
-			printf '%s\n' playerctl
-		fi
+			bluez blueman playerctl
 		;;
-	rhel:desktop-optional)
+	fedora:desktop-optional)
 		printf '%s\n' \
 			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring gnome-keyring-pam NetworkManager \
 			rsync
-		if [[ ${DISTRO_ID:-} != fedora ]]; then
-			printf '%s\n' playerctl
-		fi
 		;;
-	rhel:gaming)
-		if [[ ${DISTRO_ID:-} == fedora && ${ARCH:-$(uname -m)} == x86_64 ]]; then
+	fedora:gaming)
+		if [[ ${ARCH:-$(uname -m)} == x86_64 ]]; then
 			printf '%s\n' \
 				steam gamescope gamemode.x86_64 gamemode.i686 \
 				mangohud.x86_64 mangohud.i686
 		fi
 		;;
-	rhel:theme)
+	fedora:theme)
 		printf '%s\n' dconf
 		;;
-	rhel:theme-gtk)
-		if [[ ${DISTRO_ID:-} == fedora ]]; then
-			printf '%s\n' \
-				arc-theme adw-gtk3-theme numix-gtk-theme \
-				yaru-gtk3-theme yaru-gtk4-theme deepin-gtk-theme \
-				bluebird-gtk3-theme
-		fi
+	fedora:theme-gtk)
+		printf '%s\n' \
+			arc-theme adw-gtk3-theme numix-gtk-theme \
+			yaru-gtk3-theme yaru-gtk4-theme deepin-gtk-theme \
+			bluebird-gtk3-theme
 		;;
-	rhel:theme-optional)
+	fedora:theme-optional)
 		printf '%s\n' qt6ct qt5ct
 		;;
-	rhel:fonts)
+	fedora:fonts)
 		printf '%s\n' google-noto-color-emoji-fonts google-noto-sans-mono-fonts
 		;;
-	rhel:qml-development)
+	fedora:qml-development)
 		printf '%s\n' qt6-qtdeclarative-devel
 		;;
-	rhel:lightdm)
+	fedora:lightdm)
 		printf '%s\n' lightdm slick-greeter
 		;;
-	rhel:terminal)
+	fedora:terminal)
 		printf '%s\n' alacritty kitty
 		;;
-	debian:build)
-		printf '%s\n' \
-			build-essential pkg-config libx11-dev libxft-dev \
-			libxinerama-dev libxrender-dev libimlib2-dev libx11-xcb-dev \
-			libxcb1-dev libxcb-res0-dev libfontconfig-dev libfreetype-dev
-		;;
-	debian:x11)
-		printf '%s\n' xserver-xorg-core xinit x11-xserver-utils xinput x11-xkb-utils
-		;;
-	debian:x11-server)
-		:
-		;;
-	debian:runtime-required)
-		printf '%s\n' dbus-x11 curl git procps psmisc unzip util-linux xclip xdotool x11-utils xdg-utils
-		;;
-	debian:desktop)
-		printf '%s\n' \
-			picom feh dex mate-polkit alsa-utils \
-			brightnessctl pulseaudio-utils pipewire pipewire-pulse \
-			wireplumber pavucontrol libnotify-bin light-locker bluez blueman playerctl
-		;;
-	debian:desktop-optional)
-		printf '%s\n' \
-			thunar gvfs gvfs-backends tumbler thunar-archive-plugin file-roller \
-			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring libpam-gnome-keyring \
-			network-manager rsync
-		;;
-	debian:theme)
-		printf '%s\n' dconf-cli
-		;;
-	debian:theme-gtk)
-		printf '%s\n' arc-theme materia-gtk-theme numix-gtk-theme yaru-theme-gtk
-		;;
-	debian:theme-optional)
-		printf '%s\n' qt6ct qt5ct
-		;;
-	debian:fonts)
-		printf '%s\n' fonts-noto-color-emoji fonts-noto-mono
-		;;
-	debian:qml-development)
-		printf '%s\n' qt6-declarative-dev-tools
-		;;
-	debian:lightdm)
-		printf '%s\n' lightdm slick-greeter
-		;;
-	debian:terminal)
-		printf '%s\n' alacritty kitty
-		;;
-	*:terminal-primary)
+	fedora:terminal-primary)
 		printf '%s\n' alacritty
 		;;
-	*:screenshot-optional)
+	fedora:screenshot-optional)
 		printf '%s\n' maim
 		;;
-	*:required)
+	fedora:required)
 		dwm_packages "$family" build
 		dwm_packages "$family" x11
-		dwm_packages "$family" x11-server
 		dwm_packages "$family" runtime-required
 		;;
-	*:recommended)
+	fedora:recommended)
 		dwm_packages "$family" desktop
 		dwm_packages "$family" screenshot-optional
 		dwm_packages "$family" theme
 		dwm_packages "$family" theme-gtk
 		dwm_packages "$family" fonts
 		;;
-	*:optional)
+	fedora:optional)
 		dwm_packages "$family" theme-optional
 		dwm_packages "$family" desktop-optional
 		;;
-	*:full)
+	fedora:full)
 		dwm_packages "$family" required
 		dwm_packages "$family" recommended
 		dwm_packages "$family" optional
-		if [[ $family == rhel && ${DISTRO_ID:-} == fedora ]]; then
-			dwm_packages "$family" gaming
-		fi
+		dwm_packages "$family" gaming
 		;;
 	*)
 		return 1

@@ -10,6 +10,8 @@ TEST_HOME="$WORK_DIR/home"
 XDG_CONFIG_HOME="$TEST_HOME/.config"
 XDG_DATA_HOME="$TEST_HOME/.local/share"
 XDG_CONFIG_DIRS="$WORK_DIR/etc-xdg"
+OWNER_TMPDIR="$WORK_DIR/owner-tmp"
+mkdir -p "$OWNER_TMPDIR"
 OWNER="$(id -un)"
 if [[ $(id -u) -eq 0 ]]; then
 	command -v runuser >/dev/null 2>&1 || {
@@ -26,19 +28,12 @@ OWNER_GROUP="$(id -gn "$OWNER")"
 
 run_as_owner() {
 	if [[ $(id -u) -eq 0 ]]; then
-		runuser -u "$OWNER" -- "$@"
+		runuser -u "$OWNER" -- env TMPDIR="$OWNER_TMPDIR" "$@"
 	else
-		"$@"
+		env TMPDIR="$OWNER_TMPDIR" "$@"
 	fi
 }
 
-if grep -Eq 'sudo systemctl enable (NetworkManager|bluetooth)\.service' "$REPO_DIR/install.sh"; then
-	printf 'Optional Arch services are enabled without the non-fatal guard.\n' >&2
-	exit 1
-fi
-for service in NetworkManager.service bluetooth.service; do
-	grep -Fq "enable_optional_service $service" "$REPO_DIR/install.sh"
-done
 grep -Fq 'Start LightDM now (optional): sudo systemctl start lightdm.service' \
 	"$REPO_DIR/install.sh"
 grep -Fq "sudo make install-system \\" "$REPO_DIR/install.sh"

@@ -4,9 +4,9 @@
 
 This repository is a Fedora-first X11 desktop environment built around a
 heavily patched fork of suckless dwm and a managed Quickshell shell. The
-primary product is a complete desktop installed from Fedora Server Network
-Install media. The existing Debian-, Arch-, Fedora-, and RHEL-family installer
-remains a supported secondary path for the core desktop experience.
+product is a complete Fedora desktop installed from Fedora Server Network
+Install media or onto an existing Fedora installation. Other distributions
+are outside the supported product and validation contract.
 
 Read `SPEC.md` before making product, portability, installer, dependency, or
 packaging changes. Treat `SPEC.md` as the source of truth for project scope and
@@ -18,32 +18,18 @@ acceptance criteria.
 2. Keep the C window-manager core small, understandable, and dependency-light.
 3. Build a cohesive Fedora desktop without moving desktop policy into the C
    event loop.
-4. Preserve the core install and session contract across the three supported
-   distribution families.
+4. Preserve the Fedora install, image, and session contract.
 5. Keep installation and settings changes safe, repeatable, reversible, and
    explicit.
 6. Prefer focused changes that can be reviewed and tested independently.
 
 ## Supported Platforms
 
-The platform contract has two tiers:
-
-- Primary desktop image: the current documented Fedora Server Network Install
-  release, with separate standard and NVIDIA variants.
-- Secondary existing-system install: these distribution families:
-
-- Debian family: Debian, Ubuntu, Linux Mint, Pop!_OS, and compatible
-  derivatives using `apt`.
-- Arch family: Arch Linux, EndeavourOS, Manjaro, Arch Linux ARM, and compatible
-  derivatives using `pacman`.
-- RHEL family: RHEL, Rocky Linux, AlmaLinux, Fedora, and compatible
-  derivatives using `dnf`.
-
-Do not claim full desktop-environment parity on a secondary platform unless its
-settings providers and runtime behavior were tested there. Core support still
-requires dependency discovery, installation, X session startup, configuration
-deployment, and the core runtime checks in `SPEC.md`; a successful C build is
-not sufficient.
+The supported platform is Fedora Linux. The current documented Fedora Server
+Network Install release is the image base, with separate standard and NVIDIA
+variants. The existing-system installer also supports Fedora. Other
+distributions must fail clearly instead of entering an untested package or
+installation path.
 
 ## Repository Map
 
@@ -55,8 +41,7 @@ not sufficient.
 - `config/`: application configuration and default TOML runtime settings.
 - `scripts/`: session startup, dependency checks, desktop helpers, and
   operational scripts.
-- `install.sh`: supported existing-system installer for all distribution
-  families.
+- `install.sh`: supported existing-system installer for Fedora.
 - `dwm-fedora.ks`, `dwm-fedora-nvidia.ks`: Fedora image installation profiles.
 - `dwm.desktop`: display-manager X session entry.
 - `AGENTS.md`: durable engineering and agent-execution rules.
@@ -108,19 +93,17 @@ not sufficient.
 - Risky changes require preview, confirmation, rollback, or recovery behavior
   appropriate to their impact. Authorization denial must not hide readable
   state.
-- Fedora providers may land first. Secondary platforms must hide or explain
-  unavailable capabilities without breaking the rest of Settings.
+- Unsupported hardware capabilities must be hidden or explained without
+  breaking the rest of Settings.
 
 ## Portability Rules
 
-- Never hardcode one package manager in shared logic. Isolate `apt`, `pacman`,
-  and `dnf` behavior behind clearly named distro-family functions or adapters.
-- Detect the distribution using `/etc/os-release`. Detect package managers only
-  as a fallback or validation step.
-- Map required capabilities to family-specific package names. Do not scatter
-  package-name lists across multiple scripts.
-- Use `pkg-config` for X11 and library discovery where available. Avoid relying
-  on Arch-specific paths or `/usr/X11R6`.
+- Detect Fedora through `/etc/os-release` and reject other distributions
+  before package installation or system changes.
+- Keep Fedora package capability names in the shared dependency map. Do not
+  scatter package-name lists across multiple scripts.
+- Use `pkg-config` for X11 and library discovery where available. Avoid legacy
+  hardcoded paths such as `/usr/X11R6`.
 - Respect `CC`, `CFLAGS`, `CPPFLAGS`, `LDFLAGS`, `PREFIX`, `DESTDIR`,
   `XDG_CONFIG_HOME`, and the invoking user's home directory.
 - Do not assume `/usr/lib` versus `/usr/lib64`. Search known executable paths
@@ -197,9 +180,8 @@ not sufficient.
 
 - Keep the existing C99 style and compile with warnings enabled.
 - Avoid adding a new library dependency unless it materially improves a
-  required feature. Dependencies for the core desktop must remain portable;
-  Fedora-first Settings dependencies must have explicit fallback behavior on
-  secondary platforms.
+  required feature. Required dependencies must be available on supported
+  Fedora releases.
 - Check allocation, file, Xlib/XCB, parser, and process-launch failures.
 - Do not introduce blocking work into the X event loop.
 - Keep Linux-specific functionality, such as inotify, explicit and documented.
@@ -208,37 +190,35 @@ not sufficient.
 
 ## Required Validation
 
-Run the smallest applicable set first, then the full relevant set:
+Run the smallest applicable set first, then the full relevant set through the
+managed test workspace:
 
 ```sh
-make clean
-make
+scripts/run-tests make clean all
+scripts/run-tests
 ```
 
 For shell changes:
 
 ```sh
-shellcheck install.sh install-arm.sh scripts/*.sh
-shfmt -d install.sh install-arm.sh scripts/*.sh
+shellcheck install.sh scripts/*.sh tests/*.sh
+shfmt -d install.sh scripts/*.sh tests/*.sh
 ```
 
 For Quickshell QML changes, run `qmllint` with the explicit Qt/Quickshell QML
 module roots documented in `SPEC.md`, and validate the managed shell in a real
 or nested X11 session before declaring runtime behavior verified.
 
-For installer or portability changes, validate in clean containers or virtual
-machines representing:
-
-- One currently supported Debian or Ubuntu release.
-- One current Arch-family installation.
-- One currently supported Fedora, Rocky Linux, AlmaLinux, or RHEL release.
+For installer or packaging changes, validate in a clean container or virtual
+machine using the supported Fedora release.
 
 At minimum, verify dependency resolution, a clean build, staged installation
 with `DESTDIR`, installed file paths, and script syntax. A real X11 session or
 nested X server is required before declaring runtime behavior fully validated.
 
-If a required platform cannot be tested, state exactly what was not tested and
-do not describe the change as universally verified.
+Use `${DWM_TEST_TMP_ROOT:-$HOME/tmp}` for test workspaces and clear the exact
+run directory after success, failure, or interruption. If a required Fedora
+path cannot be tested, state exactly what was not tested.
 
 For Fedora image changes, follow the complete validation contract in
 [SPEC.md Section 9.4](SPEC.md#94-fedora-image-validation). Static validation

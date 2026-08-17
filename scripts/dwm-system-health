@@ -149,6 +149,18 @@ version_at_least() {
 	return 0
 }
 
+quickshell_compatible() {
+	local version=$1 detail=$2
+
+	[[ $detail == *"dacfa9de829ac7cb173825f593236bf2c21f637e"* ]] && return 0
+	version_at_least "$version" 0.3.0 && return 0
+	[[ $version == 0.2.1 ]] || return 1
+	case $detail in
+	*"0.2.1^git20260209.dacfa9d"*) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
 find_sibling_command() {
 	local name=$1
 
@@ -443,15 +455,15 @@ scan_desktop() {
 	if command -v quickshell >/dev/null 2>&1; then
 		detail=$(quickshell --version 2>/dev/null | first_lines 1 || true)
 		version=$(grep -oE '[0-9]+([.][0-9]+){1,2}' <<<"$detail" | first_lines 1 || true)
-		if [[ -n $version ]] && version_at_least "$version" 0.3.0; then
+		if quickshell_compatible "$version" "$detail"; then
 			emit_check desktop ok quickshell-version "Quickshell" "Available" "$detail" restart-quickshell "Restart Quickshell" user
 		elif [[ -n $version ]]; then
-			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or newer is required" install-dependencies "Open dependency installer" user
+			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or the supported Fedora 44 snapshot is required" install-dependencies "Open dependency installer" user
 		else
-			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or newer" install-dependencies "Open dependency installer" user
+			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or the supported Fedora 44 snapshot" install-dependencies "Open dependency installer" user
 		fi
 	else
-		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed shell requires Quickshell 0.3.0 or newer" install-dependencies "Open dependency installer" user
+		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed shell requires Quickshell 0.3.0 or the supported Fedora 44 snapshot" install-dependencies "Open dependency installer" user
 	fi
 
 	if command -v picom >/dev/null 2>&1; then
@@ -519,41 +531,17 @@ scan_network() {
 
 scan_package_database() {
 	local os_file=${DWM_HEALTH_OS_RELEASE:-/etc/os-release}
-	local id=unknown id_like='' output='' family=unknown status=ok
+	local id=unknown output='' family=unknown status=ok
 
 	if [[ -r $os_file ]]; then
 		# shellcheck disable=SC1090
 		source "$os_file"
 		id=${ID:-unknown}
-		id_like=${ID_LIKE:-}
 	fi
-	case " $id $id_like " in
-	*" arch "*) family=arch ;;
-	*" fedora "* | *" rhel "* | *" centos "*) family=rhel ;;
-	*" debian "* | *" ubuntu "*) family=debian ;;
-	esac
+	[[ $id == fedora ]] && family=fedora
 
 	case $family in
-	debian)
-		if command -v dpkg >/dev/null 2>&1; then
-			output=$(run_bounded dpkg --audit 2>&1 || true)
-			[[ -z $output ]] || status=warn
-		else
-			output="dpkg is unavailable"
-			status=restricted
-		fi
-		;;
-	arch)
-		if command -v pacman >/dev/null 2>&1; then
-			if ! output=$(run_bounded pacman -Dk 2>&1); then
-				status=warn
-			fi
-		else
-			output="pacman is unavailable"
-			status=restricted
-		fi
-		;;
-	rhel)
+	fedora)
 		if command -v dnf >/dev/null 2>&1; then
 			if ! output=$(run_bounded dnf -q --cacheonly check 2>&1); then
 				status=warn
@@ -564,7 +552,7 @@ scan_package_database() {
 		fi
 		;;
 	*)
-		emit_check dependencies info package-database "Package database" "Unsupported distribution family" "$id"
+		emit_check dependencies info package-database "Package database" "Fedora is required for package validation" "$id"
 		return
 		;;
 	esac

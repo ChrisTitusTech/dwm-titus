@@ -1,7 +1,7 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────
 # xscreensaver-setup.sh — Install and configure xscreensaver
-# Detects the package manager, installs xscreensaver, writes
+# Uses Fedora's package manager, installs xscreensaver, writes
 # a sensible default config, and sets it up to start on login.
 # ─────────────────────────────────────────────────────────
 set -euo pipefail
@@ -22,28 +22,25 @@ fail() {
 }
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
 
+DISTRO_ID=unknown
+OS_RELEASE_FILE=/etc/os-release
+if [[ ${DWM_TEST_MODE:-0} == 1 && -n ${DWM_OS_RELEASE:-} ]]; then
+	OS_RELEASE_FILE=$DWM_OS_RELEASE
+fi
+if [[ -r $OS_RELEASE_FILE ]]; then
+	# shellcheck disable=SC1090
+	source "$OS_RELEASE_FILE"
+	DISTRO_ID=${ID:-unknown}
+fi
+[[ $DISTRO_ID == fedora ]] || fail "dwm-titus supports Fedora only."
+
 # ── Detect package manager and install ───────────────────
 header "Installing xscreensaver"
 
 install_pkg() {
-	if command -v pacman &>/dev/null; then
-		info "Detected pacman (Arch-based)"
-		sudo pacman -S --needed --noconfirm xscreensaver
-	elif command -v apt &>/dev/null; then
-		info "Detected apt (Debian/Ubuntu-based)"
-		sudo apt update && sudo apt install -y xscreensaver
-	elif command -v dnf &>/dev/null; then
-		info "Detected dnf (Fedora-based)"
-		sudo dnf install -y xscreensaver
-	elif command -v zypper &>/dev/null; then
-		info "Detected zypper (openSUSE-based)"
-		sudo zypper install -y xscreensaver
-	elif command -v xbps-install &>/dev/null; then
-		info "Detected xbps (Void Linux)"
-		sudo xbps-install -Sy xscreensaver
-	else
-		fail "No supported package manager found. Install xscreensaver manually."
-	fi
+	command -v dnf >/dev/null 2>&1 || fail "dnf is required; dwm-titus supports Fedora only."
+	info "Installing with dnf"
+	sudo dnf install -y xscreensaver
 }
 
 if command -v xscreensaver &>/dev/null; then

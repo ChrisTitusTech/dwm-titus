@@ -3,10 +3,9 @@
 ## Mission
 
 dwm-titus is expanding from an opinionated dwm distribution into a cohesive
-X11 desktop environment. The primary product is a complete Fedora desktop
-installed from the official Fedora Server Network Install ISO. The existing
-installer for Debian, Arch, Fedora, and RHEL-family systems remains supported
-as a secondary path.
+X11 desktop environment. The product is a complete Fedora desktop installed
+from the official Fedora Server Network Install ISO or onto an existing Fedora
+installation.
 
 The desktop keeps dwm as the small window-management core and Quickshell as the
 managed shell and settings layer. New features must preserve existing keybinds,
@@ -15,12 +14,10 @@ when optional components fail.
 
 ## Delivery Model
 
-- Fedora is the first implementation and release-qualification target.
+- Fedora is the only implementation and release-qualification target.
 - Fedora 44 Server Network Install is the current canonical image base.
 - Standard and NVIDIA image variants remain separate.
-- Debian, Arch, and generic RHEL-family installs retain the core desktop
-  contract. New settings capabilities may arrive later on those systems and
-  must report or hide unsupported operations cleanly.
+- Non-Fedora installations are outside the supported product contract.
 - Wayland-native support remains out of scope.
 - The Settings experience will be hybrid: common desktop controls belong in a
   cohesive Quickshell application, while high-risk administration is delegated
@@ -53,13 +50,14 @@ application without changing existing desktop behavior.
 - Event-driven state providers and small, testable helper interfaces.
 - A strict privilege boundary: QML remains unprivileged, privileged operations
   are allowlisted, and every system change requires explicit user intent.
-- Fedora-first packaging and dependency requirements with clean fallbacks on
-  secondary platforms.
+- Fedora packaging and dependency requirements with clean unavailable states
+  for missing hardware or services.
 
 ### Exit Criteria
 
 - The Settings shell opens and navigates without adding idle polling.
-- Read-only capability discovery works on Fedora and degrades cleanly elsewhere.
+- Read-only capability discovery works on Fedora and degrades cleanly when a
+  Fedora service or hardware capability is absent.
 - Privilege, rollback, error, and unsupported-state behavior are documented and
   covered by focused tests.
 - Existing Control Center, launcher, hotkeys, and runtime configuration remain
@@ -77,9 +75,6 @@ application without changing existing desktop behavior.
 - Authorization, helper ownership, confirmation, cancellation, error, preview,
   rollback, packaging, and validation contracts are recorded in
   `docs/SETTINGS-PLATFORM.md`.
-- Arch and generic RHEL package mappings and Debian fallback records were
-  statically validated, but real secondary-platform Settings sessions and real
-  input/display hardware behavior remain Phase 2 qualification work.
 
 ## Phase 2: Displays and Input
 
@@ -122,12 +117,9 @@ Make common monitor and input changes available from the Settings application.
 - Nested X11 at 1280x800 discovered one output and two virtual input devices,
   exercised Displays and Input section lifecycle, closed cleanly, and measured
   0.00 percent Quickshell CPU while closed.
-- Debian 13, current Arch, and Fedora 44 containers resolved the new XInput
-  packages, built the project, validated staged install/uninstall symmetry, and
-  passed the root-helper trust and authorization-denial tests.
-- The full Rocky Linux 9 container smoke remains blocked by package-source
-  availability in the qualification environment. Package mapping and shell
-  fixtures pass, but a complete Rocky install is not claimed.
+- Fedora 44 container validation resolved the XInput packages, built the
+  project, validated staged install/uninstall symmetry, and passed the
+  root-helper trust and authorization-denial tests.
 - Named profile persistence, generated managed-fragment install/backup/rollback,
   and idempotent input startup apply are automated. In a Fedora 44 UEFI VM,
   root-owned mode-0644 generated fragments preserved both a non-default
@@ -142,9 +134,8 @@ Make common monitor and input changes available from the Settings application.
   confirmed it enabled. Generated persistence enables the NVIDIA option by
   default, leaves unsupported drivers unchanged, and rejects an explicit
   forced-on request on incompatible drivers.
-- No physical touchpad was available, and complete Rocky Linux 9 runtime and
-  real secondary-platform X11 sessions remain unqualified. These limitations
-  do not affect the Fedora Phase 2 exit criteria.
+- No physical touchpad was available. This limitation does not affect the
+  Fedora Phase 2 exit criteria.
 
 ## Phase 3: Connectivity and Audio
 
@@ -259,12 +250,11 @@ Deliver a repeatable Fedora-first desktop installation and upgrade experience.
   session with the documented desktop features.
 - Kickstart syntax, package resolution, ISO construction, and first boot are
   recorded for each released image.
-- Unsupported or untested hardware and secondary-platform gaps are stated
-  precisely in release notes.
+- Unsupported or untested Fedora hardware paths are stated precisely in
+  release notes.
 
 ## Future Evaluation
 
-After the Fedora-first phases are stable, evaluate broader feature parity for
-Debian, Arch, and generic RHEL-family systems, additional accessibility work,
+After the Fedora phases are stable, evaluate additional accessibility work,
 sharing and peripheral workflows, and whether a Wayland successor should be a
-separate project. These are not current commitments.
+separate project. Support for other distributions is not a current commitment.

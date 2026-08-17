@@ -519,6 +519,14 @@ restart_quickshell() {
 		printf 'quickshell config is unavailable: %s\n' "$config" >&2
 		return 1
 	fi
+	version_check=$repo_dir/scripts/dwm-quickshell-version-check
+	if [ ! -x "$version_check" ]; then
+		version_check=$(command -v dwm-quickshell-version-check 2>/dev/null || true)
+	fi
+	if [ -z "$version_check" ] || ! "$version_check"; then
+		printf 'compatible Quickshell 0.3.0 or Fedora 44 snapshot is required\n' >&2
+		return 1
+	fi
 
 	pkill -x quickshell 2>/dev/null || true
 	if command -v quickshell >/dev/null 2>&1; then

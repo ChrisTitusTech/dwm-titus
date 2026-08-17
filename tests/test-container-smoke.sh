@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENGINE="${CONTAINER_ENGINE:-}"
+IMAGE="${DWM_CONTAINER_FEDORA_IMAGE:-fedora:44}"
 
 if [[ -z $ENGINE ]]; then
 	if command -v podman >/dev/null 2>&1; then
@@ -23,72 +24,35 @@ podman | docker) ;;
 	;;
 esac
 
-DEBIAN_IMAGE="${DWM_CONTAINER_DEBIAN_IMAGE:-debian:stable-slim}"
-ARCH_IMAGE="${DWM_CONTAINER_ARCH_IMAGE:-archlinux:latest}"
-RHEL_IMAGE="${DWM_CONTAINER_RHEL_IMAGE:-fedora:latest}"
-FAMILIES="${DWM_CONTAINER_FAMILIES:-debian arch rhel}"
+run_args=(run --rm --security-opt label=disable)
+source_mount="${REPO_DIR}:/src:ro"
 
-run_container() {
-	local family=$1
-	local image=$2
-	local volume="${REPO_DIR}:/src:ro"
-	local run_args=(run --rm)
-
-	if [[ $ENGINE == "podman" ]]; then
-		run_args+=(--security-opt label=disable)
-	fi
-
-	printf '==> Container smoke: %s (%s)\n' "$family" "$image"
-	# Expansion in these single-quoted scripts must happen inside the container.
-	# shellcheck disable=SC2016
-	"$ENGINE" "${run_args[@]}" \
-		-e "DWM_SMOKE_FAMILY=$family" \
-		-v "$volume" \
-		"$image" \
-		/bin/sh -eu -c '
-case "$DWM_SMOKE_FAMILY" in
-debian)
-	apt-get update
-	apt-get install -y --no-install-recommends bash ca-certificates
-	;;
-arch)
-	pacman -Syu --noconfirm
-	pacman -S --needed --noconfirm bash ca-certificates
-	;;
-rhel)
-	dnf install -y bash ca-certificates
-	;;
-*)
-	printf "Unsupported smoke family: %s\n" "$DWM_SMOKE_FAMILY" >&2
-	exit 1
-	;;
-esac
-
-rm -rf /work
-mkdir -p /work
-cp -a /src/. /work/
-cd /work
+printf '==> Fedora container smoke: %s\n' "$IMAGE"
+# Expansion in this single-quoted script must happen inside the container.
+# shellcheck disable=SC2016
+"$ENGINE" "${run_args[@]}" \
+	-v "$source_mount" \
+	"$IMAGE" \
+	/bin/sh -eu -c '
+dnf install -y bash ca-certificates
+install -d -m 0700 /var/tmp/dwm-titus-smoke
+install -d -m 0700 /var/tmp/dwm-titus-smoke/repo
+tar -C /src \
+	--exclude=.git \
+	--exclude=release \
+	--exclude='*.iso' \
+	-cf - . | tar -C /var/tmp/dwm-titus-smoke/repo -xf -
+cd /var/tmp/dwm-titus-smoke/repo
 
 bash -euo pipefail -c '"'"'
 source scripts/dwm-utils.sh
 source scripts/dwm-packages.sh
-mapfile -t packages < <(dwm_packages "$DISTRO_FAMILY" required | awk "NF" | sort -u)
-
-case "$DISTRO_FAMILY" in
-debian)
-	apt-get install -y --no-install-recommends "${packages[@]}"
-	;;
-arch)
-	pacman -S --needed --noconfirm "${packages[@]}"
-	;;
-rhel)
-	dnf install -y "${packages[@]}"
-	;;
-*)
-	printf "Unsupported detected family: %s\n" "$DISTRO_FAMILY" >&2
-	exit 1
-	;;
-esac
+[[ $DISTRO_ID == fedora ]]
+[[ $DISTRO_FAMILY == fedora ]]
+mapfile -t packages < <(dwm_packages fedora required | awk "NF" | sort -u)
+mapfile -t desktop_packages < <(dwm_packages fedora desktop | awk "NF" | sort -u)
+dnf install -y "${packages[@]}" "${desktop_packages[@]}"
+scripts/dwm-quickshell-version-check
 
 ./install.sh --dry-run --non-interactive --profile core
 make clean
@@ -98,18 +62,5 @@ make check-install-manifest
 DWM_SECURITY_CONTAINER=1 tests/test-settings-display-security.sh
 '"'"'
 '
-}
 
-for family in $FAMILIES; do
-	case "$family" in
-	debian) run_container debian "$DEBIAN_IMAGE" ;;
-	arch) run_container arch "$ARCH_IMAGE" ;;
-	rhel) run_container rhel "$RHEL_IMAGE" ;;
-	*)
-		printf 'Unsupported DWM_CONTAINER_FAMILIES entry: %s\n' "$family" >&2
-		exit 1
-		;;
-	esac
-done
-
-printf '==> Container smoke validation completed.\n'
+printf '==> Fedora container smoke validation completed.\n'

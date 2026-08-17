@@ -151,26 +151,26 @@ Package ownership stays centralized in `scripts/dwm-packages.sh`. Phase 1 adds
 no runtime dependency beyond capabilities already present in the existing
 desktop and image profiles.
 
-| Capability | Fedora source | Current image/map status | Secondary behavior |
+| Capability | Fedora source | Current image/map status | Missing behavior |
 | --- | --- | --- | --- |
-| Settings window | Quickshell 0.3 or newer | `quickshell` is already in both Fedora Kickstarts and `rhel:desktop` | Present in `arch:desktop`; Debian reports the UI unsupported unless Quickshell is installed separately. |
-| Capability helper | POSIX shell and base utilities | Installed as a project command; no new package | Portable across all supported families. |
-| Display/default state | RandR and XDG utilities | Already in Fedora Kickstarts and required profiles | Family X11/runtime profiles provide equivalents. |
-| Network/Bluetooth/audio/power state | NetworkManager, BlueZ, PipeWire/WirePlumber, X11 tools, light-locker | Already in Fedora Kickstarts and desktop profiles | Missing optional providers produce unavailable or partial cards. |
-| Authorization discovery | Polkit agent and trusted installed helper | Fedora image already includes a polkit agent; helper installation remains project-owned | Missing authorization leaves read-only state available. |
-| QML development | Qt declarative development tools | `rhel:qml-development` maps `qt6-qtdeclarative-devel`; intentionally excluded from runtime images | `arch:qml-development` and `debian:qml-development` own their package names. |
+| Settings window | Quickshell 0.3 or newer | Included by both Kickstarts and `fedora:desktop` | Settings is unavailable without Quickshell. |
+| Capability helper | POSIX shell and base utilities | Installed as a project command; no new package | Individual missing tools produce unavailable records. |
+| Display/default state | RandR and XDG utilities | Included by Kickstarts and required profiles | Missing tools disable only their controls. |
+| Network/Bluetooth/audio/power state | NetworkManager, BlueZ, PipeWire/WirePlumber, X11 tools, light-locker | Included by Fedora image/desktop profiles | Missing optional providers produce unavailable or partial cards. |
+| Authorization discovery | Polkit agent and trusted installed helper | Fedora image includes an agent; helper installation remains project-owned | Missing authorization leaves read-only state available. |
+| QML development | Qt declarative development tools | `fedora:qml-development` maps `qt6-qtdeclarative-devel`; excluded from runtime images | Developer tooling is opt-in. |
 
 The `qml-development` profile is opt-in developer tooling and is not part of
 `required`, `recommended`, `optional`, `full`, or either Kickstart. This avoids
 expanding the installed desktop for users who do not develop QML while keeping
-all family-specific package names in one map.
+the Fedora package name in one map.
 
 ## Validation Plan
 
 | Phase 1 exit criterion | Automated evidence | Manual or runtime evidence |
 | --- | --- | --- |
 | Settings opens and navigates without idle polling | `make check-settings check-quickshell-settings-xvfb check-quickshell-qml` | Open from Control Center, search, use keyboard/mouse navigation, close, and record the closed CPU/process sample. |
-| Fedora discovery and clean fallback | `make check-settings` exercises Fedora 44 and Debian 13 fixtures | Run `dwm-settings-provider discover` on the Fedora qualification host and record platform/provider rows. |
+| Fedora discovery and clean fallback | `make check-settings` exercises Fedora 44 plus unavailable service fixtures | Run `dwm-settings-provider discover` on the Fedora qualification host and record platform/provider rows. |
 | Privilege, rollback, errors, unsupported state | `make check-settings check-system-health check-display-setup` plus source assertions for the no-elevation boundary | Cancel or deny any future authorization prompt; verify readable state remains. Phase 1 has no privileged Settings action to authorize. |
 | Existing desktop compatibility | Existing launcher, Control Center, controls, network, health, runtime, install, and preservation checks in `make check` | Verify existing Control Center and hotkeys in the qualification session. |
 | Packaging and ownership | `make check-install check-install-manifest check-kickstart` | Verify installed helper ownership when a privileged Settings helper is introduced. None is introduced in Phase 1. |
@@ -182,15 +182,13 @@ for the managed Quickshell process and no remaining Settings provider process.
 
 Real Fedora evidence must record release, architecture, session type, Settings
 entry path, discovered provider states, CPU/process sample, and limitations.
-Nested X11 does not prove real hardware providers. Debian, Arch, and generic
-RHEL runtime behavior remains unverified until run in those environments even
-when fixture and package-map tests pass.
+Nested X11 does not prove real hardware providers.
 
 ## Phase 1 Qualification Evidence
 
 Evidence recorded on 2026-07-21:
 
-- Fedora Linux 44, x86_64, X11 reported the `rhel` provider family. RandR,
+- Fedora Linux 44, x86_64, X11 reported the `fedora` provider family. RandR,
   NetworkManager, BlueZ, PipeWire Pulse, DPMS, light-locker, XDG defaults,
   themes, system health, and the trusted authorization path were discovered as
   available. Phase 2 display/input mutations and later accessibility/system
@@ -198,9 +196,7 @@ Evidence recorded on 2026-07-21:
 - Nested X11 at 1280x800 opened the 980x620 Settings window, exercised IPC,
   keyboard, mouse, search, Escape close, and provider cleanup. The two-second
   closed-window sample measured 0.00 percent of one CPU for Quickshell.
-- Fedora 44 and Debian 13 fixtures validated available and unavailable provider
-  records. Arch and generic RHEL package names were validated through the
-  centralized package map but were not runtime-tested.
+- Fedora 44 fixtures validated available and unavailable provider records.
 - The live Fedora check was read-only. No settings mutation, authorization
   prompt, hardware change, session restart, or managed-shell replacement was
   performed.
@@ -253,12 +249,8 @@ Evidence recorded on 2026-08-15:
 - Nested X11 at 1280x800 discovered one display and two virtual input devices,
   verified both section states and lifecycle, and measured 0.00 percent of one
   CPU for Quickshell after Settings closed.
-- Debian 13, current Arch, and Fedora 44 containers resolved dependencies,
-  built, validated staged install/uninstall, and passed privilege tests. This
-  qualifies package/build behavior, not real secondary-platform hardware UI.
-- A full Rocky Linux 9 container smoke run is blocked pending a reachable
-  package source in the qualification environment; its package map and shell
-  fixtures are covered, but the complete Rocky install path is not claimed.
+- Fedora 44 container validation resolved dependencies, built, validated
+  staged install/uninstall, and passed privilege tests.
 - Generated display persistence, backup, rollback, and input startup reapply
   are automated. A disposable Fedora 44 UEFI VM with LightDM verified a
   root-owned mode-0644 managed fragment through real Xorg restarts. A

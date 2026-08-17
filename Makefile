@@ -16,6 +16,7 @@ SYSTEMDUSERDIR ?= ${PREFIX}/lib/systemd/user
 CAPITAINE_DARK_THEME = Capitaine-Cursors
 CAPITAINE_LIGHT_THEME = Capitaine-Cursors-White
 CAPITAINE_LICENSE_DIR = ${DATADIR}/licenses/dwm-titus/capitaine-cursors
+run_managed_test = if [ -n "$${DWM_TEST_WORKSPACE:-}" ] && [ -n "$${DWM_TEST_RUNNER_TOKEN:-}" ] && [ "$${TMPDIR:-}" = "$${DWM_TEST_WORKSPACE}" ] && [ -f "$${DWM_TEST_WORKSPACE}/.runner" ] && [ ! -L "$${DWM_TEST_WORKSPACE}/.runner" ] && [ "$$(cat "$${DWM_TEST_WORKSPACE}/.runner" 2>/dev/null)" = "$${DWM_TEST_RUNNER_TOKEN}" ]; then $(1); else scripts/run-tests $(1); fi
 
 SRC = drw.c dwm.c util.c tomlparser.c
 OBJ = ${SRC:.c=.o}
@@ -37,6 +38,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-quickshell-controlcenter \
 	scripts/dwm-quickshell-network \
 	scripts/dwm-quickshell-state \
+	scripts/dwm-quickshell-version-check \
 	scripts/dwm-status \
 	scripts/dwm-system-health \
 	scripts/dwm-polkit \
@@ -226,7 +228,7 @@ install-user:
 	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
 	@echo "==> Migrating legacy graphical-session startup..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/migrate-graphical-session.sh
-	@echo "==> Installing font aliases for cross-distro naming..."
+	@echo "==> Installing Meslo font aliases..."
 	mkdir -p ${CFG_DIR}/fontconfig/conf.d
 	if [ ! -f ${CFG_DIR}/fontconfig/conf.d/50-meslolgs-nerd-font-aliases.conf ]; then \
 		{ \
@@ -304,10 +306,10 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/install-herdr scripts/quickshell-qmllint scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/install-herdr scripts/quickshell-qmllint scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-provider scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -413,6 +415,9 @@ check-kickstart:
 check-fedora-iso-builder:
 	tests/test-fedora-iso-builder.sh
 
+check-fedora-platform:
+	@$(call run_managed_test,tests/test-fedora-platform.sh)
+
 check-install: all
 	@set -eu; \
 	stage="$$(mktemp -d)"; \
@@ -478,7 +483,10 @@ check-install-preservation:
 	tests/test-install-preservation.sh
 
 check-container-smoke:
-	tests/test-container-smoke.sh
+	@$(call run_managed_test,tests/test-container-smoke.sh)
+
+check-test-runner:
+	@$(call run_managed_test,tests/test-run-tests.sh)
 
 release-check: all
 	@set -eu; \
@@ -511,6 +519,7 @@ check:
 	$(MAKE) check-shell
 	$(MAKE) check-format
 	$(MAKE) check-build-config
+	$(MAKE) check-fedora-platform
 	$(MAKE) check-dev-sync-install
 	$(MAKE) check-default-apps
 	$(MAKE) check-diagnostics
@@ -537,13 +546,14 @@ check:
 	$(MAKE) check-install
 	$(MAKE) check-install-manifest
 	$(MAKE) check-install-preservation
+	$(MAKE) check-test-runner
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: all check check-build-config check-build-deps check-default-apps check-dev-sync-install \
-	check-container-smoke \
-	check-display-profile check-display-setup check-fedora-iso-builder check-format check-install \
+.PHONY: clean all check check-build-config check-build-deps check-default-apps check-dev-sync-install \
+	check-container-smoke check-test-runner \
+	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-platform check-format check-install \
 	check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health check-settings \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal clean install install-system install-user \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
 	install-cursors native release release-check uninstall

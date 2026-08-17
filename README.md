@@ -17,9 +17,8 @@ guided installation, and powerful customization. It is designed for people who
 want a responsive keyboard-first workflow without having to assemble every
 part themselves.
 
-Fedora is the primary desktop image. The existing-system installer also
-supports the core experience on Debian-, Arch-, Fedora-, and RHEL-family
-distributions.
+Fedora is the supported platform. Use either the Fedora desktop image or the
+existing-system installer on Fedora Linux.
 
 ## What You Get
 
@@ -29,7 +28,7 @@ distributions.
 | **Everyday essentials** | A polished panel, application launcher, system tray, Control Center, Settings, notifications, screenshots, audio, brightness, and power controls. |
 | **Easy discovery** | An interactive keybind viewer, guided display setup, built-in diagnostics, and clear unsupported-feature reporting. |
 | **Personal configuration** | Live-reloading hotkeys, themes, and window rules, with local configuration preserved across upgrades. |
-| **Two installation paths** | A ready-to-install Fedora image or an installer for an existing supported Linux system. |
+| **Two installation paths** | A ready-to-install Fedora image or an installer for an existing Fedora system. |
 
 > dwm-titus is an X11 desktop. A Wayland-native session is not currently part
 > of the project scope.
@@ -41,7 +40,7 @@ Choose the path that matches your system:
 | Installation | Best for | What it does |
 | --- | --- | --- |
 | [Fedora ISO](#fedora-iso) | A fresh, dedicated installation | Installs the complete Fedora-first desktop from bootable media. |
-| [Existing system](#existing-system) | A supported Linux installation you already use | Installs dependencies, the desktop session, and the selected feature set while preserving local configuration. |
+| [Existing system](#existing-system) | A Fedora installation you already use | Installs dependencies, the desktop session, and the selected feature set while preserving local configuration. |
 
 For complete requirements and installation details, see the
 [Installation Guide](https://dwm.christitus.com/install.html).
@@ -71,8 +70,9 @@ cd dwm-titus
 ```
 
 The dry run shows the dependency and installation plan before anything changes.
-The installer detects your distribution family, preserves existing personal
-configuration, and installs the managed desktop components.
+The installer requires Fedora, preserves existing personal configuration, and
+installs the managed desktop components. It rejects other distributions before
+making changes.
 
 | Profile | Includes |
 | --- | --- |
@@ -177,10 +177,11 @@ Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the
 development workflow and validation requirements, and report security issues
 using [SECURITY.md](SECURITY.md).
 
-The main repository check is:
+The main repository check uses a managed workspace under `$HOME/tmp` and
+removes it when the run finishes:
 
 ```bash
-make check
+scripts/run-tests
 ```
 
 Project requirements and active work are tracked in [SPEC.md](SPEC.md),

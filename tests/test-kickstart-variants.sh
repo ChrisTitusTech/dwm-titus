@@ -58,49 +58,27 @@ required_packages=(
 )
 
 mapfile -t mapped_fedora_packages < <(
-	DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel full | awk 'NF' | sort -u
+	ARCH=x86_64 dwm_packages fedora full | awk 'NF' | sort -u
 )
 
-for family in arch debian rhel; do
-	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
-		dwm_packages "$family" runtime-required | grep -Fx xclip >/dev/null
-	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
-		dwm_packages "$family" runtime-required | grep -Fx xdotool >/dev/null
-	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
-		dwm_packages "$family" recommended | grep -Fx maim >/dev/null
-done
+dwm_packages fedora runtime-required | grep -Fx xclip >/dev/null
+dwm_packages fedora runtime-required | grep -Fx xdotool >/dev/null
+dwm_packages fedora recommended | grep -Fx maim >/dev/null
 
-if DISTRO_ID=rocky dwm_packages rhel runtime-required | grep -Fx maim >/dev/null; then
-	printf 'Optional screenshot package leaked into required RHEL packages.\n' >&2
+if dwm_packages fedora runtime-required | grep -Fx maim >/dev/null; then
+	printf 'Optional screenshot package leaked into required Fedora packages.\n' >&2
 	exit 1
 fi
-DISTRO_ID=rocky dwm_packages rhel screenshot-optional | grep -Fx maim >/dev/null
-DISTRO_ID=rocky dwm_packages rhel x11 | grep -Fx setxkbmap >/dev/null
-
-DISTRO_ID=fedora dwm_packages rhel recommended | grep -Fx playerctl >/dev/null
-if DISTRO_ID=rocky dwm_packages rhel recommended | grep -Fx playerctl >/dev/null; then
-	printf 'EPEL-only playerctl leaked into required RHEL desktop packages.\n' >&2
-	exit 1
-fi
-DISTRO_ID=rocky dwm_packages rhel optional | grep -Fx playerctl >/dev/null
-if DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel full | grep -Fx nwg-look >/dev/null; then
+dwm_packages fedora screenshot-optional | grep -Fx maim >/dev/null
+dwm_packages fedora x11 | grep -Fx setxkbmap >/dev/null
+dwm_packages fedora recommended | grep -Fx playerctl >/dev/null
+dwm_packages fedora desktop | grep -Fx quickshell >/dev/null
+if ARCH=x86_64 dwm_packages fedora full | grep -Fx nwg-look >/dev/null; then
 	printf 'Unavailable Fedora package leaked into the image package set: nwg-look\n' >&2
 	exit 1
 fi
-
-for mapping in arch:gvfs-smb rhel:gvfs-smb debian:gvfs-backends; do
-	family=${mapping%%:*}
-	package=${mapping#*:}
-	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
-		dwm_packages "$family" full | grep -Fx "$package" >/dev/null
-done
-
-for mapping in arch:gnome-keyring rhel:gnome-keyring-pam debian:libpam-gnome-keyring; do
-	family=${mapping%%:*}
-	package=${mapping#*:}
-	DISTRO_ID=$([[ $family == rhel ]] && printf fedora || printf '%s' "$family") \
-		dwm_packages "$family" full | grep -Fx "$package" >/dev/null
-done
+dwm_packages fedora full | grep -Fx gvfs-smb >/dev/null
+dwm_packages fedora full | grep -Fx gnome-keyring-pam >/dev/null
 
 for ks in "$standard_ks" "$nvidia_ks"; do
 	if grep -Fxq nwg-look "$ks"; then
@@ -158,18 +136,14 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 done
 
 for package in steam gamescope gamemode.x86_64 gamemode.i686 mangohud.x86_64 mangohud.i686; do
-	DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel full | grep -Fx "$package" >/dev/null
-	DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel gaming | grep -Fx "$package" >/dev/null
-	if DISTRO_ID=fedora ARCH=x86_64 dwm_packages rhel optional | grep -Fx "$package" >/dev/null; then
-		printf 'Fedora gaming package leaked into the generic optional profile: %s\n' "$package" >&2
+	ARCH=x86_64 dwm_packages fedora full | grep -Fx "$package" >/dev/null
+	ARCH=x86_64 dwm_packages fedora gaming | grep -Fx "$package" >/dev/null
+	if ARCH=x86_64 dwm_packages fedora optional | grep -Fx "$package" >/dev/null; then
+		printf 'Fedora gaming package leaked into the optional profile: %s\n' "$package" >&2
 		exit 1
 	fi
-	if DISTRO_ID=fedora ARCH=aarch64 dwm_packages rhel full | grep -Fx "$package" >/dev/null; then
+	if ARCH=aarch64 dwm_packages fedora full | grep -Fx "$package" >/dev/null; then
 		printf 'x86-only Fedora gaming package leaked into aarch64 mapping: %s\n' "$package" >&2
-		exit 1
-	fi
-	if DISTRO_ID=rocky dwm_packages rhel full | grep -Fx "$package" >/dev/null; then
-		printf 'Fedora gaming package leaked into generic RHEL mapping: %s\n' "$package" >&2
 		exit 1
 	fi
 done

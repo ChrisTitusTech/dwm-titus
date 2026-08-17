@@ -7,20 +7,26 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/bin" "$work/home/.config/dwm-titus" "$work/home/.config/quickshell"
-printf 'ID=debian\nID_LIKE=debian\nPRETTY_NAME="Test Linux"\n' >"$work/os-release"
+printf 'ID=fedora\nPRETTY_NAME="Fedora Test"\n' >"$work/os-release"
 : >"$work/home/.config/dwm-titus/hotkeys.toml"
 : >"$work/home/.config/dwm-titus/themes.toml"
 : >"$work/home/.config/dwm-titus/window-rules.toml"
 : >"$work/home/.config/quickshell/shell.qml"
 
-cat >"$work/bin/dpkg" <<'SCRIPT'
+cat >"$work/bin/dnf" <<'SCRIPT'
 #!/bin/sh
-printf 'package is unpacked but not configured\n'
+printf 'package consistency problem\n'
+exit 1
 SCRIPT
 
 cat >"$work/bin/xclip" <<'SCRIPT'
 #!/bin/sh
 cat >"${DWM_HEALTH_XCLIP_OUTPUT:?}"
+SCRIPT
+
+cat >"$work/bin/quickshell" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' 'quickshell pre-release, revision: dacfa9de829ac7cb173825f593236bf2c21f637e'
 SCRIPT
 
 cat >"$work/bin/systemctl" <<'SCRIPT'
@@ -31,7 +37,7 @@ case " $* " in
 *) exit 1 ;;
 esac
 SCRIPT
-chmod +x "$work/bin/dpkg" "$work/bin/systemctl" "$work/bin/xclip"
+chmod +x "$work/bin/dnf" "$work/bin/quickshell" "$work/bin/systemctl" "$work/bin/xclip"
 
 DWM_HEALTH_XCLIP_OUTPUT="$work/clipboard.txt" \
 	PATH="$work/bin:/usr/bin:/bin" \
@@ -76,6 +82,7 @@ grep -Fq $'check\tresources\t' "$work/user.tsv"
 grep -Fq $'check\tstorage\t' "$work/user.tsv"
 grep -Fq $'check\tnetwork\t' "$work/user.tsv"
 grep -Fq $'check\tdependencies\twarn\tpackage-database' "$work/user.tsv"
+grep -Fq $'check\tdesktop\tok\tquickshell-version\tQuickshell\tAvailable' "$work/user.tsv"
 grep -Fq $'check\tservices\twarn\tuser-failed-user-broken-service\tuser-broken.service (user)' "$work/user.tsv"
 grep -Fq $'manage-user-service|user-broken.service\tService actions\tuser' "$work/user.tsv"
 grep -Fq $'meta\toverview\tok\tscan-user-complete' "$work/user.tsv"

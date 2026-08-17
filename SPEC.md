@@ -7,11 +7,9 @@ maintained fork of suckless dwm with runtime-configurable hotkeys, themes, and
 window rules, a managed Quickshell shell and Settings layer, and supporting
 desktop services and helpers.
 
-The primary product is a cohesive desktop installed from the official Fedora
-Server Network Install ISO. A supported existing-system installer continues to
-provide the core desktop on Debian-family, Arch-family, Fedora, and generic
-RHEL-family systems without requiring users to translate package names or
-repair distribution-specific paths manually.
+The product is a cohesive Fedora desktop installed from the official Fedora
+Server Network Install ISO or onto an existing Fedora installation. Other
+distributions are outside the supported product and validation contract.
 
 ## 2. Goals
 
@@ -20,15 +18,13 @@ repair distribution-specific paths manually.
 - Provide one cohesive Settings experience for common display, input,
   connectivity, audio, power, appearance, default-application, update, and
   system-information workflows.
-- Build and run the core dwm-titus desktop on supported Debian, Arch, and RHEL
-  distribution families.
+- Build and run the complete dwm-titus desktop on supported Fedora releases.
 - Provide safe, idempotent dependency installation and system integration.
 - Preserve the speed, simplicity, and direct configuration model of dwm.
-- Provide consistent defaults and core behavior across distributions while
-  allowing Fedora-first Settings providers to degrade cleanly elsewhere.
+- Provide consistent defaults and complete Settings behavior on Fedora.
 - Support display-manager login and `startx`.
-- Support common x86_64 and ARM Linux systems where the required X11 libraries
-  are available.
+- Support Fedora x86_64. Fedora aarch64 remains future scope until its installer
+  and desktop runtime complete the release validation contract.
 - Keep user configuration under standard XDG paths and preserve it on upgrade.
 
 ## 3. Non-Goals
@@ -57,31 +53,14 @@ The primary release target is the Fedora desktop image:
 | Variants | Standard and explicitly selected NVIDIA image |
 | Initial release architecture | x86_64 |
 
-The existing-system installer remains a supported secondary path for these
-families:
+Fedora aarch64 is not currently a supported release target. Architecture-aware
+package filtering may remain in shared helpers, but it does not constitute an
+aarch64 support claim without native installer and desktop runtime evidence.
 
-| Family | Package interface | Representative systems |
-| --- | --- | --- |
-| Debian | `apt` / `dpkg` | Debian, Ubuntu, Mint, Pop!_OS |
-| Arch | `pacman` | Arch Linux, EndeavourOS, Manjaro, Arch Linux ARM |
-| RHEL | `dnf` / RPM | RHEL, Rocky Linux, AlmaLinux, Fedora |
-
-A compatible derivative is supported for the core desktop when it:
-
-- Provides the family's standard package interface.
-- Provides X11 and the required development libraries.
-- Uses conventional FHS and XDG paths.
-- Has not reached end of life.
-
-The installer must report the detected distribution ID and family. Unknown
-derivatives may continue through a confirmed compatible-family path, but must
-not be silently misidentified.
-
-Secondary-platform support does not imply immediate parity with every Fedora
-Settings provider. Unsupported capabilities must be hidden or reported clearly
-without breaking the window manager, shell, installer, or other Settings
-sections. Full parity may be claimed only after the provider and runtime checks
-are validated on that platform.
+The existing-system installer supports Fedora and uses `dnf`/RPM. It must
+report the detected distribution and reject every non-Fedora system before
+package installation or system changes. Fedora derivatives, generic RHEL
+systems, and other Linux distributions are not implied to be supported.
 
 ## 5. Functional Requirements
 
@@ -138,7 +117,10 @@ managed shell must create one `PanelWindow` for every active screen so each
 monitor has a bar. The per-screen Quickshell `Variants` design must share its
 state providers and be explicitly profiled to show that it remains near idle.
 
-The managed shell requires Quickshell 0.3.0 or newer. Anchored control popups
+The managed shell requires Quickshell 0.3.0 or Fedora 44's compatible
+`0.2.1^git20260209.dacfa9d` snapshot. That Fedora snapshot contains the
+`PopupWindow.grabFocus` API used by the shell; an unpatched upstream 0.2.1 is
+not sufficient. Anchored control popups
 must close on Escape and on a click outside their visible card under X11.
 Visible shell surfaces must be opaque and follow the active theme selected in
 the user `themes.toml` file.
@@ -164,10 +146,8 @@ the mouse cursor and transfer region captures as raw PNG data to an
 daemon or a GUI-toolkit clipboard owner. Saved captures use JPEG, and a full
 monitor capture targets the monitor under the pointer. The recommended desktop
 profile must install `maim` when it is available and keep the core install
-usable when it is not. On non-Fedora RHEL-family systems, the installer must
-explain how to enable the screenshot hotkeys through EPEL where a compatible
-package exists. `xclip` remains a required runtime package because other shell
-features also use the X11 clipboard.
+usable when it is not. `xclip` remains a required runtime package because
+other shell features also use the X11 clipboard.
 
 ### 5.4 Quickshell Launcher
 
@@ -199,8 +179,9 @@ but X11/EWMH behavior remains the compatibility boundary for this project.
 
 The supported installation flow must:
 
-1. Read `/etc/os-release` and select a Debian, Arch, or RHEL adapter.
-2. Resolve family-specific package names from one maintained dependency map.
+1. Read `/etc/os-release`, require Fedora, and reject unsupported systems
+   before making changes.
+2. Resolve Fedora package names from one maintained dependency map.
 3. Show required and optional packages before installing them.
 4. Install only missing required packages unless the user requests a broader
    desktop setup.
@@ -221,9 +202,17 @@ The supported installation flow must:
     configuration through an isolated managed fragment and backups. When no
     X11 session is available, print the deferred setup command instead.
 
-The installer must not require an AUR helper. On RHEL-family systems it may
-explain when an optional component requires EPEL or another repository, but it
-must not enable third-party repositories without user confirmation.
+The existing-system installer may enable only RPM Fusion nonfree and the
+`christitustech/copr-fedora` COPR, and only for the explicitly requested gaming
+profile. Interactive runs require a direct confirmation; non-interactive runs
+require the explicit `--enable-fedora-gaming-repos` approval flag. It must not
+enable any other third-party repository.
+
+The Fedora Kickstart image profiles separately predeclare the four image
+repository groups required by that product: RPM Fusion, Brave Browser, MWT
+Packages, and `christitustech/copr-fedora`. Their inclusion is validated as
+part of the reviewed ISO profile rather than inferred from existing-system
+installer approval.
 
 A source-checkout update of an existing live installation must use the complete
 supported install path. Updating only the `dwm` executable is not a supported
@@ -291,29 +280,17 @@ Quickshell-aware language server:
   editor language server for this repository because it understands Quickshell
   imports, singletons, types, snippets, and workspace QML components.
 
-The Qt tools are installed from distribution packages:
-
-| Family | Package examples |
-| --- | --- |
-| Debian | `qt6-declarative-dev-tools` |
-| Arch | `qt6-declarative` |
-| RHEL/Fedora | `qt6-qtdeclarative-devel` |
-
-Some distributions install Qt helper binaries outside the default `PATH`, such
-as `/usr/lib/qt6/bin`. Development environments should either add that
-directory to `PATH` or create user/system symlinks for `qmllint` and `qmlls`.
-On Fedora/RHEL-family systems the executable may also be named `qmllint-qt6`.
+Fedora provides the Qt tools through `qt6-qtdeclarative-devel`. Helper binaries
+may live outside the default `PATH`, such as `/usr/lib64/qt6/bin` or
+`/usr/lib/qt6/bin`, and `qmllint` may be named `qmllint-qt6`.
 
 `qmllint` must be run with explicit Qt and Quickshell QML import roots. Without
 those roots it can report false import failures for modules such as
 `Quickshell`, even when the shell runs correctly. Typical roots are:
 
-| Family | Common QML import roots |
-| --- | --- |
-| Debian | `/usr/lib/*/qt6/qml`, `/usr/lib/qt6/qml` |
-| Arch | `/usr/lib/qt6/qml` |
-| RHEL/Fedora | `/usr/lib64/qt6/qml`, `/usr/lib/qt6/qml` |
-| Nix | `${qtdeclarative}/lib/qt-6/qml`, `${quickshell}/lib/qt-6/qml` |
+| Fedora QML import roots |
+| --- |
+| `/usr/lib64/qt6/qml`, `/usr/lib/qt6/qml` |
 
 Language-server environments should expose the same roots:
 
@@ -322,66 +299,37 @@ export QMLLS_BUILD_DIRS="/usr/lib64/qt6/qml:/usr/lib/qt6/qml"
 export QML_IMPORT_PATH="$PWD/config/quickshell"
 ```
 
-The repository uses `import qs.core` for local shared QML helpers under
-`config/quickshell/core/`. Quickshell resolves that module at runtime from the
-configuration root, but stock `qmllint` may require a `qmldir` module map. Use
-a temporary lint-only import tree rather than changing the runtime layout:
+The repository wrapper resolves `qmllint-qt6`, `qmllint`, and the Fedora Qt
+binary paths, discovers the explicit Qt import roots, and creates the temporary
+`qmldir` module map needed for local `qs.*` imports:
 
 ```sh
+scripts/quickshell-qmllint --root config/quickshell
+```
+
+For Fedora x86_64, install the pinned `qml-language-server` v1.7.0 Linux AMD64
+asset only after verifying the repository-pinned SHA-256 checksum:
+
+```sh
+set -eu
+asset=qml-language-server-v1.7.0-linux-amd64.zip
+curl -fL --output "$asset" \
+  "https://github.com/cushycush/qml-language-server/releases/download/v1.7.0/$asset"
+printf '%s  %s\n' \
+  ad6e88b0fffbe5ee03fc9f6502c0103aa047c02c4942c547715283443bf4e946 \
+  "$asset" | sha256sum --check --strict
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/qs/core"
-ln -s "$PWD/config/quickshell/core/Commands.qml" "$tmp/qs/core/Commands.qml"
-ln -s "$PWD/config/quickshell/core/Icons.qml" "$tmp/qs/core/Icons.qml"
-ln -s "$PWD/config/quickshell/core/Theme.qml" "$tmp/qs/core/Theme.qml"
-ln -s "$PWD/config/quickshell/core/ShellButton.qml" "$tmp/qs/core/ShellButton.qml"
-ln -s "$PWD/config/quickshell/core/ShellSurface.qml" "$tmp/qs/core/ShellSurface.qml"
-ln -s "$PWD/config/quickshell/core/SectionLabel.qml" "$tmp/qs/core/SectionLabel.qml"
-cat >"$tmp/qs/core/qmldir" <<'EOF'
-module qs.core
-singleton Commands 1.0 Commands.qml
-singleton Icons 1.0 Icons.qml
-singleton Theme 1.0 Theme.qml
-ShellButton 1.0 ShellButton.qml
-ShellSurface 1.0 ShellSurface.qml
-SectionLabel 1.0 SectionLabel.qml
-EOF
-
-QMLLS_BUILD_DIRS="/usr/lib64/qt6/qml:/usr/lib/qt6/qml" \
-QML_IMPORT_PATH="$PWD/config/quickshell" \
-qmllint-qt6 \
-  -I /usr/lib64/qt6/qml \
-  -I /usr/lib/qt6/qml \
-  -I "$tmp" \
-  -I config/quickshell \
-  config/quickshell/controls/ControlsModel.qml
+unzip -q "$asset" -d "$tmp"
+printf '%s  %s\n' \
+  928bd00ddb14f00a66f18473c0a492ae7109ee45c02db8bf3f55966229bb863a \
+  "$tmp/qml-language-server-v1.7.0-linux-amd64" | sha256sum --check --strict
+install -Dm0755 "$tmp/qml-language-server-v1.7.0-linux-amd64" \
+  "${HOME}/.local/bin/qml-language-server"
 ```
 
-When using Nix, the same rule applies: include both the Qt declarative QML root
-and the Quickshell QML root in the lint command or `QMLLS_BUILD_DIRS`. This
-matches the known workaround for `qmllint`/`qmlls` not discovering Quickshell
-type declarations automatically.
-
-Install the Quickshell-aware server with one of these supported methods:
-
-```sh
-# Arch-family systems with a working AUR helper
-yay -S qml-language-server-bin
-
-# Nix systems
-nix run github:cushycush/qml-language-server
-
-# Source build on any system with Go 1.26.1 or newer
-git clone https://github.com/cushycush/qml-language-server.git
-cd qml-language-server
-make build
-make install
-```
-
-For non-AUR systems that do not use Nix, install the matching prebuilt release
-archive from `https://github.com/cushycush/qml-language-server/releases` and
-place the binary in a developer `PATH` directory such as
-`${HOME}/.local/bin/qml-language-server` or `/usr/local/bin/qml-language-server`.
+Do not substitute a newer release or a different platform asset without
+updating and independently verifying the checksum committed here.
 
 Editor configuration must prefer `qml-language-server` for this repository's
 QML files. Zed users should install the QML extension for language registration,
@@ -400,21 +348,20 @@ and exercising the relevant IPC targets.
 
 ### 5.8 Dependency Mapping
 
-Package names differ by release and derivative. The maintained dependency map
-must cover the equivalent of these capabilities:
+The maintained Fedora dependency map covers these capabilities:
 
-| Capability | Debian family examples | Arch family examples | RHEL family examples |
-| --- | --- | --- | --- |
-| Compiler and make | `build-essential`, `pkg-config` | `base-devel`, `pkgconf` | Development Tools, `pkgconf-pkg-config` |
-| Xlib development | `libx11-dev` | `libx11` | `libX11-devel` |
-| Xft and fonts | `libxft-dev`, `libfontconfig-dev`, `libfreetype-dev` | `libxft`, `fontconfig`, `freetype2` | `libXft-devel`, `fontconfig-devel`, `freetype-devel` |
-| Xinerama | `libxinerama-dev` | `libxinerama` | `libXinerama-devel` |
-| Xrender | `libxrender-dev` | `libxrender` | `libXrender-devel` |
-| Imlib2 | `libimlib2-dev` | `imlib2` | `imlib2-devel` |
-| XCB | `libx11-xcb-dev`, `libxcb1-dev`, `libxcb-res0-dev` | `libxcb`, `xcb-util` | `libxcb-devel`, `xcb-util-devel` |
+| Capability | Fedora package examples |
+| --- | --- |
+| Compiler and make | `gcc`, `make`, `pkgconf-pkg-config` |
+| Xlib development | `libX11-devel` |
+| Xft and fonts | `libXft-devel`, `fontconfig-devel`, `freetype-devel` |
+| Xinerama | `libXinerama-devel` |
+| Xrender | `libXrender-devel` |
+| Imlib2 | `imlib2-devel` |
+| XCB | `libxcb-devel`, `xcb-util-devel` |
 
-These are capability mappings, not immutable package lists. Package availability
-must be validated against each tested release.
+These are capability mappings, not immutable package lists. Availability must
+be validated against the supported Fedora release.
 
 Runtime dependencies are classified as:
 
@@ -629,8 +576,12 @@ configuration and unrelated application configuration by default.
 
 ## 9. Validation and Acceptance Criteria
 
-A core desktop release is cross-distro ready only when all of the following
-pass. A Fedora desktop image additionally requires the image checks below.
+A release is Fedora-ready only when all of the following pass. A Fedora desktop
+image additionally requires the image checks below.
+
+Automated validation must run through `scripts/run-tests`, which creates a
+unique workspace under `${DWM_TEST_TMP_ROOT:-$HOME/tmp}` and removes that exact
+workspace on success, failure, or interruption.
 
 ### 9.1 Static Validation
 
@@ -639,11 +590,12 @@ pass. A Fedora desktop image additionally requires the image checks below.
 - ShellCheck and shfmt checks, with documented justified exceptions.
 - No generated build artifacts unintentionally included in the change.
 
-### 9.2 Distribution Validation
+### 9.2 Fedora Validation
 
-On at least one current representative of each family:
+On the supported Fedora release:
 
-- Distro detection selects the correct adapter.
+- Distribution detection accepts Fedora and rejects non-Fedora systems before
+  mutation.
 - Required package mapping resolves to installable packages.
 - A clean checkout builds successfully.
 - `make install DESTDIR=<staging-dir>` installs the expected system files
@@ -704,18 +656,14 @@ provide the remaining settings mutation surface in Section 5.10; those
 outcomes are sequenced in `ROADMAP.md`, and Phase 3 connectivity and audio work
 is defined in `TASKS.md`.
 
-The installer contains Debian-, Arch-, and Fedora/RHEL-family package mappings.
+The installer contains a Fedora-only package map and rejects other systems.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and
 avoids writing user configuration during package builds. Fedora 44 Server
 Network Install is the current documented image base, while real image and
 hardware validation must continue to be recorded per release.
 
-Arch ARM handling is part of the primary installer; some manual package
-examples remain Arch-specific. Debian package resolution and clean compilation
-have been validated in a Debian 13 container, but a real Debian X11 session has
-not been tested. Complete runtime validation on Debian and non-Fedora RHEL
-derivatives remains required before describing those environments as
-universally verified.
+Debian, Arch, generic RHEL, and other distributions are intentionally outside
+the supported and tested product contract.
 
 ## 11. Definition of Done
 
@@ -724,8 +672,7 @@ A roadmap feature is complete when:
 - Its behavior meets the active roadmap phase and task acceptance criteria.
 - Fedora behavior is implemented and runtime validated, or the change is
   explicitly scoped as preparatory work.
-- Secondary-platform behavior is implemented or exposes a tested clean
-  unsupported state without regressing the core desktop.
+- Non-Fedora installation attempts fail clearly before making changes.
 - Relevant automated and manual validation is recorded.
 - On a development machine running dwm-titus, the checkout has been
   synchronized to the local live installation with
