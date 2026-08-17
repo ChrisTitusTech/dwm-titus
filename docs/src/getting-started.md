@@ -1,5 +1,8 @@
 # Getting Started
 
+> dwm-titus is a Fedora-only X11 desktop. These instructions assume a supported
+> Fedora installation completed through the Fedora image or `install.sh`.
+
 After installing, the first thing to know: **Super** = the Windows key.
 
 Press <kbd>Super</kbd> + <kbd>/</kbd> at any time to open the interactive keybind viewer.

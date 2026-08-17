@@ -137,7 +137,7 @@ action.
 | Updates, users, printers, locale/timezone, software sources | No unified provider; some future actions may open trusted Fedora tools | Delegated or unsupported | Phase 6 must choose a stable service/tool per operation and keep high-risk administration out of QML. |
 | Partitions, arbitrary services, firewall policy | Explicitly outside the current helper allowlist | Unsupported | Delegate to trusted administration tools unless a later specification defines a narrow contract. |
 
-## Platform Provider Matrix
+## Fedora Provider Matrix
 
 Package names remain owned by `scripts/dwm-packages.sh`. This document names
 package profiles and runtime capabilities so future Settings code does not

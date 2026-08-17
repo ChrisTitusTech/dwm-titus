@@ -43,11 +43,10 @@ done
 make_failing_stub "$fedora_bin/pkexec"
 make_failing_stub "$fedora_bin/sudo"
 
-mkdir -p "$work/fedora-config/dwm-titus" "$work/unsupported-config/dwm-titus"
+mkdir -p "$work/fedora-config/dwm-titus"
 cp "$repo/config/themes.toml" "$work/fedora-config/dwm-titus/themes.toml"
-cp "$repo/config/themes.toml" "$work/unsupported-config/dwm-titus/themes.toml"
 
-printf 'ID=fedora\nID_LIKE="rhel"\nPRETTY_NAME="Fedora\tLinux 44"\n' \
+printf 'ID=fedora\nPRETTY_NAME="Fedora\tLinux 44"\n' \
 	>"$work/fedora-os-release"
 
 fedora_output=$(PATH="$fedora_bin" XDG_CONFIG_HOME="$work/fedora-config" \
@@ -73,22 +72,6 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	audio	pipewire-audio	Audio	available	user-session	pactl	PipeWire Pulse-compatible session controls are available'
 printf '%s\n' "$fedora_output" | grep -Eq \
 	'^capability	system	authorization	Administrative authorization	(available|restricted)	privileged	polkit	'
-
-cat >"$work/unsupported-os-release" <<'EOF'
-ID=example
-ID_LIKE="fedora rhel"
-PRETTY_NAME="Unsupported Linux"
-EOF
-
-unsupported_output=$(PATH="$base_bin" XDG_CONFIG_HOME="$work/unsupported-config" \
-	DWM_SETTINGS_OS_RELEASE="$work/unsupported-os-release" "$provider" discover)
-printf '%s\n' "$unsupported_output" | grep -Fqx 'platform	example	unknown	Unsupported Linux'
-printf '%s\n' "$unsupported_output" | grep -Fqx \
-	'capability	network	networkmanager	NetworkManager	unavailable	delegated	nmcli	Install NetworkManager to enable this section'
-printf '%s\n' "$unsupported_output" | grep -Fqx \
-	'capability	bluetooth	bluez	Bluetooth	unavailable	delegated	bluetoothctl	Install BlueZ tools to enable this section'
-printf '%s\n' "$unsupported_output" | grep -Fqx \
-	'capability	system	authorization	Administrative authorization	restricted	privileged	polkit	Read-only state remains available; install the trusted system helper for authorized actions'
 
 runtime_down_bin=$work/runtime-down-bin
 cp -a "$fedora_bin" "$runtime_down_bin"
@@ -193,11 +176,6 @@ fedora_qml=$(bash -c '. "$1"; dwm_packages fedora qml-development' sh \
 [ "$fedora_qml" = qt6-qtdeclarative-devel ]
 bash -c '. "$1"; dwm_packages fedora runtime-required' sh \
 	"$repo/scripts/dwm-packages.sh" | grep -Fx util-linux >/dev/null
-if bash -c '. "$1"; dwm_packages unsupported runtime-required' sh \
-	"$repo/scripts/dwm-packages.sh"; then
-	printf 'Unsupported package family unexpectedly resolved.\n' >&2
-	exit 1
-fi
 
 if grep -Eq '^[[:space:]]*(sudo|pkexec)([[:space:]]|$)' "$provider"; then
 	printf 'Settings discovery must not execute an elevation tool.\n' >&2

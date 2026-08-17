@@ -147,7 +147,7 @@ only while automatic locking is enabled or for the duration of an explicit
 manual lock, so DPMS display-off events remain independent from locking.
 External `loginctl lock-session` requests are forwarded to `dwm-lock` by an
 event-driven session listener. Until `power.conf` exists, dwm-titus leaves any
-user or distribution-managed locker untouched.
+user or Fedora-managed locker untouched.
 
 ### Modifier Syntax
 

@@ -6,6 +6,12 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Changed
+
+- Remove obsolete distribution-matrix Settings and package-family test
+  fixtures while retaining the Fedora-only boundary test that proves an
+  unsupported installer cannot perform package or system mutations.
+
 ## [0.6.1] - 2026-08-17
 
 ### Added
@@ -37,7 +43,7 @@ versions from `config.mk`.
 
 ### Fixed
 
-- Reject non-Fedora power-management mutation modes before any status scan or
+- Enforce the Fedora-only power-management boundary before any status scan or
   system change, and keep fixture overrides out of the privileged path.
 - Reject direct root `make install` calls without a target user before building
   or writing any system files.
@@ -71,11 +77,11 @@ versions from `config.mk`.
   IPC entry points, searchable keyboard/mouse navigation, and explicit
   provider availability and unsupported-state reporting.
 - A versioned `dwm-settings-provider` capability-discovery protocol with
-  Fedora-first detection, secondary-platform fallbacks, focused shell/QML/Xvfb
-  tests, and a centralized cross-family QML development package profile.
+  platform detection, focused shell/QML/Xvfb tests, and a centralized QML
+  development package profile.
 - Settings platform contracts for helper lifecycle, UI states, authorization,
   confirmation, rollback, packaging, and phase validation.
-- Cross-compiler, nested-X11, and Debian/Arch/RHEL container validation in CI.
+- Cross-compiler, nested-X11, and container validation in CI.
 - Repository-owned Quickshell QML lint automation.
 - Contributor, security, ownership, dependency-update, and active-task guidance.
 
@@ -104,7 +110,7 @@ versions from `config.mk`.
 
 ### Fixed
 
-- Remove the unavailable `nwg-look` package from Fedora/RHEL dependency and
+- Remove the unavailable `nwg-look` package from the Fedora dependency and
   Kickstart package sets so Fedora 44 Anaconda installations can resolve the
   complete desktop package transaction. The GTK settings action remains an
   optional delegated tool and is shown only when `nwg-look` is installed.

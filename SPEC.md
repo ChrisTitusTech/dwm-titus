@@ -2,7 +2,7 @@
 
 ## 1. Product Definition
 
-dwm-titus is a Fedora-first desktop environment for X11. It combines a small,
+dwm-titus is a Fedora-only desktop environment for X11. It combines a small,
 maintained fork of suckless dwm with runtime-configurable hotkeys, themes, and
 window rules, a managed Quickshell shell and Settings layer, and supporting
 desktop services and helpers.
@@ -39,10 +39,9 @@ distributions are outside the supported product and validation contract.
 - Turning the Settings frontend into a general-purpose root shell, service
   editor, firewall editor, or partition manager.
 - Bundling every optional desktop application.
-- Supporting end-of-life distributions whose repositories no longer provide
-  the required build dependencies.
+- Supporting Fedora releases after they reach end of life.
 
-## 4. Supported Platform Contract
+## 4. Fedora Support Contract
 
 The primary release target is the Fedora desktop image:
 
@@ -58,9 +57,10 @@ package filtering may remain in shared helpers, but it does not constitute an
 aarch64 support claim without native installer and desktop runtime evidence.
 
 The existing-system installer supports Fedora and uses `dnf`/RPM. It must
-report the detected distribution and reject every non-Fedora system before
-package installation or system changes. Fedora derivatives, generic RHEL
-systems, and other Linux distributions are not implied to be supported.
+report the detected distribution and accept only `ID=fedora` before package
+installation or system changes. Every other operating-system identity must be
+rejected. Fedora is the sole supported distribution; derivative distributions
+are not included by implication.
 
 ## 5. Functional Requirements
 
@@ -249,8 +249,7 @@ The build must:
 - Use a C99-capable compiler and `make`.
 - Honor standard environment overrides including `CC`, `CFLAGS`, `CPPFLAGS`,
   `LDFLAGS`, `PREFIX`, and `DESTDIR`.
-- Discover portable compiler and linker flags with `pkg-config` where
-  available.
+- Discover compiler and linker flags with `pkg-config` where available.
 - Avoid mandatory `/usr/X11R6`, `/usr/lib`, or `/usr/lib64` assumptions.
 - Produce a working `dwm` binary from a clean checkout.
 - Support staged, unprivileged installation through `DESTDIR`.
@@ -433,8 +432,9 @@ application. The application must use a hybrid integration model:
   scoped user-session changes.
 - Privileged or high-risk administration is performed only through allowlisted,
   installed helpers or delegated to trusted Fedora tools.
-- Fedora providers may be implemented first. Other platforms must expose a
-  clean unsupported state rather than failing the entire application.
+- Providers and delegated administration tools target Fedora. Missing Fedora
+  capabilities must expose a clean unavailable or unsupported state rather
+  than failing the entire application.
 
 The Settings platform must distinguish:
 
@@ -662,8 +662,7 @@ avoids writing user configuration during package builds. Fedora 44 Server
 Network Install is the current documented image base, while real image and
 hardware validation must continue to be recorded per release.
 
-Debian, Arch, generic RHEL, and other distributions are intentionally outside
-the supported and tested product contract.
+Fedora is the only supported and tested distribution.
 
 ## 11. Definition of Done
 
@@ -672,7 +671,8 @@ A roadmap feature is complete when:
 - Its behavior meets the active roadmap phase and task acceptance criteria.
 - Fedora behavior is implemented and runtime validated, or the change is
   explicitly scoped as preparatory work.
-- Non-Fedora installation attempts fail clearly before making changes.
+- Installation attempts without `ID=fedora` fail clearly before making
+  changes.
 - Relevant automated and manual validation is recorded.
 - On a development machine running dwm-titus, the checkout has been
   synchronized to the local live installation with

@@ -1,7 +1,8 @@
 # Contributing
 
 Thanks for helping improve dwm-titus. Changes should preserve the small X11
-window-manager core, existing user workflows, and the Fedora desktop target.
+window-manager core, existing user workflows, and the Fedora-only desktop
+target. Fedora Linux is the sole supported distribution.
 
 ## Before You Start
 
@@ -15,7 +16,8 @@ window-manager core, existing user workflows, and the Fedora desktop target.
 
 ## Development Setup
 
-Install the build dependencies for your distribution, then run:
+On the supported Fedora release, install the repository's Fedora build
+dependencies, then run:
 
 ```sh
 make clean
@@ -62,5 +64,5 @@ request instead of claiming universal validation.
 ## Pull Requests
 
 Use a focused branch and describe the problem, root cause, behavior change,
-validation, supported-platform coverage, and remaining risk. Screenshots are
-useful for visible UI changes, but do not replace runtime validation.
+validation, Fedora coverage, and remaining risk. Screenshots are useful for
+visible UI changes, but do not replace runtime validation.

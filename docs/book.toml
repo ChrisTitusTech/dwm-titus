@@ -2,7 +2,7 @@
 authors = ["Chris Titus"]
 language = "en"
 src = "src"
-title = "DWM for Everyone"
+title = "dwm-titus: Fedora X11 Desktop"
 
 [build]
 build-dir = "book"

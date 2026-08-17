@@ -1,6 +1,6 @@
 # Release Checklist
 
-Release artifacts are generated from the portable build configuration. Do not
+Release artifacts are generated from the release build configuration. Do not
 use `make native` for published binaries.
 
 1. Update `VERSION` in `config.mk` and move the applicable `CHANGELOG.md`

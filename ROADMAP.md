@@ -1,8 +1,8 @@
-# Fedora-First Desktop Environment Roadmap
+# Fedora-Only Desktop Environment Roadmap
 
 ## Mission
 
-dwm-titus is expanding from an opinionated dwm distribution into a cohesive
+dwm-titus is expanding from an opinionated dwm build into a cohesive
 X11 desktop environment. The product is a complete Fedora desktop installed
 from the official Fedora Server Network Install ISO or onto an existing Fedora
 installation.
@@ -14,10 +14,12 @@ when optional components fail.
 
 ## Delivery Model
 
-- Fedora is the only implementation and release-qualification target.
+- Fedora is the only supported distribution, implementation target, and
+  release-qualification target.
 - Fedora 44 Server Network Install is the current canonical image base.
 - Standard and NVIDIA image variants remain separate.
-- Non-Fedora installations are outside the supported product contract.
+- No other distribution is part of the product, installer, test, or release
+  contract.
 - Wayland-native support remains out of scope.
 - The Settings experience will be hybrid: common desktop controls belong in a
   cohesive Quickshell application, while high-risk administration is delegated
@@ -232,7 +234,7 @@ without turning Quickshell into an unrestricted administration console.
 
 ### Objective
 
-Deliver a repeatable Fedora-first desktop installation and upgrade experience.
+Deliver a repeatable Fedora-only desktop installation and upgrade experience.
 
 ### Outcomes
 
@@ -257,4 +259,5 @@ Deliver a repeatable Fedora-first desktop installation and upgrade experience.
 
 After the Fedora phases are stable, evaluate additional accessibility work,
 sharing and peripheral workflows, and whether a Wayland successor should be a
-separate project. Support for other distributions is not a current commitment.
+separate project. The distribution scope remains Fedora-only; expanding it is
+outside this roadmap.

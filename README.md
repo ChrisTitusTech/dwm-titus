@@ -1,7 +1,7 @@
 <div align="center">
   <img src="./dwm-titus.png" alt="dwm-titus logo" width="190" />
   <h1>dwm-titus</h1>
-  <p><strong>A fast, focused Linux desktop built for keyboard-driven work.</strong></p>
+  <p><strong>A fast, focused Fedora X11 desktop built for keyboard-driven work.</strong></p>
   <p>
     <a href="https://dwm.christitus.com">Documentation</a> |
     <a href="https://github.com/ChrisTitusTech/dwm-titus/releases/latest">Latest release</a> |
@@ -17,7 +17,9 @@ guided installation, and powerful customization. It is designed for people who
 want a responsive keyboard-first workflow without having to assemble every
 part themselves.
 
-Fedora is the supported platform. Use either the Fedora desktop image or the
+**dwm-titus is a Fedora-only distribution.** Fedora Linux is the sole supported
+platform for installation, runtime behavior, package resolution, testing, and
+release qualification. Use either the Fedora desktop image or the
 existing-system installer on Fedora Linux.
 
 ## What You Get
@@ -39,7 +41,7 @@ Choose the path that matches your system:
 
 | Installation | Best for | What it does |
 | --- | --- | --- |
-| [Fedora ISO](#fedora-iso) | A fresh, dedicated installation | Installs the complete Fedora-first desktop from bootable media. |
+| [Fedora ISO](#fedora-iso) | A fresh, dedicated installation | Installs the complete Fedora-only desktop from bootable media. |
 | [Existing system](#existing-system) | A Fedora installation you already use | Installs dependencies, the desktop session, and the selected feature set while preserving local configuration. |
 
 For complete requirements and installation details, see the
@@ -71,8 +73,9 @@ cd dwm-titus
 
 The dry run shows the dependency and installation plan before anything changes.
 The installer requires Fedora, preserves existing personal configuration, and
-installs the managed desktop components. It rejects other distributions before
-making changes.
+installs the managed desktop components. It accepts only Fedora's
+`/etc/os-release` identity and rejects every other operating-system identity
+before making changes.
 
 | Profile | Includes |
 | --- | --- |

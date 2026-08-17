@@ -2,13 +2,13 @@
 
 ## Purpose
 
-This repository is a Fedora-first X11 desktop environment built around a
+This repository is a Fedora-only X11 desktop environment built around a
 heavily patched fork of suckless dwm and a managed Quickshell shell. The
 product is a complete Fedora desktop installed from Fedora Server Network
-Install media or onto an existing Fedora installation. Other distributions
-are outside the supported product and validation contract.
+Install media or onto an existing Fedora installation. Fedora is the sole
+supported distribution.
 
-Read `SPEC.md` before making product, portability, installer, dependency, or
+Read `SPEC.md` before making product, platform, installer, dependency, or
 packaging changes. Treat `SPEC.md` as the source of truth for project scope and
 acceptance criteria.
 
@@ -23,13 +23,13 @@ acceptance criteria.
    explicit.
 6. Prefer focused changes that can be reviewed and tested independently.
 
-## Supported Platforms
+## Fedora Support Contract
 
-The supported platform is Fedora Linux. The current documented Fedora Server
+The sole supported platform is Fedora Linux. The current documented Fedora Server
 Network Install release is the image base, with separate standard and NVIDIA
-variants. The existing-system installer also supports Fedora. Other
-distributions must fail clearly instead of entering an untested package or
-installation path.
+variants. The existing-system installer also supports Fedora. Every other
+operating-system identity must fail clearly instead of entering an untested
+package or installation path.
 
 ## Repository Map
 
@@ -96,9 +96,9 @@ installation path.
 - Unsupported hardware capabilities must be hidden or explained without
   breaking the rest of Settings.
 
-## Portability Rules
+## Fedora Platform Rules
 
-- Detect Fedora through `/etc/os-release` and reject other distributions
+- Detect Fedora through `/etc/os-release` and reject every other identity
   before package installation or system changes.
 - Keep Fedora package capability names in the shared dependency map. Do not
   scatter package-name lists across multiple scripts.
@@ -232,7 +232,7 @@ hardware support.
 - Keep commits and patches narrowly scoped.
 - Update `SPEC.md` only when requirements intentionally change.
 - Update README and user-facing docs when commands, dependencies, defaults, or
-  supported platforms change.
+  supported Fedora versions and architectures change.
 - Do not perform destructive Git or filesystem operations without explicit
   authorization.
 - Never expose credentials, tokens, private keys, or secret file contents.

@@ -20,7 +20,6 @@ PRETTY_NAME="Fedora Linux 44"
 EOF
 cat >"$work/unsupported" <<'EOF'
 ID=example
-ID_LIKE="rhel"
 PRETTY_NAME="Unsupported Linux"
 EOF
 
@@ -28,6 +27,9 @@ fedora_family=$(DWM_TEST_MODE=1 DWM_OS_RELEASE="$work/fedora" bash -c \
 	'. "$1"; printf "%s" "$DISTRO_FAMILY"' sh "$repo/scripts/dwm-utils.sh")
 [[ $fedora_family == fedora ]]
 
+# This is a Fedora boundary check, not a compatibility test for another
+# distribution. Keep one generic fixture to prove unsupported systems fail
+# closed before package or system mutations.
 unsupported_family=$(DWM_TEST_MODE=1 DWM_OS_RELEASE="$work/unsupported" bash -c \
 	'. "$1"; printf "%s" "$DISTRO_FAMILY"' sh "$repo/scripts/dwm-utils.sh")
 [[ $unsupported_family == unknown ]]

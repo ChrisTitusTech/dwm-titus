@@ -7,7 +7,7 @@
 - [ ] Bug fix
 - [ ] Feature
 - [ ] Refactor
-- [ ] Installer or portability
+- [ ] Installer or Fedora packaging
 - [ ] Documentation
 - [ ] Security
 

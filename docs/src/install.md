@@ -1,6 +1,7 @@
-# Installation
+# Fedora Installation
 
-> Fedora Linux with Xorg is required. Other distributions are not supported.
+> **dwm-titus is Fedora-only.** Fedora Linux with Xorg is required for every
+> supported installation, package, test, and release path.
 
 ## Quick Install (Recommended)
 
@@ -64,9 +65,9 @@ session restart to verify the active runtime.
 ./install.sh
 ```
 
-The script verifies Fedora before handling dependency installation, font
-copying, display-manager integration, and config placement. Other
-distributions are rejected before changes are made.
+The script requires `ID=fedora` before handling dependency installation, font
+copying, display-manager integration, or config placement. Every other
+operating-system identity is rejected before changes are made.
 Existing user configuration and `.xinitrc` files are preserved. Upgrades remove
 the known legacy `dwm-graphical-session.service` and
 `wm-graphical-session.service` early-start configuration so XDG applications
@@ -122,7 +123,7 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
 - `recommended`: `core` plus the recommended desktop layer such as Quickshell,
   Herdr on top of Alacritty, Picom, Feh, Dex, fonts, theming, screenshot,
   audio, Bluetooth control and tray tools, and brightness tools. It also
-  installs portable GTK theme packages where available and installs Nordic
+  installs the available Fedora GTK theme packages and installs Nordic
   system-wide for the default Nord theme.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
   browsing, network tray utilities, portals, keyring login integration,
@@ -252,8 +253,8 @@ The provided `.xinitrc` disables screen blanking, starts the configured Quickshe
 
 ## Minimal Session Profile
 
-The minimal supported profile is useful for lean systems, recovery sessions,
-and portability testing. It keeps only:
+The minimal supported profile is useful for lean Fedora systems, recovery
+sessions, and minimal Fedora qualification. It keeps only:
 
 - an X11 server and either a display-manager session or `startx`
 - D-Bus session support

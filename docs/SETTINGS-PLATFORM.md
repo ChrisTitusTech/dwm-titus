@@ -66,7 +66,7 @@ Capability statuses are:
 | `partial` | Some state is readable, but the complete section contract is not available. |
 | `unavailable` | A normally supported provider is missing or not usable. |
 | `restricted` | Readable state remains available, but an authorization path is absent. |
-| `unsupported` | This phase or platform has no supported provider contract. |
+| `unsupported` | This phase or Fedora capability has no supported provider contract. |
 
 Capability classes are `read-only`, `user-session`, `privileged`, and
 `delegated`. The broader inventory also treats an operation with no provider as
@@ -145,7 +145,7 @@ The Control Center's legacy terminal `sudo systemctl restart NetworkManager`
 action and `dwm-display-setup` terminal sudo flow remain compatibility paths;
 neither is a Settings provider contract.
 
-## Fedora-First Packaging Plan
+## Fedora-Only Packaging Plan
 
 Package ownership stays centralized in `scripts/dwm-packages.sh`. Phase 1 adds
 no runtime dependency beyond capabilities already present in the existing
