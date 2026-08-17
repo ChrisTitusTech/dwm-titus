@@ -122,6 +122,24 @@ fi
 
 cp -a "$REPO_DIR/." "$TEST_REPO/"
 test -f "$TEST_REPO/config.h" || cp "$TEST_REPO/config.def.h" "$TEST_REPO/config.h"
+if [[ $(id -u) -eq 0 ]]; then
+	if make -C "$TEST_REPO" install \
+		OWNER=root USER_HOME="$WORK_DIR/root-home" \
+		PREFIX="$WORK_DIR/root-prefix" \
+		XSESSIONSDIR="$WORK_DIR/root-xsessions" \
+		SYSTEMDUSERDIR="$WORK_DIR/root-systemd-user" \
+		>"$WORK_DIR/root-install-rejection.log" 2>&1; then
+		printf 'Direct root install unexpectedly succeeded.\n' >&2
+		exit 1
+	fi
+	grep -Fq 'Refusing to install user files as root.' \
+		"$WORK_DIR/root-install-rejection.log"
+	if [[ -e $WORK_DIR/root-prefix || -e $WORK_DIR/root-xsessions ||
+		-e $WORK_DIR/root-systemd-user || -e $WORK_DIR/root-home ]]; then
+		printf 'Rejected root install wrote files before its preflight.\n' >&2
+		exit 1
+	fi
+fi
 rm -f "$TEST_REPO/dwm"
 if make -C "$TEST_REPO" install-system \
 	DESTDIR="$WORK_DIR/stale-stage" >"$WORK_DIR/unbuilt-install.log" 2>&1; then

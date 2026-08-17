@@ -62,6 +62,32 @@ fi
 snapshot_tree "$work/unsupported-home" "$work/home.after"
 cmp "$work/home.before" "$work/home.after"
 
+awk -v os_release="$work/unsupported" '
+	$0 == "OS_RELEASE_FILE=/etc/os-release" {
+		print "OS_RELEASE_FILE=" os_release
+		next
+	}
+	{ print }
+' "$repo/scripts/power-management.sh" >"$work/power-management-unsupported"
+grep -Fqx "OS_RELEASE_FILE=$work/unsupported" \
+	"$work/power-management-unsupported"
+chmod +x "$work/power-management-unsupported"
+set +e
+"$work/power-management-unsupported" --apply >"$work/power-rejection.out" 2>&1
+power_status=$?
+set -e
+if [[ $power_status -ne 1 ]]; then
+	printf 'Unsupported power mutation exited with %s instead of 1.\n' \
+		"$power_status" >&2
+	exit 1
+fi
+grep -Fq -- '--apply and --apply-tlp support Fedora only.' \
+	"$work/power-rejection.out"
+if grep -Fq 'System Identity' "$work/power-rejection.out"; then
+	printf 'Unsupported power mutation continued into the status report.\n' >&2
+	exit 1
+fi
+
 # Expansion is intentionally deferred to the child shell.
 # shellcheck disable=SC2016
 host_family=$(env -u DWM_TEST_MODE DWM_OS_RELEASE="$work/unsupported" bash -c \
