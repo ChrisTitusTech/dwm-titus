@@ -6,6 +6,18 @@ work=$(mktemp -d)
 trap 'find "$work" -depth -delete' EXIT
 
 test_root=$work/root
+process_is_live() {
+	local pid=$1 process_stat process_state
+
+	kill -0 "$pid" 2>/dev/null || return 1
+	if [[ -r /proc/$pid/stat ]]; then
+		process_stat=$(<"/proc/$pid/stat")
+		process_state=${process_stat#*) }
+		process_state=${process_state%% *}
+		[[ $process_state != Z ]]
+	fi
+}
+
 assert_workspace_removed() {
 	local output=$1 root=$2 label=$3 workspace
 	workspace=$(sed -n 's/^==> Test workspace: //p' "$output" | sed -n '1p')
@@ -57,7 +69,7 @@ DWM_TEST_TMP_ROOT=$work/descendant-root "$repo/scripts/run-tests" \
 	bash -c '(trap "" TERM; exec sleep 300) & printf "descendant=%s\n" "$!"' \
 	>"$descendant_out"
 descendant_pid=$(sed -n 's/^descendant=//p' "$descendant_out")
-if [[ -z $descendant_pid ]] || kill -0 "$descendant_pid" 2>/dev/null; then
+if [[ -z $descendant_pid ]] || process_is_live "$descendant_pid"; then
 	printf 'Successful test run left a descendant process alive: %s.\n' \
 		"${descendant_pid:-unknown}" >&2
 	[[ -z $descendant_pid ]] || kill -KILL "$descendant_pid" 2>/dev/null || true
@@ -113,12 +125,12 @@ if [[ $runner_status -ne 143 ]]; then
 	printf 'Interrupted test run exited with %s instead of 143.\n' "$runner_status" >&2
 	exit 1
 fi
-if kill -0 "$child_pid" 2>/dev/null; then
+if process_is_live "$child_pid"; then
 	printf 'Interrupted test run left its child process alive: %s.\n' "$child_pid" >&2
 	kill -KILL "$child_pid" 2>/dev/null || true
 	exit 1
 fi
-if kill -0 "$grandchild_pid" 2>/dev/null; then
+if process_is_live "$grandchild_pid"; then
 	printf 'Interrupted test run left its grandchild process alive: %s.\n' "$grandchild_pid" >&2
 	kill -KILL "$grandchild_pid" 2>/dev/null || true
 	exit 1
