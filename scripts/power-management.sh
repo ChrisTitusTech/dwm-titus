@@ -18,6 +18,7 @@ set -euo pipefail
 
 APPLY=false
 APPLY_TLP=false
+OS_RELEASE_FILE=/etc/os-release
 
 for arg in "$@"; do
 	case "$arg" in
@@ -30,9 +31,19 @@ for arg in "$@"; do
 	esac
 done
 
-if ($APPLY || $APPLY_TLP) && [[ $EUID -ne 0 ]]; then
-	echo "ERROR: --apply and --apply-tlp require root. Run with sudo." >&2
-	exit 1
+if $APPLY || $APPLY_TLP; then
+	DISTRO_ID=
+	if [[ -r $OS_RELEASE_FILE ]]; then
+		DISTRO_ID=$(awk -F= '$1 == "ID" { value = substr($0, index($0, "=") + 1); gsub(/^"|"$/, "", value); print value; exit }' "$OS_RELEASE_FILE")
+	fi
+	if [[ $DISTRO_ID != fedora ]]; then
+		echo "ERROR: --apply and --apply-tlp support Fedora only." >&2
+		exit 1
+	fi
+	if [[ $EUID -ne 0 ]]; then
+		echo "ERROR: --apply and --apply-tlp require root. Run with sudo." >&2
+		exit 1
+	fi
 fi
 
 # Color helpers
