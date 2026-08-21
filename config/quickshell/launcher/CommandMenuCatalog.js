@@ -155,6 +155,16 @@ function firstSelectable(entries) {
     return 0;
 }
 
+function restoredSelection(entries, previousId) {
+    if (previousId) {
+        for (var index = 0; index < entries.length; index++) {
+            if (entries[index].id === previousId && isSelectable(entries[index])) return index;
+        }
+    }
+
+    return firstSelectable(entries);
+}
+
 function breadcrumb(menuId) {
     return menuId === "root" ? menuLabels.root : menuLabels.root + " / " + (menuLabels[menuId] || menuId);
 }

@@ -24,6 +24,9 @@ grep -Fq 'Commands.lockHelperCommand()' "$model"
 grep -Fq 'Commands.pointerHelperCommand("command-menu")' "$window"
 grep -Fq 'pointerWarpProcess.running = true;' "$window"
 [ -x "$repo/scripts/dwm-quickshell-pointer" ]
+grep -Fq "while [ \"\$attempt\" -lt 100 ]; do" "$repo/scripts/dwm-quickshell-pointer"
+grep -Fq 'sleep 0.05' "$repo/scripts/dwm-quickshell-pointer"
+grep -Fq 'Catalog.restoredSelection(root.rows, previousId)' "$model"
 grep -Fq 'target: "menu"' "$shell"
 menu_handler=$(awk '
 	/target: "menu"/ { in_menu = 1; seen_menu = 1 }
