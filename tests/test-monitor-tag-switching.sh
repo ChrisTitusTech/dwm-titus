@@ -164,6 +164,11 @@ grep -q 'XInternAtom(dpy, "_DWM_FULLSCREEN_MONITORS", False)' "$repo_dir/dwm.c"
 grep -q 'XInternAtom(dpy, "_DWM_SELECTED_MONITOR", False)' "$repo_dir/dwm.c"
 focus_body=$(sed -n '/^focus(Client \*c)/,/^}$/p' "$repo_dir/dwm.c")
 printf '%s\n' "$focus_body" | grep -q 'updateselectedmonitor();'
+selected_monitor_body=$(sed -n '/^updateselectedmonitor(void)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$selected_monitor_body" | grep -q 'selectedmonitorcachevalid && logicalindex == selectedmonitorcache'
+printf '%s\n' "$selected_monitor_body" | grep -q 'selectedmonitorcachevalid = 1;'
+configure_notify_body=$(sed -n '/^configurenotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$configure_notify_body" | grep -q 'selectedmonitorcachevalid = 0;'
 grep -q 'XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_COMBO", False)' "$repo_dir/dwm.c"
 
 mkdir -p "$work/bin"

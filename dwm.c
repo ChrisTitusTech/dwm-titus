@@ -413,6 +413,8 @@ static xcb_connection_t *xcon;
 static Window *clientlistcache;
 static unsigned long clientlistcachelen;
 static int clientlistcachevalid;
+static int selectedmonitorcache;
+static int selectedmonitorcachevalid;
 static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 static unsigned long tagupdatesequence;
 
@@ -1044,6 +1046,7 @@ configurenotify(XEvent *e)
 		sw = ev->width;
 		sh = ev->height;
 		if (updategeom() || dirty) {
+			selectedmonitorcachevalid = 0;
 			reconcilemonitortags();
 			drw_resize(drw, sw, bh);
 			updatebars();
@@ -4913,9 +4916,13 @@ updateselectedmonitor(void)
 	if (!selmon)
 		return;
 	logicalindex = getmonlogicalindex(selmon);
-	if (logicalindex >= 0)
-		data[0] = logicalindex;
+	if (logicalindex < 0
+	|| (selectedmonitorcachevalid && logicalindex == selectedmonitorcache))
+		return;
+	data[0] = logicalindex;
 	ewmh_replace_root_cardinal(netatom[NetDwmSelectedMonitor], data, 1);
+	selectedmonitorcache = logicalindex;
+	selectedmonitorcachevalid = 1;
 }
 
 #if SHOWWINICON
