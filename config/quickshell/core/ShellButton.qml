@@ -11,30 +11,36 @@ Rectangle {
 
     signal activated
 
-    implicitWidth: buttonLabel.implicitWidth + 18
-    implicitHeight: Theme.buttonHeight
-	activeFocusOnTab: root.enabled
-    color: !root.enabled ? Theme.barBackground : root.hovered ? Theme.surfaceHover : Theme.surface
-	border.color: root.activeFocus ? Theme.accent : !root.enabled ? Theme.border : root.danger ? Theme.danger : root.hovered ? Theme.borderStrong : Theme.border
-	border.width: root.activeFocus ? 2 : 1
-    radius: Theme.radius
+    implicitWidth: buttonLabel.implicitWidth + (Theme.controlPaddingX * 2)
+    implicitHeight: Theme.controlHeight
+    activeFocusOnTab: root.enabled
+    color: !root.enabled ? Theme.controlDisabledFill
+        : root.hovered ? Theme.controlHoverFill : Theme.controlNormalFill
+    border.color: root.activeFocus ? Theme.controlFocusBorder
+        : !root.enabled ? Theme.controlDisabledBorder
+        : root.danger ? Theme.danger
+        : root.hovered ? Theme.controlHoverBorder : Theme.controlNormalBorder
+    border.width: root.activeFocus ? Theme.controlFocusBorderWidth : Theme.controlBorderWidth
+    radius: Theme.controlRadius
 
-	Keys.onPressed: event => {
-		if (root.enabled && !event.isAutoRepeat
-				&& (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)) {
-			root.activated();
-			event.accepted = true;
-		}
-	}
+    Keys.onPressed: event => {
+        if (root.enabled && !event.isAutoRepeat
+                && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)) {
+            root.activated();
+            event.accepted = true;
+        }
+    }
 
     Text {
         id: buttonLabel
 
         anchors.centerIn: parent
         text: root.label
-        color: !root.enabled ? Theme.textMuted : root.danger ? Theme.textStrong : Theme.text
+        color: !root.enabled ? Theme.controlDisabledText
+            : root.danger ? Theme.textStrong
+            : root.hovered ? Theme.controlHoverText : Theme.controlNormalText
         font.family: Theme.fontFamily
-        font.pixelSize: root.compact ? Theme.smallFontSize : Theme.panelFontSize
+        font.pixelSize: root.compact ? Theme.fontBodySmallSize : Theme.fontBodySize
         font.bold: true
         elide: Text.ElideRight
     }

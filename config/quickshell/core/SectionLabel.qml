@@ -7,9 +7,9 @@ Text {
 
     Layout.fillWidth: true
     text: label
-    color: Theme.textMuted
+    color: Theme.menuMutedText
     font.family: Theme.fontFamily
-    font.pixelSize: Theme.smallFontSize
+    font.pixelSize: Theme.fontBodySmallSize
     font.bold: true
     elide: Text.ElideRight
 }
