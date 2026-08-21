@@ -4,6 +4,7 @@ set -eu
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 theme=$repo/config/quickshell/core/Theme.qml
 panel=$repo/config/quickshell/panel/DwmPanel.qml
+state=$repo/config/quickshell/state/DwmState.qml
 button=$repo/config/quickshell/panel/BarIconButton.qml
 logo=$repo/config/quickshell/panel/LogoButton.qml
 workspace=$repo/config/quickshell/panel/WorkspaceButton.qml
@@ -31,6 +32,8 @@ grep -F 'onClicked: root.activated()' "$logo" >/dev/null
 grep -F 'signal clicked()' "$workspace" >/dev/null
 grep -F 'font.pixelSize: Theme.omarchyBarFontSize' "$workspace" >/dev/null
 grep -F 'onClicked: root.clicked()' "$workspace" >/dev/null
+grep -F 'model: root.state.barWorkspaceIndexes(root.screen, root.primaryPanel)' "$panel" >/dev/null
+grep -F 'function barWorkspaceIndexes(screen, primaryPanel)' "$state" >/dev/null
 grep -F 'signal focusRequested(string windowId)' "$running_app" >/dev/null
 grep -F 'onClicked: root.focusRequested(root.app.windowId)' "$running_app" >/dev/null
 if [ "$(grep -Fc 'IconText {' "$button")" -ne 1 ] \

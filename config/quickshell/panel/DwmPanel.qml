@@ -104,7 +104,7 @@ PanelWindow {
                             spacing: 1
 
                             Repeater {
-                                model: root.state.workspaceIndexes(root.screen)
+                                model: root.state.barWorkspaceIndexes(root.screen, root.primaryPanel)
 
                                 delegate: WorkspaceButton {
                                     required property int modelData

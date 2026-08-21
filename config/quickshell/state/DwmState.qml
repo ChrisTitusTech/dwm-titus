@@ -137,6 +137,20 @@ Scope {
         return indexes;
     }
 
+    function allWorkspaceIndexes() {
+        const indexes = [];
+
+        for (let index = 0; index < Math.min(9, root.workspaceNames.length); index++) {
+            indexes.push(index);
+        }
+
+        return indexes;
+    }
+
+    function barWorkspaceIndexes(screen, primaryPanel) {
+        return primaryPanel ? root.allWorkspaceIndexes() : root.workspaceIndexes(screen);
+    }
+
     function currentWorkspaceForScreen(screen) {
         const logicalIndex = root.screenIndex(screen);
         const indexes = root.workspaceIndexes(screen);
