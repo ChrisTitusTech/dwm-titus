@@ -12,13 +12,13 @@ RowLayout {
     signal backRequested
     signal closeRequested
 
-    implicitHeight: 26
-    spacing: 8
+    implicitHeight: Theme.menuHeaderHeight
+    spacing: Theme.spacingLg
 
     UiText {
         visible: root.showBack
         text: "< Back"
-        color: backMouse.containsMouse ? Theme.accent : Theme.textMuted
+        color: backMouse.containsMouse ? Theme.menuActionText : Theme.menuMutedText
 
         MouseArea {
             id: backMouse
@@ -33,14 +33,14 @@ RowLayout {
     UiText {
         Layout.fillWidth: true
         text: root.title
-        color: Theme.textStrong
+        color: Theme.menuHoverText
         font.letterSpacing: root.titleLetterSpacing
         elide: Text.ElideRight
     }
 
     UiText {
         text: "x"
-        color: closeMouse.containsMouse ? Theme.accent : Theme.textMuted
+        color: closeMouse.containsMouse ? Theme.menuActionText : Theme.menuMutedText
 
         MouseArea {
             id: closeMouse

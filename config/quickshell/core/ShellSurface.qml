@@ -6,13 +6,13 @@ Rectangle {
 
     default property alias content: body.data
     property alias contentItem: body
-    property int margin: Theme.popupMargin
+    property int margin: Theme.popupPadding
 
     opacity: 1.0
-    color: Theme.bg
-    border.color: Theme.borderStrong
-    border.width: Theme.pillBorderWidth
-    radius: Theme.radius
+    color: Theme.popupBackground
+    border.color: Theme.popupBorder
+    border.width: Theme.controlBorderWidth
+    radius: Theme.popupRadius
 
     PillShadow { cornerRadius: root.radius }
 

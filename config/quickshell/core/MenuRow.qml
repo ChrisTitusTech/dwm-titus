@@ -11,18 +11,20 @@ Rectangle {
 
     signal activated
 
-    implicitHeight: 32
-    radius: Theme.smallRadius
-    color: rowMouse.containsMouse ? Theme.surfaceHover : Theme.transparent
+    implicitHeight: Theme.controlRowHeight
+    radius: Theme.controlRadius
+    color: root.active ? Theme.menuSelectedBackground
+        : rowMouse.containsMouse ? Theme.menuHoverBackground : Theme.transparent
 
     UiText {
         anchors.left: parent.left
-        anchors.leftMargin: 9
+        anchors.leftMargin: Theme.controlPaddingX
         anchors.right: rowDetail.left
-        anchors.rightMargin: 8
+        anchors.rightMargin: Theme.spacingLg
         anchors.verticalCenter: parent.verticalCenter
         text: root.label
-        color: root.active ? Theme.accentSecondary : rowMouse.containsMouse ? Theme.textStrong : Theme.text
+        color: root.active ? Theme.menuSelectedText
+            : rowMouse.containsMouse ? Theme.menuHoverText : Theme.menuText
         elide: Text.ElideRight
     }
 
@@ -30,10 +32,10 @@ Rectangle {
         id: rowDetail
 
         anchors.right: parent.right
-        anchors.rightMargin: 9
+        anchors.rightMargin: Theme.controlPaddingX
         anchors.verticalCenter: parent.verticalCenter
         text: root.detail.length > 0 ? root.detail : root.navigates ? ">" : ""
-        color: root.active ? Theme.accentSecondary : Theme.textMuted
+        color: root.active ? Theme.menuSelectedText : Theme.menuMutedText
     }
 
     MouseArea {

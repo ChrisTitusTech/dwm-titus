@@ -37,8 +37,10 @@ jobs:
           source scripts/dwm-utils.sh
           source scripts/dwm-packages.sh
           mapfile -t required_packages < <(dwm_packages fedora required | awk 'NF' | sort -u)
+          mapfile -t qml_packages < <(dwm_packages fedora qml-validation | awk 'NF' | sort -u)
           dnf install -y --setopt=install_weak_deps=False \
-            "${required_packages[@]}" diffutils dbus-daemon \
+            "${required_packages[@]}" "${qml_packages[@]}" \
+            diffutils dbus-daemon \
             pkgconf-pkg-config ShellCheck shfmt pykickstart \
             xorg-x11-server-Xvfb
 
@@ -95,7 +97,10 @@ jobs:
           persist-credentials: false
 
       - name: Install Quickshell QML lint dependencies
-        run: dnf install -y --setopt=install_weak_deps=False make quickshell qt6-qtdeclarative-devel
+        run: |
+          source scripts/dwm-packages.sh
+          mapfile -t qml_packages < <(dwm_packages fedora qml-validation | awk 'NF' | sort -u)
+          dnf install -y --setopt=install_weak_deps=False make "${qml_packages[@]}"
 
       - name: Validate Quickshell package version
         run: scripts/run-tests scripts/dwm-quickshell-version-check

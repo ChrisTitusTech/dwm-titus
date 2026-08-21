@@ -59,6 +59,10 @@ dwm_packages() {
 	fedora:qml-development)
 		printf '%s\n' qt6-qtdeclarative-devel
 		;;
+	fedora:qml-validation)
+		printf '%s\n' quickshell
+		dwm_packages "$family" qml-development
+		;;
 	fedora:lightdm)
 		printf '%s\n' lightdm slick-greeter
 		;;
