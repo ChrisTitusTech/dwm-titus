@@ -186,11 +186,12 @@ require `make check-quickshell-qml` plus the applicable X11 runtime suite.
 ## Panel and Popup Contract
 
 The DWM panel keeps its 30px exclusive zone, one-panel-per-screen lifecycle,
-workspace ownership, focused-window state, running applications, system tray,
-and popup coordinator. Its Omarchy influence is visual: flat modules on the
-bar, semantic hover and selected states, and outlined information groups. It
-does not adopt Omarchy's configurable plugin registry, layer-shell placement,
-or compositor-owned workspace model.
+workspace ownership, focused-window state, running applications, and popup
+coordinator. The system tray backend remains available to other shell surfaces,
+but the focused bar intentionally does not mount a tray. Its Omarchy influence
+is visual: flat modules on the bar, semantic hover and selected states, and
+outlined information groups. It does not adopt Omarchy's configurable plugin
+registry, layer-shell placement, or compositor-owned workspace model.
 
 Audio, Bluetooth, Network, Control Center, and Power retain their existing
 root-scoped models, helpers, IPC targets, monitor routing, and click-away
@@ -206,4 +207,4 @@ make check-quickshell-panel-menus
 ```
 
 The QML lint and nested-X11 health test remain required for popup focus,
-outside-click dismissal, Escape behavior, tray ownership, and idle lifecycle.
+outside-click dismissal, Escape behavior, and idle lifecycle.
