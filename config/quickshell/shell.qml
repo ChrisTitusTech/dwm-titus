@@ -110,6 +110,10 @@ ShellRoot {
 
     LauncherModel {
         id: launcherModel
+
+        onVisibleChanged: {
+            if (visible) commandMenuModel.close();
+        }
     }
 
     CommandMenuModel {

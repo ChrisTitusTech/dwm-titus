@@ -39,6 +39,7 @@ grep -Fq 'ipcActionRequested(string target, string action, string argument, var 
 grep -Fq 'function focusedScreen()' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'property int focusedMonitorIndex: -1' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'root.focusedMonitorIndex >= 0' "$repo/config/quickshell/state/DwmState.qml"
+grep -Fq 'if (visible) commandMenuModel.close();' "$shell"
 for popup_model in networkModel bluetoothModel controlCenterModel controlsModel powerMenuModel; do
 	grep -Fq "$popup_model.close();" "$shell"
 done
