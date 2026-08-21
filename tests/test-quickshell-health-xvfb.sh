@@ -121,13 +121,15 @@ fi
 
 i=0
 while [ "$i" -lt 200 ]; do
-	if ! pgrep -af '[d]wm-system-health (scan-user|scan-system)' | grep -Fq "$data_home/dwm-titus/scripts/dwm-system-health"; then
+	scan_processes=$(pgrep -af '[d]wm-system-health (scan-user|scan-system)' || true)
+	if ! printf '%s\n' "$scan_processes" | grep -F "$data_home/dwm-titus/scripts/dwm-system-health" >/dev/null; then
 		break
 	fi
 	i=$((i + 1))
 	sleep 0.05
 done
-if pgrep -af '[d]wm-system-health (scan-user|scan-system)' | grep -Fq "$data_home/dwm-titus/scripts/dwm-system-health"; then
+scan_processes=$(pgrep -af '[d]wm-system-health (scan-user|scan-system)' || true)
+if printf '%s\n' "$scan_processes" | grep -F "$data_home/dwm-titus/scripts/dwm-system-health" >/dev/null; then
 	printf 'System Health scan remained active after close\n' >&2
 	exit 1
 fi

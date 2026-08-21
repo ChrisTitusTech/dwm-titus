@@ -8,9 +8,10 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`, and
 ## Active Phase: Connectivity, Audio, and Large-Surface Integration
 
 The Omarchy-inspired UI plan is integrated into this phase rather than tracked
-as a competing roadmap. `P3-UI4` is the next pull-request boundary. The
-connectivity and audio tasks remain required after that visual slice; none of
-them becomes complete merely because an existing surface is restyled.
+as a competing roadmap. `P3-UI4` is complete in PR #163, and `CONN-001` is the
+next pull-request boundary. The connectivity and audio tasks remain required
+after that visual slice; none of them becomes complete merely because an
+existing surface is restyled.
 
 ### P3-UI4: Large-Surface Visual Integration (PR #163)
 

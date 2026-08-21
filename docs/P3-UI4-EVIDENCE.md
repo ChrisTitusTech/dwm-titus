@@ -72,6 +72,11 @@ Settings centered at 469,229 on HDMI-0 and 789,1489 on DP-0 while retaining its
 DP-0 with its intentional 820x600 geometry. Both surfaces rendered and accepted
 their keyboard and pointer paths on the live managed shell.
 
+The matching `.geometry` files are authoritative for each final captured
+placement. `WM_NORMAL_HINTS` in the `.xprop` files can retain the position from
+the preceding placement request after DWM moves the client to another monitor;
+those requested coordinates are not the final frame coordinates.
+
 Live interaction evidence:
 
 - Keyboard and pointer launcher activation each opened a new Alacritty window,
