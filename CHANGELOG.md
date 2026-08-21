@@ -6,7 +6,15 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Added
+
+- Install Gear Lever from a user-scoped Flathub remote by default with the
+  recommended/full desktop and both Fedora image variants.
+
 ### Changed
+
+- Move Flatpak and the GTK desktop portal into the recommended Fedora desktop
+  layer so AppImage management works in the default X11 session.
 
 - Remove obsolete distribution-matrix Settings and package-family test
   fixtures while retaining the Fedora-only boundary test that proves an

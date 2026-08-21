@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly APP_ID=it.mijorus.gearlever
+readonly DESKTOP_ID=it.mijorus.gearlever.desktop
+readonly FLATHUB_REMOTE=flathub
+readonly FLATHUB_REPOSITORY=https://dl.flathub.org/repo/flathub.flatpakrepo
+readonly FLATHUB_URL=https://dl.flathub.org/repo/
+readonly APPIMAGE_MIME=application/vnd.appimage
+
+configure_appimage_default() {
+	local current_default
+
+	command -v xdg-mime >/dev/null 2>&1 || return 0
+	current_default=$(xdg-mime query default "$APPIMAGE_MIME" 2>/dev/null || true)
+	if [[ -z $current_default ]]; then
+		xdg-mime default "$DESKTOP_ID" "$APPIMAGE_MIME"
+		printf 'Gear Lever is the default AppImage handler.\n'
+	fi
+}
+
+if ! command -v flatpak >/dev/null 2>&1; then
+	printf 'Gear Lever setup requires the Fedora flatpak package.\n' >&2
+	exit 1
+fi
+
+if flatpak info --user "$APP_ID" >/dev/null 2>&1; then
+	configure_appimage_default
+	printf 'Gear Lever is already installed for %s.\n' "$(id -un)"
+	exit 0
+fi
+
+if flatpak info --system "$APP_ID" >/dev/null 2>&1; then
+	configure_appimage_default
+	printf 'Gear Lever is already installed system-wide.\n'
+	exit 0
+fi
+
+remote_present=false
+while IFS=$'\t' read -r remote remote_url; do
+	if [[ $remote == "$FLATHUB_REMOTE" ]]; then
+		if [[ ${remote_url%/} != "${FLATHUB_URL%/}" ]]; then
+			printf 'Refusing non-official user Flathub remote URL: %s\n' "$remote_url" >&2
+			exit 1
+		fi
+		remote_present=true
+		break
+	fi
+done < <(flatpak remotes --user --columns=name,url)
+
+if [[ $remote_present != true ]]; then
+	printf 'Adding the user-scoped Flathub remote for Gear Lever...\n'
+	flatpak remote-add --user --if-not-exists \
+		"$FLATHUB_REMOTE" "$FLATHUB_REPOSITORY"
+fi
+
+printf 'Installing Gear Lever from Flathub for %s...\n' "$(id -un)"
+flatpak install --user --noninteractive "$FLATHUB_REMOTE" "$APP_ID"
+
+if ! flatpak info --user "$APP_ID" >/dev/null 2>&1; then
+	printf 'Gear Lever installation completed without a readable Flatpak installation.\n' >&2
+	exit 1
+fi
+
+configure_appimage_default
+printf 'Gear Lever is ready.\n'

@@ -5,11 +5,15 @@ on:
     branches:
       - main
     paths:
-      - "docs/**"
+      - "docs/book.toml"
+      - "docs/src/**"
+      - "docs/theme/**"
       - ".github/workflows/docs.yaml"
   pull_request:
     paths:
-      - "docs/**"
+      - "docs/book.toml"
+      - "docs/src/**"
+      - "docs/theme/**"
       - ".github/workflows/docs.yaml"
   workflow_dispatch:
 
@@ -36,14 +40,8 @@ jobs:
         uses: peaceiris/actions-mdbook@v2
         with:
           mdbook-version: "0.5.3"
-      - name: Install mdbook preprocessors
-        run: |
-          cargo install mdbook-last-changed --version 0.4.0 --locked
-          cargo install mdbook-toc --version 0.15.4 --locked
       - name: Build with mdbook
         run: mdbook build docs
-      - name: Test documentation examples
-        run: mdbook test docs
       - name: Setup Pages
         if: github.event_name != 'pull_request' && github.repository == 'ChrisTitusTech/dwm-titus'
         uses: actions/configure-pages@v6

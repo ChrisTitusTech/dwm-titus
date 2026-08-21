@@ -8,7 +8,7 @@ title = "dwm-titus: Fedora X11 Desktop"
 build-dir = "book"
 
 [output.html]
-additional-css = ["./theme/catppuccin.css","./theme/last-changed.css"]
+additional-css = ["./theme/catppuccin.css"]
 default-theme = "latte"
 preferred-dark-theme = "frappe"
 print.enable = true
@@ -22,12 +22,3 @@ fold.level = 2
 #[output.epub]
 # cover-image = "path/to/cover.jpg"
 #use-default-css = true
-
-[preprocessor.last-changed]
-command = "mdbook-last-changed"
-renderer = ["html"]
-
-[preprocessor.toc]
-command = "mdbook-toc"
-renderer = ["html"]
-max-level = 4

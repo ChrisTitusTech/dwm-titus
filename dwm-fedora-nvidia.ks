@@ -85,6 +85,7 @@ xclip
 xdotool
 xprop
 xdg-utils
+flatpak
 %include /tmp/dwm-titus-gaming-packages
 quickshell
 lightdm
@@ -198,6 +199,7 @@ install -m 0440 /dev/null "$install_sudoers"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$target_user" > "$install_sudoers"
 
 su - "$target_user" -c 'cd "$HOME/.local/share/dwm-titus" && ./install.sh --non-interactive --profile core --install-herdr'
+su - "$target_user" -c 'cd "$HOME/.local/share/dwm-titus" && scripts/install-gearlever'
 
 if getent group gamemode >/dev/null 2>&1; then
 	usermod -aG gamemode "$target_user"

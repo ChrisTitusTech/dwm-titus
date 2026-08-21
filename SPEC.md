@@ -202,11 +202,13 @@ The supported installation flow must:
     configuration through an isolated managed fragment and backups. When no
     X11 session is available, print the deferred setup command instead.
 
-The existing-system installer may enable only RPM Fusion nonfree and the
-`christitustech/copr-fedora` COPR, and only for the explicitly requested gaming
+The existing-system installer may enable RPM Fusion nonfree and the
+`christitustech/copr-fedora` COPR only for the explicitly requested gaming
 profile. Interactive runs require a direct confirmation; non-interactive runs
-require the explicit `--enable-fedora-gaming-repos` approval flag. It must not
-enable any other third-party repository.
+require the explicit `--enable-fedora-gaming-repos` approval flag. Recommended
+and full profiles may also add the official Flathub remote for the target user
+and install Gear Lever (`it.mijorus.gearlever`) as the default AppImage manager.
+It must not enable any other third-party repository.
 
 The Fedora Kickstart image profiles separately predeclare the four image
 repository groups required by that product: RPM Fusion, Brave Browser, MWT
@@ -370,7 +372,8 @@ Runtime dependencies are classified as:
   chain retained when Alacritty is unavailable.
 - Recommended desktop: the Herdr terminal workspace layered over Alacritty,
   Quickshell, Picom, Feh, Dex, a polkit agent, notification tools, audio
-  controls, screenshot tooling, and Nerd/emoji fonts.
+  controls, screenshot tooling, Nerd/emoji fonts, Flatpak with its GTK portal,
+  and Gear Lever from a user-scoped Flathub remote.
 - Optional: file manager, network tray, theme utilities, display-manager
   greeter customization, wallpapers, and hardware-specific helpers.
 
@@ -630,6 +633,8 @@ In a real or nested X11 session:
   its completed capture is advertised as `image/png` by an `xclip` clipboard
   owner. Active-monitor and saved-region captures produce non-empty JPEG files
   through `maim`.
+- Recommended and full installs expose Gear Lever in the application launcher,
+  and it opens a visible window in the supported X11 session.
 
 ### 9.4 Fedora Image Validation
 

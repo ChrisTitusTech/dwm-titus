@@ -51,6 +51,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-settings-provider \
 	scripts/dwm-terminal \
 	scripts/dwm-utils.sh \
+	scripts/install-gearlever \
 	scripts/install-herdr \
 	scripts/nvidia-gpu \
 	scripts/nvidia-suspend-test.sh \
@@ -341,6 +342,9 @@ check-dev-sync-install:
 check-terminal:
 	tests/test-dwm-terminal.sh
 
+check-gearlever-install:
+	tests/test-install-gearlever.sh
+
 check-herdr-install:
 	tests/test-install-herdr.sh
 
@@ -541,6 +545,7 @@ check:
 	$(MAKE) check-settings
 	$(MAKE) check-quickshell-network
 	$(MAKE) check-terminal
+	$(MAKE) check-gearlever-install
 	$(MAKE) check-herdr-install
 	$(MAKE) check-lock
 	$(MAKE) check-session-guards
@@ -558,7 +563,7 @@ check:
 .PHONY: clean all check check-build-config check-build-deps check-default-apps check-dev-sync-install \
 	check-container-smoke check-test-runner \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-platform check-format check-install \
-	check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
+	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health check-settings \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
 	install-cursors native release release-check uninstall

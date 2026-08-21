@@ -37,7 +37,7 @@ package names from the shared map:
 
 Use `core` for the required build/X11/session packages and one terminal
 emulator, `recommended` for the desktop layer plus Herdr on top of Alacritty,
-or `full` for optional extras such as file-manager integration, portals,
+or `full` for optional extras such as file-manager integration,
 keyring login integration, wallpapers, and display-manager setup. On x86_64
 Fedora, `full` can also install Steam, Gamescope, GameMode, and MangoHud after
 repository approval.
@@ -122,11 +122,12 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   terminal emulator. Herdr is skipped unless `--install-herdr` is provided.
 - `recommended`: `core` plus the recommended desktop layer such as Quickshell,
   Herdr on top of Alacritty, Picom, Feh, Dex, fonts, theming, screenshot,
-  audio, Bluetooth control and tray tools, and brightness tools. It also
-  installs the available Fedora GTK theme packages and installs Nordic
-  system-wide for the default Nord theme.
+  audio, Bluetooth control and tray tools, brightness tools, Flatpak, and the
+  GTK desktop portal. It also adds Flathub for the target user, installs Gear
+  Lever as the default AppImage manager, installs the available Fedora GTK
+  theme packages, and installs Nordic system-wide for the default Nord theme.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
-  browsing, network tray utilities, portals, keyring login integration,
+  browsing, network tray utilities, keyring login integration,
   wallpapers, and display-manager setup. x86_64 Fedora full installs also
   include Steam, Gamescope, and 64-bit and 32-bit GameMode and MangoHud support
   after separate repository approval.

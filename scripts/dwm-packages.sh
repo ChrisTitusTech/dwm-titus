@@ -26,12 +26,12 @@ dwm_packages() {
 			quickshell picom feh dex-autostart mate-polkit \
 			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
-			bluez blueman playerctl
+			bluez blueman playerctl flatpak xdg-desktop-portal-gtk
 		;;
 	fedora:desktop-optional)
 		printf '%s\n' \
 			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
-			xdg-user-dirs xdg-desktop-portal-gtk gnome-keyring gnome-keyring-pam NetworkManager \
+			xdg-user-dirs gnome-keyring gnome-keyring-pam NetworkManager \
 			rsync
 		;;
 	fedora:gaming)

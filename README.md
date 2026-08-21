@@ -80,8 +80,8 @@ before making changes.
 | Profile | Includes |
 | --- | --- |
 | `core` | The X11 session, required dependencies, and one terminal emulator. |
-| `recommended` | The complete everyday desktop, including Alacritty with Herdr, Quickshell, theming, screenshots, audio, and brightness tools. |
-| `full` | The recommended desktop plus optional file-manager, portal, keyring, wallpaper, display-manager, and supported Fedora gaming integrations. |
+| `recommended` | The complete everyday desktop, including Alacritty with Herdr, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, and brightness tools. |
+| `full` | The recommended desktop plus optional file-manager, keyring, wallpaper, display-manager, and supported Fedora gaming integrations. |
 
 `maim` is an optional dependency used only by the screenshot hotkeys. If it is
 unavailable, installation continues and reports that the screenshot hotkeys

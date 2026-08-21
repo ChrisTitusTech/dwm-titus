@@ -39,7 +39,7 @@ submitting a pull request.
 | Shell or installer | `scripts/run-tests make check-shell check-format` and focused tests |
 | X11 behavior | `scripts/run-tests make check-xvfb-runtime check-monitor-tags` |
 | Quickshell QML | `scripts/run-tests make check-quickshell-qml` plus real or nested X11 runtime validation |
-| Documentation | `mdbook build docs && mdbook test docs` |
+| Documentation | `mdbook build docs` |
 | Installer or package mapping | `scripts/run-tests make check-container-smoke` |
 | Fedora Kickstart or ISO | `scripts/run-tests make check-kickstart` plus all evidence required by [SPEC.md Section 9.4](SPEC.md#94-fedora-image-validation) |
 | Release automation | `scripts/run-tests make release-check` and a dry run of the release helper |

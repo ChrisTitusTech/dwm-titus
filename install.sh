@@ -341,6 +341,7 @@ print_install_summary() {
 	print_summary_profile "Required packages" required
 	if install_recommended_profile; then
 		print_summary_profile "Recommended packages" recommended
+		printf '  Gear Lever: user-scoped Flathub install (%s)\n' 'it.mijorus.gearlever'
 	else
 		printf '  Recommended packages: skipped\n'
 	fi
@@ -631,6 +632,12 @@ if install_recommended_profile; then
 	fi
 	install_nordic_gtk_theme || true
 	dwm_install_package_profile fonts
+	info "Setting up Gear Lever for AppImage management..."
+	if "$REPO_DIR/scripts/install-gearlever"; then
+		ok "Gear Lever is installed."
+	else
+		warn "Gear Lever setup failed; retry with scripts/install-gearlever when Flathub is reachable."
+	fi
 	ok "Recommended desktop dependencies installed."
 else
 	warn "Skipping recommended desktop dependencies for core profile."
