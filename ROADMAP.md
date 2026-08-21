@@ -28,11 +28,75 @@ when optional components fail.
 ## Planning Rules
 
 `SPEC.md` defines the durable product contract. This roadmap defines ordered
-outcomes. `TASKS.md` contains detailed work only for the active phase.
+outcomes. `TASKS.md` contains detailed work only for the active numbered
+product phase and may order that phase into multiple reviewable pull-request
+slices.
 
 A phase may advance only when its exit criteria are validated and remaining
 limitations are recorded. Completed implementation belongs in `CHANGELOG.md`
 and release history rather than in a permanent checked-off task list.
+
+## Integrated Omarchy-Inspired X11 UI Delivery
+
+Status: Integrated into the numbered roadmap; `P3-UI4` is the next pull-request
+slice after this planning change merges
+
+The Omarchy-inspired overhaul is not a second roadmap. Its visual and
+interaction work is folded into the existing Fedora product phases while DWM,
+X11, Fedora providers, helpers, IPC, and session policy remain authoritative.
+The `UI-1` through `UI-6` names identify the approved review boundaries from
+the design plan; the `P3-UI4` form identifies where a slice belongs in the
+product roadmap.
+
+- UI-1, semantic theme tokens and shared controls: Phase 3 prerequisite,
+  complete in PR #157.
+- UI-2, DWM command menu and shared launcher model: Phase 3 prerequisite,
+  complete in PR #158 and corrective PR #160.
+- UI-3, panel and existing quick panels: Phase 3 prerequisite, complete in
+  PR #159.
+- P3-UI4, Settings, System Health, notifications, and launcher: first active
+  Phase 3 pull-request slice, ready to start.
+- UI-5, optional X11-native experiences: planned for Phase 5 personalization
+  and accessibility; split backend-heavy work when needed.
+- UI-6, whole-shell integration hardening: planned for Phase 7 image and
+  release qualification, with no major features.
+
+### Integrated Boundaries
+
+- Reuse `themes.toml`, root-scoped state models, installed helpers, IPC names,
+  window titles, X11 surface types, and the existing 30px panel contract.
+- Do not ship Wayland, Hyprland, layer-shell, UWSM, `wl-*`, or Omarchy service
+  and plugin backends.
+- Keep `P3-UI4` visual and interaction focused. The Phase 3 provider and action
+  tasks remain later, separate pull-request slices in the same active phase.
+- Keep lock, polkit, idle, power, and background policy on the existing X11 and
+  Fedora implementations.
+- Treat an event-driven clipboard-history backend as a separate review boundary
+  if UI-5 adopts it.
+
+### Integrated Delivery Order
+
+UI-1 is the merged foundation. UI-2 and UI-3 were parallel children and are
+now unified on `main`. `P3-UI4` begins from that combined state and establishes
+the shared large-surface language used by the remaining Phase 3 work and the
+later power, defaults, personalization, accessibility, and system-management
+phases. Phase 3 still requires its connectivity and audio provider slices and
+validation before product Phase 4 can begin. UI-5 is delivered with Phase 5,
+and UI-6 closes the desktop during Phase 7 release qualification.
+
+### UI Overhaul Exit Criteria
+
+- Every converted surface preserves its backend, lifecycle, IPC, X11 focus,
+  click-away, stacking, and monitor-selection behavior.
+- Managed QML contains no Wayland or Hyprland runtime dependency.
+- Focused source checks, Quickshell lint, nested-X11 interaction tests, the full
+  managed repository suite, and real-session manual checks pass.
+- Closed surfaces leave no resident list models, scans, duplicate subscriptions,
+  or overlapping helper commands, and the mean idle CPU delta remains within
+  0.5 percentage points of one CPU.
+- The final approved revision is synchronized through
+  `scripts/dev-sync-install.sh`, with installed parity and any required
+  logout/login activation gate recorded.
 
 ## Phase 1: Settings Platform Foundation
 
@@ -141,7 +205,8 @@ Make common monitor and input changes available from the Settings application.
 
 ## Phase 3: Connectivity and Audio
 
-Status: Ready to start (2026-08-15)
+Status: Active (2026-08-21). The next review boundary is `P3-UI4`; connectivity
+and audio provider work follows in separate Phase 3 pull requests.
 
 ### Objective
 
@@ -155,12 +220,17 @@ Provide desktop-grade network, Bluetooth, and sound management.
 - Output and input device selection, volume, mute, per-application streams, and
   microphone visibility through PipeWire/WirePlumber-compatible interfaces.
 - Event-driven updates with bounded command execution and no overlapping polls.
+- Omarchy-inspired large-surface styling for Settings, System Health,
+  notifications, and the application launcher, using the merged design system
+  without changing their providers or X11 contracts.
 
 ### Exit Criteria
 
 - Common connection and audio workflows no longer require a terminal.
 - Authentication cancellation and service unavailability fail safely.
 - Existing panel quick controls remain synchronized with Settings.
+- The converted large surfaces preserve their existing IPC, focus, lifecycle,
+  privilege, and backend behavior in real and nested X11 sessions.
 
 ## Phase 4: Power, Session, and Defaults
 
