@@ -396,7 +396,7 @@ ShellRoot {
         }
 
         function layout(): string {
-            return "logo,workspaces|clock|running-apps,bluetooth,network,volume";
+            return root.defaultPanelWindow ? root.defaultPanelWindow.layoutSignature() : "";
         }
 
         function workspaceCount(): int {

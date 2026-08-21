@@ -191,6 +191,10 @@ if ! grep -F 'Component.onCompleted: root.refresh(false)' "$network_model" >/dev
 	printf '%s\n' 'Network model must fetch initial state before the first nmcli monitor event.' >&2
 	exit 1
 fi
+if grep -F 'Timer {' "$network_model" >/dev/null; then
+	printf '%s\n' 'Network status refresh must remain event-driven without a polling timer.' >&2
+	exit 1
+fi
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" devices >"$work/devices.out"
 grep -Fqx "enp6s0	ethernet	connected	Wired connection 1" "$work/devices.out"
@@ -330,5 +334,13 @@ DWM_TEST_EDITOR_LOG="$work/editor.log" \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-network" editor
 grep -Fqx editor "$work/editor.log"
+
+set +e
+"$repo/tests/test-quickshell-network-refresh-xvfb.sh"
+refresh_test_status=$?
+set -e
+if [ "$refresh_test_status" -ne 0 ] && [ "$refresh_test_status" -ne 77 ]; then
+	exit "$refresh_test_status"
+fi
 
 printf 'Quickshell network helper: PASS\n'

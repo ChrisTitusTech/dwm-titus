@@ -77,6 +77,12 @@ grep -F 'readonly property string highIcon: "󰕾"' "$volume" >/dev/null
 grep -F 'required property var controlsModel' "$volume" >/dev/null
 grep -F 'onWheelUp: root.controlsModel.volumeUp()' "$volume" >/dev/null
 grep -F 'onWheelDown: root.controlsModel.volumeDown()' "$volume" >/dev/null
+awk '
+	/onActivated:[[:space:]]*\{/ { in_handler = 1; next }
+	in_handler && /root\.popupRequested\(\);/ { requested = 1; next }
+	in_handler && /root\.controlsModel\.toggle\(\);/ { ordered = requested; exit }
+	END { exit ordered ? 0 : 1 }
+' "$volume"
 if [ "$(grep -Fc 'IconText {' "$button")" -ne 1 ] ||
 	[ "$(grep -Fc 'MouseArea {' "$button")" -ne 1 ]; then
 	printf '%s\n' 'BarIconButton must contain one icon and one mouse area' >&2
@@ -112,13 +118,42 @@ grep -F 'function layout(): string' "$shell" >/dev/null
 grep -F 'function workspaceCount(): int' "$shell" >/dev/null
 grep -F 'function networkIconState(): string' "$shell" >/dev/null
 grep -F 'function volumeIconState(): string' "$shell" >/dev/null
+grep -F 'function layoutSignature()' "$panel" >/dev/null
+grep -F 'container.children' "$panel" >/dev/null
+grep -F 'return root.defaultPanelWindow ? root.defaultPanelWindow.layoutSignature() : "";' "$shell" >/dev/null
+if grep -F 'return "logo,workspaces|clock|running-apps,bluetooth,network,volume";' "$shell" "$panel" >/dev/null; then
+	printf '%s\n' 'Bar layout IPC is hard-coded instead of inspecting the instantiated DwmPanel' >&2
+	exit 1
+fi
+bar_methods=$(sed -n '/target: "bar"/,/LauncherWindow/p' "$shell" |
+	sed -n 's/^[[:space:]]*function \([A-Za-z][A-Za-z0-9]*\)(.*$/\1/p')
+expected_bar_methods='height
+layout
+workspaceCount
+networkIconState
+volumeIconState'
+if [ "$bar_methods" != "$expected_bar_methods" ]; then
+	printf '%s\n' 'Bar IPC must expose exactly the five approved read-only methods' >&2
+	exit 1
+fi
 grep -F 'wait_for_managed_geometry' "$bar_xvfb" >/dev/null
+grep -F 'wait_for_stacking_order' "$bar_xvfb" >/dev/null
 grep -F '_NET_WM_STATE_ABOVE' "$bar_xvfb" >/dev/null
 grep -F '_NET_WM_STATE_BELOW' "$bar_xvfb" >/dev/null
+grep -F 'Xvfb -displayfd 3' "$bar_xvfb" >/dev/null
+# shellcheck disable=SC2016 # Verify literal process-scoping code in the nested test.
+grep -F 'managed_quickshell_pids=$(pgrep -P "$$" -x quickshell || true)' "$bar_xvfb" >/dev/null
+# shellcheck disable=SC2016 # Verify literal child-reaping code in the nested test.
+grep -F 'wait "$child_pid"' "$bar_xvfb" >/dev/null
+if grep -F 'pgrep -xc quickshell' "$bar_xvfb" >/dev/null; then
+	printf '%s\n' 'Nested bar test still counts unrelated host Quickshell processes' >&2
+	exit 1
+fi
 
 last_line=0
-for node in LogoButton WorkspaceButton clockLabel RunningAppsArea Bluetooth NetworkBarModule VolumeBarModule; do
-	line=$(grep -n -m 1 "$node" "$panel" | cut -d: -f1 || true)
+for node in 'LogoButton {' 'WorkspaceButton {' 'id: clockLabel' 'RunningAppsArea {' \
+	'id: bluetooth' 'NetworkBarModule {' 'VolumeBarModule {'; do
+	line=$(grep -Fn -m 1 "$node" "$panel" | cut -d: -f1 || true)
 	if [ -z "$line" ] || [ "$line" -le "$last_line" ]; then
 		printf '%s\n' "DwmPanel does not place $node in the final three-zone order" >&2
 		exit 1

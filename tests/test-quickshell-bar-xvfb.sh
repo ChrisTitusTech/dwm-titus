@@ -3,7 +3,7 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
-for command_name in Xvfb dbus-run-session quickshell xdotool xprop pgrep getconf cc pkg-config; do
+for command_name in Xvfb dbus-run-session quickshell xprop pgrep getconf cc pkg-config; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -20,13 +20,14 @@ if [ "${DWM_BAR_XVFB_DBUS_SESSION:-0}" != 1 ]; then
 fi
 
 work=$(mktemp -d)
-display=:$((($$ % 400) + 700))
 cleanup() {
 	set +e
-	[ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null
-	[ -n "${quickshell_pid:-}" ] && kill "$quickshell_pid" 2>/dev/null
-	[ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null
-	[ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null
+	for child_pid in "${client_pid:-}" "${quickshell_pid:-}" "${dwm_pid:-}" "${xvfb_pid:-}"; do
+		[ -n "$child_pid" ] && kill "$child_pid" 2>/dev/null
+	done
+	for child_pid in "${client_pid:-}" "${quickshell_pid:-}" "${dwm_pid:-}" "${xvfb_pid:-}"; do
+		[ -n "$child_pid" ] && wait "$child_pid" 2>/dev/null
+	done
 	rm -rf "$work"
 }
 trap cleanup EXIT HUP INT TERM
@@ -62,6 +63,21 @@ wait_for_panel_state() {
 		sleep 0.05
 	done
 	printf 'Panel window did not enter %s\n' "$state" >&2
+	return 1
+}
+
+wait_for_stacking_order() {
+	first=$1
+	second=$2
+	index=0
+	while [ "$index" -lt 100 ]; do
+		if [ "$(DISPLAY=$display "$work/xclient" above "$first" "$second" 2>/dev/null || true)" = 1 ]; then
+			return 0
+		fi
+		index=$((index + 1))
+		sleep 0.05
+	done
+	printf 'Window %s was not stacked above %s\n' "$first" "$second" >&2
 	return 1
 }
 
@@ -194,17 +210,26 @@ EOF
 # shellcheck disable=SC2046 # pkg-config emits separate compiler arguments.
 cc -std=c99 -Wall -Wextra -Werror "$work/xclient.c" $(pkg-config --cflags --libs x11) -o "$work/xclient"
 
-Xvfb "$display" -screen 0 1280x800x24 -nolisten tcp -extension GLX >"$work/xvfb.log" 2>&1 &
+Xvfb -displayfd 3 -screen 0 1280x800x24 -nolisten tcp -extension GLX \
+	3>"$work/display-number" >"$work/xvfb.log" 2>&1 &
 xvfb_pid=$!
 
 index=0
 while [ "$index" -lt 100 ]; do
-	if DISPLAY=$display xprop -root >/dev/null 2>&1; then
+	if [ -s "$work/display-number" ]; then
 		break
+	fi
+	if ! kill -0 "$xvfb_pid" 2>/dev/null; then
+		printf 'Spawned Xvfb exited before allocating a display\n' >&2
+		cat "$work/xvfb.log" >&2
+		exit 1
 	fi
 	index=$((index + 1))
 	sleep 0.05
 done
+[ -s "$work/display-number" ]
+display=":$(cat "$work/display-number")"
+kill -0 "$xvfb_pid"
 DISPLAY=$display xprop -root >/dev/null
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -233,10 +258,26 @@ if [ "${height:-}" != 30 ]; then
 	exit 1
 fi
 
-layout=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call bar layout)
-[ "$layout" = 'logo,workspaces|clock|running-apps,bluetooth,network,volume' ]
-[ "$(pgrep -xc quickshell)" = 1 ]
+expected_layout='logo,workspaces|clock|running-apps,bluetooth,network,volume'
+index=0
+while [ "$index" -lt 100 ]; do
+	layout=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call bar layout 2>/dev/null || true)
+	[ "$layout" = "$expected_layout" ] && break
+	index=$((index + 1))
+	sleep 0.05
+done
+if [ "${layout:-}" != "$expected_layout" ]; then
+	printf 'Bar IPC reported an unexpected instantiated layout: %s\n' "${layout:-<empty>}" >&2
+	exit 1
+fi
+managed_quickshell_pids=$(pgrep -P "$$" -x quickshell || true)
+[ "$managed_quickshell_pids" = "$quickshell_pid" ]
+
+if ! command -v xdotool >/dev/null 2>&1; then
+	printf 'SKIP: xdotool is unavailable after bar IPC/runtime checks\n'
+	exit 77
+fi
 
 index=0
 while [ "$index" -lt 100 ]; do
@@ -280,7 +321,7 @@ done
 DISPLAY=$display xprop -id "$client" _NET_WM_STATE | grep -Fq '_NET_WM_STATE_FULLSCREEN'
 DISPLAY=$display xprop -root _DWM_FULLSCREEN_MONITORS | grep -Eq '= 0|= 0,'
 wait_for_panel_state "$panel" _NET_WM_STATE_BELOW
-[ "$(DISPLAY=$display "$work/xclient" above "$client" "$panel")" = 1 ]
+wait_for_stacking_order "$client" "$panel"
 
 kill "$client_pid"
 wait "$client_pid" 2>/dev/null || true

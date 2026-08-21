@@ -25,6 +25,29 @@ PanelWindow {
     readonly property color barActive: Theme.omarchyBarActive
     readonly property color barUrgent: Theme.omarchyBarUrgent
 
+    function namedChildLayout(container) {
+        const names = [];
+        const children = container.children;
+
+        for (let index = 0; index < children.length; index++) {
+            const name = children[index].objectName;
+            if (name && name.length > 0) names.push(name);
+        }
+
+        return names.join(",");
+    }
+
+    function layoutSignature() {
+        const left = root.namedChildLayout(leftContent);
+        const right = root.namedChildLayout(rightContent);
+        const centerX = clockLabel.x + clockLabel.width / 2;
+        const centered = clockLabel.parent === barLayout
+            && Math.abs(centerX - barLayout.width / 2) <= 0.5;
+        const center = centered ? clockLabel.objectName : clockLabel.objectName + "-off-center";
+
+        return left + "|" + center + "|" + right;
+    }
+
     implicitHeight: 30
     color: Theme.omarchyBarBackground
     exclusiveZone: 30
@@ -38,6 +61,8 @@ PanelWindow {
     }
 
     RowLayout {
+        id: barLayout
+
         anchors.fill: parent
         anchors.leftMargin: Theme.panelGap
         anchors.rightMargin: Theme.panelGap
@@ -49,6 +74,8 @@ PanelWindow {
             Layout.minimumWidth: 0
 
             RowLayout {
+                id: leftContent
+
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(implicitWidth, parent.width)
@@ -57,6 +84,7 @@ PanelWindow {
 
                 LogoButton {
                     id: logoButton
+                    objectName: "logo"
 
                     onActivated: {
                         root.popupRequested(root, "controlcenter");
@@ -66,6 +94,7 @@ PanelWindow {
 
                 RowLayout {
                     id: workspaceRow
+                    objectName: "workspaces"
 
                     spacing: 1
 
@@ -88,6 +117,7 @@ PanelWindow {
 
         UiText {
             id: clockLabel
+            objectName: "clock"
 
             text: Qt.formatDateTime(root.clock.date, "ddd, d MMM | hh:mm")
             color: root.barForeground
@@ -100,17 +130,22 @@ PanelWindow {
             Layout.minimumWidth: 0
 
             RowLayout {
+                id: rightContent
+
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(implicitWidth, parent.width)
                 height: parent.height
                 spacing: Theme.panelGap
 
-                RunningAppsArea { state: root.state }
+                RunningAppsArea {
+                    objectName: "running-apps"
+                    state: root.state
+                }
 
-                // Bluetooth
                 BarIconButton {
                     id: bluetooth
+                    objectName: "bluetooth"
 
                     active: root.bluetoothModel.visible
                     glyph: "󰂯"
@@ -121,11 +156,13 @@ PanelWindow {
                 }
 
                 NetworkBarModule {
+                    objectName: "network"
                     networkModel: root.networkModel
                     onPopupRequested: root.popupRequested(root, "network")
                 }
 
                 VolumeBarModule {
+                    objectName: "volume"
                     controlsModel: root.controlsModel
                     onPopupRequested: root.popupRequested(root, "controls")
                 }

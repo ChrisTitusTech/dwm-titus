@@ -10,6 +10,7 @@ Scope {
     property bool busy: false
     property bool editorAvailable: false
     property bool actionUsesPasswordStdin: false
+    property bool statusRefreshPending: false
     property bool wifiPasswordPromptVisible: false
     property int selectedIndex: 0
     property int selectedWifiIndex: -1
@@ -57,9 +58,7 @@ Scope {
     }
 
     function refresh(rescanWifi) {
-        if (!statusProcess.running) {
-            statusProcess.running = true;
-        }
+        root.refreshStatus();
         if (!devicesProcess.running) {
             devicesProcess.running = true;
         }
@@ -70,6 +69,16 @@ Scope {
         if (!editorCheckProcess.running) {
             editorCheckProcess.running = true;
         }
+    }
+
+    function refreshStatus() {
+        if (statusProcess.running) {
+            root.statusRefreshPending = true;
+            return;
+        }
+
+        root.statusRefreshPending = false;
+        statusProcess.running = true;
     }
 
     function refreshWifi(rescan) {
@@ -293,6 +302,13 @@ Scope {
 
         command: Commands.networkHelperCommand("status")
         running: false
+
+        onRunningChanged: {
+            if (!running && root.statusRefreshPending) {
+                root.statusRefreshPending = false;
+                statusProcess.running = true;
+            }
+        }
 
         stdout: StdioCollector {
             onStreamFinished: {
