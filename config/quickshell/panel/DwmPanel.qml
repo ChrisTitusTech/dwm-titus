@@ -48,6 +48,12 @@ PanelWindow {
         return left + "|" + center + "|" + right;
     }
 
+    function systemIconSizes(): string {
+        return "bluetooth=" + bluetooth.iconPixelSize
+            + ",network=" + network.iconPixelSize
+            + ",volume=" + volume.iconPixelSize;
+    }
+
     implicitHeight: 30
     color: Theme.omarchyBarBackground
     exclusiveZone: 30
@@ -119,7 +125,7 @@ PanelWindow {
             id: clockLabel
             objectName: "clock"
 
-            text: Qt.formatDateTime(root.clock.date, "ddd, d MMM | hh:mm")
+            text: Qt.formatDateTime(root.clock.date, "ddd, d MMM hh:mm")
             color: root.barForeground
             font.pixelSize: Theme.omarchyBarFontSize
         }
@@ -156,12 +162,14 @@ PanelWindow {
                 }
 
                 NetworkBarModule {
+                    id: network
                     objectName: "network"
                     networkModel: root.networkModel
                     onPopupRequested: root.popupRequested(root, "network")
                 }
 
                 VolumeBarModule {
+                    id: volume
                     objectName: "volume"
                     controlsModel: root.controlsModel
                     onPopupRequested: root.popupRequested(root, "controls")

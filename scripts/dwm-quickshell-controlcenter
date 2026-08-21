@@ -540,9 +540,18 @@ restart_quickshell() {
 
 reload_wallpaper() {
 	wallpaper_dir=${HOME:-}/Pictures/backgrounds
+	wallpaper_selection=${XDG_CONFIG_HOME:-${HOME:-}/.config}/dwm-titus/wallpaper
 
 	if ! command -v feh >/dev/null 2>&1; then
 		printf 'feh is unavailable\n' >&2
+		return 1
+	fi
+	if [ -f "$wallpaper_selection" ]; then
+		if feh --bg-scale "$wallpaper_selection" >/dev/null 2>&1; then
+			notify "Wallpaper reloaded"
+			return 0
+		fi
+		printf 'failed to reload selected wallpaper: %s\n' "$wallpaper_selection" >&2
 		return 1
 	fi
 	if [ ! -d "$wallpaper_dir" ]; then

@@ -189,10 +189,14 @@ fi
 # ── Phase 2: Background services ───────────────────────────────────────────────
 
 # Wallpaper (moved here from Phase 1 — does not need to block dwm startup)
-if command -v feh >/dev/null 2>&1 &&
-	find "$HOME/Pictures/backgrounds" -type f -print -quit 2>/dev/null |
-	grep -q .; then
-	start_once feh feh --randomize --bg-fill "$HOME/Pictures/backgrounds"
+wallpaper_selection=${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/wallpaper
+if command -v feh >/dev/null 2>&1; then
+	if [ -f "$wallpaper_selection" ]; then
+		start_once feh feh --bg-scale "$wallpaper_selection"
+	elif find "$HOME/Pictures/backgrounds" -type f -print -quit 2>/dev/null |
+		grep -q .; then
+		start_once feh feh --randomize --bg-fill "$HOME/Pictures/backgrounds"
+	fi
 fi
 
 # Compositor

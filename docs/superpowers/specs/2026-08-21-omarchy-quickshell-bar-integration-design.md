@@ -57,7 +57,7 @@ The bar has exactly three zones in this order.
 
 The center contains only the clock.
 
-- Format: `ddd, d MMM | hh:mm`
+- Format: `ddd, d MMM HH:mm`
 - Time is 24-hour.
 - The clock has no left-click, right-click, middle-click, or wheel action.
 - There is no language indicator or alternative center widget.
@@ -83,9 +83,9 @@ Use the resolved palette from Abs's running Omarchy Tokyo Night shell:
 - Active and accent: `#7aa2f7`
 - Urgent and attention: `#f7768e`
 
-Every text label and glyph rendered inside the bar is exactly 11 px. Panel
-typography is not constrained to 11 px and follows the adapted Omarchy panel
-scale.
+Every text label and glyph rendered inside the bar is exactly 11 px, except
+the Network and Volume glyphs, which are 14 px. Panel typography is not
+constrained to 11 px and follows the adapted Omarchy panel scale.
 
 No bar item exposes a hover tooltip. This applies to the logo, workspaces,
 clock, running applications, Bluetooth, Network, and Volume. Panel-internal

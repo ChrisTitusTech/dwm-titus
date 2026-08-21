@@ -6,6 +6,7 @@ Item {
 
     required property string glyph
     property bool active: false
+    property int iconPixelSize: Theme.omarchyBarFontSize
     signal activated()
     signal wheelUp()
     signal wheelDown()
@@ -17,7 +18,7 @@ Item {
         anchors.centerIn: parent
         text: root.glyph
         color: root.active ? Theme.omarchyBarActive : Theme.omarchyBarForeground
-        font.pixelSize: Theme.omarchyBarFontSize
+        font.pixelSize: root.iconPixelSize
     }
 
     MouseArea {

@@ -99,8 +99,11 @@ Open the Control Center with <kbd>Super</kbd> + <kbd>F1</kbd>, navigate to **App
 ---
 ## Wallpapers
 
-Place images in `~/Pictures/backgrounds/`. Use `Super` + `Shift` + `W` to randomize, or set a specific one:
+Place images in `~/Pictures/backgrounds/`. Use `Super` + `Shift` + `W` to
+reload the selected wallpaper, or randomize the directory when no selection
+exists. To select a persistent wallpaper, create a symlink at
+`~/.config/dwm-titus/wallpaper`:
 
 ```bash
-feh --bg-fill ~/Pictures/backgrounds/mywall.jpg
+ln -s ~/Pictures/backgrounds/mywall.jpg ~/.config/dwm-titus/wallpaper
 ```

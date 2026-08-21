@@ -10,6 +10,7 @@ BarIconButton {
     readonly property string highIcon: "󰕾"
 
     active: root.controlsModel.visible
+    iconPixelSize: 14
     glyph: root.controlsModel.volumeIconState === "mute" ? root.muteIcon
         : root.controlsModel.volumeIconState === "low" ? root.lowIcon
         : root.controlsModel.volumeIconState === "medium" ? root.mediumIcon

@@ -121,7 +121,7 @@ action.
 | Default terminal, file manager, and autostart entries | No settings-ready provider contract | Unsupported | Preserve current configuration and XDG overrides until a provider is defined. |
 | Theme list and active theme | `themes.toml`, `Theme.qml`, and Control Center helper records | Read-only | Missing or invalid user state falls back to managed defaults without overwriting the user file. |
 | Select theme and apply toolkit/terminal/cursor settings | `theme-set`, hot reload, and `theme-apply.sh` user-file writes | User-session | A future contract must report partial toolkit failures and define preview/reset behavior. |
-| Random wallpaper | Fixed `feh` action over the user wallpaper directory | User-session | Missing tools, directory, or images are isolated failures. A selected-wallpaper provider is not yet available. |
+| Selected or random wallpaper | Fixed `feh` action preferring `~/.config/dwm-titus/wallpaper`, with the user wallpaper directory as fallback | User-session | Missing selections fall back to random images; missing tools, directories, or images are isolated failures. |
 | GTK configuration tool | `nwg-look` | Delegated | Optional entry point only. |
 | Fonts, icons, notification policy, and accessibility | No settings-ready provider contract | Unsupported | Add by Phase 5 with explicit preview, reset, and rollback behavior. |
 

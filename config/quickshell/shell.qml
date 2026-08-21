@@ -399,6 +399,10 @@ ShellRoot {
             return root.defaultPanelWindow ? root.defaultPanelWindow.layoutSignature() : "";
         }
 
+        function iconSizes(): string {
+            return root.defaultPanelWindow ? root.defaultPanelWindow.systemIconSizes() : "";
+        }
+
         function workspaceCount(): int {
             if (!root.defaultPanelWindow) return 0;
             return dwmState.barWorkspaceIndexes(

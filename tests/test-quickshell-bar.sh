@@ -22,11 +22,12 @@ grep -F 'readonly property string omarchyBarActive: "#7aa2f7"' "$theme" >/dev/nu
 grep -F 'readonly property string omarchyBarUrgent: "#f7768e"' "$theme" >/dev/null
 grep -F 'required property string glyph' "$button" >/dev/null
 grep -F 'property bool active: false' "$button" >/dev/null
+grep -F 'property int iconPixelSize: Theme.omarchyBarFontSize' "$button" >/dev/null
 grep -F 'signal activated()' "$button" >/dev/null
 grep -F 'signal wheelUp()' "$button" >/dev/null
 grep -F 'signal wheelDown()' "$button" >/dev/null
 grep -F 'anchors.centerIn: parent' "$button" >/dev/null
-grep -F 'font.pixelSize: Theme.omarchyBarFontSize' "$button" >/dev/null
+grep -F 'font.pixelSize: root.iconPixelSize' "$button" >/dev/null
 grep -F 'onClicked: root.activated()' "$button" >/dev/null
 grep -F 'root.wheelUp();' "$button" >/dev/null
 grep -F 'root.wheelDown();' "$button" >/dev/null
@@ -42,15 +43,20 @@ grep -F 'root.primaryPanel ? root.state.switchWorkspace(modelData)' "$panel" >/d
 grep -F ': root.state.switchWorkspaceForScreen(root.screen, modelData)' "$panel" >/dev/null
 grep -F 'signal focusRequested(string windowId)' "$running_app" >/dev/null
 grep -F 'onClicked: root.focusRequested(root.app.windowId)' "$running_app" >/dev/null
-for primitive in "$logo" "$workspace" "$running_app"; do
+for primitive in "$logo" "$running_app"; do
 	if grep -Eq 'Theme\.(accent|textMuted|surface|surfaceHover|surfaceActive|border|borderStrong)' "$primitive"; then
 		printf '%s\n' 'Retained bar primitive still uses mutable theme colors' >&2
 		exit 1
 	fi
 done
+if grep -Eq 'Theme\.(textMuted|surface|surfaceHover|surfaceActive|border|borderStrong)' "$workspace"; then
+	printf '%s\n' 'Workspace primitive uses an unapproved mutable theme color' >&2
+	exit 1
+fi
 grep -F 'Theme.omarchyBarActive' "$logo" >/dev/null
 grep -F 'Theme.omarchyBarBackground' "$logo" >/dev/null
-grep -F 'Theme.omarchyBarActive' "$workspace" >/dev/null
+grep -F 'border.color: selected ? Theme.accent' "$workspace" >/dev/null
+grep -F 'color: root.selected ? Theme.accent' "$workspace" >/dev/null
 grep -F 'Theme.omarchyBarInactive' "$workspace" >/dev/null
 grep -F 'Theme.omarchyBarForeground' "$workspace" >/dev/null
 grep -F 'Theme.omarchyBarBackground' "$workspace" >/dev/null
@@ -61,6 +67,7 @@ grep -F 'readonly property var wifiIcons: ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨
 grep -F 'readonly property string ethernetIcon: "󰈀"' "$network" >/dev/null
 grep -F 'readonly property string disconnectedIcon: "󰤮"' "$network" >/dev/null
 grep -F 'required property var networkModel' "$network" >/dev/null
+grep -F 'iconPixelSize: 14' "$network" >/dev/null
 grep -F 'onActivated: {' "$network" >/dev/null
 grep -F 'root.popupRequested();' "$network" >/dev/null
 grep -F 'root.networkModel.toggle();' "$network" >/dev/null
@@ -75,6 +82,7 @@ grep -F 'readonly property string lowIcon: "󰕿"' "$volume" >/dev/null
 grep -F 'readonly property string mediumIcon: "󰖀"' "$volume" >/dev/null
 grep -F 'readonly property string highIcon: "󰕾"' "$volume" >/dev/null
 grep -F 'required property var controlsModel' "$volume" >/dev/null
+grep -F 'iconPixelSize: 14' "$volume" >/dev/null
 grep -F 'onWheelUp: root.controlsModel.volumeUp()' "$volume" >/dev/null
 grep -F 'onWheelDown: root.controlsModel.volumeDown()' "$volume" >/dev/null
 awk '
@@ -111,10 +119,11 @@ fi
 grep -F 'implicitHeight: 30' "$panel" >/dev/null
 grep -F 'exclusiveZone: 30' "$panel" >/dev/null
 grep -F 'color: Theme.omarchyBarBackground' "$panel" >/dev/null
-grep -F 'Qt.formatDateTime(root.clock.date, "ddd, d MMM | hh:mm")' "$panel" >/dev/null
+grep -F 'Qt.formatDateTime(root.clock.date, "ddd, d MMM hh:mm")' "$panel" >/dev/null
 grep -F 'font.pixelSize: Theme.omarchyBarFontSize' "$panel" >/dev/null
 grep -F 'function height(): int' "$shell" >/dev/null
 grep -F 'function layout(): string' "$shell" >/dev/null
+grep -F 'function iconSizes(): string' "$shell" >/dev/null
 grep -F 'function workspaceCount(): int' "$shell" >/dev/null
 grep -F 'function networkIconState(): string' "$shell" >/dev/null
 grep -F 'function volumeIconState(): string' "$shell" >/dev/null
@@ -129,11 +138,12 @@ bar_methods=$(sed -n '/target: "bar"/,/LauncherWindow/p' "$shell" |
 	sed -n 's/^[[:space:]]*function \([A-Za-z][A-Za-z0-9]*\)(.*$/\1/p')
 expected_bar_methods='height
 layout
+iconSizes
 workspaceCount
 networkIconState
 volumeIconState'
 if [ "$bar_methods" != "$expected_bar_methods" ]; then
-	printf '%s\n' 'Bar IPC must expose exactly the five approved read-only methods' >&2
+	printf '%s\n' 'Bar IPC must expose exactly the six approved read-only methods' >&2
 	exit 1
 fi
 grep -F 'wait_for_managed_geometry' "$bar_xvfb" >/dev/null

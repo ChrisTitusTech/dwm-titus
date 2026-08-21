@@ -10,6 +10,7 @@ BarIconButton {
     readonly property int wifiIconIndex: Math.max(0, Math.min(4, Math.round(root.networkModel.wifiSignal / 25)))
 
     active: root.networkModel.visible
+    iconPixelSize: 14
     glyph: root.networkModel.barIconState === "ethernet" ? root.ethernetIcon
         : root.networkModel.barIconState === "wifi" ? root.wifiIcons[root.wifiIconIndex]
         : root.disconnectedIcon

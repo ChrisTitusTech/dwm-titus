@@ -271,6 +271,14 @@ if [ "${layout:-}" != "$expected_layout" ]; then
 	printf 'Bar IPC reported an unexpected instantiated layout: %s\n' "${layout:-<empty>}" >&2
 	exit 1
 fi
+
+expected_icon_sizes='bluetooth=11,network=14,volume=14'
+icon_sizes=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call bar iconSizes 2>/dev/null || true)
+if [ "$icon_sizes" != "$expected_icon_sizes" ]; then
+	printf 'Bar IPC reported unexpected system icon sizes: %s\n' "${icon_sizes:-<empty>}" >&2
+	exit 1
+fi
 managed_quickshell_pids=$(pgrep -P "$$" -x quickshell || true)
 [ "$managed_quickshell_pids" = "$quickshell_pid" ]
 

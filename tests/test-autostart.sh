@@ -30,6 +30,7 @@ count=0
 count=$((count + 1))
 printf '%s\n' "$count" >"$count_file"
 : >"${TEST_STATE:?}/$name.running"
+printf '%s\n' "$*" >"${TEST_STATE:?}/$name.args"
 EOF
 	chmod +x "$work/bin/$name"
 }
@@ -147,10 +148,14 @@ run_duplicate_case() {
 	home="$work/$mode/home"
 	state="$work/$mode/state"
 	runtime="$work/$mode/runtime"
-	mkdir -p "$home/Pictures/backgrounds" "$home/.config/quickshell" "$state" "$runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$home/.config/dwm-titus" "$home/.config/quickshell" "$state" "$runtime"
 	chmod 700 "$runtime"
 	: >"$home/Pictures/backgrounds/wallpaper"
 	: >"$home/.config/quickshell/shell.qml"
+	if [ "$mode" = display-manager ]; then
+		: >"$home/Pictures/selected-wallpaper.png"
+		ln -s "$home/Pictures/selected-wallpaper.png" "$home/.config/dwm-titus/wallpaper"
+	fi
 
 	# Prevent this isolated test from starting a host polkit agent.
 	: >"$state/polkit-mate-authentication-agent-1.running"
@@ -197,6 +202,11 @@ run_duplicate_case() {
 	for name in feh picom dwm-status dwm-lock-watch quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
+	if [ "$mode" = display-manager ]; then
+		grep -Fqx -- "--bg-scale $home/.config/dwm-titus/wallpaper" "$state/feh.args"
+	else
+		grep -Fqx -- "--randomize --bg-fill $home/Pictures/backgrounds" "$state/feh.args"
+	fi
 	test ! -e "$state/light-locker.count"
 	test ! -e "$state/dex.count"
 	test ! -e "$state/dex-autostart.count"

@@ -16,6 +16,8 @@ cp "$repo/config/hotkeys.toml" "$work/config/dwm-titus/hotkeys.toml"
 : >"$work/data/dwm-titus/config/quickshell/shell.qml"
 : >"$work/config/quickshell/shell.qml"
 : >"$work/home/Pictures/backgrounds/wallpaper.png"
+: >"$work/home/Pictures/selected-wallpaper.png"
+ln -s "$work/home/Pictures/selected-wallpaper.png" "$work/config/dwm-titus/wallpaper"
 
 stub_command() {
 	name=$1
@@ -384,6 +386,11 @@ grep -Fqx 'nwg-look is unavailable' "$work/gtk-settings.err"
 : >"$work/actions.log"
 run_helper action reload-wallpaper >"$work/reload-wallpaper.out"
 grep -Fqx 'action	reload-wallpaper' "$work/reload-wallpaper.out"
+grep -Fq "feh --bg-scale $work/config/dwm-titus/wallpaper" "$work/actions.log"
+
+rm -f "$work/config/dwm-titus/wallpaper"
+: >"$work/actions.log"
+run_helper action reload-wallpaper >"$work/reload-wallpaper-fallback.out"
 grep -Fq "feh --randomize --bg-fill $work/home/Pictures/backgrounds/wallpaper.png" "$work/actions.log"
 
 rm -f "$work/home/Pictures/backgrounds/wallpaper.png"

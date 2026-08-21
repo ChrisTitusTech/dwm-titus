@@ -29,5 +29,6 @@ cmp -s "$work/fedora.expected" "$fedora_stage/etc/lightdm/lightdm.conf"
 
 grep -Fqx 'xft-dpi=96' "$fedora_stage/etc/lightdm/slick-greeter.conf"
 grep -Fqx 'activate-numlock=false' "$fedora_stage/etc/lightdm/slick-greeter.conf"
+grep -Fqx 'show-hostname=false' "$fedora_stage/etc/lightdm/slick-greeter.conf"
 
 printf 'LightDM config rendering: PASS\n'

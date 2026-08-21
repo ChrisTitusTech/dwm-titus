@@ -14,13 +14,13 @@ Rectangle {
     Layout.preferredHeight: Theme.workspaceButtonSize
     radius: Theme.smallRadius
     color: Theme.omarchyBarBackground
-    border.color: selected ? Theme.omarchyBarActive : Theme.omarchyBarBackground
+    border.color: selected ? Theme.accent : Theme.omarchyBarBackground
     border.width: selected ? Theme.pillBorderWidth : 0
 
     Text {
         anchors.centerIn: parent
         text: root.label
-        color: root.selected ? Theme.omarchyBarActive
+        color: root.selected ? Theme.accent
             : root.occupied ? Theme.omarchyBarForeground : Theme.omarchyBarInactive
         font.family: Theme.fontFamily
         font.pixelSize: Theme.omarchyBarFontSize

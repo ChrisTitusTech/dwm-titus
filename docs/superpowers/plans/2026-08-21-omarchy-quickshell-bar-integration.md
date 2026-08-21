@@ -385,7 +385,7 @@ Assert the file does not contain `TrayArea`, `statusSegments`, `batteryPill`,
 `ddd dd MMM - HH:mm` format. Assert it contains:
 
 ```qml
-Qt.formatDateTime(root.clock.date, "ddd, d MMM | hh:mm")
+Qt.formatDateTime(root.clock.date, "ddd, d MMM hh:mm")
 ```
 
 - [ ] **Step 2: Run the test and verify failure**
