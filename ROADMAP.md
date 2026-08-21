@@ -38,8 +38,7 @@ and release history rather than in a permanent checked-off task list.
 
 ## Integrated Omarchy-Inspired X11 UI Delivery
 
-Status: Integrated into the numbered roadmap; `P3-UI4` is the next pull-request
-slice after this planning change merges
+Status: Integrated into the numbered roadmap; `P3-UI4` is complete in PR #163
 
 The Omarchy-inspired overhaul is not a second roadmap. Its visual and
 interaction work is folded into the existing Fedora product phases while DWM,
@@ -54,8 +53,8 @@ product roadmap.
   complete in PR #158 and corrective PR #160.
 - UI-3, panel and existing quick panels: Phase 3 prerequisite, complete in
   PR #159.
-- P3-UI4, Settings, System Health, notifications, and launcher: first active
-  Phase 3 pull-request slice, ready to start.
+- P3-UI4, Settings, System Health, notifications, and launcher: complete in
+  PR #163.
 - UI-5, optional X11-native experiences: planned for Phase 5 personalization
   and accessibility; split backend-heavy work when needed.
 - UI-6, whole-shell integration hardening: planned for Phase 7 image and
@@ -205,8 +204,8 @@ Make common monitor and input changes available from the Settings application.
 
 ## Phase 3: Connectivity and Audio
 
-Status: Active (2026-08-21). The next review boundary is `P3-UI4`; connectivity
-and audio provider work follows in separate Phase 3 pull requests.
+Status: Active (2026-08-21). `P3-UI4` is complete in PR #163; the next review
+boundary is `CONN-001`, followed by Network/VPN, Bluetooth, and audio slices.
 
 ### Objective
 

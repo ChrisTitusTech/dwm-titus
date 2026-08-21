@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Added
 
+- Add a focused large-surface source contract, a private nested-X11
+  interaction and screenshot harness, and checked-in before/after review
+  evidence for P3-UI4.
+
 - Add an X11-native Quickshell command menu with typed navigation for apps,
   desktop settings and services, screenshots, system actions, and a public
   `menu open|close|toggle|summon` IPC surface. Opening the menu moves the
@@ -17,6 +21,12 @@ versions from `config.mk`.
   recommended/full desktop and both Fedora image variants.
 
 ### Changed
+
+- Restyle Settings, System Health, notification popups/history, and the
+  application launcher with a shared presentation-only large-surface header,
+  semantic status accents, numbered navigation, and consistent search and card
+  treatments while preserving their existing providers, IPC names, X11 titles,
+  lifecycle, privilege boundaries, and interaction behavior.
 
 - Restyle the X11 Quickshell panel and its Audio, Bluetooth, Network, Control
   Center, and Power popups with shared Omarchy-inspired hero, separator,

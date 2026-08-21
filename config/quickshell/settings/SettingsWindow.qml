@@ -15,14 +15,13 @@ FloatingWindow {
     screen: settingsModel.targetScreen
     implicitWidth: 980
     implicitHeight: 620
-    color: Theme.bg
+    color: Theme.transparent
 
     function statusColor(status) {
         if (status === "available") return Theme.success;
-        if (status === "partial") return Theme.warning;
-        if (status === "restricted") return Theme.warning;
+        if (status === "partial" || status === "restricted") return Theme.warning;
         if (status === "unavailable") return Theme.danger;
-        return Theme.textMuted;
+        return Theme.menuMutedText;
     }
 
     function focusSearch() {
@@ -38,348 +37,431 @@ FloatingWindow {
         }
     }
 
-    Item {
+    ShellSurface {
         anchors.fill: parent
-        focus: true
+        margin: Theme.largeSurfaceMargin
 
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                root.settingsModel.close();
-                event.accepted = true;
-            }
-        }
-
-        ColumnLayout {
+        Item {
             anchors.fill: parent
-            anchors.margins: 22
-            spacing: Theme.sectionSpacing
+            focus: true
 
-            RowLayout {
-                Layout.fillWidth: true
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Escape) {
+                    root.settingsModel.close();
+                    event.accepted = true;
+                }
+            }
+
+            ColumnLayout {
+                anchors.fill: parent
                 spacing: Theme.sectionSpacing
 
-                ColumnLayout {
+                LargeSurfaceHeader {
                     Layout.fillWidth: true
-                    spacing: Theme.tightSpacing
+                    eyebrow: "Desktop configuration"
+                    title: "Settings"
+                    subtitle: root.settingsModel.platformName + " / common desktop controls"
+                    status: root.settingsModel.busy ? "discovering" : root.settingsModel.discoveryState
+                    statusColor: root.settingsModel.discoveryState === "failure" ? Theme.danger : Theme.accent
 
-                    Text {
-                        text: "Settings"
-                        color: Theme.textStrong
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 26
+                    ShellButton {
+                        label: root.settingsModel.busy ? "Discovering..." : "Refresh"
+                        enabled: !root.settingsModel.busy
+                        onActivated: root.settingsModel.refresh()
+                    }
+
+                    ShellButton {
+                        label: "Close"
+                        onActivated: root.settingsModel.close()
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.largeSurfaceSearchHeight
+                    color: settingsSearch.activeFocus ? Theme.controlFocusFill : Theme.controlNormalFill
+                    border.color: settingsSearch.activeFocus ? Theme.controlFocusBorder : Theme.controlNormalBorder
+                    border.width: settingsSearch.activeFocus ? Theme.controlFocusBorderWidth : Theme.controlBorderWidth
+                    radius: Theme.largeSurfaceCardRadius
+
+                    UiText {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "/"
+                        color: settingsSearch.activeFocus ? Theme.menuActionText : Theme.menuMutedText
                         font.bold: true
                     }
 
-                    Text {
-                        text: root.settingsModel.platformName + " - Displays and Input"
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.smallFontSize
-                    }
-                }
-
-                ShellButton {
-                    label: root.settingsModel.busy ? "Discovering..." : "Refresh"
-                    enabled: !root.settingsModel.busy
-                    onActivated: root.settingsModel.refresh()
-                }
-
-                ShellButton {
-                    label: "Close"
-                    onActivated: root.settingsModel.close()
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 42
-                color: Theme.surface
-                border.color: settingsSearch.activeFocus ? Theme.accent : Theme.border
-                border.width: 1
-                radius: Theme.radius
-
-                TextInput {
-                    id: settingsSearch
-
-                    anchors.fill: parent
-                    anchors.leftMargin: 14
-                    anchors.rightMargin: 14
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: Theme.textStrong
-                    selectionColor: Theme.accent
-                    selectedTextColor: Theme.accentText
-                    text: root.settingsModel.searchQuery
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.inputFontSize
-                    clip: true
-
-                    onTextChanged: root.settingsModel.setSearch(text)
-
-                    Keys.onPressed: function(event) {
-                        if (event.key === Qt.Key_Down) {
-                            root.settingsModel.selectRelative(1);
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Up) {
-                            root.settingsModel.selectRelative(-1);
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                            if (root.settingsModel.filteredSections.length > 0) {
-                                root.settingsModel.selectSection(
-                                    root.settingsModel.filteredSections[root.settingsModel.selectedIndex].id
-                                );
-                            }
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Escape) {
-                            root.settingsModel.close();
-                            event.accepted = true;
-                        }
-                    }
-                }
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: settingsSearch.text.length === 0
-                    text: "Search settings sections"
-                    color: Theme.placeholder
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.inputFontSize
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: Theme.sectionSpacing
-
-                Rectangle {
-                    Layout.preferredWidth: 260
-                    Layout.fillHeight: true
-                    color: Theme.surface
-                    border.color: Theme.border
-                    border.width: 1
-                    radius: Theme.radius
-
-                    ListView {
-                        id: sectionList
+                    TextInput {
+                        id: settingsSearch
 
                         anchors.fill: parent
-                        anchors.margins: 8
+                        anchors.leftMargin: 38
+                        anchors.rightMargin: 14
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: Theme.controlFocusText
+                        selectionColor: Theme.accent
+                        selectedTextColor: Theme.accentText
+                        text: root.settingsModel.searchQuery
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.inputFontSize
                         clip: true
-                        spacing: Theme.listSpacing
-                        model: root.settingsModel.filteredSections
 
-                        delegate: Rectangle {
-                            id: sectionButton
+                        onTextChanged: root.settingsModel.setSearch(text)
 
-                            required property var modelData
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Down) {
+                                root.settingsModel.selectRelative(1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Up) {
+                                root.settingsModel.selectRelative(-1);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                if (root.settingsModel.filteredSections.length > 0) {
+                                    root.settingsModel.selectSection(root.settingsModel.filteredSections[root.settingsModel.selectedIndex].id);
+                                }
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Escape) {
+                                root.settingsModel.close();
+                                event.accepted = true;
+                            }
+                        }
+                    }
 
-                            width: sectionList.width
-                            height: 58
-                            color: root.settingsModel.selectedSectionId === sectionButton.modelData.id
-                                ? Theme.surfaceHover : Theme.transparent
-                            border.color: root.settingsModel.selectedSectionId === sectionButton.modelData.id
-                                ? Theme.accent : Theme.transparent
-                            border.width: 1
-                            radius: Theme.radius
+                    UiText {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 38
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: settingsSearch.text.length === 0
+                        text: "Search settings sections"
+                        color: Theme.placeholder
+                        font.pixelSize: Theme.inputFontSize
+                    }
 
-                            Column {
-                                anchors.fill: parent
-                                anchors.margins: 9
-                                spacing: 3
+                    UiText {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: settingsSearch.text.length === 0
+                        text: "UP/DOWN NAVIGATE  ENTER SELECT"
+                        color: Theme.menuMutedText
+                        font.pixelSize: Theme.fontCaptionSize
+                        font.bold: true
+                        font.letterSpacing: 0.8
+                    }
+                }
 
-                                Text {
-                                    text: sectionButton.modelData.label
-                                    color: Theme.textStrong
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.panelFontSize
-                                    font.bold: root.settingsModel.selectedSectionId === sectionButton.modelData.id
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: Theme.sectionSpacing
+
+                    Rectangle {
+                        Layout.preferredWidth: Theme.largeSurfaceNavWidth
+                        Layout.fillHeight: true
+                        color: Theme.menuBackground
+                        border.color: Theme.popupBorder
+                        border.width: Theme.controlBorderWidth
+                        radius: Theme.largeSurfaceCardRadius
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: Theme.spacingXl
+                            spacing: Theme.spacingLg
+
+                            SectionLabel {
+                                label: "Sections"
+                            }
+
+                            ListView {
+                                id: sectionList
+
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                spacing: Theme.spacingSm
+                                model: root.settingsModel.filteredSections
+
+                                delegate: Rectangle {
+                                    id: sectionButton
+
+                                    required property int index
+                                    required property var modelData
+                                    readonly property bool selected: root.settingsModel.selectedSectionId === modelData.id
+
+                                    width: sectionList.width
+                                    height: 52
+                                    color: selected ? Theme.menuSelectedBackground
+                                        : sectionMouse.containsMouse ? Theme.menuHoverBackground : Theme.transparent
+                                    border.color: selected ? Theme.controlSelectedBorder : Theme.transparent
+                                    border.width: Theme.controlBorderWidth
+                                    radius: Theme.controlRadius
+
+                                    Rectangle {
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 3
+                                        height: parent.height - 14
+                                        visible: sectionButton.selected
+                                        color: Theme.accentSecondary
+                                        radius: 2
+                                    }
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 12
+                                        anchors.rightMargin: 10
+                                        spacing: Theme.spacingLg
+
+                                        UiText {
+                                            text: String(sectionButton.index + 1).padStart(2, "0")
+                                            color: sectionButton.selected ? Theme.menuActionText : Theme.menuMutedText
+                                            font.pixelSize: Theme.fontCaptionSize
+                                            font.bold: true
+                                        }
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: Theme.spacingXxs
+
+                                            UiText {
+                                                Layout.fillWidth: true
+                                                text: sectionButton.modelData.label
+                                                color: sectionButton.selected ? Theme.menuSelectedText : Theme.menuText
+                                                font.pixelSize: Theme.fontBodySize
+                                                font.bold: sectionButton.selected
+                                                elide: Text.ElideRight
+                                            }
+
+                                            UiText {
+                                                Layout.fillWidth: true
+                                                text: sectionButton.modelData.description
+                                                color: Theme.menuMutedText
+                                                font.pixelSize: Theme.fontCaptionSize
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+
+                                        UiText {
+                                            visible: sectionButton.selected
+                                            text: ">"
+                                            color: Theme.menuActionText
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: sectionMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.settingsModel.selectSection(sectionButton.modelData.id)
+                                    }
                                 }
 
-                                Text {
-                                    width: parent.width
-                                    text: sectionButton.modelData.description
-                                    color: Theme.textMuted
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.tinyFontSize
+                                UiText {
+                                    parent: sectionList
+                                    anchors.centerIn: parent
+                                    visible: sectionList.count === 0
+                                    text: "No matching sections"
+                                    color: Theme.menuMutedText
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        color: Theme.menuBackground
+                        border.color: Theme.popupBorder
+                        border.width: Theme.controlBorderWidth
+                        radius: Theme.largeSurfaceCardRadius
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: Theme.spacingHuge
+                            spacing: Theme.sectionSpacing
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.spacingXxs
+
+                                SectionLabel {
+                                    label: root.settingsModel.selectedSectionId
+                                }
+
+                                UiText {
+                                    Layout.fillWidth: true
+                                    text: root.settingsModel.selectedSection().label
+                                    color: Theme.popupText
+                                    font.pixelSize: Theme.fontTitleSize
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                }
+
+                                UiText {
+                                    Layout.fillWidth: true
+                                    text: root.settingsModel.selectedSection().description
+                                    color: Theme.menuMutedText
+                                    font.pixelSize: Theme.fontBodySize
                                     elide: Text.ElideRight
                                 }
                             }
 
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.settingsModel.selectSection(sectionButton.modelData.id)
-                            }
-                        }
-
-                        Text {
-                            anchors.centerIn: parent
-                            visible: sectionList.count === 0
-                            text: "No matching sections"
-                            color: Theme.textMuted
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.bodyFontSize
-                        }
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    color: Theme.surface
-                    border.color: Theme.border
-                    border.width: 1
-                    radius: Theme.radius
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 18
-                        spacing: Theme.sectionSpacing
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: Theme.tightSpacing
-
-                            Text {
-                                text: root.settingsModel.selectedSection().label
-                                color: Theme.textStrong
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.titleFontSize
-                                font.bold: true
-                            }
-
-                            Text {
+                            Rectangle {
                                 Layout.fillWidth: true
-                                text: root.settingsModel.selectedSection().description
-                                color: Theme.textMuted
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.bodyFontSize
+                                Layout.preferredHeight: 1
+                                color: Theme.popupBorder
                             }
-                        }
 
-                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+                            DisplaySettingsPane {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                visible: root.settingsModel.selectedSectionId === "displays"
+                                settingsModel: root.settingsModel
+                            }
 
-                        DisplaySettingsPane {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            visible: root.settingsModel.selectedSectionId === "displays"
-                            settingsModel: root.settingsModel
-                        }
+                            InputSettingsPane {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                visible: root.settingsModel.selectedSectionId === "input"
+                                settingsModel: root.settingsModel
+                            }
 
-                        InputSettingsPane {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            visible: root.settingsModel.selectedSectionId === "input"
-                            settingsModel: root.settingsModel
-                        }
+                            ListView {
+                                id: capabilityList
 
-                        ListView {
-                            id: capabilityList
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                visible: root.settingsModel.selectedSectionId !== "displays"
+                                    && root.settingsModel.selectedSectionId !== "input"
+                                clip: true
+                                spacing: Theme.spacingLg
+                                model: root.settingsModel.capabilitiesForSection(root.settingsModel.selectedSectionId)
 
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            visible: root.settingsModel.selectedSectionId !== "displays"
-                                && root.settingsModel.selectedSectionId !== "input"
-                            clip: true
-                            spacing: Theme.listSpacing * 2
-                            model: root.settingsModel.capabilitiesForSection(root.settingsModel.selectedSectionId)
+                                delegate: Rectangle {
+                                    id: capabilityCard
 
-                            delegate: Rectangle {
-                                id: capabilityCard
+                                    required property var modelData
+                                    readonly property color stateColor: root.statusColor(modelData.status)
 
-                                required property var modelData
+                                    width: capabilityList.width
+                                    height: Math.max(92, cardColumn.implicitHeight + 24)
+                                    color: Theme.controlNormalFill
+                                    border.color: Theme.controlNormalBorder
+                                    border.width: Theme.controlBorderWidth
+                                    radius: Theme.largeSurfaceCardRadius
 
-                                width: capabilityList.width
-                                height: Math.max(92, cardColumn.implicitHeight + 22)
-                                color: Theme.bg
-                                border.color: root.statusColor(capabilityCard.modelData.status)
-                                border.width: 1
-                                radius: Theme.radius
+                                    Rectangle {
+                                        anchors.left: parent.left
+                                        anchors.top: parent.top
+                                        anchors.bottom: parent.bottom
+                                        width: 4
+                                        color: capabilityCard.stateColor
+                                        radius: 2
+                                    }
 
-                                ColumnLayout {
-                                    id: cardColumn
+                                    ColumnLayout {
+                                        id: cardColumn
 
-                                    anchors.fill: parent
-                                    anchors.margins: 11
-                                    spacing: Theme.tightSpacing
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 16
+                                        anchors.rightMargin: 12
+                                        anchors.topMargin: 12
+                                        anchors.bottomMargin: 12
+                                        spacing: Theme.spacingSm
 
-                                    RowLayout {
-                                        Layout.fillWidth: true
-
-                                        Text {
+                                        RowLayout {
                                             Layout.fillWidth: true
-                                            text: capabilityCard.modelData.label
-                                            color: Theme.textStrong
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: Theme.panelFontSize
-                                            font.bold: true
+
+                                            UiText {
+                                                Layout.fillWidth: true
+                                                text: capabilityCard.modelData.label
+                                                color: Theme.controlNormalText
+                                                font.pixelSize: Theme.fontBodySize
+                                                font.bold: true
+                                                elide: Text.ElideRight
+                                            }
+
+                                            Rectangle {
+                                                implicitWidth: capabilityStatus.implicitWidth + (Theme.controlPaddingX * 2)
+                                                implicitHeight: Theme.pillHeight
+                                                color: Theme.transparent
+                                                border.color: capabilityCard.stateColor
+                                                border.width: Theme.controlBorderWidth
+                                                radius: Theme.pillRadius
+
+                                                UiText {
+                                                    id: capabilityStatus
+                                                    anchors.centerIn: parent
+                                                    text: capabilityCard.modelData.status.toUpperCase()
+                                                    color: capabilityCard.stateColor
+                                                    font.pixelSize: Theme.fontCaptionSize
+                                                    font.bold: true
+                                                }
+                                            }
                                         }
 
-                                        Text {
-                                            text: capabilityCard.modelData.status.toUpperCase()
-                                            color: root.statusColor(capabilityCard.modelData.status)
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: Theme.tinyFontSize
-                                            font.bold: true
+                                        UiText {
+                                            Layout.fillWidth: true
+                                            text: capabilityCard.modelData.detail
+                                            color: Theme.menuText
+                                            font.pixelSize: Theme.fontBodySmallSize
+                                            wrapMode: Text.WordWrap
+                                        }
+
+                                        UiText {
+                                            Layout.fillWidth: true
+                                            text: capabilityCard.modelData.capabilityClass.toUpperCase()
+                                                + " / " + capabilityCard.modelData.provider
+                                            color: Theme.menuMutedText
+                                            font.pixelSize: Theme.fontCaptionSize
+                                            font.letterSpacing: 0.5
+                                            elide: Text.ElideRight
                                         }
                                     }
+                                }
 
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: capabilityCard.modelData.detail
-                                        color: Theme.text
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.smallFontSize
-                                        wrapMode: Text.WordWrap
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: capabilityCard.modelData.capabilityClass + " - " + capabilityCard.modelData.provider
-                                        color: Theme.textMuted
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.tinyFontSize
-                                        elide: Text.ElideRight
-                                    }
+                                UiText {
+                                    parent: capabilityList
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.margins: 20
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: capabilityList.count === 0
+                                    text: root.settingsModel.discoveryState === "loading"
+                                        ? "Discovering capabilities..."
+                                        : root.settingsModel.discoveryState === "failure"
+                                            ? root.settingsModel.message
+                                            : "No capabilities reported for this section"
+                                    color: root.settingsModel.discoveryState === "failure" ? Theme.danger : Theme.menuMutedText
+                                    horizontalAlignment: Text.AlignHCenter
+                                    wrapMode: Text.WordWrap
                                 }
                             }
 
-                            Text {
-                                anchors.centerIn: parent
-                                visible: capabilityList.count === 0
-                                text: root.settingsModel.discoveryState === "loading"
-                                    ? "Discovering capabilities..."
-                                    : root.settingsModel.discoveryState === "failure"
-                                        ? root.settingsModel.message
-                                        : "No capabilities reported for this section"
-                                color: root.settingsModel.discoveryState === "failure" ? Theme.danger : Theme.textMuted
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.bodyFontSize
-                                wrapMode: Text.WordWrap
+                            UiText {
+                                Layout.fillWidth: true
+                                text: root.settingsModel.message
+                                color: root.settingsModel.discoveryState === "failure" ? Theme.danger : Theme.menuMutedText
+                                font.pixelSize: Theme.fontBodySmallSize
+                                elide: Text.ElideRight
                             }
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.settingsModel.message
-                            color: root.settingsModel.discoveryState === "failure" ? Theme.danger : Theme.textMuted
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.smallFontSize
-                            elide: Text.ElideRight
                         }
                     }
                 }
-            }
 
-            Text {
-                Layout.fillWidth: true
-                text: "Display and input previews revert automatically unless explicitly kept."
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.tinyFontSize
-                horizontalAlignment: Text.AlignRight
+                UiText {
+                    Layout.fillWidth: true
+                    text: "PREVIEWS REVERT AUTOMATICALLY UNLESS EXPLICITLY KEPT"
+                    color: Theme.menuMutedText
+                    font.pixelSize: Theme.fontCaptionSize
+                    font.bold: true
+                    font.letterSpacing: 0.7
+                    horizontalAlignment: Text.AlignRight
+                }
             }
         }
     }

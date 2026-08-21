@@ -3,7 +3,7 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
-for command_name in Xvfb dbus-run-session quickshell xdotool xprop; do
+for command_name in Xvfb dbus-run-session quickshell xdotool xprop pgrep; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -116,6 +116,21 @@ while [ "$i" -lt 100 ]; do
 done
 if DISPLAY=$display xdotool search --onlyvisible --name '^dwm system health$' >/dev/null 2>&1; then
 	printf 'System Health window did not close\n' >&2
+	exit 1
+fi
+
+i=0
+while [ "$i" -lt 200 ]; do
+	scan_processes=$(pgrep -af '[d]wm-system-health (scan-user|scan-system)' || true)
+	if ! printf '%s\n' "$scan_processes" | grep -F "$data_home/dwm-titus/scripts/dwm-system-health" >/dev/null; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.05
+done
+scan_processes=$(pgrep -af '[d]wm-system-health (scan-user|scan-system)' || true)
+if printf '%s\n' "$scan_processes" | grep -F "$data_home/dwm-titus/scripts/dwm-system-health" >/dev/null; then
+	printf 'System Health scan remained active after close\n' >&2
 	exit 1
 fi
 

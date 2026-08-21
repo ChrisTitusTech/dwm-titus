@@ -8,36 +8,37 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`, and
 ## Active Phase: Connectivity, Audio, and Large-Surface Integration
 
 The Omarchy-inspired UI plan is integrated into this phase rather than tracked
-as a competing roadmap. `P3-UI4` is the next pull-request boundary. The
-connectivity and audio tasks remain required after that visual slice; none of
-them becomes complete merely because an existing surface is restyled.
+as a competing roadmap. `P3-UI4` is complete in PR #163, and `CONN-001` is the
+next pull-request boundary. The connectivity and audio tasks remain required
+after that visual slice; none of them becomes complete merely because an
+existing surface is restyled.
 
-### P3-UI4: Large-Surface Visual Integration (Next PR)
+### P3-UI4: Large-Surface Visual Integration (PR #163)
 
-- [ ] Capture before-change screenshots and X11 geometry for Settings, System
+- [x] Capture before-change screenshots and X11 geometry for Settings, System
   Health, notification popups/history, and the application launcher on the
   active two-monitor session and a lower-resolution nested X11 session.
-- [ ] Reuse the merged semantic tokens and panel/menu interaction language.
+- [x] Reuse the merged semantic tokens and panel/menu interaction language.
   Add a presentation-only shared component only when at least two converted
   surfaces use it; visual components must not own providers or processes.
-- [ ] Restyle Settings navigation, search, capability cards, status states, and
+- [x] Restyle Settings navigation, search, capability cards, status states, and
   the existing Displays/Input panes without changing section IDs, provider
   records, preview/rollback flows, or unsupported-state behavior.
-- [ ] Restyle System Health summary tiles, categories, check cards, evidence
+- [x] Restyle System Health summary tiles, categories, check cards, evidence
   actions, and repair confirmations without changing scan lifecycle,
   authorization, repair allowlists, or bounded evidence behavior.
-- [ ] Restyle notification cards, popups, and history while preserving urgency,
+- [x] Restyle notification cards, popups, and history while preserving urgency,
   dismiss, sender-close, action, timeout, overflow, and history semantics.
-- [ ] Restyle the application launcher while preserving the application model
+- [x] Restyle the application launcher while preserving the application model
   shared with the command menu, type-to-search, keyboard/mouse activation,
   terminal-entry fallback, close-on-launch, and closed-model release behavior.
-- [ ] Preserve the existing `settings`, `systemhealth`, `notifications`, and
+- [x] Preserve the existing `settings`, `systemhealth`, `notifications`, and
   `launcher` IPC targets, stable X11 window titles, monitor selection, focus,
   stacking, click-away, Escape, and fullscreen precedence.
-- [ ] Add a focused large-surface source contract and expand nested-X11 tests
+- [x] Add a focused large-surface source contract and expand nested-X11 tests
   to exercise keyboard navigation, pointer activation, dismissal, monitor
   placement, notification actions, and health/settings lifecycle.
-- [ ] Record before/after screenshots for review and document any intentional
+- [x] Record before/after screenshots for review and document any intentional
   visual deviation from the shared Omarchy-inspired language.
 
 Acceptance:

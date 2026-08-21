@@ -1,0 +1,23 @@
+
+xwininfo: Window id: 0x600055 "dwm notification history"
+
+  Absolute upper-left X:  699
+  Absolute upper-left Y:  259
+  Relative upper-left X:  699
+  Relative upper-left Y:  259
+  Width: 520
+  Height: 560
+  Depth: 32
+  Visual: 0x7a
+  Visual Class: TrueColor
+  Border width: 1
+  Class: InputOutput
+  Colormap: 0x60001f (not installed)
+  Bit Gravity State: NorthWestGravity
+  Window Gravity State: NorthWestGravity
+  Backing Store State: NotUseful
+  Save Under State: no
+  Map State: IsViewable
+  Override Redirect State: no
+  Corners:  +699+259  -1339+259  -1339-1699  +699-1699
+  -geometry 520x560+699+259

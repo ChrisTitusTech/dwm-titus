@@ -30,15 +30,22 @@ Flickable {
 
                 Layout.preferredHeight: Theme.chipHeight
                 Layout.preferredWidth: launcherCategoryLabel.width + 22
-                radius: Theme.radius
-                color: root.launcherModel.category === categoryDelegate.modelData.id ? Theme.accent : launcherCategoryMouse.containsMouse ? Theme.surfaceHover : Theme.surface
+                radius: Theme.controlRadius
+                color: root.launcherModel.category === categoryDelegate.modelData.id
+                    ? Theme.controlSelectedFill
+                    : launcherCategoryMouse.containsMouse ? Theme.controlHoverFill : Theme.controlNormalFill
+                border.color: root.launcherModel.category === categoryDelegate.modelData.id
+                    ? Theme.controlSelectedBorder
+                    : launcherCategoryMouse.containsMouse ? Theme.controlHoverBorder : Theme.controlNormalBorder
+                border.width: Theme.controlBorderWidth
 
                 Text {
                     id: launcherCategoryLabel
 
                     anchors.centerIn: parent
                     text: categoryDelegate.modelData.label + " " + categoryDelegate.modelData.count
-                    color: root.launcherModel.category === categoryDelegate.modelData.id ? Theme.accentText : Theme.text
+                    color: root.launcherModel.category === categoryDelegate.modelData.id
+                        ? Theme.controlSelectedText : Theme.controlNormalText
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallFontSize
                     font.bold: root.launcherModel.category === categoryDelegate.modelData.id

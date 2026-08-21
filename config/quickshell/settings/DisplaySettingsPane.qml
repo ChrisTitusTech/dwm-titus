@@ -43,9 +43,9 @@ Flickable {
             Layout.fillWidth: true
             Layout.preferredHeight: root.settingsModel.previewKind === "display" ? Math.max(48, previewRow.implicitHeight + 14) : 0
             visible: root.settingsModel.previewKind === "display"
-            color: Theme.surfaceHover
+            color: Theme.controlHoverFill
             border.color: Theme.warning
-            radius: Theme.radius
+            radius: Theme.largeSurfaceCardRadius
 
             RowLayout {
                 id: previewRow
@@ -75,14 +75,26 @@ Flickable {
 
                 Layout.fillWidth: true
                 Layout.preferredHeight: 126
-                color: Theme.bg
-                border.color: outputCard.modelData.enabled ? Theme.accent : Theme.border
+                color: Theme.controlNormalFill
+                border.color: outputCard.modelData.enabled ? Theme.controlSelectedBorder : Theme.controlNormalBorder
                 border.width: 1
-                radius: Theme.radius
+                radius: Theme.largeSurfaceCardRadius
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 4
+                    color: outputCard.modelData.enabled ? Theme.accentSecondary : Theme.menuMutedText
+                    radius: 2
+                }
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 10
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 10
+                    anchors.topMargin: 10
+                    anchors.bottomMargin: 10
                     spacing: Theme.tightSpacing
 
                     RowLayout {
@@ -106,7 +118,7 @@ Flickable {
                         ShellButton { label: "Rotation: " + outputCard.modelData.rotation; enabled: outputCard.modelData.enabled; onActivated: root.settingsModel.cycleRotation(outputCard.index) }
                         Text { text: "X"; color: Theme.textMuted; font.family: Theme.fontFamily }
                         Rectangle {
-                            Layout.preferredWidth: 72; Layout.preferredHeight: 32; color: Theme.surface; border.color: Theme.border; radius: Theme.radius
+                            Layout.preferredWidth: 72; Layout.preferredHeight: 32; color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
                             TextInput {
                                 id: xPositionInput
                                 anchors.fill: parent
@@ -126,7 +138,7 @@ Flickable {
                         }
                         Text { text: "Y"; color: Theme.textMuted; font.family: Theme.fontFamily }
                         Rectangle {
-                            Layout.preferredWidth: 72; Layout.preferredHeight: 32; color: Theme.surface; border.color: Theme.border; radius: Theme.radius
+                            Layout.preferredWidth: 72; Layout.preferredHeight: 32; color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
                             TextInput {
                                 id: yPositionInput
                                 anchors.fill: parent
@@ -153,7 +165,7 @@ Flickable {
             Layout.fillWidth: true
             Text { text: "Profile"; color: Theme.textMuted; font.family: Theme.fontFamily }
             Rectangle {
-                Layout.fillWidth: true; Layout.preferredHeight: 36; color: Theme.surface; border.color: Theme.border; radius: Theme.radius
+                Layout.fillWidth: true; Layout.preferredHeight: 36; color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
                 TextInput { anchors.fill: parent; anchors.margins: 8; text: root.profileName; color: Theme.textStrong; font.family: Theme.fontFamily; onTextChanged: root.profileName = text }
             }
 			ShellButton { label: "Save profile"; enabled: root.profileName.trim().length > 0; onActivated: root.settingsModel.saveDisplay(root.profileName.trim()) }
@@ -179,9 +191,9 @@ Flickable {
             Layout.fillWidth: true
             Layout.preferredHeight: root.confirmation ? 66 : 0
             visible: root.confirmation !== ""
-            color: Theme.surfaceHover
+            color: Theme.controlHoverFill
             border.color: Theme.warning
-            radius: Theme.radius
+            radius: Theme.largeSurfaceCardRadius
             RowLayout {
                 anchors.fill: parent; anchors.margins: 8
                 Text {

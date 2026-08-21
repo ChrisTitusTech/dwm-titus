@@ -385,6 +385,14 @@ check-quickshell-controlcenter:
 check-quickshell-design-system:
 	tests/test-quickshell-design-system.sh
 
+check-quickshell-large-surfaces:
+	tests/test-quickshell-large-surfaces.sh
+
+check-quickshell-large-surfaces-xvfb: all
+	status=0; tests/test-quickshell-large-surfaces-xvfb.sh || status=$$?; \
+		if [ "$$status" -eq 77 ]; then exit 0; fi; \
+		exit "$$status"
+
 check-quickshell-panel-menus:
 	tests/test-quickshell-panel-menus.sh
 
@@ -538,6 +546,8 @@ check:
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-controlcenter
 	$(MAKE) check-quickshell-design-system
+	$(MAKE) check-quickshell-large-surfaces
+	$(MAKE) check-quickshell-large-surfaces-xvfb
 	$(MAKE) check-quickshell-panel-menus
 	$(MAKE) check-quickshell-command-menu
 	$(MAKE) check-quickshell-qml
@@ -566,5 +576,5 @@ check:
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health check-settings \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-design-system check-quickshell-panel-menus check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
 	install-cursors native release release-check uninstall
