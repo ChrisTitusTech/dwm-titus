@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|output-status|output-devices|output-set-default <sink>|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-snapshot|bluetooth-status|bluetooth-devices|bluetooth-scan|bluetooth-power <on|off>|bluetooth-pair <address>|bluetooth-trust <address>|bluetooth-connect <address>|bluetooth-disconnect <address>|bluetooth-remove <address>" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls audio-snapshot|audio-watch|volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|output-status|output-devices|output-set-default <sink>|input-set-default <source>|input-volume-set <source> <percent>|input-toggle-mute <source>|stream-volume-set <index> <percent>|stream-toggle-mute <index>|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-snapshot|bluetooth-status|bluetooth-devices|bluetooth-scan|bluetooth-power <on|off>|bluetooth-pair <address>|bluetooth-trust <address>|bluetooth-connect <address>|bluetooth-disconnect <address>|bluetooth-remove <address>" >&2
 	exit 2
 }
 
@@ -358,6 +358,7 @@ move_sink_inputs_pactl() {
 
 output_set_default() {
 	[ "$#" -eq 1 ] || usage
+	validate_audio_name "$1"
 
 	if command -v pactl >/dev/null 2>&1; then
 		if pactl set-default-sink "$1"; then
@@ -438,6 +439,97 @@ output_status() {
 	else
 		printf '%s\n' "Output unavailable"
 	fi
+}
+
+validate_audio_name() {
+	[ "$#" -eq 1 ] && [ -n "$1" ] || usage
+	case $1 in
+	*[!A-Za-z0-9_.:-]*) usage ;;
+	esac
+}
+
+validate_audio_index() {
+	[ "$#" -eq 1 ] || usage
+	case $1 in '' | *[!0-9]*) usage ;; esac
+}
+
+audio_snapshot() {
+	printf 'audio-protocol\t1\t0\n'
+	if ! command -v pactl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+		printf 'provider\taudio\tunavailable\tread-only\tpactl and jq are required\n'
+		return 0
+	fi
+
+	work=$(mktemp -d "${TMPDIR:-/tmp}/dwm-audio-snapshot.XXXXXX")
+	trap 'rm -rf "$work"' EXIT HUP INT TERM
+	if ! run_bounded 3 pactl --format=json info >"$work/info" ||
+		! run_bounded 3 pactl --format=json list sinks >"$work/sinks" ||
+		! run_bounded 3 pactl --format=json list sources >"$work/sources" ||
+		! run_bounded 3 pactl --format=json list sink-inputs >"$work/streams"; then
+		printf 'provider\taudio\tunavailable\tread-only\tPipeWire PulseAudio interface is unavailable\n'
+		return 0
+	fi
+	if ! jq -e . "$work/info" "$work/sinks" "$work/sources" "$work/streams" >/dev/null 2>&1; then
+		printf 'provider\taudio\tunavailable\tread-only\tMalformed audio provider response\n'
+		return 0
+	fi
+
+	default_sink=$(jq -r '.default_sink_name // ""' "$work/info")
+	default_source=$(jq -r '.default_source_name // ""' "$work/info")
+	printf 'provider\taudio\tavailable\tdelegated\tPipeWire state and user-session actions\n'
+	jq -r --arg default "$default_sink" '
+		def clean: tostring | gsub("[\\t\\r\\n]"; " ");
+	def percent: ([.volume[]?.value_percent | sub("%$"; "") | tonumber] | max // 0 | round) as $p |
+		if $p < 0 then 0 elif $p > 100 then 100 else $p end;
+		.[] | ["audio-output", (.name|clean), (.description // .properties["device.description"] // .name|clean),
+			(if .name == $default then "yes" else "no" end), (if .mute then "yes" else "no" end), (percent|tostring)] | @tsv' "$work/sinks"
+	jq -r --arg default "$default_source" '
+		def clean: tostring | gsub("[\\t\\r\\n]"; " ");
+	def percent: ([.volume[]?.value_percent | sub("%$"; "") | tonumber] | max // 0 | round) as $p |
+		if $p < 0 then 0 elif $p > 100 then 100 else $p end;
+		.[] | select(.name | endswith(".monitor") | not) |
+		["audio-input", (.name|clean), (.description // .properties["device.description"] // .name|clean),
+			(if .name == $default then "yes" else "no" end), (if .mute then "yes" else "no" end), (percent|tostring)] | @tsv' "$work/sources"
+	jq -r '
+		def clean: tostring | gsub("[\\t\\r\\n]"; " ");
+	def percent: ([.volume[]?.value_percent | sub("%$"; "") | tonumber] | max // 0 | round) as $p |
+		if $p < 0 then 0 elif $p > 100 then 100 else $p end;
+		.[] | ["audio-stream", (.index|tostring), (.properties["application.name"] // .name // "Application"|clean),
+			(.properties["media.name"] // .name // "Audio stream"|clean), (if .mute then "yes" else "no" end), (percent|tostring)] | @tsv' "$work/streams"
+}
+
+audio_watch() {
+	command -v pactl >/dev/null 2>&1 || return 127
+	run_parent_bound pactl subscribe
+}
+
+input_set_default() {
+	validate_audio_name "$1"
+	run_bounded 15 pactl set-default-source "$1"
+}
+
+input_volume_set() {
+	[ "$#" -eq 2 ] || usage
+	validate_audio_name "$1"
+	percent=$(volume_percent "$2")
+	run_bounded 15 pactl set-source-volume "$1" "$percent"
+}
+
+input_toggle_mute() {
+	validate_audio_name "$1"
+	run_bounded 15 pactl set-source-mute "$1" toggle
+}
+
+stream_volume_set() {
+	[ "$#" -eq 2 ] || usage
+	validate_audio_index "$1"
+	percent=$(volume_percent "$2")
+	run_bounded 15 pactl set-sink-input-volume "$1" "$percent"
+}
+
+stream_toggle_mute() {
+	validate_audio_index "$1"
+	run_bounded 15 pactl set-sink-input-mute "$1" toggle
 }
 
 media_status() {
@@ -664,6 +756,14 @@ command=$1
 shift
 
 case "$command" in
+audio-snapshot)
+	[ "$#" -eq 0 ] || usage
+	audio_snapshot
+	;;
+audio-watch)
+	[ "$#" -eq 0 ] || usage
+	audio_watch
+	;;
 volume-status)
 	[ "$#" -eq 0 ] || usage
 	volume_status
@@ -695,6 +795,24 @@ output-devices)
 output-set-default)
 	[ "$#" -eq 1 ] || usage
 	output_set_default "$1"
+	;;
+input-set-default)
+	[ "$#" -eq 1 ] || usage
+	input_set_default "$1"
+	;;
+input-volume-set)
+	input_volume_set "$@"
+	;;
+input-toggle-mute)
+	[ "$#" -eq 1 ] || usage
+	input_toggle_mute "$1"
+	;;
+stream-volume-set)
+	stream_volume_set "$@"
+	;;
+stream-toggle-mute)
+	[ "$#" -eq 1 ] || usage
+	stream_toggle_mute "$1"
 	;;
 mic-status)
 	[ "$#" -eq 0 ] || usage

@@ -8,9 +8,10 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`, and
 ## Active Phase: Connectivity, Audio, and Large-Surface Integration
 
 The Omarchy-inspired UI plan is integrated into this phase rather than tracked
-as a competing roadmap. `P3-UI4` is complete in PR #163. The connectivity
-provider, NetworkManager, and BlueZ slices are complete in the current review
-boundary; `AUDIO-001` is next.
+as a competing roadmap. `P3-UI4` is complete in PR #163 and the connectivity
+slices are complete in PR #164. Audio implementation and Phase 3 validation are
+complete in the current review boundary; phase activation occurs only after the
+review is merged and the final installed-state check passes.
 
 ### P3-UI4: Large-Surface Visual Integration (PR #163)
 
@@ -129,17 +130,17 @@ Acceptance:
 
 ### AUDIO-001: PipeWire and WirePlumber Provider
 
-- [ ] Define event-driven output, input, stream, volume, mute, default-device,
+- [x] Define event-driven output, input, stream, volume, mute, default-device,
   and microphone-visibility records using PipeWire/WirePlumber-compatible
   interfaces.
-- [ ] Reuse native Quickshell PipeWire signals where stable and provide one
+- [x] Reuse native Quickshell PipeWire signals where stable and provide one
   documented bounded fallback when native state is unavailable.
-- [ ] Start one fallback subscription only after native initialization fails or
+- [x] Start one fallback subscription only after native initialization fails or
   disconnects within three seconds. Increment a source generation on every
   transition, ignore events from older generations, terminate the fallback on
   section close or native recovery, and hand new snapshots back to native state
   without overlapping subscriptions.
-- [ ] Keep audio and media provider failures independent.
+- [x] Keep audio and media provider failures independent.
 
 Acceptance:
 
@@ -152,13 +153,13 @@ Acceptance:
 
 ### AUDIO-002: Audio Controls and Panel Synchronization
 
-- [ ] Add output and input selection, volume, mute, per-application stream, and
+- [x] Add output and input selection, volume, mute, per-application stream, and
   microphone controls only when reported by the provider.
-- [ ] Make one root-scoped audio service model authoritative for the panel and
+- [x] Make one root-scoped audio service model authoritative for the panel and
   Settings. Tag mutations with an origin and monotonic generation, reject stale
   generations, and suppress echoed events at their originating surface so both
   consumers converge without feedback loops.
-- [ ] Add bounded value validation, partial-failure reporting, and reset or
+- [x] Add bounded value validation, partial-failure reporting, and reset or
   recovery behavior for disappearing devices and streams.
 
 Acceptance:
@@ -172,19 +173,19 @@ Acceptance:
 
 ### CA-VALIDATE: Phase 3 Validation
 
-- [ ] Run focused shell, QML, provider, helper, and nested-X11 tests for all
+- [x] Run focused shell, QML, provider, helper, and nested-X11 tests for all
   connectivity and audio interactions.
-- [ ] Exercise NetworkManager workflows with a real Fedora Ethernet or Wi-Fi
+- [x] Exercise NetworkManager workflows with a real Fedora Ethernet or Wi-Fi
   connection, including cancellation and service-unavailable recovery.
-- [ ] Exercise BlueZ workflows with a real adapter and device, or record the
+- [x] Exercise BlueZ workflows with a real adapter and device, or record the
   exact hardware path that remains unqualified.
-- [ ] Exercise PipeWire/WirePlumber outputs, inputs, application streams, and
+- [x] Exercise PipeWire/WirePlumber outputs, inputs, application streams, and
   microphone state in a real Fedora session.
-- [ ] Verify closed Settings sections leave no scans, duplicate subscriptions,
+- [x] Verify closed Settings sections leave no scans, duplicate subscriptions,
   or overlapping commands. Compare a 30-second closed baseline with a
   30-second sample after opening and closing each section; the mean Quickshell
   CPU delta must be no more than 0.5 percentage points of one CPU.
-- [ ] Run the full Fedora repository validation and record untested hardware
+- [x] Run the full Fedora repository validation and record untested hardware
   paths.
 
 Acceptance:
