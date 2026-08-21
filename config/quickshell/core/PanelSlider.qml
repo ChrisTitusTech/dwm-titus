@@ -32,6 +32,7 @@ Item {
     }
 
     onValueChanged: if (!dragging) liveValue = value
+    onEnabledChanged: if (enabled && !dragging) liveValue = value
 
     implicitHeight: Theme.panelSliderHeight
     activeFocusOnTab: root.enabled
@@ -112,6 +113,10 @@ Item {
             root.valueCommitted(root.liveValue);
         }
         onWheel: function(wheel) {
+            if (wheel.angleDelta.y === 0) {
+                wheel.accepted = false;
+                return;
+            }
             const direction = wheel.angleDelta.y > 0 ? 1 : -1;
             root.moveTo(root.liveValue + direction * root.step);
             root.valueCommitted(root.liveValue);

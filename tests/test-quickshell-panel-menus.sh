@@ -12,6 +12,8 @@ power=$repo/config/quickshell/power
 for component in PanelHero PanelSeparator PanelSlider PanelToggleSwitch; do
 	test -f "$core/$component.qml"
 done
+grep -Fq 'onEnabledChanged: if (enabled && !dragging) liveValue = value' "$core/PanelSlider.qml"
+grep -Fq 'if (wheel.angleDelta.y === 0)' "$core/PanelSlider.qml"
 
 grep -Fq 'readonly property int panelHeight: 30' "$core/Theme.qml"
 grep -Fq 'exclusiveZone: Theme.panelHeight' "$panel/DwmPanel.qml"
