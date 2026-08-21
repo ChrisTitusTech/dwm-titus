@@ -49,14 +49,15 @@ ClickAwayPopup {
 
                 ShellButton {
                     label: "Scan"
-                    enabled: root.bluetoothModel.powered && !root.bluetoothModel.busy
+                    enabled: root.bluetoothModel.powered && root.bluetoothModel.actionsAvailable
+                        && !root.bluetoothModel.busy
                     onActivated: root.bluetoothModel.refresh(true)
                 }
 
                 PanelToggleSwitch {
                     checked: root.bluetoothModel.powered
                     busy: root.bluetoothModel.busy
-                    enabled: root.bluetoothModel.available
+                    enabled: root.bluetoothModel.available && root.bluetoothModel.actionsAvailable
                     onToggled: root.bluetoothModel.action("bluetooth-power", [checked ? "off" : "on"])
                 }
             }
@@ -116,7 +117,7 @@ ClickAwayPopup {
                         }
                         ShellButton {
                             label: deviceRow.modelData.connected ? "Disconnect" : (deviceRow.modelData.paired ? "Connect" : "Pair")
-                            enabled: !root.bluetoothModel.busy
+                            enabled: root.bluetoothModel.actionsAvailable && !root.bluetoothModel.busy
                             onActivated: root.bluetoothModel.action(deviceRow.modelData.connected ? "bluetooth-disconnect" : (deviceRow.modelData.paired ? "bluetooth-connect" : "bluetooth-pair"), [deviceRow.modelData.address])
                         }
                     }

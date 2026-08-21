@@ -99,6 +99,7 @@ mate-polkit
 alsa-utils
 brightnessctl
 pulseaudio-utils
+jq
 pipewire
 pipewire-pulseaudio
 wireplumber

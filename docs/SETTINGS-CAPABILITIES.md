@@ -90,12 +90,12 @@ action.
 
 | Operations | Owner and interface | Class | Failure and lifecycle behavior |
 | --- | --- | --- | --- |
-| Network status, devices, profiles, Wi-Fi scan | `dwm-quickshell-network` machine-oriented `nmcli` fields | Read-only | Missing NetworkManager tooling yields unavailable state without affecting other sections. |
+| Network status, devices, profiles, Wi-Fi scan | Versioned `dwm-quickshell-network snapshot` records from machine-oriented `nmcli` fields | Read-only | Missing NetworkManager tooling yields unavailable state without affecting other sections. |
 | Network change notifications | `dwm-quickshell-network monitor` using `nmcli monitor` | Read-only | The existing shared monitor serves the always-visible panel. A Settings-only watch must stop when its section closes. |
 | Connect saved profile, connect Wi-Fi, disconnect device | Fixed `nmcli connection` and `device` actions | Delegated | NetworkManager owns policy and secrets. QML clears passwords after passing them over helper stdin; the helper selects WPA, WPA3, or WEP settings from scan data, uses a mode-0600 temporary `passwd-file`, removes it after activation, and never puts the secret on argv. |
 | Hidden, enterprise, and advanced network editing | `nm-connection-editor` | Delegated | Hide the entry point when the tool is absent. |
-| Bluetooth status and known device list | `dwm-quickshell-controls bluetooth-status` and `bluetooth-devices` | Read-only | Missing `bluetoothctl`, daemon, or adapter is an unavailable capability. |
-| Scan, adapter power, pair/trust/connect, disconnect | Fixed `bluetoothctl` actions | Delegated | BlueZ owns device policy. Scan is bounded to eight seconds; failures must be attributed to the requested device/action. |
+| Bluetooth status and known device list | Versioned `bluetooth-snapshot` records from BlueZ ObjectManager D-Bus JSON | Read-only | Daemon, adapter, and operation support are reported separately. |
+| Scan, adapter power, pair/trust/connect, disconnect, remove | Fixed `bluetoothctl` actions | Delegated | BlueZ owns device policy. Scan is bounded to eight seconds and explicitly stopped; failures retain the canonical requested address. |
 
 ### Audio and Media
 
@@ -148,7 +148,7 @@ duplicate Fedora package lists.
 | Quickshell Settings frontend | `fedora:desktop` | Missing Quickshell makes the Settings UI unavailable. |
 | X11 display state | `fedora:x11` | Missing RandR tools disable display controls. TearFree and NVIDIA composition remain driver-dependent. |
 | NetworkManager | `fedora:desktop-optional`; enabled by the Fedora image | Missing service reports unavailable while other sections continue. |
-| BlueZ | `fedora:desktop` plus the image service/package set | Adapter absence is a runtime unsupported state. |
+| BlueZ and D-Bus JSON parsing | `bluez`, `systemd`, and `jq` from `fedora:desktop` plus the image service/package set | Adapter absence is a runtime unsupported state. |
 | PipeWire/WirePlumber and controls | `fedora:desktop`; included by the image | Missing session services report unavailable. |
 | DPMS and auto-lock | X11 tools plus `fedora:desktop` | Missing schemas or locker disable only lock controls. |
 | Defaults | `fedora:runtime-required` | Missing XDG utilities disable default-application controls. |

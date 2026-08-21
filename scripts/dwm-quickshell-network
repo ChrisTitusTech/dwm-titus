@@ -2,8 +2,55 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-network status|devices|connections|wifi-scan [--rescan yes|no] [ifname]|wifi-connect <ifname> <bssid> <ssid> [--password-stdin <security>]|connect <uuid>|disconnect <device>|monitor|editor" >&2
+	printf '%s\n' "usage: dwm-quickshell-network snapshot [--rescan yes|no]|status|devices|connections|wifi-scan [--rescan yes|no] [ifname]|wifi-connect <ifname> <bssid> <ssid> [--password-stdin <security>]|connect <uuid>|disconnect <device>|forget <uuid>|monitor|editor" >&2
 	exit 2
+}
+
+run_bounded() {
+	duration=$1
+	shift
+	status=0
+	timeout --signal=TERM --kill-after=2 "$duration" "$@" || status=$?
+	if [ "$status" -eq 124 ]; then
+		printf 'operation timed out after %s seconds\n' "$duration" >&2
+	fi
+	return "$status"
+}
+
+run_parent_bound() {
+	parent_pid=$PPID
+	parent_identity=$(sed 's/^.*) //' "/proc/$parent_pid/stat" 2>/dev/null |
+		awk '{ print $1 " " $20 }') || return 1
+	case $parent_identity in
+	Z\ *) return 1 ;;
+	esac
+	"$@" &
+	child_pid=$!
+
+	cleanup_parent_bound() {
+		kill -TERM "$child_pid" 2>/dev/null || :
+		kill -TERM "${watchdog_pid:-}" 2>/dev/null || :
+	}
+	trap cleanup_parent_bound EXIT HUP INT TERM
+	(
+		while :; do
+			current_identity=$(sed 's/^.*) //' "/proc/$parent_pid/stat" 2>/dev/null |
+				awk '{ print $1 " " $20 }' || true)
+			[ "$current_identity" = "$parent_identity" ] || {
+				kill -TERM "$child_pid" 2>/dev/null || :
+				exit 0
+			}
+			sleep 0.25
+		done
+	) &
+	watchdog_pid=$!
+
+	status=0
+	wait "$child_pid" || status=$?
+	kill -TERM "$watchdog_pid" 2>/dev/null || :
+	wait "$watchdog_pid" 2>/dev/null || :
+	trap - EXIT HUP INT TERM
+	return "$status"
 }
 
 need_nmcli() {
@@ -13,9 +60,8 @@ need_nmcli() {
 	fi
 }
 
-nmcli_tab() {
-	nmcli --terse --escape yes "$@" |
-		awk '
+nmcli_tab_from_stdin() {
+	awk '
 			{
 				field = ""
 				output = ""
@@ -41,11 +87,16 @@ nmcli_tab() {
 		'
 }
 
+nmcli_tab() {
+	output=$(nmcli --terse --escape yes "$@") || return
+	printf '%s' "$output" | nmcli_tab_from_stdin
+}
+
 status() {
 	need_nmcli
 
-	nmcli_tab -f DEVICE,TYPE,STATE device status 2>/dev/null |
-		awk -F '\t' '
+	output=$(nmcli_tab -f DEVICE,TYPE,STATE device status 2>/dev/null) || return
+	printf '%s\n' "$output" | awk -F '\t' '
 			$2 != "loopback" && $3 == "connected" {
 				print "NET " $1
 				found = 1
@@ -61,19 +112,22 @@ status() {
 
 devices() {
 	need_nmcli
-	nmcli_tab -f DEVICE,TYPE,STATE,CONNECTION device status |
-		awk -F '\t' '$2 != "loopback"'
+	output=$(nmcli_tab -f DEVICE,TYPE,STATE,CONNECTION device status) || return
+	printf '%s\n' "$output" | awk -F '\t' '$2 != "loopback"'
 }
 
 connections() {
 	need_nmcli
 
 	active=$(mktemp "${TMPDIR:-/tmp}/dwm-network-active.XXXXXX")
-	trap 'rm -f "$active"' EXIT
+	saved=$(mktemp "${TMPDIR:-/tmp}/dwm-network-saved.XXXXXX")
 
-	nmcli_tab -f NAME,UUID,TYPE,DEVICE connection show --active >"$active"
-	nmcli_tab -f NAME,UUID,TYPE connection show |
-		awk -F '\t' -v OFS='\t' '
+	if ! nmcli_tab -f NAME,UUID,TYPE,DEVICE connection show --active >"$active" ||
+		! nmcli_tab -f NAME,UUID,TYPE connection show >"$saved"; then
+		rm -f "$active" "$saved"
+		return 1
+	fi
+	awk -F '\t' -v OFS='\t' '
 			NR == FNR {
 				active[$2] = 1
 				device[$2] = $4
@@ -82,7 +136,10 @@ connections() {
 			$3 != "loopback" {
 				print $1, $2, $3, (active[$2] ? "yes" : "no"), device[$2]
 			}
-		' "$active" -
+		' "$active" "$saved"
+	status=$?
+	rm -f "$active" "$saved"
+	return "$status"
 }
 
 wifi_scan() {
@@ -114,10 +171,13 @@ wifi_scan() {
 	done
 
 	if [ -n "$ifname" ]; then
-		nmcli_tab -f IN-USE,BSSID,SSID,SIGNAL,SECURITY,CHAN,DEVICE device wifi list ifname "$ifname" --rescan "$rescan"
+		output=$(run_bounded 10 nmcli --terse --escape yes -f IN-USE,BSSID,SSID,SIGNAL,SECURITY,CHAN,DEVICE \
+			device wifi list ifname "$ifname" --rescan "$rescan") || return
 	else
-		nmcli_tab -f IN-USE,BSSID,SSID,SIGNAL,SECURITY,CHAN,DEVICE device wifi list --rescan "$rescan"
+		output=$(run_bounded 10 nmcli --terse --escape yes -f IN-USE,BSSID,SSID,SIGNAL,SECURITY,CHAN,DEVICE \
+			device wifi list --rescan "$rescan") || return
 	fi
+	printf '%s' "$output" | nmcli_tab_from_stdin
 }
 
 wifi_connect() {
@@ -137,6 +197,12 @@ wifi_connect() {
 	if [ "$#" -eq 5 ]; then
 		[ "$4" = "--password-stdin" ] || usage
 		security=$5
+		case $security in
+		*802.1X* | *802.1x* | *EAP* | *Enterprise*)
+			printf '%s\n' "enterprise Wi-Fi must be configured in the delegated NetworkManager editor" >&2
+			exit 2
+			;;
+		esac
 		key_mgmt=wpa-psk
 		secret_property=802-11-wireless-security.psk
 		wep_key_type=
@@ -156,8 +222,14 @@ wifi_connect() {
 		umask 077
 		password_file=$(mktemp "${TMPDIR:-/tmp}/dwm-network-password.XXXXXX")
 		connection_uuid=
-		trap 'rm -f "$password_file"' EXIT
-		trap 'rm -f "$password_file"; if [ -n "$connection_uuid" ]; then nmcli connection delete uuid "$connection_uuid" >/dev/null 2>&1 || :; fi; exit 1' HUP INT TERM
+		cleanup_wifi_connect() {
+			rm -f "$password_file"
+			if [ -n "$connection_uuid" ]; then
+				nmcli connection delete uuid "$connection_uuid" >/dev/null 2>&1 || :
+			fi
+		}
+		trap cleanup_wifi_connect EXIT
+		trap 'cleanup_wifi_connect; exit 1' HUP INT TERM
 
 		if ! IFS= read -r password || [ -z "$password" ]; then
 			printf '%s\n' "Wi-Fi password required on stdin" >&2
@@ -192,9 +264,9 @@ wifi_connect() {
 			set -- "$@" wifi-sec.wep-key-type "$wep_key_type"
 		fi
 		set -- "$@" connection.uuid "$connection_uuid"
-		nmcli "$@" >/dev/null
+		run_bounded 90 nmcli "$@" >/dev/null
 
-		if nmcli connection up uuid "$connection_uuid" ifname "$ifname" ap "$bssid" \
+		if run_bounded 90 nmcli connection up uuid "$connection_uuid" ifname "$ifname" ap "$bssid" \
 			passwd-file "$password_file"; then
 			trap - HUP INT TERM
 			connection_uuid=
@@ -207,29 +279,58 @@ wifi_connect() {
 		connection_uuid=
 		return "$status"
 	else
-		nmcli device wifi connect "$ssid" ifname "$ifname" bssid "$bssid"
+		run_bounded 90 nmcli device wifi connect "$ssid" ifname "$ifname" bssid "$bssid"
 	fi
 }
 
 connect_uuid() {
 	need_nmcli
 	[ "$#" -eq 1 ] || usage
-	nmcli connection up uuid "$1"
+	run_bounded 90 nmcli connection up uuid "$1"
 }
 
 disconnect_device() {
 	need_nmcli
 	[ "$#" -eq 1 ] || usage
-	nmcli device disconnect "$1"
+	run_bounded 15 nmcli device disconnect "$1"
+}
+
+forget_uuid() {
+	need_nmcli
+	[ "$#" -eq 1 ] || usage
+	run_bounded 15 nmcli connection delete uuid "$1"
+}
+
+snapshot() {
+	printf 'connectivity-protocol\t1\t0\n'
+
+	if ! command -v nmcli >/dev/null 2>&1; then
+		printf 'provider\tnetwork\tunavailable\tread-only\tnmcli is not installed\n'
+		return 0
+	fi
+
+	work=$(mktemp -d "${TMPDIR:-/tmp}/dwm-network-snapshot.XXXXXX")
+	trap 'rm -rf "$work"' EXIT HUP INT TERM
+	if ! devices >"$work/devices" 2>"$work/error" ||
+		! connections >"$work/connections" 2>>"$work/error"; then
+		printf 'provider\tnetwork\tunavailable\tread-only\tNetworkManager service is unavailable\n'
+		return 0
+	fi
+
+	if wifi_scan "$@" >"$work/wifi" 2>>"$work/error"; then
+		printf 'provider\tnetwork\tavailable\tdelegated\tNetworkManager state and user-authorized actions\n'
+	else
+		: >"$work/wifi"
+		printf 'provider\tnetwork\trestricted\tdelegated\tWi-Fi scanning is unavailable; other NetworkManager state remains readable\n'
+	fi
+	awk -F '\t' -v OFS='\t' 'NF >= 3 { connection = $4 != "" ? $4 : "-"; print "network-device", $1, $2, $3, connection }' "$work/devices"
+	awk -F '\t' -v OFS='\t' 'NF >= 4 { device = $5 != "" ? $5 : "-"; print "network-profile", $1, $2, $3, $4, device }' "$work/connections"
+	awk -F '\t' -v OFS='\t' 'NF >= 7 && $3 != "" { active = $1 != "" ? $1 : "-"; print "wifi-network", active, $2, $3, $4, $5, $6, $7 }' "$work/wifi"
 }
 
 monitor() {
 	need_nmcli
-
-	nmcli monitor |
-		while IFS= read -r _event; do
-			printf '%s\n' changed
-		done
+	run_parent_bound nmcli monitor
 }
 
 editor() {
@@ -247,6 +348,9 @@ command=$1
 shift
 
 case "$command" in
+snapshot)
+	snapshot "$@"
+	;;
 status)
 	[ "$#" -eq 0 ] || usage
 	status
@@ -270,6 +374,9 @@ connect)
 	;;
 disconnect)
 	disconnect_device "$@"
+	;;
+forget)
+	forget_uuid "$@"
 	;;
 monitor)
 	[ "$#" -eq 0 ] || usage

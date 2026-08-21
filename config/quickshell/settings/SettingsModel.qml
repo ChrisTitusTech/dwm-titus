@@ -16,6 +16,8 @@ Scope {
     property string platformFamily: "unknown"
     property string platformName: "Unknown Linux"
     property var targetScreen: null
+    property var networkModel: null
+    property var bluetoothModel: null
     property var capabilities: []
     property int selectedIndex: 0
     property var displayOutputs: []
@@ -91,6 +93,16 @@ Scope {
         displayWatchProcess.running = id === "displays" && root.visible;
         inputWatchProcess.running = id === "input" && root.visible;
 			if (id !== "input") inputSettleTimer.stop();
+        if (root.networkModel) {
+            const wantNetwork = id === "network" && root.visible;
+            if (wantNetwork && !root.networkModel.settingsVisible) root.networkModel.openSettings();
+            else if (!wantNetwork && root.networkModel.settingsVisible) root.networkModel.closeSettings();
+        }
+        if (root.bluetoothModel) {
+            const wantBluetooth = id === "bluetooth" && root.visible;
+            if (wantBluetooth && !root.bluetoothModel.settingsVisible) root.bluetoothModel.openSettings();
+            else if (!wantBluetooth && root.bluetoothModel.settingsVisible) root.bluetoothModel.closeSettings();
+        }
         if (id === "displays") root.refreshDisplays();
         if (id === "input") root.refreshInput();
     }
@@ -471,6 +483,8 @@ Scope {
         inputDiscoverProcess.running = false;
         displayWatchProcess.running = false;
         inputWatchProcess.running = false;
+		if (root.networkModel) root.networkModel.closeSettings();
+		if (root.bluetoothModel) root.bluetoothModel.closeSettings();
 			inputSettleTimer.stop();
         root.visible = false;
         root.busy = false;
