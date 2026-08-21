@@ -77,6 +77,55 @@ The static design-system check rejects Wayland and Hyprland dependencies in
 the managed shell. The Quickshell lint and X11 runtime checks remain the
 authoritative syntax and integration gates.
 
+## Integrated Six-Slice Delivery Plan
+
+The adaptation is delivered as six review and rollback boundaries inside the
+existing Fedora roadmap. The UI identifiers preserve the approved design-plan
+sequence; a product-phase prefix, such as `P3-UI4`, records where that work is
+scheduled in `ROADMAP.md`.
+
+- UI-1, design-system foundation: Phase 3 prerequisite, complete in PR #157.
+- UI-2, DWM command menu and shared launcher model: Phase 3 prerequisite,
+  complete in PR #158 and corrective PR #160.
+- UI-3, bar and existing quick panels: Phase 3 prerequisite, complete in
+  PR #159.
+- P3-UI4, Settings, System Health, notifications, and launcher: next Phase 3
+  pull request from unified `main`.
+- UI-5, optional X11-native experiences: planned for Phase 5 personalization
+  and accessibility; split backend-heavy work when needed.
+- UI-6, integration hardening and approved rollout: planned for Phase 7 release
+  qualification, with no major features.
+
+UI-2 and UI-3 were the only parallel branches because they owned mostly
+separate surfaces after UI-1 established shared tokens. `P3-UI4` must reuse the
+merged components and interaction decisions from both. The remaining
+Connectivity and Audio tasks then build on those surfaces as separate Phase 3
+pull requests. UI-5 remains optional and must not make `P3-UI4` depend on a new
+service. UI-6 is a stabilization slice, not a feature catch-all.
+
+### P3-UI4 Boundary
+
+`P3-UI4` converts the large resident and on-demand shell surfaces:
+
+- Settings navigation, search, capability cards, and current interactive panes;
+- System Health summary, category navigation, check cards, evidence actions,
+  and repair confirmations;
+- notification popups, cards, and history;
+- the application launcher while retaining the application model shared with
+  the command menu.
+
+The slice may add presentation-only shared components when at least two of
+these surfaces use them. It must not add a network, Bluetooth, audio, power,
+notification, health, application, or Settings provider; change an IPC target,
+window title, helper argument contract, privilege boundary, or keybinding; or
+fold UI-5 features into the review.
+
+`TASKS.md` combines `P3-UI4` with the remaining Connectivity and Audio work in
+one active Phase 3 plan. Only the `P3-UI4` section belongs in the next pull
+request. Completing that visual conversion does not complete Phase 3 or
+authorize product Phase 4; the provider, workflow, hardware, and validation
+gates must pass first.
+
 ## Command Menu Contract
 
 The command menu is a DWM-owned navigation surface, not an Omarchy service
@@ -95,7 +144,9 @@ Open the menu on the focused DWM screen from a terminal or a user-defined
 hotkey:
 
 ```sh
-quickshell ipc --path "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml" call menu summon
+quickshell ipc \
+  --path "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml" \
+  call menu summon
 ```
 
 Apps enters the shared XDG application provider. Display / Input,

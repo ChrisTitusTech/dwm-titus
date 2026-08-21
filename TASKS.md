@@ -5,7 +5,62 @@ file contains implementation work only for the active roadmap phase. Phase 2
 completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`, and
 `docs/SETTINGS-PLATFORM.md`.
 
-## Active Phase: Connectivity and Audio
+## Active Phase: Connectivity, Audio, and Large-Surface Integration
+
+The Omarchy-inspired UI plan is integrated into this phase rather than tracked
+as a competing roadmap. `P3-UI4` is the next pull-request boundary. The
+connectivity and audio tasks remain required after that visual slice; none of
+them becomes complete merely because an existing surface is restyled.
+
+### P3-UI4: Large-Surface Visual Integration (Next PR)
+
+- [ ] Capture before-change screenshots and X11 geometry for Settings, System
+  Health, notification popups/history, and the application launcher on the
+  active two-monitor session and a lower-resolution nested X11 session.
+- [ ] Reuse the merged semantic tokens and panel/menu interaction language.
+  Add a presentation-only shared component only when at least two converted
+  surfaces use it; visual components must not own providers or processes.
+- [ ] Restyle Settings navigation, search, capability cards, status states, and
+  the existing Displays/Input panes without changing section IDs, provider
+  records, preview/rollback flows, or unsupported-state behavior.
+- [ ] Restyle System Health summary tiles, categories, check cards, evidence
+  actions, and repair confirmations without changing scan lifecycle,
+  authorization, repair allowlists, or bounded evidence behavior.
+- [ ] Restyle notification cards, popups, and history while preserving urgency,
+  dismiss, sender-close, action, timeout, overflow, and history semantics.
+- [ ] Restyle the application launcher while preserving the application model
+  shared with the command menu, type-to-search, keyboard/mouse activation,
+  terminal-entry fallback, close-on-launch, and closed-model release behavior.
+- [ ] Preserve the existing `settings`, `systemhealth`, `notifications`, and
+  `launcher` IPC targets, stable X11 window titles, monitor selection, focus,
+  stacking, click-away, Escape, and fullscreen precedence.
+- [ ] Add a focused large-surface source contract and expand nested-X11 tests
+  to exercise keyboard navigation, pointer activation, dismissal, monitor
+  placement, notification actions, and health/settings lifecycle.
+- [ ] Record before/after screenshots for review and document any intentional
+  visual deviation from the shared Omarchy-inspired language.
+
+Acceptance:
+
+- The pull request contains only `P3-UI4`; it does not begin `CONN-001`,
+  `NET-001`, `BT-001`, `AUDIO-001`, `AUDIO-002`, or optional UI-5 features.
+- No provider, helper argument contract, IPC name, keybinding, privilege
+  boundary, 30px panel geometry, X11 surface type, or window title changes.
+- Managed QML adds no `Quickshell.Wayland`, `Quickshell.Hyprland`,
+  `WlrLayershell`, `hyprctl`, `uwsm-app`, `wl-copy`, or `wl-paste` dependency.
+- Closing each converted surface releases section-owned work and leaves no
+  duplicate scans, subscriptions, application models, or helper commands.
+- Focused source checks, `scripts/quickshell-qmllint --root config/quickshell`,
+  applicable nested-X11 suites, `scripts/run-tests make clean all`, and
+  `scripts/run-tests` pass.
+- Real Fedora X11 checks cover both active monitors, keyboard and mouse paths,
+  notification delivery/history, Settings preview cancellation, System Health
+  scan cancellation, tray ownership, and real-fullscreen precedence. The mean
+  Quickshell CPU delta between a 30-second closed baseline and a 30-second
+  post-open/close sample is no more than 0.5 percentage points of one CPU.
+- The ready-for-review PR records screenshots, exact automated and manual
+  evidence, skipped checks, and limitations. Live synchronization waits for
+  approval and uses `scripts/dev-sync-install.sh`.
 
 ### CONN-001: Connectivity Provider Contract
 
