@@ -261,6 +261,7 @@ FloatingWindow {
                                 }
 
                                 UiText {
+                                    parent: sectionList
                                     anchors.centerIn: parent
                                     visible: sectionList.count === 0
                                     text: "No matching sections"
@@ -424,9 +425,12 @@ FloatingWindow {
                                 }
 
                                 UiText {
-                                    anchors.centerIn: parent
+                                    parent: capabilityList
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.margins: 20
+                                    anchors.verticalCenter: parent.verticalCenter
                                     visible: capabilityList.count === 0
-                                    width: capabilityList.width - 40
                                     text: root.settingsModel.discoveryState === "loading"
                                         ? "Discovering capabilities..."
                                         : root.settingsModel.discoveryState === "failure"

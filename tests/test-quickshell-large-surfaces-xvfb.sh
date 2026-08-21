@@ -4,7 +4,7 @@ set -eu
 test_repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 repo=${DWM_LARGE_SURFACE_REPO:-$test_repo}
 
-for command_name in Xvfb dbus-run-session dbus-send quickshell xdotool xprop getconf; do
+for command_name in Xvfb quickshell xdotool xprop getconf; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -12,6 +12,10 @@ for command_name in Xvfb dbus-run-session dbus-send quickshell xdotool xprop get
 done
 
 if [ "${DWM_LARGE_SURFACE_DBUS_SESSION:-0}" != 1 ]; then
+	if ! command -v dbus-run-session >/dev/null 2>&1; then
+		printf 'SKIP: dbus-run-session is unavailable\n'
+		exit 77
+	fi
 	exec env DWM_LARGE_SURFACE_DBUS_SESSION=1 dbus-run-session -- "$0" "$@"
 fi
 
@@ -134,6 +138,10 @@ send_test_notification() {
 		return
 	fi
 
+	if ! command -v dbus-send >/dev/null 2>&1; then
+		printf 'SKIP: dbus-send is unavailable and notify-send cannot be used\n'
+		exit 77
+	fi
 	DISPLAY=$display HOME=$home XDG_CACHE_HOME=$home/.cache XDG_RUNTIME_DIR=$runtime \
 		dbus-send --session --print-reply --dest=org.freedesktop.Notifications \
 		/org/freedesktop/Notifications org.freedesktop.Notifications.Notify \

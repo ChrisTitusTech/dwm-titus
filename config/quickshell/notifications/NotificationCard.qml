@@ -100,6 +100,7 @@ Rectangle {
                 id: closeMouse
 
                 anchors.fill: parent
+                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.dismiss()
             }

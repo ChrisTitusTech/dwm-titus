@@ -389,7 +389,9 @@ check-quickshell-large-surfaces:
 	tests/test-quickshell-large-surfaces.sh
 
 check-quickshell-large-surfaces-xvfb: all
-	tests/test-quickshell-large-surfaces-xvfb.sh
+	status=0; tests/test-quickshell-large-surfaces-xvfb.sh || status=$$?; \
+		if [ "$$status" -eq 77 ]; then exit 0; fi; \
+		exit "$$status"
 
 check-quickshell-panel-menus:
 	tests/test-quickshell-panel-menus.sh

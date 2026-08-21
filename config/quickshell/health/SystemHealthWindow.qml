@@ -295,6 +295,7 @@ FloatingWindow {
                         }
 
                         UiText {
+                            parent: healthList
                             anchors.centerIn: parent
                             visible: healthList.count === 0
                             text: root.healthModel.busy ? "Collecting system health..." : "No checks match this view"
@@ -311,14 +312,28 @@ FloatingWindow {
                 opacity: 0.96
                 z: 10
 
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: root.healthModel.confirming
+                    hoverEnabled: true
+                    acceptedButtons: Qt.AllButtons
+                    onWheel: wheel => wheel.accepted = true
+                }
+
                 ShellSurface {
+                    id: confirmationSurface
+
                     anchors.centerIn: parent
                     width: Math.min(620, parent.width - 80)
-                    height: 290
+                    height: Math.min(parent.height - 80,
+                                     Math.max(290, confirmationLayout.implicitHeight
+                                              + (confirmationSurface.margin * 2)))
                     border.color: Theme.danger
                     margin: Theme.largeSurfaceMargin
 
                     ColumnLayout {
+                        id: confirmationLayout
+
                         anchors.fill: parent
                         spacing: Theme.sectionSpacing
 
@@ -334,7 +349,6 @@ FloatingWindow {
 
                         UiText {
                             Layout.fillWidth: true
-                            Layout.fillHeight: true
                             text: root.healthModel.pendingRepair
                                 ? root.healthModel.repairImpact(root.healthModel.pendingRepair.repairId) : ""
                             color: Theme.menuText
