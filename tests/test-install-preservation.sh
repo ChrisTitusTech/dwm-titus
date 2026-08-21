@@ -12,6 +12,12 @@ XDG_DATA_HOME="$TEST_HOME/.local/share"
 XDG_CONFIG_DIRS="$WORK_DIR/etc-xdg"
 OWNER_TMPDIR="$WORK_DIR/owner-tmp"
 mkdir -p "$OWNER_TMPDIR"
+mkdir -p "$OWNER_TMPDIR/bin"
+cat >"$OWNER_TMPDIR/bin/fc-cache" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"${DWM_TEST_FC_CACHE_LOG:?}"
+EOF
+chmod 755 "$OWNER_TMPDIR/bin/fc-cache"
 OWNER="$(id -un)"
 if [[ $(id -u) -eq 0 ]]; then
 	command -v runuser >/dev/null 2>&1 || {
@@ -28,9 +34,16 @@ OWNER_GROUP="$(id -gn "$OWNER")"
 
 run_as_owner() {
 	if [[ $(id -u) -eq 0 ]]; then
-		runuser -u "$OWNER" -- env TMPDIR="$OWNER_TMPDIR" "$@"
+		runuser -u "$OWNER" -- env \
+			TMPDIR="$OWNER_TMPDIR" \
+			PATH="$OWNER_TMPDIR/bin:$PATH" \
+			DWM_TEST_FC_CACHE_LOG="$WORK_DIR/fc-cache.log" \
+			"$@"
 	else
-		env TMPDIR="$OWNER_TMPDIR" "$@"
+		env TMPDIR="$OWNER_TMPDIR" \
+			PATH="$OWNER_TMPDIR/bin:$PATH" \
+			DWM_TEST_FC_CACHE_LOG="$WORK_DIR/fc-cache.log" \
+			"$@"
 	fi
 }
 
@@ -120,7 +133,14 @@ if [[ $EXPLICIT_OWNER_HOME != "$WORK_DIR/explicit-home" ]]; then
 	exit 1
 fi
 
-cp -a "$REPO_DIR/." "$TEST_REPO/"
+mkdir -p "$TEST_REPO"
+tar -C "$REPO_DIR" \
+	--exclude='./.git' \
+	--exclude='./docs/book' \
+	--exclude='./release' \
+	--exclude='./dwm' \
+	--exclude='./*.o' \
+	-cf - . | tar -C "$TEST_REPO" -xf -
 test -f "$TEST_REPO/config.h" || cp "$TEST_REPO/config.def.h" "$TEST_REPO/config.h"
 if [[ $(id -u) -eq 0 ]]; then
 	if make -C "$TEST_REPO" install \
@@ -358,6 +378,11 @@ run_as_owner env HOME="$FRESH_HOME" make -C "$TEST_REPO" install-user \
 	XDG_CONFIG_HOME="$FRESH_CONFIG_HOME" \
 	XDG_CONFIG_DIRS="$FRESH_CONFIG_DIRS" \
 	XDG_DATA_HOME="$FRESH_DATA_HOME"
+
+if [[ $(grep -Fxc -- '-f' "$WORK_DIR/fc-cache.log") -ne 3 ]]; then
+	printf 'Expected one font-cache refresh per user install.\n' >&2
+	exit 1
+fi
 cmp "$TEST_REPO/config/Thunar/uca.xml" "$FRESH_CONFIG_HOME/Thunar/uca.xml"
 grep -Fqx '    <command>alacritty --working-directory %f</command>' \
 	"$FRESH_CONFIG_HOME/Thunar/uca.xml"

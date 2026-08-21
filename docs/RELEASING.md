@@ -9,7 +9,7 @@ use `make native` for published binaries.
    version mismatches, and commits that are unavailable on GitHub.
 3. Run `scripts/run-tests`.
 4. Run `scripts/run-tests make check-xvfb-runtime check-monitor-tags` in isolated X11.
-5. Run `scripts/run-tests make check-container-smoke` against Fedora 44.
+5. Run `scripts/run-tests make check-fedora-packages` on Fedora 44.
 6. Run `scripts/run-tests make check-quickshell-qml check-quickshell-health-xvfb
    check-quickshell-settings-xvfb` when QML changed.
 7. Run `scripts/run-tests mdbook build docs` when published documentation
@@ -71,3 +71,10 @@ its x86-only gaming packages. The ISO builder selects the matching standard or
 NVIDIA profile. The NVIDIA profile additionally installs RPM Fusion NVIDIA
 driver packages, blacklists Nouveau, and sets NVIDIA DRM modesetting for first
 boot.
+
+Install the standard image in a KVM virtual machine before release. Complete
+Anaconda, reboot from the installed virtual disk, and verify LightDM, dwm, and
+the managed Quickshell shell. Record the source ISO checksum, firmware mode,
+architecture, package-resolution result, first-boot result, and untested
+hardware. A container can validate package availability and ISO contents, but
+it cannot replace the required boot and first-session VM qualification.

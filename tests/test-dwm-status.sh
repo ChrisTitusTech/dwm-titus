@@ -45,6 +45,11 @@ status_runner=$!
 
 sleep 0.3
 printf '81\n' >"$work/power/BAT0/capacity"
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+	grep -Fq 'BAT 81% Discharging |' "$work/status.log" && break
+	sleep 0.05
+done
+kill "$status_runner" 2>/dev/null || true
 wait "$status_runner" || status=$?
 
 case ${status:-0} in

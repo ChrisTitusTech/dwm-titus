@@ -21,7 +21,7 @@ dwm_packages() {
 	fedora:desktop)
 		# Fedora 44 publishes the compatible Quickshell snapshot in its official
 		# fedora/updates repositories. It is required and belongs in the strict
-		# desktop transaction; the Fedora container smoke proves resolution.
+		# desktop transaction; the Fedora package-map check proves availability.
 		printf '%s\n' \
 			quickshell picom feh dex-autostart mate-polkit \
 			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \

@@ -427,22 +427,10 @@ check-fedora-iso-builder:
 check-fedora-platform:
 	@$(call run_managed_test,tests/test-fedora-platform.sh)
 
-check-install: all
-	@set -eu; \
-	stage="$$(mktemp -d)"; \
-	trap 'rm -rf "$$stage"' EXIT; \
-	$(MAKE) install-system \
-		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions; \
-	test -x "$$stage/usr/bin/dwm"; \
-	for name in ${INSTALL_COMMAND_NAMES}; do \
-		test -x "$$stage/usr/bin/$$name"; \
-	done; \
-	test -x "$$stage/usr/libexec/dwm-titus/dwm-settings-display-root"; \
-	test -f "$$stage/usr/share/man/man1/dwm.1"; \
-	test -f "$$stage/usr/share/xsessions/dwm.desktop"; \
-	grep -Fqx 'Exec=/usr/bin/dwm' \
-		"$$stage/usr/share/xsessions/dwm.desktop"; \
-	echo "==> Staged install validated."
+check-fedora-packages:
+	tests/test-fedora-packages.sh
+
+check-install: check-install-manifest
 
 check-install-manifest: all
 	@set -eu; \
@@ -478,8 +466,11 @@ check-install-manifest: all
 	find "$$stage" \( -type f -o -type l \) -printf '%P\n' | sort > "$$actual"; \
 	cmp "$$expected" "$$actual"; \
 	for name in dwm ${INSTALL_COMMAND_NAMES}; do \
-		test -f "$$stage/usr/bin/$$name"; \
+		test -x "$$stage/usr/bin/$$name"; \
 	done; \
+	test -x "$$stage/usr/libexec/dwm-titus/dwm-settings-display-root"; \
+	grep -Fqx 'Exec=/usr/bin/dwm' \
+		"$$stage/usr/share/xsessions/dwm.desktop"; \
 	test -f "$$stage/usr/share/icons/${CAPITAINE_DARK_THEME}/cursors/default"; \
 	test -f "$$stage/usr/share/icons/${CAPITAINE_LIGHT_THEME}/cursors/default"; \
 	$(MAKE) uninstall \
@@ -490,9 +481,6 @@ check-install-manifest: all
 
 check-install-preservation:
 	tests/test-install-preservation.sh
-
-check-container-smoke:
-	@$(call run_managed_test,tests/test-container-smoke.sh)
 
 check-test-runner:
 	@$(call run_managed_test,tests/test-run-tests.sh)
@@ -554,15 +542,14 @@ check:
 	$(MAKE) check-release-helper
 	$(MAKE) check-kickstart
 	$(MAKE) check-install
-	$(MAKE) check-install-manifest
 	$(MAKE) check-install-preservation
 	$(MAKE) check-test-runner
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
 .PHONY: clean all check check-build-config check-build-deps check-default-apps check-dev-sync-install \
-	check-container-smoke check-test-runner \
-	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-platform check-format check-install \
+	check-test-runner \
+	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health check-settings \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \

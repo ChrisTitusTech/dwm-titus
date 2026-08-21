@@ -34,21 +34,30 @@ jobs:
 
       - name: Install build and validation dependencies
         run: |
+          source scripts/dwm-utils.sh
+          source scripts/dwm-packages.sh
+          mapfile -t required_packages < <(dwm_packages fedora required | awk 'NF' | sort -u)
           dnf install -y --setopt=install_weak_deps=False \
-            gcc make diffutils dbus-daemon \
+            "${required_packages[@]}" diffutils dbus-daemon \
             pkgconf-pkg-config ShellCheck shfmt pykickstart \
-            xorg-x11-server-Xvfb xdotool xprop xset \
-            libX11-devel libXft-devel libXinerama-devel libXrender-devel \
-            imlib2-devel libxcb-devel xcb-util-devel \
-            fontconfig-devel freetype-devel
+            xorg-x11-server-Xvfb
+
+      - name: Validate Fedora package map
+        run: scripts/run-tests make check-fedora-packages
 
       - name: Validate
         run: scripts/run-tests
 
+      - name: Validate privileged display helper security
+        env:
+          DWM_SECURITY_CONTAINER: "1"
+        run: scripts/run-tests tests/test-settings-display-security.sh
+
       - name: Validate nested X11 runtime
-        run: scripts/run-tests make check-xvfb-runtime check-monitor-tags
+        run: scripts/run-tests make check-xvfb-runtime
 
   clang-build:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container: fedora:44
@@ -72,21 +81,6 @@ jobs:
       - name: Build with Clang
         run: make clean all CC=clang
 
-  fedora-smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Validate Fedora 44
-        env:
-          CONTAINER_ENGINE: docker
-          DWM_CONTAINER_FEDORA_IMAGE: fedora:44
-        run: scripts/run-tests make check-container-smoke
-
   quickshell-qml:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -102,6 +96,9 @@ jobs:
 
       - name: Install Quickshell QML lint dependencies
         run: dnf install -y --setopt=install_weak_deps=False make quickshell qt6-qtdeclarative-devel
+
+      - name: Validate Quickshell package version
+        run: scripts/run-tests scripts/dwm-quickshell-version-check
 
       - name: Validate Quickshell QML
         run: scripts/run-tests make check-quickshell-qml

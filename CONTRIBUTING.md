@@ -40,13 +40,13 @@ submitting a pull request.
 | X11 behavior | `scripts/run-tests make check-xvfb-runtime check-monitor-tags` |
 | Quickshell QML | `scripts/run-tests make check-quickshell-qml` plus real or nested X11 runtime validation |
 | Documentation | `mdbook build docs` |
-| Installer or package mapping | `scripts/run-tests make check-container-smoke` |
+| Installer or package mapping | `scripts/run-tests make check-fedora-packages` on Fedora 44 |
 | Fedora Kickstart or ISO | `scripts/run-tests make check-kickstart` plus all evidence required by [SPEC.md Section 9.4](SPEC.md#94-fedora-image-validation) |
 | Release automation | `scripts/run-tests make release-check` and a dry run of the release helper |
 
-Container and X11 checks require their documented host tools. If a required
-environment is unavailable, state exactly what was not tested in the pull
-request instead of claiming universal validation.
+Fedora package, VM, and X11 checks require their documented host tools. If a
+required environment is unavailable, state exactly what was not tested in the
+pull request instead of claiming universal validation.
 
 ## Change Guidelines
 

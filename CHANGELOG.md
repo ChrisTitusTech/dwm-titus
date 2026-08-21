@@ -13,6 +13,12 @@ versions from `config.mk`.
 
 ### Changed
 
+- Consolidate Fedora package, build, install, and privileged-helper validation
+  into the existing Fedora CI job, removing the nested container smoke job and
+  redundant install and monitor checks. Keep the optional Clang portability
+  build available through manual workflow dispatch instead of every push and
+  pull request.
+
 - Make Alacritty the direct `Super`+`X` terminal default for every install
   profile and Fedora image. Herdr remains available only through explicit
   `--install-herdr` and `DWM_HERDR=1` opt-ins.
