@@ -11,11 +11,18 @@ core=$repo/config/quickshell/core
 shell=$repo/config/quickshell
 design_doc=$repo/docs/OMARCHY-UI-ADAPTATION.md
 
+qml_packages=$(bash -c '. "$1"; dwm_packages fedora qml-validation' sh \
+	"$repo/scripts/dwm-packages.sh")
+[ "$(printf '%s\n' "$qml_packages" | wc -l)" -eq 2 ]
+printf '%s\n' "$qml_packages" | grep -Fx quickshell >/dev/null
+printf '%s\n' "$qml_packages" | grep -Fx qt6-qtdeclarative-devel >/dev/null
+
 for token in \
-	popupBackground popupBorder menuActionText menuHoverBackground menuSelectedText \
+	popupBackground popupBorder menuActionText menuHoverBackground \
+	menuSelectedBackground menuSelectedText menuHeaderHeight \
 	controlNormalFill controlHoverFill controlFocusBorder \
 	controlSelectedFill controlDisabledFill spacingXxs spacingHuge \
-	fontCaptionSize fontBodySize fontTitleSize controlHeight \
+	fontCaptionSize fontBodySmallSize fontBodySize fontTitleSize controlHeight \
 	controlRowHeight controlPaddingX controlRadius popupPadding; do
 	grep -Eq "readonly property (string|int) $token:" "$theme"
 done
