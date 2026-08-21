@@ -39,6 +39,13 @@ done
 case "$*" in
 "device status")
 	case "${DWM_TEST_NMCLI_MODE:-wired}" in
+	status-ethernet)
+		printf 'enp2s0:ethernet:connected:Wired connection 1\n'
+		printf 'wlan0:wifi:connected:HUAWEI-BY10D8_Wi-Fi5\n'
+		;;
+	status-wifi)
+		printf 'wlan0:wifi:connected:HUAWEI-BY10D8_Wi-Fi5\n'
+		;;
 	wired)
 		printf 'lo:loopback:connected:lo\n'
 		printf 'enp6s0:ethernet:connected:Wired connection 1\n'
@@ -62,10 +69,14 @@ case "$*" in
 	printf 'Loopback profile:uuid-loopback:loopback\n'
 	;;
 "device wifi list --rescan no")
-	printf '*:AA\\:BB\\:CC\\:DD\\:EE\\:01:Cafe\\:WiFi:83:WPA2:6:wlan0\n'
-	printf ':AA\\:BB\\:CC\\:DD\\:EE\\:02:Guest WiFi:61:--:11:wlan0\n'
-	printf ':AA\\:BB\\:CC\\:DD\\:EE\\:03:Cafe\\:WiFi:50:WPA3:149:wlan0\n'
-	printf ':AA\\:BB\\:CC\\:DD\\:EE\\:06:Legacy WiFi:42:WEP:3:wlan0\n'
+	if [ "${DWM_TEST_NMCLI_MODE:-}" = status-wifi ]; then
+		printf '*:74:wlan0\n'
+	else
+		printf '*:AA\\:BB\\:CC\\:DD\\:EE\\:01:Cafe\\:WiFi:83:WPA2:6:wlan0\n'
+		printf ':AA\\:BB\\:CC\\:DD\\:EE\\:02:Guest WiFi:61:--:11:wlan0\n'
+		printf ':AA\\:BB\\:CC\\:DD\\:EE\\:03:Cafe\\:WiFi:50:WPA3:149:wlan0\n'
+		printf ':AA\\:BB\\:CC\\:DD\\:EE\\:06:Legacy WiFi:42:WEP:3:wlan0\n'
+	fi
 	;;
 "device wifi list --rescan yes")
 	printf ':AA\\:BB\\:CC\\:DD\\:EE\\:04:New WiFi:74:WPA2:1:wlan0\n'
@@ -157,13 +168,25 @@ esac
 SH
 chmod +x "$work/bin/nmcli"
 
-PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" status >"$work/status.out"
-grep -Fqx "NET enp6s0" "$work/status.out"
+DWM_TEST_NMCLI_MODE=status-ethernet \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-network" status >"$work/status-ethernet.out"
+grep -Fqx "ethernet	enp2s0	Wired connection 1	-1" "$work/status-ethernet.out"
+
+DWM_TEST_NMCLI_MODE=status-wifi \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-network" status >"$work/status-wifi.out"
+grep -Fqx "wifi	wlan0	HUAWEI-BY10D8_Wi-Fi5	74" "$work/status-wifi.out"
 
 DWM_TEST_NMCLI_MODE=offline \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-network" status >"$work/offline.out"
-grep -Fqx "NET offline" "$work/offline.out"
+grep -Fqx "disconnected			-1" "$work/offline.out"
+
+network_model=$repo/config/quickshell/network/NetworkModel.qml
+grep -F 'property string connectionKind: "disconnected"' "$network_model" >/dev/null
+grep -F 'property int wifiSignal: -1' "$network_model" >/dev/null
+grep -F 'readonly property string barIconState: root.connectionKind' "$network_model" >/dev/null
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" devices >"$work/devices.out"
 grep -Fqx "enp6s0	ethernet	connected	Wired connection 1" "$work/devices.out"

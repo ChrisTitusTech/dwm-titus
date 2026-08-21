@@ -5,8 +5,16 @@ repo=$(
 	unset CDPATH
 	cd -- "$(dirname -- "$0")/.." && pwd
 )
+controls_model=$repo/config/quickshell/controls/ControlsModel.qml
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+
+grep -F 'property string volumeIconState: root.volumeIconStateFor(root.volumePercent, root.volumeMuted)' "$controls_model" >/dev/null
+grep -F 'function volumeIconStateFor(percent, muted) {' "$controls_model" >/dev/null
+grep -F 'if (muted || percent <= 0) return "mute";' "$controls_model" >/dev/null
+grep -F 'if (percent <= 33) return "low";' "$controls_model" >/dev/null
+grep -F 'if (percent <= 66) return "medium";' "$controls_model" >/dev/null
+grep -F 'return "high";' "$controls_model" >/dev/null
 
 mkdir -p "$work/bin"
 

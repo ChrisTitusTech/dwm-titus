@@ -13,6 +13,9 @@ Scope {
     property int selectedIndex: 0
     property int selectedWifiIndex: -1
     property string statusText: "NET offline"
+    property string connectionKind: "disconnected"
+    property int wifiSignal: -1
+    readonly property string barIconState: root.connectionKind
     property string message: ""
     property string wifiPassword: ""
     property var devices: []
@@ -73,6 +76,20 @@ Scope {
             wifiScanProcess.command = Commands.networkHelperCommand("wifi-scan", rescan ? ["--rescan", "yes"] : ["--rescan", "no"]);
             wifiScanProcess.running = true;
         }
+    }
+
+    function parseStatus(text) {
+        const trimmed = text.trim();
+        const fields = trimmed.split("\t");
+        const kind = fields.length >= 4 ? fields[0] : "disconnected";
+        const device = fields.length >= 4 ? fields[1] : "";
+        const signal = fields.length >= 4 ? parseInt(fields[3], 10) : -1;
+
+        root.connectionKind = kind === "ethernet" || kind === "wifi" ? kind : "disconnected";
+        root.wifiSignal = root.connectionKind === "wifi" && !isNaN(signal)
+            ? Math.max(0, Math.min(100, signal)) : -1;
+        root.statusText = root.connectionKind === "disconnected" || device.length === 0
+            ? "NET offline" : "NET " + device;
     }
 
     function parseDevices(text) {
@@ -278,9 +295,7 @@ Scope {
 
         stdout: StdioCollector {
             onStreamFinished: {
-                const text = this.text.trim();
-
-                root.statusText = text.length > 0 ? text : "NET offline";
+                root.parseStatus(this.text);
             }
         }
     }
