@@ -16,6 +16,11 @@ qml_packages=$(bash -c '. "$1"; dwm_packages fedora qml-validation' sh \
 [ "$(printf '%s\n' "$qml_packages" | wc -l)" -eq 2 ]
 printf '%s\n' "$qml_packages" | grep -Fx quickshell >/dev/null
 printf '%s\n' "$qml_packages" | grep -Fx qt6-qtdeclarative-devel >/dev/null
+[ "$(grep -Fc 'dwm_packages fedora qml-validation' "$repo/.github/workflows/c-cpp.yml")" -eq 2 ]
+if grep -Fq 'make quickshell qt6-qtdeclarative-devel' "$repo/.github/workflows/c-cpp.yml"; then
+	printf '%s\n' 'CI hard-codes Quickshell QML validation dependencies.' >&2
+	exit 1
+fi
 
 for token in \
 	popupBackground popupBorder menuActionText menuHoverBackground \
