@@ -12,6 +12,7 @@ running_app=$repo/config/quickshell/panel/RunningAppItem.qml
 network=$repo/config/quickshell/panel/NetworkBarModule.qml
 volume=$repo/config/quickshell/panel/VolumeBarModule.qml
 shell=$repo/config/quickshell/shell.qml
+bar_xvfb=$repo/tests/test-quickshell-bar-xvfb.sh
 
 grep -F 'readonly property int omarchyBarFontSize: 11' "$theme" >/dev/null
 grep -F 'readonly property string omarchyBarBackground: "#1a1b26"' "$theme" >/dev/null
@@ -37,8 +38,25 @@ grep -F 'font.pixelSize: Theme.omarchyBarFontSize' "$workspace" >/dev/null
 grep -F 'onClicked: root.clicked()' "$workspace" >/dev/null
 grep -F 'model: root.state.barWorkspaceIndexes(root.screen, root.primaryPanel)' "$panel" >/dev/null
 grep -F 'function barWorkspaceIndexes(screen, primaryPanel)' "$state" >/dev/null
+grep -F 'root.primaryPanel ? root.state.switchWorkspace(modelData)' "$panel" >/dev/null
+grep -F ': root.state.switchWorkspaceForScreen(root.screen, modelData)' "$panel" >/dev/null
 grep -F 'signal focusRequested(string windowId)' "$running_app" >/dev/null
 grep -F 'onClicked: root.focusRequested(root.app.windowId)' "$running_app" >/dev/null
+for primitive in "$logo" "$workspace" "$running_app"; do
+	if grep -Eq 'Theme\.(accent|textMuted|surface|surfaceHover|surfaceActive|border|borderStrong)' "$primitive"; then
+		printf '%s\n' 'Retained bar primitive still uses mutable theme colors' >&2
+		exit 1
+	fi
+done
+grep -F 'Theme.omarchyBarActive' "$logo" >/dev/null
+grep -F 'Theme.omarchyBarBackground' "$logo" >/dev/null
+grep -F 'Theme.omarchyBarActive' "$workspace" >/dev/null
+grep -F 'Theme.omarchyBarInactive' "$workspace" >/dev/null
+grep -F 'Theme.omarchyBarForeground' "$workspace" >/dev/null
+grep -F 'Theme.omarchyBarBackground' "$workspace" >/dev/null
+grep -F 'Theme.omarchyBarActive' "$running_app" >/dev/null
+grep -F 'Theme.omarchyBarForeground' "$running_app" >/dev/null
+grep -F 'Theme.omarchyBarBackground' "$running_app" >/dev/null
 grep -F 'readonly property var wifiIcons: ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"]' "$network" >/dev/null
 grep -F 'readonly property string ethernetIcon: "󰈀"' "$network" >/dev/null
 grep -F 'readonly property string disconnectedIcon: "󰤮"' "$network" >/dev/null
@@ -94,6 +112,9 @@ grep -F 'function layout(): string' "$shell" >/dev/null
 grep -F 'function workspaceCount(): int' "$shell" >/dev/null
 grep -F 'function networkIconState(): string' "$shell" >/dev/null
 grep -F 'function volumeIconState(): string' "$shell" >/dev/null
+grep -F 'wait_for_managed_geometry' "$bar_xvfb" >/dev/null
+grep -F '_NET_WM_STATE_ABOVE' "$bar_xvfb" >/dev/null
+grep -F '_NET_WM_STATE_BELOW' "$bar_xvfb" >/dev/null
 
 last_line=0
 for node in LogoButton WorkspaceButton clockLabel RunningAppsArea Bluetooth NetworkBarModule VolumeBarModule; do

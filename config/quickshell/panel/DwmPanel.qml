@@ -78,7 +78,8 @@ PanelWindow {
                             label: root.state.workspaceNames[modelData]
                             selected: modelData === root.state.currentWorkspaceForScreen(root.screen)
                             occupied: root.state.workspaceOccupied(modelData)
-                            onClicked: root.state.switchWorkspaceForScreen(root.screen, modelData)
+                            onClicked: root.primaryPanel ? root.state.switchWorkspace(modelData)
+                                : root.state.switchWorkspaceForScreen(root.screen, modelData)
                         }
                     }
                 }

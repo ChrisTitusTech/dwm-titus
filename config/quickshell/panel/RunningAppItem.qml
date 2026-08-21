@@ -13,8 +13,9 @@ Rectangle {
     Layout.preferredWidth: Theme.pillHeight
     Layout.preferredHeight: Theme.pillHeight
     radius: Theme.pillRadius
-    color: appMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-    border.color: active ? Theme.accent : appMouse.containsMouse ? Theme.borderStrong : Theme.border
+    color: Theme.omarchyBarBackground
+    border.color: active ? Theme.omarchyBarActive
+        : appMouse.containsMouse ? Theme.omarchyBarForeground : Theme.omarchyBarBackground
     border.width: Theme.pillBorderWidth
 
     IconImage {

@@ -10,6 +10,8 @@ PanelPill {
     Layout.preferredWidth: Theme.pillHeight
     Layout.preferredHeight: Theme.pillHeight
     hovered: logoMouse.containsMouse
+    color: Theme.omarchyBarBackground
+    border.color: Theme.omarchyBarBackground
 
     Image {
         id: logoImage
@@ -28,7 +30,7 @@ PanelPill {
         anchors.centerIn: parent
         visible: logoImage.status === Image.Error
         text: "CTT"
-        color: Theme.accent
+        color: Theme.omarchyBarActive
         font.pixelSize: Theme.omarchyBarFontSize
         font.bold: true
     }

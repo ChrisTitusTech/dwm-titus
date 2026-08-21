@@ -31,6 +31,40 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+wait_for_managed_geometry() {
+	window=$1
+	index=0
+	while [ "$index" -lt 100 ]; do
+		geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$window" 2>/dev/null || true)
+		window_y=$(printf '%s\n' "$geometry" | awk -F= '$1 == "Y" { print $2 }')
+		window_height=$(printf '%s\n' "$geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+		if [ -n "$window_y" ] && [ -n "$window_height" ] && [ "$window_y" -ge 30 ] &&
+			[ $((window_y + window_height)) -le 800 ]; then
+			printf '%s\n' "$geometry"
+			return 0
+		fi
+		index=$((index + 1))
+		sleep 0.05
+	done
+	printf 'Client window was not tiled below the 30 px panel\n' >&2
+	return 1
+}
+
+wait_for_panel_state() {
+	window=$1
+	state=$2
+	index=0
+	while [ "$index" -lt 100 ]; do
+		if DISPLAY=$display xprop -id "$window" _NET_WM_STATE 2>/dev/null | grep -Fq "$state"; then
+			return 0
+		fi
+		index=$((index + 1))
+		sleep 0.05
+	done
+	printf 'Panel window did not enter %s\n' "$state" >&2
+	return 1
+}
+
 home=$work/home
 runtime=$work/runtime
 config_home=$home/.config
@@ -226,11 +260,13 @@ done
 client=$(cat "$work/client-window-id")
 [ -n "$client" ]
 
-geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$client")
+geometry=$(wait_for_managed_geometry "$client")
 client_y=$(printf '%s\n' "$geometry" | awk -F= '$1 == "Y" { print $2 }')
 client_height=$(printf '%s\n' "$geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
 [ "$client_y" -ge 30 ]
 [ $((client_y + client_height)) -le 800 ]
+
+wait_for_panel_state "$panel" _NET_WM_STATE_ABOVE
 
 DISPLAY=$display "$work/xclient" fullscreen "$client"
 index=0
@@ -243,6 +279,7 @@ while [ "$index" -lt 100 ]; do
 done
 DISPLAY=$display xprop -id "$client" _NET_WM_STATE | grep -Fq '_NET_WM_STATE_FULLSCREEN'
 DISPLAY=$display xprop -root _DWM_FULLSCREEN_MONITORS | grep -Eq '= 0|= 0,'
+wait_for_panel_state "$panel" _NET_WM_STATE_BELOW
 [ "$(DISPLAY=$display "$work/xclient" above "$client" "$panel")" = 1 ]
 
 kill "$client_pid"
