@@ -388,6 +388,33 @@ ShellRoot {
         }
     }
 
+    IpcHandler {
+        target: "bar"
+
+        function height(): int {
+            return root.defaultPanelWindow ? root.defaultPanelWindow.implicitHeight : 0;
+        }
+
+        function layout(): string {
+            return "logo,workspaces|clock|running-apps,bluetooth,network,volume";
+        }
+
+        function workspaceCount(): int {
+            if (!root.defaultPanelWindow) return 0;
+            return dwmState.barWorkspaceIndexes(
+                root.defaultPanelWindow.screen,
+                root.defaultPanelWindow.primaryPanel).length;
+        }
+
+        function networkIconState(): string {
+            return networkModel.barIconState;
+        }
+
+        function volumeIconState(): string {
+            return controlsModel.volumeIconState;
+        }
+    }
+
     LauncherWindow {
         launcherModel: launcherModel
     }

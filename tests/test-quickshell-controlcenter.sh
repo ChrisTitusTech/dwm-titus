@@ -496,7 +496,9 @@ if grep -Fq 'property string sidePanel' "$repo/config/quickshell/controlcenter/C
 	exit 1
 fi
 [ "$(grep -Fc 'ShellSurface {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml")" -eq 1 ]
-grep -Fq 'PanelTooltip {' "$repo/config/quickshell/panel/DwmPanel.qml"
+if grep -Fq 'PanelTooltip {' "$repo/config/quickshell/panel/DwmPanel.qml"; then
+	exit 1
+fi
 grep -Fq 'mask: Region {}' "$repo/config/quickshell/core/PanelTooltip.qml"
 grep -Fq 'anchor.edges: Edges.Left | Edges.Top' "$repo/config/quickshell/core/PanelTooltip.qml"
 grep -Fq 'anchor.gravity: Edges.Right | Edges.Bottom' "$repo/config/quickshell/core/PanelTooltip.qml"
@@ -507,13 +509,13 @@ grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/ClickAwayPopup.qml"
 grep -Fq 'RunningAppsArea { state: root.state }' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'onFocusRequested: windowId => root.state.focusWindow(windowId)' "$repo/config/quickshell/panel/RunningAppsArea.qml"
 grep -Fq 'source: Icons.launcherIcon(root.app.appClass)' "$repo/config/quickshell/panel/RunningAppItem.qml"
-grep -Fq 'root.state.activeWindowTitle' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'root.state.statusSegments' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'root.state.batteryPercent.toString() + "%"' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'visible: root.state.batteryAvailable' "$repo/config/quickshell/panel/DwmPanel.qml"
+if grep -Eq 'activeWindowTitle|statusSegments|batteryPill|batteryAvailable' \
+	"$repo/config/quickshell/panel/DwmPanel.qml"; then
+	exit 1
+fi
 grep -Fq 'root.batteryAvailable = true;' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'trimmed.indexOf("BAT ") === 0' "$repo/config/quickshell/state/DwmState.qml"
-grep -Fq 'color: Theme.barBackground' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'color: Theme.omarchyBarBackground' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'aboveWindows: root.state.fullscreenMonitorIndexes.indexOf(' \
 	"$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'root.state.screenIndex(root.screen)) === -1' \
@@ -524,10 +526,7 @@ grep -Fq 'key === "fullscreen_monitors"' "$repo/config/quickshell/state/DwmState
 if grep -Fq 'color: Theme.transparent' "$repo/config/quickshell/panel/DwmPanel.qml"; then
 	exit 1
 fi
-grep -Fq 'root.controlsModel.volumeUp();' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'root.controlsModel.volumeDown();' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'visible: root.controlsModel.volumeText !== "VOL unavailable"' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'root.controlsModel.volumePercent.toString() + "%"' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'VolumeBarModule {' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'trimmed !== "AC"' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'root.powerMenuModel.open("controlcenter")' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'powerMenuModel.anchorSource === "controlcenter"' "$repo/config/quickshell/power/PowerMenuWindow.qml"

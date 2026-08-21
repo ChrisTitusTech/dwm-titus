@@ -375,6 +375,9 @@ check-quickshell-launcher:
 check-quickshell-bar:
 	tests/test-quickshell-bar.sh
 
+check-quickshell-bar-xvfb: all
+	tests/test-quickshell-bar-xvfb.sh
+
 check-quickshell-network:
 	tests/test-quickshell-network.sh
 

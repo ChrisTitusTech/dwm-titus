@@ -11,6 +11,7 @@ workspace=$repo/config/quickshell/panel/WorkspaceButton.qml
 running_app=$repo/config/quickshell/panel/RunningAppItem.qml
 network=$repo/config/quickshell/panel/NetworkBarModule.qml
 volume=$repo/config/quickshell/panel/VolumeBarModule.qml
+shell=$repo/config/quickshell/shell.qml
 
 grep -F 'readonly property int omarchyBarFontSize: 11' "$theme" >/dev/null
 grep -F 'readonly property string omarchyBarBackground: "#1a1b26"' "$theme" >/dev/null
@@ -83,4 +84,32 @@ if grep -F 'PanelTooltip {' "$panel" >/dev/null; then
 	printf '%s\n' 'DwmPanel still creates tooltips' >&2
 	exit 1
 fi
+grep -F 'implicitHeight: 30' "$panel" >/dev/null
+grep -F 'exclusiveZone: 30' "$panel" >/dev/null
+grep -F 'color: Theme.omarchyBarBackground' "$panel" >/dev/null
+grep -F 'Qt.formatDateTime(root.clock.date, "ddd, d MMM | hh:mm")' "$panel" >/dev/null
+grep -F 'font.pixelSize: Theme.omarchyBarFontSize' "$panel" >/dev/null
+grep -F 'function height(): int' "$shell" >/dev/null
+grep -F 'function layout(): string' "$shell" >/dev/null
+grep -F 'function workspaceCount(): int' "$shell" >/dev/null
+grep -F 'function networkIconState(): string' "$shell" >/dev/null
+grep -F 'function volumeIconState(): string' "$shell" >/dev/null
+
+last_line=0
+for node in LogoButton WorkspaceButton clockLabel RunningAppsArea Bluetooth NetworkBarModule VolumeBarModule; do
+	line=$(grep -n -m 1 "$node" "$panel" | cut -d: -f1 || true)
+	if [ -z "$line" ] || [ "$line" -le "$last_line" ]; then
+		printf '%s\n' "DwmPanel does not place $node in the final three-zone order" >&2
+		exit 1
+	fi
+	last_line=$line
+done
+
+for forbidden in TrayArea statusSegments batteryPill activeWindowTitle showPowerWidget PanelTooltip \
+	'ddd dd MMM - HH:mm'; do
+	if grep -F "$forbidden" "$panel" >/dev/null; then
+		printf '%s\n' "DwmPanel still contains forbidden bar content: $forbidden" >&2
+		exit 1
+	fi
+done
 printf '%s\n' 'Quickshell bar source contract: PASS'
