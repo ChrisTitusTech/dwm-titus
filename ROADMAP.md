@@ -66,8 +66,8 @@ product roadmap.
   window titles, X11 surface types, and the existing 30px panel contract.
 - Do not ship Wayland, Hyprland, layer-shell, UWSM, `wl-*`, or Omarchy service
   and plugin backends.
-- Keep `P3-UI4` visual and interaction focused. The Phase 3 provider and action
-  tasks remain later, separate pull-request slices in the same active phase.
+- Keep `P3-UI4` visual and interaction focused. Phase 3 provider and action
+  work was delivered in the later, separate PR #164 and PR #166 slices.
 - Keep lock, polkit, idle, power, and background policy on the existing X11 and
   Fedora implementations.
 - Treat an event-driven clipboard-history backend as a separate review boundary
@@ -76,12 +76,11 @@ product roadmap.
 ### Integrated Delivery Order
 
 UI-1 is the merged foundation. UI-2 and UI-3 were parallel children and are
-now unified on `main`. `P3-UI4` begins from that combined state and establishes
-the shared large-surface language used by the remaining Phase 3 work and the
-later power, defaults, personalization, accessibility, and system-management
-phases. Phase 3 still requires its connectivity and audio provider slices and
-validation before product Phase 4 can begin. UI-5 is delivered with Phase 5,
-and UI-6 closes the desktop during Phase 7 release qualification.
+now unified on `main`. `P3-UI4` established the shared large-surface language
+used by the completed Phase 3 provider work and the later power, defaults,
+personalization, accessibility, and system-management phases. Phase 3 is
+complete and product Phase 4 is active. UI-5 is delivered with Phase 5, and
+UI-6 closes the desktop during Phase 7 release qualification.
 
 ### UI Overhaul Exit Criteria
 
@@ -204,9 +203,7 @@ Make common monitor and input changes available from the Settings application.
 
 ## Phase 3: Connectivity and Audio
 
-Status: Active (2026-08-21). `P3-UI4` is complete in PR #163. The connectivity,
-NetworkManager, and BlueZ slices are complete; the next review boundary is
-`AUDIO-001`, followed by the Phase 3 validation and closeout.
+Status: Complete (2026-08-21)
 
 ### Objective
 
@@ -232,7 +229,29 @@ Provide desktop-grade network, Bluetooth, and sound management.
 - The converted large surfaces preserve their existing IPC, focus, lifecycle,
   privilege, and backend behavior in real and nested X11 sessions.
 
+### Completion Evidence
+
+- PR #163 completed the large-surface visual integration while preserving the
+  existing Settings, System Health, notification, launcher, IPC, focus, and X11
+  contracts in real and nested sessions.
+- PR #164 added shared versioned NetworkManager and BlueZ providers, fixed
+  bounded actions, secret-safe Wi-Fi handling, real Ethernet, adapter, and
+  discovery qualification, and explicit delegation for advanced workflows.
+- PR #166 added the native-first shared PipeWire model, bounded versioned audio
+  inventory, output/input/stream workflows, generation-checked fallback, and
+  real Fedora output, microphone, and application-stream qualification.
+- The managed clean build and full repository suite passed. The active X11
+  session retained exactly one NetworkManager and one media subscription, no
+  native-overlapping audio fallback, and a 0.000 percentage-point Quickshell
+  CPU delta after every Settings section was opened and closed.
+- The host had no Wi-Fi adapter, so real Wi-Fi association and authentication
+  remain fixture-qualified. Bluetooth adapter and discovery were qualified,
+  but pairing recovery remains fixture-qualified because no sacrificial device
+  was available. These limitations are recorded in the Phase 3 evidence files.
+
 ## Phase 4: Power, Session, and Defaults
+
+Status: Active (2026-08-21)
 
 ### Objective
 

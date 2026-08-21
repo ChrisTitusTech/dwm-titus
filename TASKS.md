@@ -1,208 +1,142 @@
 # Active Project Tasks
 
 `SPEC.md` is the product contract and `ROADMAP.md` defines phase order. This
-file contains implementation work only for the active roadmap phase. Phase 2
-completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`, and
-`docs/SETTINGS-PLATFORM.md`.
+file contains implementation work only for the active roadmap phase. Phase 3
+completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
+`docs/P3-UI4-EVIDENCE.md`, `docs/P3-CONNECTIVITY-EVIDENCE.md`, and
+`docs/P3-AUDIO-EVIDENCE.md`.
 
-## Active Phase: Connectivity, Audio, and Large-Surface Integration
+## Active Phase: Power, Session, and Defaults
 
-The Omarchy-inspired UI plan is integrated into this phase rather than tracked
-as a competing roadmap. `P3-UI4` is complete in PR #163 and the connectivity
-slices are complete in PR #164. Audio implementation and Phase 3 validation are
-complete in the current review boundary; phase activation occurs only after the
-review is merged and the final installed-state check passes.
+Phase 4 begins from the merged Settings, connectivity, and audio architecture.
+Keep the existing panel Power menu, confirmation boundaries, DWM session
+lifecycle, user configuration, and XDG overrides compatible while adding the
+full-screen Settings workflows below.
 
-### P3-UI4: Large-Surface Visual Integration (PR #163)
+### POWER-001: Power Provider and Settings Workflows
 
-- [x] Capture before-change screenshots and X11 geometry for Settings, System
-  Health, notification popups/history, and the application launcher on the
-  active two-monitor session and a lower-resolution nested X11 session.
-- [x] Reuse the merged semantic tokens and panel/menu interaction language.
-  Add a presentation-only shared component only when at least two converted
-  surfaces use it; visual components must not own providers or processes.
-- [x] Restyle Settings navigation, search, capability cards, status states, and
-  the existing Displays/Input panes without changing section IDs, provider
-  records, preview/rollback flows, or unsupported-state behavior.
-- [x] Restyle System Health summary tiles, categories, check cards, evidence
-  actions, and repair confirmations without changing scan lifecycle,
-  authorization, repair allowlists, or bounded evidence behavior.
-- [x] Restyle notification cards, popups, and history while preserving urgency,
-  dismiss, sender-close, action, timeout, overflow, and history semantics.
-- [x] Restyle the application launcher while preserving the application model
-  shared with the command menu, type-to-search, keyboard/mouse activation,
-  terminal-entry fallback, close-on-launch, and closed-model release behavior.
-- [x] Preserve the existing `settings`, `systemhealth`, `notifications`, and
-  `launcher` IPC targets, stable X11 window titles, monitor selection, focus,
-  stacking, click-away, Escape, and fullscreen precedence.
-- [x] Add a focused large-surface source contract and expand nested-X11 tests
-  to exercise keyboard navigation, pointer activation, dismissal, monitor
-  placement, notification actions, and health/settings lifecycle.
-- [x] Record before/after screenshots for review and document any intentional
-  visual deviation from the shared Omarchy-inspired language.
+- [ ] Define versioned machine-readable records for battery state, external
+  power, available power profiles, active profile, DPMS, idle timing,
+  automatic locking, suspend support, and lid-policy capability.
+- [ ] Reuse `power-profiles-daemon`, UPower, logind, `xset`, and the existing
+  Control Center helper only through stable machine interfaces. Keep sampled
+  battery data bounded and event-driven service state subscription-based.
+- [ ] Add a Power Settings pane for available profile selection, DPMS, lock and
+  idle timeouts, and supported suspend/lid behavior. Hide or explain unsupported
+  hardware without disabling readable state.
+- [ ] Separate read-only battery state, user-session DPMS/lock changes,
+  delegated logind actions, and privileged persistent system policy.
+- [ ] Preserve the existing user `power.conf`, panel Power menu, confirmation
+  dialogs, and service authorization behavior. Failed writes must not be shown
+  as saved.
 
 Acceptance:
 
-- The pull request contains only `P3-UI4`; it does not begin `CONN-001`,
-  `NET-001`, `BT-001`, `AUDIO-001`, `AUDIO-002`, or optional UI-5 features.
-- No provider, helper argument contract, IPC name, keybinding, privilege
-  boundary, 30px panel geometry, X11 surface type, or window title changes.
-- Managed QML adds no `Quickshell.Wayland`, `Quickshell.Hyprland`,
-  `WlrLayershell`, `hyprctl`, `uwsm-app`, `wl-copy`, or `wl-paste` dependency.
-- Closing each converted surface releases section-owned work and leaves no
-  duplicate scans, subscriptions, application models, or helper commands.
-- Focused source checks, `scripts/quickshell-qmllint --root config/quickshell`,
-  applicable nested-X11 suites, `scripts/run-tests make clean all`, and
-  `scripts/run-tests` pass.
-- Real Fedora X11 checks cover both active monitors, keyboard and mouse paths,
-  notification delivery/history, Settings preview cancellation, System Health
-  scan cancellation, tray ownership, and real-fullscreen precedence. The mean
-  Quickshell CPU delta between a 30-second closed baseline and a 30-second
-  post-open/close sample is no more than 0.5 percentage points of one CPU.
-- The ready-for-review PR records screenshots, exact automated and manual
-  evidence, skipped checks, and limitations. Live synchronization waits for
-  approval and uses `scripts/dev-sync-install.sh`.
+- Missing batteries, profile services, X11 DPMS, lock providers, or lid
+  hardware fail only the owning capability and leave Settings usable.
+- Timeout and numeric arguments are bounded; suspend and policy changes retain
+  explicit confirmation and authorization boundaries.
+- Panel power state and Settings converge without duplicate providers or idle
+  polling, and section-owned work stops on close.
 
-### CONN-001: Connectivity Provider Contract
+### SESSION-001: Session Actions and Recovery Contract
 
-- [x] Define versioned machine-readable records for network, VPN, Bluetooth,
-  and provider availability without parsing human-oriented status output.
-- [x] Define required fields for a protocol-version header and each record;
-  consumers reject a missing or incompatible major version, reject records
-  missing required fields, and ignore documented trailing fields and unknown
-  record types for append-only compatibility.
-- [x] Reuse the existing NetworkManager and BlueZ helpers where their output,
-  lifecycle, and failure contracts are already suitable.
-- [x] Separate read-only state, user-session actions, delegated authorization,
-  and unsupported capabilities in provider and QML state.
+- [ ] Define one shared root-scoped session action model for lock, logout,
+  suspend, reboot, and shutdown that reuses the existing Power menu backend.
+- [ ] Attribute action progress and failures to the initiating surface, reject
+  overlapping session-ending requests, and retain confirmation for every
+  destructive action.
+- [ ] Preserve both display-manager and `startx` startup, D-Bus session setup,
+  graphical-session target ownership, autostop cleanup, tray startup order,
+  and optional-component failure tolerance.
+- [ ] Document recovery paths for a failed locker, denied logind action,
+  incomplete graphical-session startup, and deferred installed-DWM activation.
 
 Acceptance:
 
-- Opening and closing Network or Bluetooth starts and stops only section-owned
-  watches, scans, and helper processes.
-- Missing services, adapters, or commands fail only the owning section and do
-  not break the Settings shell or core desktop session.
-- Provider fixtures cover available, unavailable, restricted, malformed, and
-  action-failure records.
+- Authorization denial or service loss cannot be reported as success and does
+  not terminate unrelated shell providers.
+- Lock, logout, suspend, reboot, and shutdown remain reachable from the panel;
+  Settings uses the same action and confirmation contracts.
+- Repeated login/logout does not leave duplicate Quickshell, locker, portal,
+  status, watcher, or XDG autostart processes.
 
-### NET-001: Network and VPN Workflows
+### DEFAULTS-001: Default Application Management
 
-- [x] Add Ethernet, Wi-Fi, saved connection, active connection, and VPN status
-  to Settings using NetworkManager-owned interfaces.
-- [x] Add scan, saved-profile activation, Wi-Fi connection, disconnect, and
-  forget actions with explicit progress and failure states. Bound scans to 10
-  seconds, activation and connection to 90 seconds, and disconnect or forget
-  to 15 seconds; cancellation terminates the owning helper, cleans temporary
-  state, and performs no automatic retry.
-- [x] Delegate advanced, hidden, enterprise, and VPN editing to a trusted
-  NetworkManager tool when the workflow is not safely owned by Settings.
-
-Acceptance:
-
-- Secrets reach the fixed NetworkManager helper only over its stdin and a
-  caller-owned mode-0600 temporary `nmcli --passwd-file`. The helper authorizes
-  only the invoking user, redacts diagnostics, and removes the file on success,
-  failure, cancellation, timeout, or signal. Secrets never appear in argv,
-  logs, provider records, or persistent QML state.
-- Authentication cancellation and service loss leave readable state available
-  and do not report the requested action as successful.
-- Existing panel network state and Settings converge after each change without
-  overlapping polling or duplicate long-lived monitors.
-
-### BT-001: Bluetooth Workflows
-
-- [x] Add adapter power, bounded discovery, known-device, paired, trusted, and
-  connected state using BlueZ-owned interfaces.
-- [x] Add pair, trust, connect, disconnect, and remove actions with per-device
-  progress and attributed failures.
-- [x] Carry one validated canonical device address or stable BlueZ object path
-  through every request, progress record, completion callback, and error.
-- [x] Report adapter, daemon, hardware, and operation support separately.
+- [ ] Define versioned records for default browser, terminal, file manager,
+  supported MIME handlers, candidate desktop entries, and provider availability
+  using XDG interfaces rather than parsing human-oriented launcher output.
+- [ ] Extend the existing `dwm-default-apps` contract for validated terminal,
+  file-manager, browser, and MIME mutations while preserving current hotkeys
+  and safe unavailable behavior.
+- [ ] Add a Defaults Settings pane with explicit current values, candidate
+  selection, per-MIME changes, reset/recovery behavior, and attributed partial
+  failures.
+- [ ] Preserve user desktop files and existing MIME associations not selected
+  for change. Never invent a default when XDG state is absent or malformed.
 
 Acceptance:
 
-- Discovery stops on section close, timeout, or shell exit and cannot leave a
-  background scan running indefinitely.
-- A failed, cancelled, or late operation re-resolves and mutates only its stable
-  identity; it cannot target a name, enumeration position, or another device.
-- Real adapter/device tests cover pairing recovery and service unavailability;
-  absent hardware is recorded rather than described as verified.
+- Changes are visible through `xdg-settings` or `xdg-mime`, survive a fresh
+  session, and affect only the selected default or MIME type.
+- Invalid or missing desktop entries are rejected before mutation. Missing XDG
+  tools fail only Defaults and keep readable state where possible.
+- Existing browser and terminal hotkeys resolve through the newly selected
+  defaults without changing DWM keybinding contracts.
 
-### AUDIO-001: PipeWire and WirePlumber Provider
+### AUTOSTART-001: User-Visible XDG Autostart Controls
 
-- [x] Define event-driven output, input, stream, volume, mute, default-device,
-  and microphone-visibility records using PipeWire/WirePlumber-compatible
-  interfaces.
-- [x] Reuse native Quickshell PipeWire signals where stable and provide one
-  documented bounded fallback when native state is unavailable.
-- [x] Start one fallback subscription only after native initialization fails or
-  disconnects within three seconds. Increment a source generation on every
-  transition, ignore events from older generations, terminate the fallback on
-  section close or native recovery, and hand new snapshots back to native state
-  without overlapping subscriptions.
-- [x] Keep audio and media provider failures independent.
-
-Acceptance:
-
-- Settings adds no audio polling timer and starts no overlapping subscription
-  process while a native or shared event source is active.
-- Device removal, default changes, service restart, and malformed fallback
-  output degrade cleanly without stale success state.
-- Provider fixtures cover multiple sinks, sources, applications, and no-audio
-  environments.
-
-### AUDIO-002: Audio Controls and Panel Synchronization
-
-- [x] Add output and input selection, volume, mute, per-application stream, and
-  microphone controls only when reported by the provider.
-- [x] Make one root-scoped audio service model authoritative for the panel and
-  Settings. Tag mutations with an origin and monotonic generation, reject stale
-  generations, and suppress echoed events at their originating surface so both
-  consumers converge without feedback loops.
-- [x] Add bounded value validation, partial-failure reporting, and reset or
-  recovery behavior for disappearing devices and streams.
+- [ ] Define versioned records for system and user XDG autostart entries,
+  effective enabled state, origin, desktop visibility, and unsupported entries.
+- [ ] Add enable and disable actions by creating or updating a user override;
+  never edit or delete vendor desktop files.
+- [ ] Validate desktop IDs and resolved paths, reject symlink escapes, preserve
+  unrelated keys, and back up an existing user override before a material
+  rewrite.
+- [ ] Add searchable Defaults Settings controls with clear vendor/user origin,
+  confirmation where disabling a session component risks loss of desktop
+  functionality, and reset-to-vendor behavior.
 
 Acceptance:
 
-- Common output, input, mute, volume, and application-stream workflows no
-  longer require a terminal on the qualified Fedora session.
-- A Settings action updates the panel and an external PipeWire change updates
-  Settings without reopening either surface.
-- Service unavailability and authorization cancellation do not hide readable
-  state or affect unrelated sections.
+- Enable, disable, and reset survive logout/login and match the effective XDG
+  autostart state without duplicate launches.
+- Existing dwm-scoped overrides for the locker, compositor, and polkit agent
+  remain preserved unless the user explicitly changes that exact entry.
+- Malformed, missing, hidden, or non-applicable entries degrade per item and do
+  not break the Defaults pane or session startup.
 
-### CA-VALIDATE: Phase 3 Validation
+### P4-VALIDATE: Phase 4 Validation
 
-- [x] Run focused shell, QML, provider, helper, and nested-X11 tests for all
-  connectivity and audio interactions.
-- [x] Exercise NetworkManager workflows with a real Fedora Ethernet or Wi-Fi
-  connection, including cancellation and service-unavailable recovery.
-- [x] Exercise BlueZ workflows with a real adapter and device, or record the
-  exact hardware path that remains unqualified.
-- [x] Exercise PipeWire/WirePlumber outputs, inputs, application streams, and
-  microphone state in a real Fedora session.
-- [x] Verify closed Settings sections leave no scans, duplicate subscriptions,
-  or overlapping commands. Compare a 30-second closed baseline with a
-  30-second sample after opening and closing each section; the mean Quickshell
-  CPU delta must be no more than 0.5 percentage points of one CPU.
-- [x] Run the full Fedora repository validation and record untested hardware
-  paths.
+- [ ] Run focused shell, provider, QML, helper, and nested-X11 tests for power,
+  session, defaults, and autostart workflows.
+- [ ] Exercise available battery/profile/DPMS/lock paths and record exact absent
+  hardware or services rather than claiming them verified.
+- [ ] Exercise default browser, terminal, file manager, representative MIME,
+  and XDG autostart changes in an isolated user environment and a real Fedora
+  session, restoring the original values afterward.
+- [ ] Qualify display-manager and `startx` startup, repeated logout/login,
+  destructive-action confirmation, authorization denial, and process cleanup.
+- [ ] Compare a 30-second closed baseline with a 30-second sample after opening
+  and closing every Phase 4 Settings workflow; the mean Quickshell CPU delta
+  must be no more than 0.5 percentage points of one CPU.
+- [ ] Run the full Fedora repository validation, staged install, and installed
+  runtime checks, and record every untested hardware or reboot path.
 
 Acceptance:
 
-- Every Phase 3 exit criterion maps to passing automated evidence or a named
-  manual check with release, hardware, session, and limitation details.
-- Common network, Bluetooth, and audio workflows work without a terminal on the
-  qualified Fedora session, fail safely, and remain synchronized with panel
-  controls.
-- No phase is described as hardware- or platform-verified when its required
-  environment was not tested.
+- Every Phase 4 exit criterion maps to automated evidence or a named manual
+  check with Fedora release, hardware, session, restoration, and limitations.
+- Settings and panel workflows share providers, fail safely, persist through a
+  fresh session where required, and leave no duplicate services or autostarts.
+- No power, lid, battery, display-manager, or reboot path is described as
+  verified when its required environment was unavailable.
 
 ## Phase Completion
 
-When all Phase 3 acceptance criteria pass:
+When all Phase 4 acceptance criteria pass:
 
 1. Record delivered behavior and validation in `CHANGELOG.md`.
-2. Update the Phase 3 status and limitations in `ROADMAP.md`.
-3. Replace this file's active task set with Phase 4 tasks.
+2. Update the Phase 4 status and limitations in `ROADMAP.md`.
+3. Replace this file's active task set with Phase 5 tasks.
 4. Preserve incomplete or deferred work as explicit roadmap limitations.
