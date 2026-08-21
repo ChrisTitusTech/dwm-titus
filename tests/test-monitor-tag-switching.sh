@@ -9,10 +9,9 @@ mkdir -p "$work/config/dwm-titus"
 cat >"$work/config/dwm-titus/window-rules.toml" <<'TOML'
 rules = [
   { class="Alacritty", isterminal=1 },
-  { class="ghostty", isterminal=1 },
   { class="kitty", isterminal=1 },
-  { class="foot", isterminal=1 },
   { class="Brave-browser", isterminal=0 },
+  { class="St", isterminal=1 },
 ]
 TOML
 
@@ -218,13 +217,13 @@ case $* in
 *"-id 0xb00005 WM_CLASS"*) printf 'WM_CLASS(STRING) = "brave-browser", "Brave-browser"\n' ;;
 *"-id 0xc00006 _NET_WM_DESKTOP"*) printf '_NET_WM_DESKTOP(CARDINAL) = 0\n' ;;
 *"-id 0xc00006 _NET_WM_PID"*) printf '_NET_WM_PID(CARDINAL) = 4444\n' ;;
-*"-id 0xc00006 WM_CLASS"*) printf 'WM_CLASS(STRING) = "com.mitchellh.ghostty", "com.mitchellh.ghostty"\n' ;;
+*"-id 0xc00006 WM_CLASS"*) printf 'WM_CLASS(STRING) = "steam", "steam"\n' ;;
 *"-id 0xd00007 _NET_WM_DESKTOP"*) printf '_NET_WM_DESKTOP(CARDINAL) = 0\n' ;;
 *"-id 0xd00007 _NET_WM_PID"*) printf '_NET_WM_PID(CARDINAL) = 4545\n' ;;
-*"-id 0xd00007 WM_CLASS"*) printf 'WM_CLASS(STRING) = "kitty", "kitty"\n' ;;
+*"-id 0xd00007 WM_CLASS"*) printf 'WM_CLASS(STRING) = "postman", "Postman"\n' ;;
 *"-id 0xe00008 _NET_WM_DESKTOP"*) printf '_NET_WM_DESKTOP(CARDINAL) = 0\n' ;;
 *"-id 0xe00008 _NET_WM_PID"*) printf '_NET_WM_PID(CARDINAL) = 4646\n' ;;
-*"-id 0xe00008 WM_CLASS"*) printf 'WM_CLASS(STRING) = "foot", "foot"\n' ;;
+*"-id 0xe00008 WM_CLASS"*) printf 'WM_CLASS(STRING) = "kitty", "kitty"\n' ;;
 *"_NET_ACTIVE_WINDOW"*) printf '_NET_ACTIVE_WINDOW(WINDOW): window id # 0xa00004\n' ;;
 *"_NET_CLIENT_LIST"*) printf '_NET_CLIENT_LIST(WINDOW): window id # 0xa00004, 0xb00005, 0xc00006, 0xd00007, 0xe00008\n' ;;
 *"WM_NAME"*) printf 'WM_NAME(STRING) = "VOL 50%%"\n' ;;
@@ -250,7 +249,7 @@ DWM_TEST_FULLSCREEN_MONITORS='0, 1' \
 grep -Fqx 'monitor_desktops=2560,0,2560,1440,0,0,0,2560,1440,4' "$work/state.out"
 grep -Fqx 'focused_monitor=1' "$work/state.out"
 grep -Fqx 'fullscreen_monitors=0|1' "$work/state.out"
-grep -Fqx 'apps=0xb00005:brave-browser' "$work/state.out"
+grep -Fqx 'apps=0xb00005:brave-browser|0xc00006:steam|0xd00007:postman' "$work/state.out"
 
 XDG_CONFIG_HOME="$work/config" PATH="$work/bin:$PATH" \
 	"$repo_dir/scripts/dwm-quickshell-state" state >"$work/fallback.out"

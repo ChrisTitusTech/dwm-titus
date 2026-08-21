@@ -100,7 +100,7 @@ is_terminal_class() {
 			line = $0
 			sub(/^.*class[[:space:]]*=[[:space:]]*"/, "", line)
 			sub(/".*$/, "", line)
-			if (index(tolower(target), tolower(line)) > 0) {
+			if (tolower(target) == tolower(line)) {
 				found = 1
 			}
 		}
