@@ -1,3 +1,4 @@
+import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.core
@@ -385,4 +386,6 @@ Scope {
             onStreamFinished: root.editorAvailable = this.text.trim() === "yes"
         }
     }
+
+    Component.onCompleted: root.refresh(false)
 }
