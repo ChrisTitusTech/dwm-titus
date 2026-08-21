@@ -207,6 +207,13 @@ Scope {
         }
     }
 
+    function refreshApplicationIndex() {
+        if (indexProcess.running) return;
+
+        root.status = "Loading applications...";
+        indexProcess.running = true;
+    }
+
     function acquireApplications() {
         root.applicationConsumers++;
         root.ensureApplicationIndex();
@@ -227,7 +234,7 @@ Scope {
         root.selectedIndex = 0;
         root.status = "Loading applications...";
         root.refreshFilteredApps();
-        root.ensureApplicationIndex();
+        root.refreshApplicationIndex();
     }
 
     function open() {

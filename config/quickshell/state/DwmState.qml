@@ -109,6 +109,39 @@ Scope {
         return 0;
     }
 
+    function screenForMonitorIndex(monitorIndex) {
+        if (monitorIndex < 0 || monitorIndex >= root.monitorWorkspaceRows.length) {
+            return Quickshell.screens.length > 0 ? Quickshell.screens[0] : null;
+        }
+
+        const row = root.monitorWorkspaceRows[monitorIndex];
+        for (let screenIndex = 0; screenIndex < Quickshell.screens.length; screenIndex++) {
+            const screen = Quickshell.screens[screenIndex];
+            const pixelRatio = screen.devicePixelRatio > 0 ? screen.devicePixelRatio : 1;
+            const logicalMatch = row.x === screen.x && row.y === screen.y
+                && row.width === screen.width && row.height === screen.height;
+            const pixelMatch = row.x === Math.round(screen.x) && row.y === Math.round(screen.y)
+                && row.width === Math.round(screen.width * pixelRatio)
+                && row.height === Math.round(screen.height * pixelRatio);
+
+            if (logicalMatch || pixelMatch) return screen;
+        }
+
+        return monitorIndex < Quickshell.screens.length
+            ? Quickshell.screens[monitorIndex]
+            : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null);
+    }
+
+    function focusedScreen() {
+        for (let index = 0; index < root.monitorWorkspaceRows.length; index++) {
+            if (root.monitorWorkspaceRows[index].desktop === root.currentWorkspace) {
+                return root.screenForMonitorIndex(index);
+            }
+        }
+
+        return Quickshell.screens.length > 0 ? Quickshell.screens[0] : null;
+    }
+
     function workspaceIndexes(screen) {
         const indexes = [];
         const workspaceCount = root.workspaceNames.length;

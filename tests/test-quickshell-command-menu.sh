@@ -32,6 +32,12 @@ for action in close open toggle summon; do
 done
 grep -Fq 'title: "dwm menu"' "$window"
 grep -Fq 'title="dwm menu"' "$repo/config/window-rules.toml"
+grep -Fq 'dwmState.focusedScreen()' "$shell"
+grep -Fq 'function focusedScreen()' "$repo/config/quickshell/state/DwmState.qml"
+grep -Fq 'function refreshApplicationIndex()' "$repo/config/quickshell/launcher/LauncherModel.qml"
+grep -Fq 'root.refreshApplicationIndex()' "$repo/config/quickshell/launcher/LauncherModel.qml"
+grep -Fq '{ title="dwm menu", isfloating=1, alwaysontop=1 },' "$repo/docs/OMARCHY-UI-ADAPTATION.md"
+grep -Fq 'menu open|close|toggle|summon' "$repo/CHANGELOG.md"
 grep -Fq 'target: "launcher"' "$shell"
 grep -Eq 'key="r".*call launcher toggle' "$repo/config/hotkeys.toml"
 if grep -Eq 'call menu (open|toggle|summon)' "$repo/config/hotkeys.toml"; then
@@ -50,9 +56,17 @@ if grep -REn \
 fi
 
 qml_runner=
-for candidate in qml qml6 /usr/lib64/qt6/bin/qml /usr/lib/qt6/bin/qml; do
+for candidate in /usr/lib64/qt6/bin/qml /usr/lib/qt6/bin/qml qml6 qml; do
 	if command -v "$candidate" >/dev/null 2>&1; then
-		qml_runner=$(command -v "$candidate")
+		candidate_path=$(command -v "$candidate")
+		if [ "$candidate" = qml ]; then
+			candidate_version=$("$candidate_path" --version 2>&1 || true)
+			case $candidate_version in
+			*' 6.'* | *'Qt 6'*) ;;
+			*) continue ;;
+			esac
+		fi
+		qml_runner=$candidate_path
 		break
 	fi
 done

@@ -102,6 +102,17 @@ Screenshots, and System enter focused submenus; the other root rows open their
 existing dwm-titus surface directly. Type to search commands and applications
 across the catalog.
 
+Existing `window-rules.toml` files remain user-owned and are preserved during
+upgrades. If the file predates the command menu, add this entry inside its
+`rules` array so the managed window floats above tiled clients:
+
+```toml
+{ title="dwm menu", isfloating=1, alwaysontop=1 },
+```
+
+Saving the file applies the rule through DWM's normal hot reload. A customized
+rule with the same title can be retained instead.
+
 The application index is shared only while either surface is open. Closing
 the launcher and command menu releases its parsed desktop-entry data so the
 new menu does not add a hidden resident application model. Keyboard behavior

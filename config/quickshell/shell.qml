@@ -220,7 +220,7 @@ ShellRoot {
         }
 
         function summon(): void {
-            root.openCommandMenu(root.activePanelScreen);
+            root.openCommandMenu(dwmState.focusedScreen());
         }
 
         function toggle(): void {
