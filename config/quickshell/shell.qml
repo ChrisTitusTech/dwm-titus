@@ -55,9 +55,21 @@ ShellRoot {
         }
     }
 
-    function runCommandMenuAction(target, action, argument) {
-        const panel = root.activePanelWindow;
-        const screen = root.activePanelScreen;
+    function panelForScreen(screen) {
+        if (screen) {
+            for (const panel of panelVariants.instances) {
+                if (panel.screen === screen || (panel.screen && panel.screen.name === screen.name)) {
+                    return panel;
+                }
+            }
+        }
+
+        return root.activePanelWindow;
+    }
+
+    function runCommandMenuAction(target, action, argument, requestedScreen) {
+        const panel = root.panelForScreen(requestedScreen);
+        const screen = requestedScreen || (panel ? panel.screen : root.activePanelScreen);
 
         if (target === "settings" && (action === "open" || action === "select")) {
             settingsModel.openOnScreen(screen);
@@ -126,7 +138,7 @@ ShellRoot {
 
             return ids;
         }
-        onIpcActionRequested: (target, action, argument) => root.runCommandMenuAction(target, action, argument)
+        onIpcActionRequested: (target, action, argument, screen) => root.runCommandMenuAction(target, action, argument, screen)
     }
 
     PowerMenuModel {

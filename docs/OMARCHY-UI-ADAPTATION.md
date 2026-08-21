@@ -87,11 +87,12 @@ operation, a fixed helper argument vector, or the existing XDG application
 launcher provider; catalog entries cannot contain executable command text.
 
 The `menu` IPC target provides `open`, `close`, `toggle`, and `summon`.
-`summon` targets the active DWM panel screen, while `open` preserves the normal
+`summon` targets the focused DWM screen, while `open` preserves the normal
 floating-window screen selection. The existing `launcher` IPC target and
 Super+r binding remain unchanged for compatibility.
 
-Open the menu on the active screen from a terminal or a user-defined hotkey:
+Open the menu on the focused DWM screen from a terminal or a user-defined
+hotkey:
 
 ```sh
 quickshell ipc --path "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml" call menu summon

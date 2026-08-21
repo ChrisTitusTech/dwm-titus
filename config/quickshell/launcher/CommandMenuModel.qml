@@ -22,7 +22,7 @@ Scope {
         && root.selectedIndex < root.rows.length
         ? root.rows[root.selectedIndex].label : ""
 
-    signal ipcActionRequested(string target, string action, string argument)
+    signal ipcActionRequested(string target, string action, string argument, var screen)
 
     function applicationEntry(app) {
         return {
@@ -207,8 +207,9 @@ Scope {
         } else if (entry.actionType === "helper") {
             root.runHelper(entry);
         } else if (entry.actionType === "ipc") {
+            const actionScreen = root.targetScreen;
             root.close();
-            root.ipcActionRequested(entry.target, entry.action, entry.argument || "");
+            root.ipcActionRequested(entry.target, entry.action, entry.argument || "", actionScreen);
         }
     }
 
