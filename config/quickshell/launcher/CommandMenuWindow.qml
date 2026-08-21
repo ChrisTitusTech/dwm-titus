@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -21,10 +22,18 @@ FloatingWindow {
         commandSearch.text = root.commandMenuModel.query;
         commandSearch.forceActiveFocus();
         commandSearch.cursorPosition = commandSearch.text.length;
+        pointerWarpProcess.running = false;
+        pointerWarpProcess.running = true;
     }
 
     onVisibleChanged: {
         if (visible) Qt.callLater(root.focusSearch);
+    }
+
+    Process {
+        id: pointerWarpProcess
+
+        command: Commands.pointerHelperCommand("command-menu")
     }
 
     ShellSurface {

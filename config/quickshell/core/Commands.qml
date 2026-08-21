@@ -31,6 +31,10 @@ Singleton {
         return helperCommand("dwm-quickshell-network", action, args, false);
     }
 
+    function pointerHelperCommand(action) {
+        return helperCommand("dwm-quickshell-pointer", action, [], true);
+    }
+
     function controlsHelperCommand(action, args) {
         return helperCommand("dwm-quickshell-controls", action, args, true);
     }

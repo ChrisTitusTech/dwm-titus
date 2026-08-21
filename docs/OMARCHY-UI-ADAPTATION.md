@@ -118,7 +118,9 @@ The application index is shared only while either surface is open. Closing
 the launcher and command menu releases its parsed desktop-entry data so the
 new menu does not add a hidden resident application model. Keyboard behavior
 includes type-to-search, arrows, Page Up/Down, Home/End, Enter, Left or empty
-Backspace to return, and Escape to close.
+Backspace to return, and Escape to close. Opening the menu moves the pointer
+into its search field so DWM's pointer-following focus cannot immediately hand
+keyboard input back to the window that was previously under the pointer.
 
 Run the focused source contract with:
 

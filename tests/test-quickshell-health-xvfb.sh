@@ -43,6 +43,7 @@ grep -Fqx '  { title="dwm control center",         isfloating=1, alwaysontop=1 }
 	"$config_home/dwm-titus/window-rules.toml"
 cp "$repo/scripts/dwm-system-health" "$repo/scripts/dwm-diagnostics" \
 	"$repo/scripts/dwm-quickshell-controlcenter" "$repo/scripts/dwm-quickshell-launcher" \
+	"$repo/scripts/dwm-quickshell-pointer" \
 	"$data_home/dwm-titus/scripts/"
 
 Xvfb "$display" -screen 0 1024x768x24 -nolisten tcp -extension GLX >"$work/xvfb.log" 2>&1 &
@@ -276,6 +277,7 @@ fi
 
 # The DWM-owned command menu keeps the legacy launcher intact while sharing
 # its XDG application index only for the lifetime of an open surface.
+DISPLAY=$display xdotool mousemove 5 5
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
 	quickshell ipc --path "$config" call menu summon >/dev/null
 
@@ -306,7 +308,18 @@ height=$(printf '%s\n' "$geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
 [ "$width" = 720 ]
 [ "$height" = 600 ]
 
-DISPLAY=$display xdotool windowactivate --sync "$menu_window"
+pointer_window=
+i=0
+while [ "$i" -lt 100 ]; do
+	pointer_window=$(DISPLAY=$display xdotool getmouselocation --shell |
+		awk -F= '$1 == "WINDOW" { print $2 }')
+	[ "$pointer_window" = "$menu_window" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$pointer_window" = "$menu_window" ]
+[ "$(DISPLAY=$display xdotool getwindowfocus)" = "$menu_window" ]
+
 DISPLAY=$display xdotool key Return
 i=0
 while [ "$i" -lt 100 ]; do

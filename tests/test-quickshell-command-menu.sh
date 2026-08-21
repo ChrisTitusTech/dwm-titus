@@ -21,6 +21,9 @@ grep -Fq '"actionType": "helper"' "$catalog"
 grep -Fq '"kind": "application"' "$model"
 grep -Fq 'Commands.screenshotHelperCommand(entry.action)' "$model"
 grep -Fq 'Commands.lockHelperCommand()' "$model"
+grep -Fq 'Commands.pointerHelperCommand("command-menu")' "$window"
+grep -Fq 'pointerWarpProcess.running = true;' "$window"
+[ -x "$repo/scripts/dwm-quickshell-pointer" ]
 grep -Fq 'target: "menu"' "$shell"
 menu_handler=$(awk '
 	/target: "menu"/ { in_menu = 1; seen_menu = 1 }
