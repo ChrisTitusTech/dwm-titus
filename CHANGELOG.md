@@ -34,6 +34,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Complete Phase 3 connectivity, audio, and large-surface integration and make
+  Power, Session, and Defaults the active Phase 4 planning boundary. Remaining
+  Wi-Fi association and Bluetooth pairing-recovery hardware limits stay
+  explicitly recorded rather than being described as verified.
+
 - Restyle Settings, System Health, notification popups/history, and the
   application launcher with a shared presentation-only large-surface header,
   semantic status accents, numbered navigation, and consistent search and card
