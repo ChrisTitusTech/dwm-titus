@@ -18,7 +18,8 @@ clean_line() {
 
 root_property_value() {
 	prop=$1
-	xprop -root "$prop" 2>/dev/null | sed -n 's/^[^=]*= //p'
+	xprop -root "$prop" 2>/dev/null |
+		sed -n -e 's/^[^=]*= //p' -e 's/^[^:]*: //p'
 }
 
 root_status() {

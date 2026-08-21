@@ -199,8 +199,12 @@ case $* in
 *"_NET_CURRENT_DESKTOP"*) printf '_NET_CURRENT_DESKTOP(CARDINAL) = 4\n' ;;
 *"_NET_NUMBER_OF_DESKTOPS"*) printf '_NET_NUMBER_OF_DESKTOPS(CARDINAL) = 9\n' ;;
 *"_NET_DESKTOP_NAMES"*) printf '_NET_DESKTOP_NAMES(UTF8_STRING) = "1", "2", "3", "4", "5", "6", "7", "8", "9"\n' ;;
-*"_NET_ACTIVE_WINDOW"*) printf '_NET_ACTIVE_WINDOW(WINDOW): window id # 0x0\n' ;;
-*"_NET_CLIENT_LIST"*) printf '_NET_CLIENT_LIST(WINDOW): window id #\n' ;;
+*"-id 0xa00004 _NET_WM_DESKTOP"*) printf '_NET_WM_DESKTOP(CARDINAL) = 0\n' ;;
+*"-id 0xa00004 _NET_WM_PID"*) printf '_NET_WM_PID(CARDINAL) = 4242\n' ;;
+*"-id 0xa00004 WM_CLASS"*) printf 'WM_CLASS(STRING) = "Alacritty", "Alacritty"\n' ;;
+*"-id 0xa00004 _NET_WM_NAME WM_NAME"*) printf '_NET_WM_NAME(UTF8_STRING) = "abs@fedora"\n' ;;
+*"_NET_ACTIVE_WINDOW"*) printf '_NET_ACTIVE_WINDOW(WINDOW): window id # 0xa00004\n' ;;
+*"_NET_CLIENT_LIST"*) printf '_NET_CLIENT_LIST(WINDOW): window id # 0xa00004\n' ;;
 *"WM_NAME"*) printf 'WM_NAME(STRING) = "VOL 50%%"\n' ;;
 *) exit 1 ;;
 esac
@@ -209,7 +213,11 @@ cat >"$work/bin/xdotool" <<'SH'
 #!/bin/sh
 exit 1
 SH
-chmod +x "$work/bin/xprop" "$work/bin/xdotool"
+cat >"$work/bin/ps" <<'SH'
+#!/bin/sh
+printf '1000\n'
+SH
+chmod +x "$work/bin/xprop" "$work/bin/xdotool" "$work/bin/ps"
 
 DWM_TEST_FULLSCREEN_MONITORS='0, 1' \
 	DWM_TEST_MONITOR_DESKTOPS='2560, 0, 2560, 1440, 0, 0, 0, 2560, 1440, 4' \
@@ -219,6 +227,7 @@ DWM_TEST_FULLSCREEN_MONITORS='0, 1' \
 grep -Fqx 'monitor_desktops=2560,0,2560,1440,0,0,0,2560,1440,4' "$work/state.out"
 grep -Fqx 'focused_monitor=1' "$work/state.out"
 grep -Fqx 'fullscreen_monitors=0|1' "$work/state.out"
+grep -Fqx 'apps=0xa00004:alacritty' "$work/state.out"
 
 PATH="$work/bin:$PATH" \
 	"$repo_dir/scripts/dwm-quickshell-state" state >"$work/fallback.out"
