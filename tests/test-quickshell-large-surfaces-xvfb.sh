@@ -4,7 +4,7 @@ set -eu
 test_repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 repo=${DWM_LARGE_SURFACE_REPO:-$test_repo}
 
-for command_name in Xvfb dbus-run-session quickshell xdotool xprop notify-send getconf; do
+for command_name in Xvfb dbus-run-session dbus-send quickshell xdotool xprop getconf; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -126,6 +126,21 @@ capture_root() {
 	DISPLAY=$display maim -u "$evidence_dir/$name.png"
 }
 
+send_test_notification() {
+	if [ "${DWM_LARGE_SURFACE_FORCE_DBUS_SEND:-0}" != 1 ] &&
+		command -v notify-send >/dev/null 2>&1; then
+		DISPLAY=$display HOME=$home XDG_CACHE_HOME=$home/.cache XDG_RUNTIME_DIR=$runtime notify-send \
+			--app-name='Large Surface Test' 'Nested notification' 'Pointer dismissal and history fixture'
+		return
+	fi
+
+	DISPLAY=$display HOME=$home XDG_CACHE_HOME=$home/.cache XDG_RUNTIME_DIR=$runtime \
+		dbus-send --session --print-reply --dest=org.freedesktop.Notifications \
+		/org/freedesktop/Notifications org.freedesktop.Notifications.Notify \
+		string:'Large Surface Test' uint32:0 string:'' string:'Nested notification' \
+		string:'Pointer dismissal and history fixture' array:string: dict:string:variant: int32:6000 >/dev/null
+}
+
 i=0
 while [ "$i" -lt 200 ]; do
 	ipc launcher open >/dev/null 2>&1 && break
@@ -186,8 +201,7 @@ else
 	DISPLAY=$display xdotool key Escape
 fi
 
-DISPLAY=$display HOME=$home XDG_CACHE_HOME=$home/.cache XDG_RUNTIME_DIR=$runtime notify-send \
-	--app-name='Large Surface Test' 'Nested notification' 'Pointer dismissal and history fixture'
+send_test_notification
 i=0
 while [ "$i" -lt 100 ]; do
 	[ "$(ipc notifications count)" -gt 0 ] && break
