@@ -164,9 +164,11 @@ show_state() {
 			tr -d '[:space:]'
 	)
 	monitor_desktops=${monitor_desktops:-$current}
+	focused_monitor=$(root_property_value _DWM_SELECTED_MONITOR | awk '{ print $1; exit }')
 
 	printf 'current=%s\n' "$current"
 	printf 'monitor_desktops=%s\n' "$monitor_desktops"
+	printf 'focused_monitor=%s\n' "$focused_monitor"
 	printf 'count=%s\n' "$count"
 	printf 'names=%s\n' "$names"
 	printf 'occupied=%s\n' "$occupied"
@@ -186,6 +188,7 @@ watch_state() {
 		xprop -root -spy \
 			DWM_TAG_UPDATE \
 			_DWM_MONITOR_DESKTOPS \
+			_DWM_SELECTED_MONITOR \
 			_NET_NUMBER_OF_DESKTOPS \
 			_NET_DESKTOP_NAMES \
 			_NET_ACTIVE_WINDOW \

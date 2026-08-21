@@ -43,8 +43,13 @@ ShellRoot {
     }
 
     function openCommandMenu(screen) {
-        if (screen) commandMenuModel.openOnScreen(screen); else commandMenuModel.open();
+        networkModel.close();
+        bluetoothModel.close();
+        controlCenterModel.close();
+        controlsModel.close();
+        powerMenuModel.close();
         launcherModel.close();
+        if (screen) commandMenuModel.openOnScreen(screen); else commandMenuModel.open();
     }
 
     function toggleCommandMenu(screen) {

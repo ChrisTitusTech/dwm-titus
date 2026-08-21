@@ -5,6 +5,7 @@ Scope {
     id: root
 
     property int currentWorkspace: 0
+    property int focusedMonitorIndex: -1
     property var monitorWorkspaceRows: []
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
     property var occupiedWorkspaces: []
@@ -49,6 +50,10 @@ Scope {
                     });
                 }
                 root.monitorWorkspaceRows = rows;
+            } else if (key === "focused_monitor") {
+                const parsed = parseInt(value, 10);
+
+                root.focusedMonitorIndex = isNaN(parsed) ? -1 : parsed;
             } else if (key === "names") {
                 root.workspaceNames = value.length > 0 ? value.split("|") : [];
             } else if (key === "occupied") {
@@ -133,6 +138,10 @@ Scope {
     }
 
     function focusedScreen() {
+        if (root.focusedMonitorIndex >= 0) {
+            return root.screenForMonitorIndex(root.focusedMonitorIndex);
+        }
+
         for (let index = 0; index < root.monitorWorkspaceRows.length; index++) {
             if (root.monitorWorkspaceRows[index].desktop === root.currentWorkspace) {
                 return root.screenForMonitorIndex(index);

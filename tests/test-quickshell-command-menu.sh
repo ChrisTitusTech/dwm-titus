@@ -37,6 +37,11 @@ grep -Fq 'function panelForScreen(screen)' "$shell"
 grep -Fq 'const panel = root.panelForScreen(requestedScreen)' "$shell"
 grep -Fq 'ipcActionRequested(string target, string action, string argument, var screen)' "$model"
 grep -Fq 'function focusedScreen()' "$repo/config/quickshell/state/DwmState.qml"
+grep -Fq 'property int focusedMonitorIndex: -1' "$repo/config/quickshell/state/DwmState.qml"
+grep -Fq 'root.focusedMonitorIndex >= 0' "$repo/config/quickshell/state/DwmState.qml"
+for popup_model in networkModel bluetoothModel controlCenterModel controlsModel powerMenuModel; do
+	grep -Fq "$popup_model.close();" "$shell"
+done
 grep -Fq 'function refreshApplicationIndex()' "$repo/config/quickshell/launcher/LauncherModel.qml"
 grep -Fq 'root.refreshApplicationIndex()' "$repo/config/quickshell/launcher/LauncherModel.qml"
 grep -Fq '{ title="dwm menu", isfloating=1, alwaysontop=1 },' "$repo/docs/OMARCHY-UI-ADAPTATION.md"
