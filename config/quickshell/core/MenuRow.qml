@@ -13,7 +13,8 @@ Rectangle {
 
     implicitHeight: Theme.controlRowHeight
     radius: Theme.controlRadius
-    color: rowMouse.containsMouse ? Theme.menuHoverBackground : Theme.transparent
+    color: root.active ? Theme.menuSelectedBackground
+        : rowMouse.containsMouse ? Theme.menuHoverBackground : Theme.transparent
 
     UiText {
         anchors.left: parent.left

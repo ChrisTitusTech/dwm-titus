@@ -531,6 +531,7 @@ check:
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-controlcenter
 	$(MAKE) check-quickshell-design-system
+	$(MAKE) check-quickshell-qml
 	$(MAKE) check-quickshell-notifications
 	$(MAKE) check-quickshell-tray
 	$(MAKE) check-system-health
