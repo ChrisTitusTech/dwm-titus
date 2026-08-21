@@ -16,16 +16,25 @@ Rectangle {
         && (rowData.status === "warn" || rowData.status === "error")
         && rowData.evidence.length > 0
     readonly property color statusColor: rowData.status === "error" ? Theme.danger
-        : rowData.status === "warn" ? "#ebcb8b"
-        : rowData.status === "restricted" ? "#b48ead"
-        : rowData.status === "ok" ? "#a3be8c"
+        : rowData.status === "warn" ? Theme.warning
+        : rowData.status === "restricted" ? Theme.accentSecondary
+        : rowData.status === "ok" ? Theme.success
         : Theme.accent
 
     implicitHeight: cardColumn.implicitHeight + 24
     color: rowData.status === "error" ? Theme.dangerSurface : Theme.surface
-    border.color: statusColor
-    border.width: 1
-    radius: Theme.radius
+    border.color: Theme.controlNormalBorder
+    border.width: Theme.controlBorderWidth
+    radius: Theme.largeSurfaceCardRadius
+
+    Rectangle {
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 4
+        color: root.statusColor
+        radius: 2
+    }
 
     ColumnLayout {
         id: cardColumn
@@ -33,7 +42,10 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.margins: 12
+        anchors.leftMargin: 16
+        anchors.rightMargin: 12
+        anchors.topMargin: 12
+        anchors.bottomMargin: 12
         spacing: Theme.rowSpacing
 
         RowLayout {

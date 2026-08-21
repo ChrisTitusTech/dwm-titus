@@ -1,0 +1,23 @@
+
+xwininfo: Window id: 0x600043 "dwm settings"
+
+  Absolute upper-left X:  469
+  Absolute upper-left Y:  229
+  Relative upper-left X:  469
+  Relative upper-left Y:  229
+  Width: 980
+  Height: 620
+  Depth: 24
+  Visual: 0x21
+  Visual Class: TrueColor
+  Border width: 1
+  Class: InputOutput
+  Colormap: 0x60000b (not installed)
+  Bit Gravity State: NorthWestGravity
+  Window Gravity State: NorthWestGravity
+  Backing Store State: NotUseful
+  Save Under State: no
+  Map State: IsViewable
+  Override Redirect State: no
+  Corners:  +469+229  -1109+229  -1109-1669  +469-1669
+  -geometry 980x620+469+229

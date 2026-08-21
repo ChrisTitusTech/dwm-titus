@@ -12,43 +12,48 @@ FloatingWindow {
 
     title: "dwm notification history"
     visible: notificationModel.historyVisible
-    implicitWidth: 520
-    implicitHeight: 560
+    implicitWidth: 560
+    implicitHeight: 600
     color: Theme.transparent
 
+    onVisibleChanged: {
+        if (visible) Qt.callLater(historySurface.forceActiveFocus);
+    }
+
     ShellSurface {
+        id: historySurface
+
         anchors.fill: parent
-        margin: 16
+        margin: Theme.largeSurfaceMargin
+        focus: true
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Escape) {
+                root.notificationModel.closeHistory();
+                event.accepted = true;
+            }
+        }
 
         ColumnLayout {
             anchors.fill: parent
             spacing: Theme.popupSpacing
 
-            RowLayout {
+            LargeSurfaceHeader {
                 Layout.fillWidth: true
-                spacing: Theme.listSpacing * 2
-
-                Text {
-                    Layout.fillWidth: true
-                    text: "Notifications"
-                    color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.titleFontSize
-                    font.bold: true
-                    elide: Text.ElideRight
-                }
+                eyebrow: "Recent desktop activity"
+                title: "Notifications"
+                subtitle: root.notificationModel.history.length + " saved / newest first"
+                status: root.notificationModel.history.length > 0 ? "history" : "empty"
+                statusColor: root.notificationModel.history.length > 0 ? Theme.accent : Theme.menuMutedText
 
                 ShellButton {
-                    Layout.preferredWidth: 58
-                    Layout.preferredHeight: Theme.buttonHeight
                     label: "Clear"
+                    enabled: root.notificationModel.history.length > 0
                     onActivated: root.notificationModel.clearHistory()
                 }
 
                 ShellButton {
-                    Layout.preferredWidth: Theme.closeButtonSize
-                    Layout.preferredHeight: Theme.closeButtonSize
-                    label: "x"
+                    label: "Close"
                     onActivated: root.notificationModel.closeHistory()
                 }
             }
@@ -57,7 +62,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 visible: root.notificationModel.history.length === 0
                 text: "No notifications"
-                color: Theme.textMuted
+                color: Theme.menuMutedText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 horizontalAlignment: Text.AlignHCenter
@@ -74,7 +79,7 @@ FloatingWindow {
                     id: historyColumn
 
                     width: parent.width
-                    spacing: Theme.listSpacing * 2
+                    spacing: Theme.spacingLg
 
                     Repeater {
                         model: root.notificationModel.history
@@ -85,17 +90,29 @@ FloatingWindow {
                             required property var modelData
 
                             Layout.fillWidth: true
-                            Layout.preferredHeight: Math.max(74, historyContent.implicitHeight + 22)
-                            radius: Theme.radius
+                            Layout.preferredHeight: Math.max(82, historyContent.implicitHeight + 26)
+                            radius: Theme.largeSurfaceCardRadius
                             color: historyEntry.modelData.urgencyName === "critical" ? Theme.dangerSurface : Theme.surface
-                            border.color: historyEntry.modelData.urgencyName === "critical" ? Theme.danger : Theme.border
-                            border.width: 1
+                            border.color: historyEntry.modelData.urgencyName === "critical" ? Theme.danger : Theme.popupBorder
+                            border.width: Theme.controlBorderWidth
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: Theme.notificationAccentWidth
+                                color: historyEntry.modelData.urgencyName === "critical" ? Theme.danger : Theme.accent
+                                radius: Theme.notificationAccentRadius
+                            }
 
                             ColumnLayout {
                                 id: historyContent
 
                                 anchors.fill: parent
-                                anchors.margins: 11
+                                anchors.leftMargin: 16
+                                anchors.rightMargin: 12
+                                anchors.topMargin: 12
+                                anchors.bottomMargin: 12
                                 spacing: Theme.tightSpacing
 
                                 RowLayout {
@@ -105,15 +122,17 @@ FloatingWindow {
                                     Text {
                                         Layout.fillWidth: true
                                         text: historyEntry.modelData.appName || "Notification"
-                                        color: Theme.textMuted
+                                        color: historyEntry.modelData.urgencyName === "critical" ? Theme.danger : Theme.menuActionText
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.smallFontSize
+                                        font.pixelSize: Theme.fontCaptionSize
+                                        font.bold: true
+                                        font.letterSpacing: 0.5
                                         elide: Text.ElideRight
                                     }
 
                                     Text {
                                         text: Qt.formatTime(new Date(historyEntry.modelData.timestamp || Date.now()), "hh:mm")
-                                        color: Theme.textMuted
+                                        color: Theme.menuMutedText
                                         font.family: Theme.fontFamily
                                         font.pixelSize: Theme.smallFontSize
                                     }
@@ -122,7 +141,7 @@ FloatingWindow {
                                 Text {
                                     Layout.fillWidth: true
                                     text: historyEntry.modelData.summary || historyEntry.modelData.urgencyName || ""
-                                    color: Theme.textStrong
+                                    color: Theme.popupText
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.bodyFontSize
                                     font.bold: true
@@ -133,7 +152,7 @@ FloatingWindow {
                                     Layout.fillWidth: true
                                     visible: text.length > 0
                                     text: historyEntry.modelData.body || ""
-                                    color: Theme.text
+                                    color: Theme.menuText
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.smallFontSize
                                     wrapMode: Text.WordWrap

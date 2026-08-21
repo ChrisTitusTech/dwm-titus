@@ -13,8 +13,8 @@ FloatingWindow {
     title: "dwm launcher"
     visible: launcherModel.visible
     screen: launcherModel.targetScreen
-    implicitWidth: 760
-    implicitHeight: 560
+    implicitWidth: 820
+    implicitHeight: 600
     color: Theme.transparent
 
     function focusSearch() {
@@ -35,29 +35,40 @@ FloatingWindow {
             anchors.fill: parent
             spacing: Theme.popupSpacing
 
-            Text {
-                text: "Applications"
-                color: Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.titleFontSize
-                font.bold: true
-                verticalAlignment: Text.AlignVCenter
+            LargeSurfaceHeader {
+                Layout.fillWidth: true
+                eyebrow: "Application index"
+                title: "Applications"
+                subtitle: "Type to filter / Enter to launch / Esc to close"
+                status: root.launcherModel.status
+                statusColor: Theme.accent
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 42
-                color: Theme.surface
-                radius: Theme.radius
+                Layout.preferredHeight: Theme.largeSurfaceSearchHeight
+                color: launcherSearch.activeFocus ? Theme.controlFocusFill : Theme.controlNormalFill
+                border.color: launcherSearch.activeFocus ? Theme.controlFocusBorder : Theme.controlNormalBorder
+                border.width: launcherSearch.activeFocus ? Theme.controlFocusBorderWidth : Theme.controlBorderWidth
+                radius: Theme.largeSurfaceCardRadius
+
+                UiText {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "/"
+                    color: launcherSearch.activeFocus ? Theme.menuActionText : Theme.menuMutedText
+                    font.bold: true
+                }
 
                 TextInput {
                     id: launcherSearch
 
                     anchors.fill: parent
-                    anchors.leftMargin: 14
+                    anchors.leftMargin: 38
                     anchors.rightMargin: 14
                     verticalAlignment: TextInput.AlignVCenter
-                    color: Theme.textStrong
+                    color: Theme.controlFocusText
                     selectionColor: Theme.accent
                     selectedTextColor: Theme.accentText
                     text: root.launcherModel.query
@@ -100,7 +111,7 @@ FloatingWindow {
 
                 Text {
                     anchors.left: parent.left
-                    anchors.leftMargin: 14
+                    anchors.leftMargin: 38
                     anchors.verticalCenter: parent.verticalCenter
                     visible: launcherSearch.text.length === 0
                     text: "Search applications"
@@ -110,13 +121,19 @@ FloatingWindow {
                 }
             }
 
-            Text {
+            RowLayout {
                 Layout.fillWidth: true
-                text: root.launcherModel.filteredApps.length + " shown / " + root.launcherModel.status
-                color: Theme.textMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallFontSize
-                elide: Text.ElideRight
+
+                SectionLabel {
+                    label: "Categories"
+                }
+
+                UiText {
+                    text: root.launcherModel.filteredApps.length + " shown"
+                    color: Theme.menuMutedText
+                    font.pixelSize: Theme.fontCaptionSize
+                    font.bold: true
+                }
             }
 
             LauncherCategoryRow {
