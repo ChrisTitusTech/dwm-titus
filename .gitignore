@@ -35,3 +35,6 @@ program.log
 
 # Local Serena project metadata/cache
 /.serena/
+
+# Local Git worktrees used for isolated feature development
+/.worktrees/
