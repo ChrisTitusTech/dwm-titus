@@ -89,6 +89,25 @@ fullscreen_monitors() {
 		paste -sd '|' -
 }
 
+is_terminal_class() {
+	class=$1
+	rules_file=${XDG_CONFIG_HOME:-${HOME:-}/.config}/dwm-titus/window-rules.toml
+	[ -r "$rules_file" ] || return 1
+
+	awk -v target="$class" '
+		tolower($0) ~ /isterminal[[:space:]]*=[[:space:]]*1/ &&
+			tolower($0) ~ /class[[:space:]]*=[[:space:]]*"/ {
+			line = $0
+			sub(/^.*class[[:space:]]*=[[:space:]]*"/, "", line)
+			sub(/".*$/, "", line)
+			if (index(tolower(target), tolower(line)) > 0) {
+				found = 1
+			}
+		}
+		END { exit found ? 0 : 1 }
+	' "$rules_file"
+}
+
 running_apps() {
 	seen='|'
 	root_property_value _NET_CLIENT_LIST |
@@ -102,6 +121,7 @@ running_apps() {
 			fi
 			class=$(window_class "$window_id" || true)
 			[ -n "$class" ] || continue
+			is_terminal_class "$class" && continue
 			case $seen in
 			*"|$class|"*) continue ;;
 			esac
