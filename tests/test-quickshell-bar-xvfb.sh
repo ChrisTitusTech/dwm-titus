@@ -319,8 +319,8 @@ while [ "$index" -lt 100 ]; do
 	sleep 0.05
 done
 DISPLAY=$display xprop -id "$client" _NET_WM_STATE | grep -Fq '_NET_WM_STATE_FULLSCREEN'
+# Quickshell EWMH hints vary by build; verify DWM state and observable X stacking.
 DISPLAY=$display xprop -root _DWM_FULLSCREEN_MONITORS | grep -Eq '= 0|= 0,'
-wait_for_panel_state "$panel" _NET_WM_STATE_BELOW
 wait_for_stacking_order "$client" "$panel"
 
 kill "$client_pid"

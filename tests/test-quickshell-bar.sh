@@ -137,9 +137,17 @@ if [ "$bar_methods" != "$expected_bar_methods" ]; then
 	exit 1
 fi
 grep -F 'wait_for_managed_geometry' "$bar_xvfb" >/dev/null
-grep -F 'wait_for_stacking_order' "$bar_xvfb" >/dev/null
+grep -F 'wait_for_stacking_order() {' "$bar_xvfb" >/dev/null
+# shellcheck disable=SC2016 # Verify the literal fullscreen stacking call in the nested test.
+grep -F 'wait_for_stacking_order "$client" "$panel"' "$bar_xvfb" >/dev/null
 grep -F '_NET_WM_STATE_ABOVE' "$bar_xvfb" >/dev/null
-grep -F '_NET_WM_STATE_BELOW' "$bar_xvfb" >/dev/null
+grep -F "DISPLAY=\$display xprop -root _DWM_FULLSCREEN_MONITORS | grep -Eq '= 0|= 0,'" "$bar_xvfb" >/dev/null
+awk '
+	/^wait_for_stacking_order\(\) \{/ { in_helper = 1; next }
+	in_helper && /while \[ "\$index" -lt 100 \]; do/ { bounded = 1 }
+	in_helper && /^}/ { exit bounded ? 0 : 1 }
+	END { exit bounded ? 0 : 1 }
+' "$bar_xvfb"
 grep -F 'Xvfb -displayfd 3' "$bar_xvfb" >/dev/null
 # shellcheck disable=SC2016 # Verify literal process-scoping code in the nested test.
 grep -F 'managed_quickshell_pids=$(pgrep -P "$$" -x quickshell || true)' "$bar_xvfb" >/dev/null
