@@ -161,6 +161,14 @@ reconcile_body=$(sed -n '/^reconcilemonitortags(void)/,/^}$/p' "$repo_dir/dwm.c"
 printf '%s\n' "$reconcile_body" | grep -q 'dwmfullscreenmonitorsatom != None'
 printf '%s\n' "$reconcile_body" | grep -q 'updatefullscreenmonitors();'
 grep -q 'XInternAtom(dpy, "_DWM_FULLSCREEN_MONITORS", False)' "$repo_dir/dwm.c"
+grep -q 'XInternAtom(dpy, "_DWM_SELECTED_MONITOR", False)' "$repo_dir/dwm.c"
+focus_body=$(sed -n '/^focus(Client \*c)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$focus_body" | grep -q 'updateselectedmonitor();'
+selected_monitor_body=$(sed -n '/^updateselectedmonitor(void)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$selected_monitor_body" | grep -q 'selectedmonitorcachevalid && logicalindex == selectedmonitorcache'
+printf '%s\n' "$selected_monitor_body" | grep -q 'selectedmonitorcachevalid = 1;'
+configure_notify_body=$(sed -n '/^configurenotify(XEvent \*e)/,/^}$/p' "$repo_dir/dwm.c")
+printf '%s\n' "$configure_notify_body" | grep -q 'selectedmonitorcachevalid = 0;'
 grep -q 'XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_COMBO", False)' "$repo_dir/dwm.c"
 
 mkdir -p "$work/bin"
@@ -177,6 +185,13 @@ case $* in
 *"_DWM_MONITOR_DESKTOPS"*)
 	if [ "${DWM_TEST_MONITOR_DESKTOPS+x}" = x ]; then
 		printf '_DWM_MONITOR_DESKTOPS(CARDINAL) = %s\n' "$DWM_TEST_MONITOR_DESKTOPS"
+	else
+		exit 1
+	fi
+	;;
+*"_DWM_SELECTED_MONITOR"*)
+	if [ "${DWM_TEST_SELECTED_MONITOR+x}" = x ]; then
+		printf '_DWM_SELECTED_MONITOR(CARDINAL) = %s\n' "$DWM_TEST_SELECTED_MONITOR"
 	else
 		exit 1
 	fi
@@ -198,9 +213,11 @@ chmod +x "$work/bin/xprop" "$work/bin/xdotool"
 
 DWM_TEST_FULLSCREEN_MONITORS='0, 1' \
 	DWM_TEST_MONITOR_DESKTOPS='2560, 0, 2560, 1440, 0, 0, 0, 2560, 1440, 4' \
+	DWM_TEST_SELECTED_MONITOR=1 \
 	PATH="$work/bin:$PATH" \
 	"$repo_dir/scripts/dwm-quickshell-state" state >"$work/state.out"
 grep -Fqx 'monitor_desktops=2560,0,2560,1440,0,0,0,2560,1440,4' "$work/state.out"
+grep -Fqx 'focused_monitor=1' "$work/state.out"
 grep -Fqx 'fullscreen_monitors=0|1' "$work/state.out"
 
 PATH="$work/bin:$PATH" \

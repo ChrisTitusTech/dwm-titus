@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Added
 
+- Add an X11-native Quickshell command menu with typed navigation for apps,
+  desktop settings and services, screenshots, system actions, and a public
+  `menu open|close|toggle|summon` IPC surface. Opening the menu moves the
+  pointer into its search field to preserve keyboard focus under DWM.
+
 - Install Gear Lever from a user-scoped Flathub remote by default with the
   recommended/full desktop and both Fedora image variants.
 

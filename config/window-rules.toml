@@ -36,6 +36,7 @@ rules = [
   # PopupWindow surfaces are override-redirect transients and are stacked by
   # dwm directly. Managed FloatingWindow surfaces still use their titles.
   { title="dwm launcher",             isfloating=1, alwaysontop=1 },
+  { title="dwm menu",                 isfloating=1, alwaysontop=1 },
   { title="dwm network password",     isfloating=1, alwaysontop=1 },
   { title="dwm control center utility", isfloating=1, alwaysontop=1 },
   { title="dwm system health",        isfloating=1, alwaysontop=1 },
