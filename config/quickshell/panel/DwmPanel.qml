@@ -146,7 +146,7 @@ PanelWindow {
 
                 RunningAppsArea {
                     objectName: "running-apps"
-                    state: root.state
+                    dwmState: root.state
                 }
 
                 BarIconButton {

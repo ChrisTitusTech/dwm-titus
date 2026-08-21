@@ -515,8 +515,9 @@ grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/PanelPill.qml"
 grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/ShellSurface.qml"
 grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/ClickAwayPopup.qml"
 grep -Fq 'RunningAppsArea {' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'state: root.state' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'onFocusRequested: windowId => root.state.focusWindow(windowId)' "$repo/config/quickshell/panel/RunningAppsArea.qml"
+grep -Fq 'dwmState: root.state' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'required property var dwmState' "$repo/config/quickshell/panel/RunningAppsArea.qml"
+grep -Fq 'onFocusRequested: windowId => root.dwmState.focusWindow(windowId)' "$repo/config/quickshell/panel/RunningAppsArea.qml"
 grep -Fq 'source: Icons.launcherIcon(root.app.appClass)' "$repo/config/quickshell/panel/RunningAppItem.qml"
 if grep -Eq 'activeWindowTitle|statusSegments|batteryPill|batteryAvailable' \
 	"$repo/config/quickshell/panel/DwmPanel.qml"; then
