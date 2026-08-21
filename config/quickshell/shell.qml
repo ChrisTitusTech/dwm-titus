@@ -34,6 +34,7 @@ ShellRoot {
             return;
         }
 
+        commandMenuModel.close();
         if (popupId !== "bluetooth") bluetoothModel.close();
         if (popupId !== "controlcenter") controlCenterModel.close();
         if (popupId !== "controls") controlsModel.close();
