@@ -23,6 +23,9 @@ The checked-in evidence contains:
   from commit `a20ee6f` in a 1280x800 nested X11 session.
 - `docs/evidence/p3-ui4/after-nested`: P3-UI4 captures and X11 properties from
   the same 1280x800 nested X11 contract.
+- `docs/evidence/p3-ui4/after-live`: final Settings and launcher captures from
+  both active monitors, plus System Health, notification popup, geometry, and
+  X11 property evidence from the Fedora session.
 
 Nested geometry remained 980x620 for Settings and 1280x800 fullscreen for
 System Health. The launcher intentionally changed from 760x560 to 820x600 and
@@ -53,9 +56,43 @@ screen capture. Product runtime selection is unchanged.
 
 ## Live Qualification
 
-The final approved revision must still be synchronized with
-`scripts/dev-sync-install.sh`. After synchronization, this document will record
-the two-monitor placement, keyboard and pointer paths, notification
-delivery/history, Settings preview cancellation, System Health cancellation,
-tray ownership, fullscreen precedence, and the required 30-second closed versus
-post-open/close CPU comparison.
+The approved revision was synchronized on Fedora Linux 44 x86_64 with
+`scripts/dev-sync-install.sh`. The sync created rollback backup
+`20260821T204131Z-33360`, verified every managed file, and restarted the managed
+Quickshell instance through `dwm-quickshell-controlcenter action
+restart-quickshell`.
+
+The active X11 layout was:
+
+- HDMI-0: 1920x1080 at 0,0.
+- DP-0: 2560x1440 at 0,1080 and primary.
+
+Settings centered at 469,229 on HDMI-0 and 789,1489 on DP-0 while retaining its
+980x620 geometry. The launcher centered at 549,239 on HDMI-0 and 869,1499 on
+DP-0 with its intentional 820x600 geometry. Both surfaces rendered and accepted
+their keyboard and pointer paths on the live managed shell.
+
+Live interaction evidence:
+
+- Keyboard and pointer launcher activation each opened a new Alacritty window,
+  closed the launcher, and returned `launcher applicationConsumers` to zero.
+- A no-op two-output display preview became active through the Settings pointer
+  path. Closing Settings canceled the preview, returned `preview-status` to
+  `result none`, and left the before/after `xrandr --query` byte-identical.
+- Closing System Health canceled its user/system scan within the bounded
+  ten-second check. Its X11 window retained `_NET_WM_STATE_FULLSCREEN` while a
+  notification popup remained visible above the fullscreen surface.
+- A real D-Bus notification was delivered, dismissed with the popup pointer
+  control, recorded in history, and the history window closed with Escape. The
+  synthetic evidence entries were then removed without changing real history.
+- The managed shell recovered all five tray items after each deliberate restart.
+
+The required 30-second closed baseline measured 0.000 percent of one CPU. After
+opening and closing every converted surface and restarting the managed shell,
+the 30-second post-operation sample also measured 0.000 percent. The mean delta
+was therefore 0.000 percentage points, within the 0.5-point limit. RSS moved
+from 202504 KiB to 201464 KiB during the post-operation sample.
+
+The installed `/usr/local/bin/dwm` remains a session-restart activation gate;
+P3-UI4 changes no DWM source or binary behavior, and the running DWM continues
+to use the already-qualified executable until logout/login.
