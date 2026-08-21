@@ -84,7 +84,7 @@ enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMWindowTypeMenu, NetWMWindowTypePopupMenu, NetWMWindowTypeDropdownMenu,
        NetWMWindowTypeCombo, NetWMWindowTypeDnd,
        NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop,
-       NetWMDesktop, NetDwmMonitorDesktops, NetLast }; /* EWMH atoms */
+       NetWMDesktop, NetDwmMonitorDesktops, NetDwmSelectedMonitor, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
@@ -336,6 +336,7 @@ static void setdesktopnames(void);
 static void setnumdesktops(void);
 static void setviewport(void);
 static void updatecurrentdesktop(void);
+static void updateselectedmonitor(void);
 
 /* External dock and systray declarations */
 static void managealtbar(Window win, XWindowAttributes *wa);
@@ -412,6 +413,8 @@ static xcb_connection_t *xcon;
 static Window *clientlistcache;
 static unsigned long clientlistcachelen;
 static int clientlistcachevalid;
+static int selectedmonitorcache;
+static int selectedmonitorcachevalid;
 static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 static unsigned long tagupdatesequence;
 
@@ -1043,6 +1046,7 @@ configurenotify(XEvent *e)
 		sw = ev->width;
 		sh = ev->height;
 		if (updategeom() || dirty) {
+			selectedmonitorcachevalid = 0;
 			reconcilemonitortags();
 			drw_resize(drw, sw, bh);
 			updatebars();
@@ -1373,6 +1377,7 @@ focus(Client *c)
 		ewmh_clear_active_window();
 	}
 	selmon->sel = c;
+	updateselectedmonitor();
 	drawbars();
 }
 
@@ -4081,6 +4086,7 @@ setup(void)
 	netatom[NetDesktopNames] = XInternAtom(dpy, "_NET_DESKTOP_NAMES", False);
 	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
 	netatom[NetDwmMonitorDesktops] = XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False);
+	netatom[NetDwmSelectedMonitor] = XInternAtom(dpy, "_DWM_SELECTED_MONITOR", False);
 	dwmfullscreenmonitorsatom = XInternAtom(dpy, "_DWM_FULLSCREEN_MONITORS", False);
 	dwmtagupdateatom = XInternAtom(dpy, "DWM_TAG_UPDATE", False);
 	/* init cursors */
@@ -4897,7 +4903,26 @@ updatecurrentdesktop(void)
 	XChangeProperty(dpy, root, netatom[NetDwmMonitorDesktops], XA_INTEGER, 32,
 		PropModeReplace, (unsigned char *)monitor_desktops, count * 5);
 	free(monitor_desktops);
+	updateselectedmonitor();
 	updatefullscreenmonitors();
+}
+
+void
+updateselectedmonitor(void)
+{
+	long data[] = { 0 };
+	int logicalindex;
+
+	if (!selmon)
+		return;
+	logicalindex = getmonlogicalindex(selmon);
+	if (logicalindex < 0
+	|| (selectedmonitorcachevalid && logicalindex == selectedmonitorcache))
+		return;
+	data[0] = logicalindex;
+	ewmh_replace_root_cardinal(netatom[NetDwmSelectedMonitor], data, 1);
+	selectedmonitorcache = logicalindex;
+	selectedmonitorcachevalid = 1;
 }
 
 #if SHOWWINICON

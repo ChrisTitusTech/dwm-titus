@@ -14,6 +14,8 @@ Scope {
     property var apps: []
     property var categories: []
     property var filteredApps: []
+    property int applicationConsumers: 0
+    readonly property bool applicationIndexActive: root.visible || root.applicationConsumers > 0
 
     function categoryLabel(category) {
         const labels = {
@@ -132,6 +134,11 @@ Scope {
     }
 
     function parseApps(text) {
+        if (!root.applicationIndexActive) {
+            root.clearApplicationIndex();
+            return;
+        }
+
         const apps = [];
         const categoryCounts = {};
         const lines = text.trim().length > 0 ? text.trim().split("\n") : [];
@@ -185,6 +192,41 @@ Scope {
         root.refreshFilteredApps();
     }
 
+    function clearApplicationIndex() {
+        root.apps = [];
+        root.categories = [];
+        root.filteredApps = [];
+        root.status = "Loading applications...";
+        root.selectedIndex = 0;
+    }
+
+    function ensureApplicationIndex() {
+        if (root.apps.length === 0 && !indexProcess.running) {
+            root.status = "Loading applications...";
+            indexProcess.running = true;
+        }
+    }
+
+    function refreshApplicationIndex() {
+        if (indexProcess.running) return;
+
+        root.status = "Loading applications...";
+        indexProcess.running = true;
+    }
+
+    function acquireApplications() {
+        root.applicationConsumers++;
+        root.ensureApplicationIndex();
+    }
+
+    function releaseApplications() {
+        root.applicationConsumers = Math.max(0, root.applicationConsumers - 1);
+        if (!root.applicationIndexActive) {
+            indexProcess.running = false;
+            root.clearApplicationIndex();
+        }
+    }
+
     function openWindow() {
         root.visible = true;
         root.query = "";
@@ -192,9 +234,7 @@ Scope {
         root.selectedIndex = 0;
         root.status = "Loading applications...";
         root.refreshFilteredApps();
-        if (!indexProcess.running) {
-            indexProcess.running = true;
-        }
+        root.refreshApplicationIndex();
     }
 
     function open() {
@@ -213,6 +253,10 @@ Scope {
         root.category = "all";
         root.filteredApps = [];
         root.selectedIndex = 0;
+        if (!root.applicationIndexActive) {
+            indexProcess.running = false;
+            root.clearApplicationIndex();
+        }
     }
 
     function toggle() {
