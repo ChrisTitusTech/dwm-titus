@@ -13,6 +13,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Restyle the X11 Quickshell panel and its Audio, Bluetooth, Network, Control
+  Center, and Power popups with shared Omarchy-inspired hero, separator,
+  slider, toggle, and semantic interaction components while preserving DWM
+  state, Fedora helpers, IPC, monitor routing, and click-away behavior.
+
 - Consolidate Fedora package, build, install, and privileged-helper validation
   into the existing Fedora CI job, removing the nested container smoke job and
   redundant install and monitor checks. Keep the optional Clang portability

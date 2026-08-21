@@ -85,3 +85,28 @@ make check-quickshell-design-system
 
 It is also part of the repository-wide `make check` gate. QML changes still
 require `make check-quickshell-qml` plus the applicable X11 runtime suite.
+
+## Panel and Popup Contract
+
+The DWM panel keeps its 30px exclusive zone, one-panel-per-screen lifecycle,
+workspace ownership, focused-window state, running applications, system tray,
+and popup coordinator. Its Omarchy influence is visual: flat modules on the
+bar, semantic hover and selected states, and outlined information groups. It
+does not adopt Omarchy's configurable plugin registry, layer-shell placement,
+or compositor-owned workspace model.
+
+Audio, Bluetooth, Network, Control Center, and Power retain their existing
+root-scoped models, helpers, IPC targets, monitor routing, and click-away
+surfaces. Shared `PanelHero`, `PanelSeparator`, `PanelSlider`, and
+`PanelToggleSwitch` components supply the common hero hierarchy, small-caps
+section rhythm, slider treatment, and compact toggle without owning system
+state or starting helper processes.
+
+Run the focused panel-menu contract with:
+
+```sh
+make check-quickshell-panel-menus
+```
+
+The QML lint and nested-X11 health test remain required for popup focus,
+outside-click dismissal, Escape behavior, tray ownership, and idle lifecycle.

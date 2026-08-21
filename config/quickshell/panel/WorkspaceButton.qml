@@ -13,14 +13,17 @@ Rectangle {
     Layout.preferredWidth: Theme.workspaceButtonSize
     Layout.preferredHeight: Theme.workspaceButtonSize
     radius: Theme.smallRadius
-    color: Theme.transparent
-    border.color: selected ? Theme.accent : Theme.transparent
-    border.width: selected ? Theme.pillBorderWidth : 0
+    color: selected ? Theme.controlSelectedFill
+        : workspaceMouse.containsMouse ? Theme.controlHoverFill : Theme.transparent
+    border.color: selected ? Theme.controlSelectedBorder
+        : workspaceMouse.containsMouse ? Theme.controlHoverBorder : Theme.transparent
+    border.width: selected || workspaceMouse.containsMouse ? Theme.pillBorderWidth : 0
 
     Text {
         anchors.centerIn: parent
         text: root.label
-        color: root.selected ? Theme.accent : Theme.textMuted
+        color: root.selected ? Theme.controlSelectedText
+            : workspaceMouse.containsMouse ? Theme.controlHoverText : Theme.textMuted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.panelFontSize
         font.bold: root.selected

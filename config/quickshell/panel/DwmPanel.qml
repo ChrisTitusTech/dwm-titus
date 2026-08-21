@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Widgets
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -121,6 +120,7 @@ PanelWindow {
                     PanelPill {
                         Layout.preferredWidth: Math.min(activeTitle.implicitWidth + Theme.pillHorizontalPadding * 2, 260)
                         Layout.preferredHeight: Theme.pillHeight
+                        outlined: true
 
                         UiText {
                             id: activeTitle
@@ -140,6 +140,7 @@ PanelWindow {
             PanelPill {
                 Layout.preferredWidth: clockLabel.implicitWidth + Theme.pillHorizontalPadding * 2
                 Layout.preferredHeight: Theme.pillHeight
+                outlined: true
 
                 UiText {
                     id: clockLabel
@@ -169,6 +170,7 @@ PanelWindow {
                             required property string modelData
                             Layout.preferredWidth: statusLabel.implicitWidth + Theme.pillHorizontalPadding * 2
                             Layout.preferredHeight: Theme.pillHeight
+                            outlined: true
 
                             UiText {
                                 id: statusLabel
@@ -191,6 +193,7 @@ PanelWindow {
                         visible: root.state.batteryAvailable
                         Layout.preferredWidth: batteryRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
                         Layout.preferredHeight: Theme.compactWidgetSize
+                        hovered: batteryMouse.containsMouse
 
                         RowLayout {
                             id: batteryRow

@@ -36,7 +36,9 @@ Rectangle {
     Layout.preferredWidth: Theme.trayItemSize
     Layout.preferredHeight: Theme.trayItemSize
     radius: Theme.smallRadius
-    color: trayMouse.containsMouse ? Theme.surfaceHover : "transparent"
+    color: trayMouse.containsMouse ? Theme.controlHoverFill : Theme.transparent
+    border.color: trayMouse.containsMouse ? Theme.controlHoverBorder : Theme.transparent
+    border.width: trayMouse.containsMouse ? Theme.pillBorderWidth : 0
 
     QsMenuAnchor {
         id: trayMenu

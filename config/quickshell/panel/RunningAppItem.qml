@@ -13,9 +13,11 @@ Rectangle {
     Layout.preferredWidth: Theme.pillHeight
     Layout.preferredHeight: Theme.pillHeight
     radius: Theme.pillRadius
-    color: appMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-    border.color: active ? Theme.accent : appMouse.containsMouse ? Theme.borderStrong : Theme.border
-    border.width: Theme.pillBorderWidth
+    color: active ? Theme.controlSelectedFill
+        : appMouse.containsMouse ? Theme.controlHoverFill : Theme.transparent
+    border.color: active ? Theme.controlSelectedBorder
+        : appMouse.containsMouse ? Theme.controlHoverBorder : Theme.transparent
+    border.width: active || appMouse.containsMouse ? Theme.pillBorderWidth : 0
 
     IconImage {
         anchors.centerIn: parent
