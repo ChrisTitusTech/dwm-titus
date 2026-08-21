@@ -12,9 +12,11 @@ Rectangle {
     signal connectRequested(var network)
 
     height: 54
-    color: root.selected ? Theme.surfaceActive : Theme.surface
-    border.color: root.selected ? Theme.accent : Theme.border
-    border.width: root.selected ? 1 : 0
+    color: root.selected ? Theme.controlSelectedFill
+        : rowMouse.containsMouse ? Theme.controlHoverFill : Theme.controlNormalFill
+    border.color: root.selected ? Theme.controlSelectedBorder
+        : rowMouse.containsMouse ? Theme.controlHoverBorder : Theme.controlNormalBorder
+    border.width: Theme.controlBorderWidth
     radius: Theme.radius
 
     MouseArea {
@@ -58,7 +60,7 @@ Rectangle {
         Text {
             Layout.preferredWidth: 54
             text: root.network.active ? "Active" : ""
-            color: Theme.accent
+            color: Theme.controlSelectedText
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallFontSize
             horizontalAlignment: Text.AlignRight
@@ -68,7 +70,11 @@ Rectangle {
         Rectangle {
             Layout.preferredWidth: actionText.implicitWidth + 18
             Layout.preferredHeight: Theme.chipHeight
-            color: root.busy ? Theme.surface : Theme.border
+            color: root.busy ? Theme.controlDisabledFill
+                : actionMouse.containsMouse ? Theme.controlHoverFill : Theme.controlNormalFill
+            border.color: root.busy ? Theme.controlDisabledBorder
+                : actionMouse.containsMouse ? Theme.controlHoverBorder : Theme.controlNormalBorder
+            border.width: Theme.controlBorderWidth
             radius: Theme.radius
 
             Text {
@@ -76,7 +82,7 @@ Rectangle {
 
                 anchors.centerIn: parent
                 text: root.busy ? "Connecting..." : "Connect"
-                color: Theme.textStrong
+                color: root.busy ? Theme.controlDisabledText : Theme.textStrong
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
             }

@@ -146,6 +146,15 @@ Singleton {
     readonly property int menuHeaderHeight: 26
     readonly property int popupPadding: spacingHuge
     readonly property int popupRadius: controlRadius
+    readonly property int panelHeroIconSize: 32
+    readonly property real panelMetaLetterSpacing: 1.2
+    readonly property int panelSliderHeight: 32
+    readonly property int panelSliderTrackHeight: 6
+    readonly property int panelSliderKnobSize: 16
+    readonly property int panelToggleWidth: 40
+    readonly property int panelToggleHeight: 22
+    readonly property int panelToggleKnobSize: 14
+    readonly property int panelToggleInset: 3
 
     readonly property int panelHeight: 30
     readonly property int panelMargin: 0

@@ -130,14 +130,19 @@ ClickAwayPopup {
 
         implicitHeight: 28
         radius: Theme.smallRadius
-        color: active ? Theme.surfaceActive : presetMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-        border.color: active ? Theme.accentSecondary : presetMouse.containsMouse ? Theme.borderStrong : Theme.border
-        border.width: Theme.pillBorderWidth
+        color: !enabled ? Theme.controlDisabledFill
+            : active ? Theme.controlSelectedFill
+            : presetMouse.containsMouse ? Theme.controlHoverFill : Theme.controlNormalFill
+        border.color: !enabled ? Theme.controlDisabledBorder
+            : active ? Theme.controlSelectedBorder
+            : presetMouse.containsMouse ? Theme.controlHoverBorder : Theme.controlNormalBorder
+        border.width: Theme.controlBorderWidth
 
         UiText {
             anchors.centerIn: parent
             text: presetButton.label
-            color: presetButton.active ? Theme.accentSecondary : Theme.text
+            color: !presetButton.enabled ? Theme.controlDisabledText
+                : presetButton.active ? Theme.controlSelectedText : Theme.controlNormalText
         }
 
         MouseArea {
@@ -198,11 +203,7 @@ ClickAwayPopup {
                     elide: Text.ElideRight
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: Theme.border
-                }
+                PanelSeparator {}
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -223,12 +224,9 @@ ClickAwayPopup {
                         onActivated: root.openSessionPower()
                     }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
+                    PanelSeparator {
                         Layout.topMargin: 3
                         Layout.bottomMargin: 3
-                        color: Theme.border
                     }
 
                     SectionLabel { label: "Desktop" }
@@ -258,12 +256,9 @@ ClickAwayPopup {
                         onActivated: root.controlCenterModel.openPower()
                     }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
+                    PanelSeparator {
                         Layout.topMargin: 3
                         Layout.bottomMargin: 3
-                        color: Theme.border
                     }
 
                     SectionLabel { label: "Utilities" }
@@ -392,12 +387,9 @@ ClickAwayPopup {
                         }
                     }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
+                    PanelSeparator {
                         Layout.topMargin: 3
                         Layout.bottomMargin: 3
-                        color: Theme.border
                     }
 
                     UiText {

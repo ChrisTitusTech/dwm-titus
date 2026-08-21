@@ -42,7 +42,8 @@ sed -i '/title="dwm network password"/a\
 grep -Fqx '  { title="dwm control center",         isfloating=1, alwaysontop=1 },' \
 	"$config_home/dwm-titus/window-rules.toml"
 cp "$repo/scripts/dwm-system-health" "$repo/scripts/dwm-diagnostics" \
-	"$repo/scripts/dwm-quickshell-controlcenter" "$repo/scripts/dwm-quickshell-launcher" \
+	"$repo/scripts/dwm-quickshell-controlcenter" "$repo/scripts/dwm-quickshell-controls" \
+	"$repo/scripts/dwm-quickshell-launcher" "$repo/scripts/dwm-quickshell-network" \
 	"$data_home/dwm-titus/scripts/"
 
 Xvfb "$display" -screen 0 1024x768x24 -nolisten tcp -extension GLX >"$work/xvfb.log" 2>&1 &
@@ -195,6 +196,57 @@ if DISPLAY=$display xdotool search --onlyvisible --pid "$quickshell_pid" 2>/dev/
 	printf 'Control Center popup did not close on Escape\n' >&2
 	exit 1
 fi
+
+exercise_panel_popup() {
+	target=$1
+	label=$2
+	visible_windows=$(DISPLAY=$display xdotool search --onlyvisible --pid "$quickshell_pid" 2>/dev/null || true)
+	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+		quickshell ipc --path "$config" call "$target" open >/dev/null
+
+	popup_window=
+	i=0
+	while [ "$i" -lt 200 ]; do
+		for candidate in $(DISPLAY=$display xdotool search --onlyvisible --pid "$quickshell_pid" 2>/dev/null || true); do
+			was_visible=0
+			for existing in $visible_windows; do
+				[ "$candidate" = "$existing" ] && was_visible=1
+			done
+			if [ "$was_visible" = 0 ]; then
+				popup_window=$candidate
+				break
+			fi
+		done
+		[ -n "$popup_window" ] && break
+		i=$((i + 1))
+		sleep 0.05
+	done
+
+	if [ -z "$popup_window" ]; then
+		printf '%s popup did not open\n' "$label" >&2
+		tail -40 "$work/quickshell.log" >&2
+		exit 1
+	fi
+
+	DISPLAY=$display xdotool windowfocus --sync "$popup_window"
+	DISPLAY=$display xdotool key Escape
+	i=0
+	while [ "$i" -lt 100 ]; do
+		if ! DISPLAY=$display xdotool search --onlyvisible --pid "$quickshell_pid" 2>/dev/null | grep -Fqx "$popup_window"; then
+			break
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	if DISPLAY=$display xdotool search --onlyvisible --pid "$quickshell_pid" 2>/dev/null | grep -Fqx "$popup_window"; then
+		printf '%s popup did not close on Escape\n' "$label" >&2
+		exit 1
+	fi
+}
+
+exercise_panel_popup controls Audio
+exercise_panel_popup network Network
+exercise_panel_popup power Power
 
 # An in-place page keeps one popup surface and Escape still closes the menu.
 visible_windows=$(DISPLAY=$display xdotool search --onlyvisible --pid "$quickshell_pid" 2>/dev/null || true)
