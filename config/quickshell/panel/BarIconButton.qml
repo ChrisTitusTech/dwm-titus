@@ -6,7 +6,7 @@ Item {
 
     required property string glyph
     property bool active: false
-    property int iconPixelSize: Theme.omarchyBarFontSize
+    property int iconPixelSize: Theme.dwmBarFontSize
     signal activated()
     signal wheelUp()
     signal wheelDown()
@@ -17,7 +17,7 @@ Item {
     IconText {
         anchors.centerIn: parent
         text: root.glyph
-        color: root.active ? Theme.omarchyBarActive : Theme.omarchyBarForeground
+        color: root.active ? Theme.dwmBarActive : Theme.dwmBarForeground
         font.pixelSize: root.iconPixelSize
     }
 

@@ -8,10 +8,20 @@ versions from `config.mk`.
 
 ### Added
 
+- Add an X11-native Quickshell command menu with typed navigation for apps,
+  desktop settings and services, screenshots, system actions, and a public
+  `menu open|close|toggle|summon` IPC surface. Opening the menu moves the
+  pointer into its search field to preserve keyboard focus under DWM.
+
 - Install Gear Lever from a user-scoped Flathub remote by default with the
   recommended/full desktop and both Fedora image variants.
 
 ### Changed
+
+- Restyle the X11 Quickshell panel and its Audio, Bluetooth, Network, Control
+  Center, and Power popups with shared Omarchy-inspired hero, separator,
+  slider, toggle, and semantic interaction components while preserving DWM
+  state, Fedora helpers, IPC, monitor routing, and click-away behavior.
 
 - Consolidate Fedora package, build, install, and privileged-helper validation
   into the existing Fedora CI job, removing the nested container smoke job and
@@ -29,6 +39,14 @@ versions from `config.mk`.
 - Remove obsolete distribution-matrix Settings and package-family test
   fixtures while retaining the Fedora-only boundary test that proves an
   unsupported installer cannot perform package or system mutations.
+
+### Fixed
+
+- Require root-owned, non-writable parent directories for installed health
+  helpers and report administrative authorization available only when polkit
+  or noninteractive sudo can actually authorize the operation.
+- Preserve command-menu selection when asynchronous application state refreshes
+  and tolerate bounded slow X11 window mapping before pointer-focus fallback.
 
 ## [0.6.1] - 2026-08-17
 

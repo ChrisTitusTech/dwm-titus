@@ -10,6 +10,8 @@ Scope {
     property string statusText: "BT unavailable"
     property var devices: []
     property string message: ""
+    readonly property bool available: statusText !== "BT unavailable"
+    readonly property bool powered: available && statusText !== "BT off"
 
     function open() {
         root.visible = true;

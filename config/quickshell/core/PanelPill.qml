@@ -6,11 +6,16 @@ Rectangle {
 
     property bool active: false
     property bool hovered: false
+    property bool outlined: false
 
     implicitHeight: Theme.pillHeight
     opacity: 1.0
-    color: active ? Theme.surfaceActive : hovered ? Theme.surfaceHover : Theme.surface
-    border.color: active ? Theme.accent : hovered ? Theme.borderStrong : Theme.barBackground
+    color: active ? Theme.controlSelectedFill
+        : hovered ? Theme.controlHoverFill
+        : outlined ? Theme.controlNormalFill : Theme.transparent
+    border.color: active ? Theme.controlSelectedBorder
+        : hovered ? Theme.controlHoverBorder
+        : outlined ? Theme.controlNormalBorder : Theme.transparent
     border.width: Theme.pillBorderWidth
     radius: Theme.pillRadius
 

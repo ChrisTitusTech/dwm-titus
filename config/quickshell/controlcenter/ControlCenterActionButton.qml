@@ -12,10 +12,23 @@ Rectangle {
     signal activated
 
     implicitHeight: 58
-    color: Theme.surface
-    border.color: Theme.border
-    border.width: 1
+    activeFocusOnTab: root.enabled
+    color: !root.enabled ? Theme.controlDisabledFill
+        : root.activeFocus ? Theme.controlFocusFill
+        : root.hovered ? Theme.controlHoverFill : Theme.controlNormalFill
+    border.color: root.activeFocus ? Theme.controlFocusBorder
+        : !root.enabled ? Theme.controlDisabledBorder
+        : root.hovered ? Theme.controlHoverBorder : Theme.controlNormalBorder
+    border.width: root.activeFocus ? Theme.controlFocusBorderWidth : Theme.controlBorderWidth
     radius: Theme.radius
+
+    Keys.onPressed: function(event) {
+        if (!root.enabled || event.isAutoRepeat) return;
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+            root.activated();
+            event.accepted = true;
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -25,7 +38,8 @@ Rectangle {
         Text {
             Layout.fillWidth: true
             text: root.label
-            color: Theme.textStrong
+            color: !root.enabled ? Theme.controlDisabledText
+                : root.hovered ? Theme.controlHoverText : Theme.textStrong
             font.family: Theme.fontFamily
             font.pixelSize: Theme.panelFontSize
             font.bold: true

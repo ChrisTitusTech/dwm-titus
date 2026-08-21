@@ -1,0 +1,78 @@
+#!/bin/sh
+set -eu
+
+repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+core=$repo/config/quickshell/core
+panel=$repo/config/quickshell/panel
+controls=$repo/config/quickshell/controls
+network=$repo/config/quickshell/network
+controlcenter=$repo/config/quickshell/controlcenter
+power=$repo/config/quickshell/power
+
+for component in PanelHero PanelSeparator PanelSlider PanelToggleSwitch; do
+	test -f "$core/$component.qml"
+done
+grep -Fq 'onEnabledChanged: if (enabled && !dragging) liveValue = value' "$core/PanelSlider.qml"
+grep -Fq 'if (wheel.angleDelta.y === 0)' "$core/PanelSlider.qml"
+
+grep -Fq 'readonly property int panelHeight: 30' "$core/Theme.qml"
+grep -Fq 'exclusiveZone: 30' "$panel/DwmPanel.qml"
+grep -Fq 'aboveWindows: root.state.fullscreenMonitorIndexes.indexOf(' "$panel/DwmPanel.qml"
+grep -Fq 'signal popupRequested(var panelWindow, string popupId)' "$panel/DwmPanel.qml"
+grep -Fq 'model: root.state.barWorkspaceIndexes(root.screen, root.primaryPanel)' "$panel/DwmPanel.qml"
+if grep -Fq 'TrayArea' "$panel/DwmPanel.qml"; then
+	printf '%s\n' 'Focused bar unexpectedly restored the system tray.' >&2
+	exit 1
+fi
+grep -Fq 'RunningAppsArea {' "$panel/DwmPanel.qml"
+
+grep -Fq 'outlined ? Theme.controlNormalFill : Theme.transparent' "$core/PanelPill.qml"
+grep -Fq 'border.color: selected ? Theme.dwmBarActive' "$panel/WorkspaceButton.qml"
+grep -Fq 'color: root.selected ? Theme.dwmBarActive' "$panel/WorkspaceButton.qml"
+grep -Fq 'Theme.dwmBarActive' "$panel/RunningAppItem.qml"
+grep -Fq 'Theme.controlHoverFill' "$panel/TrayItem.qml"
+
+grep -Fq 'PanelHero {' "$controls/ControlsWindow.qml"
+grep -Fq 'title: "Audio"' "$controls/ControlsWindow.qml"
+grep -Fq 'PanelSlider {' "$controls/ControlsWindow.qml"
+grep -Fq 'root.controlsModel.volumeSet(Math.round(value))' "$controls/ControlsWindow.qml"
+grep -Fq 'PanelHero {' "$controls/BluetoothWindow.qml"
+grep -Fq 'PanelToggleSwitch {' "$controls/BluetoothWindow.qml"
+grep -Fq 'root.bluetoothModel.action("bluetooth-power", [checked ? "off" : "on"])' \
+	"$controls/BluetoothWindow.qml"
+grep -Fq 'readonly property bool powered: available && statusText !== "BT off"' \
+	"$controls/BluetoothModel.qml"
+
+grep -Fq 'PanelHero {' "$network/NetworkWindow.qml"
+grep -Fq 'title: "Network"' "$network/NetworkWindow.qml"
+grep -Fq 'onDismissed: networkModel.close()' "$network/NetworkWindow.qml"
+grep -Fq 'FloatingWindow {' "$network/NetworkWindow.qml"
+grep -Fq 'wifiPasswordInput.forceActiveFocus();' "$network/NetworkWindow.qml"
+grep -Fq 'Theme.controlSelectedFill' "$network/NetworkWifiRow.qml"
+grep -Fq 'Theme.controlHoverFill' "$network/NetworkProfileRow.qml"
+grep -Fq 'ShellButton {' "$network/NetworkWifiRow.qml"
+grep -Fq 'ShellButton {' "$network/NetworkProfileRow.qml"
+
+grep -Fq 'PanelSeparator {' "$controlcenter/ControlCenterWindow.qml"
+grep -Fq 'activeFocusOnTab: presetButton.enabled' "$controlcenter/ControlCenterWindow.qml"
+grep -Fq 'event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space' \
+	"$controlcenter/ControlCenterWindow.qml"
+grep -Fq 'PanelSeparator {}' "$power/PowerMenuWindow.qml"
+grep -Fq 'detail: modelData.detail' "$power/PowerMenuWindow.qml"
+grep -Fq 'onDismissed: powerMenuModel.close()' "$power/PowerMenuWindow.qml"
+
+if grep -REn 'Quickshell\.(Wayland|Hyprland)|WlrLayershell|hyprctl|uwsm-app|wl-copy|wl-paste' \
+	"$core"/PanelHero.qml "$core"/PanelSeparator.qml "$core"/PanelSlider.qml \
+	"$core"/PanelToggleSwitch.qml "$panel" "$controls" "$network" "$controlcenter" "$power"; then
+	printf 'Panel-menu views must remain X11-safe.\n' >&2
+	exit 1
+fi
+
+if grep -REn '(^|[[:space:]])Process[[:space:]]*\{' \
+	"$core"/PanelHero.qml "$core"/PanelSeparator.qml "$core"/PanelSlider.qml \
+	"$core"/PanelToggleSwitch.qml; then
+	printf 'Visual panel primitives must not own helper processes.\n' >&2
+	exit 1
+fi
+
+printf 'Quickshell panel menus: PASS\n'

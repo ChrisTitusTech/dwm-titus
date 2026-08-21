@@ -107,10 +107,7 @@ trusted_health_helper() {
 	path_candidate=$(command -v dwm-system-health 2>/dev/null || true)
 	for candidate in "$path_candidate" /usr/local/bin/dwm-system-health /usr/bin/dwm-system-health; do
 		[ -n "$candidate" ] || continue
-		[ -f "$candidate" ] || continue
-		[ ! -L "$candidate" ] || continue
-		[ "$(stat -c %u -- "$candidate" 2>/dev/null || printf 1)" = 0 ] || continue
-		find "$candidate" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q . || continue
+		trusted_installed_file "$candidate" || continue
 		return 0
 	done
 	return 1
@@ -272,7 +269,10 @@ discover() {
 		emit_capability system health 'System health' unavailable read-only dwm-system-health \
 			'Install the dwm-system-health helper'
 	fi
-	if trusted_health_helper && { provider_available pkexec || provider_available sudo; }; then
+	if trusted_health_helper && {
+		provider_available pkexec ||
+			{ provider_available sudo && run_bounded_probe sudo -n -v; }
+	}; then
 		emit_capability system authorization 'Administrative authorization' available privileged polkit \
 			'A trusted installed helper and authorization tool are available'
 	else

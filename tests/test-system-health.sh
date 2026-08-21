@@ -190,4 +190,7 @@ if "$HELPER" repair-system 'example.service' 2>"$work/system-repair.err"; then
 fi
 grep -Fq 'unsupported system repair' "$work/system-repair.err"
 
+grep -Fq "trusted_parent_chain \"\$resolved\" || return 1" "$HELPER"
+grep -Fq "trusted_parent_chain \"\$resolved\" || continue" "$HELPER"
+
 printf 'System health helper: PASS\n'

@@ -21,6 +21,7 @@ process and configuration tree.
 - Retain the existing Control Center, launcher, Settings, notifications, power
   menu, and `RunningAppsArea`.
 - Adapt only the required Omarchy bar and panel presentation patterns.
+- Use DWM-owned implementation names (`dwmBar*`, `DwmPanelSurface`) throughout code, tests, and technical contracts. Keep "Omarchy" only where it identifies design provenance.
 - Extend dwm-titus models and helpers only where required by the approved
   behavior.
 - Do not import the Omarchy plugin host, `shell.json` configuration system, or

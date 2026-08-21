@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import Quickshell
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -41,17 +40,38 @@ ClickAwayPopup {
             anchors.fill: parent
             spacing: Theme.popupSpacing
 
-            RowLayout {
+            PanelHero {
                 Layout.fillWidth: true
-                UiText { Layout.fillWidth: true; text: root.bluetoothModel.statusText; color: Theme.textStrong; font.pixelSize: Theme.titleFontSize; font.bold: true }
-                ShellButton { label: "Scan"; onActivated: root.bluetoothModel.refresh(true) }
+                iconText: "󰂯"
+                iconColor: root.bluetoothModel.powered ? Theme.popupText : Theme.menuMutedText
+                title: "Bluetooth"
+                subtitle: root.bluetoothModel.statusText
+
+                ShellButton {
+                    label: "Scan"
+                    enabled: root.bluetoothModel.powered && !root.bluetoothModel.busy
+                    onActivated: root.bluetoothModel.refresh(true)
+                }
+
+                PanelToggleSwitch {
+                    checked: root.bluetoothModel.powered
+                    busy: root.bluetoothModel.busy
+                    enabled: root.bluetoothModel.available
+                    onToggled: root.bluetoothModel.action("bluetooth-power", [checked ? "off" : "on"])
+                }
             }
 
-            RowLayout {
+            UiText {
                 Layout.fillWidth: true
-                ShellButton { Layout.fillWidth: true; label: "Bluetooth On"; onActivated: root.bluetoothModel.action("bluetooth-power", ["on"]) }
-                ShellButton { Layout.fillWidth: true; label: "Bluetooth Off"; onActivated: root.bluetoothModel.action("bluetooth-power", ["off"]) }
+                visible: root.bluetoothModel.message.length > 0
+                text: root.bluetoothModel.message
+                color: Theme.menuMutedText
+                elide: Text.ElideRight
             }
+
+            PanelSeparator {}
+
+            SectionLabel { label: "Devices" }
 
             ListView {
                 Layout.fillWidth: true
@@ -67,24 +87,55 @@ ClickAwayPopup {
                     width: ListView.view.width
                     height: 58
                     radius: Theme.smallRadius
-                    color: Theme.surface
-                    border.color: Theme.border
-                    border.width: Theme.pillBorderWidth
+                    color: deviceMouse.containsMouse ? Theme.controlHoverFill : Theme.controlNormalFill
+                    border.color: deviceMouse.containsMouse ? Theme.controlHoverBorder : Theme.controlNormalBorder
+                    border.width: Theme.controlBorderWidth
 
                     RowLayout {
                         anchors.fill: parent
                         anchors.margins: 10
-                        UiText {
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            text: deviceRow.modelData.name.length > 0 ? deviceRow.modelData.name : deviceRow.modelData.address
-                            elide: Text.ElideRight
+
+                            UiText {
+                                Layout.fillWidth: true
+                                text: deviceRow.modelData.name.length > 0 ? deviceRow.modelData.name : deviceRow.modelData.address
+                                color: Theme.textStrong
+                                font.bold: true
+                                elide: Text.ElideRight
+                            }
+
+                            UiText {
+                                Layout.fillWidth: true
+                                text: deviceRow.modelData.connected ? "Connected"
+                                    : deviceRow.modelData.paired ? "Paired" : deviceRow.modelData.address
+                                color: Theme.menuMutedText
+                                font.pixelSize: Theme.fontCaptionSize
+                                elide: Text.ElideRight
+                            }
                         }
                         ShellButton {
                             label: deviceRow.modelData.connected ? "Disconnect" : (deviceRow.modelData.paired ? "Connect" : "Pair")
+                            enabled: !root.bluetoothModel.busy
                             onActivated: root.bluetoothModel.action(deviceRow.modelData.connected ? "bluetooth-disconnect" : (deviceRow.modelData.paired ? "bluetooth-connect" : "bluetooth-pair"), [deviceRow.modelData.address])
                         }
                     }
+
+                    MouseArea {
+                        id: deviceMouse
+                        anchors.fill: parent
+                        acceptedButtons: Qt.NoButton
+                        hoverEnabled: true
+                    }
                 }
+            }
+
+            UiText {
+                Layout.fillWidth: true
+                visible: root.bluetoothModel.devices.length === 0
+                text: root.bluetoothModel.powered ? "No Bluetooth devices found" : "Turn Bluetooth on to scan"
+                color: Theme.menuMutedText
+                wrapMode: Text.WordWrap
             }
         }
     }

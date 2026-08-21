@@ -35,7 +35,7 @@
 - `config/quickshell/panel/BarIconButton.qml` — tooltip-free 11 px bar icon button contract.
 - `config/quickshell/panel/NetworkBarModule.qml` — local network glyphs and click behavior.
 - `config/quickshell/panel/VolumeBarModule.qml` — local volume glyphs, thresholds, click, and wheel behavior.
-- `config/quickshell/core/OmarchyPanelSurface.qml` — shared 1 px panel border, background, padding, and content sizing boundary.
+- `config/quickshell/core/DwmPanelSurface.qml` — shared 1 px panel border, background, padding, and content sizing boundary.
 - `config/quickshell/network/NetworkMetrics.js` — pure parsers and derived metrics for fixture testing.
 - `tests/test-quickshell-bar.sh` — static contracts for final bar composition and local glyph ownership.
 - `tests/test-quickshell-bar-xvfb.sh` — real Quickshell/X11 geometry, IPC, popup, and idle checks.
@@ -51,7 +51,7 @@
 - `config/quickshell/panel/LogoButton.qml` — exact 11 px/no-tooltip bar contract while preserving the existing asset and action.
 - `config/quickshell/panel/RunningAppItem.qml` — exact 11 px/no-tooltip bar contract.
 - `config/quickshell/state/DwmState.qml` — explicit primary/all-workspaces selector without changing secondary mapping.
-- `config/quickshell/core/Theme.qml` — named Omarchy bar/panel tokens without changing unrelated surface themes.
+- `config/quickshell/core/Theme.qml` — named DWM bar/panel tokens, derived from the approved Omarchy design, without changing unrelated surface themes.
 - `config/quickshell/network/NetworkModel.qml` — event-driven icon state, grouped networks, bounded metrics, failures, and actions.
 - `config/quickshell/network/NetworkWindow.qml` — approved Omarchy-style compact Network panel.
 - `config/quickshell/network/NetworkWifiRow.qml` — known/other row presentation and actions.
@@ -82,7 +82,7 @@
 - Modify: `Makefile:372-395,527-535,555`
 
 **Interfaces:**
-- Produces `Theme.omarchyBarBackground`, `Theme.omarchyBarForeground`, `Theme.omarchyBarInactive`, `Theme.omarchyBarActive`, `Theme.omarchyBarUrgent`, and `Theme.omarchyBarFontSize` without changing the existing theme-derived `Theme.barBackground` used by unrelated controls.
+- Produces `Theme.dwmBarBackground`, `Theme.dwmBarForeground`, `Theme.dwmBarInactive`, `Theme.dwmBarActive`, `Theme.dwmBarUrgent`, and `Theme.dwmBarFontSize` without changing the existing theme-derived `Theme.barBackground` used by unrelated controls.
 - Produces `BarIconButton { glyph: string; active: bool; activated(); wheelUp(); wheelDown() }` with no tooltip property or popup.
 - Preserves `LogoButton.activated()`, `WorkspaceButton.clicked()`, and `RunningAppItem.focusRequested(string windowId)`.
 
@@ -98,11 +98,11 @@ repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 theme=$repo/config/quickshell/core/Theme.qml
 panel=$repo/config/quickshell/panel/DwmPanel.qml
 
-grep -F 'readonly property int omarchyBarFontSize: 11' "$theme" >/dev/null
-grep -F 'readonly property string omarchyBarBackground: "#1a1b26"' "$theme" >/dev/null
-grep -F 'readonly property string omarchyBarForeground: "#a9b1d6"' "$theme" >/dev/null
-grep -F 'readonly property string omarchyBarActive: "#7aa2f7"' "$theme" >/dev/null
-grep -F 'readonly property string omarchyBarUrgent: "#f7768e"' "$theme" >/dev/null
+grep -F 'readonly property int dwmBarFontSize: 11' "$theme" >/dev/null
+grep -F 'readonly property string dwmBarBackground: "#1a1b26"' "$theme" >/dev/null
+grep -F 'readonly property string dwmBarForeground: "#a9b1d6"' "$theme" >/dev/null
+grep -F 'readonly property string dwmBarActive: "#7aa2f7"' "$theme" >/dev/null
+grep -F 'readonly property string dwmBarUrgent: "#f7768e"' "$theme" >/dev/null
 if grep -F 'PanelTooltip {' "$panel" >/dev/null; then
     printf '%s\n' 'DwmPanel still creates tooltips' >&2
     exit 1
@@ -127,17 +127,17 @@ Expected: non-zero exit at the first missing bar token.
 Add these independent bar tokens to `Theme.qml`; do not replace the theme-derived values used by non-bar surfaces:
 
 ```qml
-readonly property string omarchyBarBackground: "#1a1b26"
-readonly property string omarchyBarForeground: "#a9b1d6"
-readonly property string omarchyBarInactive: "#a9b1d6"
-readonly property string omarchyBarActive: "#7aa2f7"
-readonly property string omarchyBarUrgent: "#f7768e"
-readonly property int omarchyBarFontSize: 11
+readonly property string dwmBarBackground: "#1a1b26"
+readonly property string dwmBarForeground: "#a9b1d6"
+readonly property string dwmBarInactive: "#a9b1d6"
+readonly property string dwmBarActive: "#7aa2f7"
+readonly property string dwmBarUrgent: "#f7768e"
+readonly property int dwmBarFontSize: 11
 ```
 
-Implement `BarIconButton.qml` as an `Item` containing one centered `IconText` at `Theme.omarchyBarFontSize` and one `MouseArea`. It may expose hover fill through `containsMouse`, but it must not construct `PanelTooltip`, `ToolTip`, or delayed hover timers.
+Implement `BarIconButton.qml` as an `Item` containing one centered `IconText` at `Theme.dwmBarFontSize` and one `MouseArea`. It may expose hover fill through `containsMouse`, but it must not construct `PanelTooltip`, `ToolTip`, or delayed hover timers.
 
-Update `LogoButton.qml`, `WorkspaceButton.qml`, and `RunningAppItem.qml` so every glyph/text node inside the bar binds `font.pixelSize: Theme.omarchyBarFontSize`. Remove any tooltip creation or tooltip-facing hover property from those modules while preserving click/focus behavior.
+Update `LogoButton.qml`, `WorkspaceButton.qml`, and `RunningAppItem.qml` so every glyph/text node inside the bar binds `font.pixelSize: Theme.dwmBarFontSize`. Remove any tooltip creation or tooltip-facing hover property from those modules while preserving click/focus behavior.
 
 - [ ] **Step 4: Run focused lint and tests**
 
@@ -471,24 +471,24 @@ git commit -m "feat: integrate the focused Omarchy-style bar"
 ### Task 5: Add the shared adaptive panel surface
 
 **Files:**
-- Create: `config/quickshell/core/OmarchyPanelSurface.qml`
+- Create: `config/quickshell/core/DwmPanelSurface.qml`
 - Modify: `config/quickshell/core/Theme.qml`
 - Create: `tests/test-quickshell-panel-layout.sh`
 - Modify: `Makefile`
 
 **Interfaces:**
-- Produces `OmarchyPanelSurface { contentImplicitWidth; contentImplicitHeight; maximumHeight; borderColor; default property contentData }`.
+- Produces `DwmPanelSurface { contentImplicitWidth; contentImplicitHeight; maximumHeight; borderColor; default property contentData }`.
 - Produces `availablePanelHeight(screen, panelHeight, edgeMargin): int` logic local to the component.
-- Provides a single 1 px `Theme.omarchyBarActive` border and `Theme.omarchyBarBackground` surface; child windows must not add a second outer border.
+- Provides a single 1 px `Theme.dwmBarActive` border and `Theme.dwmBarBackground` surface; child windows must not add a second outer border.
 
 - [ ] **Step 1: Write a failing panel-layout contract test**
 
 Create `tests/test-quickshell-panel-layout.sh` asserting:
 
 ```sh
-grep -F 'border.width: 1' config/quickshell/core/OmarchyPanelSurface.qml
-grep -F 'border.color: Theme.omarchyBarActive' config/quickshell/core/OmarchyPanelSurface.qml
-grep -F 'Math.min(contentImplicitHeight, maximumHeight)' config/quickshell/core/OmarchyPanelSurface.qml
+grep -F 'border.width: 1' config/quickshell/core/DwmPanelSurface.qml
+grep -F 'border.color: Theme.dwmBarActive' config/quickshell/core/DwmPanelSurface.qml
+grep -F 'Math.min(contentImplicitHeight, maximumHeight)' config/quickshell/core/DwmPanelSurface.qml
 ```
 
 Also reject `ROUTING CRUMBS`, `DNS PROVIDER`, `SpeedTest`, `wifiqr`, and
@@ -510,8 +510,8 @@ property int contentImplicitHeight: contentItem.implicitHeight
 property int maximumHeight: 600
 implicitWidth: contentImplicitWidth + leftPadding + rightPadding
 implicitHeight: Math.min(contentImplicitHeight, maximumHeight)
-color: Theme.omarchyBarBackground
-border.color: Theme.omarchyBarActive
+color: Theme.dwmBarBackground
+border.color: Theme.dwmBarActive
 border.width: 1
 ```
 
@@ -535,7 +535,7 @@ commit that makes those checks pass.
 - [ ] **Step 5: Commit Task 5**
 
 ```bash
-git add -- Makefile config/quickshell/core/OmarchyPanelSurface.qml \
+git add -- Makefile config/quickshell/core/DwmPanelSurface.qml \
   config/quickshell/core/Theme.qml tests/test-quickshell-panel-layout.sh
 git commit -m "feat: add adaptive Omarchy panel surface"
 ```
@@ -618,13 +618,13 @@ git commit -m "feat: expose complete Bluetooth device state"
 - Modify: `tests/test-quickshell-controls.sh`
 
 **Interfaces:**
-- Consumes Task 5 `OmarchyPanelSurface` and Task 6 six-field device objects/actions.
+- Consumes Task 5 `DwmPanelSurface` and Task 6 six-field device objects/actions.
 - Preserves `BluetoothModel.open()`, `close()`, `toggle()`, `refresh(scan)`, and `action(name,args)`.
 - Popup width derives from content with a screen-bounded maximum; list height is `Math.min(contentHeight, availableListHeight)`.
 
 - [ ] **Step 1: Enable failing Bluetooth layout assertions**
 
-Assert the window uses `OmarchyPanelSurface`, contains one fixed header/control
+Assert the window uses `DwmPanelSurface`, contains one fixed header/control
 area and one clipped/flickable device list, and does not contain a decorative
 subtitle phrase. Add source assertions for power, scan, pair, trust, connect,
 disconnect, and battery display.
@@ -856,7 +856,7 @@ Cover these sequences with mocked helper/PipeWire state:
 4. External mute produces mute and unmute at 80 returns high.
 5. Action failure clears `busy`, retains the previous valid value, and sets a bounded message.
 
-Assert the panel uses `OmarchyPanelSurface`, has one 1 px outer border, and
+Assert the panel uses `DwmPanelSurface`, has one 1 px outer border, and
 contains no subtitle phrase or fixed 560 px height.
 
 - [ ] **Step 2: Run focused tests and verify failure**

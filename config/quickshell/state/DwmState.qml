@@ -5,6 +5,7 @@ Scope {
     id: root
 
     property int currentWorkspace: 0
+    property int focusedMonitorIndex: -1
     property var monitorWorkspaceRows: []
     property var workspaceNames: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
     property var occupiedWorkspaces: []
@@ -49,6 +50,10 @@ Scope {
                     });
                 }
                 root.monitorWorkspaceRows = rows;
+            } else if (key === "focused_monitor") {
+                const parsed = parseInt(value, 10);
+
+                root.focusedMonitorIndex = isNaN(parsed) ? -1 : parsed;
             } else if (key === "names") {
                 root.workspaceNames = value.length > 0 ? value.split("|") : [];
             } else if (key === "occupied") {
@@ -107,6 +112,43 @@ Scope {
         }
 
         return 0;
+    }
+
+    function screenForMonitorIndex(monitorIndex) {
+        if (monitorIndex < 0 || monitorIndex >= root.monitorWorkspaceRows.length) {
+            return Quickshell.screens.length > 0 ? Quickshell.screens[0] : null;
+        }
+
+        const row = root.monitorWorkspaceRows[monitorIndex];
+        for (let screenIndex = 0; screenIndex < Quickshell.screens.length; screenIndex++) {
+            const screen = Quickshell.screens[screenIndex];
+            const pixelRatio = screen.devicePixelRatio > 0 ? screen.devicePixelRatio : 1;
+            const logicalMatch = row.x === screen.x && row.y === screen.y
+                && row.width === screen.width && row.height === screen.height;
+            const pixelMatch = row.x === Math.round(screen.x) && row.y === Math.round(screen.y)
+                && row.width === Math.round(screen.width * pixelRatio)
+                && row.height === Math.round(screen.height * pixelRatio);
+
+            if (logicalMatch || pixelMatch) return screen;
+        }
+
+        return monitorIndex < Quickshell.screens.length
+            ? Quickshell.screens[monitorIndex]
+            : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null);
+    }
+
+    function focusedScreen() {
+        if (root.focusedMonitorIndex >= 0) {
+            return root.screenForMonitorIndex(root.focusedMonitorIndex);
+        }
+
+        for (let index = 0; index < root.monitorWorkspaceRows.length; index++) {
+            if (root.monitorWorkspaceRows[index].desktop === root.currentWorkspace) {
+                return root.screenForMonitorIndex(index);
+            }
+        }
+
+        return Quickshell.screens.length > 0 ? Quickshell.screens[0] : null;
     }
 
     function workspaceIndexes(screen) {

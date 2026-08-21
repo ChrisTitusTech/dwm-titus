@@ -555,9 +555,11 @@ dwm_pid=$!
 wait_for_root_property _NET_SUPPORTED
 wait_for_root_property _NET_NUMBER_OF_DESKTOPS
 wait_for_root_property _DWM_MONITOR_DESKTOPS
+wait_for_root_property _DWM_SELECTED_MONITOR
 wait_for_root_property _DWM_FULLSCREEN_MONITORS
 wait_for_current_desktop 0
 wait_for_monitor_desktops 0,0,1024,768,0
+DISPLAY=$display xprop -root _DWM_SELECTED_MONITOR | grep -Eq '= 0$'
 wait_for_fullscreen_monitors ''
 DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_ABOVE
 DISPLAY=$display xprop -root _NET_SUPPORTED | grep -q _NET_WM_STATE_STAYS_ON_TOP

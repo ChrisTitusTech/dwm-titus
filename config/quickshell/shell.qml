@@ -34,12 +34,69 @@ ShellRoot {
             return;
         }
 
+        commandMenuModel.close();
         if (popupId !== "bluetooth") bluetoothModel.close();
         if (popupId !== "controlcenter") controlCenterModel.close();
         if (popupId !== "controls") controlsModel.close();
         if (popupId !== "network") networkModel.close();
         if (popupId !== "power") powerMenuModel.close();
         root.selectedPanelWindow = panel;
+    }
+
+    function openCommandMenu(screen) {
+        networkModel.close();
+        bluetoothModel.close();
+        controlCenterModel.close();
+        controlsModel.close();
+        powerMenuModel.close();
+        launcherModel.close();
+        if (screen) commandMenuModel.openOnScreen(screen); else commandMenuModel.open();
+    }
+
+    function toggleCommandMenu(screen) {
+        if (commandMenuModel.visible) {
+            commandMenuModel.close();
+        } else {
+            root.openCommandMenu(screen);
+        }
+    }
+
+    function panelForScreen(screen) {
+        if (screen) {
+            for (const panel of panelVariants.instances) {
+                if (panel.screen === screen || (panel.screen && panel.screen.name === screen.name)) {
+                    return panel;
+                }
+            }
+        }
+
+        return root.activePanelWindow;
+    }
+
+    function runCommandMenuAction(target, action, argument, requestedScreen) {
+        const panel = root.panelForScreen(requestedScreen);
+        const screen = requestedScreen || (panel ? panel.screen : root.activePanelScreen);
+
+        if (target === "settings" && (action === "open" || action === "select")) {
+            settingsModel.openOnScreen(screen);
+            if (action === "select") settingsModel.selectSection(argument);
+        } else if (target === "network" && action === "open") {
+            if (panel) root.selectPanelPopup(panel, "network");
+            networkModel.open();
+        } else if (target === "bluetooth" && action === "open") {
+            if (panel) root.selectPanelPopup(panel, "bluetooth");
+            bluetoothModel.open();
+        } else if (target === "controls" && action === "open") {
+            if (panel) root.selectPanelPopup(panel, "controls");
+            controlsModel.open();
+        } else if (target === "systemhealth" && action === "open") {
+            systemHealthModel.openOnScreen(screen);
+        } else if (target === "controlcenter" && action === "keybindings") {
+            controlCenterModel.openKeybindsOnScreen(screen);
+        } else if (target === "power" && action === "open") {
+            if (panel) root.selectPanelPopup(panel, "power");
+            powerMenuModel.open("panel");
+        }
     }
 
     DwmState {
@@ -54,6 +111,44 @@ ShellRoot {
 
     LauncherModel {
         id: launcherModel
+
+        onVisibleChanged: {
+            if (visible) commandMenuModel.close();
+        }
+    }
+
+    CommandMenuModel {
+        id: commandMenuModel
+        launcherModel: launcherModel
+        currentEntryIds: {
+            const ids = [];
+
+            if (settingsModel.visible) {
+                ids.push("settings");
+                if (settingsModel.selectedSectionId === "displays" || settingsModel.selectedSectionId === "input") {
+                    ids.push(settingsModel.selectedSectionId);
+                    ids.push("display-input");
+                } else if (settingsModel.selectedSectionId === "power") {
+                    ids.push("system");
+                    ids.push("power-settings");
+                } else if (settingsModel.selectedSectionId === "system") {
+                    ids.push("system");
+                    ids.push("system-settings");
+                }
+            }
+            if (networkModel.visible) ids.push("network");
+            if (bluetoothModel.visible) ids.push("bluetooth");
+            if (controlsModel.visible) ids.push("audio");
+            if (systemHealthModel.visible) ids.push("health");
+            if (controlCenterModel.utilityVisible && controlCenterModel.utilityPage === "keybinds") ids.push("keybindings");
+            if (powerMenuModel.visible) {
+                ids.push("system");
+                ids.push("power-menu");
+            }
+
+            return ids;
+        }
+        onIpcActionRequested: (target, action, argument, screen) => root.runCommandMenuAction(target, action, argument, screen)
     }
 
     PowerMenuModel {
@@ -102,8 +197,16 @@ ShellRoot {
     IpcHandler {
         target: "launcher"
 
+        function applicationConsumers(): int {
+            return launcherModel.applicationConsumers;
+        }
+
         function close(): void {
             launcherModel.close();
+        }
+
+        function indexCount(): int {
+            return launcherModel.apps.length;
         }
 
         function open(): void {
@@ -112,6 +215,38 @@ ShellRoot {
 
         function toggle(): void {
             launcherModel.toggle();
+        }
+    }
+
+    IpcHandler {
+        target: "menu"
+
+        function activeMenu(): string {
+            return commandMenuModel.activeMenu;
+        }
+
+        function close(): void {
+            commandMenuModel.close();
+        }
+
+        function open(): void {
+            root.openCommandMenu(null);
+        }
+
+        function resultCount(): int {
+            return commandMenuModel.rows.length;
+        }
+
+        function selectedLabel(): string {
+            return commandMenuModel.selectedLabel;
+        }
+
+        function summon(): void {
+            root.openCommandMenu(dwmState.focusedScreen());
+        }
+
+        function toggle(): void {
+            root.toggleCommandMenu(null);
         }
     }
 
@@ -421,6 +556,10 @@ ShellRoot {
 
     LauncherWindow {
         launcherModel: launcherModel
+    }
+
+    CommandMenuWindow {
+        commandMenuModel: commandMenuModel
     }
 
     PowerMenuWindow {

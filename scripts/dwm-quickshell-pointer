@@ -1,0 +1,33 @@
+#!/bin/sh
+
+set -eu
+
+case ${1:-} in
+command-menu)
+	window_name='^dwm menu$'
+	pointer_x=360
+	pointer_y=85
+	;;
+*)
+	printf 'usage: %s command-menu\n' "$0" >&2
+	exit 2
+	;;
+esac
+
+command -v xdotool >/dev/null 2>&1 || {
+	printf '%s: xdotool is required\n' "$0" >&2
+	exit 1
+}
+
+attempt=0
+while [ "$attempt" -lt 100 ]; do
+	if xdotool search --onlyvisible --name "$window_name" \
+		mousemove --window %@ "$pointer_x" "$pointer_y" >/dev/null 2>&1; then
+		exit 0
+	fi
+	attempt=$((attempt + 1))
+	sleep 0.05
+done
+
+printf '%s: command menu window did not become visible\n' "$0" >&2
+exit 1

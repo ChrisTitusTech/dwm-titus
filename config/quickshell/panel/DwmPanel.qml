@@ -20,10 +20,10 @@ PanelWindow {
     required property var powerMenuModel
     required property bool primaryPanel
 
-    readonly property color barForeground: Theme.omarchyBarForeground
-    readonly property color barInactive: Theme.omarchyBarInactive
-    readonly property color barActive: Theme.omarchyBarActive
-    readonly property color barUrgent: Theme.omarchyBarUrgent
+    readonly property color barForeground: Theme.dwmBarForeground
+    readonly property color barInactive: Theme.dwmBarInactive
+    readonly property color barActive: Theme.dwmBarActive
+    readonly property color barUrgent: Theme.dwmBarUrgent
 
     function namedChildLayout(container) {
         const names = [];
@@ -55,7 +55,7 @@ PanelWindow {
     }
 
     implicitHeight: 30
-    color: Theme.omarchyBarBackground
+    color: Theme.dwmBarBackground
     exclusiveZone: 30
     aboveWindows: root.state.fullscreenMonitorIndexes.indexOf(
         root.state.screenIndex(root.screen)) === -1
@@ -127,7 +127,7 @@ PanelWindow {
 
             text: Qt.formatDateTime(root.clock.date, "ddd, d MMM hh:mm")
             color: root.barForeground
-            font.pixelSize: Theme.omarchyBarFontSize
+            font.pixelSize: Theme.dwmBarFontSize
         }
 
         Item {

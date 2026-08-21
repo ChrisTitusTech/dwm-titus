@@ -181,6 +181,8 @@ if grep -Eq '^[[:space:]]*(sudo|pkexec)([[:space:]]|$)' "$provider"; then
 	printf 'Settings discovery must not execute an elevation tool.\n' >&2
 	exit 1
 fi
+grep -Fq "trusted_installed_file \"\$candidate\"" "$provider"
+grep -Fq 'provider_available sudo && run_bounded_probe sudo -n -v' "$provider"
 
 if "$repo/scripts/dwm-settings-display-root" rollback 2>"$work/root-helper.err"; then
 	printf 'Privileged display helper ran without root authorization.\n' >&2

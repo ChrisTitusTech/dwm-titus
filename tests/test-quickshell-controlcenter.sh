@@ -411,7 +411,7 @@ grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/cont
 grep -Fq 'grabFocus: true' "$repo/config/quickshell/core/ClickAwayPopup.qml"
 grep -Fq 'function applyThemes(themeText)' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'root.text = value("normfgcolor", root.text)' "$repo/config/quickshell/core/Theme.qml"
-grep -Fq 'text: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
+grep -Fq 'label: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
 grep -Fq 'property bool wifiPasswordPromptVisible: false' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'root.wifiPasswordPromptVisible = true;' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'root.networkModel.cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkWindow.qml"
@@ -524,7 +524,7 @@ if grep -Eq 'activeWindowTitle|statusSegments|batteryPill|batteryAvailable' \
 fi
 grep -Fq 'root.batteryAvailable = true;' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'trimmed.indexOf("BAT ") === 0' "$repo/config/quickshell/state/DwmState.qml"
-grep -Fq 'color: Theme.omarchyBarBackground' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'color: Theme.dwmBarBackground' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'aboveWindows: root.state.fullscreenMonitorIndexes.indexOf(' \
 	"$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'root.state.screenIndex(root.screen)) === -1' \

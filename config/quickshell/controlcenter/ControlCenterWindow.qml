@@ -130,14 +130,31 @@ ClickAwayPopup {
 
         implicitHeight: 28
         radius: Theme.smallRadius
-        color: active ? Theme.surfaceActive : presetMouse.containsMouse ? Theme.surfaceHover : Theme.surface
-        border.color: active ? Theme.accentSecondary : presetMouse.containsMouse ? Theme.borderStrong : Theme.border
-        border.width: Theme.pillBorderWidth
+        activeFocusOnTab: presetButton.enabled
+        color: !presetButton.enabled ? Theme.controlDisabledFill
+            : presetButton.activeFocus ? Theme.controlFocusFill
+            : presetButton.active ? Theme.controlSelectedFill
+            : presetMouse.containsMouse ? Theme.controlHoverFill : Theme.controlNormalFill
+        border.color: !presetButton.enabled ? Theme.controlDisabledBorder
+            : presetButton.activeFocus ? Theme.controlFocusBorder
+            : presetButton.active ? Theme.controlSelectedBorder
+            : presetMouse.containsMouse ? Theme.controlHoverBorder : Theme.controlNormalBorder
+        border.width: presetButton.activeFocus ? Theme.controlFocusBorderWidth : Theme.controlBorderWidth
+
+        Keys.onPressed: function(event) {
+            if (!presetButton.enabled || event.isAutoRepeat) return;
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                presetButton.activated();
+                event.accepted = true;
+            }
+        }
 
         UiText {
             anchors.centerIn: parent
             text: presetButton.label
-            color: presetButton.active ? Theme.accentSecondary : Theme.text
+            color: !presetButton.enabled ? Theme.controlDisabledText
+                : presetButton.activeFocus ? Theme.controlFocusText
+                : presetButton.active ? Theme.controlSelectedText : Theme.controlNormalText
         }
 
         MouseArea {
@@ -147,7 +164,10 @@ ClickAwayPopup {
             enabled: presetButton.enabled
             hoverEnabled: true
             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: presetButton.activated()
+            onClicked: {
+                presetButton.forceActiveFocus();
+                presetButton.activated();
+            }
         }
     }
 
@@ -198,11 +218,7 @@ ClickAwayPopup {
                     elide: Text.ElideRight
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: Theme.border
-                }
+                PanelSeparator {}
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -223,12 +239,9 @@ ClickAwayPopup {
                         onActivated: root.openSessionPower()
                     }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
+                    PanelSeparator {
                         Layout.topMargin: 3
                         Layout.bottomMargin: 3
-                        color: Theme.border
                     }
 
                     SectionLabel { label: "Desktop" }
@@ -258,12 +271,9 @@ ClickAwayPopup {
                         onActivated: root.controlCenterModel.openPower()
                     }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
+                    PanelSeparator {
                         Layout.topMargin: 3
                         Layout.bottomMargin: 3
-                        color: Theme.border
                     }
 
                     SectionLabel { label: "Utilities" }
@@ -392,12 +402,9 @@ ClickAwayPopup {
                         }
                     }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
+                    PanelSeparator {
                         Layout.topMargin: 3
                         Layout.bottomMargin: 3
-                        color: Theme.border
                     }
 
                     UiText {

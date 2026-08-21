@@ -15,10 +15,26 @@ Rectangle {
 
     implicitWidth: Math.max(76, optionLabel.implicitWidth + 22)
     implicitHeight: root.detail.length > 0 ? 48 : Theme.buttonHeight
-    color: root.active ? Theme.accent : root.hovered && enabled ? Theme.surfaceHover : Theme.surface
-    border.color: root.danger ? Theme.danger : root.active ? Theme.accent : Theme.border
-    border.width: 1
+    activeFocusOnTab: root.enabled
+    color: !root.enabled ? Theme.controlDisabledFill
+        : root.active ? Theme.controlSelectedFill
+        : root.activeFocus ? Theme.controlFocusFill
+        : root.hovered ? Theme.controlHoverFill : Theme.controlNormalFill
+    border.color: root.activeFocus ? Theme.controlFocusBorder
+        : !root.enabled ? Theme.controlDisabledBorder
+        : root.danger ? Theme.danger
+        : root.active ? Theme.controlSelectedBorder
+        : root.hovered ? Theme.controlHoverBorder : Theme.controlNormalBorder
+    border.width: root.activeFocus ? Theme.controlFocusBorderWidth : Theme.controlBorderWidth
     radius: Theme.radius
+
+    Keys.onPressed: function(event) {
+        if (!root.enabled || event.isAutoRepeat) return;
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+            root.activated();
+            event.accepted = true;
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -31,7 +47,9 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: root.detail.length === 0
             text: root.label
-            color: root.active ? Theme.accentText : Theme.textStrong
+            color: !root.enabled ? Theme.controlDisabledText
+                : root.active ? Theme.controlSelectedText
+                : root.hovered ? Theme.controlHoverText : Theme.textStrong
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallFontSize
             font.bold: true
@@ -44,7 +62,7 @@ Rectangle {
             Layout.fillWidth: true
             visible: root.detail.length > 0
             text: root.detail
-            color: root.active ? Theme.accentText : Theme.textMuted
+            color: root.active ? Theme.controlSelectedText : Theme.textMuted
             font.family: Theme.fontFamily
             font.pixelSize: Theme.tinyFontSize
             horizontalAlignment: Text.AlignHCenter

@@ -27,9 +27,10 @@
 - If conflicts occur outside the five listed paths, stop and revise this plan again.
 - Preserve X11-only operation; reject Wayland, Hyprland, WlrLayershell, `hyprctl`, `uwsm-app`, `wl-copy`, and `wl-paste` dependencies.
 - Preserve bar colors exactly: background `#1a1b26`, foreground/inactive `#a9b1d6`, active/accent `#7aa2f7`, urgent `#f7768e`; retain the accepted workspace use of `Theme.accent`.
-- Preserve `omarchyBarFontSize: 11`, 30 px panel/exclusive zone, three-zone layout, primary 1-9 workspaces, secondary monitor-local workspaces, `RunningAppsArea`, dynamic Network/Volume icons, volume wheel, and no tooltips.
+- Rename the integration-owned bar token namespace from `omarchyBar*` to `dwmBar*` across production QML, tests, and implementation documentation. Keep Omarchy only in provenance/design-origin prose.
+- Preserve `dwmBarFontSize: 11`, 30 px panel/exclusive zone, three-zone layout, primary 1-9 workspaces, secondary monitor-local workspaces, `RunningAppsArea`, dynamic Network/Volume icons, volume wheel, and no tooltips.
 - Do not restore tray, active title, status segments, battery, power widget, language indicator, or alternate clock behavior.
-- Keep upstream semantic menu/control roles theme-derived and bar-specific `omarchyBar*` roles fixed.
+- Keep upstream semantic menu/control roles theme-derived and bar-specific `dwmBar*` roles fixed.
 - Adopt upstream Bluetooth, Network, Volume, Control Center, Power, and command-menu work unless an integration test proves conflict with the focused bar.
 - Do not start additional Phase 2 design work. Reassess remaining Phase 2 only after the merge passes.
 - Do not push until full testing, independent review, and explicit approval.
@@ -141,11 +142,11 @@ Do not select either complete side or drop existing health, settings, network, L
 Keep fixed bar tokens:
 
 ```qml
-readonly property string omarchyBarBackground: "#1a1b26"
-readonly property string omarchyBarForeground: "#a9b1d6"
-readonly property string omarchyBarInactive: "#a9b1d6"
-readonly property string omarchyBarActive: "#7aa2f7"
-readonly property string omarchyBarUrgent: "#f7768e"
+readonly property string dwmBarBackground: "#1a1b26"
+readonly property string dwmBarForeground: "#a9b1d6"
+readonly property string dwmBarInactive: "#a9b1d6"
+readonly property string dwmBarActive: "#7aa2f7"
+readonly property string dwmBarUrgent: "#f7768e"
 ```
 
 Retain every upstream semantic surface/menu/control role, spacing/type/control dimension, and new panel token (`panelHeroIconSize`, `panelMetaLetterSpacing`, slider and toggle dimensions). Use upstream compatibility aliases but preserve:
@@ -154,12 +155,12 @@ Retain every upstream semantic surface/menu/control role, spacing/type/control d
 readonly property int titleFontSize: fontTitleSize
 readonly property int bodyFontSize: fontSubtitleSize
 readonly property int panelFontSize: fontBodySize
-readonly property int omarchyBarFontSize: 11
+readonly property int dwmBarFontSize: 11
 readonly property int smallFontSize: fontBodySmallSize
 readonly property int tinyFontSize: fontCaptionSize
 ```
 
-Do not derive `omarchyBar*` values from `themes.toml`.
+Do not retain `omarchyBar*` compatibility aliases. Do not derive `dwmBar*` values from `themes.toml`.
 
 - [ ] **Step 4: Verify and stage both resolutions**
 
@@ -210,7 +211,7 @@ Retain image-only rendering, fixed background/active/hover colors, click focus, 
 git checkout --ours -- config/quickshell/panel/WorkspaceButton.qml
 ```
 
-Retain fixed background/foreground/inactive colors, `omarchyBarFontSize`, selected/occupied behavior, and no tooltip/timer. Do not adopt `panelFontSize` or semantic control colors.
+Retain fixed background/foreground/inactive colors, `dwmBarFontSize`, selected/occupied behavior, and no tooltip/timer. Do not adopt `panelFontSize` or semantic control colors.
 
 - [ ] **Step 4: Adapt only contradictory old-bar assertions in `test-quickshell-panel-menus.sh`**
 
@@ -224,7 +225,7 @@ grep -Fq 'model: root.state.barWorkspaceIndexes(root.screen, root.primaryPanel)'
 grep -Fq 'RunningAppsArea {' "$panel/DwmPanel.qml"
 grep -Fq 'border.color: selected ? Theme.accent' "$panel/WorkspaceButton.qml"
 grep -Fq 'color: root.selected ? Theme.accent' "$panel/WorkspaceButton.qml"
-grep -Fq 'Theme.omarchyBarActive' "$panel/RunningAppItem.qml"
+grep -Fq 'Theme.dwmBarActive' "$panel/RunningAppItem.qml"
 if grep -Fq 'TrayArea' "$panel/DwmPanel.qml"; then
 	printf '%s\n' 'Focused bar unexpectedly restored the system tray.' >&2
 	exit 1

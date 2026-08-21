@@ -69,11 +69,7 @@ ClickAwayPopup {
                 onCloseRequested: root.powerMenuModel.close()
             }
 
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 1
-                color: Theme.border
-            }
+            PanelSeparator {}
 
             ColumnLayout {
                 Layout.fillWidth: true
@@ -88,6 +84,7 @@ ClickAwayPopup {
 
                         Layout.fillWidth: true
                         label: modelData.label
+                        detail: modelData.detail
                         navigates: modelData.confirm
                         onActivated: root.powerMenuModel.requestAction(modelData)
                     }

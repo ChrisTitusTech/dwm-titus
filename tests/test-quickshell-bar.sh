@@ -14,15 +14,15 @@ volume=$repo/config/quickshell/panel/VolumeBarModule.qml
 shell=$repo/config/quickshell/shell.qml
 bar_xvfb=$repo/tests/test-quickshell-bar-xvfb.sh
 
-grep -F 'readonly property int omarchyBarFontSize: 11' "$theme" >/dev/null
-grep -F 'readonly property string omarchyBarBackground: "#1a1b26"' "$theme" >/dev/null
-grep -F 'readonly property string omarchyBarForeground: "#a9b1d6"' "$theme" >/dev/null
-grep -F 'readonly property string omarchyBarInactive: "#a9b1d6"' "$theme" >/dev/null
-grep -F 'readonly property string omarchyBarActive: "#7aa2f7"' "$theme" >/dev/null
-grep -F 'readonly property string omarchyBarUrgent: "#f7768e"' "$theme" >/dev/null
+grep -F 'readonly property int dwmBarFontSize: 11' "$theme" >/dev/null
+grep -F 'readonly property string dwmBarBackground: "#1a1b26"' "$theme" >/dev/null
+grep -F 'readonly property string dwmBarForeground: "#a9b1d6"' "$theme" >/dev/null
+grep -F 'readonly property string dwmBarInactive: "#a9b1d6"' "$theme" >/dev/null
+grep -F 'readonly property string dwmBarActive: "#7aa2f7"' "$theme" >/dev/null
+grep -F 'readonly property string dwmBarUrgent: "#f7768e"' "$theme" >/dev/null
 grep -F 'required property string glyph' "$button" >/dev/null
 grep -F 'property bool active: false' "$button" >/dev/null
-grep -F 'property int iconPixelSize: Theme.omarchyBarFontSize' "$button" >/dev/null
+grep -F 'property int iconPixelSize: Theme.dwmBarFontSize' "$button" >/dev/null
 grep -F 'signal activated()' "$button" >/dev/null
 grep -F 'signal wheelUp()' "$button" >/dev/null
 grep -F 'signal wheelDown()' "$button" >/dev/null
@@ -32,10 +32,10 @@ grep -F 'onClicked: root.activated()' "$button" >/dev/null
 grep -F 'root.wheelUp();' "$button" >/dev/null
 grep -F 'root.wheelDown();' "$button" >/dev/null
 grep -F 'signal activated' "$logo" >/dev/null
-grep -F 'font.pixelSize: Theme.omarchyBarFontSize' "$logo" >/dev/null
+grep -F 'font.pixelSize: Theme.dwmBarFontSize' "$logo" >/dev/null
 grep -F 'onClicked: root.activated()' "$logo" >/dev/null
 grep -F 'signal clicked()' "$workspace" >/dev/null
-grep -F 'font.pixelSize: Theme.omarchyBarFontSize' "$workspace" >/dev/null
+grep -F 'font.pixelSize: Theme.dwmBarFontSize' "$workspace" >/dev/null
 grep -F 'onClicked: root.clicked()' "$workspace" >/dev/null
 grep -F 'model: root.state.barWorkspaceIndexes(root.screen, root.primaryPanel)' "$panel" >/dev/null
 grep -F 'function barWorkspaceIndexes(screen, primaryPanel)' "$state" >/dev/null
@@ -53,16 +53,16 @@ if grep -Eq 'Theme\.(textMuted|surface|surfaceHover|surfaceActive|border|borderS
 	printf '%s\n' 'Workspace primitive uses an unapproved mutable theme color' >&2
 	exit 1
 fi
-grep -F 'Theme.omarchyBarActive' "$logo" >/dev/null
-grep -F 'Theme.omarchyBarBackground' "$logo" >/dev/null
-grep -F 'border.color: selected ? Theme.accent' "$workspace" >/dev/null
-grep -F 'color: root.selected ? Theme.accent' "$workspace" >/dev/null
-grep -F 'Theme.omarchyBarInactive' "$workspace" >/dev/null
-grep -F 'Theme.omarchyBarForeground' "$workspace" >/dev/null
-grep -F 'Theme.omarchyBarBackground' "$workspace" >/dev/null
-grep -F 'Theme.omarchyBarActive' "$running_app" >/dev/null
-grep -F 'Theme.omarchyBarForeground' "$running_app" >/dev/null
-grep -F 'Theme.omarchyBarBackground' "$running_app" >/dev/null
+grep -F 'Theme.dwmBarActive' "$logo" >/dev/null
+grep -F 'Theme.dwmBarBackground' "$logo" >/dev/null
+grep -F 'border.color: selected ? Theme.dwmBarActive' "$workspace" >/dev/null
+grep -F 'color: root.selected ? Theme.dwmBarActive' "$workspace" >/dev/null
+grep -F 'Theme.dwmBarInactive' "$workspace" >/dev/null
+grep -F 'Theme.dwmBarForeground' "$workspace" >/dev/null
+grep -F 'Theme.dwmBarBackground' "$workspace" >/dev/null
+grep -F 'Theme.dwmBarActive' "$running_app" >/dev/null
+grep -F 'Theme.dwmBarForeground' "$running_app" >/dev/null
+grep -F 'Theme.dwmBarBackground' "$running_app" >/dev/null
 grep -F 'readonly property var wifiIcons: ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"]' "$network" >/dev/null
 grep -F 'readonly property string ethernetIcon: "󰈀"' "$network" >/dev/null
 grep -F 'readonly property string disconnectedIcon: "󰤮"' "$network" >/dev/null
@@ -118,9 +118,9 @@ if grep -F 'PanelTooltip {' "$panel" >/dev/null; then
 fi
 grep -F 'implicitHeight: 30' "$panel" >/dev/null
 grep -F 'exclusiveZone: 30' "$panel" >/dev/null
-grep -F 'color: Theme.omarchyBarBackground' "$panel" >/dev/null
+grep -F 'color: Theme.dwmBarBackground' "$panel" >/dev/null
 grep -F 'Qt.formatDateTime(root.clock.date, "ddd, d MMM hh:mm")' "$panel" >/dev/null
-grep -F 'font.pixelSize: Theme.omarchyBarFontSize' "$panel" >/dev/null
+grep -F 'font.pixelSize: Theme.dwmBarFontSize' "$panel" >/dev/null
 grep -F 'function height(): int' "$shell" >/dev/null
 grep -F 'function layout(): string' "$shell" >/dev/null
 grep -F 'function iconSizes(): string' "$shell" >/dev/null

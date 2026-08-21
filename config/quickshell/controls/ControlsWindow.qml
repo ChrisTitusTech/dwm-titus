@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import Quickshell
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -40,10 +39,6 @@ ClickAwayPopup {
         }
     }
 
-    function setVolumePendingFromX(x) {
-        volumeSlider.pendingPercent = volumeSlider.percentFromX(x);
-    }
-
     ShellSurface {
         id: content
 
@@ -61,24 +56,13 @@ ClickAwayPopup {
             anchors.fill: parent
             spacing: root.contentSpacing
 
-            RowLayout {
+            PanelHero {
                 Layout.fillWidth: true
-                spacing: root.rowSpacing
-
-                Text {
-                    Layout.fillWidth: true
-                    text: root.controlsModel.volumeDisplayText
-                    color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.titleFontSize
-                    font.bold: true
-                    elide: Text.ElideRight
-                    verticalAlignment: Text.AlignVCenter
-                }
+                iconText: root.controlsModel.volumeMuted ? "󰝟" : "󰕾"
+                title: "Audio"
+                subtitle: root.controlsModel.volumeDisplayText
 
                 ShellButton {
-                    Layout.preferredWidth: implicitWidth
-                    Layout.preferredHeight: Theme.buttonHeight
                     label: "Refresh"
                     onActivated: root.controlsModel.refresh()
                 }
@@ -94,6 +78,8 @@ ClickAwayPopup {
                 elide: Text.ElideRight
             }
 
+            PanelSeparator {}
+
             SectionLabel {
                 label: "Volume"
             }
@@ -102,73 +88,20 @@ ClickAwayPopup {
                 Layout.fillWidth: true
                 spacing: root.rowSpacing
 
-                Item {
+                PanelSlider {
                     id: volumeSlider
-
-                    property int pendingPercent: root.controlsModel.volumePercent
-                    property int displayPercent: volumeMouse.pressed ? pendingPercent : root.controlsModel.volumePercent
 
                     Layout.fillWidth: true
                     Layout.preferredHeight: root.volumeControlHeight
-
-                    function percentFromX(x) {
-                        return Math.max(0, Math.min(100, Math.round((x / Math.max(1, width)) * 100)));
-                    }
-
-                    Rectangle {
-                        id: sliderTrack
-
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        height: 8
-                        color: Theme.surface
-                        radius: Theme.radius
-
-                        Rectangle {
-                            width: Math.round((volumeSlider.displayPercent / 100) * parent.width)
-                            height: parent.height
-                            color: root.controlsModel.volumeMuted ? Theme.textMuted : Theme.accent
-                            radius: parent.radius
-                        }
-                    }
-
-                    Rectangle {
-                        width: 20
-                        height: 20
-                        x: Math.max(0, Math.min(parent.width - width, Math.round((volumeSlider.displayPercent / 100) * parent.width) - width / 2))
-                        y: parent.height / 2 - height / 2
-                        color: volumeMouse.enabled ? Theme.text : Theme.textMuted
-                        border.color: Theme.border
-                        border.width: 1
-                        radius: height / 2
-                    }
-
-                    MouseArea {
-                        id: volumeMouse
-
-                        anchors.fill: parent
-                        enabled: !root.controlsModel.busy
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onPressed: function(mouse) {
-                            root.setVolumePendingFromX(mouse.x);
-                        }
-                        onPositionChanged: function(mouse) {
-                            if (pressed) {
-                                root.setVolumePendingFromX(mouse.x);
-                            }
-                        }
-                        onReleased: function(mouse) {
-                            root.setVolumePendingFromX(mouse.x);
-                            root.controlsModel.volumeSet(volumeSlider.pendingPercent);
-                        }
-                    }
+                    value: root.controlsModel.volumePercent
+                    muted: root.controlsModel.volumeMuted
+                    enabled: !root.controlsModel.busy
+                    onValueCommitted: value => root.controlsModel.volumeSet(Math.round(value))
                 }
 
                 Text {
                     Layout.preferredWidth: root.volumePercentWidth
-                    text: root.controlsModel.volumePercent + "%"
+                    text: Math.round(volumeSlider.dragging ? volumeSlider.liveValue : root.controlsModel.volumePercent) + "%"
                     color: Theme.text
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.panelFontSize
@@ -217,9 +150,11 @@ ClickAwayPopup {
                         Layout.fillWidth: true
                         Layout.preferredHeight: root.outputDeviceRowHeight
                         radius: Theme.radius
-                        color: outputMouse.containsMouse && !outputDeviceRow.modelData.isDefault && !root.controlsModel.busy ? Theme.surfaceHover : Theme.surface
-                        border.color: outputDeviceRow.modelData.isDefault ? Theme.accent : Theme.border
-                        border.width: 1
+                        color: outputDeviceRow.modelData.isDefault ? Theme.controlSelectedFill
+                            : outputMouse.containsMouse && !root.controlsModel.busy ? Theme.controlHoverFill : Theme.controlNormalFill
+                        border.color: outputDeviceRow.modelData.isDefault ? Theme.controlSelectedBorder
+                            : outputMouse.containsMouse ? Theme.controlHoverBorder : Theme.controlNormalBorder
+                        border.width: Theme.controlBorderWidth
 
                         RowLayout {
                             anchors.fill: parent
@@ -241,7 +176,7 @@ ClickAwayPopup {
                             Text {
                                 Layout.preferredWidth: 58
                                 text: outputDeviceRow.modelData.isDefault ? "Default" : "Set"
-                                color: outputDeviceRow.modelData.isDefault ? Theme.accent : Theme.textMuted
+                                color: outputDeviceRow.modelData.isDefault ? Theme.controlSelectedText : Theme.textMuted
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.smallFontSize
                                 font.bold: true
@@ -281,6 +216,8 @@ ClickAwayPopup {
                 }
             }
 
+            PanelSeparator {}
+
             SectionLabel {
                 label: "Media"
             }
@@ -288,10 +225,10 @@ ClickAwayPopup {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 54
-                color: Theme.surface
+                color: Theme.controlNormalFill
                 radius: Theme.radius
-                border.color: Theme.border
-                border.width: 1
+                border.color: Theme.controlNormalBorder
+                border.width: Theme.controlBorderWidth
 
                 Column {
                     anchors.left: parent.left

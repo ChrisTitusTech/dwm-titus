@@ -8,12 +8,13 @@ Rectangle {
     property string title: ""
     property string detail: ""
     property string status: ""
-    readonly property color statusColor: root.status === "error" ? Theme.danger : root.status === "warn" ? "#ebcb8b" : Theme.accent
+    readonly property color statusColor: root.status === "error" ? Theme.danger
+        : root.status === "warn" ? Theme.warning : Theme.accent
 
     implicitHeight: Math.max(42, row.implicitHeight + 16)
-    color: Theme.surface
-    border.color: root.status === "error" ? Theme.danger : Theme.border
-    border.width: 1
+    color: Theme.controlNormalFill
+    border.color: root.status === "error" ? Theme.danger : Theme.controlNormalBorder
+    border.width: Theme.controlBorderWidth
     radius: Theme.radius
 
     RowLayout {

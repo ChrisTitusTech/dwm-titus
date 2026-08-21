@@ -14,8 +14,10 @@ running_item=$repo/config/quickshell/panel/RunningAppItem.qml
 shell=$repo/config/quickshell/shell.qml
 
 grep -Fq 'required property bool primaryPanel' "$panel"
-grep -Fq 'active: root.primaryPanel' "$panel"
-grep -Fq 'sourceComponent: TrayArea {}' "$panel"
+if grep -Fq 'TrayArea' "$panel"; then
+	printf '%s\n' 'Focused bar unexpectedly mounts the system tray.' >&2
+	exit 1
+fi
 grep -Fq 'primaryPanel: modelData === Quickshell.screens[0]' "$shell"
 grep -Fq 'model: SystemTray.items.values' "$tray_area"
 grep -Fq 'trayItem: modelData' "$tray_area"
