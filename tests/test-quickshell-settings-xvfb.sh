@@ -169,6 +169,31 @@ section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
 [ "$section" = network ]
 
+i=0
+while [ "$i" -lt 100 ]; do
+	network_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings networkProviderStatus 2>/dev/null || true)
+	[ "$network_status" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$network_status" = available ]
+network_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings networkDeviceCount)
+[ "$network_count" -ge 1 ]
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select bluetooth >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	bluetooth_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings bluetoothProviderStatus 2>/dev/null || true)
+	[ "$bluetooth_status" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$bluetooth_status" = available ]
+
 # IPC selection clears a search that hides the requested section.
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
@@ -192,6 +217,17 @@ fi
 
 if pgrep -f '[d]wm-settings-provider discover$' >/dev/null; then
 	printf 'Settings capability provider remained active after close\n' >&2
+	exit 1
+fi
+
+if pgrep -af '[d]wm-quickshell-network (snapshot|wifi-scan|wifi-connect|connect|disconnect|forget)' |
+	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-network" >/dev/null; then
+	printf 'Settings-owned network work remained active after close\n' >&2
+	exit 1
+fi
+if pgrep -af '[d]wm-quickshell-controls (bluetooth-snapshot|bluetooth-scan|bluetooth-power|bluetooth-pair|bluetooth-trust|bluetooth-connect|bluetooth-disconnect|bluetooth-remove)' |
+	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controls" >/dev/null; then
+	printf 'Settings-owned Bluetooth work remained active after close\n' >&2
 	exit 1
 fi
 

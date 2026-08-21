@@ -36,6 +36,22 @@ while [ "$#" -gt 0 ]; do
 	esac
 done
 
+if [ "${DWM_TEST_NMCLI_CONNECTION_FAIL:-0}" = 1 ]; then
+	case "$*" in
+	"connection show" | "connection show --active") exit 11 ;;
+	esac
+fi
+if [ "${DWM_TEST_NMCLI_EMPTY_CONNECTIONS:-0}" = 1 ]; then
+	case "$*" in
+	"connection show" | "connection show --active") exit 0 ;;
+	esac
+fi
+if [ "${DWM_TEST_WIFI_SCAN_FAIL:-0}" = 1 ]; then
+	case "$*" in
+	"device wifi list "*) exit 12 ;;
+	esac
+fi
+
 case "$*" in
 "device status")
 	case "${DWM_TEST_NMCLI_MODE:-wired}" in
@@ -54,6 +70,9 @@ case "$*" in
 	offline)
 		printf 'enp6s0:ethernet:disconnected:--\n'
 		printf 'lo:loopback:connected:lo\n'
+		;;
+	service-fail)
+		exit 10
 		;;
 	esac
 	;;
@@ -157,6 +176,10 @@ case "$*" in
 	printf 'disconnect enp6s0\n' >>"$DWM_TEST_NMCLI_LOG"
 	;;
 "monitor")
+	if [ "${DWM_TEST_MONITOR_HOLD:-0}" = 1 ]; then
+		printf '%s\n' "$$" >"$DWM_TEST_MONITOR_CHILD"
+		while :; do sleep 1; done
+	fi
 	printf 'wlan0: connected\n'
 	printf 'Networkmanager is now connected\n'
 	;;
@@ -217,6 +240,42 @@ grep -Fqx "	AA:BB:CC:DD:EE:02	Guest WiFi	61	--	11	wlan0" "$work/wifi-scan.out"
 grep -Fqx "	AA:BB:CC:DD:EE:03	Cafe:WiFi	50	WPA3	149	wlan0" "$work/wifi-scan.out"
 grep -Fqx "	AA:BB:CC:DD:EE:06	Legacy WiFi	42	WEP	3	wlan0" "$work/wifi-scan.out"
 
+PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" snapshot --rescan no >"$work/snapshot.out"
+[ "$(grep -Fxc "connectivity-protocol	1	0" "$work/snapshot.out")" -eq 1 ]
+grep -Fqx "provider	network	available	delegated	NetworkManager state and user-authorized actions" "$work/snapshot.out"
+grep -Fqx "network-device	enp6s0	ethernet	connected	Wired connection 1" "$work/snapshot.out"
+grep -Fqx "network-profile	Work VPN	uuid-vpn	vpn	no	-" "$work/snapshot.out"
+grep -Fqx "wifi-network	*	AA:BB:CC:DD:EE:01	Cafe:WiFi	83	WPA2	6	wlan0" "$work/snapshot.out"
+
+DWM_TEST_WIFI_SCAN_FAIL=1 PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-network" snapshot --rescan no >"$work/snapshot-wifi-restricted.out"
+grep -Fqx "provider	network	restricted	delegated	Wi-Fi scanning is unavailable; other NetworkManager state remains readable" "$work/snapshot-wifi-restricted.out"
+grep -Fqx "network-device	enp6s0	ethernet	connected	Wired connection 1" "$work/snapshot-wifi-restricted.out"
+grep -Fqx "network-profile	Work VPN	uuid-vpn	vpn	no	-" "$work/snapshot-wifi-restricted.out"
+if grep -Fq "wifi-network	" "$work/snapshot-wifi-restricted.out"; then
+	exit 1
+fi
+
+DWM_TEST_NMCLI_MODE=service-fail PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-network" snapshot --rescan no >"$work/snapshot-unavailable.out"
+grep -Fqx "provider	network	unavailable	read-only	NetworkManager service is unavailable" "$work/snapshot-unavailable.out"
+
+DWM_TEST_NMCLI_CONNECTION_FAIL=1 PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-network" snapshot --rescan no >"$work/snapshot-connection-failure.out"
+grep -Fqx "provider	network	unavailable	read-only	NetworkManager service is unavailable" "$work/snapshot-connection-failure.out"
+if grep -Fq "network-profile	" "$work/snapshot-connection-failure.out"; then
+	printf 'Snapshot emitted incomplete profiles after a connection query failure.\n' >&2
+	exit 1
+fi
+
+DWM_TEST_NMCLI_EMPTY_CONNECTIONS=1 PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-network" snapshot --rescan no >"$work/snapshot-empty-connections.out"
+grep -Fqx "provider	network	available	delegated	NetworkManager state and user-authorized actions" "$work/snapshot-empty-connections.out"
+if grep -Fq "network-profile	" "$work/snapshot-empty-connections.out"; then
+	printf 'Snapshot serialized a false profile from empty NetworkManager output.\n' >&2
+	exit 1
+fi
+
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" wifi-scan --rescan yes >"$work/wifi-rescan.out"
 grep -Fqx "	AA:BB:CC:DD:EE:04	New WiFi	74	WPA2	1	wlan0" "$work/wifi-rescan.out"
 
@@ -238,6 +297,17 @@ grep -Fqx "wifi-secured" "$work/nmcli.log"
 password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
 [ -n "$password_file" ]
 [ ! -e "$password_file" ]
+
+if printf '%s\n' "enterprise secret" |
+	PATH="$work/bin:$PATH" \
+		"$repo/scripts/dwm-quickshell-network" wifi-connect wlan0 AA:BB:CC:DD:EE:09 "Enterprise WiFi" --password-stdin "WPA2 802.1X" \
+		2>"$work/enterprise.err"; then
+	exit 1
+fi
+grep -Fqx "enterprise Wi-Fi must be configured in the delegated NetworkManager editor" "$work/enterprise.err"
+if grep -Fq "Enterprise WiFi" "$work/nmcli.log"; then
+	exit 1
+fi
 if grep -Fq "correct horse battery staple" "$work/nmcli-argv.log"; then
 	exit 1
 fi
@@ -306,7 +376,43 @@ password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
 [ ! -e "$password_file" ]
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" monitor >"$work/monitor.out"
-grep -Fqx changed "$work/monitor.out"
+grep -Fqx "wlan0: connected" "$work/monitor.out"
+grep -Fqx "Networkmanager is now connected" "$work/monitor.out"
+
+DWM_TEST_MONITOR_HOLD=1 DWM_TEST_MONITOR_CHILD="$work/monitor-child.pid" \
+	PATH="$work/bin:$PATH" sh -c '"$1" monitor & echo $! >"$2"; wait' sh \
+	"$repo/scripts/dwm-quickshell-network" "$work/monitor-helper.pid" &
+monitor_owner=$!
+i=0
+while [ "$i" -lt 100 ]; do
+	[ -s "$work/monitor-helper.pid" ] && [ -s "$work/monitor-child.pid" ] && break
+	i=$((i + 1))
+	sleep 0.02
+done
+[ -s "$work/monitor-helper.pid" ]
+[ -s "$work/monitor-child.pid" ]
+monitor_helper=$(cat "$work/monitor-helper.pid")
+monitor_child=$(cat "$work/monitor-child.pid")
+pid_running() {
+	[ -r "/proc/$1/stat" ] || return 1
+	state=$(sed 's/^.*) //' "/proc/$1/stat" | awk '{ print $1 }')
+	[ "$state" != Z ]
+}
+kill -KILL "$monitor_owner"
+wait "$monitor_owner" 2>/dev/null || :
+i=0
+while [ "$i" -lt 100 ]; do
+	if ! pid_running "$monitor_helper" && ! pid_running "$monitor_child"; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.02
+done
+if pid_running "$monitor_helper" || pid_running "$monitor_child"; then
+	printf 'Parent-bound NetworkManager monitor survived its owner.\n' >&2
+	kill -TERM "$monitor_helper" "$monitor_child" 2>/dev/null || :
+	exit 1
+fi
 
 DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
 	PATH="$work/bin:$PATH" \
@@ -318,6 +424,12 @@ DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-network" disconnect enp6s0
 grep -Fqx "disconnect enp6s0" "$work/nmcli.log"
+
+: >"$work/nmcli.log"
+DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-network" forget uuid-wifi
+grep -Fqx "profile-delete connection delete uuid uuid-wifi" "$work/nmcli.log"
 
 if PATH="$work/bin" "$repo/scripts/dwm-quickshell-network" editor 2>"$work/editor.err"; then
 	exit 1

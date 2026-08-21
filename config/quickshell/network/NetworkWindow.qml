@@ -100,6 +100,7 @@ ClickAwayPopup {
                     width: ListView.view.width
                     profile: modelData
                     active: true
+                    actionsEnabled: root.networkModel.actionsAvailable && !root.networkModel.busy
                     onDisconnectRequested: device => root.networkModel.disconnectDevice(device)
                 }
             }
@@ -132,6 +133,8 @@ ClickAwayPopup {
                     network: modelData
                     selected: index === root.networkModel.selectedWifiIndex
                     busy: root.networkModel.busy
+                    actionsEnabled: root.networkModel.actionsAvailable
+                    delegated: !root.networkModel.supportsFixedWifiSecurity(modelData.security)
                     onSelectedRequested: root.networkModel.selectWifi(index)
                     onConnectRequested: network => {
                         root.networkModel.selectWifi(index);
@@ -166,6 +169,7 @@ ClickAwayPopup {
                     width: ListView.view.width
                     profile: modelData
                     active: false
+                    actionsEnabled: root.networkModel.actionsAvailable && !root.networkModel.busy
                     onConnectRequested: profile => root.networkModel.connectProfile(profile)
                 }
             }
@@ -197,6 +201,7 @@ ClickAwayPopup {
             title: "dwm network password"
             screen: root.panelWindow ? root.panelWindow.screen : null
             visible: root.networkModel.wifiPasswordPromptVisible
+                && root.networkModel.wifiPasswordPromptOrigin === "panel"
             implicitWidth: 440
             implicitHeight: 210
             color: Theme.transparent

@@ -204,8 +204,9 @@ Make common monitor and input changes available from the Settings application.
 
 ## Phase 3: Connectivity and Audio
 
-Status: Active (2026-08-21). `P3-UI4` is complete in PR #163; the next review
-boundary is `CONN-001`, followed by Network/VPN, Bluetooth, and audio slices.
+Status: Active (2026-08-21). `P3-UI4` is complete in PR #163. The connectivity,
+NetworkManager, and BlueZ slices are complete; the next review boundary is
+`AUDIO-001`, followed by the Phase 3 validation and closeout.
 
 ### Objective
 

@@ -177,6 +177,9 @@ ShellRoot {
 
     SettingsModel {
         id: settingsModel
+        networkModel: networkModel
+        bluetoothModel: bluetoothModel
+        controlsModel: controlsModel
     }
 
     LazyLoader {
@@ -185,6 +188,7 @@ ShellRoot {
         component: Item {
             Component.onCompleted: {
                 networkModel.refresh();
+                bluetoothModel.refresh();
                 controlsModel.refresh();
             }
         }
@@ -465,6 +469,42 @@ ShellRoot {
             return settingsModel.inputState;
         }
 
+        function networkProviderStatus(): string {
+            return networkModel.providerState;
+        }
+
+        function networkDeviceCount(): int {
+            return networkModel.devices.length;
+        }
+
+        function bluetoothProviderStatus(): string {
+            return bluetoothModel.providerState;
+        }
+
+        function bluetoothDeviceCount(): int {
+            return bluetoothModel.devices.length;
+        }
+
+        function audioProviderStatus(): string {
+            return controlsModel.audioProviderState;
+        }
+
+        function audioSourceKind(): string {
+            return controlsModel.audioSourceKind;
+        }
+
+        function audioOutputCount(): int {
+            return controlsModel.outputDevices.length;
+        }
+
+        function audioInputCount(): int {
+            return controlsModel.inputDevices.length;
+        }
+
+        function audioStreamCount(): int {
+            return controlsModel.audioStreams.length;
+        }
+
         function open(): void {
             settingsModel.open();
         }
@@ -632,5 +672,8 @@ ShellRoot {
 
     SettingsWindow {
         settingsModel: settingsModel
+        networkModel: networkModel
+        bluetoothModel: bluetoothModel
+        controlsModel: controlsModel
     }
 }

@@ -8,6 +8,8 @@ Rectangle {
     required property var network
     property bool selected: false
     property bool busy: false
+    property bool actionsEnabled: true
+    property bool delegated: false
     signal selectedRequested
     signal connectRequested(var network)
 
@@ -69,8 +71,8 @@ Rectangle {
 
         ShellButton {
             Layout.preferredHeight: Theme.chipHeight
-            label: root.busy ? "Connecting..." : "Connect"
-            enabled: !root.busy
+            label: root.delegated ? "Advanced" : root.busy ? "Connecting..." : "Connect"
+            enabled: root.actionsEnabled && !root.busy
             onActivated: root.connectRequested(root.network)
         }
     }
