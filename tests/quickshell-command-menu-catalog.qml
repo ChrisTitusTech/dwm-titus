@@ -36,6 +36,14 @@ QtObject {
             ];
             require(Catalog.firstSelectable(disabledRows) === 1, "disabled rows must not receive selection");
             require(Catalog.nextSelectable(disabledRows, 1, 1) === 1, "navigation must skip disabled rows");
+            const refreshedRows = [
+                { "id": "network", "kind": "action", "enabled": true },
+                { "id": "audio", "kind": "action", "enabled": true }
+            ];
+            require(Catalog.restoredSelection(refreshedRows, "audio") === 1,
+                "refresh must preserve a selectable entry by stable id");
+            require(Catalog.restoredSelection(refreshedRows, "missing") === 0,
+                "refresh must fall back when the prior entry disappeared");
             require(Catalog.breadcrumb("screenshots") === "Commands / Screenshots", "submenu breadcrumb must be stable");
         } catch (error) {
             console.error("Command menu catalog test failed: " + error);

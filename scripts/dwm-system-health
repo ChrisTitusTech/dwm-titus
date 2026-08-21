@@ -195,10 +195,27 @@ trusted_system_command() {
 	case $resolved in
 	"${HOME:-/nonexistent}"/* | "${XDG_DATA_HOME:-${HOME:-/nonexistent}/.local/share}"/* | "${XDG_CONFIG_HOME:-${HOME:-/nonexistent}/.config}"/*) return 1 ;;
 	esac
+	trusted_parent_chain "$resolved" || return 1
 	owner=$(stat -c %u -- "$resolved" 2>/dev/null || printf 1)
 	[[ $owner == 0 ]] || return 1
 	find "$resolved" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q . || return 1
 	printf '%s\n' "$resolved"
+}
+
+trusted_parent_chain() {
+	local candidate=$1
+	local parent=${candidate%/*}
+	local owner
+
+	while :; do
+		[[ -d $parent && ! -L $parent ]] || return 1
+		owner=$(stat -c %u -- "$parent" 2>/dev/null || printf 1)
+		[[ $owner == 0 ]] || return 1
+		find "$parent" -maxdepth 0 -type d ! -perm /022 -print -quit 2>/dev/null | grep -q . || return 1
+		[[ $parent == / ]] && return 0
+		parent=${parent%/*}
+		[[ -n $parent ]] || parent=/
+	done
 }
 
 privilege_mode() {
@@ -772,6 +789,7 @@ trusted_system_helper() {
 		case $resolved in
 		"${HOME:-/nonexistent}"/* | "${XDG_DATA_HOME:-${HOME:-/nonexistent}/.local/share}"/* | "${XDG_CONFIG_HOME:-${HOME:-/nonexistent}/.config}"/*) continue ;;
 		esac
+		trusted_parent_chain "$resolved" || continue
 		owner=$(stat -c %u -- "$resolved" 2>/dev/null || printf 1)
 		[[ $owner == 0 ]] || continue
 		find "$resolved" -maxdepth 0 -type f ! -perm /022 -print -quit 2>/dev/null | grep -q . || continue

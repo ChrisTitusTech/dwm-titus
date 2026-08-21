@@ -20,13 +20,13 @@ command -v xdotool >/dev/null 2>&1 || {
 }
 
 attempt=0
-while [ "$attempt" -lt 40 ]; do
+while [ "$attempt" -lt 100 ]; do
 	if xdotool search --onlyvisible --name "$window_name" \
 		mousemove --window %@ "$pointer_x" "$pointer_y" >/dev/null 2>&1; then
 		exit 0
 	fi
 	attempt=$((attempt + 1))
-	sleep 0.025
+	sleep 0.05
 done
 
 printf '%s: command menu window did not become visible\n' "$0" >&2

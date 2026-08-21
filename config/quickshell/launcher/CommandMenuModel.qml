@@ -78,6 +78,9 @@ Scope {
             return;
         }
 
+        const previousId = root.selectedIndex >= 0 && root.selectedIndex < root.rows.length
+            ? root.rows[root.selectedIndex].id : "";
+
         let entries;
         if (root.query.trim().length > 0) {
             entries = Catalog.searchableEntries().concat(root.applicationEntries());
@@ -90,7 +93,7 @@ Scope {
         }
 
         root.rows = root.applyCurrentStates(entries);
-        root.selectedIndex = Catalog.firstSelectable(entries);
+        root.selectedIndex = Catalog.restoredSelection(root.rows, previousId);
     }
 
     function openWindow() {
@@ -135,6 +138,7 @@ Scope {
 
     function setQuery(value) {
         root.query = value;
+        root.selectedIndex = -1;
         root.refreshRows();
     }
 
@@ -165,6 +169,7 @@ Scope {
     function openSubmenu(menuId) {
         root.activeMenu = menuId;
         root.query = "";
+        root.selectedIndex = -1;
         root.refreshRows();
     }
 
@@ -175,6 +180,7 @@ Scope {
         }
         if (root.activeMenu !== "root") {
             root.activeMenu = "root";
+            root.selectedIndex = -1;
             root.refreshRows();
             return true;
         }

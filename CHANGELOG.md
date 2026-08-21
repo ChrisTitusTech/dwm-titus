@@ -40,6 +40,14 @@ versions from `config.mk`.
   fixtures while retaining the Fedora-only boundary test that proves an
   unsupported installer cannot perform package or system mutations.
 
+### Fixed
+
+- Require root-owned, non-writable parent directories for installed health
+  helpers and report administrative authorization available only when polkit
+  or noninteractive sudo can actually authorize the operation.
+- Preserve command-menu selection when asynchronous application state refreshes
+  and tolerate bounded slow X11 window mapping before pointer-focus fallback.
+
 ## [0.6.1] - 2026-08-17
 
 ### Added
