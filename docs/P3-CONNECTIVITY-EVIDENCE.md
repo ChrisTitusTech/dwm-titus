@@ -20,11 +20,11 @@ lifecycle is used by the media watcher.
 
 ## Live Network Qualification
 
-NetworkManager reported the active Ethernet connection
-`3519b659-6ec0-47e0-aa59-aa566e5bcaae` on `enp6s0`, plus the externally managed
-`virbr0` bridge. Opening Network Settings exposed three devices and the saved
-profiles through the shared model. A bounded rescan completed without changing
-the active connection set.
+NetworkManager reported the active Ethernet connection on `enp6s0`, plus the
+externally managed `virbr0` bridge. The private connection UUID is retained in
+local qualification records and intentionally redacted here. Opening Network
+Settings exposed three devices and the saved profiles through the shared model.
+A bounded rescan completed without changing the active connection set.
 
 This machine has no Wi-Fi adapter. The real Wi-Fi scan therefore completed with
 an empty result, and Wi-Fi association, password authentication, and cancellation
@@ -33,11 +33,12 @@ VPN editing remains explicitly delegated to NetworkManager's trusted editor.
 
 ## Live Bluetooth Qualification
 
-BlueZ exposed adapter `/org/bluez/hci0` at `08:B4:D2:6A:D9:8D`. A bounded
-eight-second discovery completed successfully and left the adapter with
+BlueZ exposed adapter `/org/bluez/hci0`. Adapter and device addresses are
+retained in local qualification records and intentionally redacted here. A
+bounded eight-second discovery completed successfully and left the adapter with
 `Discovering=false`. The paired and trusted Xbox Wireless Controller retained
-canonical address `68:6C:E6:6E:D6:8A` and remained disconnected. Discovery also
-found transient nearby devices without changing their paired or trusted state.
+its stable canonical identity and remained disconnected. Discovery also found
+transient nearby devices without changing their paired or trusted state.
 
 The real adapter, discovery, and known-device paths are qualified. Pairing a new
 device and recovering a failed pairing were not performed because no sacrificial

@@ -165,7 +165,11 @@ devices)
 "--timeout 8 scan on")
 	printf 'scan\n' >>"$DWM_TEST_BLUETOOTHCTL_LOG"
 	;;
-"power on" | "power off" | "pair AA:BB:CC:DD:EE:02" | "trust AA:BB:CC:DD:EE:02" | \
+"pair AA:BB:CC:DD:EE:02")
+	printf '%s\n' "$*" >>"$DWM_TEST_BLUETOOTHCTL_LOG"
+	[ "${DWM_TEST_BT_PAIR_FAIL:-0}" != 1 ] || exit 6
+	;;
+"power on" | "power off" | "trust AA:BB:CC:DD:EE:02" | \
 	"disconnect AA:BB:CC:DD:EE:01" | "remove AA:BB:CC:DD:EE:02" | "scan off")
 	printf '%s\n' "$*" >>"$DWM_TEST_BLUETOOTHCTL_LOG"
 	;;
@@ -362,6 +366,17 @@ grep -Fqx "connect AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
 grep -Fqx "disconnect AA:BB:CC:DD:EE:01" "$work/bluetoothctl.log"
 grep -Fqx "trust AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
 grep -Fqx "remove AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
+
+: >"$work/bluetoothctl.log"
+if DWM_TEST_BT_PAIR_FAIL=1 DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-pair AA:BB:CC:DD:EE:02; then
+	printf 'Bluetooth helper continued after a pair failure.\n' >&2
+	exit 1
+fi
+grep -Fqx "pair AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
+if grep -Eq '^(trust|connect) ' "$work/bluetoothctl.log"; then
+	exit 1
+fi
 
 if DWM_TEST_BT_ACTION_FAIL=1 DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" bluetooth-connect AA:BB:CC:DD:EE:02; then

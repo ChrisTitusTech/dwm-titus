@@ -628,8 +628,8 @@ bluetooth_power() {
 bluetooth_pair() {
 	[ "$#" -eq 1 ] || usage
 	validate_bluetooth_address "$1"
-	run_bounded 90 bluetoothctl pair "$1"
-	run_bounded 15 bluetoothctl trust "$1"
+	run_bounded 90 bluetoothctl pair "$1" || return $?
+	run_bounded 15 bluetoothctl trust "$1" || return $?
 	run_bounded 90 bluetoothctl connect "$1"
 }
 
