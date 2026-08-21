@@ -424,7 +424,7 @@ grep -Fq 'if (popupId !== "network") networkModel.close();' "$repo/config/quicks
 grep -Fq 'onPopupRequested: (panel, popupId) => root.selectPanelPopup(panel, popupId)' "$repo/config/quickshell/shell.qml"
 grep -Fq 'readonly property var activePanelWindow: selectedPanelWindow && selectedPanelWindow.screen' "$repo/config/quickshell/shell.qml"
 grep -Fq 'signal popupRequested(var panelWindow, string popupId)' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'model: root.state.workspaceIndexes(root.screen)' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'model: root.state.barWorkspaceIndexes(root.screen, root.primaryPanel)' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'selected: modelData === root.state.currentWorkspaceForScreen(root.screen)' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'onClicked: root.state.switchWorkspaceForScreen(root.screen, modelData)' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'screen.devicePixelRatio' "$repo/config/quickshell/state/DwmState.qml"
