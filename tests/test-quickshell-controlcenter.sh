@@ -404,7 +404,7 @@ grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/cont
 grep -Fq 'grabFocus: true' "$repo/config/quickshell/core/ClickAwayPopup.qml"
 grep -Fq 'function applyThemes(themeText)' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'root.text = value("normfgcolor", root.text)' "$repo/config/quickshell/core/Theme.qml"
-grep -Fq 'text: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
+grep -Fq 'label: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
 grep -Fq 'property bool wifiPasswordPromptVisible: false' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'root.wifiPasswordPromptVisible = true;' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'root.networkModel.cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkWindow.qml"

@@ -67,35 +67,11 @@ Rectangle {
             elide: Text.ElideRight
         }
 
-        Rectangle {
-            Layout.preferredWidth: actionText.implicitWidth + 18
+        ShellButton {
             Layout.preferredHeight: Theme.chipHeight
-            color: root.busy ? Theme.controlDisabledFill
-                : actionMouse.containsMouse ? Theme.controlHoverFill : Theme.controlNormalFill
-            border.color: root.busy ? Theme.controlDisabledBorder
-                : actionMouse.containsMouse ? Theme.controlHoverBorder : Theme.controlNormalBorder
-            border.width: Theme.controlBorderWidth
-            radius: Theme.radius
-
-            Text {
-                id: actionText
-
-                anchors.centerIn: parent
-                text: root.busy ? "Connecting..." : "Connect"
-                color: root.busy ? Theme.controlDisabledText : Theme.textStrong
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallFontSize
-            }
-
-            MouseArea {
-                id: actionMouse
-
-                anchors.fill: parent
-                enabled: !root.busy
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.connectRequested(root.network)
-            }
+            label: root.busy ? "Connecting..." : "Connect"
+            enabled: !root.busy
+            onActivated: root.connectRequested(root.network)
         }
     }
 }

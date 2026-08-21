@@ -45,8 +45,13 @@ grep -Fq 'FloatingWindow {' "$network/NetworkWindow.qml"
 grep -Fq 'wifiPasswordInput.forceActiveFocus();' "$network/NetworkWindow.qml"
 grep -Fq 'Theme.controlSelectedFill' "$network/NetworkWifiRow.qml"
 grep -Fq 'Theme.controlHoverFill' "$network/NetworkProfileRow.qml"
+grep -Fq 'ShellButton {' "$network/NetworkWifiRow.qml"
+grep -Fq 'ShellButton {' "$network/NetworkProfileRow.qml"
 
 grep -Fq 'PanelSeparator {' "$controlcenter/ControlCenterWindow.qml"
+grep -Fq 'activeFocusOnTab: presetButton.enabled' "$controlcenter/ControlCenterWindow.qml"
+grep -Fq 'event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space' \
+	"$controlcenter/ControlCenterWindow.qml"
 grep -Fq 'PanelSeparator {}' "$power/PowerMenuWindow.qml"
 grep -Fq 'detail: modelData.detail' "$power/PowerMenuWindow.qml"
 grep -Fq 'onDismissed: powerMenuModel.close()' "$power/PowerMenuWindow.qml"
