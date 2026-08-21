@@ -21,6 +21,7 @@ run_parent_bound() {
 	parent_pid=$PPID
 	parent_identity=$(sed 's/^.*) //' "/proc/$parent_pid/stat" 2>/dev/null |
 		awk '{ print $1 " " $20 }') || return 1
+	[ -n "$parent_identity" ] || return 1
 	case $parent_identity in
 	Z\ *) return 1 ;;
 	esac

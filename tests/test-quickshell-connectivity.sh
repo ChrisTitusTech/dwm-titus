@@ -28,6 +28,8 @@ grep -Fq 'else if (fields[0] === "bluetooth-adapter")' "$bluetooth_model"
 grep -Fq 'else if (fields[0] === "bluetooth-device")' "$bluetooth_model"
 
 grep -Fq 'function openSettings()' "$network_model"
+grep -Fq "[ -n \"\$parent_identity\" ] || return 1" "$repo/scripts/dwm-quickshell-network"
+grep -Fq "[ -n \"\$parent_identity\" ] || return 1" "$repo/scripts/dwm-quickshell-controls"
 grep -Fq 'property string wifiPasswordPromptOrigin: ""' "$network_model"
 grep -Fq 'function supportsFixedWifiSecurity(security)' "$network_model"
 grep -Fq 'function closeSettings()' "$network_model"
