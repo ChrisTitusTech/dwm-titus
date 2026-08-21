@@ -1,0 +1,24 @@
+_NET_WM_DESKTOP(CARDINAL) = 0
+WM_STATE(WM_STATE):
+		window state: Normal
+		icon window: 0x0
+_NET_WM_USER_TIME(CARDINAL) = 585343445
+XdndAware(ATOM) = BITMAP
+WM_NAME(STRING) = "dwm notification history"
+_NET_WM_NAME(UTF8_STRING) = "dwm notification history"
+_MOTIF_WM_HINTS(_MOTIF_WM_HINTS) = 0x3, 0x3e, 0x7e, 0x0, 0x0
+_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_NORMAL
+_XEMBED_INFO(_XEMBED_INFO) = 0x0, 0x1
+WM_CLIENT_LEADER(WINDOW): window id # 0x400009
+WM_HINTS(WM_HINTS):
+		Client accepts input or input focus: True
+		window id # of group leader: 0x400009
+WM_CLIENT_MACHINE(STRING) = "fedora"
+_NET_WM_PID(CARDINAL) = 4111773
+_NET_WM_SYNC_REQUEST_COUNTER(CARDINAL) = 4194345
+_GTK_APPLICATION_ID(UTF8_STRING) = "org.quickshell"
+_KDE_NET_WM_DESKTOP_FILE(UTF8_STRING) = "org.quickshell"
+WM_PROTOCOLS(ATOM): protocols  WM_DELETE_WINDOW, WM_TAKE_FOCUS, _NET_WM_PING, _NET_WM_SYNC_REQUEST
+WM_NORMAL_HINTS(WM_SIZE_HINTS):
+		user specified size: 560 by 600
+		window gravity: Static

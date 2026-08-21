@@ -12,13 +12,13 @@ Rectangle {
     signal expired
 
     Layout.fillWidth: true
-    Layout.preferredHeight: Math.max(72, content.implicitHeight + 24)
+    Layout.preferredHeight: Math.max(82, content.implicitHeight + 28)
 
     opacity: 1.0
-    radius: Theme.radius
+    radius: Theme.largeSurfaceCardRadius
     color: item.urgency === NotificationUrgency.Critical ? Theme.dangerSurface : Theme.surface
-    border.color: item.urgency === NotificationUrgency.Critical ? Theme.danger : Theme.border
-    border.width: 1
+    border.color: item.urgency === NotificationUrgency.Critical ? Theme.danger : Theme.popupBorder
+    border.width: Theme.controlBorderWidth
 
     Timer {
         interval: root.item.timeoutMs
@@ -31,8 +31,8 @@ Rectangle {
         id: content
 
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: Theme.rowSpacing
+        anchors.margins: 14
+        spacing: Theme.spacingXxl
 
         Rectangle {
             Layout.preferredWidth: Theme.notificationAccentWidth
@@ -48,16 +48,18 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: root.item.appName
-                color: Theme.textMuted
+                color: root.item.urgency === NotificationUrgency.Critical ? Theme.danger : Theme.menuActionText
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.smallFontSize
+                font.pixelSize: Theme.fontCaptionSize
+                font.bold: true
+                font.letterSpacing: 0.6
                 elide: Text.ElideRight
             }
 
             Text {
                 Layout.fillWidth: true
                 text: root.item.summary || root.item.urgencyName
-                color: Theme.textStrong
+                color: Theme.popupText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodyFontSize
                 font.bold: true
@@ -68,7 +70,7 @@ Rectangle {
                 Layout.fillWidth: true
                 visible: text.length > 0
                 text: root.item.body || ""
-                color: Theme.text
+                color: Theme.menuText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 wrapMode: Text.WordWrap
@@ -80,15 +82,15 @@ Rectangle {
         Rectangle {
             Layout.preferredWidth: Theme.closeButtonSize - Theme.listSpacing
             Layout.preferredHeight: Theme.closeButtonSize - Theme.listSpacing
-            radius: Theme.radius
-            color: closeMouse.containsMouse ? Theme.surfaceHover : Theme.transparent
-            border.color: Theme.border
-            border.width: 1
+            radius: Theme.controlRadius
+            color: closeMouse.containsMouse ? Theme.controlHoverFill : Theme.transparent
+            border.color: closeMouse.containsMouse ? Theme.controlHoverBorder : Theme.controlNormalBorder
+            border.width: Theme.controlBorderWidth
 
             Text {
                 anchors.centerIn: parent
                 text: "x"
-                color: Theme.text
+                color: closeMouse.containsMouse ? Theme.controlHoverText : Theme.menuMutedText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.panelFontSize
                 font.bold: true

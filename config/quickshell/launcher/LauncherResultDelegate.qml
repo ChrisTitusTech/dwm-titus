@@ -11,12 +11,16 @@ Rectangle {
     required property bool selected
     required property var launcherModel
 
-    height: 54
-    radius: Theme.radius
-    color: selected ? Theme.surface : "transparent"
+    height: 58
+    radius: Theme.largeSurfaceCardRadius
+    color: selected ? Theme.menuSelectedBackground : resultMouse.containsMouse ? Theme.menuHoverBackground : Theme.transparent
+    border.color: selected ? Theme.controlSelectedBorder : Theme.transparent
+    border.width: Theme.controlBorderWidth
 
     MouseArea {
+        id: resultMouse
         anchors.fill: parent
+        hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: root.launcherModel.launchApp(root.modelData)
     }
@@ -24,10 +28,18 @@ Rectangle {
     RowLayout {
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: 12
+        anchors.leftMargin: 16
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
-        spacing: Theme.rowSpacing
+        spacing: Theme.spacingXxl
+
+        Rectangle {
+            Layout.preferredWidth: 3
+            Layout.preferredHeight: 34
+            visible: root.selected
+            color: Theme.accentSecondary
+            radius: 2
+        }
 
         IconImage {
             Layout.preferredWidth: Theme.iconSize
@@ -43,7 +55,7 @@ Rectangle {
             Text {
                 width: parent.width
                 text: root.modelData.name
-                color: Theme.text
+                color: root.selected ? Theme.menuSelectedText : Theme.menuText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodyFontSize
                 font.bold: root.selected
@@ -62,7 +74,7 @@ Rectangle {
 
                     return category;
                 }
-                color: Theme.textMuted
+                color: Theme.menuMutedText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight

@@ -11,7 +11,7 @@ PopupWindow {
     required property var notificationModel
     required property var panelWindow
 
-    readonly property int popupWidth: 380
+    readonly property int popupWidth: 400
     readonly property int edgeMargin: Theme.rowSpacing
 
     visible: panelWindow !== null && panelWindow.screen !== null
@@ -30,7 +30,7 @@ PopupWindow {
 
         anchors.fill: parent
         opacity: 1.0
-        spacing: Theme.listSpacing * 2
+        spacing: Theme.spacingLg
 
         Repeater {
             model: root.notificationModel.notifications

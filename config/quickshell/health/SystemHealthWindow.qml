@@ -13,7 +13,15 @@ FloatingWindow {
     title: "dwm system health"
     visible: healthModel.visible
     fullscreen: true
-    color: Theme.bg
+    color: Theme.transparent
+
+    function stateColor(status) {
+        if (status === "error") return Theme.danger;
+        if (status === "warn") return Theme.warning;
+        if (status === "restricted") return Theme.accentSecondary;
+        if (status === "ok") return Theme.success;
+        return Theme.accent;
+    }
 
     onVisibleChanged: {
         if (visible) {
@@ -21,321 +29,343 @@ FloatingWindow {
         }
     }
 
-    Item {
-        id: content
-
+    ShellSurface {
         anchors.fill: parent
-        focus: true
+        radius: 0
+        margin: Theme.largeSurfaceMargin
 
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                if (root.healthModel.confirming) {
-                    root.healthModel.cancelRepair();
-                } else {
-                    root.healthModel.close();
-                }
-                event.accepted = true;
-            }
-        }
+        Item {
+            id: content
 
-        ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 24
-            spacing: Theme.sectionSpacing
+            focus: true
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.sectionSpacing
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.tightSpacing
-
-                    Text {
-                        text: "System Health"
-                        color: Theme.textStrong
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 26
-                        font.bold: true
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Escape) {
+                    if (root.healthModel.confirming) {
+                        root.healthModel.cancelRepair();
+                    } else {
+                        root.healthModel.close();
                     }
-
-                    Text {
-                        text: root.healthModel.coverageMessage
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.smallFontSize
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 170
-                    Layout.preferredHeight: 42
-                    color: root.healthModel.countStatus("error") > 0 ? Theme.dangerSurface : Theme.surface
-                    border.color: root.healthModel.countStatus("error") > 0 ? Theme.danger : Theme.accent
-                    border.width: 1
-                    radius: Theme.radius
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: root.healthModel.overallLabel()
-                        color: Theme.textStrong
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.panelFontSize
-                        font.bold: true
-                    }
-                }
-
-                ShellButton {
-                    label: root.healthModel.showIssuesOnly ? "Show All" : "Issues Only"
-                    onActivated: root.healthModel.showIssuesOnly = !root.healthModel.showIssuesOnly
-                }
-
-                ShellButton {
-                    label: root.healthModel.busy ? "Scanning..." : "Refresh"
-                    enabled: !root.healthModel.busy
-                    onActivated: root.healthModel.refresh()
-                }
-
-                ShellButton {
-                    label: "Close"
-                    onActivated: root.healthModel.close()
+                    event.accepted = true;
                 }
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.listSpacing * 2
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: Theme.sectionSpacing
 
-                Repeater {
-                    model: [
-                        { "label": "Errors", "status": "error", "color": Theme.danger },
-                        { "label": "Warnings", "status": "warn", "color": "#ebcb8b" },
-                        { "label": "Restricted", "status": "restricted", "color": "#b48ead" },
-                        { "label": "Passing", "status": "ok", "color": "#a3be8c" }
-                    ]
+                LargeSurfaceHeader {
+                    Layout.fillWidth: true
+                    eyebrow: "Fedora workstation diagnostics"
+                    title: "System Health"
+                    subtitle: root.healthModel.coverageMessage
+                    status: root.healthModel.overallLabel()
+                    statusColor: root.healthModel.countStatus("error") > 0 ? Theme.danger
+                        : root.healthModel.countStatus("warn") > 0 ? Theme.warning
+                        : root.healthModel.busy || root.healthModel.countStatus("restricted") > 0
+                            ? Theme.accentSecondary : Theme.success
 
-                    Rectangle {
-                        id: statusTile
+                    ShellButton {
+                        label: root.healthModel.showIssuesOnly ? "Show All" : "Issues Only"
+                        onActivated: root.healthModel.showIssuesOnly = !root.healthModel.showIssuesOnly
+                    }
 
-                        required property var modelData
+                    ShellButton {
+                        label: root.healthModel.busy ? "Scanning..." : "Refresh"
+                        enabled: !root.healthModel.busy
+                        onActivated: root.healthModel.refresh()
+                    }
 
-                        Layout.preferredWidth: 132
-                        Layout.preferredHeight: 34
-                        color: Theme.surface
-                        border.color: statusTile.modelData.color
-                        border.width: 1
-                        radius: Theme.radius
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: statusTile.modelData.label + " " + root.healthModel.countStatus(statusTile.modelData.status)
-                            color: Theme.text
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.smallFontSize
-                            font.bold: true
-                        }
+                    ShellButton {
+                        label: "Close"
+                        onActivated: root.healthModel.close()
                     }
                 }
 
-                Item {
+                RowLayout {
                     Layout.fillWidth: true
-                }
+                    spacing: Theme.spacingLg
 
-                Text {
-                    visible: root.healthModel.repairMessage.length > 0
-                    text: root.healthModel.repairMessage
-                    color: root.healthModel.repairError.length > 0 ? Theme.danger : Theme.textMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
-                }
-            }
+                    Repeater {
+                        model: [
+                            { "label": "Errors", "status": "error" },
+                            { "label": "Warnings", "status": "warn" },
+                            { "label": "Restricted", "status": "restricted" },
+                            { "label": "Passing", "status": "ok" }
+                        ]
 
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: Theme.sectionSpacing
+                        Rectangle {
+                            id: statusTile
 
-                Rectangle {
-                    Layout.preferredWidth: 220
-                    Layout.fillHeight: true
-                    color: Theme.surface
-                    border.color: Theme.border
-                    border.width: 1
-                    radius: Theme.radius
+                            required property var modelData
+                            readonly property color accentColor: root.stateColor(modelData.status)
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: Theme.listSpacing
-
-                        Repeater {
-                            model: root.healthModel.categories
+                            Layout.preferredWidth: 145
+                            Layout.preferredHeight: 48
+                            color: Theme.controlNormalFill
+                            border.color: Theme.controlNormalBorder
+                            border.width: Theme.controlBorderWidth
+                            radius: Theme.largeSurfaceCardRadius
 
                             Rectangle {
-                                id: categoryButton
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 4
+                                color: statusTile.accentColor
+                                radius: 2
+                            }
 
-                                required property var modelData
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 12
 
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 46
-                                color: root.healthModel.selectedCategory === categoryButton.modelData.id ? Theme.surfaceHover : Theme.transparent
-                                border.color: root.healthModel.selectedCategory === categoryButton.modelData.id ? Theme.accent : Theme.transparent
-                                border.width: 1
-                                radius: Theme.radius
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 10
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: categoryButton.modelData.label
-                                        color: Theme.textStrong
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.panelFontSize
-                                        font.bold: root.healthModel.selectedCategory === categoryButton.modelData.id
-                                    }
-
-                                    Text {
-                                        visible: root.healthModel.categoryIssueCount(categoryButton.modelData.id) > 0
-                                        text: root.healthModel.categoryIssueCount(categoryButton.modelData.id)
-                                        color: Theme.danger
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: Theme.smallFontSize
-                                        font.bold: true
-                                    }
+                                UiText {
+                                    Layout.fillWidth: true
+                                    text: statusTile.modelData.label.toUpperCase()
+                                    color: Theme.menuMutedText
+                                    font.pixelSize: Theme.fontCaptionSize
+                                    font.bold: true
+                                    font.letterSpacing: 0.7
                                 }
 
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.healthModel.selectedCategory = categoryButton.modelData.id
+                                UiText {
+                                    text: root.healthModel.countStatus(statusTile.modelData.status)
+                                    color: statusTile.accentColor
+                                    font.pixelSize: Theme.fontTitleSize
+                                    font.bold: true
                                 }
                             }
                         }
+                    }
 
-                        Item {
-                            Layout.fillHeight: true
-                        }
+                    Item { Layout.fillWidth: true }
 
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Current boot only\nNo external network probes"
-                            color: Theme.placeholder
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.tinyFontSize
-                            wrapMode: Text.WordWrap
-                        }
+                    UiText {
+                        visible: root.healthModel.repairMessage.length > 0
+                        text: root.healthModel.repairMessage
+                        color: root.healthModel.repairError.length > 0 ? Theme.danger : Theme.menuMutedText
+                        font.pixelSize: Theme.fontBodySmallSize
+                        elide: Text.ElideRight
                     }
                 }
 
-                ListView {
-                    id: healthList
-
+                RowLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    clip: true
-                    spacing: Theme.listSpacing * 2
-                    model: root.healthModel.visibleRows
+                    spacing: Theme.sectionSpacing
 
-                    delegate: HealthCheckCard {
-                        id: healthCard
+                    Rectangle {
+                        Layout.preferredWidth: Theme.largeSurfaceNavWidth
+                        Layout.fillHeight: true
+                        color: Theme.menuBackground
+                        border.color: Theme.popupBorder
+                        border.width: Theme.controlBorderWidth
+                        radius: Theme.largeSurfaceCardRadius
 
-                        required property var modelData
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: Theme.spacingXl
+                            spacing: Theme.spacingLg
 
-                        width: healthList.width
-                        rowData: healthCard.modelData
-                        healthModel: root.healthModel
+                            SectionLabel { label: "Check categories" }
+
+                            Repeater {
+                                model: root.healthModel.categories
+
+                                Rectangle {
+                                    id: categoryButton
+
+                                    required property int index
+                                    required property var modelData
+                                    readonly property bool selected: root.healthModel.selectedCategory === modelData.id
+
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 46
+                                    color: selected ? Theme.menuSelectedBackground
+                                        : categoryMouse.containsMouse ? Theme.menuHoverBackground : Theme.transparent
+                                    border.color: selected ? Theme.controlSelectedBorder : Theme.transparent
+                                    border.width: Theme.controlBorderWidth
+                                    radius: Theme.controlRadius
+
+                                    Rectangle {
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 3
+                                        height: parent.height - 14
+                                        visible: categoryButton.selected
+                                        color: Theme.accentSecondary
+                                        radius: 2
+                                    }
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 12
+                                        anchors.rightMargin: 10
+                                        spacing: Theme.spacingLg
+
+                                        UiText {
+                                            text: String(categoryButton.index + 1).padStart(2, "0")
+                                            color: categoryButton.selected ? Theme.menuActionText : Theme.menuMutedText
+                                            font.pixelSize: Theme.fontCaptionSize
+                                            font.bold: true
+                                        }
+
+                                        UiText {
+                                            Layout.fillWidth: true
+                                            text: categoryButton.modelData.label
+                                            color: categoryButton.selected ? Theme.menuSelectedText : Theme.menuText
+                                            font.bold: categoryButton.selected
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Rectangle {
+                                            visible: root.healthModel.categoryIssueCount(categoryButton.modelData.id) > 0
+                                            implicitWidth: categoryCount.implicitWidth + 12
+                                            implicitHeight: 22
+                                            color: Theme.dangerSurface
+                                            border.color: Theme.danger
+                                            border.width: 1
+                                            radius: 6
+
+                                            UiText {
+                                                id: categoryCount
+                                                anchors.centerIn: parent
+                                                text: root.healthModel.categoryIssueCount(categoryButton.modelData.id)
+                                                color: Theme.danger
+                                                font.pixelSize: Theme.fontCaptionSize
+                                                font.bold: true
+                                            }
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: categoryMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.healthModel.selectedCategory = categoryButton.modelData.id
+                                    }
+                                }
+                            }
+
+                            Item { Layout.fillHeight: true }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: healthScope.implicitHeight + 20
+                                color: Theme.controlNormalFill
+                                border.color: Theme.controlNormalBorder
+                                border.width: 1
+                                radius: Theme.controlRadius
+
+                                UiText {
+                                    id: healthScope
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    text: "CURRENT BOOT ONLY\nNO EXTERNAL NETWORK PROBES"
+                                    color: Theme.menuMutedText
+                                    font.pixelSize: Theme.fontCaptionSize
+                                    font.bold: true
+                                    font.letterSpacing: 0.5
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
                     }
 
-                    Text {
-                        anchors.centerIn: parent
-                        visible: healthList.count === 0
-                        text: root.healthModel.busy ? "Collecting system health..." : "No checks match this view"
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.bodyFontSize
+                    ListView {
+                        id: healthList
+
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        spacing: Theme.spacingLg
+                        model: root.healthModel.visibleRows
+
+                        delegate: HealthCheckCard {
+                            id: healthCard
+
+                            required property var modelData
+                            width: healthList.width
+                            rowData: healthCard.modelData
+                            healthModel: root.healthModel
+                        }
+
+                        UiText {
+                            anchors.centerIn: parent
+                            visible: healthList.count === 0
+                            text: root.healthModel.busy ? "Collecting system health..." : "No checks match this view"
+                            color: Theme.menuMutedText
+                        }
                     }
                 }
             }
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            visible: root.healthModel.confirming
-            color: Theme.bg
-            z: 10
 
             Rectangle {
-                anchors.centerIn: parent
-                width: Math.min(620, parent.width - 80)
-                height: 280
+                anchors.fill: parent
+                visible: root.healthModel.confirming
                 color: Theme.bg
-                border.color: Theme.danger
-                border.width: 1
-                radius: Theme.radius
+                opacity: 0.96
+                z: 10
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 24
-                    spacing: Theme.sectionSpacing
+                ShellSurface {
+                    anchors.centerIn: parent
+                    width: Math.min(620, parent.width - 80)
+                    height: 290
+                    border.color: Theme.danger
+                    margin: Theme.largeSurfaceMargin
 
-                    Text {
-                        Layout.fillWidth: true
-                        text: "Confirm Repair"
-                        color: Theme.textStrong
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.titleFontSize
-                        font.bold: true
-                    }
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: Theme.sectionSpacing
 
-                    Text {
-                        Layout.fillWidth: true
-                        text: root.healthModel.pendingRepair ? root.healthModel.pendingRepair.repairLabel : ""
-                        color: Theme.textStrong
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.inputFontSize
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        text: root.healthModel.pendingRepair ? root.healthModel.repairImpact(root.healthModel.pendingRepair.repairId) : ""
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.bodyFontSize
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: root.healthModel.pendingRepair && root.healthModel.pendingRepair.privilege === "system"
-                            ? "Administrator authorization is required."
-                            : "This action affects only the current user session."
-                        color: root.healthModel.pendingRepair && root.healthModel.pendingRepair.privilege === "system" ? "#ebcb8b" : Theme.textMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.smallFontSize
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-
-                        Item {
+                        LargeSurfaceHeader {
                             Layout.fillWidth: true
+                            eyebrow: "Explicit confirmation required"
+                            title: "Confirm Repair"
+                            subtitle: root.healthModel.pendingRepair ? root.healthModel.pendingRepair.repairLabel : ""
+                            status: root.healthModel.pendingRepair && root.healthModel.pendingRepair.privilege === "system"
+                                ? "administrator" : "user session"
+                            statusColor: Theme.danger
                         }
 
-                        ShellButton {
-                            label: "Cancel"
-                            onActivated: root.healthModel.cancelRepair()
+                        UiText {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            text: root.healthModel.pendingRepair
+                                ? root.healthModel.repairImpact(root.healthModel.pendingRepair.repairId) : ""
+                            color: Theme.menuText
+                            font.pixelSize: Theme.fontBodySize
+                            wrapMode: Text.WordWrap
                         }
 
-                        ShellButton {
-                            label: "Run Repair"
-                            danger: true
-                            onActivated: root.healthModel.confirmRepair()
+                        UiText {
+                            Layout.fillWidth: true
+                            text: root.healthModel.pendingRepair && root.healthModel.pendingRepair.privilege === "system"
+                                ? "Administrator authorization is required."
+                                : "This action affects only the current user session."
+                            color: root.healthModel.pendingRepair && root.healthModel.pendingRepair.privilege === "system"
+                                ? Theme.warning : Theme.menuMutedText
+                            font.pixelSize: Theme.fontBodySmallSize
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Item { Layout.fillWidth: true }
+
+                            ShellButton {
+                                label: "Cancel"
+                                onActivated: root.healthModel.cancelRepair()
+                            }
+
+                            ShellButton {
+                                label: "Run Repair"
+                                danger: true
+                                onActivated: root.healthModel.confirmRepair()
+                            }
                         }
                     }
                 }

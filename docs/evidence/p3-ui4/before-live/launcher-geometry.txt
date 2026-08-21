@@ -1,0 +1,23 @@
+
+xwininfo: Window id: 0x600020 "dwm launcher"
+
+  Absolute upper-left X:  579
+  Absolute upper-left Y:  259
+  Relative upper-left X:  579
+  Relative upper-left Y:  259
+  Width: 760
+  Height: 560
+  Depth: 32
+  Visual: 0x7a
+  Visual Class: TrueColor
+  Border width: 1
+  Class: InputOutput
+  Colormap: 0x60001f (not installed)
+  Bit Gravity State: NorthWestGravity
+  Window Gravity State: NorthWestGravity
+  Backing Store State: NotUseful
+  Save Under State: no
+  Map State: IsViewable
+  Override Redirect State: no
+  Corners:  +579+259  -1219+259  -1219-1699  +579-1699
+  -geometry 760x560+579+259

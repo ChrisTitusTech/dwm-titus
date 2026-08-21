@@ -136,6 +136,7 @@ Singleton {
     readonly property int fontBodySize: 13
     readonly property int fontSubtitleSize: 14
     readonly property int fontTitleSize: 18
+    readonly property int largeSurfaceTitleSize: 24
 
     readonly property int controlHeight: 30
     readonly property int controlRowHeight: 32
@@ -188,6 +189,10 @@ Singleton {
     readonly property int confirmButtonHeight: 48
     readonly property int notificationAccentWidth: 4
     readonly property int notificationAccentRadius: 2
+    readonly property int largeSurfaceMargin: 22
+    readonly property int largeSurfaceNavWidth: 248
+    readonly property int largeSurfaceSearchHeight: 44
+    readonly property int largeSurfaceCardRadius: 8
     readonly property int titleFontSize: fontTitleSize
     readonly property int bodyFontSize: fontSubtitleSize
     readonly property int panelFontSize: fontBodySize

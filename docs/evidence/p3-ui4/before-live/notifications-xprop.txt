@@ -1,0 +1,2 @@
+WM_NAME(STRING) = "dwm notification history"
+_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_NORMAL
