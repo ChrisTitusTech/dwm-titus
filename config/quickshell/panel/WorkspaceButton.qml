@@ -22,7 +22,7 @@ Rectangle {
         text: root.label
         color: root.selected ? Theme.accent : Theme.textMuted
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.panelFontSize
+        font.pixelSize: Theme.omarchyBarFontSize
         font.bold: root.selected
         verticalAlignment: Text.AlignVCenter
     }

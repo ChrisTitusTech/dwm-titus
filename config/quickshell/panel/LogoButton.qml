@@ -29,7 +29,7 @@ PanelPill {
         visible: logoImage.status === Image.Error
         text: "CTT"
         color: Theme.accent
-        font.pixelSize: Theme.tinyFontSize
+        font.pixelSize: Theme.omarchyBarFontSize
         font.bold: true
     }
 

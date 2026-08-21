@@ -29,6 +29,12 @@ Singleton {
     property string dangerSurface: "#3B4252"
     readonly property string shadow: transparent
 
+    readonly property string omarchyBarBackground: "#1a1b26"
+    readonly property string omarchyBarForeground: "#a9b1d6"
+    readonly property string omarchyBarInactive: "#a9b1d6"
+    readonly property string omarchyBarActive: "#7aa2f7"
+    readonly property string omarchyBarUrgent: "#f7768e"
+
     readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME")
         || ((Quickshell.env("HOME") || "") + "/.config")
     readonly property string themesPath: configHome + "/dwm-titus/themes.toml"
@@ -125,6 +131,7 @@ Singleton {
     readonly property int titleFontSize: 18
     readonly property int bodyFontSize: 14
     readonly property int panelFontSize: 13
+    readonly property int omarchyBarFontSize: 11
     readonly property int smallFontSize: 12
     readonly property int tinyFontSize: 10
     readonly property int inputFontSize: 16
