@@ -404,7 +404,7 @@ grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/cont
 grep -Fq 'grabFocus: true' "$repo/config/quickshell/core/ClickAwayPopup.qml"
 grep -Fq 'function applyThemes(themeText)' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'root.text = value("normfgcolor", root.text)' "$repo/config/quickshell/core/Theme.qml"
-grep -Fq 'label: root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
+grep -Fq 'label: root.delegated ? "Advanced" : root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
 grep -Fq 'property bool wifiPasswordPromptVisible: false' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'root.wifiPasswordPromptVisible = true;' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'root.networkModel.cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkWindow.qml"
@@ -453,7 +453,7 @@ grep -Fq 'root.wifiPasswordPromptVisible && root.selectedWifiIndex < 0' "$repo/c
 grep -Fq 'args.push("--password-stdin");' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'args.push(network.security);' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'stdinEnabled: true' "$repo/config/quickshell/network/NetworkModel.qml"
-test "$(grep -Fc 'if (root.busy || actionProcess.running) {' "$repo/config/quickshell/network/NetworkModel.qml")" -eq 3
+test "$(grep -Fc 'root.busy || actionProcess.running' "$repo/config/quickshell/network/NetworkModel.qml")" -eq 4
 if grep -Fq 'args.push(root.wifiPassword)' "$repo/config/quickshell/network/NetworkModel.qml"; then
 	exit 1
 fi

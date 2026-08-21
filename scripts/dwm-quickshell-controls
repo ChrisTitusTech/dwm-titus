@@ -2,8 +2,56 @@
 set -eu
 
 usage() {
-	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|output-status|output-devices|output-set-default <sink>|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-status|bluetooth-devices|bluetooth-scan|bluetooth-power <on|off>|bluetooth-pair <address>|bluetooth-connect <address>|bluetooth-disconnect <address>" >&2
+	printf '%s\n' "usage: dwm-quickshell-controls volume-status|volume-watch|volume-up [step]|volume-down [step]|volume-set <percent>|volume-toggle-mute|output-status|output-devices|output-set-default <sink>|mic-status|media-status|media-watch|media-play-pause|media-next|media-previous|bluetooth-snapshot|bluetooth-status|bluetooth-devices|bluetooth-scan|bluetooth-power <on|off>|bluetooth-pair <address>|bluetooth-trust <address>|bluetooth-connect <address>|bluetooth-disconnect <address>|bluetooth-remove <address>" >&2
 	exit 2
+}
+
+run_bounded() {
+	duration=$1
+	shift
+	status=0
+	timeout --signal=TERM --kill-after=2 "$duration" "$@" || status=$?
+	if [ "$status" -eq 124 ]; then
+		printf 'operation timed out after %s seconds\n' "$duration" >&2
+	fi
+	return "$status"
+}
+
+run_parent_bound() {
+	parent_pid=$PPID
+	parent_identity=$(sed 's/^.*) //' "/proc/$parent_pid/stat" 2>/dev/null |
+		awk '{ print $1 " " $20 }') || return 1
+	[ -n "$parent_identity" ] || return 1
+	case $parent_identity in
+	Z\ *) return 1 ;;
+	esac
+	"$@" &
+	child_pid=$!
+
+	cleanup_parent_bound() {
+		kill -TERM "$child_pid" 2>/dev/null || :
+		kill -TERM "${watchdog_pid:-}" 2>/dev/null || :
+	}
+	trap cleanup_parent_bound EXIT HUP INT TERM
+	(
+		while :; do
+			current_identity=$(sed 's/^.*) //' "/proc/$parent_pid/stat" 2>/dev/null |
+				awk '{ print $1 " " $20 }' || true)
+			[ "$current_identity" = "$parent_identity" ] || {
+				kill -TERM "$child_pid" 2>/dev/null || :
+				exit 0
+			}
+			sleep 0.25
+		done
+	) &
+	watchdog_pid=$!
+
+	status=0
+	wait "$child_pid" || status=$?
+	kill -TERM "$watchdog_pid" 2>/dev/null || :
+	wait "$watchdog_pid" 2>/dev/null || :
+	trap - EXIT HUP INT TERM
+	return "$status"
 }
 
 volume_step() {
@@ -411,7 +459,7 @@ media_watch() {
 	fi
 
 	format=$(printf '{{playerName}}\t{{status}}\t{{artist}}\t{{title}}')
-	if ! playerctl --follow metadata --format "$format" 2>/dev/null; then
+	if ! run_parent_bound playerctl --follow metadata --format "$format"; then
 		printf '%s\n' "MEDIA none"
 	fi
 }
@@ -425,6 +473,86 @@ playerctl_action() {
 	fi
 
 	playerctl "$1"
+}
+
+bluetooth_snapshot() {
+	printf 'connectivity-protocol\t1\t0\n'
+
+	if ! command -v busctl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+		printf 'provider\tbluetooth\tunavailable\tread-only\tbusctl and jq are required for BlueZ state\n'
+		printf 'bluetooth-support\tdaemon\tunknown\tD-Bus state tooling is unavailable\n'
+		printf 'bluetooth-support\tadapter\tunknown\tAdapter state cannot be read\n'
+		printf 'bluetooth-support\toperations\tunavailable\tBluetooth actions are disabled\n'
+		return 0
+	fi
+
+	bluez_json=$(run_bounded 5 busctl --system --json=short call org.bluez / \
+		org.freedesktop.DBus.ObjectManager GetManagedObjects 2>/dev/null) || {
+		printf 'provider\tbluetooth\tunavailable\tread-only\tBlueZ daemon is unavailable\n'
+		printf 'bluetooth-support\tdaemon\tunavailable\tBlueZ ObjectManager is unreachable\n'
+		printf 'bluetooth-support\tadapter\tunknown\tAdapter state cannot be read\n'
+		printf 'bluetooth-support\toperations\tunavailable\tBluetooth actions are disabled\n'
+		return 0
+	}
+
+	if ! adapter_count=$(printf '%s\n' "$bluez_json" |
+		jq -er 'select(.data[0] | type == "object") | [.data[0] | to_entries[] | select(.value["org.bluez.Adapter1"] != null)] | length'); then
+		printf 'provider\tbluetooth\tunavailable\tread-only\tBlueZ returned an invalid ObjectManager response\n'
+		printf 'bluetooth-support\tdaemon\tunknown\tBlueZ response could not be validated\n'
+		printf 'bluetooth-support\tadapter\tunknown\tAdapter state cannot be read\n'
+		printf 'bluetooth-support\toperations\tunavailable\tBluetooth actions are disabled\n'
+		return 0
+	fi
+	if [ "$adapter_count" -eq 0 ]; then
+		printf 'provider\tbluetooth\trestricted\tread-only\tBlueZ is available but no adapter is present\n'
+		printf 'bluetooth-support\tdaemon\tavailable\tBlueZ ObjectManager is reachable\n'
+		printf 'bluetooth-support\tadapter\tunavailable\tNo BlueZ adapter object is present\n'
+		printf 'bluetooth-support\toperations\tunavailable\tNo adapter can accept operations\n'
+		return 0
+	fi
+
+	if command -v bluetoothctl >/dev/null 2>&1; then
+		printf 'provider\tbluetooth\tavailable\tdelegated\tBlueZ state and user-authorized device actions\n'
+		operation_state=delegated
+		operation_detail='Fixed bluetoothctl actions are available'
+	else
+		printf 'provider\tbluetooth\tavailable\tread-only\tBlueZ state is readable but bluetoothctl actions are unavailable\n'
+		operation_state=unavailable
+		operation_detail='bluetoothctl is not installed'
+	fi
+	printf 'bluetooth-support\tdaemon\tavailable\tBlueZ ObjectManager is reachable\n'
+	printf 'bluetooth-support\tadapter\tavailable\tA BlueZ adapter object is present\n'
+	printf 'bluetooth-support\toperations\t%s\t%s\n' "$operation_state" "$operation_detail"
+	printf '%s\n' "$bluez_json" | jq -r '
+		def clean: tostring | gsub("[\\t\\r\\n]"; " ");
+		def field: clean | if . == "" then "-" else . end;
+		.data[0] | to_entries[] |
+		select(.value["org.bluez.Adapter1"] != null) |
+		.value["org.bluez.Adapter1"] as $adapter |
+		["bluetooth-adapter", .key,
+		 ($adapter.Address.data // "" | field),
+		 ($adapter.Alias.data // $adapter.Name.data // "" | field),
+		 (if ($adapter.Powered.data // false) then "yes" else "no" end),
+		 (if ($adapter.Discovering.data // false) then "yes" else "no" end),
+		 (if ($adapter.Pairable.data // false) then "yes" else "no" end)] | @tsv'
+	printf '%s\n' "$bluez_json" | jq -r '
+		def clean: tostring | gsub("[\\t\\r\\n]"; " ");
+		def field: clean | if . == "" then "-" else . end;
+		.data[0] | to_entries[] |
+		select(.value["org.bluez.Device1"] != null) |
+		.value["org.bluez.Device1"] as $device |
+		["bluetooth-device", .key,
+		 ($device.Address.data // "" | field),
+		 ($device.Alias.data // $device.Name.data // $device.Address.data // "" | field),
+		 (if ($device.Paired.data // false) then "yes" else "no" end),
+		 (if ($device.Trusted.data // false) then "yes" else "no" end),
+		 (if ($device.Connected.data // false) then "yes" else "no" end),
+		 ($device.Adapter.data // "" | field)] | @tsv'
+}
+
+validate_bluetooth_address() {
+	[ "$#" -eq 1 ] || usage
+	printf '%s\n' "$1" | grep -Eq '^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$' || usage
 }
 
 bluetooth_status() {
@@ -472,28 +600,62 @@ bluetooth_devices() {
 
 bluetooth_scan() {
 	command -v bluetoothctl >/dev/null 2>&1 || return 1
-	bluetoothctl --timeout 8 scan on >/dev/null 2>&1 || true
+	scan_pid=
+	cleanup_bluetooth_scan() {
+		if [ -n "$scan_pid" ]; then
+			kill -TERM "$scan_pid" 2>/dev/null || :
+			wait "$scan_pid" 2>/dev/null || :
+		fi
+		bluetoothctl scan off >/dev/null 2>&1 || :
+	}
+	trap cleanup_bluetooth_scan EXIT
+	trap 'cleanup_bluetooth_scan; exit 1' HUP INT TERM
+	run_bounded 10 bluetoothctl --timeout 8 scan on >/dev/null 2>&1 &
+	scan_pid=$!
+	status=0
+	wait "$scan_pid" || status=$?
+	scan_pid=
+	bluetoothctl scan off >/dev/null 2>&1 || :
+	trap - EXIT HUP INT TERM
+	[ "$status" -eq 0 ] || return "$status"
 	bluetooth_devices
 }
 
 bluetooth_power() {
 	[ "$#" -eq 1 ] || usage
-	case $1 in on | off) bluetoothctl power "$1" ;; *) usage ;; esac
+	case $1 in on | off) run_bounded 15 bluetoothctl power "$1" ;; *) usage ;; esac
 }
 
 bluetooth_pair() {
 	[ "$#" -eq 1 ] || usage
-	bluetoothctl pair "$1" && bluetoothctl trust "$1" && bluetoothctl connect "$1"
+	validate_bluetooth_address "$1"
+	run_bounded 90 bluetoothctl pair "$1" || return $?
+	run_bounded 15 bluetoothctl trust "$1" || return $?
+	run_bounded 90 bluetoothctl connect "$1"
+}
+
+bluetooth_trust() {
+	[ "$#" -eq 1 ] || usage
+	validate_bluetooth_address "$1"
+	run_bounded 15 bluetoothctl trust "$1"
 }
 
 bluetooth_connect() {
 	[ "$#" -eq 1 ] || usage
-	bluetoothctl connect "$1"
+	validate_bluetooth_address "$1"
+	run_bounded 90 bluetoothctl connect "$1"
 }
 
 bluetooth_disconnect() {
 	[ "$#" -eq 1 ] || usage
-	bluetoothctl disconnect "$1"
+	validate_bluetooth_address "$1"
+	run_bounded 15 bluetoothctl disconnect "$1"
+}
+
+bluetooth_remove() {
+	[ "$#" -eq 1 ] || usage
+	validate_bluetooth_address "$1"
+	run_bounded 15 bluetoothctl remove "$1"
 }
 
 [ "$#" -ge 1 ] || usage
@@ -566,6 +728,10 @@ bluetooth-status)
 	[ "$#" -eq 0 ] || usage
 	bluetooth_status
 	;;
+bluetooth-snapshot)
+	[ "$#" -eq 0 ] || usage
+	bluetooth_snapshot
+	;;
 bluetooth-devices)
 	[ "$#" -eq 0 ] || usage
 	bluetooth_devices
@@ -580,11 +746,17 @@ bluetooth-power)
 bluetooth-pair)
 	bluetooth_pair "$@"
 	;;
+bluetooth-trust)
+	bluetooth_trust "$@"
+	;;
 bluetooth-connect)
 	bluetooth_connect "$@"
 	;;
 bluetooth-disconnect)
 	bluetooth_disconnect "$@"
+	;;
+bluetooth-remove)
+	bluetooth_remove "$@"
 	;;
 *)
 	usage

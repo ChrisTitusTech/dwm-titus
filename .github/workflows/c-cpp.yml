@@ -40,7 +40,7 @@ jobs:
           mapfile -t qml_packages < <(dwm_packages fedora qml-validation | awk 'NF' | sort -u)
           dnf install -y --setopt=install_weak_deps=False \
             "${required_packages[@]}" "${qml_packages[@]}" \
-            diffutils dbus-daemon \
+            diffutils dbus-daemon jq \
             pkgconf-pkg-config ShellCheck shfmt pykickstart \
             xorg-x11-server-Xvfb
 

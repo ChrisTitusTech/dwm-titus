@@ -7,6 +7,7 @@ Rectangle {
 
     required property var profile
     property bool active: false
+    property bool actionsEnabled: true
     signal connectRequested(var profile)
     signal disconnectRequested(string device)
 
@@ -56,6 +57,7 @@ Rectangle {
         ShellButton {
             Layout.preferredHeight: Theme.chipHeight
             label: root.active ? "Disconnect" : "Connect"
+            enabled: root.actionsEnabled
             onActivated: root.active ? root.disconnectRequested(root.profile.device) : root.connectRequested(root.profile)
         }
     }

@@ -24,7 +24,7 @@ dwm_packages() {
 		# desktop transaction; the Fedora package-map check proves availability.
 		printf '%s\n' \
 			quickshell picom feh dex-autostart mate-polkit \
-			alsa-utils brightnessctl pulseaudio-utils pipewire pavucontrol \
+			alsa-utils brightnessctl jq pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
 			bluez blueman playerctl flatpak xdg-desktop-portal-gtk
 		;;

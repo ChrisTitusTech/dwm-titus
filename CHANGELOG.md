@@ -8,6 +8,12 @@ versions from `config.mk`.
 
 ### Added
 
+- Add shared, versioned NetworkManager and BlueZ provider models and Settings
+  panes for Ethernet, Wi-Fi, saved profiles, VPN status, bounded discovery,
+  pairing, trust, connection, and removal workflows. Fixed actions preserve
+  stable identities, secured Wi-Fi secrets use ephemeral mode-0600 password
+  files, and advanced editing remains delegated to trusted platform tools.
+
 - Add a focused large-surface source contract, a private nested-X11
   interaction and screenshot harness, and checked-in before/after review
   evidence for P3-UI4.
@@ -51,6 +57,10 @@ versions from `config.mk`.
   unsupported installer cannot perform package or system mutations.
 
 ### Fixed
+
+- Bind long-lived NetworkManager and media watcher children to the originating
+  Quickshell process identity so an ungraceful shell exit cannot leave orphaned
+  subscriptions behind.
 
 - Require root-owned, non-writable parent directories for installed health
   helpers and report administrative authorization available only when polkit

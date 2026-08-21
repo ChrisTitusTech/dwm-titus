@@ -165,9 +165,17 @@ devices)
 "--timeout 8 scan on")
 	printf 'scan\n' >>"$DWM_TEST_BLUETOOTHCTL_LOG"
 	;;
-"power on" | "power off" | "pair AA:BB:CC:DD:EE:02" | "trust AA:BB:CC:DD:EE:02" | \
-	"connect AA:BB:CC:DD:EE:02" | "disconnect AA:BB:CC:DD:EE:01")
+"pair AA:BB:CC:DD:EE:02")
 	printf '%s\n' "$*" >>"$DWM_TEST_BLUETOOTHCTL_LOG"
+	[ "${DWM_TEST_BT_PAIR_FAIL:-0}" != 1 ] || exit 6
+	;;
+"power on" | "power off" | "trust AA:BB:CC:DD:EE:02" | \
+	"disconnect AA:BB:CC:DD:EE:01" | "remove AA:BB:CC:DD:EE:02" | "scan off")
+	printf '%s\n' "$*" >>"$DWM_TEST_BLUETOOTHCTL_LOG"
+	;;
+"connect AA:BB:CC:DD:EE:02")
+	printf '%s\n' "$*" >>"$DWM_TEST_BLUETOOTHCTL_LOG"
+	[ "${DWM_TEST_BT_ACTION_FAIL:-0}" != 1 ] || exit 5
 	;;
 *)
 	printf 'unexpected bluetoothctl call: %s\n' "$*" >&2
@@ -176,6 +184,29 @@ devices)
 esac
 SH
 chmod +x "$work/bin/bluetoothctl"
+
+cat >"$work/bin/busctl" <<'SH'
+#!/bin/sh
+set -eu
+
+case "${DWM_TEST_BLUEZ_MODE:-available}" in
+available)
+	cat <<'JSON'
+{"type":"a{oa{sa{sv}}}","data":[{"/org/bluez/hci0":{"org.bluez.Adapter1":{"Address":{"type":"s","data":"00:11:22:33:44:55"},"Alias":{"type":"s","data":"Test Adapter"},"Powered":{"type":"b","data":true},"Discovering":{"type":"b","data":false},"Pairable":{"type":"b","data":true}}},"/org/bluez/hci0/dev_AA_BB_CC_DD_EE_02":{"org.bluez.Device1":{"Address":{"type":"s","data":"AA:BB:CC:DD:EE:02"},"Alias":{"type":"s","data":"Keyboard"},"Paired":{"type":"b","data":true},"Trusted":{"type":"b","data":false},"Connected":{"type":"b","data":false},"Adapter":{"type":"o","data":"/org/bluez/hci0"}}}}]}
+JSON
+	;;
+restricted)
+	printf '%s\n' '{"type":"a{oa{sa{sv}}}","data":[{"/org/bluez":{}}]}'
+	;;
+unavailable)
+	exit 1
+	;;
+malformed)
+	printf '%s\n' '{not-json'
+	;;
+esac
+SH
+chmod +x "$work/bin/busctl"
 
 if PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" 2>"$work/usage.out"; then
 	printf 'Control helper accepted a missing subcommand.\n' >&2
@@ -269,6 +300,38 @@ DWM_TEST_BT_MODE=none \
 	"$repo/scripts/dwm-quickshell-controls" bluetooth-status >"$work/bluetooth-none.out"
 grep -Fqx "BT unavailable" "$work/bluetooth-none.out"
 
+PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" bluetooth-snapshot >"$work/bluetooth-snapshot.out"
+grep -Fqx "connectivity-protocol	1	0" "$work/bluetooth-snapshot.out"
+grep -Fqx "provider	bluetooth	available	delegated	BlueZ state and user-authorized device actions" "$work/bluetooth-snapshot.out"
+grep -Fqx "bluetooth-support	daemon	available	BlueZ ObjectManager is reachable" "$work/bluetooth-snapshot.out"
+grep -Fqx "bluetooth-support	adapter	available	A BlueZ adapter object is present" "$work/bluetooth-snapshot.out"
+grep -Fqx "bluetooth-support	operations	delegated	Fixed bluetoothctl actions are available" "$work/bluetooth-snapshot.out"
+grep -Fqx "bluetooth-adapter	/org/bluez/hci0	00:11:22:33:44:55	Test Adapter	yes	no	yes" "$work/bluetooth-snapshot.out"
+grep -Fqx "bluetooth-device	/org/bluez/hci0/dev_AA_BB_CC_DD_EE_02	AA:BB:CC:DD:EE:02	Keyboard	yes	no	no	/org/bluez/hci0" "$work/bluetooth-snapshot.out"
+
+mkdir -p "$work/read-only-bin"
+ln -s "$work/bin/busctl" "$work/read-only-bin/busctl"
+for command_name in cat jq timeout; do
+	ln -s "$(command -v "$command_name")" "$work/read-only-bin/$command_name"
+done
+PATH="$work/read-only-bin" "$repo/scripts/dwm-quickshell-controls" bluetooth-snapshot >"$work/bluetooth-read-only.out"
+grep -Fqx "provider	bluetooth	available	read-only	BlueZ state is readable but bluetoothctl actions are unavailable" "$work/bluetooth-read-only.out"
+grep -Fqx "bluetooth-support	operations	unavailable	bluetoothctl is not installed" "$work/bluetooth-read-only.out"
+
+DWM_TEST_BLUEZ_MODE=restricted PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-snapshot >"$work/bluetooth-restricted.out"
+grep -Fqx "provider	bluetooth	restricted	read-only	BlueZ is available but no adapter is present" "$work/bluetooth-restricted.out"
+grep -Fqx "bluetooth-support	adapter	unavailable	No BlueZ adapter object is present" "$work/bluetooth-restricted.out"
+
+DWM_TEST_BLUEZ_MODE=unavailable PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-snapshot >"$work/bluetooth-unavailable.out"
+grep -Fqx "provider	bluetooth	unavailable	read-only	BlueZ daemon is unavailable" "$work/bluetooth-unavailable.out"
+grep -Fqx "bluetooth-support	daemon	unavailable	BlueZ ObjectManager is unreachable" "$work/bluetooth-unavailable.out"
+
+DWM_TEST_BLUEZ_MODE=malformed PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-snapshot >"$work/bluetooth-malformed.out" 2>/dev/null
+grep -Fqx "provider	bluetooth	unavailable	read-only	BlueZ returned an invalid ObjectManager response" "$work/bluetooth-malformed.out"
+
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" bluetooth-devices >"$work/bluetooth-devices.out"
 grep -Fqx "$(printf 'AA:BB:CC:DD:EE:01\tHeadphones\tyes\tyes')" "$work/bluetooth-devices.out"
 grep -Fqx "$(printf 'AA:BB:CC:DD:EE:02\tKeyboard\tno\tno')" "$work/bluetooth-devices.out"
@@ -291,12 +354,40 @@ DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" bluetooth-connect AA:BB:CC:DD:EE:02
 DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-controls" bluetooth-disconnect AA:BB:CC:DD:EE:01
+DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-trust AA:BB:CC:DD:EE:02
+DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-remove AA:BB:CC:DD:EE:02
 grep -Fqx "power on" "$work/bluetoothctl.log"
 grep -Fqx "power off" "$work/bluetoothctl.log"
 grep -Fqx "pair AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
 grep -Fqx "trust AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
 grep -Fqx "connect AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
 grep -Fqx "disconnect AA:BB:CC:DD:EE:01" "$work/bluetoothctl.log"
+grep -Fqx "trust AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
+grep -Fqx "remove AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
+
+: >"$work/bluetoothctl.log"
+if DWM_TEST_BT_PAIR_FAIL=1 DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-pair AA:BB:CC:DD:EE:02; then
+	printf 'Bluetooth helper continued after a pair failure.\n' >&2
+	exit 1
+fi
+grep -Fqx "pair AA:BB:CC:DD:EE:02" "$work/bluetoothctl.log"
+if grep -Eq '^(trust|connect) ' "$work/bluetoothctl.log"; then
+	exit 1
+fi
+
+if DWM_TEST_BT_ACTION_FAIL=1 DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-connect AA:BB:CC:DD:EE:02; then
+	printf 'Bluetooth helper hid an attributed action failure.\n' >&2
+	exit 1
+fi
+if DWM_TEST_BLUETOOTHCTL_LOG="$work/bluetoothctl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" bluetooth-connect not-an-address 2>"$work/bluetooth-address.err"; then
+	printf 'Bluetooth helper accepted a non-canonical device address.\n' >&2
+	exit 1
+fi
 
 DWM_TEST_PACTL_LOG="$work/pactl.log" \
 	PATH="$work/bin:$PATH" \
