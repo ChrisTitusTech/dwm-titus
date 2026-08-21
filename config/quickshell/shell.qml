@@ -179,6 +179,7 @@ ShellRoot {
         id: settingsModel
         networkModel: networkModel
         bluetoothModel: bluetoothModel
+        controlsModel: controlsModel
     }
 
     LazyLoader {
@@ -484,6 +485,26 @@ ShellRoot {
             return bluetoothModel.devices.length;
         }
 
+        function audioProviderStatus(): string {
+            return controlsModel.audioProviderState;
+        }
+
+        function audioSourceKind(): string {
+            return controlsModel.audioSourceKind;
+        }
+
+        function audioOutputCount(): int {
+            return controlsModel.outputDevices.length;
+        }
+
+        function audioInputCount(): int {
+            return controlsModel.inputDevices.length;
+        }
+
+        function audioStreamCount(): int {
+            return controlsModel.audioStreams.length;
+        }
+
         function open(): void {
             settingsModel.open();
         }
@@ -622,5 +643,6 @@ ShellRoot {
         settingsModel: settingsModel
         networkModel: networkModel
         bluetoothModel: bluetoothModel
+        controlsModel: controlsModel
     }
 }

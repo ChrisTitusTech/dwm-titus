@@ -1,3 +1,4 @@
+import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.core
@@ -495,11 +496,24 @@ Scope {
     }
 
     Process {
+        id: networkMonitorProcess
         command: Commands.networkHelperCommand("monitor")
         running: true
 
         stdout: SplitParser {
             onRead: root.refresh(false)
+        }
+        onRunningChanged: {
+            if (!running) networkMonitorRestartTimer.restart();
+        }
+    }
+
+    Timer {
+        id: networkMonitorRestartTimer
+        interval: 3000
+        repeat: false
+        onTriggered: {
+            if (!networkMonitorProcess.running) networkMonitorProcess.running = true;
         }
     }
 

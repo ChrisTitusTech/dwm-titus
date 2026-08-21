@@ -382,6 +382,9 @@ check-quickshell-connectivity:
 check-quickshell-controls:
 	tests/test-quickshell-controls.sh
 
+check-quickshell-audio:
+	tests/test-quickshell-audio.sh
+
 check-quickshell-controlcenter:
 	tests/test-quickshell-controlcenter.sh
 
@@ -547,6 +550,7 @@ check:
 	$(MAKE) check-monitor-tags
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
+	$(MAKE) check-quickshell-audio
 	$(MAKE) check-quickshell-controlcenter
 	$(MAKE) check-quickshell-design-system
 	$(MAKE) check-quickshell-large-surfaces
@@ -580,5 +584,5 @@ check:
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health check-settings \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-controlcenter check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
 	install-cursors native release release-check uninstall

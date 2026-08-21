@@ -8,6 +8,12 @@ versions from `config.mk`.
 
 ### Added
 
+- Add a native-first PipeWire audio model and Settings pane for output and input
+  selection, volume, mute, microphone visibility, and per-application streams.
+  A versioned bounded snapshot protocol supplies inventories, while one
+  generation-checked fallback subscription is used only when native state does
+  not initialize or disconnects.
+
 - Add shared, versioned NetworkManager and BlueZ provider models and Settings
   panes for Ethernet, Wi-Fi, saved profiles, VPN status, bounded discovery,
   pairing, trust, connection, and removal workflows. Fixed actions preserve
@@ -57,6 +63,10 @@ versions from `config.mk`.
   unsupported installer cannot perform package or system mutations.
 
 ### Fixed
+
+- Restart unexpectedly exited parent-bound NetworkManager and media
+  subscriptions after a bounded delay, preserving one live subscription per
+  shared root model without polling.
 
 - Bind long-lived NetworkManager and media watcher children to the originating
   Quickshell process identity so an ungraceful shell exit cannot leave orphaned

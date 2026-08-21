@@ -11,6 +11,7 @@ bluetooth_pane=$repo/config/quickshell/settings/BluetoothSettingsPane.qml
 
 grep -Fq 'run_parent_bound nmcli monitor' "$repo/scripts/dwm-quickshell-network"
 grep -Fq 'run_parent_bound playerctl --follow' "$repo/scripts/dwm-quickshell-controls"
+grep -Fq 'networkMonitorRestartTimer.restart()' "$network_model"
 
 for pattern in \
 	'fields[0] === "connectivity-protocol"' \

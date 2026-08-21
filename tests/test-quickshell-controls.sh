@@ -15,6 +15,23 @@ cat >"$work/bin/pactl" <<'SH'
 set -eu
 
 case "$*" in
+"--format=json info")
+	if [ "${DWM_TEST_AUDIO_MALFORMED:-0}" = 1 ]; then
+		printf '%s\n' '{not-json'
+	else
+		printf '%s\n' '{"default_sink_name":"sink.one","default_source_name":"source.one"}'
+	fi
+	;;
+"--format=json list sinks")
+	output_volume=${DWM_TEST_AUDIO_OUTPUT_VOLUME:-40}
+	printf '[{"name":"sink.one","description":"Speakers","mute":false,"volume":{"left":{"value_percent":"%s%%"}}},{"name":"sink.two","description":"Headphones","mute":true,"volume":{"left":{"value_percent":"55%%"}}}]\n' "$output_volume"
+	;;
+"--format=json list sources")
+	printf '%s\n' '[{"name":"source.one","description":"Microphone","mute":false,"volume":{"mono":{"value_percent":"70%"}}},{"name":"sink.one.monitor","description":"Monitor","mute":false,"volume":{"mono":{"value_percent":"100%"}}}]'
+	;;
+"--format=json list sink-inputs")
+	printf '%s\n' '[{"index":21,"name":"Playback","mute":false,"volume":{"left":{"value_percent":"65%"}},"properties":{"application.name":"Browser","media.name":"Video"}}]'
+	;;
 "get-sink-mute @DEFAULT_SINK@")
 	printf 'Mute: %s\n' "${DWM_TEST_SINK_MUTE:-no}"
 	;;
@@ -63,6 +80,9 @@ list\ short\ sink-inputs)
 	;;
 set-default-sink\ *)
 	printf 'default sink %s\n' "$2" >>"$DWM_TEST_PACTL_LOG"
+	;;
+set-default-source\ * | set-source-volume\ * | set-source-mute\ * | set-sink-input-volume\ * | set-sink-input-mute\ *)
+	printf '%s\n' "$*" >>"$DWM_TEST_PACTL_LOG"
 	;;
 move-sink-input\ *)
 	printf 'move sink input %s %s\n' "$2" "$3" >>"$DWM_TEST_PACTL_LOG"
@@ -207,6 +227,43 @@ malformed)
 esac
 SH
 chmod +x "$work/bin/busctl"
+
+PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" audio-snapshot >"$work/audio-snapshot.out"
+grep -Fqx "audio-protocol	1	0" "$work/audio-snapshot.out"
+grep -Fqx "provider	audio	available	delegated	PipeWire state and user-session actions" "$work/audio-snapshot.out"
+grep -Fqx "audio-output	sink.one	Speakers	yes	no	40" "$work/audio-snapshot.out"
+grep -Fqx "audio-input	source.one	Microphone	yes	no	70" "$work/audio-snapshot.out"
+grep -Fqx "audio-stream	21	Browser	Video	no	65" "$work/audio-snapshot.out"
+if grep -Fq "sink.one.monitor" "$work/audio-snapshot.out"; then
+	exit 1
+fi
+DWM_TEST_AUDIO_OUTPUT_VOLUME=140 PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" audio-snapshot >"$work/audio-bounded.out"
+grep -Fqx "audio-output	sink.one	Speakers	yes	no	100" "$work/audio-bounded.out"
+DWM_TEST_AUDIO_MALFORMED=1 PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" audio-snapshot >"$work/audio-malformed.out"
+grep -Fqx "provider	audio	unavailable	read-only	Malformed audio provider response" "$work/audio-malformed.out"
+
+DWM_TEST_SUBSCRIBE_MARKER="$work/audio-subscribed" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" audio-watch
+[ -e "$work/audio-subscribed" ]
+
+: >"$work/pactl.log"
+DWM_TEST_PACTL_LOG="$work/pactl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" input-set-default source.one
+DWM_TEST_PACTL_LOG="$work/pactl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" input-volume-set source.one 72%
+DWM_TEST_PACTL_LOG="$work/pactl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" input-toggle-mute source.one
+DWM_TEST_PACTL_LOG="$work/pactl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" stream-volume-set 21 64%
+DWM_TEST_PACTL_LOG="$work/pactl.log" PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-controls" stream-toggle-mute 21
+grep -Fqx "set-default-source source.one" "$work/pactl.log"
+grep -Fqx "set-source-volume source.one 72%" "$work/pactl.log"
+grep -Fqx "set-source-mute source.one toggle" "$work/pactl.log"
+grep -Fqx "set-sink-input-volume 21 64%" "$work/pactl.log"
+grep -Fqx "set-sink-input-mute 21 toggle" "$work/pactl.log"
 
 if PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-controls" 2>"$work/usage.out"; then
 	printf 'Control helper accepted a missing subcommand.\n' >&2
@@ -498,5 +555,7 @@ chmod +x "$work/bin/wpctl"
 
 PATH="$work/bin:/usr/bin:/bin" "$repo/scripts/dwm-quickshell-controls" volume-status >"$work/unavailable.out"
 grep -Fqx "VOL unavailable" "$work/unavailable.out"
+PATH="$work/bin:/usr/bin:/bin" "$repo/scripts/dwm-quickshell-controls" audio-snapshot >"$work/audio-unavailable.out"
+grep -Fqx "provider	audio	unavailable	read-only	PipeWire PulseAudio interface is unavailable" "$work/audio-unavailable.out"
 
 printf 'Quickshell controls helper: PASS\n'

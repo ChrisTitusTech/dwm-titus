@@ -11,6 +11,7 @@ FloatingWindow {
     required property var settingsModel
     required property var networkModel
     required property var bluetoothModel
+    required property var controlsModel
 
     title: "dwm settings"
     visible: settingsModel.visible
@@ -346,6 +347,13 @@ FloatingWindow {
                                 bluetoothModel: root.bluetoothModel
                             }
 
+                            AudioSettingsPane {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                visible: root.settingsModel.selectedSectionId === "audio"
+                                controlsModel: root.controlsModel
+                            }
+
                             ListView {
                                 id: capabilityList
 
@@ -355,6 +363,7 @@ FloatingWindow {
                                     && root.settingsModel.selectedSectionId !== "input"
                                     && root.settingsModel.selectedSectionId !== "network"
                                     && root.settingsModel.selectedSectionId !== "bluetooth"
+                                    && root.settingsModel.selectedSectionId !== "audio"
                                 clip: true
                                 spacing: Theme.spacingLg
                                 model: root.settingsModel.capabilitiesForSection(root.settingsModel.selectedSectionId)
