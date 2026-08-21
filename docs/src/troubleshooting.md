@@ -54,20 +54,17 @@ Or use the [Control Center](./control-center.md) → **System Health**.
 
 ## Terminal Won't Open (`Super`+`X`)
 
-- Run `dwm-terminal` from an existing shell to see the exact fallback message
-- Run `install-herdr --force` if Alacritty opens but Herdr does not
-- Set `DWM_HERDR=0` to confirm the outer terminal works without Herdr
-- Install a supported terminal: `alacritty`, `kitty`, `st`,
-  `warp-terminal`, or `xterm`
-- Or set a fixed terminal in `config/hotkeys.toml`:
+- Run `alacritty` from an existing shell to inspect its error directly
+- Install Alacritty with `sudo dnf install alacritty`
+- Confirm the fixed terminal in `config/hotkeys.toml`:
   ```toml
   [vars]
   terminal = "alacritty"
   ```
 
-Herdr is a terminal workspace, not a graphical terminal emulator. The default
-stack is Herdr running inside Alacritty. X11 therefore reports the window class
-as `Alacritty`, which is already covered by the terminal swallowing rules.
+Herdr is an optional terminal workspace, not a graphical terminal emulator.
+Install it explicitly and use `DWM_HERDR=1 dwm-terminal` to run it inside
+Alacritty. The default `Super`+`X` binding remains plain Alacritty.
 
 ## Browser Won't Open (`Super`+`B`)
 

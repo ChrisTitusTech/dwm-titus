@@ -80,7 +80,7 @@ before making changes.
 | Profile | Includes |
 | --- | --- |
 | `core` | The X11 session, required dependencies, and one terminal emulator. |
-| `recommended` | The complete everyday desktop, including Alacritty with Herdr, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, and brightness tools. |
+| `recommended` | The complete everyday desktop, including Alacritty, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, and brightness tools. |
 | `full` | The recommended desktop plus optional file-manager, keyring, wallpaper, display-manager, and supported Fedora gaming integrations. |
 
 `maim` is an optional dependency used only by the screenshot hotkeys. If it is
@@ -96,7 +96,7 @@ runtime dependencies for the X11 desktop and its other managed helpers.
 | Action | Keybind |
 | --- | --- |
 | Open the application launcher | <kbd>Super</kbd> + <kbd>R</kbd> |
-| Open terminal workspace (Herdr when available) | <kbd>Super</kbd> + <kbd>X</kbd> |
+| Open Alacritty terminal | <kbd>Super</kbd> + <kbd>X</kbd> |
 | Open Control Center | <kbd>Super</kbd> + <kbd>F1</kbd> |
 | Show the interactive keybind viewer | <kbd>Super</kbd> + <kbd>/</kbd> |
 | Close the focused window | <kbd>Super</kbd> + <kbd>Q</kbd> |

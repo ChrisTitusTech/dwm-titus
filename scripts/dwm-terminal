@@ -18,10 +18,9 @@ fi
 find_herdr() {
 	local candidate
 
-	case ${DWM_HERDR:-1} in
-	0 | false | no)
-		return 1
-		;;
+	case ${DWM_HERDR:-0} in
+	1 | true | yes) ;;
+	*) return 1 ;;
 	esac
 
 	if [[ -n ${DWM_HERDR_COMMAND:-} ]]; then

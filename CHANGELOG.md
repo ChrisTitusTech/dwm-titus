@@ -13,6 +13,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Make Alacritty the direct `Super`+`X` terminal default for every install
+  profile and Fedora image. Herdr remains available only through explicit
+  `--install-herdr` and `DWM_HERDR=1` opt-ins.
+
 - Move Flatpak and the GTK desktop portal into the recommended Fedora desktop
   layer so AppImage management works in the default X11 session.
 

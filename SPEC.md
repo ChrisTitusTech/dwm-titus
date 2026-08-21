@@ -370,12 +370,13 @@ Runtime dependencies are classified as:
   emulator, and the tools required by configured core keybindings. Alacritty
   is the preferred emulator, with the existing supported-terminal fallback
   chain retained when Alacritty is unavailable.
-- Recommended desktop: the Herdr terminal workspace layered over Alacritty,
-  Quickshell, Picom, Feh, Dex, a polkit agent, notification tools, audio
-  controls, screenshot tooling, Nerd/emoji fonts, Flatpak with its GTK portal,
-  and Gear Lever from a user-scoped Flathub remote.
-- Optional: file manager, network tray, theme utilities, display-manager
-  greeter customization, wallpapers, and hardware-specific helpers.
+- Recommended desktop: Alacritty, Quickshell, Picom, Feh, Dex, a polkit agent,
+  notification tools, audio controls, screenshot tooling, Nerd/emoji fonts,
+  Flatpak with its GTK portal, and Gear Lever from a user-scoped Flathub
+  remote.
+- Optional: the Herdr terminal workspace, file manager, network tray, theme
+  utilities, display-manager greeter customization, wallpapers, and
+  hardware-specific helpers.
 
 ### 5.9 System Health Dashboard
 
@@ -539,11 +540,12 @@ configuration and unrelated application configuration by default.
   guidance rather than relying on silent background commands.
 - Error messages must identify the missing command, library, package
   capability, or file and provide the next action.
-- A plain `dwm-terminal` launch must open Herdr inside the selected terminal
-  emulator when Herdr is installed, and otherwise open the emulator directly.
+- The default terminal binding must launch Alacritty directly.
+- A plain `dwm-terminal` launch must open the selected emulator directly unless
+  the user explicitly enables the optional Herdr layer with `DWM_HERDR=1`.
   Explicit terminal arguments such as `dwm-terminal -e command` must bypass
   Herdr so delegated commands retain their existing execution contract.
-- The terminal command must prefer Alacritty, select another installed
+- The `dwm-terminal` helper must prefer Alacritty, select another installed
   supported emulator when needed, and provide a clear configuration path.
 - Font aliases must accommodate common Meslo Nerd Font naming differences.
 - Multi-monitor setup must expose EWMH tags correctly to Quickshell and EWMH
@@ -611,9 +613,9 @@ On the supported Fedora release:
 In a real or nested X11 session:
 
 - dwm starts and can launch a terminal.
-- With Herdr installed, the default terminal binding opens Herdr inside
-  Alacritty. Without Herdr, the same binding opens the selected emulator
-  directly, and explicit `dwm-terminal -e` commands bypass Herdr in both cases.
+- The default terminal binding opens Alacritty directly even when Herdr is
+  installed. With `DWM_HERDR=1`, a plain `dwm-terminal` command opens Herdr
+  inside Alacritty; explicit `dwm-terminal -e` commands still bypass Herdr.
 - Tiling, floating, tags, focus, and close-window actions work.
 - Runtime TOML configuration loads and reloads.
 - A display-manager session and `startx` path both launch.

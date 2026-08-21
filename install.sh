@@ -24,7 +24,7 @@ Options:
                          Defaults to DWM_INSTALL_PROFILE or full.
   --non-interactive      Use unattended defaults and do not prompt.
   --yes                  Accept the interactive install summary.
-  --install-herdr        Install verified Herdr even with the core profile.
+  --install-herdr        Install verified Herdr as an optional workspace.
   --skip-herdr           Do not install Herdr.
   --enable-fedora-gaming-repos
                          Approve the Gamescope COPR and RPM Fusion nonfree.
@@ -56,12 +56,11 @@ NORDIC_THEME_REF="master"
 ARCH="$(uname -m)"
 FEDORA_GAMING_COPR="christitustech/copr-fedora"
 INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
-HERDR_INSTALL_MODE="${DWM_INSTALL_HERDR:-auto}"
+HERDR_INSTALL_MODE="${DWM_INSTALL_HERDR:-false}"
 NON_INTERACTIVE=false
 ASSUME_YES=false
 FEDORA_GAMING_REPOS_APPROVED=false
 DRY_RUN=false
-HERDR_READY=false
 
 while (($# > 0)); do
 	case "$1" in
@@ -127,7 +126,11 @@ recommended | full) ;;
 esac
 
 case "$HERDR_INSTALL_MODE" in
-auto) ;;
+auto)
+	# Retain compatibility with the old value, but no longer install Herdr by
+	# default for any profile.
+	HERDR_INSTALL_MODE=false
+	;;
 1 | true | yes)
 	HERDR_INSTALL_MODE=true
 	;;
@@ -171,43 +174,7 @@ herdr_arch_supported() {
 }
 
 install_herdr_profile() {
-	case $HERDR_INSTALL_MODE in
-	true)
-		return 0
-		;;
-	false)
-		return 1
-		;;
-	esac
-
-	herdr_arch_supported && install_recommended_profile
-}
-
-report_herdr_hotkey_migration() {
-	local hotkeys_file="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/hotkeys.toml"
-	local legacy_terminal
-
-	if legacy_terminal="$(dwm_legacy_seeded_terminal_hotkey "$hotkeys_file")"; then
-		warn "Existing hotkeys still launch $legacy_terminal directly for Super+X."
-		warn "To use Herdr from Super+X, set terminal = \"dwm-terminal\" in $hotkeys_file."
-	fi
-}
-
-runtime_herdr_available() {
-	case ${DWM_HERDR:-1} in
-	0 | false | no)
-		return 1
-		;;
-	esac
-
-	if [[ -n ${DWM_HERDR_COMMAND:-} ]]; then
-		command -v "$DWM_HERDR_COMMAND" >/dev/null 2>&1 ||
-			[[ -x $DWM_HERDR_COMMAND ]]
-		return
-	fi
-
-	command -v herdr >/dev/null 2>&1 ||
-		[[ -x ${HOME:-}/.local/bin/herdr ]]
+	[[ $HERDR_INSTALL_MODE == true ]] && herdr_arch_supported
 }
 
 fedora_gaming_profile() {
@@ -361,11 +328,10 @@ print_install_summary() {
 	print_summary_profile "Terminal candidates" terminal
 	if install_herdr_profile; then
 		printf '  Herdr workspace: verified user install from https://herdr.dev/install.sh\n'
-	elif [[ $HERDR_INSTALL_MODE == auto ]] &&
-		install_recommended_profile && ! herdr_arch_supported; then
+	elif [[ $HERDR_INSTALL_MODE == true ]]; then
 		printf '  Herdr workspace: skipped (unsupported architecture: %s)\n' "$ARCH"
 	else
-		printf '  Herdr workspace: skipped\n'
+		printf '  Herdr workspace: skipped (optional; use --install-herdr to enable)\n'
 	fi
 	echo ""
 }
@@ -717,25 +683,17 @@ fi
 if install_herdr_profile; then
 	info "Installing the verified Herdr workspace for interactive terminals..."
 	if "$REPO_DIR/scripts/install-herdr"; then
-		HERDR_READY=true
-		ok "Herdr is ready; plain dwm-terminal launches will open it in $terminal."
+		ok "Herdr is installed; set DWM_HERDR=1 and use dwm-terminal to open it in $terminal."
 	else
 		herdr_status=$?
 		if [[ $herdr_status -eq 2 ]]; then
-			HERDR_READY=true
 			warn "Herdr is ready, but one or more detected agent integrations could not be installed."
-		elif runtime_herdr_available; then
-			warn "Herdr setup failed, but dwm-terminal can still select an existing Herdr executable."
-			warn "Set DWM_HERDR=0 or remove the rejected executable to force plain $terminal."
 		else
-			warn "Herdr installation failed; plain dwm-terminal launches will use $terminal directly."
+			warn "Herdr installation failed; Alacritty remains the default terminal."
 		fi
 	fi
-elif [[ $HERDR_INSTALL_MODE == auto ]] &&
-	install_recommended_profile && ! herdr_arch_supported; then
-	warn "Skipping automatic Herdr installation on unsupported architecture: $ARCH."
-else
-	warn "Skipping Herdr installation for the $INSTALL_PROFILE profile."
+elif [[ $HERDR_INSTALL_MODE == true ]]; then
+	warn "Skipping Herdr installation on unsupported architecture: $ARCH."
 fi
 
 # ── XDG dirs + wallpapers ────────────────────────────────
@@ -792,9 +750,6 @@ make install-user \
 	OWNER="$(id -un)" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
 	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-if [[ $HERDR_READY == true ]]; then
-	report_herdr_hotkey_migration
-fi
 configure_displays_after_install
 
 # ── Done ─────────────────────────────────────────────────

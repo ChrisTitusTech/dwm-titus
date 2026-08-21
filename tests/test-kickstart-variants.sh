@@ -104,7 +104,11 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 	grep -Fq "url --metalink=\"https://mirrors.fedoraproject.org/metalink?repo=fedora-\$releasever&arch=\$basearch\"" "$ks"
 	grep -Fq 'firstboot --disable' "$ks"
 	grep -Fq 'selinux --disabled' "$ks"
-	grep -Fq './install.sh --non-interactive --profile core --install-herdr' "$ks"
+	grep -Fq './install.sh --non-interactive --profile core' "$ks"
+	if grep -Fq -- '--install-herdr' "$ks"; then
+		printf 'Herdr must not be installed by default in %s\n' "$ks" >&2
+		exit 1
+	fi
 	grep -Fq 'scripts/install-gearlever' "$ks"
 	grep -Fq '%include /tmp/dwm-titus-gaming-repo' "$ks"
 	grep -Fq '%include /tmp/dwm-titus-gaming-packages' "$ks"

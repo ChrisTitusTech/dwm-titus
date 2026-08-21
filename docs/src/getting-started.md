@@ -11,7 +11,7 @@ Press <kbd>Super</kbd> + <kbd>/</kbd> at any time to open the interactive keybin
 
 | Action | Keys |
 |--------|------|
-| Open terminal workspace (Herdr when available) | `Super` + `X` |
+| Open Alacritty terminal | `Super` + `X` |
 | App launcher (Quickshell) | `Super` + `R` |
 | Close window | `Super` + `Q` |
 | Power menu | `Super` + `Ctrl` + `Q` |

@@ -64,7 +64,7 @@ Add or change bindings without recompiling. Save the file and they apply instant
 
 ```toml
 [vars]
-terminal = "dwm-terminal"
+terminal = "alacritty"
 webapp   = "webapp-launch"
 
 keys = [
@@ -73,19 +73,19 @@ keys = [
 ]
 ```
 
-`dwm-terminal` prefers Alacritty and opens Herdr inside it for a plain
-interactive launch. If Herdr is unavailable, it opens the selected emulator
-directly. Explicit arguments such as `dwm-terminal -e command` always bypass
-Herdr so application launchers and maintenance actions keep working.
+The default binding launches Alacritty directly. The `dwm-terminal` helper is
+available to delegated tools that need a terminal selection fallback; it also
+prefers Alacritty and opens the emulator directly by default. Explicit
+arguments such as `dwm-terminal -e command` retain their direct execution
+contract.
 
 Thunar's seeded **Open Terminal Here** action launches Alacritty directly in
-the selected directory. It intentionally bypasses Herdr while leaving the
-normal `Super` + `X` terminal workspace unchanged. Existing Thunar custom
-actions are preserved during installation and upgrades.
+the selected directory, matching the normal `Super` + `X` default. Existing
+Thunar custom actions are preserved during installation and upgrades.
 
-Set `DWM_TERMINAL` to choose another outer emulator, set `DWM_HERDR=0` to
-disable the Herdr layer, or set `DWM_HERDR_COMMAND` to another Herdr binary
-path.
+Set `DWM_TERMINAL` to choose another emulator for `dwm-terminal`. Herdr is an
+optional layer: install it explicitly, set `DWM_HERDR=1`, and run
+`dwm-terminal`. Set `DWM_HERDR_COMMAND` to select a different Herdr binary.
 
 Default applications use freedesktop settings. Run `dwm-default-apps browsers`
 to list browser desktop files, `dwm-default-apps set-browser firefox.desktop`

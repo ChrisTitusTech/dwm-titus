@@ -3,8 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HELPER="$ROOT_DIR/scripts/install-herdr"
-# shellcheck source=scripts/dwm-utils.sh
-source "$ROOT_DIR/scripts/dwm-utils.sh"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -126,17 +124,6 @@ fi
 grep -Fq "integration for Claude Code" "$work/integration-failure.err"
 grep -Fq "one or more detected agent integrations failed" \
 	"$work/integration-failure.err"
-
-for legacy_terminal in alacritty kitty st warp-terminal xterm; do
-	printf '[vars]\nterminal = "%s"\n' "$legacy_terminal" >"$work/hotkeys.toml"
-	test "$(dwm_legacy_seeded_terminal_hotkey "$work/hotkeys.toml")" = \
-		"$legacy_terminal"
-done
-printf '[vars]\nterminal = "dwm-terminal"\n' >"$work/hotkeys.toml"
-if dwm_legacy_seeded_terminal_hotkey "$work/hotkeys.toml" >/dev/null; then
-	echo "dwm-terminal was misidentified as a legacy seeded terminal" >&2
-	exit 1
-fi
 
 mkdir -p "$work/early"
 cat >"$work/early/herdr" <<'SCRIPT'
@@ -272,6 +259,7 @@ env \
 	DWM_TEST_UNAME=armv7l \
 	PATH="$work/plan-bin:$PATH" \
 	"$ROOT_DIR/install.sh" --dry-run --non-interactive --profile recommended \
+	--install-herdr \
 	>"$work/arm-plan.out"
 
 grep -Fq "Herdr workspace: skipped (unsupported architecture: armv7l)" \
@@ -283,7 +271,8 @@ env \
 	PATH="$work/plan-bin:$PATH" \
 	"$ROOT_DIR/install.sh" --dry-run --non-interactive --profile recommended \
 	>"$work/recommended-plan.out"
-grep -Fq "Herdr workspace: verified user install" "$work/recommended-plan.out"
+grep -Fq "Herdr workspace: skipped (optional; use --install-herdr to enable)" \
+	"$work/recommended-plan.out"
 
 env \
 	HOME="$work/home" \

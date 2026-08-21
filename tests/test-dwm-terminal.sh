@@ -31,7 +31,18 @@ exit 0
 SCRIPT
 chmod +x "$work/bin/herdr"
 
+DWM_TERMINAL_TEST_OUT="$work/default-out" \
+	PATH="$work/bin" \
+	"$BASH_BIN" "$HELPER"
+
+grep -Fqx "$work/bin/alacritty" "$work/default-out"
+if grep -Fqx -- "-e" "$work/default-out"; then
+	echo "dwm-terminal launched Herdr without an explicit opt-in" >&2
+	exit 1
+fi
+
 DWM_TERMINAL_TEST_OUT="$work/herdr-out" \
+	DWM_HERDR=1 \
 	PATH="$work/bin" \
 	"$BASH_BIN" "$HELPER"
 
@@ -82,3 +93,7 @@ if PATH="$work/bin" "$BASH_BIN" "$HELPER" 2>"$work/err"; then
 fi
 
 grep -Fq "no supported terminal emulator found" "$work/err"
+
+grep -Eq '^[[:space:]]*terminal[[:space:]]*=[[:space:]]*"alacritty"' \
+	"$ROOT_DIR/config/hotkeys.toml"
+grep -Fq 'key="x",       desc="Terminal"' "$ROOT_DIR/config/hotkeys.toml"
