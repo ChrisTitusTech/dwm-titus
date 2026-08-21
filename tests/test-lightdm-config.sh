@@ -30,5 +30,7 @@ cmp -s "$work/fedora.expected" "$fedora_stage/etc/lightdm/lightdm.conf"
 grep -Fqx 'xft-dpi=96' "$fedora_stage/etc/lightdm/slick-greeter.conf"
 grep -Fqx 'activate-numlock=false' "$fedora_stage/etc/lightdm/slick-greeter.conf"
 grep -Fqx 'show-hostname=false' "$fedora_stage/etc/lightdm/slick-greeter.conf"
+grep -Fqx 'background=/usr/share/pixmaps/dwm-titus.png' "$fedora_stage/etc/lightdm/slick-greeter.conf"
+cmp -s "$repo/lightdm/wallpaper.png" "$fedora_stage/usr/share/pixmaps/dwm-titus.png"
 
 printf 'LightDM config rendering: PASS\n'

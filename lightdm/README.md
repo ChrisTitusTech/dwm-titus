@@ -12,7 +12,7 @@ renders the matching Fedora `lightdm.conf`.
 |------|-------------|
 | `lightdm.conf` | `/etc/lightdm/lightdm.conf` |
 | `slick-greeter.conf` | `/etc/lightdm/slick-greeter.conf` |
-| `wallpaper.jpg` | `/usr/share/pixmaps/dwm-titus.jpg` |
+| `wallpaper.png` | `/usr/share/pixmaps/dwm-titus.png` |
 
 ## Install
 
