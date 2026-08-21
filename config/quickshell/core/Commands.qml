@@ -43,6 +43,10 @@ Singleton {
         return helperCommand("dwm-lock", undefined, [], true);
     }
 
+    function screenshotHelperCommand(action) {
+        return helperCommand("dwm-screenshot", action, [], true);
+    }
+
     function systemHealthHelperCommand(action, args) {
         return helperCommand("dwm-system-health", action, args, true);
     }

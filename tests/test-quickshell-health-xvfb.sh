@@ -274,6 +274,122 @@ if DISPLAY=$display xdotool search --onlyvisible --name '^dwm launcher$' >/dev/n
 	exit 1
 fi
 
+# The DWM-owned command menu keeps the legacy launcher intact while sharing
+# its XDG application index only for the lifetime of an open surface.
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	quickshell ipc --path "$config" call menu summon >/dev/null
+
+menu_window=
+i=0
+while [ "$i" -lt 200 ]; do
+	menu_window=$(DISPLAY=$display xdotool search --onlyvisible --name '^dwm menu$' 2>/dev/null | head -1 || true)
+	[ -n "$menu_window" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ -z "$menu_window" ]; then
+	printf 'Command menu did not open\n' >&2
+	tail -40 "$work/quickshell.log" >&2
+	exit 1
+fi
+
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	quickshell ipc --path "$config" call menu resultCount)" = 10 ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	quickshell ipc --path "$config" call menu selectedLabel)" = Apps ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	quickshell ipc --path "$config" call launcher applicationConsumers)" = 1 ]
+
+geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$menu_window")
+width=$(printf '%s\n' "$geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
+height=$(printf '%s\n' "$geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+[ "$width" = 720 ]
+[ "$height" = 600 ]
+
+DISPLAY=$display xdotool windowactivate --sync "$menu_window"
+DISPLAY=$display xdotool key Return
+i=0
+while [ "$i" -lt 100 ]; do
+	active_menu=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+		quickshell ipc --path "$config" call menu activeMenu)
+	[ "$active_menu" = apps ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$active_menu" = apps ]
+
+DISPLAY=$display xdotool key BackSpace
+i=0
+while [ "$i" -lt 100 ]; do
+	active_menu=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+		quickshell ipc --path "$config" call menu activeMenu)
+	[ "$active_menu" = root ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$active_menu" = root ]
+
+DISPLAY=$display xdotool type --delay 10 'system health'
+i=0
+while [ "$i" -lt 100 ]; do
+	selected_label=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+		quickshell ipc --path "$config" call menu selectedLabel)
+	[ "$selected_label" = 'System Health' ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$selected_label" = 'System Health' ]
+DISPLAY=$display xdotool key Return
+
+health_window=
+i=0
+while [ "$i" -lt 200 ]; do
+	health_window=$(DISPLAY=$display xdotool search --onlyvisible --name '^dwm system health$' 2>/dev/null | head -1 || true)
+	[ -n "$health_window" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ -z "$health_window" ]; then
+	printf 'Command menu did not dispatch the System Health IPC action\n' >&2
+	tail -40 "$work/quickshell.log" >&2
+	exit 1
+fi
+if DISPLAY=$display xdotool search --onlyvisible --name '^dwm menu$' >/dev/null 2>&1; then
+	printf 'Command menu remained visible after dispatch\n' >&2
+	exit 1
+fi
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	quickshell ipc --path "$config" call launcher applicationConsumers)" = 0 ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	quickshell ipc --path "$config" call launcher indexCount)" = 0 ]
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	quickshell ipc --path "$config" call systemhealth close >/dev/null
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	quickshell ipc --path "$config" call menu toggle >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	menu_window=$(DISPLAY=$display xdotool search --onlyvisible --name '^dwm menu$' 2>/dev/null | head -1 || true)
+	[ -n "$menu_window" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -n "$menu_window" ]
+DISPLAY=$display xdotool windowactivate --sync "$menu_window"
+DISPLAY=$display xdotool key Escape
+i=0
+while [ "$i" -lt 100 ]; do
+	if ! DISPLAY=$display xdotool search --onlyvisible --name '^dwm menu$' >/dev/null 2>&1; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.05
+done
+if DISPLAY=$display xdotool search --onlyvisible --name '^dwm menu$' >/dev/null 2>&1; then
+	printf 'Command menu did not close on Escape\n' >&2
+	exit 1
+fi
+
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
 	quickshell ipc --path "$config" call controlcenter openKeybinds >/dev/null
 

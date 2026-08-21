@@ -77,10 +77,42 @@ The static design-system check rejects Wayland and Hyprland dependencies in
 the managed shell. The Quickshell lint and X11 runtime checks remain the
 authoritative syntax and integration gates.
 
+## Command Menu Contract
+
+The command menu is a DWM-owned navigation surface, not an Omarchy service
+port. Its root taxonomy is Apps, Settings, Display / Input, Network,
+Bluetooth, Audio, System Health, Keybindings, Screenshots, and System.
+Submenus and actions are typed data. Actions may call an allowlisted shell IPC
+operation, a fixed helper argument vector, or the existing XDG application
+launcher provider; catalog entries cannot contain executable command text.
+
+The `menu` IPC target provides `open`, `close`, `toggle`, and `summon`.
+`summon` targets the active DWM panel screen, while `open` preserves the normal
+floating-window screen selection. The existing `launcher` IPC target and
+Super+r binding remain unchanged for compatibility.
+
+Open the menu on the active screen from a terminal or a user-defined hotkey:
+
+```sh
+quickshell ipc --path "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml" call menu summon
+```
+
+Apps enters the shared XDG application provider. Display / Input,
+Screenshots, and System enter focused submenus; the other root rows open their
+existing dwm-titus surface directly. Type to search commands and applications
+across the catalog.
+
+The application index is shared only while either surface is open. Closing
+the launcher and command menu releases its parsed desktop-entry data so the
+new menu does not add a hidden resident application model. Keyboard behavior
+includes type-to-search, arrows, Page Up/Down, Home/End, Enter, Left or empty
+Backspace to return, and Escape to close.
+
 Run the focused source contract with:
 
 ```sh
 make check-quickshell-design-system
+make check-quickshell-command-menu
 ```
 
 It is also part of the repository-wide `make check` gate. QML changes still
