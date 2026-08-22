@@ -49,20 +49,6 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-report_failure() {
-	local status=$1 line=$2 command=$3 file
-	set +e
-	printf 'dwm-xdg-autostart tests failed at line %s: %s (status %s)\n' \
-		"$line" "$command" "$status" >&2
-	for file in "$work"/watch*.err; do
-		[[ -f $file ]] || continue
-		printf '%s\n' "--- ${file##*/}" >&2
-		tail -20 "$file" >&2
-	done
-	return "$status"
-}
-trap 'report_failure "$?" "$LINENO" "$BASH_COMMAND"' ERR
-
 expect_success_boundary_signal() {
 	local label=$1
 	shift
@@ -269,7 +255,11 @@ wait_for() {
 }
 
 pid_gone() {
-	! kill -0 "$1" 2>/dev/null
+	local stat fields
+	[[ -r /proc/$1/stat ]] || return 0
+	IFS= read -r stat <"/proc/$1/stat" || return 0
+	fields=${stat##*) }
+	[[ ${fields%% *} == Z ]]
 }
 
 line_count_at_least() {

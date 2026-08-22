@@ -194,7 +194,15 @@ if [ "${DWM_LARGE_SURFACE_CAPTURE_ONLY:-0}" = 1 ]; then
 else
 	DISPLAY=$display xdotool windowactivate --sync "$settings_window"
 	DISPLAY=$display xdotool key Down
-	[ "$(ipc settings currentSection)" = input ]
+	i=0
+	section=
+	while [ "$i" -lt 100 ]; do
+		section=$(ipc settings currentSection 2>/dev/null || true)
+		[ "$section" = input ] && break
+		i=$((i + 1))
+		sleep 0.05
+	done
+	[ "$section" = input ]
 	DISPLAY=$display xdotool key Escape
 fi
 
