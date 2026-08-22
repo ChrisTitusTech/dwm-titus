@@ -62,6 +62,7 @@ work=$(mktemp -d "$test_tmp_root/dwm-settings-xvfb.XXXXXX")
 display=":$((($$ % 400) + 700))"
 dwm_bin=${DWM_SETTINGS_TEST_DWM_BIN:-$repo/dwm}
 runtime_alias_dir=
+test_stage='initializing fixture'
 
 capture_process_identity() (
 	identity_pid=$1
@@ -122,7 +123,15 @@ scoped_settings_watcher_identities() (
 )
 
 cleanup() {
+	cleanup_status=$?
 	set +e
+	if [ "$cleanup_status" -ne 0 ]; then
+		printf 'Settings Xvfb failed while %s (status %s)\n' \
+			"${test_stage:-stage unknown}" "$cleanup_status" >&2
+		if [ -f "${work:-}/quickshell.log" ]; then
+			tail -80 "$work/quickshell.log" >&2
+		fi
+	fi
 	terminate_process_identity "${quickshell_identity:-}"
 	watcher_identities=$(scoped_settings_watcher_identities)
 	for watcher_identity in $watcher_identities; do
@@ -135,6 +144,8 @@ cleanup() {
 		rmdir -- "$runtime_alias_dir" 2>/dev/null || true
 	fi
 	rm -rf "$work"
+	trap - EXIT HUP INT TERM
+	exit "$cleanup_status"
 }
 trap cleanup EXIT
 trap 'exit 143' HUP INT TERM
@@ -337,6 +348,7 @@ env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
 quickshell_pid=$!
 quickshell_identity=$(capture_process_identity "$quickshell_pid")
+test_stage='waiting for Quickshell IPC'
 
 config=$config_home/quickshell/shell.qml
 settings_power_watch_count() {
@@ -438,6 +450,7 @@ fi
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings open >/dev/null
+test_stage='validating display and input settings'
 
 window=
 i=0
@@ -515,6 +528,7 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 
 DISPLAY=$display xdotool windowactivate --sync "$window"
 DISPLAY=$display xdotool key Down
+test_stage='validating power settings'
 section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
 [ "$section" = power ]
@@ -715,6 +729,7 @@ done
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select defaults >/dev/null
+test_stage='validating defaults and autostart settings'
 i=0
 while [ "$i" -lt 200 ]; do
 	defaults_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -981,6 +996,7 @@ fi
 
 DISPLAY=$display xdotool windowactivate --sync "$window"
 DISPLAY=$display xdotool type --delay 20 network
+test_stage='validating network and Bluetooth settings'
 section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
 [ "$section" = network ]
@@ -1018,6 +1034,7 @@ section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME
 [ "$section" = audio ]
 
 DISPLAY=$display xdotool key Escape
+test_stage='closing Settings and checking lifecycle cleanup'
 i=0
 while [ "$i" -lt 100 ]; do
 	if ! DISPLAY=$display xdotool search --onlyvisible --name '^dwm settings$' >/dev/null 2>&1; then
@@ -1079,6 +1096,7 @@ if find "$helper_tmp" -mindepth 1 -maxdepth 1 \
 fi
 
 idle_sample_seconds=2
+test_stage='sampling closed-shell CPU usage'
 [ "$cpu_sample_seconds" -gt 0 ] && idle_sample_seconds=$cpu_sample_seconds
 before=$(awk '{ print $14 + $15 }' "/proc/$quickshell_pid/stat")
 sleep "$idle_sample_seconds"
