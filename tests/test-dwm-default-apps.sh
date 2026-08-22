@@ -6,6 +6,7 @@ HELPER="$ROOT_DIR/scripts/dwm-default-apps"
 BASH_BIN=${BASH:-/usr/bin/bash}
 REAL_MV=$(command -v mv)
 REAL_CHMOD=$(command -v chmod)
+REAL_INOTIFYWAIT=$(command -v inotifywait || true)
 
 work=$(mktemp -d)
 watch_pid=
@@ -62,7 +63,36 @@ case $target in
 esac
 exec "${DWM_TEST_REAL_CHMOD:?}" "$@"
 SCRIPT
-chmod +x "$work/fail-bin/mv" "$work/fail-bin/chmod"
+
+cat >"$work/fail-bin/inotifywait" <<'SCRIPT'
+#!/bin/sh
+set -eu
+if [ -n "${DWM_TEST_WATCH_SETUP_TARGET:-}" ]; then
+	for argument do
+		if [ "$argument" = "$DWM_TEST_WATCH_SETUP_TARGET" ] &&
+			[ ! -e "${DWM_TEST_WATCH_SETUP_MARKER:?}" ]; then
+			mv -- "$DWM_TEST_WATCH_SETUP_TARGET" \
+				"$DWM_TEST_WATCH_SETUP_TARGET.removed"
+			: >"$DWM_TEST_WATCH_SETUP_MARKER"
+			exit 1
+		fi
+	done
+	for argument do
+		if [ "$argument" = "${DWM_TEST_WATCH_SETUP_ROOT:?}" ] &&
+			[ ! -e "${DWM_TEST_WATCH_SETUP_ROOT_PID:?}" ]; then
+			printf '%s\n' "$$" >"${DWM_TEST_WATCH_SETUP_ROOT_PID:?}"
+			while [ ! -e "${DWM_TEST_WATCH_SETUP_MARKER:?}" ]; do
+				sleep 0.01
+			done
+			while :; do
+				sleep 0.1
+			done
+		fi
+	done
+fi
+exec "${DWM_TEST_REAL_INOTIFYWAIT:-/usr/bin/inotifywait}" "$@"
+SCRIPT
+chmod +x "$work/fail-bin/mv" "$work/fail-bin/chmod" "$work/fail-bin/inotifywait"
 
 cat >"$work/data/applications/firefox.desktop" <<'DESKTOP'
 [Desktop Entry]
@@ -975,6 +1005,61 @@ if command -v inotifywait >/dev/null 2>&1; then
 			exit 1
 		fi
 	done
+
+	raced_config=$work/watch-setup-race
+	mkdir -p "$raced_config/dwm-titus"
+	printf '[vars]\nterminal = "alacritty"\n' >"$raced_config/dwm-titus/hotkeys.toml"
+	setup_marker=$work/watch-setup-race.marker
+	setup_root_pid_file=$work/watch-setup-root.pid
+	env "${env_common[@]}" XDG_CONFIG_HOME="$raced_config" \
+		PATH="$work/fail-bin:$work/bin:/usr/bin:/bin" \
+		DWM_TEST_REAL_MV="$REAL_MV" \
+		DWM_TEST_REAL_INOTIFYWAIT="$REAL_INOTIFYWAIT" \
+		DWM_TEST_WATCH_SETUP_TARGET="$raced_config/dwm-titus" \
+		DWM_TEST_WATCH_SETUP_ROOT="$raced_config" \
+		DWM_TEST_WATCH_SETUP_ROOT_PID="$setup_root_pid_file" \
+		DWM_TEST_WATCH_SETUP_MARKER="$setup_marker" \
+		"$BASH_BIN" "$HELPER" watch >"$work/watch-setup-race.out" \
+		2>"$work/watch-setup-race.err" &
+	watch_pid=$!
+	for _ in {1..100}; do
+		[[ -e $setup_marker && -s $setup_root_pid_file ]] && break
+		sleep 0.02
+	done
+	[[ -e $setup_marker && -s $setup_root_pid_file ]]
+	setup_initial_root_pid=$(<"$setup_root_pid_file")
+	process_identity_is_live "$(process_identity "$watch_pid")"
+	for _ in {1..100}; do
+		setup_generation_child=$(watch_child_for_path "$watch_pid" "$raced_config" \
+			2>/dev/null || true)
+		[[ -n $setup_generation_child &&
+			$setup_generation_child != "$setup_initial_root_pid" ]] && break
+		sleep 0.02
+	done
+	[[ -n $setup_generation_child &&
+		$setup_generation_child != "$setup_initial_root_pid" ]]
+	if watch_child_has_argument "$setup_generation_child" -r; then
+		printf 'Setup-race recovery watch was recursive\n' >&2
+		exit 1
+	fi
+	mkdir "$raced_config/dwm-titus"
+	setup_managed_child=
+	for _ in {1..100}; do
+		setup_managed_child=$(watch_child_for_path "$watch_pid" \
+			"$raced_config/dwm-titus" 2>/dev/null || true)
+		[[ -n $setup_managed_child ]] && break
+		sleep 0.02
+	done
+	[[ -n $setup_managed_child ]]
+	printf '[vars]\nterminal = "kitty"\n' >"$raced_config/dwm-titus/hotkeys.toml"
+	for _ in {1..100}; do
+		grep -Fq hotkeys.toml "$work/watch-setup-race.out" 2>/dev/null && break
+		sleep 0.02
+	done
+	grep -Fq hotkeys.toml "$work/watch-setup-race.out"
+	kill "$watch_pid"
+	wait "$watch_pid" 2>/dev/null || true
+	watch_pid=
 
 	owner_pid_file=$work/watch-owner.pid
 	# shellcheck disable=SC2016 # Positional parameters are expanded by the child shell.

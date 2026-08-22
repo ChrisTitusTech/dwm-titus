@@ -1569,6 +1569,19 @@ watch_defaults() {
 				;;
 			control)
 				restart=0
+				if [[ $config_watch_mode == config ]]; then
+					if [[ ! -d $config_watch_target || -L $config_watch_target ]] ||
+						! path_has_no_symlink_components "$config_watch_target"; then
+						restart=1
+					fi
+				elif [[ -d $config_watch_target && ! -L $config_watch_target ]] &&
+					path_has_no_symlink_components "$config_watch_target"; then
+					restart=1
+				elif [[ $config_watch_mode == ancestor ]]; then
+					new_parent=$(deepest_existing_watch_parent \
+						"$config_watch_target" 2>/dev/null || true)
+					[[ $new_parent == "$config_watch_parent" ]] || restart=1
+				fi
 				break
 				;;
 			esac
