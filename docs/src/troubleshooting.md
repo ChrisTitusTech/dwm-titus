@@ -71,8 +71,22 @@ Alacritty. The default `Super`+`X` binding remains plain Alacritty.
 - Run `dwm-default-apps status` to inspect the current default browser
 - Run `dwm-default-apps browsers` to list installed browser desktop files
 - Set one with `dwm-default-apps set-browser firefox.desktop`
+- Open Settings -> Defaults to inspect provider details, candidates, and the
+  Restore Previous action
 - Ensure `xdg-utils` is installed so `xdg-settings`, `xdg-mime`, and `xdg-open`
   are available
+
+## Startup Application Change Failed
+
+- Open Settings -> Defaults and inspect the entry origin, effective state, and
+  detail. Malformed or conditional vendor entries are intentionally not
+  rewritten.
+- Changes apply at the next login; Settings does not start or stop the
+  application in the current session.
+- A stale-revision error means the entry changed after it was displayed. Use
+  Refresh and retry.
+- Reset to vendor removes only the managed user override. Existing vendor
+  desktop files are never edited.
 
 ---
 

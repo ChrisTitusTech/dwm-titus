@@ -12,19 +12,14 @@ ClickAwayPopup {
     required property var launcherModel
     required property var panelWindow
     required property var powerMenuModel
+    required property var powerModel
     required property var settingsModel
 
     readonly property int cardWidth: Theme.controlCenterWidth
     readonly property int maximumHeight: panelWindow && panelWindow.screen
         ? Math.max(240, panelWindow.screen.height - Theme.panelHeight - Theme.popupMargin)
         : 240
-    readonly property var powerPresets: [
-        { "label": "5m", "seconds": 300 },
-        { "label": "10m", "seconds": 600 },
-        { "label": "15m", "seconds": 900 },
-        { "label": "30m", "seconds": 1800 },
-        { "label": "1h", "seconds": 3600 }
-    ]
+    readonly property var powerPresets: root.powerModel.timeoutPresets
 
     function pageTitle() {
         if (controlCenterModel.page === "widgets") return "Bar Widgets";
@@ -101,7 +96,7 @@ ClickAwayPopup {
 
     onVisibleChanged: {
         if (visible) {
-            root.powerMenuModel.close();
+            root.powerMenuModel.close("controlcenter");
             Qt.callLater(function() {
                 controlCard.forceActiveFocus();
             });
@@ -212,8 +207,10 @@ ClickAwayPopup {
 
                 UiText {
                     Layout.fillWidth: true
-                    visible: root.controlCenterModel.message.length > 0
-                    text: root.controlCenterModel.message
+                    visible: (root.controlCenterModel.page === "power"
+                        ? root.powerModel.messageFor("controlcenter") : root.controlCenterModel.message).length > 0
+                    text: root.controlCenterModel.page === "power"
+                        ? root.powerModel.messageFor("controlcenter") : root.controlCenterModel.message
                     color: Theme.textMuted
                     elide: Text.ElideRight
                 }
@@ -367,18 +364,18 @@ ClickAwayPopup {
 
                     UiText {
                         Layout.fillWidth: true
-                        text: root.controlCenterModel.powerDpmsEnabled
-                            ? "Screen off after " + root.formatDuration(root.controlCenterModel.powerDpmsTimeout)
+                        text: root.powerModel.dpmsEnabled
+                            ? "Screen off after " + root.formatDuration(root.powerModel.dpmsTimeout)
                             : "Screen timeout disabled"
                         color: Theme.textMuted
                     }
                     MenuRow {
                         Layout.fillWidth: true
                         label: "Screen Timeout"
-                        detail: root.controlCenterModel.powerDpmsEnabled ? "On" : "Off"
-                        active: root.controlCenterModel.powerDpmsEnabled
-                        enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
-                        onActivated: root.controlCenterModel.setPowerDpms(!root.controlCenterModel.powerDpmsEnabled)
+                        detail: root.powerModel.dpmsEnabled ? "On" : "Off"
+                        active: root.powerModel.dpmsEnabled
+                        enabled: root.powerModel.dpmsAvailable && !root.powerModel.busy
+                        onActivated: root.powerModel.setDpms(!root.powerModel.dpmsEnabled, "controlcenter")
                     }
                     GridLayout {
                         Layout.fillWidth: true
@@ -394,10 +391,10 @@ ClickAwayPopup {
 
                                 Layout.fillWidth: true
                                 label: modelData.label
-                                active: root.controlCenterModel.powerDpmsEnabled
-                                    && root.controlCenterModel.powerDpmsTimeout === modelData.seconds
-                                enabled: root.controlCenterModel.powerDpmsAvailable && !root.controlCenterModel.busy
-                                onActivated: root.controlCenterModel.setPowerDpmsTimeout(modelData.seconds)
+                                active: root.powerModel.dpmsEnabled
+                                    && root.powerModel.dpmsTimeout === modelData.seconds
+                                enabled: root.powerModel.dpmsAvailable && !root.powerModel.busy
+                                onActivated: root.powerModel.setDpmsTimeout(modelData.seconds, "controlcenter")
                             }
                         }
                     }
@@ -409,18 +406,18 @@ ClickAwayPopup {
 
                     UiText {
                         Layout.fillWidth: true
-                        text: root.controlCenterModel.powerLockEnabled
-                            ? "Lock after " + root.formatDuration(root.controlCenterModel.powerLockTimeout)
+                        text: root.powerModel.lockEnabled
+                            ? "Lock after " + root.formatDuration(root.powerModel.lockTimeout)
                             : "Auto lock disabled"
                         color: Theme.textMuted
                     }
                     MenuRow {
                         Layout.fillWidth: true
                         label: "Auto Lock"
-                        detail: root.controlCenterModel.powerLockEnabled ? "On" : "Off"
-                        active: root.controlCenterModel.powerLockEnabled
-                        enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
-                        onActivated: root.controlCenterModel.setPowerLock(!root.controlCenterModel.powerLockEnabled)
+                        detail: root.powerModel.lockEnabled ? "On" : "Off"
+                        active: root.powerModel.lockEnabled
+                        enabled: root.powerModel.lockAvailable && !root.powerModel.busy
+                        onActivated: root.powerModel.setLock(!root.powerModel.lockEnabled, "controlcenter")
                     }
                     GridLayout {
                         Layout.fillWidth: true
@@ -436,10 +433,10 @@ ClickAwayPopup {
 
                                 Layout.fillWidth: true
                                 label: modelData.label
-                                active: root.controlCenterModel.powerLockEnabled
-                                    && root.controlCenterModel.powerLockTimeout === modelData.seconds
-                                enabled: root.controlCenterModel.powerLockAvailable && !root.controlCenterModel.busy
-                                onActivated: root.controlCenterModel.setPowerLockTimeout(modelData.seconds)
+                                active: root.powerModel.lockEnabled
+                                    && root.powerModel.lockTimeout === modelData.seconds
+                                enabled: root.powerModel.lockAvailable && !root.powerModel.busy
+                                onActivated: root.powerModel.setLockTimeout(modelData.seconds, "controlcenter")
                             }
                         }
                     }

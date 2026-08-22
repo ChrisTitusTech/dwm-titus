@@ -15,18 +15,23 @@ full-screen Settings workflows below.
 
 ### POWER-001: Power Provider and Settings Workflows
 
-- [ ] Define versioned machine-readable records for battery state, external
+- [x] Define versioned machine-readable records for battery state, external
   power, available power profiles, active profile, DPMS, idle timing,
   automatic locking, suspend support, and lid-policy capability.
-- [ ] Reuse `power-profiles-daemon`, UPower, logind, `xset`, and the existing
-  Control Center helper only through stable machine interfaces. Keep sampled
-  battery data bounded and event-driven service state subscription-based.
-- [ ] Add a Power Settings pane for available profile selection, DPMS, lock and
+- [x] Reuse the standard Power Profiles D-Bus provider, UPower, logind, `xset`,
+  and the existing Control Center helper only through stable machine
+  interfaces. Dedicated images select `power-profiles-daemon`; the
+  existing-system installer retains any compatible `ppd-service` provider
+  already installed. Consume UPower
+  battery property-change signals; allow bounded sampling only for a documented
+  fallback with no event source, and keep every service subscription
+  event-driven.
+- [x] Add a Power Settings pane for available profile selection, DPMS, lock and
   idle timeouts, and supported suspend/lid behavior. Hide or explain unsupported
   hardware without disabling readable state.
-- [ ] Separate read-only battery state, user-session DPMS/lock changes,
+- [x] Separate read-only battery state, user-session DPMS/lock changes,
   delegated logind actions, and privileged persistent system policy.
-- [ ] Preserve the existing user `power.conf`, panel Power menu, confirmation
+- [x] Preserve the existing user `power.conf`, panel Power menu, confirmation
   dialogs, and service authorization behavior. Failed writes must not be shown
   as saved.
 
@@ -41,15 +46,15 @@ Acceptance:
 
 ### SESSION-001: Session Actions and Recovery Contract
 
-- [ ] Define one shared root-scoped session action model for lock, logout,
+- [x] Define one shared root-scoped session action model for lock, logout,
   suspend, reboot, and shutdown that reuses the existing Power menu backend.
-- [ ] Attribute action progress and failures to the initiating surface, reject
+- [x] Attribute action progress and failures to the initiating surface, reject
   overlapping session-ending requests, and retain confirmation for every
   destructive action.
-- [ ] Preserve both display-manager and `startx` startup, D-Bus session setup,
+- [x] Preserve both display-manager and `startx` startup, D-Bus session setup,
   graphical-session target ownership, autostop cleanup, tray startup order,
   and optional-component failure tolerance.
-- [ ] Document recovery paths for a failed locker, denied logind action,
+- [x] Document recovery paths for a failed locker, denied logind action,
   incomplete graphical-session startup, and deferred installed-DWM activation.
 
 Acceptance:
@@ -63,16 +68,16 @@ Acceptance:
 
 ### DEFAULTS-001: Default Application Management
 
-- [ ] Define versioned records for default browser, terminal, file manager,
+- [x] Define versioned records for default browser, terminal, file manager,
   supported MIME handlers, candidate desktop entries, and provider availability
   using XDG interfaces rather than parsing human-oriented launcher output.
-- [ ] Extend the existing `dwm-default-apps` contract for validated terminal,
+- [x] Extend the existing `dwm-default-apps` contract for validated terminal,
   file-manager, browser, and MIME mutations while preserving current hotkeys
   and safe unavailable behavior.
-- [ ] Add a Defaults Settings pane with explicit current values, candidate
+- [x] Add a Defaults Settings pane with explicit current values, candidate
   selection, per-MIME changes, reset/recovery behavior, and attributed partial
   failures.
-- [ ] Preserve user desktop files and existing MIME associations not selected
+- [x] Preserve user desktop files and existing MIME associations not selected
   for change. Never invent a default when XDG state is absent or malformed.
 
 Acceptance:
@@ -86,14 +91,14 @@ Acceptance:
 
 ### AUTOSTART-001: User-Visible XDG Autostart Controls
 
-- [ ] Define versioned records for system and user XDG autostart entries,
+- [x] Define versioned records for system and user XDG autostart entries,
   effective enabled state, origin, desktop visibility, and unsupported entries.
-- [ ] Add enable and disable actions by creating or updating a user override;
+- [x] Add enable and disable actions by creating or updating a user override;
   never edit or delete vendor desktop files.
-- [ ] Validate desktop IDs and resolved paths, reject symlink escapes, preserve
+- [x] Validate desktop IDs and resolved paths, reject symlink escapes, preserve
   unrelated keys, and back up an existing user override before a material
   rewrite.
-- [ ] Add searchable Defaults Settings controls with clear vendor/user origin,
+- [x] Add searchable Defaults Settings controls with clear vendor/user origin,
   confirmation where disabling a session component risks loss of desktop
   functionality, and reset-to-vendor behavior.
 
@@ -108,16 +113,16 @@ Acceptance:
 
 ### P4-VALIDATE: Phase 4 Validation
 
-- [ ] Run focused shell, provider, QML, helper, and nested-X11 tests for power,
+- [x] Run focused shell, provider, QML, helper, and nested-X11 tests for power,
   session, defaults, and autostart workflows.
-- [ ] Exercise available battery/profile/DPMS/lock paths and record exact absent
+- [x] Exercise available battery/profile/DPMS/lock paths and record exact absent
   hardware or services rather than claiming them verified.
 - [ ] Exercise default browser, terminal, file manager, representative MIME,
   and XDG autostart changes in an isolated user environment and a real Fedora
   session, restoring the original values afterward.
 - [ ] Qualify display-manager and `startx` startup, repeated logout/login,
   destructive-action confirmation, authorization denial, and process cleanup.
-- [ ] Compare a 30-second closed baseline with a 30-second sample after opening
+- [x] Compare a 30-second closed baseline with a 30-second sample after opening
   and closing every Phase 4 Settings workflow; the mean Quickshell CPU delta
   must be no more than 0.5 percentage points of one CPU.
 - [ ] Run the full Fedora repository validation, staged install, and installed

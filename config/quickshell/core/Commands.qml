@@ -23,6 +23,13 @@ Singleton {
         return command.concat(argv);
     }
 
+    function checkedCommand(command) {
+        // Hold helper stdout until it exits successfully, so a result record
+        // followed by a nonzero exit can never be accepted by a QML parser.
+        const script = 'output=$("$@"); status=$?; [ "$status" -eq 0 ] || exit "$status"; printf "%s\\n" "$output"';
+        return ["sh", "-c", script, "dwm-checked-command"].concat(command);
+    }
+
     function launcherHelperCommand(action, args) {
         return helperCommand("dwm-quickshell-launcher", action, args, true);
     }
@@ -41,6 +48,22 @@ Singleton {
 
     function controlCenterHelperCommand(action, args) {
         return helperCommand("dwm-quickshell-controlcenter", action, args, true);
+    }
+
+    function powerHelperCommand(action, args) {
+        return helperCommand("dwm-quickshell-controlcenter", action, args, true);
+    }
+
+    function sessionActionCommand(action) {
+        return powerHelperCommand("session-action", [action]);
+    }
+
+    function defaultsHelperCommand(action, args) {
+        return helperCommand("dwm-default-apps", action, args, true);
+    }
+
+    function autostartHelperCommand(action, args) {
+        return helperCommand("dwm-xdg-autostart", action, args, true);
     }
 
     function lockHelperCommand() {

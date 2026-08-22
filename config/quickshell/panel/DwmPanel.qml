@@ -34,6 +34,7 @@ PanelWindow {
     required property var controlsModel
     required property var bluetoothModel
     required property var controlCenterModel
+    required property var powerModel
     required property var powerMenuModel
     required property bool primaryPanel
 
@@ -190,7 +191,7 @@ PanelWindow {
 
                     PanelPill {
                         id: batteryPill
-                        visible: root.state.batteryAvailable
+                        visible: root.powerModel.batteryAvailable
                         Layout.preferredWidth: batteryRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
                         Layout.preferredHeight: Theme.compactWidgetSize
                         hovered: batteryMouse.containsMouse
@@ -201,13 +202,13 @@ PanelWindow {
                             spacing: Theme.compactSpacing
 
                             IconText {
-                                text: root.batteryIcon(root.state.batteryPercent, root.state.batteryStatus)
+                                text: root.batteryIcon(root.powerModel.batteryPercent, root.powerModel.batteryStatus)
                                 color: Theme.textStrong
                                 font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.1)
                             }
 
                             UiText {
-                                text: root.state.batteryPercent.toString() + "%"
+                                text: root.powerModel.batteryPercent.toString() + "%"
                                 color: Theme.textStrong
                                 font.pixelSize: Theme.panelFontSize
                             }
@@ -368,10 +369,10 @@ PanelWindow {
     }
 
     PanelTooltip {
-        visible: root.state.batteryAvailable && batteryMouse.containsMouse
+        visible: root.powerModel.batteryAvailable && batteryMouse.containsMouse
         anchorWindow: root
         anchorItem: batteryPill
-        label: root.state.batteryPercent.toString() + "% - " + root.state.batteryStatus
+        label: root.powerModel.batteryPercent.toString() + "% - " + root.powerModel.batteryStatus
         anchorY: Theme.panelHeight
         rightAligned: true
     }

@@ -4,7 +4,36 @@ set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 helper="$repo/scripts/dwm-settings-input"
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+watch_test_owner_pid=
+watch_test_owner_identity=
+declare -a watch_test_identities=()
+
+identity_is_live() {
+	local identity=$1 pid=${1%%:*} starttime=${1#*:} stat rest
+	local -a fields=()
+	[[ $pid =~ ^[1-9][0-9]*$ && $starttime =~ ^[0-9]+$ ]] || return 1
+	{ IFS= read -r stat <"/proc/$pid/stat"; } 2>/dev/null || return 1
+	rest=${stat##*) }
+	read -r -a fields <<<"$rest"
+	[[ ${#fields[@]} -ge 20 && ${fields[0]} != Z && ${fields[19]} == "$starttime" ]]
+}
+
+cleanup_test() {
+	local identity
+	if [[ -n $watch_test_owner_identity ]] && identity_is_live "$watch_test_owner_identity"; then
+		kill -KILL "${watch_test_owner_identity%%:*}" 2>/dev/null || true
+	fi
+	if [[ -n $watch_test_owner_pid ]]; then
+		wait "$watch_test_owner_pid" 2>/dev/null || true
+	fi
+	for identity in "${watch_test_identities[@]}"; do
+		identity_is_live "$identity" || continue
+		kill -KILL "${identity%%:*}" 2>/dev/null || true
+	done
+	rm -rf "$work"
+}
+
+trap cleanup_test EXIT
 mkdir -p "$work/bin" "$work/home/.config/dwm-titus" "$work/runtime"
 chmod 700 "$work/runtime"
 
@@ -115,6 +144,16 @@ info)
 	esac
 	;;
 monitor)
+		if [ -n "${TEST_WATCH_MONITOR_ID:-}" ]; then
+			[ "${TEST_WATCH_MONITOR_EXIT:-0}" != 1 ] || exit 0
+			stat=$(cat "/proc/$$/stat")
+			rest=${stat##*) }
+			set -- $rest
+			trap '' TERM
+			printf '%s:%s\n' "$$" "${20}" >"$TEST_WATCH_MONITOR_ID"
+			printf 'ACTION=change\n'
+			exec "$TEST_SLEEP_BIN" 60
+		fi
 		if [ "${TEST_UDEV_BLOCK:-0}" = 1 ]; then
 			trap 'exit 0' HUP INT TERM
 			while :; do sleep 0.1; done
@@ -134,6 +173,36 @@ monitor)
 esac
 EOF
 chmod +x "$work/bin/"*
+
+cat >"$work/watch-owner" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+identity_file=$1
+shift
+owner_file=$identity_file.owner
+stat=$(<"/proc/$$/stat")
+rest=${stat##*) }
+read -r -a fields <<<"$rest"
+printf '%s:%s\n' "$$" "${fields[19]}" >"$owner_file"
+"$@" "$$" "${fields[19]}" &
+child=$!
+for ((attempt = 0; attempt < 50; attempt++)); do
+	if IFS= read -r stat <"/proc/$child/stat" 2>/dev/null; then
+		rest=${stat##*) }
+		read -r -a fields <<<"$rest"
+		if [[ ${#fields[@]} -ge 20 && ${fields[0]} != Z && ${fields[19]} =~ ^[0-9]+$ ]]; then
+			printf '%s:%s\n' "$child" "${fields[19]}" >"$identity_file"
+			wait "$child"
+			exit $?
+		fi
+	fi
+	sleep 0.01
+done
+kill -KILL "$child" 2>/dev/null || true
+wait "$child" 2>/dev/null || true
+exit 1
+EOF
+chmod +x "$work/watch-owner"
 
 env_common=(
 	DISPLAY=:88
@@ -196,6 +265,77 @@ ascii_keyboard_key=$(awk -F '\t' '$1 == "device" && $4 == "keyboard" {print $2}'
 [[ $ascii_keyboard_key == "$keyboard_key" ]]
 grep -Fq $'pointer\tMouse, Wild [Name]' "$work/discover-ascii"
 grep -Fq $'keyboard\tKeyboard with spaces' "$work/discover-ascii"
+
+rm -f "$work/watch-helper.id" "$work/watch-helper.id.owner" \
+	"$work/watch-monitor.id" "$work/watch-output"
+env "${env_common[@]}" TEST_WATCH_MONITOR_ID="$work/watch-monitor.id" \
+	TEST_SLEEP_BIN="$(command -v sleep)" "$work/watch-owner" "$work/watch-helper.id" \
+	"$helper" watch >"$work/watch-output" &
+watch_test_launcher_pid=$!
+for _ in {1..50}; do
+	[[ -s $work/watch-helper.id.owner && -s $work/watch-helper.id && -s $work/watch-monitor.id ]] &&
+		grep -Fqx changed "$work/watch-output" && break
+	sleep 0.05
+done
+grep -Fqx changed "$work/watch-output"
+owner_identity=$(<"$work/watch-helper.id.owner")
+watch_test_owner_identity=$owner_identity
+watch_test_owner_pid=${owner_identity%%:*}
+[[ $watch_test_owner_pid == "$watch_test_launcher_pid" ]]
+helper_identity=$(<"$work/watch-helper.id")
+monitor_identity=$(<"$work/watch-monitor.id")
+identity_is_live "$helper_identity"
+identity_is_live "$monitor_identity"
+watch_test_identities+=("$helper_identity" "$monitor_identity")
+helper_pid=${helper_identity%%:*}
+for child_pid in $(<"/proc/$helper_pid/task/$helper_pid/children"); do
+	child_start=$(awk '{ line = $0; sub(/^.*\) /, "", line); split(line, fields, " "); print fields[20] }' \
+		"/proc/$child_pid/stat" 2>/dev/null || true)
+	[[ $child_start =~ ^[0-9]+$ ]] && watch_test_identities+=("$child_pid:$child_start")
+done
+kill -KILL "$watch_test_owner_pid"
+wait "$watch_test_owner_pid" 2>/dev/null || true
+watch_test_owner_pid=
+watch_test_owner_identity=
+for _ in {1..80}; do
+	live=0
+	for identity in "${watch_test_identities[@]}"; do
+		identity_is_live "$identity" && live=1
+	done
+	((live == 0)) && break
+	sleep 0.05
+done
+for identity in "${watch_test_identities[@]}"; do
+	if identity_is_live "$identity"; then
+		printf 'input watch process survived direct owner exit: %s\n' "$identity" >&2
+		exit 1
+	fi
+done
+watch_test_identities=()
+
+"$(command -v sleep)" 0.1 &
+dead_owner_pid=$!
+dead_owner_start=$(awk '{ line = $0; sub(/^.*\) /, "", line); split(line, fields, " "); print fields[20] }' \
+	"/proc/$dead_owner_pid/stat")
+wait "$dead_owner_pid"
+if env "${env_common[@]}" TEST_WATCH_MONITOR_ID="$work/dead-owner-monitor.id" \
+	TEST_SLEEP_BIN="$(command -v sleep)" "$helper" watch \
+	"$dead_owner_pid" "$dead_owner_start" >"$work/dead-owner.out" 2>"$work/dead-owner.err"; then
+	printf 'input watch accepted an owner that exited before helper startup\n' >&2
+	exit 1
+fi
+grep -Fq 'input watch owner is unavailable' "$work/dead-owner.err"
+[[ ! -e $work/dead-owner-monitor.id ]]
+
+test_owner_start=$(awk '{ line = $0; sub(/^.*\) /, "", line); split(line, fields, " "); print fields[20] }' \
+	"/proc/$$/stat")
+if env "${env_common[@]}" TEST_WATCH_MONITOR_ID="$work/monitor-exit.id" \
+	TEST_WATCH_MONITOR_EXIT=1 TEST_SLEEP_BIN="$(command -v sleep)" \
+	"$helper" watch "$$" "$test_owner_start" \
+	>"$work/monitor-exit.out" 2>"$work/monitor-exit.err"; then
+	printf 'input watch accepted an event monitor that exited unexpectedly\n' >&2
+	exit 1
+fi
 
 rm -f "$work/list-props.count"
 env "${env_common[@]}" TEST_DISAPPEAR_ID=14 "$helper" discover >"$work/discover-hotplug"

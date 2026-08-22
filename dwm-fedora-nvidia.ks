@@ -99,6 +99,8 @@ dex-autostart
 mate-polkit
 alsa-utils
 brightnessctl
+dbus-tools
+inotify-tools
 pulseaudio-utils
 jq
 pipewire
@@ -108,6 +110,8 @@ pavucontrol
 bluez
 blueman
 playerctl
+upower
+power-profiles-daemon
 libnotify
 light-locker
 xorg-x11-drv-libinput
@@ -224,6 +228,7 @@ if ! systemctl list-unit-files lightdm.service >/dev/null 2>&1; then
 	echo "LightDM service was not installed." >&2
 	exit 1
 fi
+systemctl enable power-profiles-daemon.service
 systemctl enable lightdm.service
 systemctl set-default graphical.target
 %end

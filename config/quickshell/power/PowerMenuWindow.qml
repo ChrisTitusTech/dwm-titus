@@ -12,6 +12,13 @@ ClickAwayPopup {
 
     readonly property int cardWidth: Theme.controlCenterWidth
     readonly property int edgeMargin: Theme.rowSpacing
+    readonly property string actionOrigin: powerMenuModel.anchorSource || "panel"
+    readonly property bool ownsConfirmation: powerMenuModel.confirming
+        && powerMenuModel.confirmationOrigin === actionOrigin
+    readonly property bool foreignConfirmation: powerMenuModel.confirming && !ownsConfirmation
+    readonly property string actionMessage: foreignConfirmation
+        ? "Another surface is awaiting confirmation for a session action"
+        : powerMenuModel.messageFor(actionOrigin)
 
     visible: panelWindow !== null && panelWindow.screen !== null && powerMenuModel.visible
     targetWindow: panelWindow
@@ -21,7 +28,7 @@ ClickAwayPopup {
         ? Theme.controlCenterX
         : (panelWindow ? Math.max(edgeMargin, panelWindow.width - cardWidth - edgeMargin) : edgeMargin)
     popupY: Theme.panelHeight
-    onDismissed: powerMenuModel.close()
+    onDismissed: powerMenuModel.close(root.actionOrigin)
 
     onVisibleChanged: {
         if (visible) {
@@ -29,7 +36,7 @@ ClickAwayPopup {
                 powerCard.forceActiveFocus();
             });
         } else {
-            root.powerMenuModel.close();
+            root.powerMenuModel.close(root.actionOrigin);
         }
     }
 
@@ -43,10 +50,10 @@ ClickAwayPopup {
 
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) {
-                if (root.powerMenuModel.confirming) {
-                    root.powerMenuModel.cancelConfirmation();
+                if (root.ownsConfirmation) {
+                    root.powerMenuModel.cancelConfirmation(root.actionOrigin);
                 } else {
-                    root.powerMenuModel.close();
+                    root.powerMenuModel.close(root.actionOrigin);
                 }
                 event.accepted = true;
             }
@@ -60,20 +67,31 @@ ClickAwayPopup {
 
             MenuHeader {
                 Layout.fillWidth: true
-                title: root.powerMenuModel.confirming && root.powerMenuModel.pendingAction
+                title: root.ownsConfirmation && root.powerMenuModel.pendingAction
                     ? root.powerMenuModel.pendingAction.label
                     : "Power"
-                showBack: root.powerMenuModel.confirming
-                titleLetterSpacing: root.powerMenuModel.confirming ? 1 : 2
-                onBackRequested: root.powerMenuModel.cancelConfirmation()
-                onCloseRequested: root.powerMenuModel.close()
+                showBack: root.ownsConfirmation
+                titleLetterSpacing: root.ownsConfirmation ? 1 : 2
+                onBackRequested: root.powerMenuModel.cancelConfirmation(root.actionOrigin)
+                onCloseRequested: root.powerMenuModel.close(root.actionOrigin)
             }
 
             PanelSeparator {}
 
+            UiText {
+                Layout.fillWidth: true
+                visible: root.actionMessage.length > 0
+                text: root.actionMessage
+                color: root.foreignConfirmation ? Theme.warning
+                    : (root.powerMenuModel.messageSeverityFor(root.actionOrigin) === "success"
+                        ? Theme.success : root.powerMenuModel.messageSeverityFor(root.actionOrigin) === "warning"
+                            ? Theme.warning : Theme.danger)
+                wrapMode: Text.WordWrap
+            }
+
             ColumnLayout {
                 Layout.fillWidth: true
-                visible: !root.powerMenuModel.confirming
+                visible: !root.ownsConfirmation
                 spacing: 2
 
                 Repeater {
@@ -86,13 +104,15 @@ ClickAwayPopup {
                         label: modelData.label
                         detail: modelData.detail
                         navigates: modelData.confirm
-                        onActivated: root.powerMenuModel.requestAction(modelData)
+                        enabled: !root.powerMenuModel.busy && modelData.available
+                            && !root.foreignConfirmation
+                        onActivated: root.powerMenuModel.requestAction(modelData, root.actionOrigin)
                     }
                 }
             }
 
             ColumnLayout {
-                visible: root.powerMenuModel.confirming
+                visible: root.ownsConfirmation
                 Layout.fillWidth: true
                 spacing: Theme.rowSpacing
 
@@ -117,13 +137,15 @@ ClickAwayPopup {
                     ShellButton {
                         Layout.fillWidth: true
                         label: "Cancel"
-                        onActivated: root.powerMenuModel.cancelConfirmation()
+                        enabled: !root.powerMenuModel.busy
+                        onActivated: root.powerMenuModel.cancelConfirmation(root.actionOrigin)
                     }
 
                     ShellButton {
                         Layout.fillWidth: true
-                        label: "Confirm"
-                        onActivated: root.powerMenuModel.confirmAction()
+                        label: root.powerMenuModel.busy ? "Requesting..." : "Confirm"
+                        enabled: !root.powerMenuModel.busy
+                        onActivated: root.powerMenuModel.confirmAction(root.actionOrigin)
                     }
                 }
             }

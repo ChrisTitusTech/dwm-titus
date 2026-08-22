@@ -19,6 +19,7 @@ Scope {
     property string message: ""
     property string pendingAction: ""
     property bool actionSucceeded: false
+    property var powerModel: null
     property var infoRows: []
     property var themeRows: []
     property var keybindRows: []
@@ -38,17 +39,13 @@ Scope {
         }
         return availableActions;
     }
-    property var powerRows: []
-    property bool powerDpmsAvailable: false
-    property bool powerDpmsEnabled: false
-    property int powerDpmsTimeout: 600
-    property bool powerLockAvailable: false
-    property bool powerLockEnabled: false
-    property bool powerLockRunning: false
-    property int powerLockTimeout: 600
-    property string powerConfigFile: ""
-
     function openPage(name, message, process) {
+        if (root.powerModel) {
+            if (name === "power" && !root.powerModel.controlCenterVisible)
+                root.powerModel.openControlCenter();
+            else if (name !== "power" && root.powerModel.controlCenterVisible)
+                root.powerModel.closeControlCenter();
+        }
         root.page = name;
         root.message = message;
         if (process && !process.running) {
@@ -62,6 +59,7 @@ Scope {
     }
 
     function close() {
+        if (root.powerModel) root.powerModel.closeControlCenter();
         root.visible = false;
         root.page = "overview";
         root.message = "";
@@ -134,7 +132,7 @@ Scope {
     }
 
     function openPower() {
-        root.openPage("power", "Loading power settings...", powerStatusProcess);
+        root.openPage("power", "", null);
     }
 
     function openInfo() {
@@ -154,7 +152,7 @@ Scope {
         } else if (root.page === "keybinds") {
             root.openKeybinds();
         } else if (root.page === "power") {
-            root.openPower();
+            if (root.powerModel) root.powerModel.refresh();
         } else if (root.page === "info") {
             root.openInfo();
         }
@@ -180,37 +178,6 @@ Scope {
         return rows;
     }
 
-    function rowValue(rows, key, fallback) {
-        for (let i = 0; i < rows.length; i++) {
-            if (rows[i].key === key) {
-                return rows[i].value;
-            }
-        }
-
-        return fallback;
-    }
-
-    function boolValue(value) {
-        return value === "1" || value === "true" || value === "yes" || value === "enabled";
-    }
-
-    function intValue(value, fallback) {
-        const parsed = parseInt(value, 10);
-        return isNaN(parsed) ? fallback : parsed;
-    }
-
-    function applyPowerRows(rows) {
-        root.powerRows = rows;
-        root.powerDpmsAvailable = root.boolValue(root.rowValue(rows, "dpms_available", "0"));
-        root.powerDpmsEnabled = root.boolValue(root.rowValue(rows, "dpms_enabled", "0"));
-        root.powerDpmsTimeout = root.intValue(root.rowValue(rows, "dpms_timeout", "600"), 600);
-        root.powerLockAvailable = root.boolValue(root.rowValue(rows, "lock_available", "0"));
-        root.powerLockEnabled = root.boolValue(root.rowValue(rows, "lock_enabled", "0"));
-        root.powerLockRunning = root.boolValue(root.rowValue(rows, "lock_running", "0"));
-        root.powerLockTimeout = root.intValue(root.rowValue(rows, "lock_timeout", "600"), 600);
-        root.powerConfigFile = root.rowValue(rows, "config_file", "");
-    }
-
     function runAction(action) {
         if (root.busy) {
             return;
@@ -233,33 +200,6 @@ Scope {
         root.message = "Applying " + name + "...";
         themeSetProcess.command = Commands.controlCenterHelperCommand("theme-set", [name]);
         themeSetProcess.running = true;
-    }
-
-    function runPowerAction(action, args) {
-        if (root.busy) {
-            return;
-        }
-
-        root.busy = true;
-        root.message = "Updating power settings...";
-        powerActionProcess.command = Commands.controlCenterHelperCommand(action, args || []);
-        powerActionProcess.running = true;
-    }
-
-    function setPowerDpms(enabled) {
-        root.runPowerAction("power-dpms", [enabled ? "on" : "off"]);
-    }
-
-    function setPowerDpmsTimeout(seconds) {
-        root.runPowerAction("power-dpms-timeout", [seconds.toString()]);
-    }
-
-    function setPowerLock(enabled) {
-        root.runPowerAction("power-lock", [enabled ? "on" : "off"]);
-    }
-
-    function setPowerLockTimeout(seconds) {
-        root.runPowerAction("power-lock-timeout", [seconds.toString()]);
     }
 
     Process {
@@ -300,21 +240,6 @@ Scope {
             onStreamFinished: {
                 root.keybindRows = root.parseRows(this.text, ["keys", "description"]);
                 root.message = root.keybindRows.length + " keybinds";
-            }
-        }
-    }
-
-    Process {
-        id: powerStatusProcess
-
-        command: Commands.controlCenterHelperCommand("power-status")
-        running: false
-
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const rows = root.parseRows(this.text, ["key", "value"]);
-                root.applyPowerRows(rows);
-                root.message = "";
             }
         }
     }
@@ -367,18 +292,4 @@ Scope {
         }
     }
 
-    Process {
-        id: powerActionProcess
-
-        command: ["sh", "-c", "exit 0"]
-        running: false
-
-        onRunningChanged: {
-            if (!running && root.busy) {
-                root.busy = false;
-                root.message = "Power settings updated";
-                root.openPower();
-            }
-        }
-    }
 }

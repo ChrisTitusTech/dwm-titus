@@ -46,6 +46,36 @@ if [[ -s $work/missing ]]; then
 	exit 1
 fi
 
+mkdir -p "$work/bin"
+cat >"$work/bin/rpm" <<'EOF'
+#!/bin/sh
+[ "$*" = '-q --whatprovides ppd-service' ] || exit 2
+[ "${DWM_TEST_PPD_PROVIDER:-0}" = 1 ]
+EOF
+chmod +x "$work/bin/rpm"
+
+installed_provider_packages=$(PATH="$work/bin:$PATH" DWM_TEST_PPD_PROVIDER=1 bash -c '
+	. "$1"
+	DISTRO_FAMILY=fedora
+	install_packages() { printf "%s\n" "$@"; }
+	dwm_install_package_profile desktop
+' _ "$repo/scripts/dwm-packages.sh")
+if printf '%s\n' "$installed_provider_packages" | grep -Fxq power-profiles-daemon; then
+	printf 'Existing Power Profiles provider would be replaced.\n' >&2
+	exit 1
+fi
+printf '%s\n' "$installed_provider_packages" | grep -Fxq upower
+printf '%s\n' "$installed_provider_packages" | grep -Fxq dbus-tools
+printf '%s\n' "$installed_provider_packages" | grep -Fxq inotify-tools
+
+missing_provider_packages=$(PATH="$work/bin:$PATH" DWM_TEST_PPD_PROVIDER=0 bash -c '
+	. "$1"
+	DISTRO_FAMILY=fedora
+	install_packages() { printf "%s\n" "$@"; }
+	dwm_install_package_profile desktop
+' _ "$repo/scripts/dwm-packages.sh")
+printf '%s\n' "$missing_provider_packages" | grep -Fxq power-profiles-daemon
+
 "$repo/install.sh" --dry-run --non-interactive --profile core >/dev/null
 
 printf 'Fedora required and desktop package map: PASS (%s packages)\n' \

@@ -8,6 +8,29 @@ versions from `config.mk`.
 
 ### Added
 
+- Add one shared session-action model for Lock, Log Out, Suspend, Reboot, and
+  Shutdown across the panel and Settings. Fixed helper actions require exact
+  accepted records, preserve destructive confirmations, attribute failures to
+  the initiating surface, reject overlap, and exit only the verified current
+  DWM through its cleanup-aware `SIGUSR2` endpoint.
+
+- Add a versioned Defaults provider and Settings pane for browser, terminal,
+  file-manager, and selected MIME handlers. Candidate validation, scoped
+  transactional writes, exact rollback, hash-guarded recovery, and live
+  inotify updates preserve unrelated XDG and hotkey state.
+
+- Add versioned XDG autostart inventory and next-login controls with effective
+  state, origin, visibility, risk, and revision records. User overrides are
+  backed up and atomically verified; vendor files remain immutable and
+  session-critical changes require confirmation.
+
+- Add a shared, versioned power provider and Settings pane for UPower battery
+  and external-power state, Power Profiles selection, X11 DPMS, automatic
+  locking, logind suspend capability, and lid availability. One parent-bound
+  D-Bus monitor refreshes both panel and Settings state without idle polling.
+  Dedicated images select `power-profiles-daemon`; existing Fedora installs
+  retain any compatible `ppd-service` provider already installed.
+
 - Add a native-first PipeWire audio model and Settings pane for output and input
   selection, volume, mute, microphone visibility, and per-application streams.
   A versioned bounded snapshot protocol supplies inventories, while one
@@ -33,6 +56,11 @@ versions from `config.mk`.
   recommended/full desktop and both Fedora image variants.
 
 ### Changed
+
+- Make the Bash-based status publisher single-instance per user and X display
+  using exact resolved command-path matching instead of its interpreter process
+  name. Track and reap subscription children so repeated session startup cannot
+  leave duplicate publishers or orphaned watcher pipelines.
 
 - Complete Phase 3 connectivity, audio, and large-surface integration and make
   Power, Session, and Defaults the active Phase 4 planning boundary. Remaining
@@ -68,6 +96,17 @@ versions from `config.mk`.
   unsupported installer cannot perform package or system mutations.
 
 ### Fixed
+
+- Keep the managed Quickshell recovery scoped to the exact configuration and
+  display, validate fixed PID/start-time cohorts before signals, and bound
+  graceful and forced recovery so a stale shell cannot suppress the panel or
+  terminate another Quickshell instance.
+
+- Apply DPMS and automatic-lock changes before atomically replacing the user
+  `power.conf`, reject out-of-range timeouts, and restore the prior live state
+  when apply or persistence fails. Verify the restoration and report a distinct
+  rollback failure when the exact captured live state cannot be recovered, so
+  an unsuccessful change is never shown as saved.
 
 - Restart unexpectedly exited parent-bound NetworkManager and media
   subscriptions after a bounded delay, preserving one live subscription per

@@ -509,8 +509,14 @@ grep -Fq 'onFocusRequested: windowId => root.state.focusWindow(windowId)' "$repo
 grep -Fq 'source: Icons.launcherIcon(root.app.appClass)' "$repo/config/quickshell/panel/RunningAppItem.qml"
 grep -Fq 'root.state.activeWindowTitle' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'root.state.statusSegments' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'root.state.batteryPercent.toString() + "%"' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'visible: root.state.batteryAvailable' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'required property var powerModel' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'root.powerModel.batteryPercent.toString() + "%"' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'visible: root.powerModel.batteryAvailable' "$repo/config/quickshell/panel/DwmPanel.qml"
+[ "$(grep -Fc 'PowerModel {' "$repo/config/quickshell/shell.qml")" -eq 1 ]
+grep -Fq 'powerModel: powerModel' "$repo/config/quickshell/shell.qml"
+if grep -Fq 'visible: root.state.batteryAvailable' "$repo/config/quickshell/panel/DwmPanel.qml"; then
+	exit 1
+fi
 grep -Fq 'root.batteryAvailable = true;' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'trimmed.indexOf("BAT ") === 0' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'color: Theme.barBackground' "$repo/config/quickshell/panel/DwmPanel.qml"

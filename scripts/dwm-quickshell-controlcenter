@@ -19,6 +19,61 @@ config_file() {
 }
 
 power_config_file=$dwm_config_dir/power.conf
+power_profiles_service=org.freedesktop.UPower.PowerProfiles
+power_profiles_path=/org/freedesktop/UPower/PowerProfiles
+power_profiles_interface=org.freedesktop.UPower.PowerProfiles
+
+run_bounded() {
+	duration=$1
+	shift
+	status=0
+	timeout --signal=TERM --kill-after=2 "$duration" "$@" || status=$?
+	if [ "$status" -eq 124 ]; then
+		printf 'operation timed out after %s seconds\n' "$duration" >&2
+	fi
+	return "$status"
+}
+
+run_parent_bound() {
+	parent_pid=$PPID
+	parent_record=$(sed 's/^.*) //' "/proc/$parent_pid/stat" 2>/dev/null |
+		awk '{ print $1 " " $20 }') || return 1
+	parent_state=${parent_record%% *}
+	parent_identity=${parent_record#* }
+	[ -n "$parent_identity" ] || return 1
+	case $parent_state in
+	Z) return 1 ;;
+	esac
+	"$@" &
+	child_pid=$!
+
+	cleanup_parent_bound() {
+		kill -TERM "$child_pid" 2>/dev/null || :
+		kill -TERM "${watchdog_pid:-}" 2>/dev/null || :
+	}
+	trap cleanup_parent_bound EXIT HUP INT TERM
+	(
+		while :; do
+			current_record=$(sed 's/^.*) //' "/proc/$parent_pid/stat" 2>/dev/null |
+				awk '{ print $1 " " $20 }' || true)
+			current_state=${current_record%% *}
+			current_identity=${current_record#* }
+			[ "$current_state" != Z ] && [ "$current_identity" = "$parent_identity" ] || {
+				kill -TERM "$child_pid" 2>/dev/null || :
+				exit 0
+			}
+			sleep 0.25
+		done
+	) &
+	watchdog_pid=$!
+
+	status=0
+	wait "$child_pid" || status=$?
+	kill -TERM "$watchdog_pid" 2>/dev/null || :
+	wait "$watchdog_pid" 2>/dev/null || :
+	trap - EXIT HUP INT TERM
+	return "$status"
+}
 
 is_uint() {
 	case ${1:-} in
@@ -46,6 +101,13 @@ normalize_seconds() {
 	fi
 
 	printf '%s\n' "$power_value"
+}
+
+valid_power_seconds() {
+	power_seconds=${1:-}
+	is_uint "$power_seconds" || return 1
+	[ "${#power_seconds}" -le 5 ] || return 1
+	[ "$power_seconds" -ge 60 ] && [ "$power_seconds" -le 86400 ]
 }
 
 power_bool() {
@@ -91,19 +153,112 @@ read_power_config() {
 	done <"$power_config_file"
 }
 
+prepare_power_config_write() {
+	if ! mkdir -p "$dwm_config_dir"; then
+		printf 'power configuration directory is not writable: %s\n' \
+			"$dwm_config_dir" >&2
+		return 1
+	fi
+	if [ -L "$power_config_file" ]; then
+		printf 'refusing to replace symlinked power configuration: %s\n' \
+			"$power_config_file" >&2
+		return 1
+	fi
+	power_probe=$(umask 077 && mktemp "$dwm_config_dir/.power.conf.probe.XXXXXX") || {
+		printf 'power configuration directory is not writable: %s\n' \
+			"$dwm_config_dir" >&2
+		return 1
+	}
+	rm -f "$power_probe"
+}
+
 write_power_config() {
-	mkdir -p "$dwm_config_dir"
-	power_tmp=$(mktemp "${TMPDIR:-/tmp}/dwm-power.XXXXXX")
-	{
-		printf '%s\n' '# dwm-titus power settings'
-		printf 'dpms_enabled=%s\n' "$power_dpms_enabled"
-		printf 'dpms_timeout=%s\n' "$power_dpms_timeout"
-		printf 'lock_enabled=%s\n' "$power_lock_enabled"
-		printf 'lock_managed=%s\n' "$power_lock_managed"
-		printf 'lock_timeout=%s\n' "$power_lock_timeout"
-		printf 'lock_after=%s\n' "$power_lock_after"
-	} >"$power_tmp"
-	mv "$power_tmp" "$power_config_file"
+	if ! mkdir -p "$dwm_config_dir"; then
+		printf 'power configuration directory is not writable: %s\n' \
+			"$dwm_config_dir" >&2
+		return 1
+	fi
+	if [ -L "$power_config_file" ]; then
+		printf 'refusing to replace symlinked power configuration: %s\n' \
+			"$power_config_file" >&2
+		return 1
+	fi
+	power_tmp=$(umask 077 && mktemp "$dwm_config_dir/.power.conf.XXXXXX") || {
+		printf 'could not create a temporary power configuration file in %s\n' \
+			"$dwm_config_dir" >&2
+		return 1
+	}
+	[ -n "$power_tmp" ] || return 1
+	trap 'rm -f "${power_tmp:-}"' EXIT HUP INT TERM
+	if [ -r "$power_config_file" ]; then
+		if ! awk \
+			-v dpms_enabled="$power_dpms_enabled" \
+			-v dpms_timeout="$power_dpms_timeout" \
+			-v lock_enabled="$power_lock_enabled" \
+			-v lock_managed="$power_lock_managed" \
+			-v lock_timeout="$power_lock_timeout" \
+			-v lock_after="$power_lock_after" '
+			function configured_value(key) {
+				if (key == "dpms_enabled") return dpms_enabled
+				if (key == "dpms_timeout") return dpms_timeout
+				if (key == "lock_enabled") return lock_enabled
+				if (key == "lock_managed") return lock_managed
+				if (key == "lock_timeout") return lock_timeout
+				return lock_after
+			}
+			function managed_key(key) {
+				return key == "dpms_enabled" || key == "dpms_timeout" ||
+					key == "lock_enabled" || key == "lock_managed" ||
+					key == "lock_timeout" || key == "lock_after"
+			}
+			{
+				line = $0
+				key = line
+				sub(/=.*/, "", key)
+				gsub(/[[:space:]]/, "", key)
+				if (managed_key(key)) {
+					if (!seen[key]) print key "=" configured_value(key)
+					seen[key] = 1
+					next
+				}
+				print line
+			}
+			END {
+				keys[1] = "dpms_enabled"
+				keys[2] = "dpms_timeout"
+				keys[3] = "lock_enabled"
+				keys[4] = "lock_managed"
+				keys[5] = "lock_timeout"
+				keys[6] = "lock_after"
+				for (i = 1; i <= 6; i++)
+					if (!seen[keys[i]]) print keys[i] "=" configured_value(keys[i])
+			}
+		' "$power_config_file" >"$power_tmp"; then
+			rm -f "$power_tmp"
+			trap - EXIT HUP INT TERM
+			return 1
+		fi
+	else
+		if ! {
+			printf '%s\n' '# dwm-titus power settings'
+			printf 'dpms_enabled=%s\n' "$power_dpms_enabled"
+			printf 'dpms_timeout=%s\n' "$power_dpms_timeout"
+			printf 'lock_enabled=%s\n' "$power_lock_enabled"
+			printf 'lock_managed=%s\n' "$power_lock_managed"
+			printf 'lock_timeout=%s\n' "$power_lock_timeout"
+			printf 'lock_after=%s\n' "$power_lock_after"
+		} >"$power_tmp"; then
+			rm -f "$power_tmp"
+			trap - EXIT HUP INT TERM
+			return 1
+		fi
+	fi
+	if ! chmod 600 "$power_tmp" || ! mv "$power_tmp" "$power_config_file"; then
+		rm -f "$power_tmp"
+		trap - EXIT HUP INT TERM
+		return 1
+	fi
+	trap - EXIT HUP INT TERM
 	power_config_managed=1
 }
 
@@ -116,6 +271,16 @@ start_configured_light_locker() {
 	fi
 
 	light-locker >/dev/null 2>&1 &
+	command -v pgrep >/dev/null 2>&1 || return 0
+	power_attempt=0
+	while [ "$power_attempt" -lt 20 ]; do
+		if pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
+			return 0
+		fi
+		power_attempt=$((power_attempt + 1))
+		sleep 0.05
+	done
+	return 1
 }
 
 stop_configured_light_locker() {
@@ -123,7 +288,16 @@ stop_configured_light_locker() {
 	command -v pkill >/dev/null 2>&1 || return 0
 
 	if pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
-		pkill -u "$(id -u)" -x light-locker
+		pkill -u "$(id -u)" -x light-locker || return 1
+		power_attempt=0
+		while [ "$power_attempt" -lt 40 ]; do
+			if ! pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
+				return 0
+			fi
+			power_attempt=$((power_attempt + 1))
+			sleep 0.05
+		done
+		return 1
 	fi
 }
 
@@ -131,10 +305,10 @@ power_apply_dpms_settings() {
 	command -v xset >/dev/null 2>&1 || return 1
 
 	if [ "$power_dpms_enabled" = 1 ]; then
-		xset +dpms
-		xset dpms "$power_dpms_timeout" "$power_dpms_timeout" "$power_dpms_timeout"
+		run_bounded 15 xset +dpms &&
+			run_bounded 15 xset dpms "$power_dpms_timeout" "$power_dpms_timeout" "$power_dpms_timeout"
 	else
-		xset -dpms
+		run_bounded 15 xset -dpms
 	fi
 }
 
@@ -143,10 +317,10 @@ power_apply_lock_settings() {
 
 	if command -v xset >/dev/null 2>&1; then
 		if [ "$power_lock_enabled" = 1 ]; then
-			xset s "$power_lock_timeout"
+			run_bounded 15 xset s "$power_lock_timeout" || power_status=1
 		else
-			xset s off
-			xset s noblank
+			run_bounded 15 xset s off || power_status=1
+			run_bounded 15 xset s noblank || power_status=1
 		fi
 	else
 		power_status=1
@@ -155,16 +329,16 @@ power_apply_lock_settings() {
 	if [ "$power_lock_enabled" = 1 ]; then
 		if command -v light-locker >/dev/null 2>&1 &&
 			command -v gsettings >/dev/null 2>&1 &&
-			gsettings set apps.light-locker lock-after-screensaver "$power_lock_after" &&
-			gsettings set apps.light-locker lock-on-suspend true; then
-			start_configured_light_locker
+			run_bounded 15 gsettings set apps.light-locker lock-after-screensaver "$power_lock_after" &&
+			run_bounded 15 gsettings set apps.light-locker lock-on-suspend true; then
+			start_configured_light_locker || power_status=1
 		else
 			power_status=1
 		fi
 	elif { [ "${power_config_managed:-0}" = 1 ] || [ "${power_lock_managed:-0}" = 1 ]; } &&
 		command -v gsettings >/dev/null 2>&1; then
-		if ! gsettings set apps.light-locker lock-after-screensaver 0 ||
-			! gsettings set apps.light-locker lock-on-suspend false; then
+		if ! run_bounded 15 gsettings set apps.light-locker lock-after-screensaver 0 ||
+			! run_bounded 15 gsettings set apps.light-locker lock-on-suspend false; then
 			power_status=1
 		fi
 	fi
@@ -189,43 +363,62 @@ power_status() {
 	read_power_config
 
 	power_xset_available=0
+	power_dpms_available=0
 	power_live_dpms_enabled=$power_dpms_enabled
 	power_live_dpms_timeout=$power_dpms_timeout
 	power_live_lock_timeout=$power_lock_timeout
 
-	if command -v xset >/dev/null 2>&1 && power_xset_out=$(xset q 2>/dev/null); then
+	if command -v xset >/dev/null 2>&1 && power_xset_out=$(LC_ALL=C run_bounded 3 xset q 2>/dev/null); then
 		power_xset_available=1
 
 		power_value=$(printf '%s\n' "$power_xset_out" |
 			awk '/DPMS is/ { print $3; exit }')
 		case $power_value in
-		Enabled | enabled) power_live_dpms_enabled=1 ;;
-		Disabled | disabled) power_live_dpms_enabled=0 ;;
+		Enabled | enabled)
+			power_live_dpms_enabled=1
+			power_dpms_state_valid=1
+			;;
+		Disabled | disabled)
+			power_live_dpms_enabled=0
+			power_dpms_state_valid=1
+			;;
+		*) power_dpms_state_valid=0 ;;
 		esac
 
 		power_value=$(printf '%s\n' "$power_xset_out" |
 			awk '/Standby:/ { for (i = 1; i <= NF; i++) if ($i == "Off:") { print $(i + 1); exit } }')
 		if is_uint "$power_value"; then
 			power_live_dpms_timeout=$power_value
+			power_dpms_timeout_valid=1
+		else
+			power_dpms_timeout_valid=0
+		fi
+		if [ "$power_dpms_state_valid" = 1 ] && [ "$power_dpms_timeout_valid" = 1 ]; then
+			power_dpms_available=1
 		fi
 
 		power_value=$(printf '%s\n' "$power_xset_out" |
 			awk '/timeout:/ { for (i = 1; i <= NF; i++) if ($i == "timeout:") { print $(i + 1); exit } }')
-		if is_uint "$power_value" && [ "$power_value" -gt 0 ]; then
+		if is_uint "$power_value"; then
 			power_live_lock_timeout=$power_value
 		fi
 	fi
 
 	power_lock_available=0
 	power_live_lock_after=$power_lock_after
-	if command -v light-locker >/dev/null 2>&1 &&
+	power_live_lock_on_suspend=unknown
+	if [ "$power_xset_available" = 1 ] && command -v light-locker >/dev/null 2>&1 &&
 		command -v gsettings >/dev/null 2>&1 &&
-		power_gsettings_value=$(gsettings get apps.light-locker lock-after-screensaver 2>/dev/null); then
+		power_gsettings_value=$(run_bounded 3 gsettings get apps.light-locker lock-after-screensaver 2>/dev/null) &&
+		power_gsettings_suspend=$(run_bounded 3 gsettings get apps.light-locker lock-on-suspend 2>/dev/null); then
 		power_lock_available=1
 		power_value=$(printf '%s\n' "$power_gsettings_value" | awk '{ print $NF }')
 		if is_uint "$power_value"; then
 			power_live_lock_after=$power_value
 		fi
+		case $power_gsettings_suspend in
+		true | false) power_live_lock_on_suspend=$power_gsettings_suspend ;;
+		esac
 	fi
 
 	power_live_lock_enabled=$power_lock_enabled
@@ -243,15 +436,546 @@ power_status() {
 		power_lock_running=1
 	fi
 
-	printf 'dpms_available\t%s\n' "$power_xset_available"
+	printf 'xset_available\t%s\n' "$power_xset_available"
+	printf 'dpms_available\t%s\n' "$power_dpms_available"
 	printf 'dpms_enabled\t%s\n' "$power_live_dpms_enabled"
 	printf 'dpms_timeout\t%s\n' "$power_live_dpms_timeout"
 	printf 'lock_available\t%s\n' "$power_lock_available"
 	printf 'lock_enabled\t%s\n' "$power_live_lock_enabled"
 	printf 'lock_timeout\t%s\n' "$power_live_lock_timeout"
 	printf 'lock_after\t%s\n' "$power_live_lock_after"
+	printf 'lock_on_suspend\t%s\n' "$power_live_lock_on_suspend"
 	printf 'lock_running\t%s\n' "$power_lock_running"
 	printf 'config_file\t%s\n' "$power_config_file"
+}
+
+power_row_value() {
+	key=$1
+	printf '%s\n' "$power_legacy_status" |
+		awk -F '\t' -v key="$key" '$1 == key { print $2; exit }'
+}
+
+power_status_value() {
+	status_text=$1
+	status_key=$2
+	printf '%s\n' "$status_text" |
+		awk -F '\t' -v key="$status_key" '$1 == key { print $2; exit }'
+}
+
+capture_power_live_state() {
+	power_before_status=$(power_status)
+	power_before_xset_available=$(power_status_value "$power_before_status" xset_available)
+	power_before_dpms_available=$(power_status_value "$power_before_status" dpms_available)
+	power_before_dpms_enabled=$(power_status_value "$power_before_status" dpms_enabled)
+	power_before_dpms_timeout=$(power_status_value "$power_before_status" dpms_timeout)
+	power_before_lock_available=$(power_status_value "$power_before_status" lock_available)
+	power_before_lock_timeout=$(power_status_value "$power_before_status" lock_timeout)
+	power_before_lock_after=$(power_status_value "$power_before_status" lock_after)
+	power_before_lock_on_suspend=$(power_status_value "$power_before_status" lock_on_suspend)
+	power_before_lock_running=$(power_status_value "$power_before_status" lock_running)
+}
+
+restore_power_live_dpms() {
+	[ "$power_before_dpms_available" = 1 ] || return 0
+	restore_status=0
+	if [ "$power_before_dpms_enabled" = 1 ]; then
+		run_bounded 15 xset +dpms >/dev/null 2>&1 || restore_status=1
+		run_bounded 15 xset dpms "$power_before_dpms_timeout" \
+			"$power_before_dpms_timeout" "$power_before_dpms_timeout" >/dev/null 2>&1 || restore_status=1
+	else
+		run_bounded 15 xset dpms "$power_before_dpms_timeout" \
+			"$power_before_dpms_timeout" "$power_before_dpms_timeout" >/dev/null 2>&1 || restore_status=1
+		run_bounded 15 xset -dpms >/dev/null 2>&1 || restore_status=1
+	fi
+	verify_captured_power_live_dpms || restore_status=1
+	return "$restore_status"
+}
+
+restore_power_live_lock() {
+	restore_status=0
+	if [ "$power_before_xset_available" = 1 ]; then
+		if [ "$power_before_lock_timeout" -gt 0 ]; then
+			run_bounded 15 xset s "$power_before_lock_timeout" >/dev/null 2>&1 || restore_status=1
+		else
+			run_bounded 15 xset s off >/dev/null 2>&1 || restore_status=1
+			run_bounded 15 xset s noblank >/dev/null 2>&1 || restore_status=1
+		fi
+	fi
+	if [ "$power_before_lock_available" = 1 ]; then
+		run_bounded 15 gsettings set apps.light-locker lock-after-screensaver \
+			"$power_before_lock_after" >/dev/null 2>&1 || restore_status=1
+		case $power_before_lock_on_suspend in
+		true | false)
+			run_bounded 15 gsettings set apps.light-locker lock-on-suspend \
+				"$power_before_lock_on_suspend" >/dev/null 2>&1 || restore_status=1
+			;;
+		esac
+	fi
+	if [ "$power_before_lock_running" = 1 ]; then
+		start_configured_light_locker >/dev/null 2>&1 || restore_status=1
+	else
+		stop_configured_light_locker >/dev/null 2>&1 || restore_status=1
+	fi
+	verify_captured_power_live_lock || restore_status=1
+	return "$restore_status"
+}
+
+verify_captured_power_live_dpms() {
+	restored_status=$(power_status) || return 1
+	[ "$(power_status_value "$restored_status" dpms_available)" = "$power_before_dpms_available" ] || return 1
+	[ "$(power_status_value "$restored_status" dpms_enabled)" = "$power_before_dpms_enabled" ] || return 1
+	[ "$(power_status_value "$restored_status" dpms_timeout)" = "$power_before_dpms_timeout" ] || return 1
+}
+
+verify_captured_power_live_lock() {
+	restored_status=$(power_status) || return 1
+	[ "$(power_status_value "$restored_status" xset_available)" = "$power_before_xset_available" ] || return 1
+	if [ "$power_before_xset_available" = 1 ]; then
+		[ "$(power_status_value "$restored_status" lock_timeout)" = "$power_before_lock_timeout" ] || return 1
+	fi
+	[ "$(power_status_value "$restored_status" lock_available)" = "$power_before_lock_available" ] || return 1
+	if [ "$power_before_lock_available" = 1 ]; then
+		[ "$(power_status_value "$restored_status" lock_after)" = "$power_before_lock_after" ] || return 1
+		case $power_before_lock_on_suspend in
+		true | false)
+			[ "$(power_status_value "$restored_status" lock_on_suspend)" = "$power_before_lock_on_suspend" ] || return 1
+			;;
+		esac
+	fi
+	[ "$(power_status_value "$restored_status" lock_running)" = "$power_before_lock_running" ] || return 1
+}
+
+verify_power_live_dpms() {
+	expected_enabled=$1
+	expected_timeout=$2
+	verified_status=$(power_status)
+	[ "$(power_status_value "$verified_status" dpms_available)" = 1 ] || return 1
+	[ "$(power_status_value "$verified_status" dpms_enabled)" = "$expected_enabled" ] || return 1
+	if [ "$expected_enabled" = 1 ]; then
+		[ "$(power_status_value "$verified_status" dpms_timeout)" = "$expected_timeout" ] || return 1
+	fi
+}
+
+verify_power_live_lock() {
+	expected_enabled=$1
+	expected_timeout=$2
+	expected_after=$3
+	verified_status=$(power_status)
+	[ "$(power_status_value "$verified_status" xset_available)" = 1 ] || return 1
+	[ "$(power_status_value "$verified_status" lock_available)" = 1 ] || return 1
+	[ "$(power_status_value "$verified_status" lock_enabled)" = "$expected_enabled" ] || return 1
+	if [ "$expected_enabled" = 1 ]; then
+		[ "$(power_status_value "$verified_status" lock_timeout)" = "$expected_timeout" ] || return 1
+		[ "$(power_status_value "$verified_status" lock_after)" = "$expected_after" ] || return 1
+		[ "$(power_status_value "$verified_status" lock_on_suspend)" = true ] || return 1
+		[ "$(power_status_value "$verified_status" lock_running)" = 1 ] || return 1
+	else
+		[ "$(power_status_value "$verified_status" lock_timeout)" = 0 ] || return 1
+		[ "$(power_status_value "$verified_status" lock_after)" = 0 ] || return 1
+		[ "$(power_status_value "$verified_status" lock_on_suspend)" = false ] || return 1
+		[ "$(power_status_value "$verified_status" lock_running)" = 0 ] || return 1
+	fi
+}
+
+power_bus_property() {
+	service=$1
+	path=$2
+	interface=$3
+	property=$4
+	run_bounded 3 busctl --system --json=short get-property \
+		"$service" "$path" "$interface" "$property" 2>/dev/null |
+		jq -er 'if has("data") then (.data | tostring) else error("missing D-Bus data") end'
+}
+
+power_nonnegative_number() {
+	printf '%s\n' "${1:-}" | awk '
+		/^[0-9]+([.][0-9]*)?([eE][+-]?[0-9]+)?$/ ||
+		/^[.][0-9]+([eE][+-]?[0-9]+)?$/ {
+			value = $1 + 0
+			exit (value < 0 || value > 1.7976931348623157e308)
+		}
+		{ exit 1 }
+	'
+}
+
+power_percentage() {
+	power_percentage_value=${1:-}
+	power_nonnegative_number "$power_percentage_value" || return 1
+	awk -v value="$power_percentage_value" 'BEGIN { exit (value + 0 > 100) }'
+}
+
+power_battery_state() {
+	case ${1:-0} in
+	1) printf 'charging\n' ;;
+	2) printf 'discharging\n' ;;
+	3) printf 'empty\n' ;;
+	4) printf 'full\n' ;;
+	5) printf 'pending-charge\n' ;;
+	6) printf 'pending-discharge\n' ;;
+	*) printf 'unknown\n' ;;
+	esac
+}
+
+power_snapshot_upower() {
+	if ! command -v busctl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+		printf 'power-external\tunknown\tUPower D-Bus tools are unavailable\n'
+		printf 'power-battery\tunavailable\tunknown\t0\t0\t0\t0\tBattery state is unavailable\n'
+		printf 'power-lid\tunavailable\tunknown\tread-only\tLid state is unavailable\n'
+		return
+	fi
+
+	upower_interface=org.freedesktop.UPower
+	upower_path=/org/freedesktop/UPower
+	upower_device_interface=org.freedesktop.UPower.Device
+	upower_display_path=/org/freedesktop/UPower/devices/DisplayDevice
+
+	if ! power_on_battery=$(power_bus_property org.freedesktop.UPower "$upower_path" \
+		"$upower_interface" OnBattery); then
+		printf 'power-external\tunknown\tUPower is unavailable\n'
+		printf 'power-battery\tunavailable\tunknown\t0\t0\t0\t0\tUPower is unavailable\n'
+		printf 'power-lid\tunavailable\tunknown\tread-only\tUPower is unavailable\n'
+		return
+	fi
+	case $power_on_battery in
+	true) printf 'power-external\toff\tSystem is running on battery power\n' ;;
+	false) printf 'power-external\ton\tExternal power is available\n' ;;
+	*) printf 'power-external\tunknown\tUPower returned invalid external-power state\n' ;;
+	esac
+
+	if ! power_present=$(power_bus_property org.freedesktop.UPower "$upower_display_path" \
+		"$upower_device_interface" IsPresent); then
+		printf 'power-battery\tunavailable\tunknown\t0\t0\t0\t0\tUPower battery inventory is unavailable\n'
+	elif [ "$power_present" = true ]; then
+		if power_state=$(power_bus_property org.freedesktop.UPower "$upower_display_path" \
+			"$upower_device_interface" State) &&
+			power_percent=$(power_bus_property org.freedesktop.UPower "$upower_display_path" \
+				"$upower_device_interface" Percentage) &&
+			power_empty=$(power_bus_property org.freedesktop.UPower "$upower_display_path" \
+				"$upower_device_interface" TimeToEmpty) &&
+			power_full=$(power_bus_property org.freedesktop.UPower "$upower_display_path" \
+				"$upower_device_interface" TimeToFull) &&
+			power_rate=$(power_bus_property org.freedesktop.UPower "$upower_display_path" \
+				"$upower_device_interface" EnergyRate) &&
+			is_uint "$power_state" && [ "$power_state" -le 6 ] &&
+			power_percentage "$power_percent" &&
+			is_uint "$power_empty" && is_uint "$power_full" &&
+			power_nonnegative_number "$power_rate"; then
+			power_percent=$(printf '%s\n' "$power_percent" |
+				awk '{ value = int($1 + 0.5); if (value < 0) value = 0; if (value > 100) value = 100; print value }')
+			printf 'power-battery\tavailable\t%s\t%s\t%s\t%s\t%s\tComposite UPower display battery\n' \
+				"$(power_battery_state "$power_state")" "$power_percent" "$power_empty" "$power_full" "$power_rate"
+		else
+			printf 'power-battery\trestricted\tunknown\t0\t0\t0\t0\tUPower battery state is incomplete\n'
+		fi
+	else
+		printf 'power-battery\tunavailable\tunknown\t0\t0\t0\t0\tNo system battery is present\n'
+	fi
+
+	if ! power_lid_present=$(power_bus_property org.freedesktop.UPower "$upower_path" \
+		"$upower_interface" LidIsPresent); then
+		printf 'power-lid\tunavailable\tunknown\tread-only\tUPower lid state is unavailable\n'
+	elif [ "$power_lid_present" = true ]; then
+		if ! power_lid_closed=$(power_bus_property org.freedesktop.UPower "$upower_path" \
+			"$upower_interface" LidIsClosed); then
+			printf 'power-lid\trestricted\tunknown\tread-only\tUPower lid state is incomplete\n'
+		elif [ "$power_lid_closed" = true ]; then
+			power_lid_state=closed
+			printf 'power-lid\tavailable\t%s\tdelegated\tLid policy is owned by systemd-logind\n' "$power_lid_state"
+		else
+			power_lid_state=open
+			printf 'power-lid\tavailable\t%s\tdelegated\tLid policy is owned by systemd-logind\n' "$power_lid_state"
+		fi
+	else
+		printf 'power-lid\tunavailable\tunknown\tread-only\tNo lid hardware is present\n'
+	fi
+}
+
+power_lid_action() {
+	case ${1:-} in
+	"") printf 'default\n' ;;
+	ignore | poweroff | reboot | halt | kexec | suspend | hibernate | hybrid-sleep | suspend-then-hibernate | lock)
+		printf '%s\n' "$1"
+		;;
+	*) printf 'unknown\n' ;;
+	esac
+}
+
+power_snapshot_lid_policy() {
+	if ! command -v busctl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+		printf 'power-lid-policy\tunavailable\tunknown\tunknown\tunknown\tread-only\tlogind D-Bus tools are unavailable\n'
+		return
+	fi
+
+	logind_service=org.freedesktop.login1
+	logind_path=/org/freedesktop/login1
+	logind_interface=org.freedesktop.login1.Manager
+	if ! lid_action=$(power_bus_property "$logind_service" "$logind_path" \
+		"$logind_interface" HandleLidSwitch) ||
+		! lid_external=$(power_bus_property "$logind_service" "$logind_path" \
+			"$logind_interface" HandleLidSwitchExternalPower) ||
+		! lid_docked=$(power_bus_property "$logind_service" "$logind_path" \
+			"$logind_interface" HandleLidSwitchDocked); then
+		printf 'power-lid-policy\tunavailable\tunknown\tunknown\tunknown\tread-only\tlogind lid policy is unavailable\n'
+		return
+	fi
+
+	printf 'power-lid-policy\tavailable\t%s\t%s\t%s\tread-only\tPersistent lid policy is owned by systemd-logind\n' \
+		"$(power_lid_action "$lid_action")" \
+		"$(power_lid_action "$lid_external")" \
+		"$(power_lid_action "$lid_docked")"
+}
+
+power_snapshot_profiles() {
+	if ! command -v busctl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+		printf 'power-profile-support\tunavailable\tread-only\tPower profile D-Bus tools are unavailable\n'
+		return
+	fi
+
+	if ! power_active_profile=$(power_bus_property "$power_profiles_service" "$power_profiles_path" \
+		"$power_profiles_interface" ActiveProfile); then
+		printf 'power-profile-support\tunavailable\tread-only\tPower Profiles service is unavailable\n'
+		return
+	fi
+	if ! power_profiles_json=$(run_bounded 3 busctl --system --json=short get-property \
+		"$power_profiles_service" "$power_profiles_path" "$power_profiles_interface" Profiles 2>/dev/null); then
+		printf 'power-profile-support\trestricted\tread-only\tPower profile inventory is unavailable\n'
+		return
+	fi
+	if ! power_profiles=$(printf '%s\n' "$power_profiles_json" |
+		jq -er '.data[]? | .Profile.data |
+			select(type == "string" and test("^[a-z0-9][a-z0-9-]{0,31}$"))' 2>/dev/null); then
+		printf 'power-profile-support\trestricted\tread-only\tPower profile inventory is malformed\n'
+		return
+	fi
+
+	printf 'power-profile-support\tavailable\tdelegated\tPower Profiles service accepts user-authorized changes\n'
+	printf '%s\n' "$power_profiles" | while IFS= read -r profile; do
+		case $profile in
+		power-saver | balanced | performance)
+			if [ "$profile" = "$power_active_profile" ]; then
+				profile_state=active
+			else
+				profile_state=available
+			fi
+			printf 'power-profile\t%s\t%s\n' "$profile" "$profile_state"
+			;;
+		esac
+	done
+}
+
+power_snapshot_suspend() {
+	if ! command -v busctl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+		printf 'power-suspend\tunavailable\tread-only\tlogind D-Bus tooling is unavailable\n'
+		return
+	fi
+	if ! power_suspend=$(run_bounded 3 busctl --system --json=short call org.freedesktop.login1 \
+		/org/freedesktop/login1 org.freedesktop.login1.Manager CanSuspend 2>/dev/null |
+		jq -er '.data[0]'); then
+		printf 'power-suspend\tunavailable\tread-only\tlogind suspend capability is unavailable\n'
+		return
+	fi
+	case $power_suspend in
+	yes) printf 'power-suspend\tavailable\tdelegated\tSuspend is available without an authorization challenge\n' ;;
+	challenge) printf 'power-suspend\tavailable\tdelegated\tSuspend requires authorization\n' ;;
+	no) printf 'power-suspend\trestricted\tdelegated\tSuspend is blocked by authorization policy\n' ;;
+	*) printf 'power-suspend\tunavailable\tread-only\tSuspend is not supported by this system\n' ;;
+	esac
+}
+
+power_snapshot() {
+	power_legacy_status=$(power_status)
+	printf 'power-protocol\t1\t0\n'
+	printf 'provider\tpower\tavailable\tuser-session\tUPower, logind, X11 DPMS, and lock state\n'
+	printf 'power-dpms\t%s\t%s\t%s\tuser-session\tX11 display power management\n' \
+		"$([ "$(power_row_value dpms_available)" = 1 ] && printf available || printf unavailable)" \
+		"$([ "$(power_row_value dpms_enabled)" = 1 ] && printf yes || printf no)" \
+		"$(power_row_value dpms_timeout)"
+	printf 'power-lock\t%s\t%s\t%s\t%s\tuser-session\tlight-locker automatic locking\n' \
+		"$([ "$(power_row_value lock_available)" = 1 ] && printf available || printf unavailable)" \
+		"$([ "$(power_row_value lock_enabled)" = 1 ] && printf yes || printf no)" \
+		"$(power_row_value lock_timeout)" \
+		"$([ "$(power_row_value lock_running)" = 1 ] && printf yes || printf no)"
+	power_snapshot_upower
+	power_snapshot_profiles
+	power_snapshot_suspend
+	power_snapshot_lid_policy
+}
+
+power_watch_pid_starttime() {
+	power_watch_pid=$1
+	awk '
+		{
+			line = $0
+			sub(/^.*\) /, "", line)
+			split(line, fields, " ")
+			if (fields[1] != "Z" && fields[20] ~ /^[0-9]+$/) {
+				print fields[20]
+			}
+		}
+	' "/proc/$power_watch_pid/stat" 2>/dev/null
+}
+
+power_watch_capture_identity() {
+	power_watch_pid=$1
+	power_watch_attempt=0
+	while [ "$power_watch_attempt" -lt 20 ]; do
+		power_watch_starttime=$(power_watch_pid_starttime "$power_watch_pid")
+		if [ -n "$power_watch_starttime" ]; then
+			printf '%s:%s\n' "$power_watch_pid" "$power_watch_starttime"
+			return 0
+		fi
+		power_watch_attempt=$((power_watch_attempt + 1))
+		sleep 0.01
+	done
+	return 1
+}
+
+power_watch_identity_running() {
+	power_watch_identity=$1
+	[ -n "$power_watch_identity" ] || return 1
+	power_watch_pid=${power_watch_identity%%:*}
+	power_watch_starttime=${power_watch_identity#*:}
+	[ "$(power_watch_pid_starttime "$power_watch_pid")" = "$power_watch_starttime" ]
+}
+
+power_watch_sources() {
+	power_dbus_watch_pid=
+	power_dbus_watch_identity=
+	power_settings_probe_pid=
+	power_settings_probe_identity=
+	power_settings_watch_pid=
+	power_settings_watch_identity=
+	power_watch_cleanup() {
+		for power_watch_child_identity in "$power_dbus_watch_identity" \
+			"$power_settings_probe_identity" "$power_settings_watch_identity"; do
+			power_watch_identity_running "$power_watch_child_identity" || continue
+			power_watch_child_pid=${power_watch_child_identity%%:*}
+			kill -TERM "$power_watch_child_pid" 2>/dev/null || :
+		done
+		power_watch_attempt=0
+		while [ "$power_watch_attempt" -lt 20 ]; do
+			power_watch_any_child=0
+			for power_watch_child_identity in "$power_dbus_watch_identity" \
+				"$power_settings_probe_identity" "$power_settings_watch_identity"; do
+				if power_watch_identity_running "$power_watch_child_identity"; then
+					power_watch_any_child=1
+					break
+				fi
+			done
+			[ "$power_watch_any_child" -eq 1 ] || break
+			power_watch_attempt=$((power_watch_attempt + 1))
+			sleep 0.05
+		done
+		for power_watch_child_identity in "$power_dbus_watch_identity" \
+			"$power_settings_probe_identity" "$power_settings_watch_identity"; do
+			power_watch_identity_running "$power_watch_child_identity" || continue
+			power_watch_child_pid=${power_watch_child_identity%%:*}
+			kill -KILL "$power_watch_child_pid" 2>/dev/null || :
+		done
+		for power_watch_child_pid in "$power_dbus_watch_pid" \
+			"$power_settings_probe_pid" "$power_settings_watch_pid"; do
+			[ -n "$power_watch_child_pid" ] || continue
+			wait "$power_watch_child_pid" 2>/dev/null || :
+		done
+	}
+	trap power_watch_cleanup EXIT
+	trap 'exit 143' HUP INT TERM
+
+	DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket \
+		dbus-monitor --system \
+		"type='signal',sender='org.freedesktop.UPower'" \
+		"type='signal',sender='org.freedesktop.UPower.PowerProfiles'" \
+		"type='signal',sender='org.freedesktop.login1'" \
+		"type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.UPower'" \
+		"type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.UPower.PowerProfiles'" \
+		"type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.login1'" &
+	power_dbus_watch_pid=$!
+	power_dbus_watch_identity=$(power_watch_capture_identity "$power_dbus_watch_pid") || {
+		kill -TERM "$power_dbus_watch_pid" 2>/dev/null || :
+		wait "$power_dbus_watch_pid" 2>/dev/null || :
+		power_dbus_watch_pid=
+		return 1
+	}
+	if command -v gsettings >/dev/null 2>&1; then
+		power_settings_probe_status=0
+		# The probe wrapper must finish its own child escalation inside the
+		# one-second watcher cleanup grace period.
+		timeout --signal=TERM --kill-after=0.5 3 \
+			gsettings get apps.light-locker lock-after-screensaver >/dev/null 2>&1 &
+		power_settings_probe_pid=$!
+		power_settings_probe_identity=$(power_watch_capture_identity "$power_settings_probe_pid") || {
+			kill -TERM "$power_settings_probe_pid" 2>/dev/null || :
+			wait "$power_settings_probe_pid" 2>/dev/null || :
+			power_settings_probe_pid=
+			return 1
+		}
+		wait "$power_settings_probe_pid" || power_settings_probe_status=$?
+		power_settings_probe_pid=
+		power_settings_probe_identity=
+		if [ "$power_settings_probe_status" -eq 0 ]; then
+			gsettings monitor apps.light-locker &
+			power_settings_watch_pid=$!
+			power_settings_watch_identity=$(power_watch_capture_identity "$power_settings_watch_pid") || {
+				kill -TERM "$power_settings_watch_pid" 2>/dev/null || :
+				wait "$power_settings_watch_pid" 2>/dev/null || :
+				power_settings_watch_pid=
+				return 1
+			}
+		fi
+	fi
+
+	while power_watch_identity_running "$power_dbus_watch_identity" &&
+		{ [ -z "$power_settings_watch_identity" ] ||
+			power_watch_identity_running "$power_settings_watch_identity"; }; do
+		sleep 0.25
+	done
+	power_watch_cleanup
+	wait "$power_dbus_watch_pid" 2>/dev/null || :
+	if [ -n "$power_settings_watch_pid" ]; then
+		wait "$power_settings_watch_pid" 2>/dev/null || :
+	fi
+	trap - EXIT HUP INT TERM
+	return 1
+}
+
+power_watch() {
+	command -v dbus-monitor >/dev/null 2>&1 || return 127
+	run_parent_bound power_watch_sources
+}
+
+power_profile_set() {
+	[ "$#" -eq 1 ] || return 2
+	power_profile=$1
+	case $power_profile in
+	power-saver | balanced | performance) ;;
+	*)
+		printf 'invalid power profile: %s\n' "$power_profile" >&2
+		return 2
+		;;
+	esac
+	if ! command -v busctl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+		printf 'busctl and jq are required for power profile changes\n' >&2
+		return 127
+	fi
+	power_profiles_json=$(run_bounded 3 busctl --system --json=short get-property \
+		"$power_profiles_service" "$power_profiles_path" "$power_profiles_interface" Profiles 2>/dev/null) || {
+		printf 'Power Profiles service is unavailable\n' >&2
+		return 1
+	}
+	if ! printf '%s\n' "$power_profiles_json" |
+		jq -e --arg profile "$power_profile" '.data[]? | select(.Profile.data == $profile)' >/dev/null 2>&1; then
+		printf 'power profile is unavailable: %s\n' "$power_profile" >&2
+		return 1
+	fi
+	run_bounded 15 busctl --system --allow-interactive-authorization=yes \
+		set-property "$power_profiles_service" \
+		"$power_profiles_path" "$power_profiles_interface" ActiveProfile s "$power_profile"
+	if ! power_active_profile=$(power_bus_property "$power_profiles_service" "$power_profiles_path" \
+		"$power_profiles_interface" ActiveProfile) || [ "$power_active_profile" != "$power_profile" ]; then
+		printf 'power profile did not converge to requested state: %s\n' "$power_profile" >&2
+		return 1
+	fi
+	printf 'power-profile\t%s\n' "$power_profile"
 }
 
 power_set_dpms() {
@@ -265,20 +989,79 @@ power_set_dpms() {
 	esac
 
 	read_power_config
+	prepare_power_config_write || return
+	capture_power_live_state
+	if [ "$power_before_dpms_available" != 1 ]; then
+		printf 'display power provider is unavailable; configuration was not changed\n' >&2
+		return 1
+	fi
+	power_old_dpms_enabled=$power_dpms_enabled
+	power_new_dpms_timeout=$power_dpms_timeout
 	power_dpms_enabled=$power_new_enabled
-	write_power_config
-	power_apply_dpms_settings
+	if ! power_apply_dpms_settings ||
+		! verify_power_live_dpms "$power_new_enabled" "$power_new_dpms_timeout"; then
+		power_dpms_enabled=$power_old_dpms_enabled
+		if ! restore_power_live_dpms; then
+			printf 'failed to apply or verify display power state; rollback also failed and live state may differ; configuration was not changed\n' >&2
+			return 1
+		fi
+		printf 'failed to apply or verify display power state; configuration was not changed\n' >&2
+		return 1
+	fi
+	power_dpms_enabled=$power_new_enabled
+	power_dpms_timeout=$power_new_dpms_timeout
+	if ! write_power_config; then
+		power_dpms_enabled=$power_old_dpms_enabled
+		if ! restore_power_live_dpms; then
+			printf 'failed to save display power state; rollback also failed and live state may differ; configuration was not changed\n' >&2
+			return 1
+		fi
+		printf 'failed to save display power state; configuration was not changed\n' >&2
+		return 1
+	fi
 	notify "Display power updated" "DPMS $([ "$power_dpms_enabled" = 1 ] && printf enabled || printf disabled)"
 	printf 'power-dpms\t%s\n' "$power_dpms_enabled"
 }
 
 power_set_dpms_timeout() {
 	read_power_config
-	power_new_timeout=$(normalize_seconds "${1:-}" "$power_dpms_timeout")
+	if ! valid_power_seconds "${1:-}"; then
+		printf 'display power timeout must be between 60 and 86400 seconds\n' >&2
+		return 2
+	fi
+	prepare_power_config_write || return
+	capture_power_live_state
+	if [ "$power_before_dpms_available" != 1 ]; then
+		printf 'display power provider is unavailable; configuration was not changed\n' >&2
+		return 1
+	fi
+	power_old_dpms_enabled=$power_dpms_enabled
+	power_old_dpms_timeout=$power_dpms_timeout
+	power_new_timeout=$1
 	power_dpms_enabled=1
 	power_dpms_timeout=$power_new_timeout
-	write_power_config
-	power_apply_dpms_settings
+	if ! power_apply_dpms_settings || ! verify_power_live_dpms 1 "$power_new_timeout"; then
+		power_dpms_enabled=$power_old_dpms_enabled
+		power_dpms_timeout=$power_old_dpms_timeout
+		if ! restore_power_live_dpms; then
+			printf 'failed to apply or verify display power timeout; rollback also failed and live state may differ; configuration was not changed\n' >&2
+			return 1
+		fi
+		printf 'failed to apply or verify display power timeout; configuration was not changed\n' >&2
+		return 1
+	fi
+	power_dpms_enabled=1
+	power_dpms_timeout=$power_new_timeout
+	if ! write_power_config; then
+		power_dpms_enabled=$power_old_dpms_enabled
+		power_dpms_timeout=$power_old_dpms_timeout
+		if ! restore_power_live_dpms; then
+			printf 'failed to save display power timeout; rollback also failed and live state may differ; configuration was not changed\n' >&2
+			return 1
+		fi
+		printf 'failed to save display power timeout; configuration was not changed\n' >&2
+		return 1
+	fi
 	notify "Display power updated" "DPMS timeout ${power_dpms_timeout}s"
 	printf 'power-dpms-timeout\t%s\n' "$power_dpms_timeout"
 }
@@ -294,24 +1077,260 @@ power_set_lock() {
 	esac
 
 	read_power_config
+	prepare_power_config_write || return
+	capture_power_live_state
+	if [ "$power_before_xset_available" != 1 ] || [ "$power_before_lock_available" != 1 ]; then
+		printf 'automatic locking provider is unavailable; configuration was not changed\n' >&2
+		return 1
+	fi
+	power_old_lock_enabled=$power_lock_enabled
+	power_old_lock_managed=$power_lock_managed
+	power_old_lock_timeout=$power_lock_timeout
+	power_new_lock_after=$power_lock_after
 	power_lock_enabled=$power_new_enabled
 	power_lock_managed=1
-	write_power_config
-	power_apply_lock_settings
+	if ! power_apply_lock_settings ||
+		! verify_power_live_lock "$power_new_enabled" "$power_old_lock_timeout" "$power_new_lock_after"; then
+		power_lock_enabled=$power_old_lock_enabled
+		power_lock_managed=$power_old_lock_managed
+		if ! restore_power_live_lock; then
+			printf 'failed to apply or verify automatic locking state; rollback also failed and live state may differ; configuration was not changed\n' >&2
+			return 1
+		fi
+		printf 'failed to apply or verify automatic locking state; configuration was not changed\n' >&2
+		return 1
+	fi
+	power_lock_enabled=$power_new_enabled
+	power_lock_managed=1
+	power_lock_timeout=$power_old_lock_timeout
+	power_lock_after=$power_new_lock_after
+	if ! write_power_config; then
+		power_lock_enabled=$power_old_lock_enabled
+		power_lock_managed=$power_old_lock_managed
+		if ! restore_power_live_lock; then
+			printf 'failed to save automatic locking state; rollback also failed and live state may differ; configuration was not changed\n' >&2
+			return 1
+		fi
+		printf 'failed to save automatic locking state; configuration was not changed\n' >&2
+		return 1
+	fi
 	notify "Locking updated" "Auto lock $([ "$power_lock_enabled" = 1 ] && printf enabled || printf disabled)"
 	printf 'power-lock\t%s\n' "$power_lock_enabled"
 }
 
 power_set_lock_timeout() {
 	read_power_config
-	power_new_timeout=$(normalize_seconds "${1:-}" "$power_lock_timeout")
+	if ! valid_power_seconds "${1:-}"; then
+		printf 'automatic locking timeout must be between 60 and 86400 seconds\n' >&2
+		return 2
+	fi
+	prepare_power_config_write || return
+	capture_power_live_state
+	if [ "$power_before_xset_available" != 1 ] || [ "$power_before_lock_available" != 1 ]; then
+		printf 'automatic locking provider is unavailable; configuration was not changed\n' >&2
+		return 1
+	fi
+	power_old_lock_enabled=$power_lock_enabled
+	power_old_lock_managed=$power_lock_managed
+	power_old_lock_timeout=$power_lock_timeout
+	power_new_timeout=$1
 	power_lock_enabled=1
 	power_lock_managed=1
 	power_lock_timeout=$power_new_timeout
-	write_power_config
-	power_apply_lock_settings
+	if ! power_apply_lock_settings ||
+		! verify_power_live_lock 1 "$power_new_timeout" "$power_lock_after"; then
+		power_lock_enabled=$power_old_lock_enabled
+		power_lock_managed=$power_old_lock_managed
+		power_lock_timeout=$power_old_lock_timeout
+		if ! restore_power_live_lock; then
+			printf 'failed to apply or verify automatic locking timeout; rollback also failed and live state may differ; configuration was not changed\n' >&2
+			return 1
+		fi
+		printf 'failed to apply or verify automatic locking timeout; configuration was not changed\n' >&2
+		return 1
+	fi
+	power_lock_enabled=1
+	power_lock_managed=1
+	power_lock_timeout=$power_new_timeout
+	if ! write_power_config; then
+		power_lock_enabled=$power_old_lock_enabled
+		power_lock_managed=$power_old_lock_managed
+		power_lock_timeout=$power_old_lock_timeout
+		if ! restore_power_live_lock; then
+			printf 'failed to save automatic locking timeout; rollback also failed and live state may differ; configuration was not changed\n' >&2
+			return 1
+		fi
+		printf 'failed to save automatic locking timeout; configuration was not changed\n' >&2
+		return 1
+	fi
 	notify "Locking updated" "Auto lock timeout ${power_lock_timeout}s"
 	printf 'power-lock-timeout\t%s\n' "$power_lock_timeout"
+}
+
+session_pid_starttime() {
+	session_pid=$1
+	awk '
+		{
+			line = $0
+			sub(/^.*\) /, "", line)
+			split(line, fields, " ")
+			if (fields[1] != "Z" && fields[20] ~ /^[0-9]+$/)
+				print fields[20]
+		}
+	' "/proc/$session_pid/stat" 2>/dev/null
+}
+
+session_pid_identity() {
+	session_pid=$1
+	case $session_pid in
+	'' | *[!0-9]*) return 1 ;;
+	esac
+	[ "$session_pid" -ge 2 ] || return 1
+	[ "$(stat -c %u "/proc/$session_pid" 2>/dev/null)" = "$(id -u)" ] || return 1
+	session_executable=$(readlink "/proc/$session_pid/exe" 2>/dev/null) || return 1
+	case $session_executable in
+	*' (deleted)') session_executable=${session_executable%' (deleted)'} ;;
+	esac
+	[ "${session_executable##*/}" = dwm ] || return 1
+	session_starttime=$(session_pid_starttime "$session_pid")
+	[ -n "$session_starttime" ] || return 1
+	printf '%s:%s\n' "$session_pid" "$session_starttime"
+}
+
+session_resolve_dwm() {
+	for session_command in xprop awk stat id readlink; do
+		command -v "$session_command" >/dev/null 2>&1 || {
+			printf 'required session command is unavailable: %s\n' "$session_command" >&2
+			return 127
+		}
+	done
+	[ -n "${DISPLAY:-}" ] || {
+		printf 'current X11 display is unavailable\n' >&2
+		return 1
+	}
+
+	session_root_properties=$(LC_ALL=C run_bounded 3 xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null) || {
+		printf 'current window manager is unavailable\n' >&2
+		return 1
+	}
+	session_wm_window=$(printf '%s\n' "$session_root_properties" | awk '
+		$1 == "_NET_SUPPORTING_WM_CHECK(WINDOW):" && $2 == "window" &&
+			$3 == "id" && $4 == "#" && $5 ~ /^0x[0-9A-Fa-f]+$/ {
+			window = $5
+			matches++
+		}
+		END {
+			if (matches == 1) print window
+			exit(matches == 1 ? 0 : 1)
+		}
+	') || {
+		printf 'current window manager identity is malformed\n' >&2
+		return 1
+	}
+
+	session_wm_properties=$(LC_ALL=C run_bounded 3 xprop -id "$session_wm_window" \
+		_NET_SUPPORTING_WM_CHECK _NET_WM_NAME _NET_WM_PID 2>/dev/null) || {
+		printf 'current window manager identity is unavailable\n' >&2
+		return 1
+	}
+	session_self_window=$(printf '%s\n' "$session_wm_properties" | awk '
+		$1 == "_NET_SUPPORTING_WM_CHECK(WINDOW):" && $2 == "window" &&
+			$3 == "id" && $4 == "#" && $5 ~ /^0x[0-9A-Fa-f]+$/ {
+			window = $5
+			matches++
+		}
+		END {
+			if (matches == 1) print window
+			exit(matches == 1 ? 0 : 1)
+		}
+	') || {
+		printf 'current window manager self-check is malformed\n' >&2
+		return 1
+	}
+	[ "$session_self_window" = "$session_wm_window" ] || {
+		printf 'current window manager self-check does not match the X11 owner\n' >&2
+		return 1
+	}
+	printf '%s\n' "$session_wm_properties" |
+		awk '$0 == "_NET_WM_NAME(UTF8_STRING) = \"dwm\"" { matches++ }
+			END { exit(matches == 1 ? 0 : 1) }' || {
+		printf 'current window manager is not the managed dwm session\n' >&2
+		return 1
+	}
+	session_wm_pid=$(printf '%s\n' "$session_wm_properties" | awk -F ' = ' '
+		$1 == "_NET_WM_PID(CARDINAL)" && $2 ~ /^[0-9]+$/ {
+			pid = $2
+			matches++
+		}
+		END {
+			if (matches == 1) print pid
+			exit(matches == 1 ? 0 : 1)
+		}
+	') || {
+		printf 'current dwm does not expose the managed logout endpoint; restart the installed DWM session\n' >&2
+		return 1
+	}
+	session_pid_identity "$session_wm_pid" || {
+		printf 'current dwm process identity could not be verified\n' >&2
+		return 1
+	}
+}
+
+session_lock() {
+	session_lock_helper=$repo_dir/scripts/dwm-lock
+	if [ ! -x "$session_lock_helper" ]; then
+		session_lock_helper=$(command -v dwm-lock 2>/dev/null || true)
+	fi
+	[ -n "$session_lock_helper" ] || {
+		printf 'dwm-lock is unavailable\n' >&2
+		return 127
+	}
+	"$session_lock_helper" || return
+	printf 'session-action\tlock\taccepted\n'
+}
+
+session_logout() {
+	session_identity=$(session_resolve_dwm) || return
+	# Re-resolve the immutable PID/start-time identity immediately before the
+	# signal so a concurrently replaced X11 owner is never targeted.
+	[ "$(session_resolve_dwm)" = "$session_identity" ] || {
+		printf 'current dwm changed while logout was being requested\n' >&2
+		return 1
+	}
+	session_pid=${session_identity%%:*}
+	kill -USR2 "$session_pid" 2>/dev/null || {
+		printf 'could not request a graceful exit from the current dwm\n' >&2
+		return 1
+	}
+	printf 'session-action\tlogout\taccepted\n'
+}
+
+session_system_action() {
+	session_action_name=$1
+	session_systemctl_action=$2
+	command -v systemctl >/dev/null 2>&1 || {
+		printf 'systemctl is unavailable for %s\n' "$session_action_name" >&2
+		return 127
+	}
+	if ! run_bounded 15 systemctl --no-block "$session_systemctl_action" >/dev/null; then
+		printf '%s request was denied or could not be accepted\n' "$session_action_name" >&2
+		return 1
+	fi
+	printf 'session-action\t%s\taccepted\n' "$session_action_name"
+}
+
+session_action() {
+	case ${1:-} in
+	lock) session_lock ;;
+	logout) session_logout ;;
+	suspend) session_system_action suspend suspend ;;
+	reboot) session_system_action reboot reboot ;;
+	shutdown) session_system_action shutdown poweroff ;;
+	*)
+		printf 'unknown session action: %s\n' "${1:-}" >&2
+		return 2
+		;;
+	esac
 }
 
 notify() {
@@ -633,7 +1652,7 @@ action() {
 }
 
 usage() {
-	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|power-status|power-apply|power-dpms on|off|power-dpms-timeout <seconds>|power-lock on|off|power-lock-timeout <seconds>|action <name>\n' "$0" >&2
+	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|power-status|power-snapshot|power-watch|power-profile-set <profile>|power-apply|power-dpms on|off|power-dpms-timeout <seconds>|power-lock on|off|power-lock-timeout <seconds>|session-action lock|logout|suspend|reboot|shutdown|action <name>\n' "$0" >&2
 }
 
 case ${1:-} in
@@ -649,6 +1668,15 @@ theme-set)
 	;;
 keybinds) keybinds ;;
 power-status) power_status ;;
+power-snapshot) power_snapshot ;;
+power-watch) power_watch ;;
+power-profile-set)
+	if [ $# -ne 2 ]; then
+		usage
+		exit 2
+	fi
+	power_profile_set "$2"
+	;;
 power-apply) power_apply ;;
 power-dpms)
 	if [ $# -ne 2 ]; then
@@ -677,6 +1705,13 @@ power-lock-timeout)
 		exit 2
 	fi
 	power_set_lock_timeout "$2"
+	;;
+session-action)
+	if [ $# -ne 2 ]; then
+		usage
+		exit 2
+	fi
+	session_action "$2"
 	;;
 action)
 	if [ $# -ne 2 ]; then

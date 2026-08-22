@@ -3,17 +3,176 @@ set -euo pipefail
 
 fifo=
 fifo_dir=
+identity_file=
+identity_value=
 pids=()
+pactl_provider_pid=
+pactl_provider_starttime=
+pactl_parser_pid=
+pactl_parser_starttime=
+udev_provider_pid=
+udev_provider_starttime=
+udev_parser_pid=
+udev_parser_starttime=
+pactl_restart_count=0
+udev_restart_count=0
+provider_restart_limit=${DWM_STATUS_PROVIDER_RESTART_LIMIT:-3}
+publish_timeout=${DWM_STATUS_PUBLISH_TIMEOUT:-0.5}
 power_poll_interval=${DWM_STATUS_POWER_POLL_INTERVAL:-30}
 power_supply_dir=${DWM_STATUS_POWER_SUPPLY_DIR:-/sys/class/power_supply}
+signal_exit=0
 
-cleanup() {
-	if ((${#pids[@]} > 0)); then
-		kill "${pids[@]}" 2>/dev/null || true
+if ! [[ $provider_restart_limit =~ ^[0-9]+$ ]] || ((provider_restart_limit > 20)); then
+	provider_restart_limit=3
+fi
+if ! [[ $publish_timeout =~ ^[0-9]+([.][0-9]+)?$ ]] ||
+	! awk -v interval="$publish_timeout" 'BEGIN { exit !(interval >= 0.1 && interval <= 0.5) }'; then
+	publish_timeout=0.5
+fi
+
+if ! [[ $power_poll_interval =~ ^[0-9]+([.][0-9]+)?$ ]] ||
+	! awk -v interval="$power_poll_interval" 'BEGIN { exit !(interval >= 0.05 && interval <= 86400) }'; then
+	power_poll_interval=30
+fi
+
+child_starttime() {
+	local child_pid=$1
+
+	awk '
+		{
+			line = $0
+			sub(/^.*\) /, "", line)
+			split(line, fields, " ")
+			if (fields[20] ~ /^[0-9]+$/) print fields[20]
+		}
+	' "/proc/$child_pid/stat" 2>/dev/null
+}
+
+child_is_live() {
+	local identity=$1 child_pid=${1%%:*} expected_starttime=${1#*:}
+	local stat_line stat_rest
+	local -a stat_fields
+
+	[[ $expected_starttime =~ ^[0-9]+$ ]] || return 1
+	{ IFS= read -r stat_line <"/proc/$child_pid/stat"; } 2>/dev/null || return 1
+	stat_rest=${stat_line##*) }
+	read -r -a stat_fields <<<"$stat_rest"
+	((${#stat_fields[@]} > 19)) || return 1
+	[[ ${stat_fields[0]} != Z && ${stat_fields[1]} == "$$" && ${stat_fields[19]} == "$expected_starttime" ]]
+}
+
+capture_child_starttime() {
+	local child_pid=$1 starttime attempt
+
+	for ((attempt = 0; attempt < 20; attempt++)); do
+		starttime=$(child_starttime "$child_pid")
+		if [[ $starttime =~ ^[0-9]+$ ]]; then
+			printf '%s\n' "$starttime"
+			return 0
+		fi
+		sleep 0.01
+	done
+	return 1
+}
+
+register_identity() {
+	local identity_dir display_key starttime temp
+
+	[[ -n ${XDG_RUNTIME_DIR:-} && -d $XDG_RUNTIME_DIR && ! -L $XDG_RUNTIME_DIR ]] || return 0
+	[[ $(stat -c %u -- "$XDG_RUNTIME_DIR" 2>/dev/null) == "$(id -u)" ]] || return 0
+	command -v sha256sum >/dev/null 2>&1 || return 0
+	display_key=$(printf '%s' "${DISPLAY:-}" | sha256sum | awk '{ print $1 }')
+	[[ $display_key =~ ^[0-9a-f]{64}$ ]] || return 0
+	starttime=$(awk '
+		{
+			line = $0
+			sub(/^.*\) /, "", line)
+			split(line, fields, " ")
+			if (fields[20] ~ /^[0-9]+$/) print fields[20]
+		}
+	' "/proc/$$/stat")
+	[[ $starttime =~ ^[0-9]+$ ]] || return 0
+	identity_dir=$XDG_RUNTIME_DIR/dwm-titus
+	(umask 077 && mkdir -p -- "$identity_dir") || return 0
+	[[ -d $identity_dir && ! -L $identity_dir ]] || return 0
+	chmod 700 -- "$identity_dir" 2>/dev/null || return 0
+	identity_file=$identity_dir/dwm-status.$display_key.identity
+	identity_value=$$:$starttime
+	temp=$identity_file.$$
+	if ! (umask 077 && printf '%s\n' "$identity_value" >"$temp") ||
+		! mv -- "$temp" "$identity_file"; then
+		rm -f -- "$temp"
+		identity_file=
+		identity_value=
 	fi
+}
+
+# Invoked from the EXIT-trap cleanup path.
+# shellcheck disable=SC2329
+unregister_identity() {
+	local current
+
+	[[ -n $identity_file && -f $identity_file && ! -L $identity_file ]] || return 0
+	IFS= read -r current <"$identity_file" || return 0
+	[[ $current == "$identity_value" ]] || return 0
+	rm -f -- "$identity_file"
+}
+
+# Invoked by name from the EXIT trap.
+# shellcheck disable=SC2329
+cleanup() {
+	local identity attempt live
+
+	for identity in "${pids[@]}"; do
+		child_is_live "$identity" || continue
+		kill -TERM "${identity%%:*}" 2>/dev/null || true
+	done
+	for ((attempt = 0; attempt < 20; attempt++)); do
+		live=0
+		for identity in "${pids[@]}"; do
+			child_is_live "$identity" || continue
+			live=1
+		done
+		((live == 0)) && break
+		sleep 0.05
+	done
+	for identity in "${pids[@]}"; do
+		child_is_live "$identity" || continue
+		kill -KILL "${identity%%:*}" 2>/dev/null || true
+	done
+	for identity in "${pids[@]}"; do
+		wait "${identity%%:*}" 2>/dev/null || true
+	done
+	unregister_identity
 	if [[ -n ${fifo_dir:-} && -d $fifo_dir ]]; then
 		rm -rf "$fifo_dir"
 	fi
+}
+
+rebuild_pids() {
+	pids=()
+	[[ -z $pactl_provider_pid ]] || pids+=("$pactl_provider_pid:$pactl_provider_starttime")
+	[[ -z $pactl_parser_pid ]] || pids+=("$pactl_parser_pid:$pactl_parser_starttime")
+	[[ -z $udev_provider_pid ]] || pids+=("$udev_provider_pid:$udev_provider_starttime")
+	[[ -z $udev_parser_pid ]] || pids+=("$udev_parser_pid:$udev_parser_starttime")
+}
+
+stop_child() {
+	local child_pid=$1 child_start=$2 identity attempt
+
+	[[ -n $child_pid && -n $child_start ]] || return 0
+	identity=$child_pid:$child_start
+	if child_is_live "$identity"; then
+		kill -TERM "$child_pid" 2>/dev/null || true
+	fi
+	for ((attempt = 0; attempt < 20; attempt++)); do
+		child_is_live "$identity" || break
+		sleep 0.05
+	done
+	if child_is_live "$identity"; then
+		kill -KILL "$child_pid" 2>/dev/null || true
+	fi
+	wait "$child_pid" 2>/dev/null || true
 }
 
 publish() {
@@ -22,15 +181,21 @@ publish() {
 	power=$(power_text)
 	volume=$(volume_text)
 
-	xsetroot -name "$power | $volume"
+	if ! timeout --kill-after=0.2 "$publish_timeout" \
+		xsetroot -name "$power | $volume" 2>/dev/null; then
+		((signal_exit != 0)) && return 0
+		return 1
+	fi
 }
 
 volume_text() {
 	local mute volume
 
 	if command -v pactl >/dev/null 2>&1; then
-		mute=$(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | awk '{ print $2 }')
-		volume=$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null |
+		mute=$(timeout --kill-after=0.2 "$publish_timeout" \
+			pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | awk '{ print $2 }')
+		volume=$(timeout --kill-after=0.2 "$publish_timeout" \
+			pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null |
 			awk 'match($0, /[0-9]+%/) { print substr($0, RSTART, RLENGTH); exit }')
 		if [[ $mute == yes ]]; then
 			printf 'VOL muted\n'
@@ -38,7 +203,8 @@ volume_text() {
 			printf 'VOL %s\n' "${volume:-n/a}"
 		fi
 	elif command -v wpctl >/dev/null 2>&1; then
-		wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null |
+		timeout --kill-after=0.2 "$publish_timeout" \
+			wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null |
 			awk '
 				{
 					volume = int(($2 * 100) + 0.5) "%"
@@ -59,8 +225,8 @@ power_text() {
 
 	for battery in "$power_supply_dir"/BAT*; do
 		[[ -e $battery ]] || continue
-		capacity=$(cat "$battery/capacity" 2>/dev/null || printf n/a)
-		status=$(cat "$battery/status" 2>/dev/null || printf unknown)
+		IFS= read -r capacity <"$battery/capacity" 2>/dev/null || capacity=n/a
+		IFS= read -r status <"$battery/status" 2>/dev/null || status=unknown
 		printf 'BAT %s%% %s\n' "$capacity" "$status"
 		return
 	done
@@ -68,49 +234,134 @@ power_text() {
 	printf 'AC\n'
 }
 
-watch_pactl() {
-	command -v pactl >/dev/null 2>&1 || return 0
-	pactl subscribe 2>/dev/null |
-		while IFS= read -r event; do
-			case $event in
-			*" on sink"* | *" on server"* | *" on card"*)
-				printf 'audio\n' >"$fifo"
-				;;
-			esac
-		done
+watch_pactl_events() {
+	while IFS= read -r event; do
+		case $event in
+		*" on sink"* | *" on server"* | *" on card"*)
+			printf 'audio\n' >"$fifo"
+			;;
+		esac
+	done
 }
 
 watch_power_events() {
-	command -v udevadm >/dev/null 2>&1 || return 0
-	udevadm monitor --udev --subsystem-match=power_supply 2>/dev/null |
-		while IFS= read -r _event; do
-			printf 'power\n' >"$fifo"
-		done
-}
-
-watch_power_poll() {
-	while :; do
-		sleep "$power_poll_interval"
+	while IFS= read -r _event; do
 		printf 'power\n' >"$fifo"
 	done
+}
+
+start_pactl_source() {
+	pactl subscribe >"$pactl_fifo" 2>/dev/null &
+	pactl_provider_pid=$!
+	if ! pactl_provider_starttime=$(capture_child_starttime "$pactl_provider_pid"); then
+		kill -TERM "$pactl_provider_pid" 2>/dev/null || true
+		wait "$pactl_provider_pid" 2>/dev/null || true
+		pactl_provider_pid=
+		return 1
+	fi
+	(
+		watch_pactl_events <"$pactl_fifo"
+		printf 'restart-pactl\n' >"$fifo"
+	) &
+	pactl_parser_pid=$!
+	if ! pactl_parser_starttime=$(capture_child_starttime "$pactl_parser_pid"); then
+		kill -TERM "$pactl_parser_pid" 2>/dev/null || true
+		wait "$pactl_parser_pid" 2>/dev/null || true
+		stop_child "$pactl_provider_pid" "$pactl_provider_starttime"
+		pactl_provider_pid=
+		pactl_provider_starttime=
+		pactl_parser_pid=
+		return 1
+	fi
+	rebuild_pids
+}
+
+start_udev_source() {
+	udevadm monitor --udev --subsystem-match=power_supply >"$udev_fifo" 2>/dev/null &
+	udev_provider_pid=$!
+	if ! udev_provider_starttime=$(capture_child_starttime "$udev_provider_pid"); then
+		kill -TERM "$udev_provider_pid" 2>/dev/null || true
+		wait "$udev_provider_pid" 2>/dev/null || true
+		udev_provider_pid=
+		return 1
+	fi
+	(
+		watch_power_events <"$udev_fifo"
+		printf 'restart-udev\n' >"$fifo"
+	) &
+	udev_parser_pid=$!
+	if ! udev_parser_starttime=$(capture_child_starttime "$udev_parser_pid"); then
+		kill -TERM "$udev_parser_pid" 2>/dev/null || true
+		wait "$udev_parser_pid" 2>/dev/null || true
+		stop_child "$udev_provider_pid" "$udev_provider_starttime"
+		udev_provider_pid=
+		udev_provider_starttime=
+		udev_parser_pid=
+		return 1
+	fi
+	rebuild_pids
 }
 
 fifo_dir=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/dwm-status.XXXXXX")
 fifo=$fifo_dir/events
 mkfifo "$fifo"
 trap cleanup EXIT
-trap 'cleanup; exit 130' INT
-trap 'cleanup; exit 143' TERM
+trap 'signal_exit=130' INT
+trap 'signal_exit=143' TERM
 
+register_identity
 publish
-watch_pactl &
-pids+=("$!")
-watch_power_events &
-pids+=("$!")
-watch_power_poll &
-pids+=("$!")
-
+((signal_exit == 0)) || exit "$signal_exit"
+if command -v pactl >/dev/null 2>&1; then
+	pactl_fifo=$fifo_dir/pactl
+	mkfifo "$pactl_fifo"
+	start_pactl_source || true
+	((signal_exit == 0)) || exit "$signal_exit"
+fi
+if command -v udevadm >/dev/null 2>&1; then
+	udev_fifo=$fifo_dir/udev
+	mkfifo "$udev_fifo"
+	start_udev_source || true
+	((signal_exit == 0)) || exit "$signal_exit"
+fi
 exec 3<>"$fifo"
-while IFS= read -r _event <&3; do
-	publish
+trap 'signal_exit=130; printf "terminate\n" >&3' INT
+trap 'signal_exit=143; printf "terminate\n" >&3' TERM
+while :; do
+	((signal_exit == 0)) || break
+	_event=
+	IFS= read -r -t "$power_poll_interval" _event <&3 || true
+	((signal_exit == 0)) || break
+	case $_event in
+	restart-pactl)
+		stop_child "$pactl_provider_pid" "$pactl_provider_starttime"
+		stop_child "$pactl_parser_pid" "$pactl_parser_starttime"
+		pactl_provider_pid=
+		pactl_provider_starttime=
+		pactl_parser_pid=
+		pactl_parser_starttime=
+		rebuild_pids
+		((pactl_restart_count < provider_restart_limit)) || continue
+		pactl_restart_count=$((pactl_restart_count + 1))
+		sleep 1
+		((signal_exit == 0)) || break
+		start_pactl_source || true
+		;;
+	restart-udev)
+		stop_child "$udev_provider_pid" "$udev_provider_starttime"
+		stop_child "$udev_parser_pid" "$udev_parser_starttime"
+		udev_provider_pid=
+		udev_provider_starttime=
+		udev_parser_pid=
+		udev_parser_starttime=
+		rebuild_pids
+		((udev_restart_count < provider_restart_limit)) || continue
+		udev_restart_count=$((udev_restart_count + 1))
+		sleep 1
+		((signal_exit == 0)) || break
+		start_udev_source || true
+		;;
+	*) publish ;;
+	esac
 done
+exit "$signal_exit"

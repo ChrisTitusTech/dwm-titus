@@ -20,6 +20,87 @@ user_name=$(id -un)
 user_id=$(id -u)
 [ "$session_owner" = "$user_name" ] || exit 0
 
+status_process_matches() {
+	status_current=$(awk '
+		{
+			line = $0
+			sub(/^.*\) /, "", line)
+			split(line, fields, " ")
+			if (fields[1] != "Z" && fields[20] ~ /^[0-9]+$/) print fields[20]
+		}
+	' "/proc/$status_pid/stat" 2>/dev/null) || return 1
+	[ "$status_current" = "$status_starttime" ] || return 1
+	[ "$(stat -c %u "/proc/$status_pid" 2>/dev/null)" = "$user_id" ] || return 1
+	status_process_display=$({
+		tr '\0' '\n' <"/proc/$status_pid/environ"
+	} 2>/dev/null | awk '
+		index($0, "DISPLAY=") == 1 {
+			value = substr($0, 9)
+			matches++
+		}
+		END {
+			if (matches == 1) print value
+			exit(matches == 1 ? 0 : 1)
+		}
+	') || return 1
+	[ "$status_process_display" = "${DISPLAY:-}" ] || return 1
+	status_process_command=$({
+		tr '\0' '\n' <"/proc/$status_pid/cmdline"
+	} 2>/dev/null) || return 1
+	status_arg1=$(printf '%s\n' "$status_process_command" | sed -n '2p')
+	status_arg2=$(printf '%s\n' "$status_process_command" | sed -n '3p')
+	[ -n "$status_arg1" ] && [ -z "$status_arg2" ] || return 1
+	status_script=$(readlink -f -- "$status_arg1" 2>/dev/null) || return 1
+	[ "$status_script" = "$status_command_path" ]
+}
+
+remove_scoped_status_identity() {
+	status_current_identity=
+	IFS= read -r status_current_identity <"$status_identity_file" || true
+	[ "$status_current_identity" = "$status_identity" ] || return 0
+	rm -f -- "$status_identity_file"
+}
+
+stop_scoped_status() {
+	[ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] &&
+		[ ! -L "$XDG_RUNTIME_DIR" ] || return 0
+	command -v sha256sum >/dev/null 2>&1 || return 0
+	status_command=$(command -v dwm-status 2>/dev/null) || return 0
+	status_command_path=$(readlink -f -- "$status_command" 2>/dev/null) || return 0
+	status_display_key=$(printf '%s' "${DISPLAY:-}" | sha256sum | awk '{ print $1 }')
+	case $status_display_key in *[!0-9a-f]* | '') return 0 ;; esac
+	status_identity_file=$XDG_RUNTIME_DIR/dwm-titus/dwm-status.$status_display_key.identity
+	[ -f "$status_identity_file" ] && [ ! -L "$status_identity_file" ] || return 0
+	status_pid=
+	status_starttime=
+	status_extra=
+	IFS=: read -r status_pid status_starttime status_extra <"$status_identity_file" || true
+	case $status_pid in *[!0-9]* | '') return 0 ;; esac
+	case $status_starttime in *[!0-9]* | '') return 0 ;; esac
+	[ -z "$status_extra" ] || return 0
+	status_identity=$status_pid:$status_starttime
+	if ! status_process_matches; then
+		remove_scoped_status_identity
+		return 0
+	fi
+	kill -TERM "$status_pid" 2>/dev/null || true
+	status_attempt=0
+	while [ "$status_attempt" -lt 20 ] && status_process_matches; do
+		status_attempt=$((status_attempt + 1))
+		sleep 0.05
+	done
+	if status_process_matches; then
+		kill -KILL "$status_pid" 2>/dev/null || true
+	fi
+	status_attempt=0
+	while [ "$status_attempt" -lt 20 ] && status_process_matches; do
+		status_attempt=$((status_attempt + 1))
+		sleep 0.05
+	done
+	status_process_matches && return 0
+	remove_scoped_status_identity
+}
+
 # A nested X server inherits the parent login's logind and XDG session IDs.
 # Refuse to clean up that login unless this dwm instance is attached to the
 # display that logind records for it. Accept an explicit X11 screen suffix,
@@ -32,6 +113,8 @@ x11:user:?*)
 	esac
 	;;
 esac
+
+stop_scoped_status
 
 # The systemd user manager and its graphical targets are shared across all
 # sessions for this user. Leave them active when another graphical login still

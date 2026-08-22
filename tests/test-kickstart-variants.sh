@@ -76,6 +76,8 @@ dwm_packages fedora recommended | grep -Fx playerctl >/dev/null
 dwm_packages fedora desktop | grep -Fx quickshell >/dev/null
 dwm_packages fedora desktop | grep -Fx flatpak >/dev/null
 dwm_packages fedora desktop | grep -Fx xdg-desktop-portal-gtk >/dev/null
+dwm_packages fedora desktop | grep -Fx dbus-tools >/dev/null
+dwm_packages fedora desktop | grep -Fx inotify-tools >/dev/null
 if ARCH=x86_64 dwm_packages fedora full | grep -Fx nwg-look >/dev/null; then
 	printf 'Unavailable Fedora package leaked into the image package set: nwg-look\n' >&2
 	exit 1
@@ -97,6 +99,8 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 	for package in "${mapped_fedora_packages[@]}"; do
 		grep -Fxq "$package" "$ks"
 	done
+	grep -Fxq power-profiles-daemon "$ks"
+	grep -Eq '^[[:space:]]*systemctl[[:space:]]+enable[[:space:]]+power-profiles-daemon[.]service([[:space:]]|$)' "$ks"
 	if grep -Eq 'updates-testing|rpmfusion-.*-updates-testing' "$ks"; then
 		printf 'Testing repo found in %s\n' "$ks" >&2
 		exit 1

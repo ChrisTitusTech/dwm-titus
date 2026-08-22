@@ -2,10 +2,11 @@
 
 <!-- markdownlint-disable MD013 -->
 
-This document is the Settings capability inventory. It records the Phase 1
-platform foundation and the Phase 2 display and input controls now built on it.
-It is an implementation map of current and delegated interfaces, not a promise
-that every listed operation is ready to expose in Settings.
+This document is the Settings capability inventory. It records the platform,
+display, input, connectivity, audio, and power providers built on the unified
+Settings surface. It is an implementation map of current and delegated
+interfaces, not a promise that every listed operation is ready to expose in
+Settings.
 
 `SPEC.md` and `ROADMAP.md` remain authoritative. The completed application,
 helper, authorization, packaging, and validation contracts are recorded in
@@ -40,9 +41,9 @@ provider work still required.
 | Input | `dwm-settings-input` over XInput/libinput, `setxkbmap`, and udev hotplug events | Timed per-device preview, reset, XDG persistence, idempotent session-start apply, and debounced hotplug replay | Read-only, user-session | Unsupported properties are reported per stable device; disconnects are skipped without affecting other devices or sections | `make check-settings check-quickshell-settings-xvfb`; representative real keyboard/pointer checks |
 | Network and VPN | `dwm-quickshell-network` over NetworkManager's `nmcli`; event stream from `nmcli monitor` | NetworkManager connection activation/deactivation; `nm-connection-editor` for advanced flows | Read-only, delegated | `NET unavailable` when NetworkManager or `nmcli` is absent; hide the editor action when unavailable | `make check-quickshell-network`; NetworkManager runtime exercise |
 | Bluetooth | `dwm-quickshell-controls` over `bluetoothctl` and the BlueZ daemon | BlueZ power, scan, pair/trust/connect, and disconnect operations | Read-only, delegated | `BT unavailable` when BlueZ tooling or an adapter is absent | `make check-quickshell-controls`; real adapter/device check |
-| Audio and media | Native `Quickshell.Services.Pipewire` signals with `pactl` or `wpctl` fallback; `playerctl --follow` for media | PipeWire/WirePlumber volume, mute, and default sink; MPRIS media actions | Read-only, user-session | Show unavailable state when the session services or tools are absent; audio and media fail independently | `make check-quickshell-controls`; live PipeWire and MPRIS exercise |
-| Power and session | `dwm-quickshell-controlcenter power-status`, `xset`, `gsettings`, light-locker state, and `PowerMenuModel.qml` | User `power.conf`, DPMS, lock policy; logind/systemd session actions | Read-only, user-session, delegated | Disable DPMS/lock controls when their commands or schemas are absent; leave system action authorization to logind | `make check-quickshell-controlcenter check-lock`; nested X11 and real-session checks |
-| Defaults and autostart | `dwm-default-apps` over `xdg-settings`, `xdg-mime`, and XDG desktop entries; no settings-ready autostart provider | Browser and MIME writes owned by the user | Read-only, user-session, unsupported | Report missing XDG tools; terminal, file manager, and user-visible autostart controls remain unsupported | `make check-default-apps`; future autostart provider tests |
+| Audio and media | Native `Quickshell.Services.Pipewire` signals with a versioned `pactl` inventory fallback; `playerctl --follow` for media | Output/input defaults, volume and mute, application streams, and MPRIS media actions | Read-only, user-session | Native signals remain authoritative; audio inventory, media, and Bluetooth fail independently | `make check-quickshell-controls check-quickshell-audio`; live PipeWire and MPRIS exercise |
+| Power and session | Shared Power and session-action models over versioned helper records, UPower, Power Profiles D-Bus, logind, `xset`, `gsettings`, and light-locker | Delegated profile and session actions; user `power.conf`, DPMS, and lock policy; cleanup-aware DWM logout | Read-only, user-session, delegated | Capabilities fail independently; destructive actions share confirmation, origin attribution, overlap rejection, and exact accepted-result checks | `make check-quickshell-power check-quickshell-session-actions check-quickshell-controlcenter check-lock check-quickshell-settings-xvfb`; real X11 and available hardware/service checks |
+| Defaults and autostart | Versioned `dwm-default-apps` and `dwm-xdg-autostart` providers over XDG tools and desktop entries | Browser, terminal, file-manager, MIME, and next-login autostart overrides with verified recovery | Read-only, user-session | Invalid entries fail per item; mutations reject unsafe paths, preserve unrelated state, verify convergence, and never edit vendor files | `make check-default-apps check-terminal check-xdg-autostart check-quickshell-defaults-model check-quickshell-settings-xvfb` |
 | Appearance and accessibility | `themes.toml`, `Theme.qml`, `dwm-quickshell-controlcenter`, `theme-apply.sh`, `feh`, and delegated `nwg-look` | User theme files and toolkit config; session wallpaper; external GTK tool | Read-only, user-session, delegated, unsupported | Missing themes/tools affect only their controls; fonts, cursors, notifications, wallpaper selection, and accessibility still need settings contracts | `make check-quickshell-controlcenter check-quickshell-qml`; live theme reload |
 | System and diagnostics | `dwm-system-health` structured snapshots and the full-screen health window | Allowlisted user repairs; installed-helper privileged repairs; selected trusted-tool entry points | Read-only, user-session, privileged, delegated, unsupported | Authorization denial produces a restricted partial report; high-risk administration stays delegated or unsupported | `make check-system-health check-quickshell-health-xvfb` |
 
@@ -58,7 +59,7 @@ provider work still required.
 | Dependency check and installer | Fixed Control Center actions launched in a terminal | Delegated | Keep as explicit delegated workflows, not background Settings mutations. |
 | Open wallpaper folder or GTK settings | `xdg-open` or `nwg-look` through fixed actions | Delegated | Expose only when the target tool is available. |
 | Restart NetworkManager | Legacy fixed action launches `sudo systemctl` in a terminal | Privileged | Do not reuse as a Settings provider. Route future use through the trusted health helper or another installed allowlisted helper. |
-| Lock, logout, reboot, shutdown | `PowerMenuModel.qml` uses `dwm-lock`, `loginctl`, or systemd/logind | User-session for lock; delegated for logout/reboot/shutdown | Preserve confirmation for session-ending actions and rely on logind policy for authorization. |
+| Lock, logout, suspend, reboot, shutdown | One root `PowerMenuModel.qml` uses the fixed `session-action` helper protocol | User-session for lock/logout; delegated for suspend/reboot/shutdown | Panel and Settings share confirmation, progress, failures, and overlap rejection. Logout signals only the verified current DWM so normal autostop cleanup runs. |
 
 `Commands.qml` currently limits QML to fixed helper names and argv actions.
 The Settings application may reuse this pattern only for documented helper
@@ -104,21 +105,23 @@ action.
 | Default sink/source volume and mute | Native Quickshell PipeWire objects; `pactl`/`wpctl` snapshot fallback | Read-only | Native signals are preferred; no audio polling or repeated subscription processes. |
 | Output device list and current default | `dwm-quickshell-controls output-devices` and `output-status` | Read-only | Output is unavailable when neither supported session interface responds. |
 | Volume up/down/set, sink mute, default output | Fixed PipeWire/Pulse helper actions | User-session | Arguments are bounded; current streams move only when the selected backend supports it. |
-| Microphone mute status | Native PipeWire source or helper fallback | Read-only | Microphone mutation and input-device selection are not implemented and remain unsupported. |
+| Microphone status, volume, mute, and input-device selection | Native Quickshell PipeWire source with bounded helper fallback | User-session | Native signals are preferred; mutations are generation-checked and failures remain attributed to Audio. |
 | Media state and event stream | `playerctl metadata` and `playerctl --follow` | Read-only | The existing shared stream serves panel controls; section-specific streams must be stopped on close. |
 | Play/pause, previous, next | Fixed `playerctl` actions | User-session | Absent players or MPRIS support affect only media controls. |
-| Per-application streams | No current provider contract | Unsupported | Add a PipeWire-native model in Phase 3; do not parse an unstable display format. |
+| Per-application stream volume and mute | Native Quickshell PipeWire stream objects with bounded helper fallback | User-session | Active streams are signal-driven; missing stream support affects only the application-stream list. |
 
 ### Power, Defaults, and Appearance
 
 | Operations | Owner and interface | Class | Failure and safety behavior |
 | --- | --- | --- | --- |
-| DPMS and lock status | `dwm-quickshell-controlcenter power-status`; X11 and light-locker state | Read-only | Availability flags keep missing X11 or lock providers from breaking the section. |
-| Enable/disable DPMS or auto-lock; set timeouts | Fixed power actions write user `power.conf` and apply via `xset`/`gsettings` | User-session | Values are bounded; helper failure must not be reported as saved. |
-| Battery, power profiles, suspend policy, and lid policy | No settings-ready provider contract | Unsupported | Add stable system service providers in Phase 4 and distinguish readable state from privileged policy changes. |
-| Browser/MIME state and browser candidates | `dwm-default-apps status` and `browsers` | Read-only | Missing XDG tools or invalid desktop entries are reported without inventing defaults. |
-| Set browser or MIME handler | `dwm-default-apps set-browser` and `set-mime` | User-session | Desktop IDs and MIME arguments are validated before XDG writes. |
-| Default terminal, file manager, and autostart entries | No settings-ready provider contract | Unsupported | Preserve current configuration and XDG overrides until a provider is defined. |
+| DPMS and lock status | Versioned Control Center snapshot over X11 and light-locker state | Read-only | Availability flags keep missing X11 or lock providers from breaking the section. |
+| Enable/disable DPMS or auto-lock; set timeouts | Fixed power actions apply through bounded `xset`/`gsettings`, then atomically replace user `power.conf` | User-session | Values are restricted to 60 through 86400 seconds; apply or persistence failure restores prior state and is not reported as saved. |
+| Battery and external power | Aggregate UPower display-device and manager properties | Read-only | No battery is an explicit hardware-absent record; it does not hide profile, DPMS, lock, suspend, or lid state. |
+| Power profiles | Power Profiles D-Bus properties and fixed allowlisted `ActiveProfile` mutation | Read-only and delegated | Missing service disables profile selection only; the service and polkit retain authorization ownership. |
+| Suspend and lid capability | systemd-logind `CanSuspend` and effective lid-policy properties plus UPower lid state | Read-only and delegated | Suspend is exposed through the shared confirmed session model only when available; persistent lid policy remains read-only. |
+| Browser, terminal, file-manager, and MIME state/candidates | `dwm-default-apps snapshot` version 1.0 | Read-only | Missing tools and invalid desktop entries fail per role or MIME without inventing defaults. |
+| Set or restore an application default | Fixed `set-role`, `set-mime`, `reset-role`, and `reset-mime` actions | User-session | Exact selected associations or the terminal variable change transactionally; recovery refuses to overwrite later external edits. |
+| XDG autostart entries | `dwm-xdg-autostart` version 1.0 snapshot/watch and fixed set/reset actions | Read-only and user-session | Vendor files are immutable; user overrides are revision-checked, backed up, atomic, and next-login only. Session-critical changes require confirmation. |
 | Theme list and active theme | `themes.toml`, `Theme.qml`, and Control Center helper records | Read-only | Missing or invalid user state falls back to managed defaults without overwriting the user file. |
 | Select theme and apply toolkit/terminal/cursor settings | `theme-set`, hot reload, and `theme-apply.sh` user-file writes | User-session | A future contract must report partial toolkit failures and define preview/reset behavior. |
 | Random wallpaper | Fixed `feh` action over the user wallpaper directory | User-session | Missing tools, directory, or images are isolated failures. A selected-wallpaper provider is not yet available. |
@@ -150,13 +153,14 @@ duplicate Fedora package lists.
 | NetworkManager | `fedora:desktop-optional`; enabled by the Fedora image | Missing service reports unavailable while other sections continue. |
 | BlueZ and D-Bus JSON parsing | `bluez`, `systemd`, and `jq` from `fedora:desktop` plus the image service/package set | Adapter absence is a runtime unsupported state. |
 | PipeWire/WirePlumber and controls | `fedora:desktop`; included by the image | Missing session services report unavailable. |
+| UPower, Power Profiles, and D-Bus monitoring | `upower`, `power-profiles-daemon`, and `dbus-tools` in `fedora:desktop`; included by the Fedora image | Existing installs retain any provider of `ppd-service`; missing battery hardware or profile service disables only the corresponding Power controls. |
 | DPMS and auto-lock | X11 tools plus `fedora:desktop` | Missing schemas or locker disable only lock controls. |
-| Defaults | `fedora:runtime-required` | Missing XDG utilities disable default-application controls. |
+| Defaults and autostart | `xdg-utils` from `fedora:runtime-required`; `inotify-tools` from `fedora:desktop` | Missing XDG utilities disable only default-application controls; missing inotify keeps snapshots/actions usable but disables live refresh. |
 | Themes and GTK integration | `fedora:theme`, `fedora:theme-gtk`, and optional profiles | Missing optional theme packages do not disable Settings. |
 | Polkit authorization | Fedora desktop/image polkit agent and trusted helper | Missing authorization leaves read-only state available. |
 | System health | Fedora/systemd providers | Missing commands, services, hardware, or authorization emit partial or restricted records. |
 
-## Phase 1 Constraints Derived From the Inventory
+## Settings Constraints Derived From the Inventory
 
 - There is no reusable generic privilege interface. The health helper is the
   only current trusted-helper pattern and its allowlist must not be widened by
@@ -168,8 +172,9 @@ duplicate Fedora package lists.
   and stop on close.
 - Provider failures must be per section. Missing Quickshell, NetworkManager,
   BlueZ, PipeWire, X11, or a Fedora-only tool must not damage the core session.
-- The Phase 1 discovery output follows the versioned contract in
-  `docs/SETTINGS-PLATFORM.md`. Other current tab-separated interfaces remain
+- Settings discovery follows the versioned contract in
+  `docs/SETTINGS-PLATFORM.md`. Connectivity, audio, and power use their own
+  documented versioned protocols; other tab-separated interfaces remain
   inventory inputs, not automatically stable public APIs.
 - No existing or planned operation requires passwordless broad `sudo`, and no
   QML component is assigned ownership of an elevated command.

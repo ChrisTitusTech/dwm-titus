@@ -21,23 +21,45 @@ fi
 
 work=$(mktemp -d)
 display=":$((($$ % 300) + 1100))"
+runtime_alias_dir=
+test_stage='initializing fixture'
 cleanup() {
+	cleanup_status=$?
 	set +e
+	if [ "$cleanup_status" -ne 0 ]; then
+		printf 'Large-surface Xvfb failed while %s (status %s)\n' \
+			"${test_stage:-stage unknown}" "$cleanup_status" >&2
+		[ ! -f "$work/quickshell.log" ] || tail -80 "$work/quickshell.log" >&2
+		[ ! -f "$work/dwm.log" ] || tail -40 "$work/dwm.log" >&2
+	fi
 	[ -n "${quickshell_pid:-}" ] && kill "$quickshell_pid" 2>/dev/null
 	[ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null
 	[ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null
+	if [ -n "${runtime_alias_dir:-}" ]; then
+		rm -f -- "$runtime_alias_dir/runtime"
+		rmdir -- "$runtime_alias_dir" 2>/dev/null || true
+	fi
 	rm -rf "$work"
+	trap - EXIT HUP INT TERM
+	exit "$cleanup_status"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 143' HUP INT TERM
 
 home=$work/home
-runtime=$work/runtime
+runtime_storage=$work/runtime
+runtime=$runtime_storage
 config_home=$home/.config
 data_home=$home/.local/share
 bin=$work/bin
 mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" "$home/.cache" \
 	"$data_home/dwm-titus/scripts" "$data_home/applications" "$runtime" "$bin"
-chmod 700 "$runtime"
+chmod 700 "$runtime_storage"
+if [ "${#runtime}" -gt 64 ]; then
+	runtime_alias_dir=$(mktemp -d /tmp/dwm-large-surface-runtime.XXXXXX)
+	ln -s "$runtime_storage" "$runtime_alias_dir/runtime"
+	runtime=$runtime_alias_dir/runtime
+fi
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
 cp "$repo/config/"*.toml "$config_home/dwm-titus/"
 cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
@@ -149,6 +171,7 @@ send_test_notification() {
 		string:'Pointer dismissal and history fixture' array:string: dict:string:variant: int32:6000 >/dev/null
 }
 
+test_stage='waiting for launcher IPC'
 i=0
 while [ "$i" -lt 200 ]; do
 	ipc launcher open >/dev/null 2>&1 && break
@@ -156,6 +179,7 @@ while [ "$i" -lt 200 ]; do
 	sleep 0.05
 done
 launcher_window=$(wait_window '^dwm launcher$')
+test_stage='validating launcher interactions'
 capture_window launcher "$launcher_window"
 if [ "${DWM_LARGE_SURFACE_CAPTURE_ONLY:-0}" = 1 ]; then
 	ipc launcher close >/dev/null
@@ -187,6 +211,7 @@ else
 fi
 
 ipc settings open >/dev/null
+test_stage='validating Settings surface'
 settings_window=$(wait_window '^dwm settings$')
 capture_window settings "$settings_window"
 if [ "${DWM_LARGE_SURFACE_CAPTURE_ONLY:-0}" = 1 ]; then
@@ -194,11 +219,20 @@ if [ "${DWM_LARGE_SURFACE_CAPTURE_ONLY:-0}" = 1 ]; then
 else
 	DISPLAY=$display xdotool windowactivate --sync "$settings_window"
 	DISPLAY=$display xdotool key Down
-	[ "$(ipc settings currentSection)" = input ]
+	i=0
+	section=
+	while [ "$i" -lt 100 ]; do
+		section=$(ipc settings currentSection 2>/dev/null || true)
+		[ "$section" = input ] && break
+		i=$((i + 1))
+		sleep 0.05
+	done
+	[ "$section" = input ]
 	DISPLAY=$display xdotool key Escape
 fi
 
 ipc systemhealth open >/dev/null
+test_stage='validating System Health surface'
 health_window=$(wait_window '^dwm system health$')
 DISPLAY=$display xprop -id "$health_window" _NET_WM_STATE | grep -q '_NET_WM_STATE_FULLSCREEN'
 capture_window system-health "$health_window"
@@ -209,6 +243,7 @@ else
 	DISPLAY=$display xdotool key Escape
 fi
 
+test_stage='validating notifications'
 send_test_notification
 i=0
 while [ "$i" -lt 100 ]; do
@@ -240,6 +275,7 @@ fi
 ipc notifications clear >/dev/null
 [ "$(ipc notifications count)" = 0 ]
 
+test_stage='sampling closed-shell CPU usage'
 clock_ticks=$(getconf CLK_TCK)
 before=$(awk '{ print $14 + $15 }' "/proc/$quickshell_pid/stat")
 sleep 2

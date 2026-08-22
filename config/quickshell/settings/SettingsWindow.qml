@@ -12,6 +12,10 @@ FloatingWindow {
     required property var networkModel
     required property var bluetoothModel
     required property var controlsModel
+    required property var powerModel
+    required property var powerMenuModel
+    required property var defaultsModel
+    required property var autostartModel
 
     title: "dwm settings"
     visible: settingsModel.visible
@@ -354,6 +358,22 @@ FloatingWindow {
                                 controlsModel: root.controlsModel
                             }
 
+                            PowerSettingsPane {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                visible: root.settingsModel.selectedSectionId === "power"
+                                powerModel: root.powerModel
+                                powerMenuModel: root.powerMenuModel
+                            }
+
+                            DefaultsSettingsPane {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                visible: root.settingsModel.selectedSectionId === "defaults"
+                                defaultsModel: root.defaultsModel
+                                autostartModel: root.autostartModel
+                            }
+
                             ListView {
                                 id: capabilityList
 
@@ -364,6 +384,8 @@ FloatingWindow {
                                     && root.settingsModel.selectedSectionId !== "network"
                                     && root.settingsModel.selectedSectionId !== "bluetooth"
                                     && root.settingsModel.selectedSectionId !== "audio"
+                                    && root.settingsModel.selectedSectionId !== "power"
+                                    && root.settingsModel.selectedSectionId !== "defaults"
                                 clip: true
                                 spacing: Theme.spacingLg
                                 model: root.settingsModel.capabilitiesForSection(root.settingsModel.selectedSectionId)

@@ -40,6 +40,8 @@ for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker 
 	xdg-settings xdg-mime xinput; do
 	make_stub "$fedora_bin/$command_name"
 done
+make_stub "$fedora_bin/dwm-xdg-autostart"
+make_stub "$fedora_bin/inotifywait"
 make_failing_stub "$fedora_bin/pkexec"
 make_failing_stub "$fedora_bin/sudo"
 
@@ -70,6 +72,8 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	network	networkmanager	NetworkManager	available	delegated	nmcli	NetworkManager state is available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	audio	pipewire-audio	Audio	available	user-session	pactl	PipeWire Pulse-compatible session controls are available'
+printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	defaults	xdg-autostart	Startup applications	available	user-session	xdg-autostart	Per-user XDG autostart overrides and live updates are available'
 printf '%s\n' "$fedora_output" | grep -Eq \
 	'^capability	system	authorization	Administrative authorization	(available|restricted)	privileged	polkit	'
 
@@ -131,6 +135,12 @@ grep -Fq 'providerProcess.running = false' "$repo/config/quickshell/settings/Set
 grep -Fq 'Commands.settingsProviderCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'Commands.settingsDisplayCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'Commands.settingsInputCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'Commands.settingsDisplayCommand("watch", root.watchOwnerArguments())' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'Commands.settingsInputCommand("watch", root.watchOwnerArguments())' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'path: "/proc/" + Quickshell.processId.toString() + "/stat"' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.runInput("preview-status", [])' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.runDisplay("preview-status", [])' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'if (!root.visible) root.closeRollbackPending = true;' \
