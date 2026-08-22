@@ -322,11 +322,18 @@ SH
 cat >"$data_home/dwm-titus/scripts/busctl" <<'SH'
 #!/bin/sh
 set -eu
-case " $* " in
-*' org.bluez '*)
+case $* in
+'--system --json=short call org.bluez / org.freedesktop.DBus.ObjectManager GetManagedObjects')
 	cat <<'JSON'
 {"type":"a{oa{sa{sv}}}","data":[{"/org/bluez/hci0":{"org.bluez.Adapter1":{"Address":{"type":"s","data":"00:11:22:33:44:55"},"Alias":{"type":"s","data":"Test Adapter"},"Powered":{"type":"b","data":true},"Discovering":{"type":"b","data":false},"Pairable":{"type":"b","data":true}}}}]}
 JSON
+	;;
+'--system monitor org.bluez')
+	trap 'exit 0' HUP INT TERM
+	printf 'signal\n'
+	while :; do
+		sleep 1
+	done
 	;;
 *) exit 1 ;;
 esac
