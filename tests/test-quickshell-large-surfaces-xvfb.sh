@@ -21,6 +21,7 @@ fi
 
 work=$(mktemp -d)
 display=":$((($$ % 300) + 1100))"
+runtime_alias_dir=
 test_stage='initializing fixture'
 cleanup() {
 	cleanup_status=$?
@@ -34,6 +35,10 @@ cleanup() {
 	[ -n "${quickshell_pid:-}" ] && kill "$quickshell_pid" 2>/dev/null
 	[ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null
 	[ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null
+	if [ -n "${runtime_alias_dir:-}" ]; then
+		rm -f -- "$runtime_alias_dir/runtime"
+		rmdir -- "$runtime_alias_dir" 2>/dev/null || true
+	fi
 	rm -rf "$work"
 	trap - EXIT HUP INT TERM
 	exit "$cleanup_status"
@@ -42,13 +47,19 @@ trap cleanup EXIT
 trap 'exit 143' HUP INT TERM
 
 home=$work/home
-runtime=$work/runtime
+runtime_storage=$work/runtime
+runtime=$runtime_storage
 config_home=$home/.config
 data_home=$home/.local/share
 bin=$work/bin
 mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" "$home/.cache" \
 	"$data_home/dwm-titus/scripts" "$data_home/applications" "$runtime" "$bin"
-chmod 700 "$runtime"
+chmod 700 "$runtime_storage"
+if [ "${#runtime}" -gt 64 ]; then
+	runtime_alias_dir=$(mktemp -d /tmp/dwm-large-surface-runtime.XXXXXX)
+	ln -s "$runtime_storage" "$runtime_alias_dir/runtime"
+	runtime=$runtime_alias_dir/runtime
+fi
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
 cp "$repo/config/"*.toml "$config_home/dwm-titus/"
 cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
