@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+helper=$repo/scripts/dwm-settings-appearance
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT HUP INT TERM
+
+config_home=$work/config
+data_root=$work/data
+bin_dir=$work/bin
+mkdir -p "$config_home/dwm-titus" "$config_home/alacritty" "$config_home/kitty" \
+	"$data_root/themes/Nordic/gtk-3.0" "$data_root/icons/Capitaine-Cursors-White" "$bin_dir"
+cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
+: >"$config_home/alacritty/active-theme.toml"
+: >"$config_home/kitty/active-theme.conf"
+
+for command_name in bash dirname stat tr; do
+	ln -s "$(command -v "$command_name")" "$bin_dir/$command_name"
+done
+printf '#!/bin/sh\nexit 0\n' >"$bin_dir/qt6ct"
+printf '#!/bin/sh\nexit 0\n' >"$bin_dir/picom"
+chmod +x "$bin_dir/qt6ct" "$bin_dir/picom"
+
+snapshot() {
+	PATH=$bin_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+		DWM_APPEARANCE_DATA_DIRS=$data_root \
+		"$helper" snapshot
+}
+
+before_hash=$(sha256sum "$config_home/dwm-titus/themes.toml")
+before_mode=$(stat -c %a "$config_home/dwm-titus/themes.toml")
+output=$(snapshot)
+after_hash=$(sha256sum "$config_home/dwm-titus/themes.toml")
+after_mode=$(stat -c %a "$config_home/dwm-titus/themes.toml")
+[[ $before_hash == "$after_hash" && $before_mode == "$after_mode" ]]
+
+grep -Fqx $'appearance-protocol\t1\t0' <<<"$output"
+grep -Fqx $'provider\tappearance\tavailable\tread-only\tShared theme inventory and integration state' <<<"$output"
+grep -Fqx $'source\tuser\t'"$config_home/dwm-titus/themes.toml" <<<"$output"
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$output"
+grep -Fqx $'theme\tnord\tselected\tvalid\ttrue\tNordic\tTheme record is complete' <<<"$output"
+[[ $(grep -c $'^theme\t' <<<"$output") -eq 15 ]]
+grep -Fqx $'color\tbackground\t#2E3440\tterm_bg' <<<"$output"
+grep -Fqx $'color\taccent\t#81A1C1\tselbordercolor' <<<"$output"
+grep -Fqx $'color\tdanger\t#BF616A\tterm_color1' <<<"$output"
+grep -Fqx $'integration\tgtk\tavailable\tNordic\tRequested GTK theme is installed' <<<"$output"
+grep -Fqx $'integration\tqt\tavailable\tqt6ct\tQt applications use the supported theme backend' <<<"$output"
+grep -Fqx $'integration\tcursor\tavailable\tCapitaine-Cursors-White\tManaged cursor theme is installed' <<<"$output"
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme is present' <<<"$output"
+grep -Fqx $'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract' <<<"$output"
+grep -Fqx $'error\tcompositor\tunsupported\tPicom theme mutation is not implemented' <<<"$output"
+
+sed -i 's/^\[active\]$/[active] # selected theme/' "$config_home/dwm-titus/themes.toml"
+sed -i 's/^\[theme\.nord\]$/[theme.nord] # default theme/' "$config_home/dwm-titus/themes.toml"
+commented_headers=$(snapshot)
+grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' \
+	<<<"$commented_headers"
+grep -Fqx $'active\tnone\tdracula\trecovery' <<<"$commented_headers"
+[[ $(grep -c $'^error\tparser\tmalformed-section\t' <<<"$commented_headers") -eq 2 ]]
+if grep -Fq $'theme\tnord\t' <<<"$commented_headers"; then
+	printf 'Commented section header was reported as live-compatible\n' >&2
+	exit 1
+fi
+cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
+
+sed -i 's/^\[theme\.dracula\]$/[theme.dracula] trailing/' "$config_home/dwm-titus/themes.toml"
+malformed_header=$(snapshot)
+grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' \
+	<<<"$malformed_header"
+grep -Fq $'error\tparser\tmalformed-section\tMalformed theme section header at line ' \
+	<<<"$malformed_header"
+if grep -Fq $'theme\tdracula\t' <<<"$malformed_header"; then
+	printf 'Malformed theme section was inventoried\n' >&2
+	exit 1
+fi
+
+cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i 's/^\[active\]$/[active/' "$config_home/dwm-titus/themes.toml"
+truncated_header=$(snapshot)
+grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' \
+	<<<"$truncated_header"
+grep -Fqx $'active\tnone\tnord\trecovery' <<<"$truncated_header"
+grep -Fq $'error\tparser\tmalformed-section\tMalformed theme section header at line ' \
+	<<<"$truncated_header"
+cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
+
+printf '\n[theme.@unsafe]\nterm_bg = "#000000"\n' >>"$config_home/dwm-titus/themes.toml"
+unsafe_name=$(snapshot)
+grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' \
+	<<<"$unsafe_name"
+grep -Fq $'error\tparser\tinvalid-theme-name\tTheme name is not a supported bare identifier at line ' \
+	<<<"$unsafe_name"
+if grep -Fq $'theme\t@unsafe\t' <<<"$unsafe_name"; then
+	printf 'Unsafe theme identifier was inventoried\n' >&2
+	exit 1
+fi
+cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
+
+rmdir "$data_root/themes/Nordic/gtk-3.0"
+stale_gtk=$(snapshot)
+grep -Fqx $'integration\tgtk\tpartial\tNordic\tRequested GTK theme is missing; apply falls back to Adwaita-dark' <<<"$stale_gtk"
+grep -Fqx $'error\tgtk\tmissing-theme\tGTK theme '\''Nordic'\'' is not installed' <<<"$stale_gtk"
+mkdir "$data_root/themes/Nordic/gtk-3.0"
+
+mv "$config_home/dwm-titus/themes.toml" "$work/managed-themes.toml"
+managed=$(PATH=$bin_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_MANAGED_THEMES_FILE="$work/managed-themes.toml" \
+	"$helper" snapshot)
+grep -Fqx $'source\tmanaged\t'"$work/managed-themes.toml" <<<"$managed"
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$managed"
+
+mkdir -p "$data_root/dwm-titus/config"
+cp "$work/managed-themes.toml" "$data_root/dwm-titus/config/themes.toml"
+installed_managed=$(PATH=$bin_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	DWM_APPEARANCE_DATA_DIRS=$data_root "$helper" snapshot)
+grep -Fqx $'source\tmanaged\t'"$data_root/dwm-titus/config/themes.toml" <<<"$installed_managed"
+
+custom_theme=-custom_theme_with_a_name_that_is_longer_than_sixty_four_characters_1234567890
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i "0,/theme = \"nord\"/s//theme = \"$custom_theme\"/" "$config_home/dwm-titus/themes.toml"
+sed -i "0,/^\[theme\.nord\]$/s//[theme.$custom_theme]/" "$config_home/dwm-titus/themes.toml"
+custom=$(snapshot)
+grep -Fqx $'active\t'"$custom_theme"$'\t'"$custom_theme"$'\tselected' <<<"$custom"
+grep -Fq $'theme\t'"$custom_theme"$'\tselected\tvalid\ttrue\tNordic' <<<"$custom"
+
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i '0,/theme = "nord"/s//theme = "dracula"/' "$config_home/dwm-titus/themes.toml"
+adwaita=$(snapshot)
+grep -Fqx $'integration\tgtk\tavailable\tAdwaita-dark\tRequested GTK theme is installed' <<<"$adwaita"
+if grep -Fq $'error\tgtk\tmissing-theme' <<<"$adwaita"; then
+	printf 'Built-in Adwaita fallback was reported missing\n' >&2
+	exit 1
+fi
+
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i '0,/theme = "nord"/s//theme = "missing"/' "$config_home/dwm-titus/themes.toml"
+unknown=$(snapshot)
+grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' <<<"$unknown"
+grep -Fqx $'active\tmissing\tnord\trecovery' <<<"$unknown"
+grep -Fqx $'error\tactive\tunknown\tActive theme '\''missing'\'' is not defined' <<<"$unknown"
+
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+printf '\n[theme.nord]\nterm_bg = "#000000"\n' >>"$config_home/dwm-titus/themes.toml"
+duplicate=$(snapshot)
+grep -Fqx $'active\tnord\tdracula\trecovery' <<<"$duplicate"
+grep -Fq $'error\ttheme:nord\tduplicate\tDuplicate theme section at line ' <<<"$duplicate"
+grep -Fqx $'theme\tnord\tselected\tinvalid\ttrue\tNordic\tTheme record is duplicate, malformed, or incomplete' <<<"$duplicate"
+
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i '0,/theme = "nord"/s//theme = "broken"/' "$config_home/dwm-titus/themes.toml"
+printf '\n[theme.broken]\ndark_mode = true\n' >>"$config_home/dwm-titus/themes.toml"
+incomplete=$(snapshot)
+grep -Fqx $'active\tbroken\tnord\trecovery' <<<"$incomplete"
+grep -Fqx $'error\ttheme:broken\tmissing-key\tTheme is missing 25 required keys; first missing key is '\''normfgcolor'\''' <<<"$incomplete"
+grep -Fqx $'error\tactive\tinvalid\tActive theme '\''broken'\'' is invalid or incomplete' <<<"$incomplete"
+
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i '0,/normfgcolor     = "#D8DEE9"/s//normfgcolor     = "not-a-color"/' \
+	"$config_home/dwm-titus/themes.toml"
+invalid_color=$(snapshot)
+grep -Fqx $'active\tnord\tdracula\trecovery' <<<"$invalid_color"
+grep -Fqx $'error\ttheme:nord\tinvalid-color\tTheme key '\''normfgcolor'\'' is not a #RRGGBB color' <<<"$invalid_color"
+
+nord_block=$(awk '
+	/^\[theme\.nord\]$/ { capture = 1; next }
+	/^\[theme\.dracula\]$/ { exit }
+	capture && /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/ { print }
+' "$repo/config/themes.toml")
+{
+	printf '[active]\ntheme = "t19"\n'
+	for ((theme_index = 0; theme_index < 20; theme_index++)); do
+		printf '[theme.t%s]\n%s\n' "$theme_index" "$nord_block"
+	done
+} >"$config_home/dwm-titus/themes.toml"
+entry_limited=$(snapshot)
+grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' \
+	<<<"$entry_limited"
+grep -Fqx $'active\tt19\tt0\trecovery' <<<"$entry_limited"
+grep -Fqx $'error\tparser\tentry-limit\tTheme configuration exceeds the runtime parser limit of 512 entries' \
+	<<<"$entry_limited"
+grep -Fq $'theme\tt19\tselected\tinvalid\t' <<<"$entry_limited"
+
+{
+	printf '[active]\ntheme = "t0"\n'
+	for ((theme_index = 0; theme_index < 100; theme_index++)); do
+		printf '[theme.t%s]\ndark_mode = true\n' "$theme_index"
+	done
+} >"$config_home/dwm-titus/themes.toml"
+set +e
+timeout 2 env PATH="$bin_dir" XDG_CONFIG_HOME="$config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot >"$work/many-incomplete.out"
+many_status=$?
+set -e
+[[ $many_status -eq 3 ]]
+grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+	"$work/many-incomplete.out"
+[[ $(grep -c $'^error\ttheme:' "$work/many-incomplete.out") -eq 100 ]]
+
+rm -f "$config_home/dwm-titus/themes.toml" "$work/missing-managed.toml"
+set +e
+missing=$(PATH=$bin_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_MANAGED_THEMES_FILE="$work/missing-managed.toml" \
+	"$helper" snapshot)
+missing_status=$?
+set -e
+[[ $missing_status -eq 3 ]]
+grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' <<<"$missing"
+grep -Fqx $'source\tnone\tunavailable' <<<"$missing"
+grep -Fqx $'active\tnone\tnone\tunresolved' <<<"$missing"
+grep -Fqx $'error\tsource\tmissing\tNo readable user or managed themes.toml file is available' <<<"$missing"
+
+if "$helper" invalid 2>"$work/usage.err"; then
+	printf 'Unknown appearance action unexpectedly succeeded\n' >&2
+	exit 1
+fi
+grep -Fq 'usage:' "$work/usage.err"
+
+printf 'Appearance provider contract: PASS\n'

@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Added
 
+- Begin Phase 5 with a versioned, read-only appearance provider that validates
+  the active and available themes, resolves a safe recovery theme, exposes the
+  shared semantic palette, and reports GTK, Qt, cursor, terminal, and compositor
+  integration failures without modifying user configuration.
+
 - Add one shared session-action model for Lock, Log Out, Suspend, Reboot, and
   Shutdown across the panel and Settings. Fixed helper actions require exact
   accepted records, preserve destructive confirmations, attribute failures to

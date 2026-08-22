@@ -12,9 +12,20 @@ Keep DWM, X11, Fedora providers, runtime TOML files, existing keybindings, panel
 geometry, and user-owned configuration compatible while adding the workflows
 below. Do not begin Phase 6 system-management work in Phase 5 changes.
 
+Keep Phase 5 reviewable through these ordered pull-request boundaries. Finish,
+validate, and merge each boundary before starting the next one:
+
+1. Read-only appearance inventory and validation protocol.
+2. Transactional theme preview, apply, reset, and recovery helper.
+3. Shared root appearance model and Settings theme pane.
+4. Wallpaper, toolkit, font, cursor, icon, and panel-widget persistence slices,
+   split further when one slice cannot remain independently reviewable.
+5. Accessibility and notification policy, with UI-5 candidates kept in their
+   own later review boundaries.
+
 ### THEME-001: Shared Appearance Provider and Safe Theme Changes
 
-- [ ] Define a versioned machine-readable provider for the active theme,
+- [x] Define a versioned machine-readable provider for the active theme,
   available themes, semantic colors, toolkit state, and per-capability errors.
 - [ ] Add one root-scoped appearance model shared by Settings and existing shell
   surfaces without duplicating the `Theme.qml` or `themes.toml` ownership path.

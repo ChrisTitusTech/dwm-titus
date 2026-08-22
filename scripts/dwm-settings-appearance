@@ -1,0 +1,457 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+config_home=${XDG_CONFIG_HOME:-${HOME:?HOME is required}/.config}
+data_home=${XDG_DATA_HOME:-${HOME:?HOME is required}/.local/share}
+themes_file=${DWM_APPEARANCE_THEMES_FILE:-$config_home/dwm-titus/themes.toml}
+managed_themes_file=${DWM_APPEARANCE_MANAGED_THEMES_FILE:-$data_home/dwm-titus/config/themes.toml}
+readonly max_themes_size=1048576
+readonly max_theme_count=128
+readonly max_error_count=256
+readonly max_entry_count=512
+readonly key_separator=$'\034'
+
+declare -a theme_order=()
+declare -a errors=()
+declare -A section_count=()
+declare -A value=()
+declare -A key_seen=()
+declare -A theme_invalid=()
+
+source_kind=
+source_file=
+provider_state=available
+selected_theme=
+resolved_theme=
+errors_truncated=false
+entry_limit_reported=false
+parsed_entry_count=0
+
+readonly -a required_colors=(
+	normfgcolor normbgcolor normbordercolor selfgcolor selbgcolor selbordercolor
+	term_bg term_fg term_cursor term_color0 term_color1 term_color2 term_color3
+	term_color4 term_color5 term_color6 term_color7 term_color8 term_color9
+	term_color10 term_color11 term_color12 term_color13 term_color14 term_color15
+)
+
+usage() {
+	printf 'usage: %s snapshot\n' "$0" >&2
+}
+
+clean_field() {
+	local field=$1
+	field=${field//$'\t'/ }
+	field=${field//$'\r'/ }
+	field=${field//$'\n'/ }
+	printf '%s' "$field"
+}
+
+add_error() {
+	local capability=$1 code=$2 detail=$3
+	if ((${#errors[@]} >= max_error_count)); then
+		if [[ $errors_truncated == false ]]; then
+			errors+=("provider"$'\t'"error-limit"$'\t'"Additional errors were omitted")
+			errors_truncated=true
+		fi
+		return
+	fi
+	errors+=("$(clean_field "$capability")"$'\t'"$(clean_field "$code")"$'\t'"$(clean_field "$detail")")
+}
+
+select_source() {
+	if [[ -r $themes_file && -f $themes_file ]]; then
+		source_kind=user
+		source_file=$themes_file
+		return
+	fi
+	if [[ -e $themes_file ]]; then
+		add_error source unreadable "User theme file is not a readable regular file: $themes_file"
+		provider_state=partial
+	fi
+	if [[ -r $managed_themes_file && -f $managed_themes_file ]]; then
+		source_kind=managed
+		source_file=$managed_themes_file
+		return
+	fi
+	provider_state=unavailable
+	add_error source missing 'No readable user or managed themes.toml file is available'
+}
+
+parse_themes() {
+	local file=$1 size line trimmed line_number=0 raw
+	local section='' theme='' theme_candidate='' key='' parsed=''
+
+	size=$(stat -c %s -- "$file" 2>/dev/null) || {
+		provider_state=unavailable
+		add_error source stat-failed "Cannot inspect theme file: $file"
+		return
+	}
+	if ((size > max_themes_size)); then
+		provider_state=unavailable
+		add_error source too-large "Theme file exceeds $max_themes_size bytes"
+		return
+	fi
+
+	while IFS= read -r line || [[ -n $line ]]; do
+		((line_number += 1))
+		line=${line%$'\r'}
+		trimmed=$line
+		trimmed=${trimmed#"${trimmed%%[![:space:]]*}"}
+		trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
+		[[ -z $trimmed || $trimmed == \#* ]] && continue
+
+		if [[ $trimmed == \[* ]]; then
+			if [[ $trimmed =~ ^\[theme\.([^]]+)\]$ ]]; then
+				theme_candidate=${BASH_REMATCH[1]}
+				if [[ ! $theme_candidate =~ ^[A-Za-z0-9._-]+$ ]]; then
+					section=ignore
+					theme=
+					provider_state=partial
+					add_error parser invalid-theme-name "Theme name is not a supported bare identifier at line $line_number"
+				else
+					theme=$theme_candidate
+					section=theme
+					if [[ -z ${section_count[$theme]+x} ]] &&
+						((${#theme_order[@]} >= max_theme_count)); then
+						section=ignore
+						theme=
+						provider_state=partial
+						add_error parser theme-limit "Theme inventory exceeds $max_theme_count records"
+						continue
+					fi
+					((section_count[$theme] = ${section_count[$theme]:-0} + 1))
+					if ((${section_count[$theme]} == 1)); then
+						theme_order+=("$theme")
+					else
+						theme_invalid[$theme]=1
+						provider_state=partial
+						add_error "theme:$theme" duplicate "Duplicate theme section at line $line_number"
+					fi
+				fi
+			elif [[ $trimmed == '[active]' ]]; then
+				section=active
+				theme=__active
+			elif [[ $trimmed == '[appearance]' ]]; then
+				section=appearance
+				theme=__appearance
+			else
+				section=ignore
+				theme=
+				case $trimmed in
+				'[theme.'* | '[active'* | '[appearance'*)
+					provider_state=partial
+					add_error parser malformed-section "Malformed theme section header at line $line_number"
+					;;
+				esac
+			fi
+			continue
+		fi
+
+		if [[ $line =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*\"([^\"]*)\"[[:space:]]*(#.*)?$ ]]; then
+			key=${BASH_REMATCH[1]}
+			parsed=${BASH_REMATCH[2]}
+		elif [[ $line =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*([^#[:space:]]+)[[:space:]]*(#.*)?$ ]]; then
+			key=${BASH_REMATCH[1]}
+			parsed=${BASH_REMATCH[2]}
+		else
+			if [[ $section == theme || $section == active || $section == appearance ]]; then
+				provider_state=partial
+				[[ $section != theme ]] || theme_invalid[$theme]=1
+				add_error "${section}:${theme}" invalid-record "Unsupported theme record at line $line_number"
+			fi
+			continue
+		fi
+
+		# DWM's TOML_MAX_ENTRIES applies to the entire document, so otherwise
+		# ignored sections still consume the shared runtime parser budget.
+		((parsed_entry_count += 1))
+		if ((parsed_entry_count > max_entry_count)); then
+			provider_state=partial
+			if [[ $entry_limit_reported == false ]]; then
+				add_error parser entry-limit "Theme configuration exceeds the runtime parser limit of $max_entry_count entries"
+				entry_limit_reported=true
+			fi
+			continue
+		fi
+		[[ $section == theme || $section == active || $section == appearance ]] || continue
+
+		raw=$theme$key_separator$key
+		if [[ -n ${key_seen[$raw]+x} ]]; then
+			provider_state=partial
+			[[ $section != theme ]] || theme_invalid[$theme]=1
+			add_error "${section}:${theme}" duplicate-key "Duplicate key '$key' at line $line_number"
+			continue
+		fi
+		key_seen[$raw]=1
+		value[$raw]=$parsed
+	done <"$file"
+}
+
+valid_color() {
+	[[ $1 =~ ^#[0-9A-Fa-f]{6}$ ]]
+}
+
+validate_themes() {
+	local theme key color dark first_missing missing_count invalid_count
+
+	for theme in "${theme_order[@]}"; do
+		first_missing=
+		missing_count=0
+		invalid_count=0
+		for key in "${required_colors[@]}"; do
+			color=${value[$theme$key_separator$key]:-}
+			if [[ -z $color ]]; then
+				theme_invalid[$theme]=1
+				provider_state=partial
+				[[ -n $first_missing ]] || first_missing=$key
+				((missing_count += 1))
+			elif ! valid_color "$color"; then
+				theme_invalid[$theme]=1
+				provider_state=partial
+				((invalid_count += 1))
+				if ((invalid_count == 1)); then
+					add_error "theme:$theme" invalid-color "Theme key '$key' is not a #RRGGBB color"
+				fi
+			fi
+		done
+		if ((missing_count > 0)); then
+			add_error "theme:$theme" missing-key \
+				"Theme is missing $missing_count required keys; first missing key is '$first_missing'"
+		fi
+		dark=${value[$theme$key_separator'dark_mode']:-true}
+		if [[ $dark != true && $dark != false ]]; then
+			theme_invalid[$theme]=1
+			provider_state=partial
+			add_error "theme:$theme" invalid-dark-mode "Theme dark_mode must be true or false"
+		fi
+	done
+}
+
+resolve_active_theme() {
+	local theme
+
+	selected_theme=${value[__active$key_separator'theme']:-}
+	if [[ -z $selected_theme ]]; then
+		provider_state=partial
+		add_error active missing 'The active theme name is missing'
+	elif [[ -z ${section_count[$selected_theme]+x} ]]; then
+		provider_state=partial
+		add_error active unknown "Active theme '$selected_theme' is not defined"
+	elif [[ -n ${theme_invalid[$selected_theme]+x} ]]; then
+		provider_state=partial
+		add_error active invalid "Active theme '$selected_theme' is invalid or incomplete"
+	else
+		resolved_theme=$selected_theme
+		return
+	fi
+
+	if [[ -n ${section_count[nord]+x} && -z ${theme_invalid[nord]+x} ]]; then
+		resolved_theme=nord
+		return
+	fi
+	for theme in "${theme_order[@]}"; do
+		if [[ -z ${theme_invalid[$theme]+x} ]]; then
+			resolved_theme=$theme
+			return
+		fi
+	done
+	provider_state=unavailable
+	add_error active no-valid-theme 'No complete theme is available for recovery'
+}
+
+data_roots() {
+	local roots root
+	local -a split_roots=()
+	if [[ -n ${DWM_APPEARANCE_DATA_DIRS:-} ]]; then
+		roots=$DWM_APPEARANCE_DATA_DIRS
+	else
+		roots=$data_home:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
+	fi
+	IFS=: read -r -a split_roots <<<"$roots"
+	for root in "${split_roots[@]}"; do
+		[[ -n $root ]] && printf '%s\n' "$root"
+	done
+}
+
+gtk_theme_available() {
+	local name=$1 root
+	case $name in
+	Adwaita | Adwaita-dark) return 0 ;;
+	esac
+	while IFS= read -r root; do
+		if [[ -d $root/themes/$name/gtk-3.0 || -d $root/themes/$name/gtk-4.0 ]]; then
+			return 0
+		fi
+	done < <(data_roots)
+	[[ -d ${HOME:-}/.themes/$name/gtk-3.0 || -d ${HOME:-}/.themes/$name/gtk-4.0 ]]
+}
+
+asset_available() {
+	local kind=$1 name=$2 root
+	while IFS= read -r root; do
+		[[ -d $root/$kind/$name ]] && return 0
+	done < <(data_roots)
+	if [[ $kind == themes && -d ${HOME:-}/.themes/$name ]]; then
+		return 0
+	fi
+	return 1
+}
+
+emit_theme_records() {
+	local theme selection validity dark gtk detail
+	for theme in "${theme_order[@]}"; do
+		selection=available
+		[[ $theme != "$selected_theme" ]] || selection=selected
+		[[ $theme != "$resolved_theme" || $theme == "$selected_theme" ]] || selection=recovery
+		validity=valid
+		detail='Theme record is complete'
+		if [[ -n ${theme_invalid[$theme]+x} ]]; then
+			validity=invalid
+			detail='Theme record is duplicate, malformed, or incomplete'
+		fi
+		dark=${value[$theme$key_separator'dark_mode']:-true}
+		gtk=${value[$theme$key_separator'gtk_theme']:-automatic}
+		printf 'theme\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+			"$(clean_field "$theme")" "$selection" "$validity" "$dark" \
+			"$(clean_field "$gtk")" "$detail"
+	done
+}
+
+emit_color_records() {
+	local name key fallback color mapping
+	local -a mappings=(
+		'background|term_bg|'
+		'bar-background|normbgcolor|term_bg'
+		'surface|normbgcolor|term_bg'
+		'surface-hover|term_color8|selbgcolor'
+		'surface-active|selbgcolor|term_color8'
+		'border|normbordercolor|normbgcolor'
+		'border-strong|selbordercolor|normbordercolor'
+		'text|normfgcolor|'
+		'text-strong|selfgcolor|normfgcolor'
+		'text-muted|term_fg|normfgcolor'
+		'placeholder|term_color8|term_fg'
+		'accent|selbordercolor|'
+		'accent-secondary|term_color4|selbordercolor'
+		'accent-text|term_bg|'
+		'success|term_color2|'
+		'warning|term_color3|'
+		'danger|term_color1|'
+		'danger-surface|term_color0|normbgcolor'
+	)
+
+	[[ -n $resolved_theme ]] || return 0
+	for mapping in "${mappings[@]}"; do
+		IFS='|' read -r name key fallback <<<"$mapping"
+		color=${value[$resolved_theme$key_separator$key]:-}
+		[[ -n $color || -z $fallback ]] || color=${value[$resolved_theme$key_separator$fallback]:-}
+		printf 'color\t%s\t%s\t%s\n' "$name" "$(clean_field "$color")" "$key"
+	done
+}
+
+emit_integrations() {
+	local dark requested_gtk fallback_gtk cursor qt_backend
+	[[ -n $resolved_theme ]] || return 0
+
+	dark=${value[$resolved_theme$key_separator'dark_mode']:-true}
+	requested_gtk=${value[$resolved_theme$key_separator'gtk_theme']:-}
+	if [[ -z $requested_gtk ]]; then
+		if [[ $dark == true ]]; then
+			[[ $resolved_theme == nord ]] && requested_gtk=Nordic || requested_gtk=Adwaita-dark
+		else
+			requested_gtk=Adwaita
+		fi
+	fi
+	if gtk_theme_available "$requested_gtk"; then
+		printf 'integration\tgtk\tavailable\t%s\tRequested GTK theme is installed\n' "$(clean_field "$requested_gtk")"
+	else
+		[[ $dark == true ]] && fallback_gtk=Adwaita-dark || fallback_gtk=Adwaita
+		printf 'integration\tgtk\tpartial\t%s\tRequested GTK theme is missing; apply falls back to %s\n' \
+			"$(clean_field "$requested_gtk")" "$fallback_gtk"
+		add_error gtk missing-theme "GTK theme '$requested_gtk' is not installed"
+	fi
+
+	if command -v qt6ct >/dev/null 2>&1; then
+		qt_backend=qt6ct
+	elif command -v qt5ct >/dev/null 2>&1; then
+		qt_backend=qt5ct
+	else
+		qt_backend=gtk3
+	fi
+	printf 'integration\tqt\tavailable\t%s\tQt applications use the supported theme backend\n' "$qt_backend"
+
+	[[ $dark == true ]] && cursor=Capitaine-Cursors-White || cursor=Capitaine-Cursors
+	if asset_available icons "$cursor"; then
+		printf 'integration\tcursor\tavailable\t%s\tManaged cursor theme is installed\n' "$cursor"
+	else
+		printf 'integration\tcursor\tunavailable\t%s\tManaged cursor theme is missing\n' "$cursor"
+		add_error cursor missing-theme "Cursor theme '$cursor' is not installed"
+	fi
+
+	for terminal in alacritty kitty; do
+		if [[ -f $config_home/$terminal/active-theme.$([[ $terminal == alacritty ]] && printf toml || printf conf) ]]; then
+			printf 'integration\t%s\tavailable\tactive-theme\tGenerated terminal theme is present\n' "$terminal"
+		elif [[ -d $config_home/$terminal ]]; then
+			printf 'integration\t%s\tpartial\tconfiguration\tTerminal is configured but has no generated active theme\n' "$terminal"
+			add_error "$terminal" not-applied 'Generated active theme is missing'
+		else
+			printf 'integration\t%s\tunavailable\tnot-configured\tTerminal integration is not configured\n' "$terminal"
+		fi
+	done
+
+	if command -v picom >/dev/null 2>&1; then
+		printf 'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract\n'
+		add_error compositor unsupported 'Picom theme mutation is not implemented'
+	else
+		printf 'integration\tcompositor\tunavailable\tmissing\tPicom is optional and not installed\n'
+	fi
+}
+
+snapshot() {
+	local active_state=unresolved
+	select_source
+	if [[ -n $source_file ]]; then
+		parse_themes "$source_file"
+		validate_themes
+		resolve_active_theme
+	fi
+
+	if [[ -n $resolved_theme ]]; then
+		if [[ $resolved_theme == "$selected_theme" ]]; then
+			active_state=selected
+		else
+			active_state=recovery
+		fi
+	fi
+	printf 'appearance-protocol\t1\t0\n'
+	printf 'provider\tappearance\t%s\tread-only\tShared theme inventory and integration state\n' "$provider_state"
+	printf 'source\t%s\t%s\n' "${source_kind:-none}" "$(clean_field "${source_file:-unavailable}")"
+	printf 'active\t%s\t%s\t%s\n' \
+		"$(clean_field "${selected_theme:-none}")" \
+		"$(clean_field "${resolved_theme:-none}")" \
+		"$active_state"
+	emit_theme_records
+	emit_color_records
+	emit_integrations
+	for error in "${errors[@]}"; do
+		printf 'error\t%s\n' "$error"
+	done
+	[[ $provider_state != unavailable ]] || return 3
+}
+
+case ${1:-} in
+snapshot)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	snapshot
+	;;
+-h | --help | help)
+	usage
+	;;
+*)
+	usage
+	exit 2
+	;;
+esac

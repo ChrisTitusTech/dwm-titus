@@ -41,6 +41,7 @@ for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker 
 	make_stub "$fedora_bin/$command_name"
 done
 make_stub "$fedora_bin/dwm-xdg-autostart"
+make_stub "$fedora_bin/dwm-settings-appearance"
 make_stub "$fedora_bin/inotifywait"
 make_failing_stub "$fedora_bin/pkexec"
 make_failing_stub "$fedora_bin/sudo"
@@ -74,6 +75,8 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	audio	pipewire-audio	Audio	available	user-session	pactl	PipeWire Pulse-compatible session controls are available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	defaults	xdg-autostart	Startup applications	available	user-session	xdg-autostart	Per-user XDG autostart overrides and live updates are available'
+printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	appearance	themes	Themes	available	read-only	dwm-settings-appearance	Versioned theme inventory and integration state are available'
 printf '%s\n' "$fedora_output" | grep -Eq \
 	'^capability	system	authorization	Administrative authorization	(available|restricted)	privileged	polkit	'
 
@@ -82,6 +85,7 @@ cp -a "$fedora_bin" "$runtime_down_bin"
 for command_name in xrandr nmcli bluetoothctl pactl xset; do
 	make_failing_stub "$runtime_down_bin/$command_name"
 done
+make_failing_stub "$runtime_down_bin/dwm-settings-appearance"
 runtime_down_output=$(PATH="$runtime_down_bin" XDG_CONFIG_HOME="$work/fedora-config" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$runtime_down_output" | grep -Fqx \
@@ -92,6 +96,20 @@ printf '%s\n' "$runtime_down_output" | grep -Fqx \
 	'capability	bluetooth	bluez	Bluetooth	unavailable	delegated	bluetoothctl	BlueZ tools are installed, but no daemon or adapter is responding'
 printf '%s\n' "$runtime_down_output" | grep -Fqx \
 	'capability	audio	pipewire-audio	Audio	unavailable	user-session	pipewire	Audio tools are installed, but no PipeWire or Pulse session is responding'
+printf '%s\n' "$runtime_down_output" | grep -Fqx \
+	'capability	appearance	themes	Themes	unavailable	read-only	dwm-settings-appearance	Restore a valid themes.toml configuration or inspect the appearance snapshot errors'
+
+missing_appearance_bin=$work/missing-appearance-bin
+cp -a "$fedora_bin" "$missing_appearance_bin"
+rm -f "$missing_appearance_bin/dwm-settings-appearance"
+isolated_provider_dir=$work/isolated-provider
+mkdir "$isolated_provider_dir"
+cp "$provider" "$isolated_provider_dir/dwm-settings-provider"
+missing_appearance_output=$(PATH="$missing_appearance_bin" XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" \
+	"$isolated_provider_dir/dwm-settings-provider" discover)
+printf '%s\n' "$missing_appearance_output" | grep -Fqx \
+	'capability	appearance	themes	Themes	unavailable	read-only	dwm-settings-appearance	Install the managed appearance provider'
 
 if "$provider" unknown 2>"$work/provider.err"; then
 	exit 1
