@@ -1,147 +1,137 @@
 # Active Project Tasks
 
 `SPEC.md` is the product contract and `ROADMAP.md` defines phase order. This
-file contains implementation work only for the active roadmap phase. Phase 3
+file contains implementation work only for the active roadmap phase. Phase 4
 completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
-`docs/P3-UI4-EVIDENCE.md`, `docs/P3-CONNECTIVITY-EVIDENCE.md`, and
-`docs/P3-AUDIO-EVIDENCE.md`.
+`docs/P4-EVIDENCE.md`, and the four detailed Phase 4 evidence records.
 
-## Active Phase: Power, Session, and Defaults
+## Active Phase: Personalization and Accessibility
 
-Phase 4 begins from the merged Settings, connectivity, and audio architecture.
-Keep the existing panel Power menu, confirmation boundaries, DWM session
-lifecycle, user configuration, and XDG overrides compatible while adding the
-full-screen Settings workflows below.
+Phase 5 begins from the merged Settings platform and semantic theme adapter.
+Keep DWM, X11, Fedora providers, runtime TOML files, existing keybindings, panel
+geometry, and user-owned configuration compatible while adding the workflows
+below. Do not begin Phase 6 system-management work in Phase 5 changes.
 
-### POWER-001: Power Provider and Settings Workflows
+### THEME-001: Shared Appearance Provider and Safe Theme Changes
 
-- [x] Define versioned machine-readable records for battery state, external
-  power, available power profiles, active profile, DPMS, idle timing,
-  automatic locking, suspend support, and lid-policy capability.
-- [x] Reuse the standard Power Profiles D-Bus provider, UPower, logind, `xset`,
-  and the existing Control Center helper only through stable machine
-  interfaces. Dedicated images select `power-profiles-daemon`; the
-  existing-system installer retains any compatible `ppd-service` provider
-  already installed. Consume UPower
-  battery property-change signals; allow bounded sampling only for a documented
-  fallback with no event source, and keep every service subscription
-  event-driven.
-- [x] Add a Power Settings pane for available profile selection, DPMS, lock and
-  idle timeouts, and supported suspend/lid behavior. Hide or explain unsupported
-  hardware without disabling readable state.
-- [x] Separate read-only battery state, user-session DPMS/lock changes,
-  delegated logind actions, and privileged persistent system policy.
-- [x] Preserve the existing user `power.conf`, panel Power menu, confirmation
-  dialogs, and service authorization behavior. Failed writes must not be shown
-  as saved.
+- [ ] Define a versioned machine-readable provider for the active theme,
+  available themes, semantic colors, toolkit state, and per-capability errors.
+- [ ] Add one root-scoped appearance model shared by Settings and existing shell
+  surfaces without duplicating the `Theme.qml` or `themes.toml` ownership path.
+- [ ] Add a Settings Appearance pane with theme preview, apply, reset, and
+  recovery behavior. Preserve comments, custom themes, file mode, and unrelated
+  user configuration.
+- [ ] Make partial GTK, Qt, terminal, cursor, or compositor application failures
+  visible without reporting the selected theme as fully applied.
 
 Acceptance:
 
-- Missing batteries, profile services, X11 DPMS, lock providers, or lid
-  hardware fail only the owning capability and leave Settings usable.
-- Timeout and numeric arguments are bounded; suspend and policy changes retain
-  explicit confirmation and authorization boundaries.
-- Panel power state and Settings converge without duplicate providers or idle
-  polling, and section-owned work stops on close.
+- Invalid, missing, duplicate, or incomplete theme records cannot prevent DWM,
+  Quickshell, Settings, or an existing theme from loading.
+- Preview is bounded and rolls back automatically unless confirmed. Apply and
+  reset are transactional, attributed, and converge through hot reload.
+- Existing Control Center theme selection remains compatible with the shared
+  provider until its presentation can be migrated without behavior drift.
 
-### SESSION-001: Session Actions and Recovery Contract
+### APPEARANCE-001: Wallpaper, Fonts, Cursors, Icons, and Toolkit Integration
 
-- [x] Define one shared root-scoped session action model for lock, logout,
-  suspend, reboot, and shutdown that reuses the existing Power menu backend.
-- [x] Attribute action progress and failures to the initiating surface, reject
-  overlapping session-ending requests, and retain confirmation for every
-  destructive action.
-- [x] Preserve both display-manager and `startx` startup, D-Bus session setup,
-  graphical-session target ownership, autostop cleanup, tray startup order,
-  and optional-component failure tolerance.
-- [x] Document recovery paths for a failed locker, denied logind action,
-  incomplete graphical-session startup, and deferred installed-DWM activation.
-
-Acceptance:
-
-- Authorization denial or service loss cannot be reported as success and does
-  not terminate unrelated shell providers.
-- Lock, logout, suspend, reboot, and shutdown remain reachable from the panel;
-  Settings uses the same action and confirmation contracts.
-- Repeated login/logout does not leave duplicate Quickshell, locker, portal,
-  status, watcher, or XDG autostart processes.
-
-### DEFAULTS-001: Default Application Management
-
-- [x] Define versioned records for default browser, terminal, file manager,
-  supported MIME handlers, candidate desktop entries, and provider availability
-  using XDG interfaces rather than parsing human-oriented launcher output.
-- [x] Extend the existing `dwm-default-apps` contract for validated terminal,
-  file-manager, browser, and MIME mutations while preserving current hotkeys
-  and safe unavailable behavior.
-- [x] Add a Defaults Settings pane with explicit current values, candidate
-  selection, per-MIME changes, reset/recovery behavior, and attributed partial
-  failures.
-- [x] Preserve user desktop files and existing MIME associations not selected
-  for change. Never invent a default when XDG state is absent or malformed.
+- [ ] Define event-driven inventory and state contracts for wallpaper, supported
+  fonts, cursors, icons, GTK, Qt, and compositor integration using stable Fedora
+  or X11 interfaces.
+- [ ] Add wallpaper selection, fit mode, preview, reset, and missing-file
+  recovery without scanning while the Appearance pane is closed.
+- [ ] Add bounded user-session controls for supported font, text-size, cursor,
+  icon, GTK, and Qt choices. Delegate advanced toolkit editing to a trusted
+  Fedora tool where a narrow project contract would be incomplete.
+- [ ] Move the existing in-memory panel-widget visibility controls onto shared,
+  versioned user state with Settings integration, safe defaults, and migration
+  that preserves the current Control Center behavior.
+- [ ] Preserve optional-component behavior: missing Picom, Feh, toolkit themes,
+  wallpaper directories, or delegated tools must fail only their capability.
 
 Acceptance:
 
-- Changes are visible through `xdg-settings` or `xdg-mime`, survive a fresh
-  session, and affect only the selected default or MIME type.
-- Invalid or missing desktop entries are rejected before mutation. Missing XDG
-  tools fail only Defaults and keep readable state where possible.
-- Existing browser and terminal hotkeys resolve through the newly selected
-  defaults without changing DWM keybinding contracts.
+- Selected appearance state persists through a fresh session and follows the
+  shared theme where appropriate without overwriting unrelated toolkit files.
+- Panel-widget visibility persists through a fresh session, stays consistent on
+  every active monitor, and does not duplicate panel models or providers.
+- Preview, apply, interruption, rollback, reset, missing-asset, and external-
+  change paths converge with explicit status and no orphaned watcher.
+- Visible shell surfaces remain opaque, X11-native, correctly stacked, and
+  usable at the existing panel and popup geometry contracts.
 
-### AUTOSTART-001: User-Visible XDG Autostart Controls
+### ACCESSIBILITY-001: Practical X11 Accessibility and Notification Policy
 
-- [x] Define versioned records for system and user XDG autostart entries,
-  effective enabled state, origin, desktop visibility, and unsupported entries.
-- [x] Add enable and disable actions by creating or updating a user override;
-  never edit or delete vendor desktop files.
-- [x] Validate desktop IDs and resolved paths, reject symlink escapes, preserve
-  unrelated keys, and back up an existing user override before a material
-  rewrite.
-- [x] Add searchable Defaults Settings controls with clear vendor/user origin,
-  confirmation where disabling a session component risks loss of desktop
-  functionality, and reset-to-vendor behavior.
+- [ ] Define capability records for text scaling, contrast, reduced motion,
+  notification policy, and practical keyboard or pointer accessibility features
+  available through supported Fedora/X11 interfaces.
+- [ ] Add accessible Settings controls with keyboard navigation, visible focus,
+  usable common display sizes, explanatory unavailable states, and reset.
+- [ ] Apply reduced-motion and contrast choices consistently to managed
+  Quickshell surfaces without introducing a Wayland, compositor, or polling
+  dependency.
+- [ ] Add notification behavior controls that preserve the existing D-Bus owner,
+  history lifecycle, urgency semantics, and safe failure isolation.
 
 Acceptance:
 
-- Enable, disable, and reset survive logout/login and match the effective XDG
-  autostart state without duplicate launches.
-- Existing dwm-scoped overrides for the locker, compositor, and polkit agent
-  remain preserved unless the user explicitly changes that exact entry.
-- Malformed, missing, hidden, or non-applicable entries degrade per item and do
-  not break the Defaults pane or session startup.
+- Accessibility state persists and is observable through the owning platform or
+  managed interface after a fresh session.
+- Missing X11 extensions or optional tools degrade per capability and never make
+  Settings, notifications, or the shell unavailable.
+- Keyboard-only navigation, text scaling, contrast, reduced motion, notification
+  delivery/history, and reset behavior pass nested-X11 and real-session checks.
 
-### P4-VALIDATE: Phase 4 Validation
+### P5-UI5: Optional X11-Native Experience Integration
 
-- [x] Run focused shell, provider, QML, helper, and nested-X11 tests for power,
-  session, defaults, and autostart workflows.
-- [x] Exercise available battery/profile/DPMS/lock paths and record exact absent
-  hardware or services rather than claiming them verified.
-- [ ] Exercise default browser, terminal, file manager, representative MIME,
-  and XDG autostart changes in an isolated user environment and a real Fedora
-  session, restoring the original values afterward.
-- [ ] Qualify display-manager and `startx` startup, repeated logout/login,
-  destructive-action confirmation, authorization denial, and process cleanup.
-- [x] Compare a 30-second closed baseline with a 30-second sample after opening
-  and closing every Phase 4 Settings workflow; the mean Quickshell CPU delta
+- [ ] Inventory UI-5 candidates, beginning with event-driven clipboard history,
+  and record an adopt, defer, or reject decision for each candidate.
+- [ ] Evaluate every adopted UI-5 experience as an independent review boundary
+  with an event-driven provider, explicit data ownership, bounded lifecycle,
+  privacy model, and Fedora package impact before implementation.
+- [ ] Integrate only approved X11-native experiences into the existing semantic
+  design system and command surfaces; do not copy Wayland, Hyprland, layer-shell,
+  UWSM, or Omarchy service/plugin backends.
+- [ ] Preserve current IPC names, X11 focus/click-away/stacking behavior, monitor
+  selection, and closed-surface near-idle behavior.
+
+Acceptance:
+
+- Every inventoried candidate has a recorded adopt, defer, or reject decision.
+- Every adopted experience has focused source, helper, lifecycle, nested-X11,
+  package/install, and privacy tests.
+- Closing a surface leaves no resident scan, duplicate subscription, helper,
+  sensitive history owner, or overlapping process.
+
+### P5-VALIDATE: Phase 5 Validation
+
+- [ ] Run focused parser, helper, QML, lifecycle, rollback, and nested-X11 tests
+  for every Phase 5 workflow.
+- [ ] Exercise reversible appearance and accessibility changes on Fedora 44,
+  restore exact original state, and record unavailable toolkit or X11 paths.
+- [ ] Compare a 30-second closed baseline with a 30-second sample after opening
+  and closing every Phase 5 Settings workflow; the mean Quickshell CPU delta
   must be no more than 0.5 percentage points of one CPU.
-- [ ] Run the full Fedora repository validation, staged install, and installed
-  runtime checks, and record every untested hardware or reboot path.
+- [ ] Run the clean build, full managed repository suite, Quickshell lint,
+  ShellCheck, shfmt, staged install, repeated install, and installed-runtime
+  parity checks.
+- [ ] Qualify a fresh LightDM login, fixture or real `startx`, multi-monitor and
+  common display-size rendering, optional-component loss, and recovery after an
+  invalid theme or missing asset.
 
 Acceptance:
 
-- Every Phase 4 exit criterion maps to automated evidence or a named manual
-  check with Fedora release, hardware, session, restoration, and limitations.
-- Settings and panel workflows share providers, fail safely, persist through a
-  fresh session where required, and leave no duplicate services or autostarts.
-- No power, lid, battery, display-manager, or reboot path is described as
-  verified when its required environment was unavailable.
+- Every Phase 5 exit criterion maps to automated evidence or a named manual
+  check with Fedora release, session, restoration, and limitations.
+- Invalid themes or missing assets cannot prevent login or shell startup.
+- Accessibility choices persist, remain keyboard-usable, and do not add idle
+  polling, duplicate providers, or orphaned work.
 
 ## Phase Completion
 
-When all Phase 4 acceptance criteria pass:
+When all Phase 5 acceptance criteria pass:
 
 1. Record delivered behavior and validation in `CHANGELOG.md`.
-2. Update the Phase 4 status and limitations in `ROADMAP.md`.
-3. Replace this file's active task set with Phase 5 tasks.
+2. Update the Phase 5 status and limitations in `ROADMAP.md`.
+3. Replace this file's active task set with Phase 6 tasks.
 4. Preserve incomplete or deferred work as explicit roadmap limitations.

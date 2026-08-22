@@ -45,6 +45,11 @@ worktree. The final exact-commit CI status is recorded on the pull request.
 Panel and Settings rendering, the five fixed actions, confirmation, failed
 locker, denied logind, cross-display isolation, duplicate startup, nested DWM
 logout, autostop completion, and the Phase-wide CPU comparison are automated.
-Actual lock/unlock, suspend/resume, reboot, shutdown, and repeated destructive
-login cycles were not run on the active workstation and remain explicitly
-limited in `P4-EVIDENCE.md`.
+The reviewed installation was activated through a fresh real Fedora 44 LightDM
+X11 login. The installed DWM hash matched the running process, one managed
+Quickshell instance mapped both panels and hosted the tray, and the user accepted
+the visible session and confirmation behavior. DWM and Quickshell started within
+about three seconds without a retry, timeout, or duplicate process; the single
+login does not establish the cause of the perceived delay. Actual lock/unlock,
+suspend/resume, reboot, shutdown, and repeated destructive login cycles were not
+run on the active workstation and remain explicitly limited in `P4-EVIDENCE.md`.

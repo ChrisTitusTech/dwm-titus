@@ -126,5 +126,7 @@ package and installed-runtime validation must independently require it.
 Search, confirmation, origin rendering, action attribution, pane-owned watcher
 lifecycle, package/Kickstart/install symmetry, restored live mutation, repeated
 display-manager and `startx` fixtures, full repository tests, and the 30-second
-CPU comparison are integrated. Real repeated logout/login remains an explicit
-active-workstation limitation in `P4-EVIDENCE.md`.
+CPU comparison are integrated. A fresh real display-manager login activated one
+managed shell and the expected tray applications without duplicate autostarts.
+Repeated real logout/login remains an explicit workstation limitation in
+`P4-EVIDENCE.md`.

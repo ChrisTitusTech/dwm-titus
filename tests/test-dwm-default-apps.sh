@@ -145,6 +145,16 @@ MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/
 Exec=/usr/bin/missing-dwm-test-chromium %U
 DESKTOP
 
+cat >"$work/data/applications/tryexec-stale.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Stale TryExec Browser
+Categories=Network;WebBrowser;
+MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+TryExec=sh
+Exec=/usr/bin/missing-dwm-test-tryexec %U
+DESKTOP
+
 cat >"$work/data/applications/duplicate.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -402,7 +412,7 @@ grep -Fqx $'role\tfile-manager\tavailable\torg.example.Files.desktop\tFiles\txdg
 grep -Fqx $'candidate\tbrowser\tfirefox.desktop\tFirefox\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
 grep -Fqx $'candidate\tterminal\tkitty.desktop\tkitty\tavailable\tkitty\tInstalled desktop entry' <<<"$snapshot"
 grep -Fqx $'mime-candidate\ttext/plain\torg.example.Editor.desktop\tEditor\tavailable\tInstalled desktop entry' <<<"$snapshot"
-for rejected_id in hidden.desktop not-an-app.desktop chromium.desktop duplicate.desktop \
+for rejected_id in hidden.desktop not-an-app.desktop chromium.desktop tryexec-stale.desktop duplicate.desktop \
 	oversized.desktop control.desktop linked-escaped.desktop linked-leaf.desktop st.desktop; do
 	if grep -Fq "$rejected_id" <<<"$snapshot"; then
 		printf 'Rejected desktop entry was emitted as a candidate: %s\n' "$rejected_id" >&2
@@ -562,6 +572,7 @@ expect_status 1 run_helper set-mime application/x-unsupported org.example.Editor
 expect_status 1 run_helper set-mime text/plain firefox.desktop
 expect_status 1 run_helper set-role browser '../../evil.desktop'
 expect_status 1 run_helper set-role browser chromium.desktop
+expect_status 1 run_helper set-role browser tryexec-stale.desktop
 expect_status 1 run_helper set-role browser duplicate.desktop
 expect_status 1 run_helper set-role browser oversized.desktop
 expect_status 1 run_helper set-role browser control.desktop
@@ -918,32 +929,52 @@ if command -v inotifywait >/dev/null 2>&1; then
 	done
 	grep -Fq mimeapps.list "$work/watch-absent.out"
 	mkdir "$absent_config/dwm-titus"
-	fourth_child=
+	config_root_child=
+	config_managed_child=
 	for _ in {1..100}; do
-		fourth_child=$(watch_child_for_path "$watch_pid" "$absent_config" 2>/dev/null || true)
-		[[ -n $fourth_child && $fourth_child != "$third_child" ]] && break
+		config_root_child=$(watch_child_for_path "$watch_pid" "$absent_config" 2>/dev/null || true)
+		config_managed_child=$(watch_child_for_path "$watch_pid" \
+			"$absent_config/dwm-titus" 2>/dev/null || true)
+		[[ -n $config_root_child && -n $config_managed_child &&
+			$config_root_child != "$third_child" ]] && break
 		sleep 0.02
 	done
-	[[ -n $fourth_child && $fourth_child != "$third_child" ]]
-	watch_child_has_argument "$fourth_child" -r
+	[[ -n $config_root_child && -n $config_managed_child &&
+		$config_root_child != "$third_child" ]]
+	if watch_child_has_argument "$config_root_child" -r ||
+		watch_child_has_argument "$config_managed_child" -r; then
+		printf 'Steady defaults config watches must be nonrecursive\n' >&2
+		exit 1
+	fi
+	steady_output_size=$(stat -c %s "$work/watch-absent.out")
+	mkdir -p "$absent_config/browser/deep"
+	printf 'unrelated\n' >"$absent_config/browser/deep/file"
+	sleep 0.1
+	[[ $(stat -c %s "$work/watch-absent.out") -eq $steady_output_size ]]
 	printf '[vars]\nterminal = "alacritty"\n' >"$absent_config/dwm-titus/hotkeys.toml"
 	for _ in {1..100}; do
 		grep -Fq hotkeys.toml "$work/watch-absent.out" 2>/dev/null && break
 		sleep 0.02
 	done
 	grep -Fq hotkeys.toml "$work/watch-absent.out"
-	fourth_identity=$(process_identity "$fourth_child")
+	config_root_identity=$(process_identity "$config_root_child")
+	config_managed_identity=$(process_identity "$config_managed_child")
 	kill "$watch_pid"
 	wait "$watch_pid" 2>/dev/null || true
 	watch_pid=
 	for _ in {1..100}; do
-		process_identity_is_live "$fourth_identity" || break
+		if ! process_identity_is_live "$config_root_identity" &&
+			! process_identity_is_live "$config_managed_identity"; then
+			break
+		fi
 		sleep 0.02
 	done
-	if process_identity_is_live "$fourth_identity"; then
-		printf 'Defaults watch child survived helper exit: %s\n' "$fourth_identity" >&2
-		exit 1
-	fi
+	for config_identity in "$config_root_identity" "$config_managed_identity"; do
+		if process_identity_is_live "$config_identity"; then
+			printf 'Defaults watch child survived helper exit: %s\n' "$config_identity" >&2
+			exit 1
+		fi
+	done
 
 	owner_pid_file=$work/watch-owner.pid
 	# shellcheck disable=SC2016 # Positional parameters are expanded by the child shell.
@@ -969,10 +1000,10 @@ if command -v inotifywait >/dev/null 2>&1; then
 			descendant_identity=$(process_identity "$descendant_pid" 2>/dev/null || true)
 			[[ -z $descendant_identity ]] || descendant_identities+=("$descendant_identity")
 		done < <(pgrep -P "$watch_pid" 2>/dev/null || true)
-		((${#descendant_identities[@]} == 5)) && break
+		((${#descendant_identities[@]} == 6)) && break
 		sleep 0.02
 	done
-	((${#descendant_identities[@]} == 5))
+	((${#descendant_identities[@]} == 6))
 	kill -KILL "$watch_owner_pid"
 	wait "$watch_owner_pid" 2>/dev/null || true
 	watch_owner_pid=
