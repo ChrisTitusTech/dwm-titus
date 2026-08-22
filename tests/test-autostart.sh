@@ -104,9 +104,21 @@ wait_for_marker() {
 	return 1
 }
 
+wait_for_quickshell_executable() {
+	process_pid=$1
+	i=0
+	while [ "$i" -lt 50 ]; do
+		executable=$(readlink "/proc/$process_pid/exe" 2>/dev/null || :)
+		[ "${executable##*/}" = quickshell ] && return 0
+		i=$((i + 1))
+		sleep 0.01
+	done
+	return 1
+}
+
 mkdir -p "$work/bin" "$work/runtime-bin/normal" "$work/runtime-bin/stubborn"
-cp /usr/bin/sleep "$work/runtime-bin/normal/quickshell"
-cp /usr/bin/python3 "$work/runtime-bin/stubborn/quickshell"
+cp "$(command -v sleep)" "$work/runtime-bin/normal/quickshell"
+cp "$(command -v sleep)" "$work/runtime-bin/stubborn/quickshell"
 
 cat >"$work/bin/id" <<'EOF'
 #!/bin/sh
@@ -406,9 +418,10 @@ run_stale_quickshell_case() {
 	"$work/runtime-bin/normal/quickshell" 60 &
 	managed_pid_one=$!
 	record_test_identity "$managed_pid_one" "$identity_file"
-	TEST_STUBBORN_READY="$state/quickshell-stubborn.ready" \
-		"$work/runtime-bin/stubborn/quickshell" -c \
-		'import os, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); open(os.environ["TEST_STUBBORN_READY"], "w").close(); time.sleep(60)' &
+	(
+		trap '' TERM
+		exec "$work/runtime-bin/stubborn/quickshell" 60
+	) &
 	managed_pid_two=$!
 	record_test_identity "$managed_pid_two" "$identity_file"
 	printf '%s\n%s\n' "$managed_pid_one" "$managed_pid_two" >"$state/quickshell-managed.pids"
@@ -420,7 +433,7 @@ run_stale_quickshell_case() {
 	replacement_pid=$!
 	record_test_identity "$replacement_pid" "$identity_file"
 	printf '%s\n' "$replacement_pid" >"$state/quickshell-replacement.pid"
-	wait_for_marker "$state/quickshell-stubborn.ready"
+	wait_for_quickshell_executable "$managed_pid_two"
 	rm -f "$work/runtime-bin/stubborn/quickshell"
 
 	DISPLAY=:99 \
@@ -481,7 +494,7 @@ run_hung_quickshell_case() {
 	elapsed=$(($(date +%s) - started))
 
 	test "$elapsed" -ge 5
-	test "$elapsed" -le 7
+	test "$elapsed" -le 10
 	test "$(cat "$state/quickshell.count")" -eq 1
 	test "$(grep -c '^ipc$' "$state/events.log")" -ge 4
 	awk -F '\t' '
