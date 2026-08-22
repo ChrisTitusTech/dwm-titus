@@ -26,6 +26,32 @@ start_detached_once() {
 	fi
 }
 
+quickshell_tray_ready() {
+	config=$1
+
+	command -v timeout >/dev/null 2>&1 || return 1
+	timeout 2 quickshell ipc --path "$config" call tray count >/dev/null 2>&1
+}
+
+stop_unresponsive_quickshell() {
+	config=$1
+	user_id=$(id -u)
+
+	pgrep -u "$user_id" -x quickshell >/dev/null 2>&1 || return 0
+	quickshell_tray_ready "$config" && return 0
+	command -v pkill >/dev/null 2>&1 || return 0
+
+	pkill -u "$user_id" -x quickshell >/dev/null 2>&1 || true
+	i=0
+	while [ "$i" -lt 20 ] && pgrep -u "$user_id" -x quickshell >/dev/null 2>&1; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	if pgrep -u "$user_id" -x quickshell >/dev/null 2>&1; then
+		pkill -KILL -u "$user_id" -x quickshell >/dev/null 2>&1 || true
+	fi
+}
+
 apply_power_settings() {
 	helper=
 	case $0 in
@@ -155,6 +181,7 @@ if [ -f "$QUICKSHELL_CONFIG" ]; then
 	fi
 	if [ -n "$quickshell_check" ] && "$quickshell_check"; then
 		quickshell_compatible=1
+		stop_unresponsive_quickshell "$QUICKSHELL_CONFIG"
 		start_detached_once quickshell quickshell --no-duplicate
 	else
 		printf '%s\n' 'dwm-titus: compatible Quickshell 0.3.0 or Fedora 44 snapshot is required' >&2
@@ -162,8 +189,7 @@ if [ -f "$QUICKSHELL_CONFIG" ]; then
 	if [ "$quickshell_compatible" -eq 1 ]; then
 		i=0
 		while [ "$i" -lt 50 ]; do
-			if quickshell ipc --path "$QUICKSHELL_CONFIG" call tray count \
-				>/dev/null 2>&1; then
+			if quickshell_tray_ready "$QUICKSHELL_CONFIG"; then
 				break
 			fi
 			i=$((i + 1))

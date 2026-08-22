@@ -74,7 +74,31 @@ if [ "$name" = quickshell ] && [ "${TEST_QUICKSHELL_PGREP_RACE:-0}" = 1 ]; then
 	printf '%s\n' "$count" >"$count_file"
 	[ "$count" -ne 2 ] || exit 1
 fi
+if [ "$name" = quickshell ] && [ -f "${TEST_STATE:?}/quickshell.stale" ]; then
+	exit 0
+fi
 test -f "${TEST_STATE:?}/$name.running"
+EOF
+
+cat >"$work/bin/pkill" <<'EOF'
+#!/bin/sh
+name=
+while [ "$#" -gt 0 ]; do
+	case $1 in
+	-x)
+		shift
+		name=${1:-}
+		break
+		;;
+	esac
+	shift
+done
+[ "$name" = quickshell ] || exit 1
+count_file="${TEST_STATE:?}/quickshell-pkill.count"
+count=0
+[ ! -f "$count_file" ] || count=$(cat "$count_file")
+printf '%s\n' "$((count + 1))" >"$count_file"
+rm -f "${TEST_STATE:?}/quickshell.stale" "${TEST_STATE:?}/quickshell.running"
 EOF
 
 cat >"$work/bin/systemctl" <<'EOF'
@@ -128,6 +152,10 @@ if [ "${1:-}" = --version ]; then
 	exit 0
 fi
 if [ "${1:-}" = ipc ]; then
+	if [ -f "${TEST_STATE:?}/quickshell.stale" ]; then
+		sleep 10
+		exit 1
+	fi
 	test -f "${TEST_STATE:?}/quickshell.running"
 	: >"${TEST_STATE:?}/quickshell-tray.ready"
 	exit 0
@@ -211,6 +239,34 @@ run_duplicate_case() {
 	' "$state/systemctl.log"
 }
 
+run_stale_quickshell_case() {
+	home="$work/stale/home"
+	state="$work/stale/state"
+	runtime="$work/stale/runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$home/.config/quickshell" "$state" "$runtime"
+	chmod 700 "$runtime"
+	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$home/.config/quickshell/shell.qml"
+	: >"$state/quickshell.stale"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+
+	DISPLAY=:99 \
+		HOME=$home \
+		TEST_STATE=$state \
+		PATH="$work/bin:/usr/bin:/bin" \
+		XDG_CONFIG_HOME="$home/.config" \
+		XDG_RUNTIME_DIR="$runtime" \
+		DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+		DWM_AUTOSTART_NO_SETSID=1 \
+		sh "$repo_dir/scripts/autostart.sh"
+
+	test ! -e "$state/quickshell.stale"
+	test -f "$state/quickshell.running"
+	test -f "$state/quickshell-tray.ready"
+	test "$(cat "$state/quickshell.count")" -eq 1
+	test "$(cat "$state/quickshell-pkill.count")" -eq 1
+}
+
 run_dex_fallback_case() {
 	home="$work/fallback/home"
 	state="$work/fallback/state"
@@ -291,6 +347,7 @@ EOF
 
 run_duplicate_case display-manager
 run_duplicate_case startx
+run_stale_quickshell_case
 run_dex_fallback_case
 run_missing_optional_case
 run_input_watcher_fallback_case
