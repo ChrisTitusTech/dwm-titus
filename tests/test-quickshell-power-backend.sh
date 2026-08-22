@@ -358,6 +358,11 @@ malformed_battery=$(run_helper power-snapshot)
 printf '%s\n' "$malformed_battery" | grep -Fqx 'power-battery	restricted	unknown	0	0	0	0	UPower battery state is incomplete'
 export DWM_POWER_TEST_BATTERY_PERCENT=72.6
 
+export DWM_POWER_TEST_ENERGY_RATE=1E+999
+overflow_battery=$(run_helper power-snapshot)
+printf '%s\n' "$overflow_battery" | grep -Fqx 'power-battery	restricted	unknown	0	0	0	0	UPower battery state is incomplete'
+export DWM_POWER_TEST_ENERGY_RATE=12.5
+
 export DWM_POWER_TEST_UPOWER_FAIL=1
 export DWM_POWER_TEST_PROFILE_FAIL=1
 export DWM_POWER_TEST_LOGIND_FAIL=1
