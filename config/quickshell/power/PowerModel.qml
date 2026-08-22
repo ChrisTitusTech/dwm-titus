@@ -90,11 +90,13 @@ Scope {
     }
 
     function boundedInteger(value, minimum, maximum) {
+        if (typeof value !== "string" || !/^[0-9]+$/.test(value)) return -1;
         const parsed = Number(value);
         return Number.isInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : -1;
     }
 
     function boundedNumber(value, minimum, maximum) {
+        if (typeof value !== "string" || !/^[0-9]+(?:\.[0-9]+)?$/.test(value)) return -1;
         const parsed = Number(value);
         return isFinite(parsed) && parsed >= minimum && parsed <= maximum ? parsed : -1;
     }

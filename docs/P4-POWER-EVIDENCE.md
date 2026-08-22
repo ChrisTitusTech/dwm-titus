@@ -39,6 +39,7 @@ existing `PanelTooltip` and `RunningAppsArea` warning groups.
 Fixtures cover the versioned protocol, aggregate and missing battery state,
 external power, lid presence and absence, all supported profiles, provider
 loss, logind `yes`, `challenge`, `no`, and `na`, malformed battery data,
+strict rejection of empty, exponent-form, and hexadecimal protocol numerics,
 bounded arguments, denied or non-converging actions, failed apply and
 persistence, exact config preservation, rollback, and parent-bound cleanup.
 

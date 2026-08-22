@@ -22,6 +22,8 @@ grep -Fq 'if (root.nativeProfileObserved) root.updateNativeProfile();' "$model"
 grep -Fq 'fields[0] === "power-protocol"' "$model"
 grep -Fq 'fields.length >= 3 && fields[1] === "1"' "$model"
 grep -Fq 'root.boundedInteger(fields[2], 0, 2147483647) >= 0' "$model"
+grep -Fq '!/^[0-9]+$/.test(value)' "$model"
+grep -Fq '!/^[0-9]+(?:\.[0-9]+)?$/.test(value)' "$model"
 grep -Fq '!protocolValid || !providerSeen' "$model"
 for record in power-dpms power-lock power-external power-battery \
 	power-profile-support power-profile power-suspend power-lid; do

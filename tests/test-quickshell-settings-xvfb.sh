@@ -41,6 +41,33 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-quickshell-network" "$repo/scripts/dwm-diagnostics" \
 	"$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
 
+malformed_power_snapshot=$work/malformed-power-snapshot
+mv "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" \
+	"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter.real"
+cat >"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" <<'SH'
+#!/bin/sh
+set -eu
+fixture=${DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT:?}
+if [ "${1:-}" = power-snapshot ] && [ -r "$fixture" ]; then
+	case $(cat "$fixture") in
+	protocol)
+		printf 'power-protocol\t1\t\n'
+		printf 'provider\tpower\tavailable\tuser-session\tMalformed protocol fixture\n'
+		printf 'power-dpms\tavailable\tyes\t600\tuser-session\tValid owning row\n'
+		;;
+	records)
+		printf 'power-protocol\t1\t0\n'
+		printf 'provider\tpower\tavailable\tuser-session\tMalformed record fixture\n'
+		printf 'power-dpms\tavailable\tyes\t1e2\tuser-session\tExponent timeout\n'
+		printf 'power-lock\tavailable\tyes\t0x10\tno\tuser-session\tHex timeout\n'
+		;;
+	esac
+	exit 0
+fi
+exec "$(dirname -- "$0")/dwm-quickshell-controlcenter.real" "$@"
+SH
+chmod +x "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter"
+
 power_state=$work/power-state
 mkdir -p "$power_state"
 printf '1\n' >"$power_state/dpms-enabled"
@@ -100,6 +127,7 @@ dwm_pid=$!
 env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
 	DWM_SETTINGS_TEST_POWER_STATE="$power_state" DWM_SETTINGS_TEST_DELAY_POWER=1 \
+	DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT="$malformed_power_snapshot" \
 	PATH="$data_home/dwm-titus/scripts:$PATH" \
 	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
 quickshell_pid=$!
@@ -111,10 +139,13 @@ settings_power_watch_count() {
 		[ -r "/proc/$monitor_pid/status" ] || continue
 		monitor_parent=$(awk '$1 == "PPid:" { print $2; exit }' "/proc/$monitor_pid/status")
 		[ -n "$monitor_parent" ] && [ -r "/proc/$monitor_parent/cmdline" ] || continue
-		if tr '\0' ' ' <"/proc/$monitor_parent/cmdline" |
-			grep -Fq "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter power-watch"; then
+		monitor_command=$(tr '\0' ' ' <"/proc/$monitor_parent/cmdline")
+		case $monitor_command in
+		*"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter power-watch"* | \
+			*"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter.real power-watch"*)
 			watch_count=$((watch_count + 1))
-		fi
+			;;
+		esac
 	done
 	printf '%s\n' "$watch_count"
 }
@@ -279,7 +310,7 @@ done
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings close >/dev/null
 sleep 0.1
-if ! pgrep -af '[d]wm-quickshell-controlcenter power-dpms off$' |
+if ! pgrep -af '[d]wm-quickshell-controlcenter([.]real)? power-dpms off$' |
 	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" >/dev/null; then
 	printf 'Power mutation did not survive Settings closure\n' >&2
 	exit 1
@@ -317,6 +348,64 @@ while [ "$i" -lt 200 ]; do
 done
 [ "$power_busy" = false ]
 [ "$(cat "$power_state/dpms-enabled")" = 1 ]
+
+printf 'protocol\n' >"$malformed_power_snapshot"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select power >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	power_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerProviderStatus 2>/dev/null || true)
+	[ "$power_status" = unavailable ] && break
+	i=$((i + 1))
+	sleep 0.02
+done
+[ "$power_status" = unavailable ]
+
+printf 'records\n' >"$malformed_power_snapshot"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select power >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	power_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerProviderStatus 2>/dev/null || true)
+	power_dpms_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerDpmsStatus 2>/dev/null || true)
+	power_lock_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerLockStatus 2>/dev/null || true)
+	[ "$power_status" = available ] && [ "$power_dpms_status" = unavailable ] &&
+		[ "$power_lock_status" = unavailable ] && break
+	i=$((i + 1))
+	sleep 0.02
+done
+[ "$power_status" = available ]
+[ "$power_dpms_status" = unavailable ]
+[ "$power_lock_status" = unavailable ]
+power_enabled=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerDpmsEnabled)
+power_timeout=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerDpmsTimeout)
+[ "$power_enabled" = false ]
+[ "$power_timeout" -eq 0 ]
+
+rm -f "$malformed_power_snapshot"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select power >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	power_dpms_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerDpmsStatus 2>/dev/null || true)
+	[ "$power_dpms_status" = available ] && break
+	i=$((i + 1))
+	sleep 0.02
+done
+[ "$power_dpms_status" = available ]
 DISPLAY=$display xdotool windowactivate --sync "$window"
 
 # These offsets target the first "displays" section entry below the shared
@@ -327,14 +416,14 @@ section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME
 [ "$section" = displays ]
 i=0
 while [ "$i" -lt 100 ]; do
-	if ! pgrep -af '[d]wm-quickshell-controlcenter (power-snapshot|power-watch)$' |
+	if ! pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-watch)$' |
 		grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" >/dev/null; then
 		break
 	fi
 	i=$((i + 1))
 	sleep 0.05
 done
-if pgrep -af '[d]wm-quickshell-controlcenter (power-snapshot|power-watch)$' |
+if pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-watch)$' |
 	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" >/dev/null; then
 	printf 'Settings-owned power work remained active after leaving Power\n' >&2
 	exit 1
@@ -407,7 +496,7 @@ if pgrep -af '[d]wm-quickshell-controls (bluetooth-snapshot|bluetooth-scan|bluet
 	printf 'Settings-owned Bluetooth work remained active after close\n' >&2
 	exit 1
 fi
-if pgrep -af '[d]wm-quickshell-controlcenter (power-snapshot|power-watch|power-profile-set|power-dpms|power-dpms-timeout|power-lock|power-lock-timeout)' |
+if pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-watch|power-profile-set|power-dpms|power-dpms-timeout|power-lock|power-lock-timeout)' |
 	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" >/dev/null; then
 	printf 'Settings-owned power work remained active after close\n' >&2
 	exit 1
