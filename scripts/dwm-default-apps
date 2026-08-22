@@ -1343,11 +1343,14 @@ defaults_watch_cleanup() {
 }
 
 watch_defaults() {
-	local dir applications config_watch_parent config_watch_mode config_watch_target new_parent
+	local dir applications application_parent application_next application_target application_event_path
+	local application_event_name application_event_parent data_dir_count
+	local config_watch_parent config_watch_mode config_watch_target new_parent
 	local config_watch_next fifo source event_type event_name watch_fd restart
 	local owner_pid=$PPID owner_starttime watcher_pid=$$ watcher_starttime
-	local -a application_dirs=() common_args=()
-	local -A seen=()
+	local -a application_dirs=() application_generation_dirs=() common_args=()
+	local -A seen=() application_roots=() application_generation_parents=()
+	local -A application_generation_targets=()
 	need_cmd inotifywait
 	owner_starttime=$(process_starttime "$owner_pid") || {
 		printf 'dwm-default-apps: cannot identify the defaults watch owner\n' >&2
@@ -1363,8 +1366,13 @@ watch_defaults() {
 	defaults_watch_owner_watchdog=$!
 	while :; do
 		application_dirs=()
+		application_generation_dirs=()
 		defaults_watch_children=()
 		seen=()
+		application_roots=()
+		application_generation_parents=()
+		application_generation_targets=()
+		data_dir_count=0
 		config_watch_mode=none
 		config_watch_parent=
 		config_watch_next=
@@ -1387,15 +1395,33 @@ watch_defaults() {
 				"$config_watch_parent") || return 1
 		fi
 		while IFS= read -r dir; do
+			((data_dir_count += 1))
+			if ((data_dir_count > 64)); then
+				printf 'dwm-default-apps: too many XDG data directories to watch\n' >&2
+				return 1
+			fi
 			applications=$dir/applications
-			if [[ ! -d $applications || -n ${seen[$applications]+x} ]] ||
-				! path_has_no_symlink_components "$applications"; then
+			[[ -z ${seen[$applications]+x} ]] || continue
+			seen[$applications]=1
+			if [[ -d $applications ]] && path_has_no_symlink_components "$applications"; then
+				application_roots[$applications]=1
+				application_dirs+=("$applications")
 				continue
 			fi
-			seen[$applications]=1
-			application_dirs+=("$applications")
+			application_parent=$(deepest_existing_watch_parent "$applications" 2>/dev/null || true)
+			[[ -n $application_parent ]] || continue
+			application_next=$(next_watch_component "$applications" "$application_parent" \
+				2>/dev/null || true)
+			[[ -n $application_next ]] || continue
+			application_target=$application_parent/$application_next
+			application_generation_targets[$application_target]=1
+			if [[ -z ${application_generation_parents[$application_parent]+x} ]]; then
+				application_generation_parents[$application_parent]=1
+				application_generation_dirs+=("$application_parent")
+			fi
 		done < <(data_dirs)
-		[[ -n $config_watch_parent || ${#application_dirs[@]} -gt 0 ]] || {
+		[[ -n $config_watch_parent || ${#application_dirs[@]} -gt 0 ||
+			${#application_generation_dirs[@]} -gt 0 ]] || {
 			printf 'dwm-default-apps: no defaults directories are available to watch\n' >&2
 			return 1
 		}
@@ -1419,8 +1445,13 @@ watch_defaults() {
 			defaults_watch_children+=("$!")
 		fi
 		if [[ ${#application_dirs[@]} -gt 0 ]]; then
-			inotifywait "${common_args[@]}" -r --format $'applications\t%e\t%f' \
+			inotifywait "${common_args[@]}" -r --format $'applications\t%e\t%w%f' \
 				-- "${application_dirs[@]}" >"$fifo" &
+			defaults_watch_children+=("$!")
+		fi
+		if [[ ${#application_generation_dirs[@]} -gt 0 ]]; then
+			inotifywait "${common_args[@]}" --format $'application-generation\t%e\t%w%f' \
+				-- "${application_generation_dirs[@]}" >"$fifo" &
 			defaults_watch_children+=("$!")
 		fi
 		monitor_defaults_watch_children "$fifo" "${defaults_watch_children[@]}" &
@@ -1429,8 +1460,33 @@ watch_defaults() {
 		while IFS=$'\t' read -r -u "$watch_fd" source event_type event_name; do
 			case $source in
 			applications)
-				[[ $event_name == *.desktop ]] || continue
-				printf '%s:%s\n' "$event_type" "$event_name"
+				application_event_path=${event_name%/}
+				application_event_name=${application_event_path##*/}
+				case ,$event_type, in
+				*,DELETE_SELF,* | *,MOVE_SELF,*)
+					[[ -n ${application_roots[$application_event_path]+x} ]] || continue
+					printf '%s:%s\n' "$event_type" "$application_event_name"
+					restart=1
+					break
+					;;
+				esac
+				case $application_event_name in
+				*.desktop)
+					printf '%s:%s\n' "$event_type" "$application_event_name"
+					;;
+				mimeapps.list | *-mimeapps.list)
+					application_event_parent=${application_event_path%/*}
+					[[ -n ${application_roots[$application_event_parent]+x} ]] || continue
+					printf '%s:%s\n' "$event_type" "$application_event_name"
+					;;
+				esac
+				;;
+			application-generation)
+				application_event_path=${event_name%/}
+				[[ -n ${application_generation_targets[$application_event_path]+x} ]] || continue
+				printf '%s:%s\n' "$event_type" "${application_event_path##*/}"
+				restart=1
+				break
 				;;
 			config)
 				if [[ $config_watch_mode == ancestor ]]; then

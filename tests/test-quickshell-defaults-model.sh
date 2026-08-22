@@ -23,6 +23,7 @@ grep -Fq 'root.autostartModel.closeSettings()' "$settings_model"
 
 grep -Fq 'defaults-protocol' "$defaults_model"
 grep -Fq 'defaults-result' "$defaults_model"
+grep -Fq '/^[A-Za-z0-9][A-Za-z0-9._+-]*\.desktop$/' "$defaults_model"
 grep -Fq 'mutationOrigin' "$defaults_model"
 grep -Fq 'snapshotGeneration' "$defaults_model"
 grep -Fq 'SplitParser' "$defaults_model"

@@ -660,7 +660,11 @@ run_helper open 'https://example.test'
 grep -Fqx 'https://example.test' "$work/opened"
 
 if command -v inotifywait >/dev/null 2>&1; then
-	run_helper watch >"$work/watch.out" 2>"$work/watch.err" &
+	watch_generation_root=$work/watch-data
+	mkdir -p "$watch_generation_root"
+	watch_data_dirs=$work/empty:$watch_generation_root/shared/one:$watch_generation_root/shared/two
+	env "${env_common[@]}" XDG_DATA_DIRS="$watch_data_dirs" \
+		"$BASH_BIN" "$HELPER" watch >"$work/watch.out" 2>"$work/watch.err" &
 	watch_pid=$!
 	applications_child=
 	for _ in {1..100}; do
@@ -674,12 +678,148 @@ if command -v inotifywait >/dev/null 2>&1; then
 		exit 1
 	}
 	watch_child_has_argument "$applications_child" -r
+	generation_child=
+	for _ in {1..100}; do
+		generation_child=$(watch_child_for_path "$watch_pid" "$work/empty" 2>/dev/null || true)
+		[[ -n $generation_child ]] &&
+			watch_child_has_argument "$generation_child" "$watch_generation_root" && break
+		sleep 0.02
+	done
+	[[ -n $generation_child ]]
+	if watch_child_has_argument "$generation_child" -r; then
+		printf 'Application generation watch was recursive\n' >&2
+		exit 1
+	fi
+	[[ $(tr '\0' '\n' <"/proc/$generation_child/cmdline" | grep -Fxc -- "$watch_generation_root") == 1 ]]
+
+	printf '[Default Applications]\n' >"$work/data/applications/mimeapps.list"
+	printf '[Default Applications]\n' >"$work/data/applications/fedora-mimeapps.list"
+	for _ in {1..100}; do
+		grep -Eq ':mimeapps[.]list$' "$work/watch.out" 2>/dev/null &&
+			grep -Eq ':fedora-mimeapps[.]list$' "$work/watch.out" 2>/dev/null && break
+		sleep 0.02
+	done
+	grep -Eq ':mimeapps[.]list$' "$work/watch.out"
+	grep -Eq ':fedora-mimeapps[.]list$' "$work/watch.out"
+
 	printf '# watched\n' >>"$work/data/applications/vendor/nested.desktop"
 	for _ in {1..100}; do
 		grep -Fq nested.desktop "$work/watch.out" 2>/dev/null && break
 		sleep 0.02
 	done
 	grep -Fq nested.desktop "$work/watch.out"
+
+	: >"$work/watch.out"
+	mkdir -p "$work/empty/unrelated/deep" "$watch_generation_root/unrelated/deep"
+	printf 'unrelated\n' >"$watch_generation_root/unrelated/deep/file"
+	sleep 0.1
+	[[ ! -s $work/watch.out ]]
+
+	mkdir "$watch_generation_root/shared"
+	for _ in {1..100}; do
+		grep -Fq shared "$work/watch.out" 2>/dev/null && break
+		sleep 0.02
+	done
+	grep -Fq shared "$work/watch.out"
+	shared_generation_child=
+	for _ in {1..100}; do
+		shared_generation_child=$(watch_child_for_path "$watch_pid" \
+			"$watch_generation_root/shared" 2>/dev/null || true)
+		[[ -n $shared_generation_child && $shared_generation_child != "$generation_child" ]] && break
+		sleep 0.02
+	done
+	[[ -n $shared_generation_child && $shared_generation_child != "$generation_child" ]]
+	if watch_child_has_argument "$shared_generation_child" -r; then
+		printf 'Shared application generation watch was recursive\n' >&2
+		exit 1
+	fi
+	[[ $(tr '\0' '\n' <"/proc/$shared_generation_child/cmdline" |
+		grep -Fxc -- "$watch_generation_root/shared") == 1 ]]
+	: >"$work/watch.out"
+	mkdir "$watch_generation_root/shared/unrelated"
+	sleep 0.1
+	[[ ! -s $work/watch.out ]]
+
+	mkdir "$watch_generation_root/shared/one"
+	for _ in {1..100}; do
+		grep -Fq one "$work/watch.out" 2>/dev/null && break
+		sleep 0.02
+	done
+	grep -Fq one "$work/watch.out"
+	one_generation_child=
+	for _ in {1..100}; do
+		one_generation_child=$(watch_child_for_path "$watch_pid" \
+			"$watch_generation_root/shared/one" 2>/dev/null || true)
+		[[ -n $one_generation_child && $one_generation_child != "$shared_generation_child" ]] &&
+			watch_child_has_argument "$one_generation_child" \
+				"$watch_generation_root/shared" && break
+		sleep 0.02
+	done
+	[[ -n $one_generation_child && $one_generation_child != "$shared_generation_child" ]]
+	if watch_child_has_argument "$one_generation_child" -r; then
+		printf 'Nested application generation watch was recursive\n' >&2
+		exit 1
+	fi
+
+	mkdir "$watch_generation_root/shared/one/applications"
+	generated_applications_child=
+	for _ in {1..100}; do
+		generated_applications_child=$(watch_child_for_path "$watch_pid" \
+			"$watch_generation_root/shared/one/applications" 2>/dev/null || true)
+		[[ -n $generated_applications_child ]] && break
+		sleep 0.02
+	done
+	[[ -n $generated_applications_child ]]
+	watch_child_has_argument "$generated_applications_child" -r
+	cp "$work/data/applications/firefox.desktop" \
+		"$watch_generation_root/shared/one/applications/generated.desktop"
+	for _ in {1..100}; do
+		grep -Fq generated.desktop "$work/watch.out" 2>/dev/null && break
+		sleep 0.02
+	done
+	grep -Fq generated.desktop "$work/watch.out"
+
+	: >"$work/watch.out"
+	mv "$work/data/applications" "$work/data/applications.previous"
+	for _ in {1..100}; do
+		grep -Eq ':(applications)$' "$work/watch.out" 2>/dev/null && break
+		sleep 0.02
+	done
+	grep -Eq ':(applications)$' "$work/watch.out"
+	replacement_generation_child=
+	for _ in {1..100}; do
+		replacement_generation_child=$(watch_child_for_path "$watch_pid" \
+			"$work/data" 2>/dev/null || true)
+		[[ -n $replacement_generation_child &&
+			$replacement_generation_child != "$applications_child" ]] && break
+		sleep 0.02
+	done
+	[[ -n $replacement_generation_child &&
+		$replacement_generation_child != "$applications_child" ]]
+	if watch_child_has_argument "$replacement_generation_child" -r; then
+		printf 'Replacement application generation watch was recursive\n' >&2
+		exit 1
+	fi
+	mkdir "$work/data/applications"
+	replacement_applications_child=
+	for _ in {1..100}; do
+		replacement_applications_child=$(watch_child_for_path "$watch_pid" \
+			"$work/data/applications" 2>/dev/null || true)
+		[[ -n $replacement_applications_child &&
+			$replacement_applications_child != "$replacement_generation_child" ]] && break
+		sleep 0.02
+	done
+	[[ -n $replacement_applications_child &&
+		$replacement_applications_child != "$replacement_generation_child" ]]
+	watch_child_has_argument "$replacement_applications_child" -r
+	cp "$work/data/applications.previous/firefox.desktop" \
+		"$work/data/applications/replacement.desktop"
+	for _ in {1..100}; do
+		grep -Eq ':replacement[.]desktop$' "$work/watch.out" 2>/dev/null && break
+		sleep 0.02
+	done
+	grep -Eq ':replacement[.]desktop$' "$work/watch.out"
+	process_identity_is_live "$(process_identity "$watch_pid")"
 	kill "$watch_pid"
 	wait "$watch_pid" 2>/dev/null || true
 	watch_pid=
@@ -790,10 +930,10 @@ if command -v inotifywait >/dev/null 2>&1; then
 			descendant_identity=$(process_identity "$descendant_pid" 2>/dev/null || true)
 			[[ -z $descendant_identity ]] || descendant_identities+=("$descendant_identity")
 		done < <(pgrep -P "$watch_pid" 2>/dev/null || true)
-		((${#descendant_identities[@]} >= 4)) && break
+		((${#descendant_identities[@]} == 5)) && break
 		sleep 0.02
 	done
-	((${#descendant_identities[@]} >= 4))
+	((${#descendant_identities[@]} == 5))
 	kill -KILL "$watch_owner_pid"
 	wait "$watch_owner_pid" 2>/dev/null || true
 	watch_owner_pid=

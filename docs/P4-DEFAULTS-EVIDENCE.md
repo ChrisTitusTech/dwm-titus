@@ -58,12 +58,15 @@ hotkey contract needs rewriting. A missing, non-regular, or symlinked user
 hotkeys file makes the terminal role and candidates explicitly restricted;
 the readable managed default is not misreported as writable state.
 
-`dwm-default-apps watch` owns one pane-scoped `inotifywait` child over safe XDG
-configuration and desktop-entry directories. It advances through the deepest
-existing parent until initially absent configuration paths appear, then
-restarts the child with the complete filtered recursive watch set. Cleanup is
-bounded and reaps the exact child identity. Missing `inotifywait` affects live
-refresh only; the snapshot remains readable on demand.
+`dwm-default-apps watch` owns a pane-scoped, bounded `inotifywait` cohort over
+safe XDG configuration and desktop-entry directories. It advances through the
+deepest existing parent until initially absent or externally replaced XDG
+configuration and `applications` paths appear. Generation watches are nonrecursive and filter
+the exact next component, while existing application roots are recursive for
+nested desktop entries. Desktop entries plus `mimeapps.list` and
+desktop-specific `*-mimeapps.list` changes trigger refresh. Cleanup is bounded
+and reaps the exact child identities. Missing `inotifywait` affects live refresh
+only; the snapshot remains readable on demand.
 
 ## Automated Evidence
 
