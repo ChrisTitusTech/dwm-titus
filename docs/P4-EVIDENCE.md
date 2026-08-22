@@ -1,6 +1,6 @@
 # Phase 4 Integration Evidence
 
-Date: 2026-08-21
+Date: 2026-08-22
 
 ## Qualification Scope
 
@@ -98,6 +98,33 @@ absence of false-success records.
   original session-owned publisher remained, and the guard plus direct-child
   teardown regression prevents recurrence.
 
+## Final Activation and Manual Acceptance
+
+- PR #168 merged as `7b4b64e8da8abbb280580c36f99e43f15faecc4f` after
+  exact-head validate, Quickshell QML, CodeQL, documentation, and CodeRabbit
+  checks passed. Three actionable review threads posted after merge were
+  corrected and regression-tested in the Phase 4 closeout.
+- `scripts/dev-sync-install.sh` synchronized the final closeout and reported
+  every managed file current. After a
+  fresh LightDM login, `/proc/529804/exe`, `/usr/local/bin/dwm`, and the checkout
+  DWM all had SHA-256
+  `63b7edf38b957f9659a8b66831065c3ffcca0bb71820cc474885fbf8766882c1`.
+- The active Fedora 44 X11 session had one managed Quickshell instance, two
+  visible 30-pixel panels for the two active monitors, six registered tray
+  items, an available Power provider, and no Defaults or autostart watcher
+  workspace after Settings closed. The user manually accepted the visible
+  panel, Settings, Power menu, confirmation, and normal-launch behavior.
+- LightDM authentication and Xauthority setup succeeded without retry or error.
+  The observed login reached DWM and Quickshell within about three seconds and
+  completed `graphical-session.target` without a retry, timeout, or duplicate
+  shell process. The journal records the previous target stopping before the
+  new session completed, but one login does not establish that ordering as the
+  cause of the perceived delay or prove its future recurrence.
+- The final helper-only synchronization replaced the on-disk DWM inode while
+  the accepted session remained active. The running deleted inode, installed
+  binary, and checkout still had the same SHA-256 above; no DWM or QML source
+  changed in the closeout, so a second disruptive logout was not required.
+
 ## Explicit Limitations
 
 - This workstation has no battery or lid hardware, so those transitions remain
@@ -107,14 +134,12 @@ absence of false-success records.
   helper, confirmation, denial, and failure paths are automated.
 - No sacrificial real locker was available; lock/unlock remains nested- and
   failure-fixture-qualified.
-- Repeated display-manager logout/login and reboot persistence are not claimed.
-  Automated fixtures qualify repeated autostart execution and graceful nested
-  DWM logout; one fresh real display-manager login remains the final activation
-  gate after the reviewed tree is installed.
+- An actual reboot and repeated real display-manager cycles are not claimed.
+  Persistent file state, startup replay, repeated display-manager and `startx`
+  autostart execution, process cleanup, and graceful nested DWM logout are
+  fixture-qualified; one fresh real display-manager login completed the
+  installed activation gate.
 - The live terminal setting is read-only while the user file remains a symlink.
 - `startx` preserves its TTY scope by design. Exact path, UID, and display
   matching prevents repeated-start duplication, but an abandoned publisher
   from an abnormal X-server loss may require scoped cleanup in a future phase.
-- The final installed DWM binary requires one logout/login before its graceful
-  logout endpoint can be observed in the active session. Installed-file parity
-  and the post-login panel/process check are recorded at final synchronization.

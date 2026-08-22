@@ -291,20 +291,19 @@ desktop_usable() {
 		else
 			command -v "$try_exec" >/dev/null 2>&1 || return 1
 		fi
+	fi
+	exec_value=$desktop_parsed_exec
+	[[ -n $exec_value ]] || return 1
+	if [[ $exec_value =~ ^\"([^\"]+)\"([[:space:]]|$) ]]; then
+		exec_command=${BASH_REMATCH[1]}
 	else
-		exec_value=$desktop_parsed_exec
-		[[ -n $exec_value ]] || return 1
-		if [[ $exec_value =~ ^\"([^\"]+)\"([[:space:]]|$) ]]; then
-			exec_command=${BASH_REMATCH[1]}
-		else
-			exec_command=${exec_value%%[[:space:]]*}
-		fi
-		[[ -n $exec_command && $exec_command != env ]] || return 1
-		if [[ $exec_command == */* ]]; then
-			[[ -x $exec_command ]] || return 1
-		else
-			command -v "$exec_command" >/dev/null 2>&1 || return 1
-		fi
+		exec_command=${exec_value%%[[:space:]]*}
+	fi
+	[[ -n $exec_command && $exec_command != env ]] || return 1
+	if [[ $exec_command == */* ]]; then
+		[[ -x $exec_command ]] || return 1
+	else
+		command -v "$exec_command" >/dev/null 2>&1 || return 1
 	fi
 }
 
@@ -1396,7 +1395,7 @@ watch_defaults() {
 			path_has_no_symlink_components "$config_home"; then
 			# Continue observing safe top-level MIME changes even when the
 			# nested hotkeys path is currently unsafe.
-			config_watch_mode=config
+			config_watch_mode=root
 			config_watch_parent=$config_home
 		fi
 		if [[ $config_watch_mode == ancestor ]]; then
@@ -1445,7 +1444,13 @@ watch_defaults() {
 		)
 		if [[ -n $config_watch_parent ]]; then
 			if [[ $config_watch_mode == config ]]; then
-				inotifywait "${common_args[@]}" -r --format $'config\t%e\t%f' \
+				inotifywait "${common_args[@]}" --format $'config-root\t%e\t%f' \
+					-- "$config_watch_parent" >"$fifo" &
+				defaults_watch_children+=("$!")
+				inotifywait "${common_args[@]}" --format $'config-managed\t%e\t%f' \
+					-- "$config_watch_target" >"$fifo" &
+			elif [[ $config_watch_mode == root ]]; then
+				inotifywait "${common_args[@]}" --format $'config-root\t%e\t%f' \
 					-- "$config_watch_parent" >"$fifo" &
 			else
 				inotifywait "${common_args[@]}" --format $'config\t%e\t%f' \
@@ -1526,8 +1531,57 @@ watch_defaults() {
 					;;
 				esac
 				;;
+			config-root)
+				if [[ ! -d $config_home || -L $config_home ]] ||
+					! path_has_no_symlink_components "$config_home"; then
+					printf '%s:%s\n' "$event_type" "$event_name"
+					restart=1
+					break
+				fi
+				case $event_name in
+				mimeapps.list | *-mimeapps.list)
+					printf '%s:%s\n' "$event_type" "$event_name"
+					;;
+				dwm-titus)
+					case ,$event_type, in
+					*,CREATE,* | *,DELETE,* | *,MOVED_TO,* | *,MOVED_FROM,*)
+						printf '%s:%s\n' "$event_type" "$event_name"
+						restart=1
+						break
+						;;
+					esac
+					;;
+				esac
+				;;
+			config-managed)
+				case ,$event_type, in
+				*,DELETE_SELF,* | *,MOVE_SELF,*)
+					printf '%s:%s\n' "$event_type" "${event_name:-dwm-titus}"
+					restart=1
+					break
+					;;
+				esac
+				case $event_name in
+				hotkeys.toml)
+					printf '%s:%s\n' "$event_type" "$event_name"
+					;;
+				esac
+				;;
 			control)
 				restart=0
+				if [[ $config_watch_mode == config ]]; then
+					if [[ ! -d $config_watch_target || -L $config_watch_target ]] ||
+						! path_has_no_symlink_components "$config_watch_target"; then
+						restart=1
+					fi
+				elif [[ -d $config_watch_target && ! -L $config_watch_target ]] &&
+					path_has_no_symlink_components "$config_watch_target"; then
+					restart=1
+				elif [[ $config_watch_mode == ancestor ]]; then
+					new_parent=$(deepest_existing_watch_parent \
+						"$config_watch_target" 2>/dev/null || true)
+					[[ $new_parent == "$config_watch_parent" ]] || restart=1
+				fi
 				break
 				;;
 			esac

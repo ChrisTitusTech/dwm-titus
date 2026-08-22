@@ -2,14 +2,14 @@
 
 ## Scope and Status
 
-This record qualifies POWER-001 on Fedora Linux 44 x86_64. It does not claim a
-completed Phase 4, SESSION-001 power actions, or hardware paths unavailable on
-the host.
+This feature record qualifies POWER-001 on Fedora Linux 44 x86_64. Integrated
+Phase 4 completion and SESSION-001 power actions are recorded in
+`P4-EVIDENCE.md`; unavailable hardware paths remain explicit below.
 
-POWER-001 implementation, automated gates, nested-X11 lifecycle checks, and
-available live Fedora service mutations are complete. The remaining limits are
-physical hardware, destructive suspend/resume, and current-login activation of
-the newly installed managed DWM and Quickshell code.
+POWER-001 implementation, automated gates, nested-X11 lifecycle checks,
+available live Fedora service mutations, and fresh-login activation are
+complete. The remaining limits are physical hardware and destructive
+suspend/resume.
 
 ## Host and Service Evidence
 
@@ -82,8 +82,9 @@ restored the fixture baseline. A 30-second closed baseline used 0.100 percent
 CPU; the post-Power-workflow sample used 0.033 percent, a 0.067 percentage-point
 delta against the 0.5-point limit.
 
-The managed installation matches this checkout. The active login intentionally
-retains its previously loaded DWM/Quickshell code until logout/login so tray
-startup order is not disturbed. Actual battery and lid transitions remain
-unavailable. Suspend/resume and lid-policy mutation remain deferred to
-SESSION-001 and an appropriate destructive-action qualification environment.
+The managed installation matches this checkout. A fresh Fedora 44 LightDM X11
+login activated the installed DWM and managed Quickshell tree with one shell,
+one panel per active monitor, and registered tray clients. Actual battery and
+lid transitions remain unavailable. Suspend/resume and lid-policy mutation
+remain limited to their automated contracts and an appropriate destructive-
+action or hardware qualification environment.

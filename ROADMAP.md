@@ -78,8 +78,9 @@ product roadmap.
 UI-1 is the merged foundation. UI-2 and UI-3 were parallel children and are
 now unified on `main`. `P3-UI4` established the shared large-surface language
 used by the completed Phase 3 provider work and the later power, defaults,
-personalization, accessibility, and system-management phases. Phase 3 is
-complete and product Phase 4 is active. UI-5 is delivered with Phase 5, and
+personalization, accessibility, and system-management phases. Phases 3 and 4
+are complete and product Phase 5 is active. UI-5 candidates are evaluated in
+Phase 5 and approved experiences are delivered as separate review boundaries;
 UI-6 closes the desktop during Phase 7 release qualification.
 
 ### UI Overhaul Exit Criteria
@@ -251,7 +252,7 @@ Provide desktop-grade network, Bluetooth, and sound management.
 
 ## Phase 4: Power, Session, and Defaults
 
-Status: Active (2026-08-21)
+Status: Complete (2026-08-22)
 
 ### Objective
 
@@ -273,7 +274,30 @@ Unify normal session behavior and application defaults.
 - Destructive power actions keep confirmation and authorization boundaries.
 - Defaults are visible through standard XDG inspection tools.
 
+### Completion Evidence
+
+- PR #168 delivered the shared Power and session-action models, transactional
+  default-application management, XDG autostart controls, event-driven provider
+  lifecycle, and Fedora package/install integration.
+- The clean build, full managed repository suite, Quickshell lint, focused shell
+  checks, nested-X11 workflows, and exact-head hosted checks passed. Reversible
+  live power, browser, file-manager, MIME, and autostart mutations converged and
+  restored their recorded baselines.
+- After installation, a fresh Fedora 44 LightDM X11 login ran the installed DWM
+  byte-for-byte, launched one managed Quickshell instance with one panel per
+  active monitor and tray clients, and passed user acceptance of the Phase 4
+  Settings and confirmation surfaces. The observed upgrade login reached DWM
+  and Quickshell without retries or duplicate processes; the active DWM now
+  owns the bounded completion-aware logout path.
+- Battery and lid transitions remain fixture-qualified because this workstation
+  has neither device. Actual suspend, reboot, and shutdown were not executed;
+  their confirmation, authorization-denial, fixed-command, and failure paths are
+  automated. Real `startx` and repeated destructive login cycles also remain
+  fixture-qualified.
+
 ## Phase 5: Personalization and Accessibility
+
+Status: Active (2026-08-22)
 
 ### Objective
 

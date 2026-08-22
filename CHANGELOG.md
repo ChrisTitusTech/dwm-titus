@@ -57,6 +57,12 @@ versions from `config.mk`.
 
 ### Changed
 
+- Complete Phase 4 Power, Session, Defaults, and XDG autostart integration.
+  Fresh Fedora 44 LightDM activation now runs the installed DWM and one managed
+  Quickshell shell with one panel per active monitor; unavailable battery, lid,
+  destructive power, repeated-login, and real `startx` paths remain explicitly
+  qualified instead of overstated.
+
 - Make the Bash-based status publisher single-instance per user and X display
   using exact resolved command-path matching instead of its interpreter process
   name. Track and reap subscription children so repeated session startup cannot

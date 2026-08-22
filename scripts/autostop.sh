@@ -101,6 +101,8 @@ stop_scoped_status() {
 	remove_scoped_status_identity
 }
 
+stop_scoped_status
+
 # A nested X server inherits the parent login's logind and XDG session IDs.
 # Refuse to clean up that login unless this dwm instance is attached to the
 # display that logind records for it. Accept an explicit X11 screen suffix,
@@ -113,8 +115,6 @@ x11:user:?*)
 	esac
 	;;
 esac
-
-stop_scoped_status
 
 # The systemd user manager and its graphical targets are shared across all
 # sessions for this user. Leave them active when another graphical login still

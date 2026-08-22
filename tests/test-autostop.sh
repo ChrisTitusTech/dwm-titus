@@ -317,13 +317,38 @@ if grep -q '^systemctl \|^loginctl terminate-session ' "$work/mismatched_session
 	exit 1
 fi
 
-run_case mismatched_display env XDG_SESSION_ID=48 DISPLAY=:150
+DISPLAY=:150 XDG_RUNTIME_DIR="$work/status-runtime" \
+	TEST_STATUS_READY="$work/status-nested.ready" "$work/bin/dwm-status" &
+nested_status_pid=$!
+track_status_pid "$nested_status_pid"
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+	[ -e "$work/status-nested.ready" ] && break
+	sleep 0.02
+done
+nested_status_starttime=$(awk '{ line = $0; sub(/^.*\) /, "", line); split(line, fields, " "); print fields[20] }' "/proc/$nested_status_pid/stat")
+nested_status_key=$(printf '%s' :150 | sha256sum | awk '{ print $1 }')
+nested_status_identity_file=$work/status-runtime/dwm-titus/dwm-status.$nested_status_key.identity
+printf '%s:%s\n' "$nested_status_pid" "$nested_status_starttime" >"$nested_status_identity_file"
+
+run_case mismatched_display env XDG_SESSION_ID=48 DISPLAY=:150 \
+	XDG_RUNTIME_DIR="$work/status-runtime"
 grep -Fqx 'loginctl show-session 48 -p Name -p Type -p Class -p Active -p Display' \
 	"$work/mismatched_display.log"
 if grep -q '^systemctl \|^loginctl terminate-session ' "$work/mismatched_display.log"; then
 	printf '%s\n' 'autostop must not clean up a login from a nested X display' >&2
 	exit 1
 fi
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+	status_identity_is_live "$nested_status_pid:$nested_status_starttime" || break
+	sleep 0.05
+done
+if status_identity_is_live "$nested_status_pid:$nested_status_starttime"; then
+	printf '%s\n' 'autostop left the nested display status process running' >&2
+	exit 1
+fi
+wait "$nested_status_pid" 2>/dev/null || true
+forget_status_pid "$nested_status_pid"
+[ ! -e "$nested_status_identity_file" ]
 
 run_case screen_suffix env XDG_SESSION_ID=48 DISPLAY=:0.1
 grep -Fqx 'loginctl terminate-session 48' "$work/screen_suffix.log"

@@ -657,13 +657,12 @@ In a real or nested X11 session:
 The existing desktop provides dwm, a managed Quickshell panel and launcher,
 notifications, quick controls, power actions, network and Bluetooth surfaces,
 display helpers, a system-health dashboard, and the unified Settings platform.
-Settings now includes the completed Phase 2 display and input mutation surface
-with preview, rollback, persistence, and capability reporting, plus the Phase 3
-NetworkManager, BlueZ, PipeWire, and media workflows. It does not yet provide
-the remaining settings mutation surface in Section 5.10. Phase 4 POWER-001 is
-complete with a shared UPower, Power Profiles, logind, DPMS, and automatic-lock
-provider plus its Settings pane. Session, defaults, and autostart work remains
-sequenced in `ROADMAP.md` and defined in `TASKS.md`.
+Settings includes the completed Phase 2 display and input mutation surface,
+Phase 3 NetworkManager, BlueZ, PipeWire, and media workflows, and Phase 4 power,
+session-action, default-application, MIME, and XDG autostart workflows. The
+remaining Settings mutation surface in Section 5.10 begins with Phase 5 themes,
+wallpaper, fonts, cursors, toolkit integration, notifications, and practical X11
+accessibility controls, sequenced in `ROADMAP.md` and defined in `TASKS.md`.
 
 The installer contains a Fedora-only package map and rejects other systems.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and
