@@ -141,7 +141,8 @@ resolved; partial snapshots and isolated integration failures return status 0.
 Inventory enforces the DWM parser's 512-entry ceiling and the exact section
 header grammar shared by the current QML and toolkit consumers. A trailing
 comment on a section header is therefore a typed compatibility error until all
-live consumers support it consistently.
+live consumers support it consistently. Arrays and inline tables are rejected
+conservatively because they are outside the appearance snapshot grammar.
 
 ```text
 appearance-protocol<TAB>major<TAB>minor

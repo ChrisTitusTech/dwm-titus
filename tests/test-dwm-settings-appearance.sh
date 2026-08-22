@@ -85,6 +85,49 @@ grep -Fq $'error\tparser\tmalformed-section\tMalformed theme section header at l
 	<<<"$truncated_header"
 cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
 
+{
+	printf '[ignored]\nextra = [{x=1}, {x=2}]\n'
+	cat "$repo/config/themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+set +e
+inline_table=$(snapshot)
+inline_table_status=$?
+set -e
+[[ $inline_table_status -eq 3 ]]
+grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+	<<<"$inline_table"
+grep -Fq $'error\tparser\tunsupported-complex-value\tArrays and inline tables are outside the appearance snapshot grammar at line ' \
+	<<<"$inline_table"
+
+{
+	printf '[ignored]\nextra = {x=1}\n'
+	cat "$repo/config/themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+set +e
+direct_inline_table=$(snapshot)
+direct_inline_table_status=$?
+set -e
+[[ $direct_inline_table_status -eq 3 ]]
+grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+	<<<"$direct_inline_table"
+grep -Fq $'error\tparser\tunsupported-complex-value\tArrays and inline tables are outside the appearance snapshot grammar at line ' \
+	<<<"$direct_inline_table"
+
+{
+	printf '[ignored]\nextra = [\n'
+	cat "$repo/config/themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+set +e
+unterminated_array=$(snapshot)
+unterminated_array_status=$?
+set -e
+[[ $unterminated_array_status -eq 3 ]]
+grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+	<<<"$unterminated_array"
+grep -Fq $'error\tparser\tunsupported-complex-value\tArrays and inline tables are outside the appearance snapshot grammar at line ' \
+	<<<"$unterminated_array"
+cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
+
 printf '\n[theme.@unsafe]\nterm_bg = "#000000"\n' >>"$config_home/dwm-titus/themes.toml"
 unsafe_name=$(snapshot)
 grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' \
@@ -152,6 +195,13 @@ custom=$(snapshot)
 grep -Fqx $'active\t'"$custom_theme"$'\t'"$custom_theme"$'\tselected' <<<"$custom"
 grep -Fq $'theme\t'"$custom_theme"$'\tselected\tvalid\ttrue\tNordic' <<<"$custom"
 
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i '0,/theme = "nord"/s//theme = 123/' "$config_home/dwm-titus/themes.toml"
+numeric_active=$(snapshot)
+grep -Fqx $'active\tnone\tnord\trecovery' <<<"$numeric_active"
+grep -Fq $'error\tactive\tinvalid-type\tActive theme must resolve to a TOML string at line ' \
+	<<<"$numeric_active"
+
 printf -v overlong_theme '%*s' 506 ''
 overlong_theme=${overlong_theme// /a}
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
@@ -200,6 +250,15 @@ invalid_color=$(snapshot)
 grep -Fqx $'active\tnord\tdracula\trecovery' <<<"$invalid_color"
 grep -Fqx $'error\ttheme:nord\tinvalid-color\tTheme key '\''normfgcolor'\'' is not a #RRGGBB color' <<<"$invalid_color"
 
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i $'0,/dark_mode       = true/s//dark_mode       = "bogus\tvalue"/' \
+	"$config_home/dwm-titus/themes.toml"
+invalid_dark=$(snapshot)
+grep -Fqx $'theme\tnord\tselected\tinvalid\tbogus value\tNordic\tTheme record is duplicate, malformed, or incomplete' \
+	<<<"$invalid_dark"
+grep -Fqx $'error\ttheme:nord\tinvalid-dark-mode\tTheme dark_mode must be true or false' \
+	<<<"$invalid_dark"
+
 {
 	printf '[ignored]\n'
 	for ((entry_index = 0; entry_index < 512; entry_index++)); do
@@ -222,6 +281,18 @@ nord_block=$(awk '
 	/^\[theme\.dracula\]$/ { exit }
 	capture && /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/ { print }
 ' "$repo/config/themes.toml")
+{
+	printf '[active]\ntheme = "chosen"\n'
+	for ((theme_index = 0; theme_index < 128; theme_index++)); do
+		printf '[theme.sparse%s]\n' "$theme_index"
+	done
+	printf '[theme.chosen]\n%s\n' "$nord_block"
+} >"$config_home/dwm-titus/themes.toml"
+selected_after_cap=$(snapshot)
+grep -Fqx $'active\tchosen\tchosen\tselected' <<<"$selected_after_cap"
+grep -Fqx $'theme\tchosen\tselected\tvalid\ttrue\tNordic\tTheme record is complete' \
+	<<<"$selected_after_cap"
+
 {
 	printf '[active]\ntheme = "t19"\n'
 	for ((theme_index = 0; theme_index < 20; theme_index++)); do
