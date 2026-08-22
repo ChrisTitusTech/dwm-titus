@@ -112,7 +112,7 @@ safe_field() {
 valid_desktop_id() {
 	local desktop_id=${1:-}
 	((${#desktop_id} <= 255)) || return 1
-	[[ $desktop_id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.desktop$ ]] || return 1
+	[[ $desktop_id =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*\.desktop$ ]] || return 1
 	[[ $desktop_id != *..* ]]
 }
 

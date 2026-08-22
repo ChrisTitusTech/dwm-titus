@@ -608,6 +608,45 @@ result=$(run_helper reset-role terminal)
 [[ $result == $'defaults-result\t1\t0\treset-role\tterminal\t\tok' ]]
 [[ $(sha256sum "$work/home/.config/dwm-titus/hotkeys.toml") == "$hotkeys_before" ]]
 
+sed -i 's/terminal = "alacritty"/  terminal = "alacritty"  # preserve terminal choice/' \
+	"$work/home/.config/dwm-titus/hotkeys.toml"
+commented_hotkeys_before=$(sha256sum "$work/home/.config/dwm-titus/hotkeys.toml")
+snapshot=$(run_helper snapshot)
+grep -Fqx $'role\tterminal\tavailable\tAlacritty.desktop\tAlacritty\thotkeys.toml\tTerminal hotkey selection is readable' <<<"$snapshot"
+result=$(run_helper set-role terminal kitty.desktop)
+[[ $result == $'defaults-result\t1\t0\tset-role\tterminal\tkitty.desktop\tok' ]]
+grep -Fqx '  terminal = "kitty"  # preserve terminal choice' \
+	"$work/home/.config/dwm-titus/hotkeys.toml"
+result=$(run_helper reset-role terminal)
+[[ $result == $'defaults-result\t1\t0\treset-role\tterminal\t\tok' ]]
+[[ $(sha256sum "$work/home/.config/dwm-titus/hotkeys.toml") == "$commented_hotkeys_before" ]]
+
+cp "$work/home/.config/dwm-titus/hotkeys.toml" "$work/hotkeys.valid-comment"
+sed -i 's/  terminal = .*/terminal = "alacritty" trailing = "injection" # invalid/' \
+	"$work/home/.config/dwm-titus/hotkeys.toml"
+malformed_hotkeys_before=$(sha256sum "$work/home/.config/dwm-titus/hotkeys.toml")
+snapshot=$(run_helper snapshot)
+grep -Fq $'role\tterminal\trestricted\t\t\thotkeys.toml\t' <<<"$snapshot"
+expect_status 1 run_helper set-role terminal kitty.desktop
+[[ $(sha256sum "$work/home/.config/dwm-titus/hotkeys.toml") == "$malformed_hotkeys_before" ]]
+cp "$work/hotkeys.valid-comment" "$work/home/.config/dwm-titus/hotkeys.toml"
+sed -i 's/  terminal = .*/terminal = "alacritty # unterminated/' \
+	"$work/home/.config/dwm-titus/hotkeys.toml"
+unterminated_hotkeys_before=$(sha256sum "$work/home/.config/dwm-titus/hotkeys.toml")
+snapshot=$(run_helper snapshot)
+grep -Fq $'role\tterminal\trestricted\t\t\thotkeys.toml\t' <<<"$snapshot"
+expect_status 1 run_helper set-role terminal kitty.desktop
+[[ $(sha256sum "$work/home/.config/dwm-titus/hotkeys.toml") == "$unterminated_hotkeys_before" ]]
+cp "$work/hotkeys.valid-comment" "$work/home/.config/dwm-titus/hotkeys.toml"
+sed -i '/terminal = /a terminal = "kitty" # duplicate' \
+	"$work/home/.config/dwm-titus/hotkeys.toml"
+duplicate_hotkeys_before=$(sha256sum "$work/home/.config/dwm-titus/hotkeys.toml")
+snapshot=$(run_helper snapshot)
+grep -Fq $'role\tterminal\trestricted\t\t\thotkeys.toml\t' <<<"$snapshot"
+expect_status 1 run_helper set-role terminal kitty.desktop
+[[ $(sha256sum "$work/home/.config/dwm-titus/hotkeys.toml") == "$duplicate_hotkeys_before" ]]
+mv "$work/hotkeys.valid-comment" "$work/home/.config/dwm-titus/hotkeys.toml"
+
 sed -i 's/terminal = "alacritty"/terminal = "st"/' \
 	"$work/home/.config/dwm-titus/hotkeys.toml"
 snapshot=$(run_helper snapshot)

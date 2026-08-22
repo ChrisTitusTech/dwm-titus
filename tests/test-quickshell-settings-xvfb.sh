@@ -140,6 +140,7 @@ trap cleanup EXIT
 trap 'exit 143' HUP INT TERM
 
 home=$work/home
+helper_tmp=$work/tmp
 runtime_storage=${DWM_SETTINGS_TEST_RUNTIME_DIR:-$work/runtime}
 runtime=$runtime_storage
 schema_dir=$work/schemas
@@ -147,7 +148,7 @@ config_home=$home/.config
 data_home=$home/.local/share
 mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" \
 	"$config_home/autostart" "$data_home/applications" \
-	"$data_home/dwm-titus/scripts" "$runtime_storage" "$schema_dir"
+	"$data_home/dwm-titus/scripts" "$runtime_storage" "$schema_dir" "$helper_tmp"
 chmod 700 "$runtime_storage"
 if [ "${#runtime}" -gt 64 ]; then
 	runtime_alias_dir=$(mktemp -d /tmp/dwm-settings-runtime.XXXXXX)
@@ -199,6 +200,12 @@ cat >"$config_home/autostart/picom.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=Picom Session Fixture
+Exec=/usr/bin/true
+EOF
+cat >"$config_home/autostart/vendor-app+variant.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Plus ID Autostart Fixture
 Exec=/usr/bin/true
 EOF
 cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
@@ -323,6 +330,7 @@ HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 
 env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
+	TMPDIR="$helper_tmp" \
 	DWM_SETTINGS_TEST_POWER_STATE="$power_state" DWM_SETTINGS_TEST_DELAY_POWER=1 \
 	DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT="$malformed_power_snapshot" \
 	PATH="$data_home/dwm-titus/scripts:$PATH" \
@@ -726,6 +734,9 @@ case $defaults_status in available | partial) : ;; *) exit 1 ;; esac
 case $autostart_status in ready | degraded) : ;; *) exit 1 ;; esac
 [ "$(settings_defaults_watch_count)" -eq 1 ]
 [ "$(settings_autostart_watch_count)" -eq 1 ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings \
+	autostartEntryName vendor-app+variant.desktop)" = 'Plus ID Autostart Fixture' ]
 
 sed -i 's/Name=dwm Test Autostart/Name=dwm Test Autostart Changed/' \
 	"$config_home/autostart/dwm-test-autostart.desktop"
@@ -1058,6 +1069,12 @@ fi
 if pgrep -af '[d]wm-xdg-autostart (snapshot|watch|set|reset)' |
 	grep -F "$data_home/dwm-titus/scripts/dwm-xdg-autostart" >/dev/null; then
 	printf 'Settings-owned autostart work remained active after close\n' >&2
+	exit 1
+fi
+if find "$helper_tmp" -mindepth 1 -maxdepth 1 \
+	\( -name 'dwm-default-apps-watch.*' -o -name 'dwm-xdg-autostart-watch.*' \) \
+	-print -quit | grep -q .; then
+	printf 'Settings-owned Defaults or autostart watcher workspace remained after close\n' >&2
 	exit 1
 fi
 

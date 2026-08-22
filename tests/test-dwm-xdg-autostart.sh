@@ -109,6 +109,13 @@ NotShowIn=GNOME;
 CustomKey=preserve-me
 EOF
 
+cat >"$work/vendor-a/autostart/org.example.C++.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Plus ID Vendor
+Exec=/bin/true
+EOF
+
 cat >"$work/vendor-b/autostart/example.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
@@ -300,6 +307,8 @@ grep -Fqx $'provider\tdegraded\tone or more entries are unsupported or malformed
 [[ $(entry_field "$work/snapshot" user-only.desktop 4) == user-only ]]
 [[ $(entry_field "$work/snapshot" user-only.desktop 9) == 0 ]]
 [[ $(entry_field "$work/snapshot" picom.desktop 10) == session-critical ]]
+[[ $(entry_field "$work/snapshot" org.example.C++.desktop 3) == 'Plus ID Vendor' ]]
+[[ $(entry_field "$work/snapshot" org.example.C++.desktop 5) == enabled ]]
 
 mkdir "$work/config-target"
 ln -s "$work/config-target" "$work/config-link"
@@ -328,6 +337,19 @@ grep -Fqx 'NotShowIn=GNOME;X-DWM;' "$work/config/autostart/example.desktop"
 grep -Fqx '# Preserve this comment and the custom group.' "$work/config/autostart/example.desktop"
 grep -Fqx 'CustomKey=preserve-me' "$work/config/autostart/example.desktop"
 [[ $(sha256sum "$work/vendor-a/autostart/example.desktop") == "$vendor_hash" ]]
+
+plus_revision=$(entry_field "$work/snapshot" org.example.C++.desktop 11)
+[[ $plus_revision =~ ^[0-9a-f]{64}$ ]]
+run_helper set org.example.C++.desktop disabled "$plus_revision" >"$work/plus-disable"
+[[ $(action_field "$work/plus-disable" 4) == org.example.C++.desktop ]]
+[[ $(action_field "$work/plus-disable" 5) == disabled ]]
+test -f "$work/config/autostart/org.example.C++.desktop"
+run_helper snapshot >"$work/plus-disabled-snapshot"
+plus_disabled_revision=$(entry_field "$work/plus-disabled-snapshot" org.example.C++.desktop 11)
+run_helper reset org.example.C++.desktop "$plus_disabled_revision" >"$work/plus-reset"
+[[ $(action_field "$work/plus-reset" 4) == org.example.C++.desktop ]]
+[[ $(action_field "$work/plus-reset" 5) == enabled ]]
+test ! -e "$work/config/autostart/org.example.C++.desktop"
 
 run_helper snapshot >"$work/disabled-snapshot"
 [[ $(entry_field "$work/disabled-snapshot" example.desktop 4) == user-override ]]

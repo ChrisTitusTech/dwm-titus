@@ -37,6 +37,7 @@ grep -Fq 'output=$("$@"); status=$?' "$commands"
 grep -Fq 'root.actionGeneration !== root.mutationGeneration' "$defaults_model"
 
 grep -Fq 'autostart-protocol' "$autostart_model"
+grep -Fq '/^[A-Za-z0-9][A-Za-z0-9._+-]*\.desktop$/' "$autostart_model"
 grep -Fq 'confirm-session-critical' "$autostart_model"
 grep -Fq 'mutationOrigin' "$autostart_model"
 grep -Fq 'snapshotGeneration' "$autostart_model"

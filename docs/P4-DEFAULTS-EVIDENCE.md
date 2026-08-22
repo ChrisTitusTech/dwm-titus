@@ -49,8 +49,9 @@ hash. External changes therefore disable stale recovery instead of being
 overwritten. Rollback failure is reported separately and never emits a success
 record.
 
-Terminal selection replaces only `[vars].terminal` in the existing user
-`hotkeys.toml`, preserving the Super+X binding and every unrelated setting.
+Terminal selection replaces only the quoted `[vars].terminal` value in the
+existing user `hotkeys.toml`, preserving its spacing or inline comment, the
+Super+X binding, and every unrelated setting.
 `dwm-terminal` reads that validated command after an explicit `DWM_TERMINAL`
 override and before its supported fallback list. Super+B continues through
 `dwm-default-apps open`, and Super+E continues through `xdg-open .`; neither

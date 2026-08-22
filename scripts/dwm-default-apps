@@ -464,14 +464,19 @@ read_terminal_command() {
 		in_vars && /^\[/ { in_vars = 0 }
 		in_vars && /^[[:space:]]*terminal[[:space:]]*=/ {
 			line = $0
+			if (line !~ /^[[:space:]]*terminal[[:space:]]*=[[:space:]]*"[A-Za-z0-9._+-][A-Za-z0-9._+-]*"[[:space:]]*(#.*)?$/) {
+				print "invalid\t"
+				next
+			}
 			sub(/^[[:space:]]*terminal[[:space:]]*=[[:space:]]*"/, "", line)
-			sub(/"[[:space:]]*$/, "", line)
-			print line
+			sub(/"[[:space:]]*(#.*)?$/, "", line)
+			print "value\t" line
 		}
 	' "$file")
 	count=$(printf '%s\n' "$output" | awk 'NF { count++ } END { print count + 0 }')
 	[[ $count -eq 1 ]] || return 1
-	value=$(printf '%s\n' "$output" | awk 'NF { print; exit }')
+	[[ $output == value$'\t'* && $output != *$'\n'* ]] || return 1
+	value=${output#value$'\t'}
 	[[ $value =~ ^[A-Za-z0-9._+-]+$ ]] || return 1
 	printf '%s\n' "$value"
 }
@@ -962,7 +967,11 @@ set_terminal() {
 		$0 == "[vars]" { in_vars = 1; print; next }
 		in_vars && /^\[/ { in_vars = 0 }
 		in_vars && /^[[:space:]]*terminal[[:space:]]*=/ {
-			print "terminal = \"" command_name "\""
+			line = $0
+			quote = index(line, "\"")
+			remainder = substr(line, quote + 1)
+			closing = index(remainder, "\"")
+			print substr(line, 1, quote) command_name substr(remainder, closing)
 			next
 		}
 		{ print }
