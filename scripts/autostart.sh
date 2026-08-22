@@ -26,30 +26,57 @@ start_detached_once() {
 	fi
 }
 
+start_detached() {
+	command -v "$1" >/dev/null 2>&1 || return 0
+	if [ "${DWM_AUTOSTART_NO_SETSID:-0}" != 1 ] &&
+		command -v setsid >/dev/null 2>&1; then
+		setsid -f "$@" >/dev/null 2>&1
+	else
+		"$@" >/dev/null 2>&1 &
+	fi
+}
+
 quickshell_tray_ready() {
 	config=$1
 
 	command -v timeout >/dev/null 2>&1 || return 1
-	timeout 2 quickshell ipc --path "$config" call tray count >/dev/null 2>&1
+	timeout 1 quickshell ipc --path "$config" call tray count >/dev/null 2>&1
 }
 
-stop_unresponsive_quickshell() {
+wait_for_quickshell_exit() {
 	config=$1
-	user_id=$(id -u)
 
-	pgrep -u "$user_id" -x quickshell >/dev/null 2>&1 || return 0
-	quickshell_tray_ready "$config" && return 0
-	command -v pkill >/dev/null 2>&1 || return 0
+	# shellcheck disable=SC2016 # The script runs in the child shell below.
+	timeout 2 sh -c '
+		config=$1
+		while quickshell list --path "$config" --json 2>/dev/null |
+			grep -q '"'"'"pid"'"'"'; do
+			sleep 0.05
+		done
+	' sh "$config"
+}
 
-	pkill -u "$user_id" -x quickshell >/dev/null 2>&1 || true
-	i=0
-	while [ "$i" -lt 20 ] && pgrep -u "$user_id" -x quickshell >/dev/null 2>&1; do
-		i=$((i + 1))
-		sleep 0.05
-	done
-	if pgrep -u "$user_id" -x quickshell >/dev/null 2>&1; then
-		pkill -KILL -u "$user_id" -x quickshell >/dev/null 2>&1 || true
+start_managed_quickshell() {
+	config=$1
+
+	if ! quickshell_tray_ready "$config"; then
+		timeout 2 quickshell kill --path "$config" >/dev/null 2>&1 || true
+		wait_for_quickshell_exit "$config" >/dev/null 2>&1 || true
+		start_detached quickshell --path "$config" --no-duplicate
 	fi
+}
+
+wait_for_quickshell_tray() {
+	config=$1
+
+	# shellcheck disable=SC2016 # The script runs in the child shell below.
+	timeout 5 sh -c '
+		config=$1
+		while ! timeout 1 quickshell ipc --path "$config" call tray count \
+			>/dev/null 2>&1; do
+			sleep 0.1
+		done
+	' sh "$config"
 }
 
 apply_power_settings() {
@@ -181,20 +208,12 @@ if [ -f "$QUICKSHELL_CONFIG" ]; then
 	fi
 	if [ -n "$quickshell_check" ] && "$quickshell_check"; then
 		quickshell_compatible=1
-		stop_unresponsive_quickshell "$QUICKSHELL_CONFIG"
-		start_detached_once quickshell quickshell --no-duplicate
+		start_managed_quickshell "$QUICKSHELL_CONFIG"
 	else
 		printf '%s\n' 'dwm-titus: compatible Quickshell 0.3.0 or Fedora 44 snapshot is required' >&2
 	fi
 	if [ "$quickshell_compatible" -eq 1 ]; then
-		i=0
-		while [ "$i" -lt 50 ]; do
-			if quickshell_tray_ready "$QUICKSHELL_CONFIG"; then
-				break
-			fi
-			i=$((i + 1))
-			sleep 0.1
-		done
+		wait_for_quickshell_tray "$QUICKSHELL_CONFIG" || true
 	fi
 fi
 

@@ -80,27 +80,6 @@ fi
 test -f "${TEST_STATE:?}/$name.running"
 EOF
 
-cat >"$work/bin/pkill" <<'EOF'
-#!/bin/sh
-name=
-while [ "$#" -gt 0 ]; do
-	case $1 in
-	-x)
-		shift
-		name=${1:-}
-		break
-		;;
-	esac
-	shift
-done
-[ "$name" = quickshell ] || exit 1
-count_file="${TEST_STATE:?}/quickshell-pkill.count"
-count=0
-[ ! -f "$count_file" ] || count=$(cat "$count_file")
-printf '%s\n' "$((count + 1))" >"$count_file"
-rm -f "${TEST_STATE:?}/quickshell.stale" "${TEST_STATE:?}/quickshell.running"
-EOF
-
 cat >"$work/bin/systemctl" <<'EOF'
 #!/bin/sh
 printf '%s\t%s\n' "${XDG_CURRENT_DESKTOP:-}" "$*" >>"${TEST_STATE:?}/systemctl.log"
@@ -147,8 +126,42 @@ done
 
 cat >"$work/bin/quickshell" <<'EOF'
 #!/bin/sh
+printf '%s\n' "$*" >>"${TEST_STATE:?}/quickshell.args"
 if [ "${1:-}" = --version ]; then
 	printf '%s\n' 'quickshell 0.3.0'
+	exit 0
+fi
+if [ "${1:-}" = kill ]; then
+	count_file="${TEST_STATE:?}/quickshell-kill.count"
+	count=0
+	[ ! -f "$count_file" ] || count=$(cat "$count_file")
+	printf '%s\n' "$((count + 1))" >"$count_file"
+	if [ "${TEST_QUICKSHELL_DELAYED_STOP:-0}" = 1 ]; then
+		: >"${TEST_STATE:?}/quickshell.stopping"
+	else
+		rm -f "${TEST_STATE:?}/quickshell.stale" "${TEST_STATE:?}/quickshell.running"
+	fi
+	exit 0
+fi
+if [ "${1:-}" = list ]; then
+	if [ -f "${TEST_STATE:?}/quickshell.stopping" ]; then
+		count_file="${TEST_STATE:?}/quickshell-list.count"
+		count=0
+		[ ! -f "$count_file" ] || count=$(cat "$count_file")
+		count=$((count + 1))
+		printf '%s\n' "$count" >"$count_file"
+		if [ "$count" -ge 3 ]; then
+			rm -f "${TEST_STATE:?}/quickshell.stale" \
+				"${TEST_STATE:?}/quickshell.running" \
+				"${TEST_STATE:?}/quickshell.stopping"
+		fi
+	fi
+	if [ -f "${TEST_STATE:?}/quickshell.stale" ] ||
+		[ -f "${TEST_STATE:?}/quickshell.running" ]; then
+		printf '%s\n' '[{"pid":1234}]'
+	else
+		printf '%s\n' '[]'
+	fi
 	exit 0
 fi
 if [ "${1:-}" = ipc ]; then
@@ -156,7 +169,11 @@ if [ "${1:-}" = ipc ]; then
 		sleep 10
 		exit 1
 	fi
-	test -f "${TEST_STATE:?}/quickshell.running"
+	if [ -f "${TEST_STATE:?}/quickshell.hang" ]; then
+		sleep 10
+		exit 1
+	fi
+	[ -f "${TEST_STATE:?}/quickshell.running" ] || exit 1
 	: >"${TEST_STATE:?}/quickshell-tray.ready"
 	exit 0
 fi
@@ -167,6 +184,7 @@ count=0
 count=$((count + 1))
 printf '%s\n' "$count" >"$count_file"
 : >"${TEST_STATE:?}/quickshell.running"
+[ "${TEST_QUICKSHELL_LAUNCH_HANG:-0}" != 1 ] || : >"${TEST_STATE:?}/quickshell.hang"
 EOF
 chmod +x "$work/bin/quickshell"
 
@@ -219,7 +237,11 @@ run_duplicate_case() {
 		wait_for_marker "$state/picom.running"
 		wait_for_marker "$state/dwm-status.running"
 		wait_for_marker "$state/dwm-lock-watch.running"
-		wait_for_marker "$state/quickshell.running"
+		if ! wait_for_marker "$state/quickshell.running"; then
+			printf 'Quickshell launch arguments:\n' >&2
+			cat "$state/quickshell.args" >&2
+			return 1
+		fi
 	done
 
 	for name in feh picom dwm-status dwm-lock-watch quickshell; do
@@ -248,6 +270,7 @@ run_stale_quickshell_case() {
 	: >"$home/Pictures/backgrounds/wallpaper"
 	: >"$home/.config/quickshell/shell.qml"
 	: >"$state/quickshell.stale"
+	: >"$state/quickshell-secondary.running"
 	: >"$state/polkit-mate-authentication-agent-1.running"
 
 	DISPLAY=:99 \
@@ -258,13 +281,44 @@ run_stale_quickshell_case() {
 		XDG_RUNTIME_DIR="$runtime" \
 		DWM_AUTOSTART_NO_INPUT_WATCH=1 \
 		DWM_AUTOSTART_NO_SETSID=1 \
+		TEST_QUICKSHELL_DELAYED_STOP=1 \
 		sh "$repo_dir/scripts/autostart.sh"
 
 	test ! -e "$state/quickshell.stale"
 	test -f "$state/quickshell.running"
+	test -f "$state/quickshell-secondary.running"
 	test -f "$state/quickshell-tray.ready"
 	test "$(cat "$state/quickshell.count")" -eq 1
-	test "$(cat "$state/quickshell-pkill.count")" -eq 1
+	test "$(cat "$state/quickshell-kill.count")" -eq 1
+	test "$(cat "$state/quickshell-list.count")" -ge 3
+}
+
+run_hung_quickshell_case() {
+	home="$work/hung/home"
+	state="$work/hung/state"
+	runtime="$work/hung/runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$home/.config/quickshell" "$state" "$runtime"
+	chmod 700 "$runtime"
+	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$home/.config/quickshell/shell.qml"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+
+	started=$(date +%s)
+	DISPLAY=:99 \
+		HOME=$home \
+		TEST_STATE=$state \
+		PATH="$work/bin:/usr/bin:/bin" \
+		XDG_CONFIG_HOME="$home/.config" \
+		XDG_RUNTIME_DIR="$runtime" \
+		DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+		DWM_AUTOSTART_NO_SETSID=1 \
+		TEST_QUICKSHELL_LAUNCH_HANG=1 \
+		TEST_SYSTEMD_START_FAIL=1 \
+		sh "$repo_dir/scripts/autostart.sh"
+	elapsed=$(($(date +%s) - started))
+
+	test "$elapsed" -le 7
+	test "$(cat "$state/quickshell.count")" -eq 1
 }
 
 run_dex_fallback_case() {
@@ -348,6 +402,7 @@ EOF
 run_duplicate_case display-manager
 run_duplicate_case startx
 run_stale_quickshell_case
+run_hung_quickshell_case
 run_dex_fallback_case
 run_missing_optional_case
 run_input_watcher_fallback_case
