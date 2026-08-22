@@ -15,6 +15,7 @@ shell=$repo/config/quickshell/shell.qml
 grep -Fq 'import Quickshell.Services.UPower' "$model"
 grep -Fq 'readonly property var nativeBattery: UPower.displayDevice' "$model"
 grep -Fq 'function onOnBatteryChanged()' "$model"
+grep -Fq 'Math.round(battery.percentage * 100)' "$model"
 grep -Fq 'function onProfileChanged()' "$model"
 grep -Fq 'property bool nativeProfileObserved: false' "$model"
 grep -Fq 'if (root.nativeProfileObserved) root.updateNativeProfile();' "$model"

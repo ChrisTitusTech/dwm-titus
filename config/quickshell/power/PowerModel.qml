@@ -188,7 +188,7 @@ Scope {
         }
 
         root.batteryAvailable = true;
-        root.batteryPercent = Math.max(0, Math.min(100, Math.round(battery.percentage)));
+        root.batteryPercent = Math.max(0, Math.min(100, Math.round(battery.percentage * 100)));
         root.batteryStatus = UPowerDeviceState.toString(battery.state).toLowerCase();
         root.batteryTimeToEmpty = Math.max(0, Math.round(battery.timeToEmpty));
         root.batteryTimeToFull = Math.max(0, Math.round(battery.timeToFull));
