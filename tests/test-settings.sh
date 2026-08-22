@@ -135,6 +135,12 @@ grep -Fq 'providerProcess.running = false' "$repo/config/quickshell/settings/Set
 grep -Fq 'Commands.settingsProviderCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'Commands.settingsDisplayCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'Commands.settingsInputCommand("discover")' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'Commands.settingsDisplayCommand("watch", root.watchOwnerArguments())' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'Commands.settingsInputCommand("watch", root.watchOwnerArguments())' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'path: "/proc/" + Quickshell.processId.toString() + "/stat"' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.runInput("preview-status", [])' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.runDisplay("preview-status", [])' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'if (!root.visible) root.closeRollbackPending = true;' \

@@ -94,6 +94,15 @@ Scope {
         });
     }
 
+    function watchOwnerArguments() {
+        const stat = watchOwnerStat.text().trim();
+        const commandEnd = stat.lastIndexOf(") ");
+        if (commandEnd < 0) return [Quickshell.processId.toString(), ""];
+        const fields = stat.substring(commandEnd + 2).trim().split(/\s+/);
+        const starttime = fields.length >= 20 ? fields[19] : "";
+        return [Quickshell.processId.toString(), /^[1-9][0-9]*$/.test(starttime) ? starttime : ""];
+    }
+
     function activateSection(id) {
         displayWatchProcess.running = id === "displays" && root.visible;
         inputWatchProcess.running = id === "input" && root.visible;
@@ -546,6 +555,13 @@ Scope {
         }
     }
 
+    FileView {
+        id: watchOwnerStat
+        path: "/proc/" + Quickshell.processId.toString() + "/stat"
+        blockLoading: true
+        printErrors: false
+    }
+
     Process {
         id: displayDiscoverProcess
         command: Commands.settingsDisplayCommand("discover")
@@ -564,14 +580,14 @@ Scope {
 
     Process {
         id: displayWatchProcess
-        command: Commands.settingsDisplayCommand("watch")
+        command: Commands.settingsDisplayCommand("watch", root.watchOwnerArguments())
         running: false
         stdout: SplitParser { onRead: root.refreshDisplays() }
     }
 
     Process {
         id: inputWatchProcess
-        command: Commands.settingsInputCommand("watch")
+        command: Commands.settingsInputCommand("watch", root.watchOwnerArguments())
         running: false
 			stdout: SplitParser { onRead: inputSettleTimer.restart() }
     }

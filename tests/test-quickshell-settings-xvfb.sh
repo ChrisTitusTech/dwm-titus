@@ -3,36 +3,172 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
-for command_name in Xvfb dbus-monitor dbus-run-session gsettings quickshell xdotool xprop pgrep getconf; do
+for command_name in Xvfb dbus-monitor dbus-run-session glib-compile-schemas \
+	gsettings quickshell xdotool xprop pgrep getconf; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
 	fi
 done
 
+test_tmp_root=${DWM_TEST_TMP_ROOT:-${HOME}/tmp}
+if [ "$(id -u)" -eq 0 ] && [ "${DWM_SETTINGS_XVFB_UNPRIVILEGED:-0}" != 1 ]; then
+	command -v setpriv >/dev/null 2>&1 || {
+		printf 'Quickshell Settings Xvfb requires setpriv on a root runner\n' >&2
+		exit 1
+	}
+	unprivileged_uid=$(id -u nobody)
+	unprivileged_gid=$(id -g nobody)
+	# Root home directories are not traversable by the unprivileged fixture,
+	# and Quickshell IPC sockets require a short AF_UNIX path.
+	root_runner_work=$(mktemp -d /var/tmp/dwm-settings-xvfb-root.XXXXXX)
+	trap 'rm -rf -- "$root_runner_work"' EXIT
+	fixture_repo=$root_runner_work/repo
+	mkdir -p "$root_runner_work/cache" "$root_runner_work/config" \
+		"$root_runner_work/data" "$root_runner_work/runtime" \
+		"$root_runner_work/state" "$fixture_repo/tests"
+	cp -a "$repo/config" "$repo/scripts" "$fixture_repo/"
+	cp "$repo/dwm" "$fixture_repo/dwm"
+	cp "$0" "$fixture_repo/tests/test-quickshell-settings-xvfb.sh"
+	chown -R "$unprivileged_uid:$unprivileged_gid" "$root_runner_work"
+	chmod 700 "$fixture_repo/dwm" "$root_runner_work/runtime"
+	if HOME="$root_runner_work" TMPDIR="$root_runner_work" \
+		DWM_TEST_TMP_ROOT="$root_runner_work" \
+		DWM_SETTINGS_TEST_DWM_BIN="$fixture_repo/dwm" \
+		DWM_SETTINGS_TEST_RUNTIME_DIR="$root_runner_work/runtime" \
+		DWM_SETTINGS_XVFB_UNPRIVILEGED=1 \
+		XDG_CACHE_HOME="$root_runner_work/cache" \
+		XDG_CONFIG_HOME="$root_runner_work/config" \
+		XDG_DATA_HOME="$root_runner_work/data" \
+		XDG_RUNTIME_DIR="$root_runner_work/runtime" \
+		XDG_STATE_HOME="$root_runner_work/state" \
+		setpriv --reuid "$unprivileged_uid" --regid "$unprivileged_gid" \
+		--clear-groups "$fixture_repo/tests/test-quickshell-settings-xvfb.sh" "$@"; then
+		root_runner_status=0
+	else
+		root_runner_status=$?
+	fi
+	rm -rf -- "$root_runner_work"
+	trap - EXIT
+	exit "$root_runner_status"
+fi
+mkdir -p -- "$test_tmp_root"
+
 if [ "${DWM_SETTINGS_XVFB_DBUS_SESSION:-0}" != 1 ]; then
 	exec env DWM_SETTINGS_XVFB_DBUS_SESSION=1 dbus-run-session -- "$0" "$@"
 fi
 
-work=$(mktemp -d)
+work=$(mktemp -d "$test_tmp_root/dwm-settings-xvfb.XXXXXX")
 display=":$((($$ % 400) + 700))"
+dwm_bin=${DWM_SETTINGS_TEST_DWM_BIN:-$repo/dwm}
+runtime_alias_dir=
+
+capture_process_identity() (
+	identity_pid=$1
+	[ -r "/proc/$identity_pid/stat" ] || return 1
+	IFS= read -r identity_stat <"/proc/$identity_pid/stat" || return 1
+	identity_fields=${identity_stat##*) }
+	# The remaining proc stat fields are space-delimited by the kernel.
+	# shellcheck disable=SC2086
+	set -- $identity_fields
+	[ "$1" != Z ] || return 1
+	[ -n "${20:-}" ] || return 1
+	printf '%s:%s\n' "$identity_pid" "${20}"
+)
+
+process_identity_alive() (
+	identity=$1
+	identity_pid=${identity%%:*}
+	identity_start=${identity#*:}
+	[ -n "$identity_pid" ] && [ "$identity_start" != "$identity" ] || return 1
+	current_identity=$(capture_process_identity "$identity_pid") || return 1
+	[ "$current_identity" = "$identity" ]
+)
+
+terminate_process_identity() {
+	terminate_identity=$1
+	[ -n "$terminate_identity" ] || return 0
+	terminate_pid=${terminate_identity%%:*}
+	if process_identity_alive "$terminate_identity"; then
+		kill -TERM "$terminate_pid" 2>/dev/null || true
+	fi
+	terminate_attempt=0
+	while [ "$terminate_attempt" -lt 20 ] && process_identity_alive "$terminate_identity"; do
+		terminate_attempt=$((terminate_attempt + 1))
+		sleep 0.05
+	done
+	if process_identity_alive "$terminate_identity"; then
+		kill -KILL "$terminate_pid" 2>/dev/null || true
+	fi
+	terminate_attempt=0
+	while [ "$terminate_attempt" -lt 20 ] && process_identity_alive "$terminate_identity"; do
+		terminate_attempt=$((terminate_attempt + 1))
+		sleep 0.05
+	done
+	wait "$terminate_pid" 2>/dev/null || true
+}
+
+scoped_settings_watcher_identities() (
+	for watcher_proc in /proc/[0-9]*; do
+		watcher_pid=${watcher_proc##*/}
+		[ -r "$watcher_proc/cmdline" ] || continue
+		watcher_command=$(tr '\0' ' ' <"$watcher_proc/cmdline" 2>/dev/null) || continue
+		case $watcher_command in
+		*"$work/"*"dwm-settings-display watch "* | *"$work/"*"dwm-settings-input watch "*) ;;
+		*) continue ;;
+		esac
+		capture_process_identity "$watcher_pid" || true
+	done
+)
+
 cleanup() {
 	set +e
-	[ -n "${quickshell_pid:-}" ] && kill "$quickshell_pid" 2>/dev/null
-	[ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null
-	[ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null
+	terminate_process_identity "${quickshell_identity:-}"
+	watcher_identities=$(scoped_settings_watcher_identities)
+	for watcher_identity in $watcher_identities; do
+		terminate_process_identity "$watcher_identity"
+	done
+	terminate_process_identity "${dwm_identity:-}"
+	terminate_process_identity "${xvfb_identity:-}"
+	if [ -n "${runtime_alias_dir:-}" ]; then
+		rm -f -- "$runtime_alias_dir/runtime"
+		rmdir -- "$runtime_alias_dir" 2>/dev/null || true
+	fi
 	rm -rf "$work"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 143' HUP INT TERM
 
 home=$work/home
-runtime=$work/runtime
+runtime_storage=${DWM_SETTINGS_TEST_RUNTIME_DIR:-$work/runtime}
+runtime=$runtime_storage
+schema_dir=$work/schemas
 config_home=$home/.config
 data_home=$home/.local/share
 mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" \
 	"$config_home/autostart" "$data_home/applications" \
-	"$data_home/dwm-titus/scripts" "$runtime"
-chmod 700 "$runtime"
+	"$data_home/dwm-titus/scripts" "$runtime_storage" "$schema_dir"
+chmod 700 "$runtime_storage"
+if [ "${#runtime}" -gt 64 ]; then
+	runtime_alias_dir=$(mktemp -d /tmp/dwm-settings-runtime.XXXXXX)
+	ln -s "$runtime_storage" "$runtime_alias_dir/runtime"
+	runtime=$runtime_alias_dir/runtime
+fi
+cat >"$schema_dir/apps.light-locker.gschema.xml" <<'EOF'
+<schemalist>
+  <schema id="apps.light-locker" path="/apps/light-locker/">
+    <key name="lock-after-screensaver" type="u">
+      <default>0</default>
+    </key>
+    <key name="lock-on-suspend" type="b">
+      <default>false</default>
+    </key>
+  </schema>
+</schemalist>
+EOF
+glib-compile-schemas "$schema_dir"
+export GSETTINGS_SCHEMA_DIR="$schema_dir"
+export GSETTINGS_BACKEND=keyfile
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
 # Keep this nested-X11 fixture independent from the host system UPower service
 # so versioned helper battery records exercise the fallback parser.
@@ -162,6 +298,7 @@ chmod +x "$data_home/dwm-titus/scripts/xset"
 
 Xvfb "$display" -screen 0 1280x800x24 -nolisten tcp -extension GLX >"$work/xvfb.log" 2>&1 &
 xvfb_pid=$!
+xvfb_identity=$(capture_process_identity "$xvfb_pid")
 
 i=0
 while [ "$i" -lt 100 ]; do
@@ -175,8 +312,9 @@ DISPLAY=$display xprop -root >/dev/null
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime DWM_AUTOSTART_NO_INPUT_WATCH=1 \
-	"$repo/dwm" >"$work/dwm.log" 2>&1 &
+	"$dwm_bin" >"$work/dwm.log" 2>&1 &
 dwm_pid=$!
+dwm_identity=$(capture_process_identity "$dwm_pid")
 
 HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	gsettings set apps.light-locker lock-after-screensaver 5
@@ -190,6 +328,7 @@ env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	PATH="$data_home/dwm-titus/scripts:$PATH" \
 	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
 quickshell_pid=$!
+quickshell_identity=$(capture_process_identity "$quickshell_pid")
 
 config=$config_home/quickshell/shell.qml
 settings_power_watch_count() {
@@ -272,8 +411,12 @@ while [ "$i" -lt 200 ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
-DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings status >/dev/null
+if ! DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings status >/dev/null 2>&1; then
+	printf 'Quickshell Settings IPC did not become ready\n' >&2
+	tail -60 "$work/quickshell.log" >&2
+	exit 1
+fi
 
 clock_ticks=$(getconf CLK_TCK)
 baseline_cpu_percent=
@@ -879,6 +1022,16 @@ fi
 
 if pgrep -f '[d]wm-settings-provider discover$' >/dev/null; then
 	printf 'Settings capability provider remained active after close\n' >&2
+	exit 1
+fi
+if pgrep -af '[d]wm-settings-display watch [0-9]+ [0-9]+$' |
+	grep -F "$data_home/dwm-titus/scripts/dwm-settings-display" >/dev/null; then
+	printf 'Settings display watcher remained active after close\n' >&2
+	exit 1
+fi
+if pgrep -af '[d]wm-settings-input watch [0-9]+ [0-9]+$' |
+	grep -F "$data_home/dwm-titus/scripts/dwm-settings-input" >/dev/null; then
+	printf 'Settings input watcher remained active after close\n' >&2
 	exit 1
 fi
 
