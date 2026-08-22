@@ -232,6 +232,11 @@ display=":$(cat "$work/display-number")"
 kill -0 "$xvfb_pid"
 DISPLAY=$display xprop -root >/dev/null
 
+if [ ! -x "$repo/dwm" ]; then
+	printf 'SKIP: the dwm binary is not built; run make first\n'
+	exit 77
+fi
+
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime DWM_AUTOSTART_NO_INPUT_WATCH=1 \
 	"$repo/dwm" >"$work/dwm.log" 2>&1 &
