@@ -180,6 +180,8 @@ while [ "$i" -lt 200 ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings status >/dev/null
 
 clock_ticks=$(getconf CLK_TCK)
 baseline_cpu_percent=

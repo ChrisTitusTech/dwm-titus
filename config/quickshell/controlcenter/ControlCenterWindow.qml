@@ -19,13 +19,7 @@ ClickAwayPopup {
     readonly property int maximumHeight: panelWindow && panelWindow.screen
         ? Math.max(240, panelWindow.screen.height - Theme.panelHeight - Theme.popupMargin)
         : 240
-    readonly property var powerPresets: [
-        { "label": "5m", "seconds": 300 },
-        { "label": "10m", "seconds": 600 },
-        { "label": "15m", "seconds": 900 },
-        { "label": "30m", "seconds": 1800 },
-        { "label": "1h", "seconds": 3600 }
-    ]
+    readonly property var powerPresets: root.powerModel.timeoutPresets
 
     function pageTitle() {
         if (controlCenterModel.page === "widgets") return "Bar Widgets";

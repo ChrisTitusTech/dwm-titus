@@ -16,6 +16,12 @@ grep -Fq 'import Quickshell.Services.UPower' "$model"
 grep -Fq 'readonly property var nativeBattery: UPower.displayDevice' "$model"
 grep -Fq 'function onOnBatteryChanged()' "$model"
 grep -Fq 'Math.round(battery.percentage * 100)' "$model"
+grep -Fq 'function nativeBatteryStatus(state)' "$model"
+for state in Charging Discharging Empty FullyCharged PendingCharge PendingDischarge; do
+	grep -Fq "UPowerDeviceState.$state" "$model"
+done
+grep -Fq 'return "pending-charge"' "$model"
+grep -Fq 'return "pending-discharge"' "$model"
 grep -Fq 'function onProfileChanged()' "$model"
 grep -Fq 'property bool nativeProfileObserved: false' "$model"
 grep -Fq 'if (root.nativeProfileObserved) root.updateNativeProfile();' "$model"

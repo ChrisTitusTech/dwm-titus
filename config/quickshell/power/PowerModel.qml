@@ -161,7 +161,7 @@ Scope {
         root.lidDockedPolicy = "unknown";
         root.lidPolicyCapabilityClass = "read-only";
         root.lidPolicyDetail = detail;
-        if (root.nativeBattery === null || !root.nativeBattery.ready) {
+        if (!root.nativeBattery || !root.nativeBattery.ready) {
             root.clearExternalPowerState(detail);
             root.clearBatteryState(detail);
         }
@@ -190,11 +190,21 @@ Scope {
 
         root.batteryAvailable = true;
         root.batteryPercent = Math.max(0, Math.min(100, Math.round(battery.percentage * 100)));
-        root.batteryStatus = UPowerDeviceState.toString(battery.state).toLowerCase();
+        root.batteryStatus = root.nativeBatteryStatus(battery.state);
         root.batteryTimeToEmpty = Math.max(0, Math.round(battery.timeToEmpty));
         root.batteryTimeToFull = Math.max(0, Math.round(battery.timeToFull));
         root.batteryRate = Math.max(0, battery.changeRate);
         root.batteryDetail = battery.model.length > 0 ? battery.model : "UPower display battery";
+    }
+
+    function nativeBatteryStatus(state) {
+        if (state === UPowerDeviceState.Charging) return "charging";
+        if (state === UPowerDeviceState.Discharging) return "discharging";
+        if (state === UPowerDeviceState.Empty) return "empty";
+        if (state === UPowerDeviceState.FullyCharged) return "full";
+        if (state === UPowerDeviceState.PendingCharge) return "pending-charge";
+        if (state === UPowerDeviceState.PendingDischarge) return "pending-discharge";
+        return "unknown";
     }
 
     function updateNativeProfile() {
@@ -366,17 +376,17 @@ Scope {
         } else {
             root.clearLockState("Automatic lock provider returned malformed state");
         }
-        if (externalPower !== null && (root.nativeBattery === null || !root.nativeBattery.ready)) {
+        if (externalPower !== null && (!root.nativeBattery || !root.nativeBattery.ready)) {
             root.externalPowerState = externalPower.state; root.externalPowerDetail = externalPower.detail;
-        } else if (externalPower === null && (root.nativeBattery === null || !root.nativeBattery.ready)) {
+        } else if (externalPower === null && (!root.nativeBattery || !root.nativeBattery.ready)) {
             root.clearExternalPowerState("External power provider returned malformed state");
         }
-        if (battery !== null && (root.nativeBattery === null || !root.nativeBattery.ready)) {
+        if (battery !== null && (!root.nativeBattery || !root.nativeBattery.ready)) {
             root.batteryAvailable = battery.state === "available";
             root.batteryStatus = battery.status; root.batteryPercent = battery.percent;
             root.batteryTimeToEmpty = battery.empty; root.batteryTimeToFull = battery.full;
             root.batteryRate = battery.rate; root.batteryDetail = battery.detail;
-        } else if (battery === null && (root.nativeBattery === null || !root.nativeBattery.ready)) {
+        } else if (battery === null && (!root.nativeBattery || !root.nativeBattery.ready)) {
             root.clearBatteryState("Battery provider returned malformed state");
         }
         if (profileSupport !== null) {

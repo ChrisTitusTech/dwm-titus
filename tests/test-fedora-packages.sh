@@ -46,11 +46,18 @@ if [[ -s $work/missing ]]; then
 	exit 1
 fi
 
-installed_provider_packages=$(bash -c '
+mkdir -p "$work/bin"
+cat >"$work/bin/rpm" <<'EOF'
+#!/bin/sh
+[ "$*" = '-q --whatprovides ppd-service' ] || exit 2
+[ "${DWM_TEST_PPD_PROVIDER:-0}" = 1 ]
+EOF
+chmod +x "$work/bin/rpm"
+
+installed_provider_packages=$(PATH="$work/bin:$PATH" DWM_TEST_PPD_PROVIDER=1 bash -c '
 	. "$1"
 	DISTRO_FAMILY=fedora
 	install_packages() { printf "%s\n" "$@"; }
-	dwm_power_profiles_provider_installed() { return 0; }
 	dwm_install_package_profile desktop
 ' _ "$repo/scripts/dwm-packages.sh")
 if printf '%s\n' "$installed_provider_packages" | grep -Fxq power-profiles-daemon; then
@@ -60,11 +67,10 @@ fi
 printf '%s\n' "$installed_provider_packages" | grep -Fxq upower
 printf '%s\n' "$installed_provider_packages" | grep -Fxq dbus-tools
 
-missing_provider_packages=$(bash -c '
+missing_provider_packages=$(PATH="$work/bin:$PATH" DWM_TEST_PPD_PROVIDER=0 bash -c '
 	. "$1"
 	DISTRO_FAMILY=fedora
 	install_packages() { printf "%s\n" "$@"; }
-	dwm_power_profiles_provider_installed() { return 1; }
 	dwm_install_package_profile desktop
 ' _ "$repo/scripts/dwm-packages.sh")
 printf '%s\n' "$missing_provider_packages" | grep -Fxq power-profiles-daemon
