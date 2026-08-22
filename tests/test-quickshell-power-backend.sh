@@ -6,7 +6,11 @@ work=$(mktemp -d)
 
 cleanup() {
 	set +e
-	for pid_file in "$work/helper.pid" "$work/monitor.pid" "$work/owner.pid"; do
+	for pid_file in "$work/helper.pid" "$work/monitor.pid" \
+		"$work/settings-monitor.pid" "$work/owner.pid" \
+		"$work/hung-helper.pid" "$work/hung-monitor.pid" \
+		"$work/hung-probe-wrapper.pid" "$work/hung-settings-get.pid" \
+		"$work/hung-owner.pid"; do
 		[ -r "$pid_file" ] || continue
 		pid=$(cat "$pid_file")
 		case $pid in
@@ -84,7 +88,29 @@ cat >"$work/bin/gsettings" <<'SH'
 state=${DWM_POWER_TEST_STATE:?}
 printf 'gsettings %s\n' "$*" >>"${DWM_POWER_TEST_LOG:?}"
 case ${1:-}:${2:-}:${3:-} in
+monitor:apps.light-locker:)
+	printf '%s\n' "$$" >"$state/settings-monitor.pid"
+	if [ "${DWM_POWER_TEST_SETTINGS_MONITOR_IGNORE_TERM:-0}" = 1 ]; then
+		trap '' TERM
+	else
+		trap 'exit 0' HUP INT TERM
+	fi
+	while [ ! -e "$state/settings-change.trigger" ]; do sleep 0.05; done
+	rm -f "$state/settings-change.trigger"
+	printf 'lock-after-screensaver: uint32 %s\n' "$(cat "$state/lock_after" 2>/dev/null || printf 0)"
+	while :; do sleep 1; done
+	;;
 get:apps.light-locker:lock-after-screensaver)
+	if [ "${DWM_POWER_TEST_GSETTINGS_GET_HANG:-0}" = 1 ]; then
+		printf '%s\n' "$$" >"$state/settings-get.pid"
+		printf '%s\n' "$PPID" >"$state/settings-get-parent.pid"
+		if [ "${DWM_POWER_TEST_GSETTINGS_GET_IGNORE_TERM:-0}" = 1 ]; then
+			trap '' TERM
+		else
+			trap 'exit 0' HUP INT TERM
+		fi
+		while :; do sleep 1; done
+	fi
 	printf 'uint32 %s\n' "$(cat "$state/lock_after" 2>/dev/null || printf 0)"
 	;;
 get:apps.light-locker:lock-on-suspend)
@@ -520,25 +546,42 @@ mv "$work/power-target.conf" "$work/config/dwm-titus/power.conf"
 		XDG_CONFIG_HOME="$work/config" \
 		DWM_POWER_TEST_STATE="$work/state" \
 		DWM_POWER_TEST_LOG="$work/actions.log" \
+		DWM_POWER_TEST_SETTINGS_MONITOR_IGNORE_TERM=1 \
 		PATH="$work/bin:/usr/bin:/bin" \
-		"$repo/scripts/dwm-quickshell-controlcenter" power-watch >/dev/null 2>&1 &
+		"$repo/scripts/dwm-quickshell-controlcenter" power-watch >"$work/watch.out" 2>&1 &
 	printf '%s\n' "$!" >"$work/helper.pid"
 	wait
 ) &
 owner_pid=$!
 printf '%s\n' "$owner_pid" >"$work/owner.pid"
 i=0
-while [ "$i" -lt 100 ] && [ ! -r "$work/state/monitor.pid" ]; do
+while [ "$i" -lt 100 ] &&
+	{ [ ! -r "$work/state/monitor.pid" ] || [ ! -r "$work/state/settings-monitor.pid" ]; }; do
 	sleep 0.05
 	i=$((i + 1))
 done
 [ -r "$work/state/monitor.pid" ]
+[ -r "$work/state/settings-monitor.pid" ]
+if grep -Fq 'lock-after-screensaver:' "$work/watch.out"; then
+	printf 'GSettings watcher emitted a change before the external trigger\n' >&2
+	exit 1
+fi
+: >"$work/state/settings-change.trigger"
+i=0
+while [ "$i" -lt 100 ] && ! grep -Fq 'lock-after-screensaver:' "$work/watch.out"; do
+	sleep 0.05
+	i=$((i + 1))
+done
+grep -Fq 'lock-after-screensaver:' "$work/watch.out"
 cp "$work/state/monitor.pid" "$work/monitor.pid"
+cp "$work/state/settings-monitor.pid" "$work/settings-monitor.pid"
 helper_pid=$(cat "$work/helper.pid")
 monitor_pid=$(cat "$work/monitor.pid")
+settings_monitor_pid=$(cat "$work/settings-monitor.pid")
 kill -STOP "$owner_pid"
 sleep 0.5
-if ! process_running "$helper_pid" || ! process_running "$monitor_pid"; then
+if ! process_running "$helper_pid" || ! process_running "$monitor_pid" ||
+	! process_running "$settings_monitor_pid"; then
 	printf 'Parent-bound power watcher stopped during a live-parent state transition\n' >&2
 	exit 1
 fi
@@ -546,17 +589,69 @@ kill -CONT "$owner_pid"
 kill -KILL "$owner_pid"
 wait "$owner_pid" 2>/dev/null || :
 i=0
-while [ "$i" -lt 100 ] && { process_running "$helper_pid" || process_running "$monitor_pid"; }; do
+while [ "$i" -lt 100 ] &&
+	{ process_running "$helper_pid" || process_running "$monitor_pid" ||
+		process_running "$settings_monitor_pid"; }; do
 	sleep 0.05
 	i=$((i + 1))
 done
-if process_running "$helper_pid" || process_running "$monitor_pid"; then
+if process_running "$helper_pid" || process_running "$monitor_pid" ||
+	process_running "$settings_monitor_pid"; then
 	printf 'Parent-bound power watcher survived owner exit\n' >&2
 	exit 1
 fi
 grep -Fq "member='NameOwnerChanged',arg0='org.freedesktop.UPower'" "$work/actions.log"
 grep -Fq "member='NameOwnerChanged',arg0='org.freedesktop.UPower.PowerProfiles'" "$work/actions.log"
 grep -Fq "member='NameOwnerChanged',arg0='org.freedesktop.login1'" "$work/actions.log"
+grep -Fq 'gsettings monitor apps.light-locker' "$work/actions.log"
+
+rm -f "$work/state/monitor.pid" "$work/state/settings-get.pid" \
+	"$work/state/settings-get-parent.pid"
+(
+	HOME="$work/home" \
+		XDG_CONFIG_HOME="$work/config" \
+		DWM_POWER_TEST_STATE="$work/state" \
+		DWM_POWER_TEST_LOG="$work/actions.log" \
+		DWM_POWER_TEST_GSETTINGS_GET_HANG=1 \
+		DWM_POWER_TEST_GSETTINGS_GET_IGNORE_TERM=1 \
+		PATH="$work/bin:/usr/bin:/bin" \
+		"$repo/scripts/dwm-quickshell-controlcenter" power-watch >/dev/null 2>&1 &
+	printf '%s\n' "$!" >"$work/hung-helper.pid"
+	wait
+) &
+hung_owner_pid=$!
+printf '%s\n' "$hung_owner_pid" >"$work/hung-owner.pid"
+i=0
+while [ "$i" -lt 100 ] &&
+	{ [ ! -r "$work/state/monitor.pid" ] || [ ! -r "$work/state/settings-get.pid" ] ||
+		[ ! -r "$work/state/settings-get-parent.pid" ]; }; do
+	sleep 0.05
+	i=$((i + 1))
+done
+[ -r "$work/state/monitor.pid" ]
+[ -r "$work/state/settings-get.pid" ]
+[ -r "$work/state/settings-get-parent.pid" ]
+cp "$work/state/monitor.pid" "$work/hung-monitor.pid"
+cp "$work/state/settings-get.pid" "$work/hung-settings-get.pid"
+cp "$work/state/settings-get-parent.pid" "$work/hung-probe-wrapper.pid"
+hung_helper_pid=$(cat "$work/hung-helper.pid")
+hung_monitor_pid=$(cat "$work/hung-monitor.pid")
+hung_settings_get_pid=$(cat "$work/hung-settings-get.pid")
+hung_probe_wrapper_pid=$(cat "$work/hung-probe-wrapper.pid")
+kill -KILL "$hung_owner_pid"
+wait "$hung_owner_pid" 2>/dev/null || :
+i=0
+while [ "$i" -lt 100 ] &&
+	{ process_running "$hung_helper_pid" || process_running "$hung_monitor_pid" ||
+		process_running "$hung_probe_wrapper_pid" || process_running "$hung_settings_get_pid"; }; do
+	sleep 0.05
+	i=$((i + 1))
+done
+if process_running "$hung_helper_pid" || process_running "$hung_monitor_pid" ||
+	process_running "$hung_probe_wrapper_pid" || process_running "$hung_settings_get_pid"; then
+	printf 'Power watcher startup probe survived owner exit\n' >&2
+	exit 1
+fi
 
 source_packages=$(bash -c '. "$1"; dwm_packages fedora desktop' _ "$repo/scripts/dwm-packages.sh")
 printf '%s\n' "$source_packages" | grep -Fqx upower

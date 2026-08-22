@@ -3,7 +3,7 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
-for command_name in Xvfb dbus-run-session quickshell xdotool xprop pgrep getconf; do
+for command_name in Xvfb dbus-monitor dbus-run-session gsettings quickshell xdotool xprop pgrep getconf; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -81,6 +81,7 @@ power_state=$work/power-state
 mkdir -p "$power_state"
 printf '1\n' >"$power_state/dpms-enabled"
 printf '600\n' >"$power_state/dpms-timeout"
+printf '600\n' >"$power_state/saver-timeout"
 cat >"$data_home/dwm-titus/scripts/xset" <<'SH'
 #!/bin/sh
 set -eu
@@ -89,10 +90,11 @@ case ${1:-} in
 q)
 	enabled=$(cat "$state/dpms-enabled")
 	timeout=$(cat "$state/dpms-timeout")
+	saver_timeout=$(cat "$state/saver-timeout")
 	[ "$enabled" = 1 ] && label=Enabled || label=Disabled
 	cat <<EOF
 Screen Saver:
-  timeout:  0    cycle:  600
+  timeout:  $saver_timeout    cycle:  600
 DPMS (Display Power Management Signaling):
   Standby: $timeout    Suspend: $timeout    Off: $timeout
   DPMS is $label
@@ -109,7 +111,13 @@ EOF
 dpms)
 	printf '%s\n' "$4" >"$state/dpms-timeout"
 	;;
-s) ;;
+s)
+	case ${2:-} in
+	off) printf '0\n' >"$state/saver-timeout" ;;
+	noblank) : ;;
+	*) printf '%s\n' "$2" >"$state/saver-timeout" ;;
+	esac
+	;;
 *) exit 2 ;;
 esac
 SH
@@ -133,6 +141,11 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 	"$repo/dwm" >"$work/dwm.log" 2>&1 &
 dwm_pid=$!
 
+HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	gsettings set apps.light-locker lock-after-screensaver 5
+HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	gsettings set apps.light-locker lock-on-suspend true
+
 env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
 	DWM_SETTINGS_TEST_POWER_STATE="$power_state" DWM_SETTINGS_TEST_DELAY_POWER=1 \
@@ -145,6 +158,23 @@ config=$config_home/quickshell/shell.qml
 settings_power_watch_count() {
 	watch_count=0
 	for monitor_pid in $(pgrep -f '[d]bus-monitor --system.*org.freedesktop.UPower.*org.freedesktop.UPower.PowerProfiles.*org.freedesktop.login1' || true); do
+		[ -r "/proc/$monitor_pid/status" ] || continue
+		monitor_parent=$(awk '$1 == "PPid:" { print $2; exit }' "/proc/$monitor_pid/status")
+		[ -n "$monitor_parent" ] && [ -r "/proc/$monitor_parent/cmdline" ] || continue
+		monitor_command=$(tr '\0' ' ' <"/proc/$monitor_parent/cmdline")
+		case $monitor_command in
+		*"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter power-watch"* | \
+			*"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter.real power-watch"*)
+			watch_count=$((watch_count + 1))
+			;;
+		esac
+	done
+	printf '%s\n' "$watch_count"
+}
+
+settings_power_gsettings_watch_count() {
+	watch_count=0
+	for monitor_pid in $(pgrep -f '[g]settings monitor apps.light-locker' || true); do
 		[ -r "/proc/$monitor_pid/status" ] || continue
 		monitor_parent=$(awk '$1 == "PPid:" { print $2; exit }' "/proc/$monitor_pid/status")
 		[ -n "$monitor_parent" ] && [ -r "/proc/$monitor_parent/cmdline" ] || continue
@@ -303,6 +333,40 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ "$power_watch_count" -eq 1 ]
+i=0
+while [ "$i" -lt 100 ]; do
+	power_gsettings_watch_count=$(settings_power_gsettings_watch_count)
+	[ "$power_gsettings_watch_count" -eq 1 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$power_gsettings_watch_count" -eq 1 ]
+
+power_lock_enabled=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerLockEnabled)
+[ "$power_lock_enabled" = true ]
+HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	gsettings set apps.light-locker lock-after-screensaver 0
+i=0
+while [ "$i" -lt 100 ]; do
+	power_lock_enabled=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerLockEnabled 2>/dev/null || true)
+	[ "$power_lock_enabled" = false ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$power_lock_enabled" = false ]
+HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	gsettings set apps.light-locker lock-after-screensaver 5
+i=0
+while [ "$i" -lt 100 ]; do
+	power_lock_enabled=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerLockEnabled 2>/dev/null || true)
+	[ "$power_lock_enabled" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$power_lock_enabled" = true ]
 
 power_enabled=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerDpmsEnabled)
@@ -457,6 +521,7 @@ if pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-wat
 	printf 'Settings-owned power work remained active after leaving Power\n' >&2
 	exit 1
 fi
+[ "$(settings_power_gsettings_watch_count)" -eq 0 ]
 
 DISPLAY=$display xdotool windowactivate --sync "$window"
 DISPLAY=$display xdotool type --delay 20 network

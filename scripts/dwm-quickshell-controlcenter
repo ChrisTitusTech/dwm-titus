@@ -801,16 +801,146 @@ power_snapshot() {
 	power_snapshot_lid_policy
 }
 
-power_watch() {
-	command -v dbus-monitor >/dev/null 2>&1 || return 127
+power_watch_pid_starttime() {
+	power_watch_pid=$1
+	awk '
+		{
+			line = $0
+			sub(/^.*\) /, "", line)
+			split(line, fields, " ")
+			if (fields[1] != "Z" && fields[20] ~ /^[0-9]+$/) {
+				print fields[20]
+			}
+		}
+	' "/proc/$power_watch_pid/stat" 2>/dev/null
+}
+
+power_watch_capture_identity() {
+	power_watch_pid=$1
+	power_watch_attempt=0
+	while [ "$power_watch_attempt" -lt 20 ]; do
+		power_watch_starttime=$(power_watch_pid_starttime "$power_watch_pid")
+		if [ -n "$power_watch_starttime" ]; then
+			printf '%s:%s\n' "$power_watch_pid" "$power_watch_starttime"
+			return 0
+		fi
+		power_watch_attempt=$((power_watch_attempt + 1))
+		sleep 0.01
+	done
+	return 1
+}
+
+power_watch_identity_running() {
+	power_watch_identity=$1
+	[ -n "$power_watch_identity" ] || return 1
+	power_watch_pid=${power_watch_identity%%:*}
+	power_watch_starttime=${power_watch_identity#*:}
+	[ "$(power_watch_pid_starttime "$power_watch_pid")" = "$power_watch_starttime" ]
+}
+
+power_watch_sources() {
+	power_dbus_watch_pid=
+	power_dbus_watch_identity=
+	power_settings_probe_pid=
+	power_settings_probe_identity=
+	power_settings_watch_pid=
+	power_settings_watch_identity=
+	power_watch_cleanup() {
+		for power_watch_child_identity in "$power_dbus_watch_identity" \
+			"$power_settings_probe_identity" "$power_settings_watch_identity"; do
+			power_watch_identity_running "$power_watch_child_identity" || continue
+			power_watch_child_pid=${power_watch_child_identity%%:*}
+			kill -TERM "$power_watch_child_pid" 2>/dev/null || :
+		done
+		power_watch_attempt=0
+		while [ "$power_watch_attempt" -lt 20 ]; do
+			power_watch_any_child=0
+			for power_watch_child_identity in "$power_dbus_watch_identity" \
+				"$power_settings_probe_identity" "$power_settings_watch_identity"; do
+				if power_watch_identity_running "$power_watch_child_identity"; then
+					power_watch_any_child=1
+					break
+				fi
+			done
+			[ "$power_watch_any_child" -eq 1 ] || break
+			power_watch_attempt=$((power_watch_attempt + 1))
+			sleep 0.05
+		done
+		for power_watch_child_identity in "$power_dbus_watch_identity" \
+			"$power_settings_probe_identity" "$power_settings_watch_identity"; do
+			power_watch_identity_running "$power_watch_child_identity" || continue
+			power_watch_child_pid=${power_watch_child_identity%%:*}
+			kill -KILL "$power_watch_child_pid" 2>/dev/null || :
+		done
+		for power_watch_child_pid in "$power_dbus_watch_pid" \
+			"$power_settings_probe_pid" "$power_settings_watch_pid"; do
+			[ -n "$power_watch_child_pid" ] || continue
+			wait "$power_watch_child_pid" 2>/dev/null || :
+		done
+	}
+	trap power_watch_cleanup EXIT
+	trap 'exit 143' HUP INT TERM
+
 	DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket \
-		run_parent_bound dbus-monitor --system \
+		dbus-monitor --system \
 		"type='signal',sender='org.freedesktop.UPower'" \
 		"type='signal',sender='org.freedesktop.UPower.PowerProfiles'" \
 		"type='signal',sender='org.freedesktop.login1'" \
 		"type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.UPower'" \
 		"type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.UPower.PowerProfiles'" \
-		"type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.login1'"
+		"type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.login1'" &
+	power_dbus_watch_pid=$!
+	power_dbus_watch_identity=$(power_watch_capture_identity "$power_dbus_watch_pid") || {
+		kill -TERM "$power_dbus_watch_pid" 2>/dev/null || :
+		wait "$power_dbus_watch_pid" 2>/dev/null || :
+		power_dbus_watch_pid=
+		return 1
+	}
+	if command -v gsettings >/dev/null 2>&1; then
+		power_settings_probe_status=0
+		# The probe wrapper must finish its own child escalation inside the
+		# one-second watcher cleanup grace period.
+		timeout --signal=TERM --kill-after=0.5 3 \
+			gsettings get apps.light-locker lock-after-screensaver >/dev/null 2>&1 &
+		power_settings_probe_pid=$!
+		power_settings_probe_identity=$(power_watch_capture_identity "$power_settings_probe_pid") || {
+			kill -TERM "$power_settings_probe_pid" 2>/dev/null || :
+			wait "$power_settings_probe_pid" 2>/dev/null || :
+			power_settings_probe_pid=
+			return 1
+		}
+		wait "$power_settings_probe_pid" || power_settings_probe_status=$?
+		power_settings_probe_pid=
+		power_settings_probe_identity=
+		if [ "$power_settings_probe_status" -eq 0 ]; then
+			gsettings monitor apps.light-locker &
+			power_settings_watch_pid=$!
+			power_settings_watch_identity=$(power_watch_capture_identity "$power_settings_watch_pid") || {
+				kill -TERM "$power_settings_watch_pid" 2>/dev/null || :
+				wait "$power_settings_watch_pid" 2>/dev/null || :
+				power_settings_watch_pid=
+				return 1
+			}
+		fi
+	fi
+
+	while power_watch_identity_running "$power_dbus_watch_identity" &&
+		{ [ -z "$power_settings_watch_identity" ] ||
+			power_watch_identity_running "$power_settings_watch_identity"; }; do
+		sleep 0.25
+	done
+	power_watch_cleanup
+	wait "$power_dbus_watch_pid" 2>/dev/null || :
+	if [ -n "$power_settings_watch_pid" ]; then
+		wait "$power_settings_watch_pid" 2>/dev/null || :
+	fi
+	trap - EXIT HUP INT TERM
+	return 1
+}
+
+power_watch() {
+	command -v dbus-monitor >/dev/null 2>&1 || return 127
+	run_parent_bound power_watch_sources
 }
 
 power_profile_set() {

@@ -42,7 +42,8 @@ loss, logind `yes`, `challenge`, `no`, and `na`, malformed battery data,
 strict rejection of empty, exponent-form, and hexadecimal integer fields,
 acceptance of serialized exponent-form battery energy rates, bounded arguments,
 denied or non-converging actions, failed apply and persistence, exact config
-preservation, rollback, and parent-bound cleanup.
+preservation, rollback, external light-locker GSettings event forwarding, and
+parent-bound cleanup of both event sources.
 
 The QML contract proves one shared root Power model, one filtered event stream,
 generation-checked snapshots and actions, no repeating timer, Settings and

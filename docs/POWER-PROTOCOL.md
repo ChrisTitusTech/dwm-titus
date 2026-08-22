@@ -109,17 +109,18 @@ place, and emits no success record or notification.
 
 Native Quickshell UPower and Power Profiles signals update the shared panel and
 Settings model. While either Power Settings or the Control Center Power page
-is visible, `power-watch` adds one parent-bound system-bus monitor for UPower,
-Power Profiles, and logind. The model debounces event bursts into bounded
-snapshots and does not use a repeating timer. Closing the last owning surface
-stops snapshot, watch, debounce, and restart work.
+is visible, one parent-bound `power-watch` stream owns a system-bus monitor for
+UPower, Power Profiles, and logind plus a GSettings monitor for external
+light-locker policy changes when that schema is available. The model debounces
+event bursts into bounded snapshots and does not use a repeating timer. Closing
+the last owning surface stops snapshot, watch, debounce, and restart work.
 
 An explicitly requested mutation is root-owned and bounded, so closing its
 initiating surface does not interrupt apply, persistence, or rollback midway.
 Its result remains attributed to the initiating surface and the next open
-refreshes the visible state. The helper binds its monitor child to the
+refreshes the visible state. The helper binds its monitor children to the
 originating Quickshell PID and process start time so an ungraceful shell exit
-cannot leave an orphaned system-bus monitor.
+cannot leave an orphaned system-bus or GSettings monitor.
 
 Settings IPC exposes the same generation-checked DPMS action used by the pane,
 plus busy and origin-scoped result state. This keeps nested and live lifecycle
