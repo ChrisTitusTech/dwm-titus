@@ -8,6 +8,13 @@ versions from `config.mk`.
 
 ### Added
 
+- Add a shared, versioned power provider and Settings pane for UPower battery
+  and external-power state, Power Profiles selection, X11 DPMS, automatic
+  locking, logind suspend capability, and lid availability. One parent-bound
+  D-Bus monitor refreshes both panel and Settings state without idle polling.
+  Dedicated images select `power-profiles-daemon`; existing Fedora installs
+  retain any compatible `ppd-service` provider already installed.
+
 - Add a native-first PipeWire audio model and Settings pane for output and input
   selection, volume, mute, microphone visibility, and per-application streams.
   A versioned bounded snapshot protocol supplies inventories, while one
@@ -68,6 +75,12 @@ versions from `config.mk`.
   unsupported installer cannot perform package or system mutations.
 
 ### Fixed
+
+- Apply DPMS and automatic-lock changes before atomically replacing the user
+  `power.conf`, reject out-of-range timeouts, and restore the prior live state
+  when apply or persistence fails. Verify the restoration and report a distinct
+  rollback failure when the exact captured live state cannot be recovered, so
+  an unsuccessful change is never shown as saved.
 
 - Restart unexpectedly exited parent-bound NetworkManager and media
   subscriptions after a bounded delay, preserving one live subscription per

@@ -19,6 +19,7 @@ Scope {
     property var networkModel: null
     property var bluetoothModel: null
     property var controlsModel: null
+    property var powerModel: null
     property var capabilities: []
     property int selectedIndex: 0
     property var displayOutputs: []
@@ -108,6 +109,11 @@ Scope {
             const wantAudio = id === "audio" && root.visible;
             if (wantAudio && !root.controlsModel.settingsVisible) root.controlsModel.openSettings();
             else if (!wantAudio && root.controlsModel.settingsVisible) root.controlsModel.closeSettings();
+        }
+        if (root.powerModel) {
+            const wantPower = id === "power" && root.visible;
+            if (wantPower && !root.powerModel.settingsVisible) root.powerModel.openSettings();
+            else if (!wantPower && root.powerModel.settingsVisible) root.powerModel.closeSettings();
         }
         if (id === "displays") root.refreshDisplays();
         if (id === "input") root.refreshInput();
@@ -492,6 +498,7 @@ Scope {
 		if (root.networkModel) root.networkModel.closeSettings();
 		if (root.bluetoothModel) root.bluetoothModel.closeSettings();
 		if (root.controlsModel) root.controlsModel.closeSettings();
+		if (root.powerModel) root.powerModel.closeSettings();
 			inputSettleTimer.stop();
         root.visible = false;
         root.busy = false;

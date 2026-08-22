@@ -46,6 +46,29 @@ if [[ -s $work/missing ]]; then
 	exit 1
 fi
 
+installed_provider_packages=$(bash -c '
+	. "$1"
+	DISTRO_FAMILY=fedora
+	install_packages() { printf "%s\n" "$@"; }
+	dwm_power_profiles_provider_installed() { return 0; }
+	dwm_install_package_profile desktop
+' _ "$repo/scripts/dwm-packages.sh")
+if printf '%s\n' "$installed_provider_packages" | grep -Fxq power-profiles-daemon; then
+	printf 'Existing Power Profiles provider would be replaced.\n' >&2
+	exit 1
+fi
+printf '%s\n' "$installed_provider_packages" | grep -Fxq upower
+printf '%s\n' "$installed_provider_packages" | grep -Fxq dbus-tools
+
+missing_provider_packages=$(bash -c '
+	. "$1"
+	DISTRO_FAMILY=fedora
+	install_packages() { printf "%s\n" "$@"; }
+	dwm_power_profiles_provider_installed() { return 1; }
+	dwm_install_package_profile desktop
+' _ "$repo/scripts/dwm-packages.sh")
+printf '%s\n' "$missing_provider_packages" | grep -Fxq power-profiles-daemon
+
 "$repo/install.sh" --dry-run --non-interactive --profile core >/dev/null
 
 printf 'Fedora required and desktop package map: PASS (%s packages)\n' \

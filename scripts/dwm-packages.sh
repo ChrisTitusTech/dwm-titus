@@ -24,9 +24,9 @@ dwm_packages() {
 		# desktop transaction; the Fedora package-map check proves availability.
 		printf '%s\n' \
 			quickshell picom feh dex-autostart mate-polkit \
-			alsa-utils brightnessctl jq pulseaudio-utils pipewire pavucontrol \
+			alsa-utils brightnessctl dbus-tools jq pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
-			bluez blueman playerctl flatpak xdg-desktop-portal-gtk
+			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk
 		;;
 	fedora:desktop-optional)
 		printf '%s\n' \
@@ -109,7 +109,13 @@ dwm_install_package_profile() {
 	local package
 
 	while IFS= read -r package; do
-		[[ -n $package ]] && packages+=("$package")
+		[[ -n $package ]] || continue
+		if [[ $package == power-profiles-daemon ]] && dwm_power_profiles_provider_installed; then
+			printf '%s\n' \
+				'Retaining installed Power Profiles provider (ppd-service); skipping power-profiles-daemon.' >&2
+			continue
+		fi
+		packages+=("$package")
 	done < <(dwm_packages "$DISTRO_FAMILY" "$profile")
 
 	if ((${#packages[@]} == 0)); then
@@ -117,6 +123,11 @@ dwm_install_package_profile() {
 	fi
 
 	install_packages "${packages[@]}"
+}
+
+dwm_power_profiles_provider_installed() {
+	command -v rpm >/dev/null 2>&1 &&
+		rpm -q --whatprovides ppd-service >/dev/null 2>&1
 }
 
 dwm_install_available_package_profile() {

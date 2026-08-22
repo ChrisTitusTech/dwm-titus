@@ -15,18 +15,23 @@ full-screen Settings workflows below.
 
 ### POWER-001: Power Provider and Settings Workflows
 
-- [ ] Define versioned machine-readable records for battery state, external
+- [x] Define versioned machine-readable records for battery state, external
   power, available power profiles, active profile, DPMS, idle timing,
   automatic locking, suspend support, and lid-policy capability.
-- [ ] Reuse `power-profiles-daemon`, UPower, logind, `xset`, and the existing
-  Control Center helper only through stable machine interfaces. Keep sampled
-  battery data bounded and event-driven service state subscription-based.
-- [ ] Add a Power Settings pane for available profile selection, DPMS, lock and
+- [x] Reuse the standard Power Profiles D-Bus provider, UPower, logind, `xset`,
+  and the existing Control Center helper only through stable machine
+  interfaces. Dedicated images select `power-profiles-daemon`; the
+  existing-system installer retains any compatible `ppd-service` provider
+  already installed. Consume UPower
+  battery property-change signals; allow bounded sampling only for a documented
+  fallback with no event source, and keep every service subscription
+  event-driven.
+- [x] Add a Power Settings pane for available profile selection, DPMS, lock and
   idle timeouts, and supported suspend/lid behavior. Hide or explain unsupported
   hardware without disabling readable state.
-- [ ] Separate read-only battery state, user-session DPMS/lock changes,
+- [x] Separate read-only battery state, user-session DPMS/lock changes,
   delegated logind actions, and privileged persistent system policy.
-- [ ] Preserve the existing user `power.conf`, panel Power menu, confirmation
+- [x] Preserve the existing user `power.conf`, panel Power menu, confirmation
   dialogs, and service authorization behavior. Failed writes must not be shown
   as saved.
 

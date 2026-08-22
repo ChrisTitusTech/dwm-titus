@@ -12,6 +12,7 @@ FloatingWindow {
     required property var networkModel
     required property var bluetoothModel
     required property var controlsModel
+    required property var powerModel
 
     title: "dwm settings"
     visible: settingsModel.visible
@@ -354,6 +355,13 @@ FloatingWindow {
                                 controlsModel: root.controlsModel
                             }
 
+                            PowerSettingsPane {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                visible: root.settingsModel.selectedSectionId === "power"
+                                powerModel: root.powerModel
+                            }
+
                             ListView {
                                 id: capabilityList
 
@@ -364,6 +372,7 @@ FloatingWindow {
                                     && root.settingsModel.selectedSectionId !== "network"
                                     && root.settingsModel.selectedSectionId !== "bluetooth"
                                     && root.settingsModel.selectedSectionId !== "audio"
+                                    && root.settingsModel.selectedSectionId !== "power"
                                 clip: true
                                 spacing: Theme.spacingLg
                                 model: root.settingsModel.capabilitiesForSection(root.settingsModel.selectedSectionId)

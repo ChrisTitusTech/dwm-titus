@@ -43,6 +43,10 @@ Singleton {
         return helperCommand("dwm-quickshell-controlcenter", action, args, true);
     }
 
+    function powerHelperCommand(action, args) {
+        return helperCommand("dwm-quickshell-controlcenter", action, args, true);
+    }
+
     function lockHelperCommand() {
         return helperCommand("dwm-lock", undefined, [], true);
     }

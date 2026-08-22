@@ -155,6 +155,10 @@ ShellRoot {
         id: powerMenuModel
     }
 
+    PowerModel {
+        id: powerModel
+    }
+
     NetworkModel {
         id: networkModel
     }
@@ -169,6 +173,7 @@ ShellRoot {
 
     ControlCenterModel {
         id: controlCenterModel
+        powerModel: powerModel
     }
 
     SystemHealthModel {
@@ -180,6 +185,7 @@ ShellRoot {
         networkModel: networkModel
         bluetoothModel: bluetoothModel
         controlsModel: controlsModel
+        powerModel: powerModel
     }
 
     LazyLoader {
@@ -505,6 +511,58 @@ ShellRoot {
             return controlsModel.audioStreams.length;
         }
 
+        function powerProviderStatus(): string {
+            return powerModel.providerState;
+        }
+
+        function powerBatteryAvailable(): bool {
+            return powerModel.batteryAvailable;
+        }
+
+        function powerBatteryPercent(): int {
+            return powerModel.batteryPercent;
+        }
+
+        function powerActiveProfile(): string {
+            return powerModel.activeProfile;
+        }
+
+        function powerDpmsStatus(): string {
+            return powerModel.dpmsState;
+        }
+
+        function powerDpmsEnabled(): bool {
+            return powerModel.dpmsEnabled;
+        }
+
+        function powerDpmsTimeout(): int {
+            return powerModel.dpmsTimeout;
+        }
+
+        function powerLockStatus(): string {
+            return powerModel.lockState;
+        }
+
+        function powerLockEnabled(): bool {
+            return powerModel.lockEnabled;
+        }
+
+        function powerLockTimeout(): int {
+            return powerModel.lockTimeout;
+        }
+
+        function powerBusy(): bool {
+            return powerModel.busy;
+        }
+
+        function powerMessage(): string {
+            return powerModel.messageFor("settings");
+        }
+
+        function powerSetDpms(enabled: bool): void {
+            powerModel.setDpms(enabled, "settings");
+        }
+
         function open(): void {
             settingsModel.open();
         }
@@ -591,6 +649,7 @@ ShellRoot {
             controlsModel: controlsModel
             bluetoothModel: bluetoothModel
             controlCenterModel: controlCenterModel
+            powerModel: powerModel
             powerMenuModel: powerMenuModel
             primaryPanel: modelData === Quickshell.screens[0]
             onPopupRequested: (panel, popupId) => root.selectPanelPopup(panel, popupId)
@@ -626,6 +685,7 @@ ShellRoot {
         launcherModel: launcherModel
         panelWindow: root.activePanelWindow
         powerMenuModel: powerMenuModel
+        powerModel: powerModel
         healthModel: systemHealthModel
         settingsModel: settingsModel
     }
@@ -644,5 +704,6 @@ ShellRoot {
         networkModel: networkModel
         bluetoothModel: bluetoothModel
         controlsModel: controlsModel
+        powerModel: powerModel
     }
 }
