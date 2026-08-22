@@ -268,6 +268,16 @@ exit 0
 EOF
 chmod +x "$data_home/dwm-titus/scripts/kitty" "$data_home/dwm-titus/scripts/alacritty"
 
+cat >"$data_home/dwm-titus/scripts/dbus-monitor" <<'SH'
+#!/bin/sh
+trap 'exit 0' HUP INT TERM
+printf 'signal\n'
+while :; do
+	sleep 1
+done
+SH
+chmod +x "$data_home/dwm-titus/scripts/dbus-monitor"
+
 power_state=$work/power-state
 mkdir -p "$power_state"
 printf '1\n' >"$power_state/dpms-enabled"
