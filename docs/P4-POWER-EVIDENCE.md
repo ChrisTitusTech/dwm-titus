@@ -39,9 +39,10 @@ existing `PanelTooltip` and `RunningAppsArea` warning groups.
 Fixtures cover the versioned protocol, aggregate and missing battery state,
 external power, lid presence and absence, all supported profiles, provider
 loss, logind `yes`, `challenge`, `no`, and `na`, malformed battery data,
-strict rejection of empty, exponent-form, and hexadecimal protocol numerics,
-bounded arguments, denied or non-converging actions, failed apply and
-persistence, exact config preservation, rollback, and parent-bound cleanup.
+strict rejection of empty, exponent-form, and hexadecimal integer fields,
+acceptance of serialized exponent-form battery energy rates, bounded arguments,
+denied or non-converging actions, failed apply and persistence, exact config
+preservation, rollback, and parent-bound cleanup.
 
 The QML contract proves one shared root Power model, one filtered event stream,
 generation-checked snapshots and actions, no repeating timer, Settings and
