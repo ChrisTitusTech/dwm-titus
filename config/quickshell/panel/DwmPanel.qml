@@ -134,7 +134,7 @@ PanelWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
-
+            clip: true
             RowLayout {
                 id: rightContent
 
