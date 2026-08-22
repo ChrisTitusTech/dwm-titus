@@ -528,10 +528,18 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 
 DISPLAY=$display xdotool windowactivate --sync "$window"
 DISPLAY=$display xdotool key Down
-test_stage='validating power settings'
-section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
+test_stage='waiting for keyboard navigation to Power'
+i=0
+while [ "$i" -lt 100 ]; do
+	section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection \
+		2>/dev/null || true)
+	[ "$section" = power ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
 [ "$section" = power ]
+test_stage='validating power settings'
 
 i=0
 while [ "$i" -lt 100 ]; do
