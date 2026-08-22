@@ -5,6 +5,31 @@ repo=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo/scripts/dwm-xdg-autostart
 test_tmp_root=${DWM_TEST_TMP_ROOT:-${HOME}/tmp}
 mkdir -p -- "$test_tmp_root"
+
+if [[ $(id -u) -eq 0 && ${DWM_XDG_AUTOSTART_TEST_UNPRIVILEGED:-0} != 1 ]]; then
+	command -v setpriv >/dev/null 2>&1 || {
+		printf 'dwm-xdg-autostart tests require setpriv on a root runner\n' >&2
+		exit 1
+	}
+	unprivileged_uid=$(id -u nobody)
+	unprivileged_gid=$(id -g nobody)
+	root_runner_work=$(mktemp -d "$test_tmp_root/dwm-xdg-autostart-root.XXXXXX")
+	trap 'rm -rf -- "$root_runner_work"' EXIT
+	chown "$unprivileged_uid:$unprivileged_gid" "$root_runner_work"
+	if HOME="$root_runner_work" TMPDIR="$root_runner_work" \
+		DWM_TEST_TMP_ROOT="$root_runner_work" \
+		DWM_XDG_AUTOSTART_TEST_UNPRIVILEGED=1 \
+		setpriv --reuid "$unprivileged_uid" --regid "$unprivileged_gid" \
+		--clear-groups "$BASH" "$0"; then
+		root_runner_status=0
+	else
+		root_runner_status=$?
+	fi
+	rm -rf -- "$root_runner_work"
+	trap - EXIT
+	exit "$root_runner_status"
+fi
+
 work=$(mktemp -d "$test_tmp_root/dwm-xdg-autostart-test.XXXXXX")
 watch_owner=
 watch_helper=
