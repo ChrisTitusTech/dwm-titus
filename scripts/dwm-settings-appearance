@@ -9,6 +9,7 @@ readonly max_themes_size=1048576
 readonly max_theme_count=128
 readonly max_error_count=256
 readonly max_entry_count=512
+readonly max_theme_name_length=505
 readonly key_separator=$'\034'
 
 declare -a theme_order=()
@@ -20,6 +21,7 @@ declare -A theme_invalid=()
 
 source_kind=
 source_file=
+source_report_file=
 provider_state=available
 selected_theme=
 resolved_theme=
@@ -47,7 +49,7 @@ clean_field() {
 }
 
 add_error() {
-	local capability=$1 code=$2 detail=$3
+	local capability=$1 code=$2 detail=$3 clean_capability clean_code clean_detail
 	if ((${#errors[@]} >= max_error_count)); then
 		if [[ $errors_truncated == false ]]; then
 			errors+=("provider"$'\t'"error-limit"$'\t'"Additional errors were omitted")
@@ -55,22 +57,36 @@ add_error() {
 		fi
 		return
 	fi
-	errors+=("$(clean_field "$capability")"$'\t'"$(clean_field "$code")"$'\t'"$(clean_field "$detail")")
+	clean_capability=${capability//$'\t'/ }
+	clean_capability=${clean_capability//$'\r'/ }
+	clean_capability=${clean_capability//$'\n'/ }
+	clean_code=${code//$'\t'/ }
+	clean_code=${clean_code//$'\r'/ }
+	clean_code=${clean_code//$'\n'/ }
+	clean_detail=${detail//$'\t'/ }
+	clean_detail=${clean_detail//$'\r'/ }
+	clean_detail=${clean_detail//$'\n'/ }
+	errors+=("$clean_capability"$'\t'"$clean_code"$'\t'"$clean_detail")
 }
 
 select_source() {
 	if [[ -r $themes_file && -f $themes_file ]]; then
 		source_kind=user
 		source_file=$themes_file
+		source_report_file=$themes_file
 		return
 	fi
-	if [[ -e $themes_file ]]; then
+	if [[ -e $themes_file || -L $themes_file ]]; then
+		source_kind=user
+		source_report_file=$themes_file
 		add_error source unreadable "User theme file is not a readable regular file: $themes_file"
-		provider_state=partial
+		provider_state=unavailable
+		return
 	fi
 	if [[ -r $managed_themes_file && -f $managed_themes_file ]]; then
 		source_kind=managed
 		source_file=$managed_themes_file
+		source_report_file=$managed_themes_file
 		return
 	fi
 	provider_state=unavailable
@@ -78,7 +94,7 @@ select_source() {
 }
 
 parse_themes() {
-	local file=$1 size line trimmed line_number=0 raw
+	local file=$1 size line trimmed line_number=0 raw runtime_key
 	local section='' theme='' theme_candidate='' key='' parsed=''
 
 	size=$(stat -c %s -- "$file" 2>/dev/null) || {
@@ -103,7 +119,8 @@ parse_themes() {
 		if [[ $trimmed == \[* ]]; then
 			if [[ $trimmed =~ ^\[theme\.([^]]+)\]$ ]]; then
 				theme_candidate=${BASH_REMATCH[1]}
-				if [[ ! $theme_candidate =~ ^[A-Za-z0-9._-]+$ ]]; then
+				if [[ ! $theme_candidate =~ ^[A-Za-z0-9._-]+$ ]] ||
+					((${#theme_candidate} > max_theme_name_length)); then
 					section=ignore
 					theme=
 					provider_state=partial
@@ -147,6 +164,25 @@ parse_themes() {
 			continue
 		fi
 
+		# Mirror the C parser's document-wide entry budget. Its bare key grammar
+		# accepts any non-empty text before '=' up to TOML_MAX_STR - 1, including
+		# keys outside the narrower appearance schema.
+		if [[ $trimmed == *=* ]]; then
+			runtime_key=${trimmed%%=*}
+			runtime_key=${runtime_key%"${runtime_key##*[![:space:]]}"}
+			if [[ -n $runtime_key ]] && ((${#runtime_key} < 512)); then
+				((parsed_entry_count += 1))
+				if ((parsed_entry_count > max_entry_count)); then
+					provider_state=partial
+					if [[ $entry_limit_reported == false ]]; then
+						add_error parser entry-limit "Theme configuration exceeds the runtime parser limit of $max_entry_count entries"
+						entry_limit_reported=true
+					fi
+					continue
+				fi
+			fi
+		fi
+
 		if [[ $line =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*\"([^\"]*)\"[[:space:]]*(#.*)?$ ]]; then
 			key=${BASH_REMATCH[1]}
 			parsed=${BASH_REMATCH[2]}
@@ -162,17 +198,6 @@ parse_themes() {
 			continue
 		fi
 
-		# DWM's TOML_MAX_ENTRIES applies to the entire document, so otherwise
-		# ignored sections still consume the shared runtime parser budget.
-		((parsed_entry_count += 1))
-		if ((parsed_entry_count > max_entry_count)); then
-			provider_state=partial
-			if [[ $entry_limit_reported == false ]]; then
-				add_error parser entry-limit "Theme configuration exceeds the runtime parser limit of $max_entry_count entries"
-				entry_limit_reported=true
-			fi
-			continue
-		fi
 		[[ $section == theme || $section == active || $section == appearance ]] || continue
 
 		raw=$theme$key_separator$key
@@ -425,7 +450,7 @@ snapshot() {
 	fi
 	printf 'appearance-protocol\t1\t0\n'
 	printf 'provider\tappearance\t%s\tread-only\tShared theme inventory and integration state\n' "$provider_state"
-	printf 'source\t%s\t%s\n' "${source_kind:-none}" "$(clean_field "${source_file:-unavailable}")"
+	printf 'source\t%s\t%s\n' "${source_kind:-none}" "$(clean_field "${source_report_file:-unavailable}")"
 	printf 'active\t%s\t%s\t%s\n' \
 		"$(clean_field "${selected_theme:-none}")" \
 		"$(clean_field "${resolved_theme:-none}")" \

@@ -117,6 +117,33 @@ installed_managed=$(PATH=$bin_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$da
 	DWM_APPEARANCE_DATA_DIRS=$data_root "$helper" snapshot)
 grep -Fqx $'source\tmanaged\t'"$data_root/dwm-titus/config/themes.toml" <<<"$installed_managed"
 
+mkdir "$config_home/dwm-titus/themes.toml"
+set +e
+blocked_user=$(snapshot)
+blocked_user_status=$?
+set -e
+[[ $blocked_user_status -eq 3 ]]
+grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+	<<<"$blocked_user"
+grep -Fqx $'source\tuser\t'"$config_home/dwm-titus/themes.toml" <<<"$blocked_user"
+grep -Fqx $'active\tnone\tnone\tunresolved' <<<"$blocked_user"
+grep -Fq $'error\tsource\tunreadable\tUser theme file is not a readable regular file: ' \
+	<<<"$blocked_user"
+rmdir "$config_home/dwm-titus/themes.toml"
+
+ln -s "$work/missing-user-theme.toml" "$config_home/dwm-titus/themes.toml"
+set +e
+dangling_user=$(snapshot)
+dangling_user_status=$?
+set -e
+[[ $dangling_user_status -eq 3 ]]
+grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+	<<<"$dangling_user"
+grep -Fqx $'source\tuser\t'"$config_home/dwm-titus/themes.toml" <<<"$dangling_user"
+grep -Fq $'error\tsource\tunreadable\tUser theme file is not a readable regular file: ' \
+	<<<"$dangling_user"
+rm -f "$config_home/dwm-titus/themes.toml"
+
 custom_theme=-custom_theme_with_a_name_that_is_longer_than_sixty_four_characters_1234567890
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
 sed -i "0,/theme = \"nord\"/s//theme = \"$custom_theme\"/" "$config_home/dwm-titus/themes.toml"
@@ -124,6 +151,16 @@ sed -i "0,/^\[theme\.nord\]$/s//[theme.$custom_theme]/" "$config_home/dwm-titus/
 custom=$(snapshot)
 grep -Fqx $'active\t'"$custom_theme"$'\t'"$custom_theme"$'\tselected' <<<"$custom"
 grep -Fq $'theme\t'"$custom_theme"$'\tselected\tvalid\ttrue\tNordic' <<<"$custom"
+
+printf -v overlong_theme '%*s' 506 ''
+overlong_theme=${overlong_theme// /a}
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i "0,/theme = \"nord\"/s//theme = \"$overlong_theme\"/" "$config_home/dwm-titus/themes.toml"
+sed -i "0,/^\[theme\.nord\]$/s//[theme.$overlong_theme]/" "$config_home/dwm-titus/themes.toml"
+overlong=$(snapshot)
+grep -Fqx $'active\t'"$overlong_theme"$'\tdracula\trecovery' <<<"$overlong"
+grep -Fq $'error\tparser\tinvalid-theme-name\tTheme name is not a supported bare identifier at line ' \
+	<<<"$overlong"
 
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
 sed -i '0,/theme = "nord"/s//theme = "dracula"/' "$config_home/dwm-titus/themes.toml"
@@ -162,6 +199,23 @@ sed -i '0,/normfgcolor     = "#D8DEE9"/s//normfgcolor     = "not-a-color"/' \
 invalid_color=$(snapshot)
 grep -Fqx $'active\tnord\tdracula\trecovery' <<<"$invalid_color"
 grep -Fqx $'error\ttheme:nord\tinvalid-color\tTheme key '\''normfgcolor'\'' is not a #RRGGBB color' <<<"$invalid_color"
+
+{
+	printf '[ignored]\n'
+	for ((entry_index = 0; entry_index < 512; entry_index++)); do
+		printf 'extra-%s = 1\n' "$entry_index"
+	done
+	cat "$work/managed-themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+set +e
+alternate_key_limit=$(snapshot)
+alternate_key_status=$?
+set -e
+[[ $alternate_key_status -eq 3 ]]
+grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+	<<<"$alternate_key_limit"
+grep -Fqx $'error\tparser\tentry-limit\tTheme configuration exceeds the runtime parser limit of 512 entries' \
+	<<<"$alternate_key_limit"
 
 nord_block=$(awk '
 	/^\[theme\.nord\]$/ { capture = 1; next }
