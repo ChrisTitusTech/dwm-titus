@@ -31,6 +31,20 @@ make_failing_stub() {
 	chmod +x "$path"
 }
 
+make_appearance_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' 'printf "appearance-protocol\t1\t0\n"' >"$path"
+	chmod +x "$path"
+}
+
+make_malformed_appearance_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' 'printf "not-an-appearance-snapshot\n"' >"$path"
+	chmod +x "$path"
+}
+
 base_bin=$work/base-bin
 fedora_bin=$work/fedora-bin
 make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
@@ -41,7 +55,7 @@ for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker 
 	make_stub "$fedora_bin/$command_name"
 done
 make_stub "$fedora_bin/dwm-xdg-autostart"
-make_stub "$fedora_bin/dwm-settings-appearance"
+make_appearance_stub "$fedora_bin/dwm-settings-appearance"
 make_stub "$fedora_bin/inotifywait"
 make_failing_stub "$fedora_bin/pkexec"
 make_failing_stub "$fedora_bin/sudo"
@@ -97,6 +111,14 @@ printf '%s\n' "$runtime_down_output" | grep -Fqx \
 printf '%s\n' "$runtime_down_output" | grep -Fqx \
 	'capability	audio	pipewire-audio	Audio	unavailable	user-session	pipewire	Audio tools are installed, but no PipeWire or Pulse session is responding'
 printf '%s\n' "$runtime_down_output" | grep -Fqx \
+	'capability	appearance	themes	Themes	unavailable	read-only	dwm-settings-appearance	Restore a valid themes.toml configuration or inspect the appearance snapshot errors'
+
+malformed_appearance_bin=$work/malformed-appearance-bin
+cp -a "$fedora_bin" "$malformed_appearance_bin"
+make_malformed_appearance_stub "$malformed_appearance_bin/dwm-settings-appearance"
+malformed_appearance_output=$(PATH="$malformed_appearance_bin" XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$malformed_appearance_output" | grep -Fqx \
 	'capability	appearance	themes	Themes	unavailable	read-only	dwm-settings-appearance	Restore a valid themes.toml configuration or inspect the appearance snapshot errors'
 
 missing_appearance_bin=$work/missing-appearance-bin

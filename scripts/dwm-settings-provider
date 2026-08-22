@@ -59,6 +59,14 @@ run_bounded_probe() {
 	"$timeout_path" 2 "$command_path" "$@" >/dev/null 2>&1
 }
 
+appearance_snapshot_valid() {
+	command_path=$(provider_path dwm-settings-appearance) || return 1
+	timeout_path=$(command -v timeout 2>/dev/null) || return 1
+	appearance_snapshot=$("$timeout_path" 2 "$command_path" snapshot 2>/dev/null) || return 1
+	printf '%s\n' "$appearance_snapshot" |
+		grep -Fqx 'appearance-protocol	1	0'
+}
+
 emit_capability() {
 	section=$1
 	id=$2
@@ -259,7 +267,7 @@ discover() {
 	if ! provider_available dwm-settings-appearance; then
 		emit_capability appearance themes Themes unavailable read-only dwm-settings-appearance \
 			'Install the managed appearance provider'
-	elif run_bounded_probe dwm-settings-appearance snapshot; then
+	elif appearance_snapshot_valid; then
 		emit_capability appearance themes Themes available read-only dwm-settings-appearance \
 			'Versioned theme inventory and integration state are available'
 	else
