@@ -21,14 +21,25 @@ fi
 
 work=$(mktemp -d)
 display=":$((($$ % 300) + 1100))"
+test_stage='initializing fixture'
 cleanup() {
+	cleanup_status=$?
 	set +e
+	if [ "$cleanup_status" -ne 0 ]; then
+		printf 'Large-surface Xvfb failed while %s (status %s)\n' \
+			"${test_stage:-stage unknown}" "$cleanup_status" >&2
+		[ ! -f "$work/quickshell.log" ] || tail -80 "$work/quickshell.log" >&2
+		[ ! -f "$work/dwm.log" ] || tail -40 "$work/dwm.log" >&2
+	fi
 	[ -n "${quickshell_pid:-}" ] && kill "$quickshell_pid" 2>/dev/null
 	[ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null
 	[ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null
 	rm -rf "$work"
+	trap - EXIT HUP INT TERM
+	exit "$cleanup_status"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 143' HUP INT TERM
 
 home=$work/home
 runtime=$work/runtime
@@ -149,6 +160,7 @@ send_test_notification() {
 		string:'Pointer dismissal and history fixture' array:string: dict:string:variant: int32:6000 >/dev/null
 }
 
+test_stage='waiting for launcher IPC'
 i=0
 while [ "$i" -lt 200 ]; do
 	ipc launcher open >/dev/null 2>&1 && break
@@ -156,6 +168,7 @@ while [ "$i" -lt 200 ]; do
 	sleep 0.05
 done
 launcher_window=$(wait_window '^dwm launcher$')
+test_stage='validating launcher interactions'
 capture_window launcher "$launcher_window"
 if [ "${DWM_LARGE_SURFACE_CAPTURE_ONLY:-0}" = 1 ]; then
 	ipc launcher close >/dev/null
@@ -187,6 +200,7 @@ else
 fi
 
 ipc settings open >/dev/null
+test_stage='validating Settings surface'
 settings_window=$(wait_window '^dwm settings$')
 capture_window settings "$settings_window"
 if [ "${DWM_LARGE_SURFACE_CAPTURE_ONLY:-0}" = 1 ]; then
@@ -207,6 +221,7 @@ else
 fi
 
 ipc systemhealth open >/dev/null
+test_stage='validating System Health surface'
 health_window=$(wait_window '^dwm system health$')
 DISPLAY=$display xprop -id "$health_window" _NET_WM_STATE | grep -q '_NET_WM_STATE_FULLSCREEN'
 capture_window system-health "$health_window"
@@ -217,6 +232,7 @@ else
 	DISPLAY=$display xdotool key Escape
 fi
 
+test_stage='validating notifications'
 send_test_notification
 i=0
 while [ "$i" -lt 100 ]; do
@@ -248,6 +264,7 @@ fi
 ipc notifications clear >/dev/null
 [ "$(ipc notifications count)" = 0 ]
 
+test_stage='sampling closed-shell CPU usage'
 clock_ticks=$(getconf CLK_TCK)
 before=$(awk '{ print $14 + $15 }' "/proc/$quickshell_pid/stat")
 sleep 2
