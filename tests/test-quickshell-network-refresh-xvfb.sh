@@ -74,7 +74,11 @@ status)
 	if [ -e "$test_dir/block-next" ]; then
 		rm -f "$test_dir/block-next"
 		: >"$test_dir/status-blocked"
-		while [ ! -e "$test_dir/release" ]; do sleep 0.02; done
+		wait_index=0
+		while [ ! -e "$test_dir/release" ] && [ "$wait_index" -lt 500 ]; do
+			wait_index=$((wait_index + 1))
+			sleep 0.02
+		done
 	fi
 	case "$snapshot" in
 	ethernet) printf 'ethernet\tenp2s0\tWired connection 1\t-1\n' ;;
