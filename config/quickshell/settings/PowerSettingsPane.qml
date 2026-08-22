@@ -8,6 +8,12 @@ Flickable {
     id: root
 
     required property var powerModel
+    required property var powerMenuModel
+    readonly property bool foreignSessionConfirmation: powerMenuModel.confirming
+        && powerMenuModel.confirmationOrigin !== "settings"
+    readonly property string sessionActionMessage: foreignSessionConfirmation
+        ? "Another surface is awaiting confirmation for a session action"
+        : powerMenuModel.messageFor("settings")
     contentWidth: width
     contentHeight: content.implicitHeight
     clip: true
@@ -236,6 +242,83 @@ Flickable {
             detail: root.powerModel.lidPolicyDetail + " / battery: " + root.powerModel.lidPolicy
                 + ", external power: " + root.powerModel.lidExternalPowerPolicy
                 + ", docked: " + root.powerModel.lidDockedPolicy
+        }
+
+        SectionLabel { label: "Session actions" }
+
+        UiText {
+            Layout.fillWidth: true
+            visible: root.sessionActionMessage.length > 0
+            text: root.sessionActionMessage
+            color: root.foreignSessionConfirmation ? Theme.warning
+                : root.powerMenuModel.messageSeverityFor("settings") === "success"
+                ? Theme.success : root.powerMenuModel.messageSeverityFor("settings") === "warning"
+                    ? Theme.warning : Theme.danger
+            wrapMode: Text.WordWrap
+        }
+
+        Flow {
+            Layout.fillWidth: true
+            visible: !root.powerMenuModel.confirming
+                || root.powerMenuModel.confirmationOrigin !== "settings"
+            spacing: Theme.spacingSm
+            Repeater {
+                model: root.powerMenuModel.sessionActions
+                delegate: ShellButton {
+                    id: sessionAction
+                    required property var modelData
+                    label: sessionAction.modelData.label
+                    enabled: sessionAction.modelData.available
+                        && !root.powerMenuModel.busy
+                        && !root.powerMenuModel.confirming
+                        && (sessionAction.modelData.id !== "suspend"
+                            || root.powerModel.suspendState === "available")
+                    onActivated: root.powerMenuModel.requestAction(sessionAction.modelData, "settings")
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            visible: root.powerMenuModel.confirming
+                && root.powerMenuModel.confirmationOrigin === "settings"
+            Layout.preferredHeight: sessionConfirmation.implicitHeight + Theme.spacingLg * 2
+            color: Theme.controlNormalFill
+            border.color: Theme.warning
+            border.width: Theme.controlBorderWidth
+            radius: Theme.controlRadius
+
+            ColumnLayout {
+                id: sessionConfirmation
+                anchors.fill: parent
+                anchors.margins: Theme.spacingLg
+                spacing: Theme.spacingSm
+                UiText {
+                    Layout.fillWidth: true
+                    text: root.powerMenuModel.pendingAction
+                        ? "Confirm " + root.powerMenuModel.pendingAction.label : "Confirm action"
+                    color: Theme.warning
+                    font.bold: true
+                }
+                UiText {
+                    Layout.fillWidth: true
+                    text: root.powerMenuModel.pendingAction ? root.powerMenuModel.pendingAction.detail : ""
+                    color: Theme.menuText
+                    wrapMode: Text.WordWrap
+                }
+                RowLayout {
+                    ShellButton {
+                        label: "Cancel"
+                        enabled: !root.powerMenuModel.busy
+                        onActivated: root.powerMenuModel.cancelConfirmation("settings")
+                    }
+                    ShellButton {
+                        label: root.powerMenuModel.busy ? "Requesting..." : "Confirm"
+                        enabled: !root.powerMenuModel.busy
+                        onActivated: root.powerMenuModel.confirmAction("settings")
+                    }
+                }
+            }
         }
     }
 }

@@ -96,7 +96,7 @@ ClickAwayPopup {
 
     onVisibleChanged: {
         if (visible) {
-            root.powerMenuModel.close();
+            root.powerMenuModel.close("controlcenter");
             Qt.callLater(function() {
                 controlCard.forceActiveFocus();
             });

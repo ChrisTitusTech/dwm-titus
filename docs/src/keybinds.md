@@ -137,8 +137,10 @@ keys = [
 See the comments in `hotkeys.toml` for a full list of `func` values and modifier syntax.
 
 The browser binding uses `dwm-default-apps open`. Configure it with
-`dwm-default-apps browsers` and `dwm-default-apps set-browser <desktop-id>`.
+Settings -> Defaults or with `dwm-default-apps browsers` and
+`dwm-default-apps set-browser <desktop-id>`.
 
-The default binding launches Alacritty directly. To use the optional Herdr
-workspace, install it explicitly, change the binding to `dwm-terminal`, and
-set `DWM_HERDR=1` in the session environment.
+The terminal variable defaults to Alacritty. Settings -> Defaults can select a
+validated installed terminal without changing the `Super`+`X` key record. To
+use the optional Herdr workspace, install it explicitly, change the binding to
+`dwm-terminal`, and set `DWM_HERDR=1` in the session environment.

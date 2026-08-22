@@ -20,6 +20,9 @@ Scope {
     property var bluetoothModel: null
     property var controlsModel: null
     property var powerModel: null
+    property var powerMenuModel: null
+    property var defaultsModel: null
+    property var autostartModel: null
     property var capabilities: []
     property int selectedIndex: 0
     property var displayOutputs: []
@@ -114,6 +117,18 @@ Scope {
             const wantPower = id === "power" && root.visible;
             if (wantPower && !root.powerModel.settingsVisible) root.powerModel.openSettings();
             else if (!wantPower && root.powerModel.settingsVisible) root.powerModel.closeSettings();
+        }
+        if (id !== "power" && root.powerMenuModel)
+            root.powerMenuModel.cancelConfirmation("settings");
+        if (root.defaultsModel) {
+            const wantDefaults = id === "defaults" && root.visible;
+            if (wantDefaults && !root.defaultsModel.settingsVisible) root.defaultsModel.openSettings();
+            else if (!wantDefaults && root.defaultsModel.settingsVisible) root.defaultsModel.closeSettings();
+        }
+        if (root.autostartModel) {
+            const wantAutostart = id === "defaults" && root.visible;
+            if (wantAutostart && !root.autostartModel.settingsVisible) root.autostartModel.openSettings();
+            else if (!wantAutostart && root.autostartModel.settingsVisible) root.autostartModel.closeSettings();
         }
         if (id === "displays") root.refreshDisplays();
         if (id === "input") root.refreshInput();
@@ -499,6 +514,9 @@ Scope {
 		if (root.bluetoothModel) root.bluetoothModel.closeSettings();
 		if (root.controlsModel) root.controlsModel.closeSettings();
 		if (root.powerModel) root.powerModel.closeSettings();
+		if (root.powerMenuModel) root.powerMenuModel.cancelConfirmation("settings");
+		if (root.defaultsModel) root.defaultsModel.closeSettings();
+		if (root.autostartModel) root.autostartModel.closeSettings();
 			inputSettleTimer.stop();
         root.visible = false;
         root.busy = false;

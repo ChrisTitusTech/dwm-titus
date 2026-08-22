@@ -56,6 +56,14 @@ cleanup() {
 		*) kill "$watcher_pid" 2>/dev/null || true ;;
 		esac
 	fi
+	for identity_file in "$work"/*/state/dwm-status-runtime.identities; do
+		[ -f "$identity_file" ] || continue
+		while IFS= read -r runtime_identity; do
+			test_identity_matches "$runtime_identity" || continue
+			runtime_pid=${runtime_identity%%:*}
+			kill -TERM "$runtime_pid" 2>/dev/null || true
+		done <"$identity_file"
+	done
 	for identity_file in "$work"/*/state/quickshell-runtime.identities; do
 		[ -f "$identity_file" ] || continue
 		while IFS= read -r runtime_identity; do
@@ -65,6 +73,14 @@ cleanup() {
 		done <"$identity_file"
 	done
 	sleep 0.05
+	for identity_file in "$work"/*/state/dwm-status-runtime.identities; do
+		[ -f "$identity_file" ] || continue
+		while IFS= read -r runtime_identity; do
+			test_identity_matches "$runtime_identity" || continue
+			runtime_pid=${runtime_identity%%:*}
+			kill -KILL "$runtime_pid" 2>/dev/null || true
+		done <"$identity_file"
+	done
 	for identity_file in "$work"/*/state/quickshell-runtime.identities; do
 		[ -f "$identity_file" ] || continue
 		while IFS= read -r runtime_identity; do
@@ -194,9 +210,48 @@ EOF
 
 chmod +x "$work/bin/"*
 
+cat >"$work/bin/chmod" <<'EOF'
+#!/bin/sh
+for argument do target=$argument; done
+if [ -n "${TEST_CHMOD_FAILURE_TARGET:-}" ] && [ "$target" = "$TEST_CHMOD_FAILURE_TARGET" ]; then
+	exit 1
+fi
+exec /usr/bin/chmod "$@"
+EOF
+/usr/bin/chmod +x "$work/bin/chmod"
+
 for name in feh picom dwm-status dwm-lock-watch light-locker dex dex-autostart; do
 	make_mock_command "$name"
 done
+
+# The production status publisher is a Bash script, so its comm is "bash"
+# rather than "dwm-status". Keep a real shebang process alive to exercise the
+# /proc command-path and DISPLAY guard instead of the old pgrep-name mock.
+cat >"$work/bin/dwm-status" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+name=$(basename "$0")
+count_file="${TEST_STATE:?}/$name.count"
+count=0
+[[ ! -f $count_file ]] || count=$(<"$count_file")
+printf '%s\n' "$((count + 1))" >"$count_file"
+: >"${TEST_STATE:?}/$name.running"
+starttime=$(awk '
+	{
+		line = $0
+		sub(/^.*\) /, "", line)
+		split(line, fields, " ")
+		print fields[20]
+	}
+' "/proc/$$/stat")
+printf '%s:%s\n' "$$" "$starttime" >>"${TEST_STATE:?}/dwm-status-runtime.identities"
+trap 'exit 0' HUP INT TERM
+while :; do
+	sleep 0.1
+done
+EOF
+chmod +x "$work/bin/dwm-status"
 
 cat >"$work/bin/quickshell" <<'EOF'
 #!/bin/sh
@@ -207,11 +262,14 @@ if [ "${1:-}" = --version ]; then
 fi
 managed_config=${XDG_CONFIG_HOME:?}/quickshell/shell.qml
 selected_path=
+selected_pid=
 previous=
 no_duplicate=0
 for argument do
 	if [ "$previous" = --path ]; then
 		selected_path=$argument
+	elif [ "$previous" = --pid ]; then
+		selected_pid=$argument
 	fi
 	[ "$argument" != --no-duplicate ] || no_duplicate=1
 	previous=$argument
@@ -221,7 +279,7 @@ if [ "${1:-}" = kill ]; then
 	count=0
 	[ ! -f "$count_file" ] || count=$(cat "$count_file")
 	printf '%s\n' "$((count + 1))" >"$count_file"
-	if [ "$selected_path" != "$managed_config" ]; then
+	if [ -n "$selected_path" ] && [ "$selected_path" != "$managed_config" ]; then
 		if [ -f "${TEST_STATE:?}/quickshell-secondary.pid" ]; then
 			kill "$(cat "${TEST_STATE:?}/quickshell-secondary.pid")" 2>/dev/null || true
 		fi
@@ -230,16 +288,33 @@ if [ "${1:-}" = kill ]; then
 			"${TEST_STATE:?}/quickshell-secondary.running"
 		exit 0
 	fi
+	printf '%s\n' "$selected_pid" >>"${TEST_STATE:?}/quickshell-kill.pids"
+	if [ -z "$selected_pid" ] && [ -f "${TEST_STATE:?}/quickshell-replacement.pid" ]; then
+		kill "$(cat "${TEST_STATE:?}/quickshell-replacement.pid")" 2>/dev/null || true
+		exit 0
+	fi
+	if [ -f "${TEST_STATE:?}/quickshell-replacement.pid" ] &&
+		[ "$selected_pid" = "$(cat "${TEST_STATE:?}/quickshell-replacement.pid")" ]; then
+		kill "$selected_pid" 2>/dev/null || true
+		exit 0
+	fi
 	if [ "${TEST_QUICKSHELL_KILL_HANG:-0}" = 1 ]; then
-		if [ -f "${TEST_STATE:?}/quickshell-replacement.pid" ]; then
+		if [ -f "${TEST_STATE:?}/quickshell-replacement.pid" ] &&
+			[ ! -e "${TEST_STATE:?}/quickshell-replacement.injected" ]; then
 			cat "${TEST_STATE:?}/quickshell-replacement.pid" >>\
 				"${TEST_STATE:?}/quickshell-managed.pids"
+			: >"${TEST_STATE:?}/quickshell-replacement.injected"
 		fi
 		sleep 10
 		exit 1
 	fi
 	if [ "${TEST_QUICKSHELL_DELAYED_STOP:-0}" = 1 ]; then
-		: >"${TEST_STATE:?}/quickshell.stopping"
+		(
+			sleep 0.2
+			kill -HUP "$selected_pid" 2>/dev/null || true
+			rm -f "${TEST_STATE:?}/quickshell.stale" \
+				"${TEST_STATE:?}/quickshell.running"
+		) </dev/null >/dev/null 2>&1 &
 	else
 		rm -f "${TEST_STATE:?}/quickshell.stale" "${TEST_STATE:?}/quickshell.running"
 	fi
@@ -252,6 +327,10 @@ if [ "${1:-}" = list ]; then
 		count=0
 		[ ! -f "$count_file" ] || count=$(cat "$count_file")
 		printf '%s\n' "$((count + 1))" >"$count_file"
+		if [ -n "${TEST_QUICKSHELL_LIST_FAIL_AFTER:-}" ] &&
+			[ "$count" -ge "$TEST_QUICKSHELL_LIST_FAIL_AFTER" ]; then
+			exit 1
+		fi
 		separator=
 		original_alive=0
 		replacement_alive=0
@@ -304,6 +383,19 @@ fi
 if [ "${1:-}" = ipc ]; then
 	printf '%s\n' ipc >>"${TEST_STATE:?}/events.log"
 	[ "$selected_path" = "$managed_config" ] || exit 2
+	if [ -f "${TEST_STATE:?}/quickshell-managed.pids" ] &&
+		[ -f "${TEST_STATE:?}/quickshell-replacement.pid" ]; then
+		replacement_pid=$(cat "${TEST_STATE:?}/quickshell-replacement.pid")
+		original_alive=0
+		while IFS= read -r managed_pid; do
+			[ "$managed_pid" = "$replacement_pid" ] && continue
+			kill -0 "$managed_pid" 2>/dev/null && original_alive=1
+		done <"${TEST_STATE:?}/quickshell-managed.pids"
+		if [ "$original_alive" -eq 0 ] && kill -0 "$replacement_pid" 2>/dev/null; then
+			rm -f "${TEST_STATE:?}/quickshell.stale"
+			: >"${TEST_STATE:?}/quickshell.running"
+		fi
+	fi
 	if [ -f "${TEST_STATE:?}/quickshell.stale" ]; then
 		sleep 10
 		exit 1
@@ -332,6 +424,8 @@ chmod +x "$work/bin/quickshell"
 
 run_duplicate_case() {
 	mode=$1
+	case_display=:99
+	[ "$mode" != startx ] || case_display=:100
 	home="$work/$mode/home"
 	state="$work/$mode/state"
 	runtime="$work/$mode/runtime"
@@ -346,7 +440,7 @@ run_duplicate_case() {
 	for iteration in 1 2; do
 		if [ "$mode" = startx ]; then
 			XDG_RUNTIME_DIR="$runtime" dbus-run-session -- env \
-				DISPLAY=:99 \
+				DISPLAY="$case_display" \
 				HOME="$home" \
 				QT_QPA_PLATFORM=wayland \
 				TEST_STATE="$state" \
@@ -360,7 +454,7 @@ run_duplicate_case() {
 				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		else
-			DISPLAY=:99 \
+			DISPLAY="$case_display" \
 				HOME=$home \
 				QT_QPA_PLATFORM=wayland \
 				TEST_STATE=$state \
@@ -445,6 +539,7 @@ run_stale_quickshell_case() {
 		DWM_AUTOSTART_NO_INPUT_WATCH=1 \
 		DWM_AUTOSTART_NO_SETSID=1 \
 		TEST_QUICKSHELL_KILL_HANG=1 \
+		TEST_QUICKSHELL_LIST_FAIL_AFTER=1 \
 		sh "$repo_dir/scripts/autostart.sh"
 
 	wait "$managed_pid_one" 2>/dev/null || true
@@ -455,9 +550,16 @@ run_stale_quickshell_case() {
 	kill -0 "$replacement_pid"
 	test -f "$state/quickshell-tray.ready"
 	test "$(cat "$state/quickshell.count")" -eq 1
-	test "$(cat "$state/quickshell-kill.count")" -eq 1
-	test "$(cat "$state/quickshell-list.count")" -ge 3
-	grep -Fq "kill --path $home/.config/quickshell/shell.qml" "$state/quickshell.args"
+	test "$(cat "$state/quickshell-kill.count")" -eq 2
+	grep -Fqx "$managed_pid_one" "$state/quickshell-kill.pids"
+	grep -Fqx "$managed_pid_two" "$state/quickshell-kill.pids"
+	if grep -Fqx "$replacement_pid" "$state/quickshell-kill.pids"; then
+		printf '%s\n' 'Concurrent Quickshell replacement was selected for graceful shutdown' >&2
+		exit 1
+	fi
+	test "$(cat "$state/quickshell-list.count")" -eq 1
+	grep -Fq "kill --pid $managed_pid_one" "$state/quickshell.args"
+	grep -Fq "kill --pid $managed_pid_two" "$state/quickshell.args"
 	grep -Fq "list --path $home/.config/quickshell/shell.qml --json" "$state/quickshell.args"
 	grep -Fq -- "--path $home/.config/quickshell/shell.qml --no-duplicate" "$state/quickshell.args"
 	kill "$secondary_pid"
@@ -467,7 +569,172 @@ run_stale_quickshell_case() {
 	rm -f "$state/quickshell-managed.pids" \
 		"$state/quickshell-secondary.pid" \
 		"$state/quickshell-replacement.pid" \
+		"$state/quickshell-replacement.injected" \
 		"$state/quickshell-runtime.identities"
+}
+
+run_delayed_quickshell_case() {
+	home="$work/delayed/home"
+	state="$work/delayed/state"
+	runtime="$work/delayed/runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$home/.config/quickshell" "$state" "$runtime"
+	chmod 700 "$runtime"
+	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$home/.config/quickshell/shell.qml"
+	: >"$state/quickshell.stale"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+	identity_file="$state/quickshell-runtime.identities"
+	: >"$identity_file"
+	"$work/runtime-bin/normal/quickshell" 60 &
+	managed_pid=$!
+	record_test_identity "$managed_pid" "$identity_file"
+	printf '%s\n' "$managed_pid" >"$state/quickshell-managed.pids"
+
+	DISPLAY=:105 \
+		HOME=$home \
+		TEST_STATE=$state \
+		PATH="$work/bin:/usr/bin:/bin" \
+		XDG_CONFIG_HOME="$home/.config" \
+		XDG_RUNTIME_DIR="$runtime" \
+		DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+		DWM_AUTOSTART_NO_SETSID=1 \
+		TEST_QUICKSHELL_DELAYED_STOP=1 \
+		sh "$repo_dir/scripts/autostart.sh"
+
+	set +e
+	wait "$managed_pid"
+	wait_status=$?
+	set -e
+	# The fake graceful IPC path uses HUP after a delay, so 129 is expected.
+	# TERM (143) or KILL (137) would mean autostart escalated prematurely.
+	test "$wait_status" -eq 129
+	test ! -e "$state/quickshell.stale"
+	test -f "$state/quickshell.running"
+	grep -Fq "kill --pid $managed_pid" "$state/quickshell.args"
+	test "$(cat "$state/quickshell.count")" -eq 1
+	rm -f "$state/quickshell-managed.pids" "$identity_file"
+}
+
+run_status_display_scope_case() {
+	home="$work/status-display/home"
+	state="$work/status-display/state"
+	runtime="$work/status-display/runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$home/.config/quickshell" "$state" "$runtime"
+	chmod 700 "$runtime"
+	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$home/.config/quickshell/shell.qml"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+
+	expected_status_count=0
+	for display in :101 :102 :101; do
+		DISPLAY=$display \
+			HOME=$home \
+			TEST_STATE=$state \
+			PATH="$work/bin:/usr/bin:/bin" \
+			XDG_CONFIG_HOME="$home/.config" \
+			XDG_RUNTIME_DIR="$runtime" \
+			DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+			DWM_AUTOSTART_NO_SETSID=1 \
+			sh "$repo_dir/scripts/autostart.sh"
+		case $display in
+		:101)
+			[ "$expected_status_count" -ne 0 ] || expected_status_count=1
+			;;
+		:102) expected_status_count=2 ;;
+		esac
+		for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+			[ "$(wc -l <"$state/dwm-status-runtime.identities" 2>/dev/null || printf 0)" -eq "$expected_status_count" ] && break
+			sleep 0.02
+		done
+		test "$(wc -l <"$state/dwm-status-runtime.identities")" -eq "$expected_status_count"
+	done
+
+	test "$(cat "$state/dwm-status.count")" -eq 2
+	test "$(wc -l <"$state/dwm-status-runtime.identities")" -eq 2
+	first_identity=$(sed -n '1p' "$state/dwm-status-runtime.identities")
+	second_identity=$(sed -n '2p' "$state/dwm-status-runtime.identities")
+	first_pid=${first_identity%%:*}
+	second_pid=${second_identity%%:*}
+	test_identity_matches "$first_identity"
+	test_identity_matches "$second_identity"
+	grep -Fqx bash "/proc/$first_pid/comm"
+	grep -Fqx bash "/proc/$second_pid/comm"
+	test ! -e "/proc/$first_pid/fd/9"
+	test ! -e "/proc/$second_pid/fd/9"
+	tr '\0' '\n' <"/proc/$first_pid/environ" | grep -Fqx 'DISPLAY=:101'
+	tr '\0' '\n' <"/proc/$second_pid/environ" | grep -Fqx 'DISPLAY=:102'
+}
+
+run_status_optional_lock_case() {
+	home="$work/status-lock/home"
+	state="$work/status-lock/state"
+	runtime="$work/status-lock/runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$state" "$runtime"
+	/usr/bin/chmod 700 "$runtime"
+	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+
+	DISPLAY=:104 HOME=$home TEST_STATE=$state PATH="$work/bin:/usr/bin:/bin" \
+		XDG_CONFIG_HOME="$home/.config" XDG_RUNTIME_DIR=$runtime \
+		DWM_AUTOSTART_NO_INPUT_WATCH=1 DWM_AUTOSTART_NO_SETSID=1 \
+		TEST_CHMOD_FAILURE_TARGET="$runtime/dwm-titus" \
+		sh "$repo_dir/scripts/autostart.sh"
+	wait_for_marker "$state/dwm-status.running"
+	test "$(cat "$state/dwm-status.count")" -eq 1
+	identity=$(cat "$state/dwm-status-runtime.identities")
+	test_identity_matches "$identity"
+	test ! -e "/proc/${identity%%:*}/fd/9"
+}
+
+run_status_empty_display_case() {
+	home="$work/status-empty/home"
+	state="$work/status-empty/state"
+	runtime="$work/status-empty/runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$state" "$runtime"
+	chmod 700 "$runtime"
+	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+	DISPLAY='' HOME=$home TEST_STATE=$state PATH="$work/bin:/usr/bin:/bin" \
+		XDG_CONFIG_HOME="$home/.config" XDG_RUNTIME_DIR="$runtime" \
+		DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+		DWM_AUTOSTART_NO_SETSID=1 sh "$repo_dir/scripts/autostart.sh"
+	test ! -e "$state/dwm-status.count"
+}
+
+run_status_launch_race_case() {
+	home="$work/status-race/home"
+	state="$work/status-race/state"
+	runtime="$work/status-race/runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$state" "$runtime"
+	chmod 700 "$runtime"
+	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+	race_pids=
+
+	for _invocation in 1 2; do
+		DISPLAY=:103 \
+			HOME=$home \
+			TEST_STATE=$state \
+			PATH="$work/bin:/usr/bin:/bin" \
+			XDG_CONFIG_HOME="$home/.config" \
+			XDG_RUNTIME_DIR=$runtime \
+			DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+			DWM_AUTOSTART_NO_SETSID=1 \
+			sh "$repo_dir/scripts/autostart.sh" &
+		race_pid=$!
+		race_pids="$race_pids $race_pid"
+	done
+	for race_pid in $race_pids; do
+		wait "$race_pid"
+	done
+	wait_for_marker "$state/dwm-status.running"
+	for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+		[ "$(wc -l <"$state/dwm-status-runtime.identities" 2>/dev/null || printf 0)" -eq 1 ] && break
+		sleep 0.02
+	done
+	test "$(wc -l <"$state/dwm-status-runtime.identities")" -eq 1
+	sleep 0.1
+	test "$(wc -l <"$state/dwm-status-runtime.identities")" -eq 1
 }
 
 run_hung_quickshell_case() {
@@ -578,7 +845,7 @@ EOF
 		TEST_STATE=$state \
 		PATH="$work/bin:/usr/bin:/bin" \
 		XDG_CONFIG_HOME="$home/.config" \
-		timeout 5 sh "$case_dir/scripts/autostart.sh"
+		timeout 10 sh "$case_dir/scripts/autostart.sh"
 	wait_for_marker "$state/watcher.pid"
 	wait_for_marker "$state/watcher.session"
 	grep -Eq "^$$[[:space:]]+[1-9][0-9]*$" "$state/watcher.session"
@@ -586,7 +853,12 @@ EOF
 
 run_duplicate_case display-manager
 run_duplicate_case startx
+run_status_display_scope_case
+run_status_launch_race_case
+run_status_optional_lock_case
+run_status_empty_display_case
 run_stale_quickshell_case
+run_delayed_quickshell_case
 run_hung_quickshell_case
 run_dex_fallback_case
 run_missing_optional_case
@@ -602,5 +874,9 @@ if grep -q 'systemctl --user enable.*SERVICE_NAME' \
 	printf '%s\n' "XDG setup must not enable the graphical session at early boot" >&2
 	exit 1
 fi
+grep -Fq 'start_detached_display_command_once dwm-status' \
+	"$repo_dir/scripts/autostart.sh"
+grep -Fq 'display_process_script' "$repo_dir/scripts/autostart.sh"
+grep -Fq 'display_process_display' "$repo_dir/scripts/autostart.sh"
 
 printf '%s\n' "Autostart duplicate and missing-optional command guards: PASS"

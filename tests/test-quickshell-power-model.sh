@@ -63,10 +63,14 @@ grep -Fq 'root.mutationOrigin === origin ? root.message : ""' "$model"
 
 [ "$(grep -Fc 'Commands.powerHelperCommand("power-watch")' "$model")" -eq 1 ]
 grep -Fq 'readonly property bool sectionVisible:' "$model"
+grep -Fq 'property bool sessionMenuVisible: false' "$model"
+grep -Fq '|| root.sessionMenuVisible' "$model"
 grep -Fq 'function openSettings()' "$model"
 grep -Fq 'function closeSettings()' "$model"
 grep -Fq 'function openControlCenter()' "$model"
 grep -Fq 'function closeControlCenter()' "$model"
+grep -Fq 'function openSessionMenu()' "$model"
+grep -Fq 'function closeSessionMenu()' "$model"
 grep -Fq 'watchProcess.running = false' "$model"
 grep -Fq 'snapshotProcess.running = false' "$model"
 grep -Fq 'interval: 250' "$model"
@@ -110,7 +114,57 @@ grep -Fq 'root.powerModel.messageFor("controlcenter")' \
 	"$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'property bool confirming: false' \
 	"$repo/config/quickshell/power/PowerMenuModel.qml"
-grep -Fq '"id": "reboot"' "$repo/config/quickshell/power/PowerMenuModel.qml"
-grep -Fq '"id": "shutdown"' "$repo/config/quickshell/power/PowerMenuModel.qml"
+for action in lock logout suspend reboot shutdown; do
+	grep -Fq "\"id\": \"$action\"" "$repo/config/quickshell/power/PowerMenuModel.qml"
+done
+grep -Fq 'property string actionOrigin: ""' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml"
+grep -Fq 'property string confirmationOrigin: ""' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml"
+grep -A4 -F 'function rejectOverlap(origin)' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml" |
+	grep -Fq 'root.rejectionMessage = "Another session action is already in progress";'
+if grep -A4 -F 'function rejectOverlap(origin)' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml" |
+	grep -Fq 'root.actionSucceeded = false;'; then
+	printf 'Overlap rejection must not mutate the active action result.\n' >&2
+	exit 1
+fi
+grep -Fq 'root.powerMenuModel.cancelConfirmation("settings")' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'function clearOverlapRejection()' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml"
+grep -Fq 'requestedAction.label + " is unavailable on this system"' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml"
+request_action_block=$(sed -n \
+	'/function requestAction(action, origin)/,/function cancelConfirmation(origin)/p' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml")
+if printf '%s\n' "$request_action_block" | grep -Fq 'root.actionSucceeded = false'; then
+	printf 'Unavailable session actions must not mutate another action result.\n' >&2
+	exit 1
+fi
+busy_line=$(printf '%s\n' "$request_action_block" |
+	grep -n -m1 -F 'if (root.busy || actionProcess.running)' | cut -d: -f1)
+unavailable_line=$(printf '%s\n' "$request_action_block" |
+	grep -n -m1 -F 'if (!requestedAction.available)' | cut -d: -f1)
+if [ -z "$busy_line" ] || [ -z "$unavailable_line" ] ||
+	[ "$busy_line" -ge "$unavailable_line" ]; then
+	printf 'Busy session actions must reject before availability handling.\n' >&2
+	exit 1
+fi
+grep -Fq 'this.text.trim() === actionProcess.expectedResult' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml"
+grep -Fq 'this.text.trim() === actionProcess.expectedResult' \
+	"$repo/config/quickshell/power/PowerModel.qml"
+grep -Fq 'Commands.sessionActionCommand(requestedAction.id)' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml"
+grep -Fq 'root.powerModel.openSessionMenu()' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml"
+grep -Fq 'root.powerModel.closeSessionMenu()' \
+	"$repo/config/quickshell/power/PowerMenuModel.qml"
+if grep -R -Fq 'powerMenuModel.close()' "$repo/config/quickshell"; then
+	printf 'Session confirmation closure must retain an explicit surface origin.\n' >&2
+	exit 1
+fi
 
 printf 'Quickshell shared power model and Settings contract: PASS\n'

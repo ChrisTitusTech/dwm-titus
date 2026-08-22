@@ -331,7 +331,7 @@ power_apply_lock_settings() {
 			command -v gsettings >/dev/null 2>&1 &&
 			run_bounded 15 gsettings set apps.light-locker lock-after-screensaver "$power_lock_after" &&
 			run_bounded 15 gsettings set apps.light-locker lock-on-suspend true; then
-			start_configured_light_locker
+			start_configured_light_locker || power_status=1
 		else
 			power_status=1
 		fi
@@ -1167,6 +1167,172 @@ power_set_lock_timeout() {
 	printf 'power-lock-timeout\t%s\n' "$power_lock_timeout"
 }
 
+session_pid_starttime() {
+	session_pid=$1
+	awk '
+		{
+			line = $0
+			sub(/^.*\) /, "", line)
+			split(line, fields, " ")
+			if (fields[1] != "Z" && fields[20] ~ /^[0-9]+$/)
+				print fields[20]
+		}
+	' "/proc/$session_pid/stat" 2>/dev/null
+}
+
+session_pid_identity() {
+	session_pid=$1
+	case $session_pid in
+	'' | *[!0-9]*) return 1 ;;
+	esac
+	[ "$session_pid" -ge 2 ] || return 1
+	[ "$(stat -c %u "/proc/$session_pid" 2>/dev/null)" = "$(id -u)" ] || return 1
+	session_executable=$(readlink "/proc/$session_pid/exe" 2>/dev/null) || return 1
+	case $session_executable in
+	*' (deleted)') session_executable=${session_executable%' (deleted)'} ;;
+	esac
+	[ "${session_executable##*/}" = dwm ] || return 1
+	session_starttime=$(session_pid_starttime "$session_pid")
+	[ -n "$session_starttime" ] || return 1
+	printf '%s:%s\n' "$session_pid" "$session_starttime"
+}
+
+session_resolve_dwm() {
+	for session_command in xprop awk stat id readlink; do
+		command -v "$session_command" >/dev/null 2>&1 || {
+			printf 'required session command is unavailable: %s\n' "$session_command" >&2
+			return 127
+		}
+	done
+	[ -n "${DISPLAY:-}" ] || {
+		printf 'current X11 display is unavailable\n' >&2
+		return 1
+	}
+
+	session_root_properties=$(LC_ALL=C run_bounded 3 xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null) || {
+		printf 'current window manager is unavailable\n' >&2
+		return 1
+	}
+	session_wm_window=$(printf '%s\n' "$session_root_properties" | awk '
+		$1 == "_NET_SUPPORTING_WM_CHECK(WINDOW):" && $2 == "window" &&
+			$3 == "id" && $4 == "#" && $5 ~ /^0x[0-9A-Fa-f]+$/ {
+			window = $5
+			matches++
+		}
+		END {
+			if (matches == 1) print window
+			exit(matches == 1 ? 0 : 1)
+		}
+	') || {
+		printf 'current window manager identity is malformed\n' >&2
+		return 1
+	}
+
+	session_wm_properties=$(LC_ALL=C run_bounded 3 xprop -id "$session_wm_window" \
+		_NET_SUPPORTING_WM_CHECK _NET_WM_NAME _NET_WM_PID 2>/dev/null) || {
+		printf 'current window manager identity is unavailable\n' >&2
+		return 1
+	}
+	session_self_window=$(printf '%s\n' "$session_wm_properties" | awk '
+		$1 == "_NET_SUPPORTING_WM_CHECK(WINDOW):" && $2 == "window" &&
+			$3 == "id" && $4 == "#" && $5 ~ /^0x[0-9A-Fa-f]+$/ {
+			window = $5
+			matches++
+		}
+		END {
+			if (matches == 1) print window
+			exit(matches == 1 ? 0 : 1)
+		}
+	') || {
+		printf 'current window manager self-check is malformed\n' >&2
+		return 1
+	}
+	[ "$session_self_window" = "$session_wm_window" ] || {
+		printf 'current window manager self-check does not match the X11 owner\n' >&2
+		return 1
+	}
+	printf '%s\n' "$session_wm_properties" |
+		awk '$0 == "_NET_WM_NAME(UTF8_STRING) = \"dwm\"" { matches++ }
+			END { exit(matches == 1 ? 0 : 1) }' || {
+		printf 'current window manager is not the managed dwm session\n' >&2
+		return 1
+	}
+	session_wm_pid=$(printf '%s\n' "$session_wm_properties" | awk -F ' = ' '
+		$1 == "_NET_WM_PID(CARDINAL)" && $2 ~ /^[0-9]+$/ {
+			pid = $2
+			matches++
+		}
+		END {
+			if (matches == 1) print pid
+			exit(matches == 1 ? 0 : 1)
+		}
+	') || {
+		printf 'current dwm does not expose the managed logout endpoint; restart the installed DWM session\n' >&2
+		return 1
+	}
+	session_pid_identity "$session_wm_pid" || {
+		printf 'current dwm process identity could not be verified\n' >&2
+		return 1
+	}
+}
+
+session_lock() {
+	session_lock_helper=$repo_dir/scripts/dwm-lock
+	if [ ! -x "$session_lock_helper" ]; then
+		session_lock_helper=$(command -v dwm-lock 2>/dev/null || true)
+	fi
+	[ -n "$session_lock_helper" ] || {
+		printf 'dwm-lock is unavailable\n' >&2
+		return 127
+	}
+	"$session_lock_helper" || return
+	printf 'session-action\tlock\taccepted\n'
+}
+
+session_logout() {
+	session_identity=$(session_resolve_dwm) || return
+	# Re-resolve the immutable PID/start-time identity immediately before the
+	# signal so a concurrently replaced X11 owner is never targeted.
+	[ "$(session_resolve_dwm)" = "$session_identity" ] || {
+		printf 'current dwm changed while logout was being requested\n' >&2
+		return 1
+	}
+	session_pid=${session_identity%%:*}
+	kill -USR2 "$session_pid" 2>/dev/null || {
+		printf 'could not request a graceful exit from the current dwm\n' >&2
+		return 1
+	}
+	printf 'session-action\tlogout\taccepted\n'
+}
+
+session_system_action() {
+	session_action_name=$1
+	session_systemctl_action=$2
+	command -v systemctl >/dev/null 2>&1 || {
+		printf 'systemctl is unavailable for %s\n' "$session_action_name" >&2
+		return 127
+	}
+	if ! run_bounded 15 systemctl --no-block "$session_systemctl_action" >/dev/null; then
+		printf '%s request was denied or could not be accepted\n' "$session_action_name" >&2
+		return 1
+	fi
+	printf 'session-action\t%s\taccepted\n' "$session_action_name"
+}
+
+session_action() {
+	case ${1:-} in
+	lock) session_lock ;;
+	logout) session_logout ;;
+	suspend) session_system_action suspend suspend ;;
+	reboot) session_system_action reboot reboot ;;
+	shutdown) session_system_action shutdown poweroff ;;
+	*)
+		printf 'unknown session action: %s\n' "${1:-}" >&2
+		return 2
+		;;
+	esac
+}
+
 notify() {
 	if command -v notify-send >/dev/null 2>&1; then
 		notify-send -a "DWM Control Center" "$@" 2>/dev/null || true
@@ -1486,7 +1652,7 @@ action() {
 }
 
 usage() {
-	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|power-status|power-snapshot|power-watch|power-profile-set <profile>|power-apply|power-dpms on|off|power-dpms-timeout <seconds>|power-lock on|off|power-lock-timeout <seconds>|action <name>\n' "$0" >&2
+	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|power-status|power-snapshot|power-watch|power-profile-set <profile>|power-apply|power-dpms on|off|power-dpms-timeout <seconds>|power-lock on|off|power-lock-timeout <seconds>|session-action lock|logout|suspend|reboot|shutdown|action <name>\n' "$0" >&2
 }
 
 case ${1:-} in
@@ -1539,6 +1705,13 @@ power-lock-timeout)
 		exit 2
 	fi
 	power_set_lock_timeout "$2"
+	;;
+session-action)
+	if [ $# -ne 2 ]; then
+		usage
+		exit 2
+	fi
+	session_action "$2"
 	;;
 action)
 	if [ $# -ne 2 ]; then

@@ -40,6 +40,8 @@ for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker 
 	xdg-settings xdg-mime xinput; do
 	make_stub "$fedora_bin/$command_name"
 done
+make_stub "$fedora_bin/dwm-xdg-autostart"
+make_stub "$fedora_bin/inotifywait"
 make_failing_stub "$fedora_bin/pkexec"
 make_failing_stub "$fedora_bin/sudo"
 
@@ -70,6 +72,8 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	network	networkmanager	NetworkManager	available	delegated	nmcli	NetworkManager state is available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	audio	pipewire-audio	Audio	available	user-session	pactl	PipeWire Pulse-compatible session controls are available'
+printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	defaults	xdg-autostart	Startup applications	available	user-session	xdg-autostart	Per-user XDG autostart overrides and live updates are available'
 printf '%s\n' "$fedora_output" | grep -Eq \
 	'^capability	system	authorization	Administrative authorization	(available|restricted)	privileged	polkit	'
 

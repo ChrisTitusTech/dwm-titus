@@ -9,6 +9,7 @@ Scope {
 
     property bool settingsVisible: false
     property bool controlCenterVisible: false
+    property bool sessionMenuVisible: false
     property bool busy: false
     property string providerState: "idle"
     property string providerDetail: "Power state has not been loaded"
@@ -66,6 +67,7 @@ Scope {
     property string lidPolicyDetail: "Persistent lid policy has not been queried"
 
     readonly property bool sectionVisible: root.settingsVisible || root.controlCenterVisible
+        || root.sessionMenuVisible
     readonly property var nativeBattery: UPower.displayDevice
     readonly property var timeoutPresets: [
         { "label": "5m", "seconds": 300 },
@@ -240,6 +242,17 @@ Scope {
 
     function closeControlCenter() {
         root.controlCenterVisible = false;
+        root.syncSectionLifecycle();
+    }
+
+    function openSessionMenu() {
+        root.sessionMenuVisible = true;
+        root.syncSectionLifecycle();
+        root.refresh();
+    }
+
+    function closeSessionMenu() {
+        root.sessionMenuVisible = false;
         root.syncSectionLifecycle();
     }
 
@@ -562,8 +575,8 @@ Scope {
         running: false
         stdout: StdioCollector {
             onStreamFinished: {
-                const lines = this.text.trim().split("\n");
-                root.actionSucceeded = lines.indexOf(actionProcess.expectedResult) !== -1;
+                if (root.actionGeneration !== root.mutationGeneration) return;
+                root.actionSucceeded = this.text.trim() === actionProcess.expectedResult;
             }
         }
         stderr: StdioCollector {

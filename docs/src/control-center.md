@@ -131,6 +131,23 @@ The Power Settings card retains the existing persisted screen-DPMS and
 auto-lock controls. Each feature can be enabled or disabled and assigned a
 5-minute, 10-minute, 15-minute, 30-minute, or 1-hour timeout.
 
+The full Settings Power page also shows battery, external-power, profile,
+suspend, and lid capabilities. Its Lock, Log Out, Suspend, Reboot, and Shutdown
+buttons use the same shared root QML action model and confirmation policy as
+the panel Power menu. Denied or failed actions remain attributed to the
+surface that requested them.
+
+### Defaults and Startup Applications
+
+Settings -> Defaults manages browser, terminal, file-manager, and selected MIME
+handlers through versioned XDG records. Restore Previous is offered only while
+the recovery image still matches the state written by the last action.
+
+The same page lists effective XDG autostart entries and their vendor or user
+origin. Enable, disable, and reset create or update user overrides for the next
+login; vendor desktop files are never edited. Changes to the locker,
+compositor, or polkit agent require explicit confirmation.
+
 ### Keybind Viewer
 
 Displays all bindings from `hotkeys.toml` in a searchable Quickshell list. Same

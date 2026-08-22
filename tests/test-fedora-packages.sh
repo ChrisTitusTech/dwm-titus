@@ -66,6 +66,7 @@ if printf '%s\n' "$installed_provider_packages" | grep -Fxq power-profiles-daemo
 fi
 printf '%s\n' "$installed_provider_packages" | grep -Fxq upower
 printf '%s\n' "$installed_provider_packages" | grep -Fxq dbus-tools
+printf '%s\n' "$installed_provider_packages" | grep -Fxq inotify-tools
 
 missing_provider_packages=$(PATH="$work/bin:$PATH" DWM_TEST_PPD_PROVIDER=0 bash -c '
 	. "$1"

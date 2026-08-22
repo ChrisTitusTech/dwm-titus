@@ -519,6 +519,13 @@ unset DWM_POWER_TEST_LOCKER_NO_CONVERGE
 
 write_initial_config
 sed -i 's/^lock_enabled=0$/lock_enabled=1/' "$work/config/dwm-titus/power.conf"
+export DWM_POWER_TEST_LOCKER_NO_CONVERGE=1
+expect_status 1 run_helper power-apply
+[ ! -e "$work/state/light-locker.running" ]
+unset DWM_POWER_TEST_LOCKER_NO_CONVERGE
+
+write_initial_config
+sed -i 's/^lock_enabled=0$/lock_enabled=1/' "$work/config/dwm-titus/power.conf"
 printf '600\n' >"$work/state/saver_timeout"
 printf '5\n' >"$work/state/lock_after"
 printf 'true\n' >"$work/state/lock_on_suspend"

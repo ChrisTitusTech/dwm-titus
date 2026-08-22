@@ -1,0 +1,969 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly protocol_major=1
+readonly protocol_minor=0
+readonly max_desktop_size=262144
+readonly confirm_token=confirm-session-critical
+
+config_home=${XDG_CONFIG_HOME:-${HOME:?HOME is not set}/.config}
+config_dirs=${XDG_CONFIG_DIRS:-/etc/xdg}
+autostart_dir=$config_home/autostart
+
+work=
+lock_dir=
+lock_owned=0
+watch_child=
+watchdog_pid=
+transaction_active=0
+transaction_destination=
+transaction_backup=
+transaction_backup_mode=
+transaction_had_user=0
+
+rollback_transaction() {
+	((transaction_active == 1)) || return 0
+	if ((transaction_had_user == 1)); then
+		if ! restore_backup "$transaction_backup" "$transaction_destination" "$transaction_backup_mode"; then
+			printf 'dwm-xdg-autostart: interrupted action could not restore the prior override\n' >&2
+			return 1
+		fi
+	elif ! rm -f -- "$transaction_destination"; then
+		printf 'dwm-xdg-autostart: interrupted action could not remove the new override\n' >&2
+		return 1
+	fi
+	transaction_active=0
+}
+
+arm_transaction() {
+	transaction_destination=$1
+	transaction_had_user=$2
+	transaction_backup=${3:-}
+	transaction_backup_mode=${4:-}
+	transaction_active=1
+}
+
+commit_transaction() {
+	transaction_active=0
+}
+
+cleanup() {
+	local status=$?
+	trap - EXIT HUP INT TERM
+	if ! rollback_transaction; then
+		status=1
+	fi
+	if [[ -n ${watch_child:-} ]]; then
+		kill -TERM "$watch_child" 2>/dev/null || true
+	fi
+	if [[ -n ${watchdog_pid:-} ]]; then
+		kill -TERM "$watchdog_pid" 2>/dev/null || true
+	fi
+	if [[ ${lock_owned:-0} == 1 && -n ${lock_dir:-} ]]; then
+		rm -f -- "$lock_dir/owner" 2>/dev/null || true
+		rmdir -- "$lock_dir" 2>/dev/null || true
+	fi
+	if [[ -n ${work:-} ]]; then
+		rm -rf -- "$work"
+	fi
+	exit "$status"
+}
+
+on_signal() {
+	exit "$1"
+}
+
+trap cleanup EXIT
+trap 'on_signal 129' HUP
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+
+die() {
+	printf 'dwm-xdg-autostart: %s\n' "$*" >&2
+	exit 1
+}
+
+usage() {
+	cat <<'EOF'
+Usage:
+  dwm-xdg-autostart snapshot
+  dwm-xdg-autostart watch
+  dwm-xdg-autostart set <desktop-id> enabled|disabled <expected-revision> [confirm-session-critical]
+  dwm-xdg-autostart reset <desktop-id> <expected-revision> [confirm-session-critical]
+
+Mutations affect the next login only. They never start or stop applications.
+EOF
+}
+
+need_cmd() {
+	command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+safe_field() {
+	LC_ALL=C awk 'BEGIN { ORS = "" }
+		{
+			if (NR > 1) printf " "
+			gsub(/[\t\r]/, " ")
+			gsub(/[[:cntrl:]]/, "?")
+			printf "%s", $0
+		}' <<<"${1:-}"
+}
+
+valid_desktop_id() {
+	local desktop_id=${1:-}
+	((${#desktop_id} <= 255)) || return 1
+	[[ $desktop_id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.desktop$ ]] || return 1
+	[[ $desktop_id != *..* ]]
+}
+
+valid_absolute_path() {
+	local path=${1:-}
+	[[ $path == /* && $path != *$'\n'* && $path != *$'\r'* && $path != *$'\t'* ]] || return 1
+	case $path/ in
+	*/../* | */./*) return 1 ;;
+	esac
+	return 0
+}
+
+assert_no_symlink_components() {
+	local path=$1 current=/ component
+	local -a components=()
+	valid_absolute_path "$path" || return 1
+	IFS=/ read -r -a components <<<"${path#/}"
+	for component in "${components[@]}"; do
+		[[ -n $component ]] || continue
+		if [[ $current == / ]]; then
+			current=/$component
+		else
+			current=$current/$component
+		fi
+		[[ ! -L $current ]] || return 1
+	done
+}
+
+path_is_safe_regular() {
+	local path=$1 root=$2 canonical_root canonical_path size
+	[[ -e $path && ! -L $path && -f $path ]] || return 1
+	assert_no_symlink_components "$path" || return 1
+	canonical_root=$(realpath -e -- "$root") || return 1
+	canonical_path=$(realpath -e -- "$path") || return 1
+	case $canonical_path in
+	"$canonical_root"/*) ;;
+	*) return 1 ;;
+	esac
+	size=$(stat -c %s -- "$path") || return 1
+	[[ $size =~ ^[0-9]+$ ]] || return 1
+	((size <= max_desktop_size))
+}
+
+desktop_risk() {
+	case $1 in
+	light-locker.desktop | picom.desktop | polkit-mate-authentication-agent-1.desktop)
+		printf 'session-critical\n'
+		;;
+	*) printf 'normal\n' ;;
+	esac
+}
+
+token_has() {
+	local list=$1 wanted=$2 token
+	IFS=';' read -r -a tokens <<<"$list"
+	for token in "${tokens[@]}"; do
+		[[ $token == "$wanted" ]] && return 0
+	done
+	return 1
+}
+
+desktop_matches_dwm() {
+	token_has "$1" X-DWM || token_has "$1" dwm
+}
+
+parse_desktop_file() {
+	local file=$1
+	local -a values=()
+	parsed_error=
+	parsed_type=
+	parsed_name=
+	parsed_exec=
+	parsed_hidden=false
+	parsed_only=
+	parsed_not=
+	parsed_try_exec=
+	parsed_condition=
+	parsed_only_present=0
+	parsed_not_present=0
+
+	mapfile -t values < <(
+		LC_ALL=C awk '
+			function fail(message) { error = message; exit }
+			{
+				sub(/\r$/, "")
+				if ($0 ~ /[\000-\011\013-\037\177]/)
+					fail("control character in desktop entry")
+				if ($0 ~ /^\[/) {
+					in_entry = ($0 == "[Desktop Entry]")
+					if (in_entry) entry_groups++
+					next
+				}
+				if (!in_entry || $0 ~ /^[[:space:]]*($|#)/) next
+				if ($0 !~ /^[A-Za-z0-9-]+=/) next
+				key = $0
+				sub(/=.*/, "", key)
+				value = substr($0, length(key) + 2)
+				if (key == "Type" || key == "Name" || key == "Exec" ||
+				    key == "Hidden" || key == "OnlyShowIn" ||
+				    key == "NotShowIn" || key == "TryExec" ||
+				    key == "AutostartCondition") {
+					if (++seen[key] > 1) fail("duplicate " key " key")
+					values[key] = value
+				}
+			}
+			END {
+				if (length(error)) {
+					print "error=" error
+					exit
+				}
+				if (entry_groups != 1) {
+					print "error=expected exactly one Desktop Entry group"
+					exit
+				}
+				print "type=" values["Type"]
+				print "name=" values["Name"]
+				print "exec=" values["Exec"]
+				print "hidden=" values["Hidden"]
+				print "only=" values["OnlyShowIn"]
+				print "not=" values["NotShowIn"]
+				print "try=" values["TryExec"]
+				print "condition=" values["AutostartCondition"]
+				print "only-present=" (seen["OnlyShowIn"] ? 1 : 0)
+				print "not-present=" (seen["NotShowIn"] ? 1 : 0)
+			}
+		' "$file"
+	)
+
+	local row key value
+	for row in "${values[@]}"; do
+		key=${row%%=*}
+		value=${row#*=}
+		case $key in
+		error) parsed_error=$value ;;
+		type) parsed_type=$value ;;
+		name) parsed_name=$value ;;
+		exec) parsed_exec=$value ;;
+		hidden) parsed_hidden=${value:-false} ;;
+		only) parsed_only=$value ;;
+		not) parsed_not=$value ;;
+		try) parsed_try_exec=$value ;;
+		condition) parsed_condition=$value ;;
+		only-present) parsed_only_present=$value ;;
+		not-present) parsed_not_present=$value ;;
+		esac
+	done
+
+	[[ -z $parsed_error ]] || return 1
+	[[ $parsed_type == Application ]] || {
+		parsed_error='Type must be Application'
+		return 1
+	}
+	[[ -n $parsed_exec ]] || {
+		parsed_error='missing Exec key'
+		return 1
+	}
+	case $parsed_hidden in
+	true | false) ;;
+	*)
+		parsed_error='Hidden must be true or false'
+		return 1
+		;;
+	esac
+	if ((parsed_only_present == 1 && parsed_not_present == 1)); then
+		parsed_error='OnlyShowIn and NotShowIn cannot both be present'
+		return 1
+	fi
+	return 0
+}
+
+try_exec_available() {
+	local executable=$1
+	[[ -z $executable ]] && return 0
+	case $executable in
+	/*) [[ -x $executable && -f $executable ]] ;;
+	*/*) return 1 ;;
+	*) command -v -- "$executable" >/dev/null 2>&1 ;;
+	esac
+}
+
+find_vendor_entry() {
+	local desktop_id=$1 root candidate
+	vendor_path=
+	for root in "${vendor_roots[@]}"; do
+		candidate=$root/autostart/$desktop_id
+		if [[ -e $candidate || -L $candidate ]]; then
+			vendor_path=$candidate
+			return 0
+		fi
+	done
+	return 1
+}
+
+revision_for_entry() {
+	local origin=$1 user=$2 vendor=$3 path label root
+	{
+		printf 'origin\0%s\0' "$origin"
+		for label in user vendor; do
+			if [[ $label == user ]]; then path=$user; else path=$vendor; fi
+			printf '%s\0' "$label"
+			if [[ -z $path ]]; then
+				printf 'absent\0'
+			elif [[ -L $path ]]; then
+				printf 'symlink\0%s\0' "$(readlink -- "$path" 2>/dev/null || true)"
+			elif [[ -f $path ]]; then
+				if [[ $label == user ]]; then
+					root=$autostart_dir
+				else
+					root=${path%/autostart/*}/autostart
+				fi
+				if path_is_safe_regular "$path" "$root"; then
+					sha256sum -- "$path" 2>/dev/null || printf 'unreadable\0'
+				else
+					printf 'unsafe\0'
+				fi
+			else
+				printf 'nonregular\0'
+			fi
+		done
+	} | sha256sum | awk '{ print $1 }'
+}
+
+load_entry() {
+	local desktop_id=$1 effective_path root detail=
+	entry_id=$desktop_id
+	entry_user_path=
+	entry_vendor_path=
+	entry_user_present=0
+	entry_vendor_present=0
+	entry_can_reset=0
+	entry_can_enable=0
+	entry_can_disable=0
+	entry_name=$desktop_id
+	entry_origin=vendor
+	entry_state=unsupported
+	entry_visibility=unknown
+	entry_risk=$(desktop_risk "$desktop_id")
+	entry_detail=
+
+	if [[ -e $autostart_dir/$desktop_id || -L $autostart_dir/$desktop_id ]]; then
+		entry_user_path=$autostart_dir/$desktop_id
+		entry_user_present=1
+	fi
+	if find_vendor_entry "$desktop_id"; then
+		entry_vendor_path=$vendor_path
+		entry_vendor_present=1
+	fi
+
+	if ((entry_user_present == 1)); then
+		effective_path=$entry_user_path
+		if ((entry_vendor_present == 1)); then
+			entry_origin='user-override'
+			entry_can_reset=1
+		else
+			entry_origin='user-only'
+		fi
+	else
+		effective_path=$entry_vendor_path
+		entry_origin=vendor
+	fi
+
+	entry_revision=$(revision_for_entry "$entry_origin" "$entry_user_path" "$entry_vendor_path")
+	if [[ -z $effective_path ]]; then
+		entry_detail='entry disappeared during snapshot'
+		return 1
+	fi
+
+	if ((entry_user_present == 1)); then root=$autostart_dir; else root=${effective_path%/autostart/*}/autostart; fi
+	if ! path_is_safe_regular "$effective_path" "$root"; then
+		entry_detail='effective entry is not a safe regular file'
+		return 1
+	fi
+	if ! parse_desktop_file "$effective_path"; then
+		entry_state=malformed
+		entry_detail=$parsed_error
+		return 1
+	fi
+	[[ -z $parsed_name ]] || entry_name=$parsed_name
+
+	if [[ $parsed_hidden == true ]]; then
+		entry_state=disabled
+		entry_visibility=hidden
+		entry_detail='Hidden=true disables this entry for every desktop'
+	elif ((parsed_only_present == 1)) && ! desktop_matches_dwm "$parsed_only"; then
+		entry_state=non-applicable
+		entry_visibility=not-shown
+		entry_can_enable=1
+		entry_detail='OnlyShowIn does not include X-DWM or dwm'
+	elif [[ -n $parsed_not ]] && desktop_matches_dwm "$parsed_not"; then
+		entry_state=disabled
+		entry_visibility=not-shown
+		entry_can_enable=1
+		entry_detail='NotShowIn excludes X-DWM or dwm'
+	elif ! try_exec_available "$parsed_try_exec"; then
+		entry_state=non-applicable
+		entry_visibility=not-shown
+		entry_detail='TryExec is not available'
+	elif [[ -n $parsed_condition ]]; then
+		entry_state=conditional
+		entry_visibility=conditional
+		entry_can_disable=1
+		entry_detail='AutostartCondition is evaluated by the session'
+	else
+		entry_state=enabled
+		entry_visibility=visible
+		entry_can_disable=1
+		entry_detail='enabled for the dwm session at next login'
+	fi
+	return 0
+}
+
+print_entry() {
+	printf 'entry\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+		"$(safe_field "$entry_id")" \
+		"$(safe_field "$entry_name")" \
+		"$entry_origin" "$entry_state" "$entry_visibility" \
+		"$entry_user_present" "$entry_vendor_present" "$entry_can_reset" \
+		"$entry_risk" "$entry_revision" "$entry_can_enable" "$entry_can_disable" \
+		"$(safe_field "$entry_detail")"
+}
+
+initialize_roots() {
+	local root
+	vendor_roots=()
+	valid_absolute_path "$config_home" || die 'XDG_CONFIG_HOME must be an absolute safe path'
+	IFS=: read -r -a raw_vendor_roots <<<"$config_dirs"
+	for root in "${raw_vendor_roots[@]}"; do
+		[[ -n $root ]] || continue
+		valid_absolute_path "$root" || continue
+		vendor_roots+=("${root%/}")
+	done
+	((${#vendor_roots[@]} > 0)) || vendor_roots=(/etc/xdg)
+}
+
+snapshot() {
+	local root file desktop_id provider_state=ready provider_detail='XDG autostart inventory ready'
+	local -A seen=()
+	local -a ordered=()
+	work=$(mktemp -d "${TMPDIR:-/tmp}/dwm-xdg-autostart.XXXXXX")
+	initialize_roots
+
+	if ! assert_no_symlink_components "$config_home" ||
+		{ [[ -e $config_home ]] && [[ ! -d $config_home || -L $config_home ]]; }; then
+		printf 'autostart-protocol\t%s\t%s\n' "$protocol_major" "$protocol_minor"
+		printf 'provider\tunavailable\t%s\n' "$(safe_field 'XDG_CONFIG_HOME is symlinked or unsafe')"
+		return 0
+	fi
+	if [[ -L $autostart_dir ]] || { [[ -e $autostart_dir ]] && ! assert_no_symlink_components "$autostart_dir"; }; then
+		printf 'autostart-protocol\t%s\t%s\n' "$protocol_major" "$protocol_minor"
+		printf 'provider\tunavailable\t%s\n' "$(safe_field 'user autostart directory is symlinked or unsafe')"
+		return 0
+	fi
+
+	if [[ -d $autostart_dir ]]; then
+		while IFS= read -r -d '' file; do
+			desktop_id=${file##*/}
+			if valid_desktop_id "$desktop_id"; then
+				seen["$desktop_id"]=1
+			else
+				provider_state=degraded
+				provider_detail='unsafe desktop filenames were ignored'
+			fi
+		done < <(find "$autostart_dir" -mindepth 1 -maxdepth 1 \( -type f -o -type l \) -name '*.desktop' -print0 2>/dev/null)
+	fi
+	for root in "${vendor_roots[@]}"; do
+		if [[ -L $root/autostart ]] || { [[ -e $root/autostart ]] && ! assert_no_symlink_components "$root/autostart"; }; then
+			provider_state=degraded
+			provider_detail='symlinked vendor autostart directories were ignored'
+			continue
+		fi
+		[[ -d $root/autostart ]] || continue
+		while IFS= read -r -d '' file; do
+			desktop_id=${file##*/}
+			if valid_desktop_id "$desktop_id"; then
+				seen["$desktop_id"]=1
+			else
+				provider_state=degraded
+				provider_detail='unsafe desktop filenames were ignored'
+			fi
+		done < <(find "$root/autostart" -mindepth 1 -maxdepth 1 \( -type f -o -type l \) -name '*.desktop' -print0 2>/dev/null)
+	done
+
+	if ((${#seen[@]} > 0)); then
+		mapfile -d '' -t ordered < <(printf '%s\0' "${!seen[@]}" | LC_ALL=C sort -z)
+	fi
+	for desktop_id in "${ordered[@]}"; do
+		if ! load_entry "$desktop_id"; then
+			provider_state=degraded
+			provider_detail='one or more entries are unsupported or malformed'
+		fi
+		print_entry >>"$work/entries"
+	done
+
+	printf 'autostart-protocol\t%s\t%s\n' "$protocol_major" "$protocol_minor"
+	printf 'provider\t%s\t%s\n' "$provider_state" "$(safe_field "$provider_detail")"
+	[[ ! -s $work/entries ]] || cat "$work/entries"
+}
+
+ensure_user_directory() {
+	local uid path
+	uid=$(id -u)
+	((uid != 0)) || die 'refusing to mutate autostart settings as root'
+	assert_no_symlink_components "$config_home" || die 'XDG_CONFIG_HOME contains a symlink or unsafe component'
+	if [[ ! -e $config_home ]]; then
+		umask 077
+		mkdir -p -- "$config_home" || die 'could not create XDG_CONFIG_HOME'
+	fi
+	[[ -d $config_home && ! -L $config_home ]] || die 'XDG_CONFIG_HOME is not a safe directory'
+	[[ $(stat -c %u -- "$config_home") == "$uid" ]] || die 'XDG_CONFIG_HOME is not owned by the invoking user'
+	assert_no_symlink_components "$config_home" || die 'XDG_CONFIG_HOME contains a symlink component'
+
+	if [[ ! -e $autostart_dir ]]; then
+		umask 077
+		mkdir -- "$autostart_dir" || die 'could not create the user autostart directory'
+	fi
+	[[ -d $autostart_dir && ! -L $autostart_dir ]] || die 'user autostart path is not a safe directory'
+	[[ $(stat -c %u -- "$autostart_dir") == "$uid" ]] || die 'user autostart directory is not owned by the invoking user'
+	assert_no_symlink_components "$autostart_dir" || die 'user autostart path contains a symlink component'
+}
+
+acquire_lock() {
+	local owner_pid owner_start current_start
+	lock_dir=$autostart_dir/.dwm-titus.lock
+	if ! (umask 077 && mkdir -- "$lock_dir"); then
+		if [[ -d $lock_dir && ! -L $lock_dir && -f $lock_dir/owner && ! -L $lock_dir/owner ]] &&
+			read -r owner_pid owner_start <"$lock_dir/owner" &&
+			[[ $owner_pid =~ ^[0-9]+$ && $owner_start =~ ^[0-9]+$ ]]; then
+			current_start=$(sed 's/^.*) //' "/proc/$owner_pid/stat" 2>/dev/null | awk '{ print $20 }' || true)
+			if [[ $current_start != "$owner_start" ]] &&
+				rm -- "$lock_dir/owner" 2>/dev/null &&
+				rmdir -- "$lock_dir" 2>/dev/null &&
+				(umask 077 && mkdir -- "$lock_dir"); then
+				:
+			else
+				die 'another autostart action is already running'
+			fi
+		else
+			die 'another autostart action is already running'
+		fi
+	fi
+	lock_owned=1
+	current_start=$(sed 's/^.*) //' "/proc/$$/stat" 2>/dev/null | awk '{ print $20 }') || die 'could not identify the autostart action process'
+	[[ $current_start =~ ^[0-9]+$ ]] || die 'could not identify the autostart action process'
+	printf '%s %s\n' "$$" "$current_start" >"$lock_dir/owner" || die 'could not record autostart action ownership'
+}
+
+validate_existing_user_entry() {
+	local path=$1 uid links
+	[[ ! -L $path && -f $path ]] || die 'refusing to mutate a non-regular or symlinked user override'
+	assert_no_symlink_components "$path" || die 'user override contains a symlink component'
+	uid=$(id -u)
+	[[ $(stat -c %u -- "$path") == "$uid" ]] || die 'user override is not owned by the invoking user'
+	links=$(stat -c %h -- "$path")
+	[[ $links == 1 ]] || die 'refusing to mutate a hard-linked user override'
+	path_is_safe_regular "$path" "$autostart_dir" || die 'user override escapes the autostart directory or is oversized'
+}
+
+validate_vendor_entry() {
+	local path=$1 root
+	root=${path%/autostart/*}/autostart
+	path_is_safe_regular "$path" "$root" || die 'vendor entry is not a safe regular file'
+}
+
+make_backup() {
+	local source=$1 desktop_id=$2 backup_dir candidate
+	backup_mode=$(stat -c %a -- "$source") || die 'could not read existing override permissions'
+	backup_dir=$autostart_dir/.dwm-titus-backups
+	if [[ ! -e $backup_dir ]]; then
+		umask 077
+		mkdir -- "$backup_dir" || die 'could not create the autostart backup directory'
+	fi
+	[[ -d $backup_dir && ! -L $backup_dir ]] || die 'autostart backup path is not a safe directory'
+	[[ $(stat -c %u -- "$backup_dir") == "$(id -u)" ]] || die 'autostart backup directory is not user-owned'
+	assert_no_symlink_components "$backup_dir" || die 'autostart backup path contains a symlink component'
+	candidate=$(umask 077 && mktemp "$backup_dir/$desktop_id.XXXXXX") || die 'could not reserve a backup path'
+	if ! cp -p -- "$source" "$candidate" || ! chmod 600 -- "$candidate"; then
+		rm -f -- "$candidate"
+		die 'could not back up the existing user override'
+	fi
+	cmp -s -- "$source" "$candidate" || {
+		rm -f -- "$candidate"
+		die 'autostart backup verification failed'
+	}
+	backup_path=$candidate
+}
+
+restore_backup() {
+	local backup=$1 destination=$2 mode=$3 temp
+	temp=$(umask 077 && mktemp "$autostart_dir/.rollback.XXXXXX") || return 1
+	if ! cp -- "$backup" "$temp" || ! chmod "$mode" -- "$temp" ||
+		! mv -- "$temp" "$destination"; then
+		rm -f -- "$temp"
+		return 1
+	fi
+}
+
+verify_requested_state() {
+	local requested=$1
+	case $requested:$entry_state in
+	enabled:enabled | enabled:conditional | disabled:disabled | disabled:non-applicable) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+transform_entry() {
+	local source=$1 destination=$2 requested=$3
+	LC_ALL=C awk -v requested="$requested" '
+		function has_token(value, wanted, count, parts, i) {
+			count = split(value, parts, ";")
+			for (i = 1; i <= count; i++) if (parts[i] == wanted) return 1
+			return 0
+		}
+		function remove_dwm(value, count, parts, i, result) {
+			count = split(value, parts, ";")
+			result = ""
+			for (i = 1; i <= count; i++) {
+				if (parts[i] == "" || parts[i] == "X-DWM" || parts[i] == "dwm") continue
+				result = result parts[i] ";"
+			}
+			return result
+		}
+		function add_token(value, token) {
+			if (has_token(value, token)) return value
+			if (value != "" && value !~ /;$/) value = value ";"
+			return value token ";"
+		}
+		function updated_only(value) {
+			if (requested == "disabled") return remove_dwm(value)
+			return add_token(remove_dwm(value), "X-DWM")
+		}
+		function updated_not(value) {
+			value = remove_dwm(value)
+			if (requested == "disabled") value = add_token(value, "X-DWM")
+			return value
+		}
+		{
+			line = $0
+			sub(/\r$/, "", line)
+			if (line ~ /^\[/) {
+				if (in_entry && requested == "disabled" && !seen_not && !seen_only)
+					print "NotShowIn=X-DWM;"
+				in_entry = (line == "[Desktop Entry]")
+				print line
+				next
+			}
+			if (in_entry && line ~ /^OnlyShowIn=/) {
+				print "OnlyShowIn=" updated_only(substr(line, 12))
+				seen_only = 1
+				next
+			}
+			if (in_entry && line ~ /^NotShowIn=/) {
+				print "NotShowIn=" updated_not(substr(line, 11))
+				seen_not = 1
+				next
+			}
+			print line
+		}
+		END {
+			if (in_entry && requested == "disabled" && !seen_not && !seen_only)
+				print "NotShowIn=X-DWM;"
+		}
+	' "$source" >"$destination"
+}
+
+prepare_action() {
+	local desktop_id=$1 expected_revision=$2 confirmation=${3:-}
+	valid_desktop_id "$desktop_id" || die 'invalid desktop id'
+	[[ $expected_revision =~ ^[0-9a-f]{64}$ ]] || die 'invalid expected revision'
+	initialize_roots
+	ensure_user_directory
+	acquire_lock
+	load_entry "$desktop_id" || true
+	((entry_user_present == 1 || entry_vendor_present == 1)) || die 'autostart entry was not found'
+	[[ $entry_revision == "$expected_revision" ]] || die 'autostart entry changed; refresh and try again'
+	if [[ $entry_risk == session-critical && $confirmation != "$confirm_token" ]]; then
+		die "confirmation token required: $confirm_token"
+	fi
+	if ((entry_user_present == 1)); then validate_existing_user_entry "$entry_user_path"; fi
+	if ((entry_vendor_present == 1)); then validate_vendor_entry "$entry_vendor_path"; fi
+}
+
+print_action_success() {
+	local operation=$1 desktop_id=$2 backup=${3:-} detail=$4
+	load_entry "$desktop_id" || die "resulting entry is invalid: $entry_detail"
+	printf 'autostart-protocol\t%s\t%s\n' "$protocol_major" "$protocol_minor"
+	printf 'action\tsuccess\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+		"$operation" "$desktop_id" "$entry_state" "$entry_revision" \
+		"$(safe_field "$backup")" "$(safe_field "$detail")"
+}
+
+set_entry() {
+	local desktop_id=$1 requested=$2 expected_revision=$3 confirmation=${4:-}
+	local source temp generated_error backup_path='' backup_mode='' had_user=0
+	case $requested in enabled | disabled) ;; *) die 'state must be enabled or disabled' ;; esac
+	prepare_action "$desktop_id" "$expected_revision" "$confirmation"
+
+	if [[ $entry_state == malformed || $entry_state == unsupported ]]; then
+		die "entry cannot be changed: $entry_detail"
+	fi
+	if [[ $requested == enabled && $parsed_hidden == true ]]; then
+		die 'Hidden=true cannot be overridden safely; reset or edit the entry explicitly'
+	fi
+	if [[ $requested == enabled ]] && ! try_exec_available "$parsed_try_exec"; then
+		die 'TryExec is unavailable; enabling would not make this entry runnable'
+	fi
+	if [[ $requested == disabled && ($entry_state == disabled || $entry_state == non-applicable) ]]; then
+		print_action_success set "$desktop_id" '' 'already disabled; no files changed'
+		return 0
+	fi
+	if [[ $requested == enabled && $entry_state == enabled ]]; then
+		print_action_success set "$desktop_id" '' 'already enabled; no files changed'
+		return 0
+	fi
+
+	if ((entry_user_present == 1)); then
+		source=$entry_user_path
+		had_user=1
+	else
+		source=$entry_vendor_path
+	fi
+	temp=$(umask 077 && mktemp "$autostart_dir/.$desktop_id.XXXXXX") || die 'could not create a temporary override'
+	transform_entry "$source" "$temp" "$requested" || {
+		rm -f -- "$temp"
+		die 'could not prepare the user override'
+	}
+	parse_desktop_file "$temp" || {
+		generated_error=$parsed_error
+		rm -f -- "$temp"
+		die "generated override is invalid: $generated_error"
+	}
+	chmod 644 -- "$temp" || {
+		rm -f -- "$temp"
+		die 'could not set override permissions'
+	}
+	if cmp -s -- "$source" "$temp"; then
+		rm -f -- "$temp"
+		if ! load_entry "$desktop_id" || ! verify_requested_state "$requested"; then
+			die 'requested state is not represented; no files changed'
+		fi
+		print_action_success set "$desktop_id" '' 'requested state already represented; no files changed'
+		return 0
+	fi
+	if ((entry_user_present == 1)); then make_backup "$entry_user_path" "$desktop_id"; fi
+	arm_transaction "$autostart_dir/$desktop_id" "$had_user" "$backup_path" "$backup_mode"
+	if ! mv -- "$temp" "$autostart_dir/$desktop_id"; then
+		rm -f -- "$temp"
+		die 'could not atomically install the user override'
+	fi
+	if ! load_entry "$desktop_id" || ! verify_requested_state "$requested"; then
+		die 'result verification failed; the prior state was restored'
+	fi
+	commit_transaction
+	print_action_success set "$desktop_id" "$backup_path" "state set to $requested for the next login"
+}
+
+reset_entry() {
+	local desktop_id=$1 expected_revision=$2 confirmation=${3:-} backup_path='' backup_mode=''
+	prepare_action "$desktop_id" "$expected_revision" "$confirmation"
+	((entry_user_present == 1)) || die 'entry has no user override to reset'
+	((entry_vendor_present == 1)) || die 'user-only entries cannot be reset to a vendor definition'
+	parse_desktop_file "$entry_vendor_path" || die "vendor entry cannot be used for reset: $parsed_error"
+	make_backup "$entry_user_path" "$desktop_id"
+	arm_transaction "$autostart_dir/$desktop_id" 1 "$backup_path" "$backup_mode"
+	if ! rm -- "$entry_user_path"; then
+		die 'could not remove the user override after backup'
+	fi
+	if ! load_entry "$desktop_id"; then
+		die 'reset verification failed; the user override was restored'
+	fi
+	commit_transaction
+	print_action_success reset "$desktop_id" "$backup_path" 'user override reset to vendor for the next login'
+}
+
+safe_watch_directory() {
+	local path=$1
+	[[ -d $path && ! -L $path ]] && assert_no_symlink_components "$path"
+}
+
+resolve_user_watch() {
+	local candidate
+	resolved_user_mode=ancestor
+	if safe_watch_directory "$autostart_dir"; then
+		resolved_user_path=$(realpath -e -- "$autostart_dir") || return 1
+		resolved_user_mode=autostart
+	elif safe_watch_directory "$config_home"; then
+		resolved_user_path=$(realpath -e -- "$config_home") || return 1
+		resolved_user_mode=config
+	else
+		candidate=${config_home%/*}
+		[[ -n $candidate ]] || candidate=/
+		while ! safe_watch_directory "$candidate"; do
+			[[ $candidate != / ]] || return 1
+			candidate=${candidate%/*}
+			[[ -n $candidate ]] || candidate=/
+		done
+		resolved_user_path=$(realpath -e -- "$candidate") || return 1
+	fi
+}
+
+watch_generation() {
+	local user_mode=$1 user_path=$2 parent_pid=$PPID parent_record parent_state parent_identity
+	local current_record current_state current_identity ready_log fifo watch_fd status=0 restart=0 attempts=0
+	shift 2
+	local -a paths=("$@")
+	parent_record=$(sed 's/^.*) //' "/proc/$parent_pid/stat" 2>/dev/null | awk '{ print $1 " " $20 }') || return 1
+	parent_state=${parent_record%% *}
+	parent_identity=${parent_record#* }
+	[[ -n $parent_identity && $parent_state != Z ]] || return 1
+
+	ready_log=$work/inotify.ready
+	fifo=$work/inotify.events
+	rm -f -- "$ready_log" "$fifo"
+	mkfifo -- "$fifo" || die 'could not create the watcher event channel'
+	LC_ALL=C inotifywait -m \
+		-e close_write,create,delete,move,attrib \
+		--format $'changed\tautostart' -- "${paths[@]}" >"$fifo" 2>"$ready_log" &
+	watch_child=$!
+	exec {watch_fd}<"$fifo"
+	(
+		while :; do
+			current_record=$(sed 's/^.*) //' "/proc/$parent_pid/stat" 2>/dev/null | awk '{ print $1 " " $20 }' || true)
+			current_state=${current_record%% *}
+			current_identity=${current_record#* }
+			if [[ $current_state == Z || $current_identity != "$parent_identity" ]]; then
+				kill -TERM "$watch_child" 2>/dev/null || true
+				exit 0
+			fi
+			sleep 0.25
+		done
+	) &
+	watchdog_pid=$!
+
+	until grep -Fq 'Watches established.' "$ready_log" 2>/dev/null; do
+		if ! kill -0 "$watch_child" 2>/dev/null; then
+			wait "$watch_child" || status=$?
+			kill -TERM "$watchdog_pid" 2>/dev/null || true
+			wait "$watchdog_pid" 2>/dev/null || true
+			watch_child=
+			watchdog_pid=
+			exec {watch_fd}<&-
+			return "$status"
+		fi
+		attempts=$((attempts + 1))
+		((attempts < 200)) || die 'timed out while establishing autostart watches'
+		sleep 0.01
+	done
+	printf 'ready\tautostart\n'
+
+	while IFS= read -r event <&"$watch_fd"; do
+		printf '%s\n' "$event"
+		if ! resolve_user_watch; then
+			continue
+		fi
+		if [[ $resolved_user_mode != "$user_mode" || $resolved_user_path != "$user_path" ]]; then
+			restart=1
+			break
+		fi
+	done
+	if ((restart == 1)); then
+		kill -TERM "$watch_child" 2>/dev/null || true
+	fi
+	wait "$watch_child" || status=$?
+	kill -TERM "$watchdog_pid" 2>/dev/null || true
+	wait "$watchdog_pid" 2>/dev/null || true
+	watch_child=
+	watchdog_pid=
+	exec {watch_fd}<&-
+	((restart == 0)) || return 10
+	return "$status"
+}
+
+watch_entries() {
+	local root canonical user_mode user_path status
+	local -A seen=()
+	local -a paths=()
+	work=$(mktemp -d "${TMPDIR:-/tmp}/dwm-xdg-autostart-watch.XXXXXX")
+	initialize_roots
+	need_cmd inotifywait
+	need_cmd mkfifo
+	printf 'autostart-watch-protocol\t%s\t%s\n' "$protocol_major" "$protocol_minor"
+	while :; do
+		seen=()
+		paths=()
+		resolve_user_watch || die 'no safe XDG_CONFIG_HOME ancestor is available to watch'
+		user_mode=$resolved_user_mode
+		user_path=$resolved_user_path
+		canonical=$user_path
+		seen["$canonical"]=1
+		paths+=("$canonical")
+		for root in "${vendor_roots[@]}"; do
+			[[ -d $root/autostart && ! -L $root/autostart ]] || continue
+			assert_no_symlink_components "$root/autostart" || continue
+			canonical=$(realpath -e -- "$root/autostart") || continue
+			[[ -z ${seen[$canonical]+x} ]] || continue
+			seen["$canonical"]=1
+			paths+=("$canonical")
+		done
+		if watch_generation "$user_mode" "$user_path" "${paths[@]}"; then
+			return 0
+		else
+			status=$?
+			((status == 10)) || return "$status"
+		fi
+	done
+}
+
+main() {
+	local command=${1:-}
+	need_cmd awk
+	need_cmd find
+	need_cmd realpath
+	need_cmd sha256sum
+	need_cmd stat
+	need_cmd mktemp
+	case $command in
+	snapshot)
+		[[ $# -eq 1 ]] || {
+			usage >&2
+			exit 2
+		}
+		snapshot
+		;;
+	watch)
+		[[ $# -eq 1 ]] || {
+			usage >&2
+			exit 2
+		}
+		watch_entries
+		;;
+	set)
+		[[ $# -ge 4 && $# -le 5 ]] || {
+			usage >&2
+			exit 2
+		}
+		set_entry "$2" "$3" "$4" "${5:-}"
+		;;
+	reset)
+		[[ $# -ge 3 && $# -le 4 ]] || {
+			usage >&2
+			exit 2
+		}
+		reset_entry "$2" "$3" "${4:-}"
+		;;
+	-h | --help | help)
+		usage
+		;;
+	*)
+		usage >&2
+		exit 2
+		;;
+	esac
+}
+
+main "$@"

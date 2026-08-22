@@ -30,6 +30,7 @@ runtime=$work/runtime
 config_home=$home/.config
 data_home=$home/.local/share
 mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" \
+	"$config_home/autostart" "$data_home/applications" \
 	"$data_home/dwm-titus/scripts" "$runtime"
 chmod 700 "$runtime"
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
@@ -38,12 +39,39 @@ cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
 sed -i 's/readonly property var nativeBattery: UPower.displayDevice/readonly property var nativeBattery: null/' \
 	"$config_home/quickshell/power/PowerModel.qml"
 cp "$repo/config/"*.toml "$config_home/dwm-titus/"
+cat >"$data_home/applications/kitty.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Kitty Fixture
+Exec=kitty
+Categories=System;TerminalEmulator;
+EOF
+cat >"$data_home/applications/Alacritty.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Alacritty Fixture
+Exec=alacritty
+Categories=System;TerminalEmulator;
+EOF
+cat >"$config_home/autostart/dwm-test-autostart.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=dwm Test Autostart
+Exec=/usr/bin/true
+EOF
+cat >"$config_home/autostart/picom.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Picom Session Fixture
+Exec=/usr/bin/true
+EOF
 cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-settings-display" "$repo/scripts/dwm-settings-input" \
 	"$repo/scripts/dwm-display-setup" \
 	"$repo/scripts/dwm-quickshell-controlcenter" "$repo/scripts/dwm-quickshell-controls" \
 	"$repo/scripts/dwm-quickshell-network" "$repo/scripts/dwm-diagnostics" \
-	"$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
+	"$repo/scripts/dwm-default-apps" "$repo/scripts/dwm-xdg-autostart" \
+	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
 
 malformed_power_snapshot=$work/malformed-power-snapshot
 mv "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" \
@@ -76,6 +104,15 @@ fi
 exec "$(dirname -- "$0")/dwm-quickshell-controlcenter.real" "$@"
 SH
 chmod +x "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter"
+cat >"$data_home/dwm-titus/scripts/kitty" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+cat >"$data_home/dwm-titus/scripts/alacritty" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod +x "$data_home/dwm-titus/scripts/kitty" "$data_home/dwm-titus/scripts/alacritty"
 
 power_state=$work/power-state
 mkdir -p "$power_state"
@@ -189,7 +226,32 @@ settings_power_gsettings_watch_count() {
 	printf '%s\n' "$watch_count"
 }
 
-cpu_sample_seconds=${DWM_SETTINGS_POWER_CPU_SECONDS:-0}
+settings_defaults_watch_count() {
+	pgrep -af '[i]notifywait' 2>/dev/null |
+		awk -v expected="$data_home/applications" '
+			index($0, " -r ") && index($0, expected) { count++ }
+			END { print count + 0 }
+		'
+}
+
+settings_autostart_watch_count() {
+	expected="$data_home/dwm-titus/scripts/dwm-xdg-autostart watch"
+	count=0
+	for watch_pid in $(pgrep -f '[d]wm-xdg-autostart watch$' 2>/dev/null || true); do
+		[ -r "/proc/$watch_pid/cmdline" ] || continue
+		watch_command=$(tr '\0' ' ' <"/proc/$watch_pid/cmdline")
+		case $watch_command in *"$expected"*) ;; *) continue ;; esac
+		watch_parent=$(awk '$1 == "PPid:" { print $2; exit }' "/proc/$watch_pid/status" 2>/dev/null || true)
+		if [ -n "$watch_parent" ] && [ -r "/proc/$watch_parent/cmdline" ]; then
+			watch_parent_command=$(tr '\0' ' ' <"/proc/$watch_parent/cmdline")
+			case $watch_parent_command in *"$expected"*) continue ;; esac
+		fi
+		count=$((count + 1))
+	done
+	printf '%s\n' "$count"
+}
+
+cpu_sample_seconds=${DWM_SETTINGS_POWER_CPU_SECONDS:-30}
 case $cpu_sample_seconds in
 '' | *[!0-9]*)
 	printf 'Invalid power CPU sample duration: %s\n' "$cpu_sample_seconds" >&2
@@ -499,6 +561,237 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.02
 done
 [ "$power_dpms_status" = available ]
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select defaults >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	defaults_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsProviderStatus 2>/dev/null || true)
+	defaults_role_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsRoleCount 2>/dev/null || true)
+	autostart_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartProviderStatus 2>/dev/null || true)
+	case $defaults_status:$autostart_status:$defaults_role_count in
+	available:ready:3 | available:degraded:3 | partial:ready:3 | partial:degraded:3) break ;;
+	esac
+	i=$((i + 1))
+	sleep 0.05
+done
+case $defaults_status in available | partial) : ;; *) exit 1 ;; esac
+[ "$defaults_role_count" -eq 3 ]
+case $autostart_status in ready | degraded) : ;; *) exit 1 ;; esac
+[ "$(settings_defaults_watch_count)" -eq 1 ]
+[ "$(settings_autostart_watch_count)" -eq 1 ]
+
+sed -i 's/Name=dwm Test Autostart/Name=dwm Test Autostart Changed/' \
+	"$config_home/autostart/dwm-test-autostart.desktop"
+i=0
+while [ "$i" -lt 200 ]; do
+	autostart_name=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartEntryName dwm-test-autostart.desktop 2>/dev/null || true)
+	[ "$autostart_name" = 'dwm Test Autostart Changed' ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$autostart_name" = 'dwm Test Autostart Changed' ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartEntryOrigin dwm-test-autostart.desktop)" = user-only ]
+
+sed -i 's/terminal = "alacritty"/terminal = "kitty"/' "$config_home/dwm-titus/hotkeys.toml"
+i=0
+while [ "$i" -lt 200 ]; do
+	terminal_id=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsRoleDesktopId terminal 2>/dev/null || true)
+	[ "$terminal_id" = kitty.desktop ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$terminal_id" = kitty.desktop ]
+sed -i 's/terminal = "kitty"/terminal = "alacritty"/' "$config_home/dwm-titus/hotkeys.toml"
+i=0
+while [ "$i" -lt 200 ]; do
+	terminal_id=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsRoleDesktopId terminal 2>/dev/null || true)
+	[ "$terminal_id" = Alacritty.desktop ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$terminal_id" = Alacritty.desktop ]
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartSetSearch picom >/dev/null
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartFilteredCount)" -eq 1 ]
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartSetSearch '' >/dev/null
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsSetRole terminal kitty.desktop >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	defaults_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsBusy 2>/dev/null || true)
+	terminal_id=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsRoleDesktopId terminal 2>/dev/null || true)
+	[ "$defaults_busy" = false ] && [ "$terminal_id" = kitty.desktop ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$defaults_busy" = false ]
+[ "$terminal_id" = kitty.desktop ]
+grep -Fqx 'terminal = "kitty"' "$config_home/dwm-titus/hotkeys.toml"
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsResetRole terminal >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	defaults_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsBusy 2>/dev/null || true)
+	terminal_id=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsRoleDesktopId terminal 2>/dev/null || true)
+	[ "$defaults_busy" = false ] && [ "$terminal_id" = Alacritty.desktop ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$defaults_busy" = false ]
+[ "$terminal_id" = Alacritty.desktop ]
+grep -Fqx 'terminal = "alacritty"' "$config_home/dwm-titus/hotkeys.toml"
+
+# A helper that prints the exact success record but exits nonzero must never
+# produce a saved message in QML. Snapshot/watch continue through the real
+# helper so the pane remains live while this failure boundary is exercised.
+defaults_helper=$data_home/dwm-titus/scripts/dwm-default-apps
+mv "$defaults_helper" "$defaults_helper.real"
+cat >"$defaults_helper" <<'EOF'
+#!/bin/sh
+case ${1:-} in
+snapshot | watch) exec "$0.real" "$@" ;;
+set-role)
+	printf 'defaults-result\t1\t0\tset-role\t%s\t%s\tok\n' "$2" "$3"
+	exit 1
+	;;
+*) exec "$0.real" "$@" ;;
+esac
+EOF
+chmod +x "$defaults_helper"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsSetRole terminal kitty.desktop >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	defaults_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsBusy 2>/dev/null || true)
+	[ "$defaults_busy" = false ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$defaults_busy" = false ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsMessage)" = \
+	'Defaults helper did not confirm the requested change' ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsRoleDesktopId terminal)" = \
+	Alacritty.desktop ]
+rm "$defaults_helper"
+mv "$defaults_helper.real" "$defaults_helper"
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartSet dwm-test-autostart.desktop false >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	autostart_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartBusy 2>/dev/null || true)
+	autostart_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartEntryState dwm-test-autostart.desktop 2>/dev/null || true)
+	[ "$autostart_busy" = false ] && [ "$autostart_state" = disabled ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$autostart_busy" = false ]
+[ "$autostart_state" = disabled ]
+grep -Eq '^NotShowIn=.*X-DWM' "$config_home/autostart/dwm-test-autostart.desktop"
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartSet dwm-test-autostart.desktop true >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	autostart_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartBusy 2>/dev/null || true)
+	autostart_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartEntryState dwm-test-autostart.desktop 2>/dev/null || true)
+	[ "$autostart_busy" = false ] && [ "$autostart_state" = enabled ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$autostart_busy" = false ]
+[ "$autostart_state" = enabled ]
+if grep -Eq '^NotShowIn=.*X-DWM' "$config_home/autostart/dwm-test-autostart.desktop"; then
+	printf 'Autostart enable retained the dwm exclusion\n' >&2
+	exit 1
+fi
+
+autostart_helper=$data_home/dwm-titus/scripts/dwm-xdg-autostart
+mv "$autostart_helper" "$autostart_helper.real"
+cat >"$autostart_helper" <<'EOF'
+#!/bin/sh
+case ${1:-} in
+snapshot | watch) exec "$0.real" "$@" ;;
+set)
+	printf 'autostart-protocol\t1\t0\n'
+	printf 'action\tsuccess\tset\t%s\t%s\t%064d\t\tfixture\n' "$2" "$3" 0
+	exit 1
+	;;
+*) exec "$0.real" "$@" ;;
+esac
+EOF
+chmod +x "$autostart_helper"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartSet dwm-test-autostart.desktop false >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	autostart_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartBusy 2>/dev/null || true)
+	[ "$autostart_busy" = false ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$autostart_busy" = false ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartMessage)" = \
+	'Autostart helper did not confirm the requested change' ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartEntryState dwm-test-autostart.desktop)" = \
+	enabled ]
+rm "$autostart_helper"
+mv "$autostart_helper.real" "$autostart_helper"
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartSet picom.desktop false >/dev/null
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartConfirming)" = true ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartEntryState picom.desktop)" = enabled ]
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartCancel >/dev/null
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartConfirming)" = false ]
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartSet picom.desktop false >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartConfirm >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	autostart_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartBusy 2>/dev/null || true)
+	autostart_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartEntryState picom.desktop 2>/dev/null || true)
+	[ "$autostart_busy" = false ] && [ "$autostart_state" = disabled ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$autostart_busy" = false ]
+[ "$autostart_state" = disabled ]
+
 DISPLAY=$display xdotool windowactivate --sync "$window"
 
 # These offsets target the first "displays" section entry below the shared
@@ -507,6 +800,15 @@ DISPLAY=$display xdotool mousemove "$((x + 120))" "$((y + 210))" click 1
 section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
 [ "$section" = displays ]
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(settings_defaults_watch_count)" -eq 0 ] &&
+		[ "$(settings_autostart_watch_count)" -eq 0 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(settings_defaults_watch_count)" -eq 0 ]
+[ "$(settings_autostart_watch_count)" -eq 0 ]
 i=0
 while [ "$i" -lt 100 ]; do
 	if ! pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-watch)$' |
@@ -593,6 +895,16 @@ fi
 if pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-watch|power-profile-set|power-dpms|power-dpms-timeout|power-lock|power-lock-timeout)' |
 	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" >/dev/null; then
 	printf 'Settings-owned power work remained active after close\n' >&2
+	exit 1
+fi
+if pgrep -af '[d]wm-default-apps (snapshot|watch|set-role|set-mime|reset-role|reset-mime)' |
+	grep -F "$data_home/dwm-titus/scripts/dwm-default-apps" >/dev/null; then
+	printf 'Settings-owned Defaults work remained active after close\n' >&2
+	exit 1
+fi
+if pgrep -af '[d]wm-xdg-autostart (snapshot|watch|set|reset)' |
+	grep -F "$data_home/dwm-titus/scripts/dwm-xdg-autostart" >/dev/null; then
+	printf 'Settings-owned autostart work remained active after close\n' >&2
 	exit 1
 fi
 

@@ -78,7 +78,7 @@
 /* enums */
 enum { CurResizeBR, CurResizeBL, CurResizeTR, CurResizeTL, CurNormal, CurResize, CurMove, CurLast }; /* cursor */
 enum { SchemeNorm, SchemeSel }; /* color schemes */
-enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
+enum { NetSupported, NetWMName, NetWMPid, NetWMState, NetWMCheck,
        NetWMFullscreen, NetWMAbove, NetWMStaysOnTop, NetActiveWindow, NetWMWindowType, NetWMIcon,
        NetWMWindowTypeDialog, NetWMWindowTypeDock, NetWMWindowTypeTooltip, NetWMWindowTypeNotification,
        NetWMWindowTypeMenu, NetWMWindowTypePopupMenu, NetWMWindowTypeDropdownMenu,
@@ -316,6 +316,7 @@ static void runautostart(void);
 static void runautostop(void);
 static void scan(void);
 static void sigchld(int unused);
+static void sigusr2_handler(int sig);
 static void sigstatusbar(const Arg *arg);
 static void setup(void);
 static void unmapnotify(XEvent *e);
@@ -401,7 +402,7 @@ static void (*handler[LASTEvent]) (XEvent *) = {
 	[UnmapNotify] = unmapnotify
 };
 static Atom kdewindowtypeoverride, wmatom[WMLast], netatom[NetLast];
-static int running = 1;
+static volatile sig_atomic_t running = 1;
 static Cur *cursor[CurLast];
 static Clr **scheme;
 static Display *dpy;
@@ -3356,6 +3357,13 @@ sigusr1_handler(int sig)
 	runtime_config_mark_reload_pending();
 }
 
+static void
+sigusr2_handler(int sig)
+{
+	(void)sig;
+	running = 0;
+}
+
 static void *
 toml_alloc(size_t sz)
 {
@@ -4033,6 +4041,8 @@ setup(void)
 	Atom utf8string;
 	/* clean up any zombies immediately */
 	sigchld(0);
+	/* The session helper uses SIGUSR2 for a normal, cleanup-aware exit. */
+	signal(SIGUSR2, sigusr2_handler);
 	dyn_borderpx = 1; /* initial value; overridden by themes.toml on load */
 
 	/* the one line of bloat that would have saved a lot of time for a lot of people */
@@ -4060,6 +4070,7 @@ setup(void)
 	netatom[NetActiveWindow] = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
 	netatom[NetSupported] = XInternAtom(dpy, "_NET_SUPPORTED", False);
 	netatom[NetWMName] = XInternAtom(dpy, "_NET_WM_NAME", False);
+	netatom[NetWMPid] = XInternAtom(dpy, "_NET_WM_PID", False);
 	#if SHOWWINICON
 	netatom[NetWMIcon] = XInternAtom(dpy, "_NET_WM_ICON", False);
 	#endif
@@ -4112,6 +4123,12 @@ setup(void)
 	updatestatus();
 	/* supporting window for NetWMCheck */
 	wmcheckwin = XCreateSimpleWindow(dpy, root, 0, 0, 1, 1, 0, 0, 0);
+	{
+		unsigned long wm_pid = (unsigned long)getpid();
+
+		XChangeProperty(dpy, wmcheckwin, netatom[NetWMPid], XA_CARDINAL, 32,
+			PropModeReplace, (unsigned char *)&wm_pid, 1);
+	}
 	XChangeProperty(dpy, wmcheckwin, netatom[NetWMCheck], XA_WINDOW, 32,
 		PropModeReplace, (unsigned char *) &wmcheckwin, 1);
 	XChangeProperty(dpy, wmcheckwin, netatom[NetWMName], utf8string, 8,

@@ -26,6 +26,116 @@ start_detached_once() {
 	fi
 }
 
+display_command_running() {
+	display_command=$1
+	display_command_path=$(command -v "$display_command" 2>/dev/null) || return 1
+	display_command_path=$(readlink -f "$display_command_path" 2>/dev/null) || return 1
+	display_command_uid=$(id -u)
+	display_command_display=${DISPLAY:-}
+	[ -n "$display_command_display" ] || return 1
+
+	for display_command_proc in /proc/[0-9]*; do
+		[ "$(stat -c %u "$display_command_proc" 2>/dev/null)" = "$display_command_uid" ] ||
+			continue
+		display_command_state=$(awk '
+			{
+				line = $0
+				sub(/^.*\) /, "", line)
+				split(line, fields, " ")
+				print fields[1]
+			}
+		' "$display_command_proc/stat" 2>/dev/null) || continue
+		[ "$display_command_state" != Z ] || continue
+		display_process_display=$({
+			tr '\0' '\n' <"$display_command_proc/environ"
+		} 2>/dev/null |
+			awk '
+				index($0, "DISPLAY=") == 1 {
+					value = substr($0, 9)
+					matches++
+				}
+				END {
+					if (matches == 1) print value
+					exit(matches == 1 ? 0 : 1)
+				}
+			') || continue
+		[ "$display_process_display" = "$display_command_display" ] || continue
+
+		display_process_command=$({
+			tr '\0' '\n' <"$display_command_proc/cmdline"
+		} 2>/dev/null) ||
+			continue
+		display_process_arg0=$(printf '%s\n' "$display_process_command" | sed -n '1p')
+		display_process_arg1=$(printf '%s\n' "$display_process_command" | sed -n '2p')
+		display_process_arg2=$(printf '%s\n' "$display_process_command" | sed -n '3p')
+		[ -z "$display_process_arg2" ] || continue
+		display_process_executable=$(readlink -f "$display_command_proc/exe" 2>/dev/null || true)
+		if [ "$display_process_executable" = "$display_command_path" ] &&
+			[ -z "$display_process_arg1" ]; then
+			return 0
+		fi
+		[ -n "$display_process_arg0" ] && [ -n "$display_process_arg1" ] || continue
+		[ "${display_process_arg0##*/}" = "${display_process_executable##*/}" ] || continue
+		[ "${display_process_executable##*/}" = bash ] || continue
+		display_process_script=$(readlink -f "$display_process_arg1" 2>/dev/null || true)
+		[ "$display_process_script" = "$display_command_path" ] && return 0
+	done
+
+	return 1
+}
+
+start_detached_display_command_once() {
+	display_command=$1
+	shift
+	display_lock_fd=
+
+	command -v "$display_command" >/dev/null 2>&1 || return 0
+	[ -n "${DISPLAY:-}" ] || return 0
+	if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] &&
+		[ ! -L "$XDG_RUNTIME_DIR" ] && command -v flock >/dev/null 2>&1 &&
+		command -v sha256sum >/dev/null 2>&1 &&
+		[ "$(stat -c %u -- "$XDG_RUNTIME_DIR" 2>/dev/null)" = "$(id -u)" ]; then
+		display_lock_dir=$XDG_RUNTIME_DIR/dwm-titus
+		display_lock_key=$(printf '%s\n%s\n' "${DISPLAY:-}" "$display_command" |
+			sha256sum | awk '{ print $1 }')
+		if [ -n "$display_lock_key" ] &&
+			(umask 077 && mkdir -p -- "$display_lock_dir") &&
+			[ -d "$display_lock_dir" ] && [ ! -L "$display_lock_dir" ]; then
+			if chmod 700 -- "$display_lock_dir" 2>/dev/null; then
+				exec 9>"$display_lock_dir/dwm-status.$display_lock_key.lock"
+				if flock -w 5 -x 9; then
+					display_lock_fd=9
+				else
+					exec 9>&-
+				fi
+			fi
+		fi
+	fi
+	if display_command_running "$display_command"; then
+		if [ -n "$display_lock_fd" ]; then
+			flock -u 9
+			exec 9>&-
+		fi
+		return 0
+	fi
+	if [ "${DWM_AUTOSTART_NO_SETSID:-0}" != 1 ] &&
+		command -v setsid >/dev/null 2>&1; then
+		setsid -f "$display_command" "$@" >/dev/null 2>&1 9>&-
+	else
+		"$display_command" "$@" >/dev/null 2>&1 9>&- &
+	fi
+	if [ -n "$display_lock_fd" ]; then
+		display_wait_attempt=0
+		while [ "$display_wait_attempt" -lt 50 ]; do
+			display_command_running "$display_command" && break
+			display_wait_attempt=$((display_wait_attempt + 1))
+			sleep 0.02
+		done
+		flock -u 9
+		exec 9>&-
+	fi
+}
+
 start_detached() {
 	command -v "$1" >/dev/null 2>&1 || return 0
 	if [ "${DWM_AUTOSTART_NO_SETSID:-0}" != 1 ] &&
@@ -101,16 +211,23 @@ quickshell_identity_matches() {
 }
 
 wait_for_quickshell_exit() {
-	config=$1
+	cohort=$1
+	max_attempts=${2:-40}
+	attempt=0
 
-	# shellcheck disable=SC2016 # The script runs in the child shell below.
-	timeout 2 sh -c '
-		config=$1
-		while quickshell list --path "$config" --json 2>/dev/null |
-			grep -q '"'"'"pid"'"'"'; do
-			sleep 0.05
+	while [ "$attempt" -lt "$max_attempts" ]; do
+		cohort_live=0
+		for identity in $cohort; do
+			if quickshell_identity_matches "$identity"; then
+				cohort_live=1
+				break
+			fi
 		done
-	' sh "$config"
+		[ "$cohort_live" -eq 1 ] || return 0
+		attempt=$((attempt + 1))
+		sleep 0.05
+	done
+	return 1
 }
 
 stop_managed_quickshell() {
@@ -118,15 +235,20 @@ stop_managed_quickshell() {
 	identities=$(quickshell_instance_identities "$config") || return 1
 	[ -n "$identities" ] || return 0
 
-	# Ask the oldest matching instance to exit cleanly, then use only the PIDs
-	# from the same config and current display if its IPC loop is unresponsive.
-	timeout 1 quickshell kill --path "$config" >/dev/null 2>&1 || true
+	# Ask only the captured instances to exit cleanly. A path-only kill can
+	# select a concurrent same-config replacement that was not in this cohort.
+	for identity in $identities; do
+		quickshell_identity_matches "$identity" || continue
+		pid=${identity%%:*}
+		timeout 1 quickshell kill --pid "$pid" >/dev/null 2>&1 || true
+	done
+	wait_for_quickshell_exit "$identities" 10 >/dev/null 2>&1 && return 0
 	for identity in $identities; do
 		quickshell_identity_matches "$identity" || continue
 		pid=${identity%%:*}
 		kill -TERM "$pid" 2>/dev/null || true
 	done
-	wait_for_quickshell_exit "$config" >/dev/null 2>&1 && return 0
+	wait_for_quickshell_exit "$identities" >/dev/null 2>&1 && return 0
 
 	# Never refresh this cohort: another autostart may already have launched a
 	# healthy replacement while this one was waiting.
@@ -135,7 +257,7 @@ stop_managed_quickshell() {
 		pid=${identity%%:*}
 		kill -KILL "$pid" 2>/dev/null || true
 	done
-	wait_for_quickshell_exit "$config" >/dev/null 2>&1
+	wait_for_quickshell_exit "$identities" >/dev/null 2>&1
 }
 
 start_managed_quickshell() {
@@ -325,7 +447,7 @@ fi
 start_detached_once picom picom --backend "$PICOM_BACKEND"
 
 # dwm root-window status publisher for Quickshell's event-driven panel.
-start_detached_once dwm-status dwm-status
+start_detached_display_command_once dwm-status
 
 # Event-driven bridge for loginctl/logind lock requests. This keeps external
 # lock commands working without leaving light-locker resident for DPMS events.

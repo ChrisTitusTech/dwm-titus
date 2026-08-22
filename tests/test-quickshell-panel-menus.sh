@@ -56,7 +56,13 @@ grep -Fq 'event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key
 	"$controlcenter/ControlCenterWindow.qml"
 grep -Fq 'PanelSeparator {}' "$power/PowerMenuWindow.qml"
 grep -Fq 'detail: modelData.detail' "$power/PowerMenuWindow.qml"
-grep -Fq 'onDismissed: powerMenuModel.close()' "$power/PowerMenuWindow.qml"
+grep -Fq 'onDismissed: powerMenuModel.close(root.actionOrigin)' "$power/PowerMenuWindow.qml"
+grep -Fq 'enabled: !root.powerMenuModel.busy' "$power/PowerMenuWindow.qml"
+grep -Fq 'root.powerMenuModel.requestAction(modelData, root.actionOrigin)' \
+	"$power/PowerMenuWindow.qml"
+for action in lock logout suspend reboot shutdown; do
+	grep -Fq "\"id\": \"$action\"" "$power/PowerMenuModel.qml"
+done
 
 if grep -REn 'Quickshell\.(Wayland|Hyprland)|WlrLayershell|hyprctl|uwsm-app|wl-copy|wl-paste' \
 	"$core"/PanelHero.qml "$core"/PanelSeparator.qml "$core"/PanelSlider.qml \

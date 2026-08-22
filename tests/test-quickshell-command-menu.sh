@@ -49,9 +49,10 @@ grep -Fq 'if (visible) commandMenuModel.close();' "$shell"
 select_panel_popup_body=$(sed -n '/function selectPanelPopup(panel, popupId)/,/^    }$/p' "$shell")
 printf '%s\n' "$select_panel_popup_body" | grep -Fq 'commandMenuModel.close();'
 open_menu_body=$(sed -n '/function openCommandMenu(screen)/,/^    }$/p' "$shell")
-for popup_model in networkModel bluetoothModel controlCenterModel controlsModel powerMenuModel; do
+for popup_model in networkModel bluetoothModel controlCenterModel controlsModel; do
 	printf '%s\n' "$open_menu_body" | grep -Fq "$popup_model.close();"
 done
+printf '%s\n' "$open_menu_body" | grep -Fq 'powerMenuModel.close("panel");'
 grep -Fq 'function refreshApplicationIndex()' "$repo/config/quickshell/launcher/LauncherModel.qml"
 grep -Fq 'root.refreshApplicationIndex()' "$repo/config/quickshell/launcher/LauncherModel.qml"
 grep -Fq '{ title="dwm menu", isfloating=1, alwaysontop=1 },' "$repo/docs/OMARCHY-UI-ADAPTATION.md"

@@ -242,13 +242,23 @@ discover() {
 	if run_bounded_probe xdg-settings get default-web-browser &&
 		run_bounded_probe xdg-mime query default text/html; then
 		emit_capability defaults xdg-defaults 'Default applications' available user-session xdg-utils \
-			'Browser and MIME defaults are readable'
+			'Browser, terminal, file-manager, and MIME defaults are manageable'
 	elif provider_available xdg-settings && provider_available xdg-mime; then
 		emit_capability defaults xdg-defaults 'Default applications' unavailable user-session xdg-utils \
 			'XDG tools are installed, but the current desktop defaults are not readable'
 	else
 		emit_capability defaults xdg-defaults 'Default applications' unavailable user-session xdg-utils \
 			'Install xdg-utils to inspect desktop defaults'
+	fi
+	if ! provider_available dwm-xdg-autostart; then
+		emit_capability defaults xdg-autostart 'Startup applications' unavailable user-session xdg-autostart \
+			'Install the managed XDG autostart helper to inspect and change startup applications'
+	elif provider_available inotifywait; then
+		emit_capability defaults xdg-autostart 'Startup applications' available user-session xdg-autostart \
+			'Per-user XDG autostart overrides and live updates are available'
+	else
+		emit_capability defaults xdg-autostart 'Startup applications' partial user-session xdg-autostart \
+			'Autostart entries are readable; install inotify-tools for live updates'
 	fi
 
 	themes_file=${XDG_CONFIG_HOME:-${HOME:-}/.config}/dwm-titus/themes.toml

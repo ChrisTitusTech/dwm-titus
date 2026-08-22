@@ -1,6 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+config_home=${XDG_CONFIG_HOME:-${HOME:?HOME is required}/.config}
+data_home=${XDG_DATA_HOME:-${HOME:?HOME is required}/.local/share}
+state_home=${XDG_STATE_HOME:-${HOME:?HOME is required}/.local/state}
+mime_file=$config_home/mimeapps.list
+hotkeys_file=$config_home/dwm-titus/hotkeys.toml
+defaults_state_dir=$state_home/dwm-titus/default-apps
+defaults_transaction_active=0
+defaults_transaction_target=
+defaults_transaction_backup=
+defaults_transaction_before=
+defaults_recovery_pending_backup=
+defaults_recovery_pending_metadata=
+defaults_recovery_pending_previous_metadata=
+defaults_recovery_replacement_active=0
+defaults_recovery_metadata_target=
+defaults_recovery_previous_metadata=
+defaults_recovery_previous_backup=
+defaults_recovery_new_backup=
+defaults_lock_pid=
+defaults_lock_starttime=
+defaults_watch_children=()
+defaults_watch_monitor=
+defaults_watch_owner_watchdog=
+defaults_watch_work=
+readonly max_desktop_size=262144
+desktop_parsed_type=
+desktop_parsed_name=
+desktop_parsed_hidden=
+desktop_parsed_nodisplay=
+desktop_parsed_try_exec=
+desktop_parsed_exec=
+desktop_parsed_categories=
+desktop_parsed_mime_types=
+
 browser_mimes=(
 	x-scheme-handler/http
 	x-scheme-handler/https
@@ -8,15 +43,38 @@ browser_mimes=(
 	application/xhtml+xml
 )
 
+supported_mimes=(
+	x-scheme-handler/http
+	x-scheme-handler/https
+	text/html
+	application/xhtml+xml
+	inode/directory
+	text/plain
+	application/pdf
+	image/png
+	image/jpeg
+	audio/mpeg
+	video/mp4
+)
+
 usage() {
 	cat <<'EOF'
 Usage:
+  dwm-default-apps snapshot
+  dwm-default-apps watch
+  dwm-default-apps set-role <browser|terminal|file-manager> <desktop-id>
+  dwm-default-apps set-mime <mime-type> <desktop-id>
+  dwm-default-apps reset-role <browser|terminal|file-manager>
+  dwm-default-apps reset-mime <mime-type>
   dwm-default-apps status
   dwm-default-apps browsers
   dwm-default-apps set-browser <desktop-id>
-  dwm-default-apps set-mime <mime-type> <desktop-id>
   dwm-default-apps open [url]
 EOF
+}
+
+clean_field() {
+	printf '%s' "$1" | tr '\011\015\012' '   '
 }
 
 need_cmd() {
@@ -26,166 +84,1426 @@ need_cmd() {
 	fi
 }
 
+run_bounded() {
+	local duration=$1
+	shift
+	timeout --signal=TERM --kill-after=1 "$duration" "$@"
+}
+
 data_dirs() {
 	local dir
+	local -A seen=()
+	local -a configured_dirs=()
 
-	printf '%s\n' "${XDG_DATA_HOME:-$HOME/.local/share}"
-
-	IFS=':' read -r -a dirs <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-	for dir in "${dirs[@]}"; do
-		[[ -n $dir ]] && printf '%s\n' "$dir"
+	configured_dirs+=("$data_home")
+	IFS=':' read -r -a split_dirs <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+	configured_dirs+=("${split_dirs[@]}")
+	for dir in "${configured_dirs[@]}"; do
+		[[ -n $dir && -z ${seen[$dir]+x} ]] || continue
+		seen[$dir]=1
+		printf '%s\n' "$dir"
 	done
+}
+
+valid_desktop_id() {
+	local desktop_id=$1
+	[[ $desktop_id == *.desktop ]] || return 1
+	[[ $desktop_id =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*\.desktop$ ]] || return 1
+	[[ $desktop_id != *..* ]]
+}
+
+valid_absolute_path() {
+	local path=$1
+	[[ $path == /* && $path != *$'\n'* && $path != *$'\r'* && $path != *$'\t'* ]] || return 1
+	case $path/ in
+	*/../* | */./*) return 1 ;;
+	esac
+}
+
+path_has_no_symlink_components() {
+	local path=$1 current=/ component
+	local -a components=()
+
+	valid_absolute_path "$path" || return 1
+	IFS=/ read -r -a components <<<"${path#/}"
+	for component in "${components[@]}"; do
+		[[ -n $component ]] || continue
+		if [[ $current == / ]]; then
+			current=/$component
+		else
+			current=$current/$component
+		fi
+		[[ ! -L $current ]] || return 1
+	done
+}
+
+prepare_safe_directory() {
+	local directory=$1
+
+	if ! valid_absolute_path "$directory" || ! path_has_no_symlink_components "$directory"; then
+		printf 'dwm-default-apps: refusing unsafe directory path: %s\n' "$directory" >&2
+		return 1
+	fi
+	if ! mkdir -p -- "$directory" || [[ ! -d $directory || -L $directory ]] ||
+		! path_has_no_symlink_components "$directory"; then
+		printf 'dwm-default-apps: cannot prepare safe directory: %s\n' "$directory" >&2
+		return 1
+	fi
+}
+
+safe_regular_state_file() {
+	local file=$1
+	[[ -f $file && ! -L $file ]] || return 1
+	path_has_no_symlink_components "$file"
+}
+
+desktop_id_for_file() {
+	local applications=$1
+	local file=$2
+	local relative=${file#"$applications"/}
+	printf '%s\n' "${relative//\//-}"
 }
 
 desktop_file_for_id() {
 	local desktop_id=$1
-	local dir
+	local dir applications file id
 
+	valid_desktop_id "$desktop_id" || return 1
 	while IFS= read -r dir; do
-		if [[ -f $dir/applications/$desktop_id ]]; then
-			printf '%s\n' "$dir/applications/$desktop_id"
+		applications=$dir/applications
+		if [[ ! -d $applications ]] || ! path_has_no_symlink_components "$applications"; then
+			continue
+		fi
+		if [[ -f $applications/$desktop_id && ! -L $applications/$desktop_id ]]; then
+			printf '%s\n' "$applications/$desktop_id"
 			return 0
 		fi
+		while IFS= read -r -d '' file; do
+			id=$(desktop_id_for_file "$applications" "$file")
+			if [[ $id == "$desktop_id" ]]; then
+				printf '%s\n' "$file"
+				return 0
+			fi
+		done < <(find "$applications" -mindepth 2 -type f -name '*.desktop' -print0 2>/dev/null)
 	done < <(data_dirs)
-
 	return 1
+}
+
+parse_desktop_file() {
+	local file=$1 size parsed key value
+
+	desktop_parsed_type=
+	desktop_parsed_name=
+	desktop_parsed_hidden=
+	desktop_parsed_nodisplay=
+	desktop_parsed_try_exec=
+	desktop_parsed_exec=
+	desktop_parsed_categories=
+	desktop_parsed_mime_types=
+	[[ -f $file && ! -L $file ]] || return 1
+	size=$(stat -c %s -- "$file" 2>/dev/null) || return 1
+	[[ $size =~ ^[0-9]+$ ]] || return 1
+	((size <= max_desktop_size)) || return 1
+	parsed=$(LC_ALL=C awk '
+		{
+			line = $0
+			sub(/\r$/, "", line)
+			if (line ~ /[\000-\011\013-\037\177]/) invalid = 1
+			if (line ~ /^\[/) {
+				in_entry = (line == "[Desktop Entry]")
+				if (in_entry) entry_groups++
+				next
+			}
+			if (!in_entry || line ~ /^[[:space:]]*($|#)/) next
+			equals = index(line, "=")
+			if (equals <= 1) next
+			key = substr(line, 1, equals - 1)
+			if (key ~ /^[A-Za-z0-9-]+(\[[^][]+\])?$/) {
+				if (++seen[key] > 1) invalid = 1
+				value[key] = substr(line, equals + 1)
+			}
+		}
+		END {
+			if (invalid || entry_groups != 1) exit 1
+			print "type\t" value["Type"]
+			print "name\t" value["Name"]
+			print "hidden\t" value["Hidden"]
+			print "nodisplay\t" value["NoDisplay"]
+			print "try-exec\t" value["TryExec"]
+			print "exec\t" value["Exec"]
+			print "categories\t" value["Categories"]
+			print "mime-types\t" value["MimeType"]
+		}
+	' "$file") || return 1
+	while IFS=$'\t' read -r key value; do
+		case $key in
+		type) desktop_parsed_type=$value ;;
+		name) desktop_parsed_name=$value ;;
+		hidden) desktop_parsed_hidden=$value ;;
+		nodisplay) desktop_parsed_nodisplay=$value ;;
+		try-exec) desktop_parsed_try_exec=$value ;;
+		exec) desktop_parsed_exec=$value ;;
+		categories) desktop_parsed_categories=$value ;;
+		mime-types) desktop_parsed_mime_types=$value ;;
+		esac
+	done <<<"$parsed"
+}
+
+desktop_file_valid() {
+	parse_desktop_file "$1"
 }
 
 desktop_value() {
 	local key=$1
 	local file=$2
-	local line
+	parse_desktop_file "$file" || return 1
+	case $key in
+	Type) printf '%s\n' "$desktop_parsed_type" ;;
+	Name) printf '%s\n' "$desktop_parsed_name" ;;
+	Hidden) printf '%s\n' "$desktop_parsed_hidden" ;;
+	NoDisplay) printf '%s\n' "$desktop_parsed_nodisplay" ;;
+	TryExec) printf '%s\n' "$desktop_parsed_try_exec" ;;
+	Exec) printf '%s\n' "$desktop_parsed_exec" ;;
+	Categories) printf '%s\n' "$desktop_parsed_categories" ;;
+	MimeType) printf '%s\n' "$desktop_parsed_mime_types" ;;
+	*) return 1 ;;
+	esac
+}
 
-	while IFS= read -r line; do
-		case "$line" in
-		"$key="*)
-			printf '%s\n' "${line#*=}"
-			return 0
-			;;
-		esac
-	done <"$file"
+desktop_token_present() {
+	local value=$1
+	local token=$2
+	[[ ";$value;" == *";$token;"* ]]
+}
 
+desktop_usable() {
+	local file=$1
+	local type hidden nodisplay try_exec exec_value exec_command
+	parse_desktop_file "$file" || return 1
+	type=$desktop_parsed_type
+	hidden=$desktop_parsed_hidden
+	nodisplay=$desktop_parsed_nodisplay
+	try_exec=$desktop_parsed_try_exec
+	[[ $type == Application && $hidden != true && $nodisplay != true ]] || return 1
+	if [[ -n $try_exec ]]; then
+		if [[ $try_exec == */* ]]; then
+			[[ -x $try_exec ]] || return 1
+		else
+			command -v "$try_exec" >/dev/null 2>&1 || return 1
+		fi
+	else
+		exec_value=$desktop_parsed_exec
+		[[ -n $exec_value ]] || return 1
+		if [[ $exec_value =~ ^\"([^\"]+)\"([[:space:]]|$) ]]; then
+			exec_command=${BASH_REMATCH[1]}
+		else
+			exec_command=${exec_value%%[[:space:]]*}
+		fi
+		[[ -n $exec_command && $exec_command != env ]] || return 1
+		if [[ $exec_command == */* ]]; then
+			[[ -x $exec_command ]] || return 1
+		else
+			command -v "$exec_command" >/dev/null 2>&1 || return 1
+		fi
+	fi
+}
+
+terminal_mutation_available() {
+	safe_regular_state_file "$hotkeys_file" || return 1
+	read_terminal_command "$hotkeys_file" >/dev/null 2>&1
+}
+
+desktop_matches_role() {
+	local role=$1
+	local file=$2
+	parse_desktop_file "$file" || return 1
+	parsed_desktop_matches_role "$role"
+}
+
+parsed_desktop_matches_role() {
+	local role=$1
+	case $role in
+	browser)
+		desktop_token_present "$desktop_parsed_categories" WebBrowser ||
+			desktop_token_present "$desktop_parsed_mime_types" x-scheme-handler/http
+		;;
+	file-manager)
+		desktop_token_present "$desktop_parsed_categories" FileManager ||
+			desktop_token_present "$desktop_parsed_mime_types" inode/directory
+		;;
+	terminal)
+		desktop_token_present "$desktop_parsed_categories" TerminalEmulator
+		;;
+	*) return 1 ;;
+	esac
+}
+
+terminal_command_for_id() {
+	case $1 in
+	Alacritty.desktop | org.alacritty.Alacritty.desktop) printf '%s\n' alacritty ;;
+	kitty.desktop) printf '%s\n' kitty ;;
+	st.desktop) printf '%s\n' st ;;
+	dev.warp.Warp.desktop | warp-terminal.desktop) printf '%s\n' warp-terminal ;;
+	xterm.desktop) printf '%s\n' xterm ;;
+	*) return 1 ;;
+	esac
+}
+
+terminal_id_for_command() {
+	local command_name=$1
+	local id command_candidate file
+	for id in Alacritty.desktop org.alacritty.Alacritty.desktop kitty.desktop st.desktop \
+		dev.warp.Warp.desktop warp-terminal.desktop xterm.desktop; do
+		command_candidate=$(terminal_command_for_id "$id") || continue
+		[[ $command_candidate == "$command_name" ]] || continue
+		command -v "$command_candidate" >/dev/null 2>&1 || continue
+		file=$(desktop_file_for_id "$id" 2>/dev/null) || continue
+		desktop_usable "$file" || continue
+		parsed_desktop_matches_role terminal || continue
+		printf '%s\n' "$id"
+		return 0
+	done
 	return 1
 }
 
-is_browser_desktop() {
-	local file=$1
-	local categories mime
+require_role_candidate() {
+	local role=$1
+	local desktop_id=$2
+	local file command_name
 
-	categories=$(desktop_value Categories "$file" 2>/dev/null || true)
-	mime=$(desktop_value MimeType "$file" 2>/dev/null || true)
-
-	[[ $categories == *WebBrowser* || $mime == *x-scheme-handler/http* ]]
-}
-
-list_browsers() {
-	local dir file id name
-	declare -A seen=()
-
-	while IFS= read -r dir; do
-		[[ -d $dir/applications ]] || continue
-		for file in "$dir"/applications/*.desktop; do
-			[[ -f $file ]] || continue
-			id=${file##*/}
-			[[ -z ${seen[$id]+x} ]] || continue
-			seen[$id]=1
-
-			if is_browser_desktop "$file"; then
-				name=$(desktop_value Name "$file" 2>/dev/null || printf '%s' "$id")
-				printf '%s\t%s\n' "$id" "$name"
-			fi
-		done
-	done < <(data_dirs)
-}
-
-require_desktop_id() {
-	local desktop_id=$1
-
-	case "$desktop_id" in
-	"" | */* | *..*)
+	valid_desktop_id "$desktop_id" || {
 		printf 'dwm-default-apps: invalid desktop id: %s\n' "$desktop_id" >&2
 		return 1
-		;;
-	esac
-
-	if ! desktop_file_for_id "$desktop_id" >/dev/null; then
+	}
+	file=$(desktop_file_for_id "$desktop_id") || {
 		printf 'dwm-default-apps: desktop file not found: %s\n' "$desktop_id" >&2
-		printf 'Run: dwm-default-apps browsers\n' >&2
+		return 1
+	}
+	if ! desktop_usable "$file" || ! parsed_desktop_matches_role "$role"; then
+		printf 'dwm-default-apps: %s is not a usable %s candidate\n' "$desktop_id" "$role" >&2
+		return 1
+	fi
+	if [[ $role == terminal ]]; then
+		command_name=$(terminal_command_for_id "$desktop_id") || {
+			printf 'dwm-default-apps: unsupported terminal desktop id: %s\n' "$desktop_id" >&2
+			return 1
+		}
+		command -v "$command_name" >/dev/null 2>&1 || {
+			printf 'dwm-default-apps: terminal command is unavailable: %s\n' "$command_name" >&2
+			return 1
+		}
+	fi
+}
+
+supported_mime() {
+	local candidate=$1
+	local mime
+	for mime in "${supported_mimes[@]}"; do
+		[[ $mime == "$candidate" ]] && return 0
+	done
+	return 1
+}
+
+require_mime_candidate() {
+	local mime=$1
+	local desktop_id=$2
+	local file
+	supported_mime "$mime" || {
+		printf 'dwm-default-apps: unsupported MIME type: %s\n' "$mime" >&2
+		return 1
+	}
+	valid_desktop_id "$desktop_id" || {
+		printf 'dwm-default-apps: invalid desktop id: %s\n' "$desktop_id" >&2
+		return 1
+	}
+	file=$(desktop_file_for_id "$desktop_id") || {
+		printf 'dwm-default-apps: desktop file not found: %s\n' "$desktop_id" >&2
+		return 1
+	}
+	desktop_usable "$file" || {
+		printf 'dwm-default-apps: unusable desktop entry: %s\n' "$desktop_id" >&2
+		return 1
+	}
+	if ! desktop_token_present "$desktop_parsed_mime_types" "$mime"; then
+		printf 'dwm-default-apps: %s does not advertise %s\n' "$desktop_id" "$mime" >&2
 		return 1
 	fi
 }
 
-set_browser() {
-	local desktop_id=$1
-	local mime
+query_mime() {
+	local mime=$1
+	local value
+	need_cmd timeout >/dev/null
+	need_cmd xdg-mime >/dev/null
+	value=$(run_bounded 3 xdg-mime query default "$mime" 2>/dev/null) || return 1
+	value=${value%%$'\n'*}
+	if [[ -n $value ]] && ! valid_desktop_id "$value"; then
+		return 1
+	fi
+	printf '%s\n' "$value"
+}
 
-	need_cmd xdg-settings
+query_browser() {
+	local value
+	need_cmd timeout >/dev/null
+	need_cmd xdg-settings >/dev/null
+	value=$(run_bounded 3 xdg-settings get default-web-browser 2>/dev/null) || return 1
+	value=${value%%$'\n'*}
+	if [[ -n $value ]] && ! valid_desktop_id "$value"; then
+		return 1
+	fi
+	printf '%s\n' "$value"
+}
+
+read_terminal_command() {
+	local file=$1
+	local output count value
+	safe_regular_state_file "$file" || return 1
+	output=$(awk '
+		$0 == "[vars]" { in_vars = 1; next }
+		in_vars && /^\[/ { in_vars = 0 }
+		in_vars && /^[[:space:]]*terminal[[:space:]]*=/ {
+			line = $0
+			sub(/^[[:space:]]*terminal[[:space:]]*=[[:space:]]*"/, "", line)
+			sub(/"[[:space:]]*$/, "", line)
+			print line
+		}
+	' "$file")
+	count=$(printf '%s\n' "$output" | awk 'NF { count++ } END { print count + 0 }')
+	[[ $count -eq 1 ]] || return 1
+	value=$(printf '%s\n' "$output" | awk 'NF { print; exit }')
+	[[ $value =~ ^[A-Za-z0-9._+-]+$ ]] || return 1
+	printf '%s\n' "$value"
+}
+
+current_hotkeys_file() {
+	if safe_regular_state_file "$hotkeys_file"; then
+		printf '%s\n' "$hotkeys_file"
+	elif safe_regular_state_file "$repo_dir/config/hotkeys.toml"; then
+		printf '%s\n' "$repo_dir/config/hotkeys.toml"
+	else
+		return 1
+	fi
+}
+
+file_fingerprint() {
+	local file=$1
+	if safe_regular_state_file "$file"; then
+		sha256sum -- "$file" | awk '{ print $1 }'
+	else
+		printf '%s\n' absent
+	fi
+}
+
+scope_name() {
+	printf '%s' "$1" | tr '/+' '__'
+}
+
+process_starttime() {
+	local pid=$1 stat rest
+	local -a stat_fields=()
+	[[ $pid =~ ^[1-9][0-9]*$ ]] || return 1
+	IFS= read -r stat <"/proc/$pid/stat" || return 1
+	rest=${stat##*) }
+	read -r -a stat_fields <<<"$rest"
+	[[ ${#stat_fields[@]} -ge 20 && ${stat_fields[19]} =~ ^[0-9]+$ ]] || return 1
+	printf '%s\n' "${stat_fields[19]}"
+}
+
+process_identity_is_live() {
+	local pid=$1 expected_starttime=$2 stat rest
+	local -a stat_fields=()
+	[[ $pid =~ ^[1-9][0-9]*$ && $expected_starttime =~ ^[0-9]+$ ]] || return 1
+	IFS= read -r stat <"/proc/$pid/stat" || return 1
+	rest=${stat##*) }
+	read -r -a stat_fields <<<"$rest"
+	[[ ${#stat_fields[@]} -ge 20 && ${stat_fields[0]} != Z &&
+		${stat_fields[19]} == "$expected_starttime" ]]
+}
+
+lock_owner() {
+	local owner_file=$defaults_state_dir/.lock/owner
+	local pid starttime extra
+	[[ -f $owner_file && ! -L $owner_file ]] || return 1
+	read -r pid starttime extra <"$owner_file" || return 1
+	[[ -z ${extra:-} && $pid =~ ^[1-9][0-9]*$ && $starttime =~ ^[0-9]+$ ]] || return 1
+	printf '%s %s\n' "$pid" "$starttime"
+}
+
+remove_owned_lock() {
+	local owner
+	owner=$(lock_owner 2>/dev/null) || return 1
+	[[ $owner == "$defaults_lock_pid $defaults_lock_starttime" ]] || return 1
+	rm -f -- "$defaults_state_dir/.lock/owner" || return 1
+	rmdir -- "$defaults_state_dir/.lock"
+}
+
+acquire_lock() {
+	local owner owner_pid owner_starttime live_starttime
+	if ! prepare_safe_directory "$defaults_state_dir" || ! chmod 700 -- "$defaults_state_dir"; then
+		printf 'dwm-default-apps: cannot prepare recovery directory: %s\n' "$defaults_state_dir" >&2
+		return 1
+	fi
+	if ! mkdir -- "$defaults_state_dir/.lock" 2>/dev/null; then
+		if [[ -L $defaults_state_dir/.lock || ! -d $defaults_state_dir/.lock ]] ||
+			! owner=$(lock_owner 2>/dev/null); then
+			printf 'dwm-default-apps: another defaults operation is active or its lock is malformed\n' >&2
+			return 75
+		fi
+		read -r owner_pid owner_starttime <<<"$owner"
+		live_starttime=$(process_starttime "$owner_pid" 2>/dev/null || true)
+		if [[ -n $live_starttime && $live_starttime == "$owner_starttime" ]]; then
+			printf 'dwm-default-apps: another defaults operation is active\n' >&2
+			return 75
+		fi
+		if ! rm -f -- "$defaults_state_dir/.lock/owner" ||
+			! rmdir -- "$defaults_state_dir/.lock" ||
+			! mkdir -- "$defaults_state_dir/.lock"; then
+			printf 'dwm-default-apps: could not recover a stale defaults lock\n' >&2
+			return 75
+		fi
+	fi
+	defaults_lock_pid=$$
+	defaults_lock_starttime=$(process_starttime "$$") || {
+		rmdir -- "$defaults_state_dir/.lock" 2>/dev/null || :
+		printf 'dwm-default-apps: cannot identify the defaults lock owner\n' >&2
+		return 1
+	}
+	if ! printf '%s %s\n' "$defaults_lock_pid" "$defaults_lock_starttime" \
+		>"$defaults_state_dir/.lock/owner" ||
+		! chmod 600 -- "$defaults_state_dir/.lock/owner"; then
+		rm -f -- "$defaults_state_dir/.lock/owner"
+		rmdir -- "$defaults_state_dir/.lock" 2>/dev/null || :
+		printf 'dwm-default-apps: cannot record the defaults lock owner\n' >&2
+		return 1
+	fi
+	trap defaults_operation_cleanup EXIT
+	trap 'exit 143' HUP INT TERM
+}
+
+release_lock() {
+	remove_owned_lock
+	defaults_lock_pid=
+	defaults_lock_starttime=
+	trap - EXIT HUP INT TERM
+}
+
+capture_file() {
+	local target=$1
+	local backup=$2
+	if ! valid_absolute_path "$target" || ! path_has_no_symlink_components "$target"; then
+		printf 'dwm-default-apps: refusing unsafe or symlinked state file: %s\n' "$target" >&2
+		return 1
+	fi
+	if [[ -f $target ]]; then
+		cp -p -- "$target" "$backup" || return 1
+		printf 'present\n'
+	elif [[ -e $target ]]; then
+		printf 'dwm-default-apps: state path is not a regular file: %s\n' "$target" >&2
+		return 1
+	else
+		: >"$backup" || return 1
+		chmod 600 "$backup" || return 1
+		printf 'absent\n'
+	fi
+}
+
+restore_file() {
+	local target=$1
+	local backup=$2
+	local before_state=$3
+	local desired_mode=${4:-}
+	local parent=${target%/*}
+	local temp
+	if ! valid_absolute_path "$target" || ! path_has_no_symlink_components "$target" ||
+		[[ ! -d $parent || -L $parent ]]; then
+		return 1
+	fi
+	if [[ $before_state == absent ]]; then
+		rm -f -- "$target"
+		return
+	fi
+	[[ $before_state == present && -f $backup && ! -L $backup ]] || return 1
+	temp=$(mktemp "$parent/.dwm-default-apps.restore.XXXXXX")
+	if ! cp -p -- "$backup" "$temp" ||
+		! { [[ -z $desired_mode ]] || chmod "$desired_mode" -- "$temp"; } ||
+		! mv -f -- "$temp" "$target"; then
+		rm -f -- "$temp"
+		return 1
+	fi
+}
+
+defaults_operation_cleanup() {
+	trap - EXIT HUP INT TERM
+	if [[ $defaults_transaction_active -eq 1 ]]; then
+		if ! restore_file "$defaults_transaction_target" "$defaults_transaction_backup" \
+			"$defaults_transaction_before"; then
+			printf 'dwm-default-apps: interrupted mutation rollback failed\n' >&2
+		fi
+	fi
+	if [[ $defaults_recovery_replacement_active -eq 1 ]]; then
+		if [[ -n $defaults_recovery_previous_metadata ]]; then
+			if ! mv -f -- "$defaults_recovery_previous_metadata" \
+				"$defaults_recovery_metadata_target"; then
+				printf 'dwm-default-apps: interrupted recovery journal rollback failed\n' >&2
+			fi
+		elif ! rm -f -- "$defaults_recovery_metadata_target"; then
+			printf 'dwm-default-apps: interrupted recovery journal cleanup failed\n' >&2
+		fi
+		[[ -z $defaults_recovery_new_backup ]] || rm -f -- "$defaults_recovery_new_backup"
+	fi
+	[[ -z $defaults_transaction_backup ]] || rm -f -- "$defaults_transaction_backup"
+	[[ -z $defaults_recovery_pending_backup ]] || rm -f -- "$defaults_recovery_pending_backup"
+	[[ -z $defaults_recovery_pending_metadata ]] || rm -f -- "$defaults_recovery_pending_metadata"
+	[[ -z $defaults_recovery_pending_previous_metadata ]] ||
+		rm -f -- "$defaults_recovery_pending_previous_metadata"
+	remove_owned_lock 2>/dev/null || :
+}
+
+begin_transaction() {
+	defaults_transaction_target=$1
+	defaults_transaction_backup=$2
+	defaults_transaction_before=$3
+	defaults_transaction_active=1
+}
+
+end_transaction() {
+	local previous_metadata=$defaults_recovery_previous_metadata
+	local previous_backup=$defaults_recovery_previous_backup
+	# The target and its recovery journal become committed together. Ignore
+	# asynchronous signals across this assignment-only commit boundary; signal
+	# handling resumes before best-effort cleanup of superseded journal files.
+	trap '' HUP INT TERM
+	defaults_transaction_active=0
+	defaults_transaction_target=
+	defaults_transaction_backup=
+	defaults_transaction_before=
+	defaults_recovery_replacement_active=0
+	defaults_recovery_metadata_target=
+	defaults_recovery_previous_metadata=
+	defaults_recovery_previous_backup=
+	defaults_recovery_new_backup=
+	trap 'exit 143' HUP INT TERM
+	[[ -z $previous_metadata ]] || rm -f -- "$previous_metadata" || :
+	[[ -z $previous_backup ]] || rm -f -- "$previous_backup" || :
+}
+
+save_recovery() {
+	local scope=$1
+	local target=$2
+	local backup=$3
+	local before_state=$4
+	local safe_scope after metadata_temp backup_temp mode old_backup backup_name
+	local metadata_target previous_metadata=
+	safe_scope=$(scope_name "$scope")
+	after=$(file_fingerprint "$target")
+	mode=600
+	[[ $before_state == present ]] && mode=$(stat -c %a -- "$backup")
+	old_backup=$(recovery_before_file "$scope" 2>/dev/null || true)
+	metadata_target=$defaults_state_dir/$safe_scope.meta
+	if [[ -f $metadata_target && ! -L $metadata_target ]]; then
+		previous_metadata=$(mktemp "$defaults_state_dir/.${safe_scope}.previous-meta.XXXXXX") || return 1
+		defaults_recovery_pending_previous_metadata=$previous_metadata
+		if ! cp -p -- "$metadata_target" "$previous_metadata"; then
+			rm -f -- "$previous_metadata"
+			defaults_recovery_pending_previous_metadata=
+			return 1
+		fi
+	fi
+	metadata_temp=$(mktemp "$defaults_state_dir/.${safe_scope}.meta.XXXXXX") || {
+		rm -f -- "$previous_metadata"
+		defaults_recovery_pending_previous_metadata=
+		return 1
+	}
+	defaults_recovery_pending_metadata=$metadata_temp
+	backup_temp=$(mktemp "$defaults_state_dir/${safe_scope}.before.XXXXXX") || {
+		rm -f -- "$metadata_temp" "$previous_metadata"
+		defaults_recovery_pending_metadata=
+		defaults_recovery_pending_previous_metadata=
+		return 1
+	}
+	defaults_recovery_pending_backup=$backup_temp
+	backup_name=${backup_temp##*/}
+	if ! cp -p -- "$backup" "$backup_temp" || ! chmod 600 "$backup_temp"; then
+		rm -f -- "$metadata_temp" "$backup_temp" "$previous_metadata"
+		defaults_recovery_pending_metadata=
+		defaults_recovery_pending_backup=
+		defaults_recovery_pending_previous_metadata=
+		return 1
+	fi
+	if ! {
+		printf 'before=%s\n' "$before_state"
+		printf 'mode=%s\n' "$mode"
+		printf 'after=%s\n' "$after"
+		printf 'before_file=%s\n' "$backup_name"
+	} >"$metadata_temp" || ! chmod 600 "$metadata_temp"; then
+		rm -f -- "$metadata_temp" "$backup_temp" "$previous_metadata"
+		defaults_recovery_pending_metadata=
+		defaults_recovery_pending_backup=
+		defaults_recovery_pending_previous_metadata=
+		return 1
+	fi
+	defaults_recovery_replacement_active=1
+	defaults_recovery_metadata_target=$metadata_target
+	defaults_recovery_previous_metadata=$previous_metadata
+	defaults_recovery_previous_backup=$old_backup
+	defaults_recovery_new_backup=$backup_temp
+	defaults_recovery_pending_previous_metadata=
+	if ! mv -f -- "$metadata_temp" "$metadata_target"; then
+		defaults_recovery_replacement_active=0
+		defaults_recovery_metadata_target=
+		defaults_recovery_previous_metadata=
+		defaults_recovery_previous_backup=
+		defaults_recovery_new_backup=
+		rm -f -- "$metadata_temp" "$backup_temp" "$previous_metadata"
+		defaults_recovery_pending_metadata=
+		defaults_recovery_pending_backup=
+		return 1
+	fi
+	defaults_recovery_pending_metadata=
+	defaults_recovery_pending_backup=
+}
+
+recovery_before_file() {
+	local scope=$1
+	local safe_scope metadata backup_name candidate
+	safe_scope=$(scope_name "$scope")
+	metadata=$defaults_state_dir/$safe_scope.meta
+	[[ -f $metadata && ! -L $metadata ]] || return 1
+	backup_name=$(awk -F= '$1 == "before_file" { print substr($0, 13); exit }' "$metadata")
+	if [[ -z $backup_name ]]; then
+		candidate=$defaults_state_dir/$safe_scope.before
+	else
+		[[ $backup_name == "$safe_scope.before."* ]] || return 1
+		[[ ${backup_name#"$safe_scope.before."} =~ ^[A-Za-z0-9]+$ ]] || return 1
+		candidate=$defaults_state_dir/$backup_name
+	fi
+	[[ -f $candidate && ! -L $candidate ]] || return 1
+	path_has_no_symlink_components "$candidate" || return 1
+	printf '%s\n' "$candidate"
+}
+
+recovery_available() {
+	local scope=$1
+	local target=$2
+	local safe_scope expected current recovery_backup
+	safe_scope=$(scope_name "$scope")
+	recovery_backup=$(recovery_before_file "$scope") || return 1
+	[[ -f $recovery_backup ]] || return 1
+	expected=$(awk -F= '$1 == "after" { print substr($0, 7); exit }' "$defaults_state_dir/$safe_scope.meta")
+	if [[ $# -ge 3 ]]; then
+		current=$3
+	else
+		current=$(file_fingerprint "$target")
+	fi
+	[[ -n $expected && $current == "$expected" ]]
+}
+
+reset_scope() {
+	local scope=$1
+	local target=$2
+	local action=$3
+	local safe_scope before mode identity recovery_backup parent current_backup current_state
+	if ! valid_absolute_path "$target" || ! path_has_no_symlink_components "$target"; then
+		printf 'dwm-default-apps: refusing unsafe recovery target: %s\n' "$target" >&2
+		return 1
+	fi
+	acquire_lock
+	safe_scope=$(scope_name "$scope")
+	if ! recovery_available "$scope" "$target"; then
+		printf 'dwm-default-apps: recovery is unavailable or state changed externally for %s\n' "$scope" >&2
+		release_lock
+		return 1
+	fi
+	before=$(awk -F= '$1 == "before" { print $2; exit }' "$defaults_state_dir/$safe_scope.meta")
+	mode=$(awk -F= '$1 == "mode" { print $2; exit }' "$defaults_state_dir/$safe_scope.meta")
+	recovery_backup=$(recovery_before_file "$scope") || {
+		printf 'dwm-default-apps: recovery backup is unsafe for %s\n' "$scope" >&2
+		release_lock
+		return 1
+	}
+	if [[ $before != present && $before != absent ]] ||
+		[[ $before == present && ! $mode =~ ^[0-7]{3,4}$ ]]; then
+		printf 'dwm-default-apps: recovery metadata is invalid for %s\n' "$scope" >&2
+		release_lock
+		return 1
+	fi
+	parent=${target%/*}
+	current_backup=$(mktemp "$parent/.dwm-default-apps.reset.XXXXXX") || {
+		release_lock
+		return 1
+	}
+	if ! current_state=$(capture_file "$target" "$current_backup"); then
+		rm -f -- "$current_backup"
+		release_lock
+		return 1
+	fi
+	begin_transaction "$target" "$current_backup" "$current_state"
+	if ! restore_file "$target" "$recovery_backup" "$before" "$mode"; then
+		if restore_file "$target" "$current_backup" "$current_state"; then
+			end_transaction
+			printf 'dwm-default-apps: recovery failed; current state restored for %s\n' "$scope" >&2
+		else
+			printf 'dwm-default-apps: recovery and rollback failed for %s\n' "$scope" >&2
+			return 1
+		fi
+		rm -f -- "$current_backup"
+		release_lock
+		return 1
+	fi
+	end_transaction
+	rm -f -- "$current_backup"
+	# Journal removal is post-commit cleanup. A stale journal cannot be offered
+	# because its recorded post-mutation fingerprint no longer matches.
+	rm -f -- "$recovery_backup" "$defaults_state_dir/$safe_scope.meta" || :
+	release_lock
+	identity=${scope#role-}
+	identity=${identity#mime-}
+	printf 'defaults-result\t1\t0\t%s\t%s\t\tok\n' \
+		"$action" "$(clean_field "$identity")"
+}
+
+set_xdg_defaults() {
+	local scope=$1
+	local desktop_id=$2
+	shift 2
+	local mimes=("$@")
+	local mime backup before_state apply_ok=1
+
+	need_cmd timeout
 	need_cmd xdg-mime
-	require_desktop_id "$desktop_id"
-
-	xdg-settings set default-web-browser "$desktop_id"
-	for mime in "${browser_mimes[@]}"; do
-		xdg-mime default "$desktop_id" "$mime"
+	prepare_safe_directory "$config_home"
+	acquire_lock
+	backup=$(mktemp "$config_home/.mimeapps.list.dwm-defaults.XXXXXX")
+	if ! before_state=$(capture_file "$mime_file" "$backup"); then
+		rm -f -- "$backup"
+		release_lock
+		return 1
+	fi
+	begin_transaction "$mime_file" "$backup" "$before_state"
+	for mime in "${mimes[@]}"; do
+		if ! run_bounded 5 xdg-mime default "$desktop_id" "$mime" >/dev/null 2>&1 ||
+			[[ $(query_mime "$mime" 2>/dev/null || true) != "$desktop_id" ]]; then
+			apply_ok=0
+			break
+		fi
 	done
+	if [[ $apply_ok -eq 1 ]]; then
+		if [[ $before_state == present ]]; then
+			chmod --reference="$backup" "$mime_file" || apply_ok=0
+		else
+			chmod 600 "$mime_file" || apply_ok=0
+		fi
+	fi
+	if [[ $apply_ok -eq 1 && $scope == role-browser ]] &&
+		[[ $(query_browser 2>/dev/null || true) != "$desktop_id" ]]; then
+		apply_ok=0
+	fi
+	if [[ $apply_ok -eq 1 && (! -f $mime_file || -L $mime_file) ]] ||
+		! path_has_no_symlink_components "$mime_file"; then
+		apply_ok=0
+	fi
+	if [[ $apply_ok -ne 1 ]]; then
+		if restore_file "$mime_file" "$backup" "$before_state"; then
+			end_transaction
+			printf 'dwm-default-apps: mutation failed; prior XDG state restored\n' >&2
+		else
+			printf 'dwm-default-apps: mutation failed and rollback failed\n' >&2
+		fi
+		rm -f -- "$backup"
+		release_lock
+		return 1
+	fi
+	if ! save_recovery "$scope" "$mime_file" "$backup" "$before_state"; then
+		if restore_file "$mime_file" "$backup" "$before_state"; then
+			end_transaction
+			printf 'dwm-default-apps: recovery journal failed; prior XDG state restored\n' >&2
+		else
+			printf 'dwm-default-apps: recovery journal and rollback failed\n' >&2
+		fi
+		rm -f -- "$backup"
+		release_lock
+		return 1
+	fi
+	end_transaction
+	rm -f -- "$backup"
+	release_lock
+}
 
-	printf 'Default browser set to %s\n' "$desktop_id"
+set_terminal() {
+	local desktop_id=$1
+	local command_name backup before_state parent temp
+	require_role_candidate terminal "$desktop_id"
+	command_name=$(terminal_command_for_id "$desktop_id")
+	safe_regular_state_file "$hotkeys_file" || {
+		printf 'dwm-default-apps: user hotkeys file is unavailable or unsafe: %s\n' "$hotkeys_file" >&2
+		return 1
+	}
+	read_terminal_command "$hotkeys_file" >/dev/null || {
+		printf 'dwm-default-apps: hotkeys terminal variable is missing or malformed\n' >&2
+		return 1
+	}
+	acquire_lock
+	parent=${hotkeys_file%/*}
+	path_has_no_symlink_components "$parent" || {
+		printf 'dwm-default-apps: hotkeys parent path became unsafe: %s\n' "$parent" >&2
+		release_lock
+		return 1
+	}
+	backup=$(mktemp "$parent/.hotkeys.toml.dwm-defaults.XXXXXX")
+	before_state=$(capture_file "$hotkeys_file" "$backup") || {
+		rm -f -- "$backup"
+		release_lock
+		return 1
+	}
+	begin_transaction "$hotkeys_file" "$backup" "$before_state"
+	temp=$(mktemp "$parent/.hotkeys.toml.dwm-write.XXXXXX")
+	if ! awk -v command_name="$command_name" '
+		$0 == "[vars]" { in_vars = 1; print; next }
+		in_vars && /^\[/ { in_vars = 0 }
+		in_vars && /^[[:space:]]*terminal[[:space:]]*=/ {
+			print "terminal = \"" command_name "\""
+			next
+		}
+		{ print }
+		' "$hotkeys_file" >"$temp" ||
+		! chmod --reference="$hotkeys_file" "$temp" ||
+		! path_has_no_symlink_components "$hotkeys_file" ||
+		! mv -f -- "$temp" "$hotkeys_file" ||
+		[[ $(read_terminal_command "$hotkeys_file" 2>/dev/null || true) != "$command_name" ]]; then
+		rm -f -- "$temp"
+		if restore_file "$hotkeys_file" "$backup" "$before_state"; then
+			end_transaction
+			printf 'dwm-default-apps: terminal mutation failed; prior hotkeys restored\n' >&2
+		else
+			printf 'dwm-default-apps: terminal mutation failed and rollback failed\n' >&2
+		fi
+		rm -f -- "$backup"
+		release_lock
+		return 1
+	fi
+	if ! save_recovery role-terminal "$hotkeys_file" "$backup" "$before_state"; then
+		if restore_file "$hotkeys_file" "$backup" "$before_state"; then
+			end_transaction
+			printf 'dwm-default-apps: terminal recovery journal failed; prior hotkeys restored\n' >&2
+		else
+			printf 'dwm-default-apps: terminal journal and rollback failed\n' >&2
+		fi
+		rm -f -- "$backup"
+		release_lock
+		return 1
+	fi
+	end_transaction
+	rm -f -- "$backup"
+	release_lock
+	printf 'defaults-result\t1\t0\tset-role\tterminal\t%s\tok\n' \
+		"$(clean_field "$desktop_id")"
+}
+
+set_role() {
+	local role=$1
+	local desktop_id=$2
+	case $role in
+	browser)
+		require_role_candidate browser "$desktop_id"
+		need_cmd xdg-settings
+		set_xdg_defaults role-browser "$desktop_id" "${browser_mimes[@]}"
+		printf 'defaults-result\t1\t0\tset-role\tbrowser\t%s\tok\n' \
+			"$(clean_field "$desktop_id")"
+		;;
+	file-manager)
+		require_role_candidate file-manager "$desktop_id"
+		set_xdg_defaults role-file-manager "$desktop_id" inode/directory
+		printf 'defaults-result\t1\t0\tset-role\tfile-manager\t%s\tok\n' \
+			"$(clean_field "$desktop_id")"
+		;;
+	terminal) set_terminal "$desktop_id" ;;
+	*)
+		printf 'dwm-default-apps: invalid role: %s\n' "$role" >&2
+		return 2
+		;;
+	esac
 }
 
 set_mime() {
 	local mime=$1
 	local desktop_id=$2
+	require_mime_candidate "$mime" "$desktop_id"
+	set_xdg_defaults "mime-$mime" "$desktop_id" "$mime"
+	printf 'defaults-result\t1\t0\tset-mime\t%s\t%s\tok\n' \
+		"$(clean_field "$mime")" "$(clean_field "$desktop_id")"
+}
 
-	need_cmd xdg-mime
-	require_desktop_id "$desktop_id"
+emit_role() {
+	local role=$1
+	local current state label provider detail file command_name fallback_file
+	case $role in
+	browser)
+		provider=xdg-settings
+		if current=$(query_browser 2>/dev/null) && [[ -n $current ]]; then
+			state=available
+			detail='Default browser is readable'
+		else
+			current=
+			state=unavailable
+			detail='Install xdg-utils or repair the browser default'
+		fi
+		;;
+	file-manager)
+		provider=xdg-mime
+		if current=$(query_mime inode/directory 2>/dev/null) && [[ -n $current ]]; then
+			state=available
+			detail='Default file manager is readable'
+		else
+			current=
+			state=unavailable
+			detail='Install xdg-utils or repair the directory association'
+		fi
+		;;
+	terminal)
+		provider=hotkeys.toml
+		if [[ -L $hotkeys_file ]]; then
+			current=
+			state=restricted
+			detail='Terminal mutation is disabled because user hotkeys.toml is a symlink'
+		elif [[ -e $hotkeys_file ]] && ! path_has_no_symlink_components "$hotkeys_file"; then
+			current=
+			state=restricted
+			detail='Terminal mutation is disabled because the hotkeys path contains a symlink'
+		elif safe_regular_state_file "$hotkeys_file" && command_name=$(read_terminal_command "$hotkeys_file" 2>/dev/null); then
+			current=$(terminal_id_for_command "$command_name" 2>/dev/null || true)
+			if [[ -n $current ]]; then
+				state=available
+				detail='Terminal hotkey selection is readable'
+			else
+				state=restricted
+				detail="Custom terminal command: $command_name"
+			fi
+		elif [[ -e $hotkeys_file ]]; then
+			current=
+			state=restricted
+			detail='Terminal mutation requires a safe regular user hotkeys.toml'
+		else
+			fallback_file=$(current_hotkeys_file 2>/dev/null || true)
+			command_name=
+			[[ -z $fallback_file ]] || command_name=$(read_terminal_command "$fallback_file" 2>/dev/null || true)
+			current=$(terminal_id_for_command "$command_name" 2>/dev/null || true)
+			state=restricted
+			detail='Terminal mutation requires an installed user hotkeys.toml'
+		fi
+		;;
+	esac
+	label=
+	if [[ -n $current ]] && file=$(desktop_file_for_id "$current" 2>/dev/null); then
+		if parse_desktop_file "$file"; then
+			label=$desktop_parsed_name
+		fi
+		if [[ $desktop_parsed_type != Application ]]; then
+			state=restricted
+			detail='Configured desktop entry is not an application'
+		fi
+	elif [[ -n $current ]]; then
+		state=restricted
+		detail='Configured desktop entry is missing'
+	fi
+	printf 'role\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+		"$role" "$state" "$(clean_field "$current")" "$(clean_field "$label")" \
+		"$provider" "$(clean_field "$detail")"
+}
 
-	xdg-mime default "$desktop_id" "$mime"
-	printf 'Default for %s set to %s\n' "$mime" "$desktop_id"
+emit_mimes() {
+	local mime current state label file
+	for mime in "${supported_mimes[@]}"; do
+		if current=$(query_mime "$mime" 2>/dev/null) && [[ -n $current ]]; then
+			state=available
+		else
+			current=
+			state=unavailable
+		fi
+		label=
+		if [[ -n $current ]] && file=$(desktop_file_for_id "$current" 2>/dev/null); then
+			if parse_desktop_file "$file"; then
+				label=$desktop_parsed_name
+			fi
+			if [[ $desktop_parsed_type != Application ]]; then
+				state=unavailable
+			fi
+		elif [[ -n $current ]]; then
+			state=unavailable
+		fi
+		printf 'mime\t%s\t%s\t%s\t%s\t%s\n' \
+			"$mime" "$state" "$(clean_field "$current")" "$(clean_field "$label")" \
+			"$([[ $state == available ]] && printf 'XDG MIME default is readable' || printf 'XDG MIME default is unavailable or invalid')"
+	done
+}
+
+emit_candidates() {
+	local dir applications file id name role command_name mime mime_types candidate_state candidate_detail
+	local -A seen=()
+	while IFS= read -r dir; do
+		applications=$dir/applications
+		if [[ ! -d $applications ]] || ! path_has_no_symlink_components "$applications"; then
+			continue
+		fi
+		while IFS= read -r -d '' file; do
+			id=$(desktop_id_for_file "$applications" "$file")
+			valid_desktop_id "$id" || continue
+			[[ -z ${seen[$id]+x} ]] || continue
+			seen[$id]=1
+			desktop_usable "$file" || continue
+			name=$desktop_parsed_name
+			[[ -n $name ]] || name=$id
+			for role in browser file-manager terminal; do
+				parsed_desktop_matches_role "$role" || continue
+				command_name=
+				candidate_state=available
+				candidate_detail='Installed desktop entry'
+				if [[ $role == terminal ]]; then
+					command_name=$(terminal_command_for_id "$id" 2>/dev/null || true)
+					if [[ -z $command_name ]] || ! command -v "$command_name" >/dev/null 2>&1; then
+						continue
+					fi
+					if ! terminal_mutation_available; then
+						candidate_state=restricted
+						candidate_detail='Terminal hotkeys target is not safely writable'
+					fi
+				fi
+				printf 'candidate\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+					"$role" "$id" "$(clean_field "$name")" "$candidate_state" \
+					"$command_name" "$candidate_detail"
+			done
+			mime_types=$desktop_parsed_mime_types
+			for mime in "${supported_mimes[@]}"; do
+				desktop_token_present "$mime_types" "$mime" || continue
+				printf 'mime-candidate\t%s\t%s\t%s\tavailable\tInstalled desktop entry\n' \
+					"$mime" "$id" "$(clean_field "$name")"
+			done
+		done < <(find "$applications" -type f -name '*.desktop' -print0 2>/dev/null)
+	done < <(data_dirs)
+}
+
+emit_recovery() {
+	local scope target state detail mime current
+	local mime_fingerprint hotkeys_fingerprint
+	mime_fingerprint=$(file_fingerprint "$mime_file")
+	hotkeys_fingerprint=$(file_fingerprint "$hotkeys_file")
+	for scope in role-browser role-terminal role-file-manager; do
+		target=$mime_file
+		current=$mime_fingerprint
+		if [[ $scope == role-terminal ]]; then
+			target=$hotkeys_file
+			current=$hotkeys_fingerprint
+		fi
+		if recovery_available "$scope" "$target" "$current"; then
+			state=available
+			detail='Restore previous selection'
+		else
+			state=unavailable
+			detail='No safe recovery snapshot'
+		fi
+		printf 'recovery\t%s\t%s\t%s\n' "${scope#role-}" "$state" "$detail"
+	done
+	for mime in "${supported_mimes[@]}"; do
+		scope=mime-$mime
+		if recovery_available "$scope" "$mime_file" "$mime_fingerprint"; then
+			state=available
+			detail='Restore previous association'
+		else
+			state=unavailable
+			detail='No safe recovery snapshot'
+		fi
+		printf 'recovery\t%s\t%s\t%s\n' "$mime" "$state" "$detail"
+	done
+}
+
+snapshot() {
+	local provider_state=available
+	local xdg_mime_available=0
+	local xdg_settings_available=0
+	command -v xdg-mime >/dev/null 2>&1 && xdg_mime_available=1
+	command -v xdg-settings >/dev/null 2>&1 && xdg_settings_available=1
+	if [[ $xdg_mime_available -eq 0 && $xdg_settings_available -eq 0 ]]; then
+		provider_state=unavailable
+	elif [[ $xdg_mime_available -eq 0 || $xdg_settings_available -eq 0 ]]; then
+		provider_state=partial
+	fi
+	printf 'defaults-protocol\t1\t0\n'
+	printf 'provider\tdefaults\t%s\tuser-session\tDefault applications and MIME state\n' "$provider_state"
+	if command -v inotifywait >/dev/null 2>&1; then
+		printf 'watch\tavailable\tinotifywait\tExternal default changes are observable\n'
+	else
+		printf 'watch\tunavailable\tinotifywait\tInstall inotify-tools for live external updates\n'
+	fi
+	emit_role browser
+	emit_role terminal
+	emit_role file-manager
+	emit_mimes
+	emit_candidates
+	emit_recovery
+}
+
+list_browsers() {
+	snapshot | awk -F '\t' '$1 == "candidate" && $2 == "browser" { print $3 "\t" $4 }'
 }
 
 status() {
-	need_cmd xdg-settings
-	need_cmd xdg-mime
-
-	printf 'default-web-browser=%s\n' "$(xdg-settings get default-web-browser 2>/dev/null || true)"
-	printf 'x-scheme-handler/http=%s\n' "$(xdg-mime query default x-scheme-handler/http 2>/dev/null || true)"
-	printf 'x-scheme-handler/https=%s\n' "$(xdg-mime query default x-scheme-handler/https 2>/dev/null || true)"
-	printf 'inode/directory=%s\n' "$(xdg-mime query default inode/directory 2>/dev/null || true)"
+	printf 'default-web-browser=%s\n' "$(query_browser 2>/dev/null || true)"
+	printf 'x-scheme-handler/http=%s\n' "$(query_mime x-scheme-handler/http 2>/dev/null || true)"
+	printf 'x-scheme-handler/https=%s\n' "$(query_mime x-scheme-handler/https 2>/dev/null || true)"
+	printf 'inode/directory=%s\n' "$(query_mime inode/directory 2>/dev/null || true)"
 }
 
 open_browser() {
 	local url=${1:-https://}
 	local current
-
-	need_cmd xdg-settings
 	need_cmd xdg-open
-
-	current=$(xdg-settings get default-web-browser 2>/dev/null || true)
+	current=$(query_browser 2>/dev/null || true)
 	if [[ -z $current ]]; then
 		printf 'dwm-default-apps: no default browser configured.\n' >&2
 		printf 'Run: dwm-default-apps browsers\n' >&2
 		printf 'Then: dwm-default-apps set-browser <desktop-id>\n' >&2
 		return 1
 	fi
-
 	exec xdg-open "$url"
+}
+
+deepest_existing_watch_parent() {
+	local candidate=$1
+	valid_absolute_path "$candidate" || return 1
+	path_has_no_symlink_components "$candidate" || return 1
+	while [[ ! -d $candidate ]]; do
+		[[ $candidate != / ]] || return 1
+		candidate=${candidate%/*}
+		[[ -n $candidate ]] || candidate=/
+	done
+	[[ $candidate != / && ! -L $candidate ]] || return 1
+	printf '%s\n' "$candidate"
+}
+
+next_watch_component() {
+	local target=$1 parent=$2 remainder
+	[[ $target == "$parent"/* ]] || return 1
+	remainder=${target#"$parent"/}
+	[[ -n $remainder ]] || return 1
+	printf '%s\n' "${remainder%%/*}"
+}
+
+monitor_defaults_watch_children() {
+	local fifo=$1 child
+	shift
+	while :; do
+		for child in "$@"; do
+			if ! kill -0 "$child" 2>/dev/null; then
+				printf 'control\tchild-exit\t%s\n' "$child" >"$fifo"
+				return
+			fi
+		done
+		sleep 0.05
+	done
+}
+
+monitor_defaults_watch_owner() {
+	local owner_pid=$1 owner_starttime=$2 watcher_pid=$3 watcher_starttime=$4
+	while process_identity_is_live "$owner_pid" "$owner_starttime"; do
+		sleep 0.1
+	done
+	if process_identity_is_live "$watcher_pid" "$watcher_starttime"; then
+		kill -TERM "$watcher_pid" 2>/dev/null || :
+	fi
+}
+
+stop_defaults_watch_children() {
+	local child
+	if [[ -n $defaults_watch_monitor ]]; then
+		kill "$defaults_watch_monitor" 2>/dev/null || :
+		wait "$defaults_watch_monitor" 2>/dev/null || :
+		defaults_watch_monitor=
+	fi
+	for child in "${defaults_watch_children[@]}"; do
+		kill "$child" 2>/dev/null || :
+	done
+	for child in "${defaults_watch_children[@]}"; do
+		wait "$child" 2>/dev/null || :
+	done
+	defaults_watch_children=()
+}
+
+defaults_watch_cleanup() {
+	trap - EXIT HUP INT TERM
+	if [[ -n $defaults_watch_owner_watchdog ]]; then
+		kill "$defaults_watch_owner_watchdog" 2>/dev/null || :
+		wait "$defaults_watch_owner_watchdog" 2>/dev/null || :
+		defaults_watch_owner_watchdog=
+	fi
+	stop_defaults_watch_children
+	if [[ -n $defaults_watch_work ]]; then
+		rm -f -- "$defaults_watch_work/events"
+		rmdir -- "$defaults_watch_work" 2>/dev/null || :
+	fi
+}
+
+watch_defaults() {
+	local dir applications config_watch_parent config_watch_mode config_watch_target new_parent
+	local config_watch_next fifo source event_type event_name watch_fd restart
+	local owner_pid=$PPID owner_starttime watcher_pid=$$ watcher_starttime
+	local -a application_dirs=() common_args=()
+	local -A seen=()
+	need_cmd inotifywait
+	owner_starttime=$(process_starttime "$owner_pid") || {
+		printf 'dwm-default-apps: cannot identify the defaults watch owner\n' >&2
+		return 1
+	}
+	process_identity_is_live "$owner_pid" "$owner_starttime" || return 1
+	watcher_starttime=$(process_starttime "$watcher_pid") || return 1
+	defaults_watch_work=$(mktemp -d "${TMPDIR:-/tmp}/dwm-default-apps-watch.XXXXXX")
+	trap defaults_watch_cleanup EXIT
+	trap 'exit 143' HUP INT TERM
+	monitor_defaults_watch_owner "$owner_pid" "$owner_starttime" \
+		"$watcher_pid" "$watcher_starttime" &
+	defaults_watch_owner_watchdog=$!
+	while :; do
+		application_dirs=()
+		defaults_watch_children=()
+		seen=()
+		config_watch_mode=none
+		config_watch_parent=
+		config_watch_next=
+		config_watch_target=$config_home/dwm-titus
+		if [[ -d $config_watch_target && ! -L $config_watch_target ]] &&
+			path_has_no_symlink_components "$config_watch_target"; then
+			config_watch_mode=config
+			config_watch_parent=$config_home
+		elif config_watch_parent=$(deepest_existing_watch_parent "$config_watch_target" 2>/dev/null); then
+			config_watch_mode=ancestor
+		elif [[ -d $config_home && ! -L $config_home ]] &&
+			path_has_no_symlink_components "$config_home"; then
+			# Continue observing safe top-level MIME changes even when the
+			# nested hotkeys path is currently unsafe.
+			config_watch_mode=config
+			config_watch_parent=$config_home
+		fi
+		if [[ $config_watch_mode == ancestor ]]; then
+			config_watch_next=$(next_watch_component "$config_watch_target" \
+				"$config_watch_parent") || return 1
+		fi
+		while IFS= read -r dir; do
+			applications=$dir/applications
+			if [[ ! -d $applications || -n ${seen[$applications]+x} ]] ||
+				! path_has_no_symlink_components "$applications"; then
+				continue
+			fi
+			seen[$applications]=1
+			application_dirs+=("$applications")
+		done < <(data_dirs)
+		[[ -n $config_watch_parent || ${#application_dirs[@]} -gt 0 ]] || {
+			printf 'dwm-default-apps: no defaults directories are available to watch\n' >&2
+			return 1
+		}
+		fifo=$defaults_watch_work/events
+		rm -f -- "$fifo"
+		mkfifo -- "$fifo"
+		exec {watch_fd}<>"$fifo"
+		common_args=(
+			-m -q -P
+			-e close_write -e create -e delete -e moved_to -e moved_from
+			-e delete_self -e move_self
+		)
+		if [[ -n $config_watch_parent ]]; then
+			if [[ $config_watch_mode == config ]]; then
+				inotifywait "${common_args[@]}" -r --format $'config\t%e\t%f' \
+					-- "$config_watch_parent" >"$fifo" &
+			else
+				inotifywait "${common_args[@]}" --format $'config\t%e\t%f' \
+					-- "$config_watch_parent" >"$fifo" &
+			fi
+			defaults_watch_children+=("$!")
+		fi
+		if [[ ${#application_dirs[@]} -gt 0 ]]; then
+			inotifywait "${common_args[@]}" -r --format $'applications\t%e\t%f' \
+				-- "${application_dirs[@]}" >"$fifo" &
+			defaults_watch_children+=("$!")
+		fi
+		monitor_defaults_watch_children "$fifo" "${defaults_watch_children[@]}" &
+		defaults_watch_monitor=$!
+		restart=0
+		while IFS=$'\t' read -r -u "$watch_fd" source event_type event_name; do
+			case $source in
+			applications)
+				[[ $event_name == *.desktop ]] || continue
+				printf '%s:%s\n' "$event_type" "$event_name"
+				;;
+			config)
+				if [[ $config_watch_mode == ancestor ]]; then
+					if [[ $config_watch_parent == "$config_home" ]]; then
+						case $event_name in
+						mimeapps.list | *-mimeapps.list)
+							printf '%s:%s\n' "$event_type" "$event_name"
+							continue
+							;;
+						esac
+					fi
+					[[ $event_name == "$config_watch_next" ]] || continue
+					new_parent=$(deepest_existing_watch_parent "$config_watch_target" 2>/dev/null || true)
+					[[ $new_parent != "$config_watch_parent" ]] || continue
+					printf '%s:%s\n' "$event_type" "$event_name"
+					restart=1
+					break
+				fi
+				if [[ ! -d $config_home || -L $config_home ]] ||
+					! path_has_no_symlink_components "$config_home"; then
+					printf '%s:%s\n' "$event_type" "$event_name"
+					restart=1
+					break
+				fi
+				case $event_name in
+				mimeapps.list | *-mimeapps.list | hotkeys.toml)
+					printf '%s:%s\n' "$event_type" "$event_name"
+					;;
+				esac
+				;;
+			control)
+				restart=0
+				break
+				;;
+			esac
+			if [[ $config_watch_mode == ancestor ]]; then
+				new_parent=$(deepest_existing_watch_parent "$config_watch_target" 2>/dev/null || true)
+				if [[ $new_parent != "$config_watch_parent" ]]; then
+					restart=1
+					break
+				fi
+			fi
+		done
+		exec {watch_fd}<&-
+		stop_defaults_watch_children
+		rm -f -- "$fifo"
+		[[ $restart -eq 1 ]] || return 1
+	done
 }
 
 main() {
 	local cmd=${1:-}
-
-	case "$cmd" in
-	status)
-		status
-		;;
-	browsers)
-		list_browsers
-		;;
-	set-browser)
-		[[ $# -eq 2 ]] || {
+	case $cmd in
+	snapshot)
+		[[ $# -eq 1 ]] || {
 			usage >&2
 			return 2
 		}
-		set_browser "$2"
+		snapshot
+		;;
+	watch)
+		[[ $# -eq 1 ]] || {
+			usage >&2
+			return 2
+		}
+		watch_defaults
+		;;
+	set-role)
+		[[ $# -eq 3 ]] || {
+			usage >&2
+			return 2
+		}
+		set_role "$2" "$3"
 		;;
 	set-mime)
 		[[ $# -eq 3 ]] || {
@@ -194,13 +1512,61 @@ main() {
 		}
 		set_mime "$2" "$3"
 		;;
+	reset-role)
+		[[ $# -eq 2 ]] || {
+			usage >&2
+			return 2
+		}
+		case $2 in
+		browser | file-manager) reset_scope "role-$2" "$mime_file" reset-role ;;
+		terminal) reset_scope role-terminal "$hotkeys_file" reset-role ;;
+		*)
+			printf 'dwm-default-apps: invalid role: %s\n' "$2" >&2
+			return 2
+			;;
+		esac
+		;;
+	reset-mime)
+		[[ $# -eq 2 ]] || {
+			usage >&2
+			return 2
+		}
+		supported_mime "$2" || {
+			printf 'dwm-default-apps: unsupported MIME type: %s\n' "$2" >&2
+			return 2
+		}
+		reset_scope "mime-$2" "$mime_file" reset-mime
+		;;
+	status)
+		[[ $# -eq 1 ]] || {
+			usage >&2
+			return 2
+		}
+		status
+		;;
+	browsers)
+		[[ $# -eq 1 ]] || {
+			usage >&2
+			return 2
+		}
+		list_browsers
+		;;
+	set-browser)
+		[[ $# -eq 2 ]] || {
+			usage >&2
+			return 2
+		}
+		set_role browser "$2" >/dev/null
+		printf 'Default browser set to %s\n' "$2"
+		;;
 	open)
-		shift
-		open_browser "${1:-https://}"
+		[[ $# -le 2 ]] || {
+			usage >&2
+			return 2
+		}
+		open_browser "${2:-https://}"
 		;;
-	-h | --help | help)
-		usage
-		;;
+	-h | --help | help) usage ;;
 	*)
 		usage >&2
 		return 2

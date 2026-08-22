@@ -100,6 +100,7 @@ mate-polkit
 alsa-utils
 brightnessctl
 dbus-tools
+inotify-tools
 pulseaudio-utils
 jq
 pipewire

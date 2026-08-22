@@ -77,6 +77,7 @@ dwm_packages fedora desktop | grep -Fx quickshell >/dev/null
 dwm_packages fedora desktop | grep -Fx flatpak >/dev/null
 dwm_packages fedora desktop | grep -Fx xdg-desktop-portal-gtk >/dev/null
 dwm_packages fedora desktop | grep -Fx dbus-tools >/dev/null
+dwm_packages fedora desktop | grep -Fx inotify-tools >/dev/null
 if ARCH=x86_64 dwm_packages fedora full | grep -Fx nwg-look >/dev/null; then
 	printf 'Unavailable Fedora package leaked into the image package set: nwg-look\n' >&2
 	exit 1
