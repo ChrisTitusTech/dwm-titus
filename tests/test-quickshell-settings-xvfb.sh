@@ -276,7 +276,66 @@ while :; do
 	sleep 1
 done
 SH
-chmod +x "$data_home/dwm-titus/scripts/dbus-monitor"
+cat >"$data_home/dwm-titus/scripts/light-locker" <<'SH'
+#!/bin/sh
+exit 0
+SH
+cat >"$data_home/dwm-titus/scripts/nmcli" <<'SH'
+#!/bin/sh
+set -eu
+while [ "$#" -gt 0 ]; do
+	case $1 in
+	--terse) shift ;;
+	--escape) shift 2 ;;
+	--separator | -f) shift 2 ;;
+	*) break ;;
+	esac
+done
+case $* in
+'device status')
+	printf 'lo:loopback:connected:lo\n'
+	printf 'enp0s1:ethernet:connected:Wired fixture\n'
+	;;
+'connection show --active')
+	printf 'Wired fixture:uuid-wired:802-3-ethernet:enp0s1\n'
+	;;
+'connection show')
+	printf 'Wired fixture:uuid-wired:802-3-ethernet\n'
+	;;
+'device wifi list --rescan no') ;;
+*) exit 2 ;;
+esac
+SH
+cat >"$data_home/dwm-titus/scripts/bluetoothctl" <<'SH'
+#!/bin/sh
+set -eu
+case $* in
+show)
+	printf 'Controller 00:11:22:33:44:55\n'
+	printf '\tPowered: yes\n'
+	;;
+'devices Connected') ;;
+devices) ;;
+*) exit 2 ;;
+esac
+SH
+cat >"$data_home/dwm-titus/scripts/busctl" <<'SH'
+#!/bin/sh
+set -eu
+case " $* " in
+*' org.bluez '*)
+	cat <<'JSON'
+{"type":"a{oa{sa{sv}}}","data":[{"/org/bluez/hci0":{"org.bluez.Adapter1":{"Address":{"type":"s","data":"00:11:22:33:44:55"},"Alias":{"type":"s","data":"Test Adapter"},"Powered":{"type":"b","data":true},"Discovering":{"type":"b","data":false},"Pairable":{"type":"b","data":true}}}}]}
+JSON
+	;;
+*) exit 1 ;;
+esac
+SH
+chmod +x "$data_home/dwm-titus/scripts/dbus-monitor" \
+	"$data_home/dwm-titus/scripts/light-locker" \
+	"$data_home/dwm-titus/scripts/nmcli" \
+	"$data_home/dwm-titus/scripts/bluetoothctl" \
+	"$data_home/dwm-titus/scripts/busctl"
 
 power_state=$work/power-state
 mkdir -p "$power_state"
