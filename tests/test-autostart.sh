@@ -4,9 +4,50 @@ set -eu
 
 DWM_AUTOSTART_NO_INPUT_WATCH=1
 export DWM_AUTOSTART_NO_INPUT_WATCH
+TEST_REAL_UID=$(id -u)
+export TEST_REAL_UID
 
 repo_dir=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
+
+test_process_starttime() {
+	pid=$1
+	awk '
+		{
+			line = $0
+			sub(/^.*\) /, "", line)
+			split(line, fields, " ")
+			if (fields[1] != "Z" && fields[20] ~ /^[0-9]+$/) {
+				print fields[20]
+			}
+		}
+	' "/proc/$pid/stat" 2>/dev/null
+}
+
+test_identity_matches() {
+	identity=$1
+	pid=${identity%%:*}
+	starttime=${identity#*:}
+	[ "$(stat -c %u "/proc/$pid" 2>/dev/null)" = "$TEST_REAL_UID" ] || return 1
+	[ "$(test_process_starttime "$pid")" = "$starttime" ]
+}
+
+record_test_identity() {
+	pid=$1
+	identity_file=$2
+	i=0
+	while [ "$i" -lt 50 ]; do
+		starttime=$(test_process_starttime "$pid")
+		if [ -n "$starttime" ]; then
+			printf '%s:%s\n' "$pid" "$starttime" >>"$identity_file"
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.01
+	done
+	return 1
+}
+
 cleanup() {
 	if [ -f "$work/watcher-fallback/state/watcher.pid" ]; then
 		watcher_pid=$(cat "$work/watcher-fallback/state/watcher.pid")
@@ -15,6 +56,24 @@ cleanup() {
 		*) kill "$watcher_pid" 2>/dev/null || true ;;
 		esac
 	fi
+	for identity_file in "$work"/*/state/quickshell-runtime.identities; do
+		[ -f "$identity_file" ] || continue
+		while IFS= read -r runtime_identity; do
+			test_identity_matches "$runtime_identity" || continue
+			runtime_pid=${runtime_identity%%:*}
+			kill -TERM "$runtime_pid" 2>/dev/null || true
+		done <"$identity_file"
+	done
+	sleep 0.05
+	for identity_file in "$work"/*/state/quickshell-runtime.identities; do
+		[ -f "$identity_file" ] || continue
+		while IFS= read -r runtime_identity; do
+			test_identity_matches "$runtime_identity" || continue
+			runtime_pid=${runtime_identity%%:*}
+			kill -KILL "$runtime_pid" 2>/dev/null || true
+			wait "$runtime_pid" 2>/dev/null || true
+		done <"$identity_file"
+	done
 	rm -rf "$work"
 }
 trap cleanup EXIT HUP INT TERM
@@ -45,11 +104,13 @@ wait_for_marker() {
 	return 1
 }
 
-mkdir -p "$work/bin"
+mkdir -p "$work/bin" "$work/runtime-bin/normal" "$work/runtime-bin/stubborn"
+cp /usr/bin/sleep "$work/runtime-bin/normal/quickshell"
+cp /usr/bin/python3 "$work/runtime-bin/stubborn/quickshell"
 
 cat >"$work/bin/id" <<'EOF'
 #!/bin/sh
-printf '%s\n' 1000
+printf '%s\n' "${TEST_REAL_UID:?}"
 EOF
 
 cat >"$work/bin/pgrep" <<'EOF'
@@ -135,11 +196,12 @@ fi
 managed_config=${XDG_CONFIG_HOME:?}/quickshell/shell.qml
 selected_path=
 previous=
+no_duplicate=0
 for argument do
 	if [ "$previous" = --path ]; then
 		selected_path=$argument
-		break
 	fi
+	[ "$argument" != --no-duplicate ] || no_duplicate=1
 	previous=$argument
 done
 if [ "${1:-}" = kill ]; then
@@ -148,10 +210,21 @@ if [ "${1:-}" = kill ]; then
 	[ ! -f "$count_file" ] || count=$(cat "$count_file")
 	printf '%s\n' "$((count + 1))" >"$count_file"
 	if [ "$selected_path" != "$managed_config" ]; then
+		if [ -f "${TEST_STATE:?}/quickshell-secondary.pid" ]; then
+			kill "$(cat "${TEST_STATE:?}/quickshell-secondary.pid")" 2>/dev/null || true
+		fi
 		rm -f "${TEST_STATE:?}/quickshell.stale" \
 			"${TEST_STATE:?}/quickshell.running" \
 			"${TEST_STATE:?}/quickshell-secondary.running"
 		exit 0
+	fi
+	if [ "${TEST_QUICKSHELL_KILL_HANG:-0}" = 1 ]; then
+		if [ -f "${TEST_STATE:?}/quickshell-replacement.pid" ]; then
+			cat "${TEST_STATE:?}/quickshell-replacement.pid" >>\
+				"${TEST_STATE:?}/quickshell-managed.pids"
+		fi
+		sleep 10
+		exit 1
 	fi
 	if [ "${TEST_QUICKSHELL_DELAYED_STOP:-0}" = 1 ]; then
 		: >"${TEST_STATE:?}/quickshell.stopping"
@@ -162,6 +235,40 @@ if [ "${1:-}" = kill ]; then
 fi
 if [ "${1:-}" = list ]; then
 	[ "$selected_path" = "$managed_config" ] || exit 2
+	if [ -f "${TEST_STATE:?}/quickshell-managed.pids" ]; then
+		count_file="${TEST_STATE:?}/quickshell-list.count"
+		count=0
+		[ ! -f "$count_file" ] || count=$(cat "$count_file")
+		printf '%s\n' "$((count + 1))" >"$count_file"
+		separator=
+		original_alive=0
+		replacement_alive=0
+		replacement_pid=
+		[ ! -f "${TEST_STATE:?}/quickshell-replacement.pid" ] ||
+			replacement_pid=$(cat "${TEST_STATE:?}/quickshell-replacement.pid")
+		printf '['
+		while IFS= read -r managed_pid; do
+			state=$(awk '{ sub(/^.*\) /, ""); print $1 }' "/proc/$managed_pid/stat" 2>/dev/null || :)
+			[ -n "$state" ] && [ "$state" != Z ] || continue
+			if [ "$managed_pid" = "$replacement_pid" ]; then
+				replacement_alive=1
+			else
+				original_alive=1
+			fi
+			printf '%s{"pid":%s}' "$separator" "$managed_pid"
+			separator=,
+		done <"${TEST_STATE:?}/quickshell-managed.pids"
+		printf ']\n'
+		if [ "$original_alive" -eq 0 ]; then
+			rm -f "${TEST_STATE:?}/quickshell.stale"
+			if [ "$replacement_alive" -eq 1 ]; then
+				: >"${TEST_STATE:?}/quickshell.running"
+				: >"${TEST_STATE:?}/quickshell-tray.ready"
+				printf '%s\n' 1 >"${TEST_STATE:?}/quickshell.count"
+			fi
+		fi
+		exit 0
+	fi
 	if [ -f "${TEST_STATE:?}/quickshell.stopping" ]; then
 		count_file="${TEST_STATE:?}/quickshell-list.count"
 		count=0
@@ -199,6 +306,9 @@ if [ "${1:-}" = ipc ]; then
 fi
 
 count_file="${TEST_STATE:?}/quickshell.count"
+if [ -f "${TEST_STATE:?}/quickshell.running" ] && [ "$no_duplicate" -eq 1 ]; then
+	exit 0
+fi
 count=0
 [ ! -f "$count_file" ] || count=$(cat "$count_file")
 count=$((count + 1))
@@ -290,8 +400,28 @@ run_stale_quickshell_case() {
 	: >"$home/Pictures/backgrounds/wallpaper"
 	: >"$home/.config/quickshell/shell.qml"
 	: >"$state/quickshell.stale"
-	: >"$state/quickshell-secondary.running"
 	: >"$state/polkit-mate-authentication-agent-1.running"
+	identity_file="$state/quickshell-runtime.identities"
+	: >"$identity_file"
+	"$work/runtime-bin/normal/quickshell" 60 &
+	managed_pid_one=$!
+	record_test_identity "$managed_pid_one" "$identity_file"
+	TEST_STUBBORN_READY="$state/quickshell-stubborn.ready" \
+		"$work/runtime-bin/stubborn/quickshell" -c \
+		'import os, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); open(os.environ["TEST_STUBBORN_READY"], "w").close(); time.sleep(60)' &
+	managed_pid_two=$!
+	record_test_identity "$managed_pid_two" "$identity_file"
+	printf '%s\n%s\n' "$managed_pid_one" "$managed_pid_two" >"$state/quickshell-managed.pids"
+	"$work/runtime-bin/normal/quickshell" 60 &
+	secondary_pid=$!
+	record_test_identity "$secondary_pid" "$identity_file"
+	printf '%s\n' "$secondary_pid" >"$state/quickshell-secondary.pid"
+	"$work/runtime-bin/normal/quickshell" 60 &
+	replacement_pid=$!
+	record_test_identity "$replacement_pid" "$identity_file"
+	printf '%s\n' "$replacement_pid" >"$state/quickshell-replacement.pid"
+	wait_for_marker "$state/quickshell-stubborn.ready"
+	rm -f "$work/runtime-bin/stubborn/quickshell"
 
 	DISPLAY=:99 \
 		HOME=$home \
@@ -301,12 +431,15 @@ run_stale_quickshell_case() {
 		XDG_RUNTIME_DIR="$runtime" \
 		DWM_AUTOSTART_NO_INPUT_WATCH=1 \
 		DWM_AUTOSTART_NO_SETSID=1 \
-		TEST_QUICKSHELL_DELAYED_STOP=1 \
+		TEST_QUICKSHELL_KILL_HANG=1 \
 		sh "$repo_dir/scripts/autostart.sh"
 
+	wait "$managed_pid_one" 2>/dev/null || true
+	wait "$managed_pid_two" 2>/dev/null || true
 	test ! -e "$state/quickshell.stale"
 	test -f "$state/quickshell.running"
-	test -f "$state/quickshell-secondary.running"
+	kill -0 "$secondary_pid"
+	kill -0 "$replacement_pid"
 	test -f "$state/quickshell-tray.ready"
 	test "$(cat "$state/quickshell.count")" -eq 1
 	test "$(cat "$state/quickshell-kill.count")" -eq 1
@@ -314,6 +447,14 @@ run_stale_quickshell_case() {
 	grep -Fq "kill --path $home/.config/quickshell/shell.qml" "$state/quickshell.args"
 	grep -Fq "list --path $home/.config/quickshell/shell.qml --json" "$state/quickshell.args"
 	grep -Fq -- "--path $home/.config/quickshell/shell.qml --no-duplicate" "$state/quickshell.args"
+	kill "$secondary_pid"
+	wait "$secondary_pid" 2>/dev/null || true
+	kill "$replacement_pid"
+	wait "$replacement_pid" 2>/dev/null || true
+	rm -f "$state/quickshell-managed.pids" \
+		"$state/quickshell-secondary.pid" \
+		"$state/quickshell-replacement.pid" \
+		"$state/quickshell-runtime.identities"
 }
 
 run_hung_quickshell_case() {

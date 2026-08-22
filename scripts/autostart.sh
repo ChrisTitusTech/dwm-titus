@@ -43,6 +43,63 @@ quickshell_tray_ready() {
 	timeout 1 quickshell ipc --path "$config" call tray count >/dev/null 2>&1
 }
 
+quickshell_instance_pids() {
+	config=$1
+
+	command -v jq >/dev/null 2>&1 || return 1
+	instances=$(timeout 1 quickshell list --path "$config" --json 2>/dev/null) || return 1
+	printf '%s\n' "$instances" |
+		jq -r '.[]? | .pid | select(type == "number" and . >= 2 and floor == .)'
+}
+
+quickshell_pid_is_owned() {
+	pid=$1
+	case $pid in
+	'' | *[!0-9]*) return 1 ;;
+	esac
+
+	[ "$(stat -c %u "/proc/$pid" 2>/dev/null)" = "$(id -u)" ] || return 1
+	executable=$(readlink "/proc/$pid/exe" 2>/dev/null) || return 1
+	case $executable in
+	*' (deleted)') executable=${executable%' (deleted)'} ;;
+	esac
+	[ "${executable##*/}" = quickshell ]
+}
+
+quickshell_pid_starttime() {
+	pid=$1
+	awk '
+		{
+			line = $0
+			sub(/^.*\) /, "", line)
+			split(line, fields, " ")
+			if (fields[1] != "Z" && fields[20] ~ /^[0-9]+$/) {
+				print fields[20]
+			}
+		}
+	' "/proc/$pid/stat" 2>/dev/null
+}
+
+quickshell_instance_identities() {
+	config=$1
+	pids=$(quickshell_instance_pids "$config") || return 1
+	for pid in $pids; do
+		quickshell_pid_is_owned "$pid" || continue
+		starttime=$(quickshell_pid_starttime "$pid")
+		[ -n "$starttime" ] || continue
+		printf '%s:%s\n' "$pid" "$starttime"
+	done
+}
+
+quickshell_identity_matches() {
+	identity=$1
+	pid=${identity%%:*}
+	starttime=${identity#*:}
+
+	quickshell_pid_is_owned "$pid" || return 1
+	[ "$(quickshell_pid_starttime "$pid")" = "$starttime" ]
+}
+
 wait_for_quickshell_exit() {
 	config=$1
 
@@ -56,12 +113,36 @@ wait_for_quickshell_exit() {
 	' sh "$config"
 }
 
+stop_managed_quickshell() {
+	config=$1
+	identities=$(quickshell_instance_identities "$config") || return 1
+	[ -n "$identities" ] || return 0
+
+	# Ask the oldest matching instance to exit cleanly, then use only the PIDs
+	# from the same config and current display if its IPC loop is unresponsive.
+	timeout 1 quickshell kill --path "$config" >/dev/null 2>&1 || true
+	for identity in $identities; do
+		quickshell_identity_matches "$identity" || continue
+		pid=${identity%%:*}
+		kill -TERM "$pid" 2>/dev/null || true
+	done
+	wait_for_quickshell_exit "$config" >/dev/null 2>&1 && return 0
+
+	# Never refresh this cohort: another autostart may already have launched a
+	# healthy replacement while this one was waiting.
+	for identity in $identities; do
+		quickshell_identity_matches "$identity" || continue
+		pid=${identity%%:*}
+		kill -KILL "$pid" 2>/dev/null || true
+	done
+	wait_for_quickshell_exit "$config" >/dev/null 2>&1
+}
+
 start_managed_quickshell() {
 	config=$1
 
 	if ! quickshell_tray_ready "$config"; then
-		timeout 2 quickshell kill --path "$config" >/dev/null 2>&1 || true
-		wait_for_quickshell_exit "$config" >/dev/null 2>&1 || true
+		stop_managed_quickshell "$config" >/dev/null 2>&1 || true
 		start_detached quickshell --path "$config" --no-duplicate
 	fi
 }
