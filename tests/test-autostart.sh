@@ -83,6 +83,7 @@ EOF
 cat >"$work/bin/systemctl" <<'EOF'
 #!/bin/sh
 printf '%s\t%s\n' "${XDG_CURRENT_DESKTOP:-}" "$*" >>"${TEST_STATE:?}/systemctl.log"
+printf 'systemctl\t%s\n' "$*" >>"${TEST_STATE:?}/events.log"
 case $* in
 *"start wm-graphical-session.service"*)
 	[ "${TEST_SYSTEMD_START_FAIL:-0}" != 1 ] || exit 1
@@ -131,11 +132,27 @@ if [ "${1:-}" = --version ]; then
 	printf '%s\n' 'quickshell 0.3.0'
 	exit 0
 fi
+managed_config=${XDG_CONFIG_HOME:?}/quickshell/shell.qml
+selected_path=
+previous=
+for argument do
+	if [ "$previous" = --path ]; then
+		selected_path=$argument
+		break
+	fi
+	previous=$argument
+done
 if [ "${1:-}" = kill ]; then
 	count_file="${TEST_STATE:?}/quickshell-kill.count"
 	count=0
 	[ ! -f "$count_file" ] || count=$(cat "$count_file")
 	printf '%s\n' "$((count + 1))" >"$count_file"
+	if [ "$selected_path" != "$managed_config" ]; then
+		rm -f "${TEST_STATE:?}/quickshell.stale" \
+			"${TEST_STATE:?}/quickshell.running" \
+			"${TEST_STATE:?}/quickshell-secondary.running"
+		exit 0
+	fi
 	if [ "${TEST_QUICKSHELL_DELAYED_STOP:-0}" = 1 ]; then
 		: >"${TEST_STATE:?}/quickshell.stopping"
 	else
@@ -144,6 +161,7 @@ if [ "${1:-}" = kill ]; then
 	exit 0
 fi
 if [ "${1:-}" = list ]; then
+	[ "$selected_path" = "$managed_config" ] || exit 2
 	if [ -f "${TEST_STATE:?}/quickshell.stopping" ]; then
 		count_file="${TEST_STATE:?}/quickshell-list.count"
 		count=0
@@ -165,6 +183,8 @@ if [ "${1:-}" = list ]; then
 	exit 0
 fi
 if [ "${1:-}" = ipc ]; then
+	printf '%s\n' ipc >>"${TEST_STATE:?}/events.log"
+	[ "$selected_path" = "$managed_config" ] || exit 2
 	if [ -f "${TEST_STATE:?}/quickshell.stale" ]; then
 		sleep 10
 		exit 1
@@ -291,6 +311,9 @@ run_stale_quickshell_case() {
 	test "$(cat "$state/quickshell.count")" -eq 1
 	test "$(cat "$state/quickshell-kill.count")" -eq 1
 	test "$(cat "$state/quickshell-list.count")" -ge 3
+	grep -Fq "kill --path $home/.config/quickshell/shell.qml" "$state/quickshell.args"
+	grep -Fq "list --path $home/.config/quickshell/shell.qml --json" "$state/quickshell.args"
+	grep -Fq -- "--path $home/.config/quickshell/shell.qml --no-duplicate" "$state/quickshell.args"
 }
 
 run_hung_quickshell_case() {
@@ -313,12 +336,20 @@ run_hung_quickshell_case() {
 		DWM_AUTOSTART_NO_INPUT_WATCH=1 \
 		DWM_AUTOSTART_NO_SETSID=1 \
 		TEST_QUICKSHELL_LAUNCH_HANG=1 \
-		TEST_SYSTEMD_START_FAIL=1 \
 		sh "$repo_dir/scripts/autostart.sh"
 	elapsed=$(($(date +%s) - started))
 
+	test "$elapsed" -ge 5
 	test "$elapsed" -le 7
 	test "$(cat "$state/quickshell.count")" -eq 1
+	test "$(grep -c '^ipc$' "$state/events.log")" -ge 4
+	awk -F '\t' '
+		$1 == "ipc" { ipc_count++ }
+		$1 == "systemctl" && $2 ~ /start wm-graphical-session.service/ {
+			start_after_ipc = ipc_count
+		}
+		END { exit !(start_after_ipc >= 4) }
+	' "$state/events.log"
 }
 
 run_dex_fallback_case() {
