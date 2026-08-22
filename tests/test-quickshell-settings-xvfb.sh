@@ -4,7 +4,7 @@ set -eu
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 for command_name in Xvfb dbus-monitor dbus-run-session glib-compile-schemas \
-	gsettings quickshell xdotool xprop pgrep getconf; do
+	gsettings inotifywait quickshell xdotool xprop pgrep getconf; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
