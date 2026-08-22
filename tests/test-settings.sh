@@ -45,6 +45,13 @@ make_malformed_appearance_stub() {
 	chmod +x "$path"
 }
 
+make_preamble_appearance_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' 'printf "preamble\nappearance-protocol\t1\t0\n"' >"$path"
+	chmod +x "$path"
+}
+
 base_bin=$work/base-bin
 fedora_bin=$work/fedora-bin
 make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
@@ -119,6 +126,14 @@ make_malformed_appearance_stub "$malformed_appearance_bin/dwm-settings-appearanc
 malformed_appearance_output=$(PATH="$malformed_appearance_bin" XDG_CONFIG_HOME="$work/fedora-config" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$malformed_appearance_output" | grep -Fqx \
+	'capability	appearance	themes	Themes	unavailable	read-only	dwm-settings-appearance	Restore a valid themes.toml configuration or inspect the appearance snapshot errors'
+
+preamble_appearance_bin=$work/preamble-appearance-bin
+cp -a "$fedora_bin" "$preamble_appearance_bin"
+make_preamble_appearance_stub "$preamble_appearance_bin/dwm-settings-appearance"
+preamble_appearance_output=$(PATH="$preamble_appearance_bin" XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$preamble_appearance_output" | grep -Fqx \
 	'capability	appearance	themes	Themes	unavailable	read-only	dwm-settings-appearance	Restore a valid themes.toml configuration or inspect the appearance snapshot errors'
 
 missing_appearance_bin=$work/missing-appearance-bin

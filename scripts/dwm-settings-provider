@@ -64,7 +64,8 @@ appearance_snapshot_valid() {
 	timeout_path=$(command -v timeout 2>/dev/null) || return 1
 	appearance_snapshot=$("$timeout_path" 2 "$command_path" snapshot 2>/dev/null) || return 1
 	printf '%s\n' "$appearance_snapshot" |
-		grep -Fqx 'appearance-protocol	1	0'
+		awk 'NR == 1 { valid = ($0 == "appearance-protocol	1	0"); exit }
+			END { exit(valid ? 0 : 1) }'
 }
 
 emit_capability() {
