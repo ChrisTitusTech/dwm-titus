@@ -33,6 +33,10 @@ mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" \
 	"$data_home/dwm-titus/scripts" "$runtime"
 chmod 700 "$runtime"
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
+# Keep this nested-X11 fixture independent from the host system UPower service
+# so versioned helper battery records exercise the fallback parser.
+sed -i 's/readonly property var nativeBattery: UPower.displayDevice/readonly property var nativeBattery: null/' \
+	"$config_home/quickshell/power/PowerModel.qml"
 cp "$repo/config/"*.toml "$config_home/dwm-titus/"
 cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-settings-display" "$repo/scripts/dwm-settings-input" \
@@ -60,6 +64,11 @@ if [ "${1:-}" = power-snapshot ] && [ -r "$fixture" ]; then
 		printf 'provider\tpower\tavailable\tuser-session\tMalformed record fixture\n'
 		printf 'power-dpms\tavailable\tyes\t1e2\tuser-session\tExponent timeout\n'
 		printf 'power-lock\tavailable\tyes\t0x10\tno\tuser-session\tHex timeout\n'
+		;;
+	battery)
+		printf 'power-protocol\t1\t0\n'
+		printf 'provider\tpower\tavailable\tuser-session\tExponent battery-rate fixture\n'
+		printf 'power-battery\tavailable\tdischarging\t73\t4200\t0\t1E-7\tValid exponent rate\n'
 		;;
 	esac
 	exit 0
@@ -391,6 +400,24 @@ power_timeout=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DAT
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerDpmsTimeout)
 [ "$power_enabled" = false ]
 [ "$power_timeout" -eq 0 ]
+
+printf 'battery\n' >"$malformed_power_snapshot"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select power >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	power_battery_available=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerBatteryAvailable 2>/dev/null || true)
+	power_battery_percent=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerBatteryPercent 2>/dev/null || true)
+	[ "$power_battery_available" = true ] && [ "$power_battery_percent" = 73 ] && break
+	i=$((i + 1))
+	sleep 0.02
+done
+[ "$power_battery_available" = true ]
+[ "$power_battery_percent" = 73 ]
 
 rm -f "$malformed_power_snapshot"
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \

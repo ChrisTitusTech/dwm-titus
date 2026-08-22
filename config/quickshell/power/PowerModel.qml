@@ -96,7 +96,8 @@ Scope {
     }
 
     function boundedNumber(value, minimum, maximum) {
-        if (typeof value !== "string" || !/^[0-9]+(?:\.[0-9]+)?$/.test(value)) return -1;
+        if (typeof value !== "string"
+                || !/^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/.test(value)) return -1;
         const parsed = Number(value);
         return isFinite(parsed) && parsed >= minimum && parsed <= maximum ? parsed : -1;
     }

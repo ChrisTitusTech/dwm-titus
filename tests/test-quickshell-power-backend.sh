@@ -323,6 +323,12 @@ printf '%s\n' "$snapshot" | grep -Fqx 'power-profile	balanced	active'
 printf '%s\n' "$snapshot" | grep -Fqx 'power-suspend	available	delegated	Suspend requires authorization'
 printf '%s\n' "$snapshot" | grep -Fqx 'power-lid-policy	available	suspend	default	ignore	read-only	Persistent lid policy is owned by systemd-logind'
 
+export DWM_POWER_TEST_ENERGY_RATE=1E-7
+exponent_rate_snapshot=$(run_helper power-snapshot)
+printf '%s\n' "$exponent_rate_snapshot" |
+	grep -Fqx 'power-battery	available	discharging	73	4200	0	1E-7	Composite UPower display battery'
+export DWM_POWER_TEST_ENERGY_RATE=12.5
+
 write_initial_config
 before=$(sha256sum "$work/config/dwm-titus/power.conf")
 export DWM_POWER_TEST_XSET_NO_DPMS=1

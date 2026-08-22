@@ -65,7 +65,8 @@ state is the aggregate UPower display device. `CHARGE_STATE` is `charging`,
 `unknown`.
 UPower reports time values in seconds and energy rate in watts. A system with
 no battery emits a valid unavailable battery record rather than inventing a
-charge value.
+charge value. `ENERGY_RATE` is a finite, non-negative base-10 number and may
+use exponent notation because D-Bus JSON serializers can emit doubles that way.
 
 The profile inventory accepts only `power-saver`, `balanced`, and
 `performance`. The helper also verifies that a requested profile is currently
