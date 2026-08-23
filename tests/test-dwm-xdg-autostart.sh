@@ -598,7 +598,7 @@ if command -v inotifywait >/dev/null 2>&1; then
 	kill -0 "$watch_helper"
 	kill -0 "$watch_child"
 	kill -CONT "$watch_owner"
-	kill -TERM "$watch_owner"
+	kill -KILL "$watch_owner"
 	wait "$watch_owner" 2>/dev/null || true
 	watch_owner=
 	wait_for pid_gone "$watch_helper"
@@ -628,7 +628,7 @@ if command -v inotifywait >/dev/null 2>&1; then
 	wait_for watch_child_replaced
 	cp "$work/vendor-a/autostart/example.desktop" "$work/watch-config/autostart/watched.desktop"
 	wait_for line_count_at_least "$work/watch-absent.out" $'changed\tautostart' 2
-	kill -TERM "$watch_owner"
+	kill -KILL "$watch_owner"
 	wait "$watch_owner" 2>/dev/null || true
 	watch_owner=
 	wait_for pid_gone "$watch_helper"
@@ -661,7 +661,7 @@ if command -v inotifywait >/dev/null 2>&1; then
 	done
 	cp "$work/vendor-a/autostart/example.desktop" "$work/watch-deep/one/two/config/autostart/watched.desktop"
 	wait_for line_count_at_least "$work/watch-deep.out" $'changed\tautostart' 5
-	kill -TERM "$watch_owner"
+	kill -KILL "$watch_owner"
 	wait "$watch_owner" 2>/dev/null || true
 	watch_owner=
 	wait_for pid_gone "$watch_helper"
