@@ -146,6 +146,8 @@ grep -Fqx $'error\tkitty\tmissing-application\tTerminal application is not insta
 
 cp "$config_home/dwm-titus/themes.toml" "$work/replacement-themes.toml"
 sed -i '0,/theme = "nord"/s//theme = "dracula"/' "$work/replacement-themes.toml"
+real_awk=$(command -v awk)
+real_mv=$(command -v mv)
 rm -f "$bin_dir/awk"
 cat >"$bin_dir/awk" <<'EOF'
 #!/bin/sh
@@ -158,15 +160,15 @@ EOF
 chmod +x "$bin_dir/awk"
 immutable_snapshot=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
 	XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
-	DWM_APPEARANCE_DATA_DIRS=$data_root DWM_TEST_REAL_AWK="$(command -v awk)" \
-	DWM_TEST_REAL_MV="$(command -v mv)" \
+	DWM_APPEARANCE_DATA_DIRS=$data_root DWM_TEST_REAL_AWK="$real_awk" \
+	DWM_TEST_REAL_MV="$real_mv" \
 	DWM_TEST_REPLACEMENT="$work/replacement-themes.toml" \
 	DWM_TEST_REPLACEMENT_TARGET="$config_home/dwm-titus/themes.toml" \
 	DWM_TEST_REPLACED_MARKER="$work/replaced.marker" "$helper" snapshot)
 grep -Fqx $'active\tnord\tnord\tselected' <<<"$immutable_snapshot"
 grep -Fq 'theme = "dracula"' "$config_home/dwm-titus/themes.toml"
 rm -f "$bin_dir/awk"
-ln -s "$(command -v awk)" "$bin_dir/awk"
+ln -s "$real_awk" "$bin_dir/awk"
 cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
 
 no_qt_bin=$work/no-qt-bin
