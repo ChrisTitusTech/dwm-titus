@@ -96,6 +96,14 @@ select_source() {
 	add_error source missing 'No readable user or managed themes.toml file is available'
 }
 
+theme_content_lines() {
+	awk '!/^[[:space:]]*(#.*)?$/ { sub(/\r$/, ""); print }' "$1"
+}
+
+numbered_theme_content_lines() {
+	awk '!/^[[:space:]]*(#.*)?$/ { sub(/\r$/, ""); print NR; print }' "$1"
+}
+
 prescan_active_theme() {
 	local file=$1 line trimmed section='' candidate
 
@@ -119,7 +127,7 @@ prescan_active_theme() {
 				selected_theme_hint=$candidate
 			fi
 		fi
-	done <"$file"
+	done < <(theme_content_lines "$file")
 }
 
 runtime_bare_is_numeric() {
@@ -140,7 +148,7 @@ string_byte_length() {
 }
 
 parse_themes() {
-	local file=$1 size line trimmed line_number=0 raw runtime_key runtime_value parsed_type
+	local file=$1 size line trimmed line_number raw runtime_key runtime_value parsed_type
 	local string_byte_length_result
 	local section='' theme='' theme_candidate='' key='' parsed=''
 
@@ -156,9 +164,7 @@ parse_themes() {
 	fi
 	prescan_active_theme "$file"
 
-	while IFS= read -r line || [[ -n $line ]]; do
-		((line_number += 1))
-		line=${line%$'\r'}
+	while IFS= read -r line_number && IFS= read -r line; do
 		trimmed=$line
 		trimmed=${trimmed#"${trimmed%%[![:space:]]*}"}
 		trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
@@ -300,7 +306,7 @@ parse_themes() {
 		fi
 
 		value[$raw]=$parsed
-	done <"$file"
+	done < <(numbered_theme_content_lines "$file")
 }
 
 valid_color() {

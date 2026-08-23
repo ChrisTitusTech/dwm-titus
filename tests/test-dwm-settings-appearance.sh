@@ -484,6 +484,17 @@ grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory
 	"$work/many-incomplete.out"
 [[ $(grep -c $'^error\ttheme:' "$work/many-incomplete.out") -eq 100 ]]
 
+{
+	for ((comment_index = 0; comment_index < 30000; comment_index++)); do
+		printf '# comment\n'
+	done
+	cat "$work/managed-themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+timeout 5 env PATH="$bin_dir" GTK_THEME='' XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$data_root" DWM_APPEARANCE_DATA_DIRS="$data_root" \
+	"$helper" snapshot >"$work/comment-heavy.out"
+grep -Fqx $'active\tnord\tnord\tselected' "$work/comment-heavy.out"
+
 cat >"$config_home/dwm-titus/themes.toml" <<'EOF'
 [colors]
 normfgcolor = "#D8DEE9"
