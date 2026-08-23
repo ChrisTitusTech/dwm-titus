@@ -73,6 +73,7 @@ cp "$config_home/alacritty/active-theme.toml" "$work/alacritty-valid.toml"
 cp "$config_home/kitty/active-theme.conf" "$work/kitty-valid.conf"
 printf 'import = ["%s"]\n' "$config_home/alacritty/active-theme.toml" \
 	>"$config_home/alacritty/alacritty.toml"
+
 printf 'export QT_QPA_PLATFORMTHEME=qt6ct\nexport XCURSOR_THEME=Capitaine-Cursors-White\n' \
 	>"$config_home/dwm-titus/theme-env.sh"
 printf 'Xcursor.theme: Capitaine-Cursors-White\n' \
@@ -103,6 +104,18 @@ hash_path=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
 grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
 	<<<"$hash_path"
 
+escaped_config_home=$work/config\\escaped
+cp -a "$config_home" "$escaped_config_home"
+escaped_active_path=$escaped_config_home/alacritty/active-theme.toml
+encoded_active_path=${escaped_active_path//\\/\\\\}
+printf 'import = ["%s"]\n' "$encoded_active_path" \
+	>"$escaped_config_home/alacritty/alacritty.toml"
+escaped_path=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$escaped_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$escaped_path"
+
 snapshot() {
 	PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
 		DWM_APPEARANCE_DATA_DIRS=$data_root \
@@ -132,6 +145,20 @@ grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal 
 grep -Fqx $'integration\tkitty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
 grep -Fqx $'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract' <<<"$output"
 grep -Fqx $'error\tcompositor\tunsupported\tPicom theme mutation is not implemented' <<<"$output"
+
+printf '[window]\nimport = ["%s"]\n' "$config_home/alacritty/active-theme.toml" \
+	>"$config_home/alacritty/alacritty.toml"
+table_import_alacritty=$(snapshot)
+grep -Fqx $'integration\talacritty\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration' \
+	<<<"$table_import_alacritty"
+
+printf 'import = "%s"\n' "$config_home/alacritty/active-theme.toml" \
+	>"$config_home/alacritty/alacritty.toml"
+scalar_import_alacritty=$(snapshot)
+grep -Fqx $'integration\talacritty\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration' \
+	<<<"$scalar_import_alacritty"
+printf 'import = ["%s"]\n' "$config_home/alacritty/active-theme.toml" \
+	>"$config_home/alacritty/alacritty.toml"
 
 no_kitty_bin=$work/no-kitty-bin
 cp -a "$bin_dir" "$no_kitty_bin"
@@ -377,15 +404,12 @@ grep -Fq $'error\tsource\tunreadable\tUser theme file is not a readable regular 
 rmdir "$config_home/dwm-titus/themes.toml"
 
 ln -s "$work/missing-user-theme.toml" "$config_home/dwm-titus/themes.toml"
-set +e
 dangling_user=$(snapshot)
-dangling_user_status=$?
-set -e
-[[ $dangling_user_status -eq 3 ]]
-grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' \
 	<<<"$dangling_user"
-grep -Fqx $'source\tuser\t'"$config_home/dwm-titus/themes.toml" <<<"$dangling_user"
-grep -Fq $'error\tsource\tunreadable\tUser theme file is not a readable regular file: ' \
+grep -Fqx $'source\tmanaged\t'"$data_root/dwm-titus/config/themes.toml" <<<"$dangling_user"
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$dangling_user"
+grep -Fq $'error\tsource\tdangling-user\tIgnoring dangling user theme symlink and trying the managed source: ' \
 	<<<"$dangling_user"
 rm -f "$config_home/dwm-titus/themes.toml"
 
@@ -402,6 +426,14 @@ sed -i '0,/theme = "nord"/s//theme = "no\\rd"/' \
 	"$config_home/dwm-titus/themes.toml"
 escaped_active=$(snapshot)
 grep -Fqx $'active\tnord\tnord\tselected' <<<"$escaped_active"
+
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+em_space=$'\u2003'
+sed -i "0,/^\[active\]$/s//${em_space}[active]/; 0,/^theme =/s//${em_space}theme =/" \
+	"$config_home/dwm-titus/themes.toml"
+unicode_space=$(snapshot)
+grep -Fqx $'active\tnone\tnord\trecovery' <<<"$unicode_space"
+grep -Fqx $'error\tactive\tmissing\tThe active theme name is missing' <<<"$unicode_space"
 
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
 sed -i '0,/theme = "nord"/s//theme = 123/' "$config_home/dwm-titus/themes.toml"
@@ -436,6 +468,22 @@ overlong=$(snapshot)
 grep -Fqx $'active\t'"$overlong_theme"$'\tdracula\trecovery' <<<"$overlong"
 grep -Fq $'error\tparser\tinvalid-theme-name\tTheme name is not a supported bare identifier at line ' \
 	<<<"$overlong"
+
+cat >"$config_home/dwm-titus/themes.toml" <<EOF
+[active]
+theme = "$overlong_theme"
+[colors]
+normfgcolor = "#D8DEE9"
+normbgcolor = "#2E3440"
+normbordercolor = "#4C566A"
+selfgcolor = "#ECEFF4"
+selbgcolor = "#5E81AC"
+selbordercolor = "#81A1C1"
+EOF
+overlong_legacy=$(snapshot)
+grep -Fqx $'active\t'"$overlong_theme"$'\t@legacy-colors\trecovery' <<<"$overlong_legacy"
+grep -Fqx $'error\tactive\tname-too-long\tActive theme name exceeds the runtime section limit; using the legacy [colors] palette' \
+	<<<"$overlong_legacy"
 
 {
 	printf '[ignored]\nmetadata = "'
@@ -553,6 +601,18 @@ grep -Fqx $'theme\tlegacy\tselected\tvalid\ttrue\tNordic\tTheme record is comple
 	<<<"$legacy_collision"
 grep -Fqx $'theme\t@legacy-colors\tavailable\tvalid\ttrue\tautomatic\tTheme record is complete' \
 	<<<"$legacy_collision"
+
+{
+	printf '[active]\ntheme = "missing"\n'
+	for ((theme_index = 0; theme_index < 128; theme_index++)); do
+		printf '[theme.sparse%s]\n' "$theme_index"
+	done
+	printf '[theme.nord]\n%s\n' "$nord_block"
+} >"$config_home/dwm-titus/themes.toml"
+nord_after_cap=$(snapshot)
+grep -Fqx $'active\tmissing\tnord\trecovery' <<<"$nord_after_cap"
+grep -Fqx $'theme\tnord\trecovery\tvalid\ttrue\tNordic\tTheme record is complete' \
+	<<<"$nord_after_cap"
 
 {
 	printf '[active]\ntheme = "chosen"\n'

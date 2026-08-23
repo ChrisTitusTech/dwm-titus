@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export LC_ALL=C
 
 config_home=${XDG_CONFIG_HOME:-}
 data_home=${XDG_DATA_HOME:-}
@@ -113,7 +114,11 @@ select_source() {
 		source_report_file=$themes_file
 		return
 	fi
-	if [[ -e $themes_file || -L $themes_file ]]; then
+	if [[ -L $themes_file && ! -e $themes_file ]]; then
+		provider_state=partial
+		add_error source dangling-user \
+			"Ignoring dangling user theme symlink and trying the managed source: $themes_file"
+	elif [[ -e $themes_file || -L $themes_file ]]; then
 		source_kind=user
 		source_report_file=$themes_file
 		add_error source unreadable "User theme file is not a readable regular file: $themes_file"
@@ -235,7 +240,7 @@ parse_themes() {
 					section=theme
 					if [[ -z ${section_count[$theme]+x} ]] &&
 						((${#theme_order[@]} >= max_theme_count)) &&
-						[[ $theme != "$selected_theme_hint" ]]; then
+						[[ $theme != "$selected_theme_hint" && $theme != nord ]]; then
 						section=ignore
 						theme=
 						provider_state=partial
@@ -431,9 +436,10 @@ validate_themes() {
 }
 
 resolve_active_theme() {
-	local theme
+	local theme string_byte_length_result
 
 	selected_theme=${value[__active$key_separator'theme']:-}
+	string_byte_length "$selected_theme"
 	if [[ -z $selected_theme ]]; then
 		if [[ -n ${section_count[$legacy_theme_id]+x} && -z ${theme_invalid[$legacy_theme_id]+x} ]]; then
 			selected_theme=$legacy_theme_id
@@ -442,6 +448,13 @@ resolve_active_theme() {
 		fi
 		provider_state=partial
 		add_error active missing 'The active theme name is missing'
+	elif ((string_byte_length_result > max_theme_name_length)) &&
+		[[ -n ${section_count[$legacy_theme_id]+x} && -z ${theme_invalid[$legacy_theme_id]+x} ]]; then
+		provider_state=partial
+		resolved_theme=$legacy_theme_id
+		add_error active name-too-long \
+			"Active theme name exceeds the runtime section limit; using the legacy [colors] palette"
+		return
 	elif [[ -z ${section_count[$selected_theme]+x} ]]; then
 		provider_state=partial
 		add_error active unknown "Active theme '$selected_theme' is not defined"
@@ -647,7 +660,14 @@ alacritty_imports_active_theme() {
 	if [[ -z ${HOME:-} || $config_home != "$HOME/.config" ]]; then
 		default_import=
 	fi
-	awk -v active="$active" -v default_import="$default_import" '
+	DWM_ALACRITTY_ACTIVE_IMPORT=$active \
+		DWM_ALACRITTY_DEFAULT_IMPORT=$default_import \
+		awk '
+		BEGIN {
+			at_root = 1
+			active = ENVIRON["DWM_ALACRITTY_ACTIVE_IMPORT"]
+			default_import = ENVIRON["DWM_ALACRITTY_DEFAULT_IMPORT"]
+		}
 		{
 			line = $0
 			clean = ""
@@ -673,16 +693,56 @@ alacritty_imports_active_theme() {
 				}
 			}
 			line = clean
-			if (line ~ /^[[:space:]]*import[[:space:]]*=/) in_import = 1
-			if (in_import &&
-			    (index(line, "\"" active "\"") ||
-			     index(line, "\047" active "\047") ||
-			     (default_import != "" &&
-			      (index(line, "\"" default_import "\"") ||
-			       index(line, "\047" default_import "\047"))))) found = 1
-			if (in_import && index(line, "]")) exit
+			trimmed = line
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", trimmed)
+			if (!in_import && trimmed ~ /^\[/) {
+				at_root = 0
+				next
+			}
+			if (!in_import && at_root &&
+			    trimmed ~ /^import[[:space:]]*=[[:space:]]*\[/) in_import = 1
+			if (in_import) {
+				quote = ""
+				escaped = 0
+				item = ""
+				for (i = 1; i <= length(line); i++) {
+					char = substr(line, i, 1)
+					if (quote != "") {
+						if (escaped) {
+							if (char == "n") char = "\n"
+							else if (char == "t") char = "\t"
+							else if (char == "r") char = "\r"
+							item = item char
+							escaped = 0
+							continue
+						}
+						if (quote == "\"" && char == "\\") {
+							escaped = 1
+							continue
+						}
+						if (char == quote) {
+							if (item == active ||
+							    (default_import != "" && item == default_import)) found = 1
+							quote = ""
+							item = ""
+						} else {
+							item = item char
+						}
+					} else if (char == "\"" || char == "\047") {
+						quote = char
+						item = ""
+					} else if (char == "]") {
+						closed = 1
+						break
+					}
+				}
+				if (closed) {
+					valid = found
+					exit
+				}
+			}
 		}
-		END { exit(found ? 0 : 1) }
+		END { exit(valid ? 0 : 1) }
 	' "$primary"
 }
 
