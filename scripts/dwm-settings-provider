@@ -69,8 +69,7 @@ appearance_snapshot_valid() {
 			$1 == "provider" && $2 == "appearance" &&
 				($3 == "available" || $3 == "partial") && $4 == "read-only" { provider = 1 }
 			$1 == "source" && ($2 == "user" || $2 == "managed") && $3 != "" { source = 1 }
-			$1 == "active" && $2 != "" && $2 != "none" &&
-				$3 != "" && $3 != "none" &&
+			$1 == "active" && $2 != "" && $3 != "" &&
 				($4 == "selected" || $4 == "recovery") { active = 1 }
 			$1 == "theme" && NF >= 7 { theme = 1 }
 			END { exit(header && provider && source && active && theme ? 0 : 1) }

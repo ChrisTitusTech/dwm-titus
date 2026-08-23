@@ -35,7 +35,7 @@ make_appearance_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
 	printf '%s\n' '#!/bin/sh' \
-		'printf "appearance-protocol\t1\t0\nprovider\tappearance\tavailable\tread-only\tfixture\nsource\tuser\t/fixture/themes.toml\nactive\tnord\tnord\tselected\ntheme\tnord\tselected\tvalid\ttrue\tautomatic\tfixture\n"' >"$path"
+		'printf "appearance-protocol\t1\t0\nprovider\tappearance\tavailable\tread-only\tfixture\nsource\tuser\t/fixture/themes.toml\nactive\tnone\tnone\tselected\ntheme\tnone\tselected\tvalid\ttrue\tautomatic\tfixture\n"' >"$path"
 	chmod +x "$path"
 }
 

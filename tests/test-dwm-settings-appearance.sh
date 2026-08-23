@@ -90,6 +90,17 @@ printf '#!/bin/sh\nexit 0\n' >"$bin_dir/qt6ct"
 printf '#!/bin/sh\nexit 0\n' >"$bin_dir/picom"
 chmod +x "$bin_dir/qt6ct" "$bin_dir/picom"
 
+hash_config_home=$work/config#hash
+cp -a "$config_home" "$hash_config_home"
+printf 'import = ["%s"] # active palette\n' \
+	"$hash_config_home/alacritty/active-theme.toml" \
+	>"$hash_config_home/alacritty/alacritty.toml"
+hash_path=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$hash_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$hash_path"
+
 snapshot() {
 	PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
 		DWM_APPEARANCE_DATA_DIRS=$data_root \
@@ -380,6 +391,20 @@ grep -Fqx $'active\t'"$overlong_theme"$'\tdracula\trecovery' <<<"$overlong"
 grep -Fq $'error\tparser\tinvalid-theme-name\tTheme name is not a supported bare identifier at line ' \
 	<<<"$overlong"
 
+{
+	printf '[ignored]\nmetadata = "'
+	printf '%4095s' '' | tr ' ' x
+	printf '"\n'
+	cat "$work/managed-themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+set +e
+long_line=$(snapshot)
+long_line_status=$?
+set -e
+[[ $long_line_status -eq 3 ]]
+grep -Fqx $'error\tparser\tline-too-long\tTheme configuration contains a physical line that exceeds the runtime reader limit' \
+	<<<"$long_line"
+
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
 sed -i '0,/theme = "nord"/s//theme = "dracula"/' "$config_home/dwm-titus/themes.toml"
 sed -i 's/gtk-theme-name=Nordic/gtk-theme-name=Adwaita-dark/' \
@@ -466,6 +491,23 @@ nord_block=$(awk '
 	/^\[theme\.dracula\]$/ { exit }
 	capture && /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/ { print }
 ' "$repo/config/themes.toml")
+{
+	printf '[active]\ntheme = "legacy"\n[theme.legacy]\n%s\n' "$nord_block"
+	printf '%s\n' '[colors]' \
+		'normfgcolor = "#D8DEE9"' \
+		'normbgcolor = "#2E3440"' \
+		'normbordercolor = "#4C566A"' \
+		'selfgcolor = "#ECEFF4"' \
+		'selbgcolor = "#5E81AC"' \
+		'selbordercolor = "#81A1C1"'
+} >"$config_home/dwm-titus/themes.toml"
+legacy_collision=$(snapshot)
+grep -Fqx $'active\tlegacy\tlegacy\tselected' <<<"$legacy_collision"
+grep -Fqx $'theme\tlegacy\tselected\tvalid\ttrue\tNordic\tTheme record is complete' \
+	<<<"$legacy_collision"
+grep -Fqx $'theme\t@legacy-colors\tavailable\tvalid\ttrue\tautomatic\tTheme record is complete' \
+	<<<"$legacy_collision"
+
 {
 	printf '[active]\ntheme = "chosen"\n'
 	for ((theme_index = 0; theme_index < 128; theme_index++)); do
@@ -567,8 +609,8 @@ EOF
 legacy=$(snapshot)
 grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' \
 	<<<"$legacy"
-grep -Fqx $'active\tlegacy\tlegacy\tselected' <<<"$legacy"
-grep -Fqx $'theme\tlegacy\tselected\tvalid\ttrue\tautomatic\tTheme record is complete' \
+grep -Fqx $'active\t@legacy-colors\t@legacy-colors\tselected' <<<"$legacy"
+grep -Fqx $'theme\t@legacy-colors\tselected\tvalid\ttrue\tautomatic\tTheme record is complete' \
 	<<<"$legacy"
 grep -Fqx $'color\tbackground\t#2E3440\tterm_bg' <<<"$legacy"
 grep -Fqx $'error\tparser\tlegacy-format\tLegacy [colors] palette is active; named themes are recommended' \

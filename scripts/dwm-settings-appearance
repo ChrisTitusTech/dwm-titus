@@ -13,6 +13,8 @@ readonly max_error_count=256
 readonly max_entry_count=512
 readonly max_theme_name_length=505
 readonly key_separator=$'\034'
+readonly legacy_theme_id=$'\035legacy-colors'
+readonly legacy_theme_label='@legacy-colors'
 
 declare -a theme_order=()
 declare -a errors=()
@@ -49,6 +51,14 @@ clean_field() {
 	field=${field//$'\r'/ }
 	field=${field//$'\n'/ }
 	printf '%s' "$field"
+}
+
+theme_label() {
+	if [[ $1 == "$legacy_theme_id" ]]; then
+		printf '%s' "$legacy_theme_label"
+	else
+		printf '%s' "$1"
+	fi
 }
 
 add_error() {
@@ -172,6 +182,12 @@ parse_themes() {
 		add_error source too-large "Theme file exceeds $max_themes_size bytes"
 		return
 	fi
+	if ! LC_ALL=C awk 'length($0) >= 4095 { exit 1 }' "$file"; then
+		provider_state=unavailable
+		add_error parser line-too-long \
+			'Theme configuration contains a physical line that exceeds the runtime reader limit'
+		return
+	fi
 	prescan_active_theme "$file"
 
 	while IFS= read -r line_number && IFS= read -r line; do
@@ -211,7 +227,7 @@ parse_themes() {
 					fi
 				fi
 			elif [[ $trimmed == '[colors]' ]]; then
-				theme=legacy
+				theme=$legacy_theme_id
 				section=theme
 				((section_count[$theme] = ${section_count[$theme]:-0} + 1))
 				if ((${section_count[$theme]} == 1)); then
@@ -221,7 +237,7 @@ parse_themes() {
 						'Legacy [colors] palette is active; named themes are recommended'
 				else
 					theme_invalid[$theme]=1
-					add_error theme:legacy duplicate "Duplicate legacy [colors] section at line $line_number"
+					add_error "theme:$legacy_theme_label" duplicate "Duplicate legacy [colors] section at line $line_number"
 				fi
 			elif [[ $trimmed == '[active]' ]]; then
 				section=active
@@ -328,7 +344,7 @@ validate_themes() {
 	local -a keys_to_validate=()
 
 	for theme in "${theme_order[@]}"; do
-		if [[ $theme == legacy ]]; then
+		if [[ $theme == "$legacy_theme_id" ]]; then
 			[[ -n ${value[$theme$key_separator'normbordercolor']:-} ]] ||
 				value[$theme$key_separator'normbordercolor']='#3B4252'
 			[[ -n ${value[$theme$key_separator'normbgcolor']:-} ]] ||
@@ -362,19 +378,19 @@ validate_themes() {
 				provider_state=partial
 				((invalid_count += 1))
 				if ((invalid_count == 1)); then
-					add_error "theme:$theme" invalid-color "Theme key '$key' is not a #RRGGBB color"
+					add_error "theme:$(theme_label "$theme")" invalid-color "Theme key '$key' is not a #RRGGBB color"
 				fi
 			fi
 		done
 		if ((missing_count > 0)); then
-			add_error "theme:$theme" missing-key \
+			add_error "theme:$(theme_label "$theme")" missing-key \
 				"Theme is missing $missing_count required keys; first missing key is '$first_missing'"
 		fi
 		dark=${value[$theme$key_separator'dark_mode']:-true}
 		if [[ $dark != true && $dark != false ]]; then
 			theme_invalid[$theme]=1
 			provider_state=partial
-			add_error "theme:$theme" invalid-dark-mode "Theme dark_mode must be true or false"
+			add_error "theme:$(theme_label "$theme")" invalid-dark-mode "Theme dark_mode must be true or false"
 		fi
 	done
 }
@@ -384,9 +400,9 @@ resolve_active_theme() {
 
 	selected_theme=${value[__active$key_separator'theme']:-}
 	if [[ -z $selected_theme ]]; then
-		if [[ -n ${section_count[legacy]+x} && -z ${theme_invalid[legacy]+x} ]]; then
-			selected_theme=legacy
-			resolved_theme=legacy
+		if [[ -n ${section_count[$legacy_theme_id]+x} && -z ${theme_invalid[$legacy_theme_id]+x} ]]; then
+			selected_theme=$legacy_theme_id
+			resolved_theme=$legacy_theme_id
 			return
 		fi
 		provider_state=partial
@@ -407,7 +423,7 @@ resolve_active_theme() {
 		return
 	fi
 	for theme in "${theme_order[@]}"; do
-		if [[ $theme != legacy && -z ${theme_invalid[$theme]+x} ]]; then
+		if [[ $theme != "$legacy_theme_id" && -z ${theme_invalid[$theme]+x} ]]; then
 			resolved_theme=$theme
 			return
 		fi
@@ -597,11 +613,31 @@ alacritty_imports_active_theme() {
 		default_import=
 	fi
 	awk -v active="$active" -v default_import="$default_import" '
-		/^[[:space:]]*#/ { next }
 		{
 			line = $0
-			comment = index(line, "#")
-			if (comment) line = substr(line, 1, comment - 1)
+			clean = ""
+			quote = ""
+			escaped = 0
+			for (i = 1; i <= length(line); i++) {
+				char = substr(line, i, 1)
+				if (quote != "") {
+					clean = clean char
+					if (quote == "\"" && escaped) {
+						escaped = 0
+						continue
+					}
+					if (quote == "\"" && char == "\\") {
+						escaped = 1
+						continue
+					}
+					if (char == quote) quote = ""
+				} else {
+					if (char == "#") break
+					clean = clean char
+					if (char == "\"" || char == "\047") quote = char
+				}
+			}
+			line = clean
 			if (line ~ /^[[:space:]]*import[[:space:]]*=/) in_import = 1
 			if (in_import &&
 			    (index(line, "\"" active "\"") ||
@@ -638,8 +674,9 @@ effective_qt_backend() {
 }
 
 emit_theme_records() {
-	local theme selection validity dark gtk detail
+	local theme label selection validity dark gtk detail
 	for theme in "${theme_order[@]}"; do
+		label=$(theme_label "$theme")
 		selection=available
 		[[ $theme != "$selected_theme" ]] || selection=selected
 		[[ $theme != "$resolved_theme" || $theme == "$selected_theme" ]] || selection=recovery
@@ -652,7 +689,7 @@ emit_theme_records() {
 		dark=${value[$theme$key_separator'dark_mode']:-true}
 		gtk=${value[$theme$key_separator'gtk_theme']:-automatic}
 		printf 'theme\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-			"$(clean_field "$theme")" "$selection" "$validity" "$(clean_field "$dark")" \
+			"$(clean_field "$label")" "$selection" "$validity" "$(clean_field "$dark")" \
 			"$(clean_field "$gtk")" "$detail"
 	done
 }
@@ -786,7 +823,7 @@ emit_integrations() {
 }
 
 snapshot() {
-	local active_state=unresolved
+	local active_state=unresolved selected_label=none resolved_label=none
 	select_source
 	if [[ -n $source_file ]]; then
 		parse_themes "$source_file"
@@ -801,12 +838,14 @@ snapshot() {
 			active_state=recovery
 		fi
 	fi
+	[[ -z $selected_theme ]] || selected_label=$(theme_label "$selected_theme")
+	[[ -z $resolved_theme ]] || resolved_label=$(theme_label "$resolved_theme")
 	printf 'appearance-protocol\t1\t0\n'
 	printf 'provider\tappearance\t%s\tread-only\tShared theme inventory and integration state\n' "$provider_state"
 	printf 'source\t%s\t%s\n' "${source_kind:-none}" "$(clean_field "${source_report_file:-unavailable}")"
 	printf 'active\t%s\t%s\t%s\n' \
-		"$(clean_field "${selected_theme:-none}")" \
-		"$(clean_field "${resolved_theme:-none}")" \
+		"$(clean_field "$selected_label")" \
+		"$(clean_field "$resolved_label")" \
 		"$active_state"
 	emit_theme_records
 	emit_color_records
