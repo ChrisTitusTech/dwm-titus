@@ -15,6 +15,8 @@ readonly max_theme_name_length=505
 readonly key_separator=$'\034'
 readonly legacy_theme_id=$'\035legacy-colors'
 readonly legacy_theme_label='@legacy-colors'
+readonly quoted_record_re='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*"(([^"\\]|\\.)*)"[[:space:]]*(#.*)?$'
+readonly quoted_active_theme_re='^[[:space:]]*theme[[:space:]]*=[[:space:]]*"(([^"\\]|\\.)*)"[[:space:]]*(#.*)?$'
 
 declare -a theme_order=()
 declare -a errors=()
@@ -59,6 +61,28 @@ theme_label() {
 	else
 		printf '%s' "$1"
 	fi
+}
+
+unescape_runtime_string() {
+	local source=$1 char index=0
+	local LC_ALL=C
+	parsed_runtime_string=
+
+	while ((index < ${#source} && ${#parsed_runtime_string} < 511)); do
+		char=${source:index:1}
+		if [[ $char == \\ ]] && ((index + 1 < ${#source})); then
+			((index += 1))
+			char=${source:index:1}
+			case $char in
+			n) char=$'\n' ;;
+			t) char=$'\t' ;;
+			\\) char=\\ ;;
+			'"') char='"' ;;
+			esac
+		fi
+		parsed_runtime_string+=$char
+		((index += 1))
+	done
 }
 
 add_error() {
@@ -138,8 +162,9 @@ prescan_active_theme() {
 		elif [[ $trimmed == \[* ]]; then
 			section=other
 		elif [[ $section == active && -z $selected_theme_hint &&
-			$line =~ ^[[:space:]]*theme[[:space:]]*=[[:space:]]*\"([^\"]*)\"[[:space:]]*(#.*)?$ ]]; then
-			selected_theme_hint=${BASH_REMATCH[1]}
+			$line =~ $quoted_active_theme_re ]]; then
+			unescape_runtime_string "${BASH_REMATCH[1]}"
+			selected_theme_hint=$parsed_runtime_string
 		elif [[ $section == active && -z $selected_theme_hint &&
 			$line =~ ^[[:space:]]*theme[[:space:]]*=[[:space:]]*([^#[:space:]]+)[[:space:]]*(#.*)?$ ]]; then
 			candidate=${BASH_REMATCH[1]}
@@ -169,7 +194,7 @@ string_byte_length() {
 
 parse_themes() {
 	local file=$1 size line trimmed line_number raw runtime_key runtime_value parsed_type
-	local string_byte_length_result
+	local string_byte_length_result parsed_runtime_string
 	local section='' theme='' theme_candidate='' key='' parsed=''
 
 	size=$(stat -c %s -- "$file" 2>/dev/null) || {
@@ -286,9 +311,10 @@ parse_themes() {
 			fi
 		fi
 
-		if [[ $line =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*\"([^\"]*)\"[[:space:]]*(#.*)?$ ]]; then
+		if [[ $line =~ $quoted_record_re ]]; then
 			key=${BASH_REMATCH[1]}
-			parsed=${BASH_REMATCH[2]}
+			unescape_runtime_string "${BASH_REMATCH[2]}"
+			parsed=$parsed_runtime_string
 			parsed_type=string
 		elif [[ $line =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*([^#[:space:]]+)[[:space:]]*(#.*)?$ ]]; then
 			key=${BASH_REMATCH[1]}

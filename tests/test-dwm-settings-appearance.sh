@@ -358,6 +358,12 @@ grep -Fqx $'active\t'"$custom_theme"$'\t'"$custom_theme"$'\tselected' <<<"$custo
 grep -Fq $'theme\t'"$custom_theme"$'\tselected\tvalid\ttrue\tNordic' <<<"$custom"
 
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i '0,/theme = "nord"/s//theme = "no\\rd"/' \
+	"$config_home/dwm-titus/themes.toml"
+escaped_active=$(snapshot)
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$escaped_active"
+
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
 sed -i '0,/theme = "nord"/s//theme = 123/' "$config_home/dwm-titus/themes.toml"
 numeric_active=$(snapshot)
 grep -Fqx $'active\tnone\tnord\trecovery' <<<"$numeric_active"
