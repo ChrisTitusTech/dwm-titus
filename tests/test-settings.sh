@@ -34,7 +34,23 @@ make_failing_stub() {
 make_appearance_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		'printf "appearance-protocol\t1\t0\nprovider\tappearance\tavailable\tread-only\tfixture\nsource\tuser\t/fixture/themes.toml\nactive\tnord\tnord\tselected\ntheme\tnord\tselected\tvalid\ttrue\tautomatic\tfixture\n"' >"$path"
+	chmod +x "$path"
+}
+
+make_header_only_appearance_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
 	printf '%s\n' '#!/bin/sh' 'printf "appearance-protocol\t1\t0\n"' >"$path"
+	chmod +x "$path"
+}
+
+make_empty_active_appearance_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		'printf "appearance-protocol\t1\t0\nprovider\tappearance\tavailable\tread-only\tfixture\nsource\tuser\t/fixture/themes.toml\nactive\t\t\tselected\ntheme\tnord\tselected\tvalid\ttrue\tautomatic\tfixture\n"' >"$path"
 	chmod +x "$path"
 }
 
@@ -134,6 +150,24 @@ make_preamble_appearance_stub "$preamble_appearance_bin/dwm-settings-appearance"
 preamble_appearance_output=$(PATH="$preamble_appearance_bin" XDG_CONFIG_HOME="$work/fedora-config" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$preamble_appearance_output" | grep -Fqx \
+	'capability	appearance	themes	Themes	unavailable	read-only	dwm-settings-appearance	Restore a valid themes.toml configuration or inspect the appearance snapshot errors'
+
+header_only_appearance_bin=$work/header-only-appearance-bin
+cp -a "$fedora_bin" "$header_only_appearance_bin"
+make_header_only_appearance_stub "$header_only_appearance_bin/dwm-settings-appearance"
+header_only_appearance_output=$(PATH="$header_only_appearance_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$header_only_appearance_output" | grep -Fqx \
+	'capability	appearance	themes	Themes	unavailable	read-only	dwm-settings-appearance	Restore a valid themes.toml configuration or inspect the appearance snapshot errors'
+
+empty_active_appearance_bin=$work/empty-active-appearance-bin
+cp -a "$fedora_bin" "$empty_active_appearance_bin"
+make_empty_active_appearance_stub "$empty_active_appearance_bin/dwm-settings-appearance"
+empty_active_appearance_output=$(PATH="$empty_active_appearance_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$empty_active_appearance_output" | grep -Fqx \
 	'capability	appearance	themes	Themes	unavailable	read-only	dwm-settings-appearance	Restore a valid themes.toml configuration or inspect the appearance snapshot errors'
 
 missing_appearance_bin=$work/missing-appearance-bin

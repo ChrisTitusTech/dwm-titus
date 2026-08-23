@@ -127,6 +127,13 @@ runtime_bare_is_numeric() {
 		[[ $1 =~ ^[+-]?([Nn][Aa][Nn]|[Ii][Nn][Ff]) ]]
 }
 
+theme_key_supported() {
+	case $1 in
+	normfgcolor | normbgcolor | normbordercolor | selfgcolor | selbgcolor | selbordercolor | term_bg | term_fg | term_cursor | term_color[0-9] | term_color1[0-5] | dark_mode | gtk_theme) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
 string_byte_length() {
 	local LC_ALL=C
 	string_byte_length_result=${#1}
@@ -256,6 +263,15 @@ parse_themes() {
 			parsed=${BASH_REMATCH[2]}
 			parsed_type=bare
 		else
+			if [[ $section == theme && $trimmed == *=* ]]; then
+				if ((string_byte_length_result >= 512)) ||
+					[[ $runtime_value =~ ^\"[^\"]*\"[[:space:]]*(#.*)?$ ]] ||
+					[[ $runtime_value =~ ^[^#[:space:]]+[[:space:]]*(#.*)?$ ]]; then
+					# DWM skips overlong keys and ignores runtime-valid metadata
+					# outside the appearance schema, including punctuation.
+					continue
+				fi
+			fi
 			if [[ $section == theme || $section == active || $section == appearance ]]; then
 				provider_state=partial
 				[[ $section != theme ]] || theme_invalid[$theme]=1
@@ -265,13 +281,9 @@ parse_themes() {
 		fi
 
 		[[ $section == theme || $section == active || $section == appearance ]] || continue
-		if [[ $section == active && $key == theme && $parsed_type == bare ]] &&
-			runtime_bare_is_numeric "$parsed"; then
-			provider_state=partial
-			add_error active invalid-type "Active theme must resolve to a TOML string at line $line_number"
+		if [[ $section == theme ]] && ! theme_key_supported "$key"; then
 			continue
 		fi
-
 		raw=$theme$key_separator$key
 		if [[ -n ${key_seen[$raw]+x} ]]; then
 			provider_state=partial
@@ -280,6 +292,13 @@ parse_themes() {
 			continue
 		fi
 		key_seen[$raw]=1
+		if [[ $section == active && $key == theme && $parsed_type == bare ]] &&
+			runtime_bare_is_numeric "$parsed"; then
+			provider_state=partial
+			add_error active invalid-type "Active theme must resolve to a TOML string at line $line_number"
+			continue
+		fi
+
 		value[$raw]=$parsed
 	done <"$file"
 }
@@ -408,6 +427,32 @@ gtk_theme_available() {
 	[[ -d ${HOME:-}/.themes/$name/gtk-3.0 || -d ${HOME:-}/.themes/$name/gtk-4.0 ]]
 }
 
+gtk_settings_file_matches() {
+	local file=$1 theme_name=$2
+	awk -F= -v expected="$theme_name" '
+		/^[[:space:]]*\[/ { in_settings = ($0 == "[Settings]"); next }
+		in_settings && $1 == "gtk-theme-name" {
+			value = substr($0, index($0, "=") + 1)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			found = (value == expected)
+			exit
+		}
+		END { exit(found ? 0 : 1) }
+	' "$file"
+}
+
+gtk_theme_applied() {
+	local theme_name=$1 effective=${GTK_THEME:-} version file
+	if [[ -n $effective ]]; then
+		[[ ${effective%%:*} == "$theme_name" ]]
+		return
+	fi
+	for version in 3.0 4.0; do
+		file=$config_home/gtk-$version/settings.ini
+		[[ -f $file ]] && gtk_settings_file_matches "$file" "$theme_name" || return 1
+	done
+}
+
 asset_available() {
 	local kind=$1 name=$2 root
 	while IFS= read -r root; do
@@ -519,6 +564,23 @@ alacritty_imports_active_theme() {
 	' "$primary"
 }
 
+kitty_imports_active_theme() {
+	local primary=$config_home/kitty/kitty.conf
+	[[ -f $primary ]] || return 1
+	awk '
+		/^[[:space:]]*#/ { next }
+		$1 == "include" && $2 == "active-theme.conf" && NF == 2 { found = 1; exit }
+		END { exit(found ? 0 : 1) }
+	' "$primary"
+}
+
+terminal_imports_active_theme() {
+	case $1 in
+	alacritty) alacritty_imports_active_theme ;;
+	kitty) kitty_imports_active_theme ;;
+	esac
+}
+
 effective_qt_backend() {
 	local env_file=$config_home/dwm-titus/theme-env.sh
 	qt_backend=${QT_QPA_PLATFORMTHEME:-}
@@ -594,8 +656,13 @@ emit_integrations() {
 			requested_gtk=Adwaita
 		fi
 	fi
-	if gtk_theme_available "$requested_gtk"; then
-		printf 'integration\tgtk\tavailable\t%s\tRequested GTK theme is installed\n' "$(clean_field "$requested_gtk")"
+	if gtk_theme_available "$requested_gtk" && gtk_theme_applied "$requested_gtk"; then
+		printf 'integration\tgtk\tavailable\t%s\tRequested GTK theme is installed and applied\n' \
+			"$(clean_field "$requested_gtk")"
+	elif gtk_theme_available "$requested_gtk"; then
+		printf 'integration\tgtk\tpartial\t%s\tRequested GTK theme is installed but not applied\n' \
+			"$(clean_field "$requested_gtk")"
+		add_error gtk stale-theme "Applied GTK settings do not match '$requested_gtk'"
 	else
 		[[ $dark == true ]] && fallback_gtk=Adwaita-dark || fallback_gtk=Adwaita
 		printf 'integration\tgtk\tpartial\t%s\tRequested GTK theme is missing; apply falls back to %s\n' \
@@ -634,11 +701,11 @@ emit_integrations() {
 			terminal_theme_file=$config_home/$terminal/active-theme.conf
 		fi
 		if terminal_theme_matches "$terminal" "$terminal_theme_file" &&
-			{ [[ $terminal != alacritty ]] || alacritty_imports_active_theme; }; then
+			terminal_imports_active_theme "$terminal"; then
 			printf 'integration\t%s\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette\n' "$terminal"
-		elif [[ $terminal == alacritty ]] && terminal_theme_matches "$terminal" "$terminal_theme_file"; then
+		elif terminal_theme_matches "$terminal" "$terminal_theme_file"; then
 			printf 'integration\t%s\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration\n' "$terminal"
-			add_error "$terminal" not-imported 'Alacritty configuration does not import the generated active theme'
+			add_error "$terminal" not-imported 'Terminal configuration does not import the generated active theme'
 		elif [[ -f $terminal_theme_file ]]; then
 			printf 'integration\t%s\tpartial\tactive-theme\tGenerated terminal theme is empty or stale\n' "$terminal"
 			add_error "$terminal" stale-theme 'Generated active theme does not match the resolved palette'

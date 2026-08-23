@@ -10,6 +10,7 @@ config_home=$work/config
 data_root=$work/data
 bin_dir=$work/bin
 mkdir -p "$config_home/dwm-titus" "$config_home/alacritty" "$config_home/kitty" \
+	"$config_home/gtk-3.0" "$config_home/gtk-4.0" \
 	"$data_root/themes/Nordic/gtk-3.0" "$data_root/icons/Capitaine-Cursors-White" "$bin_dir"
 cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
 declare -A fixture_color=()
@@ -71,6 +72,9 @@ cp "$config_home/kitty/active-theme.conf" "$work/kitty-valid.conf"
 printf 'import = ["%s"]\n' "$config_home/alacritty/active-theme.toml" \
 	>"$config_home/alacritty/alacritty.toml"
 printf 'export QT_QPA_PLATFORMTHEME=qt6ct\n' >"$config_home/dwm-titus/theme-env.sh"
+printf '[Settings]\ngtk-theme-name=Nordic\n' >"$config_home/gtk-3.0/settings.ini"
+printf '[Settings]\ngtk-theme-name=Nordic\n' >"$config_home/gtk-4.0/settings.ini"
+printf 'include active-theme.conf\n' >"$config_home/kitty/kitty.conf"
 
 for command_name in awk bash dirname grep stat tr; do
 	ln -s "$(command -v "$command_name")" "$bin_dir/$command_name"
@@ -80,7 +84,7 @@ printf '#!/bin/sh\nexit 0\n' >"$bin_dir/picom"
 chmod +x "$bin_dir/qt6ct" "$bin_dir/picom"
 
 snapshot() {
-	PATH=$bin_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	PATH=$bin_dir GTK_THEME='' XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
 		DWM_APPEARANCE_DATA_DIRS=$data_root \
 		"$helper" snapshot
 }
@@ -101,7 +105,7 @@ grep -Fqx $'theme\tnord\tselected\tvalid\ttrue\tNordic\tTheme record is complete
 grep -Fqx $'color\tbackground\t#2E3440\tterm_bg' <<<"$output"
 grep -Fqx $'color\taccent\t#81A1C1\tselbordercolor' <<<"$output"
 grep -Fqx $'color\tdanger\t#BF616A\tterm_color1' <<<"$output"
-grep -Fqx $'integration\tgtk\tavailable\tNordic\tRequested GTK theme is installed' <<<"$output"
+grep -Fqx $'integration\tgtk\tavailable\tNordic\tRequested GTK theme is installed and applied' <<<"$output"
 grep -Fqx $'integration\tqt\tavailable\tqt6ct\tQt applications use the supported theme backend' <<<"$output"
 grep -Fqx $'integration\tcursor\tavailable\tCapitaine-Cursors-White\tManaged cursor theme is installed' <<<"$output"
 grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
@@ -129,10 +133,18 @@ printf 'import = ["/wrong/active-theme.toml"]\n' >"$config_home/alacritty/alacri
 unimported_alacritty=$(snapshot)
 grep -Fqx $'integration\talacritty\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration' \
 	<<<"$unimported_alacritty"
-grep -Fqx $'error\talacritty\tnot-imported\tAlacritty configuration does not import the generated active theme' \
+grep -Fqx $'error\talacritty\tnot-imported\tTerminal configuration does not import the generated active theme' \
 	<<<"$unimported_alacritty"
 printf 'import = ["%s"]\n' "$config_home/alacritty/active-theme.toml" \
 	>"$config_home/alacritty/alacritty.toml"
+
+printf '# include active-theme.conf\n' >"$config_home/kitty/kitty.conf"
+unimported_kitty=$(snapshot)
+grep -Fqx $'integration\tkitty\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration' \
+	<<<"$unimported_kitty"
+grep -Fqx $'error\tkitty\tnot-imported\tTerminal configuration does not import the generated active theme' \
+	<<<"$unimported_kitty"
+printf 'include active-theme.conf\n' >"$config_home/kitty/kitty.conf"
 
 sed -i "s|${fixture_color[term_bg]}|__DWM_COLOR_SWAP__|; \
 	s|${fixture_color[term_fg]}|${fixture_color[term_bg]}|; \
@@ -246,6 +258,16 @@ grep -Fqx $'integration\tgtk\tpartial\tNordic\tRequested GTK theme is missing; a
 grep -Fqx $'error\tgtk\tmissing-theme\tGTK theme '\''Nordic'\'' is not installed' <<<"$stale_gtk"
 mkdir "$data_root/themes/Nordic/gtk-3.0"
 
+sed -i 's/gtk-theme-name=Nordic/gtk-theme-name=Adwaita/' \
+	"$config_home/gtk-4.0/settings.ini"
+stale_gtk_application=$(snapshot)
+grep -Fqx $'integration\tgtk\tpartial\tNordic\tRequested GTK theme is installed but not applied' \
+	<<<"$stale_gtk_application"
+grep -Fqx $'error\tgtk\tstale-theme\tApplied GTK settings do not match '\''Nordic'\''' \
+	<<<"$stale_gtk_application"
+sed -i 's/gtk-theme-name=Adwaita/gtk-theme-name=Nordic/' \
+	"$config_home/gtk-4.0/settings.ini"
+
 mv "$config_home/dwm-titus/themes.toml" "$work/managed-themes.toml"
 managed=$(PATH=$bin_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
 	DWM_APPEARANCE_DATA_DIRS=$data_root \
@@ -302,6 +324,23 @@ grep -Fqx $'active\tnone\tnord\trecovery' <<<"$numeric_active"
 grep -Fq $'error\tactive\tinvalid-type\tActive theme must resolve to a TOML string at line ' \
 	<<<"$numeric_active"
 
+sed -i '0,/theme = 123/s//theme = 123\n theme = "nord"/' \
+	"$config_home/dwm-titus/themes.toml"
+duplicate_after_numeric=$(snapshot)
+grep -Fqx $'active\tnone\tnord\trecovery' <<<"$duplicate_after_numeric"
+grep -Fq $'error\tactive:__active\tduplicate-key\tDuplicate key '\''theme'\'' at line ' \
+	<<<"$duplicate_after_numeric"
+
+cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
+sed -i '/^gtk_theme[[:space:]]*=/a author-name = "demo"' \
+	"$config_home/dwm-titus/themes.toml"
+metadata_key=$(snapshot)
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$metadata_key"
+if grep -Fq $'error\ttheme:nord\tinvalid-record\t' <<<"$metadata_key"; then
+	printf 'Runtime-valid metadata invalidated the active theme\n' >&2
+	exit 1
+fi
+
 printf -v overlong_theme '%*s' 506 ''
 overlong_theme=${overlong_theme// /a}
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
@@ -314,12 +353,16 @@ grep -Fq $'error\tparser\tinvalid-theme-name\tTheme name is not a supported bare
 
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
 sed -i '0,/theme = "nord"/s//theme = "dracula"/' "$config_home/dwm-titus/themes.toml"
+sed -i 's/gtk-theme-name=Nordic/gtk-theme-name=Adwaita-dark/' \
+	"$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"
 adwaita=$(snapshot)
-grep -Fqx $'integration\tgtk\tavailable\tAdwaita-dark\tRequested GTK theme is installed' <<<"$adwaita"
+grep -Fqx $'integration\tgtk\tavailable\tAdwaita-dark\tRequested GTK theme is installed and applied' <<<"$adwaita"
 if grep -Fq $'error\tgtk\tmissing-theme' <<<"$adwaita"; then
 	printf 'Built-in Adwaita fallback was reported missing\n' >&2
 	exit 1
 fi
+sed -i 's/gtk-theme-name=Adwaita-dark/gtk-theme-name=Nordic/' \
+	"$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"
 
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
 sed -i '0,/theme = "nord"/s//theme = "missing"/' "$config_home/dwm-titus/themes.toml"

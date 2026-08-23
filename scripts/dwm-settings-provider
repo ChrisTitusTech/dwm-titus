@@ -64,8 +64,17 @@ appearance_snapshot_valid() {
 	timeout_path=$(command -v timeout 2>/dev/null) || return 1
 	appearance_snapshot=$("$timeout_path" 5 "$command_path" snapshot 2>/dev/null) || return 1
 	printf '%s\n' "$appearance_snapshot" |
-		awk 'NR == 1 { valid = ($0 == "appearance-protocol	1	0"); exit }
-			END { exit(valid ? 0 : 1) }'
+		awk -F '\t' '
+			NR == 1 { header = ($0 == "appearance-protocol\t1\t0"); next }
+			$1 == "provider" && $2 == "appearance" &&
+				($3 == "available" || $3 == "partial") && $4 == "read-only" { provider = 1 }
+			$1 == "source" && ($2 == "user" || $2 == "managed") && $3 != "" { source = 1 }
+			$1 == "active" && $2 != "" && $2 != "none" &&
+				$3 != "" && $3 != "none" &&
+				($4 == "selected" || $4 == "recovery") { active = 1 }
+			$1 == "theme" && NF >= 7 { theme = 1 }
+			END { exit(header && provider && source && active && theme ? 0 : 1) }
+		'
 }
 
 emit_capability() {
