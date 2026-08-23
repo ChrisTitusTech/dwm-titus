@@ -524,15 +524,22 @@ capture_integration_baseline() {
 }
 
 capture_staged_integration_outputs() {
-	local prefix=$1 stage_home=$2 stage_config_home=$3 count index path after_hash after_mode
+	local prefix=$1 stage_home=$2 stage_config_home=$3 count index path live_path_hash
+	local after_hash after_mode
+	local -a live_paths=() staged_paths=()
 	[[ -f $prefix.integration.count ]] || return 1
 	IFS= read -r count <"$prefix.integration.count"
 	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
+	integration_path_list
+	live_paths=("${integration_paths[@]}")
 	integration_path_list_for "$stage_home" "$stage_config_home"
-	[[ $count == "${#integration_paths[@]}" ]] || return 1
+	staged_paths=("${integration_paths[@]}")
+	[[ $count == "${#live_paths[@]}" && $count == "${#staged_paths[@]}" ]] || return 1
 	for ((index = 0; index < count; index++)); do
-		path=${integration_paths[index]}
-		[[ $(integration_meta_value "$prefix" "$index" path_hash) == "$(path_hash "$path")" ]] || return 1
+		path=${staged_paths[index]}
+		live_path_hash=$(path_hash "${live_paths[index]}")
+		[[ $(integration_meta_value "$prefix" "$index" path_hash) == "$live_path_hash" ]] ||
+			return 1
 		validate_integration_file "$path" || return 1
 		if [[ -f $path ]]; then
 			after_hash=$(file_hash "$path")
