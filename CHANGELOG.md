@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Added
 
+- Begin Phase 5 with a versioned, read-only appearance provider that validates
+  the active and available themes, resolves a safe recovery theme, exposes the
+  shared semantic palette, and reports GTK, Qt, cursor, terminal, and compositor
+  integration failures without modifying user configuration.
+
 - Add one shared session-action model for Lock, Log Out, Suspend, Reboot, and
   Shutdown across the panel and Settings. Fixed helper actions require exact
   accepted records, preserve destructive confirmations, attribute failures to
@@ -56,6 +61,9 @@ versions from `config.mk`.
   recommended/full desktop and both Fedora image variants.
 
 ### Changed
+
+- Make DWM's hot-reloaded TOML paths honor `XDG_CONFIG_HOME` and
+  `XDG_DATA_HOME`, matching the managed shell and appearance provider.
 
 - Complete Phase 4 Power, Session, Defaults, and XDG autostart integration.
   Fresh Fedora 44 LightDM activation now runs the installed DWM and one managed

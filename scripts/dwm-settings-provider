@@ -5,11 +5,6 @@ script_dir=$(
 	unset CDPATH
 	cd -- "$(dirname -- "$0")" && pwd
 )
-repo_dir=$(
-	unset CDPATH
-	cd -- "$script_dir/.." && pwd
-)
-
 usage() {
 	printf 'usage: %s discover\n' "$0" >&2
 }
@@ -62,6 +57,23 @@ run_bounded_probe() {
 	command_path=$(provider_path "$command_name") || return 1
 	timeout_path=$(command -v timeout 2>/dev/null) || return 1
 	"$timeout_path" 2 "$command_path" "$@" >/dev/null 2>&1
+}
+
+appearance_snapshot_valid() {
+	command_path=$(provider_path dwm-settings-appearance) || return 1
+	timeout_path=$(command -v timeout 2>/dev/null) || return 1
+	appearance_snapshot=$("$timeout_path" 5 "$command_path" snapshot 2>/dev/null) || return 1
+	printf '%s\n' "$appearance_snapshot" |
+		awk -F '\t' '
+			NR == 1 { header = ($0 == "appearance-protocol\t1\t0"); next }
+			$1 == "provider" && $2 == "appearance" &&
+				($3 == "available" || $3 == "partial") && $4 == "read-only" { provider = 1 }
+			$1 == "source" && ($2 == "user" || $2 == "managed") && $3 != "" { source = 1 }
+			$1 == "active" && $2 != "" && $3 != "" &&
+				($4 == "selected" || $4 == "recovery") { active = 1 }
+			$1 == "theme" && NF >= 7 { theme = 1 }
+			END { exit(header && provider && source && active && theme ? 0 : 1) }
+		'
 }
 
 emit_capability() {
@@ -261,13 +273,15 @@ discover() {
 			'Autostart entries are readable; install inotify-tools for live updates'
 	fi
 
-	themes_file=${XDG_CONFIG_HOME:-${HOME:-}/.config}/dwm-titus/themes.toml
-	if [ -r "$themes_file" ] || [ -r "$repo_dir/config/themes.toml" ]; then
-		emit_capability appearance themes Themes available user-session themes.toml \
-			'Theme state is available through the managed configuration'
+	if ! provider_available dwm-settings-appearance; then
+		emit_capability appearance themes Themes unavailable read-only dwm-settings-appearance \
+			'Install the managed appearance provider'
+	elif appearance_snapshot_valid; then
+		emit_capability appearance themes Themes available read-only dwm-settings-appearance \
+			'Versioned theme inventory and integration state are available'
 	else
-		emit_capability appearance themes Themes unavailable user-session themes.toml \
-			'Install or restore the managed theme configuration'
+		emit_capability appearance themes Themes unavailable read-only dwm-settings-appearance \
+			'Restore a valid themes.toml configuration or inspect the appearance snapshot errors'
 	fi
 	emit_capability appearance accessibility Accessibility unsupported user-session x11 \
 		'Accessibility settings begin in Phase 5'

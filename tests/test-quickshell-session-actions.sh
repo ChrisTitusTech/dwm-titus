@@ -321,19 +321,28 @@ if command -v Xvfb >/dev/null 2>&1 && [ -x "$repo/dwm" ]; then
 		runtime_display_number=$((runtime_display_number + 1))
 	done
 	runtime_display=:$runtime_display_number
-	mkdir -p "$work/runtime-data/dwm-titus/scripts" \
-		"$work/runtime-data/dwm-titus/config" "$work/runtime-config/dwm-titus"
+	runtime_home=$work/runtime-home
+	runtime_data_home=$runtime_home/.local/share
+	runtime_config_home=$runtime_home/.config
+	mkdir -p "$runtime_data_home/dwm-titus/scripts" \
+		"$runtime_data_home/dwm-titus/config" "$runtime_config_home/dwm-titus"
 	cp "$repo/config/hotkeys.toml" "$repo/config/themes.toml" \
-		"$repo/config/window-rules.toml" "$work/runtime-data/dwm-titus/config/"
-	cat >"$work/runtime-data/dwm-titus/scripts/autostart.sh" <<'SH'
+		"$repo/config/window-rules.toml" "$runtime_data_home/dwm-titus/config/"
+	cat >"$runtime_data_home/dwm-titus/scripts/autostart.sh" <<'SH'
 #!/bin/sh
 exit 0
 SH
-	cat >"$work/runtime-data/dwm-titus/scripts/autostop.sh" <<'SH'
+	cat >"$runtime_data_home/dwm-titus/scripts/autostop.sh" <<'SH'
 #!/bin/sh
 : >"${DWM_SESSION_TEST_AUTOSTOP_MARKER:?}"
 SH
-	chmod +x "$work/runtime-data/dwm-titus/scripts/"*.sh
+	cat >"$runtime_data_home/dwm-titus/scripts/theme-apply.sh" <<'SH'
+#!/bin/sh
+printf x >>"${DWM_SESSION_TEST_THEME_APPLY_MARKER:?}"
+printf '%s\n%s\n' "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" \
+	>"${DWM_SESSION_TEST_THEME_ENV_MARKER:?}"
+SH
+	chmod +x "$runtime_data_home/dwm-titus/scripts/"*.sh
 
 	Xvfb "$runtime_display" -screen 0 800x600x24 -nolisten tcp \
 		>"$work/xvfb.log" 2>&1 &
@@ -350,9 +359,10 @@ SH
 	done
 
 	DWM_SESSION_TEST_AUTOSTOP_MARKER="$work/autostop.marker" \
-		DISPLAY=$runtime_display HOME="$work/home" \
-		XDG_CONFIG_HOME="$work/runtime-config" \
-		XDG_DATA_HOME="$work/runtime-data" "$repo/dwm" \
+		DWM_SESSION_TEST_THEME_APPLY_MARKER="$work/theme-apply.marker" \
+		DWM_SESSION_TEST_THEME_ENV_MARKER="$work/theme-env.marker" \
+		DISPLAY=$runtime_display HOME="$runtime_home" \
+		XDG_CONFIG_HOME=relative-config XDG_DATA_HOME=relative-data "$repo/dwm" \
 		>"$work/dwm.log" 2>&1 &
 	real_dwm_pid=$!
 	test_pids="$test_pids $real_dwm_pid"
@@ -366,14 +376,50 @@ SH
 		}
 		sleep 0.02
 	done
+	initial_theme_loads=$(grep -Fc 'dwm: loaded theme from config' "$work/dwm.log" || true)
+	[ "$initial_theme_loads" -ge 1 ] || {
+		printf '%s\n' 'Nested DWM did not load its XDG_DATA_HOME theme fallback.' >&2
+		exit 1
+	}
+	i=0
+	while [ ! -f "$work/theme-apply.marker" ] || [ ! -f "$work/theme-env.marker" ]; do
+		i=$((i + 1))
+		[ "$i" -lt 100 ] || {
+			printf '%s\n' 'Nested DWM did not run theme-apply from XDG_DATA_HOME.' >&2
+			exit 1
+		}
+		sleep 0.02
+	done
+	grep -Fqx "$runtime_config_home" "$work/theme-env.marker"
+	grep -Fqx "$runtime_data_home" "$work/theme-env.marker"
+	initial_theme_applies=$(wc -c <"$work/theme-apply.marker")
+	cp "$repo/config/themes.toml" "$runtime_config_home/dwm-titus/themes.toml"
+	i=0
+	while [ "$(grep -Fc 'dwm: loaded theme from config' "$work/dwm.log" || true)" \
+		-le "$initial_theme_loads" ]; do
+		i=$((i + 1))
+		[ "$i" -lt 100 ] || {
+			printf '%s\n' 'Nested DWM did not hot-reload its XDG_CONFIG_HOME theme.' >&2
+			exit 1
+		}
+		sleep 0.02
+	done
+	i=0
+	while [ "$(wc -c <"$work/theme-apply.marker")" -le "$initial_theme_applies" ]; do
+		i=$((i + 1))
+		[ "$i" -lt 100 ] || {
+			printf '%s\n' 'Nested DWM did not run theme-apply from XDG_DATA_HOME.' >&2
+			exit 1
+		}
+		sleep 0.02
+	done
 	support_window=$(DISPLAY=$runtime_display /usr/bin/xprop -root \
 		_NET_SUPPORTING_WM_CHECK | awk '{ print $NF }')
 	DISPLAY=$runtime_display /usr/bin/xprop -id "$support_window" _NET_WM_PID |
 		grep -Fqx "_NET_WM_PID(CARDINAL) = $real_dwm_pid"
 	real_logout=$(DWM_SESSION_TEST_AUTOSTOP_MARKER="$work/autostop.marker" \
-		DISPLAY=$runtime_display HOME="$work/home" \
-		XDG_CONFIG_HOME="$work/runtime-config" \
-		XDG_DATA_HOME="$work/runtime-data" PATH=/usr/bin:/bin \
+		DISPLAY=$runtime_display HOME="$runtime_home" \
+		XDG_CONFIG_HOME=relative-config XDG_DATA_HOME=relative-data PATH=/usr/bin:/bin \
 		"$helper" session-action logout)
 	[ "$real_logout" = 'session-action	logout	accepted' ]
 	i=0

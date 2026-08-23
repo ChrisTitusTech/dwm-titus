@@ -44,7 +44,7 @@ provider work still required.
 | Audio and media | Native `Quickshell.Services.Pipewire` signals with a versioned `pactl` inventory fallback; `playerctl --follow` for media | Output/input defaults, volume and mute, application streams, and MPRIS media actions | Read-only, user-session | Native signals remain authoritative; audio inventory, media, and Bluetooth fail independently | `make check-quickshell-controls check-quickshell-audio`; live PipeWire and MPRIS exercise |
 | Power and session | Shared Power and session-action models over versioned helper records, UPower, Power Profiles D-Bus, logind, `xset`, `gsettings`, and light-locker | Delegated profile and session actions; user `power.conf`, DPMS, and lock policy; cleanup-aware DWM logout | Read-only, user-session, delegated | Capabilities fail independently; destructive actions share confirmation, origin attribution, overlap rejection, and exact accepted-result checks | `make check-quickshell-power check-quickshell-session-actions check-quickshell-controlcenter check-lock check-quickshell-settings-xvfb`; real X11 and available hardware/service checks |
 | Defaults and autostart | Versioned `dwm-default-apps` and `dwm-xdg-autostart` providers over XDG tools and desktop entries | Browser, terminal, file-manager, MIME, and next-login autostart overrides with verified recovery | Read-only, user-session | Invalid entries fail per item; mutations reject unsafe paths, preserve unrelated state, verify convergence, and never edit vendor files | `make check-default-apps check-terminal check-xdg-autostart check-quickshell-defaults-model check-quickshell-settings-xvfb` |
-| Appearance and accessibility | `themes.toml`, `Theme.qml`, `dwm-quickshell-controlcenter`, `theme-apply.sh`, `feh`, and delegated `nwg-look` | User theme files and toolkit config; session wallpaper; external GTK tool | Read-only, user-session, delegated, unsupported | Missing themes/tools affect only their controls; fonts, cursors, notifications, wallpaper selection, and accessibility still need settings contracts | `make check-quickshell-controlcenter check-quickshell-qml`; live theme reload |
+| Appearance and accessibility | Versioned `dwm-settings-appearance` inventory over `themes.toml`; `Theme.qml`, `dwm-quickshell-controlcenter`, `theme-apply.sh`, `feh`, and delegated `nwg-look` | User theme files and toolkit config; session wallpaper; external GTK tool | Read-only, user-session, delegated, unsupported | Invalid theme records and missing integrations are attributed per capability; preview/apply/reset, fonts, notifications, wallpaper selection, and accessibility still need settings contracts | `make check-appearance check-quickshell-controlcenter check-quickshell-qml`; live theme reload |
 | System and diagnostics | `dwm-system-health` structured snapshots and the full-screen health window | Allowlisted user repairs; installed-helper privileged repairs; selected trusted-tool entry points | Read-only, user-session, privileged, delegated, unsupported | Authorization denial produces a restricted partial report; high-risk administration stays delegated or unsupported | `make check-system-health check-quickshell-health-xvfb` |
 
 ## Existing Operation Inventory
@@ -122,11 +122,38 @@ action.
 | Browser, terminal, file-manager, and MIME state/candidates | `dwm-default-apps snapshot` version 1.0 | Read-only | Missing tools and invalid desktop entries fail per role or MIME without inventing defaults. |
 | Set or restore an application default | Fixed `set-role`, `set-mime`, `reset-role`, and `reset-mime` actions | User-session | Exact selected associations or the terminal variable change transactionally; recovery refuses to overwrite later external edits. |
 | XDG autostart entries | `dwm-xdg-autostart` version 1.0 snapshot/watch and fixed set/reset actions | Read-only and user-session | Vendor files are immutable; user overrides are revision-checked, backed up, atomic, and next-login only. Session-critical changes require confirmation. |
-| Theme list and active theme | `themes.toml`, `Theme.qml`, and Control Center helper records | Read-only | Missing or invalid user state falls back to managed defaults without overwriting the user file. |
+| Theme list and active theme | `dwm-settings-appearance snapshot` version 1.0 over `themes.toml`; `Theme.qml` remains the live shell adapter | Read-only | Missing, duplicate, malformed, or incomplete themes produce typed errors and a deterministic valid recovery theme without modifying the user file. |
 | Select theme and apply toolkit/terminal/cursor settings | `theme-set`, hot reload, and `theme-apply.sh` user-file writes | User-session | A future contract must report partial toolkit failures and define preview/reset behavior. |
 | Random wallpaper | Fixed `feh` action over the user wallpaper directory | User-session | Missing tools, directory, or images are isolated failures. A selected-wallpaper provider is not yet available. |
 | GTK configuration tool | `nwg-look` | Delegated | Optional entry point only. |
 | Fonts, icons, notification policy, and accessibility | No settings-ready provider contract | Unsupported | Add by Phase 5 with explicit preview, reset, and rollback behavior. |
+
+The Phase 5 appearance snapshot is append-only within protocol version 1. It
+starts with `appearance-protocol<TAB>1<TAB>0` and emits provider, source,
+active-theme, theme, semantic-color, integration, and capability-scoped error
+records. It is read-only. The active record distinguishes the user's selected
+theme from the resolved recovery theme, so later UI work can explain invalid
+state without overwriting comments, custom themes, file mode, or unrelated
+configuration. GTK, Qt, cursor, terminal, and compositor integration failures
+remain independent records and do not suppress valid theme inventory. A
+snapshot returns status 3 after emitting its records when no valid theme can be
+resolved; partial snapshots and isolated integration failures return status 0.
+Inventory enforces the DWM parser's 512-entry ceiling and the exact section
+header grammar shared by the current QML and toolkit consumers. A trailing
+comment on a section header is therefore a typed compatibility error until all
+live consumers support it consistently. Arrays and inline tables are rejected
+conservatively because they are outside the appearance snapshot grammar.
+
+```text
+appearance-protocol<TAB>major<TAB>minor
+provider<TAB>id<TAB>status<TAB>class<TAB>detail
+source<TAB>user|managed|none<TAB>path|unavailable
+active<TAB>selected<TAB>resolved<TAB>selected|recovery|unresolved
+theme<TAB>name<TAB>selection<TAB>validity<TAB>dark-mode<TAB>gtk-theme<TAB>detail
+color<TAB>semantic-role<TAB>#RRGGBB<TAB>source-key
+integration<TAB>id<TAB>status<TAB>value<TAB>detail
+error<TAB>capability<TAB>code<TAB>detail
+```
 
 ### System Health and Administration
 

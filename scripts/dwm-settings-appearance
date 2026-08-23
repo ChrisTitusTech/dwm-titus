@@ -1,0 +1,979 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+
+config_home=${XDG_CONFIG_HOME:-}
+data_home=${XDG_DATA_HOME:-}
+[[ $config_home == /* ]] || config_home=${HOME:?HOME is required for XDG_CONFIG_HOME fallback}/.config
+[[ $data_home == /* ]] || data_home=${HOME:?HOME is required for XDG_DATA_HOME fallback}/.local/share
+themes_file=${DWM_APPEARANCE_THEMES_FILE:-$config_home/dwm-titus/themes.toml}
+managed_themes_file=${DWM_APPEARANCE_MANAGED_THEMES_FILE:-$data_home/dwm-titus/config/themes.toml}
+readonly max_themes_size=1048576
+readonly max_theme_count=128
+readonly max_error_count=256
+readonly max_entry_count=512
+readonly max_theme_name_length=505
+readonly key_separator=$'\034'
+readonly legacy_theme_id=$'\035legacy-colors'
+readonly legacy_theme_label='@legacy-colors'
+readonly quoted_record_re='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*"(([^"\\]|\\.)*)"[[:space:]]*(#.*)?$'
+readonly quoted_active_theme_re='^[[:space:]]*theme[[:space:]]*=[[:space:]]*"(([^"\\]|\\.)*)"[[:space:]]*(#.*)?$'
+
+declare -a theme_order=()
+declare -a errors=()
+declare -A section_count=()
+declare -A value=()
+declare -A key_seen=()
+declare -A theme_invalid=()
+
+source_kind=
+source_file=
+source_report_file=
+provider_state=available
+selected_theme=
+resolved_theme=
+errors_truncated=false
+entry_limit_reported=false
+parsed_entry_count=0
+selected_theme_hint=
+
+readonly -a required_colors=(
+	normfgcolor normbgcolor normbordercolor selfgcolor selbgcolor selbordercolor
+	term_bg term_fg term_cursor term_color0 term_color1 term_color2 term_color3
+	term_color4 term_color5 term_color6 term_color7 term_color8 term_color9
+	term_color10 term_color11 term_color12 term_color13 term_color14 term_color15
+)
+
+usage() {
+	printf 'usage: %s snapshot\n' "$0" >&2
+}
+
+clean_field() {
+	local field=$1
+	field=${field//$'\t'/ }
+	field=${field//$'\r'/ }
+	field=${field//$'\n'/ }
+	printf '%s' "$field"
+}
+
+theme_label() {
+	if [[ $1 == "$legacy_theme_id" ]]; then
+		printf '%s' "$legacy_theme_label"
+	else
+		printf '%s' "$1"
+	fi
+}
+
+unescape_runtime_string() {
+	local source=$1 char index=0
+	local LC_ALL=C
+	parsed_runtime_string=
+
+	while ((index < ${#source} && ${#parsed_runtime_string} < 511)); do
+		char=${source:index:1}
+		if [[ $char == \\ ]] && ((index + 1 < ${#source})); then
+			((index += 1))
+			char=${source:index:1}
+			case $char in
+			n) char=$'\n' ;;
+			t) char=$'\t' ;;
+			\\) char=\\ ;;
+			'"') char='"' ;;
+			esac
+		fi
+		parsed_runtime_string+=$char
+		((index += 1))
+	done
+}
+
+add_error() {
+	local capability=$1 code=$2 detail=$3 clean_capability clean_code clean_detail
+	if ((${#errors[@]} >= max_error_count)); then
+		if [[ $errors_truncated == false ]]; then
+			errors+=("provider"$'\t'"error-limit"$'\t'"Additional errors were omitted")
+			errors_truncated=true
+		fi
+		return
+	fi
+	clean_capability=${capability//$'\t'/ }
+	clean_capability=${clean_capability//$'\r'/ }
+	clean_capability=${clean_capability//$'\n'/ }
+	clean_code=${code//$'\t'/ }
+	clean_code=${clean_code//$'\r'/ }
+	clean_code=${clean_code//$'\n'/ }
+	clean_detail=${detail//$'\t'/ }
+	clean_detail=${clean_detail//$'\r'/ }
+	clean_detail=${clean_detail//$'\n'/ }
+	errors+=("$clean_capability"$'\t'"$clean_code"$'\t'"$clean_detail")
+}
+
+select_source() {
+	if [[ -r $themes_file && -f $themes_file ]]; then
+		source_kind=user
+		source_file=$themes_file
+		source_report_file=$themes_file
+		return
+	fi
+	if [[ -L $themes_file && ! -e $themes_file ]]; then
+		provider_state=partial
+		add_error source dangling-user \
+			"Ignoring dangling user theme symlink and trying the managed source: $themes_file"
+	elif [[ -e $themes_file || -L $themes_file ]]; then
+		source_kind=user
+		source_report_file=$themes_file
+		add_error source unreadable "User theme file is not a readable regular file: $themes_file"
+		provider_state=unavailable
+		return
+	fi
+	if [[ -r $managed_themes_file && -f $managed_themes_file ]]; then
+		source_kind=managed
+		source_file=$managed_themes_file
+		source_report_file=$managed_themes_file
+		return
+	fi
+	provider_state=unavailable
+	add_error source missing 'No readable user or managed themes.toml file is available'
+}
+
+theme_content_lines() {
+	awk '!/^[[:space:]]*(#.*)?$/ { sub(/\r$/, ""); print }' "$1"
+}
+
+numbered_theme_content_lines() {
+	awk '!/^[[:space:]]*(#.*)?$/ { sub(/\r$/, ""); print NR; print }' "$1"
+}
+
+prescan_active_theme() {
+	local file=$1 line trimmed section='' candidate runtime_key
+	local entry_count=0 string_byte_length_result
+
+	while IFS= read -r line || [[ -n $line ]]; do
+		line=${line%$'\r'}
+		trimmed=$line
+		trimmed=${trimmed#"${trimmed%%[![:space:]]*}"}
+		trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
+		[[ -z $trimmed || $trimmed == \#* ]] && continue
+		if [[ $trimmed == *=* ]]; then
+			runtime_key=${trimmed%%=*}
+			runtime_key=${runtime_key%"${runtime_key##*[![:space:]]}"}
+			string_byte_length "$runtime_key"
+			if [[ -n $runtime_key ]] && ((string_byte_length_result < 512)); then
+				((entry_count += 1))
+				((entry_count <= max_entry_count)) || break
+			fi
+		fi
+		if [[ $trimmed == '[active]' ]]; then
+			section=active
+		elif [[ $trimmed == \[* ]]; then
+			section=other
+		elif [[ $section == active && -z $selected_theme_hint &&
+			$line =~ $quoted_active_theme_re ]]; then
+			unescape_runtime_string "${BASH_REMATCH[1]}"
+			selected_theme_hint=$parsed_runtime_string
+		elif [[ $section == active && -z $selected_theme_hint &&
+			$line =~ ^[[:space:]]*theme[[:space:]]*=[[:space:]]*([^#[:space:]]+)[[:space:]]*(#.*)?$ ]]; then
+			candidate=${BASH_REMATCH[1]}
+			if ! runtime_bare_is_numeric "$candidate"; then
+				selected_theme_hint=$candidate
+			fi
+		fi
+	done < <(theme_content_lines "$file")
+}
+
+runtime_bare_is_numeric() {
+	[[ $1 =~ ^[+-]?([0-9]|\.[0-9]) ]] ||
+		[[ $1 =~ ^[+-]?([Nn][Aa][Nn]|[Ii][Nn][Ff]) ]]
+}
+
+theme_key_supported() {
+	case $1 in
+	normfgcolor | normbgcolor | normbordercolor | selfgcolor | selbgcolor | selbordercolor | term_bg | term_fg | term_cursor | term_color[0-9] | term_color1[0-5] | dark_mode | gtk_theme) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+string_byte_length() {
+	local LC_ALL=C
+	string_byte_length_result=${#1}
+}
+
+parse_themes() {
+	local file=$1 size line trimmed line_number raw runtime_key runtime_value parsed_type
+	local string_byte_length_result parsed_runtime_string
+	local section='' theme='' theme_candidate='' key='' parsed=''
+
+	size=$(stat -c %s -- "$file" 2>/dev/null) || {
+		provider_state=unavailable
+		add_error source stat-failed "Cannot inspect theme file: $file"
+		return
+	}
+	if ((size > max_themes_size)); then
+		provider_state=unavailable
+		add_error source too-large "Theme file exceeds $max_themes_size bytes"
+		return
+	fi
+	if ! LC_ALL=C awk 'length($0) >= 4095 { exit 1 }' "$file"; then
+		provider_state=unavailable
+		add_error parser line-too-long \
+			'Theme configuration contains a physical line that exceeds the runtime reader limit'
+		return
+	fi
+	prescan_active_theme "$file"
+
+	while IFS= read -r line_number && IFS= read -r line; do
+		trimmed=$line
+		trimmed=${trimmed#"${trimmed%%[![:space:]]*}"}
+		trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
+		[[ -z $trimmed || $trimmed == \#* ]] && continue
+
+		if [[ $trimmed == \[* ]]; then
+			if [[ $trimmed =~ ^\[theme\.([^]]+)\]$ ]]; then
+				theme_candidate=${BASH_REMATCH[1]}
+				if [[ ! $theme_candidate =~ ^[A-Za-z0-9._-]+$ ]] ||
+					((${#theme_candidate} > max_theme_name_length)); then
+					section=ignore
+					theme=
+					provider_state=partial
+					add_error parser invalid-theme-name "Theme name is not a supported bare identifier at line $line_number"
+				else
+					theme=$theme_candidate
+					section=theme
+					if [[ -z ${section_count[$theme]+x} ]] &&
+						((${#theme_order[@]} >= max_theme_count)) &&
+						[[ $theme != "$selected_theme_hint" && $theme != nord ]]; then
+						section=ignore
+						theme=
+						provider_state=partial
+						add_error parser theme-limit "Theme inventory exceeds $max_theme_count records"
+						continue
+					fi
+					((section_count[$theme] = ${section_count[$theme]:-0} + 1))
+					if ((${section_count[$theme]} == 1)); then
+						theme_order+=("$theme")
+					else
+						theme_invalid[$theme]=1
+						provider_state=partial
+						add_error "theme:$theme" duplicate "Duplicate theme section at line $line_number"
+					fi
+				fi
+			elif [[ $trimmed == '[colors]' ]]; then
+				theme=$legacy_theme_id
+				section=theme
+				((section_count[$theme] = ${section_count[$theme]:-0} + 1))
+				if ((${section_count[$theme]} == 1)); then
+					theme_order+=("$theme")
+					provider_state=partial
+					add_error parser legacy-format \
+						'Legacy [colors] palette is active; named themes are recommended'
+				else
+					theme_invalid[$theme]=1
+					add_error "theme:$legacy_theme_label" duplicate "Duplicate legacy [colors] section at line $line_number"
+				fi
+			elif [[ $trimmed == '[active]' ]]; then
+				section=active
+				theme=__active
+			elif [[ $trimmed == '[appearance]' ]]; then
+				section=appearance
+				theme=__appearance
+			else
+				section=ignore
+				theme=
+				case $trimmed in
+				'[theme.'* | '[active'* | '[appearance'*)
+					provider_state=partial
+					add_error parser malformed-section "Malformed theme section header at line $line_number"
+					;;
+				esac
+			fi
+			continue
+		fi
+
+		# Mirror the C parser's document-wide entry budget. Its bare key grammar
+		# accepts any non-empty text before '=' up to TOML_MAX_STR - 1, including
+		# keys outside the narrower appearance schema.
+		if [[ $trimmed == *=* ]]; then
+			runtime_key=${trimmed%%=*}
+			runtime_key=${runtime_key%"${runtime_key##*[![:space:]]}"}
+			runtime_value=${trimmed#*=}
+			runtime_value=${runtime_value#"${runtime_value%%[![:space:]]*}"}
+			string_byte_length "$runtime_key"
+			if [[ -n $runtime_key ]] && ((string_byte_length_result < 512)); then
+				((parsed_entry_count += 1))
+				if ((parsed_entry_count > max_entry_count)); then
+					provider_state=partial
+					if [[ $entry_limit_reported == false ]]; then
+						add_error parser entry-limit "Theme configuration exceeds the runtime parser limit of $max_entry_count entries"
+						entry_limit_reported=true
+					fi
+					break
+				fi
+			fi
+			if [[ $runtime_value == \[* || $runtime_value == \{* ]]; then
+				provider_state=unavailable
+				add_error parser unsupported-complex-value \
+					"Arrays and inline tables are outside the appearance snapshot grammar at line $line_number"
+				return
+			fi
+		fi
+
+		if [[ $line =~ $quoted_record_re ]]; then
+			key=${BASH_REMATCH[1]}
+			unescape_runtime_string "${BASH_REMATCH[2]}"
+			parsed=$parsed_runtime_string
+			parsed_type=string
+		elif [[ $line =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*([^#[:space:]]+)[[:space:]]*(#.*)?$ ]]; then
+			key=${BASH_REMATCH[1]}
+			parsed=${BASH_REMATCH[2]}
+			parsed_type=bare
+		else
+			if [[ $section == theme && $trimmed == *=* ]]; then
+				if ((string_byte_length_result >= 512)) ||
+					[[ $runtime_value =~ ^\"[^\"]*\"[[:space:]]*(#.*)?$ ]] ||
+					[[ $runtime_value =~ ^[^#[:space:]]+[[:space:]]*(#.*)?$ ]]; then
+					# DWM skips overlong keys and ignores runtime-valid metadata
+					# outside the appearance schema, including punctuation.
+					continue
+				fi
+			fi
+			if [[ $section == theme || $section == active || $section == appearance ]]; then
+				provider_state=partial
+				[[ $section != theme ]] || theme_invalid[$theme]=1
+				add_error "${section}:${theme}" invalid-record "Unsupported theme record at line $line_number"
+			fi
+			continue
+		fi
+
+		[[ $section == theme || $section == active || $section == appearance ]] || continue
+		if [[ $section == theme ]] && ! theme_key_supported "$key"; then
+			continue
+		fi
+		raw=$theme$key_separator$key
+		if [[ -n ${key_seen[$raw]+x} ]]; then
+			provider_state=partial
+			[[ $section != theme ]] || theme_invalid[$theme]=1
+			add_error "${section}:${theme}" duplicate-key "Duplicate key '$key' at line $line_number"
+			continue
+		fi
+		key_seen[$raw]=1
+		if [[ $section == active && $key == theme && $parsed_type == bare ]] &&
+			runtime_bare_is_numeric "$parsed"; then
+			provider_state=partial
+			add_error active invalid-type "Active theme must resolve to a TOML string at line $line_number"
+			continue
+		fi
+
+		value[$raw]=$parsed
+	done < <(numbered_theme_content_lines "$file")
+}
+
+valid_color() {
+	[[ $1 =~ ^#[0-9A-Fa-f]{6}$ ]]
+}
+
+validate_themes() {
+	local theme key color dark first_missing missing_count invalid_count
+	local -a keys_to_validate=()
+
+	for theme in "${theme_order[@]}"; do
+		if [[ $theme == "$legacy_theme_id" ]]; then
+			[[ -n ${value[$theme$key_separator'normbordercolor']:-} ]] ||
+				value[$theme$key_separator'normbordercolor']='#3B4252'
+			[[ -n ${value[$theme$key_separator'normbgcolor']:-} ]] ||
+				value[$theme$key_separator'normbgcolor']='#434C5E'
+			[[ -n ${value[$theme$key_separator'normfgcolor']:-} ]] ||
+				value[$theme$key_separator'normfgcolor']='#D8DEE9'
+			[[ -n ${value[$theme$key_separator'selbordercolor']:-} ]] ||
+				value[$theme$key_separator'selbordercolor']='#81A1C1'
+			[[ -n ${value[$theme$key_separator'selbgcolor']:-} ]] ||
+				value[$theme$key_separator'selbgcolor']='#434C5E'
+			[[ -n ${value[$theme$key_separator'selfgcolor']:-} ]] ||
+				value[$theme$key_separator'selfgcolor']='#ECEFF4'
+			value[$theme$key_separator'term_bg']=${value[$theme$key_separator'normbgcolor']}
+			value[$theme$key_separator'term_fg']=${value[$theme$key_separator'normfgcolor']}
+			value[$theme$key_separator'term_cursor']=${value[$theme$key_separator'selfgcolor']}
+			value[$theme$key_separator'term_color0']=${value[$theme$key_separator'normbgcolor']}
+			value[$theme$key_separator'term_color1']=${value[$theme$key_separator'selbordercolor']}
+			value[$theme$key_separator'term_color2']=${value[$theme$key_separator'selbordercolor']}
+			value[$theme$key_separator'term_color3']=${value[$theme$key_separator'selbgcolor']}
+			value[$theme$key_separator'term_color4']=${value[$theme$key_separator'selbordercolor']}
+			value[$theme$key_separator'term_color8']=${value[$theme$key_separator'normbordercolor']}
+			keys_to_validate=(
+				normfgcolor normbgcolor normbordercolor selfgcolor selbgcolor selbordercolor
+			)
+		else
+			keys_to_validate=("${required_colors[@]}")
+		fi
+		first_missing=
+		missing_count=0
+		invalid_count=0
+		for key in "${keys_to_validate[@]}"; do
+			color=${value[$theme$key_separator$key]:-}
+			if [[ -z $color ]]; then
+				theme_invalid[$theme]=1
+				provider_state=partial
+				[[ -n $first_missing ]] || first_missing=$key
+				((missing_count += 1))
+			elif ! valid_color "$color"; then
+				theme_invalid[$theme]=1
+				provider_state=partial
+				((invalid_count += 1))
+				if ((invalid_count == 1)); then
+					add_error "theme:$(theme_label "$theme")" invalid-color "Theme key '$key' is not a #RRGGBB color"
+				fi
+			fi
+		done
+		if ((missing_count > 0)); then
+			add_error "theme:$(theme_label "$theme")" missing-key \
+				"Theme is missing $missing_count required keys; first missing key is '$first_missing'"
+		fi
+		dark=${value[$theme$key_separator'dark_mode']:-true}
+		if [[ $dark != true && $dark != false ]]; then
+			theme_invalid[$theme]=1
+			provider_state=partial
+			add_error "theme:$(theme_label "$theme")" invalid-dark-mode "Theme dark_mode must be true or false"
+		fi
+	done
+}
+
+resolve_active_theme() {
+	local theme string_byte_length_result
+
+	selected_theme=${value[__active$key_separator'theme']:-}
+	string_byte_length "$selected_theme"
+	if [[ -z $selected_theme ]]; then
+		if [[ -n ${section_count[$legacy_theme_id]+x} && -z ${theme_invalid[$legacy_theme_id]+x} ]]; then
+			selected_theme=$legacy_theme_id
+			resolved_theme=$legacy_theme_id
+			return
+		fi
+		provider_state=partial
+		add_error active missing 'The active theme name is missing'
+	elif ((string_byte_length_result > max_theme_name_length)) &&
+		[[ -n ${section_count[$legacy_theme_id]+x} && -z ${theme_invalid[$legacy_theme_id]+x} ]]; then
+		provider_state=partial
+		resolved_theme=$legacy_theme_id
+		add_error active name-too-long \
+			"Active theme name exceeds the runtime section limit; using the legacy [colors] palette"
+		return
+	elif [[ -z ${section_count[$selected_theme]+x} ]]; then
+		provider_state=partial
+		add_error active unknown "Active theme '$selected_theme' is not defined"
+	elif [[ -n ${theme_invalid[$selected_theme]+x} ]]; then
+		provider_state=partial
+		add_error active invalid "Active theme '$selected_theme' is invalid or incomplete"
+	else
+		resolved_theme=$selected_theme
+		return
+	fi
+
+	if [[ -n ${section_count[nord]+x} && -z ${theme_invalid[nord]+x} ]]; then
+		resolved_theme=nord
+		return
+	fi
+	for theme in "${theme_order[@]}"; do
+		if [[ $theme != "$legacy_theme_id" && -z ${theme_invalid[$theme]+x} ]]; then
+			resolved_theme=$theme
+			return
+		fi
+	done
+	provider_state=unavailable
+	add_error active no-valid-theme 'No complete theme is available for recovery'
+}
+
+data_roots() {
+	local roots root
+	local -a split_roots=()
+	if [[ -n ${DWM_APPEARANCE_DATA_DIRS:-} ]]; then
+		roots=$DWM_APPEARANCE_DATA_DIRS
+	else
+		roots=$data_home:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
+	fi
+	IFS=: read -r -a split_roots <<<"$roots"
+	for root in "${split_roots[@]}"; do
+		[[ -n $root ]] && printf '%s\n' "$root"
+	done
+}
+
+gtk_theme_version_available() {
+	local name=$1 version=$2 root
+	case $name in
+	Adwaita | Adwaita-dark) return 0 ;;
+	esac
+	while IFS= read -r root; do
+		[[ -d $root/themes/$name/gtk-$version ]] && return 0
+	done < <(data_roots)
+	[[ -d ${HOME:-}/.themes/$name/gtk-$version ]]
+}
+
+gtk_theme_available() {
+	gtk_theme_version_available "$1" 3.0 || gtk_theme_version_available "$1" 4.0
+}
+
+gtk_settings_file_matches() {
+	local file=$1 key=$2 expected=$3
+	awk -F= -v target_key="$key" -v expected="$expected" '
+		/^[[:space:]]*\[/ { in_settings = ($0 == "[Settings]"); next }
+		in_settings && $1 == target_key {
+			value = substr($0, index($0, "=") + 1)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			found = (value == expected)
+			exit
+		}
+		END { exit(found ? 0 : 1) }
+	' "$file"
+}
+
+gtk_theme_applied() {
+	local theme_name=$1 effective=${GTK_THEME:-} version file
+	if [[ -n $effective ]]; then
+		[[ ${effective%%:*} == "$theme_name" ]]
+		return
+	fi
+	for version in 3.0 4.0; do
+		file=$config_home/gtk-$version/settings.ini
+		[[ -f $file ]] && gtk_settings_file_matches "$file" gtk-theme-name "$theme_name" || return 1
+	done
+}
+
+theme_env_value() {
+	local key=$1 env_file=$config_home/dwm-titus/theme-env.sh
+	[[ -r $env_file ]] || return 1
+	awk -F= -v target="export $key" '
+		$1 == target { print substr($0, index($0, "=") + 1); found = 1; exit }
+		END { exit(found ? 0 : 1) }
+	' "$env_file"
+}
+
+cursor_theme_applied() {
+	local expected=$1 effective=${XCURSOR_THEME:-} version file
+	[[ -n $effective ]] || effective=$(theme_env_value XCURSOR_THEME) || return 1
+	[[ $effective == "$expected" ]] || return 1
+	[[ -f $config_home/dwm-titus/cursor.Xresources ]] || return 1
+	awk -F: -v expected="$expected" '
+		$1 == "Xcursor.theme" {
+			value = substr($0, index($0, ":") + 1)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			found = (value == expected)
+			exit
+		}
+		END { exit(found ? 0 : 1) }
+	' "$config_home/dwm-titus/cursor.Xresources" || return 1
+	for version in 3.0 4.0; do
+		file=$config_home/gtk-$version/settings.ini
+		[[ -f $file ]] &&
+			gtk_settings_file_matches "$file" gtk-cursor-theme-name "$expected" || return 1
+	done
+}
+
+asset_available() {
+	local kind=$1 name=$2 root
+	while IFS= read -r root; do
+		[[ -d $root/$kind/$name ]] && return 0
+	done < <(data_roots)
+	if [[ $kind == themes && -d ${HOME:-}/.themes/$name ]]; then
+		return 0
+	fi
+	return 1
+}
+
+alacritty_field_matches() {
+	local file=$1 section=$2 field=$3 color=$4
+	awk -v target_section="$section" -v target_field="$field" -v target_color="$color" '
+		/^\[/ { in_section = ($0 == target_section); next }
+		in_section {
+			equals = index($0, "=")
+			if (!equals) next
+			name = substr($0, 1, equals - 1)
+			value = substr($0, equals + 1)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			gsub(/^['\''"]|['\''"]$/, "", value)
+			if (name == target_field) { found = (value == target_color); exit }
+		}
+		END { exit(found ? 0 : 1) }
+	' "$file"
+}
+
+kitty_field_matches() {
+	local file=$1 field=$2 color=$3
+	awk -v target_field="$field" -v target_color="$color" '
+		$1 == target_field { found = ($2 == target_color && NF == 2); exit }
+		END { exit(found ? 0 : 1) }
+	' "$file"
+}
+
+terminal_theme_matches() {
+	local terminal=$1 file=$2 key color field section index
+	local -a terminal_keys=(term_bg term_fg term_cursor term_color{0..15})
+	local -a color_fields=(black red green yellow blue magenta cyan white)
+
+	[[ -s $file && -n $resolved_theme ]] || return 1
+	for key in "${terminal_keys[@]}"; do
+		color=${value[$resolved_theme$key_separator$key]:-}
+		[[ -n $color ]] || return 1
+		if [[ $terminal == kitty ]]; then
+			case $key in
+			term_bg) field=background ;;
+			term_fg) field=foreground ;;
+			term_cursor) field=cursor ;;
+			term_color*) field=color${key#term_color} ;;
+			esac
+			kitty_field_matches "$file" "$field" "$color" || return 1
+		else
+			case $key in
+			term_bg)
+				section='[colors.primary]'
+				field=background
+				;;
+			term_fg)
+				section='[colors.primary]'
+				field=foreground
+				;;
+			term_cursor)
+				section='[colors.cursor]'
+				field=cursor
+				;;
+			term_color*)
+				index=${key#term_color}
+				if ((index < 8)); then
+					section='[colors.normal]'
+					field=${color_fields[$index]}
+				else
+					section='[colors.bright]'
+					field=${color_fields[$((index - 8))]}
+				fi
+				;;
+			esac
+			alacritty_field_matches "$file" "$section" "$field" "$color" || return 1
+			if [[ $key == term_bg ]]; then
+				alacritty_field_matches "$file" '[colors.cursor]' text "$color" || return 1
+			fi
+		fi
+	done
+}
+
+alacritty_imports_active_theme() {
+	local primary=$config_home/alacritty/alacritty.toml
+	local active=$config_home/alacritty/active-theme.toml
+	local default_import='~'/.config/alacritty/active-theme.toml
+	[[ -f $primary ]] || return 1
+	if [[ -z ${HOME:-} || $config_home != "$HOME/.config" ]]; then
+		default_import=
+	fi
+	DWM_ALACRITTY_ACTIVE_IMPORT=$active \
+		DWM_ALACRITTY_DEFAULT_IMPORT=$default_import \
+		awk '
+		BEGIN {
+			at_root = 1
+			active = ENVIRON["DWM_ALACRITTY_ACTIVE_IMPORT"]
+			default_import = ENVIRON["DWM_ALACRITTY_DEFAULT_IMPORT"]
+		}
+		{
+			line = $0
+			clean = ""
+			quote = ""
+			escaped = 0
+			for (i = 1; i <= length(line); i++) {
+				char = substr(line, i, 1)
+				if (quote != "") {
+					clean = clean char
+					if (quote == "\"" && escaped) {
+						escaped = 0
+						continue
+					}
+					if (quote == "\"" && char == "\\") {
+						escaped = 1
+						continue
+					}
+					if (char == quote) quote = ""
+				} else {
+					if (char == "#") break
+					clean = clean char
+					if (char == "\"" || char == "\047") quote = char
+				}
+			}
+			line = clean
+			trimmed = line
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", trimmed)
+			if (!in_import && trimmed ~ /^\[/) {
+				at_root = 0
+				next
+			}
+			if (!in_import && at_root &&
+			    trimmed ~ /^import[[:space:]]*=[[:space:]]*\[/) in_import = 1
+			if (in_import) {
+				quote = ""
+				escaped = 0
+				item = ""
+				for (i = 1; i <= length(line); i++) {
+					char = substr(line, i, 1)
+					if (quote != "") {
+						if (escaped) {
+							if (char == "n") char = "\n"
+							else if (char == "t") char = "\t"
+							else if (char == "r") char = "\r"
+							item = item char
+							escaped = 0
+							continue
+						}
+						if (quote == "\"" && char == "\\") {
+							escaped = 1
+							continue
+						}
+						if (char == quote) {
+							if (item == active ||
+							    (default_import != "" && item == default_import)) found = 1
+							quote = ""
+							item = ""
+						} else {
+							item = item char
+						}
+					} else if (char == "\"" || char == "\047") {
+						quote = char
+						item = ""
+					} else if (char == "]") {
+						closed = 1
+						break
+					}
+				}
+				if (closed) {
+					valid = found
+					exit
+				}
+			}
+		}
+		END { exit(valid ? 0 : 1) }
+	' "$primary"
+}
+
+kitty_imports_active_theme() {
+	local primary=$config_home/kitty/kitty.conf
+	[[ -f $primary ]] || return 1
+	awk '
+		/^[[:space:]]*#/ { next }
+		$1 == "include" && $2 == "active-theme.conf" && NF == 2 { found = 1; exit }
+		END { exit(found ? 0 : 1) }
+	' "$primary"
+}
+
+terminal_imports_active_theme() {
+	case $1 in
+	alacritty) alacritty_imports_active_theme ;;
+	kitty) kitty_imports_active_theme ;;
+	esac
+}
+
+effective_qt_backend() {
+	qt_backend=${QT_QPA_PLATFORMTHEME:-}
+	[[ -n $qt_backend ]] || qt_backend=$(theme_env_value QT_QPA_PLATFORMTHEME) || qt_backend=
+}
+
+emit_theme_records() {
+	local theme label selection validity dark gtk detail
+	for theme in "${theme_order[@]}"; do
+		label=$(theme_label "$theme")
+		selection=available
+		[[ $theme != "$selected_theme" ]] || selection=selected
+		[[ $theme != "$resolved_theme" || $theme == "$selected_theme" ]] || selection=recovery
+		validity=valid
+		detail='Theme record is complete'
+		if [[ -n ${theme_invalid[$theme]+x} ]]; then
+			validity=invalid
+			detail='Theme record is duplicate, malformed, or incomplete'
+		fi
+		dark=${value[$theme$key_separator'dark_mode']:-true}
+		gtk=${value[$theme$key_separator'gtk_theme']:-automatic}
+		printf 'theme\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+			"$(clean_field "$label")" "$selection" "$validity" "$(clean_field "$dark")" \
+			"$(clean_field "$gtk")" "$detail"
+	done
+}
+
+emit_color_records() {
+	local name key fallback color mapping
+	local -a mappings=(
+		'background|term_bg|normbgcolor'
+		'bar-background|normbgcolor|term_bg'
+		'surface|normbgcolor|term_bg'
+		'surface-hover|term_color8|selbgcolor'
+		'surface-active|selbgcolor|term_color8'
+		'border|normbordercolor|normbgcolor'
+		'border-strong|selbordercolor|normbordercolor'
+		'text|normfgcolor|'
+		'text-strong|selfgcolor|normfgcolor'
+		'text-muted|term_fg|normfgcolor'
+		'placeholder|term_color8|term_fg'
+		'accent|selbordercolor|'
+		'accent-secondary|term_color4|selbordercolor'
+		'accent-text|term_bg|'
+		'success|term_color2|'
+		'warning|term_color3|'
+		'danger|term_color1|'
+		'danger-surface|term_color0|normbgcolor'
+	)
+
+	[[ -n $resolved_theme ]] || return 0
+	for mapping in "${mappings[@]}"; do
+		IFS='|' read -r name key fallback <<<"$mapping"
+		color=${value[$resolved_theme$key_separator$key]:-}
+		[[ -n $color || -z $fallback ]] || color=${value[$resolved_theme$key_separator$fallback]:-}
+		printf 'color\t%s\t%s\t%s\n' "$name" "$(clean_field "$color")" "$key"
+	done
+}
+
+emit_integrations() {
+	local dark requested_gtk fallback_gtk cursor qt_backend terminal terminal_theme_file
+	[[ -n $resolved_theme ]] || return 0
+
+	dark=${value[$resolved_theme$key_separator'dark_mode']:-true}
+	requested_gtk=${value[$resolved_theme$key_separator'gtk_theme']:-}
+	if [[ -z $requested_gtk ]]; then
+		if [[ $dark == true ]]; then
+			[[ $resolved_theme == nord ]] && requested_gtk=Nordic || requested_gtk=Adwaita-dark
+		else
+			requested_gtk=Adwaita
+		fi
+	fi
+	if gtk_theme_version_available "$requested_gtk" 3.0 &&
+		gtk_theme_version_available "$requested_gtk" 4.0 &&
+		gtk_theme_applied "$requested_gtk"; then
+		printf 'integration\tgtk\tavailable\t%s\tRequested GTK theme is installed and applied\n' \
+			"$(clean_field "$requested_gtk")"
+	elif gtk_theme_available "$requested_gtk" &&
+		{ ! gtk_theme_version_available "$requested_gtk" 3.0 ||
+			! gtk_theme_version_available "$requested_gtk" 4.0; }; then
+		printf 'integration\tgtk\tpartial\t%s\tRequested GTK theme is missing GTK 3 or GTK 4 assets\n' \
+			"$(clean_field "$requested_gtk")"
+		add_error gtk missing-version "GTK theme '$requested_gtk' does not support both GTK 3 and GTK 4"
+		if ! gtk_theme_applied "$requested_gtk"; then
+			add_error gtk stale-theme "Applied GTK settings do not match '$requested_gtk'"
+		fi
+	elif gtk_theme_available "$requested_gtk"; then
+		printf 'integration\tgtk\tpartial\t%s\tRequested GTK theme is installed but not applied\n' \
+			"$(clean_field "$requested_gtk")"
+		add_error gtk stale-theme "Applied GTK settings do not match '$requested_gtk'"
+	else
+		[[ $dark == true ]] && fallback_gtk=Adwaita-dark || fallback_gtk=Adwaita
+		printf 'integration\tgtk\tpartial\t%s\tRequested GTK theme is missing; apply falls back to %s\n' \
+			"$(clean_field "$requested_gtk")" "$fallback_gtk"
+		add_error gtk missing-theme "GTK theme '$requested_gtk' is not installed"
+	fi
+
+	effective_qt_backend
+	if [[ -z $qt_backend ]]; then
+		qt_backend=none
+		printf 'integration\tqt\tunavailable\tnone\tNo supported Qt theme backend is active\n'
+		add_error qt missing-backend 'No applied Qt theme backend is recorded'
+	elif [[ $qt_backend == gtk3 ]] ||
+		[[ $qt_backend == qt6ct && $(command -v qt6ct 2>/dev/null) ]] ||
+		[[ $qt_backend == qt5ct && $(command -v qt5ct 2>/dev/null) ]]; then
+		printf 'integration\tqt\tavailable\t%s\tQt applications use the supported theme backend\n' \
+			"$(clean_field "$qt_backend")"
+	else
+		printf 'integration\tqt\tpartial\t%s\tRecorded Qt theme backend is unsupported or unavailable\n' \
+			"$(clean_field "$qt_backend")"
+		add_error qt stale-backend "Recorded Qt theme backend '$qt_backend' is unsupported or unavailable"
+	fi
+
+	[[ $dark == true ]] && cursor=Capitaine-Cursors-White || cursor=Capitaine-Cursors
+	if asset_available icons "$cursor" && cursor_theme_applied "$cursor"; then
+		printf 'integration\tcursor\tavailable\t%s\tManaged cursor theme is installed and applied\n' "$cursor"
+	elif asset_available icons "$cursor"; then
+		printf 'integration\tcursor\tpartial\t%s\tManaged cursor theme is installed but not applied\n' "$cursor"
+		add_error cursor stale-theme "Applied cursor settings do not match '$cursor'"
+	else
+		printf 'integration\tcursor\tunavailable\t%s\tManaged cursor theme is missing\n' "$cursor"
+		add_error cursor missing-theme "Cursor theme '$cursor' is not installed"
+	fi
+
+	for terminal in alacritty kitty; do
+		if [[ $terminal == alacritty ]]; then
+			terminal_theme_file=$config_home/$terminal/active-theme.toml
+		else
+			terminal_theme_file=$config_home/$terminal/active-theme.conf
+		fi
+		if ! command -v "$terminal" >/dev/null 2>&1; then
+			printf 'integration\t%s\tunavailable\tmissing-application\tTerminal application is not installed\n' "$terminal"
+			add_error "$terminal" missing-application 'Terminal application is not installed'
+		elif terminal_theme_matches "$terminal" "$terminal_theme_file" &&
+			terminal_imports_active_theme "$terminal"; then
+			printf 'integration\t%s\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette\n' "$terminal"
+		elif terminal_theme_matches "$terminal" "$terminal_theme_file"; then
+			printf 'integration\t%s\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration\n' "$terminal"
+			add_error "$terminal" not-imported 'Terminal configuration does not import the generated active theme'
+		elif [[ -f $terminal_theme_file ]]; then
+			printf 'integration\t%s\tpartial\tactive-theme\tGenerated terminal theme is empty or stale\n' "$terminal"
+			add_error "$terminal" stale-theme 'Generated active theme does not match the resolved palette'
+		elif [[ -d $config_home/$terminal ]]; then
+			printf 'integration\t%s\tpartial\tconfiguration\tTerminal is configured but has no generated active theme\n' "$terminal"
+			add_error "$terminal" not-applied 'Generated active theme is missing'
+		else
+			printf 'integration\t%s\tunavailable\tnot-configured\tTerminal integration is not configured\n' "$terminal"
+		fi
+	done
+
+	if command -v picom >/dev/null 2>&1; then
+		printf 'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract\n'
+		add_error compositor unsupported 'Picom theme mutation is not implemented'
+	else
+		printf 'integration\tcompositor\tunavailable\tmissing\tPicom is optional and not installed\n'
+	fi
+}
+
+snapshot() {
+	local active_state=unresolved selected_label=none resolved_label=none source_fd source_snapshot
+	select_source
+	if [[ -n $source_file ]]; then
+		if exec {source_fd}<"$source_file"; then
+			source_snapshot=/proc/self/fd/$source_fd
+			parse_themes "$source_snapshot"
+			exec {source_fd}<&-
+			validate_themes
+			resolve_active_theme
+		else
+			provider_state=unavailable
+			add_error source open-failed "Cannot open theme file: $source_file"
+		fi
+	fi
+
+	if [[ -n $resolved_theme ]]; then
+		if [[ $resolved_theme == "$selected_theme" ]]; then
+			active_state=selected
+		else
+			active_state=recovery
+		fi
+	fi
+	[[ -z $selected_theme ]] || selected_label=$(theme_label "$selected_theme")
+	[[ -z $resolved_theme ]] || resolved_label=$(theme_label "$resolved_theme")
+	printf 'appearance-protocol\t1\t0\n'
+	printf 'provider\tappearance\t%s\tread-only\tShared theme inventory and integration state\n' "$provider_state"
+	printf 'source\t%s\t%s\n' "${source_kind:-none}" "$(clean_field "${source_report_file:-unavailable}")"
+	printf 'active\t%s\t%s\t%s\n' \
+		"$(clean_field "$selected_label")" \
+		"$(clean_field "$resolved_label")" \
+		"$active_state"
+	emit_theme_records
+	emit_color_records
+	emit_integrations
+	for error in "${errors[@]}"; do
+		printf 'error\t%s\n' "$error"
+	done
+	[[ $provider_state != unavailable ]] || return 3
+}
+
+case ${1:-} in
+snapshot)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	snapshot
+	;;
+-h | --help | help)
+	usage
+	;;
+*)
+	usage
+	exit 2
+	;;
+esac
