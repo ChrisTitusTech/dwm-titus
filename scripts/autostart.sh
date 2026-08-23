@@ -317,8 +317,16 @@ resume_theme_preview() {
 		theme_helper=dwm-settings-theme
 	fi
 	if [ -n "$theme_helper" ] && command -v timeout >/dev/null 2>&1; then
-		timeout --signal=TERM --kill-after=2 5 \
-			"$theme_helper" _resume-preview >/dev/null 2>&1 || true
+		if ! timeout --signal=TERM --kill-after=2 5 \
+			"$theme_helper" _resume-preview >/dev/null 2>&1; then
+			# A contended integration lock must not discard the only recovery
+			# attempt. Let a detached retry wait for the lock after startup.
+			if command -v setsid >/dev/null 2>&1; then
+				setsid -f "$theme_helper" _resume-preview >/dev/null 2>&1
+			else
+				"$theme_helper" _resume-preview </dev/null >/dev/null 2>&1 &
+			fi
+		fi
 	fi
 }
 

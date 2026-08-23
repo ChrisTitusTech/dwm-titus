@@ -848,6 +848,43 @@ grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
 
 reset_fixture
 run_theme mutation-ready
+no_atomic_bin=$work/no-atomic-bin
+real_mv=$(command -v mv)
+mkdir -p "$no_atomic_bin"
+cat >"$no_atomic_bin/mv" <<SH
+#!/bin/sh
+if [ "\${1:-}" = --help ]; then
+	printf 'Usage: mv SOURCE DEST\n'
+	exit 0
+fi
+exec "$real_mv" "\$@"
+SH
+chmod +x "$no_atomic_bin/mv"
+if PATH="$no_atomic_bin:$PATH" run_theme mutation-ready; then
+	printf 'missing atomic exchange support was reported mutation-ready\n' >&2
+	exit 1
+fi
+
+foreign_parent=$work/foreign-theme-parent
+foreign_theme=$foreign_parent/themes.toml
+mkdir "$foreign_parent"
+if ((UID == 0)); then
+	chown 1 "$foreign_parent"
+else
+	foreign_parent=/tmp
+	foreign_theme=$foreign_parent/.dwm-settings-theme-foreign-$UID-$$.toml
+fi
+if HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
+	DWM_APPEARANCE_THEMES_FILE=$foreign_theme \
+	DWM_APPEARANCE_MANAGED_THEMES_FILE=$managed_file \
+	DWM_APPEARANCE_APPLY_HELPER=$apply_stub DWM_APPEARANCE_RELOAD_HELPER=$reload_stub \
+	DWM_TEST_APPLY_LOG=$work/apply.log DWM_TEST_RELOAD_LOG=$work/reload.log \
+	"$helper" mutation-ready; then
+	printf 'foreign-owned theme directory was reported mutation-ready\n' >&2
+	exit 1
+fi
+
 mkdir -p "$work/unsafe-integration-target"
 ln -s "$work/unsafe-integration-target" "$config_home/alacritty"
 if run_theme mutation-ready; then

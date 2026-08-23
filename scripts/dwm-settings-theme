@@ -227,6 +227,11 @@ mutation_ready() {
 			[[ -n $probe ]] || probe=/
 		done
 		[[ -d $probe && ! -L $probe && -w $probe && -x $probe ]] || return 1
+		if [[ $probe == "$parent" ]]; then
+			[[ $(stat -c %u -- "$parent") == "$UID" ]] || return 1
+			mode=$(stat -c %a -- "$parent")
+			(((8#$mode & 0300) == 0300)) || return 1
+		fi
 	fi
 
 	[[ $managed_themes_file == /* ]] || return 1
@@ -245,7 +250,8 @@ mutation_ready() {
 	theme_source_structure_is_mutable || return 1
 	target=$(snapshot_resolved_theme "$managed_snapshot")
 	valid_theme_name "$target" || return 1
-	snapshot_target_is_valid "$managed_snapshot" "$target"
+	snapshot_target_is_valid "$managed_snapshot" "$target" || return 1
+	(validate_atomic_mv_support) >/dev/null 2>&1
 }
 
 acquire_lock() {
@@ -623,7 +629,14 @@ validate_atomic_mv_support() {
 		die 'required GNU mv options are unavailable'
 	fi
 
-	probe_atomic_exchange "$parent" || die "theme filesystem does not support atomic exchange: $parent"
+	probe=$parent
+	while [[ ! -e $probe && ! -L $probe ]]; do
+		[[ $probe != / && $probe != . ]] || die "unsafe theme path: $themes_file"
+		probe=${probe%/*}
+		[[ -n $probe ]] || probe=/
+	done
+	[[ -d $probe && ! -L $probe ]] || die "unsafe theme path: $themes_file"
+	probe_atomic_exchange "$probe" || die "theme filesystem does not support atomic exchange: $probe"
 	integration_path_list
 	for path in "${integration_paths[@]}"; do
 		probe=${path%/*}
