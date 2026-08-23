@@ -532,10 +532,17 @@ emit_integrations() {
 		qt_backend=qt6ct
 	elif command -v qt5ct >/dev/null 2>&1; then
 		qt_backend=qt5ct
-	else
+	elif [[ ${QT_QPA_PLATFORMTHEME:-} == gtk3 ]]; then
 		qt_backend=gtk3
+	else
+		qt_backend=none
 	fi
-	printf 'integration\tqt\tavailable\t%s\tQt applications use the supported theme backend\n' "$qt_backend"
+	if [[ $qt_backend == none ]]; then
+		printf 'integration\tqt\tunavailable\tnone\tNo supported Qt theme backend is active\n'
+		add_error qt missing-backend 'Install qt6ct or qt5ct, or activate the Qt GTK3 platform theme'
+	else
+		printf 'integration\tqt\tavailable\t%s\tQt applications use the supported theme backend\n' "$qt_backend"
+	fi
 
 	[[ $dark == true ]] && cursor=Capitaine-Cursors-White || cursor=Capitaine-Cursors
 	if asset_available icons "$cursor"; then

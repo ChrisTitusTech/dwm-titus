@@ -106,6 +106,16 @@ grep -Fqx $'integration\tkitty\tavailable\tactive-theme\tGenerated terminal them
 grep -Fqx $'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract' <<<"$output"
 grep -Fqx $'error\tcompositor\tunsupported\tPicom theme mutation is not implemented' <<<"$output"
 
+no_qt_bin=$work/no-qt-bin
+cp -a "$bin_dir" "$no_qt_bin"
+rm -f "$no_qt_bin/qt6ct"
+no_qt=$(PATH=$no_qt_bin QT_QPA_PLATFORMTHEME='' XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	"$helper" snapshot)
+grep -Fqx $'integration\tqt\tunavailable\tnone\tNo supported Qt theme backend is active' <<<"$no_qt"
+grep -Fqx $'error\tqt\tmissing-backend\tInstall qt6ct or qt5ct, or activate the Qt GTK3 platform theme' \
+	<<<"$no_qt"
+
 sed -i "s|${fixture_color[term_bg]}|__DWM_COLOR_SWAP__|; \
 	s|${fixture_color[term_fg]}|${fixture_color[term_bg]}|; \
 	s|__DWM_COLOR_SWAP__|${fixture_color[term_fg]}|" \
