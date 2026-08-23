@@ -71,9 +71,14 @@ cp "$config_home/alacritty/active-theme.toml" "$work/alacritty-valid.toml"
 cp "$config_home/kitty/active-theme.conf" "$work/kitty-valid.conf"
 printf 'import = ["%s"]\n' "$config_home/alacritty/active-theme.toml" \
 	>"$config_home/alacritty/alacritty.toml"
-printf 'export QT_QPA_PLATFORMTHEME=qt6ct\n' >"$config_home/dwm-titus/theme-env.sh"
-printf '[Settings]\ngtk-theme-name=Nordic\n' >"$config_home/gtk-3.0/settings.ini"
-printf '[Settings]\ngtk-theme-name=Nordic\n' >"$config_home/gtk-4.0/settings.ini"
+printf 'export QT_QPA_PLATFORMTHEME=qt6ct\nexport XCURSOR_THEME=Capitaine-Cursors-White\n' \
+	>"$config_home/dwm-titus/theme-env.sh"
+printf 'Xcursor.theme: Capitaine-Cursors-White\n' \
+	>"$config_home/dwm-titus/cursor.Xresources"
+printf '[Settings]\ngtk-theme-name=Nordic\ngtk-cursor-theme-name=Capitaine-Cursors-White\n' \
+	>"$config_home/gtk-3.0/settings.ini"
+printf '[Settings]\ngtk-theme-name=Nordic\ngtk-cursor-theme-name=Capitaine-Cursors-White\n' \
+	>"$config_home/gtk-4.0/settings.ini"
 printf 'include active-theme.conf\n' >"$config_home/kitty/kitty.conf"
 
 for command_name in awk bash dirname grep stat tr; do
@@ -84,7 +89,7 @@ printf '#!/bin/sh\nexit 0\n' >"$bin_dir/picom"
 chmod +x "$bin_dir/qt6ct" "$bin_dir/picom"
 
 snapshot() {
-	PATH=$bin_dir GTK_THEME='' XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
 		DWM_APPEARANCE_DATA_DIRS=$data_root \
 		"$helper" snapshot
 }
@@ -107,7 +112,7 @@ grep -Fqx $'color\taccent\t#81A1C1\tselbordercolor' <<<"$output"
 grep -Fqx $'color\tdanger\t#BF616A\tterm_color1' <<<"$output"
 grep -Fqx $'integration\tgtk\tavailable\tNordic\tRequested GTK theme is installed and applied' <<<"$output"
 grep -Fqx $'integration\tqt\tavailable\tqt6ct\tQt applications use the supported theme backend' <<<"$output"
-grep -Fqx $'integration\tcursor\tavailable\tCapitaine-Cursors-White\tManaged cursor theme is installed' <<<"$output"
+grep -Fqx $'integration\tcursor\tavailable\tCapitaine-Cursors-White\tManaged cursor theme is installed and applied' <<<"$output"
 grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
 grep -Fqx $'integration\tkitty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
 grep -Fqx $'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract' <<<"$output"
@@ -128,6 +133,16 @@ mv "$work/theme-env.sh" "$config_home/dwm-titus/theme-env.sh"
 gtk3_qt=$(QT_QPA_PLATFORMTHEME=gtk3 snapshot)
 grep -Fqx $'integration\tqt\tavailable\tgtk3\tQt applications use the supported theme backend' \
 	<<<"$gtk3_qt"
+
+sed -i 's/XCURSOR_THEME=Capitaine-Cursors-White/XCURSOR_THEME=Capitaine-Cursors/' \
+	"$config_home/dwm-titus/theme-env.sh"
+stale_cursor=$(snapshot)
+grep -Fqx $'integration\tcursor\tpartial\tCapitaine-Cursors-White\tManaged cursor theme is installed but not applied' \
+	<<<"$stale_cursor"
+grep -Fqx $'error\tcursor\tstale-theme\tApplied cursor settings do not match '\''Capitaine-Cursors-White'\''' \
+	<<<"$stale_cursor"
+sed -i 's/XCURSOR_THEME=Capitaine-Cursors/XCURSOR_THEME=Capitaine-Cursors-White/' \
+	"$config_home/dwm-titus/theme-env.sh"
 
 printf 'import = ["/wrong/active-theme.toml"]\n' >"$config_home/alacritty/alacritty.toml"
 unimported_alacritty=$(snapshot)
@@ -466,7 +481,10 @@ grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and
 grep -Fqx $'active\tt19\tt0\trecovery' <<<"$entry_limited"
 grep -Fqx $'error\tparser\tentry-limit\tTheme configuration exceeds the runtime parser limit of 512 entries' \
 	<<<"$entry_limited"
-grep -Fq $'theme\tt19\tselected\tinvalid\t' <<<"$entry_limited"
+if grep -Fq $'theme\tt19\t' <<<"$entry_limited"; then
+	printf 'Theme defined after the runtime entry limit was inventoried\n' >&2
+	exit 1
+fi
 
 {
 	printf '[active]\ntheme = "t0"\n'
@@ -494,6 +512,20 @@ timeout 5 env PATH="$bin_dir" GTK_THEME='' XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$data_root" DWM_APPEARANCE_DATA_DIRS="$data_root" \
 	"$helper" snapshot >"$work/comment-heavy.out"
 grep -Fqx $'active\tnord\tnord\tselected' "$work/comment-heavy.out"
+
+{
+	cat "$work/managed-themes.toml"
+	for ((scalar_index = 0; scalar_index < 68000; scalar_index++)); do
+		printf 'extra%s = 1\n' "$scalar_index"
+	done
+} >"$config_home/dwm-titus/themes.toml"
+timeout 5 env PATH="$bin_dir" GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot \
+	>"$work/scalar-heavy.out"
+grep -Fqx $'active\tnord\tnord\tselected' "$work/scalar-heavy.out"
+grep -Fqx $'error\tparser\tentry-limit\tTheme configuration exceeds the runtime parser limit of 512 entries' \
+	"$work/scalar-heavy.out"
 
 cat >"$config_home/dwm-titus/themes.toml" <<'EOF'
 [colors]

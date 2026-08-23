@@ -105,7 +105,8 @@ numbered_theme_content_lines() {
 }
 
 prescan_active_theme() {
-	local file=$1 line trimmed section='' candidate
+	local file=$1 line trimmed section='' candidate runtime_key
+	local entry_count=0 string_byte_length_result
 
 	while IFS= read -r line || [[ -n $line ]]; do
 		line=${line%$'\r'}
@@ -113,6 +114,15 @@ prescan_active_theme() {
 		trimmed=${trimmed#"${trimmed%%[![:space:]]*}"}
 		trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
 		[[ -z $trimmed || $trimmed == \#* ]] && continue
+		if [[ $trimmed == *=* ]]; then
+			runtime_key=${trimmed%%=*}
+			runtime_key=${runtime_key%"${runtime_key##*[![:space:]]}"}
+			string_byte_length "$runtime_key"
+			if [[ -n $runtime_key ]] && ((string_byte_length_result < 512)); then
+				((entry_count += 1))
+				((entry_count <= max_entry_count)) || break
+			fi
+		fi
 		if [[ $trimmed == '[active]' ]]; then
 			section=active
 		elif [[ $trimmed == \[* ]]; then
@@ -255,7 +265,7 @@ parse_themes() {
 						add_error parser entry-limit "Theme configuration exceeds the runtime parser limit of $max_entry_count entries"
 						entry_limit_reported=true
 					fi
-					continue
+					break
 				fi
 			fi
 		fi
@@ -434,10 +444,10 @@ gtk_theme_available() {
 }
 
 gtk_settings_file_matches() {
-	local file=$1 theme_name=$2
-	awk -F= -v expected="$theme_name" '
+	local file=$1 key=$2 expected=$3
+	awk -F= -v target_key="$key" -v expected="$expected" '
 		/^[[:space:]]*\[/ { in_settings = ($0 == "[Settings]"); next }
-		in_settings && $1 == "gtk-theme-name" {
+		in_settings && $1 == target_key {
 			value = substr($0, index($0, "=") + 1)
 			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
 			found = (value == expected)
@@ -455,7 +465,37 @@ gtk_theme_applied() {
 	fi
 	for version in 3.0 4.0; do
 		file=$config_home/gtk-$version/settings.ini
-		[[ -f $file ]] && gtk_settings_file_matches "$file" "$theme_name" || return 1
+		[[ -f $file ]] && gtk_settings_file_matches "$file" gtk-theme-name "$theme_name" || return 1
+	done
+}
+
+theme_env_value() {
+	local key=$1 env_file=$config_home/dwm-titus/theme-env.sh
+	[[ -r $env_file ]] || return 1
+	awk -F= -v target="export $key" '
+		$1 == target { print substr($0, index($0, "=") + 1); found = 1; exit }
+		END { exit(found ? 0 : 1) }
+	' "$env_file"
+}
+
+cursor_theme_applied() {
+	local expected=$1 effective=${XCURSOR_THEME:-} version file
+	[[ -n $effective ]] || effective=$(theme_env_value XCURSOR_THEME) || return 1
+	[[ $effective == "$expected" ]] || return 1
+	[[ -f $config_home/dwm-titus/cursor.Xresources ]] || return 1
+	awk -F: -v expected="$expected" '
+		$1 == "Xcursor.theme" {
+			value = substr($0, index($0, ":") + 1)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			found = (value == expected)
+			exit
+		}
+		END { exit(found ? 0 : 1) }
+	' "$config_home/dwm-titus/cursor.Xresources" || return 1
+	for version in 3.0 4.0; do
+		file=$config_home/gtk-$version/settings.ini
+		[[ -f $file ]] &&
+			gtk_settings_file_matches "$file" gtk-cursor-theme-name "$expected" || return 1
 	done
 }
 
@@ -588,13 +628,8 @@ terminal_imports_active_theme() {
 }
 
 effective_qt_backend() {
-	local env_file=$config_home/dwm-titus/theme-env.sh
 	qt_backend=${QT_QPA_PLATFORMTHEME:-}
-	if [[ -z $qt_backend && -r $env_file ]]; then
-		qt_backend=$(awk -F= '
-			$1 == "export QT_QPA_PLATFORMTHEME" { print substr($0, index($0, "=") + 1); exit }
-		' "$env_file")
-	fi
+	[[ -n $qt_backend ]] || qt_backend=$(theme_env_value QT_QPA_PLATFORMTHEME) || qt_backend=
 }
 
 emit_theme_records() {
@@ -693,8 +728,11 @@ emit_integrations() {
 	fi
 
 	[[ $dark == true ]] && cursor=Capitaine-Cursors-White || cursor=Capitaine-Cursors
-	if asset_available icons "$cursor"; then
-		printf 'integration\tcursor\tavailable\t%s\tManaged cursor theme is installed\n' "$cursor"
+	if asset_available icons "$cursor" && cursor_theme_applied "$cursor"; then
+		printf 'integration\tcursor\tavailable\t%s\tManaged cursor theme is installed and applied\n' "$cursor"
+	elif asset_available icons "$cursor"; then
+		printf 'integration\tcursor\tpartial\t%s\tManaged cursor theme is installed but not applied\n' "$cursor"
+		add_error cursor stale-theme "Applied cursor settings do not match '$cursor'"
 	else
 		printf 'integration\tcursor\tunavailable\t%s\tManaged cursor theme is missing\n' "$cursor"
 		add_error cursor missing-theme "Cursor theme '$cursor' is not installed"
