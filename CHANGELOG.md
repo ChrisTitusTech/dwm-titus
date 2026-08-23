@@ -62,6 +62,9 @@ versions from `config.mk`.
 
 ### Changed
 
+- Make DWM's hot-reloaded TOML paths honor `XDG_CONFIG_HOME` and
+  `XDG_DATA_HOME`, matching the managed shell and appearance provider.
+
 - Complete Phase 4 Power, Session, Defaults, and XDG autostart integration.
   Fresh Fedora 44 LightDM activation now runs the installed DWM and one managed
   Quickshell shell with one panel per active monitor; unavailable battery, lid,

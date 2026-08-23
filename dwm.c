@@ -3979,11 +3979,37 @@ static void
 setup_inotify(void)
 {
 	const char *home = getenv("HOME");
-	if (!home) return;
+	const char *config_home = getenv("XDG_CONFIG_HOME");
+	const char *data_home = getenv("XDG_DATA_HOME");
+	char config_home_fallback[PATH_MAX];
+	char data_home_fallback[PATH_MAX];
+	if (((!config_home || config_home[0] != '/')
+	     || (!data_home || data_home[0] != '/'))
+	    && (!home || home[0] == '\0')) {
+		fprintf(stderr, "dwm: HOME is required for XDG fallback paths\n");
+		return;
+	}
 
-	/* User-editable config: ~/.config/dwm-titus/ */
+	if (!config_home || config_home[0] != '/') {
+		if (!pathjoin(config_home_fallback, sizeof(config_home_fallback),
+		              home, ".config")) {
+			fprintf(stderr, "dwm: config home path exceeds PATH_MAX\n");
+			return;
+		}
+		config_home = config_home_fallback;
+	}
+	if (!data_home || data_home[0] != '/') {
+		if (!pathjoin(data_home_fallback, sizeof(data_home_fallback),
+		              home, ".local/share")) {
+			fprintf(stderr, "dwm: data home path exceeds PATH_MAX\n");
+			return;
+		}
+		data_home = data_home_fallback;
+	}
+
+	/* User-editable config: ${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/ */
 	if (!pathjoin(toml_config_dir, sizeof(toml_config_dir),
-	              home, ".config/dwm-titus")
+	              config_home, "dwm-titus")
 	    || !pathjoin(toml_hotkeys_path, sizeof(toml_hotkeys_path),
 	                 toml_config_dir, "hotkeys.toml")
 	    || !pathjoin(toml_themes_path, sizeof(toml_themes_path),
@@ -3994,9 +4020,9 @@ setup_inotify(void)
 		return;
 	}
 
-	/* Default (fallback) config: ~/.local/share/dwm-titus/config/ */
+	/* Default config: ${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/ */
 	if (!pathjoin(toml_default_dir, sizeof(toml_default_dir),
-	              home, ".local/share/dwm-titus/config")
+	              data_home, "dwm-titus/config")
 	    || !pathjoin(toml_hotkeys_default_path,
 	                 sizeof(toml_hotkeys_default_path),
 	                 toml_default_dir, "hotkeys.toml")

@@ -366,6 +366,22 @@ SH
 		}
 		sleep 0.02
 	done
+	initial_theme_loads=$(grep -Fc 'dwm: loaded theme from config' "$work/dwm.log" || true)
+	[ "$initial_theme_loads" -ge 1 ] || {
+		printf '%s\n' 'Nested DWM did not load its XDG_DATA_HOME theme fallback.' >&2
+		exit 1
+	}
+	cp "$repo/config/themes.toml" "$work/runtime-config/dwm-titus/themes.toml"
+	i=0
+	while [ "$(grep -Fc 'dwm: loaded theme from config' "$work/dwm.log" || true)" \
+		-le "$initial_theme_loads" ]; do
+		i=$((i + 1))
+		[ "$i" -lt 100 ] || {
+			printf '%s\n' 'Nested DWM did not hot-reload its XDG_CONFIG_HOME theme.' >&2
+			exit 1
+		}
+		sleep 0.02
+	done
 	support_window=$(DISPLAY=$runtime_display /usr/bin/xprop -root \
 		_NET_SUPPORTING_WM_CHECK | awk '{ print $NF }')
 	DISPLAY=$runtime_display /usr/bin/xprop -id "$support_window" _NET_WM_PID |

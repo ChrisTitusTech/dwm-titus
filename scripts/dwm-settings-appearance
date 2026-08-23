@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-config_home=${XDG_CONFIG_HOME:-${HOME:?HOME is required}/.config}
-data_home=${XDG_DATA_HOME:-${HOME:?HOME is required}/.local/share}
+config_home=${XDG_CONFIG_HOME:-}
+data_home=${XDG_DATA_HOME:-}
+[[ $config_home == /* ]] || config_home=${HOME:?HOME is required for XDG_CONFIG_HOME fallback}/.config
+[[ $data_home == /* ]] || data_home=${HOME:?HOME is required for XDG_DATA_HOME fallback}/.local/share
 themes_file=${DWM_APPEARANCE_THEMES_FILE:-$config_home/dwm-titus/themes.toml}
 managed_themes_file=${DWM_APPEARANCE_MANAGED_THEMES_FILE:-$data_home/dwm-titus/config/themes.toml}
 readonly max_themes_size=1048576
@@ -95,7 +97,7 @@ select_source() {
 }
 
 prescan_active_theme() {
-	local file=$1 line trimmed section=''
+	local file=$1 line trimmed section='' candidate
 
 	while IFS= read -r line || [[ -n $line ]]; do
 		line=${line%$'\r'}
@@ -110,6 +112,12 @@ prescan_active_theme() {
 		elif [[ $section == active && -z $selected_theme_hint &&
 			$line =~ ^[[:space:]]*theme[[:space:]]*=[[:space:]]*\"([^\"]*)\"[[:space:]]*(#.*)?$ ]]; then
 			selected_theme_hint=${BASH_REMATCH[1]}
+		elif [[ $section == active && -z $selected_theme_hint &&
+			$line =~ ^[[:space:]]*theme[[:space:]]*=[[:space:]]*([^#[:space:]]+)[[:space:]]*(#.*)?$ ]]; then
+			candidate=${BASH_REMATCH[1]}
+			if ! runtime_bare_is_numeric "$candidate"; then
+				selected_theme_hint=$candidate
+			fi
 		fi
 	done <"$file"
 }
@@ -119,8 +127,14 @@ runtime_bare_is_numeric() {
 		[[ $1 =~ ^[+-]?([Nn][Aa][Nn]|[Ii][Nn][Ff]) ]]
 }
 
+string_byte_length() {
+	local LC_ALL=C
+	string_byte_length_result=${#1}
+}
+
 parse_themes() {
 	local file=$1 size line trimmed line_number=0 raw runtime_key runtime_value parsed_type
+	local string_byte_length_result
 	local section='' theme='' theme_candidate='' key='' parsed=''
 
 	size=$(stat -c %s -- "$file" 2>/dev/null) || {
@@ -206,7 +220,8 @@ parse_themes() {
 					"Arrays and inline tables are outside the appearance snapshot grammar at line $line_number"
 				return
 			fi
-			if [[ -n $runtime_key ]] && ((${#runtime_key} < 512)); then
+			string_byte_length "$runtime_key"
+			if [[ -n $runtime_key ]] && ((string_byte_length_result < 512)); then
 				((parsed_entry_count += 1))
 				if ((parsed_entry_count > max_entry_count)); then
 					provider_state=partial
@@ -366,6 +381,79 @@ asset_available() {
 	return 1
 }
 
+alacritty_field_matches() {
+	local file=$1 section=$2 field=$3 color=$4
+	awk -v target_section="$section" -v target_field="$field" -v target_color="$color" '
+		/^\[/ { in_section = ($0 == target_section); next }
+		in_section {
+			equals = index($0, "=")
+			if (!equals) next
+			name = substr($0, 1, equals - 1)
+			value = substr($0, equals + 1)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			gsub(/^['\''"]|['\''"]$/, "", value)
+			if (name == target_field) { found = (value == target_color); exit }
+		}
+		END { exit(found ? 0 : 1) }
+	' "$file"
+}
+
+kitty_field_matches() {
+	local file=$1 field=$2 color=$3
+	awk -v target_field="$field" -v target_color="$color" '
+		$1 == target_field { found = ($2 == target_color && NF == 2); exit }
+		END { exit(found ? 0 : 1) }
+	' "$file"
+}
+
+terminal_theme_matches() {
+	local terminal=$1 file=$2 key color field section index
+	local -a terminal_keys=(term_bg term_fg term_cursor term_color{0..15})
+	local -a color_fields=(black red green yellow blue magenta cyan white)
+
+	[[ -s $file && -n $resolved_theme ]] || return 1
+	for key in "${terminal_keys[@]}"; do
+		color=${value[$resolved_theme$key_separator$key]:-}
+		[[ -n $color ]] || return 1
+		if [[ $terminal == kitty ]]; then
+			case $key in
+			term_bg) field=background ;;
+			term_fg) field=foreground ;;
+			term_cursor) field=cursor ;;
+			term_color*) field=color${key#term_color} ;;
+			esac
+			kitty_field_matches "$file" "$field" "$color" || return 1
+		else
+			case $key in
+			term_bg)
+				section='[colors.primary]'
+				field=background
+				;;
+			term_fg)
+				section='[colors.primary]'
+				field=foreground
+				;;
+			term_cursor)
+				section='[colors.cursor]'
+				field=cursor
+				;;
+			term_color*)
+				index=${key#term_color}
+				if ((index < 8)); then
+					section='[colors.normal]'
+					field=${color_fields[$index]}
+				else
+					section='[colors.bright]'
+					field=${color_fields[$((index - 8))]}
+				fi
+				;;
+			esac
+			alacritty_field_matches "$file" "$section" "$field" "$color" || return 1
+		fi
+	done
+}
+
 emit_theme_records() {
 	local theme selection validity dark gtk detail
 	for theme in "${theme_order[@]}"; do
@@ -419,7 +507,7 @@ emit_color_records() {
 }
 
 emit_integrations() {
-	local dark requested_gtk fallback_gtk cursor qt_backend
+	local dark requested_gtk fallback_gtk cursor qt_backend terminal terminal_theme_file
 	[[ -n $resolved_theme ]] || return 0
 
 	dark=${value[$resolved_theme$key_separator'dark_mode']:-true}
@@ -458,8 +546,16 @@ emit_integrations() {
 	fi
 
 	for terminal in alacritty kitty; do
-		if [[ -f $config_home/$terminal/active-theme.$([[ $terminal == alacritty ]] && printf toml || printf conf) ]]; then
-			printf 'integration\t%s\tavailable\tactive-theme\tGenerated terminal theme is present\n' "$terminal"
+		if [[ $terminal == alacritty ]]; then
+			terminal_theme_file=$config_home/$terminal/active-theme.toml
+		else
+			terminal_theme_file=$config_home/$terminal/active-theme.conf
+		fi
+		if terminal_theme_matches "$terminal" "$terminal_theme_file"; then
+			printf 'integration\t%s\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette\n' "$terminal"
+		elif [[ -f $terminal_theme_file ]]; then
+			printf 'integration\t%s\tpartial\tactive-theme\tGenerated terminal theme is empty or stale\n' "$terminal"
+			add_error "$terminal" stale-theme 'Generated active theme does not match the resolved palette'
 		elif [[ -d $config_home/$terminal ]]; then
 			printf 'integration\t%s\tpartial\tconfiguration\tTerminal is configured but has no generated active theme\n' "$terminal"
 			add_error "$terminal" not-applied 'Generated active theme is missing'

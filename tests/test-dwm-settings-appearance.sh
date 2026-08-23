@@ -12,10 +12,64 @@ bin_dir=$work/bin
 mkdir -p "$config_home/dwm-titus" "$config_home/alacritty" "$config_home/kitty" \
 	"$data_root/themes/Nordic/gtk-3.0" "$data_root/icons/Capitaine-Cursors-White" "$bin_dir"
 cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
-: >"$config_home/alacritty/active-theme.toml"
-: >"$config_home/kitty/active-theme.conf"
+declare -A fixture_color=()
+while read -r key _ color; do
+	fixture_color[$key]=${color//\"/}
+done < <(awk '
+	/^\[theme\.nord\]$/ { capture = 1; next }
+	/^\[theme\./ && capture { exit }
+	capture && /^[[:space:]]*term_/ { print }
+' "$repo/config/themes.toml")
+cat >"$config_home/alacritty/active-theme.toml" <<EOF
+[colors.primary]
+background = '${fixture_color[term_bg]}'
+foreground = '${fixture_color[term_fg]}'
+[colors.cursor]
+cursor = '${fixture_color[term_cursor]}'
+[colors.normal]
+black = '${fixture_color[term_color0]}'
+red = '${fixture_color[term_color1]}'
+green = '${fixture_color[term_color2]}'
+yellow = '${fixture_color[term_color3]}'
+blue = '${fixture_color[term_color4]}'
+magenta = '${fixture_color[term_color5]}'
+cyan = '${fixture_color[term_color6]}'
+white = '${fixture_color[term_color7]}'
+[colors.bright]
+black = '${fixture_color[term_color8]}'
+red = '${fixture_color[term_color9]}'
+green = '${fixture_color[term_color10]}'
+yellow = '${fixture_color[term_color11]}'
+blue = '${fixture_color[term_color12]}'
+magenta = '${fixture_color[term_color13]}'
+cyan = '${fixture_color[term_color14]}'
+white = '${fixture_color[term_color15]}'
+EOF
+cat >"$config_home/kitty/active-theme.conf" <<EOF
+background ${fixture_color[term_bg]}
+foreground ${fixture_color[term_fg]}
+cursor ${fixture_color[term_cursor]}
+color0 ${fixture_color[term_color0]}
+color1 ${fixture_color[term_color1]}
+color2 ${fixture_color[term_color2]}
+color3 ${fixture_color[term_color3]}
+color4 ${fixture_color[term_color4]}
+color5 ${fixture_color[term_color5]}
+color6 ${fixture_color[term_color6]}
+color7 ${fixture_color[term_color7]}
+color8 ${fixture_color[term_color8]}
+color9 ${fixture_color[term_color9]}
+color10 ${fixture_color[term_color10]}
+color11 ${fixture_color[term_color11]}
+color12 ${fixture_color[term_color12]}
+color13 ${fixture_color[term_color13]}
+color14 ${fixture_color[term_color14]}
+color15 ${fixture_color[term_color15]}
+EOF
+cp "$config_home/alacritty/active-theme.toml" "$work/alacritty-valid.toml"
+cp "$config_home/kitty/active-theme.conf" "$work/kitty-valid.conf"
 
-for command_name in bash dirname stat tr; do
+for command_name in awk bash dirname grep stat tr; do
 	ln -s "$(command -v "$command_name")" "$bin_dir/$command_name"
 done
 printf '#!/bin/sh\nexit 0\n' >"$bin_dir/qt6ct"
@@ -47,9 +101,27 @@ grep -Fqx $'color\tdanger\t#BF616A\tterm_color1' <<<"$output"
 grep -Fqx $'integration\tgtk\tavailable\tNordic\tRequested GTK theme is installed' <<<"$output"
 grep -Fqx $'integration\tqt\tavailable\tqt6ct\tQt applications use the supported theme backend' <<<"$output"
 grep -Fqx $'integration\tcursor\tavailable\tCapitaine-Cursors-White\tManaged cursor theme is installed' <<<"$output"
-grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme is present' <<<"$output"
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
+grep -Fqx $'integration\tkitty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
 grep -Fqx $'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract' <<<"$output"
 grep -Fqx $'error\tcompositor\tunsupported\tPicom theme mutation is not implemented' <<<"$output"
+
+sed -i "s|${fixture_color[term_bg]}|__DWM_COLOR_SWAP__|; \
+	s|${fixture_color[term_fg]}|${fixture_color[term_bg]}|; \
+	s|__DWM_COLOR_SWAP__|${fixture_color[term_fg]}|" \
+	"$config_home/alacritty/active-theme.toml"
+swapped_terminal=$(snapshot)
+grep -Fqx $'integration\talacritty\tpartial\tactive-theme\tGenerated terminal theme is empty or stale' \
+	<<<"$swapped_terminal"
+cp "$work/alacritty-valid.toml" "$config_home/alacritty/active-theme.toml"
+
+: >"$config_home/alacritty/active-theme.toml"
+stale_terminal=$(snapshot)
+grep -Fqx $'integration\talacritty\tpartial\tactive-theme\tGenerated terminal theme is empty or stale' \
+	<<<"$stale_terminal"
+grep -Fqx $'error\talacritty\tstale-theme\tGenerated active theme does not match the resolved palette' \
+	<<<"$stale_terminal"
+cp "$work/alacritty-valid.toml" "$config_home/alacritty/active-theme.toml"
 
 sed -i 's/^\[active\]$/[active] # selected theme/' "$config_home/dwm-titus/themes.toml"
 sed -i 's/^\[theme\.nord\]$/[theme.nord] # default theme/' "$config_home/dwm-titus/themes.toml"
@@ -276,6 +348,19 @@ grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory
 grep -Fqx $'error\tparser\tentry-limit\tTheme configuration exceeds the runtime parser limit of 512 entries' \
 	<<<"$alternate_key_limit"
 
+printf -v multibyte_key 'é%.0s' {1..300}
+{
+	printf '[ignored]\n'
+	for ((entry_index = 0; entry_index < 512; entry_index++)); do
+		printf '%s-%s = 1\n' "$multibyte_key" "$entry_index"
+	done
+	cat "$work/managed-themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+multibyte_keys=$(snapshot)
+grep -Fqx $'provider\tappearance\tavailable\tread-only\tShared theme inventory and integration state' \
+	<<<"$multibyte_keys"
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$multibyte_keys"
+
 nord_block=$(awk '
 	/^\[theme\.nord\]$/ { capture = 1; next }
 	/^\[theme\.dracula\]$/ { exit }
@@ -292,6 +377,11 @@ selected_after_cap=$(snapshot)
 grep -Fqx $'active\tchosen\tchosen\tselected' <<<"$selected_after_cap"
 grep -Fqx $'theme\tchosen\tselected\tvalid\ttrue\tNordic\tTheme record is complete' \
 	<<<"$selected_after_cap"
+sed -i '0,/theme = "chosen"/s//theme = chosen/' "$config_home/dwm-titus/themes.toml"
+bare_selected_after_cap=$(snapshot)
+grep -Fqx $'active\tchosen\tchosen\tselected' <<<"$bare_selected_after_cap"
+grep -Fqx $'theme\tchosen\tselected\tvalid\ttrue\tNordic\tTheme record is complete' \
+	<<<"$bare_selected_after_cap"
 
 {
 	printf '[active]\ntheme = "t19"\n'
@@ -322,6 +412,15 @@ set -e
 grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
 	"$work/many-incomplete.out"
 [[ $(grep -c $'^error\ttheme:' "$work/many-incomplete.out") -eq 100 ]]
+
+mkdir -p "$work/fallback-home/.config/dwm-titus"
+cp "$work/managed-themes.toml" "$work/fallback-home/.config/dwm-titus/themes.toml"
+relative_xdg=$(HOME="$work/fallback-home" XDG_CONFIG_HOME=relative-config \
+	XDG_DATA_HOME=relative-data DWM_APPEARANCE_DATA_DIRS=$data_root \
+	"$helper" snapshot)
+grep -Fqx $'source\tuser\t'"$work/fallback-home/.config/dwm-titus/themes.toml" \
+	<<<"$relative_xdg"
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$relative_xdg"
 
 rm -f "$config_home/dwm-titus/themes.toml" "$work/missing-managed.toml"
 set +e
