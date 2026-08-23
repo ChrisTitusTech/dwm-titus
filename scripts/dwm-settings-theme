@@ -1203,7 +1203,8 @@ begin_mutation() {
 		fi
 		die 'theme integration changed and the source rollback failed; recovery state was retained'
 	fi
-	prepare_integration_outputs "$prefix" || die 'could not prepare theme integration outputs'
+	prepare_integration_outputs "$prefix" ||
+		die "theme $action did not converge; restoring the previous theme"
 	if [[ -n ${DWM_TEST_BEFORE_INTEGRATION_PUBLISH:-} ]]; then
 		: >"$DWM_TEST_BEFORE_INTEGRATION_PUBLISH"
 		while [[ ! -e ${DWM_TEST_INTEGRATION_PUBLISH_RELEASE:-} ]]; do
