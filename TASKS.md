@@ -27,6 +27,9 @@ validate, and merge each boundary before starting the next one:
 
 - [x] Define a versioned machine-readable provider for the active theme,
   available themes, semantic colors, toolkit state, and per-capability errors.
+- [x] Add a user-session transaction helper for bounded preview, confirm,
+  automatic or explicit rollback, apply, reset, and interrupted-operation
+  recovery without replacing unrelated theme configuration.
 - [ ] Add one root-scoped appearance model shared by Settings and existing shell
   surfaces without duplicating the `Theme.qml` or `themes.toml` ownership path.
 - [ ] Add a Settings Appearance pane with theme preview, apply, reset, and

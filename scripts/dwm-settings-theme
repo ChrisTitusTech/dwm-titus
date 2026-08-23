@@ -1,0 +1,1477 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+self=$script_dir/${BASH_SOURCE[0]##*/}
+appearance_helper=${DWM_SETTINGS_APPEARANCE_HELPER:-$script_dir/dwm-settings-appearance}
+apply_helper=${DWM_APPEARANCE_APPLY_HELPER:-$script_dir/theme-apply.sh}
+
+config_home=${XDG_CONFIG_HOME:-}
+data_home=${XDG_DATA_HOME:-}
+state_home=${XDG_STATE_HOME:-}
+[[ $config_home == /* ]] || config_home=${HOME:?HOME is required for XDG_CONFIG_HOME fallback}/.config
+[[ $data_home == /* ]] || data_home=${HOME:?HOME is required for XDG_DATA_HOME fallback}/.local/share
+[[ $state_home == /* ]] || state_home=${HOME:?HOME is required for XDG_STATE_HOME fallback}/.local/state
+
+themes_file=${DWM_APPEARANCE_THEMES_FILE:-$config_home/dwm-titus/themes.toml}
+managed_themes_file=${DWM_APPEARANCE_MANAGED_THEMES_FILE:-$data_home/dwm-titus/config/themes.toml}
+runtime_base=${XDG_RUNTIME_DIR:-}
+if [[ -z $runtime_base ]]; then
+	runtime_base=/tmp/dwm-titus-$UID
+elif [[ $runtime_base != /* ]]; then
+	printf 'dwm-settings-theme: XDG_RUNTIME_DIR must be an absolute path\n' >&2
+	exit 1
+fi
+runtime_dir=$runtime_base/dwm-settings-theme
+recovery_dir=$state_home/dwm-titus/appearance
+transaction_prefix=$recovery_dir/transaction
+preview_current=$recovery_dir/preview.current
+integration_suppress_file=$recovery_dir/integration-suppress
+integration_transaction_file=$recovery_dir/integration-transaction
+readonly max_themes_size=1048576
+readonly max_integration_size=4194304
+readonly quoted_active_line_re='^([[:space:]]*theme[[:space:]]*=[[:space:]]*)"(([^"\\]|\\.)*)"([[:space:]]*)(#.*)?$'
+readonly bare_active_line_re='^([[:space:]]*theme[[:space:]]*=[[:space:]]*)([^#[:space:]]+)([[:space:]]*)(#.*)?$'
+
+rollback_needed=false
+rollback_prefix=
+rollback_expected_hash=
+rollback_preview_token=
+prepared_theme_file=
+prepared_theme_hash=
+import_managed_target=false
+preview_claim_to_release=
+integration_lock_held=false
+declare -a integration_paths=()
+
+usage() {
+	cat >&2 <<'EOF'
+usage: dwm-settings-theme preview TOKEN SECONDS THEME
+       dwm-settings-theme keep TOKEN
+       dwm-settings-theme revert TOKEN
+       dwm-settings-theme abandon TOKEN
+       dwm-settings-theme preview-status [TOKEN]
+       dwm-settings-theme apply THEME
+       dwm-settings-theme reset
+       dwm-settings-theme recover
+       dwm-settings-theme recovery-status
+       dwm-settings-theme mutation-ready
+EOF
+}
+
+die() {
+	printf 'dwm-settings-theme: %s\n' "$*" >&2
+	exit 1
+}
+
+clean_field() {
+	local field=$1
+	field=${field//$'\t'/ }
+	field=${field//$'\r'/ }
+	field=${field//$'\n'/ }
+	printf '%s' "$field"
+}
+
+valid_theme_name() {
+	[[ $1 =~ ^[A-Za-z0-9._-]{1,505}$ ]]
+}
+
+valid_token() {
+	[[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]
+}
+
+ensure_owned_directory() {
+	local directory=$1 label=$2
+	if [[ ! -e $directory ]]; then
+		(umask 077 && mkdir -p -- "$directory") 2>/dev/null ||
+			die "cannot create $label directory: $directory"
+	fi
+	[[ -d $directory && ! -L $directory ]] || die "unsafe $label directory: $directory"
+	[[ $(stat -c %u -- "$directory") == "$UID" ]] ||
+		die "$label directory has the wrong owner: $directory"
+}
+
+ensure_runtime_dir() {
+	ensure_owned_directory "$runtime_base" runtime
+	ensure_owned_directory "$runtime_dir" 'theme runtime'
+	chmod 700 -- "$runtime_base" "$runtime_dir"
+}
+
+ensure_recovery_dir() {
+	local parent=$state_home/dwm-titus
+	ensure_owned_directory "$state_home" state
+	ensure_owned_directory "$parent" 'dwm-titus state'
+	ensure_owned_directory "$recovery_dir" 'appearance recovery'
+	chmod 700 -- "$parent" "$recovery_dir"
+}
+
+existing_path_chain_is_safe() {
+	local path=$1 probe
+	probe=${path%/*}
+	[[ $probe != "$path" ]] || probe=.
+	while [[ $probe != / && $probe != . ]]; do
+		if [[ -e $probe || -L $probe ]]; then
+			[[ -d $probe && ! -L $probe ]] || return 1
+		fi
+		probe=${probe%/*}
+		[[ -n $probe ]] || probe=/
+	done
+}
+
+ensure_theme_parent() {
+	local parent=${themes_file%/*}
+	[[ $themes_file == /* && $parent != "$themes_file" ]] || die 'theme path must be absolute'
+	existing_path_chain_is_safe "$themes_file" || die "unsafe theme path: $themes_file"
+	if [[ ! -e $parent ]]; then
+		(umask 077 && mkdir -p -- "$parent") || die "cannot create theme directory: $parent"
+	fi
+	[[ -d $parent && ! -L $parent ]] || die "unsafe theme directory: $parent"
+	[[ $(stat -c %u -- "$parent") == "$UID" ]] || die "theme directory has the wrong owner: $parent"
+}
+
+validate_user_theme_file() {
+	ensure_theme_parent
+	if [[ -e $themes_file || -L $themes_file ]]; then
+		[[ -f $themes_file && ! -L $themes_file ]] || die "theme file is not a regular file: $themes_file"
+		[[ $(stat -c %u -- "$themes_file") == "$UID" ]] || die "theme file has the wrong owner: $themes_file"
+		[[ $(stat -c %h -- "$themes_file") == 1 ]] || die "theme file has multiple hard links: $themes_file"
+		[[ $(stat -c %s -- "$themes_file") -le $max_themes_size ]] || die 'theme file is too large'
+	fi
+}
+
+validate_managed_theme_file() {
+	[[ $managed_themes_file == /* ]] || die 'managed theme path must be absolute'
+	[[ -f $managed_themes_file && ! -L $managed_themes_file && -r $managed_themes_file ]] ||
+		die "managed theme file is unavailable: $managed_themes_file"
+	[[ $(stat -c %s -- "$managed_themes_file") -le $max_themes_size ]] ||
+		die 'managed theme file is too large'
+}
+
+theme_source_structure_is_mutable() {
+	local source=$managed_themes_file line trimmed header section=other
+	local active_sections=0 active_keys=0
+	[[ ! -f $themes_file ]] || source=$themes_file
+	while IFS= read -r line || [[ -n $line ]]; do
+		trimmed=$line
+		trimmed=${trimmed#"${trimmed%%[![:space:]]*}"}
+		trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
+		header=${trimmed%%#*}
+		header=${header%"${header##*[![:space:]]}"}
+		if [[ $header == \[* ]]; then
+			if [[ $header == '[active]' ]]; then
+				section=active
+				((active_sections += 1))
+				((active_sections <= 1)) || return 1
+			else
+				section=other
+			fi
+		fi
+		if [[ $section == active &&
+			($line =~ $quoted_active_line_re || $line =~ $bare_active_line_re) ]]; then
+			((active_keys += 1))
+			((active_keys <= 1)) || return 1
+		fi
+	done <"$source"
+}
+
+directory_path_ready() {
+	local directory=$1 require_owner=${2:-false} probe
+	[[ $directory == /* ]] || return 1
+	existing_path_chain_is_safe "$directory/.mutation-ready" || return 1
+	if [[ -e $directory || -L $directory ]]; then
+		[[ -d $directory && ! -L $directory && -w $directory && -x $directory ]] || return 1
+		[[ $require_owner != true || $(stat -c %u -- "$directory") == "$UID" ]] || return 1
+		return 0
+	fi
+	probe=$directory
+	while [[ ! -e $probe && ! -L $probe ]]; do
+		[[ $probe != / && $probe != . ]] || return 1
+		probe=${probe%/*}
+		[[ -n $probe ]] || probe=/
+	done
+	[[ -d $probe && ! -L $probe && -w $probe && -x $probe ]]
+}
+
+mutation_ready() {
+	local parent probe snapshot managed_snapshot target path
+	[[ -x $appearance_helper && -x $apply_helper ]] || return 1
+	directory_path_ready "$runtime_base" true || return 1
+	directory_path_ready "$runtime_dir" true || return 1
+	directory_path_ready "$state_home" true || return 1
+	directory_path_ready "$state_home/dwm-titus" true || return 1
+	directory_path_ready "$recovery_dir" true || return 1
+	parent=${themes_file%/*}
+	[[ $themes_file == /* && $parent != "$themes_file" ]] || return 1
+	existing_path_chain_is_safe "$themes_file" || return 1
+
+	if [[ -e $themes_file || -L $themes_file ]]; then
+		[[ -f $themes_file && ! -L $themes_file ]] || return 1
+		[[ $(stat -c %u -- "$themes_file") == "$UID" ]] || return 1
+		[[ $(stat -c %h -- "$themes_file") == 1 ]] || return 1
+		[[ $(stat -c %s -- "$themes_file") -le $max_themes_size ]] || return 1
+		[[ -d $parent && ! -L $parent ]] || return 1
+		[[ $(stat -c %u -- "$parent") == "$UID" ]] || return 1
+		[[ -w $parent && -x $parent ]] || return 1
+	else
+		probe=$parent
+		while [[ ! -e $probe && ! -L $probe ]]; do
+			[[ $probe != / && $probe != . ]] || return 1
+			probe=${probe%/*}
+			[[ -n $probe ]] || probe=/
+		done
+		[[ -d $probe && ! -L $probe && -w $probe && -x $probe ]] || return 1
+	fi
+
+	[[ $managed_themes_file == /* ]] || return 1
+	[[ -f $managed_themes_file && ! -L $managed_themes_file && -r $managed_themes_file ]] || return 1
+	[[ $(stat -c %s -- "$managed_themes_file") -le $max_themes_size ]] || return 1
+	integration_path_list
+	for path in "${integration_paths[@]}"; do
+		validate_integration_file "$path" || return 1
+		[[ ! -e $path || -w $path ]] || return 1
+		directory_path_ready "${path%/*}" || return 1
+	done
+	snapshot=$(current_snapshot) || return 1
+	snapshot_source_is_safe "$snapshot" || return 1
+	managed_snapshot=$(snapshot_for "$managed_themes_file" "$managed_themes_file") || return 1
+	snapshot_source_is_safe "$managed_snapshot" || return 1
+	theme_source_structure_is_mutable || return 1
+	target=$(snapshot_resolved_theme "$managed_snapshot")
+	valid_theme_name "$target" || return 1
+	snapshot_target_is_valid "$managed_snapshot" "$target"
+}
+
+acquire_lock() {
+	local lock_file
+	command -v flock >/dev/null 2>&1 || die 'flock is unavailable'
+	ensure_runtime_dir
+	lock_file=$runtime_dir/mutation.lock
+	[[ ! -e $lock_file || (-f $lock_file && ! -L $lock_file) ]] || die 'unsafe mutation lock'
+	: >>"$lock_file"
+	chmod 600 -- "$lock_file"
+	exec 9>"$lock_file"
+	flock 9
+}
+
+acquire_integration_lock() {
+	local lock_file=$runtime_base/dwm-theme-apply.lock
+	command -v flock >/dev/null 2>&1 || die 'flock is unavailable'
+	ensure_runtime_dir
+	[[ ! -e $lock_file || (-f $lock_file && ! -L $lock_file &&
+		$(stat -c %u -- "$lock_file") == "$UID") ]] ||
+		die 'unsafe integration lock'
+	: >>"$lock_file"
+	chmod 600 -- "$lock_file"
+	exec 8>"$lock_file"
+	flock 8
+	integration_lock_held=true
+}
+
+release_integration_lock() {
+	[[ $integration_lock_held == true ]] || return 0
+	flock -u 8
+	exec 8>&-
+	integration_lock_held=false
+}
+
+preview_path() {
+	valid_token "$1" || die 'invalid preview token'
+	printf '%s/%s.%s\n' "$recovery_dir" "$1" "$2"
+}
+
+snapshot_for() {
+	local source=$1 managed=$2 status=0
+	[[ -x $appearance_helper ]] || die "appearance provider is unavailable: $appearance_helper"
+	DWM_APPEARANCE_THEMES_FILE=$source \
+		DWM_APPEARANCE_MANAGED_THEMES_FILE=$managed \
+		"$appearance_helper" snapshot || status=$?
+	((status == 0)) || die "appearance provider rejected the theme source with status $status"
+}
+
+current_snapshot() {
+	snapshot_for "$themes_file" "$managed_themes_file"
+}
+
+snapshot_target_is_valid() {
+	local snapshot=$1 target=$2
+	awk -F '\t' -v target="$target" '
+		$1 == "theme" && $2 == target && $4 == "valid" { found = 1 }
+		$1 == "error" && (($2 == "parser" && $3 != "legacy-format") || $2 ~ /^active:/ ||
+			($2 == "active" && $3 == "invalid-type")) { unsafe = 1 }
+		END { exit(found && !unsafe ? 0 : 1) }
+	' <<<"$snapshot"
+}
+
+snapshot_source_is_safe() {
+	awk -F '\t' '
+		$1 == "error" && (($2 == "parser" && $3 != "legacy-format") || $2 ~ /^active:/ ||
+			($2 == "active" && $3 == "invalid-type")) { unsafe = 1 }
+		END { exit(unsafe ? 1 : 0) }
+	' <<<"$1"
+}
+
+snapshot_has_theme() {
+	local snapshot=$1 target=$2
+	awk -F '\t' -v target="$target" '
+		$1 == "theme" && $2 == target { found = 1 }
+		END { exit(found ? 0 : 1) }
+	' <<<"$snapshot"
+}
+
+snapshot_active_theme() {
+	awk -F '\t' '$1 == "active" { print $2; exit }' <<<"$1"
+}
+
+snapshot_resolved_theme() {
+	awk -F '\t' '$1 == "active" { print $3; exit }' <<<"$1"
+}
+
+validate_target() {
+	local target=$1 allow_managed_missing=${2:-false} snapshot managed_snapshot
+	valid_theme_name "$target" || die "invalid theme name: $target"
+	snapshot=$(current_snapshot)
+	import_managed_target=false
+	if ! snapshot_target_is_valid "$snapshot" "$target"; then
+		if [[ $allow_managed_missing != true ]] || ! snapshot_source_is_safe "$snapshot" ||
+			snapshot_has_theme "$snapshot" "$target"; then
+			die "theme is unavailable, invalid, or the source is unsafe to mutate: $target"
+		fi
+		validate_managed_theme_file
+		managed_snapshot=$(snapshot_for "$managed_themes_file" "$managed_themes_file")
+		snapshot_target_is_valid "$managed_snapshot" "$target" ||
+			die "managed default theme is invalid: $target"
+		import_managed_target=true
+	fi
+	validated_previous_theme=$(snapshot_active_theme "$snapshot")
+	[[ $validated_previous_theme != none ]] || validated_previous_theme=$(snapshot_resolved_theme "$snapshot")
+}
+
+managed_default_theme() {
+	local snapshot target
+	validate_managed_theme_file
+	snapshot=$(snapshot_for "$managed_themes_file" "$managed_themes_file")
+	target=$(snapshot_resolved_theme "$snapshot")
+	valid_theme_name "$target" || die 'managed theme source has no valid default theme'
+	printf '%s\n' "$target"
+}
+
+prepare_active_theme() {
+	local target=$1 source mode line trimmed header section=other active_sections=0 wrote=0
+	validate_user_theme_file
+	if [[ -f $themes_file ]]; then
+		source=$themes_file
+		mode=$(stat -c %a -- "$themes_file")
+	else
+		validate_managed_theme_file
+		source=$managed_themes_file
+		mode=600
+	fi
+	prepared_theme_file=$(umask 077 && mktemp "${themes_file%/*}/.themes.toml.XXXXXX") ||
+		die 'cannot create a temporary theme file'
+	while IFS= read -r line || [[ -n $line ]]; do
+		trimmed=$line
+		trimmed=${trimmed#"${trimmed%%[![:space:]]*}"}
+		trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
+		header=${trimmed%%#*}
+		header=${header%"${header##*[![:space:]]}"}
+		if [[ $header == \[* ]]; then
+			if [[ $section == active && $wrote == 0 ]]; then
+				printf 'theme = "%s"\n' "$target" >>"$prepared_theme_file"
+				wrote=1
+			fi
+			if [[ $header == '[active]' ]]; then
+				section=active
+				((active_sections += 1))
+				((active_sections == 1)) || die 'theme source has duplicate [active] sections'
+			else
+				section=other
+			fi
+		fi
+		if [[ $section == active && $line =~ $quoted_active_line_re ]]; then
+			((wrote == 0)) || die 'theme source has duplicate active theme keys'
+			printf '%s"%s"%s%s\n' "${BASH_REMATCH[1]}" "$target" \
+				"${BASH_REMATCH[4]}" "${BASH_REMATCH[5]:-}" >>"$prepared_theme_file"
+			wrote=1
+		elif [[ $section == active && $line =~ $bare_active_line_re ]]; then
+			((wrote == 0)) || die 'theme source has duplicate active theme keys'
+			printf '%s"%s"%s%s\n' "${BASH_REMATCH[1]}" "$target" \
+				"${BASH_REMATCH[3]}" "${BASH_REMATCH[4]:-}" >>"$prepared_theme_file"
+			wrote=1
+		else
+			printf '%s\n' "$line" >>"$prepared_theme_file"
+		fi
+	done <"$source"
+	if [[ $active_sections == 0 ]]; then
+		printf '\n[active]\ntheme = "%s"\n' "$target" >>"$prepared_theme_file"
+	elif [[ $wrote == 0 ]]; then
+		printf 'theme = "%s"\n' "$target" >>"$prepared_theme_file"
+	fi
+	if [[ $import_managed_target == true ]]; then
+		append_managed_theme "$target"
+	fi
+	chmod "$mode" -- "$prepared_theme_file"
+	prepared_theme_hash=$(file_hash "$prepared_theme_file")
+}
+
+append_managed_theme() {
+	local target=$1 line trimmed header in_target=false found=false
+	validate_managed_theme_file
+	printf '\n' >>"$prepared_theme_file"
+	while IFS= read -r line || [[ -n $line ]]; do
+		trimmed=$line
+		trimmed=${trimmed#"${trimmed%%[![:space:]]*}"}
+		trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
+		header=${trimmed%%#*}
+		header=${header%"${header##*[![:space:]]}"}
+		if [[ $header == \[* ]]; then
+			if [[ $in_target == true ]]; then
+				break
+			fi
+			if [[ $header == "[theme.$target]" ]]; then
+				in_target=true
+				found=true
+			fi
+		fi
+		[[ $in_target == true ]] && printf '%s\n' "$line" >>"$prepared_theme_file"
+	done <"$managed_themes_file"
+	[[ $found == true ]] || die "managed default theme section is unavailable: $target"
+}
+
+file_hash() {
+	sha256sum -- "$1" | awk '{print $1}'
+}
+
+integration_path_list() {
+	integration_paths=(
+		"$config_home/alacritty/active-theme.toml"
+		"$config_home/alacritty/alacritty.toml"
+		"$config_home/kitty/active-theme.conf"
+		"$config_home/kitty/kitty.conf"
+		"$config_home/gtk-3.0/settings.ini"
+		"$config_home/gtk-4.0/settings.ini"
+		"${HOME:?HOME is required}/.gtkrc-2.0"
+		"$config_home/dwm-titus/cursor.Xresources"
+		"$config_home/dwm-titus/theme-env.sh"
+		"$config_home/qt5ct/qt5ct.conf"
+		"$config_home/qt6ct/qt6ct.conf"
+	)
+}
+
+integration_meta_value() {
+	local prefix=$1 index=$2 key=$3
+	awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); found = 1; exit }
+		END { exit(found ? 0 : 1) }' "$prefix.integration.$index.meta"
+}
+
+path_hash() {
+	printf '%s' "$1" | sha256sum | awk '{print $1}'
+}
+
+validate_integration_file() {
+	local path=$1
+	existing_path_chain_is_safe "$path" || return 1
+	if [[ -e $path || -L $path ]]; then
+		[[ -f $path && ! -L $path ]] || return 1
+		[[ $(stat -c %u -- "$path") == "$UID" ]] || return 1
+		[[ $(stat -c %h -- "$path") == 1 ]] || return 1
+		[[ $(stat -c %s -- "$path") -le $max_integration_size ]] || return 1
+	fi
+}
+
+capture_integration_baseline() {
+	local prefix=$1 index path existed mode baseline_hash temporary
+	integration_path_list
+	for index in "${!integration_paths[@]}"; do
+		path=${integration_paths[index]}
+		validate_integration_file "$path" || die "unsafe theme integration file: $path"
+		existed=0
+		mode=0000
+		baseline_hash=absent
+		if [[ -f $path ]]; then
+			existed=1
+			mode=$(stat -c %a -- "$path")
+			baseline_hash=$(file_hash "$path")
+			cp -- "$path" "$prefix.integration.$index.before"
+			chmod 600 -- "$prefix.integration.$index.before"
+		fi
+		temporary=$(umask 077 && mktemp "$prefix.integration.$index.meta.XXXXXX") ||
+			die 'cannot create integration recovery metadata'
+		printf 'path_hash=%s\nexisted=%s\nmode=%s\nbaseline_hash=%s\nafter_hash=%s\nafter_mode=%s\n' \
+			"$(path_hash "$path")" "$existed" "$mode" "$baseline_hash" "$baseline_hash" "$mode" >"$temporary"
+		chmod 600 -- "$temporary"
+		mv -f -- "$temporary" "$prefix.integration.$index.meta"
+	done
+	printf '%s\n' "${#integration_paths[@]}" >"$prefix.integration.count"
+	chmod 600 -- "$prefix.integration.count"
+}
+
+capture_integration_after() {
+	local prefix=$1 count index path after_hash after_mode
+	[[ -f $prefix.integration.count ]] || return 1
+	IFS= read -r count <"$prefix.integration.count"
+	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
+	integration_path_list
+	[[ $count == "${#integration_paths[@]}" ]] || return 1
+	for ((index = 0; index < count; index++)); do
+		path=${integration_paths[index]}
+		[[ $(integration_meta_value "$prefix" "$index" path_hash) == "$(path_hash "$path")" ]] || return 1
+		validate_integration_file "$path" || return 1
+		if [[ -f $path ]]; then
+			after_hash=$(file_hash "$path")
+			after_mode=$(stat -c %a -- "$path")
+		else
+			after_hash=absent
+			after_mode=0000
+		fi
+		replace_metadata_file "$prefix.integration.$index.meta" after_hash "$after_hash" || return 1
+		replace_metadata_file "$prefix.integration.$index.meta" after_mode "$after_mode" || return 1
+	done
+}
+
+integration_baseline_unchanged() {
+	local prefix=$1 count index path baseline_hash mode current_hash current_mode
+	[[ -f $prefix.integration.count ]] || return 1
+	IFS= read -r count <"$prefix.integration.count"
+	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
+	integration_path_list
+	[[ $count == "${#integration_paths[@]}" ]] || return 1
+	for ((index = 0; index < count; index++)); do
+		path=${integration_paths[index]}
+		baseline_hash=$(integration_meta_value "$prefix" "$index" baseline_hash) || return 1
+		mode=$(integration_meta_value "$prefix" "$index" mode) || return 1
+		validate_integration_file "$path" || return 1
+		if [[ -f $path ]]; then
+			current_hash=$(file_hash "$path")
+			current_mode=$(stat -c %a -- "$path")
+		else
+			current_hash=absent
+			current_mode=0000
+		fi
+		[[ $current_hash == "$baseline_hash" && $current_mode == "$mode" ]] || return 1
+	done
+}
+
+meta_value() {
+	local prefix=$1 key=$2
+	awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); found = 1; exit }
+		END { exit(found ? 0 : 1) }' "$prefix.meta"
+}
+
+capture_baseline() {
+	local prefix=$1 temporary existed=0 mode=600 baseline_hash=absent
+	if [[ -f $themes_file ]]; then
+		existed=1
+		mode=$(stat -c %a -- "$themes_file")
+		cp --preserve=mode -- "$themes_file" "$prefix.before"
+		chmod 600 -- "$prefix.before"
+		baseline_hash=$(file_hash "$prefix.before")
+	fi
+	temporary=$(umask 077 && mktemp "${prefix}.meta.XXXXXX") || die 'cannot create recovery metadata'
+	printf 'existed=%s\nmode=%s\nbaseline_hash=%s\nproposed_hash=%s\n' \
+		"$existed" "$mode" "$baseline_hash" "$baseline_hash" >"$temporary"
+	chmod 600 -- "$temporary"
+	mv -f -- "$temporary" "$prefix.meta"
+}
+
+append_metadata() {
+	local prefix=$1 key=$2 value=$3
+	[[ $key =~ ^[a-z_]+$ && $value =~ ^[A-Za-z0-9._-]+$ ]] || die 'invalid recovery metadata'
+	printf '%s=%s\n' "$key" "$value" >>"$prefix.meta"
+}
+
+replace_metadata() {
+	local prefix=$1 key=$2 value=$3
+	replace_metadata_file "$prefix.meta" "$key" "$value"
+}
+
+replace_metadata_file() {
+	local metadata=$1 key=$2 value=$3 temporary
+	[[ $key =~ ^[a-z_]+$ && $value =~ ^[A-Za-z0-9._-]+$ ]] || die 'invalid recovery metadata'
+	temporary=$(umask 077 && mktemp "${metadata}.XXXXXX") || die 'cannot update recovery metadata'
+	awk -F= -v key="$key" -v value="$value" '
+		$1 == key { print key "=" value; replaced = 1; next }
+		{ print }
+		END { if (!replaced) print key "=" value }
+	' "$metadata" >"$temporary"
+	chmod 600 -- "$temporary"
+	mv -f -- "$temporary" "$metadata"
+}
+
+cleanup_prefix() {
+	local prefix=$1 index
+	for ((index = 0; index < 32; index++)); do
+		rm -f -- "$prefix.integration.$index.before" "$prefix.integration.$index.meta"
+	done
+	rm -f -- "$prefix.integration.count"
+	rm -f -- "$prefix.before" "$prefix.meta" "$prefix.failed"
+	rmdir -- "$prefix.claim" 2>/dev/null || true
+}
+
+validate_atomic_mv_support() {
+	local parent=${themes_file%/*} help path probe
+	help=$(mv --help 2>/dev/null) || die 'GNU mv is required for atomic theme updates'
+	if ! grep -Fq -- '--exchange' <<<"$help" ||
+		! grep -Fq -- '--no-copy' <<<"$help" ||
+		! grep -Fq -- 'none-fail' <<<"$help"; then
+		die 'required GNU mv options are unavailable'
+	fi
+
+	probe_atomic_exchange "$parent" || die "theme filesystem does not support atomic exchange: $parent"
+	integration_path_list
+	for path in "${integration_paths[@]}"; do
+		probe=${path%/*}
+		while [[ ! -e $probe && ! -L $probe ]]; do
+			[[ $probe != / && $probe != . ]] || die "unsafe theme integration path: $path"
+			probe=${probe%/*}
+			[[ -n $probe ]] || probe=/
+		done
+		[[ -d $probe && ! -L $probe ]] || die "unsafe theme integration path: $path"
+		if [[ -e $path ]] && [[ $(stat -c %d -- "$path") != $(stat -c %d -- "$probe") ]]; then
+			die "integration file is on a different filesystem from its parent: $path"
+		fi
+		probe_atomic_exchange "$probe" ||
+			die "integration filesystem does not support atomic exchange: $probe"
+	done
+}
+
+probe_atomic_exchange() (
+	local parent=$1 probe_dir first second
+	probe_dir=$(umask 077 && mktemp -d "$parent/.dwm-settings-theme-probe.XXXXXX") || exit 1
+	first=$probe_dir/first
+	second=$probe_dir/second
+	trap 'rm -f -- "$first" "$second"; rmdir -- "$probe_dir"' EXIT
+	trap 'exit 129' HUP
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	printf 'first\n' >"$first"
+	printf 'second\n' >"$second"
+	mv --exchange --no-copy -T -- "$first" "$second" &&
+		grep -Fqx second "$first" && grep -Fqx first "$second"
+)
+
+install_prepared_theme() {
+	local prefix=$1 existed mode baseline_hash captured_hash captured_mode
+	existed=$(meta_value "$prefix" existed) || return 1
+	mode=$(meta_value "$prefix" mode) || return 1
+	baseline_hash=$(meta_value "$prefix" baseline_hash) || return 1
+	if [[ $existed == 1 ]]; then
+		[[ -e $themes_file || -L $themes_file ]] || return 2
+		if ! mv --exchange --no-copy -T -- "$prepared_theme_file" "$themes_file"; then
+			return 1
+		fi
+		if [[ -f $prepared_theme_file && ! -L $prepared_theme_file ]]; then
+			captured_hash=$(file_hash "$prepared_theme_file") || captured_hash=unsafe
+			captured_mode=$(stat -c %a -- "$prepared_theme_file") || captured_mode=unsafe
+		else
+			captured_hash=unsafe
+			captured_mode=unsafe
+		fi
+		if [[ $captured_hash != "$baseline_hash" || $captured_mode != "$mode" ]]; then
+			if ! mv --exchange --no-copy -T -- "$prepared_theme_file" "$themes_file"; then
+				printf 'dwm-settings-theme: late external edit retained at %s\n' \
+					"$prepared_theme_file" >&2
+				prepared_theme_file=
+				return 1
+			fi
+			return 2
+		fi
+		rm -f -- "$prepared_theme_file"
+		prepared_theme_file=
+	elif [[ $existed == 0 ]]; then
+		if ! mv --update=none-fail --no-copy -T -- "$prepared_theme_file" "$themes_file"; then
+			return 2
+		fi
+		prepared_theme_file=
+		reload_dwm_after_source_change
+	else
+		return 1
+	fi
+}
+
+run_theme_apply() {
+	local mode=${1:-transactional} output status=0 runtime_only=0 transactional=1 live_only=0
+	[[ $mode == transactional || $mode == runtime-only || $mode == live-only ]] || return 1
+	if [[ $mode == runtime-only ]]; then
+		runtime_only=1
+	elif [[ $mode == live-only ]]; then
+		transactional=0
+		live_only=1
+	fi
+	[[ -x $apply_helper ]] || die "theme apply helper is unavailable: $apply_helper"
+	output=$(XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_base \
+		DWM_APPEARANCE_THEMES_FILE=$themes_file \
+		DWM_APPEARANCE_MANAGED_THEMES_FILE=$managed_themes_file \
+		DWM_APPEARANCE_RUNTIME_ONLY=$runtime_only \
+		DWM_APPEARANCE_TRANSACTIONAL=$transactional \
+		DWM_APPEARANCE_LIVE_ONLY=$live_only \
+		DWM_APPEARANCE_INTEGRATION_LOCK_HELD=$([[ $integration_lock_held == true ]] && printf 1 || printf 0) \
+		"$apply_helper" 2>&1) || status=$?
+	if ((status != 0)); then
+		[[ -z $output ]] || printf '%s\n' "$output" >&2
+		return "$status"
+	fi
+	[[ -z $output ]] || printf '%s\n' "$output" >&2
+}
+
+restore_integration_file() {
+	local prefix=$1 index=$2 path=$3 existed mode baseline_hash after_hash after_mode
+	local current_hash current_mode temporary captured_hash captured_mode capture_dir captured_path
+	[[ $(integration_meta_value "$prefix" "$index" path_hash) == "$(path_hash "$path")" ]] || return 1
+	existed=$(integration_meta_value "$prefix" "$index" existed) || return 1
+	mode=$(integration_meta_value "$prefix" "$index" mode) || return 1
+	baseline_hash=$(integration_meta_value "$prefix" "$index" baseline_hash) || return 1
+	after_hash=$(integration_meta_value "$prefix" "$index" after_hash) || return 1
+	after_mode=$(integration_meta_value "$prefix" "$index" after_mode) || return 1
+	[[ $existed == 0 || $existed == 1 ]] || return 1
+	[[ $mode =~ ^[0-7]{3,4}$ && $after_mode =~ ^[0-7]{3,4}$ ]] || return 1
+	validate_integration_file "$path" || return 2
+	if [[ -f $path ]]; then
+		current_hash=$(file_hash "$path")
+		current_mode=$(stat -c %a -- "$path")
+	else
+		current_hash=absent
+		current_mode=0000
+	fi
+	if [[ ! ($current_hash == "$after_hash" && $current_mode == "$after_mode") &&
+		! ($current_hash == "$baseline_hash" && $current_mode == "$mode") ]]; then
+		return 2
+	fi
+
+	if [[ $existed == 1 ]]; then
+		[[ -f $prefix.integration.$index.before && ! -L $prefix.integration.$index.before ]] || return 1
+		if [[ $current_hash == absent ]]; then
+			return 2
+		fi
+		temporary=$(umask 077 && mktemp "${path%/*}/.theme-integration.XXXXXX") || return 1
+		if ! cp -- "$prefix.integration.$index.before" "$temporary" || ! chmod "$mode" -- "$temporary"; then
+			rm -f -- "$temporary"
+			return 1
+		fi
+		if ! mv --exchange --no-copy -T -- "$temporary" "$path"; then
+			rm -f -- "$temporary"
+			return 1
+		fi
+		if [[ -f $temporary && ! -L $temporary ]]; then
+			captured_hash=$(file_hash "$temporary") || captured_hash=unsafe
+			captured_mode=$(stat -c %a -- "$temporary") || captured_mode=0000
+		else
+			captured_hash=unsafe
+			captured_mode=0000
+		fi
+		if [[ ! ($captured_hash == "$after_hash" && $captured_mode == "$after_mode") &&
+			! ($captured_hash == "$baseline_hash" && $captured_mode == "$mode") ]]; then
+			if ! mv --exchange --no-copy -T -- "$temporary" "$path"; then
+				printf 'dwm-settings-theme: late integration edit retained at %s\n' "$temporary" >&2
+				return 1
+			fi
+			rm -f -- "$temporary"
+			return 2
+		fi
+		rm -f -- "$temporary"
+	elif [[ $current_hash != absent ]]; then
+		capture_dir=$(umask 077 && mktemp -d "${path%/*}/.theme-integration-rollback.XXXXXX") || return 1
+		captured_path=$capture_dir/current
+		if ! mv --no-copy -T -- "$path" "$captured_path"; then
+			rmdir -- "$capture_dir" 2>/dev/null || true
+			return 1
+		fi
+		captured_hash=$(file_hash "$captured_path") || captured_hash=unsafe
+		captured_mode=$(stat -c %a -- "$captured_path") || captured_mode=0000
+		if [[ ! ($captured_hash == "$after_hash" && $captured_mode == "$after_mode") &&
+			! ($captured_hash == "$baseline_hash" && $captured_mode == "$mode") ]]; then
+			if ! mv --update=none-fail --no-copy -T -- "$captured_path" "$path"; then
+				printf 'dwm-settings-theme: late integration edit retained at %s\n' "$captured_path" >&2
+				return 1
+			fi
+			rmdir -- "$capture_dir" 2>/dev/null || true
+			return 2
+		fi
+		rm -f -- "$captured_path"
+		rmdir -- "$capture_dir" 2>/dev/null || true
+	fi
+}
+
+integration_restore_preflight() {
+	local prefix=$1 count index path existed mode baseline_hash after_hash after_mode
+	local current_hash current_mode
+	[[ -f $prefix.integration.count ]] || return 1
+	IFS= read -r count <"$prefix.integration.count"
+	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
+	integration_path_list
+	[[ $count == "${#integration_paths[@]}" ]] || return 1
+	for ((index = 0; index < count; index++)); do
+		path=${integration_paths[index]}
+		[[ $(integration_meta_value "$prefix" "$index" path_hash) == "$(path_hash "$path")" ]] || return 1
+		existed=$(integration_meta_value "$prefix" "$index" existed) || return 1
+		mode=$(integration_meta_value "$prefix" "$index" mode) || return 1
+		baseline_hash=$(integration_meta_value "$prefix" "$index" baseline_hash) || return 1
+		after_hash=$(integration_meta_value "$prefix" "$index" after_hash) || return 1
+		after_mode=$(integration_meta_value "$prefix" "$index" after_mode) || return 1
+		[[ $existed == 0 || $existed == 1 ]] || return 1
+		[[ $mode =~ ^[0-7]{3,4}$ && $after_mode =~ ^[0-7]{3,4}$ ]] || return 1
+		validate_integration_file "$path" || return 2
+		if [[ -f $path ]]; then
+			current_hash=$(file_hash "$path")
+			current_mode=$(stat -c %a -- "$path")
+		else
+			current_hash=absent
+			current_mode=0000
+		fi
+		if [[ ! ($current_hash == "$after_hash" && $current_mode == "$after_mode") &&
+			! ($current_hash == "$baseline_hash" && $current_mode == "$mode") ]]; then
+			return 2
+		fi
+	done
+}
+
+restore_integration_baseline() {
+	local prefix=$1 count index status=0
+	[[ -f $prefix.integration.count ]] || return 1
+	IFS= read -r count <"$prefix.integration.count"
+	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
+	integration_path_list
+	[[ $count == "${#integration_paths[@]}" ]] || return 1
+	for ((index = 0; index < count; index++)); do
+		restore_integration_file "$prefix" "$index" "${integration_paths[index]}" || status=$?
+		((status == 0)) || return "$status"
+	done
+}
+
+write_integration_suppression() {
+	local source_hash=$1 temporary deadline
+	if [[ $source_hash == absent ]]; then
+		validate_managed_theme_file
+		source_hash=$(file_hash "$managed_themes_file") || return 1
+	fi
+	[[ $source_hash =~ ^[0-9a-f]{64}$ ]] || return 1
+	deadline=$(($(date +%s) + 30))
+	temporary=$(umask 077 && mktemp "$recovery_dir/.integration-suppress.XXXXXX") || return 1
+	printf '%s %s\n' "$source_hash" "$deadline" >"$temporary"
+	chmod 600 -- "$temporary"
+	mv -f -- "$temporary" "$integration_suppress_file"
+}
+
+write_integration_transaction() {
+	local source_hash=$1 state=$2 temporary
+	[[ $source_hash =~ ^[0-9a-f]{64}$ ]] || return 1
+	[[ $state == pending || $state == ready ]] || return 1
+	temporary=$(umask 077 && mktemp "$recovery_dir/.integration-transaction.XXXXXX") || return 1
+	printf '%s %s\n' "$source_hash" "$state" >"$temporary"
+	chmod 600 -- "$temporary"
+	mv -f -- "$temporary" "$integration_transaction_file"
+}
+
+clear_integration_transaction() {
+	rm -f -- "$integration_transaction_file"
+}
+
+clear_integration_suppression() {
+	rm -f -- "$integration_suppress_file"
+}
+
+reload_dwm_after_source_change() {
+	local pid
+	if [[ -n ${DWM_APPEARANCE_RELOAD_HELPER:-} ]]; then
+		"$DWM_APPEARANCE_RELOAD_HELPER"
+		return
+	fi
+	# A custom source is not the file watched by the running desktop.
+	[[ -z ${DWM_APPEARANCE_THEMES_FILE+x} ]] || return 0
+	command -v pgrep >/dev/null 2>&1 || return 0
+	while IFS= read -r pid; do
+		[[ $pid =~ ^[1-9][0-9]*$ ]] || continue
+		kill -USR1 "$pid" 2>/dev/null || true
+	done < <(pgrep -u "$UID" -x dwm 2>/dev/null || true)
+}
+
+verify_active_theme() {
+	local target=$1 snapshot
+	snapshot=$(current_snapshot) || return 1
+	awk -F '\t' -v target="$target" '
+		$1 == "active" && $2 == target && $3 == target && $4 == "selected" { found = 1 }
+		END { exit(found ? 0 : 1) }
+	' <<<"$snapshot"
+}
+
+restore_theme_baseline_locked() {
+	local prefix=$1 expected_hash=$2 existed mode baseline_hash current_hash current_mode temporary captured_hash
+	local capture_dir captured_path
+	[[ -f $prefix.meta ]] || return 1
+	existed=$(meta_value "$prefix" existed) || return 1
+	mode=$(meta_value "$prefix" mode) || return 1
+	baseline_hash=$(meta_value "$prefix" baseline_hash) || return 1
+	[[ $existed == 0 || $existed == 1 ]] || return 1
+	[[ $mode =~ ^[0-7]{3,4}$ ]] || return 1
+	if [[ -e $themes_file || -L $themes_file ]]; then
+		[[ -f $themes_file && ! -L $themes_file ]] || return 1
+		current_hash=$(file_hash "$themes_file") || return 1
+		current_mode=$(stat -c %a -- "$themes_file") || return 1
+	else
+		current_hash=absent
+		current_mode=$mode
+	fi
+	[[ $current_hash == "$expected_hash" || $current_hash == "$baseline_hash" ]] || return 2
+	[[ $current_mode == "$mode" ]] || return 2
+	# DWM also invokes theme-apply.sh asynchronously for a themes.toml change.
+	# Keep those late reloads runtime-only for this restored source hash so they
+	# cannot overwrite the exact integration-file baseline after rollback.
+	write_integration_suppression "$baseline_hash" || return 1
+	if [[ $existed == 1 ]]; then
+		[[ -f $prefix.before && ! -L $prefix.before ]] || return 1
+		temporary=$(umask 077 && mktemp "${themes_file%/*}/.themes.toml.XXXXXX") || return 1
+		if ! cp -- "$prefix.before" "$temporary" || ! chmod "$mode" -- "$temporary"; then
+			rm -f -- "$temporary"
+			return 1
+		fi
+		if ! mv --exchange --no-copy -T -- "$temporary" "$themes_file"; then
+			rm -f -- "$temporary"
+			return 1
+		fi
+		if [[ -f $temporary && ! -L $temporary ]]; then
+			captured_hash=$(file_hash "$temporary") || captured_hash=unsafe
+		else
+			captured_hash=unsafe
+		fi
+		if [[ $captured_hash != "$expected_hash" && $captured_hash != "$baseline_hash" ]]; then
+			if ! mv --exchange --no-copy -T -- "$temporary" "$themes_file"; then
+				printf 'dwm-settings-theme: late external edit retained at %s\n' "$temporary" >&2
+				return 1
+			fi
+			rm -f -- "$temporary"
+			return 2
+		fi
+		rm -f -- "$temporary"
+	elif [[ $current_hash != absent ]]; then
+		capture_dir=$(umask 077 && mktemp -d "${themes_file%/*}/.themes-rollback.XXXXXX") || return 1
+		captured_path=$capture_dir/current
+		if ! mv --no-copy -T -- "$themes_file" "$captured_path"; then
+			rmdir -- "$capture_dir" 2>/dev/null || true
+			return 1
+		fi
+		if [[ -f $captured_path && ! -L $captured_path ]]; then
+			captured_hash=$(file_hash "$captured_path") || captured_hash=unsafe
+		else
+			captured_hash=unsafe
+		fi
+		if [[ $captured_hash != "$expected_hash" && $captured_hash != "$baseline_hash" ]]; then
+			if ! mv --update=none-fail --no-copy -T -- "$captured_path" "$themes_file"; then
+				printf 'dwm-settings-theme: late external edit retained at %s\n' \
+					"$captured_path" >&2
+				return 1
+			fi
+			rmdir -- "$capture_dir" 2>/dev/null || true
+			return 2
+		fi
+		rm -f -- "$captured_path"
+		rmdir -- "$capture_dir" 2>/dev/null || true
+		reload_dwm_after_source_change
+	fi
+}
+
+restore_baseline_locked() {
+	local prefix=$1 expected_hash=$2 integration_status=0
+	# Preflight every tracked path before changing the theme source or any
+	# integration file. This also rejects a process death that interrupted the
+	# integration helper before its post-apply hashes were recorded.
+	integration_restore_preflight "$prefix" || return $?
+	restore_theme_baseline_locked "$prefix" "$expected_hash" || return $?
+	restore_integration_baseline "$prefix" || integration_status=$?
+	((integration_status == 0)) || return "$integration_status"
+}
+
+restore_baseline() {
+	local status=0
+	acquire_integration_lock
+	restore_baseline_locked "$@" || status=$?
+	release_integration_lock
+	((status == 0)) || return "$status"
+	clear_integration_transaction
+	if ! run_theme_apply runtime-only; then
+		return 3
+	fi
+}
+
+rollback_trap() {
+	local status=$? restore_status=0
+	trap - EXIT HUP INT TERM
+	[[ -z $prepared_theme_file ]] || rm -f -- "$prepared_theme_file"
+	release_integration_lock
+	if [[ $rollback_needed == true ]]; then
+		restore_baseline "$rollback_prefix" "$rollback_expected_hash" || restore_status=$?
+		if ((restore_status == 0)); then
+			if [[ -n $rollback_preview_token ]]; then
+				cleanup_preview "$rollback_preview_token"
+			else
+				cleanup_prefix "$rollback_prefix"
+			fi
+		else
+			if ((restore_status == 3)) && [[ -f $themes_file ]]; then
+				replace_metadata "$rollback_prefix" proposed_hash "$(file_hash "$themes_file")"
+			fi
+			printf 'dwm-settings-theme: rollback failed; recovery state was retained\n' >&2
+		fi
+	fi
+	exit "$status"
+}
+
+begin_mutation() {
+	local prefix=$1 target=$2 action=$3 install_status=0 apply_status=0 restore_status=0
+	validate_atomic_mv_support
+	cleanup_prefix "$prefix"
+	acquire_integration_lock
+	capture_integration_baseline "$prefix"
+	capture_baseline "$prefix"
+	clear_integration_suppression
+	rollback_prefix=$prefix
+	rollback_expected_hash=$(meta_value "$prefix" baseline_hash)
+	append_metadata "$prefix" target "$target"
+	append_metadata "$prefix" action "$action"
+	rollback_needed=true
+	trap rollback_trap EXIT
+	trap 'exit 129' HUP
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	prepare_active_theme "$target"
+	rollback_expected_hash=$prepared_theme_hash
+	replace_metadata "$prefix" proposed_hash "$rollback_expected_hash"
+	write_integration_transaction "$rollback_expected_hash" pending ||
+		die 'cannot publish integration transaction state'
+	install_prepared_theme "$prefix" || install_status=$?
+	if ((install_status == 2)); then
+		release_integration_lock
+		cleanup_prefix "$prefix"
+		clear_integration_transaction
+		rollback_needed=false
+		die 'theme file changed while preparing the transaction; refusing to overwrite it'
+	elif ((install_status != 0)); then
+		die 'could not install the prepared theme transaction'
+	fi
+	if [[ -n ${DWM_TEST_BEFORE_INTEGRATION_READY:-} ]]; then
+		: >"$DWM_TEST_BEFORE_INTEGRATION_READY"
+		while [[ ! -e ${DWM_TEST_BEFORE_INTEGRATION_RELEASE:-} ]]; do
+			sleep 0.01
+		done
+	fi
+	if ! integration_baseline_unchanged "$prefix"; then
+		restore_theme_baseline_locked "$prefix" "$rollback_expected_hash" || restore_status=$?
+		if ((restore_status == 0)); then
+			release_integration_lock
+			if [[ -n $rollback_preview_token ]]; then
+				cleanup_preview "$rollback_preview_token"
+			else
+				cleanup_prefix "$prefix"
+			fi
+			clear_integration_transaction
+			rollback_needed=false
+			die 'theme integration changed while preparing the transaction; refusing to overwrite it'
+		fi
+		die 'theme integration changed and the source rollback failed; recovery state was retained'
+	fi
+	run_theme_apply || apply_status=$?
+	capture_integration_after "$prefix" || die 'could not record the integration transaction state'
+	append_metadata "$prefix" integrations_ready 1
+	write_integration_transaction "$rollback_expected_hash" ready ||
+		die 'cannot publish ready integration transaction state'
+	release_integration_lock
+	if ((apply_status != 0)) || ! verify_active_theme "$target"; then
+		die "theme $action did not converge; restoring the previous theme"
+	fi
+}
+
+finish_mutation() {
+	local prefix=$1
+	rollback_needed=false
+	trap - EXIT HUP INT TERM
+	cleanup_prefix "$prefix"
+	clear_integration_transaction
+}
+
+ensure_no_preview() {
+	reconcile_preview_locked false
+	if [[ -f $preview_current ]]; then
+		die 'a theme preview is active'
+	fi
+}
+
+ensure_no_recovery() {
+	if [[ -f $transaction_prefix.meta ]]; then
+		die 'an interrupted theme transaction requires recovery'
+	fi
+}
+
+apply_theme() {
+	local target=$1 action=${2:-apply} allow_managed_missing=${3:-false} previous
+	acquire_lock
+	ensure_recovery_dir
+	ensure_no_preview
+	ensure_no_recovery
+	validate_user_theme_file
+	validate_target "$target" "$allow_managed_missing"
+	previous=$validated_previous_theme
+	begin_mutation "$transaction_prefix" "$target" "$action"
+	run_theme_apply live-only || die "theme $action was committed but live convergence failed"
+	[[ -f $themes_file && $(file_hash "$themes_file") == "$rollback_expected_hash" ]] ||
+		die "theme file changed during final live convergence; refusing stale $action result"
+	finish_mutation "$transaction_prefix"
+	printf 'appearance-action-protocol\t1\t0\n'
+	printf 'result\t%s\t%s\t%s\n' "$action" "$target" "$(clean_field "$previous")"
+}
+
+reset_theme() {
+	local target
+	target=$(managed_default_theme)
+	apply_theme "$target" reset true
+}
+
+reserve_preview() {
+	local token=$1 current=$preview_current
+	if ! (
+		set -o noclobber
+		printf '%s\n' "$token" >"$current"
+	) 2>/dev/null; then
+		die 'another theme preview is active'
+	fi
+	chmod 600 -- "$current"
+}
+
+cleanup_preview() {
+	local token=$1 prefix
+	prefix=$(preview_path "$token" preview)
+	stop_preview_watchdog "$token" "$prefix"
+	cleanup_prefix "$prefix"
+	rm -f -- "$preview_current"
+	clear_integration_transaction
+}
+
+preview_watchdog_matches() {
+	local pid=$1 token=$2 generation=$3 index
+	local -a arguments=()
+	[[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/cmdline ]] || return 1
+	mapfile -d '' -t arguments </proc/"$pid"/cmdline || true
+	for ((index = 0; index + 3 < ${#arguments[@]}; index++)); do
+		if [[ ${arguments[index]} == "$self" && ${arguments[index + 1]} == _watch &&
+			${arguments[index + 2]} == "$token" && ${arguments[index + 3]} == "$generation" ]]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+stop_preview_watchdog() {
+	local token=$1 prefix=$2 pid generation
+	[[ -f $prefix.meta ]] || return 0
+	pid=$(meta_value "$prefix" watchdog_pid || true)
+	generation=$(meta_value "$prefix" generation || true)
+	[[ -n $pid && -n $generation && $pid != "$$" ]] || return 0
+	preview_watchdog_matches "$pid" "$token" "$generation" || return 0
+	kill -TERM "$pid" 2>/dev/null || true
+}
+
+start_preview_watchdog() {
+	local token=$1 generation=$2 prefix=$3 pid
+	stop_preview_watchdog "$token" "$prefix"
+	(
+		exec 9>&-
+		exec "$self" _watch "$token" "$generation"
+	) </dev/null >/dev/null 2>&1 &
+	pid=$!
+	if ! replace_metadata "$prefix" watchdog_pid "$pid"; then
+		kill -TERM "$pid" 2>/dev/null || true
+		return 1
+	fi
+}
+
+start_preview() {
+	local token=$1 seconds=$2 target=$3 prefix previous generation_file generation deadline
+	valid_token "$token" || die 'invalid preview token'
+	[[ $seconds =~ ^[1-9][0-9]?$ ]] || die 'preview timeout must be between 1 and 99 seconds'
+	acquire_lock
+	ensure_recovery_dir
+	ensure_no_recovery
+	reconcile_preview_locked false
+	reserve_preview "$token"
+	prefix=$(preview_path "$token" preview)
+	trap 'cleanup_preview "$token"' EXIT
+	trap 'exit 129' HUP
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	validate_user_theme_file
+	validate_target "$target"
+	previous=$validated_previous_theme
+	generation_file=$(umask 077 && mktemp "$runtime_dir/.generation.XXXXXX") ||
+		die 'cannot create a preview generation identifier'
+	generation=${generation_file##*.generation.}
+	rm -f -- "$generation_file"
+	rollback_preview_token=$token
+	begin_mutation "$prefix" "$target" preview
+	deadline=$(($(date +%s) + seconds))
+	append_metadata "$prefix" generation "$generation"
+	append_metadata "$prefix" deadline "$deadline"
+	start_preview_watchdog "$token" "$generation" "$prefix"
+	rollback_needed=false
+	rollback_preview_token=
+	trap - EXIT HUP INT TERM
+	printf 'appearance-action-protocol\t1\t0\n'
+	printf 'preview\t%s\t%s\t%s\t%s\n' "$token" "$seconds" "$target" "$(clean_field "$previous")"
+}
+
+claim_preview() {
+	local token=$1 claim
+	claim=$(preview_path "$token" preview).claim
+	# Every finalizer holds the global mutation lock. An empty claim that still
+	# exists here can only belong to a process that exited without its trap.
+	rmdir -- "$claim" 2>/dev/null || true
+	mkdir -- "$claim" 2>/dev/null || die 'theme preview is already being finalized'
+	printf '%s\n' "$claim"
+}
+
+release_preview_claim() {
+	[[ -z $preview_claim_to_release ]] ||
+		rmdir -- "$preview_claim_to_release" 2>/dev/null || true
+}
+
+expire_preview_locked() {
+	local token=$1 prefix claim expected restore_status=0
+	prefix=$(preview_path "$token" preview)
+	[[ -f $prefix.meta ]] || {
+		cleanup_preview "$token"
+		return 0
+	}
+	claim=$prefix.claim
+	# The mutation lock excludes a live finalizer, so reclaim an empty claim left
+	# behind by SIGKILL or another untrappable process exit.
+	rmdir -- "$claim" 2>/dev/null || true
+	mkdir -- "$claim" 2>/dev/null || return 0
+	expected=$(meta_value "$prefix" proposed_hash) ||
+		expected=$(meta_value "$prefix" baseline_hash) || {
+		rmdir -- "$claim" 2>/dev/null || true
+		return 1
+	}
+	restore_baseline "$prefix" "$expected" || restore_status=$?
+	if ((restore_status == 0)); then
+		cleanup_preview "$token"
+	else
+		if ((restore_status == 3)) && [[ -f $themes_file ]]; then
+			replace_metadata "$prefix" proposed_hash "$(file_hash "$themes_file")"
+		fi
+		printf 'Automatic theme rollback failed or was blocked by external changes; recovery state was retained.\n' \
+			>"$prefix.failed"
+		chmod 600 -- "$prefix.failed"
+		rmdir -- "$claim" 2>/dev/null || true
+	fi
+}
+
+reconcile_preview_locked() {
+	local rearm=$1 token prefix generation deadline now
+	[[ -f $preview_current ]] || return 0
+	IFS= read -r token <"$preview_current" || token=
+	if ! valid_token "$token"; then
+		rm -f -- "$preview_current"
+		return 0
+	fi
+	prefix=$(preview_path "$token" preview)
+	if [[ ! -f $prefix.meta ]]; then
+		cleanup_preview "$token"
+		return 0
+	fi
+	[[ ! -f $prefix.failed ]] || return 0
+	generation=$(meta_value "$prefix" generation || true)
+	deadline=$(meta_value "$prefix" deadline || true)
+	if [[ ! $deadline =~ ^[0-9]+$ || -z $generation ]]; then
+		expire_preview_locked "$token"
+		return
+	fi
+	now=$(date +%s)
+	if ((deadline <= now)); then
+		expire_preview_locked "$token"
+	elif [[ $rearm == true ]]; then
+		start_preview_watchdog "$token" "$generation" "$prefix"
+	fi
+}
+
+finish_preview() {
+	local action=$1 token=$2 prefix claim expected target current_hash restore_status=0
+	acquire_lock
+	ensure_recovery_dir
+	reconcile_preview_locked false
+	prefix=$(preview_path "$token" preview)
+	[[ -f $prefix.meta ]] || die 'theme preview is not active'
+	claim=$(claim_preview "$token")
+	preview_claim_to_release=$claim
+	trap release_preview_claim EXIT
+	trap 'rmdir -- "$claim" 2>/dev/null || true' RETURN
+	expected=$(meta_value "$prefix" proposed_hash) || die 'theme preview recovery state is incomplete'
+	target=$(meta_value "$prefix" target) || die 'theme preview target is missing'
+	if [[ $action == revert ]]; then
+		restore_baseline "$prefix" "$expected" || restore_status=$?
+		if ((restore_status == 2)); then
+			printf 'External changes prevented automatic rollback; recovery state was retained.\n' >"$prefix.failed"
+			chmod 600 -- "$prefix.failed"
+			rmdir -- "$claim" 2>/dev/null || true
+			die 'theme or integration file changed outside the preview; refusing to overwrite it'
+		elif ((restore_status != 0)); then
+			if ((restore_status == 3)) && [[ -f $themes_file ]]; then
+				replace_metadata "$prefix" proposed_hash "$(file_hash "$themes_file")"
+			fi
+			printf 'Theme rollback failed; recovery state was retained.\n' >"$prefix.failed"
+			chmod 600 -- "$prefix.failed"
+			rmdir -- "$claim" 2>/dev/null || true
+			die 'theme rollback failed; recovery state was retained'
+		fi
+	elif [[ $action == keep ]]; then
+		[[ ! -f $prefix.failed ]] || die 'theme preview rollback failed; refusing to confirm stale state'
+		[[ -f $themes_file && $(file_hash "$themes_file") == "$expected" ]] ||
+			die 'theme file changed outside the preview; refusing to confirm stale state'
+	else
+		if [[ -f $themes_file ]]; then
+			current_hash=$(file_hash "$themes_file")
+		else
+			current_hash=absent
+		fi
+		[[ -f $prefix.failed || $current_hash != "$expected" ]] ||
+			die 'theme preview is not stale; use keep or revert'
+	fi
+	if [[ $action == keep ]]; then
+		run_theme_apply live-only || die 'theme preview was confirmed but live convergence failed'
+		[[ -f $themes_file && $(file_hash "$themes_file") == "$expected" ]] ||
+			die 'theme file changed during preview confirmation; refusing stale state'
+	fi
+	cleanup_preview "$token"
+	preview_claim_to_release=
+	trap - EXIT
+	printf 'appearance-action-protocol\t1\t0\n'
+	printf 'result\t%s\t%s\t%s\n' "$action" "$token" "$target"
+}
+
+preview_watchdog() {
+	local token=$1 generation=$2 prefix recorded_generation deadline now remaining
+	prefix=$(preview_path "$token" preview)
+	[[ -f $prefix.meta ]] || return 0
+	recorded_generation=$(meta_value "$prefix" generation) || return 0
+	[[ $recorded_generation == "$generation" ]] || return 0
+	deadline=$(meta_value "$prefix" deadline) || return 0
+	[[ $deadline =~ ^[0-9]+$ ]] || return 0
+	while :; do
+		now=$(date +%s)
+		((deadline <= now)) && break
+		remaining=$((deadline - now))
+		sleep "$remaining"
+	done
+	acquire_lock
+	ensure_recovery_dir
+	[[ -f $prefix.meta ]] || return 0
+	recorded_generation=$(meta_value "$prefix" generation) || return 0
+	[[ $recorded_generation == "$generation" ]] || return 0
+	reconcile_preview_locked false
+}
+
+resume_preview() {
+	acquire_lock
+	ensure_recovery_dir
+	reconcile_preview_locked true
+}
+
+preview_status() {
+	local token=${1:-} prefix target
+	acquire_lock
+	ensure_recovery_dir
+	reconcile_preview_locked false
+	if [[ -z $token ]]; then
+		if [[ ! -f $preview_current ]]; then
+			printf 'appearance-action-protocol\t1\t0\nresult\tnone\n'
+			return
+		fi
+		IFS= read -r token <"$preview_current"
+		valid_token "$token" || die 'active preview token is invalid'
+	fi
+	prefix=$(preview_path "$token" preview)
+	printf 'appearance-action-protocol\t1\t0\n'
+	if [[ -f $prefix.failed ]]; then
+		printf 'preview-failed\t%s\t%s\n' "$token" "$(clean_field "$(<"$prefix.failed")")"
+	elif [[ -f $prefix.meta ]]; then
+		target=$(meta_value "$prefix" target) || target=unknown
+		printf 'preview-active\t%s\t%s\n' "$token" "$target"
+	else
+		printf 'result\texpired\t%s\n' "$token"
+	fi
+}
+
+recovery_status() {
+	acquire_lock
+	ensure_recovery_dir
+	printf 'appearance-action-protocol\t1\t0\n'
+	if [[ -f $transaction_prefix.meta ]]; then
+		printf 'recovery\tavailable\t%s\t%s\n' \
+			"$(meta_value "$transaction_prefix" action || printf unknown)" \
+			"$(meta_value "$transaction_prefix" target || printf unknown)"
+	else
+		printf 'recovery\tnone\n'
+	fi
+}
+
+recover_transaction() {
+	local expected restore_status=0
+	acquire_lock
+	ensure_recovery_dir
+	ensure_no_preview
+	[[ -f $transaction_prefix.meta ]] || die 'no interrupted theme transaction is available'
+	expected=$(meta_value "$transaction_prefix" proposed_hash) || die 'recovery state is incomplete'
+	restore_baseline "$transaction_prefix" "$expected" || restore_status=$?
+	if ((restore_status == 2)); then
+		die 'theme or integration file changed after the interrupted transaction; refusing stale recovery'
+	elif ((restore_status != 0)); then
+		die 'theme recovery failed; recovery state was retained'
+	fi
+	cleanup_prefix "$transaction_prefix"
+	printf 'appearance-action-protocol\t1\t0\nresult\trecovered\n'
+}
+
+case ${1:-} in
+preview)
+	[[ $# == 4 ]] || die 'preview requires token, timeout, and theme'
+	start_preview "$2" "$3" "$4"
+	;;
+keep | revert | abandon)
+	[[ $# == 2 ]] || die "$1 requires a token"
+	finish_preview "$1" "$2"
+	;;
+preview-status)
+	[[ $# == 1 || $# == 2 ]] || die 'preview-status accepts an optional token'
+	preview_status "${2:-}"
+	;;
+apply)
+	[[ $# == 2 ]] || die 'apply requires a theme'
+	apply_theme "$2"
+	;;
+reset)
+	[[ $# == 1 ]] || die 'reset takes no arguments'
+	reset_theme
+	;;
+recover)
+	[[ $# == 1 ]] || die 'recover takes no arguments'
+	recover_transaction
+	;;
+recovery-status)
+	[[ $# == 1 ]] || die 'recovery-status takes no arguments'
+	recovery_status
+	;;
+mutation-ready)
+	[[ $# == 1 ]] || die 'mutation-ready takes no arguments'
+	mutation_ready
+	;;
+_watch)
+	[[ $# == 3 ]] || exit 2
+	preview_watchdog "$2" "$3"
+	;;
+_resume-preview)
+	[[ $# == 1 ]] || exit 2
+	resume_preview
+	;;
+-h | --help | help) usage ;;
+*)
+	usage
+	exit 2
+	;;
+esac

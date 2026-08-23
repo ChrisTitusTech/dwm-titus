@@ -3904,7 +3904,8 @@ reload_config(void)
 			char script[PATH_MAX];
 			if (dwm_data_dir[0] != '\0' &&
 			    pathjoin(script, sizeof(script), dwm_data_dir,
-			             "scripts/theme-apply.sh")) {
+			             "scripts/theme-apply.sh") &&
+			    setenv("DWM_THEME_APPLY_AUTOMATIC", "1", 1) == 0) {
 				execl(script, script, (char *)NULL);
 			}
 			_exit(0);

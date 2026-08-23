@@ -878,5 +878,7 @@ grep -Fq 'start_detached_display_command_once dwm-status' \
 	"$repo_dir/scripts/autostart.sh"
 grep -Fq 'display_process_script' "$repo_dir/scripts/autostart.sh"
 grep -Fq 'display_process_display' "$repo_dir/scripts/autostart.sh"
+grep -Fq 'timeout --signal=TERM --kill-after=2 5' "$repo_dir/scripts/autostart.sh"
+grep -Fq '_resume-preview >/dev/null' "$repo_dir/scripts/autostart.sh"
 
 printf '%s\n' "Autostart duplicate and missing-optional command guards: PASS"

@@ -9,9 +9,11 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 test_uid=$(id -u)
 
-mkdir -p "$work/bin" "$work/config/dwm-titus" "$work/home/Pictures/backgrounds" "$work/data/dwm-titus/config/quickshell" "$work/power-state"
+mkdir -p "$work/bin" "$work/config/dwm-titus" "$work/home/Pictures/backgrounds" \
+	"$work/data/dwm-titus/config/quickshell" "$work/state" "$work/runtime" "$work/power-state"
 mkdir -p "$work/config/quickshell"
 cp "$repo/config/themes.toml" "$work/config/dwm-titus/themes.toml"
+cp "$repo/config/themes.toml" "$work/data/dwm-titus/config/themes.toml"
 cp "$repo/config/hotkeys.toml" "$work/config/dwm-titus/hotkeys.toml"
 : >"$work/data/dwm-titus/config/quickshell/shell.qml"
 : >"$work/config/quickshell/shell.qml"
@@ -192,12 +194,21 @@ esac
 SH
 chmod +x "$work/bin/pactl"
 
+cat >"$work/bin/theme-apply-stub" <<'SH'
+#!/bin/sh
+exit 0
+SH
+chmod +x "$work/bin/theme-apply-stub"
+
 run_helper() {
 	DWM_TEST_LOG="$work/actions.log" \
 		DWM_TEST_SYNC=1 \
 		HOME="$work/home" \
 		XDG_CONFIG_HOME="$work/config" \
 		XDG_DATA_HOME="$work/data" \
+		XDG_STATE_HOME="$work/state" \
+		XDG_RUNTIME_DIR="$work/runtime" \
+		DWM_APPEARANCE_APPLY_HELPER="$work/bin/theme-apply-stub" \
 		DWM_TEST_POWER_STATE="$work/power-state" \
 		DWM_TEST_MODE=1 \
 		DWM_TEST_QUICKSHELL_VERSION="${DWM_TEST_QUICKSHELL_VERSION:-0.3.0}" \
@@ -246,6 +257,11 @@ printf '%s\n' "$outdated_health" | grep -Fqx 'error	Quickshell	Outdated'
 fc43_health=$(DWM_TEST_QUICKSHELL_VERSION=0.2.1^git20260209.dacfa9d-3.fc43 run_helper health)
 printf '%s\n' "$fc43_health" | grep -Fqx 'error	Quickshell	Outdated'
 
+sed -i 's/^\[active\]$/  [active] # retained header comment/' \
+	"$work/config/dwm-titus/themes.toml"
+sed -i 's/^\[theme.dracula\]$/  [theme.dracula] # retained theme comment/' \
+	"$work/config/dwm-titus/themes.toml"
+
 info=$(run_helper info)
 printf '%s\n' "$info" | grep -Fqx 'Theme	nord'
 printf '%s\n' "$info" | grep -Fqx 'Audio	PipeWire'
@@ -261,7 +277,22 @@ grep -Fq 'theme = "dracula"' "$work/config/dwm-titus/themes.toml"
 if run_helper theme-set missing-theme 2>"$work/theme-set.err"; then
 	exit 1
 fi
-grep -Fqx 'unknown theme: missing-theme' "$work/theme-set.err"
+grep -Fq 'theme is unavailable, invalid, or the source is unsafe to mutate: missing-theme' \
+	"$work/theme-set.err"
+
+mkdir -p "$work/prefix/bin"
+cp "$repo/scripts/dwm-quickshell-controlcenter" "$work/prefix/bin/"
+rm "$work/config/dwm-titus/themes.toml"
+installed_themes=$(HOME="$work/home" XDG_CONFIG_HOME="$work/config" \
+	XDG_DATA_HOME="$work/data" "$work/prefix/bin/dwm-quickshell-controlcenter" themes)
+printf '%s\n' "$installed_themes" | grep -Fqx 'active	nord'
+printf '%s\n' "$installed_themes" | grep -Fqx 'available	dracula'
+cp "$work/data/dwm-titus/config/themes.toml" "$work/config/dwm-titus/themes.toml"
+
+rm "$work/config/dwm-titus/themes.toml" "$work/data/dwm-titus/config/themes.toml"
+run_helper theme-set dracula >"$work/theme-set-source.out"
+grep -Fqx 'theme	dracula' "$work/theme-set-source.out"
+grep -Fq 'theme = "dracula"' "$work/config/dwm-titus/themes.toml"
 
 keybinds=$(run_helper keybinds)
 printf '%s\n' "$keybinds" | grep -Fqx 'Super + r	App launcher'
@@ -398,6 +429,8 @@ fi
 grep -Fqx 'unknown action: not-real' "$work/action.err"
 
 grep -Fq 'watchChanges: true' "$repo/config/quickshell/core/Theme.qml"
+[ "$(grep -Fc 'watchChanges: true' "$repo/config/quickshell/core/Theme.qml")" -ge 2 ]
+[ "$(grep -Fc 'onFileChanged: reload()' "$repo/config/quickshell/core/Theme.qml")" -ge 2 ]
 grep -Fq 'themes.toml' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'ClickAwayPopup {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"

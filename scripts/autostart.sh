@@ -305,10 +305,30 @@ apply_power_settings() {
 	fi
 }
 
+resume_theme_preview() {
+	theme_helper=
+	case $0 in
+	*/*)
+		theme_candidate=${0%/*}/dwm-settings-theme
+		[ ! -x "$theme_candidate" ] || theme_helper=$theme_candidate
+		;;
+	esac
+	if [ -z "$theme_helper" ] && command -v dwm-settings-theme >/dev/null 2>&1; then
+		theme_helper=dwm-settings-theme
+	fi
+	if [ -n "$theme_helper" ] && command -v timeout >/dev/null 2>&1; then
+		timeout --signal=TERM --kill-after=2 5 \
+			"$theme_helper" _resume-preview >/dev/null 2>&1 || true
+	fi
+}
+
 PICOM_BACKEND=${PICOM_BACKEND:-xrender}
 WM_GRAPHICAL_SESSION=wm-graphical-session.service
 
 # ── Phase 1: Blocking ──────────────────────────────────────────────────────────
+# Re-arm or expire any durable theme preview before starting desktop services.
+resume_theme_preview
+
 # Apply persisted screen power and locking settings. The default remains
 # screen blanking and DPMS disabled to avoid known GPU/display wake issues.
 apply_power_settings

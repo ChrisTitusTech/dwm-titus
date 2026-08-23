@@ -79,6 +79,7 @@ for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker 
 done
 make_stub "$fedora_bin/dwm-xdg-autostart"
 make_appearance_stub "$fedora_bin/dwm-settings-appearance"
+make_stub "$fedora_bin/dwm-settings-theme"
 make_stub "$fedora_bin/inotifywait"
 make_failing_stub "$fedora_bin/pkexec"
 make_failing_stub "$fedora_bin/sudo"
@@ -113,7 +114,46 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	defaults	xdg-autostart	Startup applications	available	user-session	xdg-autostart	Per-user XDG autostart overrides and live updates are available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	appearance	themes	Themes	available	read-only	dwm-settings-appearance	Versioned theme inventory and integration state are available'
+	'capability	appearance	themes	Themes	available	user-session	dwm-settings-theme	Theme inventory, bounded preview, apply, reset, and recovery are available'
+available_theme_record='capability	appearance	themes	Themes	available	user-session	dwm-settings-theme	Theme inventory, bounded preview, apply, reset, and recovery are available'
+
+unsafe_theme_bin=$work/unsafe-theme-bin
+cp -a "$fedora_bin" "$unsafe_theme_bin"
+make_failing_stub "$unsafe_theme_bin/dwm-settings-theme"
+unsafe_theme_output=$(PATH="$unsafe_theme_bin" XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$unsafe_theme_output" | grep -Fqx \
+	'capability	appearance	themes	Themes	partial	read-only	dwm-settings-appearance	Theme inventory is available; the theme source is not safely mutable'
+if printf '%s\n' "$unsafe_theme_output" | grep -Fqx "$available_theme_record"; then
+	printf 'unsafe theme source was also advertised as mutable\n' >&2
+	exit 1
+fi
+
+repo_source_home=$work/repo-source-home
+repo_source_config=$work/repo-source-config
+mkdir -p "$repo_source_home" "$repo_source_config/dwm-titus"
+cp "$repo/config/themes.toml" "$repo_source_config/dwm-titus/themes.toml"
+repo_source_output=$(PATH="$repo/scripts:/usr/bin" HOME="$repo_source_home" \
+	XDG_CONFIG_HOME="$repo_source_config" XDG_DATA_HOME="$work/missing-repo-source-data" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$repo_source_output" | grep -Fqx \
+	"$available_theme_record"
+
+read_only_appearance_bin=$work/read-only-appearance-bin
+cp -a "$fedora_bin" "$read_only_appearance_bin"
+rm -f "$read_only_appearance_bin/dwm-settings-theme"
+read_only_provider_dir=$work/read-only-provider
+mkdir "$read_only_provider_dir"
+cp "$provider" "$read_only_provider_dir/dwm-settings-provider"
+read_only_appearance_output=$(PATH="$read_only_appearance_bin" XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" \
+	"$read_only_provider_dir/dwm-settings-provider" discover)
+printf '%s\n' "$read_only_appearance_output" | grep -Fqx \
+	'capability	appearance	themes	Themes	partial	read-only	dwm-settings-appearance	Theme inventory is available; install the managed mutation helper for changes'
+if printf '%s\n' "$read_only_appearance_output" | grep -Fqx "$available_theme_record"; then
+	printf 'read-only appearance provider was also advertised as mutable\n' >&2
+	exit 1
+fi
 printf '%s\n' "$fedora_output" | grep -Eq \
 	'^capability	system	authorization	Administrative authorization	(available|restricted)	privileged	polkit	'
 
