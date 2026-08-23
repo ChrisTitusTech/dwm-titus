@@ -176,12 +176,16 @@ theme_source_structure_is_mutable() {
 }
 
 directory_path_ready() {
-	local directory=$1 require_owner=${2:-false} probe
+	local directory=$1 require_owner=${2:-false} probe mode
 	[[ $directory == /* ]] || return 1
 	existing_path_chain_is_safe "$directory/.mutation-ready" || return 1
 	if [[ -e $directory || -L $directory ]]; then
 		[[ -d $directory && ! -L $directory && -w $directory && -x $directory ]] || return 1
-		[[ $require_owner != true || $(stat -c %u -- "$directory") == "$UID" ]] || return 1
+		if [[ $require_owner == true ]]; then
+			[[ $(stat -c %u -- "$directory") == "$UID" ]] || return 1
+			mode=$(stat -c %a -- "$directory")
+			(((8#$mode & 0300) == 0300)) || return 1
+		fi
 		return 0
 	fi
 	probe=$directory
@@ -194,7 +198,7 @@ directory_path_ready() {
 }
 
 mutation_ready() {
-	local parent probe snapshot managed_snapshot target path
+	local parent probe snapshot managed_snapshot target path mode
 	[[ -x $appearance_helper && -x $apply_helper ]] || return 1
 	directory_path_ready "$runtime_base" true || return 1
 	directory_path_ready "$runtime_dir" true || return 1
@@ -213,6 +217,8 @@ mutation_ready() {
 		[[ -d $parent && ! -L $parent ]] || return 1
 		[[ $(stat -c %u -- "$parent") == "$UID" ]] || return 1
 		[[ -w $parent && -x $parent ]] || return 1
+		mode=$(stat -c %a -- "$parent")
+		(((8#$mode & 0300) == 0300)) || return 1
 	else
 		probe=$parent
 		while [[ ! -e $probe && ! -L $probe ]]; do
