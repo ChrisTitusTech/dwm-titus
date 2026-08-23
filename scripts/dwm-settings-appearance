@@ -187,6 +187,19 @@ parse_themes() {
 						add_error "theme:$theme" duplicate "Duplicate theme section at line $line_number"
 					fi
 				fi
+			elif [[ $trimmed == '[colors]' ]]; then
+				theme=legacy
+				section=theme
+				((section_count[$theme] = ${section_count[$theme]:-0} + 1))
+				if ((${section_count[$theme]} == 1)); then
+					theme_order+=("$theme")
+					provider_state=partial
+					add_error parser legacy-format \
+						'Legacy [colors] palette is active; named themes are recommended'
+				else
+					theme_invalid[$theme]=1
+					add_error theme:legacy duplicate "Duplicate legacy [colors] section at line $line_number"
+				fi
 			elif [[ $trimmed == '[active]' ]]; then
 				section=active
 				theme=__active
@@ -277,12 +290,32 @@ valid_color() {
 
 validate_themes() {
 	local theme key color dark first_missing missing_count invalid_count
+	local -a keys_to_validate=()
 
 	for theme in "${theme_order[@]}"; do
+		if [[ $theme == legacy ]]; then
+			[[ -n ${value[$theme$key_separator'normbordercolor']:-} ]] ||
+				value[$theme$key_separator'normbordercolor']='#3B4252'
+			[[ -n ${value[$theme$key_separator'normbgcolor']:-} ]] ||
+				value[$theme$key_separator'normbgcolor']='#434C5E'
+			[[ -n ${value[$theme$key_separator'normfgcolor']:-} ]] ||
+				value[$theme$key_separator'normfgcolor']='#D8DEE9'
+			[[ -n ${value[$theme$key_separator'selbordercolor']:-} ]] ||
+				value[$theme$key_separator'selbordercolor']='#81A1C1'
+			[[ -n ${value[$theme$key_separator'selbgcolor']:-} ]] ||
+				value[$theme$key_separator'selbgcolor']='#434C5E'
+			[[ -n ${value[$theme$key_separator'selfgcolor']:-} ]] ||
+				value[$theme$key_separator'selfgcolor']='#ECEFF4'
+			keys_to_validate=(
+				normfgcolor normbgcolor normbordercolor selfgcolor selbgcolor selbordercolor
+			)
+		else
+			keys_to_validate=("${required_colors[@]}")
+		fi
 		first_missing=
 		missing_count=0
 		invalid_count=0
-		for key in "${required_colors[@]}"; do
+		for key in "${keys_to_validate[@]}"; do
 			color=${value[$theme$key_separator$key]:-}
 			if [[ -z $color ]]; then
 				theme_invalid[$theme]=1
@@ -316,6 +349,11 @@ resolve_active_theme() {
 
 	selected_theme=${value[__active$key_separator'theme']:-}
 	if [[ -z $selected_theme ]]; then
+		if [[ -n ${section_count[legacy]+x} && -z ${theme_invalid[legacy]+x} ]]; then
+			selected_theme=legacy
+			resolved_theme=legacy
+			return
+		fi
 		provider_state=partial
 		add_error active missing 'The active theme name is missing'
 	elif [[ -z ${section_count[$selected_theme]+x} ]]; then
@@ -334,7 +372,7 @@ resolve_active_theme() {
 		return
 	fi
 	for theme in "${theme_order[@]}"; do
-		if [[ -z ${theme_invalid[$theme]+x} ]]; then
+		if [[ $theme != legacy && -z ${theme_invalid[$theme]+x} ]]; then
 			resolved_theme=$theme
 			return
 		fi
@@ -454,6 +492,43 @@ terminal_theme_matches() {
 	done
 }
 
+alacritty_imports_active_theme() {
+	local primary=$config_home/alacritty/alacritty.toml
+	local active=$config_home/alacritty/active-theme.toml
+	local default_import='~'/.config/alacritty/active-theme.toml
+	[[ -f $primary ]] || return 1
+	if [[ -z ${HOME:-} || $config_home != "$HOME/.config" ]]; then
+		default_import=
+	fi
+	awk -v active="$active" -v default_import="$default_import" '
+		/^[[:space:]]*#/ { next }
+		{
+			line = $0
+			comment = index(line, "#")
+			if (comment) line = substr(line, 1, comment - 1)
+			if (line ~ /^[[:space:]]*import[[:space:]]*=/) in_import = 1
+			if (in_import &&
+			    (index(line, "\"" active "\"") ||
+			     index(line, "\047" active "\047") ||
+			     (default_import != "" &&
+			      (index(line, "\"" default_import "\"") ||
+			       index(line, "\047" default_import "\047"))))) found = 1
+			if (in_import && index(line, "]")) exit
+		}
+		END { exit(found ? 0 : 1) }
+	' "$primary"
+}
+
+effective_qt_backend() {
+	local env_file=$config_home/dwm-titus/theme-env.sh
+	qt_backend=${QT_QPA_PLATFORMTHEME:-}
+	if [[ -z $qt_backend && -r $env_file ]]; then
+		qt_backend=$(awk -F= '
+			$1 == "export QT_QPA_PLATFORMTHEME" { print substr($0, index($0, "=") + 1); exit }
+		' "$env_file")
+	fi
+}
+
 emit_theme_records() {
 	local theme selection validity dark gtk detail
 	for theme in "${theme_order[@]}"; do
@@ -477,7 +552,7 @@ emit_theme_records() {
 emit_color_records() {
 	local name key fallback color mapping
 	local -a mappings=(
-		'background|term_bg|'
+		'background|term_bg|normbgcolor'
 		'bar-background|normbgcolor|term_bg'
 		'surface|normbgcolor|term_bg'
 		'surface-hover|term_color8|selbgcolor'
@@ -528,20 +603,20 @@ emit_integrations() {
 		add_error gtk missing-theme "GTK theme '$requested_gtk' is not installed"
 	fi
 
-	if command -v qt6ct >/dev/null 2>&1; then
-		qt_backend=qt6ct
-	elif command -v qt5ct >/dev/null 2>&1; then
-		qt_backend=qt5ct
-	elif [[ ${QT_QPA_PLATFORMTHEME:-} == gtk3 ]]; then
-		qt_backend=gtk3
-	else
+	effective_qt_backend
+	if [[ -z $qt_backend ]]; then
 		qt_backend=none
-	fi
-	if [[ $qt_backend == none ]]; then
 		printf 'integration\tqt\tunavailable\tnone\tNo supported Qt theme backend is active\n'
-		add_error qt missing-backend 'Install qt6ct or qt5ct, or activate the Qt GTK3 platform theme'
+		add_error qt missing-backend 'No applied Qt theme backend is recorded'
+	elif [[ $qt_backend == gtk3 ]] ||
+		[[ $qt_backend == qt6ct && $(command -v qt6ct 2>/dev/null) ]] ||
+		[[ $qt_backend == qt5ct && $(command -v qt5ct 2>/dev/null) ]]; then
+		printf 'integration\tqt\tavailable\t%s\tQt applications use the supported theme backend\n' \
+			"$(clean_field "$qt_backend")"
 	else
-		printf 'integration\tqt\tavailable\t%s\tQt applications use the supported theme backend\n' "$qt_backend"
+		printf 'integration\tqt\tpartial\t%s\tRecorded Qt theme backend is unsupported or unavailable\n' \
+			"$(clean_field "$qt_backend")"
+		add_error qt stale-backend "Recorded Qt theme backend '$qt_backend' is unsupported or unavailable"
 	fi
 
 	[[ $dark == true ]] && cursor=Capitaine-Cursors-White || cursor=Capitaine-Cursors
@@ -558,8 +633,12 @@ emit_integrations() {
 		else
 			terminal_theme_file=$config_home/$terminal/active-theme.conf
 		fi
-		if terminal_theme_matches "$terminal" "$terminal_theme_file"; then
+		if terminal_theme_matches "$terminal" "$terminal_theme_file" &&
+			{ [[ $terminal != alacritty ]] || alacritty_imports_active_theme; }; then
 			printf 'integration\t%s\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette\n' "$terminal"
+		elif [[ $terminal == alacritty ]] && terminal_theme_matches "$terminal" "$terminal_theme_file"; then
+			printf 'integration\t%s\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration\n' "$terminal"
+			add_error "$terminal" not-imported 'Alacritty configuration does not import the generated active theme'
 		elif [[ -f $terminal_theme_file ]]; then
 			printf 'integration\t%s\tpartial\tactive-theme\tGenerated terminal theme is empty or stale\n' "$terminal"
 			add_error "$terminal" stale-theme 'Generated active theme does not match the resolved palette'

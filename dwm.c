@@ -453,6 +453,7 @@ static volatile sig_atomic_t sig_reload_pending = 0;
 static char   toml_arena_buf[TOML_ARENA_CAP];
 static size_t toml_arena_pos = 0;
 /* Default (fallback) config paths: ~/.local/share/dwm-titus/config/ */
+static char          dwm_data_dir[PATH_MAX];
 static char          toml_default_dir[PATH_MAX];
 static char          toml_hotkeys_default_path[PATH_MAX];
 static char          toml_themes_default_path[PATH_MAX];
@@ -3897,16 +3898,12 @@ reload_config(void)
 	{
 		pid_t pid = fork();
 		if (pid == 0) {
-			/* child: find and run the theme-apply script */
-			const char *home = getenv("HOME");
-			char script_dir[PATH_MAX];
+			/* child: run the theme helper from the resolved data directory */
 			char script[PATH_MAX];
-			if (home &&
-			    pathjoin(script_dir, sizeof(script_dir),
-			            home, ".local/share/dwm-titus/scripts") &&
-			    pathjoin(script, sizeof(script),
-			            script_dir, "theme-apply.sh")) {
-				execl("/bin/sh", "sh", script, (char *)NULL);
+			if (dwm_data_dir[0] != '\0' &&
+			    pathjoin(script, sizeof(script), dwm_data_dir,
+			             "scripts/theme-apply.sh")) {
+				execl(script, script, (char *)NULL);
 			}
 			_exit(0);
 		}
@@ -4021,8 +4018,10 @@ setup_inotify(void)
 	}
 
 	/* Default config: ${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/ */
-	if (!pathjoin(toml_default_dir, sizeof(toml_default_dir),
-	              data_home, "dwm-titus/config")
+	if (!pathjoin(dwm_data_dir, sizeof(dwm_data_dir),
+	              data_home, "dwm-titus")
+	    || !pathjoin(toml_default_dir, sizeof(toml_default_dir),
+	                 dwm_data_dir, "config")
 	    || !pathjoin(toml_hotkeys_default_path,
 	                 sizeof(toml_hotkeys_default_path),
 	                 toml_default_dir, "hotkeys.toml")

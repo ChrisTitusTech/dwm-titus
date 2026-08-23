@@ -68,6 +68,9 @@ color15 ${fixture_color[term_color15]}
 EOF
 cp "$config_home/alacritty/active-theme.toml" "$work/alacritty-valid.toml"
 cp "$config_home/kitty/active-theme.conf" "$work/kitty-valid.conf"
+printf 'import = ["%s"]\n' "$config_home/alacritty/active-theme.toml" \
+	>"$config_home/alacritty/alacritty.toml"
+printf 'export QT_QPA_PLATFORMTHEME=qt6ct\n' >"$config_home/dwm-titus/theme-env.sh"
 
 for command_name in awk bash dirname grep stat tr; do
 	ln -s "$(command -v "$command_name")" "$bin_dir/$command_name"
@@ -109,12 +112,27 @@ grep -Fqx $'error\tcompositor\tunsupported\tPicom theme mutation is not implemen
 no_qt_bin=$work/no-qt-bin
 cp -a "$bin_dir" "$no_qt_bin"
 rm -f "$no_qt_bin/qt6ct"
+mv "$config_home/dwm-titus/theme-env.sh" "$work/theme-env.sh"
 no_qt=$(PATH=$no_qt_bin QT_QPA_PLATFORMTHEME='' XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	"$helper" snapshot)
 grep -Fqx $'integration\tqt\tunavailable\tnone\tNo supported Qt theme backend is active' <<<"$no_qt"
-grep -Fqx $'error\tqt\tmissing-backend\tInstall qt6ct or qt5ct, or activate the Qt GTK3 platform theme' \
+grep -Fqx $'error\tqt\tmissing-backend\tNo applied Qt theme backend is recorded' \
 	<<<"$no_qt"
+mv "$work/theme-env.sh" "$config_home/dwm-titus/theme-env.sh"
+
+gtk3_qt=$(QT_QPA_PLATFORMTHEME=gtk3 snapshot)
+grep -Fqx $'integration\tqt\tavailable\tgtk3\tQt applications use the supported theme backend' \
+	<<<"$gtk3_qt"
+
+printf 'import = ["/wrong/active-theme.toml"]\n' >"$config_home/alacritty/alacritty.toml"
+unimported_alacritty=$(snapshot)
+grep -Fqx $'integration\talacritty\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration' \
+	<<<"$unimported_alacritty"
+grep -Fqx $'error\talacritty\tnot-imported\tAlacritty configuration does not import the generated active theme' \
+	<<<"$unimported_alacritty"
+printf 'import = ["%s"]\n' "$config_home/alacritty/active-theme.toml" \
+	>"$config_home/alacritty/alacritty.toml"
 
 sed -i "s|${fixture_color[term_bg]}|__DWM_COLOR_SWAP__|; \
 	s|${fixture_color[term_fg]}|${fixture_color[term_bg]}|; \
@@ -414,7 +432,7 @@ grep -Fq $'theme\tt19\tselected\tinvalid\t' <<<"$entry_limited"
 	done
 } >"$config_home/dwm-titus/themes.toml"
 set +e
-timeout 2 env PATH="$bin_dir" XDG_CONFIG_HOME="$config_home" XDG_DATA_HOME="$data_root" \
+timeout 5 env PATH="$bin_dir" XDG_CONFIG_HOME="$config_home" XDG_DATA_HOME="$data_root" \
 	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot >"$work/many-incomplete.out"
 many_status=$?
 set -e
@@ -422,6 +440,40 @@ set -e
 grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
 	"$work/many-incomplete.out"
 [[ $(grep -c $'^error\ttheme:' "$work/many-incomplete.out") -eq 100 ]]
+
+cat >"$config_home/dwm-titus/themes.toml" <<'EOF'
+[colors]
+normfgcolor = "#D8DEE9"
+normbgcolor = "#2E3440"
+normbordercolor = "#4C566A"
+selfgcolor = "#ECEFF4"
+selbgcolor = "#5E81AC"
+selbordercolor = "#81A1C1"
+EOF
+legacy=$(snapshot)
+grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' \
+	<<<"$legacy"
+grep -Fqx $'active\tlegacy\tlegacy\tselected' <<<"$legacy"
+grep -Fqx $'theme\tlegacy\tselected\tvalid\ttrue\tautomatic\tTheme record is complete' \
+	<<<"$legacy"
+grep -Fqx $'color\tbackground\t#2E3440\tterm_bg' <<<"$legacy"
+grep -Fqx $'error\tparser\tlegacy-format\tLegacy [colors] palette is active; named themes are recommended' \
+	<<<"$legacy"
+
+cat >"$config_home/dwm-titus/themes.toml" <<'EOF'
+[active]
+theme = "missing"
+[colors]
+normbgcolor = "#2E3440"
+EOF
+set +e
+legacy_not_recovery=$(snapshot)
+legacy_not_recovery_status=$?
+set -e
+[[ $legacy_not_recovery_status -eq 3 ]]
+grep -Fqx $'active\tmissing\tnone\tunresolved' <<<"$legacy_not_recovery"
+grep -Fqx $'error\tactive\tno-valid-theme\tNo complete theme is available for recovery' \
+	<<<"$legacy_not_recovery"
 
 mkdir -p "$work/fallback-home/.config/dwm-titus"
 cp "$work/managed-themes.toml" "$work/fallback-home/.config/dwm-titus/themes.toml"

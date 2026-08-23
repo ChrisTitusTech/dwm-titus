@@ -62,7 +62,7 @@ run_bounded_probe() {
 appearance_snapshot_valid() {
 	command_path=$(provider_path dwm-settings-appearance) || return 1
 	timeout_path=$(command -v timeout 2>/dev/null) || return 1
-	appearance_snapshot=$("$timeout_path" 2 "$command_path" snapshot 2>/dev/null) || return 1
+	appearance_snapshot=$("$timeout_path" 5 "$command_path" snapshot 2>/dev/null) || return 1
 	printf '%s\n' "$appearance_snapshot" |
 		awk 'NR == 1 { valid = ($0 == "appearance-protocol	1	0"); exit }
 			END { exit(valid ? 0 : 1) }'

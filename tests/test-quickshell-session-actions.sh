@@ -333,6 +333,10 @@ SH
 #!/bin/sh
 : >"${DWM_SESSION_TEST_AUTOSTOP_MARKER:?}"
 SH
+	cat >"$work/runtime-data/dwm-titus/scripts/theme-apply.sh" <<'SH'
+#!/bin/sh
+printf x >>"${DWM_SESSION_TEST_THEME_APPLY_MARKER:?}"
+SH
 	chmod +x "$work/runtime-data/dwm-titus/scripts/"*.sh
 
 	Xvfb "$runtime_display" -screen 0 800x600x24 -nolisten tcp \
@@ -350,6 +354,7 @@ SH
 	done
 
 	DWM_SESSION_TEST_AUTOSTOP_MARKER="$work/autostop.marker" \
+		DWM_SESSION_TEST_THEME_APPLY_MARKER="$work/theme-apply.marker" \
 		DISPLAY=$runtime_display HOME="$work/home" \
 		XDG_CONFIG_HOME="$work/runtime-config" \
 		XDG_DATA_HOME="$work/runtime-data" "$repo/dwm" \
@@ -371,6 +376,16 @@ SH
 		printf '%s\n' 'Nested DWM did not load its XDG_DATA_HOME theme fallback.' >&2
 		exit 1
 	}
+	i=0
+	while [ ! -f "$work/theme-apply.marker" ]; do
+		i=$((i + 1))
+		[ "$i" -lt 100 ] || {
+			printf '%s\n' 'Nested DWM did not run theme-apply from XDG_DATA_HOME.' >&2
+			exit 1
+		}
+		sleep 0.02
+	done
+	initial_theme_applies=$(wc -c <"$work/theme-apply.marker")
 	cp "$repo/config/themes.toml" "$work/runtime-config/dwm-titus/themes.toml"
 	i=0
 	while [ "$(grep -Fc 'dwm: loaded theme from config' "$work/dwm.log" || true)" \
@@ -378,6 +393,15 @@ SH
 		i=$((i + 1))
 		[ "$i" -lt 100 ] || {
 			printf '%s\n' 'Nested DWM did not hot-reload its XDG_CONFIG_HOME theme.' >&2
+			exit 1
+		}
+		sleep 0.02
+	done
+	i=0
+	while [ "$(wc -c <"$work/theme-apply.marker")" -le "$initial_theme_applies" ]; do
+		i=$((i + 1))
+		[ "$i" -lt 100 ] || {
+			printf '%s\n' 'Nested DWM did not run theme-apply from XDG_DATA_HOME.' >&2
 			exit 1
 		}
 		sleep 0.02
