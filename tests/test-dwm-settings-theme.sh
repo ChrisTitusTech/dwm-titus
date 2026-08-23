@@ -49,8 +49,10 @@ wait_for_release() {
 }
 themes=${DWM_APPEARANCE_THEMES_FILE:?}
 managed=${DWM_APPEARANCE_MANAGED_THEMES_FILE:?}
-[ -z "${DWM_TEST_EXPECT_CONFIG_HOME:-}" ] || [ "$XDG_CONFIG_HOME" = "$DWM_TEST_EXPECT_CONFIG_HOME" ]
-[ -z "${DWM_TEST_EXPECT_DATA_HOME:-}" ] || [ "$XDG_DATA_HOME" = "$DWM_TEST_EXPECT_DATA_HOME" ]
+if [ "${DWM_APPEARANCE_STAGED_OUTPUT:-0}" != 1 ]; then
+	[ -z "${DWM_TEST_EXPECT_CONFIG_HOME:-}" ] || [ "$XDG_CONFIG_HOME" = "$DWM_TEST_EXPECT_CONFIG_HOME" ]
+	[ -z "${DWM_TEST_EXPECT_DATA_HOME:-}" ] || [ "$XDG_DATA_HOME" = "$DWM_TEST_EXPECT_DATA_HOME" ]
+fi
 [ -f "$themes" ] || themes=$managed
 active=$(awk '
 	/^[[:space:]]*\[active\][[:space:]]*(#.*)?$/ { in_active = 1; next }
@@ -503,6 +505,14 @@ HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	>"$work/integration-pending-automatic.out" 2>"$work/integration-pending-automatic.err"
 [[ $(integration_snapshot) == "$integration_preview" ]]
 [[ ! -s $work/live.log ]]
+HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
+	DWM_APPEARANCE_THEMES_FILE=$themes_file DWM_APPEARANCE_MANAGED_THEMES_FILE=$managed_file \
+	DWM_TEST_LIVE_LOG=$work/live.log PATH=$work/integration-bin:$PATH \
+	"$repo/scripts/theme-apply.sh" >"$work/integration-pending-manual.out" \
+	2>"$work/integration-pending-manual.err"
+[[ $(integration_snapshot) == "$integration_preview" ]]
+[[ ! -s $work/live.log ]]
 printf '%s ready\n' "$(sha256sum "$themes_file" | awk '{print $1}')" >"$integration_transaction"
 HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
@@ -510,6 +520,14 @@ HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	DWM_THEME_APPLY_AUTOMATIC=1 DWM_TEST_LIVE_LOG=$work/live.log \
 	PATH=$work/integration-bin:$PATH "$repo/scripts/theme-apply.sh" \
 	>"$work/integration-preview-automatic.out" 2>"$work/integration-preview-automatic.err"
+[[ ! -s $work/live.log ]]
+HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
+	DWM_APPEARANCE_THEMES_FILE=$themes_file DWM_APPEARANCE_MANAGED_THEMES_FILE=$managed_file \
+	DWM_TEST_LIVE_LOG=$work/live.log PATH=$work/integration-bin:$PATH \
+	"$repo/scripts/theme-apply.sh" >"$work/integration-preview-manual.out" \
+	2>"$work/integration-preview-manual.err"
+[[ $(integration_snapshot) == "$integration_preview" ]]
 [[ ! -s $work/live.log ]]
 run_theme_real_apply revert integration-files >/dev/null 2>"$work/integration-revert.err"
 [[ $(integration_snapshot) == "$integration_before" ]]
@@ -560,6 +578,39 @@ grep -Fqx '# external integration edit' "$config_home/alacritty/alacritty.toml"
 [[ $(integration_snapshot) == "$integration_external_before" ]]
 [[ $(active_theme) == dracula ]]
 run_theme_real_apply abandon integration-external >/dev/null
+
+reset_fixture
+mkdir -p "$config_home/alacritty"
+printf '%s\n' 'import = [' '  "~/.config/alacritty/custom-theme.toml",' ']' \
+	>"$config_home/alacritty/alacritty.toml"
+publish_ready=$work/integration-publish.ready
+publish_release=$work/integration-publish.release
+HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
+	DWM_APPEARANCE_APPLY_HELPER=$repo/scripts/theme-apply.sh \
+	DWM_APPEARANCE_RELOAD_HELPER=$reload_stub DWM_TEST_RELOAD_LOG=$work/reload.log \
+	DWM_TEST_LIVE_LOG=$work/live.log PATH=$work/integration-bin:$PATH \
+	DWM_TEST_BEFORE_INTEGRATION_PUBLISH=$publish_ready \
+	DWM_TEST_INTEGRATION_PUBLISH_RELEASE=$publish_release \
+	"$helper" preview integration-publish-race 10 dracula \
+	>"$work/integration-publish-race.out" 2>"$work/integration-publish-race.err" &
+publish_race_pid=$!
+for attempt in {1..100}; do
+	[[ -e $publish_ready ]] && break
+	sleep 0.05
+done
+[[ -e $publish_ready ]]
+printf '# external integration edit before publish\n' >>"$config_home/alacritty/alacritty.toml"
+: >"$publish_release"
+set +e
+wait "$publish_race_pid"
+publish_race_status=$?
+set -e
+[[ $publish_race_status -eq 1 ]]
+grep -Fq 'changed while publishing the transaction' "$work/integration-publish-race.err"
+grep -Fqx '# external integration edit before publish' \
+	"$config_home/alacritty/alacritty.toml"
+[[ -f $state_home/dwm-titus/appearance/integration-publish-race.preview.meta ]]
 
 reset_fixture
 mkdir -p "$config_home/alacritty"

@@ -455,18 +455,23 @@ file_hash() {
 }
 
 integration_path_list() {
+	integration_path_list_for "${HOME:?HOME is required}" "$config_home"
+}
+
+integration_path_list_for() {
+	local integration_home=$1 integration_config_home=$2
 	integration_paths=(
-		"$config_home/alacritty/active-theme.toml"
-		"$config_home/alacritty/alacritty.toml"
-		"$config_home/kitty/active-theme.conf"
-		"$config_home/kitty/kitty.conf"
-		"$config_home/gtk-3.0/settings.ini"
-		"$config_home/gtk-4.0/settings.ini"
-		"${HOME:?HOME is required}/.gtkrc-2.0"
-		"$config_home/dwm-titus/cursor.Xresources"
-		"$config_home/dwm-titus/theme-env.sh"
-		"$config_home/qt5ct/qt5ct.conf"
-		"$config_home/qt6ct/qt6ct.conf"
+		"$integration_config_home/alacritty/active-theme.toml"
+		"$integration_config_home/alacritty/alacritty.toml"
+		"$integration_config_home/kitty/active-theme.conf"
+		"$integration_config_home/kitty/kitty.conf"
+		"$integration_config_home/gtk-3.0/settings.ini"
+		"$integration_config_home/gtk-4.0/settings.ini"
+		"$integration_home/.gtkrc-2.0"
+		"$integration_config_home/dwm-titus/cursor.Xresources"
+		"$integration_config_home/dwm-titus/theme-env.sh"
+		"$integration_config_home/qt5ct/qt5ct.conf"
+		"$integration_config_home/qt6ct/qt6ct.conf"
 	)
 }
 
@@ -518,12 +523,12 @@ capture_integration_baseline() {
 	chmod 600 -- "$prefix.integration.count"
 }
 
-capture_integration_after() {
-	local prefix=$1 count index path after_hash after_mode
+capture_staged_integration_outputs() {
+	local prefix=$1 stage_home=$2 stage_config_home=$3 count index path after_hash after_mode
 	[[ -f $prefix.integration.count ]] || return 1
 	IFS= read -r count <"$prefix.integration.count"
 	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
-	integration_path_list
+	integration_path_list_for "$stage_home" "$stage_config_home"
 	[[ $count == "${#integration_paths[@]}" ]] || return 1
 	for ((index = 0; index < count; index++)); do
 		path=${integration_paths[index]}
@@ -532,12 +537,72 @@ capture_integration_after() {
 		if [[ -f $path ]]; then
 			after_hash=$(file_hash "$path")
 			after_mode=$(stat -c %a -- "$path")
+			cp -- "$path" "$prefix.integration.$index.after" || return 1
+			chmod 600 -- "$prefix.integration.$index.after" || return 1
 		else
 			after_hash=absent
 			after_mode=0000
 		fi
 		replace_metadata_file "$prefix.integration.$index.meta" after_hash "$after_hash" || return 1
 		replace_metadata_file "$prefix.integration.$index.meta" after_mode "$after_mode" || return 1
+	done
+}
+
+publish_integration_outputs() {
+	local prefix=$1 count index path existed mode baseline_hash after_hash after_mode
+	local temporary captured_hash captured_mode
+	[[ -f $prefix.integration.count ]] || return 1
+	IFS= read -r count <"$prefix.integration.count"
+	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
+	integration_path_list
+	[[ $count == "${#integration_paths[@]}" ]] || return 1
+	for ((index = 0; index < count; index++)); do
+		path=${integration_paths[index]}
+		existed=$(integration_meta_value "$prefix" "$index" existed) || return 1
+		mode=$(integration_meta_value "$prefix" "$index" mode) || return 1
+		baseline_hash=$(integration_meta_value "$prefix" "$index" baseline_hash) || return 1
+		after_hash=$(integration_meta_value "$prefix" "$index" after_hash) || return 1
+		after_mode=$(integration_meta_value "$prefix" "$index" after_mode) || return 1
+		[[ $existed == 0 || $existed == 1 ]] || return 1
+		[[ $mode =~ ^[0-7]{3,4}$ && $after_mode =~ ^[0-7]{3,4}$ ]] || return 1
+		if [[ $after_hash == absent ]]; then
+			[[ $existed == 0 ]] || return 1
+			[[ ! -e $path && ! -L $path ]] || return 2
+			continue
+		fi
+		[[ -f $prefix.integration.$index.after &&
+			! -L $prefix.integration.$index.after ]] || return 1
+		[[ $(file_hash "$prefix.integration.$index.after") == "$after_hash" ]] || return 1
+		existing_path_chain_is_safe "$path" || return 2
+		(umask 077 && mkdir -p -- "${path%/*}") || return 1
+		validate_integration_file "$path" || return 2
+		temporary=$(umask 077 && mktemp "${path%/*}/.theme-integration.XXXXXX") || return 1
+		if ! cp -- "$prefix.integration.$index.after" "$temporary" ||
+			! chmod "$after_mode" -- "$temporary"; then
+			rm -f -- "$temporary"
+			return 1
+		fi
+		if [[ $existed == 1 ]]; then
+			if [[ ! -f $path ]] || ! mv --exchange --no-copy -T -- "$temporary" "$path"; then
+				rm -f -- "$temporary"
+				return 2
+			fi
+			captured_hash=$(file_hash "$temporary" 2>/dev/null || printf unsafe)
+			captured_mode=$(stat -c %a -- "$temporary" 2>/dev/null || printf 0000)
+			if [[ $captured_hash != "$baseline_hash" || $captured_mode != "$mode" ]]; then
+				if ! mv --exchange --no-copy -T -- "$temporary" "$path"; then
+					printf 'dwm-settings-theme: late integration edit retained at %s\n' \
+						"$temporary" >&2
+					return 1
+				fi
+				rm -f -- "$temporary"
+				return 2
+			fi
+			rm -f -- "$temporary"
+		elif ! mv --update=none-fail --no-copy -T -- "$temporary" "$path"; then
+			rm -f -- "$temporary"
+			return 2
+		fi
 	done
 }
 
@@ -613,7 +678,8 @@ replace_metadata_file() {
 cleanup_prefix() {
 	local prefix=$1 index
 	for ((index = 0; index < 32; index++)); do
-		rm -f -- "$prefix.integration.$index.before" "$prefix.integration.$index.meta"
+		rm -f -- "$prefix.integration.$index.before" "$prefix.integration.$index.after" \
+			"$prefix.integration.$index.meta"
 	done
 	rm -f -- "$prefix.integration.count"
 	rm -f -- "$prefix.before" "$prefix.meta" "$prefix.failed"
@@ -708,8 +774,10 @@ install_prepared_theme() {
 	fi
 }
 
-run_theme_apply() {
-	local mode=${1:-transactional} output status=0 runtime_only=0 transactional=1 live_only=0
+run_theme_apply_for() {
+	local mode=$1 apply_home=$2 apply_config_home=$3 staged=$4
+	local discovery_home=${HOME:?HOME is required}
+	local output status=0 runtime_only=0 transactional=1 live_only=0
 	[[ $mode == transactional || $mode == runtime-only || $mode == live-only ]] || return 1
 	if [[ $mode == runtime-only ]]; then
 		runtime_only=1
@@ -718,13 +786,15 @@ run_theme_apply() {
 		live_only=1
 	fi
 	[[ -x $apply_helper ]] || die "theme apply helper is unavailable: $apply_helper"
-	output=$(XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	output=$(HOME=$apply_home XDG_CONFIG_HOME=$apply_config_home XDG_DATA_HOME=$data_home \
 		XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_base \
 		DWM_APPEARANCE_THEMES_FILE=$themes_file \
 		DWM_APPEARANCE_MANAGED_THEMES_FILE=$managed_themes_file \
 		DWM_APPEARANCE_RUNTIME_ONLY=$runtime_only \
 		DWM_APPEARANCE_TRANSACTIONAL=$transactional \
 		DWM_APPEARANCE_LIVE_ONLY=$live_only \
+		DWM_APPEARANCE_STAGED_OUTPUT=$staged \
+		DWM_APPEARANCE_DISCOVERY_HOME=$discovery_home \
 		DWM_APPEARANCE_INTEGRATION_LOCK_HELD=$([[ $integration_lock_held == true ]] && printf 1 || printf 0) \
 		"$apply_helper" 2>&1) || status=$?
 	if ((status != 0)); then
@@ -733,6 +803,44 @@ run_theme_apply() {
 	fi
 	[[ -z $output ]] || printf '%s\n' "$output" >&2
 }
+
+run_theme_apply() {
+	run_theme_apply_for "${1:-transactional}" "${HOME:?HOME is required}" "$config_home" 0
+}
+
+prepare_integration_outputs() (
+	local prefix=$1 stage_root stage_home stage_config_home index existed mode
+	local -a live_paths=() staged_paths=()
+	stage_root=$(umask 077 && mktemp -d "$recovery_dir/.integration-stage.XXXXXX") ||
+		return 1
+	trap 'rm -rf -- "$stage_root"' EXIT
+	trap 'exit 129' HUP
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	stage_home=$stage_root/home
+	stage_config_home=$stage_root/config
+	mkdir -p -- "$stage_home" "$stage_config_home"
+	integration_path_list
+	live_paths=("${integration_paths[@]}")
+	integration_path_list_for "$stage_home" "$stage_config_home"
+	staged_paths=("${integration_paths[@]}")
+	for index in "${!live_paths[@]}"; do
+		existed=$(integration_meta_value "$prefix" "$index" existed) || return 1
+		mode=$(integration_meta_value "$prefix" "$index" mode) || return 1
+		if [[ $existed == 1 ]]; then
+			mkdir -p -- "${staged_paths[index]%/*}"
+			cp -- "$prefix.integration.$index.before" "${staged_paths[index]}" || return 1
+			chmod "$mode" -- "${staged_paths[index]}" || return 1
+		fi
+	done
+	for index in alacritty kitty; do
+		if [[ -d $config_home/$index && ! -L $config_home/$index ]]; then
+			mkdir -p -- "$stage_config_home/$index"
+		fi
+	done
+	run_theme_apply_for transactional "$stage_home" "$stage_config_home" 1 || return 1
+	capture_staged_integration_outputs "$prefix" "$stage_home" "$stage_config_home"
+)
 
 restore_integration_file() {
 	local prefix=$1 index=$2 path=$3 existed mode baseline_hash after_hash after_mode
@@ -1036,7 +1144,7 @@ rollback_trap() {
 }
 
 begin_mutation() {
-	local prefix=$1 target=$2 action=$3 install_status=0 apply_status=0 restore_status=0
+	local prefix=$1 target=$2 action=$3 install_status=0 publish_status=0 restore_status=0
 	validate_atomic_mv_support
 	cleanup_prefix "$prefix"
 	acquire_integration_lock
@@ -1088,13 +1196,24 @@ begin_mutation() {
 		fi
 		die 'theme integration changed and the source rollback failed; recovery state was retained'
 	fi
-	run_theme_apply || apply_status=$?
-	capture_integration_after "$prefix" || die 'could not record the integration transaction state'
+	prepare_integration_outputs "$prefix" || die 'could not prepare theme integration outputs'
+	if [[ -n ${DWM_TEST_BEFORE_INTEGRATION_PUBLISH:-} ]]; then
+		: >"$DWM_TEST_BEFORE_INTEGRATION_PUBLISH"
+		while [[ ! -e ${DWM_TEST_INTEGRATION_PUBLISH_RELEASE:-} ]]; do
+			sleep 0.01
+		done
+	fi
+	publish_integration_outputs "$prefix" || publish_status=$?
+	if ((publish_status == 2)); then
+		die 'theme integration changed while publishing the transaction; refusing to overwrite it'
+	elif ((publish_status != 0)); then
+		die 'could not publish theme integration outputs'
+	fi
 	append_metadata "$prefix" integrations_ready 1
 	write_integration_transaction "$rollback_expected_hash" ready ||
 		die 'cannot publish ready integration transaction state'
 	release_integration_lock
-	if ((apply_status != 0)) || ! verify_active_theme "$target"; then
+	if ! verify_active_theme "$target"; then
 		die "theme $action did not converge; restoring the previous theme"
 	fi
 }

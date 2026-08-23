@@ -50,13 +50,14 @@ an explicit retry. Recovery accepts only the recorded proposed or baseline
 hash, so a later external edit is never overwritten.
 
 A preview stores the exact theme and persistent integration-file baselines in
-private durable state and launches a bounded watchdog. Automatic reloads remain
-runtime-only until the helper records the integration after-state. Once ready,
-automatic reloads may update those tracked files transactionally but still
-defer untracked DConf, Xfconf, Xresources, and activation-environment mutations.
-A confirmed preview or committed apply then performs normal live convergence;
-rollback therefore does not need to guess at or replace pre-existing live
-settings. Session startup re-arms or
+private durable state and launches a bounded watchdog. The helper computes
+integration outputs in private staging paths, records their hashes, then
+publishes each file only when its live path still matches the captured
+baseline. Automatic and manual reloads remain runtime-only while the
+transaction is active, so no later process can silently claim or overwrite an
+external edit. A confirmed preview or committed apply then performs normal live
+convergence; rollback therefore does not need to guess at or replace
+pre-existing live settings. Session startup re-arms or
 expires that journal, so logout or reboot cannot silently confirm a preview.
 Keep commits the preview only when the file still has the expected hash and no
 rollback failure is recorded. Revert and timeout restore the original terminal,
@@ -67,14 +68,14 @@ clears only the stale journal and leaves that edit untouched.
 
 DWM's asynchronous integration reloads honor the restored source hash and stay
 runtime-only during a bounded 30-second rollback window. A different valid
-source clears that hash-specific guard immediately. Manual applies bypass the
-guard, so repeated or delayed queued reloads cannot undo the exact transaction
-restore or permanently suppress later repair work. Baseline capture and restore
-share the integration writer lock, and atomic-exchange support is proven on the
-theme and every integration filesystem before mutation. If a crash interrupts
-integration output before its after-state is known, recovery proceeds only when
-every tracked file still matches its baseline; otherwise it retains the journal
-instead of inferring ownership and overwriting a possible later user edit.
+source clears that hash-specific guard immediately. Manual applies bypass only
+that post-rollback suppression guard; they still honor active previews.
+Baseline capture, staged publication, and restore share the integration writer
+lock, and atomic-exchange support is proven on the theme and every integration
+filesystem before mutation. If a crash interrupts publication, recovery accepts
+only each file's recorded baseline or staged-output hash; otherwise it retains
+the journal instead of inferring ownership and overwriting a possible later user
+edit.
 
 Reset selects the valid active theme from the managed theme source while
 preserving the user's other content. If no user file exists, apply creates one

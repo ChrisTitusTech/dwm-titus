@@ -8,6 +8,11 @@
 
 set -euo pipefail
 
+THEME_DISCOVERY_HOME=${DWM_APPEARANCE_DISCOVERY_HOME:-$HOME}
+[[ $THEME_DISCOVERY_HOME == /* ]] || {
+	echo "theme-apply: theme discovery home must be an absolute path" >&2
+	exit 1
+}
 RUNTIME_ONLY_EXPLICIT=false
 [[ -z ${DWM_APPEARANCE_RUNTIME_ONLY+x} ]] || RUNTIME_ONLY_EXPLICIT=true
 RUNTIME_ONLY=${DWM_APPEARANCE_RUNTIME_ONLY:-0}
@@ -104,28 +109,30 @@ THEME_SOURCE_HASH=$(sha256sum -- "$THEMES_FILE" | awk '{print $1}')
 # A transactional rollback restores integration files byte-for-byte. DWM can
 # still have a queued asynchronous theme-apply invocation for the same source
 # change, so suppress file writes for automatic applies with that exact source
-# hash during a short rollback window. Manual and explicit transaction calls
-# bypass it.
-if [[ $RUNTIME_ONLY_EXPLICIT == false && $AUTOMATIC_APPLY == 1 ]]; then
+# hash during a short rollback window. The active transaction marker applies to
+# both automatic and manual invocations so neither can escape preview rollback.
+if [[ $RUNTIME_ONLY_EXPLICIT == false ]]; then
 	THEME_STATE_HOME=${XDG_STATE_HOME:-}
 	[[ $THEME_STATE_HOME == /* ]] || THEME_STATE_HOME=$HOME/.local/state
-	THEME_SUPPRESS_FILE=$THEME_STATE_HOME/dwm-titus/appearance/integration-suppress
-	if [[ -f $THEME_SUPPRESS_FILE && ! -L $THEME_SUPPRESS_FILE &&
-		$(stat -c %u -- "$THEME_SUPPRESS_FILE") == "$UID" ]]; then
-		read -r THEME_SUPPRESS_HASH THEME_SUPPRESS_DEADLINE <"$THEME_SUPPRESS_FILE" || {
-			THEME_SUPPRESS_HASH=
-			THEME_SUPPRESS_DEADLINE=
-		}
-		THEME_SUPPRESS_NOW=$(date +%s)
-		if [[ $THEME_SUPPRESS_HASH == "$THEME_SOURCE_HASH" &&
-			$THEME_SUPPRESS_DEADLINE =~ ^[0-9]+$ &&
-			$THEME_SUPPRESS_DEADLINE -ge $THEME_SUPPRESS_NOW ]]; then
-			RUNTIME_ONLY=1
-		elif [[ ! $THEME_SUPPRESS_HASH =~ ^[0-9a-f]{64}$ ||
-			! $THEME_SUPPRESS_DEADLINE =~ ^[0-9]+$ ||
-			$THEME_SUPPRESS_DEADLINE -lt $THEME_SUPPRESS_NOW ||
-			$THEME_SUPPRESS_HASH != "$THEME_SOURCE_HASH" ]]; then
-			rm -f -- "$THEME_SUPPRESS_FILE"
+	if [[ $AUTOMATIC_APPLY == 1 ]]; then
+		THEME_SUPPRESS_FILE=$THEME_STATE_HOME/dwm-titus/appearance/integration-suppress
+		if [[ -f $THEME_SUPPRESS_FILE && ! -L $THEME_SUPPRESS_FILE &&
+			$(stat -c %u -- "$THEME_SUPPRESS_FILE") == "$UID" ]]; then
+			read -r THEME_SUPPRESS_HASH THEME_SUPPRESS_DEADLINE <"$THEME_SUPPRESS_FILE" || {
+				THEME_SUPPRESS_HASH=
+				THEME_SUPPRESS_DEADLINE=
+			}
+			THEME_SUPPRESS_NOW=$(date +%s)
+			if [[ $THEME_SUPPRESS_HASH == "$THEME_SOURCE_HASH" &&
+				$THEME_SUPPRESS_DEADLINE =~ ^[0-9]+$ &&
+				$THEME_SUPPRESS_DEADLINE -ge $THEME_SUPPRESS_NOW ]]; then
+				RUNTIME_ONLY=1
+			elif [[ ! $THEME_SUPPRESS_HASH =~ ^[0-9a-f]{64}$ ||
+				! $THEME_SUPPRESS_DEADLINE =~ ^[0-9]+$ ||
+				$THEME_SUPPRESS_DEADLINE -lt $THEME_SUPPRESS_NOW ||
+				$THEME_SUPPRESS_HASH != "$THEME_SOURCE_HASH" ]]; then
+				rm -f -- "$THEME_SUPPRESS_FILE"
+			fi
 		fi
 	fi
 	THEME_TRANSACTION_FILE=$THEME_STATE_HOME/dwm-titus/appearance/integration-transaction
@@ -136,9 +143,8 @@ if [[ $RUNTIME_ONLY_EXPLICIT == false && $AUTOMATIC_APPLY == 1 ]]; then
 			THEME_TRANSACTION_STATE=
 		}
 		if [[ $THEME_TRANSACTION_HASH == "$THEME_SOURCE_HASH" ]]; then
-			if [[ $THEME_TRANSACTION_STATE == ready ]]; then
-				TRANSACTIONAL_APPLY=1
-			elif [[ $THEME_TRANSACTION_STATE == pending ]]; then
+			if [[ $THEME_TRANSACTION_STATE == ready ||
+				$THEME_TRANSACTION_STATE == pending ]]; then
 				RUNTIME_ONLY=1
 			fi
 		fi
@@ -216,7 +222,7 @@ gtk_theme_available() {
 	local base
 	for base in \
 		"${XDG_DATA_HOME:-$HOME/.local/share}/themes" \
-		"$HOME/.themes" \
+		"$THEME_DISCOVERY_HOME/.themes" \
 		/usr/local/share/themes \
 		/usr/share/themes; do
 		[[ -d "$base/$name" ]] || continue
