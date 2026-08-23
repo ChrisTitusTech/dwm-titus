@@ -383,6 +383,15 @@ validate_themes() {
 				value[$theme$key_separator'selbgcolor']='#434C5E'
 			[[ -n ${value[$theme$key_separator'selfgcolor']:-} ]] ||
 				value[$theme$key_separator'selfgcolor']='#ECEFF4'
+			value[$theme$key_separator'term_bg']=${value[$theme$key_separator'normbgcolor']}
+			value[$theme$key_separator'term_fg']=${value[$theme$key_separator'normfgcolor']}
+			value[$theme$key_separator'term_cursor']=${value[$theme$key_separator'selfgcolor']}
+			value[$theme$key_separator'term_color0']=${value[$theme$key_separator'normbgcolor']}
+			value[$theme$key_separator'term_color1']=${value[$theme$key_separator'selbordercolor']}
+			value[$theme$key_separator'term_color2']=${value[$theme$key_separator'selbordercolor']}
+			value[$theme$key_separator'term_color3']=${value[$theme$key_separator'selbgcolor']}
+			value[$theme$key_separator'term_color4']=${value[$theme$key_separator'selbordercolor']}
+			value[$theme$key_separator'term_color8']=${value[$theme$key_separator'normbordercolor']}
 			keys_to_validate=(
 				normfgcolor normbgcolor normbordercolor selfgcolor selbgcolor selbordercolor
 			)
@@ -823,7 +832,10 @@ emit_integrations() {
 		else
 			terminal_theme_file=$config_home/$terminal/active-theme.conf
 		fi
-		if terminal_theme_matches "$terminal" "$terminal_theme_file" &&
+		if ! command -v "$terminal" >/dev/null 2>&1; then
+			printf 'integration\t%s\tunavailable\tmissing-application\tTerminal application is not installed\n' "$terminal"
+			add_error "$terminal" missing-application 'Terminal application is not installed'
+		elif terminal_theme_matches "$terminal" "$terminal_theme_file" &&
 			terminal_imports_active_theme "$terminal"; then
 			printf 'integration\t%s\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette\n' "$terminal"
 		elif terminal_theme_matches "$terminal" "$terminal_theme_file"; then
@@ -849,12 +861,19 @@ emit_integrations() {
 }
 
 snapshot() {
-	local active_state=unresolved selected_label=none resolved_label=none
+	local active_state=unresolved selected_label=none resolved_label=none source_fd source_snapshot
 	select_source
 	if [[ -n $source_file ]]; then
-		parse_themes "$source_file"
-		validate_themes
-		resolve_active_theme
+		if exec {source_fd}<"$source_file"; then
+			source_snapshot=/proc/self/fd/$source_fd
+			parse_themes "$source_snapshot"
+			exec {source_fd}<&-
+			validate_themes
+			resolve_active_theme
+		else
+			provider_state=unavailable
+			add_error source open-failed "Cannot open theme file: $source_file"
+		fi
 	fi
 
 	if [[ -n $resolved_theme ]]; then

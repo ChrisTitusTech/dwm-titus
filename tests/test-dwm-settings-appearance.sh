@@ -88,7 +88,9 @@ for command_name in awk bash dirname grep stat tr; do
 done
 printf '#!/bin/sh\nexit 0\n' >"$bin_dir/qt6ct"
 printf '#!/bin/sh\nexit 0\n' >"$bin_dir/picom"
-chmod +x "$bin_dir/qt6ct" "$bin_dir/picom"
+printf '#!/bin/sh\nexit 0\n' >"$bin_dir/alacritty"
+printf '#!/bin/sh\nexit 0\n' >"$bin_dir/kitty"
+chmod +x "$bin_dir/qt6ct" "$bin_dir/picom" "$bin_dir/alacritty" "$bin_dir/kitty"
 
 hash_config_home=$work/config#hash
 cp -a "$config_home" "$hash_config_home"
@@ -130,6 +132,42 @@ grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal 
 grep -Fqx $'integration\tkitty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
 grep -Fqx $'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract' <<<"$output"
 grep -Fqx $'error\tcompositor\tunsupported\tPicom theme mutation is not implemented' <<<"$output"
+
+no_kitty_bin=$work/no-kitty-bin
+cp -a "$bin_dir" "$no_kitty_bin"
+rm -f "$no_kitty_bin/kitty"
+no_kitty=$(PATH=$no_kitty_bin GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	DWM_APPEARANCE_DATA_DIRS=$data_root "$helper" snapshot)
+grep -Fqx $'integration\tkitty\tunavailable\tmissing-application\tTerminal application is not installed' \
+	<<<"$no_kitty"
+grep -Fqx $'error\tkitty\tmissing-application\tTerminal application is not installed' \
+	<<<"$no_kitty"
+
+cp "$config_home/dwm-titus/themes.toml" "$work/replacement-themes.toml"
+sed -i '0,/theme = "nord"/s//theme = "dracula"/' "$work/replacement-themes.toml"
+rm -f "$bin_dir/awk"
+cat >"$bin_dir/awk" <<'EOF'
+#!/bin/sh
+if [ ! -e "$DWM_TEST_REPLACED_MARKER" ]; then
+	"$DWM_TEST_REAL_MV" "$DWM_TEST_REPLACEMENT" "$DWM_TEST_REPLACEMENT_TARGET"
+	: >"$DWM_TEST_REPLACED_MARKER"
+fi
+exec "$DWM_TEST_REAL_AWK" "$@"
+EOF
+chmod +x "$bin_dir/awk"
+immutable_snapshot=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	DWM_APPEARANCE_DATA_DIRS=$data_root DWM_TEST_REAL_AWK="$(command -v awk)" \
+	DWM_TEST_REAL_MV="$(command -v mv)" \
+	DWM_TEST_REPLACEMENT="$work/replacement-themes.toml" \
+	DWM_TEST_REPLACEMENT_TARGET="$config_home/dwm-titus/themes.toml" \
+	DWM_TEST_REPLACED_MARKER="$work/replaced.marker" "$helper" snapshot)
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$immutable_snapshot"
+grep -Fq 'theme = "dracula"' "$config_home/dwm-titus/themes.toml"
+rm -f "$bin_dir/awk"
+ln -s "$(command -v awk)" "$bin_dir/awk"
+cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
 
 no_qt_bin=$work/no-qt-bin
 cp -a "$bin_dir" "$no_qt_bin"
@@ -619,6 +657,12 @@ grep -Fqx $'active\t@legacy-colors\t@legacy-colors\tselected' <<<"$legacy"
 grep -Fqx $'theme\t@legacy-colors\tselected\tvalid\ttrue\tautomatic\tTheme record is complete' \
 	<<<"$legacy"
 grep -Fqx $'color\tbackground\t#2E3440\tterm_bg' <<<"$legacy"
+if awk -F '\t' '$1 == "color" && $3 !~ /^#[0-9A-Fa-f]{6}$/ { exit 1 }' <<<"$legacy"; then
+	:
+else
+	printf 'Legacy palette emitted an empty or invalid semantic color\n' >&2
+	exit 1
+fi
 grep -Fqx $'error\tparser\tlegacy-format\tLegacy [colors] palette is active; named themes are recommended' \
 	<<<"$legacy"
 
