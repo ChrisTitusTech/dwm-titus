@@ -267,12 +267,13 @@ cp "$work/alacritty-valid.toml" "$config_home/alacritty/active-theme.toml"
 sed -i 's/^\[active\]$/[active] # selected theme/' "$config_home/dwm-titus/themes.toml"
 sed -i 's/^\[theme\.nord\]$/[theme.nord] # default theme/' "$config_home/dwm-titus/themes.toml"
 commented_headers=$(snapshot)
-grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' \
+grep -Fqx $'provider\tappearance\tavailable\tread-only\tShared theme inventory and integration state' \
 	<<<"$commented_headers"
-grep -Fqx $'active\tnone\tdracula\trecovery' <<<"$commented_headers"
-[[ $(grep -c $'^error\tparser\tmalformed-section\t' <<<"$commented_headers") -eq 2 ]]
-if grep -Fq $'theme\tnord\t' <<<"$commented_headers"; then
-	printf 'Commented section header was reported as live-compatible\n' >&2
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$commented_headers"
+grep -Fqx $'theme\tnord\tselected\tvalid\ttrue\tNordic\tTheme record is complete' \
+	<<<"$commented_headers"
+if grep -Fq $'error\tparser\tmalformed-section\t' <<<"$commented_headers"; then
+	printf 'Valid commented section header was rejected\n' >&2
 	exit 1
 fi
 cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"

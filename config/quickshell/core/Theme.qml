@@ -60,7 +60,10 @@ Singleton {
 
     readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME")
         || ((Quickshell.env("HOME") || "") + "/.config")
+    readonly property string dataHome: Quickshell.env("XDG_DATA_HOME")
+        || ((Quickshell.env("HOME") || "") + "/.local/share")
     readonly property string themesPath: configHome + "/dwm-titus/themes.toml"
+    readonly property string managedThemesPath: dataHome + "/dwm-titus/config/themes.toml"
 
     function sectionValue(text, section, key, fallback) {
         const lines = text.split("\n");
@@ -70,8 +73,10 @@ Singleton {
 
         for (const line of lines) {
             const trimmed = line.trim();
-            if (trimmed.startsWith("[")) {
-                active = trimmed === sectionHeader;
+            const commentIndex = trimmed.indexOf("#");
+            const header = (commentIndex >= 0 ? trimmed.substring(0, commentIndex) : trimmed).trim();
+            if (header.startsWith("[")) {
+                active = header === sectionHeader;
                 continue;
             }
             if (!active) continue;
@@ -107,12 +112,29 @@ Singleton {
         root.dangerSurface = value("term_color0", root.surface);
     }
 
+    function applyManagedTheme() {
+        const managedText = managedThemesFile.text();
+        if (managedText.length > 0) root.applyThemes(managedText);
+    }
+
+    FileView {
+        id: managedThemesFile
+        path: root.managedThemesPath
+        watchChanges: true
+        printErrors: false
+        onLoaded: {
+            if (!themesFile.loaded) root.applyThemes(text());
+        }
+        onFileChanged: reload()
+    }
+
     FileView {
         id: themesFile
         path: root.themesPath
         watchChanges: true
         printErrors: false
         onLoaded: root.applyThemes(text())
+        onLoadFailed: root.applyManagedTheme()
         onFileChanged: reload()
     }
 

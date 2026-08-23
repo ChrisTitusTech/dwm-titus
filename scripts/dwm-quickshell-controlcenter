@@ -7,12 +7,16 @@ repo_dir=$(
 )
 
 config_home=${XDG_CONFIG_HOME:-${HOME:-}/.config}
+data_home=${XDG_DATA_HOME:-${HOME:-}/.local/share}
 dwm_config_dir=$config_home/dwm-titus
+managed_config_dir=$data_home/dwm-titus/config
 
 config_file() {
 	name=$1
 	if [ -f "$dwm_config_dir/$name" ]; then
 		printf '%s\n' "$dwm_config_dir/$name"
+	elif [ -f "$managed_config_dir/$name" ]; then
+		printf '%s\n' "$managed_config_dir/$name"
 	else
 		printf '%s\n' "$repo_dir/config/$name"
 	fi
@@ -1410,8 +1414,14 @@ info() {
 
 active_theme() {
 	awk '
-		$0 ~ /^\[active\]/ { active = 1; next }
-		$0 ~ /^\[/ { active = 0 }
+		{
+			header = $0
+			sub(/^[[:space:]]*/, "", header)
+			sub(/[[:space:]]*#.*/, "", header)
+			sub(/[[:space:]]+$/, "", header)
+		}
+		header == "[active]" { active = 1; next }
+		header ~ /^\[/ { active = 0 }
 		active && $1 == "theme" {
 			value = $0
 			sub(/^[^=]*=[[:space:]]*/, "", value)
@@ -1424,16 +1434,17 @@ active_theme() {
 	' "$(config_file themes.toml)"
 }
 
-theme_exists() {
-	name=$1
-	awk -v section="[theme.$name]" '$0 == section { found = 1 } END { exit found ? 0 : 1 }' "$(config_file themes.toml)"
-}
-
 themes() {
 	active=$(active_theme)
 	awk -v active="$active" '
-		/^\[theme\.[^]]+\]/ {
-			name = $0
+		{
+			header = $0
+			sub(/^[[:space:]]*/, "", header)
+			sub(/[[:space:]]*#.*/, "", header)
+			sub(/[[:space:]]+$/, "", header)
+		}
+		header ~ /^\[theme\.[^]]+\]$/ {
+			name = header
 			sub(/^\[theme\./, "", name)
 			sub(/\]$/, "", name)
 			status = name == active ? "active" : "available"
@@ -1442,51 +1453,25 @@ themes() {
 	' "$(config_file themes.toml)"
 }
 
-ensure_user_themes_file() {
-	file=$dwm_config_dir/themes.toml
-	if [ ! -f "$file" ]; then
-		mkdir -p "$dwm_config_dir"
-		cp "$repo_dir/config/themes.toml" "$file"
-	fi
-	printf '%s\n' "$file"
-}
-
 theme_set() {
 	name=$1
-	if ! theme_exists "$name"; then
-		printf 'unknown theme: %s\n' "$name" >&2
+	theme_helper=$repo_dir/scripts/dwm-settings-theme
+	theme_managed_source=
+	if [ -x "$theme_helper" ] && [ -f "$repo_dir/config/themes.toml" ]; then
+		theme_managed_source=$repo_dir/config/themes.toml
+	else
+		theme_helper=$(command -v dwm-settings-theme 2>/dev/null || true)
+	fi
+	if [ -z "$theme_helper" ]; then
+		printf 'dwm-settings-theme is unavailable\n' >&2
 		return 1
 	fi
-
-	file=$(ensure_user_themes_file)
-	tmp=$(mktemp "${TMPDIR:-/tmp}/dwm-theme.XXXXXX")
-	trap 'rm -f "$tmp"' EXIT INT HUP TERM
-	awk -v name="$name" '
-		$0 ~ /^\[active\]/ {
-			active = 1
-			print
-			next
-		}
-		$0 ~ /^\[/ {
-			active = 0
-		}
-		active && $1 == "theme" {
-			sub(/theme[[:space:]]*=.*/, "theme = \"" name "\"")
-			print
-			done = 1
-			next
-		}
-		{ print }
-		END {
-			if (!done) {
-				print ""
-				print "[active]"
-				print "theme = \"" name "\""
-			}
-		}
-	' "$file" >"$tmp"
-	mv "$tmp" "$file"
-	trap - EXIT INT HUP TERM
+	if [ -n "$theme_managed_source" ]; then
+		DWM_APPEARANCE_MANAGED_THEMES_FILE=$theme_managed_source \
+			"$theme_helper" apply "$name" >/dev/null || return 1
+	else
+		"$theme_helper" apply "$name" >/dev/null || return 1
+	fi
 
 	notify "Theme changed" "$name"
 	printf 'theme\t%s\n' "$name"
