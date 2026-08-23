@@ -453,6 +453,8 @@ static volatile sig_atomic_t sig_reload_pending = 0;
 static char   toml_arena_buf[TOML_ARENA_CAP];
 static size_t toml_arena_pos = 0;
 /* Default (fallback) config paths: ~/.local/share/dwm-titus/config/ */
+static char          dwm_config_home_dir[PATH_MAX];
+static char          dwm_data_home_dir[PATH_MAX];
 static char          dwm_data_dir[PATH_MAX];
 static char          toml_default_dir[PATH_MAX];
 static char          toml_hotkeys_default_path[PATH_MAX];
@@ -4002,6 +4004,13 @@ setup_inotify(void)
 			return;
 		}
 		data_home = data_home_fallback;
+	}
+	copystr(dwm_config_home_dir, sizeof(dwm_config_home_dir), config_home);
+	copystr(dwm_data_home_dir, sizeof(dwm_data_home_dir), data_home);
+	if (setenv("XDG_CONFIG_HOME", dwm_config_home_dir, 1) < 0 ||
+	    setenv("XDG_DATA_HOME", dwm_data_home_dir, 1) < 0) {
+		perror("dwm: cannot normalize XDG environment");
+		return;
 	}
 
 	/* User-editable config: ${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/ */

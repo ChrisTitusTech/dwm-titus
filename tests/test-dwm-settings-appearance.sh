@@ -11,7 +11,8 @@ data_root=$work/data
 bin_dir=$work/bin
 mkdir -p "$config_home/dwm-titus" "$config_home/alacritty" "$config_home/kitty" \
 	"$config_home/gtk-3.0" "$config_home/gtk-4.0" \
-	"$data_root/themes/Nordic/gtk-3.0" "$data_root/icons/Capitaine-Cursors-White" "$bin_dir"
+	"$data_root/themes/Nordic/gtk-3.0" "$data_root/themes/Nordic/gtk-4.0" \
+	"$data_root/icons/Capitaine-Cursors-White" "$bin_dir"
 cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
 declare -A fixture_color=()
 while read -r key _ color; do
@@ -26,6 +27,7 @@ cat >"$config_home/alacritty/active-theme.toml" <<EOF
 background = '${fixture_color[term_bg]}'
 foreground = '${fixture_color[term_fg]}'
 [colors.cursor]
+text = '${fixture_color[term_bg]}'
 cursor = '${fixture_color[term_cursor]}'
 [colors.normal]
 black = '${fixture_color[term_color0]}'
@@ -161,6 +163,12 @@ grep -Fqx $'error\tkitty\tnot-imported\tTerminal configuration does not import t
 	<<<"$unimported_kitty"
 printf 'include active-theme.conf\n' >"$config_home/kitty/kitty.conf"
 
+sed -i '/^text =/d' "$config_home/alacritty/active-theme.toml"
+missing_cursor_text=$(snapshot)
+grep -Fqx $'integration\talacritty\tpartial\tactive-theme\tGenerated terminal theme is empty or stale' \
+	<<<"$missing_cursor_text"
+cp "$work/alacritty-valid.toml" "$config_home/alacritty/active-theme.toml"
+
 sed -i "s|${fixture_color[term_bg]}|__DWM_COLOR_SWAP__|; \
 	s|${fixture_color[term_fg]}|${fixture_color[term_bg]}|; \
 	s|__DWM_COLOR_SWAP__|${fixture_color[term_fg]}|" \
@@ -267,11 +275,17 @@ if grep -Fq $'theme\t@unsafe\t' <<<"$unsafe_name"; then
 fi
 cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
 
+rmdir "$data_root/themes/Nordic/gtk-4.0"
+partial_gtk_assets=$(snapshot)
+grep -Fqx $'integration\tgtk\tpartial\tNordic\tRequested GTK theme is missing GTK 3 or GTK 4 assets' \
+	<<<"$partial_gtk_assets"
+grep -Fqx $'error\tgtk\tmissing-version\tGTK theme '\''Nordic'\'' does not support both GTK 3 and GTK 4' \
+	<<<"$partial_gtk_assets"
 rmdir "$data_root/themes/Nordic/gtk-3.0"
-stale_gtk=$(snapshot)
-grep -Fqx $'integration\tgtk\tpartial\tNordic\tRequested GTK theme is missing; apply falls back to Adwaita-dark' <<<"$stale_gtk"
-grep -Fqx $'error\tgtk\tmissing-theme\tGTK theme '\''Nordic'\'' is not installed' <<<"$stale_gtk"
-mkdir "$data_root/themes/Nordic/gtk-3.0"
+missing_gtk=$(snapshot)
+grep -Fqx $'integration\tgtk\tpartial\tNordic\tRequested GTK theme is missing; apply falls back to Adwaita-dark' <<<"$missing_gtk"
+grep -Fqx $'error\tgtk\tmissing-theme\tGTK theme '\''Nordic'\'' is not installed' <<<"$missing_gtk"
+mkdir -p "$data_root/themes/Nordic/gtk-3.0" "$data_root/themes/Nordic/gtk-4.0"
 
 sed -i 's/gtk-theme-name=Nordic/gtk-theme-name=Adwaita/' \
 	"$config_home/gtk-4.0/settings.ini"
@@ -526,6 +540,20 @@ timeout 5 env PATH="$bin_dir" GTK_THEME='' XCURSOR_THEME='' \
 grep -Fqx $'active\tnord\tnord\tselected' "$work/scalar-heavy.out"
 grep -Fqx $'error\tparser\tentry-limit\tTheme configuration exceeds the runtime parser limit of 512 entries' \
 	"$work/scalar-heavy.out"
+
+{
+	cat "$work/managed-themes.toml"
+	for ((post_budget_index = 0; post_budget_index < 512; post_budget_index++)); do
+		printf 'post-budget%s = 1\n' "$post_budget_index"
+	done
+	printf 'ignored-complex = [{x=1}]\n'
+} >"$config_home/dwm-titus/themes.toml"
+post_budget_complex=$(snapshot)
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$post_budget_complex"
+if grep -Fq $'error\tparser\tunsupported-complex-value\t' <<<"$post_budget_complex"; then
+	printf 'Post-budget complex value invalidated the runtime snapshot\n' >&2
+	exit 1
+fi
 
 cat >"$config_home/dwm-titus/themes.toml" <<'EOF'
 [colors]

@@ -250,12 +250,6 @@ parse_themes() {
 			runtime_key=${runtime_key%"${runtime_key##*[![:space:]]}"}
 			runtime_value=${trimmed#*=}
 			runtime_value=${runtime_value#"${runtime_value%%[![:space:]]*}"}
-			if [[ $runtime_value == \[* || $runtime_value == \{* ]]; then
-				provider_state=unavailable
-				add_error parser unsupported-complex-value \
-					"Arrays and inline tables are outside the appearance snapshot grammar at line $line_number"
-				return
-			fi
 			string_byte_length "$runtime_key"
 			if [[ -n $runtime_key ]] && ((string_byte_length_result < 512)); then
 				((parsed_entry_count += 1))
@@ -267,6 +261,12 @@ parse_themes() {
 					fi
 					break
 				fi
+			fi
+			if [[ $runtime_value == \[* || $runtime_value == \{* ]]; then
+				provider_state=unavailable
+				add_error parser unsupported-complex-value \
+					"Arrays and inline tables are outside the appearance snapshot grammar at line $line_number"
+				return
 			fi
 		fi
 
@@ -430,17 +430,19 @@ data_roots() {
 	done
 }
 
-gtk_theme_available() {
-	local name=$1 root
+gtk_theme_version_available() {
+	local name=$1 version=$2 root
 	case $name in
 	Adwaita | Adwaita-dark) return 0 ;;
 	esac
 	while IFS= read -r root; do
-		if [[ -d $root/themes/$name/gtk-3.0 || -d $root/themes/$name/gtk-4.0 ]]; then
-			return 0
-		fi
+		[[ -d $root/themes/$name/gtk-$version ]] && return 0
 	done < <(data_roots)
-	[[ -d ${HOME:-}/.themes/$name/gtk-3.0 || -d ${HOME:-}/.themes/$name/gtk-4.0 ]]
+	[[ -d ${HOME:-}/.themes/$name/gtk-$version ]]
+}
+
+gtk_theme_available() {
+	gtk_theme_version_available "$1" 3.0 || gtk_theme_version_available "$1" 4.0
 }
 
 gtk_settings_file_matches() {
@@ -579,6 +581,9 @@ terminal_theme_matches() {
 				;;
 			esac
 			alacritty_field_matches "$file" "$section" "$field" "$color" || return 1
+			if [[ $key == term_bg ]]; then
+				alacritty_field_matches "$file" '[colors.cursor]' text "$color" || return 1
+			fi
 		fi
 	done
 }
@@ -697,9 +702,20 @@ emit_integrations() {
 			requested_gtk=Adwaita
 		fi
 	fi
-	if gtk_theme_available "$requested_gtk" && gtk_theme_applied "$requested_gtk"; then
+	if gtk_theme_version_available "$requested_gtk" 3.0 &&
+		gtk_theme_version_available "$requested_gtk" 4.0 &&
+		gtk_theme_applied "$requested_gtk"; then
 		printf 'integration\tgtk\tavailable\t%s\tRequested GTK theme is installed and applied\n' \
 			"$(clean_field "$requested_gtk")"
+	elif gtk_theme_available "$requested_gtk" &&
+		{ ! gtk_theme_version_available "$requested_gtk" 3.0 ||
+			! gtk_theme_version_available "$requested_gtk" 4.0; }; then
+		printf 'integration\tgtk\tpartial\t%s\tRequested GTK theme is missing GTK 3 or GTK 4 assets\n' \
+			"$(clean_field "$requested_gtk")"
+		add_error gtk missing-version "GTK theme '$requested_gtk' does not support both GTK 3 and GTK 4"
+		if ! gtk_theme_applied "$requested_gtk"; then
+			add_error gtk stale-theme "Applied GTK settings do not match '$requested_gtk'"
+		fi
 	elif gtk_theme_available "$requested_gtk"; then
 		printf 'integration\tgtk\tpartial\t%s\tRequested GTK theme is installed but not applied\n' \
 			"$(clean_field "$requested_gtk")"
