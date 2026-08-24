@@ -116,6 +116,27 @@ escaped_path=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
 grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
 	<<<"$escaped_path"
 
+fresh_home=$work/fresh-home
+fresh_config_home=$fresh_home/.config
+mkdir -p "$fresh_home"
+cp -a "$config_home" "$fresh_config_home"
+cp "$repo/config/alacritty/alacritty.toml" "$fresh_config_home/alacritty/alacritty.toml"
+fresh_install=$(HOME=$fresh_home PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$fresh_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$fresh_install"
+
+spaced_config_home=$work/config-spaced
+cp -a "$config_home" "$spaced_config_home"
+printf '[ general ]\nimport = ["%s"]\n' "$spaced_config_home/alacritty/active-theme.toml" \
+	>"$spaced_config_home/alacritty/alacritty.toml"
+spaced_header=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$spaced_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$spaced_header"
+
 snapshot() {
 	PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
 		DWM_APPEARANCE_DATA_DIRS=$data_root \

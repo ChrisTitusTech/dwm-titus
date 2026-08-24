@@ -769,7 +769,7 @@ alacritty_imports_active_theme() {
 		DWM_ALACRITTY_DEFAULT_IMPORT=$default_import \
 		awk '
 		BEGIN {
-			at_root = 1
+			import_scope = 1
 			active = ENVIRON["DWM_ALACRITTY_ACTIVE_IMPORT"]
 			default_import = ENVIRON["DWM_ALACRITTY_DEFAULT_IMPORT"]
 		}
@@ -801,10 +801,10 @@ alacritty_imports_active_theme() {
 			trimmed = line
 			gsub(/^[[:space:]]+|[[:space:]]+$/, "", trimmed)
 			if (!in_import && trimmed ~ /^\[/) {
-				at_root = 0
+				import_scope = (trimmed ~ /^\[[[:space:]]*general[[:space:]]*\]$/)
 				next
 			}
-			if (!in_import && at_root &&
+			if (!in_import && import_scope &&
 			    trimmed ~ /^import[[:space:]]*=[[:space:]]*\[/) in_import = 1
 			if (in_import) {
 				quote = ""
