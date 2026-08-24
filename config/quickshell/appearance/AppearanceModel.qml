@@ -22,6 +22,21 @@ Scope {
     property var colors: ({})
     property var integrations: []
     property var errors: []
+    property string inventoryProviderState: "idle"
+    property string inventoryProviderDetail: "Appearance assets have not been inventoried"
+    property string inventoryWatchState: "idle"
+    property string inventoryWatchDetail: "Live asset updates have not been checked"
+    property var inventorySelections: ({})
+    property var inventoryCandidates: []
+    property int inventoryGeneration: 0
+    property int inventoryRunGeneration: 0
+    property bool inventoryPending: false
+    property bool inventoryPendingAllowUnwatched: false
+    property bool inventoryParsed: false
+    property bool inventoryWatchReady: false
+    property bool inventoryWatchSawEvent: false
+    property bool inventoryWatchFailed: false
+    property bool compositorWatchReady: false
     property string message: ""
     property string messageSeverity: "idle"
     property string previewState: "none"
@@ -67,7 +82,8 @@ Scope {
         root.configHome + "/dwm-titus/cursor.Xresources",
         root.configHome + "/dwm-titus/theme-env.sh",
         root.configHome + "/qt5ct/qt5ct.conf",
-        root.configHome + "/qt6ct/qt6ct.conf"
+        root.configHome + "/qt6ct/qt6ct.conf",
+        root.configHome + "/dconf/user"
     ]
     readonly property var statusWatchPaths: [
         root.stateHome + "/dwm-titus/appearance/preview.current",
@@ -105,6 +121,18 @@ Scope {
     function validState(value) {
         return value === "available" || value === "partial" || value === "restricted"
             || value === "unavailable";
+    }
+
+    function validInventoryCapability(value) {
+        return value === "wallpaper" || value === "font" || value === "cursor"
+            || value === "icon" || value === "gtk" || value === "qt"
+            || value === "compositor";
+    }
+
+    function validInventoryField(value, allowEmpty) {
+        return typeof value === "string" && value.indexOf("\t") < 0
+            && value.indexOf("\n") < 0 && value.length <= 4095
+            && (allowEmpty || value.length > 0);
     }
 
     function validThemeName(value) {
@@ -168,6 +196,100 @@ Scope {
         root.themes = [];
         root.integrations = [];
         root.errors = [];
+    }
+
+    function clearInventory(detail) {
+        root.inventoryProviderState = "unavailable";
+        root.inventoryProviderDetail = detail;
+        root.inventoryWatchState = "unavailable";
+        root.inventoryWatchDetail = detail;
+        root.inventorySelections = {};
+        root.inventoryCandidates = [];
+        root.inventoryWatchReady = false;
+        root.inventoryWatchSawEvent = false;
+        root.inventoryWatchFailed = true;
+        root.compositorWatchReady = false;
+        inventoryWatchRestartTimer.stop();
+        inventoryWatchProcess.running = false;
+        compositorWatchRestartTimer.stop();
+        compositorWatchProcess.running = false;
+    }
+
+    function parseInventory(text) {
+        if (root.inventoryRunGeneration !== root.inventoryGeneration) return;
+        let protocolValid = false;
+        let provider = null;
+        let watch = null;
+        const selections = {};
+        const candidates = [];
+        const candidateKeys = {};
+
+        for (const line of text.trim().split("\n")) {
+            if (line.length === 0) continue;
+            const fields = line.split("\t");
+            if (fields[0] === "appearance-inventory-protocol") {
+                protocolValid = fields.length === 3 && fields[1] === "1" && fields[2] === "0";
+            } else if (fields[0] === "provider" && fields.length === 5
+                    && fields[1] === "appearance-inventory" && root.validState(fields[2])
+                    && fields[3] === "read-only" && provider === null) {
+                provider = { "state": fields[2], "detail": fields[4] };
+            } else if (fields[0] === "watch" && fields.length === 4
+                    && (fields[1] === "available" || fields[1] === "unavailable")
+                    && fields[2] === "inotifywait" && watch === null) {
+                watch = { "state": fields[1], "detail": fields[3] };
+            } else if (fields[0] === "selection" && fields.length === 6
+                    && root.validInventoryCapability(fields[1]) && root.validState(fields[2])
+                    && root.validInventoryField(fields[3], true)
+                    && root.validInventoryField(fields[4], true)
+                    && root.validInventoryField(fields[5], false)
+                    && selections[fields[1]] === undefined) {
+                selections[fields[1]] = { "id": fields[1], "state": fields[2],
+                    "value": fields[3], "option": fields[4], "detail": fields[5] };
+            } else if (fields[0] === "candidate" && fields.length === 6
+                    && root.validInventoryCapability(fields[1])
+                    && (fields[2] === "available" || fields[2] === "partial")
+                    && root.validInventoryField(fields[3], false)
+                    && root.validInventoryField(fields[4], false)
+                    && root.validInventoryField(fields[5], false)
+                    && candidates.length < 1792
+                    && candidateKeys[fields[1] + "\t" + fields[3]] === undefined) {
+                candidateKeys[fields[1] + "\t" + fields[3]] = true;
+                candidates.push({ "id": fields[1], "state": fields[2], "token": fields[3],
+                    "label": fields[4], "detail": fields[5] });
+            }
+        }
+
+        const required = ["wallpaper", "font", "cursor", "icon", "gtk", "qt", "compositor"];
+        let complete = provider !== null && watch !== null;
+        for (const capability of required) {
+            if (selections[capability] === undefined) complete = false;
+        }
+        if (!protocolValid || !complete) {
+            root.clearInventory("Appearance inventory returned an unsupported response");
+            return;
+        }
+        root.inventoryParsed = true;
+        root.inventoryProviderState = provider.state;
+        root.inventoryProviderDetail = provider.detail;
+        if (!root.inventoryWatchFailed) {
+            root.inventoryWatchState = watch.state;
+            root.inventoryWatchDetail = watch.detail;
+        }
+        root.inventorySelections = selections;
+        root.inventoryCandidates = candidates;
+        root.compositorWatchReady = selections.compositor.value === "picom";
+        if (root.settingsVisible && !root.inventoryWatchFailed && watch.state === "available")
+            root.startInventoryWatcher();
+        if (watch.state !== "available") {
+            inventoryWatchRestartTimer.stop();
+            inventoryWatchProcess.running = false;
+        }
+        if (root.settingsVisible && root.compositorWatchReady && !compositorWatchProcess.running)
+            compositorWatchProcess.running = true;
+        if (!root.compositorWatchReady) {
+            compositorWatchRestartTimer.stop();
+            compositorWatchProcess.running = false;
+        }
     }
 
     function parseSnapshot(text) {
@@ -285,8 +407,29 @@ Scope {
             readinessProcess.running = true;
     }
 
+    function refreshInventory(allowUnwatched) {
+        if (!root.settingsVisible) return;
+        if (!root.inventoryWatchReady && allowUnwatched !== true) {
+            root.inventoryPending = true;
+            return;
+        }
+        root.inventoryGeneration++;
+        if (inventoryProcess.running) {
+            root.inventoryPending = true;
+            root.inventoryPendingAllowUnwatched = root.inventoryPendingAllowUnwatched
+                || allowUnwatched === true;
+            return;
+        }
+        root.inventoryPending = false;
+        root.inventoryPendingAllowUnwatched = false;
+        root.inventoryRunGeneration = root.inventoryGeneration;
+        root.inventoryParsed = false;
+        inventoryProcess.running = true;
+    }
+
     function refreshAll() {
         root.refreshSnapshot();
+        root.refreshInventory();
         root.refreshPreviewStatus();
         root.refreshRecoveryStatus();
         root.refreshMutationReadiness();
@@ -294,11 +437,34 @@ Scope {
 
     function openSettings() {
         root.settingsVisible = true;
+        root.inventoryPending = true;
+        root.inventoryPendingAllowUnwatched = false;
+        root.inventoryWatchReady = false;
+        root.inventoryWatchSawEvent = false;
+        root.inventoryWatchFailed = false;
+        root.startInventoryWatcher();
         root.refreshAll();
+    }
+
+    function startInventoryWatcher() {
+        if (inventoryWatchProcess.running) return;
+        root.inventoryWatchSawEvent = false;
+        inventoryWatchProcess.running = true;
     }
 
     function closeSettings() {
         root.settingsVisible = false;
+        root.inventoryGeneration++;
+        inventoryWatchRestartTimer.stop();
+        inventoryWatchProcess.running = false;
+        root.inventoryWatchReady = false;
+        root.inventoryWatchSawEvent = false;
+        compositorWatchSettleTimer.stop();
+        compositorWatchRestartTimer.stop();
+        compositorWatchProcess.running = false;
+        inventoryProcess.running = false;
+        root.inventoryPending = false;
+        root.inventoryPendingAllowUnwatched = false;
     }
 
     function nextPreviewToken() {
@@ -510,6 +676,83 @@ Scope {
     }
 
     Process {
+        id: inventoryProcess
+        // Keep the helper as the directly owned process so pane close sends
+        // SIGTERM to the scan itself instead of orphaning it behind the checked
+        // command's output-capturing shell.
+        command: Commands.settingsAppearanceCommand("inventory", [])
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: root.parseInventory(this.text)
+        }
+        stderr: StdioCollector {
+            id: inventoryError
+        }
+        onRunningChanged: {
+            if (!running && root.inventoryRunGeneration === root.inventoryGeneration
+                    && !root.inventoryParsed) {
+                const error = inventoryError.text.trim();
+                root.clearInventory(error.length > 0 ? error
+                    : "Appearance inventory failed before returning a valid snapshot");
+            }
+            if (!running && root.inventoryPending && root.settingsVisible) {
+                const allowUnwatched = root.inventoryPendingAllowUnwatched;
+                root.inventoryPending = false;
+                root.inventoryPendingAllowUnwatched = false;
+                Qt.callLater(function() { root.refreshInventory(allowUnwatched); });
+            }
+        }
+    }
+
+    Process {
+        id: inventoryWatchProcess
+        command: Commands.settingsAppearanceCommand("watch-inventory", [])
+        running: false
+        stdout: SplitParser {
+            onRead: line => {
+                if (line === "ready\tinventory") {
+                    root.inventoryWatchReady = true;
+                    root.inventoryWatchSawEvent = false;
+                    if (root.settingsVisible) root.refreshInventory(true);
+                } else if (line.startsWith("changed\t")) {
+                    root.inventoryWatchReady = false;
+                    root.inventoryWatchSawEvent = true;
+                    root.inventoryPending = true;
+                }
+            }
+        }
+        stderr: StdioCollector {
+            id: inventoryWatchError
+        }
+        onRunningChanged: {
+            if (!running) {
+                root.inventoryWatchReady = false;
+                if (root.settingsVisible && !root.inventoryWatchSawEvent
+                        && !root.inventoryWatchFailed) {
+                    const error = inventoryWatchError.text.trim();
+                    root.inventoryWatchFailed = true;
+                    root.inventoryWatchState = "unavailable";
+                    root.inventoryWatchDetail = error.length > 0 ? error
+                        : "Live appearance asset watching stopped unexpectedly";
+                    root.refreshInventory(true);
+                } else if (root.settingsVisible && (root.inventoryWatchState === "available"
+                        || root.inventoryWatchState === "idle")) inventoryWatchRestartTimer.restart();
+            }
+        }
+    }
+
+    Process {
+        id: compositorWatchProcess
+        command: Commands.settingsAppearanceCommand("watch-compositor", [])
+        running: false
+        stdout: SplitParser { onRead: compositorWatchSettleTimer.restart() }
+        onRunningChanged: {
+            if (!running && root.settingsVisible && root.compositorWatchReady)
+                compositorWatchRestartTimer.restart();
+        }
+    }
+
+    Process {
         id: previewStatusProcess
         command: Commands.checkedCommand(Commands.settingsThemeCommand("preview-status", []))
         running: false
@@ -638,6 +881,34 @@ Scope {
         interval: 100
         repeat: false
         onTriggered: if (root.settingsVisible) root.refreshAll()
+    }
+
+    Timer {
+        id: inventoryWatchRestartTimer
+        interval: 100
+        repeat: false
+        onTriggered: {
+            if (root.settingsVisible && (root.inventoryWatchState === "available"
+                    || root.inventoryWatchState === "idle")
+                    && !root.inventoryWatchFailed) root.startInventoryWatcher();
+        }
+    }
+
+    Timer {
+        id: compositorWatchSettleTimer
+        interval: 100
+        repeat: false
+        onTriggered: root.refreshInventory(true)
+    }
+
+    Timer {
+        id: compositorWatchRestartTimer
+        interval: 3000
+        repeat: false
+        onTriggered: {
+            if (root.settingsVisible && root.compositorWatchReady
+                    && !compositorWatchProcess.running) compositorWatchProcess.running = true;
+        }
     }
 
     Timer {

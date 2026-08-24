@@ -13,6 +13,9 @@ readonly max_theme_count=128
 readonly max_error_count=256
 readonly max_entry_count=512
 readonly max_theme_name_length=505
+readonly max_inventory_candidates=256
+readonly max_inventory_watch_dirs=128
+readonly max_inventory_scan_seconds=3
 readonly key_separator=$'\034'
 readonly legacy_theme_id=$'\035legacy-colors'
 readonly legacy_theme_label='@legacy-colors'
@@ -47,7 +50,7 @@ readonly -a required_colors=(
 )
 
 usage() {
-	printf 'usage: %s snapshot\n' "$0" >&2
+	printf 'usage: %s {snapshot|inventory|watch-inventory|watch-compositor}\n' "$0" >&2
 }
 
 clean_field() {
@@ -599,6 +602,694 @@ data_roots() {
 	done
 }
 
+gsettings_value() {
+	local key=$1 result
+	command -v gsettings >/dev/null 2>&1 || return 1
+	result=$(gsettings get org.gnome.desktop.interface "$key" 2>/dev/null) || return 1
+	case $result in
+	\'*)
+		result=${result#\'}
+		result=${result%\'}
+		;;
+	\"*)
+		result=${result#\"}
+		result=${result%\"}
+		;;
+	esac
+	[[ -n $result ]] || return 1
+	clean_field "$result"
+}
+
+emit_inventory_selection() {
+	local capability=$1 state=$2 selected option detail
+	selected=$(clean_field "$3")
+	option=$(clean_field "$4")
+	detail=$(clean_field "$5")
+	if ((${#selected} > 4095 || ${#option} > 4095 || ${#detail} > 4095)); then
+		state=unavailable
+		selected=
+		option=
+		detail="Configured $capability selection exceeds the inventory field limit"
+	fi
+	printf 'selection\t%s\t%s\t%s\t%s\t%s\n' \
+		"$capability" "$state" "$selected" "$option" "$detail"
+}
+
+emit_inventory_candidate() {
+	local capability=$1 state=$2 token=$3 label=$4 detail=$5
+	printf 'candidate\t%s\t%s\t%s\t%s\t%s\n' \
+		"$capability" "$state" "$(clean_field "$token")" \
+		"$(clean_field "$label")" "$(clean_field "$detail")"
+}
+
+inventory_field_safe() {
+	local field=$1
+	[[ -n $field && ${#field} -le 4095 && $field != *$'\t'* &&
+		$field != *$'\r'* && $field != *$'\n'* ]]
+}
+
+start_inventory_stream() {
+	stop_inventory_stream cancel
+	coproc DWM_INVENTORY_STREAM {
+		exec timeout --signal=TERM --kill-after=1 \
+			"$max_inventory_scan_seconds" "$@" 2>/dev/null
+	}
+	inventory_stream_pid=$DWM_INVENTORY_STREAM_PID
+	exec {inventory_stream_fd}<&"${DWM_INVENTORY_STREAM[0]}"
+}
+
+stop_inventory_stream() {
+	local mode=${1:-wait} status=0
+	if [[ -n ${inventory_stream_fd:-} ]]; then
+		exec {inventory_stream_fd}<&-
+		inventory_stream_fd=
+	fi
+	if [[ -n ${inventory_stream_pid:-} ]]; then
+		if [[ $mode == cancel ]]; then
+			terminate_and_reap "$inventory_stream_pid"
+		else
+			wait "$inventory_stream_pid" 2>/dev/null || status=$?
+		fi
+		inventory_stream_pid=
+	fi
+	return "$status"
+}
+
+inventory_scan_cleanup() {
+	trap - EXIT HUP INT TERM
+	stop_inventory_stream cancel
+}
+
+emit_wallpaper_inventory() {
+	local wallpaper_dir=${DWM_APPEARANCE_WALLPAPER_DIR:-${HOME:?HOME is required}/Pictures/backgrounds}
+	local path label count=0 scan_failed=false limit_reached=false
+	if [[ ! -d $wallpaper_dir ]]; then
+		emit_inventory_selection wallpaper unavailable '' fill \
+			"Wallpaper folder is unavailable: $wallpaper_dir"
+		return
+	fi
+	start_inventory_stream find -L "$wallpaper_dir" -type f \
+		\( -iname '*.avif' -o -iname '*.bmp' -o -iname '*.gif' -o \
+		-iname '*.jpeg' -o -iname '*.jpg' -o -iname '*.png' -o \
+		-iname '*.svg' -o -iname '*.webp' \) -print0
+	while IFS= read -r -d '' -u "$inventory_stream_fd" path; do
+		label=${path##*/}
+		if ! inventory_field_safe "$path" || ! inventory_field_safe "$label"; then
+			continue
+		fi
+		emit_inventory_candidate wallpaper available "$path" "$label" \
+			'Image in the configured wallpaper folder'
+		((count += 1))
+		if ((count >= max_inventory_candidates)); then
+			limit_reached=true
+			break
+		fi
+	done
+	if [[ $limit_reached == true ]]; then
+		stop_inventory_stream cancel
+	elif ! stop_inventory_stream; then
+		scan_failed=true
+	fi
+	if [[ $scan_failed == true ]]; then
+		emit_inventory_selection wallpaper partial '' fill \
+			'Wallpaper candidate discovery did not complete'
+	else
+		emit_inventory_selection wallpaper partial '' fill \
+			'No managed wallpaper selection has been recorded yet'
+	fi
+}
+
+emit_font_inventory() {
+	local family style current_description current_stem current_family='' requested_style
+	local normalized_requested normalized_style count=0 scan_failed=false
+	local -A seen=()
+	if ! command -v fc-list >/dev/null 2>&1 || ! command -v fc-match >/dev/null 2>&1; then
+		emit_inventory_selection font unavailable '' '' \
+			'Fontconfig inventory tools are unavailable'
+		return
+	fi
+	current_description=$(gsettings_value font-name 2>/dev/null || true)
+	if [[ -z $current_description ]]; then
+		current_description=$(fc-match --format '%{family[0]}\n' sans-serif 2>/dev/null || true)
+	fi
+	current_stem=$current_description
+	if [[ $current_description =~ ^(.+[^[:space:]])[[:space:]]*,?[[:space:]]+([0-9]+([.][0-9]+)?)$ ]]; then
+		current_stem=${BASH_REMATCH[1]}
+		current_stem=${current_stem%,}
+		current_stem=${current_stem%"${current_stem##*[![:space:]]}"}
+	fi
+	start_inventory_stream fc-list --format $'%{family[0]}\t%{style[0]}\n'
+	while IFS=$'\t' read -r -u "$inventory_stream_fd" family style; do
+		if inventory_field_safe "$family" && [[ -z ${seen[$family]+x} ]]; then
+			seen[$family]=1
+			if ((count < max_inventory_candidates)); then
+				emit_inventory_candidate font available "$family" "$family" \
+					'Fontconfig family'
+				((count += 1))
+			fi
+		fi
+		if [[ $current_stem == "$family" ]]; then
+			((${#family} > ${#current_family})) && current_family=$family
+		elif [[ $current_stem == "$family "* && -n $style ]]; then
+			requested_style=${current_stem#"$family "}
+			normalized_requested=${requested_style,,}
+			normalized_requested=${normalized_requested//[^[:alnum:]]/}
+			normalized_style=${style,,}
+			normalized_style=${normalized_style//[^[:alnum:]]/}
+			if [[ -n $normalized_requested && $normalized_requested == "$normalized_style" ]] &&
+				((${#family} > ${#current_family})); then
+				current_family=$family
+			fi
+		fi
+	done
+	if ! stop_inventory_stream; then
+		scan_failed=true
+	fi
+	if [[ $scan_failed == true ]]; then
+		emit_inventory_selection font unavailable "$current_stem" "$current_description" \
+			'Fontconfig candidate discovery did not complete'
+	elif [[ -z $current_stem ]]; then
+		emit_inventory_selection font partial '' '' 'The current desktop font could not be resolved'
+	elif [[ -n $current_family ]]; then
+		emit_inventory_selection font available "$current_family" "$current_description" \
+			'Current desktop font family is installed'
+	else
+		emit_inventory_selection font unavailable "$current_stem" "$current_description" \
+			'Configured desktop font family is not installed'
+	fi
+}
+
+classify_directory_inventory_asset() {
+	local capability=$1 path=$2
+	inventory_directory_state=available
+	case $capability in
+	cursor)
+		[[ -d $path/cursors ]] || return 1
+		inventory_directory_detail='Xcursor theme'
+		;;
+	icon)
+		[[ -f $path/index.theme ]] && icon_theme_declares_icons "$path/index.theme" || return 1
+		inventory_directory_detail='XDG icon theme'
+		;;
+	gtk)
+		if [[ -d $path/gtk-3.0 && -d $path/gtk-4.0 ]]; then
+			inventory_directory_detail='GTK 3 and GTK 4 theme'
+		elif [[ -d $path/gtk-3.0 || -d $path/gtk-4.0 ]]; then
+			inventory_directory_state=partial
+			inventory_directory_detail='Theme is missing GTK 3 or GTK 4 assets'
+		else
+			return 1
+		fi
+		;;
+	esac
+}
+
+icon_theme_declares_icons() {
+	local index_file=$1
+	awk -F= '
+		/^\[Icon Theme\][[:space:]]*$/ { in_icon_theme = 1; next }
+		/^\[/ { in_icon_theme = 0 }
+		in_icon_theme {
+			key = $1
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+			if (key == "Directories" || key == "ScaledDirectories") {
+				value = substr($0, index($0, "=") + 1)
+				gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+				if (value != "") found = 1
+			}
+		}
+		END { exit(found ? 0 : 1) }
+	' "$index_file"
+}
+
+emit_directory_inventory() {
+	local capability=$1 selected=$2
+	shift 2
+	local root path name state detail count=0 limit_reached=false discovery_failed=false
+	local selected_found=false selected_state=unavailable selected_detail
+	local -A seen=()
+	if [[ $capability == gtk && $selected == @(Adwaita|Adwaita-dark) ]]; then
+		selected_found=true
+		selected_state=available
+		selected_detail='Built-in GTK 3 and GTK 4 theme'
+	elif inventory_field_safe "$selected" && [[ $selected != */* && $selected != . && $selected != .. ]]; then
+		# Resolve the active selection independently from the bounded candidate
+		# output. A valid selection must not become unavailable merely because an
+		# earlier XDG root filled the candidate limit.
+		for root in "$@"; do
+			[[ -d $root ]] || continue
+			path=$root/$selected
+			if [[ -d $path ]] && classify_directory_inventory_asset "$capability" "$path"; then
+				selected_found=true
+				selected_state=$inventory_directory_state
+				selected_detail=$inventory_directory_detail
+				break
+			fi
+		done
+	fi
+	if [[ $capability == gtk ]]; then
+		for name in Adwaita Adwaita-dark; do
+			seen[$name]=1
+			emit_inventory_candidate gtk available "$name" "$name" \
+				'Built-in GTK 3 and GTK 4 theme'
+			((count += 1))
+		done
+	fi
+	for root in "$@"; do
+		[[ -d $root ]] || continue
+		start_inventory_stream find -L "$root" -mindepth 1 -maxdepth 1 -type d -print0
+		while IFS= read -r -d '' -u "$inventory_stream_fd" path; do
+			name=${path##*/}
+			if ! inventory_field_safe "$name" || [[ -n ${seen[$name]+x} ]]; then
+				continue
+			fi
+			classify_directory_inventory_asset "$capability" "$path" || continue
+			state=$inventory_directory_state
+			detail=$inventory_directory_detail
+			seen[$name]=1
+			emit_inventory_candidate "$capability" "$state" "$name" "$name" "$detail"
+			((count += 1))
+			if ((count >= max_inventory_candidates)); then
+				limit_reached=true
+				break
+			fi
+		done
+		if [[ $limit_reached == true ]]; then
+			stop_inventory_stream cancel
+		elif ! stop_inventory_stream; then
+			discovery_failed=true
+		fi
+		[[ $limit_reached == false ]] || break
+	done
+	if [[ $discovery_failed == true ]]; then
+		emit_inventory_selection "$capability" partial "$selected" '' \
+			"$capability candidate discovery did not complete"
+	elif [[ -z $selected ]]; then
+		emit_inventory_selection "$capability" partial '' '' \
+			'The current selection could not be resolved'
+	elif [[ $selected_found == true ]]; then
+		emit_inventory_selection "$capability" "$selected_state" "$selected" '' \
+			"Current selection is installed: $selected_detail"
+	else
+		emit_inventory_selection "$capability" unavailable "$selected" '' \
+			'Configured selection is not installed'
+	fi
+}
+
+emit_cursor_icon_gtk_inventory() {
+	local cursor icon gtk root
+	local -a cursor_roots=() icon_roots=() gtk_roots=()
+	cursor=$(gsettings_value cursor-theme 2>/dev/null || true)
+	[[ -n $cursor ]] || cursor=${XCURSOR_THEME:-}
+	[[ -n $cursor ]] || cursor=$(theme_env_value XCURSOR_THEME 2>/dev/null || true)
+	icon=$(gsettings_value icon-theme 2>/dev/null || true)
+	gtk=$(gsettings_value gtk-theme 2>/dev/null || true)
+	while IFS= read -r root; do
+		cursor_roots+=("$root/icons")
+		icon_roots+=("$root/icons")
+		gtk_roots+=("$root/themes")
+	done < <(data_roots)
+	if [[ -n ${HOME:-} ]]; then
+		cursor_roots+=("$HOME/.icons")
+		icon_roots+=("$HOME/.icons")
+		gtk_roots+=("$HOME/.themes")
+	fi
+	emit_directory_inventory cursor "$cursor" "${cursor_roots[@]}"
+	emit_directory_inventory icon "$icon" "${icon_roots[@]}"
+	emit_directory_inventory gtk "$gtk" "${gtk_roots[@]}"
+}
+
+emit_qt_inventory() {
+	local backend state detail
+	effective_qt_backend
+	backend=$qt_backend
+	case $backend in
+	'')
+		emit_inventory_selection qt unavailable '' '' \
+			'No supported Qt platform theme backend is active'
+		;;
+	gtk3)
+		emit_inventory_selection qt available "$backend" '' \
+			'Current Qt platform theme backend'
+		;;
+	qt6ct | qt5ct)
+		state=available
+		detail='Current Qt platform theme backend'
+		if ! command -v "$backend" >/dev/null 2>&1; then
+			state=partial
+			detail='Configured Qt platform theme backend is not installed'
+		fi
+		emit_inventory_selection qt "$state" "$backend" '' "$detail"
+		;;
+	*)
+		emit_inventory_selection qt partial "$backend" '' \
+			'Configured Qt platform theme backend is unsupported'
+		;;
+	esac
+	emit_inventory_candidate qt available gtk3 gtk3 \
+		'Use the GTK platform theme bridge'
+	if command -v qt6ct >/dev/null 2>&1; then
+		emit_inventory_candidate qt available qt6ct qt6ct 'Qt 6 configuration tool'
+	fi
+	if command -v qt5ct >/dev/null 2>&1; then
+		emit_inventory_candidate qt available qt5ct qt5ct 'Qt 5 configuration tool'
+	fi
+}
+
+normalize_x11_display() {
+	local display=$1
+	if [[ $display =~ ^(.*:[0-9]+)[.]0+$ ]]; then
+		display=${BASH_REMATCH[1]}
+	fi
+	[[ $display != unix:* ]] || display=:${display#unix:}
+	printf '%s\n' "$display"
+}
+
+picom_running_for_display() {
+	local current_display=${DISPLAY:-} proc_root=${DWM_APPEARANCE_PROC_ROOT:-/proc}
+	local pid environment_entry process_display
+	[[ -n $current_display ]] || return 1
+	current_display=$(normalize_x11_display "$current_display")
+	command -v pgrep >/dev/null 2>&1 || return 1
+	command -v id >/dev/null 2>&1 || return 1
+	command -v tr >/dev/null 2>&1 || return 1
+	while IFS= read -r pid; do
+		[[ $pid =~ ^[1-9][0-9]*$ && -r $proc_root/$pid/environ ]] || continue
+		while IFS= read -r environment_entry; do
+			[[ $environment_entry == DISPLAY=* ]] || continue
+			process_display=$(normalize_x11_display "${environment_entry#DISPLAY=}")
+			[[ $process_display == "$current_display" ]] && return 0
+		done < <(tr '\0' '\n' <"$proc_root/$pid/environ" 2>/dev/null)
+	done < <(pgrep -u "$(id -u)" -x picom 2>/dev/null || true)
+	return 1
+}
+
+emit_compositor_inventory() {
+	if ! command -v picom >/dev/null 2>&1; then
+		emit_inventory_selection compositor unavailable '' missing \
+			'Picom is optional and not installed'
+	elif picom_running_for_display; then
+		emit_inventory_selection compositor available picom running 'Picom is running'
+	else
+		emit_inventory_selection compositor partial picom stopped \
+			'Picom is installed but not running on this display'
+	fi
+}
+
+inventory() {
+	trap inventory_scan_cleanup EXIT
+	trap 'exit 143' HUP INT TERM
+	printf 'appearance-inventory-protocol\t1\t0\n'
+	printf 'provider\tappearance-inventory\tavailable\tread-only\tBounded appearance asset inventory\n'
+	if command -v inotifywait >/dev/null 2>&1; then
+		printf 'watch\tavailable\tinotifywait\tAsset changes are observable while Appearance is open\n'
+	else
+		printf 'watch\tunavailable\tinotifywait\tInstall inotify-tools for live asset updates\n'
+	fi
+	emit_wallpaper_inventory
+	emit_font_inventory
+	emit_cursor_icon_gtk_inventory
+	emit_qt_inventory
+	emit_compositor_inventory
+}
+
+add_inventory_watch_dir() {
+	local candidate=$1 resolved
+	inventory_field_safe "$candidate" || return 0
+	[[ -d $candidate ]] || return 0
+	resolved=$(readlink -f -- "$candidate" 2>/dev/null) || return 0
+	inventory_field_safe "$resolved" || return 0
+	[[ $resolved == /* && $resolved != / && -d $resolved && ! -L $resolved ]] || return 0
+	candidate=$resolved
+	[[ -z ${inventory_watch_seen[$candidate]+x} ]] || return 0
+	((${#inventory_watch_dirs[@]} < max_inventory_watch_dirs)) || return 0
+	inventory_watch_seen[$candidate]=1
+	inventory_watch_dirs+=("$candidate")
+}
+
+add_inventory_watch_target() {
+	local candidate=$1
+	if [[ -d $candidate ]]; then
+		add_inventory_watch_dir "$candidate"
+		return
+	fi
+	# Watch the nearest safe existing parent so creating an absent wallpaper or
+	# XDG asset root produces an event. Never broaden the fallback to /.
+	while [[ $candidate == /* && $candidate != / ]]; do
+		candidate=${candidate%/*}
+		[[ -n $candidate ]] || candidate=/
+		if [[ $candidate != / && -d $candidate ]]; then
+			add_inventory_watch_dir "$candidate"
+			return
+		fi
+	done
+}
+
+inventory_watch_cleanup() {
+	trap - EXIT HUP INT TERM
+	stop_parent_exit_watch
+	stop_inventory_stream cancel
+	if [[ -n ${inventory_watch_child:-} ]]; then
+		terminate_and_reap "$inventory_watch_child"
+		inventory_watch_child=
+	fi
+	if [[ -n ${inventory_watch_fd:-} ]]; then
+		exec {inventory_watch_fd}>&-
+	fi
+	if [[ -n ${inventory_watch_work:-} ]]; then
+		rm -f -- "$inventory_watch_work/events" "$inventory_watch_work/ready"
+		rmdir -- "$inventory_watch_work" 2>/dev/null || true
+	fi
+}
+
+process_active() {
+	local pid=$1 stat fields
+	[[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/stat ]] || return 1
+	{ IFS= read -r stat <"/proc/$pid/stat"; } 2>/dev/null || return 1
+	fields=${stat##*) }
+	[[ ${fields%% *} != Z ]]
+}
+
+terminate_and_reap() {
+	local pid=$1
+	kill -TERM "$pid" 2>/dev/null || true
+	for _ in {1..50}; do
+		process_active "$pid" || break
+		sleep 0.02
+	done
+	process_active "$pid" && kill -KILL "$pid" 2>/dev/null || true
+	wait "$pid" 2>/dev/null || true
+}
+
+read_process_start_time() {
+	local pid=$1 stat
+	local -a fields=()
+	process_start_time=
+	[[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/stat ]] || return 1
+	{ IFS= read -r stat <"/proc/$pid/stat"; } 2>/dev/null || return 1
+	stat=${stat##*) }
+	# Fields after the command name start at proc(5) field 3, so starttime
+	# (field 22) is array index 19.
+	read -r -a fields <<<"$stat"
+	[[ ${fields[19]:-} =~ ^[0-9]+$ ]] || return 1
+	process_start_time=${fields[19]}
+}
+
+stop_parent_exit_watch() {
+	local guard_pid=${parent_exit_watch_pid:-}
+	parent_exit_watch_pid=
+	if [[ -n $guard_pid ]]; then
+		terminate_and_reap "$guard_pid"
+	fi
+}
+
+arm_parent_exit_watch() {
+	local owner_pid=$PPID helper_pid=$BASHPID owner_start
+	read_process_start_time "$owner_pid" || {
+		printf 'dwm-settings-appearance: watcher owner exited before cleanup was armed\n' >&2
+		return 1
+	}
+	owner_start=$process_start_time
+	trap stop_parent_exit_watch EXIT
+	trap 'exit 143' HUP INT TERM
+	(
+		trap - EXIT HUP INT TERM
+		while read_process_start_time "$owner_pid" &&
+			[[ $process_start_time == "$owner_start" ]]; do
+			sleep 0.2
+		done
+		kill -TERM "$helper_pid" 2>/dev/null || true
+	) &
+	parent_exit_watch_pid=$!
+}
+
+watch_inventory() {
+	local root directory wallpaper_dir
+	local ready_attempt=0 status=0 event
+	local -a inventory_watch_dirs=()
+	local -a inventory_icon_roots=() inventory_theme_roots=() inventory_font_roots=()
+	local -A inventory_watch_seen=()
+	command -v inotifywait >/dev/null 2>&1 || {
+		printf 'dwm-settings-appearance: inotifywait is required for inventory watching\n' >&2
+		return 1
+	}
+	command -v readlink >/dev/null 2>&1 || {
+		printf 'dwm-settings-appearance: readlink is required for safe inventory watching\n' >&2
+		return 1
+	}
+	arm_parent_exit_watch
+	wallpaper_dir=${DWM_APPEARANCE_WALLPAPER_DIR:-${HOME:?HOME is required}/Pictures/backgrounds}
+	# Add every required state root before optional descendants so a large
+	# wallpaper tree cannot crowd dconf, toolkit, font, icon, or theme state out
+	# of the bounded watch set.
+	add_inventory_watch_target "$config_home/fontconfig"
+	add_inventory_watch_target "$config_home/dconf"
+	add_inventory_watch_target "$config_home/gtk-3.0"
+	add_inventory_watch_target "$config_home/gtk-4.0"
+	add_inventory_watch_target "$config_home/dwm-titus"
+	while IFS= read -r root; do
+		inventory_icon_roots+=("$root/icons")
+		inventory_theme_roots+=("$root/themes")
+		inventory_font_roots+=("$root/fonts")
+		add_inventory_watch_target "$root/icons"
+		add_inventory_watch_target "$root/themes"
+		add_inventory_watch_target "$root/fonts"
+	done < <(data_roots)
+	if [[ -n ${HOME:-} ]]; then
+		inventory_icon_roots+=("$HOME/.icons")
+		inventory_theme_roots+=("$HOME/.themes")
+		inventory_font_roots+=("$HOME/.fonts")
+		add_inventory_watch_target "$HOME/.icons"
+		add_inventory_watch_target "$HOME/.themes"
+		add_inventory_watch_target "$HOME/.fonts"
+		add_inventory_watch_target "$HOME/.fonts.conf"
+		add_inventory_watch_target "$HOME/.fonts.conf.d"
+	fi
+	add_inventory_watch_target "$wallpaper_dir"
+	# Candidate validity changes inside the first directory below icon and theme
+	# roots. Font files and wallpapers may be nested more deeply, so include
+	# their existing descendant directories until the global bound is reached.
+	for root in "${inventory_icon_roots[@]}" "${inventory_theme_roots[@]}"; do
+		((${#inventory_watch_dirs[@]} < max_inventory_watch_dirs)) || break
+		[[ -d $root ]] || continue
+		start_inventory_stream find -L "$root" -mindepth 1 -maxdepth 1 -type d -print0
+		while IFS= read -r -d '' -u "$inventory_stream_fd" directory; do
+			add_inventory_watch_dir "$directory"
+			((${#inventory_watch_dirs[@]} < max_inventory_watch_dirs)) || break
+		done
+		if ((${#inventory_watch_dirs[@]} >= max_inventory_watch_dirs)); then
+			stop_inventory_stream cancel
+		elif ! stop_inventory_stream; then
+			printf 'dwm-settings-appearance: appearance asset watch discovery failed\n' >&2
+			return 1
+		fi
+	done
+	for root in "${inventory_font_roots[@]}"; do
+		((${#inventory_watch_dirs[@]} < max_inventory_watch_dirs)) || break
+		[[ -d $root ]] || continue
+		start_inventory_stream find -L "$root" -mindepth 1 -type d -print0
+		while IFS= read -r -d '' -u "$inventory_stream_fd" directory; do
+			add_inventory_watch_dir "$directory"
+			((${#inventory_watch_dirs[@]} < max_inventory_watch_dirs)) || break
+		done
+		if ((${#inventory_watch_dirs[@]} >= max_inventory_watch_dirs)); then
+			stop_inventory_stream cancel
+		elif ! stop_inventory_stream; then
+			printf 'dwm-settings-appearance: font watch discovery failed\n' >&2
+			return 1
+		fi
+	done
+	if ((${#inventory_watch_dirs[@]} < max_inventory_watch_dirs)) && [[ -d $wallpaper_dir ]]; then
+		start_inventory_stream find -L "$wallpaper_dir" -mindepth 1 -type d -print0
+		while IFS= read -r -d '' -u "$inventory_stream_fd" directory; do
+			add_inventory_watch_dir "$directory"
+			((${#inventory_watch_dirs[@]} < max_inventory_watch_dirs)) || break
+		done
+		if ((${#inventory_watch_dirs[@]} >= max_inventory_watch_dirs)); then
+			stop_inventory_stream cancel
+		elif ! stop_inventory_stream; then
+			printf 'dwm-settings-appearance: wallpaper watch discovery failed\n' >&2
+			return 1
+		fi
+	fi
+	((${#inventory_watch_dirs[@]} > 0)) || {
+		printf 'dwm-settings-appearance: no safe appearance directories are available to watch\n' >&2
+		return 1
+	}
+	inventory_watch_work=$(mktemp -d "${TMPDIR:-/tmp}/dwm-appearance-inventory.XXXXXX")
+	mkfifo -- "$inventory_watch_work/events"
+	exec {inventory_watch_fd}<>"$inventory_watch_work/events"
+	trap inventory_watch_cleanup EXIT
+	trap 'exit 143' HUP INT TERM
+	inotifywait -m -P \
+		-e close_write -e create -e delete -e moved_to -e moved_from \
+		-e delete_self -e move_self --format $'%e\t%w%f' -- \
+		"${inventory_watch_dirs[@]}" >"$inventory_watch_work/events" \
+		2>"$inventory_watch_work/ready" &
+	inventory_watch_child=$!
+	until grep -Fq 'Watches established.' "$inventory_watch_work/ready" 2>/dev/null; do
+		if ! kill -0 "$inventory_watch_child" 2>/dev/null; then
+			wait "$inventory_watch_child" || status=$?
+			inventory_watch_child=
+			return "$status"
+		fi
+		((ready_attempt += 1))
+		((ready_attempt < 300)) || {
+			printf 'dwm-settings-appearance: timed out while establishing inventory watches\n' >&2
+			return 1
+		}
+		sleep 0.01
+	done
+	printf 'ready\tinventory\n'
+	while :; do
+		if IFS= read -r -t 1 event <&"$inventory_watch_fd"; then
+			printf 'changed\t%s\n' "$event"
+			return
+		fi
+		if ! kill -0 "$inventory_watch_child" 2>/dev/null; then
+			wait "$inventory_watch_child" || status=$?
+			inventory_watch_child=
+			((status != 0)) || status=1
+			return "$status"
+		fi
+	done
+}
+
+compositor_watch_cleanup() {
+	trap - EXIT HUP INT TERM
+	stop_parent_exit_watch
+	if [[ -n ${compositor_watch_work:-} ]]; then
+		rm -f -- "$compositor_watch_work/wait"
+		rmdir -- "$compositor_watch_work" 2>/dev/null || true
+	fi
+}
+
+watch_compositor() {
+	local state previous='' wait_fd
+	command -v pgrep >/dev/null 2>&1 || {
+		printf 'dwm-settings-appearance: pgrep is required for compositor watching\n' >&2
+		return 1
+	}
+	arm_parent_exit_watch
+	compositor_watch_work=$(mktemp -d "${TMPDIR:-/tmp}/dwm-appearance-compositor.XXXXXX")
+	mkfifo -- "$compositor_watch_work/wait"
+	exec {wait_fd}<>"$compositor_watch_work/wait"
+	trap compositor_watch_cleanup EXIT
+	trap 'exit 143' HUP INT TERM
+	while :; do
+		if picom_running_for_display; then
+			state=running
+		else
+			state=stopped
+		fi
+		if [[ $state != "$previous" ]]; then
+			printf 'compositor\t%s\n' "$state"
+			previous=$state
+		fi
+		read -r -t 1 -u "$wait_fd" _ || true
+	done
+}
+
 gtk_theme_version_available() {
 	local name=$1 version=$2 root
 	case $name in
@@ -1092,6 +1783,27 @@ snapshot)
 		exit 2
 	}
 	snapshot
+	;;
+inventory)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	inventory
+	;;
+watch-inventory)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	watch_inventory
+	;;
+watch-compositor)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	watch_compositor
 	;;
 -h | --help | help)
 	usage

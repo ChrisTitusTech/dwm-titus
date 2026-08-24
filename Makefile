@@ -449,6 +449,7 @@ check-settings:
 
 check-appearance:
 	tests/test-dwm-settings-appearance.sh
+	tests/test-dwm-settings-appearance-inventory.sh
 	tests/test-dwm-settings-theme.sh
 
 check-quickshell-settings-xvfb: all
