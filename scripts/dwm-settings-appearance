@@ -801,7 +801,7 @@ alacritty_imports_active_theme() {
 			trimmed = line
 			gsub(/^[[:space:]]+|[[:space:]]+$/, "", trimmed)
 			if (!in_import && trimmed ~ /^\[/) {
-				import_scope = (trimmed ~ /^\[[[:space:]]*general[[:space:]]*\]$/ ? "general" : "other")
+				import_scope = (trimmed ~ /^\[[[:space:]]*(general|"general"|\047general\047)[[:space:]]*\]$/ ? "general" : "other")
 				next
 			}
 			if (!in_import &&
