@@ -116,6 +116,81 @@ escaped_path=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
 grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
 	<<<"$escaped_path"
 
+fresh_home=$work/fresh-home
+fresh_config_home=$fresh_home/.config
+mkdir -p "$fresh_home"
+cp -a "$config_home" "$fresh_config_home"
+cp "$repo/config/alacritty/alacritty.toml" "$fresh_config_home/alacritty/alacritty.toml"
+fresh_install=$(HOME=$fresh_home PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$fresh_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$fresh_install"
+
+spaced_config_home=$work/config-spaced
+cp -a "$config_home" "$spaced_config_home"
+printf '[ general ]\nimport = ["%s"]\n' "$spaced_config_home/alacritty/active-theme.toml" \
+	>"$spaced_config_home/alacritty/alacritty.toml"
+spaced_header=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$spaced_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$spaced_header"
+
+double_quoted_config_home=$work/config-double-quoted
+cp -a "$config_home" "$double_quoted_config_home"
+printf '["general"]\nimport = ["%s"]\n' \
+	"$double_quoted_config_home/alacritty/active-theme.toml" \
+	>"$double_quoted_config_home/alacritty/alacritty.toml"
+double_quoted_header=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$double_quoted_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$double_quoted_header"
+
+single_quoted_config_home=$work/config-single-quoted
+cp -a "$config_home" "$single_quoted_config_home"
+printf "['general']\nimport = [\"%s\"]\n" \
+	"$single_quoted_config_home/alacritty/active-theme.toml" \
+	>"$single_quoted_config_home/alacritty/alacritty.toml"
+single_quoted_header=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$single_quoted_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$single_quoted_header"
+
+quoted_import_config_home=$work/config-quoted-import
+cp -a "$config_home" "$quoted_import_config_home"
+printf '[general]\n"import" = ["%s"]\n' \
+	"$quoted_import_config_home/alacritty/active-theme.toml" \
+	>"$quoted_import_config_home/alacritty/alacritty.toml"
+quoted_import=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$quoted_import_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$quoted_import"
+
+quoted_dotted_config_home=$work/config-quoted-dotted
+cp -a "$config_home" "$quoted_dotted_config_home"
+printf "'general' . 'import' = [\"%s\"]\n" \
+	"$quoted_dotted_config_home/alacritty/active-theme.toml" \
+	>"$quoted_dotted_config_home/alacritty/alacritty.toml"
+quoted_dotted=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$quoted_dotted_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$quoted_dotted"
+
+dotted_config_home=$work/config-dotted
+cp -a "$config_home" "$dotted_config_home"
+printf 'general . import = ["%s"]\n' "$dotted_config_home/alacritty/active-theme.toml" \
+	>"$dotted_config_home/alacritty/alacritty.toml"
+dotted_key=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$dotted_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$dotted_key"
+
 snapshot() {
 	PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
 		DWM_APPEARANCE_DATA_DIRS=$data_root \
@@ -151,6 +226,29 @@ printf '[window]\nimport = ["%s"]\n' "$config_home/alacritty/active-theme.toml" 
 table_import_alacritty=$(snapshot)
 grep -Fqx $'integration\talacritty\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration' \
 	<<<"$table_import_alacritty"
+
+nested_dotted_config_home=$work/config-nested-dotted
+cp -a "$config_home" "$nested_dotted_config_home"
+printf '[general]\ngeneral.import = ["%s"]\n' \
+	"$nested_dotted_config_home/alacritty/active-theme.toml" \
+	>"$nested_dotted_config_home/alacritty/alacritty.toml"
+nested_dotted_import=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$nested_dotted_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration' \
+	<<<"$nested_dotted_import"
+
+legacy_precedence_config_home=$work/config-legacy-precedence
+cp -a "$config_home" "$legacy_precedence_config_home"
+printf 'import = ["%s"]\n[general]\nimport = ["%s"]\n' \
+	"$legacy_precedence_config_home/alacritty/legacy-theme.toml" \
+	"$legacy_precedence_config_home/alacritty/active-theme.toml" \
+	>"$legacy_precedence_config_home/alacritty/alacritty.toml"
+legacy_precedence=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$legacy_precedence_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration' \
+	<<<"$legacy_precedence"
 
 printf 'import = "%s"\n' "$config_home/alacritty/active-theme.toml" \
 	>"$config_home/alacritty/alacritty.toml"
