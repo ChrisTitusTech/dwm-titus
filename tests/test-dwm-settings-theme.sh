@@ -599,6 +599,12 @@ printf '%s\n' 'import = [' '  "~/.config/alacritty/custom-theme.toml",' ']' \
 run_theme_real_apply preview integration-external 10 dracula >/dev/null 2>"$work/integration-external-preview.err"
 printf '# external integration edit\n' >>"$config_home/alacritty/alacritty.toml"
 integration_external_before=$(integration_snapshot)
+if run_theme_real_apply keep integration-external >"$work/integration-external-keep.out" \
+	2>"$work/integration-external-keep.err"; then
+	printf 'preview with an external integration edit was confirmed\n' >&2
+	exit 1
+fi
+grep -Fq 'theme integration changed outside the preview' "$work/integration-external-keep.err"
 if run_theme_real_apply revert integration-external >"$work/integration-external-revert.out" \
 	2>"$work/integration-external-revert.err"; then
 	printf 'external integration edit was overwritten by preview rollback\n' >&2
@@ -898,9 +904,38 @@ if [[ -s $work/signal.out ]]; then
 fi
 
 reset_fixture
+finish_ready=$work/finish.ready
+finish_release=$work/finish.release
+HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
+	DWM_APPEARANCE_APPLY_HELPER=$apply_stub DWM_APPEARANCE_RELOAD_HELPER=$reload_stub \
+	DWM_TEST_APPLY_LOG=$work/apply.log DWM_TEST_LIVE_ONLY_LOG=$work/live-only.log \
+	DWM_TEST_RELOAD_LOG=$work/reload.log DWM_TEST_FINISH_READY=$finish_ready \
+	DWM_TEST_FINISH_RELEASE=$finish_release \
+	"$helper" apply dracula >"$work/finish.out" 2>"$work/finish.err" &
+finish_pid=$!
+for attempt in {1..100}; do
+	[[ -e $finish_ready ]] && break
+	sleep 0.05
+done
+[[ -e $finish_ready ]]
+kill -TERM "$finish_pid"
+set +e
+wait "$finish_pid"
+finish_status=$?
+set -e
+[[ $finish_status -eq 143 ]]
+[[ ! -e $state_home/dwm-titus/appearance/integration-transaction ]]
+grep -Fqx $'recovery\tavailable\tapply\tdracula' < <(run_theme recovery-status)
+run_theme recover >/dev/null
+[[ $(active_theme) == nord ]]
+grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+
+reset_fixture
 rm "$themes_file"
 run_theme preview preview-absent 10 dracula >/dev/null 2>"$work/preview-absent.err"
 [[ -f $themes_file && $(active_theme) == dracula ]]
+rm "$themes_file"
 run_theme revert preview-absent >/dev/null
 [[ ! -e $themes_file ]]
 suppression_hash=$(sha256sum "$managed_file" | awk '{print $1}')

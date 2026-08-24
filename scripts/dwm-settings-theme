@@ -639,6 +639,29 @@ integration_baseline_unchanged() {
 	done
 }
 
+integration_after_state_unchanged() {
+	local prefix=$1 count index path after_hash after_mode current_hash current_mode
+	[[ -f $prefix.integration.count ]] || return 1
+	IFS= read -r count <"$prefix.integration.count"
+	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
+	integration_path_list
+	[[ $count == "${#integration_paths[@]}" ]] || return 1
+	for ((index = 0; index < count; index++)); do
+		path=${integration_paths[index]}
+		after_hash=$(integration_meta_value "$prefix" "$index" after_hash) || return 1
+		after_mode=$(integration_meta_value "$prefix" "$index" after_mode) || return 1
+		validate_integration_file "$path" || return 1
+		if [[ -f $path ]]; then
+			current_hash=$(file_hash "$path")
+			current_mode=$(stat -c %a -- "$path")
+		else
+			current_hash=absent
+			current_mode=0000
+		fi
+		[[ $current_hash == "$after_hash" && $current_mode == "$after_mode" ]] || return 1
+	done
+}
+
 meta_value() {
 	local prefix=$1 key=$2
 	awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); found = 1; exit }
@@ -1093,29 +1116,31 @@ restore_theme_baseline_locked() {
 			return 2
 		fi
 		rm -f -- "$temporary"
-	elif [[ $current_hash != absent ]]; then
-		capture_dir=$(umask 077 && mktemp -d "${themes_file%/*}/.themes-rollback.XXXXXX") || return 1
-		captured_path=$capture_dir/current
-		if ! mv --no-copy -T -- "$themes_file" "$captured_path"; then
-			rmdir -- "$capture_dir" 2>/dev/null || true
-			return 1
-		fi
-		if [[ -f $captured_path && ! -L $captured_path ]]; then
-			captured_hash=$(file_hash "$captured_path") || captured_hash=unsafe
-		else
-			captured_hash=unsafe
-		fi
-		if [[ $captured_hash != "$expected_hash" && $captured_hash != "$baseline_hash" ]]; then
-			if ! mv --update=none-fail --no-copy -T -- "$captured_path" "$themes_file"; then
-				printf 'dwm-settings-theme: late external edit retained at %s\n' \
-					"$captured_path" >&2
+	else
+		if [[ $current_hash != absent ]]; then
+			capture_dir=$(umask 077 && mktemp -d "${themes_file%/*}/.themes-rollback.XXXXXX") || return 1
+			captured_path=$capture_dir/current
+			if ! mv --no-copy -T -- "$themes_file" "$captured_path"; then
+				rmdir -- "$capture_dir" 2>/dev/null || true
 				return 1
 			fi
+			if [[ -f $captured_path && ! -L $captured_path ]]; then
+				captured_hash=$(file_hash "$captured_path") || captured_hash=unsafe
+			else
+				captured_hash=unsafe
+			fi
+			if [[ $captured_hash != "$expected_hash" && $captured_hash != "$baseline_hash" ]]; then
+				if ! mv --update=none-fail --no-copy -T -- "$captured_path" "$themes_file"; then
+					printf 'dwm-settings-theme: late external edit retained at %s\n' \
+						"$captured_path" >&2
+					return 1
+				fi
+				rmdir -- "$capture_dir" 2>/dev/null || true
+				return 2
+			fi
+			rm -f -- "$captured_path"
 			rmdir -- "$capture_dir" 2>/dev/null || true
-			return 2
 		fi
-		rm -f -- "$captured_path"
-		rmdir -- "$capture_dir" 2>/dev/null || true
 		reload_dwm_after_source_change
 	fi
 }
@@ -1247,8 +1272,14 @@ finish_mutation() {
 	local prefix=$1
 	rollback_needed=false
 	trap - EXIT HUP INT TERM
-	cleanup_prefix "$prefix"
 	clear_integration_transaction
+	if [[ -n ${DWM_TEST_FINISH_READY:-} ]]; then
+		: >"$DWM_TEST_FINISH_READY"
+		while [[ ! -e ${DWM_TEST_FINISH_RELEASE:-} ]]; do
+			sleep 0.01
+		done
+	fi
+	cleanup_prefix "$prefix"
 }
 
 ensure_no_preview() {
@@ -1488,6 +1519,8 @@ finish_preview() {
 		[[ ! -f $prefix.failed ]] || die 'theme preview rollback failed; refusing to confirm stale state'
 		[[ -f $themes_file && $(file_hash "$themes_file") == "$expected" ]] ||
 			die 'theme file changed outside the preview; refusing to confirm stale state'
+		integration_after_state_unchanged "$prefix" ||
+			die 'theme integration changed outside the preview; refusing to confirm stale state'
 	else
 		if [[ -f $themes_file ]]; then
 			current_hash=$(file_hash "$themes_file")
