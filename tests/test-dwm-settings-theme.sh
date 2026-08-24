@@ -67,6 +67,9 @@ active=$(awk '
 	}
 ' "$themes")
 if [ "${DWM_APPEARANCE_LIVE_ONLY:-0}" = 1 ]; then
+	if [ -n "${DWM_TEST_LIVE_ONLY_LOG:-}" ]; then
+		printf '%s\n' "$active" >>"$DWM_TEST_LIVE_ONLY_LOG"
+	fi
 	if [ -n "${DWM_TEST_LIVE_ONLY_READY:-}" ]; then
 		: >"$DWM_TEST_LIVE_ONLY_READY"
 	fi
@@ -75,6 +78,19 @@ if [ "${DWM_APPEARANCE_LIVE_ONLY:-0}" = 1 ]; then
 	fi
 	if [ "${DWM_TEST_LIVE_ONLY_FAIL:-0}" = 1 ]; then
 		printf 'fixture live-only failure\n' >&2
+		exit 1
+	fi
+	if [ "${DWM_TEST_APPLY_FAIL:-0}" = 1 ]; then
+		printf 'fixture apply failure\n' >&2
+		exit 1
+	fi
+	if [ -n "${DWM_TEST_LIVE_ONLY_FAIL_THEME:-}" ] &&
+		[ "$active" = "$DWM_TEST_LIVE_ONLY_FAIL_THEME" ]; then
+		printf 'fixture live-only target failure\n' >&2
+		exit 1
+	fi
+	if [ -n "${DWM_TEST_APPLY_FAIL_THEME:-}" ] && [ "$active" = "$DWM_TEST_APPLY_FAIL_THEME" ]; then
+		printf 'fixture target apply failure\n' >&2
 		exit 1
 	fi
 	exit 0
@@ -119,6 +135,7 @@ run_theme() {
 		DWM_APPEARANCE_APPLY_HELPER=$apply_stub \
 		DWM_APPEARANCE_RELOAD_HELPER=$reload_stub \
 		DWM_TEST_APPLY_LOG=$work/apply.log \
+		DWM_TEST_LIVE_ONLY_LOG=$work/live-only.log \
 		DWM_TEST_RELOAD_LOG=$work/reload.log \
 		"$helper" "$@"
 }
@@ -191,6 +208,7 @@ reset_fixture() {
 	cp "$repo/config/themes.toml" "$themes_file"
 	chmod 640 "$themes_file"
 	: >"$work/apply.log"
+	: >"$work/live-only.log"
 	: >"$work/reload.log"
 	rm -f "$work/kitty-reload.marker"
 }
@@ -767,6 +785,7 @@ grep -Fqx $'result\tnone' < <(run_theme preview-status)
 
 reset_fixture
 run_theme preview stale-keep 10 dracula >/dev/null 2>"$work/stale-keep-preview.err"
+sed -i '0,/theme = "dracula"/s//theme = "nord"/' "$themes_file"
 printf '\n# stale keep\n' >>"$themes_file"
 if run_theme keep stale-keep 2>"$work/stale-keep.err"; then
 	printf 'stale preview confirmation was accepted\n' >&2
@@ -781,12 +800,18 @@ fi
 grep -Fq 'refusing to overwrite it' "$work/stale-keep-revert.err"
 [[ ! -d $state_home/dwm-titus/appearance/stale-keep.preview.claim ]]
 run_theme abandon stale-keep >"$work/stale-keep-abandon.out"
-grep -Fqx $'result\tabandon\tstale-keep\tdracula' "$work/stale-keep-abandon.out"
+grep -Fqx $'result\tabandon\tstale-keep\tnord' "$work/stale-keep-abandon.out"
+if ! grep -Fqx nord "$work/live-only.log"; then
+	printf 'abandon did not live-converge the accepted source\n' >&2
+	sed 's/^/live-only: /' "$work/live-only.log" >&2
+	exit 1
+fi
+[[ $(grep -Fxc reload "$work/reload.log") == 1 ]]
 run_theme apply nord >/dev/null 2>"$work/apply-after-abandon.err"
 [[ $(active_theme) == nord ]]
 
 reset_fixture
-if DWM_TEST_LIVE_ONLY_FAIL=1 run_theme apply dracula \
+if DWM_TEST_LIVE_ONLY_FAIL_THEME=dracula run_theme apply dracula \
 	>"$work/live-only-fail.out" 2>"$work/live-only-fail.err"; then
 	printf 'failed final live convergence was reported as successful\n' >&2
 	exit 1
@@ -881,7 +906,7 @@ run_theme revert preview-absent >/dev/null
 suppression_hash=$(sha256sum "$managed_file" | awk '{print $1}')
 cmp -s <(printf '%s\n' "$suppression_hash") \
 	"$state_home/dwm-titus/appearance/integration-suppress"
-grep -Fqx nord "$work/apply.log"
+grep -Fqx nord "$work/live-only.log"
 [[ $(grep -Fxc reload "$work/reload.log") == 2 ]]
 
 reset_fixture
@@ -916,6 +941,7 @@ rm "$config_home/alacritty/active-theme.toml"
 recover_output=$(run_theme recover 2>"$work/recover.err")
 grep -Fqx $'result\trecovered' <<<"$recover_output"
 [[ $(active_theme) == nord ]]
+grep -Fqx nord "$work/live-only.log"
 grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
 
 reset_fixture

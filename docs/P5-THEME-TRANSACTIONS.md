@@ -65,7 +65,8 @@ rollback failure is recorded. Revert and timeout restore the original terminal,
 GTK, Qt, cursor, environment, and theme files byte-for-byte, including modes and
 originally absent files. External changes retain an attributed failed-preview
 record instead of being replaced. If the external edit is intentional, abandon
-clears only the stale journal and leaves that edit untouched.
+converges its live settings, clears the stale journal, and requests a normal DWM
+reload only when the tracked integration files remain transaction-owned.
 
 DWM's asynchronous integration reloads honor the restored source hash and stay
 runtime-only until a different valid source clears that hash-specific guard.

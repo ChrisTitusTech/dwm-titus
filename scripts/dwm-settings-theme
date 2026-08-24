@@ -1138,7 +1138,7 @@ restore_baseline() {
 	release_integration_lock
 	((status == 0)) || return "$status"
 	clear_integration_transaction
-	if ! run_theme_apply runtime-only; then
+	if ! run_theme_apply live-only; then
 		return 3
 	fi
 }
@@ -1455,7 +1455,8 @@ reconcile_preview_locked() {
 }
 
 finish_preview() {
-	local action=$1 token=$2 prefix claim expected target current_hash restore_status=0
+	local action=$1 token=$2 prefix claim expected target current_hash snapshot accepted_target
+	local accepted_hash abandon_reload=false restore_status=0
 	acquire_lock
 	ensure_recovery_dir
 	reconcile_preview_locked false
@@ -1495,15 +1496,43 @@ finish_preview() {
 		fi
 		[[ -f $prefix.failed || $current_hash != "$expected" ]] ||
 			die 'theme preview is not stale; use keep or revert'
+		snapshot=$(current_snapshot)
+		snapshot_source_is_safe "$snapshot" ||
+			die 'current theme source is unsafe; refusing to abandon preview recovery'
+		accepted_target=$(snapshot_active_theme "$snapshot")
+		[[ $accepted_target != none ]] || accepted_target=$(snapshot_resolved_theme "$snapshot")
+		if ! valid_theme_name "$accepted_target" ||
+			! snapshot_target_is_valid "$snapshot" "$accepted_target"; then
+			die 'current theme source has no valid active theme'
+		fi
+		accepted_hash=$current_hash
+		target=$accepted_target
+		if [[ $current_hash != "$expected" ]] && integration_restore_preflight "$prefix"; then
+			abandon_reload=true
+		fi
 	fi
 	if [[ $action == keep ]]; then
 		run_theme_apply live-only || die 'theme preview was confirmed but live convergence failed'
 		[[ -f $themes_file && $(file_hash "$themes_file") == "$expected" ]] ||
 			die 'theme file changed during preview confirmation; refusing stale state'
+	elif [[ $action == abandon ]]; then
+		run_theme_apply live-only || die 'accepted theme edit could not be converged live'
+		if [[ -f $themes_file ]]; then
+			current_hash=$(file_hash "$themes_file")
+		else
+			current_hash=absent
+		fi
+		[[ $current_hash == "$accepted_hash" ]] ||
+			die 'theme file changed during preview abandonment; refusing stale state'
+		verify_active_theme "$accepted_target" ||
+			die 'accepted theme edit did not remain active during preview abandonment'
 	fi
 	cleanup_preview "$token"
 	preview_claim_to_release=
 	trap - EXIT
+	if [[ $abandon_reload == true ]]; then
+		reload_dwm_after_source_change
+	fi
 	printf 'appearance-action-protocol\t1\t0\n'
 	printf 'result\t%s\t%s\t%s\n' "$action" "$token" "$target"
 }
