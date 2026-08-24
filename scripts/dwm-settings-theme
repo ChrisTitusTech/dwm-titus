@@ -500,7 +500,7 @@ validate_integration_file() {
 }
 
 capture_integration_baseline() {
-	local prefix=$1 index path existed mode baseline_hash temporary
+	local prefix=$1 index path existed mode baseline_hash backup_hash temporary
 	integration_path_list
 	for index in "${!integration_paths[@]}"; do
 		path=${integration_paths[index]}
@@ -512,8 +512,17 @@ capture_integration_baseline() {
 			existed=1
 			mode=$(stat -c %a -- "$path")
 			baseline_hash=$(file_hash "$path")
+			if [[ $index == 0 && -n ${DWM_TEST_INTEGRATION_CAPTURE_READY:-} ]]; then
+				: >"$DWM_TEST_INTEGRATION_CAPTURE_READY"
+				while [[ ! -e ${DWM_TEST_INTEGRATION_CAPTURE_RELEASE:-} ]]; do
+					sleep 0.01
+				done
+			fi
 			cp -- "$path" "$prefix.integration.$index.before"
 			chmod 600 -- "$prefix.integration.$index.before"
+			backup_hash=$(file_hash "$prefix.integration.$index.before")
+			[[ $backup_hash == "$baseline_hash" ]] ||
+				die "theme integration changed during baseline capture: $path"
 		fi
 		temporary=$(umask 077 && mktemp "$prefix.integration.$index.meta.XXXXXX") ||
 			die 'cannot create integration recovery metadata'
@@ -775,8 +784,15 @@ install_prepared_theme() {
 	baseline_hash=$(meta_value "$prefix" baseline_hash) || return 1
 	if [[ $existed == 1 ]]; then
 		[[ -e $themes_file || -L $themes_file ]] || return 2
+		replace_metadata "$prefix" exchange_file "${prepared_theme_file##*/}"
 		if ! mv --exchange --no-copy -T -- "$prepared_theme_file" "$themes_file"; then
 			return 1
+		fi
+		if [[ -n ${DWM_TEST_SOURCE_EXCHANGE_READY:-} ]]; then
+			: >"$DWM_TEST_SOURCE_EXCHANGE_READY"
+			while [[ ! -e ${DWM_TEST_SOURCE_EXCHANGE_RELEASE:-} ]]; do
+				sleep 0.01
+			done
 		fi
 		if [[ -f $prepared_theme_file && ! -L $prepared_theme_file ]]; then
 			captured_hash=$(file_hash "$prepared_theme_file") || captured_hash=unsafe
@@ -796,6 +812,7 @@ install_prepared_theme() {
 		fi
 		rm -f -- "$prepared_theme_file"
 		prepared_theme_file=
+		replace_metadata "$prefix" exchange_file none
 	elif [[ $existed == 0 ]]; then
 		if ! mv --update=none-fail --no-copy -T -- "$prepared_theme_file" "$themes_file"; then
 			return 2
@@ -1070,13 +1087,27 @@ verify_active_theme() {
 
 restore_theme_baseline_locked() {
 	local prefix=$1 expected_hash=$2 existed mode baseline_hash current_hash current_mode temporary captured_hash
-	local capture_dir captured_path
+	local capture_dir captured_path exchange_name exchange_path exchange_hash
 	[[ -f $prefix.meta ]] || return 1
 	existed=$(meta_value "$prefix" existed) || return 1
 	mode=$(meta_value "$prefix" mode) || return 1
 	baseline_hash=$(meta_value "$prefix" baseline_hash) || return 1
 	[[ $existed == 0 || $existed == 1 ]] || return 1
 	[[ $mode =~ ^[0-7]{3,4}$ ]] || return 1
+	exchange_name=$(meta_value "$prefix" exchange_file || true)
+	if [[ -n $exchange_name && $exchange_name != none ]]; then
+		[[ $exchange_name =~ ^\.themes\.toml\.[A-Za-z0-9]+$ ]] || return 1
+		exchange_path=${themes_file%/*}/$exchange_name
+		if [[ -e $exchange_path || -L $exchange_path ]]; then
+			[[ -f $exchange_path && ! -L $exchange_path ]] || return 1
+			[[ $(stat -c %u -- "$exchange_path") == "$UID" ]] || return 1
+			exchange_hash=$(file_hash "$exchange_path") || return 1
+			if [[ $exchange_hash != "$expected_hash" && $exchange_hash != "$baseline_hash" ]]; then
+				printf 'dwm-settings-theme: external theme edit retained at %s\n' "$exchange_path" >&2
+				return 2
+			fi
+		fi
+	fi
 	if [[ -e $themes_file || -L $themes_file ]]; then
 		[[ -f $themes_file && ! -L $themes_file ]] || return 1
 		current_hash=$(file_hash "$themes_file") || return 1
@@ -1142,6 +1173,9 @@ restore_theme_baseline_locked() {
 			rmdir -- "$capture_dir" 2>/dev/null || true
 		fi
 		reload_dwm_after_source_change
+	fi
+	if [[ -n $exchange_name && $exchange_name != none && -f $exchange_path && ! -L $exchange_path ]]; then
+		rm -f -- "$exchange_path"
 	fi
 }
 

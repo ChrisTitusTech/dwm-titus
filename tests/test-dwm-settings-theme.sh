@@ -359,6 +359,37 @@ grep -Fq 'changed while preparing the transaction' "$work/mode-race.err"
 [[ $(active_theme) == nord ]]
 
 reset_fixture
+source_exchange_ready=$work/source-exchange.ready
+source_exchange_release=$work/source-exchange.release
+HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
+	DWM_APPEARANCE_APPLY_HELPER=$apply_stub DWM_APPEARANCE_RELOAD_HELPER=$reload_stub \
+	DWM_TEST_APPLY_LOG=$work/apply.log DWM_TEST_RELOAD_LOG=$work/reload.log \
+	DWM_TEST_SOURCE_EXCHANGE_READY=$source_exchange_ready \
+	DWM_TEST_SOURCE_EXCHANGE_RELEASE=$source_exchange_release \
+	"$helper" apply dracula >"$work/source-exchange.out" 2>"$work/source-exchange.err" &
+source_exchange_pid=$!
+for attempt in {1..100}; do
+	[[ -e $source_exchange_ready ]] && break
+	sleep 0.05
+done
+[[ -e $source_exchange_ready ]]
+exchange_name=$(awk -F= '$1 == "exchange_file" { print $2; exit }' \
+	"$state_home/dwm-titus/appearance/transaction.meta")
+[[ $exchange_name =~ ^\.themes\.toml\.[A-Za-z0-9]+$ ]]
+exchange_path=${themes_file%/*}/$exchange_name
+printf '\n# retained external source edit\n' >>"$exchange_path"
+kill -KILL "$source_exchange_pid"
+wait "$source_exchange_pid" 2>/dev/null || true
+if run_theme recover >"$work/source-exchange-recover.out" \
+	2>"$work/source-exchange-recover.err"; then
+	printf 'recovery discarded a journaled external source edit\n' >&2
+	exit 1
+fi
+grep -Fq "external theme edit retained at $exchange_path" "$work/source-exchange-recover.err"
+grep -Fqx '# retained external source edit' "$exchange_path"
+
+reset_fixture
 integration_lock_ready=$work/integration-lock.ready
 integration_lock_release=$work/integration-lock.release
 (
@@ -591,6 +622,34 @@ HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 [[ $(integration_snapshot) != "$integration_before" ]]
 grep -Fqx gsettings "$work/live.log"
 grep -Fqx xfconf-query "$work/live.log"
+
+reset_fixture
+mkdir -p "$config_home/alacritty"
+printf '# integration baseline\n' >"$config_home/alacritty/active-theme.toml"
+capture_ready=$work/integration-capture.ready
+capture_release=$work/integration-capture.release
+HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
+	DWM_APPEARANCE_APPLY_HELPER=$apply_stub DWM_APPEARANCE_RELOAD_HELPER=$reload_stub \
+	DWM_TEST_APPLY_LOG=$work/apply.log DWM_TEST_RELOAD_LOG=$work/reload.log \
+	DWM_TEST_INTEGRATION_CAPTURE_READY=$capture_ready \
+	DWM_TEST_INTEGRATION_CAPTURE_RELEASE=$capture_release \
+	"$helper" preview integration-capture 10 dracula \
+	>"$work/integration-capture.out" 2>"$work/integration-capture.err" &
+capture_pid=$!
+for attempt in {1..100}; do
+	[[ -e $capture_ready ]] && break
+	sleep 0.05
+done
+[[ -e $capture_ready ]]
+printf '# changed during capture\n' >>"$config_home/alacritty/active-theme.toml"
+: >"$capture_release"
+set +e
+wait "$capture_pid"
+capture_status=$?
+set -e
+[[ $capture_status -ne 0 ]]
+grep -Fq 'theme integration changed during baseline capture' "$work/integration-capture.err"
 
 reset_fixture
 mkdir -p "$config_home/alacritty"
