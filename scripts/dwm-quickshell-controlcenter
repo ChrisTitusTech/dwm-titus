@@ -1544,6 +1544,23 @@ restart_quickshell() {
 
 reload_wallpaper() {
 	wallpaper_dir=${HOME:-}/Pictures/backgrounds
+	wallpaper_helper=${DWM_SETTINGS_WALLPAPER_HELPER:-}
+	if [ -z "$wallpaper_helper" ]; then
+		wallpaper_helper=dwm-settings-wallpaper
+		if ! command -v "$wallpaper_helper" >/dev/null 2>&1; then
+			case $0 in
+			*/*) wallpaper_helper=${0%/*}/dwm-settings-wallpaper ;;
+			esac
+		fi
+	fi
+	if command -v "$wallpaper_helper" >/dev/null 2>&1 || [ -x "$wallpaper_helper" ]; then
+		if "$wallpaper_helper" randomize >/dev/null; then
+			notify "Wallpaper reloaded"
+			return 0
+		fi
+		printf 'failed to reload wallpaper through managed settings\n' >&2
+		return 1
+	fi
 
 	if ! command -v feh >/dev/null 2>&1; then
 		printf 'feh is unavailable\n' >&2

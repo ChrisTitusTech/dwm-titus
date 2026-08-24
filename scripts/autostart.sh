@@ -464,11 +464,25 @@ fi
 
 # ── Phase 2: Background services ───────────────────────────────────────────────
 
-# Wallpaper (moved here from Phase 1 — does not need to block dwm startup)
-if command -v feh >/dev/null 2>&1 &&
-	find "$HOME/Pictures/backgrounds" -type f -print -quit 2>/dev/null |
-	grep -q .; then
-	start_once feh feh --randomize --bg-fill "$HOME/Pictures/backgrounds"
+# Wallpaper is user-session state. The helper restores a managed choice and
+# fit mode, or preserves the legacy random-fill behavior when no choice exists.
+if command -v feh >/dev/null 2>&1; then
+	wallpaper_helper=dwm-settings-wallpaper
+	if ! command -v "$wallpaper_helper" >/dev/null 2>&1; then
+		case $0 in
+		*/*) wallpaper_helper=${0%/*}/dwm-settings-wallpaper ;;
+		esac
+	fi
+	if command -v "$wallpaper_helper" >/dev/null 2>&1 || [ -x "$wallpaper_helper" ]; then
+		(
+			"$wallpaper_helper" session-apply >/dev/null 2>&1 || {
+				! pgrep -u "$(id -u)" -x feh >/dev/null 2>&1 &&
+					feh --no-fehbg --randomize --bg-fill "$HOME/Pictures/backgrounds" >/dev/null 2>&1
+			}
+		) &
+	elif ! pgrep -u "$(id -u)" -x feh >/dev/null 2>&1; then
+		start_once feh feh --no-fehbg --randomize --bg-fill "$HOME/Pictures/backgrounds"
+	fi
 fi
 
 # Compositor

@@ -480,7 +480,8 @@ run_duplicate_case() {
 		fi
 	done
 
-	for name in feh picom dwm-status dwm-lock-watch quickshell; do
+	test "$(cat "$state/feh.count")" -eq 2
+	for name in picom dwm-status dwm-lock-watch quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
 	done
 	test ! -e "$state/light-locker.count"
@@ -495,6 +496,32 @@ run_duplicate_case() {
 		index(":" $1 ":", ":X-DWM:") && index(":" $1 ":", ":dwm:") { found = 1 }
 		END { exit !found }
 	' "$state/systemctl.log"
+}
+
+run_wallpaper_recovery_with_existing_feh_case() {
+	home="$work/wallpaper-recovery/home"
+	state="$work/wallpaper-recovery/state"
+	runtime="$work/wallpaper-recovery/runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$home/.config/quickshell" "$state" "$runtime"
+	chmod 700 "$runtime"
+	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$home/.config/quickshell/shell.qml"
+	: >"$state/feh.running"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+	cat >"$work/bin/dwm-settings-wallpaper" <<'EOF'
+#!/bin/sh
+[ "$*" = session-apply ] || exit 2
+: >"${TEST_STATE:?}/wallpaper-helper.running"
+EOF
+	chmod +x "$work/bin/dwm-settings-wallpaper"
+	DISPLAY=:199 HOME=$home QT_QPA_PLATFORM=wayland TEST_STATE=$state \
+		PATH="$work/bin:/usr/bin:/bin" WAYLAND_DISPLAY=wayland-0 \
+		XDG_CONFIG_HOME="$home/.config" XDG_RUNTIME_DIR="$runtime" \
+		XDG_SESSION_TYPE=wayland DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+		DWM_AUTOSTART_NO_SETSID=1 sh "$repo_dir/scripts/autostart.sh"
+	wait_for_marker "$state/wallpaper-helper.running"
+	test ! -e "$state/feh.count"
+	rm -f "$work/bin/dwm-settings-wallpaper"
 }
 
 run_stale_quickshell_case() {
@@ -902,6 +929,7 @@ EOF
 
 run_duplicate_case display-manager
 run_duplicate_case startx
+run_wallpaper_recovery_with_existing_feh_case
 run_status_display_scope_case
 run_status_launch_race_case
 run_status_optional_lock_case
@@ -930,5 +958,11 @@ grep -Fq 'display_process_script' "$repo_dir/scripts/autostart.sh"
 grep -Fq 'display_process_display' "$repo_dir/scripts/autostart.sh"
 grep -Fq 'timeout --signal=TERM --kill-after=2 5' "$repo_dir/scripts/autostart.sh"
 grep -Fq '_resume-preview >/dev/null' "$repo_dir/scripts/autostart.sh"
+# shellcheck disable=SC2016
+grep -Fq '"$wallpaper_helper" session-apply >/dev/null 2>&1 ||' \
+	"$repo_dir/scripts/autostart.sh"
+# shellcheck disable=SC2016
+grep -Fq 'feh --no-fehbg --randomize --bg-fill "$HOME/Pictures/backgrounds"' \
+	"$repo_dir/scripts/autostart.sh"
 
 printf '%s\n' "Autostart duplicate and missing-optional command guards: PASS"

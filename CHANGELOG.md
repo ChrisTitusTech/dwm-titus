@@ -8,6 +8,14 @@ versions from `config.mk`.
 
 ### Added
 
+- Add versioned user-session wallpaper state through `dwm-settings-wallpaper`,
+  with persisted Feh fit modes, bounded preview and automatic rollback,
+  external-change protection, reset, interrupted-preview recovery, and a
+  legacy random-wallpaper fallback when a saved image disappears. Session
+  startup restores the managed choice without writing `~/.fehbg`; one-off
+  randomization retains the saved selection for the next session and gives
+  previews an exact live rollback baseline.
+
 - Begin Phase 5 with a versioned, read-only appearance provider that validates
   the active and available themes, resolves a safe recovery theme, exposes the
   shared semantic palette, and reports GTK, Qt, cursor, terminal, and compositor
