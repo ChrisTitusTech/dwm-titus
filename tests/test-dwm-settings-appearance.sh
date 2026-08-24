@@ -159,6 +159,28 @@ single_quoted_header=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
 grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
 	<<<"$single_quoted_header"
 
+quoted_import_config_home=$work/config-quoted-import
+cp -a "$config_home" "$quoted_import_config_home"
+printf '[general]\n"import" = ["%s"]\n' \
+	"$quoted_import_config_home/alacritty/active-theme.toml" \
+	>"$quoted_import_config_home/alacritty/alacritty.toml"
+quoted_import=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$quoted_import_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$quoted_import"
+
+quoted_dotted_config_home=$work/config-quoted-dotted
+cp -a "$config_home" "$quoted_dotted_config_home"
+printf "'general' . 'import' = [\"%s\"]\n" \
+	"$quoted_dotted_config_home/alacritty/active-theme.toml" \
+	>"$quoted_dotted_config_home/alacritty/alacritty.toml"
+quoted_dotted=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$quoted_dotted_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$quoted_dotted"
+
 dotted_config_home=$work/config-dotted
 cp -a "$config_home" "$dotted_config_home"
 printf 'general . import = ["%s"]\n' "$dotted_config_home/alacritty/active-theme.toml" \
