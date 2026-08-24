@@ -183,9 +183,14 @@ table_import_alacritty=$(snapshot)
 grep -Fqx $'integration\talacritty\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration' \
 	<<<"$table_import_alacritty"
 
-printf '[general]\ngeneral.import = ["%s"]\n' "$config_home/alacritty/active-theme.toml" \
-	>"$config_home/alacritty/alacritty.toml"
-nested_dotted_import=$(snapshot)
+nested_dotted_config_home=$work/config-nested-dotted
+cp -a "$config_home" "$nested_dotted_config_home"
+printf '[general]\ngeneral.import = ["%s"]\n' \
+	"$nested_dotted_config_home/alacritty/active-theme.toml" \
+	>"$nested_dotted_config_home/alacritty/alacritty.toml"
+nested_dotted_import=$(PATH=$bin_dir GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$nested_dotted_config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
 grep -Fqx $'integration\talacritty\tpartial\tconfiguration\tGenerated theme is not imported by the terminal configuration' \
 	<<<"$nested_dotted_import"
 
