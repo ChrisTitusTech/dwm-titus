@@ -325,7 +325,7 @@ if command -v Xvfb >/dev/null 2>&1 && [ -x "$repo/dwm" ]; then
 	runtime_data_home=$runtime_home/.local/share
 	runtime_config_home=$runtime_home/.config
 	mkdir -p "$runtime_data_home/dwm-titus/scripts" \
-		"$runtime_data_home/dwm-titus/config" "$runtime_config_home/dwm-titus"
+		"$runtime_data_home/dwm-titus/config"
 	cp "$repo/config/hotkeys.toml" "$repo/config/themes.toml" \
 		"$repo/config/window-rules.toml" "$runtime_data_home/dwm-titus/config/"
 	cat >"$runtime_data_home/dwm-titus/scripts/autostart.sh" <<'SH'
@@ -393,7 +393,9 @@ SH
 	grep -Fqx "$runtime_config_home" "$work/theme-env.marker"
 	grep -Fqx "$runtime_data_home" "$work/theme-env.marker"
 	initial_theme_applies=$(wc -c <"$work/theme-apply.marker")
+	mkdir -p "$runtime_config_home/dwm-titus"
 	cp "$repo/config/themes.toml" "$runtime_config_home/dwm-titus/themes.toml"
+	kill -USR1 "$real_dwm_pid"
 	i=0
 	while [ "$(grep -Fc 'dwm: loaded theme from config' "$work/dwm.log" || true)" \
 		-le "$initial_theme_loads" ]; do
@@ -409,6 +411,28 @@ SH
 		i=$((i + 1))
 		[ "$i" -lt 100 ] || {
 			printf '%s\n' 'Nested DWM did not run theme-apply from XDG_DATA_HOME.' >&2
+			exit 1
+		}
+		sleep 0.02
+	done
+	first_user_theme_loads=$(grep -Fc 'dwm: loaded theme from config' "$work/dwm.log" || true)
+	first_user_theme_applies=$(wc -c <"$work/theme-apply.marker")
+	printf '\n' >>"$runtime_config_home/dwm-titus/themes.toml"
+	i=0
+	while [ "$(grep -Fc 'dwm: loaded theme from config' "$work/dwm.log" || true)" \
+		-le "$first_user_theme_loads" ]; do
+		i=$((i + 1))
+		[ "$i" -lt 100 ] || {
+			printf '%s\n' 'Nested DWM did not re-arm its new XDG_CONFIG_HOME watch.' >&2
+			exit 1
+		}
+		sleep 0.02
+	done
+	i=0
+	while [ "$(wc -c <"$work/theme-apply.marker")" -le "$first_user_theme_applies" ]; do
+		i=$((i + 1))
+		[ "$i" -lt 100 ] || {
+			printf '%s\n' 'Nested DWM did not apply a watched user-theme update.' >&2
 			exit 1
 		}
 		sleep 0.02

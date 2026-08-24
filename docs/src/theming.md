@@ -8,6 +8,30 @@ to update dwm, Quickshell, terminal, GTK, and Qt styling. No restart needed.
 theme = "nord"   # ← change this line to switch themes
 ```
 
+The managed transaction helper is the safe command-line interface for theme
+changes:
+
+```sh
+dwm-settings-theme preview preview-1 15 dracula
+dwm-settings-theme keep preview-1       # confirm before the timeout
+dwm-settings-theme revert preview-1     # or restore immediately
+dwm-settings-theme abandon preview-1    # accept a conflicting external edit
+dwm-settings-theme apply gruvbox
+dwm-settings-theme reset                # restore the managed default selection
+```
+
+An unconfirmed preview restores the exact previous `themes.toml` bytes and
+mode automatically. Apply and reset preserve comments, custom theme sections,
+and unrelated appearance settings. If an operation is interrupted after its
+atomic write, inspect and restore it with:
+
+```sh
+dwm-settings-theme recovery-status
+dwm-settings-theme recover
+```
+
+Recovery refuses to overwrite an externally changed theme file.
+
 ---
 
 ## Available Themes

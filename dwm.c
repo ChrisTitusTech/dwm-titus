@@ -362,6 +362,7 @@ static void reload_config(void);
 static int runtime_config_fd(void);
 static void runtime_config_mark_reload_pending(void);
 static void runtime_config_poll_inotify(void);
+static void runtime_config_ensure_user_watch(void);
 static void runtime_config_reload(void);
 static void runtime_config_reload_if_pending(void);
 static void runtime_config_setup(void);
@@ -3904,7 +3905,8 @@ reload_config(void)
 			char script[PATH_MAX];
 			if (dwm_data_dir[0] != '\0' &&
 			    pathjoin(script, sizeof(script), dwm_data_dir,
-			             "scripts/theme-apply.sh")) {
+			             "scripts/theme-apply.sh") &&
+			    setenv("DWM_THEME_APPLY_AUTOMATIC", "1", 1) == 0) {
 				execl(script, script, (char *)NULL);
 			}
 			_exit(0);
@@ -3956,7 +3958,23 @@ runtime_config_poll_inotify(void)
 static void
 runtime_config_reload(void)
 {
+	runtime_config_ensure_user_watch();
 	reload_config();
+}
+
+static void
+runtime_config_ensure_user_watch(void)
+{
+	if (inotify_wd >= 0 || toml_config_dir[0] == '\0')
+		return;
+	if (inotify_fd < 0) {
+		setup_inotify();
+		return;
+	}
+	inotify_wd = inotify_add_watch(inotify_fd, toml_config_dir,
+	                               IN_CLOSE_WRITE | IN_MOVED_TO);
+	if (inotify_wd < 0)
+		inotify_wd = -1;
 }
 
 static void

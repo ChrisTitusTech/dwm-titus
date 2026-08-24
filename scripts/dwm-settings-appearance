@@ -144,7 +144,7 @@ numbered_theme_content_lines() {
 }
 
 prescan_active_theme() {
-	local file=$1 line trimmed section='' candidate runtime_key
+	local file=$1 line trimmed header section='' candidate runtime_key
 	local entry_count=0 string_byte_length_result
 
 	while IFS= read -r line || [[ -n $line ]]; do
@@ -153,6 +153,8 @@ prescan_active_theme() {
 		trimmed=${trimmed#"${trimmed%%[![:space:]]*}"}
 		trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
 		[[ -z $trimmed || $trimmed == \#* ]] && continue
+		header=${trimmed%%#*}
+		header=${header%"${header##*[![:space:]]}"}
 		if [[ $trimmed == *=* ]]; then
 			runtime_key=${trimmed%%=*}
 			runtime_key=${runtime_key%"${runtime_key##*[![:space:]]}"}
@@ -162,9 +164,9 @@ prescan_active_theme() {
 				((entry_count <= max_entry_count)) || break
 			fi
 		fi
-		if [[ $trimmed == '[active]' ]]; then
+		if [[ $header == '[active]' ]]; then
 			section=active
-		elif [[ $trimmed == \[* ]]; then
+		elif [[ $header == \[* ]]; then
 			section=other
 		elif [[ $section == active && -z $selected_theme_hint &&
 			$line =~ $quoted_active_theme_re ]]; then
@@ -198,7 +200,7 @@ string_byte_length() {
 }
 
 parse_themes() {
-	local file=$1 size line trimmed line_number raw runtime_key runtime_value parsed_type
+	local file=$1 size line trimmed header line_number raw runtime_key runtime_value parsed_type
 	local string_byte_length_result parsed_runtime_string
 	local section='' theme='' theme_candidate='' key='' parsed=''
 
@@ -225,9 +227,11 @@ parse_themes() {
 		trimmed=${trimmed#"${trimmed%%[![:space:]]*}"}
 		trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
 		[[ -z $trimmed || $trimmed == \#* ]] && continue
+		header=${trimmed%%#*}
+		header=${header%"${header##*[![:space:]]}"}
 
-		if [[ $trimmed == \[* ]]; then
-			if [[ $trimmed =~ ^\[theme\.([^]]+)\]$ ]]; then
+		if [[ $header == \[* ]]; then
+			if [[ $header =~ ^\[theme\.([^]]+)\]$ ]]; then
 				theme_candidate=${BASH_REMATCH[1]}
 				if [[ ! $theme_candidate =~ ^[A-Za-z0-9._-]+$ ]] ||
 					((${#theme_candidate} > max_theme_name_length)); then
@@ -256,7 +260,7 @@ parse_themes() {
 						add_error "theme:$theme" duplicate "Duplicate theme section at line $line_number"
 					fi
 				fi
-			elif [[ $trimmed == '[colors]' ]]; then
+			elif [[ $header == '[colors]' ]]; then
 				theme=$legacy_theme_id
 				section=theme
 				((section_count[$theme] = ${section_count[$theme]:-0} + 1))
@@ -269,16 +273,16 @@ parse_themes() {
 					theme_invalid[$theme]=1
 					add_error "theme:$legacy_theme_label" duplicate "Duplicate legacy [colors] section at line $line_number"
 				fi
-			elif [[ $trimmed == '[active]' ]]; then
+			elif [[ $header == '[active]' ]]; then
 				section=active
 				theme=__active
-			elif [[ $trimmed == '[appearance]' ]]; then
+			elif [[ $header == '[appearance]' ]]; then
 				section=appearance
 				theme=__appearance
 			else
 				section=ignore
 				theme=
-				case $trimmed in
+				case $header in
 				'[theme.'* | '[active'* | '[appearance'*)
 					provider_state=partial
 					add_error parser malformed-section "Malformed theme section header at line $line_number"

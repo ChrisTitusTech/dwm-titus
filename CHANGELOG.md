@@ -13,6 +13,14 @@ versions from `config.mk`.
   shared semantic palette, and reports GTK, Qt, cursor, terminal, and compositor
   integration failures without modifying user configuration.
 
+- Add transactional theme changes through `dwm-settings-theme`, including
+  bounded previews, confirm and revert actions, automatic timeout rollback,
+  managed-default reset, hash-guarded interrupted-operation recovery, and the
+  existing Control Center selection path. Theme comments, custom definitions,
+  file modes, and unrelated settings remain intact. Integration outputs are
+  staged and compare-and-swap published, manual applies honor active previews,
+  and DWM re-arms hot reload after the user theme directory is first created.
+
 - Add one shared session-action model for Lock, Log Out, Suspend, Reboot, and
   Shutdown across the panel and Settings. Fixed helper actions require exact
   accepted records, preserve destructive confirmations, attribute failures to

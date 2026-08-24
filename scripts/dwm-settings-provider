@@ -76,6 +76,18 @@ appearance_snapshot_valid() {
 		'
 }
 
+appearance_mutation_ready() {
+	command_path=$(provider_path dwm-settings-theme) || return 1
+	timeout_path=$(command -v timeout 2>/dev/null) || return 1
+	if [ "$command_path" = "$script_dir/dwm-settings-theme" ] &&
+		[ -f "$script_dir/../config/themes.toml" ]; then
+		DWM_APPEARANCE_MANAGED_THEMES_FILE=$script_dir/../config/themes.toml \
+			"$timeout_path" 2 "$command_path" mutation-ready >/dev/null 2>&1
+	else
+		"$timeout_path" 2 "$command_path" mutation-ready >/dev/null 2>&1
+	fi
+}
+
 emit_capability() {
 	section=$1
 	id=$2
@@ -277,8 +289,16 @@ discover() {
 		emit_capability appearance themes Themes unavailable read-only dwm-settings-appearance \
 			'Install the managed appearance provider'
 	elif appearance_snapshot_valid; then
-		emit_capability appearance themes Themes available read-only dwm-settings-appearance \
-			'Versioned theme inventory and integration state are available'
+		if appearance_mutation_ready; then
+			emit_capability appearance themes Themes available user-session dwm-settings-theme \
+				'Theme inventory, bounded preview, apply, reset, and recovery are available'
+		elif provider_available dwm-settings-theme; then
+			emit_capability appearance themes Themes partial read-only dwm-settings-appearance \
+				'Theme inventory is available; the theme source is not safely mutable'
+		else
+			emit_capability appearance themes Themes partial read-only dwm-settings-appearance \
+				'Theme inventory is available; install the managed mutation helper for changes'
+		fi
 	else
 		emit_capability appearance themes Themes unavailable read-only dwm-settings-appearance \
 			'Restore a valid themes.toml configuration or inspect the appearance snapshot errors'

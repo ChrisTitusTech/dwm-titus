@@ -815,6 +815,55 @@ run_missing_optional_case() {
 		/bin/sh "$repo_dir/scripts/autostart.sh"
 }
 
+run_theme_resume_retry_case() {
+	case_dir="$work/theme-resume-retry"
+	home="$case_dir/home"
+	state="$case_dir/state"
+	minimal_bin="$case_dir/bin"
+	mkdir -p "$case_dir/scripts" "$home" "$state" "$minimal_bin"
+	cp "$repo_dir/scripts/autostart.sh" "$case_dir/scripts/autostart.sh"
+	cat >"$case_dir/scripts/dwm-settings-theme" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >"${TEST_STATE:?}/theme-resume.args.tmp"
+mv -f "${TEST_STATE:?}/theme-resume.args.tmp" "${TEST_STATE:?}/theme-resume.args"
+EOF
+	cat >"$minimal_bin/timeout" <<'EOF'
+#!/bin/sh
+exit 124
+EOF
+	cat >"$minimal_bin/setsid" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >"${TEST_STATE:?}/setsid.args.tmp"
+mv -f "${TEST_STATE:?}/setsid.args.tmp" "${TEST_STATE:?}/setsid.args"
+if [ "${1:-}" = -f ]; then
+	shift
+fi
+"$@" &
+EOF
+	for name in basename find grep id mv pgrep; do
+		if [ -x "$work/bin/$name" ]; then
+			ln -s "$work/bin/$name" "$minimal_bin/$name"
+		else
+			ln -s "$(command -v "$name")" "$minimal_bin/$name"
+		fi
+	done
+	ln -s "$work/bin/dbus-update-activation-environment" \
+		"$minimal_bin/dbus-update-activation-environment"
+	chmod +x "$case_dir/scripts/autostart.sh" "$case_dir/scripts/dwm-settings-theme" \
+		"$minimal_bin/setsid" "$minimal_bin/timeout"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+
+	HOME=$home \
+		TEST_STATE=$state \
+		PATH=$minimal_bin \
+		XDG_CONFIG_HOME="$home/.config" \
+		/bin/sh "$case_dir/scripts/autostart.sh"
+	wait_for_marker "$state/theme-resume.args"
+	grep -Fqx '_resume-preview' "$state/theme-resume.args"
+	wait_for_marker "$state/setsid.args"
+	grep -Fqx -- "-f $case_dir/scripts/dwm-settings-theme _resume-preview" "$state/setsid.args"
+}
+
 run_input_watcher_fallback_case() {
 	case_dir="$work/watcher-fallback"
 	home="$case_dir/home"
@@ -862,6 +911,7 @@ run_delayed_quickshell_case
 run_hung_quickshell_case
 run_dex_fallback_case
 run_missing_optional_case
+run_theme_resume_retry_case
 run_input_watcher_fallback_case
 
 if grep -q '^WantedBy=default.target$' \
@@ -878,5 +928,7 @@ grep -Fq 'start_detached_display_command_once dwm-status' \
 	"$repo_dir/scripts/autostart.sh"
 grep -Fq 'display_process_script' "$repo_dir/scripts/autostart.sh"
 grep -Fq 'display_process_display' "$repo_dir/scripts/autostart.sh"
+grep -Fq 'timeout --signal=TERM --kill-after=2 5' "$repo_dir/scripts/autostart.sh"
+grep -Fq '_resume-preview >/dev/null' "$repo_dir/scripts/autostart.sh"
 
 printf '%s\n' "Autostart duplicate and missing-optional command guards: PASS"
