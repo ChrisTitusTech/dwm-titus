@@ -251,6 +251,9 @@ mutation_ready() {
 	target=$(snapshot_resolved_theme "$managed_snapshot")
 	valid_theme_name "$target" || return 1
 	snapshot_target_is_valid "$managed_snapshot" "$target" || return 1
+	if snapshot_has_theme "$snapshot" "$target"; then
+		snapshot_target_is_valid "$snapshot" "$target" || return 1
+	fi
 	(validate_atomic_mv_support) >/dev/null 2>&1
 }
 
@@ -974,15 +977,14 @@ restore_integration_baseline() {
 }
 
 write_integration_suppression() {
-	local source_hash=$1 temporary deadline
+	local source_hash=$1 temporary
 	if [[ $source_hash == absent ]]; then
 		validate_managed_theme_file
 		source_hash=$(file_hash "$managed_themes_file") || return 1
 	fi
 	[[ $source_hash =~ ^[0-9a-f]{64}$ ]] || return 1
-	deadline=$(($(date +%s) + 30))
 	temporary=$(umask 077 && mktemp "$recovery_dir/.integration-suppress.XXXXXX") || return 1
-	printf '%s %s\n' "$source_hash" "$deadline" >"$temporary"
+	printf '%s\n' "$source_hash" >"$temporary"
 	chmod 600 -- "$temporary"
 	mv -f -- "$temporary" "$integration_suppress_file"
 }
@@ -1018,6 +1020,20 @@ reload_dwm_after_source_change() {
 		[[ $pid =~ ^[1-9][0-9]*$ ]] || continue
 		kill -USR1 "$pid" 2>/dev/null || true
 	done < <(pgrep -u "$UID" -x dwm 2>/dev/null || true)
+}
+
+reload_kitty_after_integration_publish() {
+	local pid
+	if [[ -n ${DWM_TEST_KITTY_RELOAD_MARKER:-} ]]; then
+		: >"$DWM_TEST_KITTY_RELOAD_MARKER"
+		return
+	fi
+	command -v kitty >/dev/null 2>&1 || return 0
+	command -v pgrep >/dev/null 2>&1 || return 0
+	while IFS= read -r pid; do
+		[[ $pid =~ ^[1-9][0-9]*$ ]] || continue
+		kill -SIGUSR1 "$pid" 2>/dev/null || true
+	done < <(pgrep -u "$UID" -x kitty 2>/dev/null || true)
 }
 
 verify_active_theme() {
@@ -1217,6 +1233,7 @@ begin_mutation() {
 	elif ((publish_status != 0)); then
 		die 'could not publish theme integration outputs'
 	fi
+	reload_kitty_after_integration_publish
 	append_metadata "$prefix" integrations_ready 1
 	write_integration_transaction "$rollback_expected_hash" ready ||
 		die 'cannot publish ready integration transaction state'
@@ -1514,9 +1531,14 @@ preview_watchdog() {
 }
 
 resume_preview() {
+	local token
 	acquire_lock
 	ensure_recovery_dir
-	reconcile_preview_locked true
+	reconcile_preview_locked false
+	[[ -f $preview_current ]] || return 0
+	IFS= read -r token <"$preview_current" || token=
+	valid_token "$token" || return 0
+	expire_preview_locked "$token"
 }
 
 preview_status() {

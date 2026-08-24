@@ -42,6 +42,11 @@ LIVE_ONLY=${DWM_APPEARANCE_LIVE_ONLY:-0}
 	echo "theme-apply: DWM_APPEARANCE_LIVE_ONLY must be 0 or 1" >&2
 	exit 1
 }
+STAGED_OUTPUT=${DWM_APPEARANCE_STAGED_OUTPUT:-0}
+[[ $STAGED_OUTPUT == 0 || $STAGED_OUTPUT == 1 ]] || {
+	echo "theme-apply: DWM_APPEARANCE_STAGED_OUTPUT must be 0 or 1" >&2
+	exit 1
+}
 [[ ! ($RUNTIME_ONLY == 1 && $LIVE_ONLY == 1) ]] || {
 	echo "theme-apply: runtime-only and live-only modes are mutually exclusive" >&2
 	exit 1
@@ -118,18 +123,12 @@ if [[ $RUNTIME_ONLY_EXPLICIT == false ]]; then
 		THEME_SUPPRESS_FILE=$THEME_STATE_HOME/dwm-titus/appearance/integration-suppress
 		if [[ -f $THEME_SUPPRESS_FILE && ! -L $THEME_SUPPRESS_FILE &&
 			$(stat -c %u -- "$THEME_SUPPRESS_FILE") == "$UID" ]]; then
-			read -r THEME_SUPPRESS_HASH THEME_SUPPRESS_DEADLINE <"$THEME_SUPPRESS_FILE" || {
+			read -r THEME_SUPPRESS_HASH _ <"$THEME_SUPPRESS_FILE" || {
 				THEME_SUPPRESS_HASH=
-				THEME_SUPPRESS_DEADLINE=
 			}
-			THEME_SUPPRESS_NOW=$(date +%s)
-			if [[ $THEME_SUPPRESS_HASH == "$THEME_SOURCE_HASH" &&
-				$THEME_SUPPRESS_DEADLINE =~ ^[0-9]+$ &&
-				$THEME_SUPPRESS_DEADLINE -ge $THEME_SUPPRESS_NOW ]]; then
+			if [[ $THEME_SUPPRESS_HASH == "$THEME_SOURCE_HASH" ]]; then
 				RUNTIME_ONLY=1
 			elif [[ ! $THEME_SUPPRESS_HASH =~ ^[0-9a-f]{64}$ ||
-				! $THEME_SUPPRESS_DEADLINE =~ ^[0-9]+$ ||
-				$THEME_SUPPRESS_DEADLINE -lt $THEME_SUPPRESS_NOW ||
 				$THEME_SUPPRESS_HASH != "$THEME_SOURCE_HASH" ]]; then
 				rm -f -- "$THEME_SUPPRESS_FILE"
 			fi
@@ -335,7 +334,7 @@ EOF
 fi
 # Signal kitty after normal writes or after a transaction restored the exact
 # pre-preview files. No restart is needed.
-if command -v kitty &>/dev/null; then
+if [[ $STAGED_OUTPUT == 0 ]] && command -v kitty &>/dev/null; then
 	while IFS= read -r kitty_pid; do
 		[[ $kitty_pid =~ ^[1-9][0-9]*$ ]] || continue
 		kill -SIGUSR1 "$kitty_pid" 2>/dev/null || true

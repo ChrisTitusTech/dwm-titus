@@ -57,8 +57,9 @@ baseline. Automatic and manual reloads remain runtime-only while the
 transaction is active, so no later process can silently claim or overwrite an
 external edit. A confirmed preview or committed apply then performs normal live
 convergence; rollback therefore does not need to guess at or replace
-pre-existing live settings. Session startup re-arms or
-expires that journal, so logout or reboot cannot silently confirm a preview.
+pre-existing live settings. Session startup expires any unconfirmed journal
+before importing its toolkit environment, so logout or reboot cannot silently
+confirm a preview.
 Keep commits the preview only when the file still has the expected hash and no
 rollback failure is recorded. Revert and timeout restore the original terminal,
 GTK, Qt, cursor, environment, and theme files byte-for-byte, including modes and
@@ -67,8 +68,8 @@ record instead of being replaced. If the external edit is intentional, abandon
 clears only the stale journal and leaves that edit untouched.
 
 DWM's asynchronous integration reloads honor the restored source hash and stay
-runtime-only during a bounded 30-second rollback window. A different valid
-source clears that hash-specific guard immediately. Manual applies bypass only
+runtime-only until a different valid source clears that hash-specific guard.
+Manual applies bypass only
 that post-rollback suppression guard; they still honor active previews.
 Baseline capture, staged publication, and restore share the integration writer
 lock, and atomic-exchange support is proven on the theme and every integration

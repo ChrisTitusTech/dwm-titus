@@ -319,7 +319,7 @@ resume_theme_preview() {
 	if [ -n "$theme_helper" ] && command -v timeout >/dev/null 2>&1; then
 		if ! timeout --signal=TERM --kill-after=2 5 \
 			"$theme_helper" _resume-preview >/dev/null 2>&1; then
-			# A contended integration lock must not discard the only recovery
+			# A contended integration lock must not discard the startup rollback
 			# attempt. Let a detached retry wait for the lock after startup.
 			if command -v setsid >/dev/null 2>&1; then
 				setsid -f "$theme_helper" _resume-preview >/dev/null 2>&1
@@ -334,7 +334,7 @@ PICOM_BACKEND=${PICOM_BACKEND:-xrender}
 WM_GRAPHICAL_SESSION=wm-graphical-session.service
 
 # ── Phase 1: Blocking ──────────────────────────────────────────────────────────
-# Re-arm or expire any durable theme preview before starting desktop services.
+# Expire any unconfirmed durable theme preview before importing its environment.
 resume_theme_preview
 
 # Apply persisted screen power and locking settings. The default remains

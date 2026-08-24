@@ -132,6 +132,7 @@ run_theme_real_apply() {
 		DWM_APPEARANCE_APPLY_HELPER=$repo/scripts/theme-apply.sh \
 		DWM_APPEARANCE_RELOAD_HELPER=$reload_stub \
 		DWM_TEST_RELOAD_LOG=$work/reload.log \
+		DWM_TEST_KITTY_RELOAD_MARKER=$work/kitty-reload.marker \
 		DWM_TEST_LIVE_LOG=$work/live.log \
 		PATH=$work/integration-bin:$PATH \
 		"$helper" "$@"
@@ -191,6 +192,7 @@ reset_fixture() {
 	chmod 640 "$themes_file"
 	: >"$work/apply.log"
 	: >"$work/reload.log"
+	rm -f "$work/kitty-reload.marker"
 }
 
 active_theme() {
@@ -490,6 +492,7 @@ chmod 640 "$config_home/alacritty/alacritty.toml" "$config_home/kitty/kitty.conf
 integration_before=$(integration_snapshot)
 : >"$work/live.log"
 run_theme_real_apply preview integration-files 10 dracula >/dev/null 2>"$work/integration-preview.err"
+[[ -f $work/kitty-reload.marker ]]
 [[ -f $config_home/alacritty/active-theme.toml ]]
 [[ -f $config_home/kitty/active-theme.conf ]]
 [[ -f $config_home/gtk-4.0/settings.ini ]]
@@ -532,7 +535,8 @@ HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 run_theme_real_apply revert integration-files >/dev/null 2>"$work/integration-revert.err"
 [[ $(integration_snapshot) == "$integration_before" ]]
 suppression_file=$state_home/dwm-titus/appearance/integration-suppress
-grep -Eq "^$(sha256sum "$themes_file" | awk '{print $1}') [0-9]+$" "$suppression_file"
+suppression_hash=$(sha256sum "$themes_file" | awk '{print $1}')
+cmp -s <(printf '%s\n' "$suppression_hash") "$suppression_file"
 HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
 	DWM_APPEARANCE_THEMES_FILE=$themes_file DWM_APPEARANCE_MANAGED_THEMES_FILE=$managed_file \
@@ -541,6 +545,15 @@ HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	>"$work/integration-late-apply.out" 2>"$work/integration-late-apply.err"
 [[ $(integration_snapshot) == "$integration_before" ]]
 [[ -f $suppression_file ]]
+printf '%s 0\n' "$(sha256sum "$themes_file" | awk '{print $1}')" >"$suppression_file"
+HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
+	DWM_APPEARANCE_THEMES_FILE=$themes_file DWM_APPEARANCE_MANAGED_THEMES_FILE=$managed_file \
+	DWM_THEME_APPLY_AUTOMATIC=1 DWM_TEST_LIVE_LOG=$work/live.log \
+	PATH=$work/integration-bin:$PATH "$repo/scripts/theme-apply.sh" \
+	>"$work/integration-expired-suppress.out" 2>"$work/integration-expired-suppress.err"
+[[ $(integration_snapshot) == "$integration_before" ]]
+grep -Fqx "theme-apply: applied theme 'nord'" "$work/integration-expired-suppress.out"
 other_themes=$work/other-themes.toml
 cp "$themes_file" "$other_themes"
 sed -i '0,/theme = "nord"/s//theme = "dracula"/' "$other_themes"
@@ -740,6 +753,13 @@ run_theme _resume-preview
 grep -Fqx $'result\tnone' < <(run_theme preview-status)
 
 reset_fixture
+run_theme preview startup-unconfirmed 10 dracula >/dev/null \
+	2>"$work/startup-unconfirmed-preview.err"
+run_theme _resume-preview
+[[ $(active_theme) == nord ]]
+grep -Fqx $'result\tnone' < <(run_theme preview-status)
+
+reset_fixture
 mkdir -p "$state_home/dwm-titus/appearance"
 printf 'orphan-preview\n' >"$state_home/dwm-titus/appearance/preview.current"
 grep -Fqx $'result\tnone' < <(run_theme preview-status)
@@ -858,7 +878,8 @@ run_theme preview preview-absent 10 dracula >/dev/null 2>"$work/preview-absent.e
 [[ -f $themes_file && $(active_theme) == dracula ]]
 run_theme revert preview-absent >/dev/null
 [[ ! -e $themes_file ]]
-grep -Eq "^$(sha256sum "$managed_file" | awk '{print $1}') [0-9]+$" \
+suppression_hash=$(sha256sum "$managed_file" | awk '{print $1}')
+cmp -s <(printf '%s\n' "$suppression_hash") \
 	"$state_home/dwm-titus/appearance/integration-suppress"
 grep -Fqx nord "$work/apply.log"
 [[ $(grep -Fxc reload "$work/reload.log") == 2 ]]
@@ -965,6 +986,14 @@ reset_fixture
 sed -i '/^theme = "nord"/a theme = "dracula"' "$themes_file"
 if run_theme mutation-ready; then
 	printf 'duplicate active theme keys were reported mutable\n' >&2
+	exit 1
+fi
+reset_fixture
+sed -i '0,/theme = "nord"/s//theme = "dracula"/' "$themes_file"
+sed -i '/^\[theme.nord\]$/,/^\[theme\./ { /^[[:space:]]*term_color15[[:space:]]*=/d; }' \
+	"$themes_file"
+if run_theme mutation-ready; then
+	printf 'invalid managed-default collision was reported mutation-ready\n' >&2
 	exit 1
 fi
 reset_fixture
