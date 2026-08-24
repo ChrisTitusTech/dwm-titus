@@ -1,7 +1,6 @@
 pragma Singleton
 
 import Quickshell
-import Quickshell.Io
 
 Singleton {
     id: root
@@ -58,84 +57,28 @@ Singleton {
     readonly property string controlDisabledBorder: border
     readonly property string controlDisabledText: textMuted
 
-    readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME")
-        || ((Quickshell.env("HOME") || "") + "/.config")
-    readonly property string dataHome: Quickshell.env("XDG_DATA_HOME")
-        || ((Quickshell.env("HOME") || "") + "/.local/share")
-    readonly property string themesPath: configHome + "/dwm-titus/themes.toml"
-    readonly property string managedThemesPath: dataHome + "/dwm-titus/config/themes.toml"
-
-    function sectionValue(text, section, key, fallback) {
-        const lines = text.split("\n");
-        let active = false;
-        const sectionHeader = "[" + section + "]";
-        const expression = new RegExp("^\\s*" + key + "\\s*=\\s*(?:\\\"([^\\\"]*)\\\"|([^#\\s]+))");
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            const commentIndex = trimmed.indexOf("#");
-            const header = (commentIndex >= 0 ? trimmed.substring(0, commentIndex) : trimmed).trim();
-            if (header.startsWith("[")) {
-                active = header === sectionHeader;
-                continue;
-            }
-            if (!active) continue;
-            const match = line.match(expression);
-            if (match) return match[1] !== undefined ? match[1] : match[2];
-        }
-        return fallback;
-    }
-
-    function applyThemes(themeText) {
-        const activeTheme = sectionValue(themeText, "active", "theme", "nord");
-        const section = "theme." + activeTheme;
-        const value = function(key, fallback) { return sectionValue(themeText, section, key, fallback); };
-
-        root.dark = value("dark_mode", "true") !== "false";
-        root.bg = value("term_bg", root.bg);
-        root.barBackground = value("normbgcolor", root.bg);
-        root.surface = value("normbgcolor", root.bg);
-        root.surfaceHover = value("term_color8", value("selbgcolor", root.surface));
-        root.surfaceActive = value("selbgcolor", root.surfaceHover);
-        root.border = value("normbordercolor", root.surface);
-        root.borderStrong = value("selbordercolor", root.border);
-        root.text = value("normfgcolor", root.text);
-        root.textStrong = value("selfgcolor", root.text);
-        root.textMuted = value("term_fg", root.text);
-        root.placeholder = value("term_color8", root.textMuted);
-        root.accent = value("selbordercolor", root.accent);
-        root.accentSecondary = value("term_color4", root.accent);
-        root.accentText = root.bg;
-        root.success = value("term_color2", root.success);
-        root.warning = value("term_color3", root.warning);
-        root.danger = value("term_color1", root.danger);
-        root.dangerSurface = value("term_color0", root.surface);
-    }
-
-    function applyManagedTheme() {
-        const managedText = managedThemesFile.text();
-        if (managedText.length > 0) root.applyThemes(managedText);
-    }
-
-    FileView {
-        id: managedThemesFile
-        path: root.managedThemesPath
-        watchChanges: true
-        printErrors: false
-        onLoaded: {
-            if (!themesFile.loaded) root.applyThemes(text());
-        }
-        onFileChanged: reload()
-    }
-
-    FileView {
-        id: themesFile
-        path: root.themesPath
-        watchChanges: true
-        printErrors: false
-        onLoaded: root.applyThemes(text())
-        onLoadFailed: root.applyManagedTheme()
-        onFileChanged: reload()
+    // AppearanceModel is the single owner of theme inventory and validation.
+    // Existing shell surfaces continue to consume these semantic properties.
+    function applyAppearanceColors(colors, darkMode) {
+        root.dark = darkMode;
+        root.bg = colors.background;
+        root.barBackground = colors["bar-background"];
+        root.surface = colors.surface;
+        root.surfaceHover = colors["surface-hover"];
+        root.surfaceActive = colors["surface-active"];
+        root.border = colors.border;
+        root.borderStrong = colors["border-strong"];
+        root.text = colors.text;
+        root.textStrong = colors["text-strong"];
+        root.textMuted = colors["text-muted"];
+        root.placeholder = colors.placeholder;
+        root.accent = colors.accent;
+        root.accentSecondary = colors["accent-secondary"];
+        root.accentText = colors["accent-text"];
+        root.success = colors.success;
+        root.warning = colors.warning;
+        root.danger = colors.danger;
+        root.dangerSurface = colors["danger-surface"];
     }
 
     readonly property string fontFamily: "MesloLGS Nerd Font Mono"

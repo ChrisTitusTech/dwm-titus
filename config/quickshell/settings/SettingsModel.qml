@@ -23,6 +23,7 @@ Scope {
     property var powerMenuModel: null
     property var defaultsModel: null
     property var autostartModel: null
+    property var appearanceModel: null
     property var capabilities: []
     property int selectedIndex: 0
     property var displayOutputs: []
@@ -138,6 +139,11 @@ Scope {
             const wantAutostart = id === "defaults" && root.visible;
             if (wantAutostart && !root.autostartModel.settingsVisible) root.autostartModel.openSettings();
             else if (!wantAutostart && root.autostartModel.settingsVisible) root.autostartModel.closeSettings();
+        }
+        if (root.appearanceModel) {
+            const wantAppearance = id === "appearance" && root.visible;
+            if (wantAppearance && !root.appearanceModel.settingsVisible) root.appearanceModel.openSettings();
+            else if (!wantAppearance && root.appearanceModel.settingsVisible) root.appearanceModel.closeSettings();
         }
         if (id === "displays") root.refreshDisplays();
         if (id === "input") root.refreshInput();
@@ -526,6 +532,7 @@ Scope {
 		if (root.powerMenuModel) root.powerMenuModel.cancelConfirmation("settings");
 		if (root.defaultsModel) root.defaultsModel.closeSettings();
 		if (root.autostartModel) root.autostartModel.closeSettings();
+		if (root.appearanceModel) root.appearanceModel.closeSettings();
 			inputSettleTimer.stop();
         root.visible = false;
         root.busy = false;

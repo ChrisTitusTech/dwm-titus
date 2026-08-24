@@ -30,6 +30,11 @@ Singleton {
         return ["sh", "-c", script, "dwm-checked-command"].concat(command);
     }
 
+    function booleanStatusCommand(command) {
+        const script = 'if "$@" >/dev/null 2>&1; then printf "available\\n"; else printf "restricted\\n"; fi';
+        return ["sh", "-c", script, "dwm-boolean-status"].concat(command);
+    }
+
     function launcherHelperCommand(action, args) {
         return helperCommand("dwm-quickshell-launcher", action, args, true);
     }
@@ -88,5 +93,13 @@ Singleton {
 
     function settingsInputCommand(action, args) {
         return helperCommand("dwm-settings-input", action, args, true);
+    }
+
+    function settingsAppearanceCommand(action, args) {
+        return helperCommand("dwm-settings-appearance", action, args, true);
+    }
+
+    function settingsThemeCommand(action, args) {
+        return helperCommand("dwm-settings-theme", action, args, true);
     }
 }

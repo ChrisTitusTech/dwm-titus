@@ -16,6 +16,7 @@ FloatingWindow {
     required property var powerMenuModel
     required property var defaultsModel
     required property var autostartModel
+    required property var appearanceModel
 
     title: "dwm settings"
     visible: settingsModel.visible
@@ -374,6 +375,15 @@ FloatingWindow {
                                 autostartModel: root.autostartModel
                             }
 
+                            AppearanceSettingsPane {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                visible: root.settingsModel.selectedSectionId === "appearance"
+                                appearanceModel: root.appearanceModel
+                                capabilities: root.settingsModel.capabilitiesForSection("appearance")
+                                    .filter(function(capability) { return capability.id !== "themes"; })
+                            }
+
                             ListView {
                                 id: capabilityList
 
@@ -386,6 +396,7 @@ FloatingWindow {
                                     && root.settingsModel.selectedSectionId !== "audio"
                                     && root.settingsModel.selectedSectionId !== "power"
                                     && root.settingsModel.selectedSectionId !== "defaults"
+                                    && root.settingsModel.selectedSectionId !== "appearance"
                                 clip: true
                                 spacing: Theme.spacingLg
                                 model: root.settingsModel.capabilitiesForSection(root.settingsModel.selectedSectionId)
