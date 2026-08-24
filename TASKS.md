@@ -49,7 +49,7 @@ Acceptance:
 
 ### APPEARANCE-001: Wallpaper, Fonts, Cursors, Icons, and Toolkit Integration
 
-- [ ] Define event-driven inventory and state contracts for wallpaper, supported
+- [x] Define event-driven inventory and state contracts for wallpaper, supported
   fonts, cursors, icons, GTK, Qt, and compositor integration using stable Fedora
   or X11 interfaces.
 - [ ] Add wallpaper selection, fit mode, preview, reset, and missing-file
