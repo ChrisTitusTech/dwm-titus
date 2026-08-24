@@ -428,15 +428,15 @@ if run_helper action not-real 2>"$work/action.err"; then
 fi
 grep -Fqx 'unknown action: not-real' "$work/action.err"
 
-grep -Fq 'watchChanges: true' "$repo/config/quickshell/core/Theme.qml"
-[ "$(grep -Fc 'watchChanges: true' "$repo/config/quickshell/core/Theme.qml")" -ge 2 ]
-[ "$(grep -Fc 'onFileChanged: reload()' "$repo/config/quickshell/core/Theme.qml")" -ge 2 ]
-grep -Fq 'themes.toml' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'watchChanges: true' "$repo/config/quickshell/appearance/AppearanceModel.qml"
+[ "$(grep -Fc 'watchChanges: true' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 3 ]
+[ "$(grep -Fc 'onFileChanged: reload()' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 4 ]
+grep -Fq 'themes.toml' "$repo/config/quickshell/appearance/AppearanceModel.qml"
 grep -Fq 'ClickAwayPopup {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'grabFocus: true' "$repo/config/quickshell/core/ClickAwayPopup.qml"
-grep -Fq 'function applyThemes(themeText)' "$repo/config/quickshell/core/Theme.qml"
-grep -Fq 'root.text = value("normfgcolor", root.text)' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'function applyAppearanceColors(colors, darkMode)' "$repo/config/quickshell/core/Theme.qml"
+grep -Fq 'root.text = colors.text' "$repo/config/quickshell/core/Theme.qml"
 grep -Fq 'label: root.delegated ? "Advanced" : root.busy ? "Connecting..." : "Connect"' "$repo/config/quickshell/network/NetworkWifiRow.qml"
 grep -Fq 'property bool wifiPasswordPromptVisible: false' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'root.wifiPasswordPromptVisible = true;' "$repo/config/quickshell/network/NetworkModel.qml"

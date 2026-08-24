@@ -30,12 +30,12 @@ validate, and merge each boundary before starting the next one:
 - [x] Add a user-session transaction helper for bounded preview, confirm,
   automatic or explicit rollback, apply, reset, and interrupted-operation
   recovery without replacing unrelated theme configuration.
-- [ ] Add one root-scoped appearance model shared by Settings and existing shell
+- [x] Add one root-scoped appearance model shared by Settings and existing shell
   surfaces without duplicating the `Theme.qml` or `themes.toml` ownership path.
-- [ ] Add a Settings Appearance pane with theme preview, apply, reset, and
+- [x] Add a Settings Appearance pane with theme preview, apply, reset, and
   recovery behavior. Preserve comments, custom themes, file mode, and unrelated
   user configuration.
-- [ ] Make partial GTK, Qt, terminal, cursor, or compositor application failures
+- [x] Make partial GTK, Qt, terminal, cursor, or compositor application failures
   visible without reporting the selected theme as fully applied.
 
 Acceptance:

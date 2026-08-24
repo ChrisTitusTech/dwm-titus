@@ -128,6 +128,11 @@ cleanup() {
 	if [ "$cleanup_status" -ne 0 ]; then
 		printf 'Settings Xvfb failed while %s (status %s)\n' \
 			"${test_stage:-stage unknown}" "$cleanup_status" >&2
+		if [ -n "${quickshell_pid:-}" ] && [ -n "${quickshell_identity:-}" ] &&
+			! process_identity_alive "$quickshell_identity"; then
+			wait "$quickshell_pid" 2>/dev/null
+			printf 'Quickshell exited before teardown with status %s\n' "$?" >&2
+		fi
 		if [ -f "${work:-}/quickshell.log" ]; then
 			tail -80 "$work/quickshell.log" >&2
 		fi
@@ -157,9 +162,12 @@ runtime=$runtime_storage
 schema_dir=$work/schemas
 config_home=$home/.config
 data_home=$home/.local/share
+state_home=$home/.local/state
 mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" \
 	"$config_home/autostart" "$data_home/applications" \
-	"$data_home/dwm-titus/scripts" "$runtime_storage" "$schema_dir" "$helper_tmp"
+	"$data_home/dwm-titus/config" "$data_home/dwm-titus/scripts" \
+	"$state_home/dwm-titus/appearance" \
+	"$runtime_storage" "$schema_dir" "$helper_tmp"
 chmod 700 "$runtime_storage"
 if [ "${#runtime}" -gt 64 ]; then
 	runtime_alias_dir=$(mktemp -d /tmp/dwm-settings-runtime.XXXXXX)
@@ -187,6 +195,8 @@ cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
 sed -i 's/readonly property var nativeBattery: UPower.displayDevice/readonly property var nativeBattery: null/' \
 	"$config_home/quickshell/power/PowerModel.qml"
 cp "$repo/config/"*.toml "$config_home/dwm-titus/"
+cp "$repo/config/themes.toml" "$data_home/dwm-titus/config/themes.toml"
+printf '# inactive integration watch fixture\n' >"$config_home/dwm-titus/theme-env.sh"
 cat >"$data_home/applications/kitty.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
@@ -225,7 +235,97 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-quickshell-controlcenter" "$repo/scripts/dwm-quickshell-controls" \
 	"$repo/scripts/dwm-quickshell-network" "$repo/scripts/dwm-diagnostics" \
 	"$repo/scripts/dwm-default-apps" "$repo/scripts/dwm-xdg-autostart" \
+	"$repo/scripts/dwm-settings-appearance" "$repo/scripts/dwm-settings-theme" \
+	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
+
+appearance_failure_fixture=$work/appearance-snapshot-failure
+mv "$data_home/dwm-titus/scripts/dwm-settings-appearance" \
+	"$data_home/dwm-titus/scripts/dwm-settings-appearance.real"
+cat >"$data_home/dwm-titus/scripts/dwm-settings-appearance" <<'SH'
+#!/bin/sh
+set -eu
+fixture=${DWM_SETTINGS_TEST_APPEARANCE_FAILURE:?}
+if [ "${1:-}" = snapshot ] && [ -f "$fixture" ]; then
+	case $(cat "$fixture") in
+	silent) exit 1 ;;
+	truncated)
+		"$(dirname -- "$0")/dwm-settings-appearance.real" "$@" | awk 'NR <= 5'
+		exit 1
+		;;
+	inventory-only)
+		"$(dirname -- "$0")/dwm-settings-appearance.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
+			$1 == "provider" { $3 = "partial" }
+			$1 == "integration" {
+				$3 = "available"; $5 = "Integration is applied";
+			}
+			$1 == "error" && ($2 == "gtk" || $2 == "qt" || $2 == "cursor" ||
+				$2 == "alacritty" || $2 == "kitty" || $2 == "compositor") { next }
+			{ print }
+			END {
+				print "theme", "unused-broken", "available", "invalid", "true", "automatic", "Unused theme is incomplete";
+				print "error", "theme:unused-broken", "missing-key", "Unused theme is missing required keys";
+			}'
+		exit 0
+		;;
+	esac
+fi
+exec "$(dirname -- "$0")/dwm-settings-appearance.real" "$@"
+SH
+chmod +x "$data_home/dwm-titus/scripts/dwm-settings-appearance"
+
+theme_status_fixture=$work/theme-preview-status
+mv "$data_home/dwm-titus/scripts/dwm-settings-theme" \
+	"$data_home/dwm-titus/scripts/dwm-settings-theme.real"
+cat >"$data_home/dwm-titus/scripts/dwm-settings-theme" <<'SH'
+#!/bin/sh
+set -eu
+fixture=${DWM_SETTINGS_TEST_THEME_STATUS:?}
+if [ "${1:-}" = preview-status ] && [ -f "$fixture" ]; then
+	case $(cat "$fixture") in
+	active-zero)
+		printf '%s\n' none >"$fixture"
+		printf 'appearance-action-protocol\t1\t0\n'
+		printf 'preview-active\tboundary-preview\tnord\n'
+		printf 'preview-remaining\t0\n'
+		;;
+	none)
+		printf 'appearance-action-protocol\t1\t0\nresult\tnone\n'
+		;;
+	active-zero-fail)
+		printf x >>"$fixture.calls"
+		if [ ! -f "$fixture.started" ]; then
+			: >"$fixture.started"
+			printf 'appearance-action-protocol\t1\t0\n'
+			printf 'preview-active\tboundary-preview\tnord\n'
+			printf 'preview-remaining\t0\n'
+		else
+			exit 1
+		fi
+		;;
+	external-active)
+		printf 'appearance-action-protocol\t1\t0\n'
+		if [ -f "$fixture.external" ]; then
+			printf 'preview-active\texternal-preview\tnord\n'
+			printf 'preview-remaining\t30\n'
+		else
+			printf 'result\tnone\n'
+		fi
+		;;
+	external-failed)
+		printf 'appearance-action-protocol\t1\t0\n'
+		if [ -f "$fixture.external" ]; then
+			printf 'preview-failed\texternal-preview\tExternal preview failed\n'
+		else
+			printf 'result\tnone\n'
+		fi
+		;;
+	esac
+	exit 0
+fi
+exec "$(dirname -- "$0")/dwm-settings-theme.real" "$@"
+SH
+chmod +x "$data_home/dwm-titus/scripts/dwm-settings-theme"
 
 malformed_power_snapshot=$work/malformed-power-snapshot
 mv "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" \
@@ -417,9 +517,12 @@ HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 
 env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
+	QT_QPA_PLATFORMTHEME= \
 	TMPDIR="$helper_tmp" \
 	DWM_SETTINGS_TEST_POWER_STATE="$power_state" DWM_SETTINGS_TEST_DELAY_POWER=1 \
 	DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT="$malformed_power_snapshot" \
+	DWM_SETTINGS_TEST_APPEARANCE_FAILURE="$appearance_failure_fixture" \
+	DWM_SETTINGS_TEST_THEME_STATUS="$theme_status_fixture" \
 	PATH="$data_home/dwm-titus/scripts:$PATH" \
 	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
 quickshell_pid=$!
@@ -1109,6 +1212,395 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ "$bluetooth_status" = available ]
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	case $appearance_status in
+	available | partial) break ;;
+	esac
+	i=$((i + 1))
+	sleep 0.05
+done
+case $appearance_status in
+available | partial) ;;
+*)
+	appearance_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderDetail 2>/dev/null || true)
+	printf 'Appearance provider did not become readable: %s (%s)\n' \
+		"$appearance_status" "$appearance_detail" >&2
+	HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		DWM_SETTINGS_TEST_APPEARANCE_FAILURE="$appearance_failure_fixture" \
+		"$data_home/dwm-titus/scripts/dwm-settings-appearance" snapshot >&2 || true
+	exit 1
+	;;
+esac
+appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme)
+appearance_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount)
+appearance_application=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceApplicationState)
+appearance_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePreviewState)
+appearance_recovery=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceRecoveryState)
+[ "$appearance_theme" = nord ]
+[ "$appearance_count" -eq 15 ]
+[ "$appearance_application" = partial ]
+[ "$appearance_preview" = none ]
+[ "$appearance_recovery" = none ]
+
+# Preview and recovery metadata are watched while Appearance is open. An
+# external keep or abandon must clear active and failed controls without
+# waiting for a theme-file change or a countdown boundary.
+transaction_state_file=$state_home/dwm-titus/appearance/integration-transaction
+printf '%s\n' external-active >"$theme_status_fixture"
+: >"$theme_status_fixture.external"
+printf 'active\n' >"$transaction_state_file"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+test_stage='validating appearance provider and inventory state'
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePreviewState 2>/dev/null || true)
+	[ "$appearance_preview" = active ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_preview" = active ]
+rm -f "$theme_status_fixture.external"
+rm -f "$transaction_state_file"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePreviewState 2>/dev/null || true)
+	[ "$appearance_preview" = none ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_preview" = none ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMessage)" = \
+	'Theme preview completed outside Settings' ]
+
+printf '%s\n' external-failed >"$theme_status_fixture"
+: >"$theme_status_fixture.external"
+printf 'failed\n' >"$transaction_state_file"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePreviewState 2>/dev/null || true)
+	[ "$appearance_preview" = failed ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_preview" = failed ]
+rm -f "$theme_status_fixture.external"
+rm -f "$transaction_state_file"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePreviewState 2>/dev/null || true)
+	[ "$appearance_preview" = none ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_preview" = none ]
+printf '%s\n' none >"$theme_status_fixture"
+
+# A helper that exits silently must clear the last good snapshot instead of
+# leaving stale available state visible.
+printf '%s\n' silent >"$appearance_failure_fixture"
+printf '# trigger silent provider failure\n' >>"$config_home/dwm-titus/themes.toml"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	appearance_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderDetail 2>/dev/null || true)
+	[ "$appearance_status" = unavailable ] &&
+		[ "$appearance_detail" = 'Appearance provider failed before returning a valid snapshot' ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_status" = unavailable ]
+[ "$appearance_detail" = 'Appearance provider failed before returning a valid snapshot' ]
+rm -f "$appearance_failure_fixture"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	case $appearance_status in available | partial) break ;; esac
+	i=$((i + 1))
+	sleep 0.05
+done
+case $appearance_status in available | partial) ;; *) exit 1 ;; esac
+
+# Early provider records from a failed helper are not a complete snapshot.
+printf '%s\n' truncated >"$appearance_failure_fixture"
+printf '# trigger truncated provider failure\n' >>"$config_home/dwm-titus/themes.toml"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	appearance_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount 2>/dev/null || true)
+	[ "$appearance_status" = unavailable ] && [ "$appearance_count" -eq 0 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_status" = unavailable ]
+[ "$appearance_count" -eq 0 ]
+rm -f "$appearance_failure_fixture"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	case $appearance_status in available | partial) break ;; esac
+	i=$((i + 1))
+	sleep 0.05
+done
+case $appearance_status in available | partial) ;; *) exit 1 ;; esac
+
+# Integration inputs are watched only while Appearance is open. Updating the
+# generated environment file must refresh the provider without manual action.
+test_stage='validating active appearance integration watches'
+printf 'export QT_QPA_PLATFORMTHEME=gtk3\n' >"$config_home/dwm-titus/theme-env.sh"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_qt=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState qt 2>/dev/null || true)
+	[ "$appearance_qt" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_qt" = available ]
+
+# Inventory diagnostics for an unused theme remain visible without degrading
+# the application state of a valid resolved theme and healthy integrations.
+test_stage='validating unused appearance inventory diagnostics'
+printf '%s\n' inventory-only >"$appearance_failure_fixture"
+printf '# trigger inventory-only provider fixture\n' >>"$config_home/dwm-titus/themes.toml"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	appearance_application=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceApplicationState 2>/dev/null || true)
+	[ "$appearance_status" = partial ] && [ "$appearance_application" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$appearance_status" != partial ] || [ "$appearance_application" != available ]; then
+	printf 'Inventory-only diagnostics reported provider=%s application=%s\n' \
+		"$appearance_status" "$appearance_application" >&2
+	for integration_id in gtk qt cursor alacritty kitty compositor; do
+		integration_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings \
+			appearanceIntegrationState "$integration_id" 2>/dev/null || true)
+		printf '  %s: %s\n' "$integration_id" "$integration_state" >&2
+	done
+	exit 1
+fi
+rm -f "$appearance_failure_fixture"
+printf '# restore real provider snapshot\n' >>"$config_home/dwm-titus/themes.toml"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount 2>/dev/null || true)
+	[ "$appearance_count" -eq 15 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_count" -eq 15 ]
+
+test_stage='validating restored appearance integration state'
+printf '# inactive integration watch fixture\n' >"$config_home/dwm-titus/theme-env.sh"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_qt=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState qt 2>/dev/null || true)
+	[ "$appearance_qt" = unavailable ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$appearance_qt" != unavailable ]; then
+	printf 'Restored Qt integration state remained %s\n' "$appearance_qt" >&2
+	exit 1
+fi
+
+# Invalid selected labels are diagnostic provider output. Keep the valid
+# fallback inventory available so Settings can offer recovery.
+test_stage='validating appearance recovery inventory'
+cp "$config_home/dwm-titus/themes.toml" "$work/valid-themes.toml"
+sed -i '0,/theme = "nord"/s//theme = "missing theme"/' \
+	"$config_home/dwm-titus/themes.toml"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme 2>/dev/null || true)
+	appearance_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount 2>/dev/null || true)
+	[ "$appearance_theme" = 'missing theme' ] && [ "$appearance_count" -eq 15 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_theme" = 'missing theme' ]
+[ "$appearance_count" -eq 15 ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus)" = partial ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceApplicationState)" = partial ]
+cp "$work/valid-themes.toml" "$config_home/dwm-titus/themes.toml"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme 2>/dev/null || true)
+	[ "$appearance_theme" = nord ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_theme" = nord ]
+
+# Invalid dark-mode metadata remains visible in the inventory and uses the
+# provider's safe dark default instead of dropping the active row.
+test_stage='validating appearance metadata recovery'
+sed -i '0,/dark_mode       = true/s//dark_mode       = "bogus"/' \
+	"$config_home/dwm-titus/themes.toml"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	appearance_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount 2>/dev/null || true)
+	[ "$appearance_status" = partial ] && [ "$appearance_count" -eq 15 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_status" = partial ]
+[ "$appearance_count" -eq 15 ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme)" = nord ]
+cp "$work/valid-themes.toml" "$config_home/dwm-titus/themes.toml"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	case $appearance_status in available | partial) break ;; esac
+	i=$((i + 1))
+	sleep 0.05
+done
+
+printf '%s\n' active-zero >"$theme_status_fixture"
+test_stage='validating appearance preview completion'
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePreviewState 2>/dev/null || true)
+	appearance_message=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMessage 2>/dev/null || true)
+	[ "$appearance_preview" = none ] &&
+		[ "$appearance_message" = 'Theme preview completed outside Settings' ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_preview" = none ]
+[ "$appearance_message" = 'Theme preview completed outside Settings' ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePreviewRemaining)" -eq 0 ]
+
+# A broken status helper after the rollback boundary is retried only a bounded
+# number of times instead of creating a permanent subprocess loop.
+test_stage='validating bounded appearance preview retries'
+rm -f "$theme_status_fixture.started" "$theme_status_fixture.calls"
+printf '%s\n' active-zero-fail >"$theme_status_fixture"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_message=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMessage 2>/dev/null || true)
+	[ "$appearance_message" = 'Automatic rollback status needs a manual refresh' ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_message" = 'Automatic rollback status needs a manual refresh' ]
+preview_status_calls=$(wc -c <"$theme_status_fixture.calls")
+sleep 0.75
+[ "$(wc -c <"$theme_status_fixture.calls")" -eq "$preview_status_calls" ]
+[ "$preview_status_calls" -le 5 ]
+rm -f "$theme_status_fixture.started" "$theme_status_fixture.calls"
+printf '%s\n' none >"$theme_status_fixture"
+
+# The provider's missing-source and legacy identifiers are intentional
+# read-only protocol sentinels, not mutation-safe theme names.
+mv "$config_home/dwm-titus/themes.toml" "$work/named-themes.toml"
+mv "$data_home/dwm-titus/config/themes.toml" "$work/managed-themes.toml"
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	appearance_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderDetail 2>/dev/null || true)
+	[ "$appearance_status" = unavailable ] &&
+		[ "$appearance_detail" = 'Shared theme inventory and integration state' ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_status" = unavailable ]
+[ "$appearance_detail" = 'Shared theme inventory and integration state' ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady)" = false ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme)" = none ]
+
+cat >"$config_home/dwm-titus/themes.toml" <<'EOF'
+[colors]
+normfgcolor = "#D8DEE9"
+normbgcolor = "#2E3440"
+normbordercolor = "#4C566A"
+selfgcolor = "#ECEFF4"
+selbgcolor = "#5E81AC"
+selbordercolor = "#81A1C1"
+EOF
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme 2>/dev/null || true)
+	[ "$appearance_theme" = @legacy-colors ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$appearance_theme" = @legacy-colors ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus)" = partial ]
+[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount)" -eq 1 ]
 
 # IPC selection clears a search that hides the requested section.
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \

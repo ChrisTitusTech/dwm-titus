@@ -300,18 +300,17 @@ grep -Fq $'error\tparser\tmalformed-section\tMalformed theme section header at l
 cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
 
 {
-	printf '[ignored]\nextra = [{x=1}, {x=2}]\n'
+	printf '%s\n' '[ignored]' 'extra = [{x="a=b"}, {x='"'"'c=d'"'"'}] # ignored = comment'
 	cat "$repo/config/themes.toml"
 } >"$config_home/dwm-titus/themes.toml"
 set +e
 inline_table=$(snapshot)
 inline_table_status=$?
 set -e
-[[ $inline_table_status -eq 3 ]]
-grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+[[ $inline_table_status -eq 0 ]]
+grep -Fqx $'provider\tappearance\tavailable\tread-only\tShared theme inventory and integration state' \
 	<<<"$inline_table"
-grep -Fq $'error\tparser\tunsupported-complex-value\tArrays and inline tables are outside the appearance snapshot grammar at line ' \
-	<<<"$inline_table"
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$inline_table"
 
 {
 	printf '[ignored]\nextra = {x=1}\n'
@@ -321,11 +320,26 @@ set +e
 direct_inline_table=$(snapshot)
 direct_inline_table_status=$?
 set -e
-[[ $direct_inline_table_status -eq 3 ]]
-grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+[[ $direct_inline_table_status -eq 0 ]]
+grep -Fqx $'provider\tappearance\tavailable\tread-only\tShared theme inventory and integration state' \
 	<<<"$direct_inline_table"
-grep -Fq $'error\tparser\tunsupported-complex-value\tArrays and inline tables are outside the appearance snapshot grammar at line ' \
-	<<<"$direct_inline_table"
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$direct_inline_table"
+
+{
+	printf '[ignored]\nextra = ["one", "two"]\n'
+	cat "$repo/config/themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+scalar_array=$(snapshot)
+grep -Fqx $'provider\tappearance\tavailable\tread-only\tShared theme inventory and integration state' \
+	<<<"$scalar_array"
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$scalar_array"
+
+{
+	printf '[ignored]\nextra = [\n  {x=1},\n  {x=2}\n]\n'
+	cat "$repo/config/themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+multiline_array=$(snapshot)
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$multiline_array"
 
 {
 	printf '[ignored]\nextra = [\n'
@@ -338,8 +352,46 @@ set -e
 [[ $unterminated_array_status -eq 3 ]]
 grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
 	<<<"$unterminated_array"
-grep -Fq $'error\tparser\tunsupported-complex-value\tArrays and inline tables are outside the appearance snapshot grammar at line ' \
+grep -Fqx $'error\tparser\tunterminated-complex-value\tAn unrelated multi-line array was not terminated before the end of the theme configuration' \
 	<<<"$unterminated_array"
+
+{
+	printf '[ignored]\nextra = [\n  {x=1}, {x=2}]\n'
+	cat "$repo/config/themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+set +e
+runtime_stuck_array=$(snapshot)
+runtime_stuck_array_status=$?
+set -e
+[[ $runtime_stuck_array_status -eq 3 ]]
+grep -Fqx $'provider\tappearance\tunavailable\tread-only\tShared theme inventory and integration state' \
+	<<<"$runtime_stuck_array"
+grep -Fqx $'error\tparser\tunterminated-complex-value\tAn unrelated multi-line array was not terminated before the end of the theme configuration' \
+	<<<"$runtime_stuck_array"
+if grep -Fq $'theme\tnord\t' <<<"$runtime_stuck_array"; then
+	printf 'Provider parsed a theme section hidden by the runtime multi-line array state\n' >&2
+	exit 1
+fi
+for runtime_array_snapshot in "$inline_table" "$direct_inline_table" "$scalar_array" \
+	"$multiline_array" "$unterminated_array" "$runtime_stuck_array"; do
+	if grep -Fq $'error\tparser\tunsupported-complex-value\t' <<<"$runtime_array_snapshot"; then
+		printf 'Runtime-compatible unrelated array retained a superseded parser diagnostic\n' >&2
+		exit 1
+	fi
+done
+
+{
+	printf '[ignored]\nextra = [\n'
+	for ((nested_index = 0; nested_index < 257; nested_index++)); do
+		printf '  {outer={inner="x"}},\n'
+	done
+	printf ']\n'
+	cat "$repo/config/themes.toml"
+} >"$config_home/dwm-titus/themes.toml"
+nested_inline_tables=$(snapshot)
+grep -Fqx $'active\tnord\tnord\tselected' <<<"$nested_inline_tables"
+grep -Fqx $'error\tparser\tentry-limit\tTheme configuration exceeds the runtime parser limit of 512 entries' \
+	<<<"$nested_inline_tables"
 cp "$repo/config/themes.toml" "$config_home/dwm-titus/themes.toml"
 
 printf '\n[theme.@unsafe]\nterm_bg = "#000000"\n' >>"$config_home/dwm-titus/themes.toml"
@@ -519,19 +571,46 @@ unknown=$(snapshot)
 grep -Fqx $'provider\tappearance\tpartial\tread-only\tShared theme inventory and integration state' <<<"$unknown"
 grep -Fqx $'active\tmissing\tnord\trecovery' <<<"$unknown"
 grep -Fqx $'error\tactive\tunknown\tActive theme '\''missing'\'' is not defined' <<<"$unknown"
+grep -Fqx $'color\tbackground\t#434C5E\tterm_bg' <<<"$unknown"
+grep -Fqx $'color\tbar-background\t#434C5E\tnormbgcolor' <<<"$unknown"
+grep -Fqx $'color\taccent\t#81A1C1\tselbordercolor' <<<"$unknown"
 
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
 printf '\n[theme.nord]\nterm_bg = "#000000"\n' >>"$config_home/dwm-titus/themes.toml"
 duplicate=$(snapshot)
-grep -Fqx $'active\tnord\tdracula\trecovery' <<<"$duplicate"
+grep -Fqx $'active\tnord\tnord\trecovery' <<<"$duplicate"
 grep -Fq $'error\ttheme:nord\tduplicate\tDuplicate theme section at line ' <<<"$duplicate"
 grep -Fqx $'theme\tnord\tselected\tinvalid\ttrue\tNordic\tTheme record is duplicate, malformed, or incomplete' <<<"$duplicate"
+grep -Fqx $'color\tbackground\t#2E3440\tterm_bg' <<<"$duplicate"
+
+cat >"$config_home/dwm-titus/themes.toml" <<'EOF'
+[active]
+theme = "nord"
+
+[theme.nord]
+normfgcolor = "#D8DEE9"
+normbgcolor = "#434C5E"
+normbordercolor = "#3B4252"
+
+[theme.nord]
+selfgcolor = "#ECEFF4"
+selbgcolor = "#434C5E"
+selbordercolor = "#81A1C1"
+normbgcolor = "#FFFFFF"
+EOF
+split_duplicate=$(snapshot)
+grep -Fqx $'active\tnord\tnord\trecovery' <<<"$split_duplicate"
+grep -Fqx $'color\tbar-background\t#434C5E\tnormbgcolor' <<<"$split_duplicate"
+grep -Fqx $'color\tplaceholder\t#D8DEE9\tterm_color8' <<<"$split_duplicate"
+grep -Fqx $'color\tsuccess\t#81A1C1\tterm_color2' <<<"$split_duplicate"
+[[ $(grep -Ec $'^color\t[^\t]+\t#[0-9A-Fa-f]{6}\t' <<<"$split_duplicate") -eq 18 ]]
 
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
 sed -i '0,/theme = "nord"/s//theme = "broken"/' "$config_home/dwm-titus/themes.toml"
 printf '\n[theme.broken]\ndark_mode = true\n' >>"$config_home/dwm-titus/themes.toml"
 incomplete=$(snapshot)
 grep -Fqx $'active\tbroken\tnord\trecovery' <<<"$incomplete"
+grep -Fqx $'color\tbackground\t#434C5E\tterm_bg' <<<"$incomplete"
 grep -Fqx $'error\ttheme:broken\tmissing-key\tTheme is missing 25 required keys; first missing key is '\''normfgcolor'\''' <<<"$incomplete"
 grep -Fqx $'error\tactive\tinvalid\tActive theme '\''broken'\'' is invalid or incomplete' <<<"$incomplete"
 
@@ -540,6 +619,7 @@ sed -i '0,/normfgcolor     = "#D8DEE9"/s//normfgcolor     = "not-a-color"/' \
 	"$config_home/dwm-titus/themes.toml"
 invalid_color=$(snapshot)
 grep -Fqx $'active\tnord\tdracula\trecovery' <<<"$invalid_color"
+grep -Fqx $'color\tbackground\t#2E3440\tterm_bg' <<<"$invalid_color"
 grep -Fqx $'error\ttheme:nord\tinvalid-color\tTheme key '\''normfgcolor'\'' is not a #RRGGBB color' <<<"$invalid_color"
 
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"

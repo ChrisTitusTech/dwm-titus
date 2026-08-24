@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.SystemTray
+import qs.appearance
 import qs.controlcenter
 import qs.controls
 import qs.defaults
@@ -169,6 +170,10 @@ ShellRoot {
         id: autostartModel
     }
 
+    AppearanceModel {
+        id: appearanceModel
+    }
+
     NetworkModel {
         id: networkModel
     }
@@ -199,6 +204,7 @@ ShellRoot {
         powerMenuModel: powerMenuModel
         defaultsModel: defaultsModel
         autostartModel: autostartModel
+        appearanceModel: appearanceModel
     }
 
     LazyLoader {
@@ -636,6 +642,51 @@ ShellRoot {
             return entry ? entry.origin : "";
         }
 
+        function appearanceProviderStatus(): string {
+            return appearanceModel.providerState;
+        }
+
+        function appearanceProviderDetail(): string {
+            return appearanceModel.providerDetail;
+        }
+
+        function appearanceApplicationState(): string {
+            return appearanceModel.applicationState;
+        }
+
+        function appearanceIntegrationState(integrationId: string): string {
+            const match = appearanceModel.integrations.find(function(item) { return item.id === integrationId; });
+            return match ? match.state : "";
+        }
+
+        function appearanceActiveTheme(): string {
+            return appearanceModel.activeTheme;
+        }
+
+        function appearanceThemeCount(): int {
+            return appearanceModel.themes.length;
+        }
+
+        function appearanceMutationReady(): bool {
+            return appearanceModel.mutationReady;
+        }
+
+        function appearancePreviewState(): string {
+            return appearanceModel.previewState;
+        }
+
+        function appearancePreviewRemaining(): int {
+            return appearanceModel.previewRemaining;
+        }
+
+        function appearanceMessage(): string {
+            return appearanceModel.message;
+        }
+
+        function appearanceRecoveryState(): string {
+            return appearanceModel.recoveryState;
+        }
+
         function autostartConfirming(): bool {
             return autostartModel.confirming;
         }
@@ -806,5 +857,6 @@ ShellRoot {
         powerMenuModel: powerMenuModel
         defaultsModel: defaultsModel
         autostartModel: autostartModel
+        appearanceModel: appearanceModel
     }
 }

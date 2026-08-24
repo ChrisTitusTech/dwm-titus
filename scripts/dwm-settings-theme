@@ -1638,7 +1638,7 @@ resume_preview() {
 }
 
 preview_status() {
-	local token=${1:-} prefix target
+	local token=${1:-} prefix target deadline now remaining
 	acquire_lock
 	ensure_recovery_dir
 	reconcile_preview_locked false
@@ -1657,6 +1657,14 @@ preview_status() {
 	elif [[ -f $prefix.meta ]]; then
 		target=$(meta_value "$prefix" target) || target=unknown
 		printf 'preview-active\t%s\t%s\n' "$token" "$target"
+		deadline=$(meta_value "$prefix" deadline) || deadline=0
+		now=$(date +%s)
+		if [[ $deadline =~ ^[0-9]+$ ]] && ((deadline > now)); then
+			remaining=$((deadline - now))
+		else
+			remaining=0
+		fi
+		printf 'preview-remaining\t%s\n' "$remaining"
 	else
 		printf 'result\texpired\t%s\n' "$token"
 	fi

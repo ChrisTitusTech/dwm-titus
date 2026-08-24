@@ -452,6 +452,7 @@ grep -Fqx $'preview\tpreview-keep\t10\tnord\tdracula' <<<"$preview_output"
 [[ $(active_theme) == nord ]]
 status_output=$(run_theme preview-status preview-keep)
 grep -Fqx $'preview-active\tpreview-keep\tnord' <<<"$status_output"
+grep -Eq $'^preview-remaining\t([1-9]|10)$' <<<"$status_output"
 keep_output=$(run_theme keep preview-keep)
 grep -Fqx $'result\tkeep\tpreview-keep\tnord' <<<"$keep_output"
 [[ $(active_theme) == nord ]]

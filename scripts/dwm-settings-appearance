@@ -16,6 +16,7 @@ readonly max_theme_name_length=505
 readonly key_separator=$'\034'
 readonly legacy_theme_id=$'\035legacy-colors'
 readonly legacy_theme_label='@legacy-colors'
+readonly builtin_palette_id=$'\036builtin-palette'
 readonly quoted_record_re='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*"(([^"\\]|\\.)*)"[[:space:]]*(#.*)?$'
 readonly quoted_active_theme_re='^[[:space:]]*theme[[:space:]]*=[[:space:]]*"(([^"\\]|\\.)*)"[[:space:]]*(#.*)?$'
 
@@ -32,6 +33,7 @@ source_report_file=
 provider_state=available
 selected_theme=
 resolved_theme=
+palette_theme=
 errors_truncated=false
 entry_limit_reported=false
 parsed_entry_count=0
@@ -199,10 +201,38 @@ string_byte_length() {
 	string_byte_length_result=${#1}
 }
 
+count_inline_table_entries() {
+	local source=$1 char index=0 depth=0 quote='' escaped=false
+	local LC_ALL=C
+	inline_entry_count=0
+	while ((index < ${#source})); do
+		char=${source:index:1}
+		if [[ -n $quote ]]; then
+			if [[ $escaped == true ]]; then
+				escaped=false
+			elif [[ $quote == '"' && $char == \\ ]]; then
+				escaped=true
+			elif [[ $char == "$quote" ]]; then
+				quote=
+			fi
+		else
+			case $char in
+			'"' | "'") quote=$char ;;
+			'#') break ;;
+			'{') depth=$((depth + 1)) ;;
+			'}') ((depth == 0)) || depth=$((depth - 1)) ;;
+			'=') ((depth != 1)) || inline_entry_count=$((inline_entry_count + 1)) ;;
+			esac
+		fi
+		index=$((index + 1))
+	done
+}
+
 parse_themes() {
 	local file=$1 size line trimmed header line_number raw runtime_key runtime_value parsed_type
-	local string_byte_length_result parsed_runtime_string
+	local string_byte_length_result parsed_runtime_string complex_after runtime_entries inline_entry_count
 	local section='' theme='' theme_candidate='' key='' parsed=''
+	local complex_array_active=false
 
 	size=$(stat -c %s -- "$file" 2>/dev/null) || {
 		provider_state=unavailable
@@ -229,6 +259,23 @@ parse_themes() {
 		[[ -z $trimmed || $trimmed == \#* ]] && continue
 		header=${trimmed%%#*}
 		header=${header%"${header##*[![:space:]]}"}
+		if [[ $complex_array_active == true ]]; then
+			# tomlparser.c only leaves multi-line array mode when the trimmed
+			# physical line begins with ']'; keep later sections hidden likewise.
+			if [[ $trimmed == \]* ]]; then
+				complex_array_active=false
+				continue
+			fi
+			count_inline_table_entries "$trimmed"
+			parsed_entry_count=$((parsed_entry_count + inline_entry_count))
+			if ((parsed_entry_count > max_entry_count)); then
+				provider_state=partial
+				add_error parser entry-limit "Theme configuration exceeds the runtime parser limit of $max_entry_count entries"
+				entry_limit_reported=true
+				break
+			fi
+			continue
+		fi
 
 		if [[ $header == \[* ]]; then
 			if [[ $header =~ ^\[theme\.([^]]+)\]$ ]]; then
@@ -302,7 +349,19 @@ parse_themes() {
 			runtime_value=${runtime_value#"${runtime_value%%[![:space:]]*}"}
 			string_byte_length "$runtime_key"
 			if [[ -n $runtime_key ]] && ((string_byte_length_result < 512)); then
-				((parsed_entry_count += 1))
+				runtime_entries=1
+				if [[ $runtime_value == \[* ]]; then
+					complex_after=${runtime_value#\[}
+					complex_after=${complex_after#"${complex_after%%[![:space:]]*}"}
+					if [[ -z $complex_after || $complex_after == \#* ]]; then
+						runtime_entries=0
+						complex_array_active=true
+					elif [[ $complex_after == \{* ]]; then
+						count_inline_table_entries "$runtime_value"
+						runtime_entries=$inline_entry_count
+					fi
+				fi
+				parsed_entry_count=$((parsed_entry_count + runtime_entries))
 				if ((parsed_entry_count > max_entry_count)); then
 					provider_state=partial
 					if [[ $entry_limit_reported == false ]]; then
@@ -313,6 +372,7 @@ parse_themes() {
 				fi
 			fi
 			if [[ $runtime_value == \[* || $runtime_value == \{* ]]; then
+				[[ $section != ignore ]] || continue
 				provider_state=unavailable
 				add_error parser unsupported-complex-value \
 					"Arrays and inline tables are outside the appearance snapshot grammar at line $line_number"
@@ -368,6 +428,11 @@ parse_themes() {
 
 		value[$raw]=$parsed
 	done < <(numbered_theme_content_lines "$file")
+	if [[ $complex_array_active == true && $entry_limit_reported == false ]]; then
+		provider_state=unavailable
+		add_error parser unterminated-complex-value \
+			'An unrelated multi-line array was not terminated before the end of the theme configuration'
+	fi
 }
 
 valid_color() {
@@ -444,6 +509,14 @@ resolve_active_theme() {
 
 	selected_theme=${value[__active$key_separator'theme']:-}
 	string_byte_length "$selected_theme"
+	palette_theme=$selected_theme
+	if [[ -z $selected_theme ]]; then
+		[[ -z ${section_count[$legacy_theme_id]+x} ]] && palette_theme=$builtin_palette_id || palette_theme=$legacy_theme_id
+	elif ((string_byte_length_result > max_theme_name_length)); then
+		[[ -z ${section_count[$legacy_theme_id]+x} ]] && palette_theme=$builtin_palette_id || palette_theme=$legacy_theme_id
+	elif [[ -z ${section_count[$selected_theme]+x} ]]; then
+		palette_theme=$builtin_palette_id
+	fi
 	if [[ -z $selected_theme ]]; then
 		if [[ -n ${section_count[$legacy_theme_id]+x} && -z ${theme_invalid[$legacy_theme_id]+x} ]]; then
 			selected_theme=$legacy_theme_id
@@ -465,6 +538,14 @@ resolve_active_theme() {
 	elif [[ -n ${theme_invalid[$selected_theme]+x} ]]; then
 		provider_state=partial
 		add_error active invalid "Active theme '$selected_theme' is invalid or incomplete"
+		if dwm_palette_complete "$selected_theme"; then
+			# DWM's toml_get consumes the first value for each key across
+			# same-named sections, even when duplicate or non-core metadata makes
+			# the provider record invalid.
+			# Preserve that visible palette while still exposing recovery state.
+			resolved_theme=$selected_theme
+			return
+		fi
 	else
 		resolved_theme=$selected_theme
 		return
@@ -482,6 +563,26 @@ resolve_active_theme() {
 	done
 	provider_state=unavailable
 	add_error active no-valid-theme 'No complete theme is available for recovery'
+}
+
+dwm_builtin_color() {
+	case $1 in
+	normbordercolor) printf '#3B4252' ;;
+	normbgcolor) printf '#434C5E' ;;
+	normfgcolor) printf '#D8DEE9' ;;
+	selbordercolor) printf '#81A1C1' ;;
+	selbgcolor) printf '#434C5E' ;;
+	selfgcolor) printf '#ECEFF4' ;;
+	*) return 1 ;;
+	esac
+}
+
+dwm_palette_complete() {
+	local theme=$1 key color
+	for key in normfgcolor normbgcolor normbordercolor selfgcolor selbgcolor selbordercolor; do
+		color=${value[$theme$key_separator$key]:-}
+		[[ -n $color ]] && valid_color "$color" || return 1
+	done
 }
 
 data_roots() {
@@ -794,7 +895,7 @@ emit_theme_records() {
 }
 
 emit_color_records() {
-	local name key fallback color mapping
+	local name key fallback second_fallback color mapping candidate
 	local -a mappings=(
 		'background|term_bg|normbgcolor'
 		'bar-background|normbgcolor|term_bg'
@@ -806,21 +907,34 @@ emit_color_records() {
 		'text|normfgcolor|'
 		'text-strong|selfgcolor|normfgcolor'
 		'text-muted|term_fg|normfgcolor'
-		'placeholder|term_color8|term_fg'
+		'placeholder|term_color8|term_fg|normfgcolor'
 		'accent|selbordercolor|'
 		'accent-secondary|term_color4|selbordercolor'
-		'accent-text|term_bg|'
-		'success|term_color2|'
-		'warning|term_color3|'
-		'danger|term_color1|'
+		'accent-text|term_bg|normbgcolor'
+		'success|term_color2|selbordercolor'
+		'warning|term_color3|selbgcolor'
+		'danger|term_color1|selbordercolor'
 		'danger-surface|term_color0|normbgcolor'
 	)
 
-	[[ -n $resolved_theme ]] || return 0
+	[[ -n $palette_theme ]] || return 0
 	for mapping in "${mappings[@]}"; do
-		IFS='|' read -r name key fallback <<<"$mapping"
-		color=${value[$resolved_theme$key_separator$key]:-}
-		[[ -n $color || -z $fallback ]] || color=${value[$resolved_theme$key_separator$fallback]:-}
+		IFS='|' read -r name key fallback second_fallback <<<"$mapping"
+		color=
+		for candidate in "$key" "$fallback" "$second_fallback"; do
+			[[ -n $candidate ]] || continue
+			color=${value[$palette_theme$key_separator$candidate]:-}
+			valid_color "$color" && break
+			color=
+		done
+		if [[ -z $color ]]; then
+			for candidate in "$key" "$fallback" "$second_fallback"; do
+				[[ -n $candidate ]] || continue
+				if color=$(dwm_builtin_color "$candidate"); then
+					break
+				fi
+			done
+		fi
 		printf 'color\t%s\t%s\t%s\n' "$name" "$(clean_field "$color")" "$key"
 	done
 }
@@ -830,6 +944,7 @@ emit_integrations() {
 	[[ -n $resolved_theme ]] || return 0
 
 	dark=${value[$resolved_theme$key_separator'dark_mode']:-true}
+	[[ $dark == true || $dark == false ]] || dark=true
 	requested_gtk=${value[$resolved_theme$key_separator'gtk_theme']:-}
 	if [[ -z $requested_gtk ]]; then
 		if [[ $dark == true ]]; then
@@ -941,7 +1056,7 @@ snapshot() {
 	fi
 
 	if [[ -n $resolved_theme ]]; then
-		if [[ $resolved_theme == "$selected_theme" ]]; then
+		if [[ $resolved_theme == "$selected_theme" && -z ${theme_invalid[$selected_theme]+x} ]]; then
 			active_state=selected
 		else
 			active_state=recovery

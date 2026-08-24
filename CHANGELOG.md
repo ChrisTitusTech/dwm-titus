@@ -21,6 +21,13 @@ versions from `config.mk`.
   staged and compare-and-swap published, manual applies honor active previews,
   and DWM re-arms hot reload after the user theme directory is first created.
 
+- Add one root-scoped Appearance model as the owner of theme inventory,
+  validation, and semantic shell colors, plus a Settings Appearance pane for
+  bounded preview, keep, revert, apply, reset, and interrupted-operation
+  recovery. Partial toolkit, terminal, cursor, and compositor application is
+  reported explicitly, while unsafe ownership or symlink paths keep the pane
+  readable and disable mutation.
+
 - Add one shared session-action model for Lock, Log Out, Suspend, Reboot, and
   Shutdown across the panel and Settings. Fixed helper actions require exact
   accepted records, preserve destructive confirmations, attribute failures to
