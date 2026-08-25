@@ -2,10 +2,29 @@
 set -euo pipefail
 export LC_ALL=C
 
+script_path=${BASH_SOURCE[0]}
+if [[ $script_path != */* ]]; then
+	script_path=$(command -v -- "$script_path") || {
+		printf 'dwm-settings-appearance: executable path could not be resolved\n' >&2
+		exit 1
+	}
+fi
+if command -v readlink >/dev/null 2>&1; then
+	script_path=$(readlink -f -- "$script_path") || {
+		printf 'dwm-settings-appearance: executable path could not be resolved\n' >&2
+		exit 1
+	}
+fi
+script_dir=$(cd "${script_path%/*}" && pwd -P) || {
+	printf 'dwm-settings-appearance: executable path could not be resolved\n' >&2
+	exit 1
+}
 config_home=${XDG_CONFIG_HOME:-}
 data_home=${XDG_DATA_HOME:-}
+state_home=${XDG_STATE_HOME:-}
 [[ $config_home == /* ]] || config_home=${HOME:?HOME is required for XDG_CONFIG_HOME fallback}/.config
 [[ $data_home == /* ]] || data_home=${HOME:?HOME is required for XDG_DATA_HOME fallback}/.local/share
+[[ $state_home == /* ]] || state_home=${HOME:?HOME is required for XDG_STATE_HOME fallback}/.local/state
 themes_file=${DWM_APPEARANCE_THEMES_FILE:-$config_home/dwm-titus/themes.toml}
 managed_themes_file=${DWM_APPEARANCE_MANAGED_THEMES_FILE:-$data_home/dwm-titus/config/themes.toml}
 readonly max_themes_size=1048576
@@ -645,7 +664,7 @@ emit_inventory_candidate() {
 inventory_field_safe() {
 	local field=$1
 	[[ -n $field && ${#field} -le 4095 && $field != *$'\t'* &&
-		$field != *$'\r'* && $field != *$'\n'* ]]
+		$field != *$'\r'* && $field != *$'\n'* && $field != *"$key_separator"* ]]
 }
 
 start_inventory_stream() {
@@ -682,10 +701,70 @@ inventory_scan_cleanup() {
 
 emit_wallpaper_inventory() {
 	local wallpaper_dir=${DWM_APPEARANCE_WALLPAPER_DIR:-${HOME:?HOME is required}/Pictures/backgrounds}
-	local path label count=0 scan_failed=false limit_reached=false
+	local wallpaper_helper=${DWM_SETTINGS_WALLPAPER_HELPER:-$script_dir/dwm-settings-wallpaper}
+	local path label count=0 scan_failed=false limit_reached=false status_output
+	local line record field2 field3 field4 field5 extra selection_found=false valid_fit=false
+	local line_number=0 protocol_valid=false
+	local provider_found=false provider_state=available provider_detail='Wallpaper provider is available'
+	local selection_state=partial selection_path='' selection_fit=fill
+	local selection_detail='No managed wallpaper selection has been recorded yet'
+	if [[ -x $wallpaper_helper ]] &&
+		status_output=$(timeout --signal=TERM --kill-after=1 4 \
+			"$wallpaper_helper" status --read-only 2>/dev/null); then
+		while IFS= read -r line; do
+			((line_number += 1))
+			if ((line_number == 1)); then
+				[[ $line == $'wallpaper-protocol\t1\t0' ]] && protocol_valid=true
+				continue
+			fi
+			[[ $protocol_valid == true ]] || continue
+			IFS=$key_separator read -r record field2 field3 field4 field5 extra \
+				<<<"${line//$'\t'/$key_separator}"
+			case $record in
+			provider)
+				[[ $field2 == wallpaper && $field4 == user-session && -z ${extra:-} ]] || continue
+				case $field3 in available | partial | unavailable) ;; *) continue ;; esac
+				inventory_field_safe "$field5" || continue
+				provider_state=$field3
+				provider_detail=$field5
+				provider_found=true
+				;;
+			selection)
+				[[ -z ${extra:-} ]] || continue
+				case $field2 in available | partial | unavailable) ;; *) continue ;; esac
+				valid_fit=false
+				case $field4 in center | fill | max | scale | tile) valid_fit=true ;; esac
+				[[ $valid_fit == true && ${#field3} -le 4095 &&
+					$field3 != *$'\r'* && $field3 != *$'\n'* ]] || continue
+				inventory_field_safe "$field5" || continue
+				selection_state=$field2
+				selection_path=$field3
+				selection_fit=$field4
+				selection_detail=$field5
+				selection_found=true
+				;;
+			esac
+		done <<<"$status_output"
+	fi
+	if [[ $selection_found == false || $provider_found == false ]]; then
+		selection_state=partial
+		if [[ -x $wallpaper_helper ]]; then
+			selection_detail='Wallpaper state helper did not return a valid bounded response'
+		else
+			selection_detail='Wallpaper state helper is unavailable'
+		fi
+	elif [[ $provider_state != available && $selection_state != unavailable ]]; then
+		selection_state=$provider_state
+		selection_detail=$provider_detail
+	fi
 	if [[ ! -d $wallpaper_dir ]]; then
-		emit_inventory_selection wallpaper unavailable '' fill \
-			"Wallpaper folder is unavailable: $wallpaper_dir"
+		if [[ $selection_state == available ]]; then
+			emit_inventory_selection wallpaper "$selection_state" "$selection_path" \
+				"$selection_fit" "$selection_detail"
+		else
+			emit_inventory_selection wallpaper unavailable "$selection_path" \
+				"$selection_fit" "Wallpaper folder is unavailable: $wallpaper_dir"
+		fi
 		return
 	fi
 	start_inventory_stream find -L "$wallpaper_dir" -type f \
@@ -710,12 +789,12 @@ emit_wallpaper_inventory() {
 	elif ! stop_inventory_stream; then
 		scan_failed=true
 	fi
-	if [[ $scan_failed == true ]]; then
-		emit_inventory_selection wallpaper partial '' fill \
+	if [[ $scan_failed == true && $selection_state != unavailable ]]; then
+		emit_inventory_selection wallpaper partial "$selection_path" "$selection_fit" \
 			'Wallpaper candidate discovery did not complete'
 	else
-		emit_inventory_selection wallpaper partial '' fill \
-			'No managed wallpaper selection has been recorded yet'
+		emit_inventory_selection wallpaper "$selection_state" "$selection_path" \
+			"$selection_fit" "$selection_detail"
 	fi
 }
 
@@ -1014,24 +1093,33 @@ inventory() {
 }
 
 add_inventory_watch_dir() {
-	local candidate=$1 resolved
+	local candidate=$1 resolved mode
+	inventory_watch_target_accepted=false
 	inventory_field_safe "$candidate" || return 0
 	[[ -d $candidate ]] || return 0
 	resolved=$(readlink -f -- "$candidate" 2>/dev/null) || return 0
 	inventory_field_safe "$resolved" || return 0
-	[[ $resolved == /* && $resolved != / && -d $resolved && ! -L $resolved ]] || return 0
+	mode=$(stat -Lc %a -- "$resolved" 2>/dev/null) || return 0
+	[[ $mode =~ ^[0-7]{1,4}$ ]] || return 0
+	(((8#$mode & 0444) != 0 && (8#$mode & 0111) != 0)) || return 0
+	[[ $resolved == /* && $resolved != / && -d $resolved && ! -L $resolved &&
+		-r $resolved && -x $resolved ]] || return 0
 	candidate=$resolved
-	[[ -z ${inventory_watch_seen[$candidate]+x} ]] || return 0
-	((${#inventory_watch_dirs[@]} < max_inventory_watch_dirs)) || return 0
+	if [[ -n ${inventory_watch_seen[$candidate]+x} ]] ||
+		((${#inventory_watch_dirs[@]} >= max_inventory_watch_dirs)); then
+		inventory_watch_target_accepted=true
+		return 0
+	fi
 	inventory_watch_seen[$candidate]=1
 	inventory_watch_dirs+=("$candidate")
+	inventory_watch_target_accepted=true
 }
 
 add_inventory_watch_target() {
 	local candidate=$1
 	if [[ -d $candidate ]]; then
 		add_inventory_watch_dir "$candidate"
-		return
+		[[ $inventory_watch_target_accepted == false ]] || return 0
 	fi
 	# Watch the nearest safe existing parent so creating an absent wallpaper or
 	# XDG asset root produces an event. Never broaden the fallback to /.
@@ -1040,7 +1128,7 @@ add_inventory_watch_target() {
 		[[ -n $candidate ]] || candidate=/
 		if [[ $candidate != / && -d $candidate ]]; then
 			add_inventory_watch_dir "$candidate"
-			return
+			[[ $inventory_watch_target_accepted == false ]] || return 0
 		fi
 	done
 }
@@ -1124,8 +1212,9 @@ arm_parent_exit_watch() {
 }
 
 watch_inventory() {
-	local root directory wallpaper_dir
-	local ready_attempt=0 status=0 event
+	local root directory wallpaper_dir wallpaper_helper wallpaper_status wallpaper_protocol line resolved_wallpaper
+	local record field2 selected_wallpaper field4 field5 extra
+	local ready_attempt=0 status=0 event inventory_watch_target_accepted=false
 	local -a inventory_watch_dirs=()
 	local -a inventory_icon_roots=() inventory_theme_roots=() inventory_font_roots=()
 	local -A inventory_watch_seen=()
@@ -1147,6 +1236,7 @@ watch_inventory() {
 	add_inventory_watch_target "$config_home/gtk-3.0"
 	add_inventory_watch_target "$config_home/gtk-4.0"
 	add_inventory_watch_target "$config_home/dwm-titus"
+	add_inventory_watch_target "$state_home/dwm-titus/appearance/wallpaper"
 	while IFS= read -r root; do
 		inventory_icon_roots+=("$root/icons")
 		inventory_theme_roots+=("$root/themes")
@@ -1166,6 +1256,26 @@ watch_inventory() {
 		add_inventory_watch_target "$HOME/.fonts.conf.d"
 	fi
 	add_inventory_watch_target "$wallpaper_dir"
+	wallpaper_helper=${DWM_SETTINGS_WALLPAPER_HELPER:-$script_dir/dwm-settings-wallpaper}
+	if [[ -x $wallpaper_helper ]] &&
+		wallpaper_status=$(timeout --signal=TERM --kill-after=1 4 \
+			"$wallpaper_helper" status --read-only 2>/dev/null); then
+		IFS= read -r wallpaper_protocol <<<"$wallpaper_status"
+		if [[ $wallpaper_protocol == $'wallpaper-protocol\t1\t0' ]]; then
+			while IFS= read -r line; do
+				IFS=$'\t' read -r record field2 selected_wallpaper field4 field5 extra <<<"$line"
+				if [[ $record == selection && $field2 != unavailable && -z $extra ]] &&
+					inventory_field_safe "$selected_wallpaper" && [[ $selected_wallpaper == /* ]]; then
+					add_inventory_watch_target "$selected_wallpaper"
+					resolved_wallpaper=$(readlink -f -- "$selected_wallpaper" 2>/dev/null || true)
+					if inventory_field_safe "$resolved_wallpaper" && [[ $resolved_wallpaper == /* ]]; then
+						add_inventory_watch_target "$resolved_wallpaper"
+					fi
+					break
+				fi
+			done <<<"$wallpaper_status"
+		fi
+	fi
 	# Candidate validity changes inside the first directory below icon and theme
 	# roots. Font files and wallpapers may be nested more deeply, so include
 	# their existing descendant directories until the global bound is reached.
@@ -1222,7 +1332,7 @@ watch_inventory() {
 	trap inventory_watch_cleanup EXIT
 	trap 'exit 143' HUP INT TERM
 	inotifywait -m -P \
-		-e close_write -e create -e delete -e moved_to -e moved_from \
+		-e attrib -e close_write -e create -e delete -e moved_to -e moved_from \
 		-e delete_self -e move_self --format $'%e\t%w%f' -- \
 		"${inventory_watch_dirs[@]}" >"$inventory_watch_work/events" \
 		2>"$inventory_watch_work/ready" &

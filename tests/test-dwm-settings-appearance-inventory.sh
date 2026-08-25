@@ -17,7 +17,9 @@ process_running() {
 home=$work/home
 config_home=$home/.config
 data_root=$work/data
+state_root=$work/state
 bin_dir=$work/bin
+link_dir=$work/link-bin
 wallpaper_dir=$home/Pictures/backgrounds
 legacy_font_dir=$home/.fonts
 proc_root=$work/proc
@@ -28,7 +30,9 @@ mkdir -p "$config_home/dwm-titus" "$config_home/dconf" "$config_home/fontconfig"
 	"$data_root/linked-cursor/cursors" \
 	"$data_root/themes/Nordic/gtk-3.0" "$data_root/themes/Nordic/gtk-4.0" \
 	"$data_root/themes/Legacy/gtk-3.0" \
-	"$wallpaper_dir/nested" "$legacy_font_dir/nested" "$bin_dir" "$proc_root/4242"
+	"$state_root/dwm-titus/appearance/wallpaper" \
+	"$wallpaper_dir/nested" "$legacy_font_dir/nested" "$bin_dir" "$link_dir" \
+	"$proc_root/4242"
 printf '[Icon Theme]\nName=Papirus\nDirectories=scalable/apps\n' \
 	>"$data_root/icons/Papirus/index.theme"
 printf '[Icon Theme]\nName=Capitaine Cursors\nInherits=hicolor\n' \
@@ -36,11 +40,13 @@ printf '[Icon Theme]\nName=Capitaine Cursors\nInherits=hicolor\n' \
 ln -s ../linked-cursor "$data_root/icons/LinkedCursor"
 printf 'png\n' >"$wallpaper_dir/nord.png"
 printf 'jpg\n' >"$wallpaper_dir/nested/forest.JPG"
+printf 'png\n' >"$wallpaper_dir/unsafe"$'\034'"separator.png"
 printf 'ignored\n' >"$wallpaper_dir/readme.txt"
 printf 'export QT_QPA_PLATFORMTHEME=qt6ct\nexport XCURSOR_THEME=Capitaine-Cursors\n' \
 	>"$config_home/dwm-titus/theme-env.sh"
 
-for command_name in awk bash find grep id mkfifo mktemp readlink rm rmdir sleep timeout tr; do
+for command_name in awk bash chmod date find flock grep id mkdir mkfifo mktemp mv readlink rm \
+	rmdir sed sha256sum sleep stat timeout tr; do
 	ln -s "$(command -v "$command_name")" "$bin_dir/$command_name"
 done
 printf 'DISPLAY=:55\0' >"$proc_root/4242/environ"
@@ -81,6 +87,10 @@ cat >"$bin_dir/qt6ct" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
+cat >"$bin_dir/feh" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
 cat >"$bin_dir/inotifywait" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >"$DWM_TEST_INOTIFY_ARGS"
@@ -93,19 +103,43 @@ fi
 printf 'CREATE\t%s/new.png\n' "$DWM_APPEARANCE_WALLPAPER_DIR"
 EOF
 chmod +x "$bin_dir/fc-list" "$bin_dir/fc-match" "$bin_dir/gsettings" \
-	"$bin_dir/pgrep" "$bin_dir/picom" "$bin_dir/qt6ct" "$bin_dir/inotifywait"
+	"$bin_dir/pgrep" "$bin_dir/picom" "$bin_dir/qt6ct" "$bin_dir/feh" \
+	"$bin_dir/inotifywait"
 
 inventory=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
 	"$helper" inventory)
 
+ln -s "$helper" "$bin_dir/dwm-settings-appearance"
+bare_inventory=$(
+	cd "$work"
+	HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+		XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+		DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+		dwm-settings-appearance inventory
+)
+grep -Fqx $'appearance-inventory-protocol\t1\t0' <<<"$bare_inventory"
+
+# A standalone PATH symlink must resolve companion helpers beside the real
+# provider rather than looking for them next to the symlink.
+ln -s "$helper" "$link_dir/dwm-settings-appearance"
+symlink_inventory=$(
+	cd "$work"
+	HOME=$home PATH="$link_dir:$bin_dir" XDG_CONFIG_HOME=$config_home \
+		XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+		DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+		dwm-settings-appearance inventory
+)
+grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tNo managed wallpaper selection; session startup uses the legacy random wallpaper' \
+	<<<"$symlink_inventory"
+
 grep -Fqx $'appearance-inventory-protocol\t1\t0' <<<"$inventory"
 grep -Fqx $'provider\tappearance-inventory\tavailable\tread-only\tBounded appearance asset inventory' \
 	<<<"$inventory"
 grep -Fqx $'watch\tavailable\tinotifywait\tAsset changes are observable while Appearance is open' \
 	<<<"$inventory"
-grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tNo managed wallpaper selection has been recorded yet' \
+grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tNo managed wallpaper selection; session startup uses the legacy random wallpaper' \
 	<<<"$inventory"
 grep -Fqx $'candidate\twallpaper\tavailable\t'"$wallpaper_dir/nord.png"$'\tnord.png\tImage in the configured wallpaper folder' \
 	<<<"$inventory"
@@ -115,6 +149,136 @@ if grep -Fq 'readme.txt' <<<"$inventory"; then
 	printf 'Non-image wallpaper candidate was emitted\n' >&2
 	exit 1
 fi
+if [[ $inventory == *$'\034'* ]]; then
+	printf 'Wallpaper candidate containing the inventory separator was emitted\n' >&2
+	exit 1
+fi
+cat >"$config_home/dwm-titus/wallpaper.conf" <<EOF
+version=1
+path=$wallpaper_dir/nested/forest.JPG
+fit=max
+EOF
+cat >"$work/wallpaper-status-helper" <<EOF
+#!/bin/sh
+[ "\$*" = 'status --read-only' ] || exit 2
+printf 'wallpaper-protocol\t1\t0\n'
+printf 'provider\twallpaper\tavailable\tuser-session\tManaged wallpaper state is readable\n'
+printf 'selection\tavailable\t%s\tmax\tManaged wallpaper selection is ready for this and future sessions\n' \
+	'$wallpaper_dir/nested/forest.JPG'
+printf 'mutation\tavailable\tWallpaper preview and user-session changes are available\n'
+printf 'preview\tnone\t\t0\t\tfill\tNo wallpaper preview is active\n'
+EOF
+chmod +x "$work/wallpaper-status-helper"
+managed_wallpaper=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+	XDG_STATE_HOME=$home/.local/state XDG_RUNTIME_DIR=$work/runtime \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_SETTINGS_WALLPAPER_HELPER=$work/wallpaper-status-helper \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	"$helper" inventory)
+grep -Fqx $'selection\twallpaper\tavailable\t'"$wallpaper_dir/nested/forest.JPG"$'\tmax\tManaged wallpaper selection is ready for this and future sessions' \
+	<<<"$managed_wallpaper"
+no_feh_bin=$work/no-feh-bin
+cp -a "$bin_dir" "$no_feh_bin"
+rm -f "$no_feh_bin/feh"
+no_feh_inventory=$(HOME=$home PATH=$no_feh_bin XDG_CONFIG_HOME=$config_home \
+	XDG_STATE_HOME=$home/.local/state XDG_RUNTIME_DIR=$work/runtime \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	"$helper" inventory)
+grep -Fqx $'selection\twallpaper\tpartial\t'"$wallpaper_dir/nested/forest.JPG"$'\tmax\tFeh is optional and is not installed' \
+	<<<"$no_feh_inventory"
+
+saved_scan_fail_bin=$work/saved-scan-fail-bin
+real_find=$(command -v find)
+cp -a "$bin_dir" "$saved_scan_fail_bin"
+rm -f "$saved_scan_fail_bin/find"
+cat >"$saved_scan_fail_bin/find" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = -L ] && [ "${2:-}" = "$DWM_APPEARANCE_WALLPAPER_DIR" ]; then
+	exit 7
+fi
+exec "$DWM_TEST_REAL_FIND" "$@"
+EOF
+chmod +x "$saved_scan_fail_bin/find"
+saved_scan_failure=$(HOME=$home PATH=$saved_scan_fail_bin XDG_CONFIG_HOME=$config_home \
+	XDG_STATE_HOME=$home/.local/state XDG_RUNTIME_DIR=$work/runtime \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_SETTINGS_WALLPAPER_HELPER=$work/wallpaper-status-helper \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir DWM_TEST_REAL_FIND=$real_find \
+	QT_QPA_PLATFORMTHEME=qt6ct "$helper" inventory)
+grep -Fqx $'selection\twallpaper\tpartial\t'"$wallpaper_dir/nested/forest.JPG"$'\tmax\tWallpaper candidate discovery did not complete' \
+	<<<"$saved_scan_failure"
+
+cat >"$work/unavailable-wallpaper-status-helper" <<'EOF'
+#!/bin/sh
+printf 'wallpaper-protocol\t1\t0\n'
+printf 'provider\twallpaper\tpartial\tuser-session\tFeh is optional and is not installed\n'
+printf 'selection\tunavailable\t/etc/missing.jpg\tfill\tWallpaper configuration is invalid or unsafe\n'
+printf 'mutation\trestricted\tWallpaper changes are unavailable in this session\n'
+printf 'preview\tnone\t\t0\t\tfill\tNo wallpaper preview is active\n'
+EOF
+chmod +x "$work/unavailable-wallpaper-status-helper"
+unavailable_scan_failure=$(HOME=$home PATH=$saved_scan_fail_bin XDG_CONFIG_HOME=$config_home \
+	XDG_STATE_HOME=$home/.local/state XDG_RUNTIME_DIR=$work/runtime \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_SETTINGS_WALLPAPER_HELPER=$work/unavailable-wallpaper-status-helper \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir DWM_TEST_REAL_FIND=$real_find \
+	QT_QPA_PLATFORMTHEME=qt6ct "$helper" inventory)
+grep -Fqx $'selection\twallpaper\tunavailable\t/etc/missing.jpg\tfill\tWallpaper configuration is invalid or unsafe' \
+	<<<"$unavailable_scan_failure"
+
+cat >"$work/incompatible-wallpaper-status-helper" <<'EOF'
+#!/bin/sh
+printf 'wallpaper-protocol\t2\t0\n'
+printf 'provider\twallpaper\tavailable\tuser-session\tManaged wallpaper state is readable\n'
+printf 'selection\tavailable\t/etc/compatible-looking.jpg\tfill\tManaged wallpaper selection is ready\n'
+EOF
+chmod +x "$work/incompatible-wallpaper-status-helper"
+incompatible_wallpaper=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+	XDG_STATE_HOME=$home/.local/state XDG_RUNTIME_DIR=$work/runtime \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_SETTINGS_WALLPAPER_HELPER=$work/incompatible-wallpaper-status-helper \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	"$helper" inventory)
+grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tWallpaper state helper did not return a valid bounded response' \
+	<<<"$incompatible_wallpaper"
+
+cat >"$work/delayed-wallpaper-status-helper" <<'EOF'
+#!/bin/sh
+sleep 2.5
+printf 'wallpaper-protocol\t1\t0\n'
+printf 'provider\twallpaper\tavailable\tuser-session\tManaged wallpaper state is readable\n'
+printf 'selection\tpartial\t\tfill\tDelayed bounded wallpaper status completed\n'
+printf 'mutation\trestricted\tWallpaper changes are unavailable in this session\n'
+printf 'preview\tnone\t\t0\t\tfill\tNo wallpaper preview is active\n'
+EOF
+chmod +x "$work/delayed-wallpaper-status-helper"
+delayed_wallpaper_inventory=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+	XDG_STATE_HOME=$home/.local/state XDG_RUNTIME_DIR=$work/runtime \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_SETTINGS_WALLPAPER_HELPER=$work/delayed-wallpaper-status-helper \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	"$helper" inventory)
+grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tDelayed bounded wallpaper status completed' \
+	<<<"$delayed_wallpaper_inventory"
+
+cat >"$work/slow-wallpaper-status-helper" <<'EOF'
+#!/bin/sh
+sleep 10
+EOF
+chmod +x "$work/slow-wallpaper-status-helper"
+started=$(date +%s)
+slow_wallpaper_inventory=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+	XDG_STATE_HOME=$home/.local/state XDG_RUNTIME_DIR=$work/runtime \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_SETTINGS_WALLPAPER_HELPER=$work/slow-wallpaper-status-helper \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	"$helper" inventory)
+elapsed=$(($(date +%s) - started))
+test "$elapsed" -lt 6
+grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tWallpaper state helper did not return a valid bounded response' \
+	<<<"$slow_wallpaper_inventory"
+rm -f "$config_home/dwm-titus/wallpaper.conf"
 grep -Fqx $'selection\tfont\tavailable\tNoto Sans\tNoto Sans 11\tCurrent desktop font family is installed' \
 	<<<"$inventory"
 test "$(grep -Fc $'candidate\tfont\tavailable\tNoto Sans\tNoto Sans\tFontconfig family' \
@@ -238,6 +402,17 @@ grep -Fqx $'selection\tcursor\tavailable\tcursor-259\t\tCurrent selection is ins
 watch_args=$work/watch.args
 watch_find_complete=$work/watch-find.complete
 watch_bin=$work/watch-bin
+external_wallpaper_dir=$work/external-wallpapers
+resolved_wallpaper_dir=$work/resolved-wallpapers
+mkdir -p "$external_wallpaper_dir" "$resolved_wallpaper_dir"
+printf 'external png\n' >"$resolved_wallpaper_dir/selected.png"
+ln -s "$resolved_wallpaper_dir/selected.png" "$external_wallpaper_dir/selected.png"
+cat >"$config_home/dwm-titus/wallpaper.conf" <<EOF
+version=1
+mode=selection
+path=$external_wallpaper_dir/selected.png
+fit=fill
+EOF
 real_find=$(command -v find)
 cp -a "$bin_dir" "$watch_bin"
 rm -f "$watch_bin/find"
@@ -256,6 +431,7 @@ for wallpaper_index in $(seq 0 139); do
 	mkdir -p "$wallpaper_dir/large-$wallpaper_index"
 done
 HOME=$home PATH=$watch_bin XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	XDG_STATE_HOME=$state_root \
 	DWM_APPEARANCE_DATA_DIRS=$data_root DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir \
 	DWM_TEST_INOTIFY_ARGS=$watch_args DWM_TEST_REAL_FIND=$real_find \
 	DWM_TEST_FIND_COMPLETE=$watch_find_complete \
@@ -267,9 +443,13 @@ fi
 grep -Fqx $'ready\tinventory' "$work/watch.out"
 grep -Fqx $'changed\tCREATE\t'"$wallpaper_dir/new.png" "$work/watch.out"
 grep -Fq -- '-m -P' "$watch_args"
+grep -Fq -- '-e attrib' "$watch_args"
 grep -Fq -- "$wallpaper_dir" "$watch_args"
+grep -Fq -- "$external_wallpaper_dir" "$watch_args"
+grep -Fq -- "$resolved_wallpaper_dir" "$watch_args"
 grep -Fq -- "$config_home/dconf" "$watch_args"
 grep -Fq -- "$config_home/fontconfig" "$watch_args"
+grep -Fq -- "$state_root/dwm-titus/appearance/wallpaper" "$watch_args"
 grep -Fq -- "$data_root/icons" "$watch_args"
 grep -Fq -- "$data_root/themes" "$watch_args"
 grep -Fq -- "$data_root/icons/Papirus" "$watch_args"
@@ -280,6 +460,50 @@ grep -Fq -- "$legacy_font_dir" "$watch_args"
 grep -Fq -- "$legacy_font_dir/nested" "$watch_args"
 test "$(awk '{ for (field = 1; field <= NF; field++) if ($field ~ /^\//) count++ } END { print count + 0 }' \
 	"$watch_args")" -le 128
+
+incompatible_watch_args=$work/incompatible-watch.args
+HOME=$home PATH=$watch_bin XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	DWM_APPEARANCE_DATA_DIRS=$data_root DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir \
+	DWM_SETTINGS_WALLPAPER_HELPER=$work/incompatible-wallpaper-status-helper \
+	DWM_TEST_INOTIFY_ARGS=$incompatible_watch_args DWM_TEST_REAL_FIND=$real_find \
+	DWM_TEST_FIND_COMPLETE=$watch_find_complete \
+	"$helper" watch-inventory >"$work/incompatible-watch.out"
+if grep -Fq -- '/etc/compatible-looking.jpg' "$incompatible_watch_args" ||
+	grep -Eq -- '(^|[[:space:]])/etc([[:space:]]|$)' "$incompatible_watch_args"; then
+	printf 'Inventory watcher trusted an incompatible wallpaper protocol\n' >&2
+	exit 1
+fi
+rm -f -- "$config_home/dwm-titus/wallpaper.conf"
+
+restricted_wallpaper_parent=$work/restricted-parent
+restricted_wallpaper_dir=$restricted_wallpaper_parent/restricted-wallpapers
+mkdir -p "$restricted_wallpaper_dir"
+printf 'restricted png\n' >"$restricted_wallpaper_dir/selected.png"
+cat >"$work/restricted-wallpaper-status-helper" <<EOF
+#!/bin/sh
+printf 'wallpaper-protocol\t1\t0\n'
+printf 'provider\twallpaper\tavailable\tuser-session\tManaged wallpaper state is readable\n'
+printf 'selection\tpartial\t%s\tfill\tConfigured wallpaper is inaccessible\n' \
+	'$restricted_wallpaper_dir/selected.png'
+printf 'mutation\trestricted\tWallpaper changes are unavailable in this session\n'
+printf 'preview\tnone\t\t0\t\tfill\tNo wallpaper preview is active\n'
+EOF
+chmod +x "$work/restricted-wallpaper-status-helper"
+chmod 000 "$restricted_wallpaper_dir"
+restricted_watch_args=$work/restricted-watch.args
+HOME=$home PATH=$watch_bin XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	DWM_APPEARANCE_DATA_DIRS=$data_root DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir \
+	DWM_SETTINGS_WALLPAPER_HELPER=$work/restricted-wallpaper-status-helper \
+	DWM_TEST_INOTIFY_ARGS=$restricted_watch_args DWM_TEST_REAL_FIND=$real_find \
+	DWM_TEST_FIND_COMPLETE=$watch_find_complete \
+	"$helper" watch-inventory >"$work/restricted-watch.out"
+chmod 700 "$restricted_wallpaper_dir"
+if grep -Fq -- "$restricted_wallpaper_dir" "$restricted_watch_args"; then
+	printf 'Inventory watcher included an inaccessible wallpaper directory\n' >&2
+	exit 1
+fi
+grep -Fq -- "$restricted_wallpaper_parent" "$restricted_watch_args"
+grep -Fqx $'ready\tinventory' "$work/restricted-watch.out"
 
 missing_watch_args=$work/missing-watch.args
 HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$work/missing-config \

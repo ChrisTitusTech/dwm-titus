@@ -28,7 +28,7 @@ SH
 	chmod +x "$work/bin/$name"
 }
 
-for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh maim notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps xdg-open nwg-look pkill pgrep dnf; do
+for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh maim notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps dwm-settings-wallpaper xdg-open nwg-look pkill pgrep dnf; do
 	stub_command "$name"
 done
 
@@ -415,10 +415,21 @@ grep -Fqx 'nwg-look is unavailable' "$work/gtk-settings.err"
 : >"$work/actions.log"
 run_helper action reload-wallpaper >"$work/reload-wallpaper.out"
 grep -Fqx 'action	reload-wallpaper' "$work/reload-wallpaper.out"
-grep -Fq "feh --randomize --bg-fill $work/home/Pictures/backgrounds/wallpaper.png" "$work/actions.log"
+grep -Fqx 'dwm-settings-wallpaper randomize' "$work/actions.log"
+if grep -Fq 'feh --randomize --bg-fill' "$work/actions.log"; then
+	printf 'Managed wallpaper reload bypassed the settings helper\n' >&2
+	exit 1
+fi
+
+: >"$work/actions.log"
+DWM_SETTINGS_WALLPAPER_HELPER=$work/missing-wallpaper-helper \
+	run_helper action reload-wallpaper >"$work/legacy-reload-wallpaper.out"
+grep -Fq "feh --randomize --bg-fill $work/home/Pictures/backgrounds/wallpaper.png" \
+	"$work/actions.log"
 
 rm -f "$work/home/Pictures/backgrounds/wallpaper.png"
-if run_helper action reload-wallpaper 2>"$work/reload-wallpaper.err"; then
+if DWM_SETTINGS_WALLPAPER_HELPER=$work/missing-wallpaper-helper \
+	run_helper action reload-wallpaper 2>"$work/reload-wallpaper.err"; then
 	exit 1
 fi
 grep -Fqx "no loadable wallpaper images found in $work/home/Pictures/backgrounds" "$work/reload-wallpaper.err"

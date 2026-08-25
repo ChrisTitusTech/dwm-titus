@@ -123,8 +123,25 @@ Open the Control Center with <kbd>Super</kbd> + <kbd>F1</kbd>, navigate to **App
 ---
 ## Wallpapers
 
-Place images in `~/Pictures/backgrounds/`. Use `Super` + `Shift` + `W` to randomize, or set a specific one:
+Place images in `~/Pictures/backgrounds/`. Use `Super` + `Shift` + `W` or
+`dwm-settings-wallpaper randomize` for a one-off random wallpaper in the
+current session, or persist a specific image and Feh fit mode for future
+sessions:
 
 ```bash
-feh --bg-fill ~/Pictures/backgrounds/mywall.jpg
+dwm-settings-wallpaper apply "$HOME/Pictures/backgrounds/mywall.jpg" fill
 ```
+
+Supported fit modes are `center`, `fill`, `max`, `scale`, and `tile`. Preview a
+choice for 30 seconds before keeping it:
+
+```bash
+token="wallpaper-$$"
+dwm-settings-wallpaper preview "$token" 30 \
+  "$HOME/Pictures/backgrounds/mywall.jpg" max
+dwm-settings-wallpaper keep "$token"
+```
+
+Use `dwm-settings-wallpaper reset` to return to the session's random-fill
+default. If a saved image is removed, login remains usable and falls back to
+that default until another image is selected or the setting is reset.

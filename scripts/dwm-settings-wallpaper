@@ -1,0 +1,2421 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+
+script_path=$(readlink -f -- "${BASH_SOURCE[0]}")
+invocation_dir=$(pwd -P)
+if [[ -n ${XAUTHORITY:-} && $XAUTHORITY != /* ]]; then
+	XAUTHORITY=$invocation_dir/$XAUTHORITY
+	export XAUTHORITY
+fi
+config_home=${XDG_CONFIG_HOME:-}
+state_home=${XDG_STATE_HOME:-}
+[[ $config_home == /* ]] || config_home=${HOME:?HOME is required for XDG_CONFIG_HOME fallback}/.config
+[[ $state_home == /* ]] || state_home=${HOME:?HOME is required for XDG_STATE_HOME fallback}/.local/state
+
+runtime_base=${XDG_RUNTIME_DIR:-/tmp/dwm-titus-$UID}
+[[ $runtime_base == /* ]] || {
+	printf 'dwm-settings-wallpaper: XDG_RUNTIME_DIR must be an absolute path\n' >&2
+	exit 1
+}
+runtime_dir=$runtime_base/dwm-settings-wallpaper
+config_file=${DWM_WALLPAPER_CONFIG_FILE:-$config_home/dwm-titus/wallpaper.conf}
+wallpaper_dir=${DWM_APPEARANCE_WALLPAPER_DIR:-${HOME:?HOME is required}/Pictures/backgrounds}
+preview_dir=$state_home/dwm-titus/appearance/wallpaper
+preview_current=$preview_dir/preview.current
+preview_owner=$preview_dir/preview.owner
+mutation_failed=$preview_dir/mutation.failed
+mutation_owner=$preview_dir/mutation.owner
+selection_failed=$preview_dir/selection.failed
+selection_owner=$preview_dir/selection.owner
+session_default=$preview_dir/session.default
+feh_command=${DWM_WALLPAPER_FEH:-feh}
+boot_id_file=${DWM_TEST_WALLPAPER_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}
+monotonic_file=${DWM_TEST_WALLPAPER_MONOTONIC_FILE:-/proc/uptime}
+readonly max_config_size=8192
+readonly max_preview_meta_size=150000
+readonly max_default_monitors=32
+readonly invalid_preview_detail='Wallpaper preview state is invalid; restore it explicitly before changing wallpaper'
+readonly inactive_watchdog_detail='Automatic wallpaper rollback is not armed; run a writable status check to recover'
+max_feh_seconds=${DWM_WALLPAPER_FEH_TIMEOUT:-10}
+[[ $max_feh_seconds =~ ^[1-9][0-9]?$ && $max_feh_seconds -le 10 ]] || {
+	printf 'dwm-settings-wallpaper: Feh timeout must be between 1 and 10 seconds\n' >&2
+	exit 1
+}
+readonly max_feh_seconds
+
+configured=false
+configured_path=
+configured_fit=fill
+preview_token=
+preview_seconds=0
+preview_deadline=0
+preview_boot_id=
+preview_baseline_paths=()
+preview_baseline_fit=fill
+preview_generation=
+preview_path=
+preview_fit=fill
+preview_config_hash=
+preview_pid=
+preview_pid_start=
+preview_display=
+preview_xauthority=
+staged_config=
+captured_config=
+staged_session_default=
+active_feh_pid=
+feh_interrupted=false
+mutation_rollback_armed=false
+owner_token=
+owner_display=
+owner_xauthority=
+selection_displays=()
+selection_xauthorities=()
+selection_owner_hash=
+applied_default_paths=()
+mutation_baseline_paths=()
+mutation_baseline_fit=fill
+mutation_baseline_hash=
+preview_clock_boot_id=
+preview_clock_now=0
+preview_now=0
+
+usage() {
+	cat >&2 <<'EOF'
+usage: dwm-settings-wallpaper status [--read-only]
+       dwm-settings-wallpaper mutation-ready
+       dwm-settings-wallpaper apply PATH FIT
+       dwm-settings-wallpaper reset
+       dwm-settings-wallpaper randomize
+       dwm-settings-wallpaper preview TOKEN SECONDS PATH FIT
+       dwm-settings-wallpaper keep TOKEN
+       dwm-settings-wallpaper revert TOKEN
+       dwm-settings-wallpaper abandon TOKEN
+       dwm-settings-wallpaper session-apply
+EOF
+}
+
+die() {
+	printf 'dwm-settings-wallpaper: %s\n' "$*" >&2
+	exit 1
+}
+
+clean_field() {
+	local field=$1
+	field=${field//$'\t'/ }
+	field=${field//$'\r'/ }
+	field=${field//$'\n'/ }
+	printf '%s' "$field"
+}
+
+read_preview_clock() {
+	local uptime whole fraction
+	preview_clock_boot_id=
+	preview_clock_now=0
+	{ IFS= read -r preview_clock_boot_id <"$boot_id_file"; } 2>/dev/null || return 1
+	{ IFS=' ' read -r uptime _ <"$monotonic_file"; } 2>/dev/null || return 1
+	[[ $preview_clock_boot_id =~ ^[0-9A-Fa-f-]{36}$ &&
+		$uptime =~ ^([0-9]{1,12})(\.([0-9]+))?$ ]] || return 1
+	whole=${BASH_REMATCH[1]}
+	fraction=${BASH_REMATCH[3]:-}
+	fraction=${fraction}000
+	fraction=${fraction:0:3}
+	preview_clock_now=$((10#$whole * 1000 + 10#$fraction))
+}
+
+read_effective_preview_now() {
+	read_preview_clock || return 1
+	if [[ $preview_clock_boot_id == "$preview_boot_id" ]]; then
+		preview_now=$preview_clock_now
+	else
+		# A watchdog cannot survive a reboot. Treat persisted preview state from
+		# another boot as immediately expired instead of reusing an unrelated
+		# uptime value or extending the requested duration.
+		preview_now=$preview_deadline
+	fi
+}
+
+valid_fit() {
+	case ${1:-} in
+	center | fill | max | scale | tile) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+valid_token() {
+	[[ ${1:-} =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]
+}
+
+valid_preview_token() {
+	valid_token "$1" || return 1
+	case $1 in
+	mutation | selection) return 1 ;;
+	esac
+}
+
+valid_display() {
+	local value=${1:-}
+	[[ -n $value && ${#value} -le 255 && $value != *$'\t'* &&
+		$value != *$'\r'* && $value != *$'\n'* ]]
+}
+
+valid_xauthority() {
+	local value=${1:-}
+	[[ -z $value || ($value == /* && ${#value} -le 4095 && $value != *$'\t'* &&
+		$value != *$'\r'* && $value != *$'\n'*) ]]
+}
+
+normalize_x11_display() {
+	local value=$1
+	if [[ $value =~ ^(.*:[0-9]+)[.]0+$ ]]; then
+		value=${BASH_REMATCH[1]}
+	fi
+	[[ $value != unix:* ]] || value=:${value#unix:}
+	printf '%s\n' "$value"
+}
+
+preview_owned_by_current_display() {
+	local owner_display current_display
+	owner_display=$(normalize_x11_display "$preview_display")
+	current_display=$(normalize_x11_display "${DISPLAY:-}")
+	[[ $owner_display == "$current_display" ]]
+}
+
+valid_path_field() {
+	local value=${1:-}
+	[[ $value == /* && ${#value} -le 4095 && $value != *$'\t'* &&
+		$value != *$'\r'* && $value != *$'\n'* && $value != *$'\034'* ]]
+}
+
+valid_asset() {
+	local path=${1:-}
+	valid_path_field "$path" || return 1
+	[[ -f $path && -r $path ]] || return 1
+	case ${path,,} in
+	*.avif | *.bmp | *.gif | *.jpeg | *.jpg | *.png | *.svg | *.webp) ;;
+	*) return 1 ;;
+	esac
+}
+
+probe_status_assets() {
+	local candidate executable
+	local -a targets=()
+	status_configured_loadable=false
+	status_rollback_available=false
+	if [[ $configured == true ]] && valid_asset "$configured_path"; then
+		targets+=("$configured_path")
+	fi
+	[[ ! -d $wallpaper_dir ]] || targets+=("$wallpaper_dir")
+	((${#targets[@]} > 0)) || return 0
+	executable=$(feh_path) || return 0
+	while IFS= read -r candidate; do
+		valid_asset "$candidate" || continue
+		status_rollback_available=true
+		[[ $configured != true || $candidate != "$configured_path" ]] ||
+			status_configured_loadable=true
+	done < <(
+		timeout --signal=TERM --kill-after=1 2 "$executable" \
+			--loadable --recursive -- "${targets[@]}" 2>/dev/null || true
+	)
+}
+
+ensure_owned_directory() {
+	local directory=$1 label=$2
+	if [[ ! -e $directory ]]; then
+		(umask 077 && mkdir -p -- "$directory") 2>/dev/null ||
+			die "cannot create $label directory: $directory"
+	fi
+	[[ -d $directory && ! -L $directory ]] || die "unsafe $label directory: $directory"
+	[[ $(stat -c %u -- "$directory") == "$UID" ]] ||
+		die "$label directory has the wrong owner: $directory"
+}
+
+existing_path_chain_is_safe() {
+	local path=$1 probe
+	probe=${path%/*}
+	[[ $probe != "$path" ]] || probe=.
+	while [[ $probe != / && $probe != . ]]; do
+		if [[ -e $probe || -L $probe ]]; then
+			[[ -d $probe && ! -L $probe ]] || return 1
+		fi
+		probe=${probe%/*}
+		[[ -n $probe ]] || probe=/
+	done
+}
+
+directory_path_ready() {
+	local directory=$1 require_owner=${2:-false} probe mode
+	[[ $directory == /* ]] || return 1
+	existing_path_chain_is_safe "$directory/.wallpaper-ready" || return 1
+	if [[ -e $directory || -L $directory ]]; then
+		[[ -d $directory && ! -L $directory && -w $directory && -x $directory ]] || return 1
+		if [[ $require_owner == true ]]; then
+			[[ $(stat -c %u -- "$directory") == "$UID" ]] || return 1
+			mode=$(stat -c %a -- "$directory")
+			(((8#$mode & 0300) == 0300)) || return 1
+		fi
+		return 0
+	fi
+	probe=$directory
+	while [[ ! -e $probe && ! -L $probe ]]; do
+		[[ $probe != / && $probe != . ]] || return 1
+		probe=${probe%/*}
+		[[ -n $probe ]] || probe=/
+	done
+	[[ -d $probe && ! -L $probe && -w $probe && -x $probe ]]
+}
+
+validate_config_file() {
+	local parent=${config_file%/*}
+	[[ $config_file == /* && $parent != "$config_file" ]] || return 1
+	existing_path_chain_is_safe "$config_file" || return 1
+	if [[ -e $config_file || -L $config_file ]]; then
+		[[ -f $config_file && ! -L $config_file ]] || return 1
+		[[ $(stat -c %u -- "$config_file") == "$UID" ]] || return 1
+		[[ $(stat -c %h -- "$config_file") == 1 ]] || return 1
+		[[ $(stat -c %s -- "$config_file") -le $max_config_size ]] || return 1
+	fi
+}
+
+ensure_config_parent() {
+	local parent=${config_file%/*}
+	[[ $config_file == /* && $parent != "$config_file" ]] || die 'wallpaper config path must be absolute'
+	existing_path_chain_is_safe "$config_file" || die "unsafe wallpaper config path: $config_file"
+	ensure_owned_directory "$config_home" config
+	ensure_owned_directory "$parent" 'dwm-titus config'
+	validate_config_file || die "unsafe wallpaper config file: $config_file"
+}
+
+ensure_runtime_dir() {
+	ensure_owned_directory "$runtime_base" runtime
+	ensure_owned_directory "$runtime_dir" 'wallpaper runtime'
+	chmod 700 -- "$runtime_base" "$runtime_dir"
+}
+
+ensure_preview_dir() {
+	local state_parent=$state_home/dwm-titus appearance_parent=$state_home/dwm-titus/appearance
+	ensure_owned_directory "$state_home" state
+	ensure_owned_directory "$state_parent" 'dwm-titus state'
+	ensure_owned_directory "$appearance_parent" 'appearance state'
+	ensure_owned_directory "$preview_dir" 'wallpaper preview'
+	chmod 700 -- "$state_parent" "$appearance_parent" "$preview_dir"
+}
+
+session_identity() {
+	local display socket_path identity
+	display=$(normalize_x11_display "${DISPLAY:-}")
+	valid_display "$display" || return 1
+	if [[ -n ${DWM_TEST_WALLPAPER_SESSION_IDENTITY_PREFIX:-} ]]; then
+		[[ $DWM_TEST_WALLPAPER_SESSION_IDENTITY_PREFIX =~ ^[A-Za-z0-9._-]{1,64}$ ]] || return 1
+		printf 'test:%s:%s\n' "$DWM_TEST_WALLPAPER_SESSION_IDENTITY_PREFIX" "$display"
+		return
+	fi
+	if [[ $display =~ ^:([0-9]+)$ ]]; then
+		socket_path=/tmp/.X11-unix/X${BASH_REMATCH[1]}
+		[[ -S $socket_path && ! -L $socket_path ]] || return 1
+		identity=$(stat -Lc '%d:%i:%u' -- "$socket_path") || return 1
+		printf 'socket:%s:%s\n' "$display" "$identity"
+		return
+	fi
+	if [[ -n ${XAUTHORITY:-} && -f $XAUTHORITY && ! -L $XAUTHORITY ]]; then
+		identity=$(stat -Lc '%d:%i:%u' -- "$XAUTHORITY") || return 1
+		printf 'xauthority:%s:%s\n' "$display" "$identity"
+		return
+	fi
+	return 1
+}
+
+clear_session_default() {
+	rm -f -- "$session_default" 2>/dev/null || true
+}
+
+discard_staged_session_default() {
+	[[ -z $staged_session_default ]] || rm -f -- "$staged_session_default" 2>/dev/null || true
+	staged_session_default=
+}
+
+stage_session_default() {
+	local current_hash=$1 identity current_display serialized_size
+	((${#applied_default_paths[@]} > 0)) || return 1
+	valid_asset_paths "${applied_default_paths[@]}" || return 1
+	[[ $current_hash == absent || $current_hash =~ ^[0-9a-f]{64}$ ]] || return 1
+	identity=$(session_identity) || return 1
+	current_display=$(normalize_x11_display "${DISPLAY:-}")
+	staged_session_default=$(umask 077 && mktemp "$preview_dir/.session-default.XXXXXX") || return 1
+	if ! {
+		printf 'version=1\n'
+		printf 'identity=%s\n' "$identity"
+		printf 'hash=%s\n' "$current_hash"
+		printf 'display=%s\n' "$current_display"
+		printf 'path=%s\n' "${applied_default_paths[@]}"
+		printf 'fit=fill\n'
+	} >"$staged_session_default" ||
+		! serialized_size=$(stat -c %s -- "$staged_session_default") ||
+		((serialized_size > max_preview_meta_size)) ||
+		! chmod 600 -- "$staged_session_default"; then
+		discard_staged_session_default
+		return 1
+	fi
+}
+
+publish_staged_session_default() {
+	[[ -n $staged_session_default && -f $staged_session_default &&
+		! -L $staged_session_default ]] || return 1
+	if ! mv -f --no-target-directory -- "$staged_session_default" "$session_default"; then
+		return 1
+	fi
+	staged_session_default=
+}
+
+write_session_default() {
+	local current_hash
+	current_hash=$(config_hash) || return 1
+	stage_session_default "$current_hash" || return 1
+	if ! publish_staged_session_default; then
+		discard_staged_session_default
+		return 1
+	fi
+}
+
+read_session_default() {
+	local line key value version='' identity='' saved_hash='' saved_display='' fit=''
+	local current_identity current_hash seen_version=false seen_identity=false seen_hash=false
+	local seen_display=false seen_path=false seen_fit=false
+	applied_default_paths=()
+	[[ -f $session_default && ! -L $session_default &&
+		$(stat -c %u -- "$session_default") == "$UID" &&
+		$(stat -c %h -- "$session_default") == 1 &&
+		$(stat -c %s -- "$session_default") -le $max_preview_meta_size ]] || return 1
+	while IFS= read -r line || [[ -n $line ]]; do
+		[[ -n $line && $line == *=* ]] || return 1
+		key=${line%%=*}
+		value=${line#*=}
+		case $key in
+		version)
+			[[ $seen_version == false && $value == 1 ]] || return 1
+			version=$value
+			seen_version=true
+			;;
+		identity)
+			[[ $seen_identity == false && $value =~ ^[A-Za-z0-9._:-]{1,160}$ ]] || return 1
+			identity=$value
+			seen_identity=true
+			;;
+		hash)
+			[[ $seen_hash == false && ($value == absent || $value =~ ^[0-9a-f]{64}$) ]] || return 1
+			saved_hash=$value
+			seen_hash=true
+			;;
+		display)
+			[[ $seen_display == false ]] || return 1
+			valid_display "$value" || return 1
+			saved_display=$value
+			seen_display=true
+			;;
+		path)
+			((${#applied_default_paths[@]} < max_default_monitors)) || return 1
+			valid_path_field "$value" || return 1
+			applied_default_paths+=("$value")
+			seen_path=true
+			;;
+		fit)
+			[[ $seen_fit == false && $value == fill ]] || return 1
+			fit=$value
+			seen_fit=true
+			;;
+		*) return 1 ;;
+		esac
+	done <"$session_default"
+	[[ $version == 1 && $seen_version == true && $seen_identity == true &&
+		$seen_hash == true && $seen_display == true && $seen_path == true &&
+		$seen_fit == true && $fit == fill ]] || return 1
+	current_identity=$(session_identity) || return 1
+	current_hash=$(config_hash) || return 1
+	[[ $identity == "$current_identity" && $saved_hash == "$current_hash" &&
+		$(normalize_x11_display "$saved_display") == $(normalize_x11_display "${DISPLAY:-}") ]] || return 1
+	valid_asset_paths "${applied_default_paths[@]}"
+}
+
+feh_path() {
+	command -v "$feh_command" 2>/dev/null
+}
+
+exchange_supported() {
+	local parent=${config_file%/*} device cache cache_temporary='' probe_a='' probe_b='' result=restricted
+	local cached_device='' cached_result=''
+	ensure_config_parent
+	device=$(stat -c %d -- "$parent" 2>/dev/null) || return 1
+	ensure_runtime_dir
+	cache=$runtime_dir/exchange-support
+	if [[ -f $cache && ! -L $cache && $(stat -c %u -- "$cache") == "$UID" &&
+	$(stat -c %h -- "$cache") == 1 ]]; then
+		IFS=: read -r cached_device cached_result <"$cache" || true
+		if [[ $cached_device == "$device" ]]; then
+			[[ $cached_result == available ]]
+			return
+		fi
+	fi
+	probe_a=$(umask 077 && mktemp "$parent/.wallpaper-exchange-a.XXXXXX") || return 1
+	probe_b=$(umask 077 && mktemp "$parent/.wallpaper-exchange-b.XXXXXX") || {
+		rm -f -- "$probe_a"
+		return 1
+	}
+	if mv --exchange --no-copy -- "$probe_a" "$probe_b" 2>/dev/null; then
+		result=available
+	fi
+	rm -f -- "$probe_a" "$probe_b"
+	cache_temporary=$(umask 077 && mktemp "$runtime_dir/.exchange-support.XXXXXX") || return 1
+	if ! printf '%s:%s\n' "$device" "$result" >"$cache_temporary" ||
+		! chmod 600 -- "$cache_temporary" ||
+		! mv -f -- "$cache_temporary" "$cache"; then
+		rm -f -- "$cache_temporary"
+		return 1
+	fi
+	[[ $result == available ]]
+}
+
+cached_exchange_supported() {
+	local parent=${config_file%/*} device cache=$runtime_dir/exchange-support
+	local cached_device='' cached_result=''
+	[[ -d $parent && ! -L $parent ]] || return 1
+	device=$(stat -c %d -- "$parent" 2>/dev/null) || return 1
+	[[ -f $cache && ! -L $cache && $(stat -c %u -- "$cache") == "$UID" &&
+	$(stat -c %h -- "$cache") == 1 ]] || return 1
+	IFS=: read -r cached_device cached_result <"$cache" || return 1
+	[[ $cached_device == "$device" && $cached_result == available ]]
+}
+
+mutation_ready() {
+	local read_only=${1:-false}
+	local parent=${config_file%/*}
+	valid_display "${DISPLAY:-}" || return 1
+	valid_xauthority "${XAUTHORITY:-}" || return 1
+	feh_path >/dev/null || return 1
+	command -v flock >/dev/null 2>&1 || return 1
+	command -v sha256sum >/dev/null 2>&1 || return 1
+	command -v timeout >/dev/null 2>&1 || return 1
+	command -v setsid >/dev/null 2>&1 || return 1
+	command -v mv >/dev/null 2>&1 || return 1
+	directory_path_ready "$runtime_base" true || return 1
+	directory_path_ready "$runtime_dir" true || return 1
+	directory_path_ready "$state_home" true || return 1
+	directory_path_ready "$state_home/dwm-titus" true || return 1
+	directory_path_ready "$state_home/dwm-titus/appearance" true || return 1
+	directory_path_ready "$preview_dir" true || return 1
+	directory_path_ready "$config_home" true || return 1
+	directory_path_ready "$parent" true || return 1
+	validate_config_file || return 1
+	read_config || return 1
+	if [[ $read_only == true ]]; then
+		cached_exchange_supported
+	else
+		exchange_supported
+	fi
+}
+
+acquire_lock() {
+	local wait_seconds=${1:-} lock_file path_identity fd_identity
+	ensure_runtime_dir
+	lock_file=$runtime_dir/mutation.lock
+	if [[ ! -e $lock_file && ! -L $lock_file ]]; then
+		(umask 077 && set -o noclobber && : >"$lock_file") 2>/dev/null || true
+	fi
+	[[ -f $lock_file && ! -L $lock_file && $(stat -c %u -- "$lock_file") == "$UID" &&
+	$(stat -c %h -- "$lock_file") == 1 ]] || die 'unsafe wallpaper mutation lock'
+	path_identity=$(stat -Lc '%d:%i:%u:%h' -- "$lock_file") || die 'cannot inspect wallpaper mutation lock'
+	exec 9>>"$lock_file"
+	fd_identity=$(stat -Lc '%d:%i:%u:%h' -- "/proc/$$/fd/9") || die 'cannot inspect open wallpaper mutation lock'
+	[[ ! -L $lock_file && $fd_identity == "$path_identity" && $fd_identity == *:"$UID":1 ]] || {
+		exec 9>&-
+		die 'wallpaper mutation lock changed while opening'
+	}
+	chmod 600 -- "/proc/$$/fd/9"
+	if [[ -n $wait_seconds ]]; then
+		flock -w "$wait_seconds" 9
+	else
+		flock 9
+	fi
+}
+
+read_config() {
+	local line key value version='' mode='' seen_version=false seen_mode=false
+	local seen_path=false seen_fit=false
+	configured=false
+	configured_path=
+	configured_fit=fill
+	validate_config_file || return 1
+	[[ -e $config_file ]] || return 0
+	while IFS= read -r line || [[ -n $line ]]; do
+		[[ -n $line && $line == *=* ]] || return 1
+		key=${line%%=*}
+		value=${line#*=}
+		case $key in
+		version)
+			[[ $seen_version == false ]] || return 1
+			version=$value
+			seen_version=true
+			;;
+		mode)
+			[[ $seen_mode == false && ($value == default || $value == selection) ]] || return 1
+			mode=$value
+			seen_mode=true
+			;;
+		path)
+			[[ $seen_path == false ]] || return 1
+			valid_path_field "$value" || return 1
+			configured_path=$value
+			seen_path=true
+			;;
+		fit)
+			[[ $seen_fit == false ]] || return 1
+			valid_fit "$value" || return 1
+			configured_fit=$value
+			seen_fit=true
+			;;
+		*) return 1 ;;
+		esac
+	done <"$config_file"
+	[[ $version == 1 && $seen_version == true ]] || return 1
+	if [[ $mode == default ]]; then
+		[[ $seen_path == false && $seen_fit == false ]] || return 1
+		return 0
+	fi
+	[[ ($mode == selection || $seen_mode == false) && $seen_path == true && $seen_fit == true ]] || return 1
+	configured=true
+}
+
+config_hash() {
+	if [[ -e $config_file ]]; then
+		validate_config_file || return 1
+		sha256sum -- "$config_file" | awk '{ print $1 }'
+	else
+		printf 'absent\n'
+	fi
+}
+
+stage_config() {
+	local path=$1 fit=$2
+	valid_asset "$path" || die "wallpaper is not a readable supported image: $path"
+	valid_fit "$fit" || die "unsupported wallpaper fit mode: $fit"
+	ensure_config_parent
+	staged_config=$(umask 077 && mktemp "${config_file}.staged.XXXXXX") || return 1
+	trap discard_staged_config EXIT
+	if ! {
+		printf 'version=1\n'
+		printf 'mode=selection\n'
+		printf 'path=%s\n' "$path"
+		printf 'fit=%s\n' "$fit"
+	} >"$staged_config" || ! chmod 600 -- "$staged_config"; then
+		rm -f -- "$staged_config"
+		staged_config=
+		return 1
+	fi
+}
+
+stage_default_config() {
+	ensure_config_parent
+	staged_config=$(umask 077 && mktemp "${config_file}.staged.XXXXXX") || return 1
+	trap discard_staged_config EXIT
+	if ! printf 'version=1\nmode=default\n' >"$staged_config" ||
+		! chmod 600 -- "$staged_config"; then
+		rm -f -- "$staged_config"
+		staged_config=
+		return 1
+	fi
+}
+
+config_path_hash() {
+	local path=$1
+	[[ -f $path && ! -L $path && $(stat -c %u -- "$path") == "$UID" &&
+	$(stat -c %h -- "$path") == 1 && $(stat -c %s -- "$path") -le $max_config_size ]] || return 1
+	sha256sum -- "$path" | awk '{ print $1 }'
+}
+
+publish_staged_config() {
+	local expected_hash=$1 actual_hash published_hash rollback_file
+	[[ -n $staged_config && -f $staged_config && ! -L $staged_config ]] || return 1
+	published_hash=$(config_path_hash "$staged_config") || return 1
+	captured_config=
+	if [[ $expected_hash == absent ]]; then
+		mv --no-clobber --no-target-directory -- "$staged_config" "$config_file" || return 1
+		[[ ! -e $staged_config && ! -L $staged_config ]] || return 1
+		[[ $(config_path_hash "$config_file" 2>/dev/null || true) == "$published_hash" ]] || return 1
+		staged_config=
+		return 0
+	fi
+	mv --exchange --no-copy -- "$staged_config" "$config_file" || return 1
+	captured_config=$staged_config
+	staged_config=
+	actual_hash=$(config_path_hash "$captured_config" 2>/dev/null || true)
+	if [[ $actual_hash == "$expected_hash" ]]; then
+		return 0
+	fi
+	rollback_file=$captured_config
+	actual_hash=$(config_path_hash "$config_file" 2>/dev/null || true)
+	[[ $actual_hash == "$published_hash" ]] || return 1
+	if mv --exchange --no-copy -- "$rollback_file" "$config_file"; then
+		actual_hash=$(config_path_hash "$rollback_file" 2>/dev/null || true)
+		if [[ $actual_hash == "$published_hash" ]]; then
+			staged_config=$rollback_file
+			captured_config=
+		else
+			# A second external writer won after the pre-exchange hash check.
+			# Keep that file at the private recovery path instead of allowing
+			# normal staged cleanup to destroy it.
+			captured_config=$rollback_file
+			retain_captured_config
+		fi
+	else
+		retain_captured_config
+	fi
+	return 1
+}
+
+discard_staged_config() {
+	[[ -z $staged_config ]] || rm -f -- "$staged_config" 2>/dev/null || true
+	staged_config=
+}
+
+discard_captured_config() {
+	[[ -z $captured_config ]] || rm -f -- "$captured_config" 2>/dev/null || true
+	captured_config=
+}
+
+retain_captured_config() {
+	[[ -n $captured_config ]] || return 0
+	printf 'dwm-settings-wallpaper: external wallpaper configuration retained at %s\n' \
+		"$captured_config" >&2
+	# The exchanged file is already private, regular, and on the config
+	# filesystem. Leave it in place if the compensating exchange cannot restore
+	# it so cleanup never destroys a concurrent user edit.
+	captured_config=
+}
+
+restore_published_config() {
+	local expected_hash=$1 published_hash=$2 rollback_path actual_hash
+	[[ $(config_hash 2>/dev/null || true) == "$published_hash" ]] || return 1
+	if [[ $expected_hash != absent ]]; then
+		[[ -n $captured_config && -f $captured_config && ! -L $captured_config ]] || return 1
+		staged_config=$captured_config
+		captured_config=
+		if publish_staged_config "$published_hash" &&
+			[[ $(config_hash 2>/dev/null || true) == "$expected_hash" ]]; then
+			discard_captured_config
+			return 0
+		fi
+		return 1
+	fi
+	rollback_path=$(umask 077 && mktemp "${config_file}.rollback.XXXXXX") || return 1
+	rm -f -- "$rollback_path" || return 1
+	if ! mv --no-clobber --no-target-directory -- "$config_file" "$rollback_path" ||
+		[[ -e $config_file || -L $config_file ]]; then
+		return 1
+	fi
+	actual_hash=$(config_path_hash "$rollback_path" 2>/dev/null || true)
+	if [[ $actual_hash == "$published_hash" ]]; then
+		rm -f -- "$rollback_path"
+		return 0
+	fi
+	if mv --no-clobber --no-target-directory -- "$rollback_path" "$config_file"; then
+		return 1
+	fi
+	captured_config=$rollback_path
+	retain_captured_config
+	return 1
+}
+
+cleanup_mutation() {
+	local status=$?
+	trap - EXIT HUP INT TERM
+	if [[ $mutation_rollback_armed == true ]]; then
+		if [[ ${#mutation_baseline_paths[@]} -gt 0 &&
+			$(config_hash 2>/dev/null || true) == "$mutation_baseline_hash" ]] &&
+			valid_asset_paths "${mutation_baseline_paths[@]}" && valid_fit "$mutation_baseline_fit" &&
+			apply_paths_live "$mutation_baseline_fit" "${mutation_baseline_paths[@]}"; then
+			if ! mutation_failure_pending; then
+				rm -f -- "$mutation_owner" 2>/dev/null || true
+			fi
+		elif ! converge_configured_or_default; then
+			mark_mutation_failed 'Wallpaper live rollback failed; retry session recovery before previewing' || true
+		elif ! mutation_failure_pending; then
+			rm -f -- "$mutation_owner" 2>/dev/null || true
+		fi
+	fi
+	discard_staged_session_default
+	discard_staged_config
+	discard_captured_config
+	exit "$status"
+}
+
+interrupt_mutation() {
+	trap - HUP INT TERM
+	exit 143
+}
+
+arm_mutation_rollback() {
+	if ! mutation_recovery_pending; then
+		write_owner_record "$mutation_owner" mutation "${DISPLAY:?DISPLAY is required for wallpaper mutation}" \
+			"${XAUTHORITY:-}" || die 'wallpaper mutation owner could not be recorded safely'
+	fi
+	mutation_rollback_armed=true
+	trap cleanup_mutation EXIT
+	trap interrupt_mutation HUP INT TERM
+}
+
+complete_mutation() {
+	local clear_failure=${1:-true}
+	mutation_rollback_armed=false
+	discard_staged_session_default
+	discard_staged_config
+	discard_captured_config
+	[[ $clear_failure != true ]] || clear_mutation_failure
+	[[ $clear_failure != true ]] || rm -f -- "$mutation_owner" 2>/dev/null || true
+	trap - EXIT HUP INT TERM
+}
+
+run_feh() {
+	local status=0 attempt
+	feh_interrupted=false
+	setsid timeout --signal=TERM --kill-after=2 "$max_feh_seconds" "$@" &
+	active_feh_pid=$!
+	interrupt_feh() {
+		trap '' HUP INT TERM
+		feh_interrupted=true
+		kill -TERM -- "-$active_feh_pid" 2>/dev/null || true
+		for ((attempt = 0; attempt < 20; attempt++)); do
+			kill -0 -- "-$active_feh_pid" 2>/dev/null || break
+			sleep 0.05
+		done
+		kill -KILL -- "-$active_feh_pid" 2>/dev/null || true
+	}
+	trap interrupt_feh HUP INT TERM
+	wait "$active_feh_pid" || status=$?
+	if [[ $feh_interrupted == true ]]; then
+		kill -KILL -- "-$active_feh_pid" 2>/dev/null || true
+		wait "$active_feh_pid" 2>/dev/null || true
+		status=143
+	fi
+	if [[ $mutation_rollback_armed == true ]]; then
+		trap interrupt_mutation HUP INT TERM
+	else
+		trap - HUP INT TERM
+	fi
+	active_feh_pid=
+	[[ $feh_interrupted == false ]] || return 143
+	return "$status"
+}
+
+apply_live() {
+	local path=$1 fit=$2
+	apply_paths_live "$fit" "$path"
+}
+
+valid_asset_paths() {
+	local path
+	(($# > 0 && $# <= max_default_monitors)) || return 1
+	for path in "$@"; do
+		valid_asset "$path" || return 1
+	done
+}
+
+apply_paths_live() {
+	local fit=$1 executable
+	shift
+	valid_asset_paths "$@" || return 1
+	valid_fit "$fit" || return 1
+	[[ -n ${DISPLAY:-} ]] || return 1
+	executable=$(feh_path) || return 1
+	run_feh "$executable" --no-fehbg "--bg-$fit" -- "$@"
+}
+
+default_monitor_count() {
+	local count=0 detected line
+	if [[ -n ${DWM_TEST_WALLPAPER_MONITOR_COUNT:-} ]]; then
+		[[ $DWM_TEST_WALLPAPER_MONITOR_COUNT =~ ^[1-9][0-9]?$ &&
+			$DWM_TEST_WALLPAPER_MONITOR_COUNT -le $max_default_monitors ]] || return 1
+		printf '%s\n' "$DWM_TEST_WALLPAPER_MONITOR_COUNT"
+		return
+	fi
+	if command -v xrandr >/dev/null 2>&1; then
+		while IFS= read -r line; do
+			[[ $line =~ ^Monitors:[[:space:]]+([0-9]+)[[:space:]]*$ ]] || continue
+			detected=${BASH_REMATCH[1]}
+			[[ $detected =~ ^(0|[1-9][0-9]*)$ ]] || continue
+			count=$((10#$detected))
+			break
+		done < <(
+			timeout --signal=TERM --kill-after=1 2 \
+				xrandr --display "${DISPLAY:?DISPLAY is required}" --listmonitors 2>/dev/null || true
+		)
+	fi
+	((count > 0)) || count=1
+	((count <= max_default_monitors)) || count=$max_default_monitors
+	printf '%s\n' "$count"
+}
+
+choose_default_wallpapers() {
+	local executable candidate count=0 monitor_count slot index random_value
+	applied_default_paths=()
+	[[ -n ${DISPLAY:-} && -d $wallpaper_dir ]] || return 1
+	executable=$(feh_path) || return 1
+	monitor_count=$(default_monitor_count) || return 1
+	while IFS= read -r candidate; do
+		valid_asset "$candidate" || continue
+		((count += 1))
+		if ((${#applied_default_paths[@]} < monitor_count)); then
+			applied_default_paths+=("$candidate")
+		else
+			random_value=$(((RANDOM << 15) | RANDOM))
+			slot=$((random_value % count))
+			((slot >= monitor_count)) || applied_default_paths[slot]=$candidate
+		fi
+	done < <(
+		timeout --signal=TERM --kill-after=1 "$max_feh_seconds" "$executable" \
+			--loadable --recursive -- "$wallpaper_dir" 2>/dev/null || true
+	)
+	((${#applied_default_paths[@]} > 0)) || return 1
+	for ((index = ${#applied_default_paths[@]} - 1; index > 0; index--)); do
+		random_value=$(((RANDOM << 15) | RANDOM))
+		slot=$((random_value % (index + 1)))
+		candidate=${applied_default_paths[index]}
+		applied_default_paths[index]=${applied_default_paths[slot]}
+		applied_default_paths[slot]=$candidate
+	done
+}
+
+apply_default_live() {
+	choose_default_wallpapers || return 1
+	apply_paths_live fill "${applied_default_paths[@]}"
+}
+
+apply_configured_or_default() {
+	applied_default_paths=()
+	if read_config && [[ $configured == true ]] && valid_asset "$configured_path"; then
+		if apply_live "$configured_path" "$configured_fit"; then
+			clear_selection_failure
+			clear_session_default
+			return 0
+		fi
+		mark_selection_failed || return 1
+		apply_default_live && write_session_default
+	else
+		clear_selection_failure
+		apply_default_live && write_session_default
+	fi
+}
+
+run_on_preview_display() {
+	local caller_display=${DISPLAY:-} caller_xauthority=${XAUTHORITY:-} status=0
+	local caller_display_set=false caller_xauthority_set=false
+	[[ -z ${DISPLAY+x} ]] || caller_display_set=true
+	[[ -z ${XAUTHORITY+x} ]] || caller_xauthority_set=true
+	export DISPLAY=$preview_display
+	if [[ -n $preview_xauthority ]]; then
+		export XAUTHORITY=$preview_xauthority
+	else
+		unset XAUTHORITY
+	fi
+	"$@" || status=$?
+	if [[ $caller_display_set == true ]]; then
+		export DISPLAY=$caller_display
+	else
+		unset DISPLAY
+	fi
+	if [[ $caller_xauthority_set == true ]]; then
+		export XAUTHORITY=$caller_xauthority
+	else
+		unset XAUTHORITY
+	fi
+	return "$status"
+}
+
+run_on_owner_display() {
+	local caller_display=${DISPLAY:-} caller_xauthority=${XAUTHORITY:-} status=0
+	local caller_display_set=false caller_xauthority_set=false
+	[[ -z ${DISPLAY+x} ]] || caller_display_set=true
+	[[ -z ${XAUTHORITY+x} ]] || caller_xauthority_set=true
+	export DISPLAY=$owner_display
+	if [[ -n $owner_xauthority ]]; then
+		export XAUTHORITY=$owner_xauthority
+	else
+		unset XAUTHORITY
+	fi
+	"$@" || status=$?
+	if [[ $caller_display_set == true ]]; then
+		export DISPLAY=$caller_display
+	else
+		unset DISPLAY
+	fi
+	if [[ $caller_xauthority_set == true ]]; then
+		export XAUTHORITY=$caller_xauthority
+	else
+		unset XAUTHORITY
+	fi
+	return "$status"
+}
+
+converge_configured_or_default() {
+	local before_hash after_hash attempt
+	for ((attempt = 0; attempt < 3; attempt++)); do
+		before_hash=$(config_hash) || return 1
+		apply_configured_or_default || return 1
+		after_hash=$(config_hash) || return 1
+		[[ $after_hash != "$before_hash" ]] || return 0
+	done
+	return 1
+}
+
+prepare_mutation_baseline() {
+	local before_hash after_hash attempt
+	for ((attempt = 0; attempt < 3; attempt++)); do
+		before_hash=$(config_hash) || return 1
+		if read_session_default && apply_paths_live fill "${applied_default_paths[@]}"; then
+			mutation_baseline_paths=("${applied_default_paths[@]}")
+			mutation_baseline_fit=fill
+		else
+			read_config || return 1
+			if [[ $configured == true ]] && valid_asset "$configured_path" &&
+				apply_live "$configured_path" "$configured_fit"; then
+				clear_selection_failure
+				mutation_baseline_paths=("$configured_path")
+				mutation_baseline_fit=$configured_fit
+			else
+				if [[ $configured == true ]]; then
+					mark_selection_failed || return 1
+				else
+					clear_selection_failure
+				fi
+				apply_default_live || return 1
+				mutation_baseline_paths=("${applied_default_paths[@]}")
+				mutation_baseline_fit=fill
+			fi
+		fi
+		after_hash=$(config_hash) || return 1
+		if [[ $after_hash == "$before_hash" ]]; then
+			mutation_baseline_hash=$after_hash
+			return 0
+		fi
+	done
+	return 1
+}
+
+prepare_preview_baseline() {
+	local before_hash after_hash attempt
+	for ((attempt = 0; attempt < 3; attempt++)); do
+		before_hash=$(config_hash) || return 1
+		if read_session_default && apply_paths_live fill "${applied_default_paths[@]}"; then
+			preview_baseline_paths=("${applied_default_paths[@]}")
+			preview_baseline_fit=fill
+		else
+			read_config || return 1
+			if [[ $configured == true ]] && valid_asset "$configured_path" &&
+				apply_live "$configured_path" "$configured_fit"; then
+				clear_selection_failure
+				preview_baseline_paths=("$configured_path")
+				preview_baseline_fit=$configured_fit
+			else
+				if [[ $configured == true ]]; then
+					mark_selection_failed || return 1
+				else
+					clear_selection_failure
+				fi
+				apply_default_live || return 1
+				write_session_default || return 1
+				preview_baseline_paths=("${applied_default_paths[@]}")
+				preview_baseline_fit=fill
+			fi
+		fi
+		after_hash=$(config_hash) || return 1
+		if [[ $after_hash == "$before_hash" ]]; then
+			preview_config_hash=$after_hash
+			return 0
+		fi
+	done
+	return 1
+}
+
+rollback_baseline_available() {
+	local candidate executable found=false
+	local -a targets=()
+	if read_config && [[ $configured == true ]] && valid_asset "$configured_path"; then
+		targets+=("$configured_path")
+	fi
+	[[ ! -d $wallpaper_dir ]] || targets+=("$wallpaper_dir")
+	((${#targets[@]} > 0)) || return 1
+	executable=$(feh_path) || return 1
+	while IFS= read -r -d '' candidate; do
+		valid_asset "$candidate" && found=true
+	done < <(
+		timeout --signal=TERM --kill-after=1 2 "$executable" \
+			--loadable --recursive -- "${targets[@]}" 2>/dev/null |
+			while IFS= read -r candidate; do
+				printf '%s\0' "$candidate"
+			done
+	)
+	[[ $found == true ]]
+}
+
+converge_preview_owner_config() {
+	local before_hash after_hash attempt
+	for ((attempt = 0; attempt < 3; attempt++)); do
+		before_hash=$(config_hash) || return 1
+		if [[ $before_hash == "$preview_config_hash" ]] &&
+			valid_asset_paths "${preview_baseline_paths[@]}" && valid_fit "$preview_baseline_fit"; then
+			if ! run_on_preview_display apply_paths_live "$preview_baseline_fit" \
+				"${preview_baseline_paths[@]}"; then
+				run_on_preview_display apply_configured_or_default || return 1
+			fi
+		else
+			run_on_preview_display apply_configured_or_default || return 1
+		fi
+		after_hash=$(config_hash) || return 1
+		[[ $after_hash != "$before_hash" ]] || return 0
+	done
+	return 1
+}
+
+preview_display_reachable() {
+	command -v xprop >/dev/null 2>&1 || return 0
+	run_on_preview_display timeout --signal=TERM --kill-after=1 2 \
+		xprop -display "$preview_display" -root >/dev/null 2>&1
+}
+
+owner_display_reachable() {
+	command -v xprop >/dev/null 2>&1 || return 0
+	run_on_owner_display timeout --signal=TERM --kill-after=1 2 \
+		xprop -display "$owner_display" -root >/dev/null 2>&1
+}
+
+recover_orphaned_preview() {
+	local token=$1 recovery_display=$owner_display recovery_xauthority=$owner_xauthority
+	if read_preview_meta "$token"; then
+		preview_display=$recovery_display
+		preview_xauthority=$recovery_xauthority
+		if converge_preview_owner_config; then
+			return 0
+		fi
+		# Selection-failure recording may read another durable owner record and
+		# replace the shared owner fields. Probe the preview owner we started with.
+		preview_display=$recovery_display
+		preview_xauthority=$recovery_xauthority
+		if preview_display_reachable; then
+			return 1
+		fi
+	else
+		owner_display=$recovery_display
+		owner_xauthority=$recovery_xauthority
+		if run_on_owner_display converge_configured_or_default; then
+			return 0
+		fi
+		owner_display=$recovery_display
+		owner_xauthority=$recovery_xauthority
+		if owner_display_reachable; then
+			return 1
+		fi
+	fi
+	converge_configured_or_default
+}
+
+process_identity() {
+	local pid=$1 record
+	[[ $pid =~ ^[0-9]+$ && -r /proc/$pid/stat ]] || return 1
+	record=$(sed 's/^.*) //' "/proc/$pid/stat" 2>/dev/null) || return 1
+	# The remaining proc stat fields are space-delimited by the kernel.
+	# shellcheck disable=SC2086
+	set -- $record
+	[[ ${1:-Z} != Z && -n ${20:-} ]] || return 1
+	printf '%s\n' "${20}"
+}
+
+preview_watchdog_matches() {
+	local pid=$1 token=$2 generation=$3 executable
+	local -a arguments=()
+	[[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/cmdline ]] || return 1
+	executable=$(readlink -f -- "/proc/$pid/exe" 2>/dev/null) || return 1
+	mapfile -d '' -t arguments <"/proc/$pid/cmdline" || true
+	if [[ $executable == "$script_path" ]]; then
+		[[ ${#arguments[@]} -eq 4 && ${arguments[0]} == "$script_path" &&
+			${arguments[1]} == preview-watchdog && ${arguments[2]} == "$token" &&
+			${arguments[3]} == "$generation" ]]
+		return
+	fi
+	[[ ${executable##*/} == bash && ${#arguments[@]} -eq 5 &&
+		${arguments[1]} == "$script_path" && ${arguments[2]} == preview-watchdog &&
+		${arguments[3]} == "$token" && ${arguments[4]} == "$generation" ]]
+}
+
+read_preview_meta() {
+	local token=$1 line key value
+	local meta=$preview_dir/$token.meta
+	local seen_token=false seen_seconds=false seen_deadline=false seen_boot_id=false seen_generation=false
+	local seen_baseline_path=false seen_baseline_fit=false seen_path=false seen_fit=false seen_hash=false
+	local seen_pid=false seen_pid_start=false
+	local seen_display=false seen_xauthority=false
+	preview_token=
+	preview_seconds=0
+	preview_deadline=0
+	preview_boot_id=
+	preview_baseline_paths=()
+	preview_baseline_fit=fill
+	preview_generation=
+	preview_path=
+	preview_fit=fill
+	preview_config_hash=
+	preview_pid=
+	preview_pid_start=
+	preview_display=
+	preview_xauthority=
+	valid_token "$token" || return 1
+	[[ -f $meta && ! -L $meta && $(stat -c %u -- "$meta") == "$UID" &&
+	$(stat -c %h -- "$meta") == 1 && $(stat -c %s -- "$meta") -le $max_preview_meta_size ]] || return 1
+	while IFS= read -r line || [[ -n $line ]]; do
+		[[ -n $line && $line == *=* ]] || return 1
+		key=${line%%=*}
+		value=${line#*=}
+		case $key in
+		token)
+			[[ $seen_token == false ]] || return 1
+			preview_token=$value
+			seen_token=true
+			;;
+		seconds)
+			[[ $seen_seconds == false && $value =~ ^[1-9][0-9]?$ ]] || return 1
+			preview_seconds=$value
+			seen_seconds=true
+			;;
+		deadline)
+			[[ $seen_deadline == false && $value =~ ^(0|[1-9][0-9]{0,15})$ ]] || return 1
+			preview_deadline=$value
+			seen_deadline=true
+			;;
+		boot_id)
+			[[ $seen_boot_id == false && $value =~ ^[0-9A-Fa-f-]{36}$ ]] || return 1
+			preview_boot_id=$value
+			seen_boot_id=true
+			;;
+		baseline_path)
+			((${#preview_baseline_paths[@]} < max_default_monitors)) || return 1
+			valid_path_field "$value" || return 1
+			preview_baseline_paths+=("$value")
+			seen_baseline_path=true
+			;;
+		baseline_fit)
+			[[ $seen_baseline_fit == false ]] || return 1
+			valid_fit "$value" || return 1
+			preview_baseline_fit=$value
+			seen_baseline_fit=true
+			;;
+		generation)
+			[[ $seen_generation == false && $value =~ ^[A-Za-z0-9._-]{1,64}$ ]] || return 1
+			preview_generation=$value
+			seen_generation=true
+			;;
+		path)
+			[[ $seen_path == false ]] || return 1
+			valid_path_field "$value" || return 1
+			preview_path=$value
+			seen_path=true
+			;;
+		fit)
+			[[ $seen_fit == false ]] || return 1
+			valid_fit "$value" || return 1
+			preview_fit=$value
+			seen_fit=true
+			;;
+		config_hash)
+			[[ $seen_hash == false && ($value == absent || $value =~ ^[0-9a-f]{64}$) ]] || return 1
+			preview_config_hash=$value
+			seen_hash=true
+			;;
+		pid)
+			[[ $seen_pid == false && $value =~ ^[0-9]+$ ]] || return 1
+			preview_pid=$value
+			seen_pid=true
+			;;
+		pid_start)
+			[[ $seen_pid_start == false && $value =~ ^[0-9]+$ ]] || return 1
+			preview_pid_start=$value
+			seen_pid_start=true
+			;;
+		display)
+			[[ $seen_display == false ]] || return 1
+			valid_display "$value" || return 1
+			preview_display=$value
+			seen_display=true
+			;;
+		xauthority)
+			[[ $seen_xauthority == false ]] || return 1
+			valid_xauthority "$value" || return 1
+			preview_xauthority=$value
+			seen_xauthority=true
+			;;
+		*) return 1 ;;
+		esac
+	done <"$meta"
+	[[ $preview_token == "$token" && $seen_token == true && $seen_seconds == true &&
+		$seen_deadline == true && $seen_boot_id == true && $seen_baseline_path == true &&
+		$seen_baseline_fit == true && $seen_generation == true && $seen_path == true &&
+		$seen_fit == true && $seen_hash == true && $seen_pid == true &&
+		$seen_pid_start == true && $seen_display == true && $seen_xauthority == true ]]
+}
+
+write_owner_record() {
+	local path=$1 token=$2 display=$3 xauthority=$4 temporary
+	valid_token "$token" && valid_display "$display" && valid_xauthority "$xauthority" || return 1
+	temporary=$(umask 077 && mktemp "$preview_dir/.owner.XXXXXX") || return 1
+	if ! {
+		printf 'version=1\n'
+		printf 'token=%s\n' "$token"
+		printf 'display=%s\n' "$display"
+		printf 'xauthority=%s\n' "$xauthority"
+	} >"$temporary" || ! chmod 600 -- "$temporary" ||
+		! mv -f --no-target-directory -- "$temporary" "$path"; then
+		rm -f -- "$temporary"
+		return 1
+	fi
+}
+
+read_owner_record() {
+	local path=$1 expected_token=${2:-} line key value
+	local seen_version=false seen_token=false seen_display=false seen_xauthority=false
+	owner_token=
+	owner_display=
+	owner_xauthority=
+	[[ -f $path && ! -L $path && $(stat -c %u -- "$path") == "$UID" &&
+	$(stat -c %h -- "$path") == 1 && $(stat -c %s -- "$path") -le $max_config_size ]] || return 1
+	while IFS= read -r line || [[ -n $line ]]; do
+		[[ -n $line && $line == *=* ]] || return 1
+		key=${line%%=*}
+		value=${line#*=}
+		case $key in
+		version)
+			[[ $seen_version == false && $value == 1 ]] || return 1
+			seen_version=true
+			;;
+		token)
+			[[ $seen_token == false ]] && valid_token "$value" || return 1
+			owner_token=$value
+			seen_token=true
+			;;
+		display)
+			[[ $seen_display == false ]] && valid_display "$value" || return 1
+			owner_display=$value
+			seen_display=true
+			;;
+		xauthority)
+			[[ $seen_xauthority == false ]] && valid_xauthority "$value" || return 1
+			owner_xauthority=$value
+			seen_xauthority=true
+			;;
+		*) return 1 ;;
+		esac
+	done <"$path"
+	[[ $seen_version == true && $seen_token == true && $seen_display == true &&
+		$seen_xauthority == true && (-z $expected_token || $owner_token == "$expected_token") ]]
+}
+
+read_selection_owners() {
+	local line key value version='' pending_display='' count=0 seen_hash=false
+	selection_displays=()
+	selection_xauthorities=()
+	selection_owner_hash=
+	if read_owner_record "$selection_owner" selection 2>/dev/null; then
+		selection_displays+=("$owner_display")
+		selection_xauthorities+=("$owner_xauthority")
+		return 0
+	fi
+	[[ -f $selection_owner && ! -L $selection_owner &&
+		$(stat -c %u -- "$selection_owner") == "$UID" &&
+		$(stat -c %h -- "$selection_owner") == 1 &&
+		$(stat -c %s -- "$selection_owner") -le $max_preview_meta_size ]] || return 1
+	while IFS= read -r line || [[ -n $line ]]; do
+		[[ -n $line && $line == *=* ]] || return 1
+		key=${line%%=*}
+		value=${line#*=}
+		case $key in
+		version)
+			[[ -z $version && -z $pending_display && $count -eq 0 &&
+				($value == 2 || $value == 3) ]] || return 1
+			version=$value
+			;;
+		hash)
+			[[ $version == 3 && $seen_hash == false && -z $pending_display && $count -eq 0 &&
+				($value == absent || $value =~ ^[0-9a-f]{64}$) ]] || return 1
+			selection_owner_hash=$value
+			seen_hash=true
+			;;
+		display)
+			[[ ($version == 2 || ($version == 3 && $seen_hash == true)) &&
+				-z $pending_display ]] && valid_display "$value" || return 1
+			pending_display=$value
+			;;
+		xauthority)
+			[[ ($version == 2 || $version == 3) && -n $pending_display ]] &&
+				valid_xauthority "$value" || return 1
+			((count += 1))
+			((count <= max_default_monitors)) || return 1
+			selection_displays+=("$pending_display")
+			selection_xauthorities+=("$value")
+			pending_display=
+			;;
+		*) return 1 ;;
+		esac
+	done <"$selection_owner"
+	[[ -z $pending_display && $count -gt 0 &&
+		($version == 2 || ($version == 3 && $seen_hash == true)) ]]
+}
+
+write_selection_owners() {
+	local temporary index serialized_size
+	((${#selection_displays[@]} > 0 && \
+	${#selection_displays[@]} == ${#selection_xauthorities[@]} && \
+	${#selection_displays[@]} <= max_default_monitors)) || return 1
+	[[ $selection_owner_hash == absent || $selection_owner_hash =~ ^[0-9a-f]{64}$ ]] || return 1
+	for ((index = 0; index < ${#selection_displays[@]}; index++)); do
+		valid_display "${selection_displays[index]}" &&
+			valid_xauthority "${selection_xauthorities[index]}" || return 1
+	done
+	temporary=$(umask 077 && mktemp "$preview_dir/.selection-owner.XXXXXX") || return 1
+	if ! {
+		printf 'version=3\n'
+		printf 'hash=%s\n' "$selection_owner_hash"
+		for ((index = 0; index < ${#selection_displays[@]}; index++)); do
+			printf 'display=%s\n' "${selection_displays[index]}"
+			printf 'xauthority=%s\n' "${selection_xauthorities[index]}"
+		done
+	} >"$temporary" || ! serialized_size=$(stat -c %s -- "$temporary") ||
+		((serialized_size > max_preview_meta_size)) ||
+		! chmod 600 -- "$temporary" ||
+		! mv -f --no-target-directory -- "$temporary" "$selection_owner"; then
+		rm -f -- "$temporary"
+		return 1
+	fi
+}
+
+load_preview_owner() {
+	local token=$1
+	read_owner_record "$preview_owner" "$token" || return 1
+	preview_display=$owner_display
+	preview_xauthority=$owner_xauthority
+}
+
+clamp_preview_deadline() {
+	local token=$1 maximum_deadline
+	read_effective_preview_now || return 1
+	[[ $preview_clock_boot_id == "$preview_boot_id" ]] || return 0
+	maximum_deadline=$((preview_now + preview_seconds * 1000))
+	if ((preview_deadline > maximum_deadline)); then
+		preview_deadline=$maximum_deadline
+		write_preview_meta "$token"
+	fi
+}
+
+write_preview_meta() {
+	local token=$1 temporary
+	temporary=$(umask 077 && mktemp "$preview_dir/.preview-meta.XXXXXX") || return 1
+	if ! {
+		printf 'token=%s\n' "$token"
+		printf 'seconds=%s\n' "$preview_seconds"
+		printf 'deadline=%s\n' "$preview_deadline"
+		printf 'boot_id=%s\n' "$preview_boot_id"
+		printf 'baseline_path=%s\n' "${preview_baseline_paths[@]}"
+		printf 'baseline_fit=%s\n' "$preview_baseline_fit"
+		printf 'generation=%s\n' "$preview_generation"
+		printf 'path=%s\n' "$preview_path"
+		printf 'fit=%s\n' "$preview_fit"
+		printf 'config_hash=%s\n' "$preview_config_hash"
+		printf 'pid=%s\n' "$preview_pid"
+		printf 'pid_start=%s\n' "$preview_pid_start"
+		printf 'display=%s\n' "$preview_display"
+		printf 'xauthority=%s\n' "$preview_xauthority"
+	} >"$temporary" || ! chmod 600 -- "$temporary" ||
+		! mv -f -- "$temporary" "$preview_dir/$token.meta"; then
+		rm -f -- "$temporary"
+		return 1
+	fi
+}
+
+stop_preview_watchdog() {
+	local token=$1 current_start
+	read_preview_meta "$token" || return 0
+	current_start=$(process_identity "$preview_pid" 2>/dev/null || true)
+	if [[ -n $current_start && $current_start == "$preview_pid_start" &&
+		$preview_pid != "$$" &&
+		$(stat -c %u "/proc/$preview_pid" 2>/dev/null || true) == "$UID" ]] &&
+		preview_watchdog_matches "$preview_pid" "$token" "$preview_generation"; then
+		kill -TERM "$preview_pid" 2>/dev/null || true
+	fi
+}
+
+clear_preview() {
+	local token=$1
+	stop_preview_watchdog "$token"
+	rm -f -- "$preview_dir/$token.meta" "$preview_dir/$token.failed" "$preview_current" \
+		"$preview_owner"
+}
+
+failure_record_valid() {
+	local path=$1
+	[[ -f $path && ! -L $path && $(stat -c %u -- "$path") == "$UID" &&
+	$(stat -c %h -- "$path") == 1 && $(stat -c %s -- "$path") -le $max_config_size ]]
+}
+
+write_failure_record() {
+	local path=$1 detail=$2 temporary
+	temporary=$(umask 077 && mktemp "$preview_dir/.failure.XXXXXX") || return 1
+	if ! printf '%s\n' "$(clean_field "$detail")" >"$temporary" ||
+		! chmod 600 -- "$temporary" ||
+		! mv -f --no-target-directory -- "$temporary" "$path"; then
+		rm -f -- "$temporary"
+		return 1
+	fi
+	failure_record_valid "$path"
+}
+
+preview_failure_pending() {
+	local token=$1 path
+	path=$preview_dir/$token.failed
+	[[ -e $path || -L $path ]]
+}
+
+mark_preview_failed() {
+	local token=$1 detail=$2
+	write_failure_record "$preview_dir/$token.failed" "$detail" ||
+		die 'wallpaper preview failure state could not be recorded safely'
+}
+
+mutation_failure_pending() {
+	[[ -e $mutation_failed || -L $mutation_failed ]]
+}
+
+mutation_recovery_pending() {
+	mutation_failure_pending || [[ -e $mutation_owner || -L $mutation_owner ]]
+}
+
+mutation_failure_detail() {
+	local detail
+	if failure_record_valid "$mutation_failed" && IFS= read -r detail <"$mutation_failed"; then
+		printf '%s\n' "$detail"
+	elif [[ -e $mutation_owner || -L $mutation_owner ]]; then
+		printf '%s\n' 'Wallpaper mutation was interrupted; live recovery is pending'
+	else
+		printf '%s\n' 'Wallpaper live rollback recovery state is invalid or unsafe'
+	fi
+}
+
+mark_mutation_failed() {
+	write_failure_record "$mutation_failed" "$1" || return 1
+}
+
+clear_mutation_failure() {
+	rm -f -- "$mutation_failed" 2>/dev/null || true
+}
+
+selection_failure_pending() {
+	local failed_hash current_hash
+	[[ -e $selection_owner || -L $selection_owner ||
+		-e $selection_failed || -L $selection_failed ]] || return 1
+	current_hash=$(config_hash 2>/dev/null) || return 0
+	if [[ -e $selection_owner || -L $selection_owner ]]; then
+		read_selection_owners || return 0
+		if [[ -n $selection_owner_hash ]]; then
+			[[ $selection_owner_hash == "$current_hash" ]]
+			return
+		fi
+	fi
+	[[ -e $selection_failed || -L $selection_failed ]] || return 1
+	failure_record_valid "$selection_failed" || return 0
+	IFS= read -r failed_hash <"$selection_failed" || return 0
+	[[ $failed_hash =~ ^(absent|[0-9a-f]{64})$ ]] || return 0
+	[[ $failed_hash == "$current_hash" ]]
+}
+
+mark_selection_failed() {
+	local current_hash current_display normalized_display index found=false
+	current_hash=$(config_hash) || return 1
+	current_display=${DISPLAY:?DISPLAY is required for wallpaper selection}
+	valid_display "$current_display" && valid_xauthority "${XAUTHORITY:-}" || return 1
+	selection_displays=()
+	selection_xauthorities=()
+	selection_owner_hash=$current_hash
+	if selection_failure_pending && [[ -e $selection_owner || -L $selection_owner ]]; then
+		read_selection_owners || return 1
+	else
+		selection_displays=()
+		selection_xauthorities=()
+	fi
+	selection_owner_hash=$current_hash
+	normalized_display=$(normalize_x11_display "$current_display")
+	for ((index = 0; index < ${#selection_displays[@]}; index++)); do
+		if [[ $(normalize_x11_display "${selection_displays[index]}") == "$normalized_display" ]]; then
+			selection_displays[index]=$current_display
+			selection_xauthorities[index]=${XAUTHORITY:-}
+			found=true
+			break
+		fi
+	done
+	if [[ $found == false ]]; then
+		((${#selection_displays[@]} < max_default_monitors)) || return 1
+		selection_displays+=("$current_display")
+		selection_xauthorities+=("${XAUTHORITY:-}")
+	fi
+	write_selection_owners || return 1
+	rm -f -- "$selection_failed" 2>/dev/null || true
+}
+
+clear_selection_failure() {
+	local force=${1:-false} current_display index legacy_hash current_hash
+	local -a retained_displays=() retained_xauthorities=()
+	if [[ $force == true ]]; then
+		rm -f -- "$selection_failed" "$selection_owner" 2>/dev/null || true
+		return 0
+	fi
+	if ! selection_failure_pending; then
+		rm -f -- "$selection_failed" "$selection_owner" 2>/dev/null || true
+		return 0
+	fi
+	[[ -e $selection_owner || -L $selection_owner ]] || {
+		# Legacy failure markers may predate the durable owner record. Without
+		# owner credentials, another display cannot prove the failure recovered.
+		return 0
+	}
+	read_selection_owners || return 0
+	if [[ -z $selection_owner_hash ]]; then
+		failure_record_valid "$selection_failed" || return 0
+		IFS= read -r legacy_hash <"$selection_failed" || return 0
+		current_hash=$(config_hash 2>/dev/null) || return 0
+		[[ $legacy_hash == "$current_hash" ]] || return 0
+		selection_owner_hash=$legacy_hash
+	fi
+	current_display=$(normalize_x11_display "${DISPLAY:-}")
+	for ((index = 0; index < ${#selection_displays[@]}; index++)); do
+		owner_display=${selection_displays[index]}
+		owner_xauthority=${selection_xauthorities[index]}
+		if [[ $(normalize_x11_display "$owner_display") == "$current_display" ]] ||
+			! owner_display_reachable; then
+			continue
+		fi
+		retained_displays+=("$owner_display")
+		retained_xauthorities+=("$owner_xauthority")
+	done
+	selection_displays=("${retained_displays[@]}")
+	selection_xauthorities=("${retained_xauthorities[@]}")
+	if ((${#selection_displays[@]} == 0)); then
+		rm -f -- "$selection_failed" "$selection_owner" 2>/dev/null || true
+	else
+		if write_selection_owners; then
+			rm -f -- "$selection_failed" 2>/dev/null || true
+		fi
+	fi
+}
+
+recover_mutation_failure() {
+	local token recovery_display recovery_xauthority
+	mutation_recovery_pending || return 0
+	if [[ -e $mutation_owner || -L $mutation_owner ]]; then
+		read_owner_record "$mutation_owner" mutation || return 1
+		recovery_display=$owner_display
+		recovery_xauthority=$owner_xauthority
+		if ! run_on_owner_display converge_configured_or_default; then
+			# Selection-failure recording uses the shared owner fields. Restore the
+			# mutation owner's credentials before deciding whether it disappeared.
+			owner_display=$recovery_display
+			owner_xauthority=$recovery_xauthority
+			owner_display_reachable && return 1
+			converge_configured_or_default || return 1
+		fi
+	else
+		# Compatibility for recovery records written before owner credentials
+		# became durable. New records always carry mutation.owner.
+		token=$(current_preview_token 2>/dev/null || true)
+		[[ -z $token ]] || return 1
+		converge_configured_or_default || return 1
+	fi
+	clear_mutation_failure
+	rm -f -- "$mutation_owner" 2>/dev/null || true
+}
+
+current_preview_token() {
+	local current_token
+	[[ -f $preview_current && ! -L $preview_current &&
+		$(stat -c %u -- "$preview_current") == "$UID" &&
+		$(stat -c %h -- "$preview_current") == 1 &&
+		$(stat -c %s -- "$preview_current") -le 65 ]] || return 1
+	IFS= read -r current_token <"$preview_current"
+	! IFS= read -r _ < <(tail -n +2 -- "$preview_current") || return 1
+	valid_token "$current_token" || return 1
+	printf '%s\n' "$current_token"
+}
+
+expire_preview_locked() {
+	local token=$1 current_hash
+	read_preview_meta "$token" || {
+		rm -f -- "$preview_current"
+		return 1
+	}
+	current_hash=$(config_hash) || {
+		mark_preview_failed "$token" 'Wallpaper configuration became unsafe during preview'
+		return 1
+	}
+	if [[ $current_hash != "$preview_config_hash" ]]; then
+		if ! converge_preview_owner_config; then
+			mark_preview_failed "$token" 'Wallpaper configuration changed outside the preview and could not be applied'
+			return 1
+		fi
+		clear_preview "$token"
+		return 0
+	fi
+	if ! converge_preview_owner_config; then
+		mark_preview_failed "$token" 'Automatic wallpaper rollback could not restore the configured state'
+		return 1
+	fi
+	clear_preview "$token"
+}
+
+reconcile_preview_locked() {
+	local force=${1:-false} token owner_record_token now watchdog_alive=false
+	token=$(current_preview_token 2>/dev/null || true)
+	if [[ -z $token ]]; then
+		if [[ -e $preview_current || -L $preview_current ]]; then
+			if read_owner_record "$preview_owner"; then
+				token=$owner_token
+				if recover_orphaned_preview "$token"; then
+					clear_preview "$token"
+					clear_mutation_failure
+				else
+					mark_mutation_failed "$invalid_preview_detail" ||
+						die 'wallpaper preview recovery state could not be recorded safely'
+				fi
+			else
+				mark_mutation_failed "$invalid_preview_detail" ||
+					die 'wallpaper preview recovery state could not be recorded safely'
+			fi
+		elif [[ -e $preview_owner || -L $preview_owner ]]; then
+			if read_owner_record "$preview_owner"; then
+				token=$owner_token
+				if recover_orphaned_preview "$token"; then
+					clear_preview "$token"
+					clear_mutation_failure
+				else
+					mark_mutation_failed "$invalid_preview_detail" ||
+						die 'wallpaper preview recovery state could not be recorded safely'
+				fi
+			else
+				rm -f -- "$preview_owner"
+			fi
+		fi
+		return 0
+	fi
+	read_preview_meta "$token" || {
+		if read_owner_record "$preview_owner"; then
+			owner_record_token=$owner_token
+			if [[ $owner_record_token != "$token" ]]; then
+				if recover_orphaned_preview "$owner_record_token"; then
+					clear_preview "$owner_record_token"
+					rm -f -- "$preview_dir/$token.meta" "$preview_dir/$token.failed"
+					clear_mutation_failure
+				else
+					mark_mutation_failed "$invalid_preview_detail" ||
+						die 'wallpaper preview recovery state could not be recorded safely'
+				fi
+				return 0
+			fi
+			preview_display=$owner_display
+			preview_xauthority=$owner_xauthority
+		fi
+		mark_mutation_failed "$invalid_preview_detail" ||
+			die 'wallpaper preview recovery state could not be recorded safely'
+		return 0
+	}
+	if ! clamp_preview_deadline "$token" && ! preview_failure_pending "$token"; then
+		mark_preview_failed "$token" 'Wallpaper preview deadline could not be repaired'
+	fi
+	if preview_failure_pending "$token"; then
+		if [[ $force == true ]]; then
+			if converge_preview_owner_config; then
+				clear_preview "$token"
+			fi
+		elif ! preview_owned_by_current_display && ! preview_display_reachable; then
+			clear_preview "$token"
+		fi
+		return 0
+	fi
+	now=$preview_now
+	if [[ $(process_identity "$preview_pid" 2>/dev/null || true) == "$preview_pid_start" ]] &&
+		preview_watchdog_matches "$preview_pid" "$token" "$preview_generation"; then
+		watchdog_alive=true
+	fi
+	if ! preview_owned_by_current_display; then
+		if [[ $watchdog_alive == false ]]; then
+			if [[ $now -ge $preview_deadline ]] || {
+				[[ $force == true ]] && ! preview_display_reachable
+			}; then
+				if ! expire_preview_locked "$token" && ! preview_display_reachable; then
+					clear_preview "$token"
+				fi
+			else
+				if ! start_preview_watchdog "$token"; then
+					mark_preview_failed "$token" 'Automatic wallpaper rollback could not be rearmed'
+				fi
+			fi
+		fi
+		return 0
+	fi
+	if [[ $force == true || $now -ge $preview_deadline ]]; then
+		expire_preview_locked "$token" || true
+		return 0
+	fi
+	if [[ $watchdog_alive == false ]]; then
+		if ! start_preview_watchdog "$token"; then
+			mark_preview_failed "$token" 'Automatic wallpaper rollback could not be rearmed'
+		fi
+	fi
+}
+
+start_preview_watchdog() {
+	local token=$1 pid start
+	read_preview_meta "$token" || return 1
+	clamp_preview_deadline "$token"
+	setsid env DISPLAY="$preview_display" \
+		"$script_path" preview-watchdog "$token" "$preview_generation" \
+		>/dev/null 2>&1 9>&- &
+	pid=$!
+	start=
+	for _ in {1..20}; do
+		start=$(process_identity "$pid" 2>/dev/null || true)
+		if [[ -n $start ]] && preview_watchdog_matches "$pid" "$token" "$preview_generation"; then
+			break
+		fi
+		start=
+		sleep 0.01
+	done
+	if [[ -z $start ]] || ! preview_watchdog_matches "$pid" "$token" "$preview_generation"; then
+		kill -TERM "$pid" 2>/dev/null || true
+		wait "$pid" 2>/dev/null || true
+		return 1
+	fi
+	preview_pid=$pid
+	preview_pid_start=$start
+	if ! write_preview_meta "$token"; then
+		kill -TERM "$pid" 2>/dev/null || true
+		wait "$pid" 2>/dev/null || true
+		return 1
+	fi
+}
+
+preview_watchdog() {
+	local token=$1 generation=$2 remaining sleep_duration sleep_pid=
+	watchdog_cleanup() {
+		if [[ -n $sleep_pid ]]; then
+			kill -TERM "$sleep_pid" 2>/dev/null || true
+			wait "$sleep_pid" 2>/dev/null || true
+		fi
+		exit 0
+	}
+	trap watchdog_cleanup TERM HUP INT
+	valid_token "$token" || exit 2
+	[[ $generation =~ ^[A-Za-z0-9._-]{1,64}$ ]] || exit 2
+	ensure_preview_dir
+	read_preview_meta "$token" || exit 0
+	[[ $preview_generation == "$generation" ]] || exit 0
+	clamp_preview_deadline "$token" || exit 0
+	while true; do
+		read_preview_meta "$token" || exit 0
+		[[ $preview_generation == "$generation" ]] || exit 0
+		read_effective_preview_now || exit 0
+		remaining=$((preview_deadline - preview_now))
+		((remaining > 0)) || break
+		if ((remaining >= 1000)); then
+			sleep_duration=1
+		else
+			printf -v sleep_duration '0.%03d' "$remaining"
+		fi
+		sleep "$sleep_duration" &
+		sleep_pid=$!
+		wait "$sleep_pid" || exit 0
+		sleep_pid=
+	done
+	trap - TERM HUP INT
+	acquire_lock
+	[[ $(current_preview_token 2>/dev/null || true) == "$token" ]] || exit 0
+	read_preview_meta "$token" || exit 0
+	[[ $preview_generation == "$generation" ]] || exit 0
+	expire_preview_locked "$token" || true
+}
+
+emit_protocol_header() {
+	printf 'wallpaper-action-protocol\t1\t0\n'
+}
+
+status() {
+	local read_only=${1:-false}
+	local provider_state=available provider_detail='Managed wallpaper state is readable'
+	local selection_state=partial selection_path='' selection_fit=fill
+	local selection_detail='No managed wallpaper selection; session startup uses the legacy random wallpaper'
+	local mutation_state=restricted mutation_detail='Wallpaper changes are unavailable in this session'
+	local token='' remaining=0 now failed_detail='' preview_valid=false preview_invalid=false
+	local preview_watchdog_alive=false
+	local status_configured_loadable=false status_rollback_available=false
+
+	if mutation_ready "$read_only"; then
+		if [[ $read_only == true ]]; then
+			if mutation_recovery_pending; then
+				mutation_detail=$(mutation_failure_detail)
+			else
+				mutation_state=available
+				mutation_detail='Wallpaper preview and user-session changes are available'
+			fi
+		elif acquire_lock 1; then
+			ensure_preview_dir
+			reconcile_preview_locked false
+			token=$(current_preview_token 2>/dev/null || true)
+			if mutation_recovery_pending && {
+				[[ -z $token ]] || read_preview_meta "$token"
+			} && recover_mutation_failure; then
+				:
+			fi
+			if mutation_recovery_pending; then
+				mutation_detail=$(mutation_failure_detail)
+			else
+				mutation_state=available
+				mutation_detail='Wallpaper preview and user-session changes are available'
+			fi
+		else
+			mutation_detail='Wallpaper changes are temporarily busy'
+		fi
+	elif ! feh_path >/dev/null; then
+		provider_state=partial
+		provider_detail='Feh is optional and is not installed'
+	fi
+
+	if ! read_config; then
+		selection_state=unavailable
+		selection_detail='Wallpaper configuration is invalid or unsafe'
+		mutation_state=restricted
+		mutation_detail='Wallpaper configuration is invalid or unsafe'
+	else
+		probe_status_assets
+	fi
+	if [[ $selection_state != unavailable && $configured == true ]]; then
+		selection_path=$configured_path
+		selection_fit=$configured_fit
+		if selection_failure_pending; then
+			selection_state=partial
+			selection_detail='Configured wallpaper could not be applied; the legacy random wallpaper fallback is required'
+		elif [[ $status_configured_loadable == true ]]; then
+			selection_state=available
+			selection_detail='Managed wallpaper selection is ready for this and future sessions'
+		else
+			selection_state=partial
+			selection_detail='Configured wallpaper is missing or undecodable; session startup falls back to the legacy random wallpaper'
+		fi
+	fi
+	if [[ $mutation_state == available && $status_rollback_available != true ]]; then
+		mutation_state=restricted
+		mutation_detail='Wallpaper changes require a recoverable current or default wallpaper'
+	fi
+	token=$(current_preview_token 2>/dev/null || true)
+	if [[ -z $token ]] && {
+		[[ -e $preview_current || -L $preview_current ]] ||
+			[[ -e $preview_owner || -L $preview_owner ]]
+	}; then
+		if read_owner_record "$preview_owner"; then
+			token=$owner_token
+		fi
+		preview_valid=true
+		preview_invalid=true
+		mutation_state=restricted
+		mutation_detail=$invalid_preview_detail
+	elif [[ -n $token ]]; then
+		preview_valid=true
+		if read_preview_meta "$token"; then
+			if [[ $(process_identity "$preview_pid" 2>/dev/null || true) == "$preview_pid_start" ]] &&
+				preview_watchdog_matches "$preview_pid" "$token" "$preview_generation"; then
+				preview_watchdog_alive=true
+			fi
+			if ! preview_owned_by_current_display; then
+				mutation_state=restricted
+				mutation_detail='Another X11 session owns the active wallpaper preview'
+			fi
+		else
+			preview_invalid=true
+			mutation_state=restricted
+			mutation_detail=$invalid_preview_detail
+		fi
+	fi
+
+	printf 'wallpaper-protocol\t1\t0\n'
+	printf 'provider\twallpaper\t%s\tuser-session\t%s\n' "$provider_state" "$(clean_field "$provider_detail")"
+	printf 'selection\t%s\t%s\t%s\t%s\n' "$selection_state" \
+		"$(clean_field "$selection_path")" "$selection_fit" "$(clean_field "$selection_detail")"
+	printf 'mutation\t%s\t%s\n' "$mutation_state" "$(clean_field "$mutation_detail")"
+	if [[ $preview_valid == false ]]; then
+		printf 'preview\tnone\t\t0\t\tfill\tNo wallpaper preview is active\n'
+	elif [[ $preview_invalid == true ]]; then
+		printf 'preview\tfailed\t%s\t0\t\tfill\t%s\n' "$token" "$invalid_preview_detail"
+	elif ! preview_owned_by_current_display; then
+		printf 'preview\tnone\t\t0\t\tfill\tAnother X11 session owns the active wallpaper preview\n'
+	elif preview_failure_pending "$token"; then
+		if failure_record_valid "$preview_dir/$token.failed"; then
+			IFS= read -r failed_detail <"$preview_dir/$token.failed" || failed_detail='Wallpaper preview recovery is incomplete'
+		else
+			failed_detail='Wallpaper preview recovery state is invalid or unsafe'
+		fi
+		printf 'preview\tfailed\t%s\t0\t%s\t%s\t%s\n' "$token" \
+			"$(clean_field "$preview_path")" "$preview_fit" "$(clean_field "$failed_detail")"
+	elif [[ $preview_watchdog_alive == false ]]; then
+		printf 'preview\tfailed\t%s\t0\t%s\t%s\t%s\n' "$token" \
+			"$(clean_field "$preview_path")" "$preview_fit" "$inactive_watchdog_detail"
+	else
+		if read_effective_preview_now; then
+			now=$preview_now
+			remaining=$((preview_deadline - now))
+		else
+			remaining=0
+		fi
+		((remaining > 0)) || remaining=0
+		((remaining == 0)) || remaining=$(((remaining + 999) / 1000))
+		((remaining <= preview_seconds)) || remaining=$preview_seconds
+		printf 'preview\tactive\t%s\t%s\t%s\t%s\tAutomatic rollback is armed\n' \
+			"$token" "$remaining" "$(clean_field "$preview_path")" "$preview_fit"
+	fi
+}
+
+start_preview() {
+	local token=$1 seconds=$2 path=$3 fit=$4 temporary start_boot_id start_now
+	preview_setup_cleanup() {
+		local status=$?
+		trap - EXIT HUP INT TERM
+		if [[ $(current_preview_token 2>/dev/null || true) != "$token" ]]; then
+			stop_preview_watchdog "$token"
+			rm -f -- "$preview_dir/$token.meta" "$preview_dir/$token.failed" "$preview_owner"
+		fi
+		exit "$status"
+	}
+	interrupt_preview_setup() {
+		trap - HUP INT TERM
+		exit 143
+	}
+	valid_preview_token "$token" || die 'invalid wallpaper preview token'
+	[[ $seconds =~ ^[1-9][0-9]?$ ]] || die 'preview timeout must be between 1 and 99 seconds'
+	read_preview_clock || die 'monotonic preview clock is unavailable'
+	valid_asset "$path" || die "wallpaper is not a readable supported image: $path"
+	valid_fit "$fit" || die "unsupported wallpaper fit mode: $fit"
+	mutation_ready || die 'wallpaper mutation is unavailable'
+	acquire_lock
+	ensure_preview_dir
+	reconcile_preview_locked false
+	if [[ -e $preview_current || -L $preview_current ]] &&
+		[[ -z $(current_preview_token 2>/dev/null || true) ]]; then
+		die 'wallpaper preview owner state is invalid'
+	fi
+	mutation_recovery_pending && die 'wallpaper live rollback recovery is pending'
+	[[ -z $(current_preview_token 2>/dev/null || true) ]] || die 'another wallpaper preview is active'
+	[[ ! -e $preview_current && ! -L $preview_current ]] || die 'wallpaper preview owner state is invalid'
+	prepare_preview_baseline ||
+		die 'wallpaper preview cannot start without a recoverable current or default wallpaper'
+	read_preview_clock || die 'monotonic preview clock is unavailable'
+	start_boot_id=$preview_clock_boot_id
+	start_now=$preview_clock_now
+	preview_token=$token
+	preview_seconds=$seconds
+	preview_deadline=$((start_now + seconds * 1000))
+	preview_boot_id=$start_boot_id
+	preview_generation="$$-$start_now-$RANDOM"
+	preview_path=$path
+	preview_fit=$fit
+	preview_pid=0
+	preview_pid_start=0
+	preview_display=${DISPLAY:?DISPLAY is required for wallpaper preview}
+	preview_xauthority=${XAUTHORITY:-}
+	valid_xauthority "$preview_xauthority" || die 'XAUTHORITY must be empty or an absolute safe path'
+	trap preview_setup_cleanup EXIT
+	trap interrupt_preview_setup HUP INT TERM
+	write_preview_meta "$token" || die 'wallpaper preview state could not be recorded safely'
+	if ! write_owner_record "$preview_owner" "$token" "$preview_display" "$preview_xauthority"; then
+		rm -f -- "$preview_dir/$token.meta"
+		die 'wallpaper preview owner could not be recorded safely'
+	fi
+	start_preview_watchdog "$token" || die 'wallpaper preview rollback could not be armed'
+	temporary=$(umask 077 && mktemp "$preview_dir/.preview-current.XXXXXX") ||
+		die 'cannot stage wallpaper preview owner'
+	if ! printf '%s\n' "$token" >"$temporary" || ! chmod 600 -- "$temporary" ||
+		! mv -f --no-target-directory -- "$temporary" "$preview_current"; then
+		rm -f -- "$temporary"
+		die 'cannot publish wallpaper preview owner'
+	fi
+	[[ -f $preview_current && ! -L $preview_current &&
+		$(stat -c %u -- "$preview_current") == "$UID" &&
+		$(stat -c %h -- "$preview_current") == 1 &&
+		$(current_preview_token 2>/dev/null || true) == "$token" ]] ||
+		{
+			clear_preview "$token"
+			die 'wallpaper preview owner could not be verified'
+		}
+	trap - EXIT HUP INT TERM
+	if ! apply_live "$path" "$fit"; then
+		if converge_preview_owner_config; then
+			clear_preview "$token"
+		else
+			mark_preview_failed "$token" \
+				'Wallpaper preview failed and live rollback could not restore configured state'
+		fi
+		die 'wallpaper preview could not be applied'
+	fi
+	if ! read_effective_preview_now || ((preview_now >= preview_deadline)); then
+		expire_preview_locked "$token" || true
+		die 'wallpaper preview expired before it could be confirmed'
+	fi
+	emit_protocol_header
+	printf 'preview\t%s\t%s\t%s\t%s\n' "$token" "$seconds" "$(clean_field "$path")" "$fit"
+}
+
+finish_preview() {
+	local action=$1 token=$2 current_hash now
+	valid_token "$token" || die 'invalid wallpaper preview token'
+	if [[ $action == abandon ]]; then
+		command -v flock >/dev/null 2>&1 || die 'wallpaper preview cleanup is unavailable'
+		acquire_lock
+		ensure_preview_dir
+		[[ $(current_preview_token 2>/dev/null || true) == "$token" ]] || die 'wallpaper preview is not active'
+		if ! read_preview_meta "$token"; then
+			load_preview_owner "$token" || die 'wallpaper preview owner state is invalid'
+			converge_preview_owner_config || die 'wallpaper preview recovery failed'
+			clear_preview "$token"
+			clear_mutation_failure
+			emit_protocol_header
+			printf 'result\t%s\t%s\n' "$action" "$token"
+			return
+		fi
+		preview_owned_by_current_display || die 'wallpaper preview belongs to another X11 session'
+		preview_failure_pending "$token" || die 'wallpaper preview recovery is not pending'
+		validate_config_file && apply_configured_or_default || true
+		clear_preview "$token"
+		emit_protocol_header
+		printf 'result\t%s\t%s\n' "$action" "$token"
+		return
+	fi
+	mutation_ready || die 'wallpaper mutation is unavailable'
+	acquire_lock
+	ensure_preview_dir
+	[[ $(current_preview_token 2>/dev/null || true) == "$token" ]] || die 'wallpaper preview is not active'
+	read_preview_meta "$token" || die 'wallpaper preview state is invalid'
+	if ! clamp_preview_deadline "$token" && ! preview_failure_pending "$token"; then
+		mark_preview_failed "$token" 'Wallpaper preview deadline could not be repaired'
+		die 'wallpaper preview deadline could not be repaired'
+	fi
+	preview_owned_by_current_display || die 'wallpaper preview belongs to another X11 session'
+	current_hash=$(config_hash) || die 'wallpaper configuration is unsafe'
+	case $action in
+	keep)
+		! preview_failure_pending "$token" || die 'failed wallpaper preview cannot be kept'
+		now=$preview_now
+		if ((now >= preview_deadline)); then
+			expire_preview_locked "$token" || true
+			die 'wallpaper preview has expired'
+		fi
+		[[ $current_hash == "$preview_config_hash" ]] || {
+			mark_preview_failed "$token" 'Wallpaper configuration changed outside the preview'
+			die 'wallpaper configuration changed outside the preview'
+		}
+		valid_asset "$preview_path" || {
+			mark_preview_failed "$token" 'Previewed wallpaper disappeared before confirmation'
+			die 'previewed wallpaper disappeared before confirmation'
+		}
+		apply_live "$preview_path" "$preview_fit" ||
+			die 'previewed wallpaper could not be reapplied before confirmation'
+		stage_config "$preview_path" "$preview_fit" || die 'wallpaper configuration could not be staged'
+		read_effective_preview_now || {
+			discard_staged_config
+			expire_preview_locked "$token" || true
+			die 'monotonic preview clock is unavailable'
+		}
+		now=$preview_now
+		if ((now >= preview_deadline)); then
+			discard_staged_config
+			expire_preview_locked "$token" || true
+			die 'wallpaper preview has expired'
+		fi
+		if [[ $(config_hash 2>/dev/null || true) != "$preview_config_hash" ]] ||
+			! publish_staged_config "$preview_config_hash"; then
+			discard_staged_config
+			mark_preview_failed "$token" 'Wallpaper configuration changed or could not be published'
+			apply_configured_or_default || true
+			die 'wallpaper configuration changed or could not be published'
+		fi
+		discard_captured_config
+		clear_selection_failure
+		clear_session_default
+		;;
+	revert)
+		[[ $current_hash == "$preview_config_hash" ]] || {
+			mark_preview_failed "$token" 'Wallpaper configuration changed outside the preview'
+			die 'wallpaper configuration changed outside the preview'
+		}
+		converge_preview_owner_config || {
+			mark_preview_failed "$token" 'Wallpaper rollback could not restore the configured state'
+			die 'wallpaper rollback failed'
+		}
+		;;
+	*) die 'unsupported wallpaper preview action' ;;
+	esac
+	clear_preview "$token"
+	emit_protocol_header
+	printf 'result\t%s\t%s\n' "$action" "$token"
+}
+
+apply_selection() {
+	local path=$1 fit=$2 expected_hash staged_hash
+	valid_asset "$path" || die "wallpaper is not a readable supported image: $path"
+	valid_fit "$fit" || die "unsupported wallpaper fit mode: $fit"
+	mutation_ready || die 'wallpaper mutation is unavailable'
+	acquire_lock
+	ensure_preview_dir
+	reconcile_preview_locked false
+	[[ -z $(current_preview_token 2>/dev/null || true) ]] || die 'a wallpaper preview is active'
+	[[ ! -e $preview_current && ! -L $preview_current ]] || die 'wallpaper preview owner state is invalid'
+	if mutation_recovery_pending && ! recover_mutation_failure; then
+		die 'wallpaper live rollback recovery is pending'
+	fi
+	prepare_mutation_baseline ||
+		die 'wallpaper cannot be changed without a recoverable current or default wallpaper'
+	expected_hash=$mutation_baseline_hash
+	stage_config "$path" "$fit" || die 'wallpaper configuration could not be staged'
+	staged_hash=$(config_path_hash "$staged_config") || die 'staged wallpaper configuration is unsafe'
+	arm_mutation_rollback
+	if ! apply_live "$path" "$fit"; then
+		die 'wallpaper could not be applied'
+	fi
+	[[ $(config_hash) == "$expected_hash" ]] || {
+		die 'wallpaper configuration changed while applying the selection'
+	}
+	if ! publish_staged_config "$expected_hash"; then
+		die 'wallpaper configuration changed or could not be published'
+	fi
+	complete_mutation
+	clear_session_default
+	if [[ $staged_hash == "$expected_hash" ]]; then
+		clear_selection_failure
+	else
+		clear_selection_failure true
+	fi
+	emit_protocol_header
+	printf 'result\tapply\t%s\t%s\n' "$(clean_field "$path")" "$fit"
+}
+
+reset_selection() {
+	local default_state=applied expected_hash current_hash staged_hash clear_failure_on_complete=true
+	local prior_recovery_pending=false
+	mutation_ready || die 'wallpaper mutation is unavailable'
+	acquire_lock
+	ensure_preview_dir
+	reconcile_preview_locked false
+	[[ -z $(current_preview_token 2>/dev/null || true) ]] || die 'a wallpaper preview is active'
+	[[ ! -e $preview_current && ! -L $preview_current ]] || die 'wallpaper preview owner state is invalid'
+	if mutation_recovery_pending && ! recover_mutation_failure; then
+		prior_recovery_pending=true
+		clear_failure_on_complete=false
+	fi
+	validate_config_file || die 'wallpaper configuration is unsafe'
+	expected_hash=$(config_hash) || die 'wallpaper configuration is unsafe'
+	stage_default_config || die 'wallpaper default configuration could not be staged'
+	staged_hash=$(config_path_hash "$staged_config") || die 'staged wallpaper configuration is unsafe'
+	if [[ $prior_recovery_pending == true ]]; then
+		if ! publish_staged_config "$expected_hash"; then
+			die 'wallpaper configuration changed or could not be published while resetting'
+		fi
+		discard_captured_config
+		clear_session_default
+		emit_protocol_header
+		printf 'result\treset\tunavailable\n'
+		return
+	fi
+	if ! prepare_mutation_baseline; then
+		[[ $feh_interrupted != true ]] || die 'wallpaper reset was interrupted'
+		current_hash=$(config_hash) || die 'wallpaper configuration became unsafe during reset'
+		[[ $current_hash == "$expected_hash" ]] ||
+			die 'wallpaper configuration changed while preparing the reset'
+		if ! publish_staged_config "$expected_hash"; then
+			die 'wallpaper configuration changed or could not be published while resetting'
+		fi
+		discard_captured_config
+		clear_session_default
+		clear_selection_failure true
+		emit_protocol_header
+		printf 'result\treset\tunavailable\n'
+		return
+	fi
+	current_hash=$(config_hash) || die 'wallpaper configuration became unsafe during reset'
+	[[ $current_hash == "$expected_hash" ]] ||
+		die 'wallpaper configuration changed while preparing the reset'
+	[[ $mutation_baseline_hash == "$expected_hash" ]] ||
+		die 'wallpaper configuration changed while preparing the reset'
+	arm_mutation_rollback
+	if ! apply_default_live; then
+		if [[ $feh_interrupted == true ]]; then
+			die 'wallpaper reset was interrupted'
+		fi
+		default_state=unavailable
+		if mutation_failure_pending; then
+			clear_failure_on_complete=false
+		fi
+	elif ! stage_session_default "$staged_hash"; then
+		die 'wallpaper session default could not be staged safely'
+	fi
+	if ! current_hash=$(config_hash); then
+		die 'wallpaper configuration became unsafe during reset'
+	fi
+	if [[ $current_hash != "$expected_hash" ]]; then
+		die 'wallpaper configuration changed while resetting the selection'
+	fi
+	if ! publish_staged_config "$expected_hash"; then
+		die 'wallpaper configuration changed or could not be published while resetting'
+	fi
+	if [[ $default_state == applied ]]; then
+		if ! publish_staged_session_default; then
+			if restore_published_config "$expected_hash" "$staged_hash"; then
+				die 'wallpaper session default could not be recorded; the prior selection was restored'
+			fi
+			die 'wallpaper session default could not be recorded and the prior configuration could not be restored'
+		fi
+	else
+		clear_session_default
+	fi
+	complete_mutation "$clear_failure_on_complete"
+	clear_selection_failure true
+	emit_protocol_header
+	printf 'result\treset\t%s\n' "$default_state"
+}
+
+randomize_wallpaper() {
+	local expected_hash current_hash
+	mutation_ready || die 'wallpaper mutation is unavailable'
+	acquire_lock
+	ensure_preview_dir
+	reconcile_preview_locked false
+	[[ -z $(current_preview_token 2>/dev/null || true) ]] || die 'a wallpaper preview is active'
+	[[ ! -e $preview_current && ! -L $preview_current ]] || die 'wallpaper preview owner state is invalid'
+	if mutation_recovery_pending && ! recover_mutation_failure; then
+		die 'wallpaper live rollback recovery is pending'
+	fi
+	prepare_mutation_baseline ||
+		die 'wallpaper cannot be randomized without a recoverable current or default wallpaper'
+	expected_hash=$mutation_baseline_hash
+	arm_mutation_rollback
+	apply_default_live || die 'wallpaper could not be randomized'
+	current_hash=$(config_hash) || die 'wallpaper configuration became unsafe while randomizing'
+	[[ $current_hash == "$expected_hash" ]] ||
+		die 'wallpaper configuration changed while randomizing'
+	write_session_default || die 'random wallpaper session state could not be recorded safely'
+	complete_mutation
+	emit_protocol_header
+	printf 'result\trandomize\tapplied\n'
+}
+
+session_apply() {
+	local token
+	[[ -n ${DISPLAY:-} ]] || return 0
+	feh_path >/dev/null || return 0
+	acquire_lock
+	ensure_preview_dir
+	(exchange_supported >/dev/null 2>&1 || true)
+	reconcile_preview_locked true
+	if mutation_recovery_pending && ! recover_mutation_failure; then
+		return 1
+	fi
+	if converge_configured_or_default; then
+		token=$(current_preview_token 2>/dev/null || true)
+		if [[ -n $token ]] && ! read_preview_meta "$token"; then
+			return 0
+		fi
+		clear_mutation_failure
+		rm -f -- "$mutation_owner" 2>/dev/null || true
+		if [[ -n $token ]] && read_preview_meta "$token" &&
+			preview_failure_pending "$token" && {
+			preview_owned_by_current_display || ! preview_display_reachable
+		}; then
+			clear_preview "$token"
+		fi
+	else
+		# A missing optional default directory is not interrupted mutation state.
+		# Keep a durable marker only when a saved, readable selection should have
+		# converged or a previous live rollback failure is already pending.
+		if mutation_failure_pending || {
+			read_config && [[ $configured == true ]] && valid_asset "$configured_path"
+		}; then
+			mark_mutation_failed 'Wallpaper session recovery could not converge the live wallpaper' || true
+		fi
+		return 1
+	fi
+}
+
+case ${1:-} in
+status)
+	[[ $# -eq 1 || ($# -eq 2 && $2 == --read-only) ]] || {
+		usage
+		exit 2
+	}
+	status "$([[ ${2:-} == --read-only ]] && printf true || printf false)"
+	;;
+mutation-ready)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	mutation_ready && rollback_baseline_available
+	;;
+apply)
+	[[ $# -eq 3 ]] || {
+		usage
+		exit 2
+	}
+	apply_selection "$2" "$3"
+	;;
+reset)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	reset_selection
+	;;
+randomize)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	randomize_wallpaper
+	;;
+preview)
+	[[ $# -eq 5 ]] || {
+		usage
+		exit 2
+	}
+	start_preview "$2" "$3" "$4" "$5"
+	;;
+keep | revert | abandon)
+	[[ $# -eq 2 ]] || {
+		usage
+		exit 2
+	}
+	finish_preview "$1" "$2"
+	;;
+session-apply)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	session_apply
+	;;
+preview-watchdog)
+	[[ $# -eq 3 ]] || exit 2
+	preview_watchdog "$2" "$3"
+	;;
+-h | --help | help)
+	usage
+	;;
+*)
+	usage
+	exit 2
+	;;
+esac
