@@ -679,6 +679,42 @@ ShellRoot {
             return appearanceModel.previewRemaining;
         }
 
+        function appearanceWallpaperState(): string {
+            return appearanceModel.wallpaperState;
+        }
+
+        function appearanceWallpaperPath(): string {
+            return appearanceModel.wallpaperPath;
+        }
+
+        function appearanceWallpaperFit(): string {
+            return appearanceModel.wallpaperFit;
+        }
+
+        function appearanceWallpaperMutationDetail(): string {
+            return appearanceModel.wallpaperMutationDetail;
+        }
+
+        function appearanceWallpaperResetReady(): bool {
+            return appearanceModel.wallpaperResetReady;
+        }
+
+        function appearanceWallpaperPreviewState(): string {
+            return appearanceModel.wallpaperPreviewState;
+        }
+
+        function appearanceWallpaperPreviewRemaining(): int {
+            return appearanceModel.wallpaperPreviewRemaining;
+        }
+
+        function appearanceWallpaperStatusBusy(): bool {
+            return appearanceModel.wallpaperStatusBusy;
+        }
+
+        function appearanceWallpaperReconcile(): void {
+            appearanceModel.reconcileWallpaperPreview();
+        }
+
         function appearanceMessage(): string {
             return appearanceModel.message;
         }

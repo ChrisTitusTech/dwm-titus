@@ -189,6 +189,9 @@ if run_helper mutation-ready; then
 	printf 'Wallpaper mutation probe succeeded without a recoverable baseline\n' >&2
 	exit 1
 fi
+run_helper reset-ready
+grep -Fqx $'reset\tavailable\tWallpaper selection can be reset to the session default' \
+	<<<"$no_rollback_status"
 mkdir "$wallpaper_dir"
 empty_default_status=$(run_helper status --read-only)
 grep -Fqx $'mutation\trestricted\tWallpaper changes require a recoverable current or default wallpaper' \

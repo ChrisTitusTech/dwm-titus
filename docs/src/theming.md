@@ -123,10 +123,11 @@ Open the Control Center with <kbd>Super</kbd> + <kbd>F1</kbd>, navigate to **App
 ---
 ## Wallpapers
 
-Place images in `~/Pictures/backgrounds/`. Use `Super` + `Shift` + `W` or
+Place images in `~/Pictures/backgrounds/`. Open **Settings → Appearance** to
+select an image, choose its fit, preview it for 30 seconds, apply it, or reset
+to the random session default. Use `Super` + `Shift` + `W` or
 `dwm-settings-wallpaper randomize` for a one-off random wallpaper in the
-current session, or persist a specific image and Feh fit mode for future
-sessions:
+current session, or persist a specific image and fit from a terminal:
 
 ```bash
 dwm-settings-wallpaper apply "$HOME/Pictures/backgrounds/mywall.jpg" fill

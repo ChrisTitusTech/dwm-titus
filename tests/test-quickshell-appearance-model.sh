@@ -25,6 +25,7 @@ grep -Fq 'root.settingsModel.selectedSectionId === "appearance"' "$settings_wind
 grep -Fq 'capability.id !== "themes"' "$settings_window"
 
 grep -Fq 'function settingsAppearanceCommand(action, args)' "$commands"
+grep -Fq 'function settingsWallpaperCommand(action, args)' "$commands"
 grep -Fq 'function settingsThemeCommand(action, args)' "$commands"
 grep -Fq 'function booleanStatusCommand(command)' "$commands"
 grep -Fq 'appearance-protocol' "$model"
@@ -66,6 +67,48 @@ grep -Fq 'if (!root.settingsVisible) return;' "$model"
 grep -Fq 'inventoryWatchProcess.running = false' "$model"
 grep -Fq 'compositorWatchProcess.running = false' "$model"
 grep -Fq 'root.inventoryCandidates = candidates' "$model"
+grep -Fq 'candidate.id === "wallpaper"' "$model"
+grep -Fq 'Commands.settingsWallpaperCommand("status", ["--read-only"])' "$model"
+if grep -Fq 'Commands.checkedCommand(Commands.settingsWallpaperCommand("status"' "$model"; then
+	printf 'Wallpaper status remained behind the orphan-prone checked-command wrapper\n' >&2
+	exit 1
+fi
+grep -Fq 'Commands.settingsWallpaperCommand(action === "reconcile" ? "status" : action, args)' "$model"
+grep -Fq 'function previewWallpaper(path, fit)' "$model"
+grep -Fq 'function resetWallpaper()' "$model"
+grep -Fq 'function reconcileWallpaperPreview()' "$model"
+grep -Fq 'function clearWallpaperStatus(detail)' "$model"
+grep -Fq 'root.wallpaperPath = "";' "$model"
+grep -Fq 'const preservePreview = (root.wallpaperPreviewState === "active"' "$model"
+grep -Fq '|| root.wallpaperPreviewState === "failed")' "$model"
+grep -Fq '&& root.wallpaperPreviewToken.length > 0;' "$model"
+grep -Fq 'if (!preservePreview) {' "$model"
+grep -Fq 'Installed wallpaper helper does not report reset readiness' "$model"
+grep -Fq 'root.clearWallpaperStatus("Wallpaper helper returned an unsupported response")' "$model"
+grep -Fq 'provider = { "state": fields[2], "detail": fields[4] }' "$model"
+grep -Fq 'root.wallpaperProviderDetail = provider.detail' "$model"
+grep -Fq 'root.wallpaperMutationDetail = mutation.detail' "$model"
+grep -Fq 'root.wallpaperResetReady = reset.state === "available"' "$model"
+grep -Fq 'root.wallpaperStatusPending = true' "$model"
+grep -Fq 'readonly property bool wallpaperStatusBusy: wallpaperReadinessProcess.running' "$model"
+grep -Fq 'Commands.settingsWallpaperCommand("reset-ready", [])' "$model"
+grep -Fq 'if (wallpaperReadinessProcess.running || wallpaperStatusProcess.running' "$model"
+grep -Fq '|| wallpaperReadinessProcess.running || wallpaperStatusProcess.running' "$model"
+grep -Fq 'root.wallpaperPreviewState = "active";' "$model"
+test "$(grep -Fc 'root.wallpaperPreviewState = "active";' "$model")" -eq 1
+grep -Fq 'root.wallpaperPreviewToken = root.wallpaperActionToken;' "$model"
+grep -Fq 'action === "reconcile" ? "status" : action' "$model"
+grep -Fq 'root.parseWallpaperStatus(text);' "$model"
+grep -Fq 'Wallpaper preview expired and reverted automatically' "$model"
+grep -Fq 'if (!previewWasActive && preview.state === "active") {' "$model"
+grep -Fq 'root.wallpaperPreviewState = "none";' "$model"
+grep -Fq 'Qt.callLater(root.refreshWallpaperStatus)' "$model"
+grep -Fq 'running: root.settingsVisible && root.wallpaperPreviewState === "active"' "$model"
+grep -Fq 'root.wallpaperPreviewRemaining--' "$model"
+if grep -Fq 'onTriggered: root.refreshWallpaperStatus()' "$model"; then
+	printf 'Wallpaper preview countdown still polls the full status helper every second\n' >&2
+	exit 1
+fi
 grep -Fq 'model: root.settingsVisible ? root.statusWatchPaths : []' "$model"
 grep -Fq 'watchChanges: root.settingsVisible' "$model"
 grep -Fq 'onTriggered: if (root.settingsVisible) root.refreshAll()' "$model"
@@ -97,7 +140,29 @@ if grep -Eq 'FileView|themes\.toml|function applyThemes' "$theme"; then
 fi
 
 grep -Fq 'Preview for 30 seconds' "$pane"
-grep -Fq 'Component.onCompleted: root.ensureSelection()' "$pane"
+grep -Fq 'Preview wallpaper for 30 seconds' "$pane"
+grep -Fq 'label: "Configured wallpaper"' "$pane"
+grep -Fq 'label: "Wallpaper apply and preview unavailable"' "$pane"
+grep -Fq 'root.appearanceModel.wallpaperResetReady ? "Reset available" : "Protected"' "$pane"
+grep -Fq 'readonly property bool wallpaperControlsBusy: root.appearanceBusy' "$pane"
+grep -Fq '|| root.appearanceModel.wallpaperStatusBusy' "$pane"
+grep -Fq 'label: "Reset wallpaper"' "$pane"
+grep -Fq 'label: "Repair wallpaper state"' "$pane"
+test "$(grep -Fc 'root.appearanceModel.wallpaperPreviewToken.length > 0' "$pane")" -eq 2
+grep -Fq 'root.appearanceModel.wallpaperResetReady' "$pane"
+grep -Fq 'detail: root.appearanceModel.wallpaperMutationDetail' "$pane"
+grep -Fq 'else root.selectedWallpaperPath = "";' "$pane"
+grep -Fq 'function wallpaperSelectionAvailable()' "$pane"
+test "$(grep -Fc '&& root.wallpaperSelectionAvailable() && !root.wallpaperControlsBusy' "$pane")" -eq 2
+grep -Fq 'function wallpaperEmptyDetail()' "$pane"
+grep -Fq 'return root.appearanceModel.inventoryProviderDetail;' "$pane"
+grep -Fq 'selection.detail === "Wallpaper candidate discovery did not complete"' "$pane"
+grep -Fq 'root.appearanceModel.inventoryWatchDetail' "$pane"
+grep -Fq '? " / Saved" : "")' "$pane"
+grep -Fq 'detail: root.appearanceModel.wallpaperProviderDetail' "$pane"
+grep -Fq 'root.appearanceModel.wallpaperCandidates' "$pane"
+grep -Fq 'Component.onCompleted: {' "$pane"
+grep -Fq 'root.ensureWallpaperSelection();' "$pane"
 grep -Fq 'preferred = root.appearanceModel.resolvedTheme' "$pane"
 grep -Fq 'label: "Additional capabilities"' "$pane"
 grep -Fq 'model: root.capabilities' "$pane"
@@ -109,6 +174,8 @@ grep -Fq 'Selected appearance is only partially applied' "$pane"
 grep -Fq 'root.appearanceModel.integrations' "$pane"
 grep -Fq 'root.appearanceModel.errors' "$pane"
 grep -Fq 'function appearanceIntegrationState(integrationId: string): string' "$shell_qml"
+grep -Fq 'function appearanceWallpaperReconcile(): void' "$shell_qml"
+grep -Fq 'function appearanceWallpaperStatusBusy(): bool' "$shell_qml"
 test "$(grep -Fc 'root.selectedTheme.valid && root.selectedTheme.mutable' "$pane")" -eq 2
 
 if grep -ERq 'Quickshell\.(Wayland|Hyprland)|WlrLayershell|hyprctl|uwsm-app|wl-copy|wl-paste' \

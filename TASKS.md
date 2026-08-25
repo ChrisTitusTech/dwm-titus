@@ -52,7 +52,7 @@ Acceptance:
 - [x] Define event-driven inventory and state contracts for wallpaper, supported
   fonts, cursors, icons, GTK, Qt, and compositor integration using stable Fedora
   or X11 interfaces.
-- [ ] Add wallpaper selection, fit mode, preview, reset, and missing-file
+- [x] Add wallpaper selection, fit mode, preview, reset, and missing-file
   recovery without scanning while the Appearance pane is closed.
 - [ ] Add bounded user-session controls for supported font, text-size, cursor,
   icon, GTK, and Qt choices. Delegate advanced toolkit editing to a trusted
