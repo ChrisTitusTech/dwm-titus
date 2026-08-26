@@ -36,6 +36,7 @@ Scope {
     property bool inventoryWatchReady: false
     property bool inventoryWatchSawEvent: false
     property bool inventoryWatchFailed: false
+    property bool inventoryWatchRestartPending: false
     property bool compositorWatchReady: false
     property string wallpaperState: "idle"
     property string wallpaperPath: ""
@@ -48,7 +49,11 @@ Scope {
     property bool wallpaperResetReady: false
     property bool wallpaperBusy: false
     readonly property bool wallpaperStatusBusy: wallpaperReadinessProcess.running
-        || wallpaperStatusProcess.running
+        || wallpaperStatusProcess.running || inventoryProcess.running
+        || root.wallpaperStatusPending || root.inventoryPending
+        || (inventoryWatchProcess.running && !root.inventoryWatchReady)
+    readonly property bool wallpaperPreviewActionBusy: wallpaperReadinessProcess.running
+        || wallpaperStatusProcess.running || wallpaperActionProcess.running || root.busy
     property string wallpaperPreviewState: "none"
     property string wallpaperPreviewToken: ""
     property string wallpaperPreviewPath: ""
@@ -248,6 +253,7 @@ Scope {
         root.inventoryWatchReady = false;
         root.inventoryWatchSawEvent = false;
         root.inventoryWatchFailed = true;
+        root.inventoryWatchRestartPending = false;
         root.compositorWatchReady = false;
         inventoryWatchRestartTimer.stop();
         inventoryWatchProcess.running = false;
@@ -450,7 +456,8 @@ Scope {
     function refreshWallpaperStatus() {
         if (!root.settingsVisible) return;
         if (wallpaperReadinessProcess.running || wallpaperStatusProcess.running
-                || wallpaperActionProcess.running || inventoryProcess.running) {
+                || wallpaperActionProcess.running || inventoryProcess.running
+                || (inventoryWatchProcess.running && !root.inventoryWatchReady)) {
             root.wallpaperStatusPending = true;
             return;
         }
@@ -461,11 +468,12 @@ Scope {
 
     function refreshInventory(allowUnwatched) {
         if (!root.settingsVisible) return;
-        if (!root.inventoryWatchReady && allowUnwatched !== true) {
+        if (!root.inventoryWatchReady && !root.inventoryWatchFailed
+                && allowUnwatched !== true) {
             root.inventoryPending = true;
             return;
         }
-        if (wallpaperStatusProcess.running) {
+        if (wallpaperStatusProcess.running || wallpaperActionProcess.running) {
             root.inventoryPending = true;
             root.inventoryPendingAllowUnwatched = root.inventoryPendingAllowUnwatched
                 || allowUnwatched === true;
@@ -503,12 +511,16 @@ Scope {
         root.inventoryWatchFailed = false;
         if (!wallpaperReadinessProcess.running)
             wallpaperReadinessProcess.running = true;
-        root.startInventoryWatcher();
+        root.startInventoryWatcher(true);
         root.refreshAll();
     }
 
-    function startInventoryWatcher() {
-        if (inventoryWatchProcess.running) return;
+    function startInventoryWatcher(restartIfRunning) {
+        if (inventoryWatchProcess.running) {
+            if (restartIfRunning === true) root.inventoryWatchRestartPending = true;
+            return;
+        }
+        root.inventoryWatchRestartPending = false;
         root.inventoryWatchSawEvent = false;
         inventoryWatchProcess.running = true;
     }
@@ -517,6 +529,7 @@ Scope {
         root.settingsVisible = false;
         root.inventoryGeneration++;
         inventoryWatchRestartTimer.stop();
+        root.inventoryWatchRestartPending = false;
         inventoryWatchProcess.running = false;
         root.inventoryWatchReady = false;
         root.inventoryWatchSawEvent = false;
@@ -696,8 +709,25 @@ Scope {
     }
 
     function runWallpaperAction(action, args, path, fit, token) {
+        const previewDecision = root.wallpaperPreviewState === "active"
+            && (action === "keep" || action === "revert");
+        if (previewDecision && (inventoryProcess.running || root.inventoryPending
+                || root.wallpaperStatusPending)
+                && !root.wallpaperBusy && !wallpaperActionProcess.running
+                && !wallpaperReadinessProcess.running && !wallpaperStatusProcess.running
+                && !root.busy) {
+            root.inventoryGeneration++;
+            root.wallpaperStatusPending = false;
+            root.inventoryPending = false;
+            root.inventoryPendingAllowUnwatched = false;
+            if (inventoryProcess.running) inventoryProcess.running = false;
+        }
         if (root.wallpaperBusy || wallpaperActionProcess.running
                 || wallpaperReadinessProcess.running || wallpaperStatusProcess.running
+                || (!previewDecision && (inventoryProcess.running
+                    || root.wallpaperStatusPending || root.inventoryPending))
+                || (!previewDecision && inventoryWatchProcess.running
+                    && !root.inventoryWatchReady)
                 || root.busy) {
             root.message = "Another appearance change is already in progress";
             root.messageSeverity = "warning";
@@ -1038,13 +1068,13 @@ Scope {
                 root.clearInventory(error.length > 0 ? error
                     : "Appearance inventory failed before returning a valid snapshot");
             }
-            if (!running && root.wallpaperStatusPending && root.settingsVisible) {
-                Qt.callLater(root.refreshWallpaperStatus);
-            } else if (!running && root.inventoryPending && root.settingsVisible) {
+            if (!running && root.inventoryPending && root.settingsVisible) {
                 const allowUnwatched = root.inventoryPendingAllowUnwatched;
                 root.inventoryPending = false;
                 root.inventoryPendingAllowUnwatched = false;
                 Qt.callLater(function() { root.refreshInventory(allowUnwatched); });
+            } else if (!running && root.wallpaperStatusPending && root.settingsVisible) {
+                Qt.callLater(root.refreshWallpaperStatus);
             }
         }
     }
@@ -1059,8 +1089,8 @@ Scope {
                     root.inventoryWatchReady = true;
                     root.inventoryWatchSawEvent = false;
                     if (root.settingsVisible) {
-                        root.refreshInventory(true);
                         root.refreshWallpaperStatus();
+                        root.refreshInventory(true);
                     }
                 } else if (line.startsWith("changed\t")) {
                     root.inventoryWatchReady = false;
@@ -1076,7 +1106,12 @@ Scope {
         onRunningChanged: {
             if (!running) {
                 root.inventoryWatchReady = false;
-                if (root.settingsVisible && !root.inventoryWatchSawEvent
+                if (root.settingsVisible && root.inventoryWatchRestartPending
+                        && !root.inventoryWatchFailed) {
+                    root.inventoryWatchRestartPending = false;
+                    if (root.inventoryWatchSawEvent) inventoryWatchRestartTimer.restart();
+                    else Qt.callLater(root.startInventoryWatcher);
+                } else if (root.settingsVisible && !root.inventoryWatchSawEvent
                         && !root.inventoryWatchFailed) {
                     const error = inventoryWatchError.text.trim();
                     root.inventoryWatchFailed = true;

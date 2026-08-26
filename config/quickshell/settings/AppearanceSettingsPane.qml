@@ -16,6 +16,8 @@ Flickable {
     readonly property bool appearanceBusy: root.appearanceModel.busy || root.appearanceModel.wallpaperBusy
     readonly property bool wallpaperControlsBusy: root.appearanceBusy
         || root.appearanceModel.wallpaperStatusBusy
+    readonly property bool wallpaperPreviewControlsBusy: root.appearanceBusy
+        || root.appearanceModel.wallpaperPreviewActionBusy
     contentWidth: width
     contentHeight: content.implicitHeight
     clip: true
@@ -405,13 +407,14 @@ Flickable {
                     ShellButton {
                         visible: root.appearanceModel.wallpaperPreviewState === "active"
                         label: "Keep wallpaper"
-                        enabled: !root.wallpaperControlsBusy
+                        enabled: !root.wallpaperPreviewControlsBusy
                         onActivated: root.appearanceModel.keepWallpaperPreview()
                     }
                     ShellButton {
                         label: "Restore configured"
                         visible: root.appearanceModel.wallpaperPreviewToken.length > 0
-                        enabled: !root.wallpaperControlsBusy
+                        enabled: root.appearanceModel.wallpaperPreviewState === "active"
+                            ? !root.wallpaperPreviewControlsBusy : !root.wallpaperControlsBusy
                         onActivated: root.appearanceModel.revertWallpaperPreview()
                     }
                     ShellButton {
