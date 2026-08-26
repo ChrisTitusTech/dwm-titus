@@ -8,6 +8,14 @@ versions from `config.mk`.
 
 ### Added
 
+- Add managed-shell font family and text-scale controls through the versioned
+  `dwm-settings-font` user-session helper. Settings can preview a validated
+  installed Fontconfig family and one of six bounded scales, keep or revert the
+  preview, apply it persistently, or reset to the existing Meslo/100 percent
+  shell default. Atomic mode-preserving state, an independent watchdog,
+  hash-guarded external-change handling, root-scoped event-driven updates, and
+  a fixed Nerd Font icon family keep the shell usable during every transition.
+
 - Add versioned user-session wallpaper state through `dwm-settings-wallpaper`,
   with persisted Feh fit modes, bounded preview and automatic rollback,
   external-change protection, reset, interrupted-preview recovery, and a

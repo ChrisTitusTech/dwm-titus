@@ -69,6 +69,30 @@ Scope {
     property bool wallpaperActionSucceeded: false
     property bool wallpaperStatusParsed: false
     property bool wallpaperStatusPending: false
+    property string fontState: "idle"
+    property string fontFamily: "MesloLGS Nerd Font Mono"
+    property real fontScale: 1.0
+    property string fontDetail: "Managed shell font state has not been loaded"
+    property string fontProviderState: "idle"
+    property string fontProviderDetail: "Font provider has not been checked"
+    property bool fontMutationReady: false
+    property bool fontBusy: false
+    readonly property bool fontStatusBusy: fontStatusProcess.running || fontReadinessProcess.running
+    property bool fontStatusParsed: false
+    property bool fontStatusPending: false
+    property int fontStatusRetryAttempts: 0
+    property string fontPreviewState: "none"
+    property string fontPreviewToken: ""
+    property string fontPreviewFamily: ""
+    property real fontPreviewScale: 1.0
+    property int fontPreviewRemaining: 0
+    property string fontPreviewDetail: ""
+    property string fontActionKind: ""
+    property string fontActionToken: ""
+    property string fontActionFamily: ""
+    property real fontActionScale: 1.0
+    property string fontActionError: ""
+    property bool fontActionSucceeded: false
     property string message: ""
     property string messageSeverity: "idle"
     property string previewState: "none"
@@ -103,6 +127,12 @@ Scope {
         ? root.configuredStateHome : root.homeDir + "/.local/state"
     readonly property string themesPath: root.configHome + "/dwm-titus/themes.toml"
     readonly property string wallpaperConfigPath: root.configHome + "/dwm-titus/wallpaper.conf"
+    readonly property string fontConfigPath: root.configHome + "/dwm-titus/font.conf"
+    readonly property string fontPreviewPath: root.stateHome
+        + "/dwm-titus/appearance/font/preview.current"
+    readonly property var fontCandidates: root.inventoryCandidates.filter(function(candidate) {
+        return candidate.id === "font";
+    })
     readonly property string managedThemesPath: root.dataHome + "/dwm-titus/config/themes.toml"
     readonly property var wallpaperCandidates: root.inventoryCandidates.filter(function(candidate) {
         return candidate.id === "wallpaper";
@@ -155,6 +185,8 @@ Scope {
         }
         if (root.wallpaperProviderState !== "available"
                 || root.wallpaperState !== "available") return "partial";
+        if (root.fontProviderState !== "available"
+                || root.fontState !== "available") return "partial";
         return "available";
     }
 
@@ -178,6 +210,11 @@ Scope {
     function validWallpaperFit(value) {
         return value === "center" || value === "fill" || value === "max"
             || value === "scale" || value === "tile";
+    }
+
+    function validFontScale(value) {
+        return value === "0.80" || value === "0.90" || value === "1.00"
+            || value === "1.10" || value === "1.25" || value === "1.50";
     }
 
     function validThemeName(value) {
@@ -465,6 +502,20 @@ Scope {
         wallpaperStatusProcess.running = true;
     }
 
+    function refreshFontStatus() {
+        if (!fontReadinessProcess.running && !fontActionProcess.running) {
+            root.fontMutationReady = false;
+            fontReadinessProcess.running = true;
+        }
+        if (fontStatusProcess.running || fontActionProcess.running) {
+            root.fontStatusPending = true;
+            return;
+        }
+        root.fontStatusPending = false;
+        root.fontStatusParsed = false;
+        fontStatusProcess.running = true;
+    }
+
     function refreshInventory(allowUnwatched) {
         if (!root.settingsVisible) return;
         if (!root.inventoryWatchReady && !root.inventoryWatchFailed
@@ -499,6 +550,7 @@ Scope {
         root.refreshRecoveryStatus();
         root.refreshMutationReadiness();
         root.refreshWallpaperStatus();
+        root.refreshFontStatus();
     }
 
     function openSettings() {
@@ -548,7 +600,7 @@ Scope {
     }
 
     function runAction(action, args, theme, token) {
-        if (root.busy || root.wallpaperBusy || actionProcess.running) {
+        if (root.busy || root.wallpaperBusy || root.fontBusy || actionProcess.running) {
             root.message = "Another appearance change is already in progress";
             root.messageSeverity = "warning";
             return;
@@ -607,6 +659,199 @@ Scope {
 
     function nextWallpaperPreviewToken() {
         return "wallpaper-" + Quickshell.processId.toString() + "-" + Date.now().toString();
+    }
+
+    function nextFontPreviewToken() {
+        return "font-" + Quickshell.processId.toString() + "-" + Date.now().toString();
+    }
+
+    function clearFontStatus(detail) {
+        root.fontStatusParsed = false;
+        root.fontProviderState = "unavailable";
+        root.fontProviderDetail = detail;
+        root.fontState = "unavailable";
+        root.fontDetail = detail;
+        root.fontMutationReady = false;
+        // Keep the last valid family and scale through a transient helper
+        // failure. On first launch Theme already holds the safe Meslo/100%
+        // defaults, so repainting is neither necessary nor desirable.
+        if (!fontStatusRetryTimer.running && root.fontStatusRetryAttempts < 3) {
+            root.fontStatusRetryAttempts++;
+            fontStatusRetryTimer.restart();
+        }
+    }
+
+    function parseFontStatus(text) {
+        let protocolValid = false;
+        let provider = null;
+        let selection = null;
+        let preview = null;
+        for (const line of text.trim().split("\n")) {
+            const fields = line.split("\t");
+            if (fields[0] === "appearance-font-action-protocol") {
+                protocolValid = fields.length === 3 && fields[1] === "1" && fields[2] === "0";
+            } else if (fields[0] === "provider" && fields.length === 5
+                    && fields[1] === "font" && root.validState(fields[2])
+                    && fields[3] === "user-session"
+                    && root.validInventoryField(fields[4], false)) {
+                provider = { "state": fields[2], "detail": fields[4] };
+            } else if (fields[0] === "selection" && fields.length === 5
+                    && root.validState(fields[1]) && root.validInventoryField(fields[2], false)
+                    && root.validFontScale(fields[3])
+                    && root.validInventoryField(fields[4], false)) {
+                selection = { "state": fields[1], "family": fields[2],
+                    "scale": Number(fields[3]), "detail": fields[4] };
+            } else if (fields[0] === "preview" && fields.length === 7
+                    && (fields[1] === "none" || fields[1] === "active" || fields[1] === "failed")
+                    && root.validInventoryField(fields[2], true)
+                    && root.validInventoryField(fields[3], true)
+                    && (fields[4].length === 0 || root.validFontScale(fields[4]))
+                    && /^[0-9]+$/.test(fields[5])
+                    && root.validInventoryField(fields[6], false)) {
+                preview = { "state": fields[1], "token": fields[2], "family": fields[3],
+                    "scale": fields[4].length > 0 ? Number(fields[4]) : 1.0,
+                    "remaining": Number(fields[5]), "detail": fields[6] };
+            }
+        }
+        if (!protocolValid || provider === null || selection === null || preview === null) {
+            root.clearFontStatus("Font helper returned an unsupported response");
+            return;
+        }
+        const previewWasActive = root.fontPreviewState === "active";
+        const previousRemaining = root.fontPreviewRemaining;
+        root.fontStatusParsed = true;
+        root.fontStatusRetryAttempts = 0;
+        fontStatusRetryTimer.stop();
+        root.fontProviderState = provider.state;
+        root.fontProviderDetail = provider.detail;
+        root.fontState = selection.state;
+        root.fontFamily = selection.family;
+        root.fontScale = selection.scale;
+        root.fontDetail = selection.detail;
+        root.fontPreviewState = preview.state;
+        root.fontPreviewToken = preview.token;
+        root.fontPreviewFamily = preview.family;
+        root.fontPreviewScale = preview.scale;
+        root.fontPreviewRemaining = preview.remaining;
+        root.fontPreviewDetail = preview.detail;
+        Theme.applyFontPreferences(root.fontFamily, root.fontScale);
+        if (!previewWasActive && preview.state === "active") {
+            root.message = "Font preview active; keep it within " + preview.remaining
+                + (preview.remaining === 1 ? " second" : " seconds") + " or it will revert";
+            root.messageSeverity = "warning";
+        } else if (previewWasActive && preview.state === "none"
+                && previousRemaining <= 1) {
+            root.message = "Font preview expired and reverted automatically";
+            root.messageSeverity = "warning";
+        }
+    }
+
+    function runFontAction(action, args, family, scale, token) {
+        if (root.fontBusy || fontActionProcess.running || fontStatusProcess.running
+                || root.busy || root.wallpaperBusy) {
+            root.message = "Another appearance change is already in progress";
+            root.messageSeverity = "warning";
+            return;
+        }
+        root.fontBusy = true;
+        root.fontActionKind = action;
+        root.fontActionFamily = family || "";
+        root.fontActionScale = scale || 1.0;
+        root.fontActionToken = token || "";
+        root.fontActionError = "";
+        root.fontActionSucceeded = false;
+        root.message = "Applying font change...";
+        root.messageSeverity = "idle";
+        fontActionProcess.command = Commands.checkedCommand(Commands.settingsFontCommand(action, args));
+        fontActionProcess.running = true;
+    }
+
+    function previewFont(family, scale) {
+        const scaleArgument = Number(scale).toFixed(2);
+        if (!root.fontMutationReady || fontReadinessProcess.running
+                || !root.validInventoryField(family, false)
+                || !root.validFontScale(scaleArgument) || root.fontPreviewState !== "none") return;
+        const token = root.nextFontPreviewToken();
+        root.runFontAction("preview", [token, "30", family, scaleArgument], family, scale, token);
+    }
+
+    function applyFont(family, scale) {
+        const scaleArgument = Number(scale).toFixed(2);
+        if (!root.fontMutationReady || fontReadinessProcess.running
+                || !root.validInventoryField(family, false)
+                || !root.validFontScale(scaleArgument) || root.fontPreviewState !== "none") return;
+        root.runFontAction("apply", [family, scaleArgument], family, scale, "");
+    }
+
+    function resetFont() {
+        if (!root.fontMutationReady || fontReadinessProcess.running
+                || root.fontPreviewState !== "none") return;
+        root.runFontAction("reset", [], "", 1.0, "");
+    }
+
+    function keepFontPreview() {
+        if (root.fontPreviewState !== "active" || root.fontPreviewToken.length === 0) return;
+        root.runFontAction("keep", [root.fontPreviewToken], root.fontPreviewFamily,
+            root.fontPreviewScale, root.fontPreviewToken);
+    }
+
+    function revertFontPreview() {
+        if ((root.fontPreviewState !== "active" && root.fontPreviewState !== "failed")
+                || root.fontPreviewToken.length === 0) return;
+        root.runFontAction("revert", [root.fontPreviewToken], root.fontPreviewFamily,
+            root.fontPreviewScale, root.fontPreviewToken);
+    }
+
+    function abandonFontPreview() {
+        if (root.fontPreviewState !== "failed" || root.fontPreviewToken.length === 0) return;
+        root.runFontAction("abandon", [root.fontPreviewToken], root.fontPreviewFamily,
+            root.fontPreviewScale, root.fontPreviewToken);
+    }
+
+    function parseFontAction(text) {
+        const lines = text.trim().split("\n");
+        if (lines.length !== 2 || lines[0] !== "appearance-font-action-protocol\t1\t0") return;
+        const fields = lines[1].split("\t");
+        if (fields.length !== 2 || fields[0] !== "result") return;
+        const expected = root.fontActionKind === "preview" ? "preview-started"
+            : root.fontActionKind === "apply" ? "applied" : root.fontActionKind;
+        root.fontActionSucceeded = fields[1] === expected;
+    }
+
+    function finishFontAction() {
+        root.fontBusy = false;
+        if (root.fontActionSucceeded) {
+            if (root.fontActionKind === "preview") {
+                root.fontPreviewState = "active";
+                root.fontPreviewToken = root.fontActionToken;
+                root.fontPreviewFamily = root.fontActionFamily;
+                root.fontPreviewScale = root.fontActionScale;
+                root.fontPreviewRemaining = 30;
+                root.fontPreviewDetail = "Automatic rollback is armed";
+            } else if (root.fontActionKind === "keep" || root.fontActionKind === "revert"
+                    || root.fontActionKind === "abandon") {
+                root.fontPreviewState = "none";
+                root.fontPreviewToken = "";
+                root.fontPreviewFamily = "";
+                root.fontPreviewScale = 1.0;
+                root.fontPreviewRemaining = 0;
+                root.fontPreviewDetail = "";
+            }
+            root.message = root.fontActionKind === "preview"
+                ? "Font preview active; keep it within 30 seconds or it will revert"
+                : root.fontActionKind === "keep" ? "Font preview kept"
+                    : root.fontActionKind === "revert" ? "Font preview reverted"
+                        : root.fontActionKind === "abandon" ? "External font state accepted"
+                            : root.fontActionKind === "reset"
+                                ? "Font reset to the managed shell default" : "Font applied";
+            root.messageSeverity = root.fontActionKind === "preview" ? "warning" : "success";
+        } else {
+            root.message = root.fontActionError.length > 0 ? root.fontActionError
+                : "Font helper did not confirm the requested change";
+            root.messageSeverity = "danger";
+        }
+        Qt.callLater(root.refreshFontStatus);
+        if (root.settingsVisible) root.refreshInventory(true);
     }
 
     function clearWallpaperStatus(detail) {
@@ -715,7 +960,7 @@ Scope {
                 || root.wallpaperStatusPending)
                 && !root.wallpaperBusy && !wallpaperActionProcess.running
                 && !wallpaperReadinessProcess.running && !wallpaperStatusProcess.running
-                && !root.busy) {
+                && !root.busy && !root.fontBusy) {
             root.inventoryGeneration++;
             root.wallpaperStatusPending = false;
             root.inventoryPending = false;
@@ -728,7 +973,7 @@ Scope {
                     || root.wallpaperStatusPending || root.inventoryPending))
                 || (!previewDecision && inventoryWatchProcess.running
                     && !root.inventoryWatchReady)
-                || root.busy) {
+                || root.busy || root.fontBusy) {
             root.message = "Another appearance change is already in progress";
             root.messageSeverity = "warning";
             return;
@@ -953,6 +1198,26 @@ Scope {
         onFileChanged: reload()
     }
 
+    FileView {
+        id: fontConfigWatch
+        path: root.fontConfigPath
+        watchChanges: true
+        printErrors: false
+        onLoaded: fontChangeSettleTimer.restart()
+        onLoadFailed: fontChangeSettleTimer.restart()
+        onFileChanged: reload()
+    }
+
+    FileView {
+        id: fontPreviewWatch
+        path: root.fontPreviewPath
+        watchChanges: true
+        printErrors: false
+        onLoaded: fontChangeSettleTimer.restart()
+        onLoadFailed: fontChangeSettleTimer.restart()
+        onFileChanged: reload()
+    }
+
     Variants {
         model: root.integrationWatchPaths
 
@@ -1025,6 +1290,32 @@ Scope {
     }
 
     Process {
+        id: fontReadinessProcess
+        command: Commands.booleanStatusCommand(Commands.settingsFontCommand("mutation-ready", []))
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: root.fontMutationReady = this.text.trim() === "available"
+        }
+    }
+
+    Process {
+        id: fontStatusProcess
+        command: Commands.checkedCommand(Commands.settingsFontCommand("status", []))
+        running: false
+        stdout: StdioCollector { onStreamFinished: root.parseFontStatus(this.text) }
+        stderr: StdioCollector { id: fontStatusError }
+        onRunningChanged: {
+            if (running) return;
+            if (!root.fontStatusParsed) {
+                const error = fontStatusError.text.trim();
+                root.clearFontStatus(error.length > 0 ? error
+                    : "Font helper failed before returning a valid status");
+            }
+            if (root.fontStatusPending) Qt.callLater(root.refreshFontStatus);
+        }
+    }
+
+    Process {
         id: wallpaperStatusProcess
         command: Commands.settingsWallpaperCommand("status", ["--read-only"])
         running: false
@@ -1091,12 +1382,16 @@ Scope {
                     if (root.settingsVisible) {
                         root.refreshWallpaperStatus();
                         root.refreshInventory(true);
+                        root.refreshFontStatus();
                     }
                 } else if (line.startsWith("changed\t")) {
                     root.inventoryWatchReady = false;
                     root.inventoryWatchSawEvent = true;
                     root.inventoryPending = true;
-                    if (root.settingsVisible) root.refreshWallpaperStatus();
+                    if (root.settingsVisible) {
+                        root.refreshWallpaperStatus();
+                        root.refreshFontStatus();
+                    }
                 }
             }
         }
@@ -1255,6 +1550,15 @@ Scope {
         onRunningChanged: if (!running && root.wallpaperBusy) root.finishWallpaperAction()
     }
 
+    Process {
+        id: fontActionProcess
+        command: ["sh", "-c", "exit 1"]
+        running: false
+        stdout: StdioCollector { onStreamFinished: root.parseFontAction(this.text) }
+        stderr: StdioCollector { onStreamFinished: root.fontActionError = this.text.trim() }
+        onRunningChanged: if (!running && root.fontBusy) root.finishFontAction()
+    }
+
     Timer {
         id: previewZeroRetryTimer
         interval: 250
@@ -1279,6 +1583,20 @@ Scope {
         interval: 100
         repeat: false
         onTriggered: root.refreshAll()
+    }
+
+    Timer {
+        id: fontChangeSettleTimer
+        interval: 100
+        repeat: false
+        onTriggered: root.refreshFontStatus()
+    }
+
+    Timer {
+        id: fontStatusRetryTimer
+        interval: 250
+        repeat: false
+        onTriggered: root.refreshFontStatus()
     }
 
     Timer {
@@ -1333,6 +1651,17 @@ Scope {
                 Qt.callLater(root.refreshPreviewStatus);
                 Qt.callLater(root.refreshSnapshot);
             }
+        }
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.settingsVisible && root.fontPreviewState === "active"
+            && root.fontPreviewRemaining > 0
+        onTriggered: {
+            root.fontPreviewRemaining--;
+            if (root.fontPreviewRemaining === 0) Qt.callLater(root.refreshFontStatus);
         }
     }
 }

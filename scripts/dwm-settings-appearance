@@ -25,6 +25,7 @@ state_home=${XDG_STATE_HOME:-}
 [[ $config_home == /* ]] || config_home=${HOME:?HOME is required for XDG_CONFIG_HOME fallback}/.config
 [[ $data_home == /* ]] || data_home=${HOME:?HOME is required for XDG_DATA_HOME fallback}/.local/share
 [[ $state_home == /* ]] || state_home=${HOME:?HOME is required for XDG_STATE_HOME fallback}/.local/state
+config_dir=$config_home/dwm-titus
 themes_file=${DWM_APPEARANCE_THEMES_FILE:-$config_home/dwm-titus/themes.toml}
 managed_themes_file=${DWM_APPEARANCE_MANAGED_THEMES_FILE:-$data_home/dwm-titus/config/themes.toml}
 readonly max_themes_size=1048576
@@ -33,6 +34,7 @@ readonly max_error_count=256
 readonly max_entry_count=512
 readonly max_theme_name_length=505
 readonly max_inventory_candidates=256
+readonly max_font_candidates=24
 readonly max_inventory_watch_dirs=128
 readonly max_inventory_scan_seconds=3
 readonly key_separator=$'\034'
@@ -799,8 +801,10 @@ emit_wallpaper_inventory() {
 }
 
 emit_font_inventory() {
-	local family style current_description current_stem current_family='' requested_style
-	local normalized_requested normalized_style count=0 scan_failed=false
+	local family style candidate current_description current_stem current_family='' requested_style
+	local normalized_requested normalized_style resolved count=0 scan_failed=false
+	local font_validation_deadline
+	local -a font_families=()
 	local -A seen=()
 	if ! command -v fc-list >/dev/null 2>&1 || ! command -v fc-match >/dev/null 2>&1; then
 		emit_inventory_selection font unavailable '' '' \
@@ -817,14 +821,14 @@ emit_font_inventory() {
 		current_stem=${current_stem%,}
 		current_stem=${current_stem%"${current_stem##*[![:space:]]}"}
 	fi
-	start_inventory_stream fc-list --format $'%{family[0]}\t%{style[0]}\n'
+	# Match the mutation helper's basic printable-interface charset contract so
+	# every enabled suggestion can be applied without a guaranteed rejection.
+	start_inventory_stream fc-list ':charset=20-7e' --format $'%{family[0]}\t%{style[0]}\n'
 	while IFS=$'\t' read -r -u "$inventory_stream_fd" family style; do
 		if inventory_field_safe "$family" && [[ -z ${seen[$family]+x} ]]; then
 			seen[$family]=1
-			if ((count < max_inventory_candidates)); then
-				emit_inventory_candidate font available "$family" "$family" \
-					'Fontconfig family'
-				((count += 1))
+			if ((${#font_families[@]} < max_inventory_candidates)); then
+				font_families+=("$family")
 			fi
 		fi
 		if [[ $current_stem == "$family" ]]; then
@@ -843,6 +847,29 @@ emit_font_inventory() {
 	done
 	if ! stop_inventory_stream; then
 		scan_failed=true
+	fi
+	if [[ $scan_failed == false ]]; then
+		font_validation_deadline=$((SECONDS + max_inventory_scan_seconds))
+		for candidate in "${font_families[@]}"; do
+			((count < max_font_candidates && SECONDS < font_validation_deadline)) || break
+			resolved=$(timeout 1 fc-match --format '%{family[0]}\n' \
+				"$candidate:charset=20-7e" 2>/dev/null || true)
+			if [[ $resolved == "$candidate" ]] || {
+				case $candidate:$resolved in
+				'MesloLGS Nerd Font Mono:MesloLGS Nerd Font' | \
+					'MesloLGS Nerd Font Mono:MesloLGS NF' | \
+					'MesloLGS Nerd Font:MesloLGS Nerd Font Mono' | \
+					'MesloLGS Nerd Font:MesloLGS NF' | \
+					'MesloLGS NF:MesloLGS Nerd Font Mono' | \
+					'MesloLGS NF:MesloLGS Nerd Font') true ;;
+				*) false ;;
+				esac
+			} then
+				emit_inventory_candidate font available "$candidate" "$candidate" \
+					'Exact Fontconfig family'
+				((count += 1))
+			fi
+		done
 	fi
 	if [[ $scan_failed == true ]]; then
 		emit_inventory_selection font unavailable "$current_stem" "$current_description" \
@@ -1212,7 +1239,9 @@ arm_parent_exit_watch() {
 }
 
 watch_inventory() {
-	local root directory wallpaper_dir wallpaper_helper wallpaper_status wallpaper_protocol line resolved_wallpaper
+	local root directory wallpaper_dir wallpaper_helper wallpaper_status wallpaper_protocol line resolved_wallpaper event_path
+	local event_types canonical_event_path canonical_config_dir canonical_state_base
+	local canonical_appearance_state_dir canonical_font_state_dir
 	local record field2 selected_wallpaper field4 field5 extra
 	local ready_attempt=0 status=0 event inventory_watch_target_accepted=false
 	local -a inventory_watch_dirs=()
@@ -1226,6 +1255,10 @@ watch_inventory() {
 		printf 'dwm-settings-appearance: readlink is required for safe inventory watching\n' >&2
 		return 1
 	}
+	canonical_config_dir=$(readlink -m -- "$config_dir") || return 1
+	canonical_state_base=$(readlink -m -- "$state_home/dwm-titus") || return 1
+	canonical_appearance_state_dir=$(readlink -m -- "$state_home/dwm-titus/appearance") || return 1
+	canonical_font_state_dir=$(readlink -m -- "$state_home/dwm-titus/appearance/font") || return 1
 	arm_parent_exit_watch
 	wallpaper_dir=${DWM_APPEARANCE_WALLPAPER_DIR:-${HOME:?HOME is required}/Pictures/backgrounds}
 	# Add every required state root before optional descendants so a large
@@ -1353,6 +1386,17 @@ watch_inventory() {
 	printf 'ready\tinventory\n'
 	while :; do
 		if IFS= read -r -t 1 event <&"$inventory_watch_fd"; then
+			event_types=${event%%$'\t'*}
+			event_path=${event#*$'\t'}
+			case $event_path in
+			"$canonical_config_dir"/.font-exchange-a.* | "$canonical_config_dir"/.font-exchange-b.*) continue ;;
+			esac
+			if [[ ,$event_types, == *,ATTRIB,* && ,$event_types, == *,ISDIR,* ]]; then
+				canonical_event_path=$(readlink -m -- "$event_path") || canonical_event_path=
+				case $canonical_event_path in
+				"$canonical_state_base" | "$canonical_appearance_state_dir" | "$canonical_font_state_dir") continue ;;
+				esac
+			fi
 			printf 'changed\t%s\n' "$event"
 			return
 		fi

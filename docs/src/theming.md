@@ -146,3 +146,28 @@ dwm-settings-wallpaper keep "$token"
 Use `dwm-settings-wallpaper reset` to return to the session's random-fill
 default. If a saved image is removed, login remains usable and falls back to
 that default until another image is selected or the setting is reset.
+
+---
+## Fonts and Text Size
+
+Open **Settings -> Appearance** to select an installed Fontconfig family and a
+managed shell text scale from 80, 90, 100, 110, 125, or 150 percent. The icon
+font remains the shipped Meslo Nerd Font even when ordinary interface text uses
+another family, so changing fonts cannot remove panel or menu glyphs.
+
+Preview changes for 30 seconds before keeping them, or apply and reset from a
+terminal:
+
+```bash
+token="font-$$"
+dwm-settings-font preview "$token" 30 "Noto Sans" 1.25
+dwm-settings-font keep "$token"
+
+dwm-settings-font apply "Noto Sans" 1.10
+dwm-settings-font reset
+```
+
+The setting owns only `font.conf` under the dwm-titus XDG configuration
+directory. A malformed file falls back to the existing Meslo family at 100
+percent without preventing shell startup. GTK and Qt application font policy
+is intentionally deferred to the separate toolkit-control slice.

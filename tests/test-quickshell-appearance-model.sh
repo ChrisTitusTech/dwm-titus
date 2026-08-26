@@ -4,11 +4,16 @@ set -eu
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 shell_qml=$repo/config/quickshell/shell.qml
 theme=$repo/config/quickshell/core/Theme.qml
+icon_text=$repo/config/quickshell/core/IconText.qml
+panel=$repo/config/quickshell/panel/DwmPanel.qml
 commands=$repo/config/quickshell/core/Commands.qml
 model=$repo/config/quickshell/appearance/AppearanceModel.qml
 settings_model=$repo/config/quickshell/settings/SettingsModel.qml
 settings_window=$repo/config/quickshell/settings/SettingsWindow.qml
 pane=$repo/config/quickshell/settings/AppearanceSettingsPane.qml
+display_pane=$repo/config/quickshell/settings/DisplaySettingsPane.qml
+input_pane=$repo/config/quickshell/settings/InputSettingsPane.qml
+network_pane=$repo/config/quickshell/settings/NetworkSettingsPane.qml
 
 # Syntax is validated here; executable state and lifecycle are exercised by
 # test-quickshell-settings-xvfb.sh. The assertions below protect module wiring
@@ -25,6 +30,7 @@ grep -Fq 'root.settingsModel.selectedSectionId === "appearance"' "$settings_wind
 grep -Fq 'capability.id !== "themes"' "$settings_window"
 
 grep -Fq 'function settingsAppearanceCommand(action, args)' "$commands"
+grep -Fq 'function settingsFontCommand(action, args)' "$commands"
 grep -Fq 'function settingsWallpaperCommand(action, args)' "$commands"
 grep -Fq 'function settingsThemeCommand(action, args)' "$commands"
 grep -Fq 'function booleanStatusCommand(command)' "$commands"
@@ -42,7 +48,7 @@ grep -Fq 'Commands.checkedCommand(Commands.settingsThemeCommand(action, args))' 
 grep -Fq 'Commands.settingsThemeCommand("mutation-ready", [])' "$model"
 grep -Fq 'Theme.applyAppearanceColors(colors, darkMode)' "$model"
 grep -Fq 'watchChanges: true' "$model"
-test "$(grep -Fc 'watchChanges: true' "$model")" -eq 3
+test "$(grep -Fc 'watchChanges: true' "$model")" -eq 5
 grep -Fq 'model: root.integrationWatchPaths' "$model"
 grep -Fq 'Commands.settingsAppearanceCommand("inventory", [])' "$model"
 if grep -Fq 'Commands.checkedCommand(Commands.settingsAppearanceCommand("inventory", []))' \
@@ -72,6 +78,40 @@ grep -Fq 'inventoryWatchProcess.running = false' "$model"
 grep -Fq 'compositorWatchProcess.running = false' "$model"
 grep -Fq 'root.inventoryCandidates = candidates' "$model"
 grep -Fq 'candidate.id === "wallpaper"' "$model"
+grep -Fq 'candidate.id === "font"' "$model"
+grep -Fq 'Commands.checkedCommand(Commands.settingsFontCommand("status", []))' "$model"
+grep -Fq 'Commands.settingsFontCommand("mutation-ready", [])' "$model"
+grep -Fq 'Commands.checkedCommand(Commands.settingsFontCommand(action, args))' "$model"
+grep -Fq 'function previewFont(family, scale)' "$model"
+grep -Fq 'function applyFont(family, scale)' "$model"
+grep -Fq 'function resetFont()' "$model"
+grep -Fq 'Theme.applyFontPreferences(root.fontFamily, root.fontScale)' "$model"
+grep -Fq 'root.fontStatusRetryAttempts = 0;' "$model"
+grep -Fq 'root.fontStatusRetryAttempts < 3' "$model"
+grep -Fq 'fontStatusRetryTimer.restart();' "$model"
+grep -Fq 'id: fontStatusRetryTimer' "$model"
+grep -Fq 'root.fontMutationReady = false;' "$model"
+test "$(grep -Fc '!root.fontMutationReady || fontReadinessProcess.running' "$model")" -eq 3
+grep -Fq 'root.fontPreviewToken = root.fontActionToken;' "$model"
+grep -Fq 'root.fontPreviewRemaining = 30;' "$model"
+finish_font_action=$(sed -n '/function finishFontAction()/,/^    }/p' "$model")
+printf '%s\n' "$finish_font_action" |
+	grep -Fq 'root.fontActionKind === "keep" || root.fontActionKind === "revert"'
+printf '%s\n' "$finish_font_action" | grep -Fq '|| root.fontActionKind === "abandon"'
+printf '%s\n' "$finish_font_action" | grep -Fq 'root.fontPreviewState = "none";'
+printf '%s\n' "$finish_font_action" | grep -Fq 'root.fontPreviewToken = "";'
+printf '%s\n' "$finish_font_action" | grep -Fq 'root.fontPreviewFamily = "";'
+printf '%s\n' "$finish_font_action" | grep -Fq 'root.fontPreviewScale = 1.0;'
+printf '%s\n' "$finish_font_action" | grep -Fq 'root.fontPreviewRemaining = 0;'
+printf '%s\n' "$finish_font_action" | grep -Fq 'root.fontPreviewDetail = "";'
+if sed -n '/function clearFontStatus(detail)/,/^    }/p' "$model" |
+	grep -Fq 'Theme.applyFontPreferences'; then
+	printf 'Transient font status failure still repaints the shell with fallback preferences\n' >&2
+	exit 1
+fi
+test "$(grep -Fc 'root.refreshFontStatus();' "$model")" -eq 3
+grep -Fq 'running: root.settingsVisible && root.fontPreviewState === "active"' "$model"
+grep -Fq 'root.fontPreviewRemaining--' "$model"
 grep -Fq 'Commands.settingsWallpaperCommand("status", ["--read-only"])' "$model"
 if grep -Fq 'Commands.checkedCommand(Commands.settingsWallpaperCommand("status"' "$model"; then
 	printf 'Wallpaper status remained behind the orphan-prone checked-command wrapper\n' >&2
@@ -166,6 +206,21 @@ grep -Fq 'const wasActive = root.previewState === "active"' "$model"
 grep -Fq 'Theme preview completed outside Settings' "$model"
 
 grep -Fq 'function applyAppearanceColors(colors, darkMode)' "$theme"
+grep -Fq 'function applyFontPreferences(family, scale)' "$theme"
+grep -Fq 'readonly property string iconFontFamily: "MesloLGS Nerd Font Mono"' "$theme"
+grep -Fq 'readonly property int panelIconFontSize: 13' "$theme"
+grep -Fq 'font.pixelSize: Theme.panelIconFontSize + 1' "$icon_text"
+test "$(grep -Fc 'Theme.panelIconFontSize' "$panel")" -eq 5
+grep -Fq 'Math.round(13 * fontScale)' "$theme"
+test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$display_pane")" -eq 9
+test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$input_pane")" -eq 5
+grep -Fq 'font.pixelSize: Theme.inputFontSize' "$network_pane"
+grep -Fq 'passwordInput.implicitHeight + 2 * Theme.spacingSm' "$network_pane"
+grep -Fq 'xPositionInput.implicitHeight + 14' "$display_pane"
+grep -Fq 'yPositionInput.implicitHeight + 14' "$display_pane"
+grep -Fq 'profileNameInput.implicitHeight + 16' "$display_pane"
+grep -Fq 'confirmationRow.implicitHeight + 16' "$display_pane"
+grep -Fq 'settingInput.implicitHeight + 14' "$input_pane"
 if grep -Eq 'FileView|themes\.toml|function applyThemes' "$theme"; then
 	printf 'Theme.qml still owns theme file parsing instead of the shared AppearanceModel\n' >&2
 	exit 1
@@ -183,6 +238,12 @@ grep -Fq '|| root.appearanceModel.wallpaperPreviewActionBusy' "$pane"
 grep -Fq 'enabled: !root.wallpaperPreviewControlsBusy' "$pane"
 grep -Fq '? !root.wallpaperPreviewControlsBusy : !root.wallpaperControlsBusy' "$pane"
 grep -Fq 'label: "Reset wallpaper"' "$pane"
+grep -Fq 'label: "Managed shell font"' "$pane"
+grep -Fq 'Preview font for 30 seconds' "$pane"
+grep -Fq 'onActivated: root.appearanceModel.keepFontPreview()' "$pane"
+grep -Fq 'onActivated: root.appearanceModel.revertFontPreview()' "$pane"
+grep -Fq 'onActivated: root.appearanceModel.abandonFontPreview()' "$pane"
+grep -Fq 'label: "Reset font"' "$pane"
 grep -Fq 'label: "Repair wallpaper state"' "$pane"
 test "$(grep -Fc 'root.appearanceModel.wallpaperPreviewToken.length > 0' "$pane")" -eq 2
 grep -Fq 'root.appearanceModel.wallpaperResetReady' "$pane"
@@ -212,6 +273,9 @@ grep -Fq 'root.appearanceModel.errors' "$pane"
 grep -Fq 'function appearanceIntegrationState(integrationId: string): string' "$shell_qml"
 grep -Fq 'function appearanceWallpaperReconcile(): void' "$shell_qml"
 grep -Fq 'function appearanceWallpaperStatusBusy(): bool' "$shell_qml"
+grep -Fq 'function appearanceFontFamily(): string' "$shell_qml"
+grep -Fq 'function appearanceFontScale(): string' "$shell_qml"
+grep -Fq 'function appearanceFontPreviewState(): string' "$shell_qml"
 test "$(grep -Fc 'root.selectedTheme.valid && root.selectedTheme.mutable' "$pane")" -eq 2
 
 if grep -ERq 'Quickshell\.(Wayland|Hyprland)|WlrLayershell|hyprctl|uwsm-app|wl-copy|wl-paste' \

@@ -57,6 +57,11 @@ Acceptance:
 - [ ] Add bounded user-session controls for supported font, text-size, cursor,
   icon, GTK, and Qt choices. Delegate advanced toolkit editing to a trusted
   Fedora tool where a narrow project contract would be incomplete.
+  - [x] Persist managed-shell font family and bounded text scale with preview,
+    automatic rollback, reset, external-change protection, and event-driven
+    root-model updates.
+  - [ ] Add cursor, icon, GTK, and Qt mutation controls without overwriting
+    unrelated toolkit configuration.
 - [ ] Move the existing in-memory panel-widget visibility controls onto shared,
   versioned user state with Settings integration, safe defaults, and migration
   that preserves the current Control Center behavior.

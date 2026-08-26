@@ -12,12 +12,17 @@ Flickable {
     property string selectedThemeId: ""
     property string selectedWallpaperPath: ""
     property string selectedWallpaperFit: "fill"
+    property string selectedFontFamily: "MesloLGS Nerd Font Mono"
+    property real selectedFontScale: 1.0
     readonly property var selectedTheme: root.appearanceModel.themeById(root.selectedThemeId)
-    readonly property bool appearanceBusy: root.appearanceModel.busy || root.appearanceModel.wallpaperBusy
+    readonly property bool appearanceBusy: root.appearanceModel.busy
+        || root.appearanceModel.wallpaperBusy || root.appearanceModel.fontBusy
     readonly property bool wallpaperControlsBusy: root.appearanceBusy
         || root.appearanceModel.wallpaperStatusBusy
     readonly property bool wallpaperPreviewControlsBusy: root.appearanceBusy
         || root.appearanceModel.wallpaperPreviewActionBusy
+    readonly property bool fontControlsBusy: root.appearanceBusy || root.appearanceModel.fontStatusBusy
+        || root.appearanceModel.wallpaperStatusBusy
     contentWidth: width
     contentHeight: content.implicitHeight
     clip: true
@@ -100,13 +105,22 @@ Flickable {
         root.ensureWallpaperSelection();
     }
 
+    function syncFontSelection() {
+        if (root.appearanceModel.fontFamily.length > 0)
+            root.selectedFontFamily = root.appearanceModel.fontFamily;
+        if (root.appearanceModel.fontScale >= 0.8 && root.appearanceModel.fontScale <= 1.5)
+            root.selectedFontScale = root.appearanceModel.fontScale;
+    }
+
     onVisibleChanged: if (visible) {
         root.ensureSelection();
         root.ensureWallpaperSelection();
+        root.syncFontSelection();
     }
     Component.onCompleted: {
         root.ensureSelection();
         root.ensureWallpaperSelection();
+        root.syncFontSelection();
     }
 
     Connections {
@@ -119,6 +133,8 @@ Flickable {
                     && root.appearanceModel.validWallpaperFit(root.appearanceModel.wallpaperFit))
                 root.selectedWallpaperFit = root.appearanceModel.wallpaperFit;
         }
+        function onFontFamilyChanged() { root.syncFontSelection(); }
+        function onFontScaleChanged() { root.syncFontSelection(); }
     }
 
     component StatusCard: Rectangle {
@@ -512,6 +528,178 @@ Flickable {
                 enabled: root.appearanceModel.wallpaperResetReady && !root.wallpaperControlsBusy
                     && root.appearanceModel.wallpaperPreviewState === "none"
                 onActivated: root.appearanceModel.resetWallpaper()
+            }
+        }
+
+        SectionLabel { label: "Font and text size" }
+
+        StatusCard {
+            label: "Managed shell font"
+            statusState: root.appearanceModel.fontState
+            value: Math.round(root.appearanceModel.fontScale * 100) + "%"
+            detail: root.appearanceModel.fontDetail + " / " + root.appearanceModel.fontFamily
+        }
+
+        StatusCard {
+            visible: root.appearanceModel.fontProviderState !== "available"
+                || !root.appearanceModel.fontMutationReady
+            label: "Font changes unavailable"
+            statusState: root.appearanceModel.fontProviderState === "available"
+                ? "restricted" : root.appearanceModel.fontProviderState
+            value: "Protected"
+            detail: root.appearanceModel.fontProviderState !== "available"
+                ? root.appearanceModel.fontProviderDetail
+                : "The installed font helper cannot safely update user state"
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.max(Theme.controlHeight, fontInput.implicitHeight + 14)
+            color: Theme.controlNormalFill
+            border.color: fontInput.activeFocus ? Theme.controlFocusBorder : Theme.controlNormalBorder
+            border.width: fontInput.activeFocus ? Theme.controlFocusBorderWidth : Theme.controlBorderWidth
+            radius: Theme.controlRadius
+
+            TextInput {
+                id: fontInput
+                anchors.fill: parent
+                anchors.margins: 7
+                text: root.selectedFontFamily
+                color: Theme.textStrong
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBodySize
+                activeFocusOnTab: true
+                selectByMouse: true
+                verticalAlignment: TextInput.AlignVCenter
+                onTextEdited: root.selectedFontFamily = text
+            }
+        }
+
+        UiText {
+            Layout.fillWidth: true
+            text: "Enter an exact installed Fontconfig family. Suggestions are bounded to the first 24 discovered families."
+            color: Theme.menuMutedText
+            wrapMode: Text.WordWrap
+        }
+
+        Flow {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSm
+
+            Repeater {
+                model: root.appearanceModel.fontCandidates.slice(0, 24)
+                delegate: ShellButton {
+                    id: fontButton
+                    required property var modelData
+                    label: fontButton.modelData.label
+                        + (fontButton.modelData.token === root.selectedFontFamily ? " / Selected" : "")
+                    enabled: !root.fontControlsBusy && fontButton.modelData.state === "available"
+                    onActivated: root.selectedFontFamily = fontButton.modelData.token
+                }
+            }
+        }
+
+        SectionLabel { label: "Text scale" }
+
+        Flow {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSm
+
+            Repeater {
+                model: [0.8, 0.9, 1.0, 1.1, 1.25, 1.5]
+                delegate: ShellButton {
+                    id: scaleButton
+                    required property real modelData
+                    label: Math.round(scaleButton.modelData * 100) + "%"
+                        + (Math.abs(scaleButton.modelData - root.selectedFontScale) < 0.001
+                            ? " / Selected" : "")
+                    enabled: !root.fontControlsBusy
+                    onActivated: root.selectedFontScale = scaleButton.modelData
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            visible: root.appearanceModel.fontPreviewState !== "none"
+            Layout.preferredHeight: fontPreviewColumn.implicitHeight + Theme.spacingLg * 2
+            color: Theme.controlNormalFill
+            border.color: root.appearanceModel.fontPreviewState === "failed"
+                ? Theme.danger : Theme.warning
+            border.width: Theme.controlFocusBorderWidth
+            radius: Theme.controlRadius
+
+            ColumnLayout {
+                id: fontPreviewColumn
+                anchors.fill: parent
+                anchors.margins: Theme.spacingLg
+                spacing: Theme.spacingSm
+
+                UiText {
+                    Layout.fillWidth: true
+                    text: root.appearanceModel.fontPreviewState === "failed"
+                        ? "Font preview recovery needs attention"
+                        : "Font preview / " + root.appearanceModel.fontPreviewRemaining
+                            + "s remaining / " + root.appearanceModel.fontPreviewFamily
+                            + " / " + Math.round(root.appearanceModel.fontPreviewScale * 100) + "%"
+                    color: root.appearanceModel.fontPreviewState === "failed"
+                        ? Theme.danger : Theme.warning
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                }
+                UiText {
+                    Layout.fillWidth: true
+                    text: root.appearanceModel.fontPreviewDetail
+                    color: Theme.menuText
+                    wrapMode: Text.WordWrap
+                }
+                RowLayout {
+                    ShellButton {
+                        visible: root.appearanceModel.fontPreviewState === "active"
+                        label: "Keep font"
+                        enabled: !root.fontControlsBusy
+                        onActivated: root.appearanceModel.keepFontPreview()
+                    }
+                    ShellButton {
+                        label: "Restore previous"
+                        enabled: !root.fontControlsBusy
+                        onActivated: root.appearanceModel.revertFontPreview()
+                    }
+                    ShellButton {
+                        visible: root.appearanceModel.fontPreviewState === "failed"
+                        label: "Accept external state"
+                        danger: true
+                        enabled: !root.fontControlsBusy
+                        onActivated: root.appearanceModel.abandonFontPreview()
+                    }
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSm
+            ShellButton {
+                label: "Preview font for 30 seconds"
+                enabled: root.appearanceModel.fontMutationReady
+                    && root.selectedFontFamily.trim().length > 0 && !root.fontControlsBusy
+                    && root.appearanceModel.fontPreviewState === "none"
+                onActivated: root.appearanceModel.previewFont(
+                    root.selectedFontFamily.trim(), root.selectedFontScale)
+            }
+            ShellButton {
+                label: "Apply font"
+                enabled: root.appearanceModel.fontMutationReady
+                    && root.selectedFontFamily.trim().length > 0 && !root.fontControlsBusy
+                    && root.appearanceModel.fontPreviewState === "none"
+                onActivated: root.appearanceModel.applyFont(
+                    root.selectedFontFamily.trim(), root.selectedFontScale)
+            }
+            ShellButton {
+                label: "Reset font"
+                enabled: root.appearanceModel.fontMutationReady && !root.fontControlsBusy
+                    && root.appearanceModel.fontPreviewState === "none"
+                onActivated: root.appearanceModel.resetFont()
             }
         }
 
