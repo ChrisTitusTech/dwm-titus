@@ -456,8 +456,7 @@ Scope {
     function refreshWallpaperStatus() {
         if (!root.settingsVisible) return;
         if (wallpaperReadinessProcess.running || wallpaperStatusProcess.running
-                || wallpaperActionProcess.running || inventoryProcess.running
-                || (inventoryWatchProcess.running && !root.inventoryWatchReady)) {
+                || wallpaperActionProcess.running || inventoryProcess.running) {
             root.wallpaperStatusPending = true;
             return;
         }
@@ -516,6 +515,7 @@ Scope {
     }
 
     function startInventoryWatcher(restartIfRunning) {
+        if (!root.settingsVisible) return;
         if (inventoryWatchProcess.running) {
             if (restartIfRunning === true) root.inventoryWatchRestartPending = true;
             return;
