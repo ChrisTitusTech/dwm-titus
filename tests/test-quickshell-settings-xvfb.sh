@@ -1363,9 +1363,20 @@ wallpaper_remaining_after=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_
 # Settings recovery action performs writable reconciliation and rearms it.
 test_stage='validating wallpaper watchdog reconciliation'
 wallpaper_preview_meta=$state_home/dwm-titus/appearance/wallpaper/nested-wallpaper.meta
-wallpaper_watchdog_pid=$(awk -F= '$1 == "pid" { print $2; exit }' "$wallpaper_preview_meta")
-wallpaper_watchdog_identity=$(capture_process_identity "$wallpaper_watchdog_pid")
-kill -TERM "$wallpaper_watchdog_pid"
+wallpaper_watchdog_identity=$(awk -F= '
+	$1 == "pid" { pid = $2 }
+	$1 == "pid_start" { start = $2 }
+	END { if (pid != "" && start != "") print pid ":" start }
+' "$wallpaper_preview_meta")
+if [ -z "$wallpaper_watchdog_identity" ]; then
+	printf 'Wallpaper watchdog metadata omitted process identity: %s\n' \
+		"$wallpaper_preview_meta" >&2
+	exit 1
+fi
+wallpaper_watchdog_pid=${wallpaper_watchdog_identity%%:*}
+if process_identity_alive "$wallpaper_watchdog_identity"; then
+	kill -TERM "$wallpaper_watchdog_pid" 2>/dev/null || true
+fi
 i=0
 while [ "$i" -lt 100 ]; do
 	! process_identity_alive "$wallpaper_watchdog_identity" && break
