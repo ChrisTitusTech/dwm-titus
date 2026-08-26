@@ -67,7 +67,7 @@ test_stage='initializing fixture'
 capture_process_identity() (
 	identity_pid=$1
 	[ -r "/proc/$identity_pid/stat" ] || return 1
-	IFS= read -r identity_stat <"/proc/$identity_pid/stat" || return 1
+	IFS= read -r identity_stat 2>/dev/null <"/proc/$identity_pid/stat" || return 1
 	identity_fields=${identity_stat##*) }
 	# The remaining proc stat fields are space-delimited by the kernel.
 	# shellcheck disable=SC2086
@@ -1364,20 +1364,25 @@ wallpaper_remaining_after=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_
 test_stage='validating wallpaper watchdog reconciliation'
 wallpaper_preview_meta=$state_home/dwm-titus/appearance/wallpaper/nested-wallpaper.meta
 wallpaper_watchdog_pid=$(awk -F= '$1 == "pid" { print $2; exit }' "$wallpaper_preview_meta")
+wallpaper_watchdog_identity=$(capture_process_identity "$wallpaper_watchdog_pid")
 kill -TERM "$wallpaper_watchdog_pid"
 i=0
 while [ "$i" -lt 100 ]; do
-	[ ! -r "/proc/$wallpaper_watchdog_pid/stat" ] && break
+	! process_identity_alive "$wallpaper_watchdog_identity" && break
 	i=$((i + 1))
 	sleep 0.05
 done
-[ ! -r "/proc/$wallpaper_watchdog_pid/stat" ]
+if process_identity_alive "$wallpaper_watchdog_identity"; then
+	printf 'Wallpaper watchdog remained active after SIGTERM: %s\n' \
+		"$wallpaper_watchdog_identity" >&2
+	exit 1
+fi
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
 i=0
-while [ "$i" -lt 100 ]; do
+while [ "$i" -lt 200 ]; do
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
 	wallpaper_status_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1386,8 +1391,11 @@ while [ "$i" -lt 100 ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$wallpaper_preview" = failed ]
-[ "$wallpaper_status_busy" = false ]
+if [ "$wallpaper_preview" != failed ] || [ "$wallpaper_status_busy" != false ]; then
+	printf 'Wallpaper watchdog state did not converge: %s / busy=%s\n' \
+		"$wallpaper_preview" "$wallpaper_status_busy" >&2
+	exit 1
+fi
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperReconcile >/dev/null
 i=0
