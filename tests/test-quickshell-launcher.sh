@@ -159,6 +159,7 @@ DESKTOP
 output=$(
 	LANG=en_US.UTF-8 \
 		HOME="$work/home" \
+		XDG_RUNTIME_DIR=relative-runtime \
 		XDG_DATA_HOME="$work/empty" \
 		XDG_DATA_DIRS="$work/data" \
 		"$repo/scripts/dwm-quickshell-launcher" list
@@ -182,17 +183,130 @@ fi
 cat >"$work/bin/dex" <<'SH'
 #!/bin/sh
 printf '%s\n' "$1" >"$DWM_TEST_DEX_LOG"
+printf '%s\t%s\t%s\n' "${QT_QPA_PLATFORMTHEME:-}" "${XCURSOR_THEME:-}" \
+	"${XCURSOR_SIZE:-}" >"$DWM_TEST_THEME_ENV_LOG"
 SH
 chmod +x "$work/bin/dex"
 
+mkdir -p "$work/home/.config/dwm-titus"
+mkdir -p "$work/runtime"
+printf '%s\n' 'export QT_QPA_PLATFORMTHEME=gtk3' \
+	'export XCURSOR_THEME=Cursor-One' 'export XCURSOR_SIZE=32' \
+	>"$work/home/.config/dwm-titus/theme-env.sh"
+
 DWM_TEST_DEX_LOG="$work/dex.log" \
+	DWM_TEST_THEME_ENV_LOG="$work/theme-env.log" \
+	HOME="$work/home" \
+	XDG_CONFIG_HOME="$work/home/.config" \
+	XDG_RUNTIME_DIR="$work/runtime" \
 	PATH="$work/bin:$PATH" \
 	"$repo/scripts/dwm-quickshell-launcher" launch "$work/data/applications/visible.desktop"
 assert_file_line "$work/dex.log" "$work/data/applications/visible.desktop"
+assert_file_line "$work/theme-env.log" "$(printf 'gtk3\tCursor-One\t32')"
+
+mkdir -p "$work/relative-config/dwm-titus"
+printf '%s\n' 'export QT_QPA_PLATFORMTHEME=qt6ct' \
+	'export XCURSOR_THEME=Wrong-Cursor' 'export XCURSOR_SIZE=48' \
+	>"$work/relative-config/dwm-titus/theme-env.sh"
+(
+	cd "$work"
+	DWM_TEST_DEX_LOG="$work/dex-relative-config.log" \
+		DWM_TEST_THEME_ENV_LOG="$work/theme-env-relative-config.log" \
+		HOME="$work/home" \
+		XDG_CONFIG_HOME=relative-config \
+		XDG_RUNTIME_DIR="$work/runtime" \
+		PATH="$work/bin:$PATH" \
+		"$repo/scripts/dwm-session-launch" dex \
+		"$work/data/applications/visible.desktop"
+)
+assert_file_line "$work/theme-env-relative-config.log" "$(printf 'gtk3\tCursor-One\t32')"
+
+exec 9>"$work/runtime/dwm-theme-apply.lock"
+flock 9
+printf '%s\n' 'export QT_QPA_PLATFORMTHEME=qt6ct' \
+	'export XCURSOR_THEME=Uncommitted-Cursor' 'export XCURSOR_SIZE=48' \
+	>"$work/home/.config/dwm-titus/theme-env.sh"
+rm -f "$work/theme-env-locked.log" "$work/dex-locked.log"
+DWM_TEST_DEX_LOG="$work/dex-locked.log" \
+	DWM_TEST_THEME_ENV_LOG="$work/theme-env-locked.log" \
+	HOME="$work/home" \
+	XDG_CONFIG_HOME="$work/home/.config" \
+	XDG_RUNTIME_DIR="$work/runtime" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-launcher" launch "$work/data/applications/visible.desktop" &
+locked_launcher_pid=$!
+attempts=0
+while [ "$attempts" -lt 5 ]; do
+	kill -0 "$locked_launcher_pid" 2>/dev/null || break
+	[ ! -e "$work/theme-env-locked.log" ] || break
+	attempts=$((attempts + 1))
+	sleep 0.1
+done
+[ ! -e "$work/theme-env-locked.log" ]
+printf '%s\n' 'export QT_QPA_PLATFORMTHEME=gtk3' \
+	'export XCURSOR_THEME=Cursor-One' 'export XCURSOR_SIZE=32' \
+	>"$work/home/.config/dwm-titus/theme-env.sh"
+flock -u 9
+exec 9>&-
+wait "$locked_launcher_pid"
+assert_file_line "$work/theme-env-locked.log" "$(printf 'gtk3\tCursor-One\t32')"
+
+exec 9>"$work/runtime/dwm-theme-apply.lock"
+flock 9
+QT_QPA_PLATFORMTHEME=parent-qt XCURSOR_THEME=Parent-Cursor XCURSOR_SIZE=24 \
+	DWM_TEST_DEX_LOG="$work/dex-timeout.log" \
+	DWM_TEST_THEME_ENV_LOG="$work/theme-env-timeout.log" \
+	HOME="$work/home" \
+	XDG_CONFIG_HOME="$work/home/.config" \
+	XDG_RUNTIME_DIR="$work/runtime" \
+	PATH="$work/bin:$PATH" \
+	timeout 4 "$repo/scripts/dwm-session-launch" dex \
+	"$work/data/applications/visible.desktop"
+flock -u 9
+exec 9>&-
+assert_file_line "$work/theme-env-timeout.log" "$(printf 'parent-qt\tParent-Cursor\t24')"
+
+printf '%s\n' 'export QT_QPA_PLATFORMTHEME="unterminated' \
+	>"$work/home/.config/dwm-titus/theme-env.sh"
+QT_QPA_PLATFORMTHEME=parent-qt XCURSOR_THEME=Parent-Cursor XCURSOR_SIZE=24 \
+	DWM_TEST_DEX_LOG="$work/dex-malformed.log" \
+	DWM_TEST_THEME_ENV_LOG="$work/theme-env-malformed.log" \
+	HOME="$work/home" \
+	XDG_CONFIG_HOME="$work/home/.config" \
+	XDG_RUNTIME_DIR="$work/runtime" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-launcher" launch "$work/data/applications/visible.desktop"
+assert_file_line "$work/dex-malformed.log" "$work/data/applications/visible.desktop"
+assert_file_line "$work/theme-env-malformed.log" "$(printf 'parent-qt\tParent-Cursor\t24')"
+
+mv "$work/home/.config/dwm-titus/theme-env.sh" "$work/theme-env.saved"
+mkfifo "$work/home/.config/dwm-titus/theme-env.sh"
+timeout 3 env \
+	QT_QPA_PLATFORMTHEME=parent-qt XCURSOR_THEME=Parent-Cursor XCURSOR_SIZE=24 \
+	DWM_TEST_DEX_LOG="$work/dex-fifo.log" \
+	DWM_TEST_THEME_ENV_LOG="$work/theme-env-fifo.log" \
+	HOME="$work/home" \
+	XDG_CONFIG_HOME="$work/home/.config" \
+	XDG_RUNTIME_DIR="$work/runtime" \
+	PATH="$work/bin:$PATH" \
+	"$repo/scripts/dwm-quickshell-launcher" launch "$work/data/applications/visible.desktop"
+assert_file_line "$work/dex-fifo.log" "$work/data/applications/visible.desktop"
+assert_file_line "$work/theme-env-fifo.log" "$(printf 'parent-qt\tParent-Cursor\t24')"
+rm "$work/home/.config/dwm-titus/theme-env.sh"
+mv "$work/theme-env.saved" "$work/home/.config/dwm-titus/theme-env.sh"
 
 if "$repo/scripts/dwm-quickshell-launcher" launch "$work/data/applications/missing.desktop" 2>"$work/missing.err"; then
 	exit 1
 fi
 grep -Fqx "desktop entry not found: $work/data/applications/missing.desktop" "$work/missing.err"
+
+grep -Fq 'readlink("/proc/self/exe", launcher' "$repo/dwm.c"
+grep -Fq 'memcpy(separator, "/dwm-session-launch"' "$repo/dwm.c"
+grep -Fq 'posix_spawn(NULL, wrapped[0]' "$repo/dwm.c"
+if grep -Fq -- '-DPREFIX=' "$repo/config.mk"; then
+	printf 'DWM still embeds a stale compile-time install prefix\n' >&2
+	exit 1
+fi
+grep -Fq 'scripts/dwm-session-launch' "$repo/Makefile"
 
 printf 'Quickshell launcher helper: PASS\n'

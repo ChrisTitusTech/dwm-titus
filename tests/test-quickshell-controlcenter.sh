@@ -41,6 +41,16 @@ esac
 SH
 chmod +x "$work/bin/quickshell"
 
+cat >"$work/bin/nwg-look" <<'SH'
+#!/bin/sh
+printf 'nwg-look %s\n' "$*" >>"${DWM_TEST_LOG:?}"
+if [ -n "${DWM_TEST_THEME_ENV_LOG:-}" ]; then
+	printf '%s\t%s\t%s\n' "${QT_QPA_PLATFORMTHEME:-}" "${XCURSOR_THEME:-}" \
+		"${XCURSOR_SIZE:-}" >"$DWM_TEST_THEME_ENV_LOG"
+fi
+SH
+chmod +x "$work/bin/nwg-look"
+
 cat >"$work/bin/pkill" <<'SH'
 #!/bin/sh
 printf 'pkill %s\n' "$*" >>"${DWM_TEST_LOG:?}"
@@ -281,13 +291,25 @@ grep -Fq 'theme is unavailable, invalid, or the source is unsafe to mutate: miss
 	"$work/theme-set.err"
 
 mkdir -p "$work/prefix/bin"
-cp "$repo/scripts/dwm-quickshell-controlcenter" "$work/prefix/bin/"
+cp "$repo/scripts/dwm-quickshell-controlcenter" "$repo/scripts/dwm-session-launch" \
+	"$work/prefix/bin/"
 rm "$work/config/dwm-titus/themes.toml"
 installed_themes=$(HOME="$work/home" XDG_CONFIG_HOME="$work/config" \
 	XDG_DATA_HOME="$work/data" "$work/prefix/bin/dwm-quickshell-controlcenter" themes)
 printf '%s\n' "$installed_themes" | grep -Fqx 'active	nord'
 printf '%s\n' "$installed_themes" | grep -Fqx 'available	dracula'
 cp "$work/data/dwm-titus/config/themes.toml" "$work/config/dwm-titus/themes.toml"
+printf '%s\n' 'export QT_QPA_PLATFORMTHEME=qt6ct' \
+	'export XCURSOR_THEME=Custom-Cursor' 'export XCURSOR_SIZE=32' \
+	>"$work/config/dwm-titus/theme-env.sh"
+DWM_TEST_LOG="$work/actions.log" DWM_TEST_SYNC=1 \
+	DWM_TEST_THEME_ENV_LOG="$work/custom-prefix-theme-env.log" \
+	HOME="$work/home" XDG_CONFIG_HOME="$work/config" XDG_RUNTIME_DIR="$work/runtime" \
+	QT_QPA_PLATFORMTHEME=gtk3 XCURSOR_THEME=Old-Cursor XCURSOR_SIZE=24 \
+	PATH="$work/bin:/usr/bin:/bin" \
+	"$work/prefix/bin/dwm-quickshell-controlcenter" action gtk-settings >/dev/null
+grep -Fqx "$(printf 'qt6ct\tCustom-Cursor\t32')" \
+	"$work/custom-prefix-theme-env.log"
 
 rm "$work/config/dwm-titus/themes.toml" "$work/data/dwm-titus/config/themes.toml"
 run_helper theme-set dracula >"$work/theme-set-source.out"

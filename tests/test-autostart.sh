@@ -958,6 +958,10 @@ grep -Fq 'display_process_script' "$repo_dir/scripts/autostart.sh"
 grep -Fq 'display_process_display' "$repo_dir/scripts/autostart.sh"
 grep -Fq 'timeout --signal=TERM --kill-after=2 5' "$repo_dir/scripts/autostart.sh"
 grep -Fq '_resume-preview >/dev/null' "$repo_dir/scripts/autostart.sh"
+# A same-session DWM restart must stop a stale managed xsettingsd even after
+# recovery removed the generated configuration.
+# shellcheck disable=SC2016
+grep -Fq 'if [ -n "$xsettings_helper" ]; then' "$repo_dir/scripts/autostart.sh"
 # shellcheck disable=SC2016
 grep -Fq '"$wallpaper_helper" session-apply >/dev/null 2>&1 ||' \
 	"$repo_dir/scripts/autostart.sh"

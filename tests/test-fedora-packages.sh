@@ -67,6 +67,14 @@ fi
 printf '%s\n' "$installed_provider_packages" | grep -Fxq upower
 printf '%s\n' "$installed_provider_packages" | grep -Fxq dbus-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq inotify-tools
+printf '%s\n' "$installed_provider_packages" | grep -Fxq xsettingsd
+grep -Fq 'check_cmd "xsettingsd"' "$repo/scripts/check-deps.sh"
+[[ $("$repo/scripts/dwm-packages.sh" fedora source-update) == xsettingsd ]]
+if "$repo/scripts/dwm-packages.sh" fedora unsupported >"$work/unsupported"; then
+	printf 'Unsupported package-map profile unexpectedly passed.\n' >&2
+	exit 1
+fi
+[[ ! -s $work/unsupported ]]
 
 missing_provider_packages=$(PATH="$work/bin:$PATH" DWM_TEST_PPD_PROVIDER=0 bash -c '
 	. "$1"

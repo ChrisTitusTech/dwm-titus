@@ -1,6 +1,15 @@
 #!/bin/sh
 set -eu
 
+script_dir=$(
+	unset CDPATH
+	cd -- "$(dirname -- "$0")" && pwd
+)
+session_launcher=$script_dir/dwm-session-launch
+if [ ! -x "$session_launcher" ]; then
+	session_launcher=$(command -v dwm-session-launch 2>/dev/null || true)
+fi
+
 usage() {
 	printf 'usage: %s list|launch <desktop-file>\n' "$0" >&2
 }
@@ -271,6 +280,9 @@ fallback_launch() {
 }
 
 launch_background() {
+	if [ -n "$session_launcher" ]; then
+		set -- "$session_launcher" "$@"
+	fi
 	if command -v setsid >/dev/null 2>&1; then
 		setsid "$@" >/dev/null 2>&1 &
 	else

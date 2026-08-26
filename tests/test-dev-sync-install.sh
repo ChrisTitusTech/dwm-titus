@@ -18,8 +18,9 @@ state_home="$test_home/.local/state"
 data_dir="$xdg_data_home/dwm-titus"
 output="$work/output"
 install_sources="$work/install-sources"
+test_bin="$work/bin"
 
-mkdir -p "$test_repo" "$prefix/bin" "$prefix/libexec/dwm-titus" \
+mkdir -p "$test_repo" "$test_bin" "$prefix/bin" "$prefix/libexec/dwm-titus" \
 	"$manprefix/man1" "$xsessions_dir" \
 	"$data_root/icons" "$data_root/licenses/dwm-titus/capitaine-cursors" \
 	"$config_home/systemd/user" "$data_dir"
@@ -62,9 +63,13 @@ for cursor_source in "$test_repo"/assets/cursors/Capitaine-Cursors*; do
 done
 install -Dm644 "$test_repo/assets/cursors/COPYING" \
 	"$data_root/licenses/dwm-titus/capitaine-cursors/COPYING"
+printf '#!/bin/sh\nexit 0\n' >"$test_bin/xsettingsd"
+printf '#!/bin/sh\nexit 0\n' >"$test_bin/dump_xsettings"
+chmod +x "$test_bin/xsettingsd" "$test_bin/dump_xsettings"
 
 run_check() {
-	DWM_DEV_SYNC_SKIP_RUNTIME=1 \
+	PATH="$test_bin:$PATH" \
+		DWM_DEV_SYNC_SKIP_RUNTIME=1 \
 		DWM_DEV_SYNC_SKIP_PRIVILEGED_TRUST=1 \
 		USER_HOME="$test_home" \
 		PREFIX="$prefix" \
@@ -74,12 +79,105 @@ run_check() {
 		XDG_CONFIG_HOME="$config_home" \
 		XDG_DATA_HOME="$xdg_data_home" \
 		XDG_STATE_HOME="$state_home" \
+		DWM_DEV_SYNC_TEST_MODE="${DWM_DEV_SYNC_TEST_MODE:-0}" \
+		DWM_DEV_SYNC_DESKTOP_FEATURE="${DWM_DEV_SYNC_DESKTOP_FEATURE:-}" \
 		"$test_repo/scripts/dev-sync-install.sh" --check
 }
 
 run_check >"$output"
 grep -Fqx 'All managed files match the checkout.' "$output"
 grep -Fqx 'Runtime validation skipped by DWM_DEV_SYNC_SKIP_RUNTIME=1.' "$output"
+
+mv "$test_bin/xsettingsd" "$test_bin/xsettingsd.missing"
+if run_check >"$output" 2>&1; then
+	printf '%s\n' 'Missing source-update dependency unexpectedly passed.' >&2
+	exit 1
+fi
+grep -Fq 'source-update dependencies are missing' "$output"
+DWM_DEV_SYNC_TEST_MODE=1 DWM_DEV_SYNC_DESKTOP_FEATURE=0 run_check >"$output"
+grep -Fqx 'All managed files match the checkout.' "$output"
+if grep -Fq 'source-update dependencies' "$output"; then
+	printf '%s\n' 'Core-profile check reached desktop dependency reconciliation.' >&2
+	exit 1
+fi
+mv "$test_bin/xsettingsd.missing" "$test_bin/xsettingsd"
+
+cat >"$test_bin/id" <<'EOF'
+#!/bin/sh
+case ${1:-} in
+-u) printf '0\n' ;;
+-un) printf 'root\n' ;;
+*) exit 2 ;;
+esac
+EOF
+chmod +x "$test_bin/id"
+mv "$test_bin/xsettingsd" "$test_bin/xsettingsd.missing"
+if PATH="$test_bin:$PATH" \
+	DWM_DEV_SYNC_SKIP_RUNTIME=1 \
+	USER_HOME="$test_home" \
+	PREFIX="$prefix" \
+	MANPREFIX="$manprefix" \
+	XSESSIONSDIR="$xsessions_dir" \
+	DATADIR="$data_root" \
+	XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$xdg_data_home" \
+	XDG_STATE_HOME="$state_home" \
+	"$test_repo/scripts/dev-sync-install.sh" >"$output" 2>&1; then
+	printf '%s\n' 'Root source update unexpectedly passed.' >&2
+	exit 1
+fi
+grep -Fq 'run this script as the desktop user, not root' "$output"
+if grep -Fq 'source-update dependencies' "$output"; then
+	printf '%s\n' 'Root source update reached dependency reconciliation.' >&2
+	exit 1
+fi
+rm "$test_bin/id"
+mv "$test_bin/xsettingsd.missing" "$test_bin/xsettingsd"
+
+printf 'ID=other\nPRETTY_NAME="Other Linux"\n' >"$work/os-release"
+cat >"$test_bin/id" <<'EOF'
+#!/bin/sh
+case ${1:-} in
+-u) printf '1000\n' ;;
+-un) printf 'testuser\n' ;;
+*) exit 2 ;;
+esac
+EOF
+cat >"$test_bin/sudo" <<EOF
+#!/bin/sh
+printf 'sudo invoked\n' >"$work/package-transaction"
+exit 1
+EOF
+cat >"$test_bin/dnf" <<EOF
+#!/bin/sh
+printf 'dnf invoked\n' >"$work/package-transaction"
+exit 1
+EOF
+chmod +x "$test_bin/id" "$test_bin/sudo" "$test_bin/dnf"
+mv "$test_bin/xsettingsd" "$test_bin/xsettingsd.missing"
+if PATH="$test_bin:$PATH" \
+	DWM_DEV_SYNC_TEST_MODE=1 \
+	DWM_DEV_SYNC_OS_RELEASE="$work/os-release" \
+	DWM_DEV_SYNC_SKIP_RUNTIME=1 \
+	USER_HOME="$test_home" \
+	PREFIX="$prefix" \
+	MANPREFIX="$manprefix" \
+	XSESSIONSDIR="$xsessions_dir" \
+	DATADIR="$data_root" \
+	XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$xdg_data_home" \
+	XDG_STATE_HOME="$state_home" \
+	"$test_repo/scripts/dev-sync-install.sh" >"$output" 2>&1; then
+	printf '%s\n' 'Non-Fedora source update unexpectedly passed.' >&2
+	exit 1
+fi
+grep -Fq 'unsupported distribution for source-update dependencies: other' "$output"
+if [ -e "$work/package-transaction" ]; then
+	printf '%s\n' 'Non-Fedora source update reached a package transaction.' >&2
+	exit 1
+fi
+rm "$test_bin/id" "$test_bin/sudo" "$test_bin/dnf"
+mv "$test_bin/xsettingsd.missing" "$test_bin/xsettingsd"
 
 printf '%s\n' '// stale live marker' >>"$config_home/quickshell/shell.qml"
 if run_check >"$output" 2>&1; then

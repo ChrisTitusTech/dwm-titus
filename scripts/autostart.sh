@@ -380,6 +380,25 @@ THEME_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/theme-env.sh"
 # shellcheck disable=SC1090
 [ -f "$THEME_ENV" ] && . "$THEME_ENV"
 
+# Native GTK applications in the plain Xorg session consume text scaling from
+# XSETTINGS. Reconcile the project-owned xsettingsd instance before launching
+# the shell, portals, or XDG autostart applications.
+xsettings_helper=
+case $0 in
+*/*)
+	xsettings_candidate=${0%/*}/dwm-xsettings
+	[ ! -x "$xsettings_candidate" ] || xsettings_helper=$xsettings_candidate
+	;;
+esac
+if [ -z "$xsettings_helper" ] && command -v dwm-xsettings >/dev/null 2>&1; then
+	xsettings_helper=dwm-xsettings
+fi
+if [ -n "$xsettings_helper" ]; then
+	timeout --signal=TERM --kill-after=1 8 \
+		"$xsettings_helper" session-apply >/dev/null 2>&1 ||
+		printf '%s\n' 'dwm-titus: managed X11 text scaling is unavailable' >&2
+fi
+
 desktop_tokens=${XDG_CURRENT_DESKTOP:-}
 case :$desktop_tokens: in
 *:dwm:*) ;;
