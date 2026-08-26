@@ -58,6 +58,7 @@ Flickable {
 						: "Automatic rollback failed. Revert retries the captured layout; Keep accepts the current layout."
 					color: Theme.textStrong
 					font.family: Theme.fontFamily
+					font.pixelSize: Theme.bodyFontSize
 					wrapMode: Text.WordWrap
 				}
 				ShellButton { label: root.settingsModel.previewRollbackFailed ? "Accept current" : "Keep"; onActivated: root.settingsModel.keepPreview(root.profileName.trim()) }
@@ -99,7 +100,7 @@ Flickable {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { Layout.fillWidth: true; text: outputCard.modelData.name; color: Theme.textStrong; font.family: Theme.fontFamily; font.bold: true }
+                        Text { Layout.fillWidth: true; text: outputCard.modelData.name; color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize; font.bold: true }
                         Text {
                             text: outputCard.modelData.fullCompositionPipeline === "available"
                                 ? "NVIDIA full composition on persistent install"
@@ -116,15 +117,19 @@ Flickable {
                         Layout.fillWidth: true
                         ShellButton { label: outputCard.modelData.mode + " @ " + outputCard.modelData.rate + " Hz"; enabled: outputCard.modelData.enabled; onActivated: root.settingsModel.cycleDisplayMode(outputCard.index) }
                         ShellButton { label: "Rotation: " + outputCard.modelData.rotation; enabled: outputCard.modelData.enabled; onActivated: root.settingsModel.cycleRotation(outputCard.index) }
-                        Text { text: "X"; color: Theme.textMuted; font.family: Theme.fontFamily }
+                        Text { text: "X"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
                         Rectangle {
-                            Layout.preferredWidth: 72; Layout.preferredHeight: 32; color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
+                            Layout.preferredWidth: 72
+                            Layout.preferredHeight: Math.max(Theme.controlRowHeight,
+                                xPositionInput.implicitHeight + 14)
+                            color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
                             TextInput {
                                 id: xPositionInput
                                 anchors.fill: parent
                                 anchors.margins: 7
                                 color: Theme.textStrong
                                 font.family: Theme.fontFamily
+                                font.pixelSize: Theme.inputFontSize
                                 validator: IntValidator {}
                                 onEditingFinished: root.settingsModel.updateDisplay(outputCard.index, "x", Number(text))
                             }
@@ -136,15 +141,19 @@ Flickable {
                                 restoreMode: Binding.RestoreNone
                             }
                         }
-                        Text { text: "Y"; color: Theme.textMuted; font.family: Theme.fontFamily }
+                        Text { text: "Y"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
                         Rectangle {
-                            Layout.preferredWidth: 72; Layout.preferredHeight: 32; color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
+                            Layout.preferredWidth: 72
+                            Layout.preferredHeight: Math.max(Theme.controlRowHeight,
+                                yPositionInput.implicitHeight + 14)
+                            color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
                             TextInput {
                                 id: yPositionInput
                                 anchors.fill: parent
                                 anchors.margins: 7
                                 color: Theme.textStrong
                                 font.family: Theme.fontFamily
+                                font.pixelSize: Theme.inputFontSize
                                 validator: IntValidator {}
                                 onEditingFinished: root.settingsModel.updateDisplay(outputCard.index, "y", Number(text))
                             }
@@ -163,10 +172,12 @@ Flickable {
 
         RowLayout {
             Layout.fillWidth: true
-            Text { text: "Profile"; color: Theme.textMuted; font.family: Theme.fontFamily }
+            Text { text: "Profile"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
             Rectangle {
-                Layout.fillWidth: true; Layout.preferredHeight: 36; color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
-                TextInput { anchors.fill: parent; anchors.margins: 8; text: root.profileName; color: Theme.textStrong; font.family: Theme.fontFamily; onTextChanged: root.profileName = text }
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.max(36, profileNameInput.implicitHeight + 16)
+                color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
+                TextInput { id: profileNameInput; anchors.fill: parent; anchors.margins: 8; text: root.profileName; color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.inputFontSize; onTextChanged: root.profileName = text }
             }
 			ShellButton { label: "Save profile"; enabled: root.profileName.trim().length > 0; onActivated: root.settingsModel.saveDisplay(root.profileName.trim()) }
 			ShellButton {
@@ -189,19 +200,20 @@ Flickable {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: root.confirmation ? 66 : 0
+            Layout.preferredHeight: root.confirmation ? confirmationRow.implicitHeight + 16 : 0
             visible: root.confirmation !== ""
             color: Theme.controlHoverFill
             border.color: Theme.warning
             radius: Theme.largeSurfaceCardRadius
             RowLayout {
+                id: confirmationRow
                 anchors.fill: parent; anchors.margins: 8
                 Text {
                     Layout.fillWidth: true
                     text: root.confirmation === "install"
                         ? "Authorize installation of profile '" + root.profileName + "' to the managed Xorg fragment. A backup will be created."
                         : "Authorize restoring the newest managed Xorg backup. This affects the next X11 login."
-                    color: Theme.textStrong; font.family: Theme.fontFamily; wrapMode: Text.WordWrap
+                    color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize; wrapMode: Text.WordWrap
                 }
                 ShellButton {
                     label: "Authorize"

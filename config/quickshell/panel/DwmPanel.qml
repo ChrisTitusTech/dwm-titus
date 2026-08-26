@@ -204,7 +204,7 @@ PanelWindow {
                             IconText {
                                 text: root.batteryIcon(root.powerModel.batteryPercent, root.powerModel.batteryStatus)
                                 color: Theme.textStrong
-                                font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.1)
+                                font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 1.1)
                             }
 
                             UiText {
@@ -236,7 +236,7 @@ PanelWindow {
                             IconText {
                                 text: "󰂯"
                                 color: Theme.textStrong
-                                font.pixelSize: Math.round((Theme.panelFontSize + 1) * 0.9)
+                                font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 0.9)
                             }
                         }
 
@@ -268,7 +268,7 @@ PanelWindow {
                                 text: root.networkModel.statusText.indexOf("offline") >= 0
                                     || root.networkModel.statusText.indexOf("unavailable") >= 0 ? "󰤭" : "󰤨"
                                 color: Theme.textStrong
-                                font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.2)
+                                font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 1.2)
                             }
                         }
 
@@ -299,7 +299,7 @@ PanelWindow {
                             IconText {
                                 text: root.controlsModel.volumeMuted ? "󰝟" : "󰕾"
                                 color: Theme.textStrong
-                                font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.5)
+                                font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 1.5)
                             }
 
                             UiText {
@@ -341,7 +341,7 @@ PanelWindow {
                             anchors.centerIn: parent
                             text: "󰐥"
                             color: Theme.textStrong
-                            font.pixelSize: Math.round((Theme.panelFontSize + 1) * 1.08)
+                            font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 1.08)
                         }
 
                         MouseArea {

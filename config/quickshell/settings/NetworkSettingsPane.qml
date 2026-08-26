@@ -103,7 +103,8 @@ ColumnLayout {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: Theme.largeSurfaceSearchHeight
+            Layout.preferredHeight: Math.max(Theme.largeSurfaceSearchHeight,
+                passwordInput.implicitHeight + 2 * Theme.spacingSm)
             color: Theme.controlNormalFill
             border.color: passwordInput.activeFocus ? Theme.controlFocusBorder : Theme.controlNormalBorder
             border.width: Theme.controlBorderWidth
@@ -116,6 +117,8 @@ ColumnLayout {
                 echoMode: TextInput.Password
                 color: Theme.controlNormalText
                 verticalAlignment: TextInput.AlignVCenter
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.inputFontSize
                 text: root.networkModel.wifiPassword
                 onTextChanged: root.networkModel.wifiPassword = text
                 onAccepted: root.networkModel.connectSelectedWifi("settings")

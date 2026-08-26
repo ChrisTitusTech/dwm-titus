@@ -103,6 +103,10 @@ Singleton {
         return helperCommand("dwm-settings-wallpaper", action, args, true);
     }
 
+    function settingsFontCommand(action, args) {
+        return helperCommand("dwm-settings-font", action, args, true);
+    }
+
     function settingsThemeCommand(action, args) {
         return helperCommand("dwm-settings-theme", action, args, true);
     }

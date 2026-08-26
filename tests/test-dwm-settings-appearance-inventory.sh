@@ -54,11 +54,16 @@ export DISPLAY=:55 DWM_APPEARANCE_PROC_ROOT=$proc_root
 
 cat >"$bin_dir/fc-list" <<'EOF'
 #!/bin/sh
-printf 'Noto Sans\tRegular\nJetBrains Mono\tRegular\nNoto Sans\tBold\n'
+[ "${1:-}" = ':charset=20-7e' ] || exit 2
+printf 'Noto Sans\tRegular\nAlias Sans\tRegular\nJetBrains Mono\tRegular\nNoto Sans\tBold\n'
 EOF
 cat >"$bin_dir/fc-match" <<'EOF'
 #!/bin/sh
-printf 'Fallback Sans\n'
+case ${4:-${3:-${2:-${1:-}}}} in
+Noto\ Sans:* | Noto\ Sans) printf 'Noto Sans\n' ;;
+JetBrains\ Mono:* | JetBrains\ Mono) printf 'JetBrains Mono\n' ;;
+*) printf 'Fallback Sans\n' ;;
+esac
 EOF
 cat >"$bin_dir/gsettings" <<'EOF'
 #!/bin/sh
@@ -100,6 +105,11 @@ if [ "${DWM_TEST_INOTIFY_BLOCK:-0}" = 1 ]; then
 	trap 'exit 143' HUP INT TERM
 	while :; do sleep 10; done
 fi
+config_dir=$(readlink -m -- "$XDG_CONFIG_HOME/dwm-titus")
+appearance_state_dir=$(readlink -m -- "${XDG_STATE_HOME:-$HOME/.local/state}/dwm-titus/appearance")
+printf 'CREATE\t%s/.font-exchange-a.fixture\n' "$config_dir"
+printf 'DELETE\t%s/.font-exchange-b.fixture\n' "$config_dir"
+printf 'ATTRIB,ISDIR\t%s/\n' "$appearance_state_dir"
 printf 'CREATE\t%s/new.png\n' "$DWM_APPEARANCE_WALLPAPER_DIR"
 EOF
 chmod +x "$bin_dir/fc-list" "$bin_dir/fc-match" "$bin_dir/gsettings" \
@@ -281,10 +291,44 @@ grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tWallpaper state helper did no
 rm -f "$config_home/dwm-titus/wallpaper.conf"
 grep -Fqx $'selection\tfont\tavailable\tNoto Sans\tNoto Sans 11\tCurrent desktop font family is installed' \
 	<<<"$inventory"
-test "$(grep -Fc $'candidate\tfont\tavailable\tNoto Sans\tNoto Sans\tFontconfig family' \
+test "$(grep -Fc $'candidate\tfont\tavailable\tNoto Sans\tNoto Sans\tExact Fontconfig family' \
 	<<<"$inventory")" -eq 1
-grep -Fqx $'candidate\tfont\tavailable\tJetBrains Mono\tJetBrains Mono\tFontconfig family' \
+grep -Fqx $'candidate\tfont\tavailable\tJetBrains Mono\tJetBrains Mono\tExact Fontconfig family' \
 	<<<"$inventory"
+if grep -Fq $'candidate\tfont\tavailable\tAlias Sans\t' <<<"$inventory"; then
+	printf 'Substituted Fontconfig family was emitted as an applicable candidate\n' >&2
+	exit 1
+fi
+
+# Candidate validation must begin only after the bounded fc-list stream has
+# been drained. Otherwise a slow fc-match can backpressure a large producer
+# until the provider's scan timeout incorrectly marks font inventory failed.
+drain_bin=$work/drain-bin
+cp -a "$bin_dir" "$drain_bin"
+cat >"$drain_bin/fc-list" <<'EOF'
+#!/bin/sh
+[ "${1:-}" = ':charset=20-7e' ] || exit 2
+awk 'BEGIN { print "Noto Sans\tRegular"; for (i = 1; i <= 10000; i++) printf "Family%05d\tRegular\n", i }'
+: >"$DWM_TEST_FC_LIST_DRAINED"
+EOF
+cat >"$drain_bin/fc-match" <<'EOF'
+#!/bin/sh
+if [ ! -e "$DWM_TEST_FC_LIST_DRAINED" ]; then
+	sleep 4
+fi
+family=${3:-}
+family=${family%:charset=20-7e}
+printf '%s\n' "$family"
+EOF
+chmod +x "$drain_bin/fc-list" "$drain_bin/fc-match"
+drained_inventory=$(HOME=$home PATH=$drain_bin XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	DWM_TEST_FC_LIST_DRAINED=$work/fc-list-drained "$helper" inventory)
+grep -Fqx $'selection\tfont\tavailable\tNoto Sans\tNoto Sans 11\tCurrent desktop font family is installed' \
+	<<<"$drained_inventory"
+grep -Fqx $'candidate\tfont\tavailable\tNoto Sans\tNoto Sans\tExact Fontconfig family' \
+	<<<"$drained_inventory"
 grep -Fqx $'selection\tcursor\tavailable\tCapitaine-Cursors\t\tCurrent selection is installed: Xcursor theme' \
 	<<<"$inventory"
 grep -Fqx $'candidate\tcursor\tavailable\tCapitaine-Cursors\tCapitaine-Cursors\tXcursor theme' \
@@ -442,6 +486,33 @@ if [[ -e $watch_find_complete ]]; then
 fi
 grep -Fqx $'ready\tinventory' "$work/watch.out"
 grep -Fqx $'changed\tCREATE\t'"$wallpaper_dir/new.png" "$work/watch.out"
+if grep -Fq '.font-exchange-' "$work/watch.out"; then
+	printf 'Inventory watcher exposed managed font capability probe churn\n' >&2
+	exit 1
+fi
+if grep -Fq $'changed\tATTRIB,ISDIR\t' "$work/watch.out"; then
+	printf 'Inventory watcher exposed managed font readiness state churn\n' >&2
+	exit 1
+fi
+
+symlink_config_home=$home/config-link
+ln -s "$config_home" "$symlink_config_home"
+HOME=$home PATH=$watch_bin XDG_CONFIG_HOME=$symlink_config_home XDG_DATA_HOME=$data_root \
+	XDG_STATE_HOME=$state_root \
+	DWM_APPEARANCE_DATA_DIRS=$data_root DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir \
+	DWM_TEST_INOTIFY_ARGS=$work/symlink-watch.args DWM_TEST_REAL_FIND=$real_find \
+	DWM_TEST_FIND_COMPLETE=$watch_find_complete \
+	"$helper" watch-inventory >"$work/symlink-watch.out"
+grep -Fqx $'ready\tinventory' "$work/symlink-watch.out"
+grep -Fqx $'changed\tCREATE\t'"$wallpaper_dir/new.png" "$work/symlink-watch.out"
+if grep -Fq '.font-exchange-' "$work/symlink-watch.out"; then
+	printf 'Inventory watcher exposed font probe churn through a symlinked config path\n' >&2
+	exit 1
+fi
+if grep -Fq $'changed\tATTRIB,ISDIR\t' "$work/symlink-watch.out"; then
+	printf 'Inventory watcher exposed font readiness state churn through a symlinked config path\n' >&2
+	exit 1
+fi
 grep -Fq -- '-m -P' "$watch_args"
 grep -Fq -- '-e attrib' "$watch_args"
 grep -Fq -- "$wallpaper_dir" "$watch_args"

@@ -81,8 +81,14 @@ Singleton {
         root.dangerSurface = colors["danger-surface"];
     }
 
-    readonly property string fontFamily: "MesloLGS Nerd Font Mono"
-    readonly property string iconFontFamily: fontFamily
+    property string fontFamily: "MesloLGS Nerd Font Mono"
+    property real fontScale: 1.0
+    readonly property string iconFontFamily: "MesloLGS Nerd Font Mono"
+
+    function applyFontPreferences(family, scale) {
+        root.fontFamily = family.length > 0 ? family : "MesloLGS Nerd Font Mono";
+        root.fontScale = Math.max(0.8, Math.min(1.5, scale));
+    }
 
     // Shared spacing and type scales adapted from Omarchy's shell language.
     // Values intentionally map to the pre-existing dwm-titus geometry.
@@ -96,12 +102,13 @@ Singleton {
     readonly property int spacingXxxl: 14
     readonly property int spacingHuge: 18
 
-    readonly property int fontCaptionSize: 10
-    readonly property int fontBodySmallSize: 12
-    readonly property int fontBodySize: 13
-    readonly property int fontSubtitleSize: 14
-    readonly property int fontTitleSize: 18
-    readonly property int largeSurfaceTitleSize: 24
+    readonly property int fontCaptionSize: Math.max(8, Math.round(10 * fontScale))
+    readonly property int fontBodySmallSize: Math.max(10, Math.round(12 * fontScale))
+    readonly property int fontBodySize: Math.max(10, Math.round(13 * fontScale))
+    readonly property int fontSubtitleSize: Math.max(11, Math.round(14 * fontScale))
+    readonly property int fontTitleSize: Math.max(14, Math.round(18 * fontScale))
+    readonly property int largeSurfaceTitleSize: Math.max(18, Math.round(24 * fontScale))
+    readonly property int panelIconFontSize: 13
 
     readonly property int controlHeight: 30
     readonly property int controlRowHeight: 32
@@ -163,7 +170,7 @@ Singleton {
     readonly property int panelFontSize: fontBodySize
     readonly property int smallFontSize: fontBodySmallSize
     readonly property int tinyFontSize: fontCaptionSize
-    readonly property int inputFontSize: 16
+    readonly property int inputFontSize: Math.max(12, Math.round(16 * fontScale))
     readonly property int iconSize: 28
     readonly property int trayItemSize: 24
     readonly property int trayIconSize: 18

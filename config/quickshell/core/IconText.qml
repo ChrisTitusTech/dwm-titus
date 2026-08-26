@@ -4,6 +4,6 @@ import qs.core
 UiText {
     color: Theme.accent
     font.family: Theme.iconFontFamily
-    font.pixelSize: Theme.panelFontSize + 1
+    font.pixelSize: Theme.panelIconFontSize + 1
     horizontalAlignment: Text.AlignHCenter
 }

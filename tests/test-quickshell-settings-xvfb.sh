@@ -264,6 +264,7 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-quickshell-network" "$repo/scripts/dwm-diagnostics" \
 	"$repo/scripts/dwm-default-apps" "$repo/scripts/dwm-xdg-autostart" \
 	"$repo/scripts/dwm-settings-appearance" "$repo/scripts/dwm-settings-wallpaper" \
+	"$repo/scripts/dwm-settings-font" \
 	"$repo/scripts/dwm-settings-theme" \
 	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
@@ -1315,6 +1316,142 @@ appearance_recovery=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home X
 [ "$appearance_application" = partial ]
 [ "$appearance_preview" = none ]
 [ "$appearance_recovery" = none ]
+
+test_stage='validating font Settings lifecycle and event-driven shell updates'
+font_mutation_ready=false
+i=0
+while [ "$i" -lt 100 ]; do
+	font_mutation_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontMutationReady 2>/dev/null || true)
+	[ "$font_mutation_ready" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$font_mutation_ready" != true ]; then
+	printf 'Font mutation readiness did not become available: %s\n' "$font_mutation_ready" >&2
+	exit 1
+fi
+font_candidates=$work/font-candidates
+HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	fc-list ':charset=20-7e' --format '%{family[0]}\n' | awk 'NF && !seen[$0]++' >"$font_candidates"
+test_font=
+while IFS= read -r candidate; do
+	resolved=$(HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		fc-match --format '%{family[0]}\n' "$candidate:charset=20-7e" 2>/dev/null || true)
+	if [ "$resolved" = "$candidate" ]; then
+		test_font=$candidate
+		break
+	fi
+	case $candidate:$resolved in
+	'MesloLGS Nerd Font Mono:MesloLGS Nerd Font' | \
+		'MesloLGS Nerd Font Mono:MesloLGS NF' | \
+		'MesloLGS Nerd Font:MesloLGS Nerd Font Mono' | \
+		'MesloLGS Nerd Font:MesloLGS NF' | \
+		'MesloLGS NF:MesloLGS Nerd Font Mono' | \
+		'MesloLGS NF:MesloLGS Nerd Font')
+		test_font=$candidate
+		break
+		;;
+	esac
+done <"$font_candidates"
+[ -n "$test_font" ]
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-titus/scripts/dwm-settings-font" \
+	apply "$test_font" 1.25 >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	font_family=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontFamily 2>/dev/null || true)
+	font_scale=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontScale 2>/dev/null || true)
+	[ "$font_family" = "$test_font" ] && [ "$font_scale" = 1.25 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$font_family" != "$test_font" ] || [ "$font_scale" != 1.25 ]; then
+	printf 'Font apply did not reach the shell: %s / %s (expected %s / 1.25)\n' \
+		"$font_family" "$font_scale" "$test_font" >&2
+	exit 1
+fi
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-titus/scripts/dwm-settings-font" \
+	preview nested-font 60 "$test_font" 1.50 >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	font_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontPreviewState 2>/dev/null || true)
+	font_scale=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontScale 2>/dev/null || true)
+	[ "$font_preview" = active ] && [ "$font_scale" = 1.50 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$font_preview" != active ] || [ "$font_scale" != 1.50 ]; then
+	printf 'Font preview did not reach the shell: %s / %s\n' "$font_preview" "$font_scale" >&2
+	exit 1
+fi
+font_remaining_before=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontPreviewRemaining)
+[ "$font_remaining_before" -gt 0 ]
+sleep 1
+font_remaining_after=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontPreviewRemaining)
+if [ "$font_remaining_after" -ge "$font_remaining_before" ]; then
+	printf 'Font preview countdown did not advance: %s -> %s\n' \
+		"$font_remaining_before" "$font_remaining_after" >&2
+	exit 1
+fi
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-titus/scripts/dwm-settings-font" revert nested-font >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	font_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontPreviewState 2>/dev/null || true)
+	font_scale=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontScale 2>/dev/null || true)
+	[ "$font_preview" = none ] && [ "$font_scale" = 1.25 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$font_preview" != none ] || [ "$font_scale" != 1.25 ]; then
+	printf 'Font preview revert did not converge: %s / %s\n' "$font_preview" "$font_scale" >&2
+	exit 1
+fi
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-titus/scripts/dwm-settings-font" reset >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	font_scale=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontScale 2>/dev/null || true)
+	[ "$font_scale" = 1.00 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$font_scale" != 1.00 ]; then
+	printf 'Font reset did not restore the managed scale: %s\n' "$font_scale" >&2
+	exit 1
+fi
+# The isolated nested HOME does not inherit user-installed Meslo fonts. Keep
+# the fixture on an exact system family after proving reset, so later aggregate
+# appearance assertions isolate the state they are intended to test.
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-titus/scripts/dwm-settings-font" \
+	apply "$test_font" 1.00 >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	font_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontState 2>/dev/null || true)
+	[ "$font_state" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$font_state" != available ]; then
+	printf 'Nested font fixture did not return to an available family: %s\n' "$font_state" >&2
+	exit 1
+fi
 
 test_stage='validating wallpaper Settings lifecycle and recovery'
 test_wallpaper=$home/Pictures/backgrounds/test-wallpaper.png

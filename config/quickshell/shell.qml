@@ -715,6 +715,30 @@ ShellRoot {
             appearanceModel.reconcileWallpaperPreview();
         }
 
+        function appearanceFontState(): string {
+            return appearanceModel.fontState;
+        }
+
+        function appearanceFontFamily(): string {
+            return appearanceModel.fontFamily;
+        }
+
+        function appearanceFontScale(): string {
+            return appearanceModel.fontScale.toFixed(2);
+        }
+
+        function appearanceFontMutationReady(): bool {
+            return appearanceModel.fontMutationReady;
+        }
+
+        function appearanceFontPreviewState(): string {
+            return appearanceModel.fontPreviewState;
+        }
+
+        function appearanceFontPreviewRemaining(): int {
+            return appearanceModel.fontPreviewRemaining;
+        }
+
         function appearanceMessage(): string {
             return appearanceModel.message;
         }
