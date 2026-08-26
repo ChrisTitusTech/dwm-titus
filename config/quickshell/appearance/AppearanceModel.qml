@@ -674,10 +674,12 @@ Scope {
         root.wallpaperPreviewFit = preview.fit;
         root.wallpaperPreviewDetail = preview.detail;
         if (!previewWasActive && preview.state === "active") {
-            root.message = "Wallpaper preview active; keep it within 30 seconds or it will revert";
+            root.message = "Wallpaper preview active; keep it within " + preview.remaining
+                + (preview.remaining === 1 ? " second" : " seconds") + " or it will revert";
             root.messageSeverity = "warning";
         } else if (previewWasActive && preview.state === "none"
-                && root.message === "Wallpaper preview active; keep it within 30 seconds or it will revert") {
+                && root.message.startsWith("Wallpaper preview active; keep it within ")
+                && root.message.endsWith(" or it will revert")) {
             root.message = previewRemainingBefore <= 1
                 ? "Wallpaper preview expired and reverted automatically"
                 : "Wallpaper preview completed outside Settings";

@@ -1354,6 +1354,23 @@ done
 wallpaper_remaining_before=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewRemaining)
 [ "$wallpaper_remaining_before" -gt 0 ]
+wallpaper_message=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMessage)
+case $wallpaper_message in
+"Wallpaper preview active; keep it within "*" seconds or it will revert") ;;
+*)
+	printf 'External wallpaper preview message omitted its live deadline: %s\n' \
+		"$wallpaper_message" >&2
+	exit 1
+	;;
+esac
+case $wallpaper_message in
+*"within 30 seconds"*)
+	printf 'External wallpaper preview message retained the Settings-only deadline: %s\n' \
+		"$wallpaper_message" >&2
+	exit 1
+	;;
+esac
 sleep 1.2
 wallpaper_remaining_after=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewRemaining)

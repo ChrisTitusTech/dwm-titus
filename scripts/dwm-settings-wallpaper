@@ -80,6 +80,7 @@ mutation_baseline_hash=
 preview_clock_boot_id=
 preview_clock_now=0
 preview_now=0
+status_scan_pid=
 
 usage() {
 	cat >&2 <<'EOF'
@@ -199,8 +200,21 @@ valid_asset() {
 	esac
 }
 
+cancel_status_scan() {
+	local attempt=0
+	[[ $status_scan_pid =~ ^[1-9][0-9]*$ ]] || return 0
+	kill -TERM -- "-$status_scan_pid" 2>/dev/null || true
+	while ((attempt < 10)) && kill -0 -- "-$status_scan_pid" 2>/dev/null; do
+		attempt=$((attempt + 1))
+		sleep 0.01
+	done
+	kill -KILL -- "-$status_scan_pid" 2>/dev/null || true
+	wait "$status_scan_pid" 2>/dev/null || true
+	status_scan_pid=
+}
+
 probe_status_assets() {
-	local candidate executable
+	local candidate executable scan_fd
 	local -a targets=()
 	status_configured_loadable=false
 	status_rollback_available=false
@@ -210,15 +224,22 @@ probe_status_assets() {
 	[[ ! -d $wallpaper_dir ]] || targets+=("$wallpaper_dir")
 	((${#targets[@]} > 0)) || return 0
 	executable=$(feh_path) || return 0
-	while IFS= read -r candidate; do
+	exec {scan_fd}< <(
+		exec setsid timeout --signal=TERM --kill-after=1 2 "$executable" \
+			--loadable --recursive -- "${targets[@]}" 2>/dev/null
+	)
+	status_scan_pid=$!
+	trap 'cancel_status_scan; exit 143' HUP INT TERM
+	while IFS= read -r candidate <&"$scan_fd"; do
 		valid_asset "$candidate" || continue
 		status_rollback_available=true
 		[[ $configured != true || $candidate != "$configured_path" ]] ||
 			status_configured_loadable=true
-	done < <(
-		timeout --signal=TERM --kill-after=1 2 "$executable" \
-			--loadable --recursive -- "${targets[@]}" 2>/dev/null || true
-	)
+	done
+	exec {scan_fd}<&-
+	wait "$status_scan_pid" 2>/dev/null || true
+	status_scan_pid=
+	trap - HUP INT TERM
 }
 
 ensure_owned_directory() {
