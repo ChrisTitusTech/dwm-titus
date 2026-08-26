@@ -37,6 +37,33 @@ Scope {
     property bool inventoryWatchSawEvent: false
     property bool inventoryWatchFailed: false
     property bool compositorWatchReady: false
+    property string wallpaperState: "idle"
+    property string wallpaperPath: ""
+    property string wallpaperFit: "fill"
+    property string wallpaperDetail: "Wallpaper state has not been loaded"
+    property string wallpaperProviderState: "idle"
+    property string wallpaperProviderDetail: "Wallpaper provider has not been checked"
+    property bool wallpaperMutationReady: false
+    property string wallpaperMutationDetail: "Wallpaper changes have not been checked"
+    property bool wallpaperResetReady: false
+    property bool wallpaperBusy: false
+    readonly property bool wallpaperStatusBusy: wallpaperReadinessProcess.running
+        || wallpaperStatusProcess.running
+    property string wallpaperPreviewState: "none"
+    property string wallpaperPreviewToken: ""
+    property string wallpaperPreviewPath: ""
+    property string wallpaperPreviewFit: "fill"
+    property int wallpaperPreviewRemaining: 0
+    property string wallpaperPreviewDetail: ""
+    property string wallpaperActionKind: ""
+    property string wallpaperActionToken: ""
+    property string wallpaperActionPath: ""
+    property string wallpaperActionFit: "fill"
+    property string wallpaperActionResultState: ""
+    property string wallpaperActionError: ""
+    property bool wallpaperActionSucceeded: false
+    property bool wallpaperStatusParsed: false
+    property bool wallpaperStatusPending: false
     property string message: ""
     property string messageSeverity: "idle"
     property string previewState: "none"
@@ -70,7 +97,11 @@ Scope {
     readonly property string stateHome: root.configuredStateHome.startsWith("/")
         ? root.configuredStateHome : root.homeDir + "/.local/state"
     readonly property string themesPath: root.configHome + "/dwm-titus/themes.toml"
+    readonly property string wallpaperConfigPath: root.configHome + "/dwm-titus/wallpaper.conf"
     readonly property string managedThemesPath: root.dataHome + "/dwm-titus/config/themes.toml"
+    readonly property var wallpaperCandidates: root.inventoryCandidates.filter(function(candidate) {
+        return candidate.id === "wallpaper";
+    })
     readonly property var integrationWatchPaths: [
         root.configHome + "/alacritty/active-theme.toml",
         root.configHome + "/alacritty/alacritty.toml",
@@ -89,7 +120,9 @@ Scope {
         root.stateHome + "/dwm-titus/appearance/preview.current",
         root.stateHome + "/dwm-titus/appearance/transaction.meta",
         root.stateHome + "/dwm-titus/appearance/transaction.failed",
-        root.stateHome + "/dwm-titus/appearance/integration-transaction"
+        root.stateHome + "/dwm-titus/appearance/integration-transaction",
+        root.wallpaperConfigPath,
+        root.stateHome + "/dwm-titus/appearance/wallpaper/preview.current"
     ]
     readonly property var requiredIntegrationIds: [
         "gtk", "qt", "cursor", "alacritty", "kitty", "compositor"
@@ -115,6 +148,8 @@ Scope {
         for (const integration of root.integrations) {
             if (integration.state !== "available") return "partial";
         }
+        if (root.wallpaperProviderState !== "available"
+                || root.wallpaperState !== "available") return "partial";
         return "available";
     }
 
@@ -133,6 +168,11 @@ Scope {
         return typeof value === "string" && value.indexOf("\t") < 0
             && value.indexOf("\n") < 0 && value.length <= 4095
             && (allowEmpty || value.length > 0);
+    }
+
+    function validWallpaperFit(value) {
+        return value === "center" || value === "fill" || value === "max"
+            || value === "scale" || value === "tile";
     }
 
     function validThemeName(value) {
@@ -407,10 +447,28 @@ Scope {
             readinessProcess.running = true;
     }
 
+    function refreshWallpaperStatus() {
+        if (!root.settingsVisible) return;
+        if (wallpaperReadinessProcess.running || wallpaperStatusProcess.running
+                || wallpaperActionProcess.running || inventoryProcess.running) {
+            root.wallpaperStatusPending = true;
+            return;
+        }
+        root.wallpaperStatusPending = false;
+        root.wallpaperStatusParsed = false;
+        wallpaperStatusProcess.running = true;
+    }
+
     function refreshInventory(allowUnwatched) {
         if (!root.settingsVisible) return;
         if (!root.inventoryWatchReady && allowUnwatched !== true) {
             root.inventoryPending = true;
+            return;
+        }
+        if (wallpaperStatusProcess.running) {
+            root.inventoryPending = true;
+            root.inventoryPendingAllowUnwatched = root.inventoryPendingAllowUnwatched
+                || allowUnwatched === true;
             return;
         }
         root.inventoryGeneration++;
@@ -433,6 +491,7 @@ Scope {
         root.refreshPreviewStatus();
         root.refreshRecoveryStatus();
         root.refreshMutationReadiness();
+        root.refreshWallpaperStatus();
     }
 
     function openSettings() {
@@ -442,6 +501,8 @@ Scope {
         root.inventoryWatchReady = false;
         root.inventoryWatchSawEvent = false;
         root.inventoryWatchFailed = false;
+        if (!wallpaperReadinessProcess.running)
+            wallpaperReadinessProcess.running = true;
         root.startInventoryWatcher();
         root.refreshAll();
     }
@@ -463,6 +524,8 @@ Scope {
         compositorWatchRestartTimer.stop();
         compositorWatchProcess.running = false;
         inventoryProcess.running = false;
+        wallpaperStatusProcess.running = false;
+        root.wallpaperStatusPending = false;
         root.inventoryPending = false;
         root.inventoryPendingAllowUnwatched = false;
     }
@@ -472,7 +535,7 @@ Scope {
     }
 
     function runAction(action, args, theme, token) {
-        if (root.busy || actionProcess.running) {
+        if (root.busy || root.wallpaperBusy || actionProcess.running) {
             root.message = "Another appearance change is already in progress";
             root.messageSeverity = "warning";
             return;
@@ -527,6 +590,252 @@ Scope {
     function recover() {
         if (root.recoveryState !== "available") return;
         root.runAction("recover", [], root.recoveryTheme, "");
+    }
+
+    function nextWallpaperPreviewToken() {
+        return "wallpaper-" + Quickshell.processId.toString() + "-" + Date.now().toString();
+    }
+
+    function clearWallpaperStatus(detail) {
+        const preservePreview = (root.wallpaperPreviewState === "active"
+                || root.wallpaperPreviewState === "failed")
+            && root.wallpaperPreviewToken.length > 0;
+        root.wallpaperStatusParsed = false;
+        root.wallpaperProviderState = "unavailable";
+        root.wallpaperProviderDetail = detail;
+        root.wallpaperState = "unavailable";
+        root.wallpaperPath = "";
+        root.wallpaperFit = "fill";
+        root.wallpaperDetail = detail;
+        root.wallpaperMutationReady = false;
+        root.wallpaperMutationDetail = detail;
+        root.wallpaperResetReady = false;
+        if (!preservePreview) {
+            root.wallpaperPreviewState = "none";
+            root.wallpaperPreviewToken = "";
+            root.wallpaperPreviewRemaining = 0;
+            root.wallpaperPreviewPath = "";
+            root.wallpaperPreviewFit = "fill";
+            root.wallpaperPreviewDetail = "";
+        }
+    }
+
+    function parseWallpaperStatus(text) {
+        let protocolValid = false;
+        let provider = null;
+        let selection = null;
+        let mutation = null;
+        let reset = { "state": "restricted",
+            "detail": "Installed wallpaper helper does not report reset readiness" };
+        let preview = null;
+        for (const line of text.trim().split("\n")) {
+            const fields = line.split("\t");
+            if (fields[0] === "wallpaper-protocol") {
+                protocolValid = fields.length === 3 && fields[1] === "1" && fields[2] === "0";
+            } else if (fields[0] === "provider" && fields.length === 5
+                    && fields[1] === "wallpaper" && root.validState(fields[2])
+                    && fields[3] === "user-session" && root.validInventoryField(fields[4], false)) {
+                provider = { "state": fields[2], "detail": fields[4] };
+            } else if (fields[0] === "selection" && fields.length === 5
+                    && root.validState(fields[1]) && root.validInventoryField(fields[2], true)
+                    && root.validWallpaperFit(fields[3]) && root.validInventoryField(fields[4], false)) {
+                selection = { "state": fields[1], "path": fields[2], "fit": fields[3],
+                    "detail": fields[4] };
+            } else if (fields[0] === "mutation" && fields.length === 3
+                    && (fields[1] === "available" || fields[1] === "restricted")
+                    && root.validInventoryField(fields[2], false)) {
+                mutation = { "state": fields[1], "detail": fields[2] };
+            } else if (fields[0] === "reset" && fields.length === 3
+                    && (fields[1] === "available" || fields[1] === "restricted")
+                    && root.validInventoryField(fields[2], false)) {
+                reset = { "state": fields[1], "detail": fields[2] };
+            } else if (fields[0] === "preview" && fields.length === 7
+                    && (fields[1] === "none" || fields[1] === "active" || fields[1] === "failed")
+                    && root.validInventoryField(fields[2], true) && /^[0-9]+$/.test(fields[3])
+                    && root.validInventoryField(fields[4], true) && root.validWallpaperFit(fields[5])
+                    && root.validInventoryField(fields[6], false)) {
+                preview = { "state": fields[1], "token": fields[2], "remaining": Number(fields[3]),
+                    "path": fields[4], "fit": fields[5], "detail": fields[6] };
+            }
+        }
+        if (!protocolValid || provider === null || selection === null || mutation === null
+                || preview === null) {
+            root.clearWallpaperStatus("Wallpaper helper returned an unsupported response");
+            return;
+        }
+        const previewWasActive = root.wallpaperPreviewState === "active";
+        const previewRemainingBefore = root.wallpaperPreviewRemaining;
+        root.wallpaperStatusParsed = true;
+        root.wallpaperProviderState = provider.state;
+        root.wallpaperProviderDetail = provider.detail;
+        root.wallpaperState = selection.state;
+        root.wallpaperPath = selection.path;
+        root.wallpaperFit = selection.fit;
+        root.wallpaperDetail = selection.detail;
+        root.wallpaperMutationReady = mutation.state === "available";
+        root.wallpaperMutationDetail = mutation.detail;
+        root.wallpaperResetReady = reset.state === "available";
+        root.wallpaperPreviewState = preview.state;
+        root.wallpaperPreviewToken = preview.token;
+        root.wallpaperPreviewRemaining = preview.remaining;
+        root.wallpaperPreviewPath = preview.path;
+        root.wallpaperPreviewFit = preview.fit;
+        root.wallpaperPreviewDetail = preview.detail;
+        if (!previewWasActive && preview.state === "active") {
+            root.message = "Wallpaper preview active; keep it within " + preview.remaining
+                + (preview.remaining === 1 ? " second" : " seconds") + " or it will revert";
+            root.messageSeverity = "warning";
+        } else if (previewWasActive && preview.state === "none"
+                && root.message.startsWith("Wallpaper preview active; keep it within ")
+                && root.message.endsWith(" or it will revert")) {
+            root.message = previewRemainingBefore <= 1
+                ? "Wallpaper preview expired and reverted automatically"
+                : "Wallpaper preview completed outside Settings";
+            root.messageSeverity = previewRemainingBefore <= 1 ? "warning" : "idle";
+        }
+    }
+
+    function runWallpaperAction(action, args, path, fit, token) {
+        if (root.wallpaperBusy || wallpaperActionProcess.running
+                || wallpaperReadinessProcess.running || wallpaperStatusProcess.running
+                || root.busy) {
+            root.message = "Another appearance change is already in progress";
+            root.messageSeverity = "warning";
+            return;
+        }
+        root.wallpaperBusy = true;
+        root.wallpaperActionKind = action;
+        root.wallpaperActionPath = path || "";
+        root.wallpaperActionFit = fit || "fill";
+        root.wallpaperActionResultState = "";
+        root.wallpaperActionToken = token || "";
+        root.wallpaperActionError = "";
+        root.wallpaperActionSucceeded = false;
+        root.message = "Applying wallpaper change...";
+        root.messageSeverity = "idle";
+        wallpaperActionProcess.command = Commands.checkedCommand(
+            Commands.settingsWallpaperCommand(action === "reconcile" ? "status" : action, args));
+        wallpaperActionProcess.running = true;
+    }
+
+    function previewWallpaper(path, fit) {
+        if (!root.wallpaperMutationReady || !root.validInventoryField(path, false)
+                || !root.validWallpaperFit(fit) || root.wallpaperPreviewState !== "none") return;
+        const token = root.nextWallpaperPreviewToken();
+        root.runWallpaperAction("preview", [token, "30", path, fit], path, fit, token);
+    }
+
+    function applyWallpaper(path, fit) {
+        if (!root.wallpaperMutationReady || !root.validInventoryField(path, false)
+                || !root.validWallpaperFit(fit) || root.wallpaperPreviewState !== "none") return;
+        root.runWallpaperAction("apply", [path, fit], path, fit, "");
+    }
+
+    function resetWallpaper() {
+        if (!root.wallpaperResetReady || root.wallpaperPreviewState !== "none") return;
+        root.runWallpaperAction("reset", [], "", "fill", "");
+    }
+
+    function keepWallpaperPreview() {
+        if (root.wallpaperPreviewState !== "active" || root.wallpaperPreviewToken.length === 0) return;
+        root.runWallpaperAction("keep", [root.wallpaperPreviewToken], root.wallpaperPreviewPath,
+            root.wallpaperPreviewFit, root.wallpaperPreviewToken);
+    }
+
+    function revertWallpaperPreview() {
+        if ((root.wallpaperPreviewState !== "active" && root.wallpaperPreviewState !== "failed")
+                || root.wallpaperPreviewToken.length === 0) return;
+        root.runWallpaperAction("revert", [root.wallpaperPreviewToken], root.wallpaperPreviewPath,
+            root.wallpaperPreviewFit, root.wallpaperPreviewToken);
+    }
+
+    function abandonWallpaperPreview() {
+        if (root.wallpaperPreviewState !== "failed" || root.wallpaperPreviewToken.length === 0) return;
+        root.runWallpaperAction("abandon", [root.wallpaperPreviewToken], root.wallpaperPreviewPath,
+            root.wallpaperPreviewFit, root.wallpaperPreviewToken);
+    }
+
+    function reconcileWallpaperPreview() {
+        if (root.wallpaperPreviewState !== "failed") return;
+        root.runWallpaperAction("reconcile", [], root.wallpaperPreviewPath,
+            root.wallpaperPreviewFit, root.wallpaperPreviewToken);
+    }
+
+    function parseWallpaperAction(text) {
+        if (root.wallpaperActionKind === "reconcile") {
+            root.wallpaperStatusParsed = false;
+            root.parseWallpaperStatus(text);
+            root.wallpaperActionSucceeded = root.wallpaperStatusParsed;
+            return;
+        }
+        const lines = text.trim().split("\n");
+        if (lines.length !== 2 || lines[0] !== "wallpaper-action-protocol\t1\t0") return;
+        const fields = lines[1].split("\t");
+        if (root.wallpaperActionKind === "preview") {
+            root.wallpaperActionSucceeded = fields.length === 5 && fields[0] === "preview"
+                && fields[1] === root.wallpaperActionToken && fields[2] === "30"
+                && fields[3] === root.wallpaperActionPath && fields[4] === root.wallpaperActionFit;
+        } else if (root.wallpaperActionKind === "apply") {
+            root.wallpaperActionSucceeded = fields.length === 4 && fields[0] === "result"
+                && fields[1] === "apply" && fields[2] === root.wallpaperActionPath
+                && fields[3] === root.wallpaperActionFit;
+        } else if (root.wallpaperActionKind === "reset") {
+            root.wallpaperActionSucceeded = fields.length === 3 && fields[0] === "result"
+                && fields[1] === "reset" && (fields[2] === "applied" || fields[2] === "unavailable");
+            if (root.wallpaperActionSucceeded) root.wallpaperActionResultState = fields[2];
+        } else {
+            root.wallpaperActionSucceeded = fields.length === 3 && fields[0] === "result"
+                && fields[1] === root.wallpaperActionKind && fields[2] === root.wallpaperActionToken;
+        }
+    }
+
+    function finishWallpaperAction() {
+        if (root.wallpaperActionSucceeded) {
+            if (root.wallpaperActionKind === "preview") {
+                root.wallpaperPreviewState = "active";
+                root.wallpaperPreviewToken = root.wallpaperActionToken;
+                root.wallpaperPreviewRemaining = 30;
+                root.wallpaperPreviewPath = root.wallpaperActionPath;
+                root.wallpaperPreviewFit = root.wallpaperActionFit;
+                root.wallpaperPreviewDetail = "Automatic rollback is armed";
+            } else if (root.wallpaperActionKind === "keep"
+                    || root.wallpaperActionKind === "revert"
+                    || root.wallpaperActionKind === "abandon") {
+                root.wallpaperPreviewState = "none";
+                root.wallpaperPreviewToken = "";
+                root.wallpaperPreviewRemaining = 0;
+                root.wallpaperPreviewPath = "";
+                root.wallpaperPreviewFit = "fill";
+                root.wallpaperPreviewDetail = "";
+            }
+            root.message = root.wallpaperActionKind === "reconcile"
+                ? root.wallpaperPreviewState === "failed"
+                    ? "Wallpaper preview recovery still needs attention"
+                    : "Wallpaper preview recovery reconciled"
+                : root.wallpaperActionKind === "preview"
+                ? "Wallpaper preview active; keep it within 30 seconds or it will revert"
+                : root.wallpaperActionKind === "keep" ? "Wallpaper preview kept"
+                    : root.wallpaperActionKind === "revert" ? "Wallpaper preview reverted"
+                        : root.wallpaperActionKind === "abandon" ? "External wallpaper state restored"
+                            : root.wallpaperActionKind === "reset"
+                                ? root.wallpaperActionResultState === "applied"
+                                    ? "Wallpaper reset to the session default"
+                                    : "Wallpaper selection reset; no session default was available"
+                                : "Wallpaper applied";
+            root.messageSeverity = root.wallpaperActionKind === "reconcile"
+                ? root.wallpaperPreviewState === "failed" ? "warning" : "success"
+                : root.wallpaperActionKind === "preview"
+                    || (root.wallpaperActionKind === "reset"
+                        && root.wallpaperActionResultState === "unavailable")
+                ? "warning" : "success";
+        } else {
+            root.message = root.wallpaperActionError.length > 0 ? root.wallpaperActionError
+                : "Wallpaper helper did not confirm the requested change";
+            root.messageSeverity = "danger";
+        }
+        root.wallpaperBusy = false;
+        Qt.callLater(root.refreshWallpaperStatus);
+        root.refreshInventory(true);
     }
 
     function parseActionResult(text) {
@@ -676,6 +985,40 @@ Scope {
     }
 
     Process {
+        id: wallpaperReadinessProcess
+        command: Commands.booleanStatusCommand(Commands.settingsWallpaperCommand("reset-ready", []))
+        running: false
+        onRunningChanged: {
+            if (!running && root.settingsVisible)
+                Qt.callLater(root.refreshWallpaperStatus);
+        }
+    }
+
+    Process {
+        id: wallpaperStatusProcess
+        command: Commands.settingsWallpaperCommand("status", ["--read-only"])
+        running: false
+        stdout: StdioCollector { onStreamFinished: root.parseWallpaperStatus(this.text) }
+        stderr: StdioCollector { id: wallpaperStatusError }
+        onRunningChanged: {
+            if (!running && root.settingsVisible && !root.wallpaperStatusParsed) {
+                const error = wallpaperStatusError.text.trim();
+                root.clearWallpaperStatus(error.length > 0 ? error
+                    : "Wallpaper helper failed before returning a valid status");
+            }
+            if (!running && root.settingsVisible && root.inventoryPending) {
+                const allowUnwatched = root.inventoryPendingAllowUnwatched;
+                root.inventoryPending = false;
+                root.inventoryPendingAllowUnwatched = false;
+                Qt.callLater(function() { root.refreshInventory(allowUnwatched); });
+            } else if (!running && root.settingsVisible && root.wallpaperStatusPending) {
+                root.wallpaperStatusPending = false;
+                Qt.callLater(root.refreshWallpaperStatus);
+            }
+        }
+    }
+
+    Process {
         id: inventoryProcess
         // Keep the helper as the directly owned process so pane close sends
         // SIGTERM to the scan itself instead of orphaning it behind the checked
@@ -695,7 +1038,9 @@ Scope {
                 root.clearInventory(error.length > 0 ? error
                     : "Appearance inventory failed before returning a valid snapshot");
             }
-            if (!running && root.inventoryPending && root.settingsVisible) {
+            if (!running && root.wallpaperStatusPending && root.settingsVisible) {
+                Qt.callLater(root.refreshWallpaperStatus);
+            } else if (!running && root.inventoryPending && root.settingsVisible) {
                 const allowUnwatched = root.inventoryPendingAllowUnwatched;
                 root.inventoryPending = false;
                 root.inventoryPendingAllowUnwatched = false;
@@ -713,11 +1058,15 @@ Scope {
                 if (line === "ready\tinventory") {
                     root.inventoryWatchReady = true;
                     root.inventoryWatchSawEvent = false;
-                    if (root.settingsVisible) root.refreshInventory(true);
+                    if (root.settingsVisible) {
+                        root.refreshInventory(true);
+                        root.refreshWallpaperStatus();
+                    }
                 } else if (line.startsWith("changed\t")) {
                     root.inventoryWatchReady = false;
                     root.inventoryWatchSawEvent = true;
                     root.inventoryPending = true;
+                    if (root.settingsVisible) root.refreshWallpaperStatus();
                 }
             }
         }
@@ -862,11 +1211,32 @@ Scope {
         onRunningChanged: if (!running && root.busy) root.finishAction()
     }
 
+    Process {
+        id: wallpaperActionProcess
+        command: ["sh", "-c", "exit 1"]
+        running: false
+        stdout: StdioCollector { onStreamFinished: root.parseWallpaperAction(this.text) }
+        stderr: StdioCollector { onStreamFinished: root.wallpaperActionError = this.text.trim() }
+        onRunningChanged: if (!running && root.wallpaperBusy) root.finishWallpaperAction()
+    }
+
     Timer {
         id: previewZeroRetryTimer
         interval: 250
         repeat: false
         onTriggered: root.refreshPreviewStatus()
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.settingsVisible && root.wallpaperPreviewState === "active"
+            && root.wallpaperPreviewRemaining > 0
+        onTriggered: {
+            root.wallpaperPreviewRemaining--;
+            if (root.wallpaperPreviewRemaining === 0)
+                Qt.callLater(root.refreshWallpaperStatus);
+        }
     }
 
     Timer {

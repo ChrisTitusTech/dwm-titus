@@ -381,7 +381,9 @@ FloatingWindow {
                                 visible: root.settingsModel.selectedSectionId === "appearance"
                                 appearanceModel: root.appearanceModel
                                 capabilities: root.settingsModel.capabilitiesForSection("appearance")
-                                    .filter(function(capability) { return capability.id !== "themes"; })
+                                    .filter(function(capability) {
+                                        return capability.id !== "themes" && capability.id !== "wallpaper";
+                                    })
                             }
 
                             ListView {

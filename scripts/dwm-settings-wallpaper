@@ -80,11 +80,13 @@ mutation_baseline_hash=
 preview_clock_boot_id=
 preview_clock_now=0
 preview_now=0
+status_scan_pid=
 
 usage() {
 	cat >&2 <<'EOF'
 usage: dwm-settings-wallpaper status [--read-only]
        dwm-settings-wallpaper mutation-ready
+       dwm-settings-wallpaper reset-ready
        dwm-settings-wallpaper apply PATH FIT
        dwm-settings-wallpaper reset
        dwm-settings-wallpaper randomize
@@ -198,8 +200,21 @@ valid_asset() {
 	esac
 }
 
+cancel_status_scan() {
+	local attempt=0
+	[[ $status_scan_pid =~ ^[1-9][0-9]*$ ]] || return 0
+	kill -TERM -- "-$status_scan_pid" 2>/dev/null || true
+	while ((attempt < 10)) && kill -0 -- "-$status_scan_pid" 2>/dev/null; do
+		attempt=$((attempt + 1))
+		sleep 0.01
+	done
+	kill -KILL -- "-$status_scan_pid" 2>/dev/null || true
+	wait "$status_scan_pid" 2>/dev/null || true
+	status_scan_pid=
+}
+
 probe_status_assets() {
-	local candidate executable
+	local candidate executable scan_fd
 	local -a targets=()
 	status_configured_loadable=false
 	status_rollback_available=false
@@ -209,15 +224,22 @@ probe_status_assets() {
 	[[ ! -d $wallpaper_dir ]] || targets+=("$wallpaper_dir")
 	((${#targets[@]} > 0)) || return 0
 	executable=$(feh_path) || return 0
-	while IFS= read -r candidate; do
+	exec {scan_fd}< <(
+		exec setsid timeout --signal=TERM --kill-after=1 2 "$executable" \
+			--loadable --recursive -- "${targets[@]}" 2>/dev/null
+	)
+	status_scan_pid=$!
+	trap 'cancel_status_scan; exit 143' HUP INT TERM
+	while IFS= read -r candidate <&"$scan_fd"; do
 		valid_asset "$candidate" || continue
 		status_rollback_available=true
 		[[ $configured != true || $candidate != "$configured_path" ]] ||
 			status_configured_loadable=true
-	done < <(
-		timeout --signal=TERM --kill-after=1 2 "$executable" \
-			--loadable --recursive -- "${targets[@]}" 2>/dev/null || true
-	)
+	done
+	exec {scan_fd}<&-
+	wait "$status_scan_pid" 2>/dev/null || true
+	status_scan_pid=
+	trap - HUP INT TERM
 }
 
 ensure_owned_directory() {
@@ -1854,11 +1876,14 @@ status() {
 	local selection_state=partial selection_path='' selection_fit=fill
 	local selection_detail='No managed wallpaper selection; session startup uses the legacy random wallpaper'
 	local mutation_state=restricted mutation_detail='Wallpaper changes are unavailable in this session'
+	local reset_state=restricted reset_detail='Wallpaper reset is unavailable in this session'
 	local token='' remaining=0 now failed_detail='' preview_valid=false preview_invalid=false
 	local preview_watchdog_alive=false
 	local status_configured_loadable=false status_rollback_available=false
 
 	if mutation_ready "$read_only"; then
+		reset_state=available
+		reset_detail='Wallpaper selection can be reset to the session default'
 		if [[ $read_only == true ]]; then
 			if mutation_recovery_pending; then
 				mutation_detail=$(mutation_failure_detail)
@@ -1883,6 +1908,8 @@ status() {
 			fi
 		else
 			mutation_detail='Wallpaper changes are temporarily busy'
+			reset_state=restricted
+			reset_detail=$mutation_detail
 		fi
 	elif ! feh_path >/dev/null; then
 		provider_state=partial
@@ -1894,6 +1921,8 @@ status() {
 		selection_detail='Wallpaper configuration is invalid or unsafe'
 		mutation_state=restricted
 		mutation_detail='Wallpaper configuration is invalid or unsafe'
+		reset_state=restricted
+		reset_detail=$mutation_detail
 	else
 		probe_status_assets
 	fi
@@ -1927,6 +1956,8 @@ status() {
 		preview_invalid=true
 		mutation_state=restricted
 		mutation_detail=$invalid_preview_detail
+		reset_state=restricted
+		reset_detail=$invalid_preview_detail
 	elif [[ -n $token ]]; then
 		preview_valid=true
 		if read_preview_meta "$token"; then
@@ -1937,11 +1968,15 @@ status() {
 			if ! preview_owned_by_current_display; then
 				mutation_state=restricted
 				mutation_detail='Another X11 session owns the active wallpaper preview'
+				reset_state=restricted
+				reset_detail=$mutation_detail
 			fi
 		else
 			preview_invalid=true
 			mutation_state=restricted
 			mutation_detail=$invalid_preview_detail
+			reset_state=restricted
+			reset_detail=$invalid_preview_detail
 		fi
 	fi
 
@@ -1950,6 +1985,7 @@ status() {
 	printf 'selection\t%s\t%s\t%s\t%s\n' "$selection_state" \
 		"$(clean_field "$selection_path")" "$selection_fit" "$(clean_field "$selection_detail")"
 	printf 'mutation\t%s\t%s\n' "$mutation_state" "$(clean_field "$mutation_detail")"
+	printf 'reset\t%s\t%s\n' "$reset_state" "$(clean_field "$reset_detail")"
 	if [[ $preview_valid == false ]]; then
 		printf 'preview\tnone\t\t0\t\tfill\tNo wallpaper preview is active\n'
 	elif [[ $preview_invalid == true ]]; then
@@ -2364,6 +2400,13 @@ mutation-ready)
 		exit 2
 	}
 	mutation_ready && rollback_baseline_available
+	;;
+reset-ready)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	mutation_ready
 	;;
 apply)
 	[[ $# -eq 3 ]] || {

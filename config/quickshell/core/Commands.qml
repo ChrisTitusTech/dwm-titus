@@ -99,6 +99,10 @@ Singleton {
         return helperCommand("dwm-settings-appearance", action, args, true);
     }
 
+    function settingsWallpaperCommand(action, args) {
+        return helperCommand("dwm-settings-wallpaper", action, args, true);
+    }
+
     function settingsThemeCommand(action, args) {
         return helperCommand("dwm-settings-theme", action, args, true);
     }

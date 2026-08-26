@@ -189,6 +189,9 @@ if run_helper mutation-ready; then
 	printf 'Wallpaper mutation probe succeeded without a recoverable baseline\n' >&2
 	exit 1
 fi
+run_helper reset-ready
+grep -Fqx $'reset\tavailable\tWallpaper selection can be reset to the session default' \
+	<<<"$no_rollback_status"
 mkdir "$wallpaper_dir"
 empty_default_status=$(run_helper status --read-only)
 grep -Fqx $'mutation\trestricted\tWallpaper changes require a recoverable current or default wallpaper' \
@@ -248,6 +251,33 @@ unset DWM_TEST_FEH_LOADABLE_BLOCK_PID_FILE
 loadable_block_pid=$(cat "$loadable_block_pid_file")
 if process_running "$loadable_block_pid"; then
 	printf 'Wallpaper readiness probe leaked its bounded Feh scan\n' >&2
+	exit 1
+fi
+
+# Terminating a read-only status request also terminates its decoder scan so
+# closing the Appearance pane cannot leave recursive wallpaper work behind.
+loadable_cancel_pid_file=$work/loadable-cancel.pid
+export DWM_TEST_FEH_LOADABLE_BLOCK_PID_FILE=$loadable_cancel_pid_file
+DISPLAY=:915 HOME=$home XDG_CONFIG_HOME=$config_home XDG_STATE_HOME=$state_home \
+	XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir \
+	DWM_TEST_FEH_LOG=$log PATH="$bin_dir:$PATH" "$helper" status --read-only \
+	>"$work/cancelled-status.out" 2>"$work/cancelled-status.err" &
+cancelled_status_pid=$!
+for _ in {1..100}; do
+	[[ ! -s $loadable_cancel_pid_file ]] || break
+	sleep 0.01
+done
+[[ -s $loadable_cancel_pid_file ]]
+loadable_cancel_pid=$(cat "$loadable_cancel_pid_file")
+kill -TERM "$cancelled_status_pid"
+wait "$cancelled_status_pid" || [[ $? -eq 143 ]]
+unset DWM_TEST_FEH_LOADABLE_BLOCK_PID_FILE
+for _ in {1..100}; do
+	process_running "$loadable_cancel_pid" || break
+	sleep 0.01
+done
+if process_running "$loadable_cancel_pid"; then
+	printf 'Terminated wallpaper status left its Feh scan running\n' >&2
 	exit 1
 fi
 

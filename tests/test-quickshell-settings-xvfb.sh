@@ -4,7 +4,7 @@ set -eu
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 for command_name in Xvfb dbus-monitor dbus-run-session glib-compile-schemas \
-	gsettings inotifywait quickshell xdotool xprop pgrep getconf; do
+	gsettings inotifywait quickshell xdotool xinput xprop pgrep getconf; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -67,7 +67,7 @@ test_stage='initializing fixture'
 capture_process_identity() (
 	identity_pid=$1
 	[ -r "/proc/$identity_pid/stat" ] || return 1
-	IFS= read -r identity_stat <"/proc/$identity_pid/stat" || return 1
+	IFS= read -r identity_stat 2>/dev/null <"/proc/$identity_pid/stat" || return 1
 	identity_fields=${identity_stat##*) }
 	# The remaining proc stat fields are space-delimited by the kernel.
 	# shellcheck disable=SC2086
@@ -160,15 +160,42 @@ helper_tmp=$work/tmp
 runtime_storage=${DWM_SETTINGS_TEST_RUNTIME_DIR:-$work/runtime}
 runtime=$runtime_storage
 schema_dir=$work/schemas
+fixture_feh=$work/feh
 config_home=$home/.config
 data_home=$home/.local/share
 state_home=$home/.local/state
+export XDG_STATE_HOME="$state_home"
 mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" \
 	"$config_home/autostart" "$data_home/applications" \
 	"$data_home/dwm-titus/config" "$data_home/dwm-titus/scripts" \
 	"$state_home/dwm-titus/appearance" \
+	"$home/Pictures/backgrounds" \
 	"$runtime_storage" "$schema_dir" "$helper_tmp"
 chmod 700 "$runtime_storage"
+cat >"$fixture_feh" <<'EOF'
+#!/bin/sh
+set -eu
+
+loadable=false
+for argument in "$@"; do
+	[ "$argument" != --loadable ] || loadable=true
+done
+
+if [ "$loadable" = true ]; then
+	for argument in "$@"; do
+		case $argument in
+		-- | -*) continue ;;
+		esac
+		if [ -f "$argument" ]; then
+			printf '%s\n' "$argument"
+		elif [ -d "$argument" ]; then
+			find -L "$argument" -type f -print
+		fi
+	done
+fi
+EOF
+chmod 700 "$fixture_feh"
+export DWM_WALLPAPER_FEH="$fixture_feh"
 if [ "${#runtime}" -gt 64 ]; then
 	runtime_alias_dir=$(mktemp -d /tmp/dwm-settings-runtime.XXXXXX)
 	ln -s "$runtime_storage" "$runtime_alias_dir/runtime"
@@ -190,6 +217,7 @@ glib-compile-schemas "$schema_dir"
 export GSETTINGS_SCHEMA_DIR="$schema_dir"
 export GSETTINGS_BACKEND=keyfile
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
+cp "$repo/config/quickshell/assets/ctt_logo.png" "$home/Pictures/backgrounds/test-wallpaper.png"
 # Keep this nested-X11 fixture independent from the host system UPower service
 # so versioned helper battery records exercise the fallback parser.
 sed -i 's/readonly property var nativeBattery: UPower.displayDevice/readonly property var nativeBattery: null/' \
@@ -235,7 +263,8 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-quickshell-controlcenter" "$repo/scripts/dwm-quickshell-controls" \
 	"$repo/scripts/dwm-quickshell-network" "$repo/scripts/dwm-diagnostics" \
 	"$repo/scripts/dwm-default-apps" "$repo/scripts/dwm-xdg-autostart" \
-	"$repo/scripts/dwm-settings-appearance" "$repo/scripts/dwm-settings-theme" \
+	"$repo/scripts/dwm-settings-appearance" "$repo/scripts/dwm-settings-wallpaper" \
+	"$repo/scripts/dwm-settings-theme" \
 	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
 
@@ -273,6 +302,22 @@ fi
 exec "$(dirname -- "$0")/dwm-settings-appearance.real" "$@"
 SH
 chmod +x "$data_home/dwm-titus/scripts/dwm-settings-appearance"
+
+wallpaper_status_fixture=$work/wallpaper-status
+mv "$data_home/dwm-titus/scripts/dwm-settings-wallpaper" \
+	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper.real"
+cat >"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" <<'SH'
+#!/bin/sh
+set -eu
+fixture=${DWM_SETTINGS_TEST_WALLPAPER_STATUS:-}
+if [ "${1:-}" = status ] && [ "${2:-}" = --read-only ] &&
+	[ -n "$fixture" ] && [ -f "$fixture" ]; then
+	printf 'wallpaper-protocol\t1\t0\n'
+	exit 0
+fi
+exec "$(dirname -- "$0")/dwm-settings-wallpaper.real" "$@"
+SH
+chmod +x "$data_home/dwm-titus/scripts/dwm-settings-wallpaper"
 
 theme_status_fixture=$work/theme-preview-status
 mv "$data_home/dwm-titus/scripts/dwm-settings-theme" \
@@ -522,6 +567,7 @@ env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	DWM_SETTINGS_TEST_POWER_STATE="$power_state" DWM_SETTINGS_TEST_DELAY_POWER=1 \
 	DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT="$malformed_power_snapshot" \
 	DWM_SETTINGS_TEST_APPEARANCE_FAILURE="$appearance_failure_fixture" \
+	DWM_SETTINGS_TEST_WALLPAPER_STATUS="$wallpaper_status_fixture" \
 	DWM_SETTINGS_TEST_THEME_STATUS="$theme_status_fixture" \
 	PATH="$data_home/dwm-titus/scripts:$PATH" \
 	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
@@ -1213,6 +1259,7 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$bluetooth_status" = available ]
 
+rm -f -- "$runtime/dwm-settings-wallpaper/exchange-support"
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
 i=0
@@ -1238,6 +1285,21 @@ available | partial) ;;
 	exit 1
 	;;
 esac
+wallpaper_reset_ready=false
+i=0
+while [ "$i" -lt 100 ]; do
+	wallpaper_reset_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperResetReady 2>/dev/null || true)
+	[ "$wallpaper_reset_ready" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$wallpaper_reset_ready" != true ] ||
+	[ ! -f "$runtime/dwm-settings-wallpaper/exchange-support" ]; then
+	printf 'Appearance pane did not prime wallpaper readiness after live shell startup: %s\n' \
+		"$wallpaper_reset_ready" >&2
+	exit 1
+fi
 appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme)
 appearance_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1253,6 +1315,224 @@ appearance_recovery=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home X
 [ "$appearance_application" = partial ]
 [ "$appearance_preview" = none ]
 [ "$appearance_recovery" = none ]
+
+test_stage='validating wallpaper Settings lifecycle and recovery'
+test_wallpaper=$home/Pictures/backgrounds/test-wallpaper.png
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
+	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" apply "$test_wallpaper" max >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	wallpaper_path=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPath 2>/dev/null || true)
+	wallpaper_fit=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperFit 2>/dev/null || true)
+	[ "$wallpaper_state" = available ] && [ "$wallpaper_path" = "$test_wallpaper" ] &&
+		[ "$wallpaper_fit" = max ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$wallpaper_state" = available ]
+[ "$wallpaper_path" = "$test_wallpaper" ]
+[ "$wallpaper_fit" = max ]
+
+wallpaper_preview_timeout=60
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
+	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" \
+	preview nested-wallpaper "$wallpaper_preview_timeout" "$test_wallpaper" center >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
+	[ "$wallpaper_preview" = active ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$wallpaper_preview" = active ]
+wallpaper_remaining_before=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewRemaining)
+[ "$wallpaper_remaining_before" -gt 0 ]
+wallpaper_message=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMessage)
+case $wallpaper_message in
+"Wallpaper preview active; keep it within "*" seconds or it will revert") ;;
+*)
+	printf 'External wallpaper preview message omitted its live deadline: %s\n' \
+		"$wallpaper_message" >&2
+	exit 1
+	;;
+esac
+wallpaper_message_remaining=${wallpaper_message#*within }
+wallpaper_message_remaining=${wallpaper_message_remaining%% seconds*}
+sleep 1.2
+wallpaper_remaining_after=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewRemaining)
+[ "$wallpaper_remaining_after" -lt "$wallpaper_remaining_before" ]
+case $wallpaper_message_remaining in
+'' | *[!0-9]*)
+	printf 'External wallpaper preview message reported an invalid deadline: %s\n' \
+		"$wallpaper_message" >&2
+	exit 1
+	;;
+esac
+if [ "$wallpaper_message_remaining" -lt "$wallpaper_remaining_before" ] ||
+	[ "$wallpaper_message_remaining" -gt "$wallpaper_preview_timeout" ]; then
+	printf 'External wallpaper preview message did not match the live deadline: %s (%s -> %s)\n' \
+		"$wallpaper_message" "$wallpaper_remaining_before" "$wallpaper_remaining_after" >&2
+	exit 1
+fi
+
+# A dead watchdog is surfaced as failed by read-only status. The explicit
+# Settings recovery action performs writable reconciliation and rearms it.
+test_stage='validating wallpaper watchdog reconciliation'
+wallpaper_preview_meta=$state_home/dwm-titus/appearance/wallpaper/nested-wallpaper.meta
+wallpaper_watchdog_identity=$(awk -F= '
+	$1 == "pid" { pid = $2 }
+	$1 == "pid_start" { start = $2 }
+	END { if (pid != "" && start != "") print pid ":" start }
+' "$wallpaper_preview_meta")
+if [ -z "$wallpaper_watchdog_identity" ]; then
+	printf 'Wallpaper watchdog metadata omitted process identity: %s\n' \
+		"$wallpaper_preview_meta" >&2
+	exit 1
+fi
+wallpaper_watchdog_pid=${wallpaper_watchdog_identity%%:*}
+if process_identity_alive "$wallpaper_watchdog_identity"; then
+	kill -TERM "$wallpaper_watchdog_pid" 2>/dev/null || true
+fi
+i=0
+while [ "$i" -lt 100 ]; do
+	! process_identity_alive "$wallpaper_watchdog_identity" && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if process_identity_alive "$wallpaper_watchdog_identity"; then
+	printf 'Wallpaper watchdog remained active after SIGTERM: %s\n' \
+		"$wallpaper_watchdog_identity" >&2
+	exit 1
+fi
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
+	wallpaper_status_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperStatusBusy 2>/dev/null || true)
+	[ "$wallpaper_preview" = failed ] && [ "$wallpaper_status_busy" = false ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$wallpaper_preview" != failed ] || [ "$wallpaper_status_busy" != false ]; then
+	printf 'Wallpaper watchdog state did not converge: %s / busy=%s\n' \
+		"$wallpaper_preview" "$wallpaper_status_busy" >&2
+	exit 1
+fi
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperReconcile >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
+	[ "$wallpaper_preview" = active ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$wallpaper_preview" = active ]
+wallpaper_message=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMessage)
+if [ "$wallpaper_message" != 'Wallpaper preview recovery reconciled' ]; then
+	printf 'Unexpected wallpaper reconcile message: %s\n' "$wallpaper_message" >&2
+	exit 1
+fi
+
+# A transient read-only status failure must not hide the active transaction or
+# its recovery controls while the wallpaper watchdog still owns the preview.
+test_stage='validating wallpaper status failure preservation'
+: >"$wallpaper_status_fixture"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
+	[ "$wallpaper_state" = unavailable ] && [ "$wallpaper_preview" = active ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$wallpaper_state" != unavailable ] || [ "$wallpaper_preview" != active ]; then
+	printf 'Wallpaper status failure did not preserve preview: %s / %s\n' \
+		"$wallpaper_state" "$wallpaper_preview" >&2
+	exit 1
+fi
+rm -f "$wallpaper_status_fixture"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	[ "$wallpaper_state" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$wallpaper_state" != available ]; then
+	printf 'Wallpaper status did not recover after fixture removal: %s\n' "$wallpaper_state" >&2
+	exit 1
+fi
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
+	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" revert nested-wallpaper >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
+	[ "$wallpaper_preview" = none ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$wallpaper_preview" != none ]; then
+	printf 'Wallpaper preview did not clear after revert: %s\n' "$wallpaper_preview" >&2
+	exit 1
+fi
+
+test_stage='validating wallpaper missing-file recovery'
+rm -f "$test_wallpaper"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	[ "$wallpaper_state" = partial ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+wallpaper_mutation_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperMutationDetail)
+wallpaper_reset_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperResetReady)
+if [ "$wallpaper_state" != partial ] ||
+	[ "$wallpaper_mutation_detail" != 'Wallpaper changes require a recoverable current or default wallpaper' ] ||
+	[ "$wallpaper_reset_ready" != true ]; then
+	printf 'Unexpected missing wallpaper state/detail/reset: %s / %s / %s\n' \
+		"$wallpaper_state" "$wallpaper_mutation_detail" "$wallpaper_reset_ready" >&2
+	exit 1
+fi
+cp "$repo/config/quickshell/assets/ctt_logo.png" "$test_wallpaper"
 
 # Preview and recovery metadata are watched while Appearance is open. An
 # external keep or abandon must clear active and failed controls without
@@ -1549,11 +1829,27 @@ while [ "$i" -lt 100 ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$appearance_message" = 'Automatic rollback status needs a manual refresh' ]
+if [ "$appearance_message" != 'Automatic rollback status needs a manual refresh' ]; then
+	printf 'Bounded appearance retry message did not converge: %s\n' \
+		"$appearance_message" >&2
+	exit 1
+fi
+# The warning can be published while one already-scheduled final probe is
+# still starting. Let that bounded probe settle before proving retries stop.
+sleep 0.75
 preview_status_calls=$(wc -c <"$theme_status_fixture.calls")
 sleep 0.75
-[ "$(wc -c <"$theme_status_fixture.calls")" -eq "$preview_status_calls" ]
-[ "$preview_status_calls" -le 5 ]
+preview_status_calls_after=$(wc -c <"$theme_status_fixture.calls")
+if [ "$preview_status_calls_after" -ne "$preview_status_calls" ]; then
+	printf 'Appearance preview retries continued after convergence: %s -> %s calls\n' \
+		"$preview_status_calls" "$preview_status_calls_after" >&2
+	exit 1
+fi
+if [ "$preview_status_calls" -gt 5 ]; then
+	printf 'Appearance preview retries exceeded the bound: %s calls\n' \
+		"$preview_status_calls" >&2
+	exit 1
+fi
 rm -f "$theme_status_fixture.started" "$theme_status_fixture.calls"
 printf '%s\n' none >"$theme_status_fixture"
 
