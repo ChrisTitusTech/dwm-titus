@@ -448,7 +448,7 @@ Scope {
     function refreshWallpaperStatus() {
         if (!root.settingsVisible) return;
         if (wallpaperReadinessProcess.running || wallpaperStatusProcess.running
-                || wallpaperActionProcess.running) {
+                || wallpaperActionProcess.running || inventoryProcess.running) {
             root.wallpaperStatusPending = true;
             return;
         }
@@ -461,6 +461,12 @@ Scope {
         if (!root.settingsVisible) return;
         if (!root.inventoryWatchReady && allowUnwatched !== true) {
             root.inventoryPending = true;
+            return;
+        }
+        if (wallpaperStatusProcess.running) {
+            root.inventoryPending = true;
+            root.inventoryPendingAllowUnwatched = root.inventoryPendingAllowUnwatched
+                || allowUnwatched === true;
             return;
         }
         root.inventoryGeneration++;
@@ -998,7 +1004,12 @@ Scope {
                 root.clearWallpaperStatus(error.length > 0 ? error
                     : "Wallpaper helper failed before returning a valid status");
             }
-            if (!running && root.settingsVisible && root.wallpaperStatusPending) {
+            if (!running && root.settingsVisible && root.inventoryPending) {
+                const allowUnwatched = root.inventoryPendingAllowUnwatched;
+                root.inventoryPending = false;
+                root.inventoryPendingAllowUnwatched = false;
+                Qt.callLater(function() { root.refreshInventory(allowUnwatched); });
+            } else if (!running && root.settingsVisible && root.wallpaperStatusPending) {
                 root.wallpaperStatusPending = false;
                 Qt.callLater(root.refreshWallpaperStatus);
             }
@@ -1030,6 +1041,8 @@ Scope {
                 root.inventoryPending = false;
                 root.inventoryPendingAllowUnwatched = false;
                 Qt.callLater(function() { root.refreshInventory(allowUnwatched); });
+            } else if (!running && root.wallpaperStatusPending && root.settingsVisible) {
+                Qt.callLater(root.refreshWallpaperStatus);
             }
         }
     }
