@@ -148,6 +148,8 @@ Scope {
         for (const integration of root.integrations) {
             if (integration.state !== "available") return "partial";
         }
+        if (root.wallpaperProviderState !== "available"
+                || root.wallpaperState !== "available") return "partial";
         return "available";
     }
 
@@ -1036,13 +1038,13 @@ Scope {
                 root.clearInventory(error.length > 0 ? error
                     : "Appearance inventory failed before returning a valid snapshot");
             }
-            if (!running && root.inventoryPending && root.settingsVisible) {
+            if (!running && root.wallpaperStatusPending && root.settingsVisible) {
+                Qt.callLater(root.refreshWallpaperStatus);
+            } else if (!running && root.inventoryPending && root.settingsVisible) {
                 const allowUnwatched = root.inventoryPendingAllowUnwatched;
                 root.inventoryPending = false;
                 root.inventoryPendingAllowUnwatched = false;
                 Qt.callLater(function() { root.refreshInventory(allowUnwatched); });
-            } else if (!running && root.wallpaperStatusPending && root.settingsVisible) {
-                Qt.callLater(root.refreshWallpaperStatus);
             }
         }
     }

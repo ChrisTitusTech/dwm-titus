@@ -1338,10 +1338,11 @@ done
 [ "$wallpaper_path" = "$test_wallpaper" ]
 [ "$wallpaper_fit" = max ]
 
+wallpaper_preview_timeout=60
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
 	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" \
-	preview nested-wallpaper 60 "$test_wallpaper" center >/dev/null
+	preview nested-wallpaper "$wallpaper_preview_timeout" "$test_wallpaper" center >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1364,17 +1365,25 @@ case $wallpaper_message in
 	exit 1
 	;;
 esac
-case $wallpaper_message in
-*"within 30 seconds"*)
-	printf 'External wallpaper preview message retained the Settings-only deadline: %s\n' \
-		"$wallpaper_message" >&2
-	exit 1
-	;;
-esac
+wallpaper_message_remaining=${wallpaper_message#*within }
+wallpaper_message_remaining=${wallpaper_message_remaining%% seconds*}
 sleep 1.2
 wallpaper_remaining_after=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewRemaining)
 [ "$wallpaper_remaining_after" -lt "$wallpaper_remaining_before" ]
+case $wallpaper_message_remaining in
+'' | *[!0-9]*)
+	printf 'External wallpaper preview message reported an invalid deadline: %s\n' \
+		"$wallpaper_message" >&2
+	exit 1
+	;;
+esac
+if [ "$wallpaper_message_remaining" -lt "$wallpaper_remaining_before" ] ||
+	[ "$wallpaper_message_remaining" -gt "$wallpaper_preview_timeout" ]; then
+	printf 'External wallpaper preview message did not match the live deadline: %s (%s -> %s)\n' \
+		"$wallpaper_message" "$wallpaper_remaining_before" "$wallpaper_remaining_after" >&2
+	exit 1
+fi
 
 # A dead watchdog is surfaced as failed by read-only status. The explicit
 # Settings recovery action performs writable reconciliation and rearms it.
@@ -1820,11 +1829,27 @@ while [ "$i" -lt 100 ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$appearance_message" = 'Automatic rollback status needs a manual refresh' ]
+if [ "$appearance_message" != 'Automatic rollback status needs a manual refresh' ]; then
+	printf 'Bounded appearance retry message did not converge: %s\n' \
+		"$appearance_message" >&2
+	exit 1
+fi
+# The warning can be published while one already-scheduled final probe is
+# still starting. Let that bounded probe settle before proving retries stop.
+sleep 0.75
 preview_status_calls=$(wc -c <"$theme_status_fixture.calls")
 sleep 0.75
-[ "$(wc -c <"$theme_status_fixture.calls")" -eq "$preview_status_calls" ]
-[ "$preview_status_calls" -le 5 ]
+preview_status_calls_after=$(wc -c <"$theme_status_fixture.calls")
+if [ "$preview_status_calls_after" -ne "$preview_status_calls" ]; then
+	printf 'Appearance preview retries continued after convergence: %s -> %s calls\n' \
+		"$preview_status_calls" "$preview_status_calls_after" >&2
+	exit 1
+fi
+if [ "$preview_status_calls" -gt 5 ]; then
+	printf 'Appearance preview retries exceeded the bound: %s calls\n' \
+		"$preview_status_calls" >&2
+	exit 1
+fi
 rm -f "$theme_status_fixture.started" "$theme_status_fixture.calls"
 printf '%s\n' none >"$theme_status_fixture"
 
