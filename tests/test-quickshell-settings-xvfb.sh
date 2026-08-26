@@ -160,6 +160,7 @@ helper_tmp=$work/tmp
 runtime_storage=${DWM_SETTINGS_TEST_RUNTIME_DIR:-$work/runtime}
 runtime=$runtime_storage
 schema_dir=$work/schemas
+fixture_feh=$work/feh
 config_home=$home/.config
 data_home=$home/.local/share
 state_home=$home/.local/state
@@ -171,6 +172,30 @@ mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" \
 	"$home/Pictures/backgrounds" \
 	"$runtime_storage" "$schema_dir" "$helper_tmp"
 chmod 700 "$runtime_storage"
+cat >"$fixture_feh" <<'EOF'
+#!/bin/sh
+set -eu
+
+loadable=false
+for argument in "$@"; do
+	[ "$argument" != --loadable ] || loadable=true
+done
+
+if [ "$loadable" = true ]; then
+	for argument in "$@"; do
+		case $argument in
+		-- | -*) continue ;;
+		esac
+		if [ -f "$argument" ]; then
+			printf '%s\n' "$argument"
+		elif [ -d "$argument" ]; then
+			find -L "$argument" -type f -print
+		fi
+	done
+fi
+EOF
+chmod 700 "$fixture_feh"
+export DWM_WALLPAPER_FEH="$fixture_feh"
 if [ "${#runtime}" -gt 64 ]; then
 	runtime_alias_dir=$(mktemp -d /tmp/dwm-settings-runtime.XXXXXX)
 	ln -s "$runtime_storage" "$runtime_alias_dir/runtime"
