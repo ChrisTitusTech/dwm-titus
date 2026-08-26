@@ -53,6 +53,8 @@ fi
 grep -Fq 'Commands.settingsAppearanceCommand("watch-inventory", [])' "$model"
 grep -Fq 'Commands.settingsAppearanceCommand("watch-compositor", [])' "$model"
 grep -Fq 'function startInventoryWatcher(restartIfRunning)' "$model"
+sed -n '/function startInventoryWatcher(restartIfRunning)/,/^    }/p' "$model" |
+	grep -Fq 'if (!root.settingsVisible) return;'
 grep -Fq 'root.startInventoryWatcher(true);' "$model"
 grep -Fq 'if (restartIfRunning === true) root.inventoryWatchRestartPending = true;' "$model"
 grep -Fq 'root.inventoryWatchSawEvent = false' "$model"
@@ -100,6 +102,10 @@ grep -Fq 'if (!running && root.wallpaperStatusPending && root.settingsVisible) {
 grep -Fq 'readonly property bool wallpaperStatusBusy: wallpaperReadinessProcess.running' "$model"
 grep -Fq 'Commands.settingsWallpaperCommand("reset-ready", [])' "$model"
 grep -Fq 'if (wallpaperReadinessProcess.running || wallpaperStatusProcess.running' "$model"
+if grep -Fq '|| (inventoryWatchProcess.running && !root.inventoryWatchReady)) {' "$model"; then
+	printf 'Wallpaper status discovery is still gated on inventory watcher startup\n' >&2
+	exit 1
+fi
 grep -Fq '|| wallpaperReadinessProcess.running || wallpaperStatusProcess.running' "$model"
 grep -Fq 'root.wallpaperPreviewState = "active";' "$model"
 test "$(grep -Fc 'root.wallpaperPreviewState = "active";' "$model")" -eq 1
