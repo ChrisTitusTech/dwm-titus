@@ -169,6 +169,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Stop automatic theme-preview status retries after their bounded failure
+  budget is exhausted. Reopening Appearance or using its refresh action still
+  performs one explicit retry, and successful preview lifecycle actions re-arm
+  automatic status observation.
+
 - Keep the managed Quickshell recovery scoped to the exact configuration and
   display, validate fixed PID/start-time cohorts before signals, and bound
   graceful and forced recovery so a stale shell cannot suppress the panel or
