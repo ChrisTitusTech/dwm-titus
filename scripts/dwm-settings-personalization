@@ -22,6 +22,7 @@ usage() {
 usage: dwm-settings-personalization status
        dwm-settings-personalization apply {font|text-size|cursor|icon|gtk|qt} VALUE
        dwm-settings-personalization reset {font|text-size|cursor|icon|gtk|qt}
+       dwm-settings-personalization repair
        dwm-settings-personalization delegate {gtk|qt}
 EOF
 }
@@ -150,13 +151,13 @@ gtk_available() {
 font_family_matches() {
 	local requested=$1 resolved=$2
 	[[ ${resolved,,} == "${requested,,}" ]] && return 0
-	case $requested:$resolved in
-	'MesloLGS Nerd Font Mono:MesloLGS Nerd Font' | \
-		'MesloLGS Nerd Font Mono:MesloLGS NF' | \
-		'MesloLGS Nerd Font:MesloLGS Nerd Font Mono' | \
-		'MesloLGS Nerd Font:MesloLGS NF' | \
-		'MesloLGS NF:MesloLGS Nerd Font Mono' | \
-		'MesloLGS NF:MesloLGS Nerd Font') return 0 ;;
+	case ${requested,,}:${resolved,,} in
+	'meslolgs nerd font mono:meslolgs nerd font' | \
+		'meslolgs nerd font mono:meslolgs nf' | \
+		'meslolgs nerd font:meslolgs nerd font mono' | \
+		'meslolgs nerd font:meslolgs nf' | \
+		'meslolgs nf:meslolgs nerd font mono' | \
+		'meslolgs nf:meslolgs nerd font') return 0 ;;
 	esac
 	return 1
 }
@@ -183,7 +184,7 @@ qt_available() {
 
 valid_asset_name() {
 	local value=$1
-	valid_field "$value" && [[ $value != */* && $value != *\\* && $value != *\"* &&
+	valid_field "$value" && [[ $value != unknown && $value != */* && $value != *\\* && $value != *\"* &&
 		$value != *=* && $value != *'|'* && $value != *'&'* &&
 		$value != . && $value != .. ]]
 }
@@ -231,6 +232,21 @@ text_scale_runtime_follows_system() {
 	awk -F '\t' '
 		$0 == "xsettings-protocol\t1\t0" { headers++ }
 		$0 == "state\tsystem-follow" { states++ }
+		END { exit(headers == 1 && states == 1 && NR == 2 ? 0 : 1) }
+	' <<<"$output"
+}
+
+text_scale_watch_ready() {
+	local output
+	command -v xsettingsd >/dev/null 2>&1 &&
+		command -v dump_xsettings >/dev/null 2>&1 &&
+		command -v pgrep >/dev/null 2>&1 &&
+		command -v pidwait >/dev/null 2>&1 &&
+		[[ -x $xsettings_helper ]] || return 1
+	output=$(timeout --signal=TERM --kill-after=1 3 "$xsettings_helper" status 2>/dev/null) || return 1
+	awk -F '\t' '
+		$0 == "xsettings-protocol\t1\t0" { headers++ }
+		$1 == "state" && ($2 == "active" || $2 == "stale") && NF == 3 { states++ }
 		END { exit(headers == 1 && states == 1 && NR == 2 ? 0 : 1) }
 	' <<<"$output"
 }
@@ -306,9 +322,6 @@ selection_record() {
 	if value=$(gsettings_string "$key" 2>/dev/null); then
 		if [[ -z $value ]]; then
 			state=partial
-		elif ! gsettings_key_ready "$key"; then
-			state=restricted
-			detail=$(gsettings_restriction_detail)
 		fi
 	else
 		value=
@@ -340,7 +353,8 @@ persisted_preference_valid() {
 
 persisted_name_valid() {
 	local value=$1
-	valid_field "$value" && [[ $value != */* && $value != *\\* && $value != *\"* &&
+	valid_field "$value" && [[ $value != follow-system && $value != follow-theme &&
+		$value != unknown && $value != */* && $value != *\\* && $value != *\"* &&
 		$value != *=* && $value != *'|'* && $value != *'&'* &&
 		$value != . && $value != .. ]]
 }
@@ -376,6 +390,17 @@ load_persisted_preferences() {
 		preference_values[$capability]=$value
 	done <"$file"
 	[[ $first == false ]]
+}
+
+persisted_protocol_unsupported() {
+	local file=$config_home/dwm-titus/personalization.conf first
+	[[ -f $file && ! -L $file && -r $file &&
+		$(stat -c %u -- "$file") == "$UID" &&
+		$(stat -c %h -- "$file") == 1 &&
+		$(stat -c %s -- "$file") -le $max_personalization_state_size ]] || return 1
+	IFS= read -r first <"$file" || [[ -n $first ]] || return 1
+	[[ $first == personalization-protocol$'\t'* &&
+		$first != $'personalization-protocol\t1\t0' ]]
 }
 
 decode_theme_environment_value() {
@@ -459,32 +484,85 @@ delegate_record() {
 	fi
 }
 
+action_readiness_record() {
+	local capability=$1 key=${2:-} apply_state=available reset_state=available
+	local detail='Apply and reset are available'
+	if [[ -n $key ]] && ! command -v gsettings >/dev/null 2>&1; then
+		apply_state=unavailable
+		reset_state=unavailable
+		detail='Required GSettings backend is unavailable'
+	elif [[ -n $key ]] && ! gsettings_raw "$key" >/dev/null 2>&1; then
+		apply_state=unavailable
+		reset_state=unavailable
+		detail='Required GSettings key is unavailable'
+	elif [[ -n $key ]] && ! gsettings_key_ready "$key"; then
+		apply_state=restricted
+		reset_state=restricted
+		detail=$(gsettings_restriction_detail)
+	elif [[ $capability == text-size ]]; then
+		if [[ ! -x $xsettings_helper ]]; then
+			apply_state=unavailable
+			reset_state=unavailable
+			detail='Apply and reset require the managed X11 text-scale helper'
+		elif ! command -v xsettingsd >/dev/null 2>&1 ||
+			! command -v dump_xsettings >/dev/null 2>&1; then
+			apply_state=restricted
+			detail='Apply requires XSETTINGS verification tools; reset remains available'
+		fi
+	fi
+	printf 'action-readiness\t%s\t%s\t%s\t%s\n' "$capability" \
+		"$apply_state" "$reset_state" "$detail"
+}
+
 status() {
 	local qt text_scale preference_capability state=available detail='Bounded personalization changes are available'
 	local mutation_state=available mutation_detail='Transactional personalization changes are available'
+	local repair_state=unavailable repair_detail='Personalization state does not need repair'
+	local preferences_valid=true
 	if ! command -v gsettings >/dev/null 2>&1; then
 		state=partial
 		detail='GSettings-backed choices are unavailable; supported Qt delegation remains available'
-	elif ! command -v dconf >/dev/null 2>&1; then
-		state=partial
-		detail='GSettings-backed changes lack required dconf rollback support; supported Qt changes remain available'
 	fi
 	if [[ ! -x $theme_helper ]] || ! timeout --signal=TERM --kill-after=1 5 \
 		"$theme_helper" personalization-ready >/dev/null 2>&1; then
-		state=partial
 		mutation_state=restricted
 		mutation_detail='The shared theme transaction is unavailable or unsafe'
 	fi
 	if ! load_persisted_preferences; then
+		preferences_valid=false
 		state=partial
-		detail='Persisted personalization choices are unavailable or malformed'
+		if persisted_protocol_unsupported; then
+			detail='Persisted personalization protocol is unsupported; use a compatible dwm-titus version'
+			repair_detail='Unsupported personalization state was preserved'
+		else
+			detail='Persisted personalization choices are unavailable or malformed'
+		fi
 		for preference_capability in font text-size cursor icon gtk qt; do
 			preference_values[$preference_capability]=unknown
 		done
 	fi
+	if [[ $preferences_valid == false ]]; then
+		if persisted_protocol_unsupported; then
+			repair_state=unavailable
+		elif [[ -x $theme_helper ]] && timeout --signal=TERM --kill-after=1 5 \
+			"$theme_helper" personalization-repair-ready >/dev/null 2>&1; then
+			repair_state=available
+			repair_detail='Reset malformed overrides to safe follow-source preferences'
+		else
+			repair_state=restricted
+			repair_detail='Malformed state cannot be repaired safely in this session'
+		fi
+	fi
 	printf 'personalization-protocol\t1\t0\n'
 	printf 'provider\tpersonalization\t%s\tuser-session\t%s\n' "$state" "$detail"
 	printf 'mutation\t%s\t%s\n' "$mutation_state" "$mutation_detail"
+	printf 'repair\t%s\t%s\n' "$repair_state" "$repair_detail"
+	action_readiness_record font font-name
+	action_readiness_record text-size text-scaling-factor
+	action_readiness_record cursor cursor-theme
+	action_readiness_record icon icon-theme
+	action_readiness_record gtk gtk-theme
+	action_readiness_record qt
 	selection_record font font-name "${preference_values[font]}"
 	if text_scale=$(gsettings_raw text-scaling-factor 2>/dev/null); then
 		if [[ ! -x $xsettings_helper ]]; then
@@ -494,10 +572,6 @@ status() {
 			! command -v dump_xsettings >/dev/null 2>&1; then
 			printf 'selection\ttext-size\tpartial\t%s\t%s\tXSETTINGS verification tools are unavailable; reset to system follow remains available\n' \
 				"$(clean_field "$text_scale")" "$(clean_field "${preference_values["text-size"]}")"
-		elif ! gsettings_key_ready text-scaling-factor; then
-			printf 'selection\ttext-size\trestricted\t%s\t%s\t%s\n' \
-				"$(clean_field "$text_scale")" "$(clean_field "${preference_values["text-size"]}")" \
-				"$(gsettings_restriction_detail)"
 		elif [[ ${preference_values["text-size"]} == follow-system ]] &&
 			! text_scale_runtime_follows_system; then
 			printf 'selection\ttext-size\tpartial\t%s\t%s\tManaged X11 text scale is still active; reset remains available\n' \
@@ -513,6 +587,11 @@ status() {
 	else
 		printf 'selection\ttext-size\tunavailable\t\t%s\tGSettings key is unavailable\n' \
 			"$(clean_field "${preference_values["text-size"]}")"
+	fi
+	if text_scale_watch_ready; then
+		printf 'watch-readiness\ttext-size\tavailable\tManaged XSETTINGS owner lifecycle is observable\n'
+	else
+		printf 'watch-readiness\ttext-size\tunavailable\tNo managed XSETTINGS owner is available to watch\n'
 	fi
 	selection_record cursor cursor-theme "${preference_values[cursor]}"
 	selection_record icon icon-theme "${preference_values[icon]}"
@@ -537,6 +616,14 @@ status() {
 	else
 		delegate_record qt qt5ct 'Open the Qt 5 configuration tool for advanced settings'
 	fi
+	# This must remain the final successful status operation. Direct consumers
+	# reject partial output from a helper that exits before this record.
+	printf 'complete\tstatus\n'
+}
+
+repair() {
+	[[ -x $theme_helper ]] || die "theme transaction helper is unavailable: $theme_helper"
+	"$theme_helper" personalize-repair
 }
 
 delegate() {
@@ -573,6 +660,8 @@ delegate() {
 	else
 		"$command" >/dev/null 2>&1 &
 	fi
+	printf 'personalization-action-protocol\t1\t0\n'
+	printf 'result\tdelegate\t%s\t%s\n' "$capability" "$command"
 }
 
 case ${1:-} in
@@ -596,6 +685,13 @@ reset)
 		exit 2
 	}
 	reset_capability "$2"
+	;;
+repair)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	repair
 	;;
 delegate)
 	[[ $# -eq 2 ]] || {

@@ -673,6 +673,7 @@ personalization_candidate_safe() {
 	local candidate_name=$1
 	inventory_field_safe "$candidate_name" && ((${#candidate_name} <= 255)) &&
 		[[ $candidate_name != follow-theme && $candidate_name != follow-system &&
+			$candidate_name != unknown &&
 			$candidate_name != */* && $candidate_name != *\\* && $candidate_name != *\"* &&
 			$candidate_name != *=* && $candidate_name != *'|'* && $candidate_name != *'&'* &&
 			$candidate_name != . && $candidate_name != .. ]]
@@ -809,12 +810,35 @@ emit_wallpaper_inventory() {
 	fi
 }
 
+font_candidate_resolved_family() {
+	local candidate=$1 resolved
+	resolved=$(timeout 1 fc-match --format '%{family[0]}\n' \
+		"$candidate:charset=20-7e" 2>/dev/null || true)
+	[[ ${resolved,,} == "${candidate,,}" ]] && {
+		printf '%s' "$resolved"
+		return 0
+	}
+	case ${candidate,,}:${resolved,,} in
+	'meslolgs nerd font mono:meslolgs nerd font' | \
+		'meslolgs nerd font mono:meslolgs nf' | \
+		'meslolgs nerd font:meslolgs nerd font mono' | \
+		'meslolgs nerd font:meslolgs nf' | \
+		'meslolgs nf:meslolgs nerd font mono' | \
+		'meslolgs nf:meslolgs nerd font')
+		printf '%s' "$resolved"
+		return 0
+		;;
+	esac
+	return 1
+}
+
 emit_font_inventory() {
 	local family style candidate current_description current_stem current_family='' requested_style
-	local normalized_requested normalized_style resolved count=0 scan_failed=false
-	local font_validation_deadline
+	local normalized_current normalized_family normalized_requested normalized_style normalized_candidate
+	local saved_font='' count=0 scan_failed=false
+	local font_validation_deadline resolved_family normalized_resolved
 	local -a font_families=()
-	local -A seen=()
+	local -A seen=() seen_normalized=() emitted=() emitted_normalized=()
 	if ! command -v fc-list >/dev/null 2>&1 || ! command -v fc-match >/dev/null 2>&1; then
 		emit_inventory_selection font unavailable '' '' \
 			'Fontconfig inventory tools are unavailable'
@@ -836,14 +860,17 @@ emit_font_inventory() {
 	while IFS=$'\t' read -r -u "$inventory_stream_fd" family style; do
 		if personalization_candidate_safe "$family" && [[ -z ${seen[$family]+x} ]]; then
 			seen[$family]=1
+			seen_normalized[${family,,}]=1
 			if ((${#font_families[@]} < max_inventory_candidates)); then
 				font_families+=("$family")
 			fi
 		fi
-		if [[ $current_stem == "$family" ]]; then
+		normalized_current=${current_stem,,}
+		normalized_family=${family,,}
+		if [[ $normalized_current == "$normalized_family" ]]; then
 			((${#family} > ${#current_family})) && current_family=$family
-		elif [[ $current_stem == "$family "* && -n $style ]]; then
-			requested_style=${current_stem#"$family "}
+		elif [[ $normalized_current == "$normalized_family "* && -n $style ]]; then
+			requested_style=${normalized_current#"$normalized_family "}
 			normalized_requested=${requested_style,,}
 			normalized_requested=${normalized_requested//[^[:alnum:]]/}
 			normalized_style=${style,,}
@@ -858,26 +885,45 @@ emit_font_inventory() {
 		scan_failed=true
 	fi
 	if [[ $scan_failed == false ]]; then
+		if [[ -z $current_family && -n $current_stem ]]; then
+			resolved_family=$(font_candidate_resolved_family "$current_stem" 2>/dev/null || true)
+			normalized_resolved=${resolved_family,,}
+			if [[ -n $resolved_family && -n ${seen_normalized[$normalized_resolved]+x} ]]; then
+				current_family=$resolved_family
+			fi
+		fi
+		saved_font=$(personalization_value font 2>/dev/null || true)
+		[[ $saved_font != follow-system ]] || saved_font=
 		font_validation_deadline=$((SECONDS + max_inventory_scan_seconds))
+		# Reserve the effective and saved families before the 24-choice ceiling.
+		# A saved override can differ after an external GSettings change, but it
+		# remains selectable only when the same bounded Fontconfig scan validates it.
+		for candidate in "$current_family" "$saved_font"; do
+			((count < max_font_candidates && SECONDS < font_validation_deadline)) || break
+			[[ -n $candidate ]] || continue
+			resolved_family=$(font_candidate_resolved_family "$candidate" 2>/dev/null || true)
+			normalized_resolved=${resolved_family,,}
+			normalized_candidate=${candidate,,}
+			[[ -n $resolved_family && -n ${seen_normalized[$normalized_resolved]+x} &&
+				-z ${emitted[$candidate]+x} ]] || continue
+			emitted[$candidate]=1
+			emitted_normalized[$normalized_candidate]=1
+			emit_inventory_candidate font available "$candidate" "$candidate" \
+				'Exact Fontconfig family'
+			((count += 1))
+		done
 		for candidate in "${font_families[@]}"; do
 			((count < max_font_candidates && SECONDS < font_validation_deadline)) || break
-			resolved=$(timeout 1 fc-match --format '%{family[0]}\n' \
-				"$candidate:charset=20-7e" 2>/dev/null || true)
-			if [[ $resolved == "$candidate" ]] || {
-				case $candidate:$resolved in
-				'MesloLGS Nerd Font Mono:MesloLGS Nerd Font' | \
-					'MesloLGS Nerd Font Mono:MesloLGS NF' | \
-					'MesloLGS Nerd Font:MesloLGS Nerd Font Mono' | \
-					'MesloLGS Nerd Font:MesloLGS NF' | \
-					'MesloLGS NF:MesloLGS Nerd Font Mono' | \
-					'MesloLGS NF:MesloLGS Nerd Font') true ;;
-				*) false ;;
-				esac
-			} then
-				emit_inventory_candidate font available "$candidate" "$candidate" \
-					'Exact Fontconfig family'
-				((count += 1))
-			fi
+			resolved_family=$(font_candidate_resolved_family "$candidate" 2>/dev/null || true)
+			normalized_resolved=${resolved_family,,}
+			normalized_candidate=${candidate,,}
+			[[ -n $resolved_family && -n ${seen_normalized[$normalized_resolved]+x} &&
+				-z ${emitted_normalized[$normalized_candidate]+x} ]] || continue
+			emitted[$candidate]=1
+			emitted_normalized[$normalized_candidate]=1
+			emit_inventory_candidate font available "$candidate" "$candidate" \
+				'Exact Fontconfig family'
+			((count += 1))
 		done
 	fi
 	if [[ $scan_failed == true ]]; then
@@ -938,8 +984,8 @@ icon_theme_declares_icons() {
 }
 
 emit_directory_inventory() {
-	local capability=$1 selected=$2
-	shift 2
+	local capability=$1 selected=$2 saved=$3
+	shift 3
 	local root path name state detail count=0 limit_reached=false discovery_failed=false
 	local selected_found=false selected_state=unavailable selected_detail
 	local -A seen=()
@@ -970,6 +1016,31 @@ emit_directory_inventory() {
 			((count += 1))
 		done
 	fi
+	if [[ $selected_found == true ]] && personalization_candidate_safe "$selected" &&
+		[[ -z ${seen[$selected]+x} ]]; then
+		seen[$selected]=1
+		emit_inventory_candidate "$capability" "$selected_state" \
+			"$selected" "$selected" "$selected_detail"
+		((count += 1))
+	fi
+	case $saved in
+	'' | follow-system | follow-theme) ;;
+	*)
+		if personalization_candidate_safe "$saved" && [[ -z ${seen[$saved]+x} ]]; then
+			for root in "$@"; do
+				[[ -d $root ]] || continue
+				path=$root/$saved
+				if [[ -d $path ]] && classify_directory_inventory_asset "$capability" "$path"; then
+					seen[$saved]=1
+					emit_inventory_candidate "$capability" "$inventory_directory_state" \
+						"$saved" "$saved" "$inventory_directory_detail"
+					((count += 1))
+					break
+				fi
+			done
+		fi
+		;;
+	esac
 	for root in "$@"; do
 		[[ -d $root ]] || continue
 		start_inventory_stream find -L "$root" -mindepth 1 -maxdepth 1 -type d -print0
@@ -1012,13 +1083,16 @@ emit_directory_inventory() {
 }
 
 emit_cursor_icon_gtk_inventory() {
-	local cursor icon gtk root
+	local cursor icon gtk saved_cursor saved_icon saved_gtk root
 	local -a cursor_roots=() icon_roots=() gtk_roots=()
 	cursor=$(gsettings_value cursor-theme 2>/dev/null || true)
 	[[ -n $cursor ]] || cursor=$(theme_env_value XCURSOR_THEME 2>/dev/null || true)
 	[[ -n $cursor ]] || cursor=${XCURSOR_THEME:-}
 	icon=$(gsettings_value icon-theme 2>/dev/null || true)
 	gtk=$(gsettings_value gtk-theme 2>/dev/null || true)
+	saved_cursor=$(personalization_value cursor 2>/dev/null || true)
+	saved_icon=$(personalization_value icon 2>/dev/null || true)
+	saved_gtk=$(personalization_value gtk 2>/dev/null || true)
 	while IFS= read -r root; do
 		cursor_roots+=("$root/icons")
 		icon_roots+=("$root/icons")
@@ -1029,9 +1103,9 @@ emit_cursor_icon_gtk_inventory() {
 		icon_roots+=("$HOME/.icons")
 		gtk_roots+=("$HOME/.themes")
 	fi
-	emit_directory_inventory cursor "$cursor" "${cursor_roots[@]}"
-	emit_directory_inventory icon "$icon" "${icon_roots[@]}"
-	emit_directory_inventory gtk "$gtk" "${gtk_roots[@]}"
+	emit_directory_inventory cursor "$cursor" "$saved_cursor" "${cursor_roots[@]}"
+	emit_directory_inventory icon "$icon" "$saved_icon" "${icon_roots[@]}"
+	emit_directory_inventory gtk "$gtk" "$saved_gtk" "${gtk_roots[@]}"
 }
 
 emit_qt_inventory() {
@@ -1601,7 +1675,7 @@ personalization_value_valid() {
 	cursor:follow-theme | gtk:follow-theme | qt:follow-theme | \
 		font:follow-system | text-size:follow-system | icon:follow-system) return 0 ;;
 	esac
-	[[ $value != follow-theme && $value != follow-system ]] || return 1
+	[[ $value != follow-theme && $value != follow-system && $value != unknown ]] || return 1
 	case $capability in
 	text-size)
 		case $value in

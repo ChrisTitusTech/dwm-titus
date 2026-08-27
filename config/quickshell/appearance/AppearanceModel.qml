@@ -93,6 +93,28 @@ Scope {
     property real fontActionScale: 1.0
     property string fontActionError: ""
     property bool fontActionSucceeded: false
+    property string personalizationProviderState: "idle"
+    property string personalizationProviderDetail: "Desktop personalization has not been loaded"
+    property string personalizationMutationState: "idle"
+    property string personalizationMutationDetail: "Desktop personalization changes have not been checked"
+    property string personalizationRepairState: "unavailable"
+    property string personalizationRepairDetail: "Personalization state does not need repair"
+    property var personalizationSelections: ({})
+    property var personalizationActionReadiness: ({})
+    property var personalizationDelegates: ({})
+    property bool personalizationBusy: false
+    property bool personalizationStatusParsed: false
+    property bool personalizationStatusPending: false
+    property bool xsettingsWatchReady: false
+    property bool xsettingsWatchProtocolSeen: false
+    property bool xsettingsWatchSawEvent: false
+    property bool xsettingsWatchFailed: false
+    readonly property bool personalizationStatusBusy: personalizationStatusProcess.running
+    property string personalizationActionKind: ""
+    property string personalizationActionCapability: ""
+    property string personalizationActionValue: ""
+    property string personalizationActionError: ""
+    property bool personalizationActionSucceeded: false
     property string message: ""
     property string messageSeverity: "idle"
     property string previewState: "none"
@@ -137,6 +159,28 @@ Scope {
     readonly property var wallpaperCandidates: root.inventoryCandidates.filter(function(candidate) {
         return candidate.id === "wallpaper";
     })
+    readonly property var cursorCandidates: root.inventoryCandidates.filter(function(candidate) {
+        return candidate.id === "cursor";
+    })
+    readonly property var iconCandidates: root.inventoryCandidates.filter(function(candidate) {
+        return candidate.id === "icon";
+    })
+    readonly property var gtkCandidates: root.inventoryCandidates.filter(function(candidate) {
+        return candidate.id === "gtk";
+    })
+    readonly property var qtCandidates: root.inventoryCandidates.filter(function(candidate) {
+        return candidate.id === "qt";
+    })
+    readonly property var desktopTextScaleCandidates: [
+        { "token": "0.75", "label": "75%", "state": "available" },
+        { "token": "0.875", "label": "87.5%", "state": "available" },
+        { "token": "1.0", "label": "100%", "state": "available" },
+        { "token": "1.125", "label": "112.5%", "state": "available" },
+        { "token": "1.25", "label": "125%", "state": "available" },
+        { "token": "1.5", "label": "150%", "state": "available" },
+        { "token": "1.75", "label": "175%", "state": "available" },
+        { "token": "2.0", "label": "200%", "state": "available" }
+    ]
     readonly property var integrationWatchPaths: [
         root.configHome + "/alacritty/active-theme.toml",
         root.configHome + "/alacritty/alacritty.toml",
@@ -157,6 +201,7 @@ Scope {
         root.stateHome + "/dwm-titus/appearance/transaction.failed",
         root.stateHome + "/dwm-titus/appearance/integration-transaction",
         root.wallpaperConfigPath,
+        root.configHome + "/dwm-titus/personalization.conf",
         root.stateHome + "/dwm-titus/appearance/wallpaper/preview.current"
     ]
     readonly property var requiredIntegrationIds: [
@@ -187,6 +232,10 @@ Scope {
                 || root.wallpaperState !== "available") return "partial";
         if (root.fontProviderState !== "available"
                 || root.fontState !== "available") return "partial";
+        if (root.personalizationProviderState !== "available") return "partial";
+        for (const capability of ["font", "text-size", "cursor", "icon", "gtk", "qt"]) {
+            if (root.personalizationEffectiveState(capability) !== "available") return "partial";
+        }
         return "available";
     }
 
@@ -215,6 +264,123 @@ Scope {
     function validFontScale(value) {
         return value === "0.80" || value === "0.90" || value === "1.00"
             || value === "1.10" || value === "1.25" || value === "1.50";
+    }
+
+    function validPersonalizationCapability(value) {
+        return value === "font" || value === "text-size" || value === "cursor"
+            || value === "icon" || value === "gtk" || value === "qt";
+    }
+
+    function validDesktopTextScale(value) {
+        return value === "0.75" || value === "0.875" || value === "1.0"
+            || value === "1.125" || value === "1.25" || value === "1.5"
+            || value === "1.75" || value === "2.0";
+    }
+
+    function validPersonalizationOption(capability, value) {
+        if (value === "unknown") return true;
+        if (capability === "font" || capability === "icon")
+            return value === "follow-system" || root.validInventoryField(value, false);
+        if (capability === "text-size")
+            return value === "follow-system" || root.validDesktopTextScale(value);
+        if (capability === "cursor" || capability === "gtk")
+            return value === "follow-theme" || root.validInventoryField(value, false);
+        if (capability === "qt")
+            return value === "follow-theme" || value === "gtk3"
+                || value === "qt6ct" || value === "qt5ct";
+        return false;
+    }
+
+    function personalizationSelection(capability) {
+        return root.personalizationSelections[capability] || {
+            "id": capability, "state": "unavailable", "value": "", "option": "",
+            "detail": "Desktop personalization state has not been loaded"
+        };
+    }
+
+    function personalizationReadiness(capability) {
+        return root.personalizationActionReadiness[capability] || {
+            "id": capability, "apply": "unavailable", "reset": "unavailable",
+            "detail": "Desktop personalization action readiness has not been loaded"
+        };
+    }
+
+    function inventorySelection(capability) {
+        return root.inventorySelections[capability] || {
+            "id": capability, "state": "unavailable", "value": "", "option": "",
+            "detail": "Appearance inventory state has not been loaded"
+        };
+    }
+
+    function personalizationEffectiveState(capability) {
+        if (!root.personalizationStatusParsed) return "unavailable";
+        const personalizationState = root.personalizationSelection(capability).state;
+        if (capability === "text-size") return personalizationState;
+        const inventoryState = root.inventorySelection(capability).state;
+        const savedState = root.personalizationSavedAssetState(capability);
+        const severity = { "idle": 0, "available": 1, "partial": 2,
+            "restricted": 3, "unavailable": 4 };
+        const inventorySeverity = severity[inventoryState] === undefined ? 4
+            : severity[inventoryState];
+        const personalizationSeverity = severity[personalizationState] === undefined ? 4
+            : severity[personalizationState];
+        let result = inventorySeverity > personalizationSeverity
+            ? inventoryState : personalizationState;
+        if (severity[savedState] > severity[result]) result = savedState;
+        return result;
+    }
+
+    function personalizationEffectiveDetail(capability) {
+        const selection = root.personalizationSelection(capability);
+        if (capability === "text-size") return selection.detail;
+        const inventory = root.inventorySelection(capability);
+        let detail = inventory.state === "available" ? selection.detail
+            : selection.detail + " / " + inventory.detail;
+        const savedState = root.personalizationSavedAssetState(capability);
+        if (savedState !== "available")
+            detail += savedState === "partial" ? " / Saved override asset is incomplete"
+                : " / Saved override asset is unavailable; reset or choose an installed option";
+        return detail;
+    }
+
+    function personalizationSavedAssetState(capability) {
+        const option = root.personalizationSelection(capability).option;
+        if (capability === "text-size" || option === "follow-system"
+                || option === "follow-theme") return "available";
+        for (const candidate of root.personalizationCandidates(capability, 24)) {
+            if (candidate.token === option) return candidate.state;
+        }
+        return "unavailable";
+    }
+
+    function personalizationCandidates(capability, limit) {
+        const source = capability === "font" ? root.fontCandidates
+            : capability === "cursor" ? root.cursorCandidates
+                : capability === "icon" ? root.iconCandidates
+                    : capability === "gtk" ? root.gtkCandidates
+                        : capability === "qt" ? root.qtCandidates : [];
+        const boundedLimit = Math.max(1, Math.min(24, Math.floor(limit)));
+        const result = [];
+        const seen = [];
+        const preferred = [root.inventorySelection(capability).value,
+            root.personalizationSelection(capability).option];
+        for (const token of preferred) {
+            if (token === "follow-system" || token === "follow-theme" || token === "unknown"
+                    || token.length === 0 || seen.indexOf(token) >= 0) continue;
+            for (const candidate of source) {
+                if (candidate.token !== token) continue;
+                result.push(candidate);
+                seen.push(token);
+                break;
+            }
+        }
+        for (const candidate of source) {
+            if (result.length >= boundedLimit) break;
+            if (seen.indexOf(candidate.token) >= 0) continue;
+            result.push(candidate);
+            seen.push(candidate.token);
+        }
+        return result;
     }
 
     function validThemeName(value) {
@@ -516,6 +682,139 @@ Scope {
         fontStatusProcess.running = true;
     }
 
+    function clearPersonalizationStatus(detail) {
+        root.personalizationStatusParsed = false;
+        root.personalizationProviderState = "unavailable";
+        root.personalizationProviderDetail = detail;
+        root.personalizationMutationState = "unavailable";
+        root.personalizationMutationDetail = detail;
+        root.personalizationRepairState = "unavailable";
+        root.personalizationRepairDetail = detail;
+        root.personalizationSelections = {};
+        root.personalizationActionReadiness = {};
+        root.personalizationDelegates = {};
+        root.xsettingsWatchReady = false;
+        root.xsettingsWatchProtocolSeen = false;
+        root.xsettingsWatchSawEvent = false;
+        xsettingsWatchProcess.running = false;
+    }
+
+    function parsePersonalizationStatus(text) {
+        let protocolSeen = false;
+        let protocolValid = false;
+        let provider = null;
+        let mutation = null;
+        let repair = null;
+        let xsettingsWatch = null;
+        const selections = {};
+        const actionReadiness = {};
+        const delegates = {};
+        let completeSeen = false;
+        let invalid = false;
+        for (const line of text.trim().split("\n")) {
+            if (line.length === 0) continue;
+            const fields = line.split("\t");
+            if (fields[0] === "personalization-protocol") {
+                if (protocolSeen) invalid = true;
+                protocolSeen = true;
+                protocolValid = fields.length === 3 && fields[1] === "1" && fields[2] === "0";
+            } else if (fields[0] === "provider" && fields.length === 5
+                    && fields[1] === "personalization" && root.validState(fields[2])
+                    && fields[3] === "user-session" && provider === null
+                    && root.validInventoryField(fields[4], false)) {
+                provider = { "state": fields[2], "detail": fields[4] };
+            } else if (fields[0] === "mutation" && fields.length === 3
+                    && root.validState(fields[1]) && mutation === null
+                    && root.validInventoryField(fields[2], false)) {
+                mutation = { "state": fields[1], "detail": fields[2] };
+            } else if (fields[0] === "repair" && fields.length === 3
+                    && (fields[1] === "available" || fields[1] === "restricted"
+                        || fields[1] === "unavailable")
+                    && root.validInventoryField(fields[2], false) && repair === null) {
+                repair = { "state": fields[1], "detail": fields[2] };
+            } else if (fields[0] === "watch-readiness" && fields.length === 4
+                    && fields[1] === "text-size"
+                    && (fields[2] === "available" || fields[2] === "unavailable")
+                    && root.validInventoryField(fields[3], false) && xsettingsWatch === null) {
+                xsettingsWatch = { "state": fields[2], "detail": fields[3] };
+            } else if (fields[0] === "selection" && fields.length === 6
+                    && root.validPersonalizationCapability(fields[1])
+                    && root.validState(fields[2])
+                    && root.validInventoryField(fields[3], true)
+                    && root.validPersonalizationOption(fields[1], fields[4])
+                    && root.validInventoryField(fields[5], false)
+                    && selections[fields[1]] === undefined) {
+                selections[fields[1]] = { "id": fields[1], "state": fields[2],
+                    "value": fields[3], "option": fields[4], "detail": fields[5] };
+            } else if (fields[0] === "action-readiness" && fields.length === 5
+                    && root.validPersonalizationCapability(fields[1])
+                    && (fields[2] === "available" || fields[2] === "restricted"
+                        || fields[2] === "unavailable")
+                    && (fields[3] === "available" || fields[3] === "restricted"
+                        || fields[3] === "unavailable")
+                    && root.validInventoryField(fields[4], false)
+                    && actionReadiness[fields[1]] === undefined) {
+                actionReadiness[fields[1]] = { "id": fields[1], "apply": fields[2],
+                    "reset": fields[3], "detail": fields[4] };
+            } else if (fields[0] === "delegate" && fields.length === 5
+                    && (fields[1] === "gtk" || fields[1] === "qt")
+                    && (fields[2] === "available" || fields[2] === "unavailable")
+                    && root.validInventoryField(fields[3], fields[2] === "unavailable")
+                    && root.validInventoryField(fields[4], false)
+                    && delegates[fields[1]] === undefined) {
+                delegates[fields[1]] = { "state": fields[2], "tool": fields[3],
+                    "detail": fields[4] };
+            } else if (fields[0] === "complete" && fields.length === 2
+                    && fields[1] === "status" && !completeSeen) {
+                completeSeen = true;
+            } else if (["personalization-protocol", "provider", "mutation", "repair", "watch-readiness", "selection",
+                    "action-readiness", "delegate", "complete"].indexOf(fields[0]) >= 0) {
+                // Version 1 is append-only: reject malformed required records, but let a
+                // newer helper add records that this client does not need yet.
+                invalid = true;
+            }
+        }
+        const required = ["font", "text-size", "cursor", "icon", "gtk", "qt"];
+        for (const capability of required) {
+            if (selections[capability] === undefined) invalid = true;
+            if (actionReadiness[capability] === undefined) invalid = true;
+        }
+        if (delegates.gtk === undefined || delegates.qt === undefined) invalid = true;
+        if (invalid || !protocolValid || !completeSeen || provider === null || mutation === null
+                || repair === null || xsettingsWatch === null) {
+            root.clearPersonalizationStatus("Personalization helper returned an unsupported response");
+            return;
+        }
+        root.personalizationStatusParsed = true;
+        root.personalizationProviderState = provider.state;
+        root.personalizationProviderDetail = provider.detail;
+        root.personalizationMutationState = mutation.state;
+        root.personalizationMutationDetail = mutation.detail;
+        root.personalizationRepairState = repair.state;
+        root.personalizationRepairDetail = repair.detail;
+        root.personalizationSelections = selections;
+        root.personalizationActionReadiness = actionReadiness;
+        root.personalizationDelegates = delegates;
+        root.xsettingsWatchReady = xsettingsWatch.state === "available"
+            && !root.xsettingsWatchFailed;
+        if (root.settingsVisible && root.xsettingsWatchReady && !xsettingsWatchProcess.running)
+            xsettingsWatchProcess.running = true;
+        if (!root.xsettingsWatchReady) {
+            xsettingsWatchProcess.running = false;
+        }
+    }
+
+    function refreshPersonalizationStatus() {
+        if (!root.settingsVisible) return;
+        if (personalizationStatusProcess.running || personalizationActionProcess.running) {
+            root.personalizationStatusPending = true;
+            return;
+        }
+        root.personalizationStatusPending = false;
+        root.personalizationStatusParsed = false;
+        personalizationStatusProcess.running = true;
+    }
+
     function refreshInventory(allowUnwatched) {
         if (!root.settingsVisible) return;
         if (!root.inventoryWatchReady && !root.inventoryWatchFailed
@@ -551,6 +850,7 @@ Scope {
         root.refreshMutationReadiness();
         root.refreshWallpaperStatus();
         root.refreshFontStatus();
+        root.refreshPersonalizationStatus();
     }
 
     function openSettings() {
@@ -560,6 +860,7 @@ Scope {
         root.inventoryWatchReady = false;
         root.inventoryWatchSawEvent = false;
         root.inventoryWatchFailed = false;
+        root.xsettingsWatchFailed = false;
         if (!wallpaperReadinessProcess.running)
             wallpaperReadinessProcess.running = true;
         root.startInventoryWatcher(true);
@@ -588,8 +889,15 @@ Scope {
         compositorWatchSettleTimer.stop();
         compositorWatchRestartTimer.stop();
         compositorWatchProcess.running = false;
+        xsettingsWatchProcess.running = false;
+        root.xsettingsWatchReady = false;
+        root.xsettingsWatchProtocolSeen = false;
+        root.xsettingsWatchSawEvent = false;
+        root.xsettingsWatchFailed = false;
         inventoryProcess.running = false;
         wallpaperStatusProcess.running = false;
+        personalizationStatusProcess.running = false;
+        root.personalizationStatusPending = false;
         root.wallpaperStatusPending = false;
         root.inventoryPending = false;
         root.inventoryPendingAllowUnwatched = false;
@@ -600,7 +908,8 @@ Scope {
     }
 
     function runAction(action, args, theme, token) {
-        if (root.busy || root.wallpaperBusy || root.fontBusy || actionProcess.running) {
+        if (root.busy || root.wallpaperBusy || root.fontBusy || root.personalizationBusy
+                || actionProcess.running) {
             root.message = "Another appearance change is already in progress";
             root.messageSeverity = "warning";
             return;
@@ -748,7 +1057,7 @@ Scope {
 
     function runFontAction(action, args, family, scale, token) {
         if (root.fontBusy || fontActionProcess.running || fontStatusProcess.running
-                || root.busy || root.wallpaperBusy) {
+                || root.busy || root.wallpaperBusy || root.personalizationBusy) {
             root.message = "Another appearance change is already in progress";
             root.messageSeverity = "warning";
             return;
@@ -816,6 +1125,141 @@ Scope {
         const expected = root.fontActionKind === "preview" ? "preview-started"
             : root.fontActionKind === "apply" ? "applied" : root.fontActionKind;
         root.fontActionSucceeded = fields[1] === expected;
+    }
+
+    function personalizationCandidateAvailable(capability, value) {
+        if (capability === "text-size") return root.validDesktopTextScale(value);
+        const candidates = root.personalizationCandidates(capability, 24);
+        for (const candidate of candidates) {
+            if (candidate.token === value && candidate.state === "available") return true;
+        }
+        return false;
+    }
+
+    function personalizationApplyReady(capability) {
+        return root.personalizationReadiness(capability).apply === "available";
+    }
+
+    function personalizationResetReady(capability) {
+        return root.personalizationReadiness(capability).reset === "available";
+    }
+
+    function runPersonalizationAction(action, capability, value) {
+        if (root.personalizationBusy || personalizationActionProcess.running
+                || personalizationStatusProcess.running || root.busy || root.wallpaperBusy
+                || root.fontBusy) {
+            root.message = "Another appearance change is already in progress";
+            root.messageSeverity = "warning";
+            return;
+        }
+        if (root.personalizationMutationState !== "available"
+                || !root.validPersonalizationCapability(capability)
+                || (action === "apply" && !root.personalizationApplyReady(capability))
+                || (action === "reset" && !root.personalizationResetReady(capability))
+                || root.previewState !== "none" || root.recoveryState !== "none") return;
+        let args = [capability];
+        if (action === "apply") {
+            if (!root.personalizationCandidateAvailable(capability, value)) return;
+            args.push(value);
+        } else if (action !== "reset") {
+            return;
+        }
+        root.personalizationBusy = true;
+        root.personalizationActionKind = action;
+        root.personalizationActionCapability = capability;
+        root.personalizationActionValue = value || "";
+        root.personalizationActionError = "";
+        root.personalizationActionSucceeded = false;
+        root.message = "Applying desktop personalization change...";
+        root.messageSeverity = "idle";
+        personalizationActionProcess.command = Commands.checkedCommand(
+            Commands.settingsPersonalizationCommand(action, args));
+        personalizationActionProcess.running = true;
+    }
+
+    function applyPersonalization(capability, value) {
+        root.runPersonalizationAction("apply", capability, value);
+    }
+
+    function resetPersonalization(capability) {
+        root.runPersonalizationAction("reset", capability, "");
+    }
+
+    function repairPersonalization() {
+        if (root.personalizationRepairState !== "available" || root.personalizationBusy
+                || personalizationActionProcess.running || personalizationStatusProcess.running
+                || root.busy || root.wallpaperBusy || root.fontBusy
+                || root.previewState !== "none" || root.recoveryState !== "none") return;
+        root.personalizationBusy = true;
+        root.personalizationActionKind = "repair";
+        root.personalizationActionCapability = "all";
+        root.personalizationActionValue = "follow-sources";
+        root.personalizationActionError = "";
+        root.personalizationActionSucceeded = false;
+        root.message = "Repairing desktop personalization state...";
+        root.messageSeverity = "idle";
+        personalizationActionProcess.command = Commands.checkedCommand(
+            Commands.settingsPersonalizationCommand("repair", []));
+        personalizationActionProcess.running = true;
+    }
+
+    function delegatePersonalization(capability) {
+        const record = root.personalizationDelegates[capability];
+        if (!record || record.state !== "available" || root.personalizationBusy
+                || root.busy || root.wallpaperBusy || root.fontBusy
+                || root.previewState !== "none" || root.recoveryState !== "none") return;
+        root.personalizationBusy = true;
+        root.personalizationActionKind = "delegate";
+        root.personalizationActionCapability = capability;
+        root.personalizationActionValue = record.tool;
+        root.personalizationActionError = "";
+        root.personalizationActionSucceeded = false;
+        root.message = "Requesting advanced " + capability.toUpperCase() + " settings...";
+        root.messageSeverity = "idle";
+        personalizationActionProcess.command = Commands.checkedCommand(
+            Commands.settingsPersonalizationCommand("delegate", [capability]));
+        personalizationActionProcess.running = true;
+    }
+
+    function parsePersonalizationAction(text) {
+        const payload = text.endsWith("\n") ? text.slice(0, -1) : text;
+        const lines = payload.split("\n");
+        if (lines.length !== 2 || lines[0] !== "personalization-action-protocol\t1\t0") return;
+        const fields = lines[1].split("\t");
+        if (fields.length !== 4 || fields[0] !== "result"
+                || fields[1] !== root.personalizationActionKind
+                || fields[2] !== root.personalizationActionCapability) return;
+        if (root.personalizationActionKind === "apply"
+                || root.personalizationActionKind === "delegate")
+            root.personalizationActionSucceeded = fields[3] === root.personalizationActionValue;
+        else if (root.personalizationActionKind === "repair")
+            root.personalizationActionSucceeded = fields[3] === "follow-sources";
+        else root.personalizationActionSucceeded = fields[3] === (fields[2] === "cursor"
+                || fields[2] === "gtk" || fields[2] === "qt" ? "follow-theme" : "follow-system");
+    }
+
+    function finishPersonalizationAction() {
+        root.personalizationBusy = false;
+        if (root.personalizationActionSucceeded) {
+            root.message = root.personalizationActionKind === "delegate"
+                ? "Advanced " + root.personalizationActionCapability.toUpperCase() + " editor launch requested"
+                : root.personalizationActionKind === "repair"
+                    ? "Personalization overrides repaired; controls are available again"
+                : root.personalizationActionKind === "reset"
+                    ? root.personalizationActionCapability + " reset to follow its source"
+                    : root.personalizationActionCapability + " applied";
+            root.messageSeverity = "success";
+        } else {
+            root.message = root.personalizationActionError.length > 0
+                ? root.personalizationActionError
+                : "Personalization helper did not confirm the requested change";
+            root.messageSeverity = "danger";
+        }
+        if (root.settingsVisible) {
+            Qt.callLater(root.refreshPersonalizationStatus);
+            root.refreshInventory(true);
+            root.refreshSnapshot();
+        }
     }
 
     function finishFontAction() {
@@ -960,7 +1404,7 @@ Scope {
                 || root.wallpaperStatusPending)
                 && !root.wallpaperBusy && !wallpaperActionProcess.running
                 && !wallpaperReadinessProcess.running && !wallpaperStatusProcess.running
-                && !root.busy && !root.fontBusy) {
+                && !root.busy && !root.fontBusy && !root.personalizationBusy) {
             root.inventoryGeneration++;
             root.wallpaperStatusPending = false;
             root.inventoryPending = false;
@@ -973,7 +1417,7 @@ Scope {
                     || root.wallpaperStatusPending || root.inventoryPending))
                 || (!previewDecision && inventoryWatchProcess.running
                     && !root.inventoryWatchReady)
-                || root.busy || root.fontBusy) {
+                || root.busy || root.fontBusy || root.personalizationBusy) {
             root.message = "Another appearance change is already in progress";
             root.messageSeverity = "warning";
             return;
@@ -1316,6 +1760,27 @@ Scope {
     }
 
     Process {
+        id: personalizationStatusProcess
+        // Own the helper process directly so pane close terminates the actual
+        // bounded probe rather than an output-capturing wrapper. The required
+        // final completion record rejects partial output from failed probes.
+        command: Commands.settingsPersonalizationCommand("status", [])
+        running: false
+        stdout: StdioCollector { onStreamFinished: root.parsePersonalizationStatus(this.text) }
+        stderr: StdioCollector { id: personalizationStatusError }
+        onRunningChanged: {
+            if (running) return;
+            if (!root.personalizationStatusParsed && root.settingsVisible) {
+                const error = personalizationStatusError.text.trim();
+                root.clearPersonalizationStatus(error.length > 0 ? error
+                    : "Personalization helper failed before returning a valid status");
+            }
+            if (root.personalizationStatusPending && root.settingsVisible)
+                Qt.callLater(root.refreshPersonalizationStatus);
+        }
+    }
+
+    Process {
         id: wallpaperStatusProcess
         command: Commands.settingsWallpaperCommand("status", ["--read-only"])
         running: false
@@ -1428,6 +1893,42 @@ Scope {
         onRunningChanged: {
             if (!running && root.settingsVisible && root.compositorWatchReady)
                 compositorWatchRestartTimer.restart();
+        }
+    }
+
+    Process {
+        id: xsettingsWatchProcess
+        command: Commands.settingsXsettingsCommand("watch", [])
+        running: false
+        stdout: SplitParser {
+            onRead: line => {
+                if (line === "xsettings-event-protocol\t1\t0")
+                    root.xsettingsWatchProtocolSeen = true;
+                else if (line === "changed" && root.xsettingsWatchProtocolSeen) {
+                    root.xsettingsWatchSawEvent = true;
+                    root.xsettingsWatchReady = false;
+                    root.refreshPersonalizationStatus();
+                }
+            }
+        }
+        onRunningChanged: {
+            if (running) {
+                root.xsettingsWatchProtocolSeen = false;
+                root.xsettingsWatchSawEvent = false;
+            }
+            else if (root.settingsVisible && root.xsettingsWatchReady) {
+                if (root.xsettingsWatchSawEvent) {
+                    Qt.callLater(function() {
+                        if (root.settingsVisible && root.xsettingsWatchReady
+                                && !xsettingsWatchProcess.running)
+                            xsettingsWatchProcess.running = true;
+                    });
+                } else {
+                    root.xsettingsWatchReady = false;
+                    root.xsettingsWatchFailed = true;
+                    root.refreshPersonalizationStatus();
+                }
+            }
         }
     }
 
@@ -1557,6 +2058,18 @@ Scope {
         stdout: StdioCollector { onStreamFinished: root.parseFontAction(this.text) }
         stderr: StdioCollector { onStreamFinished: root.fontActionError = this.text.trim() }
         onRunningChanged: if (!running && root.fontBusy) root.finishFontAction()
+    }
+
+    Process {
+        id: personalizationActionProcess
+        command: ["sh", "-c", "exit 1"]
+        running: false
+        stdout: StdioCollector { onStreamFinished: root.parsePersonalizationAction(this.text) }
+        stderr: StdioCollector {
+            onStreamFinished: root.personalizationActionError = this.text.trim()
+        }
+        onRunningChanged: if (!running && root.personalizationBusy)
+            root.finishPersonalizationAction()
     }
 
     Timer {

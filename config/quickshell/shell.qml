@@ -739,6 +739,26 @@ ShellRoot {
             return appearanceModel.fontPreviewRemaining;
         }
 
+        function appearancePersonalizationStatus(): string {
+            return appearanceModel.personalizationProviderState;
+        }
+
+        function appearancePersonalizationMutationState(): string {
+            return appearanceModel.personalizationMutationState;
+        }
+
+        function appearancePersonalizationValue(capability: string): string {
+            return appearanceModel.personalizationSelection(capability).value;
+        }
+
+        function appearancePersonalizationOption(capability: string): string {
+            return appearanceModel.personalizationSelection(capability).option;
+        }
+
+        function appearancePersonalizationEffectiveState(capability: string): string {
+            return appearanceModel.personalizationEffectiveState(capability);
+        }
+
         function appearanceMessage(): string {
             return appearanceModel.message;
         }

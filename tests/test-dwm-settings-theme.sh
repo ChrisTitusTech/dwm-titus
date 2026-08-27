@@ -535,6 +535,39 @@ grep -Fq 'changed while preparing the transaction' "$work/mode-race.err"
 [[ $(active_theme) == nord ]]
 
 reset_fixture
+same_source_exchange_ready=$work/same-source-exchange.ready
+same_source_exchange_release=$work/same-source-exchange.release
+HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=$runtime_dir \
+	DWM_APPEARANCE_APPLY_HELPER=$apply_stub DWM_APPEARANCE_RELOAD_HELPER=$reload_stub \
+	DWM_TEST_APPLY_LOG=$work/apply.log DWM_TEST_RELOAD_LOG=$work/reload.log \
+	DWM_TEST_SOURCE_EXCHANGE_READY=$same_source_exchange_ready \
+	DWM_TEST_SOURCE_EXCHANGE_RELEASE=$same_source_exchange_release \
+	"$helper" apply nord >"$work/same-source-exchange.out" \
+	2>"$work/same-source-exchange.err" &
+same_source_exchange_pid=$!
+for attempt in {1..100}; do
+	[[ -e $same_source_exchange_ready ]] && break
+	sleep 0.05
+done
+[[ -e $same_source_exchange_ready ]]
+same_exchange_name=$(awk -F= '$1 == "exchange_file" { print $2; exit }' \
+	"$state_home/dwm-titus/appearance/transaction.meta")
+[[ $same_exchange_name =~ ^\.themes\.toml\.[A-Za-z0-9]+$ ]]
+same_exchange_path=${themes_file%/*}/$same_exchange_name
+[[ -f $same_exchange_path ]]
+same_source_hash=$(sha256sum "$themes_file" | awk '{print $1}')
+kill -KILL "$same_source_exchange_pid"
+wait "$same_source_exchange_pid" 2>/dev/null || true
+run_theme recover >"$work/same-source-exchange-recover.out" \
+	2>"$work/same-source-exchange-recover.err"
+grep -Fqx $'result\trecovered' "$work/same-source-exchange-recover.out"
+[[ ! -e $same_exchange_path ]]
+grep -Fqx "$same_source_hash" \
+	"$state_home/dwm-titus/appearance/integration-suppress"
+[[ $(active_theme) == nord ]]
+
+reset_fixture
 source_exchange_ready=$work/source-exchange.ready
 source_exchange_release=$work/source-exchange.release
 HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1246,6 +1279,133 @@ if run_theme personalization-ready; then
 	printf 'malformed personalization state was reported ready\n' >&2
 	exit 1
 fi
+run_theme personalization-repair-ready
+cp "$config_home/dwm-titus/personalization.conf" "$work/personalization-malformed.before"
+mkdir -p "$config_home/gtk-3.0"
+printf '[Settings]\nkeep-repair=yes\n' >"$config_home/gtk-3.0/settings.ini"
+chmod 444 "$config_home/gtk-3.0/settings.ini"
+mkdir -p "$config_home/alacritty"
+chmod 500 "$config_home/alacritty"
+run_theme personalization-repair-ready
+cp -p "$config_home/gtk-3.0/settings.ini" "$work/personalization-repair-gtk.before"
+repair_gtk_identity=$(stat -c '%d:%i' "$config_home/gtk-3.0/settings.ini")
+repair_apply_count=$(wc -l <"$work/apply.log")
+repair_live_count=$(wc -l <"$work/live-only.log")
+repair_output=$(run_theme personalize-repair 2>"$work/personalization-repair.err")
+grep -Fqx $'personalization-action-protocol\t1\t0' <<<"$repair_output"
+grep -Fqx $'result\trepair\tall\tfollow-sources' <<<"$repair_output"
+grep -Fqx $'personalization-protocol\t1\t0' \
+	"$config_home/dwm-titus/personalization.conf"
+[[ $(wc -l <"$config_home/dwm-titus/personalization.conf") == 1 ]]
+cmp -s "$work/personalization-repair-gtk.before" \
+	"$config_home/gtk-3.0/settings.ini"
+[[ $(stat -c %a "$config_home/gtk-3.0/settings.ini") == 444 ]]
+[[ $(stat -c '%d:%i' "$config_home/gtk-3.0/settings.ini") == "$repair_gtk_identity" ]]
+[[ $(stat -c %a "$config_home/alacritty") == 500 ]]
+[[ $(wc -l <"$work/apply.log") == "$repair_apply_count" ]]
+[[ $(wc -l <"$work/live-only.log") == "$repair_live_count" ]]
+[[ ! -e $work/kitty-reload.marker ]]
+chmod 640 "$config_home/gtk-3.0/settings.ini"
+chmod 700 "$config_home/alacritty"
+run_theme personalization-ready
+if run_theme personalization-repair-ready; then
+	printf 'valid personalization state was reported repairable\n' >&2
+	exit 1
+fi
+if run_theme personalize-repair >"$work/personalization-repair-valid.out" \
+	2>"$work/personalization-repair-valid.err"; then
+	printf 'valid personalization state was repaired unnecessarily\n' >&2
+	exit 1
+fi
+grep -Fq 'personalization configuration does not need repair' \
+	"$work/personalization-repair-valid.err"
+printf 'personalization-protocol\t2\t0' \
+	>"$config_home/dwm-titus/personalization.conf"
+if run_theme personalization-repair-ready; then
+	printf 'unsupported personalization protocol was reported repairable\n' >&2
+	exit 1
+fi
+if run_theme personalize-repair >"$work/personalization-repair-unsupported.out" \
+	2>"$work/personalization-repair-unsupported.err"; then
+	printf 'unsupported personalization protocol was destructively repaired\n' >&2
+	exit 1
+fi
+grep -Fq 'personalization protocol is unsupported; refusing destructive repair' \
+	"$work/personalization-repair-unsupported.err"
+grep -Fqx $'personalization-protocol\t2\t0' \
+	"$config_home/dwm-titus/personalization.conf"
+grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+printf 'broken-protocol\n' >"$config_home/dwm-titus/personalization.conf"
+repair_ready=$work/personalization-repair-race.ready
+repair_release=$work/personalization-repair-race.release
+DWM_TEST_PERSONALIZATION_REPAIR_READY=$repair_ready \
+	DWM_TEST_PERSONALIZATION_REPAIR_RELEASE=$repair_release \
+	run_theme personalize-repair >"$work/personalization-repair-race.out" \
+	2>"$work/personalization-repair-race.err" &
+repair_pid=$!
+for attempt in {1..100}; do
+	[[ -e $repair_ready ]] && break
+	sleep 0.05
+done
+[[ -e $repair_ready ]]
+printf 'personalization-protocol\t1\t0\nqt\tgtk3\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+: >"$repair_release"
+if wait "$repair_pid"; then
+	printf 'personalization repair overwrote a concurrent valid edit\n' >&2
+	exit 1
+fi
+grep -Fqx $'qt\tgtk3' "$config_home/dwm-titus/personalization.conf"
+grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+
+printf 'broken-protocol\n' >"$config_home/dwm-titus/personalization.conf"
+repair_recovery_theme_identity=$(stat -c '%d:%i' "$themes_file")
+repair_recovery_gtk_identity=$(stat -c '%d:%i' "$config_home/gtk-3.0/settings.ini")
+repair_finish_ready=$work/personalization-repair-finish.ready
+repair_finish_release=$work/personalization-repair-finish.release
+repair_process_pid=$work/personalization-repair-finish.pid
+DWM_TEST_FINISH_READY=$repair_finish_ready DWM_TEST_FINISH_RELEASE=$repair_finish_release \
+	DWM_TEST_PROCESS_PID=$repair_process_pid \
+	run_theme personalize-repair >"$work/personalization-repair-finish.out" \
+	2>"$work/personalization-repair-finish.err" &
+repair_pid=$!
+for attempt in {1..100}; do
+	[[ -e $repair_finish_ready && -s $repair_process_pid ]] && break
+	sleep 0.05
+done
+[[ -e $repair_finish_ready && -s $repair_process_pid ]]
+kill -KILL "$(<"$repair_process_pid")"
+wait "$repair_pid" 2>/dev/null || true
+grep -Fqx $'recovery\tavailable\tpersonalize-repair\tnord' \
+	< <(run_theme recovery-status)
+mkdir -p "$config_home/alacritty"
+printf '# unrelated edit after interrupted repair\n' \
+	>"$config_home/alacritty/active-theme.toml"
+run_theme recover >/dev/null 2>"$work/personalization-repair-recover.err"
+cmp -s "$work/personalization-malformed.before" \
+	"$config_home/dwm-titus/personalization.conf"
+cmp -s "$work/personalization-repair-gtk.before" \
+	"$config_home/gtk-3.0/settings.ini"
+[[ $(stat -c '%d:%i' "$themes_file") == "$repair_recovery_theme_identity" ]]
+[[ $(stat -c '%d:%i' "$config_home/gtk-3.0/settings.ini") == "$repair_recovery_gtk_identity" ]]
+grep -Fqx '# unrelated edit after interrupted repair' \
+	"$config_home/alacritty/active-theme.toml"
+rm "$config_home/alacritty/active-theme.toml"
+[[ ! -e $state_home/dwm-titus/appearance/integration-suppress ]]
+ln "$themes_file" "$work/personalization-repair-hardlink-theme.toml"
+if run_theme personalization-repair-ready; then
+	printf 'repair was reported ready for a hard-linked theme source\n' >&2
+	exit 1
+fi
+rm "$work/personalization-repair-hardlink-theme.toml"
+mkdir -p "$work/personalization-repair-unsafe-integration"
+ln -s "$work/personalization-repair-unsafe-integration" "$config_home/qt5ct"
+if run_theme personalization-repair-ready; then
+	printf 'repair was reported ready for an unsafe integration path\n' >&2
+	exit 1
+fi
+rm "$config_home/qt5ct"
+run_theme personalization-repair-ready
 printf 'personalization-protocol\t1\t0\nqt\tgtk3\nqt\tqt6ct\n' \
 	>"$config_home/dwm-titus/personalization.conf"
 if run_theme personalization-ready; then
@@ -1269,6 +1429,17 @@ if run_theme personalization-ready; then
 	printf 'hard-linked personalization state was reported ready\n' >&2
 	exit 1
 fi
+if run_theme personalization-repair-ready; then
+	printf 'hard-linked personalization state was reported safely repairable\n' >&2
+	exit 1
+fi
+if run_theme personalize-repair >"$work/personalization-hardlink-repair.out" \
+	2>"$work/personalization-hardlink-repair.err"; then
+	printf 'hard-linked personalization state was repaired\n' >&2
+	exit 1
+fi
+grep -Fq 'personalization configuration is unsafe' \
+	"$work/personalization-hardlink-repair.err"
 run_theme_apply_direct >/dev/null 2>"$work/personalization-hardlink.err"
 grep -Fq 'ignoring invalid personalization configuration' \
 	"$work/personalization-hardlink.err"
@@ -1289,6 +1460,14 @@ grep -Fq 'ignoring invalid personalization configuration' \
 	"$work/personalization-invalid-base.err"
 grep -Fqx 'broken-protocol' "$config_home/dwm-titus/personalization.conf"
 [[ $(active_theme) == dracula ]]
+reset_fixture
+
+printf 'personalization-protocol\t1\t0\nfont\tunknown\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+run_theme_real_apply apply dracula >/dev/null \
+	2>"$work/personalization-reserved-name.err"
+grep -Fq 'ignoring invalid font personalization value' \
+	"$work/personalization-reserved-name.err"
 reset_fixture
 
 printf 'personalization-protocol\t1\t0\nfont\tBad"Font\nicon\tBad=Icons\n' \
@@ -1536,6 +1715,13 @@ if run_theme personalize font 'Bad"Font' >"$work/personalize-quoted-font.out" \
 	exit 1
 fi
 grep -Fq 'invalid personalization value for font' "$work/personalize-quoted-font.err"
+if run_theme personalize font unknown >"$work/personalize-unknown-font.out" \
+	2>"$work/personalize-unknown-font.err"; then
+	printf 'font accepted the reserved unknown sentinel\n' >&2
+	exit 1
+fi
+grep -Fq 'invalid personalization value for font' \
+	"$work/personalize-unknown-font.err"
 printf 'Keep/Setting "yes"\n' >"$config_home/dwm-titus/xsettingsd.conf"
 text_scale_output=$(run_theme_real_apply personalize text-size 1.25 \
 	2>"$work/personalize-text-size.err")
