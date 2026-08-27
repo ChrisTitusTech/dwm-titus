@@ -26,11 +26,13 @@ proc_root=$work/proc
 mkdir -p "$config_home/dwm-titus" "$config_home/dconf" "$config_home/fontconfig" \
 	"$data_root/fonts/fixture" \
 	"$data_root/icons/Capitaine-Cursors/cursors" \
+	"$data_root/icons/unknown/cursors" \
 	"$data_root/icons/Bad&Cursor/cursors" \
 	"$data_root/icons/Papirus" \
 	"$data_root/icons/Bad=Icons" \
 	"$data_root/linked-cursor/cursors" \
 	"$data_root/themes/Nordic/gtk-3.0" "$data_root/themes/Nordic/gtk-4.0" \
+	"$data_root/themes/unknown/gtk-3.0" \
 	"$data_root/themes/Bad\"GTK/gtk-3.0" "$data_root/themes/Bad\"GTK/gtk-4.0" \
 	"$data_root/themes/Legacy/gtk-3.0" \
 	"$state_root/dwm-titus/appearance/wallpaper" \
@@ -65,7 +67,7 @@ EOF
 cat >"$bin_dir/fc-match" <<'EOF'
 #!/bin/sh
 case ${4:-${3:-${2:-${1:-}}}} in
-Noto\ Sans:* | Noto\ Sans) printf 'Noto Sans\n' ;;
+Noto\ Sans:* | Noto\ Sans | noto\ sans:* | noto\ sans) printf 'Noto Sans\n' ;;
 JetBrains\ Mono:* | JetBrains\ Mono) printf 'JetBrains Mono\n' ;;
 Bad\&Font:* | Bad\&Font) printf 'Bad&Font\n' ;;
 *) printf 'Fallback Sans\n' ;;
@@ -126,6 +128,11 @@ inventory=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
 	"$helper" inventory)
+
+if grep -Eq $'^candidate\t(cursor|icon|gtk)\tavailable\tunknown\t' <<<"$inventory"; then
+	printf 'Reserved unknown sentinel was emitted as an applicable candidate\n' >&2
+	exit 1
+fi
 
 ln -s "$helper" "$bin_dir/dwm-settings-appearance"
 bare_inventory=$(
@@ -394,6 +401,85 @@ styled_font=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	DWM_TEST_FONT_NAME='Noto Sans Bold 11' "$helper" inventory)
 grep -Fqx $'selection\tfont\tavailable\tNoto Sans\tNoto Sans Bold 11\tCurrent desktop font family is installed' \
 	<<<"$styled_font"
+lowercase_styled_font=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	DWM_TEST_FONT_NAME='noto sans bold 11' "$helper" inventory)
+grep -Fqx $'selection\tfont\tavailable\tNoto Sans\tnoto sans bold 11\tCurrent desktop font family is installed' \
+	<<<"$lowercase_styled_font"
+
+printf 'personalization-protocol\t1\t0\nfont\tnoto sans\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+case_preserved_font=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	DWM_TEST_FONT_NAME='Noto Sans 11' "$helper" inventory)
+grep -Fqx $'candidate\tfont\tavailable\tNoto Sans\tNoto Sans\tExact Fontconfig family' \
+	<<<"$case_preserved_font"
+grep -Fqx $'candidate\tfont\tavailable\tnoto sans\tnoto sans\tExact Fontconfig family' \
+	<<<"$case_preserved_font"
+rm -f "$config_home/dwm-titus/personalization.conf"
+
+alias_font_bin=$work/alias-font-bin
+cp -a "$bin_dir" "$alias_font_bin"
+cat >"$alias_font_bin/fc-list" <<'EOF'
+#!/bin/sh
+[ "${1:-}" = ':charset=20-7e' ] || exit 2
+printf 'MesloLGS NF\tRegular\n'
+EOF
+cat >"$alias_font_bin/fc-match" <<'EOF'
+#!/bin/sh
+printf 'MesloLGS NF\n'
+EOF
+chmod +x "$alias_font_bin/fc-list" "$alias_font_bin/fc-match"
+printf 'personalization-protocol\t1\t0\nfont\tMesloLGS Nerd Font Mono\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+alias_font=$(HOME=$home PATH=$alias_font_bin XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	DWM_TEST_FONT_NAME='meslolgs nerd font mono 11' "$helper" inventory)
+grep -Fqx $'selection\tfont\tavailable\tMesloLGS NF\tmeslolgs nerd font mono 11\tCurrent desktop font family is installed' \
+	<<<"$alias_font"
+grep -Fqx $'candidate\tfont\tavailable\tMesloLGS Nerd Font Mono\tMesloLGS Nerd Font Mono\tExact Fontconfig family' \
+	<<<"$alias_font"
+rm -f "$config_home/dwm-titus/personalization.conf"
+
+reserved_font_bin=$work/reserved-font-bin
+cp -a "$bin_dir" "$reserved_font_bin"
+cat >"$reserved_font_bin/fc-list" <<'EOF'
+#!/bin/sh
+[ "${1:-}" = ':charset=20-7e' ] || exit 2
+awk 'BEGIN { for (i = 1; i <= 30; i++) printf "Font%03d\tRegular\n", i }'
+EOF
+cat >"$reserved_font_bin/fc-match" <<'EOF'
+#!/bin/sh
+candidate=${4:-${3:-${2:-${1:-}}}}
+candidate=${candidate%:charset=20-7e}
+printf '%s\n' "$candidate"
+EOF
+chmod +x "$reserved_font_bin/fc-list" "$reserved_font_bin/fc-match"
+printf 'personalization-protocol\t1\t0\nfont\tFont030\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+reserved_font=$(HOME=$home PATH=$reserved_font_bin XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	DWM_TEST_FONT_NAME='Font001 11' "$helper" inventory)
+grep -Fqx $'candidate\tfont\tavailable\tFont001\tFont001\tExact Fontconfig family' \
+	<<<"$reserved_font"
+grep -Fqx $'candidate\tfont\tavailable\tFont030\tFont030\tExact Fontconfig family' \
+	<<<"$reserved_font"
+test "$(grep -c $'^candidate\tfont\t' <<<"$reserved_font")" -eq 24
+
+printf 'personalization-protocol\t1\t0\nfont\tfont030\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+reserved_font_alias=$(HOME=$home PATH=$reserved_font_bin XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	DWM_TEST_FONT_NAME='Font001 11' "$helper" inventory)
+grep -Fqx $'candidate\tfont\tavailable\tfont030\tfont030\tExact Fontconfig family' \
+	<<<"$reserved_font_alias"
+test "$(grep -c $'^candidate\tfont\t' <<<"$reserved_font_alias")" -eq 24
+rm -f "$config_home/dwm-titus/personalization.conf"
 
 printf -v oversized_font '%*s' 4100 ''
 oversized_font=${oversized_font// /x}
@@ -457,6 +543,30 @@ limited=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 test "$(grep -c $'^candidate\tcursor\t' <<<"$limited")" -eq 256
 grep -Fqx $'selection\tcursor\tavailable\tcursor-259\t\tCurrent selection is installed: Xcursor theme' \
 	<<<"$limited"
+grep -Fqx $'candidate\tcursor\tavailable\tcursor-259\tcursor-259\tXcursor theme' \
+	<<<"$limited"
+
+unsafe_selected=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	DWM_TEST_CURSOR_THEME='Bad&Cursor' "$helper" inventory)
+grep -Fqx $'selection\tcursor\tavailable\tBad&Cursor\t\tCurrent selection is installed: Xcursor theme' \
+	<<<"$unsafe_selected"
+if grep -Fq $'candidate\tcursor\tavailable\tBad&Cursor\t' <<<"$unsafe_selected"; then
+	printf 'Mutation-unsafe effective cursor was emitted as an applicable candidate\n' >&2
+	exit 1
+fi
+
+printf 'personalization-protocol\t1\t0\ncursor\tcursor-258\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+limited_saved=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$limit_data DWM_APPEARANCE_DATA_DIRS=$limit_data \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	DWM_TEST_CURSOR_THEME=cursor-259 "$helper" inventory)
+test "$(grep -c $'^candidate\tcursor\t' <<<"$limited_saved")" -eq 256
+grep -Fqx $'candidate\tcursor\tavailable\tcursor-258\tcursor-258\tXcursor theme' \
+	<<<"$limited_saved"
+rm -f "$config_home/dwm-titus/personalization.conf"
 
 watch_args=$work/watch.args
 watch_find_complete=$work/watch-find.complete

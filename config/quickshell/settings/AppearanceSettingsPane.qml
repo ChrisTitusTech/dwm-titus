@@ -17,12 +17,22 @@ Flickable {
     readonly property var selectedTheme: root.appearanceModel.themeById(root.selectedThemeId)
     readonly property bool appearanceBusy: root.appearanceModel.busy
         || root.appearanceModel.wallpaperBusy || root.appearanceModel.fontBusy
+        || root.appearanceModel.personalizationBusy
     readonly property bool wallpaperControlsBusy: root.appearanceBusy
         || root.appearanceModel.wallpaperStatusBusy
     readonly property bool wallpaperPreviewControlsBusy: root.appearanceBusy
         || root.appearanceModel.wallpaperPreviewActionBusy
     readonly property bool fontControlsBusy: root.appearanceBusy || root.appearanceModel.fontStatusBusy
         || root.appearanceModel.wallpaperStatusBusy
+    readonly property bool personalizationActionsReady:
+        root.appearanceModel.personalizationMutationState === "available"
+        && !root.appearanceModel.personalizationStatusBusy
+        && root.appearanceModel.previewState === "none"
+        && root.appearanceModel.recoveryState === "none"
+    readonly property bool personalizationDelegatesReady:
+        !root.appearanceModel.personalizationStatusBusy
+        && root.appearanceModel.previewState === "none"
+        && root.appearanceModel.recoveryState === "none"
     contentWidth: width
     contentHeight: content.implicitHeight
     clip: true
@@ -112,6 +122,13 @@ Flickable {
             root.selectedFontScale = root.appearanceModel.fontScale;
     }
 
+    function followLabel(capability, option) {
+        if (option === "follow-theme") return "Following the selected DWM theme";
+        if (option === "follow-system") return "Following the system setting";
+        if (option === "unknown") return "Saved preference needs repair";
+        return "Saved override: " + option;
+    }
+
     onVisibleChanged: if (visible) {
         root.ensureSelection();
         root.ensureWallpaperSelection();
@@ -168,9 +185,11 @@ Flickable {
                 }
                 UiText {
                     visible: statusCard.value.length > 0
+                    Layout.maximumWidth: Math.max(120, statusCard.width * 0.45)
                     text: statusCard.value
                     color: root.statusColor(statusCard.statusState)
                     font.bold: true
+                    elide: Text.ElideRight
                 }
             }
             UiText {
@@ -178,6 +197,180 @@ Flickable {
                 text: statusCard.detail
                 color: Theme.menuMutedText
                 wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    component PersonalizationControl: ColumnLayout {
+        id: personalizationControl
+        required property string capability
+        required property string title
+        required property string resetLabel
+        required property var candidates
+        property bool advancedEditor: false
+        property string selectedValue: ""
+        property bool selectionDirty: false
+        property string lastSavedOption: ""
+        readonly property var selection: root.appearanceModel.personalizationSelection(
+            personalizationControl.capability)
+        readonly property var readiness: root.appearanceModel.personalizationReadiness(
+            personalizationControl.capability)
+        readonly property var inventorySelection: root.appearanceModel.inventorySelection(
+            personalizationControl.capability)
+        readonly property string effectiveState: root.appearanceModel.personalizationEffectiveState(
+            personalizationControl.capability)
+        readonly property string effectiveDetail: root.appearanceModel.personalizationEffectiveDetail(
+            personalizationControl.capability)
+        readonly property var delegateRecord: root.appearanceModel.personalizationDelegates[
+            personalizationControl.capability] || ({ "state": "unavailable", "tool": "",
+                "detail": "No trusted advanced editor is installed" })
+
+        Layout.fillWidth: true
+        spacing: Theme.spacingSm
+
+        function candidateAvailable(value) {
+            for (const candidate of personalizationControl.candidates) {
+                if (candidate.token === value && candidate.state === "available") return true;
+            }
+            return false;
+        }
+
+        function syncSelection() {
+            const savedOptionChanged = personalizationControl.lastSavedOption.length > 0
+                && personalizationControl.lastSavedOption !== personalizationControl.selection.option;
+            personalizationControl.lastSavedOption = personalizationControl.selection.option;
+            if (personalizationControl.selectionDirty && !savedOptionChanged
+                    && personalizationControl.candidateAvailable(
+                        personalizationControl.selectedValue)) return;
+            personalizationControl.selectionDirty = false;
+            let preferred = personalizationControl.selection.option;
+            if (personalizationControl.capability === "font" && preferred === "follow-system")
+                preferred = personalizationControl.inventorySelection.value;
+            if (preferred === "follow-system" || preferred === "follow-theme"
+                    || preferred === "unknown") preferred = personalizationControl.selection.value;
+            if (personalizationControl.candidateAvailable(preferred)) {
+                personalizationControl.selectedValue = preferred;
+                return;
+            }
+            if (!personalizationControl.candidateAvailable(personalizationControl.selectedValue))
+                personalizationControl.selectedValue = "";
+        }
+
+        onSelectionChanged: syncSelection()
+        onInventorySelectionChanged: syncSelection()
+        onCandidatesChanged: syncSelection()
+        Component.onCompleted: syncSelection()
+
+        SectionLabel { label: personalizationControl.title }
+
+        StatusCard {
+            label: personalizationControl.title
+            statusState: personalizationControl.effectiveState
+            value: personalizationControl.selection.value.length > 0
+                ? personalizationControl.selection.value : "Unavailable"
+            detail: personalizationControl.effectiveDetail + " / "
+                + root.followLabel(personalizationControl.capability,
+                    personalizationControl.selection.option)
+        }
+
+        Flow {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSm
+
+            Repeater {
+                model: personalizationControl.candidates
+                delegate: ShellButton {
+                    id: personalizationButton
+                    required property var modelData
+                    label: personalizationButton.modelData.label
+                        + (personalizationButton.modelData.token
+                            === personalizationControl.selectedValue ? " / Selected" : "")
+                        + (personalizationButton.modelData.token
+                            === personalizationControl.selection.option ? " / Saved" : "")
+                    enabled: !root.appearanceBusy
+                        && personalizationButton.modelData.state === "available"
+                    onActivated: {
+                        personalizationControl.selectedValue = personalizationButton.modelData.token;
+                        personalizationControl.selectionDirty = true;
+                    }
+                }
+            }
+        }
+
+        UiText {
+            Layout.fillWidth: true
+            visible: personalizationControl.readiness.apply !== "available"
+                || personalizationControl.readiness.reset !== "available"
+            text: personalizationControl.readiness.detail
+            color: Theme.menuMutedText
+            wrapMode: Text.WordWrap
+        }
+
+        UiText {
+            Layout.fillWidth: true
+            visible: personalizationControl.candidates.length === 0
+            text: root.appearanceModel.inventoryProviderState === "unavailable"
+                ? root.appearanceModel.inventoryProviderDetail
+                : "No supported choices are installed for this capability."
+            color: Theme.menuMutedText
+            wrapMode: Text.WordWrap
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSm
+            ShellButton {
+                label: "Apply " + personalizationControl.title.toLowerCase()
+                enabled: root.personalizationActionsReady
+                    && root.appearanceModel.personalizationApplyReady(
+                        personalizationControl.capability)
+                    && personalizationControl.candidateAvailable(
+                        personalizationControl.selectedValue) && !root.appearanceBusy
+                onActivated: root.appearanceModel.applyPersonalization(
+                    personalizationControl.capability, personalizationControl.selectedValue)
+            }
+            ShellButton {
+                label: personalizationControl.resetLabel
+                enabled: root.personalizationActionsReady
+                    && root.appearanceModel.personalizationResetReady(
+                        personalizationControl.capability)
+                    && !root.appearanceBusy
+                onActivated: {
+                    personalizationControl.selectionDirty = false;
+                    root.appearanceModel.resetPersonalization(personalizationControl.capability);
+                }
+            }
+            ShellButton {
+                visible: personalizationControl.advancedEditor
+                    && personalizationControl.delegateRecord.state === "available"
+                label: personalizationControl.delegateRecord.tool.length > 0
+                    ? "Open " + personalizationControl.delegateRecord.tool : "Open advanced editor"
+                enabled: root.personalizationDelegatesReady && !root.appearanceBusy
+                onActivated: root.appearanceModel.delegatePersonalization(
+                    personalizationControl.capability)
+            }
+        }
+
+        StatusCard {
+            visible: personalizationControl.advancedEditor
+                && personalizationControl.delegateRecord.state !== "available"
+            label: "Advanced " + personalizationControl.title + " editing"
+            statusState: "unavailable"
+            value: "Optional"
+            detail: personalizationControl.delegateRecord.detail
+        }
+
+        Connections {
+            target: root.appearanceModel
+            function onPersonalizationBusyChanged() {
+                if (!root.appearanceModel.personalizationBusy
+                        && root.appearanceModel.personalizationActionSucceeded
+                        && root.appearanceModel.personalizationActionKind !== "delegate"
+                        && root.appearanceModel.personalizationActionCapability
+                            === personalizationControl.capability) {
+                    personalizationControl.selectionDirty = false;
+                    personalizationControl.syncSelection();
+                }
             }
         }
     }
@@ -703,6 +896,94 @@ Flickable {
             }
         }
 
+        SectionLabel { label: "Desktop applications" }
+
+        StatusCard {
+            visible: root.appearanceModel.personalizationProviderState !== "available"
+                || root.appearanceModel.personalizationMutationState !== "available"
+            label: "Desktop personalization"
+            statusState: root.appearanceModel.personalizationMutationState !== "available"
+                ? root.appearanceModel.personalizationMutationState
+                : root.appearanceModel.personalizationProviderState
+            value: root.appearanceModel.personalizationMutationState === "available"
+                ? "Partially available" : "Protected"
+            detail: root.appearanceModel.personalizationProviderState !== "available"
+                ? root.appearanceModel.personalizationProviderDetail
+                : root.appearanceModel.personalizationMutationDetail
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible: root.appearanceModel.personalizationRepairState !== "unavailable"
+
+            UiText {
+                Layout.fillWidth: true
+                text: root.appearanceModel.personalizationRepairDetail
+                color: root.statusColor(root.appearanceModel.personalizationRepairState)
+                wrapMode: Text.WordWrap
+            }
+
+            ShellButton {
+                label: "Repair personalization state"
+                enabled: root.appearanceModel.personalizationRepairState === "available"
+                    && !root.appearanceBusy && !root.appearanceModel.personalizationStatusBusy
+                    && root.appearanceModel.previewState === "none"
+                    && root.appearanceModel.recoveryState === "none"
+                onActivated: root.appearanceModel.repairPersonalization()
+            }
+        }
+
+        UiText {
+            Layout.fillWidth: true
+            text: "These choices affect GTK, Qt, and other desktop applications. The managed shell font above remains independent so icon glyphs and panel geometry stay stable."
+            color: Theme.menuMutedText
+            wrapMode: Text.WordWrap
+        }
+
+        PersonalizationControl {
+            capability: "font"
+            title: "Application font"
+            resetLabel: "Follow system font"
+            candidates: root.appearanceModel.personalizationCandidates("font", 24)
+        }
+
+        PersonalizationControl {
+            capability: "text-size"
+            title: "Application text scale"
+            resetLabel: "Follow system scale"
+            candidates: root.appearanceModel.desktopTextScaleCandidates
+        }
+
+        PersonalizationControl {
+            capability: "cursor"
+            title: "Cursor theme"
+            resetLabel: "Follow DWM theme"
+            candidates: root.appearanceModel.personalizationCandidates("cursor", 24)
+        }
+
+        PersonalizationControl {
+            capability: "icon"
+            title: "Icon theme"
+            resetLabel: "Follow system icons"
+            candidates: root.appearanceModel.personalizationCandidates("icon", 24)
+        }
+
+        PersonalizationControl {
+            capability: "gtk"
+            title: "GTK theme"
+            resetLabel: "Follow DWM theme"
+            candidates: root.appearanceModel.personalizationCandidates("gtk", 24)
+            advancedEditor: true
+        }
+
+        PersonalizationControl {
+            capability: "qt"
+            title: "Qt platform theme"
+            resetLabel: "Follow DWM theme"
+            candidates: root.appearanceModel.personalizationCandidates("qt", 24)
+            advancedEditor: true
+        }
+
         SectionLabel { label: "Application status" }
 
         Repeater {
@@ -752,5 +1033,6 @@ Flickable {
                 detail: errorCard.modelData.detail
             }
         }
+
     }
 }

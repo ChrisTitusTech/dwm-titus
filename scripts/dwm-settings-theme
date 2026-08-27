@@ -46,6 +46,8 @@ preview_claim_to_release=
 integration_lock_held=false
 personalization_capability=
 personalization_value=
+personalization_repair=0
+personalization_repair_expected_hash=
 personalization_xfconf_enabled=0
 preserve_desktop_settings=0
 desktop_font_size_override=
@@ -66,10 +68,12 @@ usage: dwm-settings-theme preview TOKEN SECONDS THEME
        dwm-settings-theme reset
        dwm-settings-theme personalize {font|text-size|cursor|icon|gtk|qt} VALUE
        dwm-settings-theme personalize-reset {font|text-size|cursor|icon|gtk|qt}
+       dwm-settings-theme personalize-repair
        dwm-settings-theme recover
        dwm-settings-theme recovery-status
        dwm-settings-theme mutation-ready
        dwm-settings-theme personalization-ready
+       dwm-settings-theme personalization-repair-ready
 EOF
 }
 
@@ -280,6 +284,60 @@ personalization_ready() {
 	[[ $target != none ]] || target=$(snapshot_resolved_theme "$snapshot")
 	valid_theme_name "$target" || return 1
 	snapshot_target_is_valid "$snapshot" "$target"
+}
+
+personalization_protocol_repairable() {
+	local file=$1 first
+	IFS= read -r first <"$file" || [[ -n $first ]] || return 0
+	[[ $first != personalization-protocol$'\t'* ||
+		$first == $'personalization-protocol\t1\t0' ]]
+}
+
+personalization_repair_ready() {
+	local file=$config_home/dwm-titus/personalization.conf snapshot target
+	personalization_repair_mutation_ready || return 1
+	[[ -e $file || -L $file ]] || return 1
+	validate_integration_file "$file" || return 1
+	personalization_protocol_repairable "$file" || return 1
+	if validate_personalization_config; then
+		return 1
+	fi
+	snapshot=$(current_snapshot) || return 1
+	snapshot_source_is_safe "$snapshot" || return 1
+	target=$(snapshot_active_theme "$snapshot")
+	[[ $target != none ]] || target=$(snapshot_resolved_theme "$snapshot")
+	valid_theme_name "$target" || return 1
+	snapshot_target_is_valid "$snapshot" "$target"
+}
+
+personalization_repair_mutation_ready() {
+	local file=$config_home/dwm-titus/personalization.conf snapshot target path
+	[[ -x $appearance_helper ]] || return 1
+	directory_path_ready "$runtime_base" true || return 1
+	directory_path_ready "$runtime_dir" true || return 1
+	directory_path_ready "$state_home" true || return 1
+	directory_path_ready "$state_home/dwm-titus" true || return 1
+	directory_path_ready "$recovery_dir" true || return 1
+	[[ -f $file && ! -L $file && -r $file ]] || return 1
+	validate_integration_file "$file" || return 1
+	directory_path_ready "${file%/*}" true || return 1
+	[[ $managed_themes_file == /* && -f $managed_themes_file &&
+		! -L $managed_themes_file && -r $managed_themes_file ]] || return 1
+	[[ $(stat -c %s -- "$managed_themes_file") -le $max_themes_size ]] || return 1
+	snapshot=$(current_snapshot) || return 1
+	snapshot_source_is_safe "$snapshot" || return 1
+	target=$(snapshot_active_theme "$snapshot")
+	[[ $target != none ]] || target=$(snapshot_resolved_theme "$snapshot")
+	valid_theme_name "$target" || return 1
+	snapshot_target_is_valid "$snapshot" "$target" || return 1
+	(validate_user_theme_file) >/dev/null 2>&1 || return 1
+	[[ ! -f $themes_file || -r $themes_file ]] || return 1
+	integration_path_list
+	for path in "${integration_paths[@]}"; do
+		validate_integration_file "$path" || return 1
+		[[ ! -f $path || -r $path ]] || return 1
+	done
+	(validate_atomic_mv_support personalization) >/dev/null 2>&1
 }
 
 validate_personalization_config() {
@@ -624,7 +682,7 @@ valid_personalization_value() {
 	cursor:follow-theme | gtk:follow-theme | qt:follow-theme | \
 		font:follow-system | text-size:follow-system | icon:follow-system) return 0 ;;
 	esac
-	[[ $value != follow-theme && $value != follow-system ]] || return 1
+	[[ $value != follow-theme && $value != follow-system && $value != unknown ]] || return 1
 	case $capability in
 	text-size)
 		case $value in
@@ -941,11 +999,20 @@ restore_personalization_xfconf_baseline() {
 
 stage_personalization_config() {
 	local file=$1 temporary mode=600
-	[[ -n $personalization_capability ]] || return 0
+	[[ -n $personalization_capability || $personalization_repair == 1 ]] || return 0
 	mkdir -p -- "${file%/*}"
 	temporary=$(umask 077 && mktemp "${file%/*}/.personalization.conf.XXXXXX") || return 1
 	if [[ -f $file ]]; then
 		mode=$(stat -c %a -- "$file") || return 1
+	fi
+	if [[ $personalization_repair == 1 ]]; then
+		[[ -n $personalization_repair_expected_hash &&
+			$(file_hash "$file") == "$personalization_repair_expected_hash" ]] || {
+			rm -f -- "$temporary"
+			return 1
+		}
+		printf 'personalization-protocol\t1\t0\n' >"$temporary"
+	elif [[ -f $file ]]; then
 		awk -F '\t' -v capability="$personalization_capability" \
 			-v value="$personalization_value" '
 			NR == 1 {
@@ -1064,7 +1131,7 @@ capture_staged_integration_outputs() {
 
 publish_integration_outputs() {
 	local prefix=$1 count index path existed mode baseline_hash after_hash after_mode
-	local temporary captured_hash captured_mode prior
+	local temporary captured_hash captured_mode current_hash current_mode prior
 	[[ -f $prefix.integration.count ]] || return 1
 	IFS= read -r count <"$prefix.integration.count"
 	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
@@ -1091,6 +1158,18 @@ publish_integration_outputs() {
 		[[ -f $prefix.integration.$index.after &&
 			! -L $prefix.integration.$index.after ]] || return 1
 		[[ $(file_hash "$prefix.integration.$index.after") == "$after_hash" ]] || return 1
+		if [[ $after_hash == "$baseline_hash" && $after_mode == "$mode" ]]; then
+			# A scoped transaction can stage baseline copies for paths it does not
+			# own. Verify those paths stayed at the captured state, but do not
+			# exchange byte-identical files and discard unrelated metadata.
+			[[ $existed == 1 && -f $path ]] || return 2
+			existing_path_chain_is_safe "$path" || return 2
+			validate_integration_file "$path" || return 2
+			current_hash=$(file_hash "$path")
+			current_mode=$(stat -c %a -- "$path")
+			[[ $current_hash == "$baseline_hash" && $current_mode == "$mode" ]] || return 2
+			continue
+		fi
 		existing_path_chain_is_safe "$path" || return 2
 		(umask 077 && mkdir -p -- "${path%/*}") || return 1
 		validate_integration_file "$path" || return 2
@@ -1233,12 +1312,26 @@ cleanup_prefix() {
 }
 
 validate_atomic_mv_support() {
-	local parent=${themes_file%/*} help path probe
+	local scope=${1:-all} parent=${themes_file%/*} help path probe
+	[[ $scope == all || $scope == personalization ]] || die 'invalid atomic validation scope'
 	help=$(mv --help 2>/dev/null) || die 'GNU mv is required for atomic theme updates'
 	if ! grep -Fq -- '--exchange' <<<"$help" ||
 		! grep -Fq -- '--no-copy' <<<"$help" ||
 		! grep -Fq -- 'none-fail' <<<"$help"; then
 		die 'required GNU mv options are unavailable'
+	fi
+	if [[ $scope == personalization ]]; then
+		path=$config_home/dwm-titus/personalization.conf
+		parent=${path%/*}
+		[[ -d $parent && ! -L $parent ]] || die "unsafe personalization directory: $parent"
+		[[ $(stat -c %u -- "$parent") == "$UID" ]] ||
+			die "personalization directory has the wrong owner: $parent"
+		if [[ -e $path ]] && [[ $(stat -c %d -- "$path") != $(stat -c %d -- "$parent") ]]; then
+			die "personalization file is on a different filesystem from its parent: $path"
+		fi
+		probe_atomic_exchange "$parent" ||
+			die "personalization filesystem does not support atomic exchange: $parent"
+		return
 	fi
 
 	probe=$parent
@@ -1403,12 +1496,14 @@ prepare_integration_outputs() (
 		fi
 	done
 	stage_personalization_config "$stage_config_home/dwm-titus/personalization.conf" || return 1
-	run_theme_apply_for transactional "$stage_home" "$stage_config_home" 1 || return 1
+	if [[ $personalization_repair == 0 ]]; then
+		run_theme_apply_for transactional "$stage_home" "$stage_config_home" 1 || return 1
+	fi
 	capture_staged_integration_outputs "$prefix" "$stage_home" "$stage_config_home"
 )
 
 restore_integration_file() {
-	local prefix=$1 index=$2 path=$3 existed mode baseline_hash after_hash after_mode
+	local prefix=$1 index=$2 path=$3 action existed mode baseline_hash after_hash after_mode
 	local current_hash current_mode temporary captured_hash captured_mode capture_dir captured_path
 	[[ $(integration_meta_value "$prefix" "$index" path_hash) == "$(path_hash "$path")" ]] || return 1
 	existed=$(integration_meta_value "$prefix" "$index" existed) || return 1
@@ -1416,8 +1511,15 @@ restore_integration_file() {
 	baseline_hash=$(integration_meta_value "$prefix" "$index" baseline_hash) || return 1
 	after_hash=$(integration_meta_value "$prefix" "$index" after_hash) || return 1
 	after_mode=$(integration_meta_value "$prefix" "$index" after_mode) || return 1
+	action=$(meta_value "$prefix" action) || return 1
 	[[ $existed == 0 || $existed == 1 ]] || return 1
 	[[ $mode =~ ^[0-7]{3,4}$ && $after_mode =~ ^[0-7]{3,4}$ ]] || return 1
+	if [[ $action == personalize-repair && $after_hash == "$baseline_hash" &&
+		$after_mode == "$mode" ]]; then
+		# Repair never owns unchanged integration paths. Preserve any later edit
+		# rather than treating it as stale recovery state.
+		return 0
+	fi
 	validate_integration_file "$path" || return 2
 	if [[ -f $path ]]; then
 		current_hash=$(file_hash "$path")
@@ -1430,7 +1532,11 @@ restore_integration_file() {
 		! ($current_hash == "$baseline_hash" && $current_mode == "$mode") ]]; then
 		return 2
 	fi
-
+	if [[ $after_hash == "$baseline_hash" && $after_mode == "$mode" ]]; then
+		# Other transactions still stale-check unchanged paths, but do not
+		# exchange them when their known state remains intact.
+		return 0
+	fi
 	if [[ $existed == 1 ]]; then
 		[[ -f $prefix.integration.$index.before && ! -L $prefix.integration.$index.before ]] || return 1
 		if [[ $current_hash == absent ]]; then
@@ -1486,11 +1592,12 @@ restore_integration_file() {
 }
 
 integration_restore_preflight() {
-	local prefix=$1 count index path existed mode baseline_hash after_hash after_mode
+	local prefix=$1 count index path action existed mode baseline_hash after_hash after_mode
 	local current_hash current_mode
 	[[ -f $prefix.integration.count ]] || return 1
 	IFS= read -r count <"$prefix.integration.count"
 	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
+	action=$(meta_value "$prefix" action) || return 1
 	integration_path_list_for_count "$count" "${HOME:?HOME is required}" "$config_home" || return 1
 	[[ $count == "${#integration_paths[@]}" ]] || return 1
 	for ((index = 0; index < count; index++)); do
@@ -1503,6 +1610,12 @@ integration_restore_preflight() {
 		after_mode=$(integration_meta_value "$prefix" "$index" after_mode) || return 1
 		[[ $existed == 0 || $existed == 1 ]] || return 1
 		[[ $mode =~ ^[0-7]{3,4}$ && $after_mode =~ ^[0-7]{3,4}$ ]] || return 1
+		if [[ $action == personalize-repair && $after_hash == "$baseline_hash" &&
+			$after_mode == "$mode" ]]; then
+			# No-op repair records are outside recovery ownership, including when
+			# another process edits them later.
+			continue
+		fi
 		validate_integration_file "$path" || return 2
 		if [[ -f $path ]]; then
 			current_hash=$(file_hash "$path")
@@ -1601,10 +1714,11 @@ verify_active_theme() {
 }
 
 restore_theme_baseline_locked() {
-	local prefix=$1 expected_hash=$2 existed mode baseline_hash current_hash current_mode temporary captured_hash
+	local prefix=$1 expected_hash=$2 action existed mode baseline_hash current_hash current_mode temporary captured_hash
 	local capture_dir captured_path exchange_name exchange_path exchange_hash
 	[[ -f $prefix.meta ]] || return 1
 	existed=$(meta_value "$prefix" existed) || return 1
+	action=$(meta_value "$prefix" action) || return 1
 	mode=$(meta_value "$prefix" mode) || return 1
 	baseline_hash=$(meta_value "$prefix" baseline_hash) || return 1
 	[[ $existed == 0 || $existed == 1 ]] || return 1
@@ -1633,6 +1747,12 @@ restore_theme_baseline_locked() {
 	fi
 	[[ $current_hash == "$expected_hash" || $current_hash == "$baseline_hash" ]] || return 2
 	[[ $current_mode == "$mode" ]] || return 2
+	if [[ $action == personalize-* && $expected_hash == "$baseline_hash" &&
+		$current_hash == "$baseline_hash" ]]; then
+		# Personalization transactions do not publish the theme source. Preserve
+		# its inode and metadata during interrupted recovery as well.
+		return 0
+	fi
 	# DWM also invokes theme-apply.sh asynchronously for a themes.toml change.
 	# Keep those late reloads runtime-only for this restored source hash so they
 	# cannot overwrite the exact integration-file baseline after rollback.
@@ -1741,6 +1861,7 @@ restore_baseline() {
 	((status == 0)) || return "$status"
 	clear_integration_transaction
 	action=$(meta_value "$prefix" action 2>/dev/null || true)
+	[[ $action != personalize-repair ]] || return 0
 	[[ $action != personalize-* ]] || preserve_desktop_settings=1
 	if ! run_theme_apply live-only; then
 		preserve_status=3
@@ -1778,7 +1899,11 @@ begin_mutation() {
 	local prefix=$1 target=$2 action=$3 publish_theme=${4:-true}
 	local install_status=0 publish_status=0 restore_status=0 integration_source_hash source_kind=user
 	[[ $publish_theme == true || $publish_theme == false ]] || die 'invalid theme publication mode'
-	validate_atomic_mv_support
+	if [[ $personalization_repair == 1 ]]; then
+		validate_atomic_mv_support personalization
+	else
+		validate_atomic_mv_support
+	fi
 	cleanup_prefix "$prefix"
 	acquire_integration_lock
 	capture_desktop_font_size
@@ -1880,7 +2005,9 @@ begin_mutation() {
 	elif ((publish_status != 0)); then
 		die 'could not publish theme integration outputs'
 	fi
-	reload_kitty_after_integration_publish
+	if [[ $personalization_repair == 0 ]]; then
+		reload_kitty_after_integration_publish
+	fi
 	append_metadata "$prefix" integrations_ready 1
 	write_integration_transaction "$integration_source_hash" ready ||
 		die 'cannot publish ready integration transaction state'
@@ -1989,6 +2116,53 @@ reset_personalization() {
 	value=$(personalization_reset_value "$capability") ||
 		die "unsupported personalization capability: $capability"
 	apply_personalization "$capability" "$value" reset
+}
+
+repair_personalization() {
+	local file=$config_home/dwm-titus/personalization.conf snapshot target
+	local source_hash source_kind
+	acquire_lock
+	ensure_recovery_dir
+	ensure_no_preview
+	ensure_no_recovery
+	validate_user_theme_file
+	[[ -e $file || -L $file ]] || die 'personalization configuration does not need repair'
+	validate_integration_file "$file" || die 'personalization configuration is unsafe'
+	personalization_protocol_repairable "$file" ||
+		die 'personalization protocol is unsupported; refusing destructive repair'
+	if validate_personalization_config; then
+		die 'personalization configuration does not need repair'
+	fi
+	personalization_repair_expected_hash=$(file_hash "$file")
+	if validate_personalization_config ||
+		[[ $(file_hash "$file") != "$personalization_repair_expected_hash" ]]; then
+		die 'personalization configuration changed while checking repair state'
+	fi
+	if [[ -n ${DWM_TEST_PERSONALIZATION_REPAIR_READY:-} ]]; then
+		: >"$DWM_TEST_PERSONALIZATION_REPAIR_READY"
+		while [[ ! -e ${DWM_TEST_PERSONALIZATION_REPAIR_RELEASE:-} ]]; do
+			sleep 0.01
+		done
+	fi
+	snapshot=$(current_snapshot)
+	target=$(snapshot_active_theme "$snapshot")
+	[[ $target != none ]] || target=$(snapshot_resolved_theme "$snapshot")
+	validate_target "$target"
+	personalization_repair=1
+	begin_mutation "$transaction_prefix" "$target" personalize-repair false
+	if [[ $(meta_value "$transaction_prefix" existed) == 1 ]]; then
+		[[ -f $themes_file && $(file_hash "$themes_file") == "$rollback_expected_hash" ]] ||
+			die 'theme file changed during personalization repair; refusing stale result'
+	else
+		source_hash=$(meta_value "$transaction_prefix" source_hash)
+		source_kind=$(meta_value "$transaction_prefix" source_kind)
+		[[ $source_kind == managed && ! -e $themes_file && ! -L $themes_file &&
+			$(file_hash "$managed_themes_file") == "$source_hash" ]] ||
+			die 'theme source changed during personalization repair; refusing stale result'
+	fi
+	finish_mutation "$transaction_prefix"
+	printf 'personalization-action-protocol\t1\t0\n'
+	printf 'result\trepair\tall\tfollow-sources\n'
 }
 
 reserve_preview() {
@@ -2367,6 +2541,10 @@ personalize-reset)
 	[[ $# == 2 ]] || die 'personalize-reset requires a capability'
 	reset_personalization "$2"
 	;;
+personalize-repair)
+	[[ $# == 1 ]] || die 'personalize-repair takes no arguments'
+	repair_personalization
+	;;
 recover)
 	[[ $# == 1 ]] || die 'recover takes no arguments'
 	recover_transaction
@@ -2382,6 +2560,10 @@ mutation-ready)
 personalization-ready)
 	[[ $# == 1 ]] || die 'personalization-ready takes no arguments'
 	personalization_ready
+	;;
+personalization-repair-ready)
+	[[ $# == 1 ]] || die 'personalization-repair-ready takes no arguments'
+	personalization_repair_ready
 	;;
 _watch)
 	[[ $# == 3 ]] || exit 2

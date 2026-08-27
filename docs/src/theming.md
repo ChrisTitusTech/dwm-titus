@@ -169,5 +169,40 @@ dwm-settings-font reset
 
 The setting owns only `font.conf` under the dwm-titus XDG configuration
 directory. A malformed file falls back to the existing Meslo family at 100
-percent without preventing shell startup. GTK and Qt application font policy
-is intentionally deferred to the separate toolkit-control slice.
+percent without preventing shell startup.
+
+### Desktop Application Appearance
+
+The **Desktop applications** area in **Settings -> Appearance** separately
+controls application font and text scale, cursor and icon themes, GTK theme,
+and Qt platform theme. Choices come from the bounded inventory collected only
+while Appearance is open. Desktop font changes do not replace the fixed Nerd
+Font used for shell icons.
+
+Use **Follow system** for application font, text scale, and icons, or **Follow
+DWM theme** for cursor, GTK, and Qt. Those modes are persisted explicitly, so a
+later theme change cannot silently replace an override. Advanced GTK and Qt
+buttons appear only when a supported external editor such as `nwg-look`,
+`qt6ct`, or `qt5ct` is installed.
+
+The same fixed actions are available from a terminal:
+
+```bash
+dwm-settings-personalization apply cursor Adwaita
+dwm-settings-personalization apply gtk Adwaita-dark
+dwm-settings-personalization apply qt gtk3
+dwm-settings-personalization reset cursor
+dwm-settings-personalization status
+```
+
+If `status` reports that the project-owned personalization state is malformed,
+Settings exposes **Repair personalization state**. The equivalent
+`dwm-settings-personalization repair` command resets only the persisted
+overrides to follow-source preferences; it does not silently rewrite current
+desktop settings. Apply or reset the desired choices afterward.
+Files carrying a reserved newer personalization protocol are left untouched;
+use a compatible newer dwm-titus version rather than repairing them.
+
+The apply and reset paths share the theme transaction and integration locks.
+If rollback cannot safely restore a changed output, recovery data remains under
+the dwm-titus appearance state directory for the existing theme recovery flow.

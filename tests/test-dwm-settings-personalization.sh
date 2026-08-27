@@ -115,6 +115,7 @@ printf '%s\n' "$*" >>"${DWM_TEST_THEME_CALLS:?}"
 case ${1:-} in
 mutation-ready) exit 0 ;;
 personalization-ready) [ "${DWM_TEST_PERSONALIZATION_READY:-1}" = 1 ] ;;
+personalization-repair-ready) [ "${DWM_TEST_PERSONALIZATION_REPAIR_READY:-1}" = 1 ] ;;
 personalize)
 	printf 'personalization-action-protocol\t1\t0\n'
 	printf 'result\tapply\t%s\t%s\n' "${2:?}" "${3:?}"
@@ -126,6 +127,10 @@ personalize-reset)
 	esac
 	printf 'personalization-action-protocol\t1\t0\n'
 	printf 'result\treset\t%s\t%s\n' "$2" "$value"
+	;;
+personalize-repair)
+	printf 'personalization-action-protocol\t1\t0\n'
+	printf 'result\trepair\tall\tfollow-sources\n'
 	;;
 *) exit 2 ;;
 esac
@@ -169,10 +174,15 @@ run_helper() {
 
 status=$(DWM_TEST_XSETTINGS_STATE=system-follow run_helper status)
 printf '%s\n' "$status" | grep -Fqx 'personalization-protocol	1	0'
+printf '%s\n' "$status" | grep -Fqx 'complete	status'
 printf '%s\n' "$status" | grep -Fqx \
 	'provider	personalization	available	user-session	Bounded personalization changes are available'
 printf '%s\n' "$status" | grep -Fqx \
 	'mutation	available	Transactional personalization changes are available'
+printf '%s\n' "$status" | grep -Fqx \
+	'repair	unavailable	Personalization state does not need repair'
+expected=$(printf 'watch-readiness\ttext-size\tunavailable\tNo managed XSETTINGS owner is available to watch')
+printf '%s\n' "$status" | grep -Fqx "$expected"
 printf '%s\n' "$status" | grep -Fqx \
 	'selection	font	available	Old Font 10	follow-system	Persistent user-session setting'
 printf '%s\n' "$status" | grep -Fqx \
@@ -183,6 +193,8 @@ printf "personalization-protocol\t1\t0\nfont\tfollow-system\ntext-size\t1.25\ncu
 	>"$config_home/dwm-titus/personalization.conf"
 persisted_status=$(run_helper status)
 expected=$(printf 'selection\ttext-size\tavailable\t1.0\t1.25\tPersistent desktop text scale')
+printf '%s\n' "$persisted_status" | grep -Fqx "$expected"
+expected=$(printf 'watch-readiness\ttext-size\tavailable\tManaged XSETTINGS owner lifecycle is observable')
 printf '%s\n' "$persisted_status" | grep -Fqx "$expected"
 inactive_status=$(DWM_TEST_XSETTINGS_STATE=inactive run_helper status)
 expected=$(printf 'selection\ttext-size\tpartial\t1.0\t1.25\tManaged X11 text scale is not active; apply or reset remains available')
@@ -197,9 +209,35 @@ printf 'invalid\n' >"$config_home/dwm-titus/personalization.conf"
 malformed_status=$(run_helper status)
 expected=$(printf 'provider\tpersonalization\tpartial\tuser-session\tPersisted personalization choices are unavailable or malformed')
 printf '%s\n' "$malformed_status" | grep -Fqx "$expected"
+printf '%s\n' "$malformed_status" | grep -Fqx \
+	'repair	available	Reset malformed overrides to safe follow-source preferences'
+run_helper repair | grep -Fqx 'result	repair	all	follow-sources'
+grep -Fqx 'personalize-repair' "$work/theme.calls"
+for malformed_value in unknown follow-theme; do
+	printf 'personalization-protocol\t1\t0\nfont\t%s\n' "$malformed_value" \
+		>"$config_home/dwm-titus/personalization.conf"
+	malformed_status=$(run_helper status)
+	expected=$(printf 'provider\tpersonalization\tpartial\tuser-session\tPersisted personalization choices are unavailable or malformed')
+	printf '%s\n' "$malformed_status" | grep -Fqx "$expected"
+	expected=$(printf 'repair\tavailable\tReset malformed overrides to safe follow-source preferences')
+	printf '%s\n' "$malformed_status" | grep -Fqx "$expected"
+done
+restricted_repair_status=$(DWM_TEST_PERSONALIZATION_REPAIR_READY=0 run_helper status)
+printf '%s\n' "$restricted_repair_status" | grep -Fqx \
+	'repair	restricted	Malformed state cannot be repaired safely in this session'
+printf 'personalization-protocol\t2\t0' \
+	>"$config_home/dwm-titus/personalization.conf"
+unsupported_status=$(run_helper status)
+expected=$(printf 'provider\tpersonalization\tpartial\tuser-session\tPersisted personalization protocol is unsupported; use a compatible dwm-titus version')
+printf '%s\n' "$unsupported_status" | grep -Fqx "$expected"
+expected=$(printf 'repair\tunavailable\tUnsupported personalization state was preserved')
+printf '%s\n' "$unsupported_status" | grep -Fqx "$expected"
+[ "$(grep -Fxc personalize-repair "$work/theme.calls")" -eq 1 ]
 rm -f "$config_home/dwm-titus/personalization.conf"
 stale_status=$(DWM_TEST_XSETTINGS_STATE=stale run_helper status)
 expected=$(printf 'selection\ttext-size\tpartial\t1.0\tfollow-system\tManaged X11 text scale is still active; reset remains available')
+printf '%s\n' "$stale_status" | grep -Fqx "$expected"
+expected=$(printf 'watch-readiness\ttext-size\tavailable\tManaged XSETTINGS owner lifecycle is observable')
 printf '%s\n' "$stale_status" | grep -Fqx "$expected"
 head -c 4097 /dev/zero | tr '\0' x >"$config_home/dwm-titus/theme-env.sh"
 oversized_status=$(run_helper status)
@@ -222,6 +260,27 @@ printf '%s\n' "$unknown_theme_status" | grep -Fqx "$expected"
 printf 'export QT_QPA_PLATFORMTHEME=qt6ct\nexport XCURSOR_THEME=Old\\ Cursor\nexport XCURSOR_SIZE=32\n' \
 	>"$config_home/dwm-titus/theme-env.sh"
 restricted_status=$(DWM_TEST_PERSONALIZATION_READY=0 run_helper status)
+no_gsettings_bin=$work/no-gsettings-bin
+mkdir -p "$no_gsettings_bin"
+cp -a "$bin_dir/." "$no_gsettings_bin/"
+rm -f "$no_gsettings_bin/gsettings"
+for command_name in awk bash cat dirname grep stat timeout; do
+	ln -s "$(command -v "$command_name")" "$no_gsettings_bin/$command_name"
+done
+no_gsettings_status=$(DWM_TEST_HELPER_PATH=$no_gsettings_bin run_helper status)
+printf '%s\n' "$no_gsettings_status" | grep -Fqx \
+	'provider	personalization	partial	user-session	GSettings-backed choices are unavailable; supported Qt delegation remains available'
+for capability in font text-size cursor icon gtk; do
+	printf '%s\n' "$no_gsettings_status" | grep -Fqx \
+		"action-readiness	$capability	unavailable	unavailable	Required GSettings backend is unavailable"
+done
+printf '%s\n' "$no_gsettings_status" | grep -Fqx \
+	'action-readiness	qt	available	available	Apply and reset are available'
+mv "$settings_state/icon-theme" "$work/icon-theme.saved"
+missing_key_status=$(run_helper status)
+printf '%s\n' "$missing_key_status" | grep -Fqx \
+	'action-readiness	icon	unavailable	unavailable	Required GSettings key is unavailable'
+mv "$work/icon-theme.saved" "$settings_state/icon-theme"
 no_dconf_bin=$work/no-dconf-bin
 mkdir -p "$no_dconf_bin"
 cp -a "$bin_dir/." "$no_dconf_bin/"
@@ -231,14 +290,16 @@ for command_name in awk bash cat dirname grep stat timeout; do
 done
 no_dconf_status=$(DWM_TEST_HELPER_PATH=$no_dconf_bin run_helper status)
 printf '%s\n' "$no_dconf_status" | grep -Fqx \
-	'provider	personalization	partial	user-session	GSettings-backed changes lack required dconf rollback support; supported Qt changes remain available'
+	'provider	personalization	available	user-session	Bounded personalization changes are available'
 for capability in font text-size cursor icon gtk; do
-	printf '%s\n' "$no_dconf_status" | grep -Fq \
-		"selection	$capability	restricted	"
-	detail=$(printf '%s\n' "$no_dconf_status" | awk -F '\t' -v capability="$capability" \
-		'$1 == "selection" && $2 == capability { print $6 }')
-	[ "$detail" = 'Required dconf rollback backend is unavailable' ]
+	printf '%s\n' "$no_dconf_status" | grep -Fqx \
+		"action-readiness	$capability	restricted	restricted	Required dconf rollback backend is unavailable"
 done
+if printf '%s\n' "$no_dconf_status" | grep -Eq \
+	'^selection	(font|text-size|cursor|icon|gtk)	restricted	'; then
+	printf 'Read-only appearance health inherited a missing dconf write restriction\n' >&2
+	exit 1
+fi
 if DWM_TEST_HELPER_PATH=$no_dconf_bin run_helper apply font 'New Font' \
 	>"$work/no-dconf.out" 2>"$work/no-dconf.err"; then
 	printf 'Font mutation was accepted without dconf rollback support\n' >&2
@@ -251,10 +312,14 @@ DWM_TEST_HELPER_PATH=$no_dconf_bin run_helper apply qt gtk3 | grep -Fqx \
 	'result	apply	qt	gtk3'
 printf '%s\n' "$restricted_status" | grep -Fqx \
 	'mutation	restricted	The shared theme transaction is unavailable or unsafe'
+printf '%s\n' "$restricted_status" | grep -Fqx \
+	'provider	personalization	available	user-session	Bounded personalization changes are available'
 
 readonly_status=$(DWM_TEST_GSETTINGS_READONLY=font-name run_helper status)
 printf '%s\n' "$readonly_status" | grep -Fqx \
-	'selection	font	restricted	Old Font 10	follow-system	Setting is readable but not writable in this session'
+	'selection	font	available	Old Font 10	follow-system	Persistent user-session setting'
+printf '%s\n' "$readonly_status" | grep -Fqx \
+	'action-readiness	font	restricted	restricted	Setting is readable but not writable in this session'
 printf '%s\n' "$readonly_status" | grep -Fqx \
 	'selection	icon	available	Old Icons	follow-system	Persistent user-session setting'
 if (DWM_TEST_GSETTINGS_READONLY=font-name run_helper apply font 'New Font' \
@@ -275,6 +340,10 @@ DWM_TEST_FC_MATCH_RESULT='MesloLGS NF' run_helper apply font \
 	'MesloLGS Nerd Font Mono' | grep -Fqx \
 	'result	apply	font	MesloLGS Nerd Font Mono'
 grep -Fqx 'personalize font MesloLGS Nerd Font Mono' "$work/theme.calls"
+DWM_TEST_FC_MATCH_RESULT='MesloLGS NF' run_helper apply font \
+	'meslolgs nerd font mono' | grep -Fqx \
+	'result	apply	font	meslolgs nerd font mono'
+grep -Fqx 'personalize font meslolgs nerd font mono' "$work/theme.calls"
 if DWM_TEST_FC_LIST_RESULT='' run_helper apply font 'Symbol Font' \
 	>"$work/symbol-font.out" 2>"$work/symbol-font.err"; then
 	printf 'Font without printable glyph coverage was accepted\n' >&2
@@ -282,6 +351,27 @@ if DWM_TEST_FC_LIST_RESULT='' run_helper apply font 'Symbol Font' \
 fi
 grep -Fqx 'dwm-settings-personalization: font family is not installed: Symbol Font' \
 	"$work/symbol-font.err"
+
+mkdir -p "$data_home/icons/unknown/cursors" \
+	"$data_home/themes/unknown/gtk-3.0"
+printf '[Icon Theme]\nName=Unknown\nDirectories=16x16/apps\n' \
+	>"$data_home/icons/unknown/index.theme"
+for capability in font cursor icon gtk; do
+	if DWM_TEST_FC_LIST_RESULT=unknown DWM_TEST_FC_MATCH_RESULT=unknown \
+		run_helper apply "$capability" unknown \
+		>"$work/reserved-$capability.out" 2>"$work/reserved-$capability.err"; then
+		printf 'Reserved unknown sentinel was accepted for %s\n' "$capability" >&2
+		exit 1
+	fi
+done
+grep -Fqx 'dwm-settings-personalization: font family is not installed: unknown' \
+	"$work/reserved-font.err"
+grep -Fqx 'dwm-settings-personalization: cursor theme is not installed: unknown' \
+	"$work/reserved-cursor.err"
+grep -Fqx 'dwm-settings-personalization: icon theme is not installed: unknown' \
+	"$work/reserved-icon.err"
+grep -Fqx 'dwm-settings-personalization: GTK theme is not installed: unknown' \
+	"$work/reserved-gtk.err"
 
 run_helper apply text-size 1.25 | grep -Fqx \
 	'result	apply	text-size	1.25'
@@ -325,15 +415,22 @@ grep -Fqx \
 
 run_helper reset font | grep -Fqx 'result	reset	font	follow-system'
 grep -Fqx 'personalize-reset font' "$work/theme.calls"
+mv "$bin_dir/dwm-xsettings" "$bin_dir/dwm-xsettings.missing"
+no_xsettings_helper_status=$(run_helper status)
+expected=$(printf 'action-readiness\ttext-size\tunavailable\tunavailable\tApply and reset require the managed X11 text-scale helper')
+printf '%s\n' "$no_xsettings_helper_status" | grep -Fqx "$expected"
+mv "$bin_dir/dwm-xsettings.missing" "$bin_dir/dwm-xsettings"
 no_xsettingsd_bin=$work/no-xsettingsd-bin
 mkdir -p "$no_xsettingsd_bin"
 cp -a "$bin_dir/." "$no_xsettingsd_bin/"
 rm -f "$no_xsettingsd_bin/xsettingsd"
-for required_command in awk bash cat dirname grep stat; do
+for required_command in awk bash cat dirname grep stat timeout; do
 	ln -s "$(command -v "$required_command")" "$no_xsettingsd_bin/$required_command"
 done
 no_xsettingsd_status=$(DWM_TEST_HELPER_PATH=$no_xsettingsd_bin run_helper status)
 expected=$(printf 'selection\ttext-size\tpartial\t1.0\tfollow-system\tXSETTINGS verification tools are unavailable; reset to system follow remains available')
+printf '%s\n' "$no_xsettingsd_status" | grep -Fqx "$expected"
+expected=$(printf 'action-readiness\ttext-size\trestricted\tavailable\tApply requires XSETTINGS verification tools; reset remains available')
 printf '%s\n' "$no_xsettingsd_status" | grep -Fqx "$expected"
 DWM_TEST_HELPER_PATH=$no_xsettingsd_bin run_helper reset text-size | grep -Fqx \
 	'result	reset	text-size	follow-system'
@@ -351,8 +448,10 @@ grep -Fqx 'personalize-reset qt' "$work/theme.calls"
 printf '%s\n' 'export QT_QPA_PLATFORMTHEME=qt6ct' \
 	'export XCURSOR_THEME=Cursor-One' 'export XCURSOR_SIZE=32' \
 	>"$config_home/dwm-titus/theme-env.sh"
-QT_QPA_PLATFORMTHEME=gtk3 XCURSOR_THEME=Old-Cursor XCURSOR_SIZE=24 \
-	run_helper delegate qt
+delegate_output=$(QT_QPA_PLATFORMTHEME=gtk3 XCURSOR_THEME=Old-Cursor XCURSOR_SIZE=24 \
+	run_helper delegate qt)
+printf '%s\n' "$delegate_output" | grep -Fqx 'personalization-action-protocol	1	0'
+printf '%s\n' "$delegate_output" | grep -Fqx 'result	delegate	qt	qt6ct'
 i=0
 while [ "$i" -lt 50 ] && [ ! -s "$work/delegate.marker" ]; do
 	i=$((i + 1))
@@ -361,7 +460,9 @@ done
 grep -Fqx qt6ct "$work/delegate.marker"
 grep -Fqx "$(printf 'qt6ct\tCursor-One\t32')" "$work/delegate-env.marker"
 : >"$work/delegate.marker"
-run_helper delegate gtk
+delegate_output=$(run_helper delegate gtk)
+printf '%s\n' "$delegate_output" | grep -Fqx 'personalization-action-protocol	1	0'
+printf '%s\n' "$delegate_output" | grep -Fqx 'result	delegate	gtk	nwg-look'
 i=0
 while [ "$i" -lt 50 ] && [ ! -s "$work/delegate.marker" ]; do
 	i=$((i + 1))

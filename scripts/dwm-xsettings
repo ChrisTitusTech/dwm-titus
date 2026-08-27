@@ -18,7 +18,7 @@ readonly max_config_size=65536
 readonly activation_timeout_seconds=3
 
 usage() {
-	printf 'usage: %s session-apply|reload|status\n' "${0##*/}" >&2
+	printf 'usage: %s session-apply|reload|status|watch\n' "${0##*/}" >&2
 }
 
 die() {
@@ -161,13 +161,14 @@ process_matches() {
 }
 
 matching_identities() {
-	local proc pid starttime
-	for proc in /proc/[0-9]*; do
-		pid=${proc##*/}
+	local pid starttime
+	command -v pgrep >/dev/null 2>&1 || die 'pgrep is unavailable for XSETTINGS process discovery'
+	while IFS= read -r pid; do
+		[[ $pid =~ ^[1-9][0-9]*$ ]] || continue
 		process_matches "$pid" || continue
 		starttime=$(process_starttime "$pid") || continue
 		[[ -n $starttime ]] && printf '%s:%s\n' "$pid" "$starttime"
-	done
+	done < <(pgrep -x xsettingsd 2>/dev/null || true)
 }
 
 identity_matches() {
@@ -337,6 +338,44 @@ status() {
 	fi
 }
 
+watch_owner() {
+	local identities identity pid pid_list='' wait_pid='' wait_status=0
+	command -v pidwait >/dev/null 2>&1 || die 'pidwait is unavailable for XSETTINGS lifecycle watching'
+	[[ -n ${DISPLAY:-} ]] || die 'DISPLAY is required for XSETTINGS lifecycle watching'
+	load_config
+	identities=$(matching_identities)
+	[[ -n $identities ]] || die 'managed xsettingsd is not active'
+	while IFS= read -r identity; do
+		[[ -n $identity ]] || continue
+		identity_matches "$identity" || continue
+		pid=${identity%%:*}
+		[[ -z $pid_list ]] || pid_list+=,
+		pid_list+=$pid
+	done <<<"$identities"
+	[[ -n $pid_list ]] || die 'managed xsettingsd changed before lifecycle watching started'
+	# pidwait blocks on Linux pidfds. xsettingsd exits when its XSETTINGS
+	# selection is replaced, so process lifecycle covers both owner loss and an
+	# ordinary daemon exit without polling the status helper.
+	pidwait -p "$pid_list" >/dev/null 2>&1 &
+	wait_pid=$!
+	if [[ -n ${DWM_TEST_XSETTINGS_WATCH_READY:-} ]]; then
+		: >"$DWM_TEST_XSETTINGS_WATCH_READY"
+	fi
+	trap 'kill -TERM "$wait_pid" 2>/dev/null || true; wait "$wait_pid" 2>/dev/null || true; exit 129' HUP
+	trap 'kill -TERM "$wait_pid" 2>/dev/null || true; wait "$wait_pid" 2>/dev/null || true; exit 130' INT
+	trap 'kill -TERM "$wait_pid" 2>/dev/null || true; wait "$wait_pid" 2>/dev/null || true; exit 143' TERM
+	wait "$wait_pid" || wait_status=$?
+	wait_pid=
+	trap - HUP INT TERM
+	if ((wait_status != 0)); then
+		while IFS= read -r identity; do
+			[[ -z $identity ]] || ! identity_matches "$identity" ||
+				die 'pidwait failed while the managed xsettingsd was still active'
+		done <<<"$identities"
+	fi
+	printf 'xsettings-event-protocol\t1\t0\nchanged\n'
+}
+
 case ${1:-} in
 session-apply | reload)
 	[[ $# -eq 1 ]] || {
@@ -351,6 +390,13 @@ status)
 		exit 2
 	}
 	status
+	;;
+watch)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	watch_owner
 	;;
 -h | --help | help)
 	usage

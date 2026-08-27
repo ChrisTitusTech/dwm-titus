@@ -264,7 +264,7 @@ GTK_CHOICE=$(personalization_get gtk 2>/dev/null || true)
 QT_CHOICE=$(personalization_get qt 2>/dev/null || true)
 
 personalization_name_valid() {
-	[[ -n $1 && ${#1} -le 255 && $1 != */* && $1 != *\\* && $1 != *\"* &&
+	[[ -n $1 && ${#1} -le 255 && $1 != unknown && $1 != */* && $1 != *\\* && $1 != *\"* &&
 		$1 != *=* && $1 != *'|'* && $1 != *'&'* && $1 != . && $1 != .. ]]
 }
 personalization_choice_valid() {

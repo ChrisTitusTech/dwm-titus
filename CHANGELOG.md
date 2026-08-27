@@ -8,6 +8,19 @@ versions from `config.mk`.
 
 ### Added
 
+- Add Settings Appearance controls for desktop font and text scale, cursor and
+  icon themes, GTK themes, and Qt platform themes. The root Appearance model
+  consumes the existing pane-scoped bounded inventory and the versioned
+  personalization status/action protocol without adding a provider or poller.
+  A pane-scoped process-lifecycle watcher refreshes managed X11 text-scale
+  state when its active or stale XSETTINGS owner exits. Each capability exposes
+  its effective value and saved follow or override mode, apply and reset actions are globally
+  serialized with theme, wallpaper, and shell-font changes, and optional
+  GTK/Qt advanced editors are shown only when an allowlisted tool is installed.
+  A malformed project-owned override file can be repaired transactionally
+  without rewriting current desktop settings or unrelated integration files,
+  while reserved future protocol state is preserved for a compatible version.
+
 - Add managed-shell font family and text-scale controls through the versioned
   `dwm-settings-font` user-session helper. Settings can preview a validated
   installed Fontconfig family and one of six bounded scales, keep or revert the

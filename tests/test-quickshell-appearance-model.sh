@@ -31,6 +31,8 @@ grep -Fq 'capability.id !== "themes"' "$settings_window"
 
 grep -Fq 'function settingsAppearanceCommand(action, args)' "$commands"
 grep -Fq 'function settingsFontCommand(action, args)' "$commands"
+grep -Fq 'function settingsPersonalizationCommand(action, args)' "$commands"
+grep -Fq 'function settingsXsettingsCommand(action, args)' "$commands"
 grep -Fq 'function settingsWallpaperCommand(action, args)' "$commands"
 grep -Fq 'function settingsThemeCommand(action, args)' "$commands"
 grep -Fq 'function booleanStatusCommand(command)' "$commands"
@@ -79,6 +81,114 @@ grep -Fq 'compositorWatchProcess.running = false' "$model"
 grep -Fq 'root.inventoryCandidates = candidates' "$model"
 grep -Fq 'candidate.id === "wallpaper"' "$model"
 grep -Fq 'candidate.id === "font"' "$model"
+grep -Fq 'candidate.id === "cursor"' "$model"
+grep -Fq 'candidate.id === "icon"' "$model"
+grep -Fq 'candidate.id === "gtk"' "$model"
+grep -Fq 'candidate.id === "qt"' "$model"
+grep -Fq 'personalization-protocol' "$model"
+grep -Fq 'personalization-action-protocol' "$model"
+grep -Fq 'const payload = text.endsWith("\n") ? text.slice(0, -1) : text;' "$model"
+grep -Fq 'const lines = payload.split("\n");' "$model"
+if sed -n '/function parsePersonalizationAction/,/^    }/p' "$model" | grep -Fq 'text.trim()'; then
+	printf 'Personalization action parsing still strips valid payload whitespace\n' >&2
+	exit 1
+fi
+grep -Fq 'fields[0] === "action-readiness"' "$model"
+grep -Fq 'function personalizationApplyReady(capability)' "$model"
+grep -Fq 'function personalizationResetReady(capability)' "$model"
+grep -Fq 'function personalizationEffectiveState(capability)' "$model"
+grep -Fq 'function personalizationEffectiveDetail(capability)' "$model"
+grep -Fq 'function personalizationCandidates(capability, limit)' "$model"
+grep -Fq 'seen.indexOf(token) >= 0' "$model"
+grep -Fq 'seen.indexOf(candidate.token) >= 0' "$model"
+personalization_candidates=$(sed -n '/function personalizationCandidates(capability, limit)/,/^    }/p' "$model")
+if printf '%s\n' "$personalization_candidates" | grep -Fq 'const seen = {};'; then
+	printf 'Personalization candidates still use a prototype-bearing token set\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$personalization_candidates" |
+	grep -Fq 'token === inventory.value && inventory.state === "available"'; then
+	printf 'Personalization candidates still synthesize values outside the helper inventory contract\n' >&2
+	exit 1
+fi
+grep -Fq 'if (!root.personalizationStatusParsed) return "unavailable";' "$model"
+grep -Fq '"id": capability, "state": "unavailable"' "$model"
+grep -Fq 'root.personalizationEffectiveState(capability) !== "available"' "$model"
+grep -Fq 'Commands.settingsPersonalizationCommand("status", [])' "$model"
+if grep -Fq 'Commands.checkedCommand(Commands.settingsPersonalizationCommand("status"' "$model"; then
+	printf 'Personalization status remained behind the orphan-prone checked-command wrapper\n' >&2
+	exit 1
+fi
+grep -Fq 'fields[0] === "complete"' "$model"
+grep -Fq '["personalization-protocol", "provider", "mutation", "repair", "watch-readiness", "selection",' "$model"
+grep -Fq '].indexOf(fields[0]) >= 0' "$model"
+grep -Fq 'invalid || !protocolValid || !completeSeen' "$model"
+grep -Fq 'Commands.settingsPersonalizationCommand(action, args)' "$model"
+grep -Fq 'function applyPersonalization(capability, value)' "$model"
+grep -Fq 'function resetPersonalization(capability)' "$model"
+grep -Fq 'function delegatePersonalization(capability)' "$model"
+grep -Fq 'editor launch requested' "$model"
+if grep -Fq 'settings opened' "$model"; then
+	printf 'Delegated editor handoff claims the asynchronous editor opened\n' >&2
+	exit 1
+fi
+grep -Fq 'function repairPersonalization()' "$model"
+grep -Fq 'root.personalizationActionKind === "repair")' "$model"
+grep -Fq 'Commands.settingsPersonalizationCommand("repair", [])' "$model"
+grep -Fq 'preferred = personalizationControl.inventorySelection.value;' "$pane"
+grep -Fq 'personalizationControl.selectedValue = "";' "$pane"
+grep -Fq 'property bool selectionDirty: false' "$pane"
+grep -Fq 'personalizationControl.selectionDirty && !savedOptionChanged' "$pane"
+grep -Fq 'personalizationControl.selectionDirty = true;' "$pane"
+grep -Fq 'text: personalizationControl.readiness.detail' "$pane"
+grep -Fq 'function onPersonalizationBusyChanged()' "$pane"
+if grep -Fq 'personalizationControl.candidates[0].token' "$pane"; then
+	printf 'Desktop personalization still preselects an unrelated fallback candidate\n' >&2
+	exit 1
+fi
+grep -Fq 'statusState: personalizationControl.effectiveState' "$pane"
+grep -Fq 'detail: personalizationControl.effectiveDetail + " / "' "$pane"
+test "$(grep -Fc 'personalizationCandidates(' "$pane")" -eq 5
+if grep -Eq '(cursor|icon|gtk|qt)Candidates[.]slice[(]0, 24[)]' "$pane" ||
+	[ "$(grep -Fc 'fontCandidates.slice(0, 24)' "$pane")" -ne 1 ]; then
+	printf 'Desktop personalization still truncates active choices before selection\n' >&2
+	exit 1
+fi
+grep -Fq 'function appearancePersonalizationEffectiveState(capability: string)' "$shell_qml"
+grep -Fq 'root.previewState !== "none" || root.recoveryState !== "none"' "$model"
+test "$(grep -Fc 'root.previewState !== "none" || root.recoveryState !== "none"' "$model")" -eq 4
+grep -Fq 'const candidates = root.personalizationCandidates(capability, 24);' "$model"
+grep -Fq 'function personalizationSavedAssetState(capability)' "$model"
+grep -Fq 'Saved override asset is unavailable; reset or choose an installed option' "$model"
+application_state=$(sed -n '/readonly property string applicationState:/,/^    }/p' "$model")
+if printf '%s\n' "$application_state" | grep -Fq 'personalizationMutationState'; then
+	printf 'Read-only appearance application state still includes mutation readiness\n' >&2
+	exit 1
+fi
+grep -Fq 'root.personalizationActionKind === "delegate")' "$model"
+grep -Fq 'if (!root.settingsVisible) return;' "$model"
+grep -Fq 'personalizationStatusProcess.running = false;' "$model"
+grep -Fq 'root.configHome + "/dwm-titus/personalization.conf"' "$model"
+grep -Fq 'root.personalizationMutationState !== "available"' "$model"
+grep -Fq 'action === "apply" && !root.personalizationApplyReady(capability)' "$model"
+grep -Fq 'action === "reset" && !root.personalizationResetReady(capability)' "$model"
+grep -Fq 'root.personalizationCandidateAvailable(capability, value)' "$model"
+grep -Fq 'value === "follow-theme" || value === "gtk3"' "$model"
+grep -Fq 'property bool xsettingsWatchReady: false' "$model"
+grep -Fq 'property bool xsettingsWatchProtocolSeen: false' "$model"
+grep -Fq 'property bool xsettingsWatchSawEvent: false' "$model"
+grep -Fq 'property bool xsettingsWatchFailed: false' "$model"
+grep -Fq 'command: Commands.settingsXsettingsCommand("watch", [])' "$model"
+grep -Fq 'fields[0] === "watch-readiness"' "$model"
+grep -Fq 'root.xsettingsWatchReady = xsettingsWatch.state === "available"' "$model"
+grep -Fq '&& !root.xsettingsWatchFailed;' "$model"
+grep -Fq 'line === "changed" && root.xsettingsWatchProtocolSeen' "$model"
+grep -Fq 'root.xsettingsWatchSawEvent = true;' "$model"
+grep -Fq 'root.xsettingsWatchFailed = true;' "$model"
+if grep -Fq 'id: xsettingsWatchRestartTimer' "$model"; then
+	printf 'XSETTINGS lifecycle failure still has an unbounded retry timer\n' >&2
+	exit 1
+fi
 grep -Fq 'Commands.checkedCommand(Commands.settingsFontCommand("status", []))' "$model"
 grep -Fq 'Commands.settingsFontCommand("mutation-ready", [])' "$model"
 grep -Fq 'Commands.checkedCommand(Commands.settingsFontCommand(action, args))' "$model"
@@ -239,6 +349,25 @@ grep -Fq 'enabled: !root.wallpaperPreviewControlsBusy' "$pane"
 grep -Fq '? !root.wallpaperPreviewControlsBusy : !root.wallpaperControlsBusy' "$pane"
 grep -Fq 'label: "Reset wallpaper"' "$pane"
 grep -Fq 'label: "Managed shell font"' "$pane"
+grep -Fq 'label: "Desktop applications"' "$pane"
+grep -Fq 'component PersonalizationControl: ColumnLayout' "$pane"
+grep -Fq 'capability: "text-size"' "$pane"
+grep -Fq 'capability: "cursor"' "$pane"
+grep -Fq 'capability: "icon"' "$pane"
+grep -Fq 'capability: "gtk"' "$pane"
+grep -Fq 'capability: "qt"' "$pane"
+grep -Fq 'root.appearanceModel.applyPersonalization(' "$pane"
+grep -Fq 'root.appearanceModel.resetPersonalization(' "$pane"
+grep -Fq 'root.appearanceModel.delegatePersonalization(' "$pane"
+grep -Fq 'root.appearanceModel.repairPersonalization()' "$pane"
+grep -Fq 'label: "Repair personalization state"' "$pane"
+grep -Fq 'root.appearanceModel.personalizationActionKind !== "delegate"' "$pane"
+grep -Fq 'readonly property bool personalizationActionsReady:' "$pane"
+grep -Fq '&& !root.appearanceModel.personalizationStatusBusy' "$pane"
+test "$(grep -Fc 'enabled: root.personalizationActionsReady' "$pane")" -eq 2
+grep -Fq 'readonly property bool personalizationDelegatesReady:' "$pane"
+grep -Fq 'enabled: root.personalizationDelegatesReady && !root.appearanceBusy' "$pane"
+grep -Fq 'The managed shell font above remains independent' "$pane"
 grep -Fq 'Preview font for 30 seconds' "$pane"
 grep -Fq 'onActivated: root.appearanceModel.keepFontPreview()' "$pane"
 grep -Fq 'onActivated: root.appearanceModel.revertFontPreview()' "$pane"
@@ -276,6 +405,8 @@ grep -Fq 'function appearanceWallpaperStatusBusy(): bool' "$shell_qml"
 grep -Fq 'function appearanceFontFamily(): string' "$shell_qml"
 grep -Fq 'function appearanceFontScale(): string' "$shell_qml"
 grep -Fq 'function appearanceFontPreviewState(): string' "$shell_qml"
+grep -Fq 'function appearancePersonalizationStatus(): string' "$shell_qml"
+grep -Fq 'function appearancePersonalizationOption(capability: string): string' "$shell_qml"
 test "$(grep -Fc 'root.selectedTheme.valid && root.selectedTheme.mutable' "$pane")" -eq 2
 
 if grep -ERq 'Quickshell\.(Wayland|Hyprland)|WlrLayershell|hyprctl|uwsm-app|wl-copy|wl-paste' \
