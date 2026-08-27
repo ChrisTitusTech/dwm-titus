@@ -296,6 +296,12 @@ test "$(grep -Fc 'onTriggered: if (root.settingsVisible) root.refreshAll()' "$mo
 grep -Fq 'running: root.previewState === "active" && root.previewRemaining > 0' "$model"
 grep -Fq 'previewZeroRetryTimer.restart()' "$model"
 grep -Fq 'if (!root.previewStatusParsed) root.previewZeroRetryAttempts++' "$model"
+grep -Fq 'if (root.previewStatusManualOnly && force !== true) return;' "$model"
+grep -Fq 'root.previewStatusManualOnly = true;' "$model"
+grep -Fq 'root.previewStatusManualOnly = false;' "$model"
+grep -Fq 'root.appearanceModel.refreshAll(true)' "$pane"
+finish_action=$(sed -n '/function finishAction()/,/^    }/p' "$model")
+test "$(printf '%s\n' "$finish_action" | grep -Fc 'root.previewStatusManualOnly = false;')" -eq 2
 grep -Fq 'root.snapshotParsed = false' "$model"
 grep -Fq 'root.snapshotRunGeneration === root.snapshotGeneration' "$model"
 grep -Fq '&& !root.snapshotParsed' "$model"
