@@ -45,6 +45,7 @@ required_packages=(
 	file-roller
 	xdg-user-dirs
 	xdg-desktop-portal-gtk
+	xsettingsd
 	gnome-keyring
 	gnome-keyring-pam
 	qt6ct
@@ -78,6 +79,7 @@ dwm_packages fedora desktop | grep -Fx flatpak >/dev/null
 dwm_packages fedora desktop | grep -Fx xdg-desktop-portal-gtk >/dev/null
 dwm_packages fedora desktop | grep -Fx dbus-tools >/dev/null
 dwm_packages fedora desktop | grep -Fx inotify-tools >/dev/null
+dwm_packages fedora desktop | grep -Fx xsettingsd >/dev/null
 if ARCH=x86_64 dwm_packages fedora full | grep -Fx nwg-look >/dev/null; then
 	printf 'Unavailable Fedora package leaked into the image package set: nwg-look\n' >&2
 	exit 1

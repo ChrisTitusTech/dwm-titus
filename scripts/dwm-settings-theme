@@ -13,6 +13,7 @@ state_home=${XDG_STATE_HOME:-}
 [[ $config_home == /* ]] || config_home=${HOME:?HOME is required for XDG_CONFIG_HOME fallback}/.config
 [[ $data_home == /* ]] || data_home=${HOME:?HOME is required for XDG_DATA_HOME fallback}/.local/share
 [[ $state_home == /* ]] || state_home=${HOME:?HOME is required for XDG_STATE_HOME fallback}/.local/state
+export XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_STATE_HOME=$state_home
 
 themes_file=${DWM_APPEARANCE_THEMES_FILE:-$config_home/dwm-titus/themes.toml}
 managed_themes_file=${DWM_APPEARANCE_MANAGED_THEMES_FILE:-$data_home/dwm-titus/config/themes.toml}
@@ -43,7 +44,16 @@ prepared_theme_hash=
 import_managed_target=false
 preview_claim_to_release=
 integration_lock_held=false
+personalization_capability=
+personalization_value=
+personalization_xfconf_enabled=0
+preserve_desktop_settings=0
+desktop_font_size_override=
 declare -a integration_paths=()
+
+if [[ -n ${DWM_TEST_PROCESS_PID:-} ]]; then
+	printf '%s\n' "$$" >"$DWM_TEST_PROCESS_PID"
+fi
 
 usage() {
 	cat >&2 <<'EOF'
@@ -54,9 +64,12 @@ usage: dwm-settings-theme preview TOKEN SECONDS THEME
        dwm-settings-theme preview-status [TOKEN]
        dwm-settings-theme apply THEME
        dwm-settings-theme reset
+       dwm-settings-theme personalize {font|text-size|cursor|icon|gtk|qt} VALUE
+       dwm-settings-theme personalize-reset {font|text-size|cursor|icon|gtk|qt}
        dwm-settings-theme recover
        dwm-settings-theme recovery-status
        dwm-settings-theme mutation-ready
+       dwm-settings-theme personalization-ready
 EOF
 }
 
@@ -257,6 +270,40 @@ mutation_ready() {
 	(validate_atomic_mv_support) >/dev/null 2>&1
 }
 
+personalization_ready() {
+	local snapshot target
+	mutation_ready || return 1
+	validate_personalization_config || return 1
+	snapshot=$(current_snapshot) || return 1
+	snapshot_source_is_safe "$snapshot" || return 1
+	target=$(snapshot_active_theme "$snapshot")
+	[[ $target != none ]] || target=$(snapshot_resolved_theme "$snapshot")
+	valid_theme_name "$target" || return 1
+	snapshot_target_is_valid "$snapshot" "$target"
+}
+
+validate_personalization_config() {
+	local file=$config_home/dwm-titus/personalization.conf line capability value first=true
+	local -A seen=()
+	[[ ! -e $file && ! -L $file ]] && return 0
+	validate_integration_file "$file" || return 1
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $first == true ]]; then
+			[[ $line == $'personalization-protocol\t1\t0' ]] || return 1
+			first=false
+			continue
+		fi
+		[[ $line == *$'\t'* && ${line#*$'\t'} != *$'\t'* ]] || return 1
+		capability=${line%%$'\t'*}
+		value=${line#*$'\t'}
+		valid_personalization_capability "$capability" || return 1
+		valid_personalization_value "$capability" "$value" || return 1
+		[[ -z ${seen[$capability]+x} ]] || return 1
+		seen[$capability]=1
+	done <"$file"
+	[[ $first == false ]]
+}
+
 acquire_lock() {
 	local lock_file
 	command -v flock >/dev/null 2>&1 || die 'flock is unavailable'
@@ -288,6 +335,22 @@ release_integration_lock() {
 	flock -u 8
 	exec 8>&-
 	integration_lock_held=false
+}
+
+capture_desktop_font_size() {
+	local description size
+	desktop_font_size_override=
+	command -v gsettings >/dev/null 2>&1 || return 0
+	description=$(timeout --signal=TERM --kill-after=1 2 \
+		gsettings get org.gnome.desktop.interface font-name 2>/dev/null || true)
+	description=${description#\'}
+	description=${description%\'}
+	description=${description#\"}
+	description=${description%\"}
+	size=${description##* }
+	if [[ $size =~ ^[1-9][0-9]{0,2}([.][0-9]+)?$ ]]; then
+		desktop_font_size_override=$size
+	fi
 }
 
 preview_path() {
@@ -462,20 +525,451 @@ integration_path_list() {
 }
 
 integration_path_list_for() {
-	local integration_home=$1 integration_config_home=$2
+	local integration_home=$1 integration_config_home=$2 gtk2_path gtk3_path gtk4_path
+	gtk2_path=$integration_home/.gtkrc-2.0
+	gtk3_path=$integration_config_home/gtk-3.0/settings.ini
+	gtk4_path=$integration_config_home/gtk-4.0/settings.ini
+	if [[ -L $gtk2_path ]]; then
+		# Journal the file that theme-apply edits while preserving the user's
+		# dotfile link. Rebuilding this list before publish/recovery makes a
+		# retargeted link fail the stored path-hash check.
+		gtk2_path=$(readlink -f -- "$gtk2_path") || gtk2_path=$integration_home/.gtkrc-2.0
+	fi
+	if [[ -L $gtk3_path ]]; then
+		gtk3_path=$(readlink -f -- "$gtk3_path") || gtk3_path=$integration_config_home/gtk-3.0/settings.ini
+	fi
+	if [[ -L $gtk4_path ]]; then
+		gtk4_path=$(readlink -f -- "$gtk4_path") || gtk4_path=$integration_config_home/gtk-4.0/settings.ini
+	fi
 	integration_paths=(
 		"$integration_config_home/alacritty/active-theme.toml"
 		"$integration_config_home/alacritty/alacritty.toml"
 		"$integration_config_home/kitty/active-theme.conf"
 		"$integration_config_home/kitty/kitty.conf"
-		"$integration_config_home/gtk-3.0/settings.ini"
-		"$integration_config_home/gtk-4.0/settings.ini"
-		"$integration_home/.gtkrc-2.0"
+		"$gtk3_path"
+		"$gtk4_path"
+		"$gtk2_path"
 		"$integration_config_home/dwm-titus/cursor.Xresources"
 		"$integration_config_home/dwm-titus/theme-env.sh"
 		"$integration_config_home/qt5ct/qt5ct.conf"
 		"$integration_config_home/qt6ct/qt6ct.conf"
+		"$integration_config_home/dwm-titus/personalization.conf"
+		"$integration_config_home/dwm-titus/xsettingsd.conf"
 	)
+}
+
+integration_path_list_for_count() {
+	local count=$1 integration_home=$2 integration_config_home=$3
+	integration_path_list_for "$integration_home" "$integration_config_home"
+	case $count in
+	11)
+		# Recovery metadata created before personalization tracked the first
+		# eleven paths in this exact order. Keep that layout readable across an
+		# upgrade so an active preview or interrupted transaction can recover.
+		unset 'integration_paths[11]'
+		unset 'integration_paths[12]'
+		;;
+	12)
+		# Personalization transactions created before managed XSETTINGS
+		# support did not journal the final xsettingsd configuration path.
+		unset 'integration_paths[12]'
+		;;
+	13) ;;
+	*) return 1 ;;
+	esac
+}
+
+integration_prior_index() {
+	local path=$1 limit=$2 candidate
+	for ((candidate = 0; candidate < limit; candidate++)); do
+		if [[ ${integration_paths[candidate]} == "$path" ]]; then
+			printf '%s\n' "$candidate"
+			return 0
+		fi
+	done
+	return 1
+}
+
+shared_integration_outputs_match() {
+	local prefix=$1 count=$2 index path prior key after_hash current_value prior_value
+	for ((index = 0; index < count; index++)); do
+		path=${integration_paths[index]}
+		prior=$(integration_prior_index "$path" "$index") || continue
+		for key in path_hash existed mode baseline_hash after_hash after_mode; do
+			current_value=$(integration_meta_value "$prefix" "$index" "$key") || return 1
+			prior_value=$(integration_meta_value "$prefix" "$prior" "$key") || return 1
+			[[ $current_value == "$prior_value" ]] || return 1
+		done
+		after_hash=$(integration_meta_value "$prefix" "$index" after_hash) || return 1
+		if [[ $after_hash != absent ]]; then
+			[[ -f $prefix.integration.$index.after &&
+				! -L $prefix.integration.$index.after &&
+				$(file_hash "$prefix.integration.$index.after") == "$after_hash" ]] || return 1
+		fi
+	done
+}
+
+valid_personalization_capability() {
+	case $1 in
+	font | text-size | cursor | icon | gtk | qt) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+valid_personalization_value() {
+	local capability=$1 value=$2
+	[[ -n $value && ${#value} -le 255 && $value != *$'\t'* &&
+		$value != *$'\r'* && $value != *$'\n'* ]] || return 1
+	case $capability:$value in
+	cursor:follow-theme | gtk:follow-theme | qt:follow-theme | \
+		font:follow-system | text-size:follow-system | icon:follow-system) return 0 ;;
+	esac
+	[[ $value != follow-theme && $value != follow-system ]] || return 1
+	case $capability in
+	text-size)
+		case $value in
+		0.75 | 0.875 | 1.0 | 1.125 | 1.25 | 1.5 | 1.75 | 2.0) ;;
+		*) return 1 ;;
+		esac
+		;;
+	qt)
+		case $value in
+		gtk3 | qt6ct | qt5ct) ;;
+		*) return 1 ;;
+		esac
+		;;
+	font | cursor | icon | gtk)
+		[[ $value != */* && $value != *\\* && $value != *\"* &&
+			$value != *=* && $value != *'|'* &&
+			$value != *'&'* && $value != . && $value != .. ]]
+		;;
+	esac
+}
+
+personalization_reset_value() {
+	case $1 in
+	cursor | gtk | qt) printf 'follow-theme\n' ;;
+	font | text-size | icon) printf 'follow-system\n' ;;
+	*) return 1 ;;
+	esac
+}
+
+personalization_gsettings_key() {
+	case $1 in
+	font) printf 'font-name\t/org/gnome/desktop/interface/font-name\n' ;;
+	text-size) printf 'text-scaling-factor\t/org/gnome/desktop/interface/text-scaling-factor\n' ;;
+	cursor) printf 'cursor-theme\t/org/gnome/desktop/interface/cursor-theme\n' ;;
+	icon) printf 'icon-theme\t/org/gnome/desktop/interface/icon-theme\n' ;;
+	gtk) printf 'gtk-theme\t/org/gnome/desktop/interface/gtk-theme\n' ;;
+	*) return 1 ;;
+	esac
+}
+
+staged_gtk_setting() {
+	local prefix=$1 key=$2 index file
+	integration_path_list
+	for index in "${!integration_paths[@]}"; do
+		# GTK3 is the stable fifth integration record, even when the live
+		# settings.ini path resolves through a user-owned symlink.
+		[[ $index == 4 ]] || continue
+		file=$prefix.integration.$index.after
+		[[ -f $file && ! -L $file ]] || return 1
+		awk -v key="$key" '
+			/^[[:space:]]*\[[^]]+\][[:space:]]*$/ {
+				header = $0
+				gsub(/^[[:space:]]+|[[:space:]]+$/, "", header)
+				in_settings = (header == "[Settings]")
+				next
+			}
+			in_settings {
+				equals = index($0, "=")
+				name = equals ? substr($0, 1, equals - 1) : ""
+				gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+				if (name == key) {
+					value = substr($0, equals + 1)
+					gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+					print value
+					found = 1
+					exit
+				}
+			}
+			END { exit(found ? 0 : 1) }
+		' "$file"
+		return
+	done
+	return 1
+}
+
+gvariant_string() {
+	local value=$1
+	value=${value//\\/\\\\}
+	if [[ $value == *\'* ]]; then
+		value=${value//\"/\\\"}
+		printf '"%s"\n' "$value"
+	else
+		printf "'%s'\n" "$value"
+	fi
+}
+
+prepare_personalization_gsettings_after() {
+	local prefix=$1 value temporary
+	[[ -f $prefix.gsettings.capability && ! -L $prefix.gsettings.capability ]] || return 0
+	case $personalization_capability in
+	font)
+		if [[ $personalization_value == follow-system ]]; then
+			value=
+		else
+			value=$(staged_gtk_setting "$prefix" gtk-font-name) || return 1
+		fi
+		;;
+	text-size)
+		if [[ $personalization_value == follow-system ]]; then
+			value=
+		else
+			value=$personalization_value
+		fi
+		;;
+	cursor)
+		value=$(staged_gtk_setting "$prefix" gtk-cursor-theme-name) || return 1
+		;;
+	icon)
+		if [[ $personalization_value == follow-system ]]; then
+			value=
+		else
+			value=$(staged_gtk_setting "$prefix" gtk-icon-theme-name) || return 1
+		fi
+		;;
+	gtk)
+		value=$(staged_gtk_setting "$prefix" gtk-theme-name) || return 1
+		;;
+	*) return 0 ;;
+	esac
+	temporary=$(umask 077 && mktemp "$recovery_dir/.gsettings-expected.XXXXXX") || return 1
+	case $personalization_capability in
+	text-size)
+		[[ -z $value ]] || printf '%s\n' "$value" >"$temporary"
+		;;
+	*)
+		[[ -z $value ]] || gvariant_string "$value" >"$temporary"
+		;;
+	esac
+	chmod 600 -- "$temporary"
+	mv -f -- "$temporary" "$prefix.gsettings.after"
+}
+
+capture_personalization_gsettings_baseline() {
+	local prefix=$1 key_path key dconf_path temporary
+	key_path=$(personalization_gsettings_key "$personalization_capability" 2>/dev/null) || return 0
+	IFS=$'\t' read -r key dconf_path <<<"$key_path"
+	if ! command -v gsettings >/dev/null 2>&1 || ! command -v dconf >/dev/null 2>&1; then
+		die "personalization $personalization_capability requires GSettings and dconf for rollback"
+	fi
+	[[ $(gsettings writable org.gnome.desktop.interface "$key" 2>/dev/null) == true ]] ||
+		die "personalization $personalization_capability GSettings key is not writable"
+	temporary=$(umask 077 && mktemp "$recovery_dir/.gsettings-before.XXXXXX") ||
+		die 'cannot create personalization GSettings recovery data'
+	if ! dconf read "$dconf_path" >"$temporary" ||
+		[[ $(stat -c %s -- "$temporary") -gt 4096 ]]; then
+		rm -f -- "$temporary"
+		die "cannot capture personalization $personalization_capability GSettings baseline"
+	fi
+	chmod 600 -- "$temporary"
+	mv -f -- "$temporary" "$prefix.gsettings.before"
+	cp -- "$prefix.gsettings.before" "$prefix.gsettings.after"
+	chmod 600 -- "$prefix.gsettings.after"
+	printf '%s\n' "$personalization_capability" >"$prefix.gsettings.capability"
+	chmod 600 -- "$prefix.gsettings.capability"
+}
+
+personalization_gsettings_current_matches() {
+	local prefix=$1 which=$2 capability key_path key dconf_path temporary status=1
+	[[ -f $prefix.gsettings.capability && ! -L $prefix.gsettings.capability ]] || return 0
+	[[ -f $prefix.gsettings.$which && ! -L $prefix.gsettings.$which ]] || return 1
+	command -v dconf >/dev/null 2>&1 || return 1
+	IFS= read -r capability <"$prefix.gsettings.capability"
+	key_path=$(personalization_gsettings_key "$capability") || return 1
+	IFS=$'\t' read -r key dconf_path <<<"$key_path"
+	temporary=$(umask 077 && mktemp "$recovery_dir/.gsettings-current.XXXXXX") || return 1
+	if dconf read "$dconf_path" >"$temporary" &&
+		[[ $(stat -c %s -- "$temporary") -le 4096 ]] &&
+		cmp -s -- "$temporary" "$prefix.gsettings.$which"; then
+		status=0
+	fi
+	rm -f -- "$temporary"
+	return "$status"
+}
+
+personalization_gsettings_restore_preflight() {
+	local prefix=$1
+	[[ -e $prefix.gsettings.capability || -L $prefix.gsettings.capability ]] || return 0
+	[[ -f $prefix.gsettings.capability && ! -L $prefix.gsettings.capability &&
+		-f $prefix.gsettings.before && ! -L $prefix.gsettings.before &&
+		-f $prefix.gsettings.after && ! -L $prefix.gsettings.after ]] || return 1
+	personalization_gsettings_current_matches "$prefix" before && return 0
+	personalization_gsettings_current_matches "$prefix" after && return 0
+	return 2
+}
+
+restore_personalization_gsettings_baseline() {
+	local prefix=$1 capability key_path key dconf_path value
+	[[ -e $prefix.gsettings.capability || -L $prefix.gsettings.capability ]] || return 0
+	personalization_gsettings_current_matches "$prefix" before && return 0
+	personalization_gsettings_current_matches "$prefix" after || return 2
+	IFS= read -r capability <"$prefix.gsettings.capability"
+	key_path=$(personalization_gsettings_key "$capability") || return 1
+	IFS=$'\t' read -r key dconf_path <<<"$key_path"
+	if [[ -s $prefix.gsettings.before ]]; then
+		value=$(<"$prefix.gsettings.before")
+		dconf write "$dconf_path" "$value" || return 1
+	else
+		dconf reset "$dconf_path" || return 1
+	fi
+	personalization_gsettings_current_matches "$prefix" before || return 1
+}
+
+personalization_xfconf_property() {
+	case $1 in
+	gtk) printf '/Net/ThemeName\tgtk-theme-name\n' ;;
+	cursor) printf '/Gtk/CursorThemeName\tgtk-cursor-theme-name\n' ;;
+	*) return 1 ;;
+	esac
+}
+
+capture_personalization_xfconf_baseline() {
+	local prefix=$1 property_record property gtk_key temporary existed
+	property_record=$(personalization_xfconf_property "$personalization_capability" 2>/dev/null) || return 0
+	command -v xfconf-query >/dev/null 2>&1 || return 0
+	# A failed property query can mean either an unset property or an unavailable
+	# backend. Only opt into mutation after the channel itself is readable.
+	xfconf-query -c xsettings -l >/dev/null 2>&1 || return 0
+	IFS=$'\t' read -r property gtk_key <<<"$property_record"
+	temporary=$(umask 077 && mktemp "$recovery_dir/.xfconf-before.XXXXXX") ||
+		die 'cannot create personalization xfconf recovery data'
+	if xfconf-query -c xsettings -p "$property" >"$temporary" 2>/dev/null; then
+		existed=1
+	else
+		existed=0
+		: >"$temporary"
+	fi
+	if [[ $(stat -c %s -- "$temporary") -gt 4096 ]]; then
+		rm -f -- "$temporary"
+		die "cannot capture personalization $personalization_capability xfconf baseline"
+	fi
+	chmod 600 -- "$temporary"
+	mv -f -- "$temporary" "$prefix.xfconf.before"
+	cp -- "$prefix.xfconf.before" "$prefix.xfconf.after"
+	chmod 600 -- "$prefix.xfconf.after"
+	printf '%s\n' "$existed" >"$prefix.xfconf.before-existed"
+	printf '1\n' >"$prefix.xfconf.after-existed"
+	printf '%s\n' "$personalization_capability" >"$prefix.xfconf.capability"
+	chmod 600 -- "$prefix.xfconf.before-existed" "$prefix.xfconf.after-existed" \
+		"$prefix.xfconf.capability"
+	personalization_xfconf_enabled=1
+}
+
+prepare_personalization_xfconf_after() {
+	local prefix=$1 capability property_record property gtk_key value temporary
+	[[ -f $prefix.xfconf.capability && ! -L $prefix.xfconf.capability ]] || return 0
+	IFS= read -r capability <"$prefix.xfconf.capability"
+	property_record=$(personalization_xfconf_property "$capability") || return 1
+	IFS=$'\t' read -r property gtk_key <<<"$property_record"
+	value=$(staged_gtk_setting "$prefix" "$gtk_key") || return 1
+	temporary=$(umask 077 && mktemp "$recovery_dir/.xfconf-after.XXXXXX") || return 1
+	printf '%s\n' "$value" >"$temporary"
+	chmod 600 -- "$temporary"
+	mv -f -- "$temporary" "$prefix.xfconf.after"
+}
+
+personalization_xfconf_current_matches() {
+	local prefix=$1 which=$2 capability property_record property gtk_key expected_existed
+	local temporary current_existed status=1
+	[[ -f $prefix.xfconf.capability && ! -L $prefix.xfconf.capability ]] || return 0
+	[[ -f $prefix.xfconf.$which && ! -L $prefix.xfconf.$which &&
+		-f $prefix.xfconf.$which-existed && ! -L $prefix.xfconf.$which-existed ]] || return 1
+	command -v xfconf-query >/dev/null 2>&1 || return 1
+	IFS= read -r capability <"$prefix.xfconf.capability"
+	property_record=$(personalization_xfconf_property "$capability") || return 1
+	IFS=$'\t' read -r property gtk_key <<<"$property_record"
+	IFS= read -r expected_existed <"$prefix.xfconf.$which-existed"
+	[[ $expected_existed == 0 || $expected_existed == 1 ]] || return 1
+	temporary=$(umask 077 && mktemp "$recovery_dir/.xfconf-current.XXXXXX") || return 1
+	if xfconf-query -c xsettings -p "$property" >"$temporary" 2>/dev/null; then
+		current_existed=1
+	elif xfconf-query -c xsettings -l >/dev/null 2>&1; then
+		current_existed=0
+		: >"$temporary"
+	else
+		current_existed=unavailable
+	fi
+	if [[ $current_existed == "$expected_existed" &&
+		$(stat -c %s -- "$temporary") -le 4096 ]] &&
+		cmp -s -- "$temporary" "$prefix.xfconf.$which"; then
+		status=0
+	fi
+	rm -f -- "$temporary"
+	return "$status"
+}
+
+personalization_xfconf_restore_preflight() {
+	local prefix=$1
+	[[ -e $prefix.xfconf.capability || -L $prefix.xfconf.capability ]] || return 0
+	[[ -f $prefix.xfconf.capability && ! -L $prefix.xfconf.capability ]] || return 1
+	personalization_xfconf_current_matches "$prefix" before && return 0
+	personalization_xfconf_current_matches "$prefix" after && return 0
+	return 2
+}
+
+restore_personalization_xfconf_baseline() {
+	local prefix=$1 capability property_record property gtk_key existed value
+	[[ -e $prefix.xfconf.capability || -L $prefix.xfconf.capability ]] || return 0
+	personalization_xfconf_current_matches "$prefix" before && return 0
+	personalization_xfconf_current_matches "$prefix" after || return 2
+	IFS= read -r capability <"$prefix.xfconf.capability"
+	property_record=$(personalization_xfconf_property "$capability") || return 1
+	IFS=$'\t' read -r property gtk_key <<<"$property_record"
+	IFS= read -r existed <"$prefix.xfconf.before-existed"
+	if [[ $existed == 1 ]]; then
+		value=$(<"$prefix.xfconf.before")
+		xfconf-query -c xsettings -p "$property" -n -t string -s "$value" >/dev/null 2>&1 || return 1
+	elif [[ $existed == 0 ]]; then
+		xfconf-query -c xsettings -p "$property" -r >/dev/null 2>&1 || return 1
+	else
+		return 1
+	fi
+	personalization_xfconf_current_matches "$prefix" before || return 1
+}
+
+stage_personalization_config() {
+	local file=$1 temporary mode=600
+	[[ -n $personalization_capability ]] || return 0
+	mkdir -p -- "${file%/*}"
+	temporary=$(umask 077 && mktemp "${file%/*}/.personalization.conf.XXXXXX") || return 1
+	if [[ -f $file ]]; then
+		mode=$(stat -c %a -- "$file") || return 1
+		awk -F '\t' -v capability="$personalization_capability" \
+			-v value="$personalization_value" '
+			NR == 1 {
+				if ($0 != "personalization-protocol\t1\t0") exit 2
+				print
+				next
+			}
+			NF != 2 || $1 !~ /^(font|text-size|cursor|icon|gtk|qt)$/ { exit 2 }
+			$1 == capability { next }
+			{ print }
+			END {
+				if (NR == 0) exit 2
+				print capability "\t" value
+			}
+		' "$file" >"$temporary" || {
+			rm -f -- "$temporary"
+			return 1
+		}
+	else
+		printf 'personalization-protocol\t1\t0\n%s\t%s\n' \
+			"$personalization_capability" "$personalization_value" >"$temporary"
+	fi
+	chmod "$mode" -- "$temporary" || return 1
+	mv -f -- "$temporary" "$file"
 }
 
 integration_meta_value() {
@@ -512,7 +1006,8 @@ capture_integration_baseline() {
 			existed=1
 			mode=$(stat -c %a -- "$path")
 			baseline_hash=$(file_hash "$path")
-			if [[ $index == 0 && -n ${DWM_TEST_INTEGRATION_CAPTURE_READY:-} ]]; then
+			if [[ -n ${DWM_TEST_INTEGRATION_CAPTURE_READY:-} &&
+				! -e $DWM_TEST_INTEGRATION_CAPTURE_READY ]]; then
 				: >"$DWM_TEST_INTEGRATION_CAPTURE_READY"
 				while [[ ! -e ${DWM_TEST_INTEGRATION_CAPTURE_RELEASE:-} ]]; do
 					sleep 0.01
@@ -542,9 +1037,9 @@ capture_staged_integration_outputs() {
 	[[ -f $prefix.integration.count ]] || return 1
 	IFS= read -r count <"$prefix.integration.count"
 	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
-	integration_path_list
+	integration_path_list_for_count "$count" "${HOME:?HOME is required}" "$config_home" || return 1
 	live_paths=("${integration_paths[@]}")
-	integration_path_list_for "$stage_home" "$stage_config_home"
+	integration_path_list_for_count "$count" "$stage_home" "$stage_config_home" || return 1
 	staged_paths=("${integration_paths[@]}")
 	[[ $count == "${#live_paths[@]}" && $count == "${#staged_paths[@]}" ]] || return 1
 	for ((index = 0; index < count; index++)); do
@@ -569,14 +1064,18 @@ capture_staged_integration_outputs() {
 
 publish_integration_outputs() {
 	local prefix=$1 count index path existed mode baseline_hash after_hash after_mode
-	local temporary captured_hash captured_mode
+	local temporary captured_hash captured_mode prior
 	[[ -f $prefix.integration.count ]] || return 1
 	IFS= read -r count <"$prefix.integration.count"
 	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
-	integration_path_list
+	integration_path_list_for_count "$count" "${HOME:?HOME is required}" "$config_home" || return 1
 	[[ $count == "${#integration_paths[@]}" ]] || return 1
+	shared_integration_outputs_match "$prefix" "$count" || return 1
 	for ((index = 0; index < count; index++)); do
 		path=${integration_paths[index]}
+		if prior=$(integration_prior_index "$path" "$index"); then
+			continue
+		fi
 		existed=$(integration_meta_value "$prefix" "$index" existed) || return 1
 		mode=$(integration_meta_value "$prefix" "$index" mode) || return 1
 		baseline_hash=$(integration_meta_value "$prefix" "$index" baseline_hash) || return 1
@@ -630,7 +1129,7 @@ integration_baseline_unchanged() {
 	[[ -f $prefix.integration.count ]] || return 1
 	IFS= read -r count <"$prefix.integration.count"
 	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
-	integration_path_list
+	integration_path_list_for_count "$count" "${HOME:?HOME is required}" "$config_home" || return 1
 	[[ $count == "${#integration_paths[@]}" ]] || return 1
 	for ((index = 0; index < count; index++)); do
 		path=${integration_paths[index]}
@@ -653,7 +1152,7 @@ integration_after_state_unchanged() {
 	[[ -f $prefix.integration.count ]] || return 1
 	IFS= read -r count <"$prefix.integration.count"
 	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
-	integration_path_list
+	integration_path_list_for_count "$count" "${HOME:?HOME is required}" "$config_home" || return 1
 	[[ $count == "${#integration_paths[@]}" ]] || return 1
 	for ((index = 0; index < count; index++)); do
 		path=${integration_paths[index]}
@@ -724,6 +1223,11 @@ cleanup_prefix() {
 			"$prefix.integration.$index.meta"
 	done
 	rm -f -- "$prefix.integration.count"
+	rm -f -- "$prefix.gsettings.before" "$prefix.gsettings.after" \
+		"$prefix.gsettings.capability"
+	rm -f -- "$prefix.xfconf.before" "$prefix.xfconf.after" \
+		"$prefix.xfconf.before-existed" "$prefix.xfconf.after-existed" \
+		"$prefix.xfconf.capability"
 	rm -f -- "$prefix.before" "$prefix.meta" "$prefix.failed"
 	rmdir -- "$prefix.claim" 2>/dev/null || true
 }
@@ -827,13 +1331,17 @@ install_prepared_theme() {
 run_theme_apply_for() {
 	local mode=$1 apply_home=$2 apply_config_home=$3 staged=$4
 	local discovery_home=${HOME:?HOME is required}
-	local output status=0 runtime_only=0 transactional=1 live_only=0
+	local output status=0 runtime_only=0 transactional=1 live_only=0 personalization_baseline_prefix=
 	[[ $mode == transactional || $mode == runtime-only || $mode == live-only ]] || return 1
 	if [[ $mode == runtime-only ]]; then
 		runtime_only=1
 	elif [[ $mode == live-only ]]; then
 		transactional=0
 		live_only=1
+	fi
+	if [[ $live_only == 1 && -n $personalization_capability &&
+		$preserve_desktop_settings == 0 ]]; then
+		personalization_baseline_prefix=$transaction_prefix
 	fi
 	[[ -x $apply_helper ]] || die "theme apply helper is unavailable: $apply_helper"
 	output=$(HOME=$apply_home XDG_CONFIG_HOME=$apply_config_home XDG_DATA_HOME=$data_home \
@@ -845,6 +1353,12 @@ run_theme_apply_for() {
 		DWM_APPEARANCE_LIVE_ONLY=$live_only \
 		DWM_APPEARANCE_STAGED_OUTPUT=$staged \
 		DWM_APPEARANCE_DISCOVERY_HOME=$discovery_home \
+		DWM_APPEARANCE_STRICT_PERSONALIZATION=$([[ -n $personalization_capability ]] && printf 1 || printf 0) \
+		DWM_APPEARANCE_PERSONALIZATION_CAPABILITY=$personalization_capability \
+		DWM_APPEARANCE_PERSONALIZATION_XFCONF=$personalization_xfconf_enabled \
+		DWM_APPEARANCE_PERSONALIZATION_BASELINE_PREFIX=$personalization_baseline_prefix \
+		DWM_APPEARANCE_PRESERVE_DESKTOP_SETTINGS=$preserve_desktop_settings \
+		DWM_APPEARANCE_DESKTOP_FONT_SIZE=$desktop_font_size_override \
 		DWM_APPEARANCE_INTEGRATION_LOCK_HELD=$([[ $integration_lock_held == true ]] && printf 1 || printf 0) \
 		"$apply_helper" 2>&1) || status=$?
 	if ((status != 0)); then
@@ -888,6 +1402,7 @@ prepare_integration_outputs() (
 			mkdir -p -- "$stage_config_home/$index"
 		fi
 	done
+	stage_personalization_config "$stage_config_home/dwm-titus/personalization.conf" || return 1
 	run_theme_apply_for transactional "$stage_home" "$stage_config_home" 1 || return 1
 	capture_staged_integration_outputs "$prefix" "$stage_home" "$stage_config_home"
 )
@@ -976,7 +1491,7 @@ integration_restore_preflight() {
 	[[ -f $prefix.integration.count ]] || return 1
 	IFS= read -r count <"$prefix.integration.count"
 	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
-	integration_path_list
+	integration_path_list_for_count "$count" "${HOME:?HOME is required}" "$config_home" || return 1
 	[[ $count == "${#integration_paths[@]}" ]] || return 1
 	for ((index = 0; index < count; index++)); do
 		path=${integration_paths[index]}
@@ -1008,7 +1523,7 @@ restore_integration_baseline() {
 	[[ -f $prefix.integration.count ]] || return 1
 	IFS= read -r count <"$prefix.integration.count"
 	[[ $count =~ ^[0-9]+$ && $count -le 32 ]] || return 1
-	integration_path_list
+	integration_path_list_for_count "$count" "${HOME:?HOME is required}" "$config_home" || return 1
 	[[ $count == "${#integration_paths[@]}" ]] || return 1
 	for ((index = 0; index < count; index++)); do
 		restore_integration_file "$prefix" "$index" "${integration_paths[index]}" || status=$?
@@ -1180,24 +1695,58 @@ restore_theme_baseline_locked() {
 }
 
 restore_baseline_locked() {
-	local prefix=$1 expected_hash=$2 integration_status=0
+	local prefix=$1 expected_hash=$2 integration_status=0 gsettings_status=0 xfconf_status=0
 	# Preflight every tracked path before changing the theme source or any
 	# integration file. This also rejects a process death that interrupted the
 	# integration helper before its post-apply hashes were recorded.
+	theme_source_restore_preflight "$prefix" || return $?
 	integration_restore_preflight "$prefix" || return $?
+	personalization_gsettings_restore_preflight "$prefix" || return $?
+	personalization_xfconf_restore_preflight "$prefix" || return $?
 	restore_theme_baseline_locked "$prefix" "$expected_hash" || return $?
 	restore_integration_baseline "$prefix" || integration_status=$?
 	((integration_status == 0)) || return "$integration_status"
+	restore_personalization_gsettings_baseline "$prefix" || gsettings_status=$?
+	((gsettings_status == 0)) || return "$gsettings_status"
+	restore_personalization_xfconf_baseline "$prefix" || xfconf_status=$?
+	((xfconf_status == 0)) || return "$xfconf_status"
+}
+
+theme_source_restore_preflight() {
+	local prefix=$1 existed source_hash source_kind action current_hash
+	[[ -f $prefix.meta && ! -L $prefix.meta ]] || return 1
+	existed=$(meta_value "$prefix" existed) || return 1
+	[[ $existed == 0 || $existed == 1 ]] || return 1
+	[[ $existed == 0 ]] || return 0
+	source_kind=$(meta_value "$prefix" source_kind 2>/dev/null || true)
+	if [[ -z $source_kind ]]; then
+		action=$(meta_value "$prefix" action 2>/dev/null || true)
+		[[ $action == personalize-* ]] && source_kind=managed || source_kind=user
+	fi
+	[[ $source_kind == user ]] && return 0
+	[[ $source_kind == managed ]] || return 1
+	source_hash=$(meta_value "$prefix" source_hash) || return 1
+	[[ $source_hash =~ ^[0-9a-f]{64}$ ]] || return 1
+	[[ -f $managed_themes_file && ! -L $managed_themes_file && -r $managed_themes_file &&
+		$(stat -c %s -- "$managed_themes_file") -le $max_themes_size ]] || return 2
+	current_hash=$(file_hash "$managed_themes_file") || return 1
+	[[ $current_hash == "$source_hash" ]] || return 2
 }
 
 restore_baseline() {
-	local status=0
+	local prefix=$1 status=0 action preserve_status=0
 	acquire_integration_lock
 	restore_baseline_locked "$@" || status=$?
 	release_integration_lock
 	((status == 0)) || return "$status"
 	clear_integration_transaction
+	action=$(meta_value "$prefix" action 2>/dev/null || true)
+	[[ $action != personalize-* ]] || preserve_desktop_settings=1
 	if ! run_theme_apply live-only; then
+		preserve_status=3
+	fi
+	preserve_desktop_settings=0
+	if ((preserve_status != 0)); then
 		return 3
 	fi
 }
@@ -1226,11 +1775,16 @@ rollback_trap() {
 }
 
 begin_mutation() {
-	local prefix=$1 target=$2 action=$3 install_status=0 publish_status=0 restore_status=0
+	local prefix=$1 target=$2 action=$3 publish_theme=${4:-true}
+	local install_status=0 publish_status=0 restore_status=0 integration_source_hash source_kind=user
+	[[ $publish_theme == true || $publish_theme == false ]] || die 'invalid theme publication mode'
 	validate_atomic_mv_support
 	cleanup_prefix "$prefix"
 	acquire_integration_lock
+	capture_desktop_font_size
 	capture_integration_baseline "$prefix"
+	capture_personalization_gsettings_baseline "$prefix"
+	capture_personalization_xfconf_baseline "$prefix"
 	capture_baseline "$prefix"
 	clear_integration_suppression
 	rollback_prefix=$prefix
@@ -1242,20 +1796,34 @@ begin_mutation() {
 	trap 'exit 129' HUP
 	trap 'exit 130' INT
 	trap 'exit 143' TERM
-	prepare_active_theme "$target"
-	rollback_expected_hash=$prepared_theme_hash
-	replace_metadata "$prefix" proposed_hash "$rollback_expected_hash"
-	write_integration_transaction "$rollback_expected_hash" pending ||
+	if [[ $publish_theme == true ]]; then
+		prepare_active_theme "$target"
+		rollback_expected_hash=$prepared_theme_hash
+		replace_metadata "$prefix" proposed_hash "$rollback_expected_hash"
+		integration_source_hash=$prepared_theme_hash
+	else
+		if [[ -f $themes_file ]]; then
+			integration_source_hash=$(file_hash "$themes_file")
+		else
+			integration_source_hash=$(file_hash "$managed_themes_file")
+			source_kind=managed
+		fi
+	fi
+	append_metadata "$prefix" source_hash "$integration_source_hash"
+	append_metadata "$prefix" source_kind "$source_kind"
+	write_integration_transaction "$integration_source_hash" pending ||
 		die 'cannot publish integration transaction state'
-	install_prepared_theme "$prefix" || install_status=$?
-	if ((install_status == 2)); then
-		release_integration_lock
-		cleanup_prefix "$prefix"
-		clear_integration_transaction
-		rollback_needed=false
-		die 'theme file changed while preparing the transaction; refusing to overwrite it'
-	elif ((install_status != 0)); then
-		die 'could not install the prepared theme transaction'
+	if [[ $publish_theme == true ]]; then
+		install_prepared_theme "$prefix" || install_status=$?
+		if ((install_status == 2)); then
+			release_integration_lock
+			cleanup_prefix "$prefix"
+			clear_integration_transaction
+			rollback_needed=false
+			die 'theme file changed while preparing the transaction; refusing to overwrite it'
+		elif ((install_status != 0)); then
+			die 'could not install the prepared theme transaction'
+		fi
 	fi
 	if [[ -n ${DWM_TEST_BEFORE_INTEGRATION_READY:-} ]]; then
 		: >"$DWM_TEST_BEFORE_INTEGRATION_READY"
@@ -1280,11 +1848,31 @@ begin_mutation() {
 	fi
 	prepare_integration_outputs "$prefix" ||
 		die "theme $action did not converge; restoring the previous theme"
+	prepare_personalization_gsettings_after "$prefix" ||
+		die "theme $action could not journal the expected GSettings state"
+	prepare_personalization_xfconf_after "$prefix" ||
+		die "theme $action could not journal the expected xfconf state"
 	if [[ -n ${DWM_TEST_BEFORE_INTEGRATION_PUBLISH:-} ]]; then
 		: >"$DWM_TEST_BEFORE_INTEGRATION_PUBLISH"
 		while [[ ! -e ${DWM_TEST_INTEGRATION_PUBLISH_RELEASE:-} ]]; do
 			sleep 0.01
 		done
+	fi
+	if [[ -n $personalization_capability ]] &&
+		! personalization_gsettings_current_matches "$prefix" before; then
+		release_integration_lock
+		cleanup_prefix "$prefix"
+		clear_integration_transaction
+		rollback_needed=false
+		die "personalization $personalization_capability GSettings changed during transaction preparation"
+	fi
+	if [[ -n $personalization_capability ]] &&
+		! personalization_xfconf_current_matches "$prefix" before; then
+		release_integration_lock
+		cleanup_prefix "$prefix"
+		clear_integration_transaction
+		rollback_needed=false
+		die "personalization $personalization_capability xfconf changed during transaction preparation"
 	fi
 	publish_integration_outputs "$prefix" || publish_status=$?
 	if ((publish_status == 2)); then
@@ -1294,7 +1882,7 @@ begin_mutation() {
 	fi
 	reload_kitty_after_integration_publish
 	append_metadata "$prefix" integrations_ready 1
-	write_integration_transaction "$rollback_expected_hash" ready ||
+	write_integration_transaction "$integration_source_hash" ready ||
 		die 'cannot publish ready integration transaction state'
 	release_integration_lock
 	if ! verify_active_theme "$target"; then
@@ -1351,6 +1939,56 @@ reset_theme() {
 	local target
 	target=$(managed_default_theme)
 	apply_theme "$target" reset true
+}
+
+apply_personalization() {
+	local capability=$1 value=$2 result_action=${3:-apply} snapshot target previous live_status=0
+	valid_personalization_capability "$capability" ||
+		die "unsupported personalization capability: $capability"
+	valid_personalization_value "$capability" "$value" ||
+		die "invalid personalization value for $capability"
+	acquire_lock
+	ensure_recovery_dir
+	ensure_no_preview
+	ensure_no_recovery
+	validate_user_theme_file
+	validate_personalization_config ||
+		die 'personalization configuration is malformed or unsafe'
+	snapshot=$(current_snapshot)
+	target=$(snapshot_active_theme "$snapshot")
+	[[ $target != none ]] || target=$(snapshot_resolved_theme "$snapshot")
+	validate_target "$target"
+	previous=$validated_previous_theme
+	personalization_capability=$capability
+	personalization_value=$value
+	begin_mutation "$transaction_prefix" "$target" "personalize-$capability" false
+	run_theme_apply live-only || live_status=$?
+	((live_status == 0)) ||
+		die "personalization $capability was committed but live convergence failed"
+	personalization_gsettings_current_matches "$transaction_prefix" after ||
+		die "personalization $capability GSettings did not converge to the journaled state"
+	personalization_xfconf_current_matches "$transaction_prefix" after ||
+		die "personalization $capability xfconf did not converge to the journaled state"
+	if [[ $(meta_value "$transaction_prefix" existed) == 1 ]]; then
+		[[ -f $themes_file && $(file_hash "$themes_file") == "$rollback_expected_hash" ]] ||
+			die "theme file changed during personalization convergence; refusing stale result"
+	else
+		[[ ! -e $themes_file && ! -L $themes_file &&
+			$(file_hash "$managed_themes_file") == "$(meta_value "$transaction_prefix" source_hash)" ]] ||
+			die "theme source changed during personalization convergence; refusing stale result"
+	fi
+	finish_mutation "$transaction_prefix"
+	printf 'personalization-action-protocol\t1\t0\n'
+	printf 'result\t%s\t%s\t%s\n' "$result_action" "$capability" "$(clean_field "$value")"
+}
+
+reset_personalization() {
+	local capability=$1 value
+	valid_personalization_capability "$capability" ||
+		die "unsupported personalization capability: $capability"
+	value=$(personalization_reset_value "$capability") ||
+		die "unsupported personalization capability: $capability"
+	apply_personalization "$capability" "$value" reset
 }
 
 reserve_preview() {
@@ -1721,6 +2359,14 @@ reset)
 	[[ $# == 1 ]] || die 'reset takes no arguments'
 	reset_theme
 	;;
+personalize)
+	[[ $# == 3 ]] || die 'personalize requires a capability and value'
+	apply_personalization "$2" "$3"
+	;;
+personalize-reset)
+	[[ $# == 2 ]] || die 'personalize-reset requires a capability'
+	reset_personalization "$2"
+	;;
 recover)
 	[[ $# == 1 ]] || die 'recover takes no arguments'
 	recover_transaction
@@ -1732,6 +2378,10 @@ recovery-status)
 mutation-ready)
 	[[ $# == 1 ]] || die 'mutation-ready takes no arguments'
 	mutation_ready
+	;;
+personalization-ready)
+	[[ $# == 1 ]] || die 'personalization-ready takes no arguments'
+	personalization_ready
 	;;
 _watch)
 	[[ $# == 3 ]] || exit 2

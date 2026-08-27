@@ -23,10 +23,15 @@ dwm_packages() {
 		# fedora/updates repositories. It is required and belongs in the strict
 		# desktop transaction; the Fedora package-map check proves availability.
 		printf '%s\n' \
-			quickshell picom feh dex-autostart mate-polkit \
+			quickshell picom feh dex-autostart mate-polkit xsettingsd \
 			alsa-utils brightnessctl dbus-tools inotify-tools jq pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
 			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk
+		;;
+	fedora:source-update)
+		# Dependencies introduced after the initial installation that the supported
+		# source-checkout synchronization path must reconcile for existing systems.
+		printf '%s\n' xsettingsd
 		;;
 	fedora:desktop-optional)
 		printf '%s\n' \
@@ -102,6 +107,15 @@ dwm_packages() {
 		;;
 	esac
 }
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+	[[ $# == 2 ]] || {
+		printf 'usage: %s FAMILY PROFILE\n' "$0" >&2
+		exit 2
+	}
+	dwm_packages "$1" "$2"
+	exit $?
+fi
 
 dwm_install_package_profile() {
 	local profile=$1

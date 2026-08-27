@@ -1,0 +1,614 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+theme_helper=${DWM_SETTINGS_THEME_HELPER:-$script_dir/dwm-settings-theme}
+xsettings_helper=${DWM_SETTINGS_XSETTINGS_HELPER:-$script_dir/dwm-xsettings}
+
+config_home=${XDG_CONFIG_HOME:-}
+data_home=${XDG_DATA_HOME:-}
+[[ $config_home == /* ]] || config_home=${HOME:?HOME is required for XDG_CONFIG_HOME fallback}/.config
+[[ $data_home == /* ]] || data_home=${HOME:?HOME is required for XDG_DATA_HOME fallback}/.local/share
+
+readonly schema=org.gnome.desktop.interface
+readonly max_value_length=255
+readonly max_theme_environment_size=4096
+readonly max_personalization_state_size=4096
+declare -A preference_values=()
+
+usage() {
+	cat >&2 <<'EOF'
+usage: dwm-settings-personalization status
+       dwm-settings-personalization apply {font|text-size|cursor|icon|gtk|qt} VALUE
+       dwm-settings-personalization reset {font|text-size|cursor|icon|gtk|qt}
+       dwm-settings-personalization delegate {gtk|qt}
+EOF
+}
+
+die() {
+	printf 'dwm-settings-personalization: %s\n' "$*" >&2
+	exit 1
+}
+
+clean_field() {
+	local value=$1
+	value=${value//$'\t'/ }
+	value=${value//$'\r'/ }
+	value=${value//$'\n'/ }
+	printf '%s' "$value"
+}
+
+valid_field() {
+	local value=$1
+	[[ -n $value && ${#value} -le $max_value_length && $value != *$'\t'* &&
+		$value != *$'\r'* && $value != *$'\n'* ]]
+}
+
+variant_value() {
+	local value=$1 quote
+	if ((${#value} >= 2)); then
+		quote=${value:0:1}
+		if [[ ($quote == "'" || $quote == '"') && ${value: -1} == "$quote" ]]; then
+			value=${value:1:${#value}-2}
+		fi
+	fi
+	value=${value//\\\'/\'}
+	value=${value//\\\"/\"}
+	value=${value//\\\\/\\}
+	printf '%s' "$value"
+}
+
+gsettings_key_ready() {
+	local key=$1
+	command -v gsettings >/dev/null 2>&1 && command -v dconf >/dev/null 2>&1 &&
+		gsettings get "$schema" "$key" >/dev/null 2>&1 &&
+		gsettings writable "$schema" "$key" 2>/dev/null | grep -Fqx true
+}
+
+gsettings_restriction_detail() {
+	if ! command -v dconf >/dev/null 2>&1; then
+		printf 'Required dconf rollback backend is unavailable'
+	else
+		printf 'Setting is readable but not writable in this session'
+	fi
+}
+
+require_gsettings_key_ready() {
+	local key=$1
+	if ! command -v dconf >/dev/null 2>&1; then
+		die "dconf rollback backend is unavailable for desktop interface setting: $key"
+	fi
+	gsettings_key_ready "$key" ||
+		die "desktop interface setting is unavailable or read-only: $key"
+}
+
+gsettings_raw() {
+	gsettings get "$schema" "$1"
+}
+
+gsettings_string() {
+	local raw
+	raw=$(gsettings_raw "$1") || return 1
+	variant_value "$raw"
+}
+
+data_roots() {
+	local root
+	printf '%s\n' "$data_home"
+	IFS=: read -r -a roots <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+	for root in "${roots[@]}"; do
+		[[ $root == /* ]] && printf '%s\n' "$root"
+	done
+}
+
+cursor_available() {
+	local name=$1 root
+	while IFS= read -r root; do
+		[[ -d $root/icons/$name/cursors ]] && return 0
+	done < <(data_roots)
+	[[ -d ${HOME:-}/.icons/$name/cursors ]]
+}
+
+icon_available() {
+	local name=$1 root
+	while IFS= read -r root; do
+		[[ -f $root/icons/$name/index.theme ]] &&
+			icon_theme_declares_icons "$root/icons/$name/index.theme" && return 0
+	done < <(data_roots)
+	[[ -f ${HOME:-}/.icons/$name/index.theme ]] &&
+		icon_theme_declares_icons "${HOME:-}/.icons/$name/index.theme"
+}
+
+icon_theme_declares_icons() {
+	local index_file=$1
+	awk -F= '
+		/^\[Icon Theme\][[:space:]]*$/ { in_icon_theme = 1; next }
+		/^\[/ { in_icon_theme = 0 }
+		in_icon_theme {
+			key = $1
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+			if (key == "Directories" || key == "ScaledDirectories") {
+				value = substr($0, index($0, "=") + 1)
+				gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+				if (value != "") found = 1
+			}
+		}
+		END { exit(found ? 0 : 1) }
+	' "$index_file"
+}
+
+gtk_available() {
+	local name=$1 root
+	[[ $name == Adwaita || $name == Adwaita-dark ]] && return 0
+	while IFS= read -r root; do
+		[[ -d $root/themes/$name/gtk-3.0 || -d $root/themes/$name/gtk-4.0 ]] && return 0
+	done < <(data_roots)
+	[[ -d ${HOME:-}/.themes/$name/gtk-3.0 || -d ${HOME:-}/.themes/$name/gtk-4.0 ]]
+}
+
+font_family_matches() {
+	local requested=$1 resolved=$2
+	[[ ${resolved,,} == "${requested,,}" ]] && return 0
+	case $requested:$resolved in
+	'MesloLGS Nerd Font Mono:MesloLGS Nerd Font' | \
+		'MesloLGS Nerd Font Mono:MesloLGS NF' | \
+		'MesloLGS Nerd Font:MesloLGS Nerd Font Mono' | \
+		'MesloLGS Nerd Font:MesloLGS NF' | \
+		'MesloLGS NF:MesloLGS Nerd Font Mono' | \
+		'MesloLGS NF:MesloLGS Nerd Font') return 0 ;;
+	esac
+	return 1
+}
+
+font_available() {
+	local requested=$1 resolved
+	command -v fc-match >/dev/null 2>&1 && command -v fc-list >/dev/null 2>&1 || return 1
+	resolved=$(fc-match --format '%{family[0]}' "$requested" 2>/dev/null) || return 1
+	font_family_matches "$requested" "$resolved" || return 1
+	while IFS= read -r resolved; do
+		font_family_matches "$requested" "$resolved" && return 0
+	done < <(timeout --signal=TERM --kill-after=1 3 \
+		fc-list ':charset=20-7e' --format '%{family[0]}\n' 2>/dev/null)
+	return 1
+}
+
+qt_available() {
+	case $1 in
+	gtk3) return 0 ;;
+	qt6ct | qt5ct) command -v "$1" >/dev/null 2>&1 ;;
+	*) return 1 ;;
+	esac
+}
+
+valid_asset_name() {
+	local value=$1
+	valid_field "$value" && [[ $value != */* && $value != *\\* && $value != *\"* &&
+		$value != *=* && $value != *'|'* && $value != *'&'* &&
+		$value != . && $value != .. ]]
+}
+
+text_scale_valid() {
+	case $1 in
+	0.75 | 0.875 | 1.0 | 1.125 | 1.25 | 1.5 | 1.75 | 2.0) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+text_scale_backend_ready() {
+	command -v xsettingsd >/dev/null 2>&1 &&
+		command -v dump_xsettings >/dev/null 2>&1 && [[ -x $xsettings_helper ]]
+}
+
+text_scale_dpi() {
+	case $1 in
+	0.75) printf '73728\n' ;;
+	0.875) printf '86016\n' ;;
+	1.0) printf '98304\n' ;;
+	1.125) printf '110592\n' ;;
+	1.25) printf '122880\n' ;;
+	1.5) printf '147456\n' ;;
+	1.75) printf '172032\n' ;;
+	2.0) printf '196608\n' ;;
+	*) return 1 ;;
+	esac
+}
+
+text_scale_runtime_active() {
+	local scale=$1 expected output
+	expected=$(text_scale_dpi "$scale") || return 1
+	output=$(timeout --signal=TERM --kill-after=1 3 "$xsettings_helper" status 2>/dev/null) || return 1
+	awk -F '\t' -v expected="$expected" '
+		$0 == "xsettings-protocol\t1\t0" { headers++ }
+		$1 == "state" && $2 == "active" && $3 == expected && NF == 3 { states++ }
+		END { exit(headers == 1 && states == 1 && NR == 2 ? 0 : 1) }
+	' <<<"$output"
+}
+
+text_scale_runtime_follows_system() {
+	local output
+	output=$(timeout --signal=TERM --kill-after=1 3 "$xsettings_helper" status 2>/dev/null) || return 1
+	awk -F '\t' '
+		$0 == "xsettings-protocol\t1\t0" { headers++ }
+		$0 == "state\tsystem-follow" { states++ }
+		END { exit(headers == 1 && states == 1 && NR == 2 ? 0 : 1) }
+	' <<<"$output"
+}
+
+require_text_scale_backend() {
+	text_scale_backend_ready ||
+		die 'managed X11 text scaling requires xsettingsd, dump_xsettings, and dwm-xsettings'
+}
+
+apply_capability() {
+	local capability=$1 value=$2 gsettings_key=
+	valid_field "$value" || die 'invalid personalization value'
+	case $capability in
+	font)
+		gsettings_key=font-name
+		if ! valid_asset_name "$value" || ! font_available "$value"; then
+			die "font family is not installed: $value"
+		fi
+		;;
+	text-size)
+		gsettings_key=text-scaling-factor
+		text_scale_valid "$value" || die 'text size must be one of the supported scale steps'
+		require_text_scale_backend
+		;;
+	cursor)
+		gsettings_key='cursor-theme'
+		if ! valid_asset_name "$value" || ! cursor_available "$value"; then
+			die "cursor theme is not installed: $value"
+		fi
+		;;
+	icon)
+		gsettings_key=icon-theme
+		if ! valid_asset_name "$value" || ! icon_available "$value"; then
+			die "icon theme is not installed: $value"
+		fi
+		;;
+	gtk)
+		gsettings_key=gtk-theme
+		if ! valid_asset_name "$value" || ! gtk_available "$value"; then
+			die "GTK theme is not installed: $value"
+		fi
+		;;
+	qt) qt_available "$value" || die "Qt platform theme backend is unavailable: $value" ;;
+	*) die "unsupported capability: $capability" ;;
+	esac
+	[[ -z $gsettings_key ]] || require_gsettings_key_ready "$gsettings_key"
+	[[ -x $theme_helper ]] || die "theme transaction helper is unavailable: $theme_helper"
+	"$theme_helper" personalize "$capability" "$value"
+}
+
+reset_capability() {
+	local capability=$1 gsettings_key=
+	case $capability in
+	font) gsettings_key=font-name ;;
+	text-size)
+		gsettings_key=text-scaling-factor
+		[[ -x $xsettings_helper ]] ||
+			die 'managed X11 text scale reset requires dwm-xsettings'
+		;;
+	cursor) gsettings_key='cursor-theme' ;;
+	icon) gsettings_key=icon-theme ;;
+	gtk) gsettings_key=gtk-theme ;;
+	qt) ;;
+	*) die "unsupported capability: $capability" ;;
+	esac
+	[[ -z $gsettings_key ]] || require_gsettings_key_ready "$gsettings_key"
+	[[ -x $theme_helper ]] || die "theme transaction helper is unavailable: $theme_helper"
+	"$theme_helper" personalize-reset "$capability"
+}
+
+selection_record() {
+	local capability=$1 key=$2 preference=$3 value state=available detail='Persistent user-session setting'
+	if value=$(gsettings_string "$key" 2>/dev/null); then
+		if [[ -z $value ]]; then
+			state=partial
+		elif ! gsettings_key_ready "$key"; then
+			state=restricted
+			detail=$(gsettings_restriction_detail)
+		fi
+	else
+		value=
+		state=unavailable
+		detail='GSettings key is unavailable'
+	fi
+	printf 'selection\t%s\t%s\t%s\t%s\t%s\n' "$capability" "$state" \
+		"$(clean_field "$value")" "$(clean_field "$preference")" "$detail"
+}
+
+persisted_preference_valid() {
+	local capability=$1 value=$2
+	case $capability in
+	font | icon)
+		[[ $value == follow-system ]] || persisted_name_valid "$value"
+		;;
+	text-size)
+		[[ $value == follow-system ]] || text_scale_valid "$value"
+		;;
+	cursor | gtk)
+		[[ $value == follow-theme ]] || persisted_name_valid "$value"
+		;;
+	qt)
+		case $value in follow-theme | gtk3 | qt6ct | qt5ct) return 0 ;; *) return 1 ;; esac
+		;;
+	*) return 1 ;;
+	esac
+}
+
+persisted_name_valid() {
+	local value=$1
+	valid_field "$value" && [[ $value != */* && $value != *\\* && $value != *\"* &&
+		$value != *=* && $value != *'|'* && $value != *'&'* &&
+		$value != . && $value != .. ]]
+}
+
+load_persisted_preferences() {
+	local file=$config_home/dwm-titus/personalization.conf line capability value first=true
+	local -A seen=()
+	preference_values=(
+		[font]=follow-system
+		["text-size"]=follow-system
+		[cursor]=follow-theme
+		[icon]=follow-system
+		[gtk]=follow-theme
+		[qt]=follow-theme
+	)
+	[[ ! -e $file && ! -L $file ]] && return 0
+	[[ -f $file && ! -L $file && -r $file &&
+		$(stat -c %u -- "$file") == "$UID" &&
+		$(stat -c %h -- "$file") == 1 &&
+		$(stat -c %s -- "$file") -le $max_personalization_state_size ]] || return 1
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $first == true ]]; then
+			[[ $line == $'personalization-protocol\t1\t0' ]] || return 1
+			first=false
+			continue
+		fi
+		[[ $line == *$'\t'* && ${line#*$'\t'} != *$'\t'* ]] || return 1
+		capability=${line%%$'\t'*}
+		value=${line#*$'\t'}
+		persisted_preference_valid "$capability" "$value" || return 1
+		[[ -z ${seen[$capability]+x} ]] || return 1
+		seen[$capability]=1
+		preference_values[$capability]=$value
+	done <"$file"
+	[[ $first == false ]]
+}
+
+decode_theme_environment_value() {
+	local raw=$1 result='' character index
+	for ((index = 0; index < ${#raw}; index++)); do
+		character=${raw:index:1}
+		if [[ $character == \\ ]]; then
+			((index += 1))
+			((index < ${#raw})) || return 1
+			result+=${raw:index:1}
+		elif [[ $character =~ ^[A-Za-z0-9._+@-]$ ]]; then
+			result+=$character
+		else
+			return 1
+		fi
+	done
+	[[ -n $result ]] || return 1
+	decoded_theme_environment_value=$result
+}
+
+parse_theme_environment() {
+	local file=$config_home/dwm-titus/theme-env.sh line value
+	local seen_qt=false seen_cursor=false seen_size=false
+	[[ -r $file && -f $file && ! -L $file &&
+		$(stat -c %u -- "$file") == "$UID" &&
+		$(stat -c %h -- "$file") == 1 &&
+		$(stat -c %s -- "$file") -le $max_theme_environment_size ]] || return 1
+	parsed_theme_qt=
+	parsed_theme_cursor=
+	parsed_theme_cursor_size=
+	while IFS= read -r line || [[ -n $line ]]; do
+		case $line in
+		'# Auto-generated by theme-apply.sh '* | '') ;;
+		'export QT_QPA_PLATFORMTHEME='*)
+			[[ $seen_qt == false ]] || return 1
+			decode_theme_environment_value "${line#*=}" || return 1
+			value=$decoded_theme_environment_value
+			[[ $value == gtk3 || $value == qt5ct || $value == qt6ct ]] || return 1
+			parsed_theme_qt=$value
+			seen_qt=true
+			;;
+		'export XCURSOR_THEME='*)
+			[[ $seen_cursor == false ]] || return 1
+			decode_theme_environment_value "${line#*=}" || return 1
+			value=$decoded_theme_environment_value
+			((${#value} <= max_value_length)) && persisted_name_valid "$value" || return 1
+			parsed_theme_cursor=$value
+			seen_cursor=true
+			;;
+		'export XCURSOR_SIZE='*)
+			[[ $seen_size == false ]] || return 1
+			decode_theme_environment_value "${line#*=}" || return 1
+			value=$decoded_theme_environment_value
+			[[ $value != *[!0-9]* ]] || return 1
+			parsed_theme_cursor_size=$value
+			seen_size=true
+			;;
+		*) return 1 ;;
+		esac
+	done <"$file"
+	[[ $seen_qt == true && $seen_cursor == true && $seen_size == true ]]
+}
+
+theme_env_value() {
+	local key=$1
+	parse_theme_environment || return 1
+	case $key in
+	QT_QPA_PLATFORMTHEME) printf '%s' "$parsed_theme_qt" ;;
+	XCURSOR_THEME) printf '%s' "$parsed_theme_cursor" ;;
+	XCURSOR_SIZE) printf '%s' "$parsed_theme_cursor_size" ;;
+	*) return 1 ;;
+	esac
+}
+
+delegate_record() {
+	local capability=$1 command=$2 label=$3
+	if command -v "$command" >/dev/null 2>&1; then
+		printf 'delegate\t%s\tavailable\t%s\t%s\n' "$capability" "$command" "$label"
+	else
+		printf 'delegate\t%s\tunavailable\t\tNo trusted advanced editor is installed\n' "$capability"
+	fi
+}
+
+status() {
+	local qt text_scale preference_capability state=available detail='Bounded personalization changes are available'
+	local mutation_state=available mutation_detail='Transactional personalization changes are available'
+	if ! command -v gsettings >/dev/null 2>&1; then
+		state=partial
+		detail='GSettings-backed choices are unavailable; supported Qt delegation remains available'
+	elif ! command -v dconf >/dev/null 2>&1; then
+		state=partial
+		detail='GSettings-backed changes lack required dconf rollback support; supported Qt changes remain available'
+	fi
+	if [[ ! -x $theme_helper ]] || ! timeout --signal=TERM --kill-after=1 5 \
+		"$theme_helper" personalization-ready >/dev/null 2>&1; then
+		state=partial
+		mutation_state=restricted
+		mutation_detail='The shared theme transaction is unavailable or unsafe'
+	fi
+	if ! load_persisted_preferences; then
+		state=partial
+		detail='Persisted personalization choices are unavailable or malformed'
+		for preference_capability in font text-size cursor icon gtk qt; do
+			preference_values[$preference_capability]=unknown
+		done
+	fi
+	printf 'personalization-protocol\t1\t0\n'
+	printf 'provider\tpersonalization\t%s\tuser-session\t%s\n' "$state" "$detail"
+	printf 'mutation\t%s\t%s\n' "$mutation_state" "$mutation_detail"
+	selection_record font font-name "${preference_values[font]}"
+	if text_scale=$(gsettings_raw text-scaling-factor 2>/dev/null); then
+		if [[ ! -x $xsettings_helper ]]; then
+			printf 'selection\ttext-size\tunavailable\t%s\t%s\tManaged X11 text-scale helper is unavailable\n' \
+				"$(clean_field "$text_scale")" "$(clean_field "${preference_values["text-size"]}")"
+		elif ! command -v xsettingsd >/dev/null 2>&1 ||
+			! command -v dump_xsettings >/dev/null 2>&1; then
+			printf 'selection\ttext-size\tpartial\t%s\t%s\tXSETTINGS verification tools are unavailable; reset to system follow remains available\n' \
+				"$(clean_field "$text_scale")" "$(clean_field "${preference_values["text-size"]}")"
+		elif ! gsettings_key_ready text-scaling-factor; then
+			printf 'selection\ttext-size\trestricted\t%s\t%s\t%s\n' \
+				"$(clean_field "$text_scale")" "$(clean_field "${preference_values["text-size"]}")" \
+				"$(gsettings_restriction_detail)"
+		elif [[ ${preference_values["text-size"]} == follow-system ]] &&
+			! text_scale_runtime_follows_system; then
+			printf 'selection\ttext-size\tpartial\t%s\t%s\tManaged X11 text scale is still active; reset remains available\n' \
+				"$(clean_field "$text_scale")" "$(clean_field "${preference_values["text-size"]}")"
+		elif [[ ${preference_values["text-size"]} != follow-system ]] &&
+			! text_scale_runtime_active "${preference_values["text-size"]}"; then
+			printf 'selection\ttext-size\tpartial\t%s\t%s\tManaged X11 text scale is not active; apply or reset remains available\n' \
+				"$(clean_field "$text_scale")" "$(clean_field "${preference_values["text-size"]}")"
+		else
+			printf 'selection\ttext-size\tavailable\t%s\t%s\tPersistent desktop text scale\n' \
+				"$(clean_field "$text_scale")" "$(clean_field "${preference_values["text-size"]}")"
+		fi
+	else
+		printf 'selection\ttext-size\tunavailable\t\t%s\tGSettings key is unavailable\n' \
+			"$(clean_field "${preference_values["text-size"]}")"
+	fi
+	selection_record cursor cursor-theme "${preference_values[cursor]}"
+	selection_record icon icon-theme "${preference_values[icon]}"
+	selection_record gtk gtk-theme "${preference_values[gtk]}"
+	qt=$(theme_env_value QT_QPA_PLATFORMTHEME 2>/dev/null || true)
+	if qt_available "$qt"; then
+		printf 'selection\tqt\tavailable\t%s\t%s\tPersistent environment for newly launched Qt applications\n' \
+			"$qt" "$(clean_field "${preference_values[qt]}")"
+	else
+		printf 'selection\tqt\tpartial\t%s\t%s\tNo supported persistent Qt backend is configured\n' \
+			"$(clean_field "$qt")" "$(clean_field "${preference_values[qt]}")"
+	fi
+	if command -v nwg-look >/dev/null 2>&1; then
+		delegate_record gtk nwg-look 'Open nwg-look for advanced GTK settings'
+	elif command -v gnome-tweaks >/dev/null 2>&1; then
+		delegate_record gtk gnome-tweaks 'Open GNOME Tweaks for advanced GTK settings'
+	else
+		delegate_record gtk xfce4-appearance-settings 'Open the Xfce appearance editor for advanced GTK settings'
+	fi
+	if command -v qt6ct >/dev/null 2>&1; then
+		delegate_record qt qt6ct 'Open the Qt 6 configuration tool for advanced settings'
+	else
+		delegate_record qt qt5ct 'Open the Qt 5 configuration tool for advanced settings'
+	fi
+}
+
+delegate() {
+	local capability=$1 command session_launcher
+	case $capability in
+	gtk)
+		if command -v nwg-look >/dev/null 2>&1; then
+			command=nwg-look
+		elif command -v gnome-tweaks >/dev/null 2>&1; then
+			command=gnome-tweaks
+		elif command -v xfce4-appearance-settings >/dev/null 2>&1; then
+			command=xfce4-appearance-settings
+		else
+			die 'no trusted advanced GTK editor is installed'
+		fi
+		;;
+	qt)
+		if command -v qt6ct >/dev/null 2>&1; then
+			command=qt6ct
+		elif command -v qt5ct >/dev/null 2>&1; then
+			command=qt5ct
+		else
+			die 'no trusted advanced Qt editor is installed'
+		fi
+		;;
+	*) die "unsupported delegated capability: $capability" ;;
+	esac
+	session_launcher=$script_dir/dwm-session-launch
+	if [[ ! -x $session_launcher ]]; then
+		session_launcher=$(command -v dwm-session-launch 2>/dev/null || true)
+	fi
+	if [[ -n $session_launcher ]]; then
+		"$session_launcher" "$command" >/dev/null 2>&1 &
+	else
+		"$command" >/dev/null 2>&1 &
+	fi
+}
+
+case ${1:-} in
+status)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	status
+	;;
+apply)
+	[[ $# -eq 3 ]] || {
+		usage
+		exit 2
+	}
+	apply_capability "$2" "$3"
+	;;
+reset)
+	[[ $# -eq 2 ]] || {
+		usage
+		exit 2
+	}
+	reset_capability "$2"
+	;;
+delegate)
+	[[ $# -eq 2 ]] || {
+		usage
+		exit 2
+	}
+	delegate "$2"
+	;;
+-h | --help | help)
+	usage
+	;;
+*)
+	usage
+	exit 2
+	;;
+esac

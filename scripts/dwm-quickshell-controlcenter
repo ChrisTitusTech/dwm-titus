@@ -1344,6 +1344,13 @@ notify() {
 }
 
 launch_background() {
+	session_launcher=${0%/*}/dwm-session-launch
+	if [ ! -x "$session_launcher" ]; then
+		session_launcher=$(command -v dwm-session-launch 2>/dev/null || true)
+	fi
+	if [ -n "$session_launcher" ]; then
+		set -- "$session_launcher" "$@"
+	fi
 	if [ "${DWM_TEST_SYNC:-0}" = 1 ]; then
 		"$@"
 		return

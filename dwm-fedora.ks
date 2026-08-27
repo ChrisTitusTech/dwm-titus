@@ -92,6 +92,7 @@ slick-greeter
 alacritty
 kitty
 picom
+xsettingsd
 feh
 maim
 dex-autostart

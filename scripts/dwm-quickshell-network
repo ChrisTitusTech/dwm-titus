@@ -340,6 +340,17 @@ editor() {
 		exit 127
 	fi
 
+	script_dir=$(
+		unset CDPATH
+		cd -- "$(dirname -- "$0")" && pwd
+	)
+	session_launcher=$script_dir/dwm-session-launch
+	if [ ! -x "$session_launcher" ]; then
+		session_launcher=$(command -v dwm-session-launch 2>/dev/null || true)
+	fi
+	if [ -n "$session_launcher" ]; then
+		exec "$session_launcher" nm-connection-editor
+	fi
 	exec nm-connection-editor
 }
 

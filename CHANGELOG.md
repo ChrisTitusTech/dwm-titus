@@ -16,6 +16,18 @@ versions from `config.mk`.
   hash-guarded external-change handling, root-scoped event-driven updates, and
   a fixed Nerd Font icon family keep the shell usable during every transition.
 
+- Add a bounded personalization mutation backend for desktop font, text scale,
+  cursor, icon, GTK, and Qt choices. Overrides and explicit theme-follow or
+  system-follow resets are consumed by the existing theme application path,
+  published through its hash-guarded transaction and durable recovery state,
+  and retained across later theme changes and fresh sessions. Managed DWM,
+  Quickshell, and Control Center launch paths refresh the generated toolkit
+  environment before starting applications. Plain Xorg sessions publish text
+  scale through a scoped `xsettingsd` instance that yields to any existing
+  XSETTINGS owner and verifies the live fixed-point DPI after every reload.
+  DWM resolves the refreshed launcher beside its running executable so custom
+  install prefixes cannot go stale between build and installation.
+
 - Add versioned user-session wallpaper state through `dwm-settings-wallpaper`,
   with persisted Feh fit modes, bounded preview and automatic rollback,
   external-change protection, reset, interrupted-preview recovery, and a

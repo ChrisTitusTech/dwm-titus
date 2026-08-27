@@ -27,6 +27,7 @@ themes_file=$config_home/dwm-titus/themes.toml
 managed_file=$data_home/dwm-titus/config/themes.toml
 apply_stub=$work/apply-theme
 reload_stub=$work/reload-theme
+xsettings_stub=$work/reload-xsettings
 
 mkdir -p "$config_home/dwm-titus" "$data_home/dwm-titus/config" "$state_home" \
 	"$runtime_dir" "$home_dir"
@@ -126,6 +127,15 @@ printf 'reload\n' >>"${DWM_TEST_RELOAD_LOG:?}"
 SH
 chmod +x "$reload_stub"
 
+cat >"$xsettings_stub" <<'SH'
+#!/bin/sh
+set -eu
+printf '%s\n' "${1:?}" >>"${DWM_TEST_XSETTINGS_LOG:?}"
+SH
+chmod +x "$xsettings_stub"
+export DWM_APPEARANCE_XSETTINGS_HELPER=$xsettings_stub
+export DWM_TEST_XSETTINGS_LOG=$work/xsettings.log
+
 run_theme() {
 	HOME=$home_dir \
 		XDG_CONFIG_HOME=$config_home \
@@ -151,13 +161,33 @@ run_theme_real_apply() {
 		DWM_TEST_RELOAD_LOG=$work/reload.log \
 		DWM_TEST_KITTY_RELOAD_MARKER=$work/kitty-reload.marker \
 		DWM_TEST_LIVE_LOG=$work/live.log \
+		DWM_TEST_DCONF_DIR=$work/dconf \
+		DWM_TEST_LIVE_CONFIG_HOME=$config_home \
+		DWM_TEST_XFCONF_DIR=$work/xfconf \
 		PATH=$work/integration-bin:$PATH \
 		"$helper" "$@"
+}
+
+run_theme_apply_direct() {
+	HOME=$home_dir \
+		XDG_CONFIG_HOME=$config_home \
+		XDG_DATA_HOME=$data_home \
+		XDG_STATE_HOME=$state_home \
+		XDG_RUNTIME_DIR=$runtime_dir \
+		DWM_APPEARANCE_THEMES_FILE=$themes_file \
+		DWM_APPEARANCE_MANAGED_THEMES_FILE=$managed_file \
+		DWM_TEST_LIVE_LOG=$work/live.log \
+		DWM_TEST_DCONF_DIR=$work/dconf \
+		DWM_TEST_XFCONF_DIR=$work/xfconf \
+		DWM_APPEARANCE_PERSONALIZATION_CAPABILITY=${DWM_APPEARANCE_PERSONALIZATION_CAPABILITY:-} \
+		PATH=$work/integration-bin:$PATH \
+		"$repo/scripts/theme-apply.sh"
 }
 
 integration_snapshot() {
 	local path
 	for path in \
+		"$config_home/dwm-titus/personalization.conf" \
 		"$config_home/alacritty/active-theme.toml" \
 		"$config_home/alacritty/alacritty.toml" \
 		"$config_home/kitty/active-theme.conf" \
@@ -167,6 +197,7 @@ integration_snapshot() {
 		"$home_dir/.gtkrc-2.0" \
 		"$config_home/dwm-titus/cursor.Xresources" \
 		"$config_home/dwm-titus/theme-env.sh" \
+		"$config_home/dwm-titus/xsettingsd.conf" \
 		"$config_home/qt5ct/qt5ct.conf" \
 		"$config_home/qt6ct/qt6ct.conf"; do
 		if [[ -f $path ]]; then
@@ -178,7 +209,7 @@ integration_snapshot() {
 }
 
 mkdir -p "$work/integration-bin"
-for side_effect_command in dbus-update-activation-environment gsettings kitty pgrep qt6ct systemctl xfconf-query xrdb; do
+for side_effect_command in dbus-update-activation-environment dconf gsettings kitty pgrep qt6ct systemctl xfconf-query xrdb; do
 	printf '#!/bin/sh\nexit 0\n' >"$work/integration-bin/$side_effect_command"
 	chmod +x "$work/integration-bin/$side_effect_command"
 done
@@ -190,6 +221,151 @@ exit 0
 SH
 	chmod +x "$work/integration-bin/$live_command"
 done
+cat >"$work/integration-bin/gsettings" <<'SH'
+#!/bin/sh
+command=${1:-}
+key=${3:-}
+state=${DWM_TEST_DCONF_DIR:?}/${key}
+case $command in
+writable)
+	printf 'true\n'
+	exit 0
+	;;
+get)
+	[ "${DWM_TEST_GSETTINGS_FAIL_ALL:-0}" != 1 ] || exit 1
+	if [ "${DWM_TEST_GSETTINGS_STAGE_DEFAULT:-0}" = 1 ] &&
+		[ "${XDG_CONFIG_HOME:-}" != "${DWM_TEST_LIVE_CONFIG_HOME:?}" ]; then
+		if [ "$key" = font-name ]; then
+			printf "'Cantarell 11'\n"
+		else
+			printf '1.0\n'
+		fi
+		exit 0
+	fi
+	if [ -f "$state" ]; then
+		cat "$state"
+	elif [ "$key" = font-name ]; then
+		printf "'Cantarell 11'\n"
+	else
+		printf '1.0\n'
+	fi
+	exit 0
+	;;
+set | reset)
+	printf 'gsettings\n' >>"${DWM_TEST_LIVE_LOG:?}"
+	[ "${DWM_TEST_GSETTINGS_FAIL_ALL:-0}" != 1 ] || exit 1
+	[ -z "${DWM_TEST_GSETTINGS_FAIL_KEY:-}" ] ||
+		[ "$key" != "$DWM_TEST_GSETTINGS_FAIL_KEY" ] || exit 1
+	if [ -n "${DWM_TEST_GSETTINGS_CALLS:-}" ]; then
+		printf '%s\t%s\n' "$command" "$key" >>"$DWM_TEST_GSETTINGS_CALLS"
+	fi
+	mkdir -p -- "${state%/*}"
+	if [ "$command" = set ]; then
+		if [ "${DWM_TEST_GSETTINGS_MISMATCH_KEY:-}" = "$key" ]; then
+			printf "'Unexpected external value'\n" >"$state"
+		elif [ "$key" = text-scaling-factor ]; then
+			printf '%s\n' "${4:?}" >"$state"
+		else
+			value=${4:?}
+			case $value in
+			*"'"*)
+				value=$(printf '%s' "$value" | sed 's/\\/\\\\/g; s/"/\\"/g')
+				printf '"%s"\n' "$value" >"$state"
+				;;
+			*)
+				value=$(printf '%s' "$value" | sed 's/\\/\\\\/g')
+				printf "'%s'\n" "$value" >"$state"
+				;;
+			esac
+		fi
+	else
+		rm -f -- "$state"
+	fi
+	exit 0
+	;;
+*) exit 0 ;;
+esac
+SH
+chmod +x "$work/integration-bin/gsettings"
+cat >"$work/integration-bin/dconf" <<'SH'
+#!/bin/sh
+set -eu
+command=${1:?}
+path=${2:?}
+key=${path##*/}
+state=${DWM_TEST_DCONF_DIR:?}/${key}
+case $command in
+read)
+	[ ! -f "$state" ] || cat "$state"
+	;;
+write)
+	mkdir -p -- "${state%/*}"
+	printf '%s\n' "${3:?}" >"$state"
+	;;
+reset)
+	rm -f -- "$state"
+	;;
+*) exit 1 ;;
+esac
+SH
+chmod +x "$work/integration-bin/dconf"
+cat >"$work/integration-bin/xfconf-query" <<'SH'
+#!/bin/sh
+set -eu
+printf 'xfconf-query\n' >>"${DWM_TEST_LIVE_LOG:?}"
+[ "${DWM_TEST_XFCONF_FAIL:-0}" != 1 ] || exit 1
+property=
+list=false
+reset=false
+set_value=false
+value=
+while [ "$#" -gt 0 ]; do
+	case $1 in
+	-c | -t)
+		shift 2
+		;;
+	-p)
+		property=${2:?}
+		shift 2
+		;;
+	-l)
+		list=true
+		shift
+		;;
+	-n)
+		shift
+		;;
+	-r)
+		reset=true
+		shift
+		;;
+	-s)
+		value=${2-}
+		set_value=true
+		shift 2
+		;;
+	*) exit 2 ;;
+	esac
+done
+$list && exit 0
+case $property in
+/Net/ThemeName) state=${DWM_TEST_XFCONF_DIR:?}/theme-name ;;
+/Gtk/CursorThemeName) state=${DWM_TEST_XFCONF_DIR:?}/cursor-theme ;;
+/Gtk/CursorThemeSize) state=${DWM_TEST_XFCONF_DIR:?}/cursor-size ;;
+*) exit 1 ;;
+esac
+if $reset; then
+	rm -f -- "$state"
+elif $set_value; then
+	mkdir -p -- "${state%/*}"
+	printf '%s\n' "$value" >"$state"
+elif [ -f "$state" ]; then
+	cat "$state"
+else
+	exit 1
+fi
+SH
+chmod +x "$work/integration-bin/xfconf-query"
 
 if (cd "$work" && HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_STATE_HOME=$state_home XDG_RUNTIME_DIR=relative-runtime \
@@ -203,8 +379,8 @@ grep -Fqx 'dwm-settings-theme: XDG_RUNTIME_DIR must be an absolute path' \
 [[ ! -e $work/relative-runtime ]]
 
 reset_fixture() {
-	rm -rf "$config_home" "$state_home" "$runtime_dir"
-	mkdir -p "$config_home/dwm-titus" "$state_home" "$runtime_dir"
+	rm -rf "$config_home" "$state_home" "$runtime_dir" "$work/dconf" "$work/xfconf"
+	mkdir -p "$config_home/dwm-titus" "$state_home" "$runtime_dir" "$work/dconf" "$work/xfconf"
 	cp "$repo/config/themes.toml" "$themes_file"
 	chmod 640 "$themes_file"
 	: >"$work/apply.log"
@@ -830,6 +1006,20 @@ run_theme preview durable-preview 10 dracula >/dev/null 2>"$work/durable-preview
 durable_prefix=$state_home/dwm-titus/appearance/durable-preview.preview
 [[ -f $durable_prefix.meta ]]
 sed -i 's/^deadline=.*/deadline=0/' "$durable_prefix.meta"
+# A reboot removes the runtime directory only after terminating session
+# processes. Stop the pre-reboot watchdog before recreating its lock path so
+# the fixture cannot leave processes synchronized on different lock inodes.
+durable_watchdog_pid=$(awk -F= '$1 == "watchdog_pid" { print $2; exit }' \
+	"$durable_prefix.meta")
+[[ $durable_watchdog_pid =~ ^[1-9][0-9]*$ ]]
+kill -TERM "$durable_watchdog_pid" 2>/dev/null || true
+for attempt in {1..100}; do
+	[[ ! -r /proc/$durable_watchdog_pid/stat ]] && break
+	durable_watchdog_state=$(awk '{ line = $0; sub(/^.*\) /, "", line); print substr(line, 1, 1) }' \
+		"/proc/$durable_watchdog_pid/stat" 2>/dev/null || true)
+	[[ -z $durable_watchdog_state || $durable_watchdog_state == Z ]] && break
+	sleep 0.02
+done
 rm -rf "$runtime_dir"
 mkdir -p "$runtime_dir"
 run_theme _resume-preview
@@ -987,6 +1177,15 @@ set -e
 [[ $finish_status -eq 143 ]]
 [[ ! -e $state_home/dwm-titus/appearance/integration-transaction ]]
 grep -Fqx $'recovery\tavailable\tapply\tdracula' < <(run_theme recovery-status)
+# Emulate recovery metadata left by the previous release, whose integration
+# list had the same first eleven paths and no personalization or XSETTINGS entry.
+rm -f -- "$state_home/dwm-titus/appearance/transaction.integration.11.before" \
+	"$state_home/dwm-titus/appearance/transaction.integration.11.after" \
+	"$state_home/dwm-titus/appearance/transaction.integration.11.meta" \
+	"$state_home/dwm-titus/appearance/transaction.integration.12.before" \
+	"$state_home/dwm-titus/appearance/transaction.integration.12.after" \
+	"$state_home/dwm-titus/appearance/transaction.integration.12.meta"
+printf '11\n' >"$state_home/dwm-titus/appearance/transaction.integration.count"
 run_theme recover >/dev/null
 [[ $(active_theme) == nord ]]
 grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
@@ -1041,6 +1240,92 @@ grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
 
 reset_fixture
 run_theme mutation-ready
+run_theme personalization-ready
+printf 'broken-protocol\n' >"$config_home/dwm-titus/personalization.conf"
+if run_theme personalization-ready; then
+	printf 'malformed personalization state was reported ready\n' >&2
+	exit 1
+fi
+printf 'personalization-protocol\t1\t0\nqt\tgtk3\nqt\tqt6ct\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+if run_theme personalization-ready; then
+	printf 'duplicate personalization state was reported ready\n' >&2
+	exit 1
+fi
+cp "$config_home/dwm-titus/personalization.conf" "$work/personalization-duplicate.before"
+if run_theme personalize qt gtk3 >"$work/personalization-duplicate.out" \
+	2>"$work/personalization-duplicate.err"; then
+	printf 'personalization mutation replaced duplicate state\n' >&2
+	exit 1
+fi
+grep -Fq 'personalization configuration is malformed or unsafe' \
+	"$work/personalization-duplicate.err"
+cmp -s "$work/personalization-duplicate.before" \
+	"$config_home/dwm-titus/personalization.conf"
+printf 'personalization-protocol\t1\t0\nqt\tgtk3\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+ln "$config_home/dwm-titus/personalization.conf" "$work/personalization-hardlink.conf"
+if run_theme personalization-ready; then
+	printf 'hard-linked personalization state was reported ready\n' >&2
+	exit 1
+fi
+run_theme_apply_direct >/dev/null 2>"$work/personalization-hardlink.err"
+grep -Fq 'ignoring invalid personalization configuration' \
+	"$work/personalization-hardlink.err"
+rm "$work/personalization-hardlink.conf"
+rm "$config_home/dwm-titus/personalization.conf"
+run_theme personalization-ready
+sed -i '0,/theme = "nord"/s//theme = "missing-theme"/' "$themes_file"
+run_theme mutation-ready
+if run_theme personalization-ready; then
+	printf 'invalid active theme was reported personalization-ready\n' >&2
+	exit 1
+fi
+
+reset_fixture
+printf 'broken-protocol\n' >"$config_home/dwm-titus/personalization.conf"
+run_theme_real_apply apply dracula >/dev/null 2>"$work/personalization-invalid-base.err"
+grep -Fq 'ignoring invalid personalization configuration' \
+	"$work/personalization-invalid-base.err"
+grep -Fqx 'broken-protocol' "$config_home/dwm-titus/personalization.conf"
+[[ $(active_theme) == dracula ]]
+reset_fixture
+
+printf 'personalization-protocol\t1\t0\nfont\tBad"Font\nicon\tBad=Icons\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+printf 'gtk-font-name="Baseline Font 11"\ngtk-icon-theme-name="Baseline Icons"\n' \
+	>"$home_dir/.gtkrc-2.0"
+run_theme_real_apply apply dracula >/dev/null 2>"$work/personalization-unsafe-name.err"
+grep -Fq 'ignoring invalid font personalization value' \
+	"$work/personalization-unsafe-name.err"
+grep -Fq 'ignoring invalid icon personalization value' \
+	"$work/personalization-unsafe-name.err"
+grep -Fqx 'gtk-font-name="Baseline Font 11"' "$home_dir/.gtkrc-2.0"
+grep -Fqx 'gtk-icon-theme-name="Baseline Icons"' "$home_dir/.gtkrc-2.0"
+reset_fixture
+
+mkdir -p "$config_home/gtk-3.0" "$config_home/gtk-4.0"
+printf 'personalization-protocol\t1\t0\nfont\tfollow-system\ntext-size\tfollow-system\nicon\tfollow-system\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+printf '[Settings]\ngtk-font-name=External Font 12\ngtk-icon-theme-name=External Icons\n' \
+	>"$config_home/gtk-3.0/settings.ini"
+cp "$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"
+printf 'gtk-font-name="External Font 12"\ngtk-icon-theme-name="External Icons"\n' \
+	>"$home_dir/.gtkrc-2.0"
+printf "'External Font 12'\n" >"$work/dconf/font-name"
+printf '1.25\n' >"$work/dconf/text-scaling-factor"
+printf "'External Icons'\n" >"$work/dconf/icon-theme"
+run_theme_real_apply apply dracula >/dev/null 2>"$work/follow-system-base.err"
+for settings_file in "$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"; do
+	grep -Fqx 'gtk-font-name=External Font 12' "$settings_file"
+	grep -Fqx 'gtk-icon-theme-name=External Icons' "$settings_file"
+done
+grep -Fqx 'gtk-font-name="External Font 12"' "$home_dir/.gtkrc-2.0"
+grep -Fqx 'gtk-icon-theme-name="External Icons"' "$home_dir/.gtkrc-2.0"
+grep -Fqx "'External Font 12'" "$work/dconf/font-name"
+grep -Fqx '1.25' "$work/dconf/text-scaling-factor"
+grep -Fqx "'External Icons'" "$work/dconf/icon-theme"
+reset_fixture
 no_atomic_bin=$work/no-atomic-bin
 real_mv=$(command -v mv)
 mkdir -p "$no_atomic_bin"
@@ -1205,7 +1490,7 @@ concurrent_runtime=$work/concurrent-runtime
 theme_path=$work/theme-path
 mkdir -p "$concurrent_config/alacritty" "$concurrent_config/kitty" "$concurrent_home" \
 	"$concurrent_runtime" "$theme_path"
-for command_name in awk cat chmod dirname flock grep mkdir sed sha256sum stat; do
+for command_name in awk cat chmod dirname flock grep mkdir mktemp mv sed sha256sum stat; do
 	ln -s "$(command -v "$command_name")" "$theme_path/$command_name"
 done
 printf '%s\n' 'import = [' '  "~/.config/alacritty/keybindings.toml",' ']' \
@@ -1223,5 +1508,517 @@ wait "$concurrent_a"
 wait "$concurrent_b"
 [[ $(grep -Fc 'active-theme.toml' "$concurrent_config/alacritty/alacritty.toml") == 1 ]]
 [[ $(grep -Fxc 'include active-theme.conf' "$concurrent_config/kitty/kitty.conf") == 1 ]]
+
+reset_fixture
+mkdir -p "$config_home/gtk-3.0"
+printf 'External XFCE GTK\n' >"$work/xfconf/theme-name"
+printf 'External XFCE Cursor\n' >"$work/xfconf/cursor-theme"
+printf '[Settings]\nunchanged=yes\ngtk-font-name = Keep Font 13\n' \
+	>"$config_home/gtk-3.0/settings.ini"
+printf 'gtk-key-theme-name="Keep"\n' >"$home_dir/.gtkrc-2.0"
+printf 'personalization-protocol\t1\t0\nfont\tKeep Font\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+if run_theme personalize cursor follow-system >"$work/personalize-invalid-cursor.out" \
+	2>"$work/personalize-invalid-cursor.err"; then
+	printf 'cursor accepted the font-only follow-system sentinel\n' >&2
+	exit 1
+fi
+grep -Fq 'invalid personalization value for cursor' "$work/personalize-invalid-cursor.err"
+if run_theme personalize font follow-theme >"$work/personalize-invalid-font.out" \
+	2>"$work/personalize-invalid-font.err"; then
+	printf 'font accepted the cursor-only follow-theme sentinel\n' >&2
+	exit 1
+fi
+grep -Fq 'invalid personalization value for font' "$work/personalize-invalid-font.err"
+if run_theme personalize font 'Bad"Font' >"$work/personalize-quoted-font.out" \
+	2>"$work/personalize-quoted-font.err"; then
+	printf 'font accepted a GTK2-unsafe quote delimiter\n' >&2
+	exit 1
+fi
+grep -Fq 'invalid personalization value for font' "$work/personalize-quoted-font.err"
+printf 'Keep/Setting "yes"\n' >"$config_home/dwm-titus/xsettingsd.conf"
+text_scale_output=$(run_theme_real_apply personalize text-size 1.25 \
+	2>"$work/personalize-text-size.err")
+grep -Fqx $'result\tapply\ttext-size\t1.25' <<<"$text_scale_output"
+grep -Fqx '1.25' "$work/dconf/text-scaling-factor"
+grep -Fqx '# Auto-generated by theme-apply.sh - do not edit manually.' \
+	"$config_home/dwm-titus/xsettingsd.conf"
+grep -Fqx 'Keep/Setting "yes"' "$config_home/dwm-titus/xsettingsd.conf"
+grep -Fqx 'Xft/DPI 122880' "$config_home/dwm-titus/xsettingsd.conf"
+grep -Fqx reload "$work/xsettings.log"
+run_theme_real_apply personalize-reset text-size >/dev/null \
+	2>"$work/personalize-reset-text-size.err"
+grep -Fqx $'text-size\tfollow-system' "$config_home/dwm-titus/personalization.conf"
+grep -Fqx 'Keep/Setting "yes"' "$config_home/dwm-titus/xsettingsd.conf"
+if grep -Eq '^Xft/DPI[[:space:]]' "$config_home/dwm-titus/xsettingsd.conf"; then
+	printf 'system-follow reset retained managed Xft/DPI\n' >&2
+	exit 1
+fi
+personalize_output=$(DWM_TEST_GSETTINGS_FAIL_ALL=1 run_theme_real_apply personalize qt gtk3 \
+	2>"$work/personalize-qt.err")
+grep -Fqx $'personalization-action-protocol\t1\t0' <<<"$personalize_output"
+grep -Fqx $'result\tapply\tqt\tgtk3' <<<"$personalize_output"
+grep -Fqx $'personalization-protocol\t1\t0' \
+	"$config_home/dwm-titus/personalization.conf"
+grep -Fqx $'font\tKeep Font' "$config_home/dwm-titus/personalization.conf"
+grep -Fqx $'qt\tgtk3' "$config_home/dwm-titus/personalization.conf"
+grep -Fqx 'export QT_QPA_PLATFORMTHEME=gtk3' "$config_home/dwm-titus/theme-env.sh"
+grep -Fqx 'gtk-font-name=Keep Font 11' "$config_home/gtk-3.0/settings.ini"
+[[ $(grep -Fxc 'gtk-font-name=Keep Font 11' "$config_home/gtk-3.0/settings.ini") == 1 ]]
+grep -Fqx 'External XFCE GTK' "$work/xfconf/theme-name"
+grep -Fqx 'External XFCE Cursor' "$work/xfconf/cursor-theme"
+
+run_theme_real_apply apply dracula >/dev/null 2>"$work/personalize-theme-change.err"
+grep -Fqx $'qt\tgtk3' "$config_home/dwm-titus/personalization.conf"
+grep -Fqx 'export QT_QPA_PLATFORMTHEME=gtk3' "$config_home/dwm-titus/theme-env.sh"
+
+printf 'External XFCE GTK\n' >"$work/xfconf/theme-name"
+printf 'External XFCE Cursor\n' >"$work/xfconf/cursor-theme"
+run_theme_real_apply personalize gtk Adwaita >/dev/null 2>"$work/personalize-gtk.err"
+grep -Fqx Adwaita "$work/xfconf/theme-name"
+grep -Fqx 'External XFCE Cursor' "$work/xfconf/cursor-theme"
+grep -Fqx 'unchanged=yes' "$config_home/gtk-3.0/settings.ini"
+grep -Fqx 'gtk-key-theme-name="Keep"' "$home_dir/.gtkrc-2.0"
+grep -Fqx 'gtk-cursor-theme-size=32' "$home_dir/.gtkrc-2.0"
+if ! grep -Fqx 'gtk-theme-name="Adwaita"' "$home_dir/.gtkrc-2.0"; then
+	printf 'personalized GTK2 output did not retain the selected theme:\n' >&2
+	sed -n '1,20p' "$home_dir/.gtkrc-2.0" >&2
+	exit 1
+fi
+
+custom_gtk_root=$work/custom-gtk-root
+mkdir -p "$custom_gtk_root/themes/CustomXdg/gtk-3.0"
+XDG_DATA_DIRS=$custom_gtk_root \
+	run_theme_real_apply personalize gtk CustomXdg >/dev/null \
+	2>"$work/personalize-custom-gtk.err"
+grep -Fqx $'gtk\tCustomXdg' "$config_home/dwm-titus/personalization.conf"
+grep -Fqx 'gtk-theme-name=CustomXdg' "$config_home/gtk-3.0/settings.ini"
+grep -Fqx 'gtk-theme-name="CustomXdg"' "$home_dir/.gtkrc-2.0"
+
+reset_personalize_output=$(run_theme_real_apply personalize-reset qt \
+	2>"$work/personalize-reset.err")
+grep -Fqx $'result\treset\tqt\tfollow-theme' <<<"$reset_personalize_output"
+grep -Fqx $'qt\tfollow-theme' "$config_home/dwm-titus/personalization.conf"
+grep -Eq '^export QT_QPA_PLATFORMTHEME=(qt6ct|qt5ct|gtk3)$' \
+	"$config_home/dwm-titus/theme-env.sh"
+
+reset_fixture
+mkdir -p "$config_home/gtk-3.0" "$config_home/gtk-4.0"
+for settings_file in "$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"; do
+	printf '  [Settings]  \nkeep=yes\ngtk-font-name=Managed Font 12\ngtk-icon-theme-name=Managed Icons\n' \
+		>"$settings_file"
+done
+printf '  gtk-font-name = "Managed Font 12"\n gtk-icon-theme-name = "Managed Icons"\nkeep-gtk2="yes"\n' \
+	>"$home_dir/.gtkrc-2.0"
+printf "'Managed Font 10'\n" >"$work/dconf/font-name"
+DWM_TEST_GSETTINGS_STAGE_DEFAULT=1 run_theme_real_apply personalize font 'Font One' >/dev/null \
+	2>"$work/personalize-padded-header.err"
+for settings_file in "$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"; do
+	grep -Fqx '  [Settings]  ' "$settings_file"
+	grep -Fqx 'gtk-font-name=Font One 10' "$settings_file"
+done
+grep -Fqx 'gtk-font-name="Font One 10"' "$home_dir/.gtkrc-2.0"
+[[ $(grep -Ec '^[[:space:]]*gtk-font-name[[:space:]]*=' "$home_dir/.gtkrc-2.0") == 1 ]]
+LC_ALL=C.UTF-8 run_theme_real_apply personalize cursor 'Cursör' >/dev/null \
+	2>"$work/personalize-unicode-cursor.err"
+grep -Fqx $'export XCURSOR_THEME=Curs\\\303\\\266r' \
+	"$config_home/dwm-titus/theme-env.sh"
+printf 'personalization-protocol\t1\t0\nfont\tManaged Font\nicon\tManaged Icons\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+run_theme_real_apply personalize-reset font >/dev/null 2>"$work/personalize-reset-font.err"
+run_theme_real_apply personalize-reset icon >/dev/null 2>"$work/personalize-reset-icon.err"
+for settings_file in "$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"; do
+	grep -Fqx '  [Settings]  ' "$settings_file"
+	grep -Fqx 'keep=yes' "$settings_file"
+	if grep -Eq '^[[:space:]]*gtk-(font-name|icon-theme-name)[[:space:]]*=' "$settings_file"; then
+		printf 'system-follow reset retained a managed GTK key in %s\n' "$settings_file" >&2
+		exit 1
+	fi
+done
+grep -Fqx 'keep-gtk2="yes"' "$home_dir/.gtkrc-2.0"
+if grep -Eq '^[[:space:]]*gtk-(font-name|icon-theme-name)[[:space:]]*=' \
+	"$home_dir/.gtkrc-2.0"; then
+	printf 'system-follow reset retained a managed GTK2 key\n' >&2
+	exit 1
+fi
+
+reset_fixture
+gtk2_target_dir=$work/gtk2-target
+gtk2_target=$gtk2_target_dir/gtkrc
+gtk3_target=$gtk2_target_dir/settings.ini
+mkdir -p "$gtk2_target_dir" "$config_home/gtk-3.0" "$config_home/gtk-4.0"
+printf 'keep-symlink-target="yes"\ngtk-font-name="Managed Font 12"\n' >"$gtk2_target"
+printf '[Settings]\nkeep-symlink-target=yes\ngtk-font-name=Managed Font 12\n' >"$gtk3_target"
+rm -f "$home_dir/.gtkrc-2.0"
+ln -s "$gtk2_target" "$home_dir/.gtkrc-2.0"
+rm -f "$config_home/gtk-3.0/settings.ini"
+ln -s "$gtk3_target" "$config_home/gtk-3.0/settings.ini"
+rm -f "$config_home/gtk-4.0/settings.ini"
+ln -s "$gtk3_target" "$config_home/gtk-4.0/settings.ini"
+printf 'personalization-protocol\t1\t0\nfont\tFont One\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+run_theme_apply_direct >"$work/theme-apply-symlink-font.out" \
+	2>"$work/theme-apply-symlink-font.err"
+[[ -L $home_dir/.gtkrc-2.0 ]]
+[[ $(readlink -f -- "$home_dir/.gtkrc-2.0") == "$gtk2_target" ]]
+[[ -L $config_home/gtk-3.0/settings.ini ]]
+[[ $(readlink -f -- "$config_home/gtk-3.0/settings.ini") == "$gtk3_target" ]]
+[[ -L $config_home/gtk-4.0/settings.ini ]]
+[[ $(readlink -f -- "$config_home/gtk-4.0/settings.ini") == "$gtk3_target" ]]
+grep -Fqx 'keep-symlink-target="yes"' "$gtk2_target"
+grep -Fqx 'gtk-font-name="Font One 11"' "$gtk2_target"
+grep -Fqx 'keep-symlink-target=yes' "$gtk3_target"
+grep -Fqx 'gtk-font-name=Font One 11' "$gtk3_target"
+printf 'personalization-protocol\t1\t0\nfont\tfollow-system\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+DWM_APPEARANCE_PERSONALIZATION_CAPABILITY=font \
+	run_theme_apply_direct >"$work/theme-apply-reset-symlink-font.out" \
+	2>"$work/theme-apply-reset-symlink-font.err"
+[[ -L $home_dir/.gtkrc-2.0 ]]
+[[ -L $config_home/gtk-3.0/settings.ini ]]
+[[ -L $config_home/gtk-4.0/settings.ini ]]
+grep -Fqx 'keep-symlink-target="yes"' "$gtk2_target"
+grep -Fqx 'keep-symlink-target=yes' "$gtk3_target"
+if grep -Eq '^[[:space:]]*gtk-font-name[[:space:]]*=' "$gtk2_target"; then
+	printf 'system-follow reset retained a managed GTK2 key through a symlink\n' >&2
+	exit 1
+fi
+if grep -Eq '^[[:space:]]*gtk-font-name[[:space:]]*=' "$gtk3_target"; then
+	printf 'system-follow reset retained a managed GTK3 key through a symlink\n' >&2
+	exit 1
+fi
+if ! run_theme_real_apply personalize font 'Font One' >/dev/null \
+	2>"$work/personalize-symlink-font.err"; then
+	cat "$work/personalize-symlink-font.err" >&2
+	exit 1
+fi
+[[ -L $home_dir/.gtkrc-2.0 ]]
+[[ $(readlink -f -- "$home_dir/.gtkrc-2.0") == "$gtk2_target" ]]
+[[ -L $config_home/gtk-3.0/settings.ini ]]
+[[ $(readlink -f -- "$config_home/gtk-3.0/settings.ini") == "$gtk3_target" ]]
+[[ -L $config_home/gtk-4.0/settings.ini ]]
+[[ $(readlink -f -- "$config_home/gtk-4.0/settings.ini") == "$gtk3_target" ]]
+grep -Fqx 'keep-symlink-target="yes"' "$gtk2_target"
+grep -Fqx 'gtk-font-name="Font One 11"' "$gtk2_target"
+grep -Fqx 'keep-symlink-target=yes' "$gtk3_target"
+grep -Fqx 'gtk-font-name=Font One 11' "$gtk3_target"
+run_theme_real_apply personalize-reset font >/dev/null \
+	2>"$work/personalize-reset-symlink-font.err"
+[[ -L $home_dir/.gtkrc-2.0 ]]
+[[ -L $config_home/gtk-3.0/settings.ini ]]
+[[ -L $config_home/gtk-4.0/settings.ini ]]
+grep -Fqx 'keep-symlink-target="yes"' "$gtk2_target"
+grep -Fqx 'keep-symlink-target=yes' "$gtk3_target"
+if grep -Eq '^[[:space:]]*gtk-font-name[[:space:]]*=' "$gtk2_target"; then
+	printf 'transactional reset retained a managed GTK2 key through a symlink\n' >&2
+	exit 1
+fi
+if grep -Eq '^[[:space:]]*gtk-font-name[[:space:]]*=' "$gtk3_target"; then
+	printf 'transactional reset retained a managed GTK3 key through a symlink\n' >&2
+	exit 1
+fi
+rm -f "$home_dir/.gtkrc-2.0"
+
+reset_fixture
+rm "$themes_file"
+managed_before=$(sha256sum "$managed_file")
+run_theme_real_apply personalize qt gtk3 >/dev/null 2>"$work/personalize-managed.err"
+[[ ! -e $themes_file ]]
+[[ $(sha256sum "$managed_file") == "$managed_before" ]]
+grep -Fqx $'qt\tgtk3' "$config_home/dwm-titus/personalization.conf"
+
+reset_fixture
+rm "$themes_file"
+managed_finish_ready=$work/managed-finish.ready
+managed_finish_release=$work/managed-finish.release
+managed_finish_pid_file=$work/managed-finish.pid
+DWM_TEST_FINISH_READY=$managed_finish_ready \
+	DWM_TEST_FINISH_RELEASE=$managed_finish_release \
+	DWM_TEST_PROCESS_PID=$managed_finish_pid_file \
+	run_theme_real_apply personalize qt gtk3 \
+	>"$work/managed-finish.out" 2>"$work/managed-finish.err" &
+managed_finish_job=$!
+for _ in {1..200}; do
+	[[ -e $managed_finish_ready && -s $managed_finish_pid_file ]] && break
+	sleep 0.02
+done
+[[ -e $managed_finish_ready && -s $managed_finish_pid_file ]]
+IFS= read -r managed_finish_pid <"$managed_finish_pid_file"
+kill -KILL "$managed_finish_pid"
+wait "$managed_finish_job" 2>/dev/null || true
+printf '\n# package update during interrupted personalization\n' >>"$managed_file"
+if run_theme_real_apply recover >"$work/managed-source-recover.out" \
+	2>"$work/managed-source-recover.err"; then
+	printf 'recovery accepted a changed managed theme source\n' >&2
+	exit 1
+fi
+grep -Fq 'changed after the interrupted transaction' "$work/managed-source-recover.err"
+grep -Fqx $'recovery\tavailable\tpersonalize-qt\tnord' \
+	< <(run_theme recovery-status)
+cp "$repo/config/themes.toml" "$managed_file"
+reset_fixture
+
+printf 'personalization-protocol\t1\t0\nfont\tFont One\n' \
+	>"$config_home/dwm-titus/personalization.conf"
+printf '%s\n' "\"Bob's Font 13\"" >"$work/dconf/font-name"
+run_theme_apply_direct >/dev/null 2>"$work/theme-apply-double-quoted-font.err"
+grep -Fqx 'gtk-font-name=Font One 13' "$config_home/gtk-3.0/settings.ini"
+grep -Fqx 'gtk-font-name="Font One 13"' "$home_dir/.gtkrc-2.0"
+
+printf '%s\n' "'Large Font 100'" >"$work/dconf/font-name"
+run_theme_apply_direct >/dev/null 2>"$work/theme-apply-large-font.err"
+grep -Fqx 'gtk-font-name=Font One 100' "$config_home/gtk-3.0/settings.ini"
+grep -Fqx 'gtk-font-name="Font One 100"' "$home_dir/.gtkrc-2.0"
+
+reset_fixture
+
+gsettings_calls=$work/personalization-gsettings.calls
+: >"$gsettings_calls"
+DWM_TEST_GSETTINGS_CALLS=$gsettings_calls \
+	run_theme_real_apply personalize font 'Font One' >/dev/null \
+	2>"$work/personalize-font-selected-only.err"
+grep -Fqx $'set\tfont-name' "$gsettings_calls"
+[[ $(wc -l <"$gsettings_calls") == 1 ]]
+
+run_theme_real_apply personalize icon "Bob's Icons" >/dev/null \
+	2>"$work/personalize-icon-apostrophe.err"
+grep -Fqx "\"Bob's Icons\"" "$work/dconf/icon-theme"
+grep -Fqx "$(printf 'icon\t%s' "Bob's Icons")" \
+	"$config_home/dwm-titus/personalization.conf"
+grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+
+reset_fixture
+personalization_baseline_ready=$work/personalization-baseline.ready
+personalization_baseline_release=$work/personalization-baseline.release
+DWM_TEST_BEFORE_INTEGRATION_PUBLISH=$personalization_baseline_ready \
+	DWM_TEST_INTEGRATION_PUBLISH_RELEASE=$personalization_baseline_release \
+	run_theme_real_apply personalize font 'Font One' \
+	>"$work/personalization-baseline.out" 2>"$work/personalization-baseline.err" &
+personalization_baseline_job=$!
+for _ in {1..200}; do
+	[[ -e $personalization_baseline_ready ]] && break
+	sleep 0.02
+done
+[[ -e $personalization_baseline_ready ]]
+printf "'External Font 12'\n" >"$work/dconf/font-name"
+: >"$personalization_baseline_release"
+if wait "$personalization_baseline_job"; then
+	printf 'personalization overwrote a GSettings edit made during preparation\n' >&2
+	exit 1
+fi
+grep -Fq 'font GSettings changed during transaction preparation' \
+	"$work/personalization-baseline.err"
+grep -Fqx "'External Font 12'" "$work/dconf/font-name"
+[[ ! -e $config_home/dwm-titus/personalization.conf ]]
+grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+
+reset_fixture
+personalization_live_ready=$work/personalization-live.ready
+personalization_live_release=$work/personalization-live.release
+DWM_TEST_BEFORE_PERSONALIZATION_LIVE_WRITE=$personalization_live_ready \
+	DWM_TEST_PERSONALIZATION_LIVE_WRITE_RELEASE=$personalization_live_release \
+	run_theme_real_apply personalize font 'Font One' \
+	>"$work/personalization-live.out" 2>"$work/personalization-live.err" &
+personalization_live_job=$!
+for _ in {1..200}; do
+	[[ -e $personalization_live_ready ]] && break
+	sleep 0.02
+done
+[[ -e $personalization_live_ready ]]
+printf "'Late External Font 12'\n" >"$work/dconf/font-name"
+: >"$personalization_live_release"
+if wait "$personalization_live_job"; then
+	printf 'personalization overwrote a GSettings edit made at the live-write boundary\n' >&2
+	exit 1
+fi
+grep -Fq 'personalization GSettings changed before the live write' \
+	"$work/personalization-live.err"
+grep -Fqx "'Late External Font 12'" "$work/dconf/font-name"
+grep -Fqx $'recovery\tavailable\tpersonalize-font\tnord' \
+	< <(run_theme recovery-status)
+
+reset_fixture
+personalization_xfconf_live_ready=$work/personalization-xfconf-live.ready
+personalization_xfconf_live_release=$work/personalization-xfconf-live.release
+DWM_TEST_BEFORE_PERSONALIZATION_LIVE_WRITE=$personalization_xfconf_live_ready \
+	DWM_TEST_PERSONALIZATION_LIVE_WRITE_RELEASE=$personalization_xfconf_live_release \
+	run_theme_real_apply personalize cursor Capitaine-Cursors \
+	>"$work/personalization-xfconf-live.out" \
+	2>"$work/personalization-xfconf-live.err" &
+personalization_xfconf_live_job=$!
+for _ in {1..200}; do
+	[[ -e $personalization_xfconf_live_ready ]] && break
+	sleep 0.02
+done
+[[ -e $personalization_xfconf_live_ready ]]
+printf 'Late External Cursor\n' >"$work/xfconf/cursor-theme"
+: >"$personalization_xfconf_live_release"
+if wait "$personalization_xfconf_live_job"; then
+	printf 'personalization overwrote an xfconf edit made at the live-write boundary\n' >&2
+	exit 1
+fi
+grep -Fq 'personalization xfconf changed before the live write' \
+	"$work/personalization-xfconf-live.err"
+grep -Fqx 'Late External Cursor' "$work/xfconf/cursor-theme"
+grep -Fqx $'recovery\tavailable\tpersonalize-cursor\tnord' \
+	< <(run_theme recovery-status)
+
+reset_fixture
+if DWM_TEST_GSETTINGS_MISMATCH_KEY=font-name \
+	run_theme_real_apply personalize font 'Font One' \
+	>"$work/personalization-mismatch.out" 2>"$work/personalization-mismatch.err"; then
+	printf 'personalization accepted a nonconverged GSettings value\n' >&2
+	exit 1
+fi
+grep -Fq 'font GSettings did not converge to the journaled state' \
+	"$work/personalization-mismatch.err"
+grep -Fqx "'Unexpected external value'" "$work/dconf/font-name"
+grep -Fqx $'recovery\tavailable\tpersonalize-font\tnord' \
+	< <(run_theme recovery-status)
+
+reset_fixture
+if DWM_TEST_GSETTINGS_FAIL_KEY=font-name run_theme_real_apply personalize font 'Font One' \
+	>"$work/personalize-font-failure.out" 2>"$work/personalize-font-failure.err"; then
+	printf 'personalization accepted a failed selected GSettings key\n' >&2
+	exit 1
+fi
+grep -Fq 'personalization font was committed but live convergence failed' \
+	"$work/personalize-font-failure.err"
+[[ ! -e $config_home/dwm-titus/personalization.conf ]]
+grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+
+reset_fixture
+personalization_finish_ready=$work/personalization-finish.ready
+personalization_finish_release=$work/personalization-finish.release
+personalization_finish_pid_file=$work/personalization-finish.pid
+DWM_TEST_FINISH_READY=$personalization_finish_ready \
+	DWM_TEST_FINISH_RELEASE=$personalization_finish_release \
+	DWM_TEST_PROCESS_PID=$personalization_finish_pid_file \
+	run_theme_real_apply personalize font 'Font One' \
+	>"$work/personalization-finish.out" 2>"$work/personalization-finish.err" &
+personalization_finish_job=$!
+for _ in {1..200}; do
+	[[ -e $personalization_finish_ready && -s $personalization_finish_pid_file ]] && break
+	sleep 0.02
+done
+[[ -e $personalization_finish_ready && -s $personalization_finish_pid_file ]]
+[[ -s $work/dconf/font-name ]]
+cmp -s "$work/dconf/font-name" \
+	"$state_home/dwm-titus/appearance/transaction.gsettings.after"
+IFS= read -r personalization_finish_pid <"$personalization_finish_pid_file"
+kill -KILL "$personalization_finish_pid"
+wait "$personalization_finish_job" 2>/dev/null || true
+grep -Fqx $'recovery\tavailable\tpersonalize-font\tnord' \
+	< <(run_theme recovery-status)
+run_theme_real_apply recover >/dev/null 2>"$work/personalization-finish-recover.err"
+[[ ! -e $work/dconf/font-name ]]
+grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+
+reset_fixture
+text_finish_ready=$work/text-finish.ready
+text_finish_release=$work/text-finish.release
+text_finish_pid_file=$work/text-finish.pid
+DWM_TEST_FINISH_READY=$text_finish_ready \
+	DWM_TEST_FINISH_RELEASE=$text_finish_release \
+	DWM_TEST_PROCESS_PID=$text_finish_pid_file \
+	run_theme_real_apply personalize text-size 1.25 \
+	>"$work/text-finish.out" 2>"$work/text-finish.err" &
+text_finish_job=$!
+for _ in {1..200}; do
+	[[ -e $text_finish_ready && -s $text_finish_pid_file ]] && break
+	sleep 0.02
+done
+[[ -e $text_finish_ready && -s $text_finish_pid_file ]]
+[[ -f $config_home/dwm-titus/xsettingsd.conf ]]
+IFS= read -r text_finish_pid <"$text_finish_pid_file"
+kill -KILL "$text_finish_pid"
+wait "$text_finish_job" 2>/dev/null || true
+: >"$work/xsettings.log"
+run_theme_real_apply recover >/dev/null 2>"$work/text-finish-recover.err"
+[[ ! -e $config_home/dwm-titus/xsettingsd.conf ]]
+grep -Fqx reload "$work/xsettings.log"
+grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+
+reset_fixture
+printf "'External Baseline Cursor'\n" >"$work/dconf/cursor-theme"
+printf 'External XFCE Cursor\n' >"$work/xfconf/cursor-theme"
+cursor_finish_ready=$work/cursor-finish.ready
+cursor_finish_release=$work/cursor-finish.release
+cursor_finish_pid_file=$work/cursor-finish.pid
+DWM_TEST_FINISH_READY=$cursor_finish_ready \
+	DWM_TEST_FINISH_RELEASE=$cursor_finish_release \
+	DWM_TEST_PROCESS_PID=$cursor_finish_pid_file \
+	run_theme_real_apply personalize cursor Capitaine-Cursors \
+	>"$work/cursor-finish.out" 2>"$work/cursor-finish.err" &
+cursor_finish_job=$!
+for _ in {1..200}; do
+	[[ -e $cursor_finish_ready && -s $cursor_finish_pid_file ]] && break
+	sleep 0.02
+done
+[[ -e $cursor_finish_ready && -s $cursor_finish_pid_file ]]
+grep -Fqx Capitaine-Cursors "$work/xfconf/cursor-theme"
+IFS= read -r cursor_finish_pid <"$cursor_finish_pid_file"
+kill -KILL "$cursor_finish_pid"
+wait "$cursor_finish_job" 2>/dev/null || true
+run_theme_real_apply recover >/dev/null 2>"$work/cursor-finish-recover.err"
+grep -Fqx "'External Baseline Cursor'" "$work/dconf/cursor-theme"
+grep -Fqx 'External XFCE Cursor' "$work/xfconf/cursor-theme"
+grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+
+reset_fixture
+personalization_edit_ready=$work/personalization-edit.ready
+personalization_edit_release=$work/personalization-edit.release
+personalization_edit_pid_file=$work/personalization-edit.pid
+DWM_TEST_FINISH_READY=$personalization_edit_ready \
+	DWM_TEST_FINISH_RELEASE=$personalization_edit_release \
+	DWM_TEST_PROCESS_PID=$personalization_edit_pid_file \
+	run_theme_real_apply personalize cursor Capitaine-Cursors \
+	>"$work/personalization-edit.out" 2>"$work/personalization-edit.err" &
+personalization_edit_job=$!
+for _ in {1..200}; do
+	[[ -e $personalization_edit_ready && -s $personalization_edit_pid_file ]] && break
+	sleep 0.02
+done
+[[ -e $personalization_edit_ready && -s $personalization_edit_pid_file ]]
+IFS= read -r personalization_edit_pid <"$personalization_edit_pid_file"
+kill -KILL "$personalization_edit_pid"
+wait "$personalization_edit_job" 2>/dev/null || true
+printf "'External Cursor'\n" >"$work/dconf/cursor-theme"
+if run_theme_real_apply recover >"$work/personalization-edit-recover.out" \
+	2>"$work/personalization-edit-recover.err"; then
+	printf 'personalization recovery overwrote a later GSettings edit\n' >&2
+	exit 1
+fi
+grep -Fq 'changed after the interrupted transaction' \
+	"$work/personalization-edit-recover.err"
+grep -Fqx "'External Cursor'" "$work/dconf/cursor-theme"
+grep -Fqx $'recovery\tavailable\tpersonalize-cursor\tnord' \
+	< <(run_theme recovery-status)
+
+reset_fixture
+personalization_marker=$work/personalization-publish-ready
+personalization_release=$work/personalization-publish-release
+personalization_pid_file=$work/personalization-helper.pid
+DWM_TEST_BEFORE_INTEGRATION_PUBLISH=$personalization_marker \
+	DWM_TEST_INTEGRATION_PUBLISH_RELEASE=$personalization_release \
+	DWM_TEST_PROCESS_PID=$personalization_pid_file \
+	run_theme personalize qt gtk3 >"$work/personalization-crash.out" \
+	2>"$work/personalization-crash.err" &
+personalization_job=$!
+for _ in {1..200}; do
+	[[ -e $personalization_marker && -s $personalization_pid_file ]] && break
+	sleep 0.02
+done
+[[ -e $personalization_marker && -s $personalization_pid_file ]]
+IFS= read -r personalization_pid <"$personalization_pid_file"
+[[ $personalization_pid =~ ^[1-9][0-9]*$ ]]
+kill -KILL "$personalization_pid"
+wait "$personalization_job" 2>/dev/null || true
+grep -Fqx $'recovery\tavailable\tpersonalize-qt\tnord' \
+	< <(run_theme recovery-status)
+[[ ! -e $config_home/dwm-titus/personalization.conf ]]
+run_theme recover >/dev/null
+grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+[[ ! -e $config_home/dwm-titus/personalization.conf ]]
 
 printf 'dwm settings theme tests passed\n'

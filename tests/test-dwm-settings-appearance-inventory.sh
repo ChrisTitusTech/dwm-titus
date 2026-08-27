@@ -26,15 +26,20 @@ proc_root=$work/proc
 mkdir -p "$config_home/dwm-titus" "$config_home/dconf" "$config_home/fontconfig" \
 	"$data_root/fonts/fixture" \
 	"$data_root/icons/Capitaine-Cursors/cursors" \
+	"$data_root/icons/Bad&Cursor/cursors" \
 	"$data_root/icons/Papirus" \
+	"$data_root/icons/Bad=Icons" \
 	"$data_root/linked-cursor/cursors" \
 	"$data_root/themes/Nordic/gtk-3.0" "$data_root/themes/Nordic/gtk-4.0" \
+	"$data_root/themes/Bad\"GTK/gtk-3.0" "$data_root/themes/Bad\"GTK/gtk-4.0" \
 	"$data_root/themes/Legacy/gtk-3.0" \
 	"$state_root/dwm-titus/appearance/wallpaper" \
 	"$wallpaper_dir/nested" "$legacy_font_dir/nested" "$bin_dir" "$link_dir" \
 	"$proc_root/4242"
 printf '[Icon Theme]\nName=Papirus\nDirectories=scalable/apps\n' \
 	>"$data_root/icons/Papirus/index.theme"
+printf '[Icon Theme]\nName=Bad Icons\nDirectories=scalable/apps\n' \
+	>"$data_root/icons/Bad=Icons/index.theme"
 printf '[Icon Theme]\nName=Capitaine Cursors\nInherits=hicolor\n' \
 	>"$data_root/icons/Capitaine-Cursors/index.theme"
 ln -s ../linked-cursor "$data_root/icons/LinkedCursor"
@@ -42,7 +47,7 @@ printf 'png\n' >"$wallpaper_dir/nord.png"
 printf 'jpg\n' >"$wallpaper_dir/nested/forest.JPG"
 printf 'png\n' >"$wallpaper_dir/unsafe"$'\034'"separator.png"
 printf 'ignored\n' >"$wallpaper_dir/readme.txt"
-printf 'export QT_QPA_PLATFORMTHEME=qt6ct\nexport XCURSOR_THEME=Capitaine-Cursors\n' \
+printf 'export QT_QPA_PLATFORMTHEME=qt6ct\nexport XCURSOR_THEME=Capitaine-Cursors\nexport XCURSOR_SIZE=32\n' \
 	>"$config_home/dwm-titus/theme-env.sh"
 
 for command_name in awk bash chmod date find flock grep id mkdir mkfifo mktemp mv readlink rm \
@@ -55,13 +60,14 @@ export DISPLAY=:55 DWM_APPEARANCE_PROC_ROOT=$proc_root
 cat >"$bin_dir/fc-list" <<'EOF'
 #!/bin/sh
 [ "${1:-}" = ':charset=20-7e' ] || exit 2
-printf 'Noto Sans\tRegular\nAlias Sans\tRegular\nJetBrains Mono\tRegular\nNoto Sans\tBold\n'
+printf 'Noto Sans\tRegular\nAlias Sans\tRegular\nJetBrains Mono\tRegular\nBad&Font\tRegular\nNoto Sans\tBold\n'
 EOF
 cat >"$bin_dir/fc-match" <<'EOF'
 #!/bin/sh
 case ${4:-${3:-${2:-${1:-}}}} in
 Noto\ Sans:* | Noto\ Sans) printf 'Noto Sans\n' ;;
 JetBrains\ Mono:* | JetBrains\ Mono) printf 'JetBrains Mono\n' ;;
+Bad\&Font:* | Bad\&Font) printf 'Bad&Font\n' ;;
 *) printf 'Fallback Sans\n' ;;
 esac
 EOF
@@ -299,6 +305,11 @@ if grep -Fq $'candidate\tfont\tavailable\tAlias Sans\t' <<<"$inventory"; then
 	printf 'Substituted Fontconfig family was emitted as an applicable candidate\n' >&2
 	exit 1
 fi
+if grep -Eq $'^candidate\t(font|cursor|icon|gtk)\t[^\t]*\t(Bad&Font|Bad&Cursor|Bad=Icons|Bad"GTK)\t' \
+	<<<"$inventory"; then
+	printf 'Mutation-unsafe asset name was emitted as a selectable candidate\n' >&2
+	exit 1
+fi
 
 # Candidate validation must begin only after the bounded fc-list stream has
 # been drained. Otherwise a slow fc-match can backpressure a large producer
@@ -395,6 +406,8 @@ grep -Fqx $'selection\tfont\tunavailable\t\t\tConfigured font selection exceeds 
 grep -Fqx $'selection\tcursor\tavailable\tCapitaine-Cursors\t\tCurrent selection is installed: Xcursor theme' \
 	<<<"$oversized"
 
+printf 'export QT_QPA_PLATFORMTHEME=unsupported\nexport XCURSOR_THEME=Capitaine-Cursors\nexport XCURSOR_SIZE=32\n' \
+	>"$config_home/dwm-titus/theme-env.sh"
 stale=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=unsupported \
@@ -405,6 +418,8 @@ for stale_capability in cursor icon gtk; do
 done
 grep -Fqx $'selection\tqt\tpartial\tunsupported\t\tConfigured Qt platform theme backend is unsupported' \
 	<<<"$stale"
+printf 'export QT_QPA_PLATFORMTHEME=qt6ct\nexport XCURSOR_THEME=Capitaine-Cursors\nexport XCURSOR_SIZE=32\n' \
+	>"$config_home/dwm-titus/theme-env.sh"
 
 legacy_gtk=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \

@@ -95,6 +95,11 @@ man_target=$manprefix/man1/dwm.1
 xsession_target=$xsessions_dir/dwm.desktop
 display_root_helper_target=$prefix/libexec/dwm-titus/dwm-settings-display-root
 make_command=${MAKE:-make}
+os_release_file=/etc/os-release
+if [ "${DWM_DEV_SYNC_TEST_MODE:-0}" = 1 ] &&
+	[ -n "${DWM_DEV_SYNC_OS_RELEASE:-}" ]; then
+	os_release_file=$DWM_DEV_SYNC_OS_RELEASE
+fi
 
 validate_live_root USER_HOME "$user_home"
 validate_live_root PREFIX "$prefix"
@@ -133,6 +138,66 @@ prepare_expected_files() {
 	sed "s|@PREFIX@|$prefix|g" "$repo_dir/dwm.desktop" >"$expected_xsession"
 	sed "s|@PREFIX@|$prefix|g" "$repo_dir/scripts/dwm-settings-display-root" \
 		>"$expected_display_root_helper"
+}
+
+source_update_dependencies_ready() {
+	command -v xsettingsd >/dev/null 2>&1 &&
+		command -v dump_xsettings >/dev/null 2>&1
+}
+
+source_update_dependencies_needed() {
+	if [ "${DWM_DEV_SYNC_TEST_MODE:-0}" = 1 ] &&
+		[ -n "${DWM_DEV_SYNC_DESKTOP_FEATURE:-}" ]; then
+		case $DWM_DEV_SYNC_DESKTOP_FEATURE in
+		1) return 0 ;;
+		0) return 1 ;;
+		*) die "invalid DWM_DEV_SYNC_DESKTOP_FEATURE value" ;;
+		esac
+	fi
+	command -v quickshell >/dev/null 2>&1
+}
+
+require_fedora_for_package_changes() {
+	distro_id=$(awk -F= '
+		$1 == "ID" {
+			value = $2
+			gsub(/^[[:space:]"'\'' ]+|[[:space:]"'\'' ]+$/, "", value)
+			print value
+			exit
+		}
+	' "$os_release_file" 2>/dev/null) ||
+		die "cannot read $os_release_file before installing source-update dependencies"
+	[ "$distro_id" = fedora ] ||
+		die "unsupported distribution for source-update dependencies: ${distro_id:-unknown}"
+}
+
+reconcile_source_update_dependencies() {
+	packages_file=$work/source-update-packages
+	if ! source_update_dependencies_needed; then
+		return 0
+	fi
+	if source_update_dependencies_ready; then
+		return 0
+	fi
+	if [ "$check_only" -eq 1 ]; then
+		die "source-update dependencies are missing; run this command without --check to install them"
+	fi
+	command -v sudo >/dev/null 2>&1 ||
+		die "sudo is required to install source-update dependencies"
+	command -v dnf >/dev/null 2>&1 ||
+		die "dnf is required to install source-update dependencies"
+	require_fedora_for_package_changes
+	"$repo_dir/scripts/dwm-packages.sh" fedora source-update >"$packages_file" ||
+		die "could not resolve source-update dependencies"
+	set --
+	while IFS= read -r package; do
+		[ -n "$package" ] && set -- "$@" "$package"
+	done <"$packages_file"
+	[ "$#" -gt 0 ] || die "source-update dependency profile is empty"
+	note "Installing required source-update dependencies: $*"
+	sudo dnf install -y "$@"
+	source_update_dependencies_ready ||
+		die "source-update dependencies are still unavailable after installation"
 }
 
 verification_failed=0
@@ -406,17 +471,18 @@ runtime_verify() {
 	[ "$runtime_failed" -eq 0 ]
 }
 
+if [ "$check_only" -eq 0 ] && [ "$(id -u)" -eq 0 ]; then
+	die "run this script as the desktop user, not root"
+fi
+
 prepare_expected_files
+reconcile_source_update_dependencies
 
 if [ "$check_only" -eq 1 ]; then
 	note "Checking live install against $repo_dir"
 	verify_install || exit 1
 	runtime_verify 0 || exit 1
 	exit 0
-fi
-
-if [ "$(id -u)" -eq 0 ]; then
-	die "run this script as the desktop user, not root"
 fi
 
 note "Building current checkout"

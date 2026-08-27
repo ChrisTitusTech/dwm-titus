@@ -4338,7 +4338,36 @@ extern char **environ;
 void
 spawn(const Arg *arg)
 {
-	posix_spawnp(NULL, ((char **)arg->v)[0], NULL, NULL, (char **)arg->v, environ);
+	char **command = (char **)arg->v;
+	char **wrapped;
+	char launcher[PATH_MAX];
+	char *separator;
+	size_t argc = 0;
+	ssize_t launcherlen;
+	int status;
+
+	while (command[argc])
+		argc++;
+	wrapped = ecalloc(argc + 2, sizeof(*wrapped));
+	launcherlen = readlink("/proc/self/exe", launcher, sizeof launcher);
+	if (launcherlen <= 0 || (size_t)launcherlen >= sizeof launcher)
+		goto fallback;
+	launcher[launcherlen] = '\0';
+	separator = strrchr(launcher, '/');
+	if (!separator || (size_t)(separator - launcher) + sizeof "/dwm-session-launch" > sizeof launcher)
+		goto fallback;
+	memcpy(separator, "/dwm-session-launch", sizeof "/dwm-session-launch");
+	wrapped[0] = launcher;
+	memcpy(wrapped + 1, command, (argc + 1) * sizeof(*command));
+	status = posix_spawn(NULL, wrapped[0], NULL, NULL, wrapped, environ);
+	if (status == 0) {
+		free(wrapped);
+		return;
+	}
+
+fallback:
+	free(wrapped);
+	posix_spawnp(NULL, command[0], NULL, NULL, command, environ);
 }
 
 void
