@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="./dwm-titus.png" alt="dwm-titus logo" width="190" />
-  <h1>dwm-titus</h1>
+  <img width="103" height="109" alt="image" src="https://github.com/user-attachments/assets/902d66d5-b4e4-4faf-84a7-a862a710e9b7" />
   <p><strong>A fast, focused Fedora X11 desktop built for keyboard-driven work.</strong></p>
   <p>
     <a href="https://dwm.christitus.com">Documentation</a> |
