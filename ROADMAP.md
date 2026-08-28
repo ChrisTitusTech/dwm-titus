@@ -297,7 +297,18 @@ Unify normal session behavior and application defaults.
 
 ## Phase 5: Personalization and Accessibility
 
-Status: Active (2026-08-22)
+Status: Active (verified 2026-08-27; APPEARANCE-001 in progress)
+
+### Current Checkpoint
+
+The shared theme provider and transactions are complete. Appearance inventory,
+wallpaper persistence, managed-shell fonts and scaling, and desktop font,
+cursor, icon, GTK, and Qt controls are merged through PR #184. The next ordered
+slice is panel-widget persistence; it is validated in a retained local commit
+but is not merged. Optional-component qualification, accessibility and
+notification policy, UI-5 decisions, and the combined Phase 5 qualification
+remain open. `docs/P5-STATUS.md` maps every active checkbox to its current
+evidence or next action.
 
 ### Objective
 

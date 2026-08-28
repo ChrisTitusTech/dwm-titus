@@ -5,6 +5,21 @@ file contains implementation work only for the active roadmap phase. Phase 4
 completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
 `docs/P4-EVIDENCE.md`, and the four detailed Phase 4 evidence records.
 
+## Verified Checkpoint
+
+Status verified 2026-08-27 against `origin/main` at `46837e5`. Ten of the 25
+Phase 5 implementation checkboxes below are merged and supported by passing
+hosted checks. The detailed mapping from tasks to pull requests, validation,
+and remaining work is recorded in `docs/P5-STATUS.md`.
+
+The next ordered boundary is panel-widget persistence. Its implementation is
+retained locally as commit `24e44a3` on `codex/phase5-panel-persistence` and has
+passed its focused, full-suite, QML, shell, nested-X11, and review checks. It is
+not on `origin/main`, has no published branch or pull request, and therefore
+remains unchecked here. Rebase or otherwise refresh it onto current `main`,
+repeat the affected exact-head checks, publish it for review, and merge it
+before starting the optional-component qualification boundary.
+
 ## Active Phase: Personalization and Accessibility
 
 Phase 5 begins from the merged Settings platform and semantic theme adapter.
