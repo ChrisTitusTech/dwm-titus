@@ -11,7 +11,7 @@ if [ ! -x "$session_launcher" ]; then
 fi
 
 usage() {
-	printf 'usage: %s list|launch <desktop-file>\n' "$0" >&2
+	printf 'usage: %s list|launch <desktop-file>|launch-chatgpt\n' "$0" >&2
 }
 
 desktop_id() {
@@ -236,6 +236,29 @@ list_apps() {
 			seen_ids=$seen_ids$id:
 			desktop_entry_summary "$file"
 		done |
+		awk -F '\t' '
+			{
+				row_count++
+				rows[row_count] = $0
+				name = tolower($1)
+				exec_line = tolower($4)
+				categories = ";" tolower($8)
+				web[row_count] = name == "chatgpt" &&
+					(index(exec_line, "chatgpt.com") > 0 ||
+					 index(categories, ";webapp;") > 0)
+				if (name == "chatgpt" && !web[row_count]) {
+					native_chatgpt = 1
+				}
+			}
+
+			END {
+				for (row = 1; row <= row_count; row++) {
+					if (!native_chatgpt || !web[row]) {
+						print rows[row]
+					}
+				}
+			}
+		' |
 		sort -f
 }
 
@@ -259,6 +282,44 @@ desktop_value() {
 			exit
 		}
 	' "$file"
+}
+
+is_chatgpt_entry() {
+	file=$1
+	name=$(desktop_value "$file" Name | tr '[:upper:]' '[:lower:]')
+	[ "$name" = chatgpt ]
+}
+
+is_chatgpt_web_entry() {
+	file=$1
+	is_chatgpt_entry "$file" || return 1
+
+	exec_line=$(desktop_value "$file" Exec | tr '[:upper:]' '[:lower:]')
+	categories=$(desktop_value "$file" Categories | tr '[:upper:]' '[:lower:]')
+	case $exec_line in
+	*chatgpt.com*) return 0 ;;
+	esac
+	case ";$categories" in
+	*";webapp;"*) return 0 ;;
+	esac
+	return 1
+}
+
+is_chatgpt_native_entry() {
+	file=$1
+	is_chatgpt_entry "$file" || return 1
+	is_chatgpt_web_entry "$file" && return 1
+	[ -n "$(desktop_entry_summary "$file")" ]
+}
+
+chatgpt_native_desktop() {
+	desktop_files |
+		while IFS= read -r file; do
+			if is_chatgpt_native_entry "$file"; then
+				printf '%s\n' "$file"
+				break
+			fi
+		done
 }
 
 fallback_launch() {
@@ -311,6 +372,20 @@ launch_app() {
 	fallback_launch "$file"
 }
 
+launch_chatgpt() {
+	file=$(chatgpt_native_desktop)
+	if [ -n "$file" ]; then
+		launch_app "$file"
+		return
+	fi
+
+	command -v webapp-launch >/dev/null 2>&1 || {
+		printf 'ChatGPT is not installed and webapp-launch is unavailable\n' >&2
+		return 1
+	}
+	launch_background webapp-launch https://chatgpt.com
+}
+
 case ${1:-list} in
 list)
 	list_apps
@@ -321,6 +396,13 @@ launch)
 		exit 2
 	fi
 	launch_app "$2"
+	;;
+launch-chatgpt)
+	if [ $# -ne 1 ]; then
+		usage
+		exit 2
+	fi
+	launch_chatgpt
 	;;
 *)
 	usage

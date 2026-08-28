@@ -41,6 +41,8 @@ symlink_desktop="$work/data/applications/symlink.desktop"
 flatpak_desktop="$work/home/.local/share/flatpak/exports/share/applications/flatpak.desktop"
 snap_desktop="$work/home/.local/share/snapd/applications/snap.desktop"
 localized_desktop="$work/data/applications/localized.desktop"
+chatgpt_native_desktop="$work/data/applications/chatgpt.desktop"
+chatgpt_web_desktop="$work/empty/applications/ChatGPT.desktop"
 
 cat >"$work/data/applications/visible.desktop" <<'DESKTOP'
 [Desktop Entry]
@@ -149,6 +151,24 @@ Exec=hidden-app
 NoDisplay=true
 DESKTOP
 
+mkdir -p "$work/empty/applications"
+cat >"$chatgpt_native_desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=ChatGPT
+GenericName=AI assistant
+Exec=chatgpt %U
+Categories=Utility;Development;
+DESKTOP
+
+cat >"$chatgpt_web_desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=ChatGPT
+Exec=webapp-launch https://chatgpt.com/
+Categories=Network;WebApp;
+DESKTOP
+
 cat >"$work/data/applications/link.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Link
@@ -177,6 +197,10 @@ if printf '%s\n' "$output" | grep -F 'Hidden App'; then
 	exit 1
 fi
 if printf '%s\n' "$output" | grep -F 'Link Entry'; then
+	exit 1
+fi
+assert_listed "$chatgpt_native_desktop"
+if printf '%s\n' "$output" | grep -F "$chatgpt_web_desktop"; then
 	exit 1
 fi
 
@@ -294,6 +318,39 @@ assert_file_line "$work/dex-fifo.log" "$work/data/applications/visible.desktop"
 assert_file_line "$work/theme-env-fifo.log" "$(printf 'parent-qt\tParent-Cursor\t24')"
 rm "$work/home/.config/dwm-titus/theme-env.sh"
 mv "$work/theme-env.saved" "$work/home/.config/dwm-titus/theme-env.sh"
+
+rm -f "$work/dex.log"
+DWM_TEST_DEX_LOG="$work/dex.log" \
+	HOME="$work/home" \
+	PATH="$work/bin:$PATH" \
+	XDG_DATA_HOME="$work/empty" \
+	XDG_DATA_DIRS="$work/data" \
+	"$repo/scripts/dwm-quickshell-launcher" launch-chatgpt
+assert_file_line "$work/dex.log" "$chatgpt_native_desktop"
+
+rm "$chatgpt_native_desktop"
+output=$(
+	LANG=en_US.UTF-8 \
+		HOME="$work/home" \
+		XDG_DATA_HOME="$work/empty" \
+		XDG_DATA_DIRS="$work/data" \
+		"$repo/scripts/dwm-quickshell-launcher" list
+)
+assert_listed "$chatgpt_web_desktop"
+
+cat >"$work/bin/webapp-launch" <<'SH'
+#!/bin/sh
+printf '%s\n' "$1" >"$DWM_TEST_WEBAPP_LOG"
+SH
+chmod +x "$work/bin/webapp-launch"
+
+DWM_TEST_WEBAPP_LOG="$work/webapp.log" \
+	HOME="$work/home" \
+	PATH="$work/bin:$PATH" \
+	XDG_DATA_HOME="$work/empty" \
+	XDG_DATA_DIRS="$work/data" \
+	"$repo/scripts/dwm-quickshell-launcher" launch-chatgpt
+assert_file_line "$work/webapp.log" 'https://chatgpt.com'
 
 if "$repo/scripts/dwm-quickshell-launcher" launch "$work/data/applications/missing.desktop" 2>"$work/missing.err"; then
 	exit 1

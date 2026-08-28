@@ -35,13 +35,17 @@ The active-monitor shortcut uses the monitor under the pointer. Clipboard
 captures are PNG selections owned by `xclip`, while captures saved to disk use
 JPEG. The lightweight capture flow intentionally has no annotation toolbar.
 
-## Web Apps
+## Applications and Web Apps
 
 | Keys | Action |
 |------|--------|
 | `Super` + `A` | ChatGPT |
 | `Super` + `Shift` + `A` | Gemini |
 | `Super` + `Shift` + `X` | X/Twitter — new post |
+
+`Super` + `A` opens an installed ChatGPT desktop application when one is
+available and falls back to the ChatGPT web app otherwise. The application
+launcher hides the ChatGPT web entry while a native desktop entry is installed.
 
 ## Window Management
 

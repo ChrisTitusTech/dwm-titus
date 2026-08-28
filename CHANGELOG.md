@@ -174,6 +174,10 @@ versions from `config.mk`.
   performs one explicit retry, and successful preview lifecycle actions re-arm
   automatic status observation.
 
+- Prefer an installed ChatGPT desktop application for `Super`+`A` and hide its
+  duplicate ChatGPT web entry from the managed application launcher, while
+  retaining the web app as the fallback when no native desktop entry exists.
+
 - Keep the managed Quickshell recovery scoped to the exact configuration and
   display, validate fixed PID/start-time cohorts before signals, and bound
   graceful and forced recovery so a stale shell cannot suppress the panel or

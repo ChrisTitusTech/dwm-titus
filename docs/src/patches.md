@@ -104,6 +104,7 @@ Save the file to apply a new theme instantly across supported apps.
 |--------|-------------|
 | `dwm-controlcenter` | Quickshell control center (`Super`+`F1`) |
 | `dwm-keybinds` | Searchable keybind viewer (`Super`+`/`) |
+| `dwm-quickshell-launcher` | Indexes desktop entries and launches ChatGPT with a native-first web fallback |
 | `dwm-screenshot` | Cursor-free `maim` wrapper (screen, full, gui, clip modes) |
 | `dwm-settings-theme` | Previews, applies, resets, and recovers theme selection transactionally |
 | `theme-apply.sh` | Converges the active theme from user or managed `themes.toml` across supported apps |
