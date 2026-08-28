@@ -79,8 +79,9 @@ run_check() {
 		XDG_CONFIG_HOME="$config_home" \
 		XDG_DATA_HOME="$xdg_data_home" \
 		XDG_STATE_HOME="$state_home" \
-		DWM_DEV_SYNC_TEST_MODE="${DWM_DEV_SYNC_TEST_MODE:-0}" \
-		DWM_DEV_SYNC_DESKTOP_FEATURE="${DWM_DEV_SYNC_DESKTOP_FEATURE:-}" \
+		DWM_DEV_SYNC_TEST_MODE="${DWM_DEV_SYNC_TEST_MODE:-1}" \
+		DWM_DEV_SYNC_DESKTOP_FEATURE="${DWM_DEV_SYNC_DESKTOP_FEATURE:-1}" \
+		DWM_DEV_SYNC_SOURCE_UPDATE_READY="${DWM_DEV_SYNC_SOURCE_UPDATE_READY:-1}" \
 		"$test_repo/scripts/dev-sync-install.sh" --check
 }
 
@@ -89,12 +90,12 @@ grep -Fqx 'All managed files match the checkout.' "$output"
 grep -Fqx 'Runtime validation skipped by DWM_DEV_SYNC_SKIP_RUNTIME=1.' "$output"
 
 mv "$test_bin/xsettingsd" "$test_bin/xsettingsd.missing"
-if run_check >"$output" 2>&1; then
+if DWM_DEV_SYNC_SOURCE_UPDATE_READY=0 run_check >"$output" 2>&1; then
 	printf '%s\n' 'Missing source-update dependency unexpectedly passed.' >&2
 	exit 1
 fi
 grep -Fq 'source-update dependencies are missing' "$output"
-DWM_DEV_SYNC_TEST_MODE=1 DWM_DEV_SYNC_DESKTOP_FEATURE=0 run_check >"$output"
+DWM_DEV_SYNC_DESKTOP_FEATURE=0 DWM_DEV_SYNC_SOURCE_UPDATE_READY=0 run_check >"$output"
 grep -Fqx 'All managed files match the checkout.' "$output"
 if grep -Fq 'source-update dependencies' "$output"; then
 	printf '%s\n' 'Core-profile check reached desktop dependency reconciliation.' >&2
@@ -157,6 +158,8 @@ chmod +x "$test_bin/id" "$test_bin/sudo" "$test_bin/dnf"
 mv "$test_bin/xsettingsd" "$test_bin/xsettingsd.missing"
 if PATH="$test_bin:$PATH" \
 	DWM_DEV_SYNC_TEST_MODE=1 \
+	DWM_DEV_SYNC_DESKTOP_FEATURE=1 \
+	DWM_DEV_SYNC_SOURCE_UPDATE_READY=0 \
 	DWM_DEV_SYNC_OS_RELEASE="$work/os-release" \
 	DWM_DEV_SYNC_SKIP_RUNTIME=1 \
 	USER_HOME="$test_home" \

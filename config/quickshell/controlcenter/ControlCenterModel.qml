@@ -11,11 +11,17 @@ Scope {
     property bool utilityVisible: false
     property string utilityPage: ""
     property var utilityScreen: null
-    property bool showVolumeWidget: true
-    property bool showBluetoothWidget: true
-    property bool showNetworkWidget: true
-    property bool showPowerWidget: true
-    property bool showWorkspaceWidget: true
+    property var panelSettingsModel: null
+    readonly property bool showVolumeWidget: root.panelSettingsModel
+        ? root.panelSettingsModel.widgetEnabled("volume") : true
+    readonly property bool showBluetoothWidget: root.panelSettingsModel
+        ? root.panelSettingsModel.widgetEnabled("bluetooth") : true
+    readonly property bool showNetworkWidget: root.panelSettingsModel
+        ? root.panelSettingsModel.widgetEnabled("network") : true
+    readonly property bool showPowerWidget: root.panelSettingsModel
+        ? root.panelSettingsModel.widgetEnabled("power") : true
+    readonly property bool showWorkspaceWidget: root.panelSettingsModel
+        ? root.panelSettingsModel.widgetEnabled("workspaces") : true
     property string message: ""
     property string pendingAction: ""
     property bool actionSucceeded: false
@@ -73,19 +79,21 @@ Scope {
     }
 
     function widgetEnabled(name) {
-        if (name === "Volume") return root.showVolumeWidget;
-        if (name === "Bluetooth") return root.showBluetoothWidget;
-        if (name === "Network") return root.showNetworkWidget;
-        if (name === "Power") return root.showPowerWidget;
-        return root.showWorkspaceWidget;
+        if (!root.panelSettingsModel) return true;
+        if (name === "Volume") return root.panelSettingsModel.widgetEnabled("volume");
+        if (name === "Bluetooth") return root.panelSettingsModel.widgetEnabled("bluetooth");
+        if (name === "Network") return root.panelSettingsModel.widgetEnabled("network");
+        if (name === "Power") return root.panelSettingsModel.widgetEnabled("power");
+        return root.panelSettingsModel.widgetEnabled("workspaces");
     }
 
     function toggleWidget(name) {
-        if (name === "Volume") root.showVolumeWidget = !root.showVolumeWidget;
-        else if (name === "Bluetooth") root.showBluetoothWidget = !root.showBluetoothWidget;
-        else if (name === "Network") root.showNetworkWidget = !root.showNetworkWidget;
-        else if (name === "Power") root.showPowerWidget = !root.showPowerWidget;
-        else if (name === "Workspaces") root.showWorkspaceWidget = !root.showWorkspaceWidget;
+        if (!root.panelSettingsModel) return;
+        if (name === "Volume") root.panelSettingsModel.toggleWidget("volume");
+        else if (name === "Bluetooth") root.panelSettingsModel.toggleWidget("bluetooth");
+        else if (name === "Network") root.panelSettingsModel.toggleWidget("network");
+        else if (name === "Power") root.panelSettingsModel.toggleWidget("power");
+        else if (name === "Workspaces") root.panelSettingsModel.toggleWidget("workspaces");
     }
 
     function toggle() {

@@ -662,11 +662,11 @@ Phase 3 NetworkManager, BlueZ, PipeWire, and media workflows, and Phase 4 power,
 session-action, default-application, MIME, and XDG autostart workflows. Active
 Phase 5 now includes merged theme transactions, wallpaper persistence,
 managed-shell typography, and desktop font, cursor, icon, GTK, and Qt controls.
-The remaining Phase 5 surface begins with panel-widget persistence and combined
-optional-component qualification, followed by notifications, practical X11
-accessibility controls, selected UI-5 work, and final phase qualification. The
-ordered status is recorded in `ROADMAP.md`, `TASKS.md`, and
-`docs/P5-STATUS.md`.
+The current review boundary adds panel-widget persistence. The remaining Phase
+5 surface begins with combined optional-component qualification, followed by
+notifications, practical X11 accessibility controls, selected UI-5 work, and
+final phase qualification. The ordered status is recorded in `ROADMAP.md`,
+`TASKS.md`, and `docs/P5-STATUS.md`.
 
 The installer contains a Fedora-only package map and rejects other systems.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and

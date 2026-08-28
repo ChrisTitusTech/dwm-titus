@@ -33,6 +33,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
+	scripts/dwm-panel-settings \
 	scripts/dwm-quickshell-launcher \
 	scripts/dwm-quickshell-controls \
 	scripts/dwm-quickshell-controlcenter \
@@ -321,10 +322,10 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -429,6 +430,9 @@ check-quickshell-large-surfaces-xvfb: all
 
 check-quickshell-panel-menus:
 	tests/test-quickshell-panel-menus.sh
+
+check-quickshell-panel-settings:
+	tests/test-quickshell-panel-settings.sh
 
 check-quickshell-command-menu:
 	tests/test-quickshell-command-menu.sh
@@ -600,6 +604,7 @@ check:
 	$(MAKE) check-quickshell-large-surfaces
 	$(MAKE) check-quickshell-large-surfaces-xvfb
 	$(MAKE) check-quickshell-panel-menus
+	$(MAKE) check-quickshell-panel-settings
 	$(MAKE) check-quickshell-command-menu
 	$(MAKE) check-quickshell-qml
 	$(MAKE) check-quickshell-notifications
@@ -630,5 +635,5 @@ check:
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-diagnostics check-status check-system-health check-settings \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-panel-settings check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
 	install-cursors native release release-check uninstall

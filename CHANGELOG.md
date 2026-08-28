@@ -8,6 +8,13 @@ versions from `config.mk`.
 
 ### Added
 
+- Persist workspace, volume, Bluetooth, network, and power panel visibility in
+  one versioned user-owned state file shared by every monitor, Control Center,
+  and Settings. An absent file migrates from the prior implicit all-on state;
+  malformed, incomplete, unsafe, or unsupported state falls back all-on
+  without preventing shell startup. Fixed atomic set/reset actions preserve
+  file mode and refuse concurrent or unsafe replacements.
+
 - Add Settings Appearance controls for desktop font and text scale, cursor and
   icon themes, GTK themes, and Qt platform themes. The root Appearance model
   consumes the existing pane-scoped bounded inventory and the versioned
@@ -119,6 +126,11 @@ versions from `config.mk`.
   recommended/full desktop and both Fedora image variants.
 
 ### Changed
+
+- Increase the Settings window to 1180x760 and tighten its navigation rows,
+  pane margins, capability cards, and display controls so more options remain
+  visible without reducing the configured text scale. Clamp the enlarged
+  window to the active screen on smaller outputs.
 
 - Make DWM's hot-reloaded TOML paths honor `XDG_CONFIG_HOME` and
   `XDG_DATA_HOME`, matching the managed shell and appearance provider.

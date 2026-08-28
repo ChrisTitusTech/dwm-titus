@@ -1,18 +1,18 @@
 # Phase 5 Project Status
 
-Date: 2026-08-27
+Date: 2026-08-28
 
 ## Verification Baseline
 
 This checkpoint was reconciled against `origin/main` at
-`46837e553b4a98dcc516e4304aa18a06a6ab541d`. The primary checkout was clean,
-matched that remote revision, and was the only registered worktree. GitHub had
-no open pull request targeting `main`.
+`5f806afec17a60d56180542dc309750b47672e69`. The panel-widget persistence
+branch is one reviewable commit directly on that baseline. GitHub had no open
+pull request targeting `main`.
 
 The active `TASKS.md` contains 25 implementation checkboxes. Ten are complete
-on `main`; 15 remain open. A checkbox is counted as complete only when the work
-is merged and its applicable validation is recorded. Locally validated work is
-listed separately and does not advance the merged checklist.
+on `main`; this review boundary validates one additional checkbox and leaves 14
+open in the branch. The panel checkbox does not advance the merged-project
+count until the branch is reviewed and merged.
 
 The reconciled checkpoint and these documentation changes passed:
 
@@ -49,34 +49,44 @@ The detailed contracts and focused validation commands remain in
 `P5-FONT-CONTROLS.md`, and `P5-APPEARANCE-CONTROLS.md`. The merged fixes and
 user-visible behavior are also recorded under the Unreleased changelog.
 
-## Retained but Not Merged
+## Current Review Boundary
 
-Panel-widget persistence is implemented by local commit
-`24e44a3186c1639a9119cb709f9d80d19486ed4d` on
+Panel-widget persistence is implemented on
 `codex/phase5-panel-persistence`. It adds one versioned user state file, one
 root model shared by every monitor, Control Center and Settings integration,
 safe migration and fallback behavior, and event-driven updates.
 
-The exact commit passed the focused panel, Control Center, panel-menu,
+The exact working tree passed the focused panel, Control Center, panel-menu,
 nested-X11, QML lint, ShellCheck, shfmt, clean-build, full managed-suite, and
 diff checks. Built-in Codex review and independent CodeRabbit review reported
-no remaining findings. The branch is one unique commit and two `main` commits
-behind this checkpoint; the intervening `main` changes do not produce a
-merge-tree conflict. The branch is not published and has no pull request, so
-the panel-widget checkbox remains open.
+no remaining findings. The branch has been refreshed directly onto the current
+checkpoint and is not published. The panel-widget checkbox is complete in this
+review boundary but remains unmerged project work.
 
-Next action: refresh this commit onto current `main`, rerun affected validation
-at the resulting exact head, publish a ready-for-review pull request, resolve
-hosted review and CI, and merge it.
+The exact working tree was synchronized through `scripts/dev-sync-install.sh`.
+All managed files match, and rollback backup
+`20260828T153709Z-1472673` was created. After a full DWM logout/login, the
+active, installed, and checkout DWM binaries matched byte-for-byte. One managed
+Quickshell instance exposed the panel, five tray clients, the Control Center,
+and Settings Appearance. Settings reached `ready` on Fedora Linux 44 with the
+appearance provider available and all five configurable panel widgets enabled
+through the shared model. Its installed 1180x760 window displayed all nine
+sections and the compact display controls without reducing text scale; closed
+idle measured 0.000% CPU over five seconds. The current workstation session had
+one active monitor, so real multi-monitor persistence remains untested here;
+nested-X11 validation covers the shared-state path.
+
+Next action: publish a ready-for-review pull request, resolve hosted review and
+CI, and merge it before starting optional-component qualification.
 
 ## Open Task Boundaries
 
 | Boundary | Open checkboxes | Verified current state | Next evidence needed |
 | --- | ---: | --- | --- |
-| APPEARANCE-001 | 2 | Panel persistence is locally validated but unmerged. Cross-capability optional-component behavior is not yet qualified as one boundary. | Merge the panel slice, then test missing Picom, Feh, toolkit themes, wallpaper directories, and delegated tools without cross-capability failure. |
+| APPEARANCE-001 | 1 | Panel persistence is locally validated but unmerged. Cross-capability optional-component behavior is not yet qualified as one boundary. | Merge the panel slice, then test missing Picom, Feh, toolkit themes, wallpaper directories, and delegated tools without cross-capability failure. |
 | ACCESSIBILITY-001 | 4 | No checkbox is complete. Existing text-scale behavior is an appearance control and does not by itself satisfy the accessibility contract. | Define capabilities, implement Settings controls, apply contrast and reduced motion, add notification policy, and validate keyboard-only and fresh-session behavior. |
 | P5-UI5 | 4 | No candidate decision record is complete. | Inventory candidates, record adopt/defer/reject decisions, and qualify each adopted X11-native experience independently. |
-| P5-VALIDATE | 5 | Individual merged slices and the retained panel commit have focused and full-suite evidence, but the combined Phase 5 product is incomplete. | Run the final Fedora 44, clean build, full suite, QML, shell, install/parity, fresh-login, `startx`, multi-monitor, optional-loss, recovery, and 30-second CPU qualification after all selected Phase 5 work merges. |
+| P5-VALIDATE | 5 | Individual merged slices and the current panel boundary have focused and full-suite evidence, but the combined Phase 5 product is incomplete. | Run the final Fedora 44, clean build, full suite, QML, shell, install/parity, fresh-login, `startx`, multi-monitor, optional-loss, recovery, and 30-second CPU qualification after all selected Phase 5 work merges. |
 
 ## Phase Position
 

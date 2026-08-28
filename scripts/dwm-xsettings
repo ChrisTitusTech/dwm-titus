@@ -235,11 +235,21 @@ wait_for_reload_ack() {
 	return 1
 }
 
+xsettingsd_available() {
+	[[ ${DWM_TEST_XSETTINGSD_UNAVAILABLE:-0} != 1 ]] &&
+		command -v xsettingsd >/dev/null 2>&1
+}
+
+dump_xsettings_available() {
+	[[ ${DWM_TEST_DUMP_XSETTINGS_UNAVAILABLE:-0} != 1 ]] &&
+		command -v dump_xsettings >/dev/null 2>&1
+}
+
 start_or_reload() {
 	local identities identity pid
-	command -v xsettingsd >/dev/null 2>&1 ||
+	xsettingsd_available ||
 		die 'xsettingsd is unavailable for managed X11 text scaling'
-	command -v dump_xsettings >/dev/null 2>&1 ||
+	dump_xsettings_available ||
 		die 'dump_xsettings is unavailable for managed X11 text scaling verification'
 	identities=$(matching_identities)
 	if [[ -n $identities ]]; then
@@ -316,8 +326,7 @@ status() {
 	load_config
 	printf 'xsettings-protocol\t1\t0\n'
 	if [[ -n $xsettings_dpi ]]; then
-		if ! command -v xsettingsd >/dev/null 2>&1 ||
-			! command -v dump_xsettings >/dev/null 2>&1; then
+		if ! xsettingsd_available || ! dump_xsettings_available; then
 			printf 'state\tunavailable\t%s\n' "$xsettings_dpi"
 		else
 			identities=$(matching_identities)

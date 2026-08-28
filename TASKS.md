@@ -7,18 +7,24 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
 
 ## Verified Checkpoint
 
-Status verified 2026-08-27 against `origin/main` at `46837e5`. Ten of the 25
-Phase 5 implementation checkboxes below are merged and supported by passing
-hosted checks. The detailed mapping from tasks to pull requests, validation,
-and remaining work is recorded in `docs/P5-STATUS.md`.
+Status verified 2026-08-28 against `origin/main` at `5f806af`. Ten of the 25
+Phase 5 implementation checkboxes are merged and supported by passing hosted
+checks. The current panel-widget persistence review boundary adds one validated
+checkbox, leaving 14 open in this branch. The detailed mapping from tasks to
+pull requests, validation, and remaining work is recorded in
+`docs/P5-STATUS.md`.
 
-The next ordered boundary is panel-widget persistence. Its implementation is
-retained locally as commit `24e44a3` on `codex/phase5-panel-persistence` and has
-passed its focused, full-suite, QML, shell, nested-X11, and review checks. It is
-not on `origin/main`, has no published branch or pull request, and therefore
-remains unchecked here. Rebase or otherwise refresh it onto current `main`,
-repeat the affected exact-head checks, publish it for review, and merge it
-before starting the optional-component qualification boundary.
+Panel-widget persistence has passed its focused helper, Control Center,
+panel-menu, QML, shell, nested-X11, clean-build, and full-suite checks on top of
+current `main`. The exact working tree is synchronized to the live installation.
+A fresh DWM login activated the installed binary byte-for-byte, one managed
+Quickshell instance, the panel and tray, and the Control Center and Settings
+surfaces. The installed Settings window opened at 1180x760 with all nine
+sections visible, tighter display controls, and text-scale-responsive inputs.
+The current session has one active monitor, so real multi-monitor persistence
+remains untested here; the shared-state path passed nested-X11 validation. The
+branch is not on `origin/main`, has no pull request, and must be reviewed and
+merged before starting the optional-component qualification boundary.
 
 ## Active Phase: Personalization and Accessibility
 
@@ -77,7 +83,7 @@ Acceptance:
     root-model updates.
   - [x] Add cursor, icon, GTK, and Qt mutation controls without overwriting
     unrelated toolkit configuration.
-- [ ] Move the existing in-memory panel-widget visibility controls onto shared,
+- [x] Move the existing in-memory panel-widget visibility controls onto shared,
   versioned user state with Settings integration, safe defaults, and migration
   that preserves the current Control Center behavior.
 - [ ] Preserve optional-component behavior: missing Picom, Feh, toolkit themes,

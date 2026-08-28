@@ -34,6 +34,7 @@ PanelWindow {
     required property var controlsModel
     required property var bluetoothModel
     required property var controlCenterModel
+    required property var panelSettingsModel
     required property var powerModel
     required property var powerMenuModel
     required property bool primaryPanel
@@ -93,7 +94,7 @@ PanelWindow {
                     }
 
                     PanelPill {
-                        visible: root.controlCenterModel.showWorkspaceWidget
+                        visible: root.panelSettingsModel.widgetEnabled("workspaces")
                         Layout.preferredWidth: workspaceRow.implicitWidth + 8
                         Layout.preferredHeight: Theme.pillHeight
 
@@ -222,7 +223,7 @@ PanelWindow {
                     }
 
                     PanelPill {
-                        visible: root.controlCenterModel.showBluetoothWidget
+                        visible: root.panelSettingsModel.widgetEnabled("bluetooth")
                         Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
                         Layout.preferredHeight: Theme.compactWidgetSize
                         active: root.bluetoothModel.visible
@@ -253,7 +254,7 @@ PanelWindow {
                     }
 
                     PanelPill {
-                        visible: root.controlCenterModel.showNetworkWidget
+                        visible: root.panelSettingsModel.widgetEnabled("network")
                         Layout.preferredWidth: networkRow.implicitWidth + Theme.networkWidgetHorizontalPadding * 2
                         Layout.preferredHeight: Theme.compactWidgetSize
                         active: root.networkModel.visible
@@ -285,7 +286,7 @@ PanelWindow {
                     }
 
                     PanelPill {
-                        visible: root.controlCenterModel.showVolumeWidget
+                        visible: root.panelSettingsModel.widgetEnabled("volume")
                         Layout.preferredWidth: volumeRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
                         Layout.preferredHeight: Theme.compactWidgetSize
                         active: root.controlsModel.visible
@@ -331,7 +332,7 @@ PanelWindow {
                     }
 
                     PanelPill {
-                        visible: root.controlCenterModel.showPowerWidget
+                        visible: root.panelSettingsModel.widgetEnabled("power")
                         Layout.preferredWidth: Theme.pillHeight
                         Layout.preferredHeight: Theme.pillHeight
                         active: root.powerMenuModel.visible

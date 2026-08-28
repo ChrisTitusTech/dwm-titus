@@ -332,9 +332,10 @@ test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$displa
 test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$input_pane")" -eq 5
 grep -Fq 'font.pixelSize: Theme.inputFontSize' "$network_pane"
 grep -Fq 'passwordInput.implicitHeight + 2 * Theme.spacingSm' "$network_pane"
-grep -Fq 'xPositionInput.implicitHeight + 14' "$display_pane"
-grep -Fq 'yPositionInput.implicitHeight + 14' "$display_pane"
-grep -Fq 'profileNameInput.implicitHeight + 16' "$display_pane"
+grep -Fq 'xPositionInput.implicitHeight + 10' "$display_pane"
+grep -Fq 'yPositionInput.implicitHeight + 10' "$display_pane"
+grep -Fq 'Math.max(104, outputContent.implicitHeight + 16)' "$display_pane"
+grep -Fq 'profileNameInput.implicitHeight + 12' "$display_pane"
 grep -Fq 'confirmationRow.implicitHeight + 16' "$display_pane"
 grep -Fq 'settingInput.implicitHeight + 14' "$input_pane"
 if grep -Eq 'FileView|themes\.toml|function applyThemes' "$theme"; then
