@@ -38,10 +38,12 @@ paired device, and disconnect a connected device through `bluetoothctl`.
 ## Panel Widgets
 
 The Bar Widgets page can show or hide the workspace, volume, Bluetooth,
-network, and power widgets for the current Quickshell session. The redesigned
-panel retains the active-window title, status segments, and system tray, and
-shows all nine dwm tags (workspaces). Hovering icon-only panel controls displays
-a text tooltip.
+network, and power widgets. Those choices are stored in the project-owned
+`~/.config/dwm-titus/panel-widgets.conf` state and apply to every monitor and
+future Quickshell session. Settings Appearance exposes the same shared controls
+and can restore the safe all-on default. The redesigned panel retains the
+active-window title, status segments, and system tray, and shows all nine dwm
+tags (workspaces). Hovering icon-only panel controls displays a text tooltip.
 
 The panel, popovers, and control-center cards use fully opaque colors. Their
 palette follows the active theme in `themes.toml` and updates when that file is

@@ -118,4 +118,8 @@ Singleton {
     function settingsThemeCommand(action, args) {
         return helperCommand("dwm-settings-theme", action, args, true);
     }
+
+    function panelSettingsCommand(action, args) {
+        return helperCommand("dwm-panel-settings", action, args, true);
+    }
 }

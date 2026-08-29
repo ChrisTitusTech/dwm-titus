@@ -22,7 +22,7 @@ Flickable {
     ColumnLayout {
         id: contentColumn
         width: root.width
-        spacing: Theme.sectionSpacing
+        spacing: Theme.spacingLg
 
         RowLayout {
             Layout.fillWidth: true
@@ -75,7 +75,7 @@ Flickable {
                 required property var modelData
 
                 Layout.fillWidth: true
-                Layout.preferredHeight: 126
+                Layout.preferredHeight: Math.max(104, outputContent.implicitHeight + 16)
                 color: Theme.controlNormalFill
                 border.color: outputCard.modelData.enabled ? Theme.controlSelectedBorder : Theme.controlNormalBorder
                 border.width: 1
@@ -91,11 +91,13 @@ Flickable {
                 }
 
                 ColumnLayout {
+                    id: outputContent
+
                     anchors.fill: parent
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 10
-                    anchors.topMargin: 10
-                    anchors.bottomMargin: 10
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 8
+                    anchors.topMargin: 8
+                    anchors.bottomMargin: 8
                     spacing: Theme.tightSpacing
 
                     RowLayout {
@@ -119,14 +121,14 @@ Flickable {
                         ShellButton { label: "Rotation: " + outputCard.modelData.rotation; enabled: outputCard.modelData.enabled; onActivated: root.settingsModel.cycleRotation(outputCard.index) }
                         Text { text: "X"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
                         Rectangle {
-                            Layout.preferredWidth: 72
-                            Layout.preferredHeight: Math.max(Theme.controlRowHeight,
-                                xPositionInput.implicitHeight + 14)
+                            Layout.preferredWidth: 60
+                            Layout.preferredHeight: Math.max(Theme.controlHeight,
+                                xPositionInput.implicitHeight + 10)
                             color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
                             TextInput {
                                 id: xPositionInput
                                 anchors.fill: parent
-                                anchors.margins: 7
+                                anchors.margins: 5
                                 color: Theme.textStrong
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.inputFontSize
@@ -143,14 +145,14 @@ Flickable {
                         }
                         Text { text: "Y"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
                         Rectangle {
-                            Layout.preferredWidth: 72
-                            Layout.preferredHeight: Math.max(Theme.controlRowHeight,
-                                yPositionInput.implicitHeight + 14)
+                            Layout.preferredWidth: 60
+                            Layout.preferredHeight: Math.max(Theme.controlHeight,
+                                yPositionInput.implicitHeight + 10)
                             color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
                             TextInput {
                                 id: yPositionInput
                                 anchors.fill: parent
-                                anchors.margins: 7
+                                anchors.margins: 5
                                 color: Theme.textStrong
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.inputFontSize
@@ -175,9 +177,10 @@ Flickable {
             Text { text: "Profile"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(36, profileNameInput.implicitHeight + 16)
+                Layout.preferredHeight: Math.max(Theme.controlHeight,
+                    profileNameInput.implicitHeight + 12)
                 color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
-                TextInput { id: profileNameInput; anchors.fill: parent; anchors.margins: 8; text: root.profileName; color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.inputFontSize; onTextChanged: root.profileName = text }
+                TextInput { id: profileNameInput; anchors.fill: parent; anchors.margins: 6; text: root.profileName; color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.inputFontSize; onTextChanged: root.profileName = text }
             }
 			ShellButton { label: "Save profile"; enabled: root.profileName.trim().length > 0; onActivated: root.settingsModel.saveDisplay(root.profileName.trim()) }
 			ShellButton {

@@ -2,6 +2,9 @@
 set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+screen_geometry=${DWM_SETTINGS_TEST_SCREEN_GEOMETRY:-1280x800x24}
+expected_window_width=${DWM_SETTINGS_EXPECTED_WINDOW_WIDTH:-1180}
+expected_window_height=${DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT:-760}
 
 for command_name in Xvfb dbus-monitor dbus-run-session glib-compile-schemas \
 	gsettings inotifywait quickshell xdotool xinput xprop pgrep getconf; do
@@ -266,6 +269,7 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-settings-appearance" "$repo/scripts/dwm-settings-wallpaper" \
 	"$repo/scripts/dwm-settings-font" "$repo/scripts/dwm-settings-personalization" \
 	"$repo/scripts/dwm-settings-theme" "$repo/scripts/dwm-xsettings" \
+	"$repo/scripts/dwm-panel-settings" \
 	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
 
@@ -536,7 +540,7 @@ esac
 SH
 chmod +x "$data_home/dwm-titus/scripts/xset"
 
-Xvfb "$display" -screen 0 1280x800x24 -nolisten tcp -extension GLX >"$work/xvfb.log" 2>&1 &
+Xvfb "$display" -screen 0 "$screen_geometry" -nolisten tcp -extension GLX >"$work/xvfb.log" 2>&1 &
 xvfb_pid=$!
 xvfb_identity=$(capture_process_identity "$xvfb_pid")
 
@@ -698,8 +702,8 @@ width=$(printf '%s\n' "$geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
 height=$(printf '%s\n' "$geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
 x=$(printf '%s\n' "$geometry" | awk -F= '$1 == "X" { print $2 }')
 y=$(printf '%s\n' "$geometry" | awk -F= '$1 == "Y" { print $2 }')
-[ "$width" = 980 ]
-[ "$height" = 620 ]
+[ "$width" = "$expected_window_width" ]
+[ "$height" = "$expected_window_height" ]
 
 i=0
 while [ "$i" -lt 100 ]; do
@@ -1316,6 +1320,73 @@ appearance_recovery=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home X
 [ "$appearance_application" = partial ]
 [ "$appearance_preview" = none ]
 [ "$appearance_recovery" = none ]
+
+test_stage='validating shared panel widget persistence'
+panel_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelSettingsState)
+case $panel_state in defaults | available) ;; *) exit 1 ;; esac
+panel_volume=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetEnabled volume)
+[ "$panel_volume" = true ]
+
+panel_status_ready=$work/panel-status.ready
+panel_status_used=$work/panel-status.used
+managed_panel_helper=$data_home/dwm-titus/scripts/dwm-panel-settings
+mv "$managed_panel_helper" "$managed_panel_helper.real"
+cat >"$managed_panel_helper" <<EOF
+#!/bin/sh
+set -eu
+
+if [ "\${1:-}" = status ] && [ ! -e "$panel_status_used" ]; then
+	: >"$panel_status_used"
+	"$managed_panel_helper.real" status
+	: >"$panel_status_ready"
+	sleep 2
+else
+	exec "$managed_panel_helper.real" "\$@"
+fi
+EOF
+chmod 700 "$managed_panel_helper"
+HOME=$home XDG_CONFIG_HOME=$config_home XDG_RUNTIME_DIR=$runtime \
+	"$managed_panel_helper.real" set volume disabled >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	[ -e "$panel_status_ready" ] && break
+	i=$((i + 1))
+	sleep 0.01
+done
+[ -e "$panel_status_ready" ]
+HOME=$home XDG_CONFIG_HOME=$config_home XDG_RUNTIME_DIR=$runtime \
+	"$managed_panel_helper.real" reset >/dev/null
+sleep 2.5
+panel_volume=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetEnabled volume)
+[ "$panel_volume" = true ]
+
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetSet volume false >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	panel_volume=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetEnabled volume 2>/dev/null || true)
+	[ "$panel_volume" = false ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$panel_volume" = false ]
+expected=$(printf 'volume\tdisabled')
+grep -Fqx "$expected" "$config_home/dwm-titus/panel-widgets.conf"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetsReset >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	panel_volume=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetEnabled volume 2>/dev/null || true)
+	[ "$panel_volume" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$panel_volume" = true ]
 
 test_stage='validating desktop personalization Settings lifecycle'
 personalization_status=idle

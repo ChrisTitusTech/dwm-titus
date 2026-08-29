@@ -8,6 +8,7 @@ Flickable {
     id: root
 
     required property var appearanceModel
+    required property var panelSettingsModel
     required property var capabilities
     property string selectedThemeId: ""
     property string selectedWallpaperPath: ""
@@ -982,6 +983,84 @@ Flickable {
             resetLabel: "Follow DWM theme"
             candidates: root.appearanceModel.personalizationCandidates("qt", 24)
             advancedEditor: true
+        }
+
+        SectionLabel { label: "Panel widgets" }
+
+        StatusCard {
+            visible: root.panelSettingsModel.providerState !== "available"
+                && root.panelSettingsModel.providerState !== "defaults"
+            label: "Panel visibility"
+            statusState: root.panelSettingsModel.providerState
+            value: "Using safe defaults"
+            detail: root.panelSettingsModel.providerDetail
+        }
+
+        UiText {
+            Layout.fillWidth: true
+            text: "These choices apply to every monitor and persist for future shell sessions."
+            color: Theme.menuMutedText
+            wrapMode: Text.WordWrap
+        }
+
+        Repeater {
+            model: root.panelSettingsModel.widgets
+
+            delegate: Rectangle {
+                id: panelWidgetRow
+                required property var modelData
+
+                Layout.fillWidth: true
+                Layout.preferredHeight: 48
+                color: Theme.controlNormalFill
+                border.color: Theme.controlNormalBorder
+                border.width: Theme.controlBorderWidth
+                radius: Theme.controlRadius
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.spacingLg
+                    anchors.rightMargin: Theme.spacingLg
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: panelWidgetRow.modelData.label
+                        color: Theme.menuText
+                    }
+
+                    PanelToggleSwitch {
+                        checked: root.panelSettingsModel.widgetEnabled(panelWidgetRow.modelData.id)
+                        busy: root.panelSettingsModel.busy
+                        enabled: root.panelSettingsModel.mutationReady
+                        onToggled: root.panelSettingsModel.toggleWidget(panelWidgetRow.modelData.id)
+                    }
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            UiText {
+                Layout.fillWidth: true
+                text: root.panelSettingsModel.message.length > 0
+                        && !root.panelSettingsModel.actionSucceeded
+                    ? root.panelSettingsModel.message
+                    : root.panelSettingsModel.providerState !== "available"
+                        && root.panelSettingsModel.providerState !== "defaults"
+                        ? root.panelSettingsModel.providerDetail
+                        : root.panelSettingsModel.message.length > 0
+                            ? root.panelSettingsModel.message : root.panelSettingsModel.providerDetail
+                color: root.panelSettingsModel.providerState === "unavailable"
+                    ? Theme.danger : Theme.menuMutedText
+                wrapMode: Text.WordWrap
+            }
+
+            ShellButton {
+                label: "Show all widgets"
+                enabled: root.panelSettingsModel.mutationReady && !root.panelSettingsModel.busy
+                onActivated: root.panelSettingsModel.reset()
+            }
         }
 
         SectionLabel { label: "Application status" }

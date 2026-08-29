@@ -141,6 +141,14 @@ prepare_expected_files() {
 }
 
 source_update_dependencies_ready() {
+	if [ "${DWM_DEV_SYNC_TEST_MODE:-0}" = 1 ] &&
+		[ -n "${DWM_DEV_SYNC_SOURCE_UPDATE_READY:-}" ]; then
+		case $DWM_DEV_SYNC_SOURCE_UPDATE_READY in
+		1) return 0 ;;
+		0) return 1 ;;
+		*) die "invalid DWM_DEV_SYNC_SOURCE_UPDATE_READY value" ;;
+		esac
+	fi
 	command -v xsettingsd >/dev/null 2>&1 &&
 		command -v dump_xsettings >/dev/null 2>&1
 }
