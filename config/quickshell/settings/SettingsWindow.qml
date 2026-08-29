@@ -87,7 +87,7 @@ FloatingWindow {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 40
+                    Layout.preferredHeight: Theme.largeSurfaceSearchHeight
                     color: settingsSearch.activeFocus ? Theme.controlFocusFill : Theme.controlNormalFill
                     border.color: settingsSearch.activeFocus ? Theme.controlFocusBorder : Theme.controlNormalBorder
                     border.width: settingsSearch.activeFocus ? Theme.controlFocusBorderWidth : Theme.controlBorderWidth

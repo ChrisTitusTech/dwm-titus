@@ -13,6 +13,7 @@ runtime_base=${XDG_RUNTIME_DIR:-/tmp/dwm-titus-$UID}
 }
 lock_file=$runtime_base/dwm-panel-settings.lock
 readonly max_config_size=4096
+readonly max_restore_attempts=8
 readonly protocol_header=$'panel-settings-protocol\t1\t0'
 readonly widget_ids='workspaces volume bluetooth network power'
 
@@ -237,8 +238,9 @@ wait_for_rollback_test_release() {
 
 restore_concurrent_config() {
 	local staged=$1 expected_fingerprint=$2 published_fingerprint=$3
-	local candidate_fingerprint displaced_fingerprint current_fingerprint
-	while true; do
+	local candidate_fingerprint displaced_fingerprint current_fingerprint attempt=0
+	while ((attempt < max_restore_attempts)); do
+		attempt=$((attempt + 1))
 		candidate_fingerprint=$(entry_fingerprint "$staged" 2>/dev/null || true)
 		if [[ -z $candidate_fingerprint ]]; then
 			printf 'dwm-panel-settings: concurrent panel state retained at %s\n' "$staged" >&2
@@ -268,6 +270,27 @@ restore_concurrent_config() {
 		# the only entry this transaction may exchange away.
 		expected_fingerprint=$candidate_fingerprint
 	done
+	# The last failed comparison left the newest observed edit in staged and
+	# the prior candidate at config_file. Give that edit one final guarded
+	# exchange so exhaustion does not knowingly leave stale state published.
+	candidate_fingerprint=$(entry_fingerprint "$staged" 2>/dev/null || true)
+	current_fingerprint=$(entry_fingerprint "$config_file" 2>/dev/null || true)
+	if [[ -n $candidate_fingerprint && $current_fingerprint == "$expected_fingerprint" ]] &&
+		mv --exchange --no-copy -- "$staged" "$config_file"; then
+		displaced_fingerprint=$(entry_fingerprint "$staged" 2>/dev/null || true)
+		if [[ $displaced_fingerprint == "$expected_fingerprint" ]]; then
+			if [[ $displaced_fingerprint == "$published_fingerprint" ]]; then
+				unlink -- "$staged"
+			else
+				printf 'dwm-panel-settings: superseded panel state retained at %s\n' "$staged" >&2
+			fi
+			printf 'dwm-panel-settings: concurrent panel state restored at %s after retry exhaustion\n' \
+				"$config_file" >&2
+			return 1
+		fi
+	fi
+	printf 'dwm-panel-settings: concurrent panel state retained at %s\n' "$staged" >&2
+	return 1
 }
 
 publish_config() {

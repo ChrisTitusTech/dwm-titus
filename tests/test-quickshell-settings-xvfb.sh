@@ -1335,6 +1335,8 @@ managed_panel_helper=$data_home/dwm-titus/scripts/dwm-panel-settings
 mv "$managed_panel_helper" "$managed_panel_helper.real"
 cat >"$managed_panel_helper" <<EOF
 #!/bin/sh
+set -eu
+
 if [ "\${1:-}" = status ] && [ ! -e "$panel_status_used" ]; then
 	: >"$panel_status_used"
 	"$managed_panel_helper.real" status

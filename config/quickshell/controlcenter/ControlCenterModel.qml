@@ -12,6 +12,13 @@ Scope {
     property string utilityPage: ""
     property var utilityScreen: null
     property var panelSettingsModel: null
+    readonly property var widgetIds: ({
+        "Workspaces": "workspaces",
+        "Volume": "volume",
+        "Bluetooth": "bluetooth",
+        "Network": "network",
+        "Power": "power"
+    })
     readonly property bool showVolumeWidget: root.panelSettingsModel
         ? root.panelSettingsModel.widgetEnabled("volume") : true
     readonly property bool showBluetoothWidget: root.panelSettingsModel
@@ -79,21 +86,15 @@ Scope {
     }
 
     function widgetEnabled(name) {
-        if (!root.panelSettingsModel) return true;
-        if (name === "Volume") return root.panelSettingsModel.widgetEnabled("volume");
-        if (name === "Bluetooth") return root.panelSettingsModel.widgetEnabled("bluetooth");
-        if (name === "Network") return root.panelSettingsModel.widgetEnabled("network");
-        if (name === "Power") return root.panelSettingsModel.widgetEnabled("power");
-        return root.panelSettingsModel.widgetEnabled("workspaces");
+        const id = root.widgetIds[name];
+        if (!root.panelSettingsModel || id === undefined) return true;
+        return root.panelSettingsModel.widgetEnabled(id);
     }
 
     function toggleWidget(name) {
-        if (!root.panelSettingsModel) return;
-        if (name === "Volume") root.panelSettingsModel.toggleWidget("volume");
-        else if (name === "Bluetooth") root.panelSettingsModel.toggleWidget("bluetooth");
-        else if (name === "Network") root.panelSettingsModel.toggleWidget("network");
-        else if (name === "Power") root.panelSettingsModel.toggleWidget("power");
-        else if (name === "Workspaces") root.panelSettingsModel.toggleWidget("workspaces");
+        const id = root.widgetIds[name];
+        if (!root.panelSettingsModel || id === undefined) return;
+        root.panelSettingsModel.toggleWidget(id);
     }
 
     function toggle() {

@@ -28,7 +28,7 @@
 
 - `make check-quickshell-panel-settings` covers absent-state migration,
   persistence across helper invocations, malformed/future fallback, explicit
-  repair, reset, mode preservation, symlink refusal, and a deterministic
+  repair, reset, mode preservation, symlink refusal, and deterministic
   single- and repeated-concurrent-edit races.
 - `make check-quickshell-controlcenter check-quickshell-panel-menus` preserves
   the existing Control Center and panel interaction contracts.

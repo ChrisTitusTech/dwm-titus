@@ -283,6 +283,10 @@ fi
 test ! -e "$writable_config/dwm-titus/panel-widgets.conf"
 
 grep -Fq 'function panelSettingsCommand(action, args)' "$commands"
+grep -Fq 'readonly max_restore_attempts=8' "$helper"
+grep -Fq 'while ((attempt < max_restore_attempts)); do' "$helper"
+grep -Fq 'Give that edit one final guarded' "$helper"
+grep -Fq "current_fingerprint == \"\$expected_fingerprint\"" "$helper"
 grep -Fq 'panel-settings-protocol\t1\t0' "$model"
 grep -Fq 'Component.onCompleted: root.refresh()' "$model"
 grep -Fq 'watchChanges: true' "$model"
@@ -304,7 +308,11 @@ for widget in workspaces volume bluetooth network power; do
 	grep -Fq "root.panelSettingsModel.widgetEnabled(\"$widget\")" "$panel"
 done
 grep -Fq 'property var panelSettingsModel: null' "$control_model"
-grep -Fq 'root.panelSettingsModel.toggleWidget("volume")' "$control_model"
+grep -Fq 'readonly property var widgetIds:' "$control_model"
+grep -Fq '"Volume": "volume"' "$control_model"
+test "$(grep -Fc 'const id = root.widgetIds[name];' "$control_model")" -eq 2
+grep -Fq 'root.panelSettingsModel.widgetEnabled(id)' "$control_model"
+grep -Fq 'root.panelSettingsModel.toggleWidget(id)' "$control_model"
 grep -Fq 'enabled: !root.controlCenterModel.panelSettingsModel' "$control_window"
 grep -Fq 'function pageMessage()' "$control_window"
 grep -Fq 'return panelModel.providerDetail;' "$control_window"
