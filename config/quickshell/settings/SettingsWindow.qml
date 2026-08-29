@@ -289,20 +289,19 @@ FloatingWindow {
                         radius: Theme.largeSurfaceCardRadius
 
                         ColumnLayout {
+                            id: sectionContent
+
                             anchors.fill: parent
-                            anchors.margins: Theme.spacingXxl
-                            spacing: Theme.spacingXl
+                            anchors.margins: Theme.spacingLg
+                            spacing: Theme.spacingMd
 
-                            ColumnLayout {
+                            RowLayout {
+                                id: sectionHeader
+
                                 Layout.fillWidth: true
-                                spacing: Theme.spacingXxs
-
-                                SectionLabel {
-                                    label: root.settingsModel.selectedSectionId
-                                }
+                                spacing: Theme.spacingLg
 
                                 UiText {
-                                    Layout.fillWidth: true
                                     text: root.settingsModel.selectedSection().label
                                     color: Theme.popupText
                                     font.pixelSize: Theme.fontTitleSize
@@ -314,7 +313,7 @@ FloatingWindow {
                                     Layout.fillWidth: true
                                     text: root.settingsModel.selectedSection().description
                                     color: Theme.menuMutedText
-                                    font.pixelSize: Theme.fontBodySize
+                                    font.pixelSize: Theme.fontBodySmallSize
                                     elide: Text.ElideRight
                                 }
                             }
@@ -402,7 +401,7 @@ FloatingWindow {
                                     && root.settingsModel.selectedSectionId !== "defaults"
                                     && root.settingsModel.selectedSectionId !== "appearance"
                                 clip: true
-                                spacing: Theme.spacingMd
+                                spacing: Theme.spacingSm
                                 model: root.settingsModel.capabilitiesForSection(root.settingsModel.selectedSectionId)
 
                                 delegate: Rectangle {
@@ -412,7 +411,7 @@ FloatingWindow {
                                     readonly property color stateColor: root.statusColor(modelData.status)
 
                                     width: capabilityList.width
-                                    height: Math.max(78, cardColumn.implicitHeight + 16)
+                                    height: Math.max(68, cardColumn.implicitHeight + 12)
                                     color: Theme.controlNormalFill
                                     border.color: Theme.controlNormalBorder
                                     border.width: Theme.controlBorderWidth
@@ -433,8 +432,8 @@ FloatingWindow {
                                         anchors.fill: parent
                                         anchors.leftMargin: 12
                                         anchors.rightMargin: 10
-                                        anchors.topMargin: 8
-                                        anchors.bottomMargin: 8
+                                        anchors.topMargin: 6
+                                        anchors.bottomMargin: 6
                                         spacing: Theme.spacingXs
 
                                         RowLayout {

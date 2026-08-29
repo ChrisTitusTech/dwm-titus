@@ -536,6 +536,22 @@ grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/conf
 grep -Fq '? Theme.controlCenterX' "$repo/config/quickshell/power/PowerMenuWindow.qml"
 grep -Fq 'property bool navigates: false' "$repo/config/quickshell/core/MenuRow.qml"
 grep -Fq 'MenuHeader {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'readonly property int compactRowHeight: Math.max(28, Theme.fontBodySize + 12)' \
+	"$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'margin: Theme.spacingLg' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+if grep -Fq 'SectionLabel {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"; then
+	printf 'Control Center still renders redundant overview section headers\n' >&2
+	exit 1
+fi
+if grep -Fq 'text: root.powerModel.dpmsEnabled' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml" ||
+	grep -Fq 'text: root.powerModel.lockEnabled' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"; then
+	printf 'Control Center still renders duplicate power status labels\n' >&2
+	exit 1
+fi
+grep -Fq '? root.formatDuration(root.powerModel.dpmsTimeout) : "Off"' \
+	"$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq '? root.formatDuration(root.powerModel.lockTimeout) : "Off"' \
+	"$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'MenuHeader {' "$repo/config/quickshell/power/PowerMenuWindow.qml"
 grep -Fq 'delegate: MenuRow {' "$repo/config/quickshell/power/PowerMenuWindow.qml"
 grep -Fq 'popupHeight: powerCard.implicitHeight' "$repo/config/quickshell/power/PowerMenuWindow.qml"

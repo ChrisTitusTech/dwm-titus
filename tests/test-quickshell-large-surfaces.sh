@@ -13,6 +13,18 @@ for surface in \
 done
 
 grep -Fq 'title: "dwm settings"' "$quickshell/settings/SettingsWindow.qml"
+grep -Fq 'id: sectionHeader' "$quickshell/settings/SettingsWindow.qml"
+grep -Fq 'id: sectionContent' "$quickshell/settings/SettingsWindow.qml"
+grep -Fq 'anchors.margins: Theme.spacingLg' "$quickshell/settings/SettingsWindow.qml"
+grep -Fq 'height: Math.max(68, cardColumn.implicitHeight + 12)' \
+	"$quickshell/settings/SettingsWindow.qml"
+grep -Fq 'Layout.preferredHeight: Math.max(88, outputContent.implicitHeight + 12)' \
+	"$quickshell/settings/DisplaySettingsPane.qml"
+if grep -Fq 'label: root.settingsModel.selectedSectionId' \
+	"$quickshell/settings/SettingsWindow.qml"; then
+	printf 'Settings right pane still renders the selected section twice\n' >&2
+	exit 1
+fi
 grep -Fq 'title: "dwm system health"' "$quickshell/health/SystemHealthWindow.qml"
 grep -Fq 'title: "dwm notification history"' "$quickshell/notifications/NotificationHistoryWindow.qml"
 grep -Fq 'title: "dwm launcher"' "$quickshell/launcher/LauncherWindow.qml"

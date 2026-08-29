@@ -161,7 +161,6 @@ if [ -z "$window" ]; then
 	tail -40 "$work/quickshell.log" >&2
 	exit 1
 fi
-
 DISPLAY=$display xdotool mousemove 700 700 click 1
 i=0
 while [ "$i" -lt 100 ]; do
@@ -288,7 +287,7 @@ while [ "$i" -lt 200 ]; do
 done
 [ -n "$window" ]
 
-DISPLAY=$display xdotool mousemove 120 205 click 1
+DISPLAY=$display xdotool mousemove 120 175 click 1
 sleep 0.1
 DISPLAY=$display xdotool key Escape
 i=0
@@ -308,7 +307,7 @@ fi
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
 	quickshell ipc --path "$config" call controlcenter open >/dev/null
 sleep 0.1
-DISPLAY=$display xdotool mousemove 120 105 click 1
+DISPLAY=$display xdotool mousemove 120 82 click 1
 
 launcher_window=
 i=0

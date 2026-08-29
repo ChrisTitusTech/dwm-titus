@@ -75,7 +75,7 @@ Flickable {
                 required property var modelData
 
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(104, outputContent.implicitHeight + 16)
+                Layout.preferredHeight: Math.max(88, outputContent.implicitHeight + 12)
                 color: Theme.controlNormalFill
                 border.color: outputCard.modelData.enabled ? Theme.controlSelectedBorder : Theme.controlNormalBorder
                 border.width: 1
@@ -96,8 +96,8 @@ Flickable {
                     anchors.fill: parent
                     anchors.leftMargin: 12
                     anchors.rightMargin: 8
-                    anchors.topMargin: 8
-                    anchors.bottomMargin: 8
+                    anchors.topMargin: 6
+                    anchors.bottomMargin: 6
                     spacing: Theme.tightSpacing
 
                     RowLayout {

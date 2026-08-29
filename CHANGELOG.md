@@ -6,6 +6,13 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Changed
+
+- Compact the Control Center and Settings detail pane by removing redundant
+  headings and duplicate power-status lines, tightening margins, gaps, and
+  display and capability cards, and using dense text-scale-aware rows while
+  preserving the existing navigation, context, and controls.
+
 ### Added
 
 - Persist workspace, volume, Bluetooth, network, and power panel visibility in
