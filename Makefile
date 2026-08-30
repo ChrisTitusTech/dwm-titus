@@ -465,7 +465,7 @@ check-appearance:
 	tests/test-dwm-settings-theme.sh
 	tests/test-dwm-xsettings.sh
 
-check-phase5-optional-components:
+check-phase5-optional-components: check-quickshell-settings-xvfb
 	tests/test-dwm-settings-appearance.sh
 	tests/test-dwm-settings-appearance-inventory.sh
 	tests/test-dwm-settings-personalization.sh

@@ -2081,20 +2081,24 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState gtk 2>/dev/null || true)
 	qt_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState qt 2>/dev/null || true)
+	compositor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryState compositor 2>/dev/null || true)
 	[ "$font_state" = available ] && [ "$personalization_status" = available ] &&
 		[ "$personalization_mutation" = available ] && [ "$wallpaper_state" = unavailable ] &&
 		[ "$cursor_state" = unavailable ] && [ "$icon_state" = unavailable ] &&
-		[ "$gtk_state" = unavailable ] && [ "$qt_state" = partial ] && break
+		[ "$gtk_state" = unavailable ] && [ "$qt_state" = partial ] &&
+		[ "$compositor_state" = unavailable ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
 if [ "$font_state" != available ] || [ "$personalization_status" != available ] ||
 	[ "$personalization_mutation" != available ] || [ "$wallpaper_state" != unavailable ] ||
 	[ "$cursor_state" != unavailable ] || [ "$icon_state" != unavailable ] ||
-	[ "$gtk_state" != unavailable ] || [ "$qt_state" != partial ]; then
-	printf 'Combined optional loss did not remain capability-scoped: %s / %s / %s / %s / %s / %s / %s / %s\n' \
+	[ "$gtk_state" != unavailable ] || [ "$qt_state" != partial ] ||
+	[ "$compositor_state" != unavailable ]; then
+	printf 'Combined optional loss did not remain capability-scoped: %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
 		"$font_state" "$personalization_status" "$personalization_mutation" "$wallpaper_state" \
-		"$cursor_state" "$icon_state" "$gtk_state" "$qt_state" >&2
+		"$cursor_state" "$icon_state" "$gtk_state" "$qt_state" "$compositor_state" >&2
 	exit 1
 fi
 process_identity_alive "$quickshell_identity"

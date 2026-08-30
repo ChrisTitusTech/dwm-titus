@@ -660,6 +660,10 @@ ShellRoot {
             return appearanceModel.applicationState;
         }
 
+        function appearanceInventoryState(capability: string): string {
+            return appearanceModel.inventorySelection(capability).state;
+        }
+
         function appearanceIntegrationState(integrationId: string): string {
             const match = appearanceModel.integrations.find(function(item) { return item.id === integrationId; });
             return match ? match.state : "";

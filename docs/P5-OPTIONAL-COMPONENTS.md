@@ -46,10 +46,12 @@ scripts/run-tests scripts/quickshell-qmllint --root config/quickshell
 shellcheck tests/test-dwm-settings-appearance-inventory.sh \
   tests/test-dwm-settings-personalization.sh \
   tests/test-dwm-settings-wallpaper.sh \
+  tests/test-quickshell-appearance-model.sh \
   tests/test-quickshell-settings-xvfb.sh
 shfmt -d tests/test-dwm-settings-appearance-inventory.sh \
   tests/test-dwm-settings-personalization.sh \
   tests/test-dwm-settings-wallpaper.sh \
+  tests/test-quickshell-appearance-model.sh \
   tests/test-quickshell-settings-xvfb.sh
 mdbook build docs --dest-dir <temporary-output>
 git diff --check
