@@ -2131,6 +2131,8 @@ baseline_qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt)
 baseline_appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus)
+baseline_appearance_application=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceApplicationState)
 baseline_gtk_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState gtk)
 baseline_qt_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2194,6 +2196,8 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontState 2>/dev/null || true)
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	appearance_application=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceApplicationState 2>/dev/null || true)
 	desktop_font_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryState font 2>/dev/null || true)
 	inventory_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2274,6 +2278,7 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceErrorCode compositor 2>/dev/null || true)
 	[ "$font_state" = available ] &&
 		[ "$appearance_status" = partial ] &&
+		[ "$appearance_application" = partial ] &&
 		[ "$desktop_font_state" = available ] &&
 		[ "$inventory_provider" = available ] && [ "$personalization_status" = available ] &&
 		[ "$personalization_mutation" = available ] && [ "$wallpaper_provider" = partial ] &&
@@ -2306,6 +2311,7 @@ while [ "$i" -lt 100 ]; do
 done
 if [ "$font_state" != available ] ||
 	[ "$appearance_status" != partial ] ||
+	[ "$appearance_application" != partial ] ||
 	[ "$desktop_font_state" != available ] ||
 	[ "$inventory_provider" != available ] || [ "$personalization_status" != available ] ||
 	[ "$personalization_mutation" != available ] || [ "$wallpaper_provider" != partial ] ||
@@ -2352,6 +2358,7 @@ if [ "$font_state" != available ] ||
 		"$cursor_integration_detail" "$compositor_error_code" "$compositor_integration_detail" >&2
 	printf '  wallpaper details: mutation=%s; reset=%s\n' \
 		"$wallpaper_mutation_detail" "$wallpaper_reset_detail" >&2
+	printf '  aggregate application state: %s\n' "$appearance_application" >&2
 	exit 1
 fi
 process_identity_alive "$quickshell_identity"
@@ -2364,6 +2371,8 @@ i=0
 while [ "$i" -lt 100 ]; do
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	appearance_application=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceApplicationState 2>/dev/null || true)
 	wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
 	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2431,6 +2440,7 @@ while [ "$i" -lt 100 ]; do
 	compositor_error_code=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceErrorCode compositor 2>/dev/null || true)
 	[ "$appearance_status" = "$baseline_appearance_status" ] &&
+		[ "$appearance_application" = "$baseline_appearance_application" ] &&
 		[ "$wallpaper_provider" = "$baseline_wallpaper_provider" ] &&
 		[ "$wallpaper_state" = "$baseline_wallpaper_state" ] &&
 		[ "$inventory_provider" = "$baseline_inventory_provider" ] &&
@@ -2467,6 +2477,7 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 if [ "$appearance_status" != "$baseline_appearance_status" ] ||
+	[ "$appearance_application" != "$baseline_appearance_application" ] ||
 	[ "$wallpaper_provider" != "$baseline_wallpaper_provider" ] ||
 	[ "$wallpaper_state" != "$baseline_wallpaper_state" ] ||
 	[ "$inventory_provider" != "$baseline_inventory_provider" ] ||
@@ -2514,6 +2525,8 @@ if [ "$appearance_status" != "$baseline_appearance_status" ] ||
 		"$cursor_integration_detail" "$compositor_error_code" "$compositor_integration_detail" >&2
 	printf '  wallpaper details: mutation=%s; reset=%s\n' \
 		"$wallpaper_mutation_detail" "$wallpaper_reset_detail" >&2
+	printf '  aggregate application state: %s (baseline %s)\n' \
+		"$appearance_application" "$baseline_appearance_application" >&2
 	exit 1
 fi
 
