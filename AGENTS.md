@@ -64,11 +64,16 @@ package or installation path.
 
 ## Git and Review Workflow
 
-- For implementation work, automatically create a `codex/` branch, make small
-  coherent commits, push the branch, and open a ready-for-review pull request
-  after the applicable local gates pass. Do not pause for repeated Git-action
-  approval unless the user requests local-only work or sets an explicit stop
-  point.
+- Before implementation work, determine the intended pull request base
+  (`main` unless the work is explicitly stacked), verify the current branch's
+  ancestry and divergence, and create a valid `codex/<short-topic>` branch or
+  separate worktree from that base. If the name already exists, add a distinct
+  short suffix; never build the pull request from an unrelated or unexpectedly
+  diverged branch.
+- Automatically make small coherent commits, push the branch, and open a
+  ready-for-review pull request after the applicable local gates pass. Do not
+  pause for repeated Git-action approval unless the user requests local-only
+  work or sets an explicit stop point.
 - Run `git status --short` before editing, preserve all pre-existing worktree
   changes, and inspect the exact staged files before every commit. When
   unrelated changes cannot be isolated safely, use a separate worktree or ask
