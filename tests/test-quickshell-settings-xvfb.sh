@@ -2190,6 +2190,8 @@ baseline_inventory_watch_state=$(settings_ipc_retry appearanceInventoryWatchStat
 baseline_font_mutation_ready=$(settings_ipc_retry appearanceFontMutationReady)
 baseline_cursor_state=$(settings_ipc_retry appearancePersonalizationEffectiveState cursor)
 baseline_icon_state=$(settings_ipc_retry appearancePersonalizationEffectiveState icon)
+baseline_cursor_reset_state=$(settings_ipc_retry appearancePersonalizationResetState cursor)
+baseline_icon_reset_state=$(settings_ipc_retry appearancePersonalizationResetState icon)
 baseline_gtk_state=$(settings_ipc_retry appearancePersonalizationEffectiveState gtk)
 baseline_qt_state=$(settings_ipc_retry appearancePersonalizationEffectiveState qt)
 baseline_compositor_state=$(settings_ipc_retry appearanceInventoryState compositor)
@@ -2224,6 +2226,8 @@ available | partial)
 esac
 if [ "$baseline_inventory_watch_state" != available ] ||
 	[ "$baseline_font_mutation_ready" != true ] ||
+	[ "$baseline_cursor_reset_state" != available ] ||
+	[ "$baseline_icon_reset_state" != available ] ||
 	[ "$text_size_baseline_valid" != true ] ||
 	[ "$baseline_theme_mutation_ready" != true ]; then
 	printf 'Healthy appearance controls were not ready: inventory-watch=%s font=%s text-size=%s/%s/%s theme=%s\n' \
@@ -2285,6 +2289,10 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor 2>/dev/null || true)
 	icon_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState icon 2>/dev/null || true)
+	cursor_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState cursor 2>/dev/null || true)
+	icon_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState icon 2>/dev/null || true)
 	gtk_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState gtk 2>/dev/null || true)
 	qt_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2368,6 +2376,8 @@ while [ "$i" -lt 100 ]; do
 		[ "$wallpaper_provider_detail" = 'Feh is optional and is not installed' ] &&
 		[ "$wallpaper_detail" = 'Wallpaper folder is unavailable' ] &&
 		[ "$cursor_state" = unavailable ] && [ "$icon_state" = unavailable ] &&
+		[ "$cursor_reset_state" = "$baseline_cursor_reset_state" ] &&
+		[ "$icon_reset_state" = "$baseline_icon_reset_state" ] &&
 		[ "$gtk_state" = unavailable ] && [ "$qt_state" = partial ] &&
 		[ "$compositor_state" = unavailable ] && [ "$gtk_delegate_state" = unavailable ] &&
 		[ "$qt_delegate_state" = unavailable ] &&
@@ -2410,6 +2420,8 @@ if [ "$font_state" != available ] ||
 	[ "$wallpaper_provider_detail" != 'Feh is optional and is not installed' ] ||
 	[ "$wallpaper_detail" != 'Wallpaper folder is unavailable' ] ||
 	[ "$cursor_state" != unavailable ] || [ "$icon_state" != unavailable ] ||
+	[ "$cursor_reset_state" != "$baseline_cursor_reset_state" ] ||
+	[ "$icon_reset_state" != "$baseline_icon_reset_state" ] ||
 	[ "$gtk_state" != unavailable ] || [ "$qt_state" != partial ] ||
 	[ "$compositor_state" != unavailable ] || [ "$gtk_delegate_state" != unavailable ] ||
 	[ "$qt_delegate_state" != unavailable ] ||
@@ -2459,8 +2471,9 @@ if [ "$font_state" != available ] ||
 		"$baseline_wallpaper_mutation_detail" "$baseline_wallpaper_reset_detail" >&2
 	printf '  wallpaper provider/selection details: %s / %s\n' \
 		"$wallpaper_provider_detail" "$wallpaper_detail" >&2
-	printf '  unaffected controls: font mutation=%s; text-size=%s/%s/%s; theme mutation=%s; inventory watch=%s\n' \
+	printf '  unaffected controls: font mutation=%s; cursor/icon reset=%s/%s; text-size=%s/%s/%s; theme mutation=%s; inventory watch=%s\n' \
 		"$font_mutation_ready" \
+		"$cursor_reset_state" "$icon_reset_state" \
 		"$text_size_state" "$text_size_apply_state" "$text_size_reset_state" \
 		"$theme_mutation_ready" "$inventory_watch_state" >&2
 	printf '  aggregate application state: %s\n' "$appearance_application" >&2
@@ -2504,6 +2517,10 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor 2>/dev/null || true)
 	icon_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState icon 2>/dev/null || true)
+	cursor_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState cursor 2>/dev/null || true)
+	icon_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState icon 2>/dev/null || true)
 	gtk_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState gtk 2>/dev/null || true)
 	qt_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2573,6 +2590,8 @@ while [ "$i" -lt 100 ]; do
 		[ "$inventory_watch_state" = "$baseline_inventory_watch_state" ] &&
 		[ "$cursor_state" = "$baseline_cursor_state" ] &&
 		[ "$icon_state" = "$baseline_icon_state" ] &&
+		[ "$cursor_reset_state" = "$baseline_cursor_reset_state" ] &&
+		[ "$icon_reset_state" = "$baseline_icon_reset_state" ] &&
 		[ "$gtk_state" = "$baseline_gtk_state" ] && [ "$qt_state" = "$baseline_qt_state" ] &&
 		[ "$compositor_state" = "$baseline_compositor_state" ] &&
 		[ "$gtk_delegate_state" = "$baseline_gtk_delegate_state" ] &&
@@ -2619,6 +2638,8 @@ if [ "$appearance_status" != "$baseline_appearance_status" ] ||
 	[ "$inventory_provider" != "$baseline_inventory_provider" ] ||
 	[ "$inventory_watch_state" != "$baseline_inventory_watch_state" ] ||
 	[ "$cursor_state" != "$baseline_cursor_state" ] || [ "$icon_state" != "$baseline_icon_state" ] ||
+	[ "$cursor_reset_state" != "$baseline_cursor_reset_state" ] ||
+	[ "$icon_reset_state" != "$baseline_icon_reset_state" ] ||
 	[ "$gtk_state" != "$baseline_gtk_state" ] || [ "$qt_state" != "$baseline_qt_state" ] ||
 	[ "$compositor_state" != "$baseline_compositor_state" ] ||
 	[ "$gtk_delegate_state" != "$baseline_gtk_delegate_state" ] ||
@@ -2684,12 +2705,14 @@ if [ "$appearance_status" != "$baseline_appearance_status" ] ||
 		"$wallpaper_mutation_detail" "$wallpaper_reset_detail" >&2
 	printf '  wallpaper provider/selection details: %s / %s\n' \
 		"$wallpaper_provider_detail" "$wallpaper_detail" >&2
-	printf '  controls: font mutation=%s; text-size=%s/%s/%s; theme mutation=%s; inventory watch=%s\n' \
+	printf '  controls: font mutation=%s; cursor/icon reset=%s/%s; text-size=%s/%s/%s; theme mutation=%s; inventory watch=%s\n' \
 		"$font_mutation_ready" \
+		"$cursor_reset_state" "$icon_reset_state" \
 		"$text_size_state" "$text_size_apply_state" "$text_size_reset_state" \
 		"$theme_mutation_ready" "$inventory_watch_state" >&2
-	printf '  baseline controls: font mutation=%s; text-size=%s/%s/%s; theme mutation=%s; inventory watch=%s\n' \
+	printf '  baseline controls: font mutation=%s; cursor/icon reset=%s/%s; text-size=%s/%s/%s; theme mutation=%s; inventory watch=%s\n' \
 		"$baseline_font_mutation_ready" \
+		"$baseline_cursor_reset_state" "$baseline_icon_reset_state" \
 		"$baseline_text_size_state" "$baseline_text_size_apply_state" \
 		"$baseline_text_size_reset_state" "$baseline_theme_mutation_ready" \
 		"$baseline_inventory_watch_state" >&2
