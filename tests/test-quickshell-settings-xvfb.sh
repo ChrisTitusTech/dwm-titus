@@ -379,6 +379,10 @@ fixture=${DWM_SETTINGS_TEST_APPEARANCE_FAILURE:?}
 if [ "${1:-}" = status ] && [ -f "$fixture" ] &&
 	[ "$(cat "$fixture")" = optional-loss ]; then
 	"$(dirname -- "$0")/dwm-settings-personalization.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
+		$1 == "action-readiness" && ($2 == "gtk" || $2 == "qt") {
+			$3 = "available"; $4 = "available";
+			$5 = "Built-in personalization actions remain available";
+		}
 		$1 == "delegate" && ($2 == "gtk" || $2 == "qt") {
 			$3 = "unavailable"; $4 = "";
 			$5 = "No trusted advanced editor is installed";
