@@ -664,6 +664,10 @@ ShellRoot {
             return appearanceModel.inventorySelection(capability).state;
         }
 
+        function appearanceInventoryProviderState(): string {
+            return appearanceModel.inventoryProviderState;
+        }
+
         function appearanceIntegrationState(integrationId: string): string {
             const match = appearanceModel.integrations.find(function(item) { return item.id === integrationId; });
             return match ? match.state : "";

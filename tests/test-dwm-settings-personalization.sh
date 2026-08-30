@@ -460,6 +460,10 @@ printf '%s\n' "$no_delegates_status" | grep -Fqx \
 printf '%s\n' "$no_delegates_status" | grep -Fqx \
 	'mutation	available	Transactional personalization changes are available'
 printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'action-readiness	gtk	available	available	Apply and reset are available'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'action-readiness	qt	available	available	Apply and reset are available'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
 	'selection	font	available	Old Font 10	follow-system	Persistent user-session setting'
 printf '%s\n' "$no_delegates_status" | grep -Fqx \
 	'delegate	gtk	unavailable		No trusted advanced editor is installed'
