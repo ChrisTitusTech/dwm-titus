@@ -83,8 +83,10 @@ package or installation path.
   larger work into ordered pull requests, and avoid mixing unrelated code,
   tests, documentation, or cleanup.
 - When a pull request depends on unmerged work, base it on the prerequisite
-  branch, state the dependency in the pull request, and retarget it to `main`
-  after the prerequisite merges.
+  branch and state the dependency in the pull request. After the prerequisite
+  merges, rebase the dependent branch onto updated `main` or merge updated
+  `main` into it, verify that the pull request diff contains only its intended
+  review boundary, and then retarget it to `main`.
 - Before publishing, run focused validation, the full relevant repository
   gates, the built-in Codex review loop, and an independent review when the
   review tooling is available. Address valid findings and repeat affected
