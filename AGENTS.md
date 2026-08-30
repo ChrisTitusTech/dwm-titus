@@ -62,6 +62,32 @@ package or installation path.
 - Treat phase boundaries as review and rollback points. Do not begin the next
   phase in a change that was scoped only to complete the current one.
 
+## Git and Review Workflow
+
+- For implementation work, automatically create a `codex/` branch, make small
+  coherent commits, push the branch, and open a ready-for-review pull request
+  after the applicable local gates pass. Do not pause for repeated Git-action
+  approval unless the user requests local-only work or sets an explicit stop
+  point.
+- Run `git status --short` before editing, preserve all pre-existing worktree
+  changes, and inspect the exact staged files before every commit. When
+  unrelated changes cannot be isolated safely, use a separate worktree or ask
+  the user for direction. Never stage or publish credentials, tokens, private
+  keys, secret files, or other sensitive data.
+- Keep each pull request to one independently testable review boundary. Split
+  larger work into ordered pull requests, and avoid mixing unrelated code,
+  tests, documentation, or cleanup.
+- Before publishing, run focused validation, the full relevant repository
+  gates, the built-in Codex review loop, and an independent review when the
+  review tooling is available. Address valid findings and repeat affected
+  checks until the local review loop is clean.
+- After publishing, wait for exact-head hosted checks and reviews. Inspect
+  unresolved review threads, apply valid fixes in follow-up commits, push, and
+  repeat the review loop until the pull request is merge-ready or a concrete
+  blocker requires user input.
+- Open ready pull requests by default, not drafts. Never merge, release,
+  deploy, or send external announcements without explicit user authorization.
+
 ## Fedora Image Rules
 
 - Base released images on the Fedora Server Network Install ISO documented in
