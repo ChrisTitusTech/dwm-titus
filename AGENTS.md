@@ -77,6 +77,9 @@ package or installation path.
 - Keep each pull request to one independently testable review boundary. Split
   larger work into ordered pull requests, and avoid mixing unrelated code,
   tests, documentation, or cleanup.
+- When a pull request depends on unmerged work, base it on the prerequisite
+  branch, state the dependency in the pull request, and retarget it to `main`
+  after the prerequisite merges.
 - Before publishing, run focused validation, the full relevant repository
   gates, the built-in Codex review loop, and an independent review when the
   review tooling is available. Address valid findings and repeat affected
