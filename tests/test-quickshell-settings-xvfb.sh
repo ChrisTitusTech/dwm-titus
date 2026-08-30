@@ -2214,11 +2214,17 @@ baseline_text_size_state=$(settings_ipc_retry appearancePersonalizationEffective
 baseline_text_size_apply_state=$(settings_ipc_retry appearancePersonalizationApplyState text-size)
 baseline_text_size_reset_state=$(settings_ipc_retry appearancePersonalizationResetState text-size)
 baseline_theme_mutation_ready=$(settings_ipc_retry appearanceMutationReady)
+text_size_baseline_valid=false
+case $baseline_text_size_state in
+available | partial)
+	case $baseline_text_size_apply_state/$baseline_text_size_reset_state in
+	available/available | restricted/restricted) text_size_baseline_valid=true ;;
+	esac
+	;;
+esac
 if [ "$baseline_inventory_watch_state" != available ] ||
 	[ "$baseline_font_mutation_ready" != true ] ||
-	[ "$baseline_text_size_state" != available ] ||
-	[ "$baseline_text_size_apply_state" != available ] ||
-	[ "$baseline_text_size_reset_state" != available ] ||
+	[ "$text_size_baseline_valid" != true ] ||
 	[ "$baseline_theme_mutation_ready" != true ]; then
 	printf 'Healthy appearance controls were not ready: inventory-watch=%s font=%s text-size=%s/%s/%s theme=%s\n' \
 		"$baseline_inventory_watch_state" "$baseline_font_mutation_ready" \
