@@ -67,6 +67,21 @@ dwm_bin=${DWM_SETTINGS_TEST_DWM_BIN:-$repo/dwm}
 runtime_alias_dir=
 test_stage='initializing fixture'
 
+settings_ipc_retry() {
+	settings_ipc_attempt=0
+	while [ "$settings_ipc_attempt" -lt 20 ]; do
+		if settings_ipc_output=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings "$@" 2>/dev/null); then
+			printf '%s\n' "$settings_ipc_output"
+			return 0
+		fi
+		settings_ipc_attempt=$((settings_ipc_attempt + 1))
+		sleep 0.05
+	done
+	printf 'Settings IPC call failed after retries: %s\n' "$*" >&2
+	return 1
+}
+
 capture_process_identity() (
 	identity_pid=$1
 	[ -r "/proc/$identity_pid/stat" ] || return 1
@@ -2163,94 +2178,53 @@ if [ "$baseline_stable_samples" -lt 3 ]; then
 	exit 1
 fi
 
-baseline_wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState)
-baseline_wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState)
-baseline_inventory_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryProviderState)
-baseline_inventory_watch_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryWatchState)
-baseline_font_mutation_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontMutationReady)
+baseline_wallpaper_provider=$(settings_ipc_retry appearanceWallpaperProviderState)
+baseline_wallpaper_state=$(settings_ipc_retry appearanceWallpaperState)
+baseline_inventory_provider=$(settings_ipc_retry appearanceInventoryProviderState)
+baseline_inventory_watch_state=$(settings_ipc_retry appearanceInventoryWatchState)
+baseline_font_mutation_ready=$(settings_ipc_retry appearanceFontMutationReady)
 [ "$baseline_inventory_watch_state" = available ]
 [ "$baseline_font_mutation_ready" = true ]
-baseline_cursor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor)
-baseline_icon_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState icon)
-baseline_gtk_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState gtk)
-baseline_qt_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState qt)
-baseline_compositor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryState compositor)
-baseline_gtk_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState gtk)
-baseline_qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt)
-baseline_appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus)
-baseline_appearance_application=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceApplicationState)
-baseline_gtk_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState gtk)
-baseline_qt_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState qt)
-baseline_cursor_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState cursor)
-baseline_compositor_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState compositor)
-baseline_appearance_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderDetail)
-baseline_wallpaper_mutation_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperMutationState)
-baseline_wallpaper_mutation_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperMutationDetail)
-baseline_wallpaper_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperResetState)
-baseline_wallpaper_reset_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperResetDetail)
-baseline_gtk_apply_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationApplyState gtk)
-baseline_gtk_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState gtk)
-baseline_qt_apply_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationApplyState qt)
-baseline_qt_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState qt)
-baseline_text_size_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState text-size)
-baseline_text_size_apply_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationApplyState text-size)
-baseline_text_size_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState text-size)
-baseline_theme_mutation_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady)
+baseline_cursor_state=$(settings_ipc_retry appearancePersonalizationEffectiveState cursor)
+baseline_icon_state=$(settings_ipc_retry appearancePersonalizationEffectiveState icon)
+baseline_gtk_state=$(settings_ipc_retry appearancePersonalizationEffectiveState gtk)
+baseline_qt_state=$(settings_ipc_retry appearancePersonalizationEffectiveState qt)
+baseline_compositor_state=$(settings_ipc_retry appearanceInventoryState compositor)
+baseline_gtk_delegate_state=$(settings_ipc_retry appearancePersonalizationDelegateState gtk)
+baseline_qt_delegate_state=$(settings_ipc_retry appearancePersonalizationDelegateState qt)
+baseline_appearance_status=$(settings_ipc_retry appearanceProviderStatus)
+baseline_appearance_application=$(settings_ipc_retry appearanceApplicationState)
+baseline_gtk_integration=$(settings_ipc_retry appearanceIntegrationState gtk)
+baseline_qt_integration=$(settings_ipc_retry appearanceIntegrationState qt)
+baseline_cursor_integration=$(settings_ipc_retry appearanceIntegrationState cursor)
+baseline_compositor_integration=$(settings_ipc_retry appearanceIntegrationState compositor)
+baseline_appearance_detail=$(settings_ipc_retry appearanceProviderDetail)
+baseline_wallpaper_mutation_state=$(settings_ipc_retry appearanceWallpaperMutationState)
+baseline_wallpaper_mutation_detail=$(settings_ipc_retry appearanceWallpaperMutationDetail)
+baseline_wallpaper_reset_state=$(settings_ipc_retry appearanceWallpaperResetState)
+baseline_wallpaper_reset_detail=$(settings_ipc_retry appearanceWallpaperResetDetail)
+baseline_gtk_apply_state=$(settings_ipc_retry appearancePersonalizationApplyState gtk)
+baseline_gtk_reset_state=$(settings_ipc_retry appearancePersonalizationResetState gtk)
+baseline_qt_apply_state=$(settings_ipc_retry appearancePersonalizationApplyState qt)
+baseline_qt_reset_state=$(settings_ipc_retry appearancePersonalizationResetState qt)
+baseline_text_size_state=$(settings_ipc_retry appearancePersonalizationEffectiveState text-size)
+baseline_text_size_apply_state=$(settings_ipc_retry appearancePersonalizationApplyState text-size)
+baseline_text_size_reset_state=$(settings_ipc_retry appearancePersonalizationResetState text-size)
+baseline_theme_mutation_ready=$(settings_ipc_retry appearanceMutationReady)
 [ "$baseline_text_size_state" = available ]
 [ "$baseline_text_size_apply_state" = available ]
 [ "$baseline_text_size_reset_state" = available ]
 [ "$baseline_theme_mutation_ready" = true ]
-baseline_alacritty_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState alacritty)
-baseline_kitty_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState kitty)
-baseline_gtk_integration_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationDetail gtk)
-baseline_qt_integration_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationDetail qt)
-baseline_cursor_integration_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationDetail cursor)
-baseline_compositor_integration_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationDetail compositor)
-baseline_gtk_error_code=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceErrorCode gtk)
-baseline_qt_error_code=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceErrorCode qt)
-baseline_cursor_error_code=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceErrorCode cursor)
-baseline_compositor_error_code=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceErrorCode compositor)
+baseline_alacritty_integration=$(settings_ipc_retry appearanceIntegrationState alacritty)
+baseline_kitty_integration=$(settings_ipc_retry appearanceIntegrationState kitty)
+baseline_gtk_integration_detail=$(settings_ipc_retry appearanceIntegrationDetail gtk)
+baseline_qt_integration_detail=$(settings_ipc_retry appearanceIntegrationDetail qt)
+baseline_cursor_integration_detail=$(settings_ipc_retry appearanceIntegrationDetail cursor)
+baseline_compositor_integration_detail=$(settings_ipc_retry appearanceIntegrationDetail compositor)
+baseline_gtk_error_code=$(settings_ipc_retry appearanceErrorCode gtk)
+baseline_qt_error_code=$(settings_ipc_retry appearanceErrorCode qt)
+baseline_cursor_error_code=$(settings_ipc_retry appearanceErrorCode cursor)
+baseline_compositor_error_code=$(settings_ipc_retry appearanceErrorCode compositor)
 
 # Exercise the combined optional-component loss through the live Settings
 # model. The fixture preserves valid versioned provider responses while making
