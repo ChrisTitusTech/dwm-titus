@@ -66,14 +66,19 @@ package or installation path.
 
 - Before implementation work, determine the intended pull request base
   (`main` unless the work is explicitly stacked), verify the current branch's
-  ancestry and divergence, and create a valid `codex/<short-topic>` branch or
-  separate worktree from that base. If the name already exists, add a distinct
-  short suffix; never build the pull request from an unrelated or unexpectedly
+  ancestry and divergence, and create a valid `codex/<short-topic>` branch from
+  that base. Use that topic branch in the current worktree or place it in a
+  separate worktree when isolation is needed; never use the base branch itself
+  as the task worktree. If the name already exists, add a distinct short
+  suffix; never build the pull request from an unrelated or unexpectedly
   diverged branch.
 - Automatically make small coherent commits, push the branch, and open a
-  ready-for-review pull request after the applicable local gates pass. Do not
-  pause for repeated Git-action approval unless the user requests local-only
-  work or sets an explicit stop point.
+  ready-for-review pull request after the available applicable local gates
+  pass. If a required local gate cannot run because the environment or tooling
+  is unavailable, document the exact gap and limitation in the pull request
+  and use hosted CI to supply the missing coverage; do not claim that coverage
+  passed until it does. Do not pause for repeated Git-action approval unless
+  the user requests local-only work or sets an explicit stop point.
 - Run `git status --short` before editing, preserve all pre-existing worktree
   changes, and inspect the exact staged files before every commit. When
   unrelated changes cannot be isolated safely, use a separate worktree or ask
