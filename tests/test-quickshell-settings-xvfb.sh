@@ -1637,6 +1637,8 @@ i=0
 while [ "$i" -lt 100 ]; do
 	font_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontState 2>/dev/null || true)
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
 	[ "$font_state" = available ] && break
 	i=$((i + 1))
 	sleep 0.05
@@ -2125,7 +2127,9 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState gtk 2>/dev/null || true)
 	qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt 2>/dev/null || true)
-	[ "$font_state" = available ] && [ "$desktop_font_state" = available ] &&
+	[ "$font_state" = available ] &&
+		{ [ "$appearance_status" = available ] || [ "$appearance_status" = partial ]; } &&
+		[ "$desktop_font_state" = available ] &&
 		[ "$inventory_provider" = available ] && [ "$personalization_status" = available ] &&
 		[ "$personalization_mutation" = available ] && [ "$wallpaper_provider" = partial ] &&
 		[ "$wallpaper_state" = unavailable ] &&
@@ -2136,7 +2140,9 @@ while [ "$i" -lt 100 ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
-if [ "$font_state" != available ] || [ "$desktop_font_state" != available ] ||
+if [ "$font_state" != available ] ||
+	{ [ "$appearance_status" != available ] && [ "$appearance_status" != partial ]; } ||
+	[ "$desktop_font_state" != available ] ||
 	[ "$inventory_provider" != available ] || [ "$personalization_status" != available ] ||
 	[ "$personalization_mutation" != available ] || [ "$wallpaper_provider" != partial ] ||
 	[ "$wallpaper_state" != unavailable ] ||
@@ -2144,8 +2150,8 @@ if [ "$font_state" != available ] || [ "$desktop_font_state" != available ] ||
 	[ "$gtk_state" != unavailable ] || [ "$qt_state" != partial ] ||
 	[ "$compositor_state" != unavailable ] || [ "$gtk_delegate_state" != unavailable ] ||
 	[ "$qt_delegate_state" != unavailable ]; then
-	printf 'Combined optional loss did not remain capability-scoped: %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
-		"$font_state" "$desktop_font_state" "$inventory_provider" "$personalization_status" \
+	printf 'Combined optional loss did not remain capability-scoped: %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
+		"$font_state" "$appearance_status" "$desktop_font_state" "$inventory_provider" "$personalization_status" \
 		"$personalization_mutation" "$wallpaper_provider" \
 		"$wallpaper_state" "$cursor_state" "$icon_state" "$gtk_state" "$qt_state" \
 		"$compositor_state" "$gtk_delegate_state" "$qt_delegate_state" >&2

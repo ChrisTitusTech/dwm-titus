@@ -661,12 +661,12 @@ Settings includes the completed Phase 2 display and input mutation surface,
 Phase 3 NetworkManager, BlueZ, PipeWire, and media workflows, and Phase 4 power,
 session-action, default-application, MIME, and XDG autostart workflows. Active
 Phase 5 now includes merged theme transactions, wallpaper persistence,
-managed-shell typography, and desktop font, cursor, icon, GTK, and Qt controls.
-Panel-widget persistence is also merged. The remaining Phase 5 surface begins
-with combined optional-component qualification, followed by notifications,
-practical X11 accessibility controls, selected UI-5 work, and final phase
-qualification. The ordered status is recorded in `ROADMAP.md`, `TASKS.md`, and
-`docs/P5-STATUS.md`.
+managed-shell typography, desktop font, cursor, icon, GTK, and Qt controls,
+and panel-widget persistence. Cross-capability optional-component isolation is
+also qualified. The remaining Phase 5 surface begins with notifications and
+practical X11 accessibility controls, followed by selected UI-5 work and final
+phase qualification. The ordered status is recorded in `ROADMAP.md`,
+`TASKS.md`, and `docs/P5-STATUS.md`.
 
 The installer contains a Fedora-only package map and rejects other systems.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and
