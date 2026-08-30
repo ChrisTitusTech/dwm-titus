@@ -718,6 +718,14 @@ ShellRoot {
             return appearanceModel.wallpaperProviderState;
         }
 
+        function appearanceWallpaperProviderDetail(): string {
+            return appearanceModel.wallpaperProviderDetail;
+        }
+
+        function appearanceWallpaperDetail(): string {
+            return appearanceModel.wallpaperDetail;
+        }
+
         function appearanceWallpaperPath(): string {
             return appearanceModel.wallpaperPath;
         }
@@ -788,6 +796,10 @@ ShellRoot {
 
         function appearancePersonalizationStatus(): string {
             return appearanceModel.personalizationProviderState;
+        }
+
+        function appearancePersonalizationStatusBusy(): bool {
+            return appearanceModel.personalizationStatusBusy;
         }
 
         function appearancePersonalizationMutationState(): string {

@@ -2113,6 +2113,41 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$appearance_count" -eq 15 ]
 
+baseline_stable_samples=0
+baseline_previous_sample=
+i=0
+while [ "$i" -lt 200 ]; do
+	baseline_inventory_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperStatusBusy 2>/dev/null || true)
+	baseline_personalization_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationStatusBusy 2>/dev/null || true)
+	baseline_cursor_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor 2>/dev/null || true)
+	baseline_icon_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState icon 2>/dev/null || true)
+	baseline_gtk_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState gtk 2>/dev/null || true)
+	baseline_qt_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState qt 2>/dev/null || true)
+	baseline_sample="$baseline_cursor_sample/$baseline_icon_sample/$baseline_gtk_sample/$baseline_qt_sample"
+	if [ "$baseline_inventory_busy" = false ] &&
+		[ "$baseline_personalization_busy" = false ] &&
+		[ "$baseline_sample" = "$baseline_previous_sample" ]; then
+		baseline_stable_samples=$((baseline_stable_samples + 1))
+	else
+		baseline_stable_samples=0
+	fi
+	baseline_previous_sample=$baseline_sample
+	[ "$baseline_stable_samples" -ge 3 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$baseline_stable_samples" -lt 3 ]; then
+	printf 'Appearance baseline did not settle: inventory-busy=%s personalization-busy=%s states=%s\n' \
+		"$baseline_inventory_busy" "$baseline_personalization_busy" "$baseline_sample" >&2
+	exit 1
+fi
+
 baseline_wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState)
 baseline_wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2163,6 +2198,18 @@ baseline_qt_apply_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_ho
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationApplyState qt)
 baseline_qt_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState qt)
+baseline_text_size_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState text-size)
+baseline_text_size_apply_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationApplyState text-size)
+baseline_text_size_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState text-size)
+baseline_theme_mutation_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady)
+[ "$baseline_text_size_state" = available ]
+[ "$baseline_text_size_apply_state" = available ]
+[ "$baseline_text_size_reset_state" = available ]
+[ "$baseline_theme_mutation_ready" = true ]
 baseline_alacritty_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState alacritty)
 baseline_kitty_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2214,6 +2261,10 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
 	wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
+	wallpaper_provider_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderDetail 2>/dev/null || true)
+	wallpaper_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperDetail 2>/dev/null || true)
 	cursor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor 2>/dev/null || true)
 	icon_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2260,6 +2311,14 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationApplyState qt 2>/dev/null || true)
 	qt_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState qt 2>/dev/null || true)
+	text_size_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState text-size 2>/dev/null || true)
+	text_size_apply_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationApplyState text-size 2>/dev/null || true)
+	text_size_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState text-size 2>/dev/null || true)
+	theme_mutation_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady 2>/dev/null || true)
 	alacritty_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState alacritty 2>/dev/null || true)
 	kitty_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2287,6 +2346,8 @@ while [ "$i" -lt 100 ]; do
 		[ "$inventory_provider" = available ] && [ "$personalization_status" = available ] &&
 		[ "$personalization_mutation" = available ] && [ "$wallpaper_provider" = partial ] &&
 		[ "$wallpaper_state" = unavailable ] &&
+		[ "$wallpaper_provider_detail" = 'Feh is optional and is not installed' ] &&
+		[ "$wallpaper_detail" = 'Wallpaper folder is unavailable' ] &&
 		[ "$cursor_state" = unavailable ] && [ "$icon_state" = unavailable ] &&
 		[ "$gtk_state" = unavailable ] && [ "$qt_state" = partial ] &&
 		[ "$compositor_state" = unavailable ] && [ "$gtk_delegate_state" = unavailable ] &&
@@ -2302,6 +2363,10 @@ while [ "$i" -lt 100 ]; do
 		[ "$wallpaper_reset_detail" = 'No managed wallpaper state exists' ] &&
 		[ "$gtk_apply_state" = available ] && [ "$gtk_reset_state" = available ] &&
 		[ "$qt_apply_state" = available ] && [ "$qt_reset_state" = available ] &&
+		[ "$text_size_state" = "$baseline_text_size_state" ] &&
+		[ "$text_size_apply_state" = "$baseline_text_size_apply_state" ] &&
+		[ "$text_size_reset_state" = "$baseline_text_size_reset_state" ] &&
+		[ "$theme_mutation_ready" = "$baseline_theme_mutation_ready" ] &&
 		[ "$alacritty_integration" = "$baseline_alacritty_integration" ] &&
 		[ "$kitty_integration" = "$baseline_kitty_integration" ] &&
 		[ "$gtk_integration_detail" = 'Requested GTK theme is missing; built-in fallbacks remain available' ] &&
@@ -2320,6 +2385,8 @@ if [ "$font_state" != available ] ||
 	[ "$inventory_provider" != available ] || [ "$personalization_status" != available ] ||
 	[ "$personalization_mutation" != available ] || [ "$wallpaper_provider" != partial ] ||
 	[ "$wallpaper_state" != unavailable ] ||
+	[ "$wallpaper_provider_detail" != 'Feh is optional and is not installed' ] ||
+	[ "$wallpaper_detail" != 'Wallpaper folder is unavailable' ] ||
 	[ "$cursor_state" != unavailable ] || [ "$icon_state" != unavailable ] ||
 	[ "$gtk_state" != unavailable ] || [ "$qt_state" != partial ] ||
 	[ "$compositor_state" != unavailable ] || [ "$gtk_delegate_state" != unavailable ] ||
@@ -2335,6 +2402,10 @@ if [ "$font_state" != available ] ||
 	[ "$wallpaper_reset_detail" != 'No managed wallpaper state exists' ] ||
 	[ "$gtk_apply_state" != available ] || [ "$gtk_reset_state" != available ] ||
 	[ "$qt_apply_state" != available ] || [ "$qt_reset_state" != available ] ||
+	[ "$text_size_state" != "$baseline_text_size_state" ] ||
+	[ "$text_size_apply_state" != "$baseline_text_size_apply_state" ] ||
+	[ "$text_size_reset_state" != "$baseline_text_size_reset_state" ] ||
+	[ "$theme_mutation_ready" != "$baseline_theme_mutation_ready" ] ||
 	[ "$alacritty_integration" != "$baseline_alacritty_integration" ] ||
 	[ "$kitty_integration" != "$baseline_kitty_integration" ] ||
 	[ "$gtk_integration_detail" != 'Requested GTK theme is missing; built-in fallbacks remain available' ] ||
@@ -2362,6 +2433,13 @@ if [ "$font_state" != available ] ||
 		"$cursor_integration_detail" "$compositor_error_code" "$compositor_integration_detail" >&2
 	printf '  wallpaper details: mutation=%s; reset=%s\n' \
 		"$wallpaper_mutation_detail" "$wallpaper_reset_detail" >&2
+	printf '  baseline wallpaper details: mutation=%s; reset=%s\n' \
+		"$baseline_wallpaper_mutation_detail" "$baseline_wallpaper_reset_detail" >&2
+	printf '  wallpaper provider/selection details: %s / %s\n' \
+		"$wallpaper_provider_detail" "$wallpaper_detail" >&2
+	printf '  unaffected controls: text-size=%s/%s/%s; theme mutation=%s\n' \
+		"$text_size_state" "$text_size_apply_state" "$text_size_reset_state" \
+		"$theme_mutation_ready" >&2
 	printf '  aggregate application state: %s\n' "$appearance_application" >&2
 	exit 1
 fi
@@ -2381,6 +2459,18 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
 	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	wallpaper_provider_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderDetail 2>/dev/null || true)
+	wallpaper_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperDetail 2>/dev/null || true)
+	text_size_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState text-size 2>/dev/null || true)
+	text_size_apply_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationApplyState text-size 2>/dev/null || true)
+	text_size_reset_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationResetState text-size 2>/dev/null || true)
+	theme_mutation_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady 2>/dev/null || true)
 	inventory_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryProviderState 2>/dev/null || true)
 	cursor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2447,6 +2537,10 @@ while [ "$i" -lt 100 ]; do
 		[ "$appearance_application" = "$baseline_appearance_application" ] &&
 		[ "$wallpaper_provider" = "$baseline_wallpaper_provider" ] &&
 		[ "$wallpaper_state" = "$baseline_wallpaper_state" ] &&
+		[ -n "$wallpaper_provider_detail" ] &&
+		[ "$wallpaper_provider_detail" != 'Feh is optional and is not installed' ] &&
+		[ -n "$wallpaper_detail" ] &&
+		[ "$wallpaper_detail" != 'Wallpaper folder is unavailable' ] &&
 		[ "$inventory_provider" = "$baseline_inventory_provider" ] &&
 		[ "$cursor_state" = "$baseline_cursor_state" ] &&
 		[ "$icon_state" = "$baseline_icon_state" ] &&
@@ -2467,6 +2561,10 @@ while [ "$i" -lt 100 ]; do
 		[ "$gtk_reset_state" = "$baseline_gtk_reset_state" ] &&
 		[ "$qt_apply_state" = "$baseline_qt_apply_state" ] &&
 		[ "$qt_reset_state" = "$baseline_qt_reset_state" ] &&
+		[ "$text_size_state" = "$baseline_text_size_state" ] &&
+		[ "$text_size_apply_state" = "$baseline_text_size_apply_state" ] &&
+		[ "$text_size_reset_state" = "$baseline_text_size_reset_state" ] &&
+		[ "$theme_mutation_ready" = "$baseline_theme_mutation_ready" ] &&
 		[ "$alacritty_integration" = "$baseline_alacritty_integration" ] &&
 		[ "$kitty_integration" = "$baseline_kitty_integration" ] &&
 		[ "$gtk_integration_detail" = "$baseline_gtk_integration_detail" ] &&
@@ -2484,6 +2582,10 @@ if [ "$appearance_status" != "$baseline_appearance_status" ] ||
 	[ "$appearance_application" != "$baseline_appearance_application" ] ||
 	[ "$wallpaper_provider" != "$baseline_wallpaper_provider" ] ||
 	[ "$wallpaper_state" != "$baseline_wallpaper_state" ] ||
+	[ -z "$wallpaper_provider_detail" ] ||
+	[ "$wallpaper_provider_detail" = 'Feh is optional and is not installed' ] ||
+	[ -z "$wallpaper_detail" ] ||
+	[ "$wallpaper_detail" = 'Wallpaper folder is unavailable' ] ||
 	[ "$inventory_provider" != "$baseline_inventory_provider" ] ||
 	[ "$cursor_state" != "$baseline_cursor_state" ] || [ "$icon_state" != "$baseline_icon_state" ] ||
 	[ "$gtk_state" != "$baseline_gtk_state" ] || [ "$qt_state" != "$baseline_qt_state" ] ||
@@ -2503,6 +2605,10 @@ if [ "$appearance_status" != "$baseline_appearance_status" ] ||
 	[ "$gtk_reset_state" != "$baseline_gtk_reset_state" ] ||
 	[ "$qt_apply_state" != "$baseline_qt_apply_state" ] ||
 	[ "$qt_reset_state" != "$baseline_qt_reset_state" ] ||
+	[ "$text_size_state" != "$baseline_text_size_state" ] ||
+	[ "$text_size_apply_state" != "$baseline_text_size_apply_state" ] ||
+	[ "$text_size_reset_state" != "$baseline_text_size_reset_state" ] ||
+	[ "$theme_mutation_ready" != "$baseline_theme_mutation_ready" ] ||
 	[ "$alacritty_integration" != "$baseline_alacritty_integration" ] ||
 	[ "$kitty_integration" != "$baseline_kitty_integration" ] ||
 	[ "$gtk_integration_detail" != "$baseline_gtk_integration_detail" ] ||
@@ -2518,17 +2624,41 @@ if [ "$appearance_status" != "$baseline_appearance_status" ] ||
 		"$icon_state" "$gtk_state" "$qt_state" "$compositor_state" \
 		"$gtk_delegate_state" "$qt_delegate_state" "$gtk_integration" "$qt_integration" \
 		"$cursor_integration" "$compositor_integration" >&2
+	printf '  baseline core: %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
+		"$baseline_appearance_status" "$baseline_wallpaper_provider" "$baseline_wallpaper_state" \
+		"$baseline_inventory_provider" "$baseline_cursor_state" "$baseline_icon_state" \
+		"$baseline_gtk_state" "$baseline_qt_state" "$baseline_compositor_state" \
+		"$baseline_gtk_delegate_state" "$baseline_qt_delegate_state" \
+		"$baseline_gtk_integration" "$baseline_qt_integration" \
+		"$baseline_cursor_integration" "$baseline_compositor_integration" >&2
 	printf '  actions: wallpaper=%s/%s gtk=%s/%s qt=%s/%s\n' \
 		"$wallpaper_mutation_state" "$wallpaper_reset_state" "$gtk_apply_state" \
 		"$gtk_reset_state" "$qt_apply_state" "$qt_reset_state" >&2
+	printf '  baseline actions: wallpaper=%s/%s gtk=%s/%s qt=%s/%s\n' \
+		"$baseline_wallpaper_mutation_state" "$baseline_wallpaper_reset_state" \
+		"$baseline_gtk_apply_state" "$baseline_gtk_reset_state" \
+		"$baseline_qt_apply_state" "$baseline_qt_reset_state" >&2
 	printf '  terminals: alacritty=%s kitty=%s\n' \
 		"$alacritty_integration" "$kitty_integration" >&2
 	printf '  diagnostics: provider=%s; gtk=%s/%s; qt=%s/%s; cursor=%s/%s; compositor=%s/%s\n' \
 		"$appearance_detail" "$gtk_error_code" "$gtk_integration_detail" \
 		"$qt_error_code" "$qt_integration_detail" "$cursor_error_code" \
 		"$cursor_integration_detail" "$compositor_error_code" "$compositor_integration_detail" >&2
+	printf '  baseline diagnostics: provider=%s; gtk=%s/%s; qt=%s/%s; cursor=%s/%s; compositor=%s/%s\n' \
+		"$baseline_appearance_detail" "$baseline_gtk_error_code" "$baseline_gtk_integration_detail" \
+		"$baseline_qt_error_code" "$baseline_qt_integration_detail" \
+		"$baseline_cursor_error_code" "$baseline_cursor_integration_detail" \
+		"$baseline_compositor_error_code" "$baseline_compositor_integration_detail" >&2
 	printf '  wallpaper details: mutation=%s; reset=%s\n' \
 		"$wallpaper_mutation_detail" "$wallpaper_reset_detail" >&2
+	printf '  wallpaper provider/selection details: %s / %s\n' \
+		"$wallpaper_provider_detail" "$wallpaper_detail" >&2
+	printf '  controls: text-size=%s/%s/%s; theme mutation=%s\n' \
+		"$text_size_state" "$text_size_apply_state" "$text_size_reset_state" \
+		"$theme_mutation_ready" >&2
+	printf '  baseline controls: text-size=%s/%s/%s; theme mutation=%s\n' \
+		"$baseline_text_size_state" "$baseline_text_size_apply_state" \
+		"$baseline_text_size_reset_state" "$baseline_theme_mutation_ready" >&2
 	printf '  aggregate application state: %s (baseline %s)\n' \
 		"$appearance_application" "$baseline_appearance_application" >&2
 	exit 1
