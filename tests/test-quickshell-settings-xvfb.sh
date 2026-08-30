@@ -285,6 +285,12 @@ if [ "${1:-}" = inventory ] && [ -f "$fixture" ] &&
 	"$(dirname -- "$0")/dwm-settings-appearance.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
 		$1 == "candidate" && ($2 == "wallpaper" || $2 == "cursor" || $2 == "icon" ||
 			$2 == "gtk" || $2 == "qt" || $2 == "compositor") { next }
+		$1 == "selection" && $2 == "font" {
+			$3 = "available";
+			if ($4 == "") $4 = "sans-serif";
+			if ($5 == "") $5 = $4;
+			$6 = "Desktop font inventory remains available";
+		}
 		$1 == "selection" && $2 == "wallpaper" {
 			$3 = "unavailable"; $6 = "Wallpaper folder is unavailable";
 		}
