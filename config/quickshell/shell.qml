@@ -668,6 +668,10 @@ ShellRoot {
             return appearanceModel.inventoryProviderState;
         }
 
+        function appearanceInventoryWatchState(): string {
+            return appearanceModel.inventoryWatchState;
+        }
+
         function appearanceInventoryCandidateState(capability: string, token: string): string {
             const match = appearanceModel.inventoryCandidates.find(function(item) {
                 return item.id === capability && item.token === token;
@@ -678,6 +682,16 @@ ShellRoot {
         function appearanceIntegrationState(integrationId: string): string {
             const match = appearanceModel.integrations.find(function(item) { return item.id === integrationId; });
             return match ? match.state : "";
+        }
+
+        function appearanceIntegrationDetail(integrationId: string): string {
+            const match = appearanceModel.integrations.find(function(item) { return item.id === integrationId; });
+            return match ? match.detail : "";
+        }
+
+        function appearanceErrorCode(scope: string): string {
+            const match = appearanceModel.errors.find(function(item) { return item.scope === scope; });
+            return match ? match.code : "";
         }
 
         function appearanceActiveTheme(): string {
@@ -708,6 +722,14 @@ ShellRoot {
             return appearanceModel.wallpaperProviderState;
         }
 
+        function appearanceWallpaperProviderDetail(): string {
+            return appearanceModel.wallpaperProviderDetail;
+        }
+
+        function appearanceWallpaperDetail(): string {
+            return appearanceModel.wallpaperDetail;
+        }
+
         function appearanceWallpaperPath(): string {
             return appearanceModel.wallpaperPath;
         }
@@ -720,8 +742,20 @@ ShellRoot {
             return appearanceModel.wallpaperMutationDetail;
         }
 
+        function appearanceWallpaperMutationState(): string {
+            return appearanceModel.wallpaperMutationState;
+        }
+
         function appearanceWallpaperResetReady(): bool {
             return appearanceModel.wallpaperResetReady;
+        }
+
+        function appearanceWallpaperResetState(): string {
+            return appearanceModel.wallpaperResetState;
+        }
+
+        function appearanceWallpaperResetDetail(): string {
+            return appearanceModel.wallpaperResetDetail;
         }
 
         function appearanceWallpaperPreviewState(): string {
@@ -768,6 +802,10 @@ ShellRoot {
             return appearanceModel.personalizationProviderState;
         }
 
+        function appearancePersonalizationStatusBusy(): bool {
+            return appearanceModel.personalizationStatusBusy;
+        }
+
         function appearancePersonalizationMutationState(): string {
             return appearanceModel.personalizationMutationState;
         }
@@ -782,6 +820,14 @@ ShellRoot {
 
         function appearancePersonalizationEffectiveState(capability: string): string {
             return appearanceModel.personalizationEffectiveState(capability);
+        }
+
+        function appearancePersonalizationApplyState(capability: string): string {
+            return appearanceModel.personalizationReadiness(capability).apply;
+        }
+
+        function appearancePersonalizationResetState(capability: string): string {
+            return appearanceModel.personalizationReadiness(capability).reset;
         }
 
         function appearancePersonalizationDelegateState(capability: string): string {

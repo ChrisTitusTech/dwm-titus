@@ -221,6 +221,27 @@ grep -Fqx $'integration\tkitty\tavailable\tactive-theme\tGenerated terminal them
 grep -Fqx $'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract' <<<"$output"
 grep -Fqx $'error\tcompositor\tunsupported\tPicom theme mutation is not implemented' <<<"$output"
 
+no_picom_bin=$work/no-picom-bin
+cp -a "$bin_dir" "$no_picom_bin"
+rm -f "$no_picom_bin/picom"
+missing_picom=$(PATH=$no_picom_bin GTK_THEME='' XCURSOR_THEME='' \
+	XDG_CONFIG_HOME="$config_home" XDG_DATA_HOME="$data_root" \
+	DWM_APPEARANCE_DATA_DIRS="$data_root" "$helper" snapshot)
+grep -Fqx $'provider\tappearance\tavailable\tread-only\tShared theme inventory and integration state' \
+	<<<"$missing_picom"
+grep -Fqx $'integration\tgtk\tavailable\tNordic\tRequested GTK theme is installed and applied' \
+	<<<"$missing_picom"
+grep -Fqx $'integration\tqt\tavailable\tqt6ct\tQt applications use the supported theme backend' \
+	<<<"$missing_picom"
+grep -Fqx $'integration\tcursor\tavailable\tCapitaine-Cursors-White\tManaged cursor theme is installed and applied' \
+	<<<"$missing_picom"
+grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$missing_picom"
+grep -Fqx $'integration\tkitty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' \
+	<<<"$missing_picom"
+grep -Fqx $'integration\tcompositor\tunavailable\tmissing\tPicom is optional and not installed' \
+	<<<"$missing_picom"
+
 printf '[window]\nimport = ["%s"]\n' "$config_home/alacritty/active-theme.toml" \
 	>"$config_home/alacritty/alacritty.toml"
 table_import_alacritty=$(snapshot)

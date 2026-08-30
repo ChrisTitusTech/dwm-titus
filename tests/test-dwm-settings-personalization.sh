@@ -466,10 +466,22 @@ printf '%s\n' "$no_delegates_status" | grep -Fqx \
 printf '%s\n' "$no_delegates_status" | grep -Fqx \
 	'selection	font	available	Old Font 10	follow-system	Persistent user-session setting'
 printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'selection	gtk	available	Old GTK	follow-theme	Persistent user-session setting'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'selection	qt	partial	qt6ct	follow-theme	No supported persistent Qt backend is configured'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
 	'delegate	gtk	unavailable		No trusted advanced editor is installed'
 printf '%s\n' "$no_delegates_status" | grep -Fqx \
 	'delegate	qt	unavailable		No trusted advanced editor is installed'
 printf '%s\n' "$no_delegates_status" | grep -Fqx 'complete	status'
+DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper apply gtk 'Theme One' | grep -Fqx \
+	'result	apply	gtk	Theme One'
+DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper reset gtk | grep -Fqx \
+	'result	reset	gtk	follow-theme'
+DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper apply qt gtk3 | grep -Fqx \
+	'result	apply	qt	gtk3'
+DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper reset qt | grep -Fqx \
+	'result	reset	qt	follow-theme'
 if DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper delegate gtk \
 	>"$work/no-gtk-delegate.out" 2>"$work/no-gtk-delegate.err"; then
 	printf 'GTK delegation succeeded without a trusted editor\n' >&2
