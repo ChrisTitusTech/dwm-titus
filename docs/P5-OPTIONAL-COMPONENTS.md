@@ -68,9 +68,14 @@ warnings.
 
 Runtime QML changed only to add read-only Settings IPC observability methods;
 the nested-X11 workflow loaded the exact tracked QML and exercised those
-methods. No production control, helper, package, or session-startup behavior
-changed, so live installation and logout/login activation are not required at
-this qualification boundary. Normal install/update propagation will copy the
-tracked QML after merge. Actual removal of optional host packages was not
-performed; the combined missing-component path is fixture- and
+methods. The production wallpaper helper now waits up to approximately one
+second, instead of 0.2 seconds, for a detached rollback watchdog to expose its
+verified process identity. Helper tests and the nested-X11 workflow exercised
+the exact tracked helper's preview, watchdog termination, writable rearm, and
+rollback paths. Installer manifests and session-startup behavior did not
+change. Copying the checkout into the live installed data directory and
+activating it through a fresh logout/login were not manually tested at this
+qualification boundary; normal install/update propagation will copy the
+tracked helper and QML after merge. Actual removal of optional host packages
+was not performed; the combined missing-component path is fixture- and
 nested-X11-qualified.
