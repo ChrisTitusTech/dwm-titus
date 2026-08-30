@@ -360,12 +360,18 @@ fixture=${DWM_SETTINGS_TEST_WALLPAPER_STATUS:-}
 if [ "${1:-}" = status ] && [ "${2:-}" = --read-only ] &&
 	[ -n "$fixture" ] && [ -f "$fixture" ]; then
 	if [ "$(cat "$fixture")" = optional-loss ]; then
-		printf 'wallpaper-protocol\t1\t0\n'
-		printf 'provider\twallpaper\tavailable\tuser-session\tManaged wallpaper state is readable\n'
-		printf 'selection\tunavailable\t\tfill\tWallpaper folder is unavailable\n'
-		printf 'mutation\trestricted\tFeh is optional and is not installed\n'
-		printf 'reset\trestricted\tNo managed wallpaper state exists\n'
-		printf 'preview\tnone\t\t0\t\tfill\tNo wallpaper preview is active\n'
+		"$(dirname -- "$0")/dwm-settings-wallpaper.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
+			$1 == "selection" {
+				$2 = "unavailable"; $3 = ""; $4 = "fill";
+				$5 = "Wallpaper folder is unavailable";
+			}
+			$1 == "mutation" {
+				$2 = "restricted"; $3 = "Feh is optional and is not installed";
+			}
+			$1 == "reset" {
+				$2 = "restricted"; $3 = "No managed wallpaper state exists";
+			}
+			{ print }'
 		exit 0
 	fi
 	printf 'wallpaper-protocol\t1\t0\n'
@@ -1646,8 +1652,6 @@ i=0
 while [ "$i" -lt 100 ]; do
 	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
-	wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
 	wallpaper_path=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPath 2>/dev/null || true)
 	wallpaper_fit=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1790,6 +1794,8 @@ i=0
 while [ "$i" -lt 100 ]; do
 	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
 	[ "$wallpaper_state" = unavailable ] && [ "$wallpaper_preview" = active ] && break
@@ -2075,6 +2081,8 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationMutationState 2>/dev/null || true)
 	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
 	cursor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor 2>/dev/null || true)
 	icon_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
