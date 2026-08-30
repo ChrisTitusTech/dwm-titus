@@ -59,7 +59,7 @@ git diff --check
 
 The serial nested-X11 Settings workflow passed appearance preview,
 persistence, invalid and missing-asset recovery, and closed-window lifecycle
-checks. The final focused run sampled 0.100 percent CPU before and 0.067 percent
+checks. The final focused run sampled 0.067 percent CPU before and 0.100 percent
 after closure, a 0.033 percentage-point absolute delta. The full managed-suite
 rerun sampled 0.067 percent before and after closure, a 0.000 percentage-point
 absolute delta. Quickshell lint retained only the

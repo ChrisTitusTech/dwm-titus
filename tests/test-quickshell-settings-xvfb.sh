@@ -361,6 +361,9 @@ if [ "${1:-}" = status ] && [ "${2:-}" = --read-only ] &&
 	[ -n "$fixture" ] && [ -f "$fixture" ]; then
 	if [ "$(cat "$fixture")" = optional-loss ]; then
 		"$(dirname -- "$0")/dwm-settings-wallpaper.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
+			$1 == "provider" {
+				$3 = "partial"; $5 = "Feh is optional and is not installed";
+			}
 			$1 == "selection" {
 				$2 = "unavailable"; $3 = ""; $4 = "fill";
 				$5 = "Wallpaper folder is unavailable";
@@ -2098,7 +2101,7 @@ while [ "$i" -lt 100 ]; do
 	qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt 2>/dev/null || true)
 	[ "$font_state" = available ] && [ "$personalization_status" = available ] &&
-		[ "$personalization_mutation" = available ] && [ "$wallpaper_provider" = available ] &&
+		[ "$personalization_mutation" = available ] && [ "$wallpaper_provider" = partial ] &&
 		[ "$wallpaper_state" = unavailable ] &&
 		[ "$cursor_state" = unavailable ] && [ "$icon_state" = unavailable ] &&
 		[ "$gtk_state" = unavailable ] && [ "$qt_state" = partial ] &&
@@ -2108,7 +2111,7 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 if [ "$font_state" != available ] || [ "$personalization_status" != available ] ||
-	[ "$personalization_mutation" != available ] || [ "$wallpaper_provider" != available ] ||
+	[ "$personalization_mutation" != available ] || [ "$wallpaper_provider" != partial ] ||
 	[ "$wallpaper_state" != unavailable ] ||
 	[ "$cursor_state" != unavailable ] || [ "$icon_state" != unavailable ] ||
 	[ "$gtk_state" != unavailable ] || [ "$qt_state" != partial ] ||
