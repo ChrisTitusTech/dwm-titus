@@ -465,6 +465,14 @@ check-appearance:
 	tests/test-dwm-settings-theme.sh
 	tests/test-dwm-xsettings.sh
 
+check-phase5-optional-components:
+	tests/test-dwm-settings-appearance.sh
+	tests/test-dwm-settings-appearance-inventory.sh
+	tests/test-dwm-settings-personalization.sh
+	tests/test-dwm-settings-wallpaper.sh
+	tests/test-quickshell-appearance-model.sh
+	tests/test-quickshell-controlcenter.sh
+
 check-quickshell-settings-xvfb: all
 	tests/test-quickshell-settings-xvfb.sh
 
@@ -630,7 +638,7 @@ check:
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: clean all check check-appearance check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
+.PHONY: clean all check check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-test-runner \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
