@@ -2132,6 +2132,7 @@ if [ "$appearance_status" != partial ] ||
 	exit 1
 fi
 rm -f "$appearance_failure_fixture"
+test_stage='restoring healthy appearance baseline'
 printf '# restore real provider snapshot\n' >>"$config_home/dwm-titus/themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
@@ -2141,7 +2142,10 @@ while [ "$i" -lt 100 ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$appearance_count" -eq 15 ]
+if [ "$appearance_count" -ne 15 ]; then
+	printf 'Appearance theme inventory did not recover: themes=%s\n' "$appearance_count" >&2
+	exit 1
+fi
 
 baseline_stable_samples=0
 baseline_previous_sample=
@@ -2178,13 +2182,12 @@ if [ "$baseline_stable_samples" -lt 3 ]; then
 	exit 1
 fi
 
+test_stage='capturing healthy appearance baseline'
 baseline_wallpaper_provider=$(settings_ipc_retry appearanceWallpaperProviderState)
 baseline_wallpaper_state=$(settings_ipc_retry appearanceWallpaperState)
 baseline_inventory_provider=$(settings_ipc_retry appearanceInventoryProviderState)
 baseline_inventory_watch_state=$(settings_ipc_retry appearanceInventoryWatchState)
 baseline_font_mutation_ready=$(settings_ipc_retry appearanceFontMutationReady)
-[ "$baseline_inventory_watch_state" = available ]
-[ "$baseline_font_mutation_ready" = true ]
 baseline_cursor_state=$(settings_ipc_retry appearancePersonalizationEffectiveState cursor)
 baseline_icon_state=$(settings_ipc_retry appearancePersonalizationEffectiveState icon)
 baseline_gtk_state=$(settings_ipc_retry appearancePersonalizationEffectiveState gtk)
@@ -2211,10 +2214,18 @@ baseline_text_size_state=$(settings_ipc_retry appearancePersonalizationEffective
 baseline_text_size_apply_state=$(settings_ipc_retry appearancePersonalizationApplyState text-size)
 baseline_text_size_reset_state=$(settings_ipc_retry appearancePersonalizationResetState text-size)
 baseline_theme_mutation_ready=$(settings_ipc_retry appearanceMutationReady)
-[ "$baseline_text_size_state" = available ]
-[ "$baseline_text_size_apply_state" = available ]
-[ "$baseline_text_size_reset_state" = available ]
-[ "$baseline_theme_mutation_ready" = true ]
+if [ "$baseline_inventory_watch_state" != available ] ||
+	[ "$baseline_font_mutation_ready" != true ] ||
+	[ "$baseline_text_size_state" != available ] ||
+	[ "$baseline_text_size_apply_state" != available ] ||
+	[ "$baseline_text_size_reset_state" != available ] ||
+	[ "$baseline_theme_mutation_ready" != true ]; then
+	printf 'Healthy appearance controls were not ready: inventory-watch=%s font=%s text-size=%s/%s/%s theme=%s\n' \
+		"$baseline_inventory_watch_state" "$baseline_font_mutation_ready" \
+		"$baseline_text_size_state" "$baseline_text_size_apply_state" \
+		"$baseline_text_size_reset_state" "$baseline_theme_mutation_ready" >&2
+	exit 1
+fi
 baseline_alacritty_integration=$(settings_ipc_retry appearanceIntegrationState alacritty)
 baseline_kitty_integration=$(settings_ipc_retry appearanceIntegrationState kitty)
 baseline_gtk_integration_detail=$(settings_ipc_retry appearanceIntegrationDetail gtk)
