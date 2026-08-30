@@ -223,7 +223,7 @@ run_helper() {
 		DWM_TEST_MODE=1 \
 		DWM_TEST_QUICKSHELL_VERSION="${DWM_TEST_QUICKSHELL_VERSION:-0.3.0}" \
 		DWM_HEALTH_COMMAND_TIMEOUT=2 \
-		PATH="$work/bin:/usr/bin:/bin" \
+		PATH="${DWM_TEST_PATH:-$work/bin:/usr/bin:/bin}" \
 		"$repo/scripts/dwm-quickshell-controlcenter" "$@"
 }
 
@@ -429,7 +429,10 @@ run_helper action gtk-settings >"$work/gtk-settings.out"
 grep -Fqx 'action	gtk-settings' "$work/gtk-settings.out"
 grep -Fqx 'nwg-look ' "$work/actions.log"
 rm -f "$work/bin/nwg-look"
-if run_helper action gtk-settings 2>"$work/gtk-settings.err"; then
+mkdir -p "$work/no-nwg-look-bin"
+ln -s "$(command -v dirname)" "$work/no-nwg-look-bin/dirname"
+if DWM_TEST_PATH="$work/no-nwg-look-bin" \
+	run_helper action gtk-settings 2>"$work/gtk-settings.err"; then
 	exit 1
 fi
 grep -Fqx 'nwg-look is unavailable' "$work/gtk-settings.err"
