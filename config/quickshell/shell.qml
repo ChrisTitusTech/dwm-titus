@@ -693,6 +693,10 @@ ShellRoot {
             return appearanceModel.wallpaperState;
         }
 
+        function appearanceWallpaperProviderState(): string {
+            return appearanceModel.wallpaperProviderState;
+        }
+
         function appearanceWallpaperPath(): string {
             return appearanceModel.wallpaperPath;
         }
@@ -767,6 +771,11 @@ ShellRoot {
 
         function appearancePersonalizationEffectiveState(capability: string): string {
             return appearanceModel.personalizationEffectiveState(capability);
+        }
+
+        function appearancePersonalizationDelegateState(capability: string): string {
+            const match = appearanceModel.personalizationDelegates[capability];
+            return match ? match.state : "";
         }
 
         function appearanceMessage(): string {

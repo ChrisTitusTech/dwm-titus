@@ -363,8 +363,8 @@ if [ "${1:-}" = status ] && [ "${2:-}" = --read-only ] &&
 		printf 'wallpaper-protocol\t1\t0\n'
 		printf 'provider\twallpaper\tavailable\tuser-session\tManaged wallpaper state is readable\n'
 		printf 'selection\tunavailable\t\tfill\tWallpaper folder is unavailable\n'
-		printf 'mutation\tunavailable\tFeh is optional and is not installed\n'
-		printf 'reset\tunavailable\tNo managed wallpaper state exists\n'
+		printf 'mutation\trestricted\tFeh is optional and is not installed\n'
+		printf 'reset\trestricted\tNo managed wallpaper state exists\n'
 		printf 'preview\tnone\t\t0\t\tfill\tNo wallpaper preview is active\n'
 		exit 0
 	fi
@@ -1646,6 +1646,8 @@ i=0
 while [ "$i" -lt 100 ]; do
 	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
 	wallpaper_path=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPath 2>/dev/null || true)
 	wallpaper_fit=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2083,22 +2085,31 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState qt 2>/dev/null || true)
 	compositor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryState compositor 2>/dev/null || true)
+	gtk_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState gtk 2>/dev/null || true)
+	qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt 2>/dev/null || true)
 	[ "$font_state" = available ] && [ "$personalization_status" = available ] &&
-		[ "$personalization_mutation" = available ] && [ "$wallpaper_state" = unavailable ] &&
+		[ "$personalization_mutation" = available ] && [ "$wallpaper_provider" = available ] &&
+		[ "$wallpaper_state" = unavailable ] &&
 		[ "$cursor_state" = unavailable ] && [ "$icon_state" = unavailable ] &&
 		[ "$gtk_state" = unavailable ] && [ "$qt_state" = partial ] &&
-		[ "$compositor_state" = unavailable ] && break
+		[ "$compositor_state" = unavailable ] && [ "$gtk_delegate_state" = unavailable ] &&
+		[ "$qt_delegate_state" = unavailable ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
 if [ "$font_state" != available ] || [ "$personalization_status" != available ] ||
-	[ "$personalization_mutation" != available ] || [ "$wallpaper_state" != unavailable ] ||
+	[ "$personalization_mutation" != available ] || [ "$wallpaper_provider" != available ] ||
+	[ "$wallpaper_state" != unavailable ] ||
 	[ "$cursor_state" != unavailable ] || [ "$icon_state" != unavailable ] ||
 	[ "$gtk_state" != unavailable ] || [ "$qt_state" != partial ] ||
-	[ "$compositor_state" != unavailable ]; then
-	printf 'Combined optional loss did not remain capability-scoped: %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
-		"$font_state" "$personalization_status" "$personalization_mutation" "$wallpaper_state" \
-		"$cursor_state" "$icon_state" "$gtk_state" "$qt_state" "$compositor_state" >&2
+	[ "$compositor_state" != unavailable ] || [ "$gtk_delegate_state" != unavailable ] ||
+	[ "$qt_delegate_state" != unavailable ]; then
+	printf 'Combined optional loss did not remain capability-scoped: %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
+		"$font_state" "$personalization_status" "$personalization_mutation" "$wallpaper_provider" \
+		"$wallpaper_state" "$cursor_state" "$icon_state" "$gtk_state" "$qt_state" \
+		"$compositor_state" "$gtk_delegate_state" "$qt_delegate_state" >&2
 	exit 1
 fi
 process_identity_alive "$quickshell_identity"
