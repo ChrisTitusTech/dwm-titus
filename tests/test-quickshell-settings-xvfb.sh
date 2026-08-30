@@ -2066,8 +2066,23 @@ done
 # degrading the aggregate application state. The clean fixture can already be
 # partial when optional XSETTINGS verification tools are not installed.
 test_stage='validating unused appearance inventory diagnostics'
-appearance_application_before=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceApplicationState)
+appearance_application_before=
+i=0
+while [ "$i" -lt 100 ]; do
+	appearance_application_before=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceApplicationState 2>/dev/null || true)
+	case $appearance_application_before in available | partial) break ;; esac
+	i=$((i + 1))
+	sleep 0.05
+done
+case $appearance_application_before in
+available | partial) ;;
+*)
+	printf 'Appearance application baseline did not become readable: %s\n' \
+		"$appearance_application_before" >&2
+	exit 1
+	;;
+esac
 printf '%s\n' inventory-only >"$appearance_failure_fixture"
 printf '# trigger inventory-only provider fixture\n' >>"$config_home/dwm-titus/themes.toml"
 i=0
