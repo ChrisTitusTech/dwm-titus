@@ -668,6 +668,13 @@ ShellRoot {
             return appearanceModel.inventoryProviderState;
         }
 
+        function appearanceInventoryCandidateState(capability: string, token: string): string {
+            const match = appearanceModel.inventoryCandidates.find(function(item) {
+                return item.id === capability && item.token === token;
+            });
+            return match ? match.state : "";
+        }
+
         function appearanceIntegrationState(integrationId: string): string {
             const match = appearanceModel.integrations.find(function(item) { return item.id === integrationId; });
             return match ? match.state : "";

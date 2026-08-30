@@ -284,7 +284,9 @@ if [ "${1:-}" = inventory ] && [ -f "$fixture" ] &&
 	[ "$(cat "$fixture")" = optional-loss ]; then
 	"$(dirname -- "$0")/dwm-settings-appearance.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
 		$1 == "candidate" && ($2 == "wallpaper" || $2 == "cursor" || $2 == "icon" ||
-			$2 == "gtk" || $2 == "qt" || $2 == "compositor") { next }
+			$2 == "compositor") { next }
+		$1 == "candidate" && $2 == "gtk" && $4 != "Adwaita" && $4 != "Adwaita-dark" { next }
+		$1 == "candidate" && $2 == "qt" && $4 != "gtk3" { next }
 		$1 == "selection" && $2 == "font" {
 			$3 = "available";
 			if ($4 == "") $4 = "sans-serif";
@@ -327,6 +329,38 @@ if [ "${1:-}" = snapshot ] && [ -f "$fixture" ]; then
 			END {
 				print "theme", "unused-broken", "available", "invalid", "true", "automatic", "Unused theme is incomplete";
 				print "error", "theme:unused-broken", "missing-key", "Unused theme is missing required keys";
+			}'
+		exit 0
+		;;
+	optional-loss)
+		"$(dirname -- "$0")/dwm-settings-appearance.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
+			$1 == "provider" && $2 == "appearance" {
+				$3 = "partial"; $5 = "Optional appearance integrations are unavailable";
+			}
+			$1 == "integration" && $2 == "gtk" {
+				$3 = "partial"; $4 = "Nordic";
+				$5 = "Requested GTK theme is missing; built-in fallbacks remain available";
+			}
+			$1 == "integration" && $2 == "qt" {
+				$3 = "partial"; $4 = "qt6ct";
+				$5 = "Configured Qt backend is not installed; gtk3 remains available";
+			}
+			$1 == "integration" && $2 == "cursor" {
+				$3 = "unavailable"; $4 = "Missing-Cursor";
+				$5 = "Managed cursor theme is missing";
+			}
+			$1 == "integration" && $2 == "compositor" {
+				$3 = "unavailable"; $4 = "missing";
+				$5 = "Picom is optional and not installed";
+			}
+			$1 == "error" && ($2 == "gtk" || $2 == "qt" || $2 == "cursor" ||
+				$2 == "compositor") { next }
+			{ print }
+			END {
+				print "error", "gtk", "missing-theme", "Requested GTK theme is not installed";
+				print "error", "qt", "missing-backend", "Configured Qt backend is not installed";
+				print "error", "cursor", "missing-theme", "Managed cursor theme is not installed";
+				print "error", "compositor", "missing", "Picom is optional and not installed";
 			}'
 		exit 0
 		;;
@@ -2092,6 +2126,16 @@ baseline_gtk_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$confi
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState gtk)
 baseline_qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt)
+baseline_appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus)
+baseline_gtk_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState gtk)
+baseline_qt_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState qt)
+baseline_cursor_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState cursor)
+baseline_compositor_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState compositor)
 
 # Exercise the combined optional-component loss through the live Settings
 # model. The fixture preserves valid versioned provider responses while making
@@ -2135,8 +2179,22 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState gtk 2>/dev/null || true)
 	qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt 2>/dev/null || true)
+	gtk_builtin_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryCandidateState gtk Adwaita 2>/dev/null || true)
+	gtk_dark_builtin_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryCandidateState gtk Adwaita-dark 2>/dev/null || true)
+	qt_builtin_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryCandidateState qt gtk3 2>/dev/null || true)
+	gtk_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState gtk 2>/dev/null || true)
+	qt_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState qt 2>/dev/null || true)
+	cursor_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState cursor 2>/dev/null || true)
+	compositor_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState compositor 2>/dev/null || true)
 	[ "$font_state" = available ] &&
-		{ [ "$appearance_status" = available ] || [ "$appearance_status" = partial ]; } &&
+		[ "$appearance_status" = partial ] &&
 		[ "$desktop_font_state" = available ] &&
 		[ "$inventory_provider" = available ] && [ "$personalization_status" = available ] &&
 		[ "$personalization_mutation" = available ] && [ "$wallpaper_provider" = partial ] &&
@@ -2144,12 +2202,16 @@ while [ "$i" -lt 100 ]; do
 		[ "$cursor_state" = unavailable ] && [ "$icon_state" = unavailable ] &&
 		[ "$gtk_state" = unavailable ] && [ "$qt_state" = partial ] &&
 		[ "$compositor_state" = unavailable ] && [ "$gtk_delegate_state" = unavailable ] &&
-		[ "$qt_delegate_state" = unavailable ] && break
+		[ "$qt_delegate_state" = unavailable ] &&
+		[ "$gtk_builtin_state" = available ] && [ "$gtk_dark_builtin_state" = available ] &&
+		[ "$qt_builtin_state" = available ] && [ "$gtk_integration" = partial ] &&
+		[ "$qt_integration" = partial ] && [ "$cursor_integration" = unavailable ] &&
+		[ "$compositor_integration" = unavailable ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
 if [ "$font_state" != available ] ||
-	{ [ "$appearance_status" != available ] && [ "$appearance_status" != partial ]; } ||
+	[ "$appearance_status" != partial ] ||
 	[ "$desktop_font_state" != available ] ||
 	[ "$inventory_provider" != available ] || [ "$personalization_status" != available ] ||
 	[ "$personalization_mutation" != available ] || [ "$wallpaper_provider" != partial ] ||
@@ -2157,12 +2219,18 @@ if [ "$font_state" != available ] ||
 	[ "$cursor_state" != unavailable ] || [ "$icon_state" != unavailable ] ||
 	[ "$gtk_state" != unavailable ] || [ "$qt_state" != partial ] ||
 	[ "$compositor_state" != unavailable ] || [ "$gtk_delegate_state" != unavailable ] ||
-	[ "$qt_delegate_state" != unavailable ]; then
-	printf 'Combined optional loss did not remain capability-scoped: %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
+	[ "$qt_delegate_state" != unavailable ] ||
+	[ "$gtk_builtin_state" != available ] || [ "$gtk_dark_builtin_state" != available ] ||
+	[ "$qt_builtin_state" != available ] || [ "$gtk_integration" != partial ] ||
+	[ "$qt_integration" != partial ] || [ "$cursor_integration" != unavailable ] ||
+	[ "$compositor_integration" != unavailable ]; then
+	printf 'Combined optional loss did not remain capability-scoped: %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
 		"$font_state" "$appearance_status" "$desktop_font_state" "$inventory_provider" "$personalization_status" \
 		"$personalization_mutation" "$wallpaper_provider" \
 		"$wallpaper_state" "$cursor_state" "$icon_state" "$gtk_state" "$qt_state" \
-		"$compositor_state" "$gtk_delegate_state" "$qt_delegate_state" >&2
+		"$compositor_state" "$gtk_delegate_state" "$qt_delegate_state" \
+		"$gtk_builtin_state" "$gtk_dark_builtin_state" "$qt_builtin_state" \
+		"$gtk_integration" "$qt_integration" "$cursor_integration" "$compositor_integration" >&2
 	exit 1
 fi
 process_identity_alive "$quickshell_identity"
@@ -2173,6 +2241,8 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
 	wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
 	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2193,7 +2263,16 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState gtk 2>/dev/null || true)
 	qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt 2>/dev/null || true)
-	[ "$wallpaper_provider" = "$baseline_wallpaper_provider" ] &&
+	gtk_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState gtk 2>/dev/null || true)
+	qt_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState qt 2>/dev/null || true)
+	cursor_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState cursor 2>/dev/null || true)
+	compositor_integration=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceIntegrationState compositor 2>/dev/null || true)
+	[ "$appearance_status" = "$baseline_appearance_status" ] &&
+		[ "$wallpaper_provider" = "$baseline_wallpaper_provider" ] &&
 		[ "$wallpaper_state" = "$baseline_wallpaper_state" ] &&
 		[ "$inventory_provider" = "$baseline_inventory_provider" ] &&
 		[ "$cursor_state" = "$baseline_cursor_state" ] &&
@@ -2201,22 +2280,32 @@ while [ "$i" -lt 100 ]; do
 		[ "$gtk_state" = "$baseline_gtk_state" ] && [ "$qt_state" = "$baseline_qt_state" ] &&
 		[ "$compositor_state" = "$baseline_compositor_state" ] &&
 		[ "$gtk_delegate_state" = "$baseline_gtk_delegate_state" ] &&
-		[ "$qt_delegate_state" = "$baseline_qt_delegate_state" ] && break
+		[ "$qt_delegate_state" = "$baseline_qt_delegate_state" ] &&
+		[ "$gtk_integration" = "$baseline_gtk_integration" ] &&
+		[ "$qt_integration" = "$baseline_qt_integration" ] &&
+		[ "$cursor_integration" = "$baseline_cursor_integration" ] &&
+		[ "$compositor_integration" = "$baseline_compositor_integration" ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
-if [ "$wallpaper_provider" != "$baseline_wallpaper_provider" ] ||
+if [ "$appearance_status" != "$baseline_appearance_status" ] ||
+	[ "$wallpaper_provider" != "$baseline_wallpaper_provider" ] ||
 	[ "$wallpaper_state" != "$baseline_wallpaper_state" ] ||
 	[ "$inventory_provider" != "$baseline_inventory_provider" ] ||
 	[ "$cursor_state" != "$baseline_cursor_state" ] || [ "$icon_state" != "$baseline_icon_state" ] ||
 	[ "$gtk_state" != "$baseline_gtk_state" ] || [ "$qt_state" != "$baseline_qt_state" ] ||
 	[ "$compositor_state" != "$baseline_compositor_state" ] ||
 	[ "$gtk_delegate_state" != "$baseline_gtk_delegate_state" ] ||
-	[ "$qt_delegate_state" != "$baseline_qt_delegate_state" ]; then
-	printf 'Optional loss did not recover to baseline: %s / %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
-		"$wallpaper_provider" "$wallpaper_state" "$inventory_provider" "$cursor_state" \
+	[ "$qt_delegate_state" != "$baseline_qt_delegate_state" ] ||
+	[ "$gtk_integration" != "$baseline_gtk_integration" ] ||
+	[ "$qt_integration" != "$baseline_qt_integration" ] ||
+	[ "$cursor_integration" != "$baseline_cursor_integration" ] ||
+	[ "$compositor_integration" != "$baseline_compositor_integration" ]; then
+	printf 'Optional loss did not recover to baseline: %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
+		"$appearance_status" "$wallpaper_provider" "$wallpaper_state" "$inventory_provider" "$cursor_state" \
 		"$icon_state" "$gtk_state" "$qt_state" "$compositor_state" \
-		"$gtk_delegate_state" "$qt_delegate_state" >&2
+		"$gtk_delegate_state" "$qt_delegate_state" "$gtk_integration" "$qt_integration" \
+		"$cursor_integration" "$compositor_integration" >&2
 	exit 1
 fi
 
