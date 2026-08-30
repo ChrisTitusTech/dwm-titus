@@ -1812,14 +1812,17 @@ fi
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperReconcile >/dev/null
 i=0
-while [ "$i" -lt 100 ]; do
+while [ "$i" -lt 200 ]; do
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
 	[ "$wallpaper_preview" = active ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$wallpaper_preview" = active ]
+if [ "$wallpaper_preview" != active ]; then
+	printf 'Wallpaper reconcile did not rearm the preview: %s\n' "$wallpaper_preview" >&2
+	exit 1
+fi
 wallpaper_message=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMessage)
 if [ "$wallpaper_message" != 'Wallpaper preview recovery reconciled' ]; then
