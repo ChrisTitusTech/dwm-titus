@@ -2154,6 +2154,12 @@ baseline_wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_h
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState)
 baseline_inventory_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryProviderState)
+baseline_inventory_watch_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryWatchState)
+baseline_font_mutation_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontMutationReady)
+[ "$baseline_inventory_watch_state" = available ]
+[ "$baseline_font_mutation_ready" = true ]
 baseline_cursor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor)
 baseline_icon_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2245,6 +2251,8 @@ i=0
 while [ "$i" -lt 100 ]; do
 	font_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontState 2>/dev/null || true)
+	font_mutation_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontMutationReady 2>/dev/null || true)
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
 	appearance_application=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2253,6 +2261,8 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryState font 2>/dev/null || true)
 	inventory_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryProviderState 2>/dev/null || true)
+	inventory_watch_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryWatchState 2>/dev/null || true)
 	personalization_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationStatus 2>/dev/null || true)
 	personalization_mutation=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2340,10 +2350,13 @@ while [ "$i" -lt 100 ]; do
 	compositor_error_code=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceErrorCode compositor 2>/dev/null || true)
 	[ "$font_state" = available ] &&
+		[ "$font_mutation_ready" = "$baseline_font_mutation_ready" ] &&
 		[ "$appearance_status" = partial ] &&
 		[ "$appearance_application" = partial ] &&
 		[ "$desktop_font_state" = available ] &&
-		[ "$inventory_provider" = available ] && [ "$personalization_status" = available ] &&
+		[ "$inventory_provider" = available ] &&
+		[ "$inventory_watch_state" = "$baseline_inventory_watch_state" ] &&
+		[ "$personalization_status" = available ] &&
 		[ "$personalization_mutation" = available ] && [ "$wallpaper_provider" = partial ] &&
 		[ "$wallpaper_state" = unavailable ] &&
 		[ "$wallpaper_provider_detail" = 'Feh is optional and is not installed' ] &&
@@ -2379,10 +2392,13 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 if [ "$font_state" != available ] ||
+	[ "$font_mutation_ready" != "$baseline_font_mutation_ready" ] ||
 	[ "$appearance_status" != partial ] ||
 	[ "$appearance_application" != partial ] ||
 	[ "$desktop_font_state" != available ] ||
-	[ "$inventory_provider" != available ] || [ "$personalization_status" != available ] ||
+	[ "$inventory_provider" != available ] ||
+	[ "$inventory_watch_state" != "$baseline_inventory_watch_state" ] ||
+	[ "$personalization_status" != available ] ||
 	[ "$personalization_mutation" != available ] || [ "$wallpaper_provider" != partial ] ||
 	[ "$wallpaper_state" != unavailable ] ||
 	[ "$wallpaper_provider_detail" != 'Feh is optional and is not installed' ] ||
@@ -2437,9 +2453,10 @@ if [ "$font_state" != available ] ||
 		"$baseline_wallpaper_mutation_detail" "$baseline_wallpaper_reset_detail" >&2
 	printf '  wallpaper provider/selection details: %s / %s\n' \
 		"$wallpaper_provider_detail" "$wallpaper_detail" >&2
-	printf '  unaffected controls: text-size=%s/%s/%s; theme mutation=%s\n' \
+	printf '  unaffected controls: font mutation=%s; text-size=%s/%s/%s; theme mutation=%s; inventory watch=%s\n' \
+		"$font_mutation_ready" \
 		"$text_size_state" "$text_size_apply_state" "$text_size_reset_state" \
-		"$theme_mutation_ready" >&2
+		"$theme_mutation_ready" "$inventory_watch_state" >&2
 	printf '  aggregate application state: %s\n' "$appearance_application" >&2
 	exit 1
 fi
@@ -2463,6 +2480,8 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderDetail 2>/dev/null || true)
 	wallpaper_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperDetail 2>/dev/null || true)
+	font_mutation_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontMutationReady 2>/dev/null || true)
 	text_size_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState text-size 2>/dev/null || true)
 	text_size_apply_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2473,6 +2492,8 @@ while [ "$i" -lt 100 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady 2>/dev/null || true)
 	inventory_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryProviderState 2>/dev/null || true)
+	inventory_watch_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryWatchState 2>/dev/null || true)
 	cursor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor 2>/dev/null || true)
 	icon_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2541,7 +2562,9 @@ while [ "$i" -lt 100 ]; do
 		[ "$wallpaper_provider_detail" != 'Feh is optional and is not installed' ] &&
 		[ -n "$wallpaper_detail" ] &&
 		[ "$wallpaper_detail" != 'Wallpaper folder is unavailable' ] &&
+		[ "$font_mutation_ready" = "$baseline_font_mutation_ready" ] &&
 		[ "$inventory_provider" = "$baseline_inventory_provider" ] &&
+		[ "$inventory_watch_state" = "$baseline_inventory_watch_state" ] &&
 		[ "$cursor_state" = "$baseline_cursor_state" ] &&
 		[ "$icon_state" = "$baseline_icon_state" ] &&
 		[ "$gtk_state" = "$baseline_gtk_state" ] && [ "$qt_state" = "$baseline_qt_state" ] &&
@@ -2586,7 +2609,9 @@ if [ "$appearance_status" != "$baseline_appearance_status" ] ||
 	[ "$wallpaper_provider_detail" = 'Feh is optional and is not installed' ] ||
 	[ -z "$wallpaper_detail" ] ||
 	[ "$wallpaper_detail" = 'Wallpaper folder is unavailable' ] ||
+	[ "$font_mutation_ready" != "$baseline_font_mutation_ready" ] ||
 	[ "$inventory_provider" != "$baseline_inventory_provider" ] ||
+	[ "$inventory_watch_state" != "$baseline_inventory_watch_state" ] ||
 	[ "$cursor_state" != "$baseline_cursor_state" ] || [ "$icon_state" != "$baseline_icon_state" ] ||
 	[ "$gtk_state" != "$baseline_gtk_state" ] || [ "$qt_state" != "$baseline_qt_state" ] ||
 	[ "$compositor_state" != "$baseline_compositor_state" ] ||
@@ -2653,12 +2678,15 @@ if [ "$appearance_status" != "$baseline_appearance_status" ] ||
 		"$wallpaper_mutation_detail" "$wallpaper_reset_detail" >&2
 	printf '  wallpaper provider/selection details: %s / %s\n' \
 		"$wallpaper_provider_detail" "$wallpaper_detail" >&2
-	printf '  controls: text-size=%s/%s/%s; theme mutation=%s\n' \
+	printf '  controls: font mutation=%s; text-size=%s/%s/%s; theme mutation=%s; inventory watch=%s\n' \
+		"$font_mutation_ready" \
 		"$text_size_state" "$text_size_apply_state" "$text_size_reset_state" \
-		"$theme_mutation_ready" >&2
-	printf '  baseline controls: text-size=%s/%s/%s; theme mutation=%s\n' \
+		"$theme_mutation_ready" "$inventory_watch_state" >&2
+	printf '  baseline controls: font mutation=%s; text-size=%s/%s/%s; theme mutation=%s; inventory watch=%s\n' \
+		"$baseline_font_mutation_ready" \
 		"$baseline_text_size_state" "$baseline_text_size_apply_state" \
-		"$baseline_text_size_reset_state" "$baseline_theme_mutation_ready" >&2
+		"$baseline_text_size_reset_state" "$baseline_theme_mutation_ready" \
+		"$baseline_inventory_watch_state" >&2
 	printf '  aggregate application state: %s (baseline %s)\n' \
 		"$appearance_application" "$baseline_appearance_application" >&2
 	exit 1
