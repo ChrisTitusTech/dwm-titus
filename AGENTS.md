@@ -85,8 +85,10 @@ package or installation path.
 - When a pull request depends on unmerged work, base it on the prerequisite
   branch and state the dependency in the pull request. After the prerequisite
   merges, rebase the dependent branch onto updated `main` or merge updated
-  `main` into it, verify that the pull request diff contains only its intended
-  review boundary, and then retarget it to `main`.
+  `main` into it. Publish a rebase with `git push --force-with-lease`, or
+  publish a merge with a normal push; verify the remote head and that the pull
+  request diff contains only its intended review boundary, and then retarget it
+  to `main`.
 - Before publishing, run focused validation, the full relevant repository
   gates, the built-in Codex review loop, and an independent review when the
   review tooling is available. Address valid findings and repeat affected
