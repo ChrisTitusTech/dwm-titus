@@ -1835,6 +1835,17 @@ while [ "$i" -lt 200 ]; do
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
 	[ "$wallpaper_preview" = active ] && break
+	wallpaper_status_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperStatusBusy 2>/dev/null || true)
+	# The inventory watcher can report a change between the separate readiness
+	# query above and the IPC action. That correctly leaves recovery failed with
+	# a busy message, so retry the same user-visible action once the model is
+	# ready instead of treating that event boundary as an atomic transaction.
+	if [ "$wallpaper_preview" = failed ] && [ "$wallpaper_status_busy" = false ]; then
+		DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings \
+			appearanceWallpaperReconcile >/dev/null 2>&1 || true
+	fi
 	i=$((i + 1))
 	sleep 0.05
 done
