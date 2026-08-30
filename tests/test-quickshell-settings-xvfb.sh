@@ -2247,6 +2247,10 @@ baseline_text_size_state=$(settings_ipc_retry appearancePersonalizationEffective
 baseline_text_size_apply_state=$(settings_ipc_retry appearancePersonalizationApplyState text-size)
 baseline_text_size_reset_state=$(settings_ipc_retry appearancePersonalizationResetState text-size)
 baseline_theme_mutation_ready=$(settings_ipc_retry appearanceMutationReady)
+cursor_reset_baseline_valid=false
+case $baseline_cursor_reset_state in available | restricted) cursor_reset_baseline_valid=true ;; esac
+icon_reset_baseline_valid=false
+case $baseline_icon_reset_state in available | restricted) icon_reset_baseline_valid=true ;; esac
 text_size_baseline_valid=false
 case $baseline_text_size_state in
 available | partial)
@@ -2257,12 +2261,13 @@ available | partial)
 esac
 if [ "$baseline_inventory_watch_state" != available ] ||
 	[ "$baseline_font_mutation_ready" != true ] ||
-	[ "$baseline_cursor_reset_state" != available ] ||
-	[ "$baseline_icon_reset_state" != available ] ||
+	[ "$cursor_reset_baseline_valid" != true ] ||
+	[ "$icon_reset_baseline_valid" != true ] ||
 	[ "$text_size_baseline_valid" != true ] ||
 	[ "$baseline_theme_mutation_ready" != true ]; then
-	printf 'Healthy appearance controls were not ready: inventory-watch=%s font=%s text-size=%s/%s/%s theme=%s\n' \
+	printf 'Healthy appearance controls were not ready: inventory-watch=%s font=%s cursor-reset=%s icon-reset=%s text-size=%s/%s/%s theme=%s\n' \
 		"$baseline_inventory_watch_state" "$baseline_font_mutation_ready" \
+		"$baseline_cursor_reset_state" "$baseline_icon_reset_state" \
 		"$baseline_text_size_state" "$baseline_text_size_apply_state" \
 		"$baseline_text_size_reset_state" "$baseline_theme_mutation_ready" >&2
 	exit 1
