@@ -660,6 +660,14 @@ ShellRoot {
             return appearanceModel.applicationState;
         }
 
+        function appearanceInventoryState(capability: string): string {
+            return appearanceModel.inventorySelection(capability).state;
+        }
+
+        function appearanceInventoryProviderState(): string {
+            return appearanceModel.inventoryProviderState;
+        }
+
         function appearanceIntegrationState(integrationId: string): string {
             const match = appearanceModel.integrations.find(function(item) { return item.id === integrationId; });
             return match ? match.state : "";
@@ -687,6 +695,10 @@ ShellRoot {
 
         function appearanceWallpaperState(): string {
             return appearanceModel.wallpaperState;
+        }
+
+        function appearanceWallpaperProviderState(): string {
+            return appearanceModel.wallpaperProviderState;
         }
 
         function appearanceWallpaperPath(): string {
@@ -763,6 +775,11 @@ ShellRoot {
 
         function appearancePersonalizationEffectiveState(capability: string): string {
             return appearanceModel.personalizationEffectiveState(capability);
+        }
+
+        function appearancePersonalizationDelegateState(capability: string): string {
+            const match = appearanceModel.personalizationDelegates[capability];
+            return match ? match.state : "";
         }
 
         function appearanceMessage(): string {

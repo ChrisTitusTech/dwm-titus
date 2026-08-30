@@ -280,6 +280,34 @@ cat >"$data_home/dwm-titus/scripts/dwm-settings-appearance" <<'SH'
 #!/bin/sh
 set -eu
 fixture=${DWM_SETTINGS_TEST_APPEARANCE_FAILURE:?}
+if [ "${1:-}" = inventory ] && [ -f "$fixture" ] &&
+	[ "$(cat "$fixture")" = optional-loss ]; then
+	"$(dirname -- "$0")/dwm-settings-appearance.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
+		$1 == "candidate" && ($2 == "wallpaper" || $2 == "cursor" || $2 == "icon" ||
+			$2 == "gtk" || $2 == "qt" || $2 == "compositor") { next }
+		$1 == "selection" && $2 == "font" {
+			$3 = "available";
+			if ($4 == "") $4 = "sans-serif";
+			if ($5 == "") $5 = $4;
+			$6 = "Desktop font inventory remains available";
+		}
+		$1 == "selection" && $2 == "wallpaper" {
+			$3 = "unavailable"; $6 = "Wallpaper folder is unavailable";
+		}
+		$1 == "selection" && ($2 == "cursor" || $2 == "icon" || $2 == "gtk") {
+			$3 = "unavailable"; $6 = "Configured selection is not installed";
+		}
+		$1 == "selection" && $2 == "qt" {
+			$3 = "partial"; $4 = "qt6ct"; $5 = "";
+			$6 = "Configured Qt platform theme backend is not installed";
+		}
+		$1 == "selection" && $2 == "compositor" {
+			$3 = "unavailable"; $4 = ""; $5 = "missing";
+			$6 = "Picom is optional and not installed";
+		}
+		{ print }'
+	exit 0
+fi
 if [ "${1:-}" = snapshot ] && [ -f "$fixture" ]; then
 	case $(cat "$fixture") in
 	silent) exit 1 ;;
@@ -308,6 +336,26 @@ exec "$(dirname -- "$0")/dwm-settings-appearance.real" "$@"
 SH
 chmod +x "$data_home/dwm-titus/scripts/dwm-settings-appearance"
 
+mv "$data_home/dwm-titus/scripts/dwm-settings-personalization" \
+	"$data_home/dwm-titus/scripts/dwm-settings-personalization.real"
+cat >"$data_home/dwm-titus/scripts/dwm-settings-personalization" <<'SH'
+#!/bin/sh
+set -eu
+fixture=${DWM_SETTINGS_TEST_APPEARANCE_FAILURE:?}
+if [ "${1:-}" = status ] && [ -f "$fixture" ] &&
+	[ "$(cat "$fixture")" = optional-loss ]; then
+	"$(dirname -- "$0")/dwm-settings-personalization.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
+		$1 == "delegate" && ($2 == "gtk" || $2 == "qt") {
+			$3 = "unavailable"; $4 = "";
+			$5 = "No trusted advanced editor is installed";
+		}
+		{ print }'
+	exit 0
+fi
+exec "$(dirname -- "$0")/dwm-settings-personalization.real" "$@"
+SH
+chmod +x "$data_home/dwm-titus/scripts/dwm-settings-personalization"
+
 wallpaper_status_fixture=$work/wallpaper-status
 mv "$data_home/dwm-titus/scripts/dwm-settings-wallpaper" \
 	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper.real"
@@ -317,6 +365,24 @@ set -eu
 fixture=${DWM_SETTINGS_TEST_WALLPAPER_STATUS:-}
 if [ "${1:-}" = status ] && [ "${2:-}" = --read-only ] &&
 	[ -n "$fixture" ] && [ -f "$fixture" ]; then
+	if [ "$(cat "$fixture")" = optional-loss ]; then
+		"$(dirname -- "$0")/dwm-settings-wallpaper.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
+			$1 == "provider" {
+				$3 = "partial"; $5 = "Feh is optional and is not installed";
+			}
+			$1 == "selection" {
+				$2 = "unavailable"; $3 = ""; $4 = "fill";
+				$5 = "Wallpaper folder is unavailable";
+			}
+			$1 == "mutation" {
+				$2 = "restricted"; $3 = "Feh is optional and is not installed";
+			}
+			$1 == "reset" {
+				$2 = "restricted"; $3 = "No managed wallpaper state exists";
+			}
+			{ print }'
+		exit 0
+	fi
 	printf 'wallpaper-protocol\t1\t0\n'
 	exit 0
 fi
@@ -1577,6 +1643,8 @@ i=0
 while [ "$i" -lt 100 ]; do
 	font_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontState 2>/dev/null || true)
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
 	[ "$font_state" = available ] && break
 	i=$((i + 1))
 	sleep 0.05
@@ -1737,6 +1805,8 @@ i=0
 while [ "$i" -lt 100 ]; do
 	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
 	[ "$wallpaper_state" = unavailable ] && [ "$wallpaper_preview" = active ] && break
@@ -2001,6 +2071,152 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ "$appearance_count" -eq 15 ]
+
+baseline_wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState)
+baseline_wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState)
+baseline_inventory_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryProviderState)
+baseline_cursor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor)
+baseline_icon_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState icon)
+baseline_gtk_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState gtk)
+baseline_qt_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState qt)
+baseline_compositor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryState compositor)
+baseline_gtk_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState gtk)
+baseline_qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt)
+
+# Exercise the combined optional-component loss through the live Settings
+# model. The fixture preserves valid versioned provider responses while making
+# wallpaper, toolkit assets, Picom, Feh, and delegated editors unavailable.
+test_stage='validating combined optional-component loss isolation'
+printf '%s\n' optional-loss >"$appearance_failure_fixture"
+printf '%s\n' optional-loss >"$wallpaper_status_fixture"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	font_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontState 2>/dev/null || true)
+	desktop_font_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryState font 2>/dev/null || true)
+	inventory_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryProviderState 2>/dev/null || true)
+	personalization_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationStatus 2>/dev/null || true)
+	personalization_mutation=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationMutationState 2>/dev/null || true)
+	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
+	cursor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor 2>/dev/null || true)
+	icon_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState icon 2>/dev/null || true)
+	gtk_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState gtk 2>/dev/null || true)
+	qt_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState qt 2>/dev/null || true)
+	compositor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryState compositor 2>/dev/null || true)
+	gtk_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState gtk 2>/dev/null || true)
+	qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt 2>/dev/null || true)
+	[ "$font_state" = available ] &&
+		{ [ "$appearance_status" = available ] || [ "$appearance_status" = partial ]; } &&
+		[ "$desktop_font_state" = available ] &&
+		[ "$inventory_provider" = available ] && [ "$personalization_status" = available ] &&
+		[ "$personalization_mutation" = available ] && [ "$wallpaper_provider" = partial ] &&
+		[ "$wallpaper_state" = unavailable ] &&
+		[ "$cursor_state" = unavailable ] && [ "$icon_state" = unavailable ] &&
+		[ "$gtk_state" = unavailable ] && [ "$qt_state" = partial ] &&
+		[ "$compositor_state" = unavailable ] && [ "$gtk_delegate_state" = unavailable ] &&
+		[ "$qt_delegate_state" = unavailable ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$font_state" != available ] ||
+	{ [ "$appearance_status" != available ] && [ "$appearance_status" != partial ]; } ||
+	[ "$desktop_font_state" != available ] ||
+	[ "$inventory_provider" != available ] || [ "$personalization_status" != available ] ||
+	[ "$personalization_mutation" != available ] || [ "$wallpaper_provider" != partial ] ||
+	[ "$wallpaper_state" != unavailable ] ||
+	[ "$cursor_state" != unavailable ] || [ "$icon_state" != unavailable ] ||
+	[ "$gtk_state" != unavailable ] || [ "$qt_state" != partial ] ||
+	[ "$compositor_state" != unavailable ] || [ "$gtk_delegate_state" != unavailable ] ||
+	[ "$qt_delegate_state" != unavailable ]; then
+	printf 'Combined optional loss did not remain capability-scoped: %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
+		"$font_state" "$appearance_status" "$desktop_font_state" "$inventory_provider" "$personalization_status" \
+		"$personalization_mutation" "$wallpaper_provider" \
+		"$wallpaper_state" "$cursor_state" "$icon_state" "$gtk_state" "$qt_state" \
+		"$compositor_state" "$gtk_delegate_state" "$qt_delegate_state" >&2
+	exit 1
+fi
+process_identity_alive "$quickshell_identity"
+rm -f "$appearance_failure_fixture" "$wallpaper_status_fixture"
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	wallpaper_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperProviderState 2>/dev/null || true)
+	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
+	inventory_provider=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryProviderState 2>/dev/null || true)
+	cursor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor 2>/dev/null || true)
+	icon_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState icon 2>/dev/null || true)
+	gtk_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState gtk 2>/dev/null || true)
+	qt_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState qt 2>/dev/null || true)
+	compositor_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryState compositor 2>/dev/null || true)
+	gtk_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState gtk 2>/dev/null || true)
+	qt_delegate_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationDelegateState qt 2>/dev/null || true)
+	[ "$wallpaper_provider" = "$baseline_wallpaper_provider" ] &&
+		[ "$wallpaper_state" = "$baseline_wallpaper_state" ] &&
+		[ "$inventory_provider" = "$baseline_inventory_provider" ] &&
+		[ "$cursor_state" = "$baseline_cursor_state" ] &&
+		[ "$icon_state" = "$baseline_icon_state" ] &&
+		[ "$gtk_state" = "$baseline_gtk_state" ] && [ "$qt_state" = "$baseline_qt_state" ] &&
+		[ "$compositor_state" = "$baseline_compositor_state" ] &&
+		[ "$gtk_delegate_state" = "$baseline_gtk_delegate_state" ] &&
+		[ "$qt_delegate_state" = "$baseline_qt_delegate_state" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$wallpaper_provider" != "$baseline_wallpaper_provider" ] ||
+	[ "$wallpaper_state" != "$baseline_wallpaper_state" ] ||
+	[ "$inventory_provider" != "$baseline_inventory_provider" ] ||
+	[ "$cursor_state" != "$baseline_cursor_state" ] || [ "$icon_state" != "$baseline_icon_state" ] ||
+	[ "$gtk_state" != "$baseline_gtk_state" ] || [ "$qt_state" != "$baseline_qt_state" ] ||
+	[ "$compositor_state" != "$baseline_compositor_state" ] ||
+	[ "$gtk_delegate_state" != "$baseline_gtk_delegate_state" ] ||
+	[ "$qt_delegate_state" != "$baseline_qt_delegate_state" ]; then
+	printf 'Optional loss did not recover to baseline: %s / %s / %s / %s / %s / %s / %s / %s / %s / %s\n' \
+		"$wallpaper_provider" "$wallpaper_state" "$inventory_provider" "$cursor_state" \
+		"$icon_state" "$gtk_state" "$qt_state" "$compositor_state" \
+		"$gtk_delegate_state" "$qt_delegate_state" >&2
+	exit 1
+fi
 
 test_stage='validating restored appearance integration state'
 printf '# inactive integration watch fixture\n' >"$config_home/dwm-titus/theme-env.sh"
