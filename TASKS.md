@@ -7,24 +7,22 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
 
 ## Verified Checkpoint
 
-Status verified 2026-08-28 against `origin/main` at `5f806af`. Ten of the 25
-Phase 5 implementation checkboxes are merged and supported by passing hosted
-checks. The current panel-widget persistence review boundary adds one validated
-checkbox, leaving 14 open in this branch. The detailed mapping from tasks to
-pull requests, validation, and remaining work is recorded in
-`docs/P5-STATUS.md`.
+Status reconciled 2026-08-30 against `origin/main` at `37600c1`. Eleven of the
+25 Phase 5 implementation checkboxes are merged. The current optional-component
+qualification boundary validates one additional checkbox, leaving 13 open in
+this branch. Panel-widget persistence merged in PR #186 with its focused,
+full-suite, QML, shell, nested-X11, hosted, and live-session evidence recorded
+in `docs/P5-PANEL-WIDGETS.md` and `docs/P5-STATUS.md`.
 
-Panel-widget persistence has passed its focused helper, Control Center,
-panel-menu, QML, shell, nested-X11, clean-build, and full-suite checks on top of
-current `main`. The exact working tree is synchronized to the live installation.
-A fresh DWM login activated the installed binary byte-for-byte, one managed
-Quickshell instance, the panel and tray, and the Control Center and Settings
-surfaces. The installed Settings window opened at 1180x760 with all nine
-sections visible, tighter display controls, and text-scale-responsive inputs.
-The current session has one active monitor, so real multi-monitor persistence
-remains untested here; the shared-state path passed nested-X11 validation. The
-branch is not on `origin/main`, has no pull request, and must be reviewed and
-merged before starting the optional-component qualification boundary.
+Cross-capability optional-component qualification passes its focused helper,
+source-contract, shell, nested-X11, clean-build, full managed-suite, QML lint,
+documentation, staged-install, repeated-install, and diff checks. Missing
+Picom, Feh, toolkit themes, wallpaper directories, and delegated tools remain
+scoped to their own capability. `docs/P5-OPTIONAL-COMPONENTS.md` records the
+detailed evidence. The boundary also repairs the stale compact-display source
+assertion that caused the latest `main` CI run to fail after the panel slice
+had already passed at its merge head. Review and merge this boundary before
+starting accessibility and notification policy.
 
 ## Active Phase: Personalization and Accessibility
 
@@ -86,7 +84,7 @@ Acceptance:
 - [x] Move the existing in-memory panel-widget visibility controls onto shared,
   versioned user state with Settings integration, safe defaults, and migration
   that preserves the current Control Center behavior.
-- [ ] Preserve optional-component behavior: missing Picom, Feh, toolkit themes,
+- [x] Preserve optional-component behavior: missing Picom, Feh, toolkit themes,
   wallpaper directories, or delegated tools must fail only their capability.
 
 Acceptance:
