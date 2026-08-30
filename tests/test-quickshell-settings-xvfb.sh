@@ -1713,7 +1713,7 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 	XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
 	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" apply "$test_wallpaper" max >/dev/null
 i=0
-while [ "$i" -lt 100 ]; do
+while [ "$i" -lt 200 ]; do
 	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperState 2>/dev/null || true)
 	wallpaper_path=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1725,9 +1725,12 @@ while [ "$i" -lt 100 ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$wallpaper_state" = available ]
-[ "$wallpaper_path" = "$test_wallpaper" ]
-[ "$wallpaper_fit" = max ]
+if [ "$wallpaper_state" != available ] || [ "$wallpaper_path" != "$test_wallpaper" ] ||
+	[ "$wallpaper_fit" != max ]; then
+	printf 'Wallpaper apply did not converge: %s / %s / %s\n' \
+		"$wallpaper_state" "$wallpaper_path" "$wallpaper_fit" >&2
+	exit 1
+fi
 
 wallpaper_preview_timeout=60
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1735,19 +1738,26 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" \
 	preview nested-wallpaper "$wallpaper_preview_timeout" "$test_wallpaper" center >/dev/null
 i=0
-while [ "$i" -lt 100 ]; do
+while [ "$i" -lt 200 ]; do
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
 	[ "$wallpaper_preview" = active ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$wallpaper_preview" = active ]
-wallpaper_remaining_before=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewRemaining)
-[ "$wallpaper_remaining_before" -gt 0 ]
-wallpaper_message=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMessage)
+if [ "$wallpaper_preview" != active ]; then
+	printf 'External wallpaper preview did not become active: %s\n' "$wallpaper_preview" >&2
+	exit 1
+fi
+wallpaper_remaining_before=$(settings_ipc_retry appearanceWallpaperPreviewRemaining)
+case $wallpaper_remaining_before in
+'' | *[!0-9]* | 0)
+	printf 'External wallpaper preview reported an invalid initial deadline: %s\n' \
+		"$wallpaper_remaining_before" >&2
+	exit 1
+	;;
+esac
+wallpaper_message=$(settings_ipc_retry appearanceMessage)
 case $wallpaper_message in
 "Wallpaper preview active; keep it within "*" seconds or it will revert") ;;
 *)
@@ -1759,9 +1769,19 @@ esac
 wallpaper_message_remaining=${wallpaper_message#*within }
 wallpaper_message_remaining=${wallpaper_message_remaining%% seconds*}
 sleep 1.2
-wallpaper_remaining_after=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewRemaining)
-[ "$wallpaper_remaining_after" -lt "$wallpaper_remaining_before" ]
+wallpaper_remaining_after=$(settings_ipc_retry appearanceWallpaperPreviewRemaining)
+case $wallpaper_remaining_after in
+'' | *[!0-9]*)
+	printf 'External wallpaper preview reported an invalid later deadline: %s\n' \
+		"$wallpaper_remaining_after" >&2
+	exit 1
+	;;
+esac
+if [ "$wallpaper_remaining_after" -ge "$wallpaper_remaining_before" ]; then
+	printf 'Wallpaper preview countdown did not advance: %s -> %s\n' \
+		"$wallpaper_remaining_before" "$wallpaper_remaining_after" >&2
+	exit 1
+fi
 case $wallpaper_message_remaining in
 '' | *[!0-9]*)
 	printf 'External wallpaper preview message reported an invalid deadline: %s\n' \
