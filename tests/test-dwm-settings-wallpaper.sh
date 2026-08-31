@@ -158,6 +158,18 @@ test ! -e "$config_home/dwm-titus"
 test ! -e "$state_home/dwm-titus"
 test ! -e "$runtime/dwm-settings-wallpaper"
 
+missing_feh_status=$(DWM_WALLPAPER_FEH=$work/missing-feh \
+	run_helper status --read-only)
+grep -Fqx $'provider\twallpaper\tpartial\tuser-session\tFeh is optional and is not installed' \
+	<<<"$missing_feh_status"
+grep -Fqx $'selection\tpartial\t\tfill\tNo managed wallpaper selection; session startup uses the legacy random wallpaper' \
+	<<<"$missing_feh_status"
+grep -Fqx $'mutation\trestricted\tWallpaper changes are unavailable in this session' \
+	<<<"$missing_feh_status"
+test ! -e "$config_home/dwm-titus"
+test ! -e "$state_home/dwm-titus"
+test ! -e "$runtime/dwm-settings-wallpaper"
+
 mv -- "$wallpaper_dir" "$work/backgrounds.saved"
 if run_helper session-apply >/dev/null 2>&1; then
 	printf 'Missing optional wallpaper default unexpectedly applied\n' >&2
@@ -206,6 +218,12 @@ run_helper session-apply
 session_status=$(run_helper status --read-only)
 grep -Fqx $'mutation\tavailable\tWallpaper preview and user-session changes are available' \
 	<<<"$session_status"
+ready_missing_feh_status=$(DWM_WALLPAPER_FEH=$work/missing-feh \
+	run_helper status --read-only)
+grep -Fqx $'provider\twallpaper\tpartial\tuser-session\tFeh is optional and is not installed' \
+	<<<"$ready_missing_feh_status"
+grep -Fqx $'mutation\trestricted\tWallpaper changes are unavailable in this session' \
+	<<<"$ready_missing_feh_status"
 
 # Default mode keeps Feh's per-monitor behavior by applying a bounded random
 # path list instead of collapsing every Xinerama head onto one image.

@@ -445,6 +445,58 @@ grep -Fqx \
 run_helper reset qt | grep -Fqx 'result	reset	qt	follow-theme'
 grep -Fqx 'personalize-reset qt' "$work/theme.calls"
 
+# Missing delegated editors stay scoped to their buttons. Read-only desktop
+# state and transactional apply/reset readiness remain available.
+no_delegates_bin=$work/no-delegates-bin
+mkdir -p "$no_delegates_bin"
+cp -a "$bin_dir/." "$no_delegates_bin/"
+rm -f "$no_delegates_bin/nwg-look" "$no_delegates_bin/qt6ct"
+for required_command in awk bash cat dirname grep stat timeout; do
+	ln -sf "$(command -v "$required_command")" "$no_delegates_bin/$required_command"
+done
+no_delegates_status=$(DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper status)
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'provider	personalization	available	user-session	Bounded personalization changes are available'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'mutation	available	Transactional personalization changes are available'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'action-readiness	gtk	available	available	Apply and reset are available'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'action-readiness	qt	available	available	Apply and reset are available'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'selection	font	available	Old Font 10	follow-system	Persistent user-session setting'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'selection	gtk	available	Old GTK	follow-theme	Persistent user-session setting'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'selection	qt	partial	qt6ct	follow-theme	No supported persistent Qt backend is configured'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'delegate	gtk	unavailable		No trusted advanced editor is installed'
+printf '%s\n' "$no_delegates_status" | grep -Fqx \
+	'delegate	qt	unavailable		No trusted advanced editor is installed'
+printf '%s\n' "$no_delegates_status" | grep -Fqx 'complete	status'
+DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper apply gtk 'Theme One' | grep -Fqx \
+	'result	apply	gtk	Theme One'
+DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper reset gtk | grep -Fqx \
+	'result	reset	gtk	follow-theme'
+DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper apply qt gtk3 | grep -Fqx \
+	'result	apply	qt	gtk3'
+DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper reset qt | grep -Fqx \
+	'result	reset	qt	follow-theme'
+if DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper delegate gtk \
+	>"$work/no-gtk-delegate.out" 2>"$work/no-gtk-delegate.err"; then
+	printf 'GTK delegation succeeded without a trusted editor\n' >&2
+	exit 1
+fi
+grep -Fq 'no trusted advanced GTK editor is installed' \
+	"$work/no-gtk-delegate.err"
+if DWM_TEST_HELPER_PATH=$no_delegates_bin run_helper delegate qt \
+	>"$work/no-qt-delegate.out" 2>"$work/no-qt-delegate.err"; then
+	printf 'Qt delegation succeeded without a trusted editor\n' >&2
+	exit 1
+fi
+grep -Fq 'no trusted advanced Qt editor is installed' \
+	"$work/no-qt-delegate.err"
+
 printf '%s\n' 'export QT_QPA_PLATFORMTHEME=qt6ct' \
 	'export XCURSOR_THEME=Cursor-One' 'export XCURSOR_SIZE=32' \
 	>"$config_home/dwm-titus/theme-env.sh"

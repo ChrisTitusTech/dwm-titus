@@ -44,9 +44,12 @@ Scope {
     property string wallpaperDetail: "Wallpaper state has not been loaded"
     property string wallpaperProviderState: "idle"
     property string wallpaperProviderDetail: "Wallpaper provider has not been checked"
+    property string wallpaperMutationState: "idle"
     property bool wallpaperMutationReady: false
     property string wallpaperMutationDetail: "Wallpaper changes have not been checked"
+    property string wallpaperResetState: "idle"
     property bool wallpaperResetReady: false
+    property string wallpaperResetDetail: "Wallpaper reset readiness has not been checked"
     property bool wallpaperBusy: false
     readonly property bool wallpaperStatusBusy: wallpaperReadinessProcess.running
         || wallpaperStatusProcess.running || inventoryProcess.running
@@ -1311,9 +1314,12 @@ Scope {
         root.wallpaperPath = "";
         root.wallpaperFit = "fill";
         root.wallpaperDetail = detail;
+        root.wallpaperMutationState = "unavailable";
         root.wallpaperMutationReady = false;
         root.wallpaperMutationDetail = detail;
+        root.wallpaperResetState = "unavailable";
         root.wallpaperResetReady = false;
+        root.wallpaperResetDetail = detail;
         if (!preservePreview) {
             root.wallpaperPreviewState = "none";
             root.wallpaperPreviewToken = "";
@@ -1376,9 +1382,12 @@ Scope {
         root.wallpaperPath = selection.path;
         root.wallpaperFit = selection.fit;
         root.wallpaperDetail = selection.detail;
+        root.wallpaperMutationState = mutation.state;
         root.wallpaperMutationReady = mutation.state === "available";
         root.wallpaperMutationDetail = mutation.detail;
+        root.wallpaperResetState = reset.state;
         root.wallpaperResetReady = reset.state === "available";
+        root.wallpaperResetDetail = reset.detail;
         root.wallpaperPreviewState = preview.state;
         root.wallpaperPreviewToken = preview.token;
         root.wallpaperPreviewRemaining = preview.remaining;

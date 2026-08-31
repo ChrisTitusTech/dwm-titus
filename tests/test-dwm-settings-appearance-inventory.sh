@@ -211,6 +211,41 @@ no_feh_inventory=$(HOME=$home PATH=$no_feh_bin XDG_CONFIG_HOME=$config_home \
 grep -Fqx $'selection\twallpaper\tpartial\t'"$wallpaper_dir/nested/forest.JPG"$'\tmax\tFeh is optional and is not installed' \
 	<<<"$no_feh_inventory"
 
+# Qualify simultaneous optional-component loss as capability-scoped. The
+# bounded provider and independent Fontconfig inventory remain available while
+# the missing wallpaper directory, Feh, toolkit assets, Qt editor, and Picom
+# are attributed only to their own selection records.
+optional_loss_bin=$work/optional-loss-bin
+optional_loss_data=$work/optional-loss-data
+optional_loss_wallpapers=$work/missing-backgrounds
+cp -a "$bin_dir" "$optional_loss_bin"
+rm -f "$optional_loss_bin/feh" "$optional_loss_bin/picom" \
+	"$optional_loss_bin/qt6ct"
+mkdir -p "$optional_loss_data"
+optional_loss_inventory=$(HOME=$home PATH=$optional_loss_bin \
+	XDG_CONFIG_HOME=$config_home XDG_STATE_HOME=$home/.local/state \
+	XDG_RUNTIME_DIR=$work/runtime XDG_DATA_HOME=$optional_loss_data \
+	DWM_APPEARANCE_DATA_DIRS=$optional_loss_data \
+	DWM_APPEARANCE_WALLPAPER_DIR=$optional_loss_wallpapers \
+	QT_QPA_PLATFORMTHEME=qt6ct "$helper" inventory)
+grep -Fqx $'provider\tappearance-inventory\tavailable\tread-only\tBounded appearance asset inventory' \
+	<<<"$optional_loss_inventory"
+grep -Fqx $'selection\twallpaper\tunavailable\t'"$wallpaper_dir/nested/forest.JPG"$'\tmax\tWallpaper folder is unavailable: '"$optional_loss_wallpapers" \
+	<<<"$optional_loss_inventory"
+grep -Fqx $'selection\tfont\tavailable\tNoto Sans\tNoto Sans 11\tCurrent desktop font family is installed' \
+	<<<"$optional_loss_inventory"
+grep -Fqx $'selection\tcursor\tunavailable\tCapitaine-Cursors\t\tConfigured selection is not installed' \
+	<<<"$optional_loss_inventory"
+grep -Fqx $'selection\ticon\tunavailable\tPapirus\t\tConfigured selection is not installed' \
+	<<<"$optional_loss_inventory"
+grep -Fqx $'selection\tgtk\tunavailable\tNordic\t\tConfigured selection is not installed' \
+	<<<"$optional_loss_inventory"
+grep -Fqx $'selection\tqt\tpartial\tqt6ct\t\tConfigured Qt platform theme backend is not installed' \
+	<<<"$optional_loss_inventory"
+grep -Fqx $'selection\tcompositor\tunavailable\t\tmissing\tPicom is optional and not installed' \
+	<<<"$optional_loss_inventory"
+test "$(grep -Fc $'selection\t' <<<"$optional_loss_inventory")" -eq 7
+
 saved_scan_fail_bin=$work/saved-scan-fail-bin
 real_find=$(command -v find)
 cp -a "$bin_dir" "$saved_scan_fail_bin"
