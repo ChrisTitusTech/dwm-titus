@@ -172,7 +172,7 @@ incomplete_personalization_output=$(PATH="$incomplete_personalization_bin" \
 printf '%s\n' "$incomplete_personalization_output" | grep -Fqx \
 	'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	The personalization provider returned an unsupported response'
 
-for malformed_text_scale_case in empty-value empty-preference unsupported-preference malformed-scale malformed-duplicate; do
+for malformed_text_scale_case in empty-value empty-preference unsupported-preference malformed-scale duplicate-header malformed-duplicate; do
 	malformed_text_scale_bin=$work/malformed-text-scale-$malformed_text_scale_case-bin
 	cp -a "$fedora_bin" "$malformed_text_scale_bin"
 	case $malformed_text_scale_case in
@@ -191,6 +191,10 @@ for malformed_text_scale_case in empty-value empty-preference unsupported-prefer
 	malformed-scale)
 		malformed_text_scale_payload=$(printf \
 			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\t1x25\tMalformed persisted scale\ncomplete\tstatus')
+		;;
+	duplicate-header)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\npersonalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tfollow-system\tDuplicate protocol header\ncomplete\tstatus')
 		;;
 	malformed-duplicate)
 		malformed_text_scale_payload=$(printf \

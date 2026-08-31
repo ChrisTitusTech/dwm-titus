@@ -108,7 +108,11 @@ emit_text_scale_capability() {
 
 	text_scale_record=$(printf '%s\n' "$personalization_snapshot" |
 		awk -F '\t' '
-			NR == 1 { header = ($0 == "personalization-protocol\t1\t0"); next }
+			$1 == "personalization-protocol" {
+				protocols++
+				if (NR == 1 && $0 == "personalization-protocol\t1\t0") header = 1
+				next
+			}
 			$1 == "selection" && $2 == "text-size" {
 				selections++
 				if (NF == 6 &&
@@ -129,7 +133,7 @@ emit_text_scale_capability() {
 				completions++
 			}
 			END {
-				if (header && selections == 1 && valid_selections == 1 && completions == 1 &&
+				if (header && protocols == 1 && selections == 1 && valid_selections == 1 && completions == 1 &&
 					complete_line == NR && detail != "")
 					printf "%s\t%s\n", state, detail
 				else
