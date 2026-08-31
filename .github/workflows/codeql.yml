@@ -39,7 +39,7 @@ jobs:
             fontconfig-devel freetype-devel
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.37.8
+        uses: github/codeql-action/init@v4.37.9
         with:
           languages: c-cpp
           build-mode: manual
@@ -48,4 +48,4 @@ jobs:
         run: scripts/run-tests make clean all
 
       - name: Analyze
-        uses: github/codeql-action/analyze@v4.37.8
+        uses: github/codeql-action/analyze@v4.37.9
