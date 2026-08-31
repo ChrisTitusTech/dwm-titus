@@ -1,3 +1,10 @@
+---
+title: Keybindings
+description: A complete reference for dwm-titus launchers, windows, workspaces, media controls, screenshots, and system actions.
+navLabel: Keybindings
+eyebrow: Reference
+---
+
 # Keybindings
 
 > Press <kbd>Super</kbd> + <kbd>/</kbd> inside dwm to open a live, searchable

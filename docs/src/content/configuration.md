@@ -1,3 +1,10 @@
+---
+title: Configuration
+description: Customize dwm-titus defaults, live-reloading hotkeys, window rules, and XDG autostart behavior.
+navLabel: Configuration
+eyebrow: Make it yours
+---
+
 # Configuration
 
 dwm-titus keeps user configuration under

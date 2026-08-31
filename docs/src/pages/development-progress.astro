@@ -1,0 +1,637 @@
+---
+import DocsLayout from "../layouts/DocsLayout.astro";
+---
+
+<DocsLayout
+  title="Development Progress"
+  description="A plain-English overview of how dwm-titus evolved from a personal window manager setup into a complete Fedora X11 desktop."
+  eyebrow="Project evolution"
+  wide={true}
+>
+  <div class="progress-page">
+    <section class="progress-hero" aria-labelledby="progress-title">
+      <div class="progress-hero-copy">
+        <p class="progress-kicker">Development story / May 2023 to August 2026</p>
+        <h1 id="progress-title">From a personal DWM setup to a <em>complete Fedora desktop.</em></h1>
+        <p class="progress-dek">Across the full commit history, dwm-titus steadily moved beyond window tiling. It now combines a fast keyboard-first workflow with a polished panel, launcher, settings, notifications, safer installation, and built-in help for everyday users.</p>
+      </div>
+      <aside class="progress-direction" aria-label="Overall direction">
+        <div>
+          <p class="progress-section-kicker">Overall direction</p>
+          <blockquote>Keep the speed and focus of DWM. Remove the <span>assembly required.</span></blockquote>
+        </div>
+        <p><strong>Focused scope</strong> The project experimented with broader installation paths, then made Fedora its single supported platform in August 2026 so setup, testing, and recovery could be more dependable.</p>
+      </aside>
+    </section>
+
+    <section class="progress-metrics" aria-label="Repository snapshot">
+      <div><strong>776</strong><span>commits reviewed</span></div>
+      <div><strong>8</strong><span>tagged releases</span></div>
+      <div><strong>3+ yrs</strong><span>of continuous evolution</span></div>
+      <div><strong>v0.7</strong><span>active development line</span></div>
+    </section>
+
+    <section class="progress-story" aria-labelledby="timeline-title">
+      <div class="progress-timeline-wrap">
+        <div class="progress-heading">
+          <div>
+            <p class="progress-section-kicker">The big picture</p>
+            <h2 id="timeline-title">The evolution in four chapters</h2>
+          </div>
+          <p>A thematic reading of the history, not a raw list of commits.</p>
+        </div>
+        <div class="progress-timeline">
+          <article>
+            <time datetime="2023">2023 / Foundation</time>
+            <h3>Make DWM feel personal</h3>
+            <p>New hotkeys, shutdown controls, cursor movement, fullscreen behavior, workspace focus, volume handling, and window placement established the core workflow.</p>
+          </article>
+          <article>
+            <time datetime="2024">2024 / Daily polish</time>
+            <h3>Turn tweaks into a desktop</h3>
+            <p>System tray and status work, high-refresh fixes, better fullscreen, app icons, launchers, themes, power menus, terminal presets, and cleaner releases made it easier to live in every day.</p>
+          </article>
+          <article>
+            <time datetime="2025">2025 / Integration</time>
+            <h3>Work across real setups</h3>
+            <p>DWM 6.6 updates, web apps, searchable keybind help, battery and audio improvements, and major multi-monitor, per-workspace, bar, and tray work broadened the experience.</p>
+          </article>
+          <article>
+            <time datetime="2026">2026 / Productization</time>
+            <h3>Become a complete Fedora desktop</h3>
+            <p>Installer profiles, bootable images, Quickshell, diagnostics, notifications, multi-display resilience, graphical Settings, safer previews, rollback, tests, and documentation made the system approachable.</p>
+          </article>
+        </div>
+      </div>
+
+      <aside class="progress-recent" aria-labelledby="recent-title">
+        <p class="progress-section-kicker">Recent progress / August 2026</p>
+        <h2 id="recent-title">Settings became a real control layer</h2>
+        <div class="progress-phases">
+          <article><h3>Displays + input <span>Complete</span></h3><p>Monitor layouts, profiles, keyboard and pointer controls, with timed rollback.</p></article>
+          <article><h3>Network + audio <span>Complete</span></h3><p>Wi-Fi, Bluetooth, VPN visibility, devices, volume, microphone, and app streams.</p></article>
+          <article><h3>Power + defaults <span>Complete</span></h3><p>Battery, profiles, lock, session actions, startup apps, and preferred applications.</p></article>
+          <article><h3>Appearance <span>Active</span></h3><p>Themes, wallpaper, fonts, scale, icons, cursor choices, and panel widget visibility.</p></article>
+        </div>
+      </aside>
+    </section>
+
+    <section class="progress-areas" aria-labelledby="areas-title">
+      <div class="progress-areas-intro">
+        <p class="progress-section-kicker">Major areas improved</p>
+        <h2 id="areas-title">What changed underneath the headline</h2>
+        <p>Hundreds of small fixes add up to six visible themes for normal users.</p>
+      </div>
+      <article><span>01</span><h3>Faster everyday flow</h3><p>Keyboard navigation, window layouts, workspaces, app launchers, fullscreen modes, and discoverable keybinds were repeatedly refined.</p></article>
+      <article><span>02</span><h3>Multi-monitor confidence</h3><p>Per-monitor panels and workspaces, tray placement, terminal routing, hot-plug recovery, and active-screen screenshots became far more reliable.</p></article>
+      <article><span>03</span><h3>A coherent desktop shell</h3><p>Quickshell brought together the panel, launcher, tray, notifications, media, quick controls, power actions, and Control Center.</p></article>
+      <article><span>04</span><h3>Safer setup and upgrades</h3><p>Install profiles, dry runs, Fedora images, preserved user configuration, validation, and rollback paths reduced setup risk.</p></article>
+      <article><span>05</span><h3>Less terminal dependence</h3><p>Graphical controls now cover displays, input, network, Bluetooth, sound, power, defaults, startup apps, and appearance.</p></article>
+      <article><span>06</span><h3>More dependable by design</h3><p>Tests, CI, diagnostics, scoped permissions, careful error states, safe previews, and recovery handling grew alongside new features.</p></article>
+    </section>
+
+    <section class="progress-gains" aria-labelledby="gains-title">
+      <div class="progress-gains-title">
+        <p class="progress-section-kicker">What users gain</p>
+        <h2 id="gains-title">A lightweight desktop that no longer expects you to build the missing pieces.</h2>
+      </div>
+      <div class="progress-gain-list">
+        <article><strong>Ready sooner</strong><p>Choose a Fedora image or install onto an existing Fedora system with sensible, documented defaults.</p></article>
+        <article><strong>Learn naturally</strong><p>Use built-in keybind help, diagnostics, clear status messages, and visible unsupported-feature states.</p></article>
+        <article><strong>Adjust safely</strong><p>Preview risky display and appearance changes, keep what works, or automatically return to a known-good state.</p></article>
+        <article><strong>Stay focused</strong><p>Keep DWM's responsive, keyboard-first character while gaining the everyday conveniences of a full desktop.</p></article>
+      </div>
+    </section>
+
+    <footer class="progress-sources">
+      <p>Grounded in the complete Git history through commit <a href="https://github.com/ChrisTitusTech/dwm-titus/commit/edb54788acbf93b467568138e4df8f6ce7b0ec66"><code>edb5478</code></a> on August 30, 2026. Counts include merge commits.</p>
+      <nav aria-label="Development overview sources">
+        <a href="https://github.com/ChrisTitusTech/dwm-titus/commits/main/">Commit history</a>
+        <a href="https://github.com/ChrisTitusTech/dwm-titus/blob/main/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/ChrisTitusTech/dwm-titus/blob/main/ROADMAP.md">Roadmap</a>
+        <a href="https://github.com/ChrisTitusTech/dwm-titus/releases">Releases</a>
+      </nav>
+    </footer>
+  </div>
+</DocsLayout>
+
+<style>
+  .progress-page {
+    display: grid;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--paper) 92%, transparent);
+    box-shadow: 0 30px 85px var(--shadow);
+    overflow: hidden;
+  }
+
+  .progress-page :is(h1, h2, h3, p, blockquote) {
+    margin-top: 0;
+  }
+
+  .progress-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(19rem, 0.65fr);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .progress-hero-copy {
+    position: relative;
+    padding: clamp(2rem, 5vw, 4.6rem) clamp(1.5rem, 5vw, 4rem);
+    overflow: hidden;
+  }
+
+  .progress-hero-copy::after {
+    content: "";
+    position: absolute;
+    right: -5rem;
+    bottom: -8rem;
+    width: 15rem;
+    height: 15rem;
+    border: 1px solid color-mix(in srgb, var(--acid) 32%, transparent);
+    border-radius: 50%;
+    box-shadow: 0 0 0 2.3rem color-mix(in srgb, var(--acid) 3%, transparent), 0 0 0 4.6rem color-mix(in srgb, var(--acid) 2%, transparent);
+    pointer-events: none;
+  }
+
+  .progress-kicker,
+  .progress-section-kicker {
+    margin-bottom: 0.85rem;
+    color: var(--aqua);
+    font-size: 0.67rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .progress-hero h1 {
+    max-width: 13ch;
+    margin-bottom: 1.3rem;
+    font-size: clamp(3rem, 5.5vw, 5.3rem);
+  }
+
+  .progress-hero h1 em {
+    color: var(--acid);
+    font-weight: 500;
+  }
+
+  .progress-dek {
+    max-width: 68ch;
+    margin-bottom: 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+
+  .progress-direction {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: clamp(1.8rem, 4vw, 3rem);
+    border-left: 1px solid var(--line);
+    background: linear-gradient(150deg, color-mix(in srgb, var(--panel) 80%, transparent), color-mix(in srgb, var(--aqua) 5%, transparent));
+  }
+
+  .progress-direction blockquote {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-family: var(--serif);
+    font-size: clamp(1.7rem, 3vw, 2.5rem);
+    letter-spacing: -0.035em;
+    line-height: 1.08;
+  }
+
+  .progress-direction blockquote span {
+    color: var(--aqua);
+  }
+
+  .progress-direction > p:last-child {
+    margin: 2rem 0 0;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.73rem;
+    line-height: 1.55;
+  }
+
+  .progress-direction > p strong {
+    display: block;
+    margin-bottom: 0.35rem;
+    color: var(--orange);
+    font-size: 0.63rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .progress-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+
+  .progress-metrics div {
+    min-height: 6.1rem;
+    padding: 1.25rem 1.5rem;
+    border-right: 1px solid var(--line);
+  }
+
+  .progress-metrics div:last-child {
+    border-right: 0;
+  }
+
+  .progress-metrics strong,
+  .progress-metrics span {
+    display: block;
+  }
+
+  .progress-metrics strong {
+    margin-bottom: 0.35rem;
+    color: var(--acid);
+    font-family: var(--serif);
+    font-size: 2rem;
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+
+  .progress-metrics span {
+    color: var(--muted);
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .progress-story {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(22rem, 0.65fr);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .progress-timeline-wrap,
+  .progress-recent {
+    padding: clamp(1.6rem, 4vw, 2.5rem);
+  }
+
+  .progress-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 2rem;
+    align-items: end;
+    margin-bottom: 1.5rem;
+  }
+
+  .progress-heading h2,
+  .progress-recent h2,
+  .progress-areas-intro h2,
+  .progress-gains h2 {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: 1.9rem;
+    font-weight: 500;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+  }
+
+  .progress-heading > p {
+    max-width: 22rem;
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.68rem;
+    text-align: right;
+  }
+
+  .progress-timeline {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.1rem;
+  }
+
+  .progress-timeline article {
+    position: relative;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--aqua);
+  }
+
+  .progress-timeline article::before {
+    content: "";
+    position: absolute;
+    top: -0.34rem;
+    left: 0;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--acid);
+  }
+
+  .progress-timeline time {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--aqua);
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .progress-timeline h3,
+  .progress-phases h3,
+  .progress-areas h3 {
+    margin: 0 0 0.55rem;
+    font-size: 0.86rem;
+    line-height: 1.3;
+  }
+
+  .progress-timeline p,
+  .progress-phases p,
+  .progress-areas p,
+  .progress-gain-list p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.68rem;
+    line-height: 1.55;
+  }
+
+  .progress-recent {
+    border-left: 1px solid var(--line);
+    background: var(--panel);
+  }
+
+  .progress-recent h2 {
+    margin-bottom: 1.2rem;
+  }
+
+  .progress-phases {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.55rem;
+  }
+
+  .progress-phases article {
+    min-height: 6rem;
+    padding: 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    background: var(--panel-2);
+  }
+
+  .progress-phases h3 {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+
+  .progress-phases h3 span {
+    color: var(--acid);
+    font-size: 0.52rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .progress-areas {
+    display: grid;
+    grid-template-columns: 1.2fr repeat(3, 1fr);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .progress-areas-intro,
+  .progress-areas article {
+    min-height: 10.5rem;
+    padding: 1.5rem;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .progress-areas-intro {
+    grid-row: span 2;
+    min-height: 21rem;
+    background: linear-gradient(150deg, color-mix(in srgb, var(--acid) 7%, transparent), transparent);
+  }
+
+  .progress-areas-intro h2 {
+    margin-bottom: 0.85rem;
+  }
+
+  .progress-areas-intro > p:last-child {
+    color: var(--muted);
+    font-size: 0.73rem;
+  }
+
+  .progress-areas article:nth-last-child(-n + 3) {
+    border-bottom: 0;
+  }
+
+  .progress-areas article:nth-child(4),
+  .progress-areas article:nth-child(7) {
+    border-right: 0;
+  }
+
+  .progress-areas article span {
+    display: block;
+    margin-bottom: 0.8rem;
+    color: var(--dim);
+    font-family: var(--serif);
+    font-size: 0.75rem;
+    font-style: italic;
+  }
+
+  .progress-gains {
+    display: grid;
+    grid-template-columns: minmax(19rem, 0.78fr) 1.22fr;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .progress-gains-title {
+    padding: 2rem;
+    color: #0b0d0d;
+    background: #d8ff5f;
+  }
+
+  .progress-gains-title .progress-section-kicker {
+    color: rgba(11, 13, 13, 0.65);
+  }
+
+  .progress-gains-title h2 {
+    font-size: 2rem;
+  }
+
+  .progress-gain-list {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .progress-gain-list article {
+    padding: 1.6rem 1.2rem;
+    border-right: 1px solid var(--line);
+  }
+
+  .progress-gain-list article:last-child {
+    border-right: 0;
+  }
+
+  .progress-gain-list strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--aqua);
+    font-family: var(--serif);
+    font-size: 1.05rem;
+    font-weight: 500;
+  }
+
+  .progress-sources {
+    display: flex;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 1rem 1.4rem;
+    color: var(--dim);
+    background: color-mix(in srgb, var(--panel) 55%, transparent);
+    font-size: 0.62rem;
+  }
+
+  .progress-sources p {
+    margin: 0;
+  }
+
+  .progress-sources nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    justify-content: flex-end;
+  }
+
+  .progress-sources a {
+    color: var(--muted);
+  }
+
+  .progress-sources code {
+    padding: 0.05rem 0.2rem;
+  }
+
+  @media (max-width: 1200px) {
+    .progress-hero,
+    .progress-story,
+    .progress-gains {
+      grid-template-columns: 1fr;
+    }
+
+    .progress-direction,
+    .progress-recent {
+      border-top: 1px solid var(--line);
+      border-left: 0;
+    }
+
+    .progress-direction blockquote {
+      max-width: 22ch;
+    }
+
+    .progress-areas {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    .progress-areas-intro {
+      grid-column: span 3;
+      grid-row: auto;
+      min-height: 0;
+      border-right: 0;
+    }
+
+    .progress-areas article:nth-child(4) {
+      border-right: 0;
+    }
+
+    .progress-gains-title {
+      color: #0b0d0d;
+    }
+  }
+
+  @media (max-width: 860px) {
+    .progress-metrics,
+    .progress-timeline,
+    .progress-gain-list {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .progress-metrics div:nth-child(2),
+    .progress-gain-list article:nth-child(2) {
+      border-right: 0;
+    }
+
+    .progress-metrics div:nth-child(-n + 2),
+    .progress-gain-list article:nth-child(-n + 2) {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .progress-areas {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .progress-areas-intro {
+      grid-column: span 2;
+    }
+
+    .progress-areas article:nth-child(odd) {
+      border-right: 0;
+    }
+
+    .progress-areas article:nth-child(4) {
+      border-right: 1px solid var(--line);
+    }
+
+    .progress-areas article:nth-last-child(-n + 3) {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .progress-areas article:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+
+    .progress-sources {
+      flex-direction: column;
+    }
+
+    .progress-sources nav {
+      justify-content: flex-start;
+    }
+  }
+
+  @media (max-width: 580px) {
+    .progress-metrics,
+    .progress-timeline,
+    .progress-phases,
+    .progress-areas,
+    .progress-gain-list {
+      grid-template-columns: 1fr;
+    }
+
+    .progress-heading {
+      display: block;
+    }
+
+    .progress-heading > p {
+      margin-top: 0.6rem;
+      text-align: left;
+    }
+
+    .progress-metrics div,
+    .progress-metrics div:nth-child(2),
+    .progress-gain-list article,
+    .progress-gain-list article:nth-child(2),
+    .progress-areas article {
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .progress-metrics div:last-child,
+    .progress-gain-list article:last-child,
+    .progress-areas article:last-child {
+      border-bottom: 0;
+    }
+
+    .progress-areas-intro {
+      grid-column: auto;
+    }
+  }
+</style>

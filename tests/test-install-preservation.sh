@@ -136,7 +136,9 @@ fi
 mkdir -p "$TEST_REPO"
 tar -C "$REPO_DIR" \
 	--exclude='./.git' \
-	--exclude='./docs/book' \
+	--exclude='./docs/.astro' \
+	--exclude='./docs/dist' \
+	--exclude='./docs/node_modules' \
 	--exclude='./release' \
 	--exclude='./dwm' \
 	--exclude='./*.o' \

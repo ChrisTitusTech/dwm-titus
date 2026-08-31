@@ -1,3 +1,10 @@
+---
+title: How dwm-titus Works
+description: A plain-language guide to the window management, shell, live configuration, utilities, and multi-monitor behavior behind dwm-titus.
+navLabel: How It Works
+eyebrow: Under the hood
+---
+
 # How dwm-titus Works
 
 dwm-titus uses a maintained fork of

@@ -1,3 +1,10 @@
+---
+title: Control Center
+description: Use the dwm-titus Control Center for system health, quick actions, appearance, defaults, startup apps, and panel widgets.
+navLabel: Control Center
+eyebrow: Everyday controls
+---
+
 # Control Center
 
 The Control Center is a single-card anchored Quickshell menu for launching
