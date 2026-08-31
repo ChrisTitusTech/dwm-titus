@@ -219,6 +219,8 @@ versions from `config.mk`.
 - Prefer an installed ChatGPT desktop application for `Super`+`A` and hide its
   duplicate ChatGPT web entry from the managed application launcher, while
   retaining the web app as the fallback when no native desktop entry exists.
+  Upgrades now migrate the exact former stock web binding so existing systems
+  receive this behavior without replacing customized hotkey files.
 
 - Keep the managed Quickshell recovery scoped to the exact configuration and
   display, validate fixed PID/start-time cohorts before signals, and bound

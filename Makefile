@@ -242,6 +242,8 @@ install-user:
 	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
 	test -f ${CFG_DIR}/dwm-titus/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
 	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
+	@echo "==> Migrating the stock ChatGPT hotkey..."
+	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/migrate-chatgpt-hotkey.sh
 	@echo "==> Migrating legacy graphical-session startup..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/migrate-graphical-session.sh
 	@echo "==> Installing Meslo font aliases..."
@@ -333,6 +335,9 @@ check-session-guards:
 
 check-session-migration:
 	tests/test-graphical-session-migration.sh
+
+check-chatgpt-hotkey-migration:
+	tests/test-chatgpt-hotkey-migration.sh
 
 check-screenshot:
 	tests/test-dwm-screenshot.sh
@@ -628,6 +633,7 @@ check:
 	$(MAKE) check-lock
 	$(MAKE) check-session-guards
 	$(MAKE) check-session-migration
+	$(MAKE) check-chatgpt-hotkey-migration
 	$(MAKE) check-screenshot
 	$(MAKE) check-release-helper
 	$(MAKE) check-kickstart
@@ -638,7 +644,7 @@ check:
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: clean all check check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
+.PHONY: clean all check check-appearance check-phase5-optional-components check-build-config check-build-deps check-chatgpt-hotkey-migration check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-test-runner \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \

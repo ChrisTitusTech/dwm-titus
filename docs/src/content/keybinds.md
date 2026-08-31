@@ -53,6 +53,8 @@ JPEG. The lightweight capture flow intentionally has no annotation toolbar.
 `Super` + `A` opens an installed ChatGPT desktop application when one is
 available and falls back to the ChatGPT web app otherwise. The application
 launcher hides the ChatGPT web entry while a native desktop entry is installed.
+Upgrades migrate the exact former stock web-app binding to this native-first
+behavior. Customized `Super` + `A` bindings remain unchanged.
 
 ## Window Management
 
