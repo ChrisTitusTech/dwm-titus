@@ -32,7 +32,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install, build, and upload Astro site
-        uses: withastro/action@v6
+        uses: withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853 # v6
         with:
           path: ./docs
           node-version: 24

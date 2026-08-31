@@ -36,6 +36,7 @@ const canonical = new URL(pathname === "/index.html" ? "/" : pathname, Astro.sit
     <link rel="canonical" href={canonical} />
     <title>{title} | dwm-titus</title>
     <script is:inline>
+      document.documentElement.dataset.js = "true";
       try {
         const savedTheme = localStorage.getItem("dwm-docs-theme");
         const systemLight = window.matchMedia("(prefers-color-scheme: light)").matches;
