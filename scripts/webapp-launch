@@ -14,7 +14,7 @@ find_browser_exec() {
 		"$HOME/.nix-profile/share/applications/$browser" \
 		"/usr/share/applications/$browser"; do
 		[[ -f $desktop_file ]] || continue
-		exec_path=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$desktop_file" | head -n 1)
+		exec_path=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p; /^Exec=/q' "$desktop_file")
 		if [[ -n $exec_path ]]; then
 			printf '%s\n' "$exec_path"
 			return 0
@@ -30,16 +30,21 @@ if [[ $# -lt 1 ]]; then
 fi
 
 url=$1
+if [[ ! $url =~ ^https?://[^/?#[:space:]]+([/?#][^[:space:]]*)?$ ]]; then
+	printf '%s: invalid web app URL: %s\n' "${0##*/}" "$url" >&2
+	exit 2
+fi
+
 case $url in
 https://chatgpt.com | https://chatgpt.com/)
-	if [[ ${DWM_CHATGPT_WEB_FALLBACK:-0} != 1 ]] &&
+	if [[ $# -eq 1 && ${DWM_CHATGPT_WEB_FALLBACK:-0} != 1 ]] &&
 		command -v dwm-quickshell-launcher >/dev/null 2>&1; then
 		exec dwm-quickshell-launcher launch-chatgpt
 	fi
 	;;
 esac
 
-browser=$(xdg-settings get default-web-browser)
+browser=$(xdg-settings get default-web-browser 2>/dev/null || true)
 
 case $browser in
 google-chrome* | brave-* | microsoft-edge* | opera* | vivaldi* | helium-browser*) ;;

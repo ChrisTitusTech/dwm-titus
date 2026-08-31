@@ -10,6 +10,7 @@ mkdir -p "$work/bin" "$work/home/.local/share/applications"
 
 cat >"$work/bin/xdg-settings" <<'EOF'
 #!/bin/sh
+[ "${DWM_TEST_XDG_FAIL:-0}" != 1 ] || exit 1
 printf '%s\n' helium.desktop
 EOF
 
@@ -51,6 +52,10 @@ run_webapp https://chatgpt.com/
 test "$(grep -Fxc 'launch-chatgpt' "$work/native.log")" -eq 2
 test ! -e "$work/browser.log"
 
+run_webapp https://chatgpt.com --incognito
+grep -Fqx -- '--app=https://chatgpt.com --incognito' "$work/browser.log"
+test "$(grep -Fxc 'launch-chatgpt' "$work/native.log")" -eq 2
+
 DWM_CHATGPT_WEB_FALLBACK=1 run_webapp https://chatgpt.com --new-window
 grep -Fqx -- '--app=https://chatgpt.com --new-window' "$work/browser.log"
 test "$(grep -Fxc 'launch-chatgpt' "$work/native.log")" -eq 2
@@ -64,11 +69,22 @@ mv "$work/dwm-quickshell-launcher.disabled" "$work/bin/dwm-quickshell-launcher"
 run_webapp https://example.com --incognito
 grep -Fqx -- '--app=https://example.com --incognito' "$work/browser.log"
 
+DWM_TEST_XDG_FAIL=1 run_webapp https://example.net
+grep -Fqx -- '--app=https://example.net' "$work/browser.log"
+
 if run_webapp 2>"$work/missing.err"; then
 	printf 'webapp-launch accepted a missing URL.\n' >&2
 	exit 1
 fi
 grep -Fq 'usage: webapp-launch URL' "$work/missing.err"
+
+for invalid_url in '' chatgpt.com 'https://' 'https:///' 'https://chatgpt.com/bad path'; do
+	if run_webapp "$invalid_url" 2>"$work/invalid.err"; then
+		printf 'webapp-launch accepted invalid URL: %s\n' "$invalid_url" >&2
+		exit 1
+	fi
+	grep -Fq 'invalid web app URL' "$work/invalid.err"
+done
 
 grep -Fq 'DWM_CHATGPT_WEB_FALLBACK=1 webapp-launch https://chatgpt.com' \
 	"$repo_dir/scripts/dwm-quickshell-launcher"
