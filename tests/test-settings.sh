@@ -196,7 +196,7 @@ incomplete_personalization_output=$(PATH="$incomplete_personalization_bin" \
 printf '%s\n' "$incomplete_personalization_output" | grep -Fqx \
 	'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	The personalization provider returned an unsupported response'
 
-for malformed_text_scale_case in incomplete-status-shape empty-value empty-preference unsupported-preference malformed-scale duplicate-header malformed-duplicate malformed-known-record; do
+for malformed_text_scale_case in incomplete-status-shape empty-value empty-preference unsupported-preference malformed-scale duplicate-header malformed-duplicate malformed-known-record oversized-known-field; do
 	malformed_text_scale_bin=$work/malformed-text-scale-$malformed_text_scale_case-bin
 	cp -a "$fedora_bin" "$malformed_text_scale_bin"
 	case $malformed_text_scale_case in
@@ -231,6 +231,15 @@ for malformed_text_scale_case in incomplete-status-shape empty-value empty-prefe
 	malformed-known-record)
 		malformed_text_scale_payload=$(printf \
 			'personalization-protocol\t1\t0\nprovider\tbroken\nselection\ttext-size\tavailable\t1.25\tfollow-system\tValid record\ncomplete\tstatus')
+		;;
+	oversized-known-field)
+		oversized_option=$(awk 'BEGIN { for (i = 0; i < 4096; i++) printf "x" }')
+		malformed_text_scale_payload=$("$fedora_bin/dwm-settings-personalization" status |
+			awk -F '\t' -v option="$oversized_option" '
+				BEGIN { OFS = "\t" }
+				$1 == "selection" && $2 == "font" { $5 = option }
+				{ print }
+			')
 		;;
 	esac
 	make_custom_personalization_stub \
