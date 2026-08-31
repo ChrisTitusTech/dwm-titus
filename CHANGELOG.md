@@ -332,8 +332,8 @@ versions from `config.mk`.
   panel-triggered popups anchored to the monitor where they were opened.
 - Power actions now use the same compact menu header, flat rows, spacing, and
   confirmation layout as the Control Center.
-- Documentation is built and tested from `docs/src/`; generated mdBook output
-  is no longer version controlled.
+- Documentation is built and tested from `docs/src/` with Astro; generated
+  documentation output is no longer version controlled.
 - Release guidance requires validated, committed source and explicit platform
   coverage.
 

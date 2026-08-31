@@ -39,7 +39,9 @@ path renders the new records without changing shell lifecycle behavior.
 
 ## Validation Evidence
 
-The exact continuation working tree passed on Fedora 44:
+The exact continuation working tree passed on Fedora 44. The historical
+documentation build has since been replaced by the current Astro validation
+shown here:
 
 ```text
 shellcheck scripts/dwm-settings-provider tests/test-settings.sh
@@ -49,7 +51,8 @@ scripts/run-tests make clean all
 scripts/run-tests
 shellcheck install.sh scripts/*.sh tests/*.sh
 shfmt -d install.sh scripts/*.sh tests/*.sh
-mdbook build docs --dest-dir <temporary-output>
+npm --prefix docs ci
+npm --prefix docs run build
 git diff --check
 ```
 

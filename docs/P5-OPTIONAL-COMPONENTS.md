@@ -35,7 +35,9 @@ drives the same loss state through the live Settings model:
 
 ## Validation Evidence
 
-The exact continuation working tree passed on Fedora 44:
+The exact continuation working tree passed on Fedora 44. The historical
+documentation build has since been replaced by the current Astro validation
+shown here:
 
 ```text
 scripts/run-tests make check-phase5-optional-components
@@ -53,7 +55,8 @@ shfmt -d tests/test-dwm-settings-appearance-inventory.sh \
   tests/test-dwm-settings-wallpaper.sh \
   tests/test-quickshell-appearance-model.sh \
   tests/test-quickshell-settings-xvfb.sh
-mdbook build docs --dest-dir <temporary-output>
+npm --prefix docs ci
+npm --prefix docs run build
 git diff --check
 ```
 

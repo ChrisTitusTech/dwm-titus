@@ -14,12 +14,15 @@ request remained open, and only the primary checkout was registered.
 The active `TASKS.md` contains 25 implementation checkboxes. Thirteen are
 complete on `main`, leaving 12 open.
 
-The merged APPEARANCE-001 boundaries and their documentation passed:
+The merged APPEARANCE-001 boundaries and their documentation passed. The
+historical documentation build has since been replaced by the current Astro
+validation shown here:
 
 ```text
 scripts/run-tests make clean all
 scripts/run-tests
-mdbook build docs --dest-dir <temporary-output>
+npm --prefix docs ci
+npm --prefix docs run build
 git diff --check
 ```
 
