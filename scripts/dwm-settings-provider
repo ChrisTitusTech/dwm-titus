@@ -56,7 +56,8 @@ run_bounded_probe() {
 	shift
 	command_path=$(provider_path "$command_name") || return 1
 	timeout_path=$(command -v timeout 2>/dev/null) || return 1
-	"$timeout_path" 2 "$command_path" "$@" >/dev/null 2>&1
+	"$timeout_path" --signal=TERM --kill-after=1 2 \
+		"$command_path" "$@" >/dev/null 2>&1
 }
 
 appearance_snapshot_valid() {
@@ -112,7 +113,12 @@ emit_text_scale_capability() {
 				selections++
 				if (NF == 6 &&
 					($3 == "available" || $3 == "partial" || $3 == "unavailable") &&
-					($3 == "unavailable" || $4 != "") && $5 != "" && $6 != "") {
+					($3 == "unavailable" || $4 != "") &&
+					($5 == "unknown" || $5 == "follow-system" ||
+						$5 == "0.75" || $5 == "0.875" || $5 == "1.0" ||
+						$5 == "1.125" || $5 == "1.25" || $5 == "1.5" ||
+						$5 == "1.75" || $5 == "2.0") &&
+					$6 != "") {
 					state = $3
 					detail = $6
 					valid_selections++
@@ -149,8 +155,13 @@ emit_accessibility_capabilities() {
 		quickshell-theme 'Semantic colors are available; a dedicated high-contrast policy is not configured'
 	emit_capability appearance accessibility-reduced-motion 'Reduced motion' unsupported user-session \
 		quickshell-theme 'Managed shell animations do not yet expose a reduced-motion policy'
-	emit_capability appearance accessibility-notifications 'Notification policy' partial user-session \
-		quickshell-notifications 'Notification history and D-Bus ownership are available; policy controls are not configured'
+	if run_bounded_probe busctl --user --quiet status org.freedesktop.Notifications; then
+		emit_capability appearance accessibility-notifications 'Notification policy' partial user-session \
+			dbus 'A notification D-Bus owner is active; managed policy controls are not configured'
+	else
+		emit_capability appearance accessibility-notifications 'Notification policy' unavailable user-session \
+			dbus 'No notification D-Bus owner is observable in this session'
+	fi
 	if provider_available dwm-settings-input && provider_available xinput; then
 		emit_capability appearance accessibility-input 'Keyboard and pointer access' partial user-session x11 \
 			'Input discovery and settings are available; dedicated accessibility controls are not configured'

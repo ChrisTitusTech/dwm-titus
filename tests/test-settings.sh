@@ -66,7 +66,7 @@ make_custom_personalization_stub() {
 make_hanging_personalization_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
-	printf '%s\n' '#!/bin/sh' "trap '' TERM" 'while :; do sleep 1; done' >"$path"
+	printf '%s\n' '#!/bin/sh' "trap '' TERM" 'while :; do :; done' >"$path"
 	chmod +x "$path"
 }
 
@@ -101,11 +101,11 @@ make_preamble_appearance_stub() {
 
 base_bin=$work/base-bin
 fedora_bin=$work/fedora-bin
-make_tools "$base_bin" dirname awk tr stat find grep timeout readlink sleep
+make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
 cp -a "$base_bin" "$fedora_bin"
 
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
-	xdg-settings xdg-mime xinput; do
+	xdg-settings xdg-mime xinput busctl; do
 	make_stub "$fedora_bin/$command_name"
 done
 make_stub "$fedora_bin/dwm-xdg-autostart"
@@ -156,7 +156,7 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	appearance	accessibility-reduced-motion	Reduced motion	unsupported	user-session	quickshell-theme	Managed shell animations do not yet expose a reduced-motion policy'
 printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	appearance	accessibility-notifications	Notification policy	partial	user-session	quickshell-notifications	Notification history and D-Bus ownership are available; policy controls are not configured'
+	'capability	appearance	accessibility-notifications	Notification policy	partial	user-session	dbus	A notification D-Bus owner is active; managed policy controls are not configured'
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	appearance	accessibility-input	Keyboard and pointer access	partial	user-session	x11	Input discovery and settings are available; dedicated accessibility controls are not configured'
 [ "$(printf '%s\n' "$fedora_output" |
@@ -172,7 +172,7 @@ incomplete_personalization_output=$(PATH="$incomplete_personalization_bin" \
 printf '%s\n' "$incomplete_personalization_output" | grep -Fqx \
 	'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	The personalization provider returned an unsupported response'
 
-for malformed_text_scale_case in empty-value empty-preference malformed-duplicate; do
+for malformed_text_scale_case in empty-value empty-preference unsupported-preference malformed-scale malformed-duplicate; do
 	malformed_text_scale_bin=$work/malformed-text-scale-$malformed_text_scale_case-bin
 	cp -a "$fedora_bin" "$malformed_text_scale_bin"
 	case $malformed_text_scale_case in
@@ -183,6 +183,14 @@ for malformed_text_scale_case in empty-value empty-preference malformed-duplicat
 	empty-preference)
 		malformed_text_scale_payload=$(printf \
 			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\t\tMissing persisted mode\ncomplete\tstatus')
+		;;
+	unsupported-preference)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tgarbage-mode\tUnsupported persisted mode\ncomplete\tstatus')
+		;;
+	malformed-scale)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\t1x25\tMalformed persisted scale\ncomplete\tstatus')
 		;;
 	malformed-duplicate)
 		malformed_text_scale_payload=$(printf \
@@ -216,12 +224,10 @@ hanging_personalization_bin=$work/hanging-personalization-bin
 cp -a "$fedora_bin" "$hanging_personalization_bin"
 make_hanging_personalization_stub \
 	"$hanging_personalization_bin/dwm-settings-personalization"
-hanging_personalization_start=$(date +%s)
 hanging_personalization_output=$(PATH="$hanging_personalization_bin" \
 	XDG_CONFIG_HOME="$work/fedora-config" \
-	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
-hanging_personalization_elapsed=$(($(date +%s) - hanging_personalization_start))
-[ "$hanging_personalization_elapsed" -le 8 ]
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" \
+	timeout --signal=KILL 10 "$provider" discover)
 printf '%s\n' "$hanging_personalization_output" | grep -Fqx \
 	'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	The personalization provider is not responding'
 
@@ -246,6 +252,15 @@ missing_accessibility_input_output=$(PATH="$missing_accessibility_input_bin" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$missing_accessibility_input_output" | grep -Fqx \
 	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	user-session	x11	Install xinput and the managed input Settings provider'
+
+missing_notification_owner_bin=$work/missing-notification-owner-bin
+cp -a "$fedora_bin" "$missing_notification_owner_bin"
+make_failing_stub "$missing_notification_owner_bin/busctl"
+missing_notification_owner_output=$(PATH="$missing_notification_owner_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$missing_notification_owner_output" | grep -Fqx \
+	'capability	appearance	accessibility-notifications	Notification policy	unavailable	user-session	dbus	No notification D-Bus owner is observable in this session'
 
 unsafe_theme_bin=$work/unsafe-theme-bin
 cp -a "$fedora_bin" "$unsafe_theme_bin"
