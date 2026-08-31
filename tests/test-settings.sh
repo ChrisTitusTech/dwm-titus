@@ -43,7 +43,7 @@ make_personalization_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
 	printf '%s\n' '#!/bin/sh' \
-		'printf "personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tfollow-system\tPersistent desktop text scale\nfuture-personalization-record\tappend-only-fixture\ncomplete\tstatus\n"' >"$path"
+		'printf "personalization-protocol\t1\t0\nprovider\tpersonalization\tavailable\tuser-session\tFixture provider\nmutation\tavailable\tFixture mutations\nrepair\tavailable\tFixture repair\naction-readiness\tfont\tavailable\tavailable\tFixture readiness\naction-readiness\ttext-size\tavailable\tavailable\tFixture readiness\naction-readiness\tcursor\tavailable\tavailable\tFixture readiness\naction-readiness\ticon\tavailable\tavailable\tFixture readiness\naction-readiness\tgtk\tavailable\tavailable\tFixture readiness\naction-readiness\tqt\tavailable\tavailable\tFixture readiness\nselection\tfont\tavailable\tSans\tfollow-system\tFixture font\nselection\ttext-size\tavailable\t1.25\tfollow-system\tPersistent desktop text scale\nwatch-readiness\ttext-size\tavailable\tFixture watch\nselection\tcursor\tavailable\tCursor\tfollow-theme\tFixture cursor\nselection\ticon\tavailable\tIcons\tfollow-system\tFixture icon\nselection\tgtk\tavailable\tTheme\tfollow-theme\tFixture GTK\nselection\tqt\tavailable\tqt6ct\tfollow-theme\tFixture Qt\ndelegate\tgtk\tunavailable\t\tFixture GTK delegate\ndelegate\tqt\tunavailable\t\tFixture Qt delegate\nfuture-personalization-record\tappend-only-fixture\ncomplete\tstatus\n"' >"$path"
 	chmod +x "$path"
 }
 
@@ -196,10 +196,14 @@ incomplete_personalization_output=$(PATH="$incomplete_personalization_bin" \
 printf '%s\n' "$incomplete_personalization_output" | grep -Fqx \
 	'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	The personalization provider returned an unsupported response'
 
-for malformed_text_scale_case in empty-value empty-preference unsupported-preference malformed-scale duplicate-header malformed-duplicate malformed-known-record; do
+for malformed_text_scale_case in incomplete-status-shape empty-value empty-preference unsupported-preference malformed-scale duplicate-header malformed-duplicate malformed-known-record; do
 	malformed_text_scale_bin=$work/malformed-text-scale-$malformed_text_scale_case-bin
 	cp -a "$fedora_bin" "$malformed_text_scale_bin"
 	case $malformed_text_scale_case in
+	incomplete-status-shape)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tfollow-system\tIncomplete status shape\ncomplete\tstatus')
+		;;
 	empty-value)
 		malformed_text_scale_payload=$(printf \
 			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t\tfollow-system\tMissing live value\ncomplete\tstatus')
@@ -241,8 +245,14 @@ done
 
 unavailable_text_scale_bin=$work/unavailable-text-scale-bin
 cp -a "$fedora_bin" "$unavailable_text_scale_bin"
-unavailable_text_scale_payload=$(printf \
-	'personalization-protocol\t1\t0\nselection\ttext-size\tunavailable\t\tfollow-system\tGSettings key is unavailable\ncomplete\tstatus')
+unavailable_text_scale_payload=$("$fedora_bin/dwm-settings-personalization" status |
+	awk -F '\t' '
+		$1 == "selection" && $2 == "text-size" {
+			print "selection\ttext-size\tunavailable\t\tfollow-system\tGSettings key is unavailable"
+			next
+		}
+		{ print }
+	')
 make_custom_personalization_stub \
 	"$unavailable_text_scale_bin/dwm-settings-personalization" \
 	"$unavailable_text_scale_payload"

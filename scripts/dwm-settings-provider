@@ -223,7 +223,15 @@ emit_text_scale_capability() {
 			{ next }
 			END {
 				if (!invalid && header && protocols == 1 && selections == 1 &&
-					valid_selections == 1 && completions == 1 &&
+					valid_selections == 1 && providers == 1 && mutations == 1 &&
+					repairs == 1 && watches == 1 &&
+					selection_seen["font"] == 1 && selection_seen["text-size"] == 1 &&
+					selection_seen["cursor"] == 1 && selection_seen["icon"] == 1 &&
+					selection_seen["gtk"] == 1 && selection_seen["qt"] == 1 &&
+					readiness_seen["font"] == 1 && readiness_seen["text-size"] == 1 &&
+					readiness_seen["cursor"] == 1 && readiness_seen["icon"] == 1 &&
+					readiness_seen["gtk"] == 1 && readiness_seen["qt"] == 1 &&
+					delegate_seen["gtk"] == 1 && delegate_seen["qt"] == 1 && completions == 1 &&
 					complete_line == NR && detail != "")
 					printf "%s\t%s\n", state, detail
 				else
