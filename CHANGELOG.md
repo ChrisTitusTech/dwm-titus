@@ -15,6 +15,12 @@ versions from `config.mk`.
 
 ### Added
 
+- Replace the generic Phase 5 accessibility placeholder with distinct Settings
+  capability records for text scaling, high contrast, reduced motion,
+  notification policy, and keyboard or pointer access. Text scaling consumes
+  only a complete versioned personalization response, and unavailable or
+  malformed providers degrade independently without adding polling or mutation.
+
 - Persist workspace, volume, Bluetooth, network, and power panel visibility in
   one versioned user-owned state file shared by every monitor, Control Center,
   and Settings. An absent file migrates from the prior implicit all-on state;

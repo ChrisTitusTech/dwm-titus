@@ -39,6 +39,37 @@ make_appearance_stub() {
 	chmod +x "$path"
 }
 
+make_personalization_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		'printf "personalization-protocol\t1\t0\nprovider\tpersonalization\tavailable\tuser-session\tFixture provider\nmutation\tavailable\tFixture mutations\nrepair\tavailable\tFixture repair\naction-readiness\tfont\tavailable\tavailable\tFixture readiness\naction-readiness\ttext-size\tavailable\tavailable\tFixture readiness\naction-readiness\tcursor\tavailable\tavailable\tFixture readiness\naction-readiness\ticon\tavailable\tavailable\tFixture readiness\naction-readiness\tgtk\tavailable\tavailable\tFixture readiness\naction-readiness\tqt\tavailable\tavailable\tFixture readiness\nselection\tfont\tavailable\tSans\tfollow-system\tFixture font\nselection\ttext-size\tavailable\t1.25\tfollow-system\tPersistent desktop text scale\nwatch-readiness\ttext-size\tavailable\tFixture watch\nselection\tcursor\tavailable\tCursor\tfollow-theme\tFixture cursor\nselection\ticon\tavailable\tIcons\tfollow-system\tFixture icon\nselection\tgtk\tavailable\tTheme\tfollow-theme\tFixture GTK\nselection\tqt\tavailable\tqt6ct\tfollow-theme\tFixture Qt\ndelegate\tgtk\tunavailable\t\tFixture GTK delegate\ndelegate\tqt\tunavailable\t\tFixture Qt delegate\nfuture-personalization-record\tappend-only-fixture\ncomplete\tstatus\n"' >"$path"
+	chmod +x "$path"
+}
+
+make_incomplete_personalization_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		'printf "personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tfollow-system\tIncomplete desktop text scale\n"' >"$path"
+	chmod +x "$path"
+}
+
+make_custom_personalization_stub() {
+	path=$1
+	payload=$2
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' "printf '%s\\n' '$payload'" >"$path"
+	chmod +x "$path"
+}
+
+make_hanging_personalization_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' "trap '' TERM" 'while :; do :; done' >"$path"
+	chmod +x "$path"
+}
+
 make_header_only_appearance_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
@@ -68,17 +99,42 @@ make_preamble_appearance_stub() {
 	chmod +x "$path"
 }
 
+make_input_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		'printf "input-protocol\t1\nfuture-input-record\tappend-only-fixture\n"' >"$path"
+	chmod +x "$path"
+}
+
+make_malformed_input_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' 'printf "input-protocol\t2\n"' >"$path"
+	chmod +x "$path"
+}
+
+make_malformed_known_input_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		'printf "input-protocol\t1\ndevice\tmissing-required-fields\n"' >"$path"
+	chmod +x "$path"
+}
+
 base_bin=$work/base-bin
 fedora_bin=$work/fedora-bin
 make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
 cp -a "$base_bin" "$fedora_bin"
 
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
-	xdg-settings xdg-mime xinput; do
+	xdg-settings xdg-mime xinput busctl; do
 	make_stub "$fedora_bin/$command_name"
 done
 make_stub "$fedora_bin/dwm-xdg-autostart"
 make_appearance_stub "$fedora_bin/dwm-settings-appearance"
+make_personalization_stub "$fedora_bin/dwm-settings-personalization"
+make_input_stub "$fedora_bin/dwm-settings-input"
 make_stub "$fedora_bin/dwm-settings-theme"
 make_stub "$fedora_bin/inotifywait"
 make_failing_stub "$fedora_bin/pkexec"
@@ -116,6 +172,174 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	appearance	themes	Themes	available	user-session	dwm-settings-theme	Theme inventory, bounded preview, apply, reset, and recovery are available'
 available_theme_record='capability	appearance	themes	Themes	available	user-session	dwm-settings-theme	Theme inventory, bounded preview, apply, reset, and recovery are available'
+
+printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	appearance	accessibility-text-scale	Text scaling	available	user-session	dwm-settings-personalization	Persistent desktop text scale'
+printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	appearance	accessibility-contrast	High contrast	partial	read-only	quickshell-theme	Semantic colors are available; a dedicated high-contrast policy is not configured'
+printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	appearance	accessibility-reduced-motion	Reduced motion	unsupported	read-only	quickshell-theme	Managed shell animations do not yet expose a reduced-motion policy'
+printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	appearance	accessibility-notifications	Notification policy	partial	read-only	dbus	A notification D-Bus owner is active; managed policy controls are not configured'
+printf '%s\n' "$fedora_output" | grep -Fqx \
+	'capability	appearance	accessibility-input	Keyboard and pointer access	partial	read-only	x11	Input discovery and settings are available; dedicated accessibility controls are not configured'
+[ "$(printf '%s\n' "$fedora_output" |
+	grep -c '^capability	appearance	accessibility-')" -eq 5 ]
+
+incomplete_personalization_bin=$work/incomplete-personalization-bin
+cp -a "$fedora_bin" "$incomplete_personalization_bin"
+make_incomplete_personalization_stub \
+	"$incomplete_personalization_bin/dwm-settings-personalization"
+incomplete_personalization_output=$(PATH="$incomplete_personalization_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$incomplete_personalization_output" | grep -Fqx \
+	'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	The personalization provider returned an unsupported response'
+
+for malformed_text_scale_case in incomplete-status-shape empty-value empty-preference unsupported-preference malformed-scale duplicate-header malformed-duplicate malformed-known-record oversized-known-field; do
+	malformed_text_scale_bin=$work/malformed-text-scale-$malformed_text_scale_case-bin
+	cp -a "$fedora_bin" "$malformed_text_scale_bin"
+	case $malformed_text_scale_case in
+	incomplete-status-shape)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tfollow-system\tIncomplete status shape\ncomplete\tstatus')
+		;;
+	empty-value)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t\tfollow-system\tMissing live value\ncomplete\tstatus')
+		;;
+	empty-preference)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\t\tMissing persisted mode\ncomplete\tstatus')
+		;;
+	unsupported-preference)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tgarbage-mode\tUnsupported persisted mode\ncomplete\tstatus')
+		;;
+	malformed-scale)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\t1x25\tMalformed persisted scale\ncomplete\tstatus')
+		;;
+	duplicate-header)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\npersonalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tfollow-system\tDuplicate protocol header\ncomplete\tstatus')
+		;;
+	malformed-duplicate)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tfollow-system\tValid record\nselection\ttext-size\tbogus\t1.25\tfollow-system\tMalformed duplicate\ncomplete\tstatus')
+		;;
+	malformed-known-record)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nprovider\tbroken\nselection\ttext-size\tavailable\t1.25\tfollow-system\tValid record\ncomplete\tstatus')
+		;;
+	oversized-known-field)
+		oversized_option=$(awk 'BEGIN { for (i = 0; i < 4096; i++) printf "x" }')
+		malformed_text_scale_payload=$("$fedora_bin/dwm-settings-personalization" status |
+			awk -F '\t' -v option="$oversized_option" '
+				BEGIN { OFS = "\t" }
+				$1 == "selection" && $2 == "font" { $5 = option }
+				{ print }
+			')
+		;;
+	esac
+	make_custom_personalization_stub \
+		"$malformed_text_scale_bin/dwm-settings-personalization" \
+		"$malformed_text_scale_payload"
+	malformed_text_scale_output=$(PATH="$malformed_text_scale_bin" \
+		XDG_CONFIG_HOME="$work/fedora-config" \
+		DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+	printf '%s\n' "$malformed_text_scale_output" | grep -Fqx \
+		'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	The personalization provider returned an unsupported response'
+done
+
+unavailable_text_scale_bin=$work/unavailable-text-scale-bin
+cp -a "$fedora_bin" "$unavailable_text_scale_bin"
+unavailable_text_scale_payload=$("$fedora_bin/dwm-settings-personalization" status |
+	awk -F '\t' '
+		$1 == "selection" && $2 == "text-size" {
+			print "selection\ttext-size\tunavailable\t\tfollow-system\tGSettings key is unavailable"
+			next
+		}
+		{ print }
+	')
+make_custom_personalization_stub \
+	"$unavailable_text_scale_bin/dwm-settings-personalization" \
+	"$unavailable_text_scale_payload"
+unavailable_text_scale_output=$(PATH="$unavailable_text_scale_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$unavailable_text_scale_output" | grep -Fqx \
+	'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	GSettings key is unavailable'
+
+hanging_personalization_bin=$work/hanging-personalization-bin
+cp -a "$fedora_bin" "$hanging_personalization_bin"
+make_hanging_personalization_stub \
+	"$hanging_personalization_bin/dwm-settings-personalization"
+hanging_personalization_output=$(PATH="$hanging_personalization_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" \
+	timeout --signal=KILL 10 "$provider" discover)
+printf '%s\n' "$hanging_personalization_output" | grep -Fqx \
+	'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	The personalization provider is not responding'
+
+missing_personalization_bin=$work/missing-personalization-bin
+cp -a "$fedora_bin" "$missing_personalization_bin"
+rm -f "$missing_personalization_bin/dwm-settings-personalization"
+missing_personalization_provider_dir=$work/missing-personalization-provider
+mkdir "$missing_personalization_provider_dir"
+cp "$provider" "$missing_personalization_provider_dir/dwm-settings-provider"
+missing_personalization_output=$(PATH="$missing_personalization_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" \
+	"$missing_personalization_provider_dir/dwm-settings-provider" discover)
+printf '%s\n' "$missing_personalization_output" | grep -Fqx \
+	'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	Install the managed personalization provider'
+
+missing_accessibility_input_bin=$work/missing-accessibility-input-bin
+cp -a "$fedora_bin" "$missing_accessibility_input_bin"
+rm -f "$missing_accessibility_input_bin/xinput"
+missing_accessibility_input_output=$(PATH="$missing_accessibility_input_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$missing_accessibility_input_output" | grep -Fqx \
+	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	read-only	x11	Install xinput and the managed input Settings provider'
+
+unready_accessibility_input_bin=$work/unready-accessibility-input-bin
+cp -a "$fedora_bin" "$unready_accessibility_input_bin"
+make_failing_stub "$unready_accessibility_input_bin/dwm-settings-input"
+unready_accessibility_input_output=$(PATH="$unready_accessibility_input_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$unready_accessibility_input_output" | grep -Fqx \
+	'capability	input	input-devices	Input devices	unavailable	user-session	dwm-settings-input	Input tools are installed, but no responsive XInput session is available'
+printf '%s\n' "$unready_accessibility_input_output" | grep -Fqx \
+	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	read-only	x11	Input tools are installed, but no responsive XInput session is available'
+
+for invalid_input_case in empty malformed-version malformed-known; do
+	invalid_input_bin=$work/invalid-input-$invalid_input_case-bin
+	cp -a "$fedora_bin" "$invalid_input_bin"
+	case $invalid_input_case in
+	empty) make_stub "$invalid_input_bin/dwm-settings-input" ;;
+	malformed-version) make_malformed_input_stub "$invalid_input_bin/dwm-settings-input" ;;
+	malformed-known) make_malformed_known_input_stub "$invalid_input_bin/dwm-settings-input" ;;
+	esac
+	invalid_input_output=$(PATH="$invalid_input_bin" \
+		XDG_CONFIG_HOME="$work/fedora-config" \
+		DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+	printf '%s\n' "$invalid_input_output" | grep -Fqx \
+		'capability	input	input-devices	Input devices	unavailable	user-session	dwm-settings-input	Input tools are installed, but no responsive XInput session is available'
+	printf '%s\n' "$invalid_input_output" | grep -Fqx \
+		'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	read-only	x11	Input tools are installed, but no responsive XInput session is available'
+done
+
+missing_notification_owner_bin=$work/missing-notification-owner-bin
+cp -a "$fedora_bin" "$missing_notification_owner_bin"
+make_failing_stub "$missing_notification_owner_bin/busctl"
+missing_notification_owner_output=$(PATH="$missing_notification_owner_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$missing_notification_owner_output" | grep -Fqx \
+	'capability	appearance	accessibility-notifications	Notification policy	unavailable	read-only	dbus	No notification D-Bus owner is observable in this session'
 
 unsafe_theme_bin=$work/unsafe-theme-bin
 cp -a "$fedora_bin" "$unsafe_theme_bin"

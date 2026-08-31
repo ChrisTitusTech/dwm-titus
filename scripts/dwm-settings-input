@@ -89,13 +89,16 @@ stable_device_source() {
 }
 
 scan_devices() {
-	local line id kind name properties product node source identity key persistable
+	local line id kind name properties product node source identity key persistable devices
 	need_tools
 	device_ids=()
 	device_keys=()
 	device_kinds=()
 	device_names=()
 	device_persistable=()
+	if ! devices=$(xinput --list --short); then
+		die "unable to query XInput devices"
+	fi
 	while IFS= read -r line; do
 		if [[ $line =~ id=([0-9]+)[[:space:]]+\[(slave|floating)[[:space:]]+(pointer|keyboard) ]]; then
 			id=${BASH_REMATCH[1]}
@@ -136,7 +139,7 @@ scan_devices() {
 			device_persistable+=("$persistable")
 			rm -f "$properties"
 		fi
-	done < <(xinput --list --short)
+	done <<<"$devices"
 }
 
 device_can_persist() {

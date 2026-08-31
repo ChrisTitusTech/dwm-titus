@@ -474,6 +474,15 @@ The planned Settings surface covers:
   printer entry points, system information, storage overview, diagnostics, and
   recovery guidance.
 
+Phase 5 accessibility discovery uses `settings-protocol 1` to publish separate
+read-only capability records for text scaling, high contrast, reduced motion,
+notification policy, and keyboard or pointer access. Text scaling derives from
+one complete versioned personalization response, notification readiness from
+the active session D-Bus owner, and input readiness from bounded managed XInput
+discovery. Missing or malformed providers degrade only their own record. These
+records do not imply that dedicated contrast, motion, notification-policy, or
+accessibility-input mutations are implemented.
+
 Advanced partitioning, unrestricted service control, firewall policy editing,
 and similarly high-risk administration remain delegated unless a later
 specification defines a narrow safe interface.
@@ -662,10 +671,11 @@ Phase 3 NetworkManager, BlueZ, PipeWire, and media workflows, and Phase 4 power,
 session-action, default-application, MIME, and XDG autostart workflows. Active
 Phase 5 now includes merged theme transactions, wallpaper persistence,
 managed-shell typography, desktop font, cursor, icon, GTK, and Qt controls,
-and panel-widget persistence. Cross-capability optional-component isolation is
-also qualified. The remaining Phase 5 surface begins with notifications and
-practical X11 accessibility controls, followed by selected UI-5 work and final
-phase qualification. The ordered status is recorded in `ROADMAP.md`,
+and panel-widget persistence. Cross-capability optional-component isolation and
+the read-only accessibility capability contract are also qualified. The
+remaining Phase 5 surface begins with dedicated notification and practical X11
+accessibility controls, followed by selected UI-5 work and final phase
+qualification. The ordered status is recorded in `ROADMAP.md`,
 `TASKS.md`, and `docs/P5-STATUS.md`.
 
 The installer contains a Fedora-only package map and rejects other systems.
