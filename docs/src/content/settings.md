@@ -1,3 +1,10 @@
+---
+title: Settings
+description: Manage displays, input, network, Bluetooth, audio, power, defaults, startup apps, and appearance from one place.
+navLabel: Settings
+eyebrow: Desktop control
+---
+
 # Settings
 
 The unified Settings application provides one place to inspect desktop

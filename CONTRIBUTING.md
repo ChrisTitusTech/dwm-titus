@@ -12,7 +12,7 @@ target. Fedora Linux is the sole supported distribution.
 - Keep durable requirements in `SPEC.md`; do not copy future roadmap phases
   into `TASKS.md` before they become active.
 - Do not commit `config.h`, build products, release artifacts, ISO images, or
-  generated mdBook output.
+  generated Astro output.
 
 ## Development Setup
 
@@ -39,7 +39,7 @@ submitting a pull request.
 | Shell or installer | `scripts/run-tests make check-shell check-format` and focused tests |
 | X11 behavior | `scripts/run-tests make check-xvfb-runtime check-monitor-tags` |
 | Quickshell QML | `scripts/run-tests make check-quickshell-qml` plus real or nested X11 runtime validation |
-| Documentation | `mdbook build docs` |
+| Documentation | `npm --prefix docs ci`, then `npm --prefix docs run build` |
 | Installer or package mapping | `scripts/run-tests make check-fedora-packages` on Fedora 44 |
 | Fedora Kickstart or ISO | `scripts/run-tests make check-kickstart` plus all evidence required by [SPEC.md Section 9.4](SPEC.md#94-fedora-image-validation) |
 | Release automation | `scripts/run-tests make release-check` and a dry run of the release helper |

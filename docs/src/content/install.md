@@ -1,3 +1,10 @@
+---
+title: Fedora Installation
+description: Install the complete dwm-titus Fedora X11 desktop from an image or onto an existing Fedora system.
+navLabel: Installation
+eyebrow: Start here
+---
+
 # Fedora Installation
 
 > **dwm-titus is Fedora-only.** Fedora Linux with Xorg is required for every
@@ -21,7 +28,7 @@ run:
 install-herdr
 ```
 
-![linutil-appinstall](images/linutil-applications.png)
+![The dwm-titus applications menu in Linutil](/images/linutil-applications.png)
 
 ## Manual Install
 

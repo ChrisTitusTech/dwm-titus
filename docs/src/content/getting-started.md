@@ -1,3 +1,10 @@
+---
+title: Getting Started
+description: Learn the essential shortcuts, workspaces, and layouts for a productive first session in dwm-titus.
+navLabel: Getting Started
+eyebrow: First session
+---
+
 # Getting Started
 
 > dwm-titus is a Fedora-only X11 desktop. These instructions assume a supported
@@ -39,4 +46,4 @@ Three layouts are available — switch between them instantly.
 | Floating | `Super` + `Shift` + `M` |
 | Fullscreen (monocle) | `Super` + `M` |
 
-See [Keybindings](./keybinds.md) for the full reference.
+See [Keybindings](./keybinds.html) for the full reference.

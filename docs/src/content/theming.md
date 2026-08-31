@@ -1,3 +1,10 @@
+---
+title: Theming
+description: Change dwm-titus colors, borders, wallpaper, fonts, text scale, cursor, icons, and application appearance.
+navLabel: Theming
+eyebrow: Personalization
+---
+
 # Theming
 
 Themes are defined in `config/themes.toml`. Change the active theme and **save**

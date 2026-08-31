@@ -12,8 +12,8 @@ use `make native` for published binaries.
 5. Run `scripts/run-tests make check-fedora-packages` on Fedora 44.
 6. Run `scripts/run-tests make check-quickshell-qml check-quickshell-health-xvfb
    check-quickshell-settings-xvfb` when QML changed.
-7. Run `scripts/run-tests mdbook build docs` when published documentation
-   changed.
+7. Run `npm --prefix docs ci` and `npm --prefix docs run build` when published
+   documentation changed.
 8. Run `scripts/run-tests make release-check` and confirm the artifact is named
    `release/dwm-titus-VERSION.tar.gz`.
 9. Record the tested Fedora release, architectures, X11 environments, known

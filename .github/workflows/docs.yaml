@@ -1,19 +1,15 @@
-name: Deploy Docs to Pages
+name: Build and Deploy Astro Docs
 
 on:
   push:
     branches:
       - main
     paths:
-      - "docs/book.toml"
-      - "docs/src/**"
-      - "docs/theme/**"
+      - "docs/**"
       - ".github/workflows/docs.yaml"
   pull_request:
     paths:
-      - "docs/book.toml"
-      - "docs/src/**"
-      - "docs/theme/**"
+      - "docs/**"
       - ".github/workflows/docs.yaml"
   workflow_dispatch:
 
@@ -34,22 +30,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - name: Install mdbook
-        uses: peaceiris/actions-mdbook@v2
+      - name: Install, build, and upload Astro site
+        uses: withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853 # v6
         with:
-          mdbook-version: "0.5.3"
-      - name: Build with mdbook
-        run: mdbook build docs
-      - name: Setup Pages
-        if: github.event_name != 'pull_request' && github.repository == 'ChrisTitusTech/dwm-titus'
-        uses: actions/configure-pages@v6
-      - name: Upload artifact
-        if: github.event_name != 'pull_request' && github.repository == 'ChrisTitusTech/dwm-titus'
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: ./docs/book
+          path: ./docs
+          node-version: 24
 
   deploy:
     if: github.event_name != 'pull_request' && github.repository == 'ChrisTitusTech/dwm-titus'

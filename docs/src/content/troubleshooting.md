@@ -1,3 +1,10 @@
+---
+title: Troubleshooting
+description: Resolve common dwm-titus startup, panel, application, theme, keybind, multi-monitor, NVIDIA, suspend, and compositor issues.
+navLabel: Troubleshooting
+eyebrow: Get unstuck
+---
+
 # Troubleshooting
 
 ## Gear Lever does not open
@@ -25,7 +32,7 @@ Run the dependency checker first — it covers most common issues:
 dwm-diagnostics
 ```
 
-Or use the [Control Center](./control-center.md) → **System Health**.
+Or use the [Control Center](./control-center.html) -> **System Health**.
 
 ---
 

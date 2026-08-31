@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Rebuild the published documentation as a themed Astro site while preserving
+  the existing custom domain and public page URLs. Add responsive navigation,
+  light and dark themes, clearer documentation layouts, and a visual project
+  development overview grounded in the complete commit history.
+
 - Compact the Control Center and Settings detail pane by removing redundant
   headings and duplicate power-status lines, tightening margins, gaps, and
   display and capability cards, and using dense text-scale-aware rows while
