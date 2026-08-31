@@ -207,6 +207,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep visible floating windows above the tiled stack when focus changes while
+  retaining focus-based ordering within the floating layer and the existing
+  fullscreen and shell-surface priorities.
+
 - Stop automatic theme-preview status retries after their bounded failure
   budget is exhausted. Reopening Appearance or using its refresh action still
   performs one explicit retry, and successful preview lifecycle actions re-arm
