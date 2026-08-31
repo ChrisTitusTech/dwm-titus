@@ -74,9 +74,12 @@ input_snapshot_valid() {
 			}
 			$1 == "input-protocol" { protocols++; invalid = 1; next }
 			$1 == "device" && NF == 5 && $2 != "" && $3 != "" && $4 != "" && $5 != "" { next }
+			$1 == "device" { invalid = 1; next }
 			$1 == "setting" && NF == 9 && $2 != "" && $3 != "" && $4 != "" && $5 != "" { next }
+			$1 == "setting" { invalid = 1; next }
 			$1 == "unsupported" && NF == 4 && $2 != "" && $3 != "" && $4 != "" { next }
-			{ invalid = 1 }
+			$1 == "unsupported" { invalid = 1; next }
+			{ next }
 			END { exit(header && protocols == 1 && !invalid ? 0 : 1) }
 		'
 }
@@ -176,25 +179,25 @@ emit_text_scale_capability() {
 
 emit_accessibility_capabilities() {
 	emit_text_scale_capability
-	emit_capability appearance accessibility-contrast 'High contrast' partial user-session \
+	emit_capability appearance accessibility-contrast 'High contrast' partial read-only \
 		quickshell-theme 'Semantic colors are available; a dedicated high-contrast policy is not configured'
-	emit_capability appearance accessibility-reduced-motion 'Reduced motion' unsupported user-session \
+	emit_capability appearance accessibility-reduced-motion 'Reduced motion' unsupported read-only \
 		quickshell-theme 'Managed shell animations do not yet expose a reduced-motion policy'
 	if run_bounded_probe busctl --user --quiet status org.freedesktop.Notifications; then
-		emit_capability appearance accessibility-notifications 'Notification policy' partial user-session \
+		emit_capability appearance accessibility-notifications 'Notification policy' partial read-only \
 			dbus 'A notification D-Bus owner is active; managed policy controls are not configured'
 	else
-		emit_capability appearance accessibility-notifications 'Notification policy' unavailable user-session \
+		emit_capability appearance accessibility-notifications 'Notification policy' unavailable read-only \
 			dbus 'No notification D-Bus owner is observable in this session'
 	fi
 	if [ "$input_discovery_state" = available ]; then
-		emit_capability appearance accessibility-input 'Keyboard and pointer access' partial user-session x11 \
+		emit_capability appearance accessibility-input 'Keyboard and pointer access' partial read-only x11 \
 			'Input discovery and settings are available; dedicated accessibility controls are not configured'
 	elif [ "$input_discovery_state" = unready ]; then
-		emit_capability appearance accessibility-input 'Keyboard and pointer access' unavailable user-session x11 \
+		emit_capability appearance accessibility-input 'Keyboard and pointer access' unavailable read-only x11 \
 			'Input tools are installed, but no responsive XInput session is available'
 	else
-		emit_capability appearance accessibility-input 'Keyboard and pointer access' unavailable user-session x11 \
+		emit_capability appearance accessibility-input 'Keyboard and pointer access' unavailable read-only x11 \
 			'Install xinput and the managed input Settings provider'
 	fi
 }

@@ -102,7 +102,8 @@ make_preamble_appearance_stub() {
 make_input_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
-	printf '%s\n' '#!/bin/sh' 'printf "input-protocol\t1\n"' >"$path"
+	printf '%s\n' '#!/bin/sh' \
+		'printf "input-protocol\t1\nfuture-input-record\tappend-only-fixture\n"' >"$path"
 	chmod +x "$path"
 }
 
@@ -110,6 +111,14 @@ make_malformed_input_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
 	printf '%s\n' '#!/bin/sh' 'printf "input-protocol\t2\n"' >"$path"
+	chmod +x "$path"
+}
+
+make_malformed_known_input_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		'printf "input-protocol\t1\ndevice\tmissing-required-fields\n"' >"$path"
 	chmod +x "$path"
 }
 
@@ -167,13 +176,13 @@ available_theme_record='capability	appearance	themes	Themes	available	user-sessi
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	appearance	accessibility-text-scale	Text scaling	available	user-session	dwm-settings-personalization	Persistent desktop text scale'
 printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	appearance	accessibility-contrast	High contrast	partial	user-session	quickshell-theme	Semantic colors are available; a dedicated high-contrast policy is not configured'
+	'capability	appearance	accessibility-contrast	High contrast	partial	read-only	quickshell-theme	Semantic colors are available; a dedicated high-contrast policy is not configured'
 printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	appearance	accessibility-reduced-motion	Reduced motion	unsupported	user-session	quickshell-theme	Managed shell animations do not yet expose a reduced-motion policy'
+	'capability	appearance	accessibility-reduced-motion	Reduced motion	unsupported	read-only	quickshell-theme	Managed shell animations do not yet expose a reduced-motion policy'
 printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	appearance	accessibility-notifications	Notification policy	partial	user-session	dbus	A notification D-Bus owner is active; managed policy controls are not configured'
+	'capability	appearance	accessibility-notifications	Notification policy	partial	read-only	dbus	A notification D-Bus owner is active; managed policy controls are not configured'
 printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	appearance	accessibility-input	Keyboard and pointer access	partial	user-session	x11	Input discovery and settings are available; dedicated accessibility controls are not configured'
+	'capability	appearance	accessibility-input	Keyboard and pointer access	partial	read-only	x11	Input discovery and settings are available; dedicated accessibility controls are not configured'
 [ "$(printf '%s\n' "$fedora_output" |
 	grep -c '^capability	appearance	accessibility-')" -eq 5 ]
 
@@ -270,7 +279,7 @@ missing_accessibility_input_output=$(PATH="$missing_accessibility_input_bin" \
 	XDG_CONFIG_HOME="$work/fedora-config" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$missing_accessibility_input_output" | grep -Fqx \
-	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	user-session	x11	Install xinput and the managed input Settings provider'
+	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	read-only	x11	Install xinput and the managed input Settings provider'
 
 unready_accessibility_input_bin=$work/unready-accessibility-input-bin
 cp -a "$fedora_bin" "$unready_accessibility_input_bin"
@@ -281,23 +290,23 @@ unready_accessibility_input_output=$(PATH="$unready_accessibility_input_bin" \
 printf '%s\n' "$unready_accessibility_input_output" | grep -Fqx \
 	'capability	input	input-devices	Input devices	unavailable	user-session	dwm-settings-input	Input tools are installed, but no responsive XInput session is available'
 printf '%s\n' "$unready_accessibility_input_output" | grep -Fqx \
-	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	user-session	x11	Input tools are installed, but no responsive XInput session is available'
+	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	read-only	x11	Input tools are installed, but no responsive XInput session is available'
 
-for invalid_input_case in empty malformed; do
+for invalid_input_case in empty malformed-version malformed-known; do
 	invalid_input_bin=$work/invalid-input-$invalid_input_case-bin
 	cp -a "$fedora_bin" "$invalid_input_bin"
-	if [ "$invalid_input_case" = empty ]; then
-		make_stub "$invalid_input_bin/dwm-settings-input"
-	else
-		make_malformed_input_stub "$invalid_input_bin/dwm-settings-input"
-	fi
+	case $invalid_input_case in
+	empty) make_stub "$invalid_input_bin/dwm-settings-input" ;;
+	malformed-version) make_malformed_input_stub "$invalid_input_bin/dwm-settings-input" ;;
+	malformed-known) make_malformed_known_input_stub "$invalid_input_bin/dwm-settings-input" ;;
+	esac
 	invalid_input_output=$(PATH="$invalid_input_bin" \
 		XDG_CONFIG_HOME="$work/fedora-config" \
 		DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 	printf '%s\n' "$invalid_input_output" | grep -Fqx \
 		'capability	input	input-devices	Input devices	unavailable	user-session	dwm-settings-input	Input tools are installed, but no responsive XInput session is available'
 	printf '%s\n' "$invalid_input_output" | grep -Fqx \
-		'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	user-session	x11	Input tools are installed, but no responsive XInput session is available'
+		'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	read-only	x11	Input tools are installed, but no responsive XInput session is available'
 done
 
 missing_notification_owner_bin=$work/missing-notification-owner-bin
@@ -307,7 +316,7 @@ missing_notification_owner_output=$(PATH="$missing_notification_owner_bin" \
 	XDG_CONFIG_HOME="$work/fedora-config" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$missing_notification_owner_output" | grep -Fqx \
-	'capability	appearance	accessibility-notifications	Notification policy	unavailable	user-session	dbus	No notification D-Bus owner is observable in this session'
+	'capability	appearance	accessibility-notifications	Notification policy	unavailable	read-only	dbus	No notification D-Bus owner is observable in this session'
 
 unsafe_theme_bin=$work/unsafe-theme-bin
 cp -a "$fedora_bin" "$unsafe_theme_bin"
