@@ -206,7 +206,7 @@ require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep tail
 pkg-config --exists x11
 
 work=$(mktemp -d)
-trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${panel_pid:-}" ] && kill "$panel_pid" 2>/dev/null; [ -n "${popup_client_pid:-}" ] && kill "$popup_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
+trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${panel_pid:-}" ] && kill "$panel_pid" 2>/dev/null; [ -n "${popup_client_pid:-}" ] && kill "$popup_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${floating_peer_pid:-}" ] && kill "$floating_peer_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
 mkdir -p "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/config"
@@ -576,6 +576,68 @@ win=$(cat "$work/window-id")
 
 wait_for_active_window "$win"
 DISPLAY=$display xprop -root _NET_CLIENT_LIST | grep -q "$win"
+
+# Keep the floating layer above tiled clients while preserving focus order
+# within that layer and the higher real-fullscreen priority.
+DISPLAY=$display "$work/xclient" >"$work/floating-window-id" \
+	2>"$work/floating-client.log" &
+second_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/floating-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+floating_win=$(cat "$work/floating-window-id")
+[ -n "$floating_win" ]
+wait_for_active_window "$floating_win"
+
+DISPLAY=$display xdotool key Super+space
+DISPLAY=$display xdotool key Super+k
+wait_for_active_window "$win"
+wait_for_window_above "$floating_win" "$win"
+
+DISPLAY=$display xdotool key Super+j
+wait_for_active_window "$floating_win"
+DISPLAY=$display "$work/xclient" >"$work/floating-peer-window-id" \
+	2>"$work/floating-peer-client.log" &
+floating_peer_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/floating-peer-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+floating_peer_win=$(cat "$work/floating-peer-window-id")
+[ -n "$floating_peer_win" ]
+wait_for_active_window "$floating_peer_win"
+DISPLAY=$display xdotool key Super+space
+wait_for_window_above "$floating_peer_win" "$floating_win"
+wait_for_window_above "$floating_win" "$win"
+
+DISPLAY=$display xdotool key Super+k
+wait_for_active_window "$floating_win"
+wait_for_window_above "$floating_win" "$floating_peer_win"
+DISPLAY=$display xdotool key Super+k
+wait_for_active_window "$win"
+wait_for_window_above "$floating_win" "$floating_peer_win"
+wait_for_window_above "$floating_peer_win" "$win"
+
+DISPLAY=$display "$work/xclient" fullscreen "$win"
+wait_for_window_state "$win" _NET_WM_STATE_FULLSCREEN
+wait_for_window_above "$win" "$floating_win"
+wait_for_window_above "$win" "$floating_peer_win"
+DISPLAY=$display "$work/xclient" state "$win" 0 _NET_WM_STATE_FULLSCREEN
+wait_for_window_state_absent "$win" _NET_WM_STATE_FULLSCREEN
+wait_for_window_above "$floating_win" "$floating_peer_win"
+wait_for_window_above "$floating_peer_win" "$win"
+
+kill "$floating_peer_pid"
+wait "$floating_peer_pid" 2>/dev/null || true
+floating_peer_pid=
+wait_for_active_window "$win"
+kill "$second_client_pid"
+wait "$second_client_pid" 2>/dev/null || true
+second_client_pid=
+wait_for_active_window "$win"
 
 DISPLAY=$display xdotool key Super+2
 wait_for_current_desktop 1

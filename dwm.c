@@ -2661,6 +2661,11 @@ restack(Monitor *m)
 		wc.stack_mode = Below;
 		wc.sibling = m->barwin;
 		for (c = m->stack; c; c = c->snext)
+			if (c->isfloating && !isvisiblefullscreen(c) && ISVISIBLE(c)) {
+				XConfigureWindow(dpy, c->win, CWSibling|CWStackMode, &wc);
+				wc.sibling = c->win;
+			}
+		for (c = m->stack; c; c = c->snext)
 			if (!c->isfloating && ISVISIBLE(c)) {
 				XConfigureWindow(dpy, c->win, CWSibling|CWStackMode, &wc);
 				wc.sibling = c->win;
