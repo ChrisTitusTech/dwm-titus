@@ -53,11 +53,9 @@ JPEG. The lightweight capture flow intentionally has no annotation toolbar.
 `Super` + `A` opens an installed ChatGPT desktop application when one is
 available and falls back to the ChatGPT web app otherwise. The application
 launcher hides the ChatGPT web entry while a native desktop entry is installed.
-Upgrades migrate the exact former stock web-app binding to this native-first
-behavior. Customized `Super` + `A` bindings remain unchanged.
-Before migrating, the installer retains the original file and its metadata as
-`hotkeys.toml.pre-chatgpt-native.bak`. It skips migration if that backup path
-already exists.
+Existing systems with the former stock web-app binding receive the same
+native-first behavior through the updated `webapp-launch` helper. Upgrades do
+not edit customized hotkey files.
 
 ## Window Management
 

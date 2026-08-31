@@ -1,10 +1,54 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+	printf 'usage: %s URL [browser-argument ...]\n' "${0##*/}" >&2
+}
+
+find_browser_exec() {
+	local desktop_file exec_path
+
+	for desktop_file in \
+		"$HOME/.local/share/applications/$browser" \
+		"$HOME/.nix-profile/share/applications/$browser" \
+		"/usr/share/applications/$browser"; do
+		[[ -f $desktop_file ]] || continue
+		exec_path=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$desktop_file" | head -n 1)
+		if [[ -n $exec_path ]]; then
+			printf '%s\n' "$exec_path"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+if [[ $# -lt 1 ]]; then
+	usage
+	exit 2
+fi
+
+url=$1
+case $url in
+https://chatgpt.com | https://chatgpt.com/)
+	if [[ ${DWM_CHATGPT_WEB_FALLBACK:-0} != 1 ]] &&
+		command -v dwm-quickshell-launcher >/dev/null 2>&1; then
+		exec dwm-quickshell-launcher launch-chatgpt
+	fi
+	;;
+esac
 
 browser=$(xdg-settings get default-web-browser)
 
 case $browser in
-google-chrome* | brave-* | microsoft-edge* | opera* | vivaldi* | helium-browser* ) ;;
+google-chrome* | brave-* | microsoft-edge* | opera* | vivaldi* | helium-browser*) ;;
 *) browser="helium.desktop" ;;
 esac
 
-exec $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}" >/dev/null 2>&1
+if ! browser_exec=$(find_browser_exec); then
+	printf '%s: browser desktop entry has no executable: %s\n' "${0##*/}" "$browser" >&2
+	exit 1
+fi
+
+exec "$browser_exec" --app="$url" "${@:2}" >/dev/null 2>&1

@@ -383,7 +383,7 @@ launch_chatgpt() {
 		printf 'ChatGPT is not installed and webapp-launch is unavailable\n' >&2
 		return 1
 	}
-	launch_background webapp-launch https://chatgpt.com
+	launch_background env DWM_CHATGPT_WEB_FALLBACK=1 webapp-launch https://chatgpt.com
 }
 
 case ${1:-list} in
