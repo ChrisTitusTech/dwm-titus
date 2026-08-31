@@ -3,16 +3,17 @@
 set -eu
 
 hotkeys="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/hotkeys.toml"
+backup="${hotkeys}.pre-chatgpt-native.bak"
 # The stock TOML binding contains the literal variable name "$webapp".
 # shellcheck disable=SC2016
 legacy_binding='  { mod="SUPER",            key="a",       desc="ChatGPT",                 func="spawn",       exec=["$webapp", "https://chatgpt.com"] },'
 replacement_binding='  { mod="SUPER",            key="a",       desc="ChatGPT",                 func="spawn",       exec=["dwm-quickshell-launcher", "launch-chatgpt"] },'
-temp_file=
+backup_temp=
+migration_temp=
 
 cleanup() {
-	if [ -n "$temp_file" ]; then
-		rm -f -- "$temp_file"
-	fi
+	[ -z "$backup_temp" ] || rm -f -- "$backup_temp"
+	[ -z "$migration_temp" ] || rm -f -- "$migration_temp"
 }
 
 trap cleanup EXIT HUP INT TERM
@@ -45,13 +46,29 @@ case $match_count in
 esac
 
 config_dir=${hotkeys%/*}
-temp_file=$(mktemp "$config_dir/.hotkeys.toml.XXXXXX")
+if [ -e "$backup" ] || [ -L "$backup" ]; then
+	printf 'dwm-titus: warning: preserving %s because migration backup already exists at %s\n' \
+		"$hotkeys" "$backup" >&2
+	exit 0
+fi
+
+backup_temp=$(mktemp "$config_dir/.hotkeys.toml.backup.XXXXXX")
+cp --preserve=all -- "$hotkeys" "$backup_temp"
+mv --no-clobber -- "$backup_temp" "$backup"
+if [ -e "$backup_temp" ]; then
+	printf 'dwm-titus: warning: preserving %s because migration backup appeared concurrently at %s\n' \
+		"$hotkeys" "$backup" >&2
+	exit 0
+fi
+backup_temp=
+
+migration_temp=$(mktemp "$config_dir/.hotkeys.toml.XXXXXX")
+cp --preserve=all -- "$hotkeys" "$migration_temp"
 awk -v legacy="$legacy_binding" -v replacement="$replacement_binding" '
 	$0 == legacy { print replacement; next }
 	{ print }
-' "$hotkeys" >"$temp_file"
-chmod --reference="$hotkeys" "$temp_file"
-mv -f -- "$temp_file" "$hotkeys"
-temp_file=
+' "$hotkeys" >"$migration_temp"
+mv -f -- "$migration_temp" "$hotkeys"
+migration_temp=
 
-printf 'dwm-titus: migrated the stock ChatGPT hotkey to prefer the desktop application\n'
+printf 'dwm-titus: migrated the stock ChatGPT hotkey; backup: %s\n' "$backup"

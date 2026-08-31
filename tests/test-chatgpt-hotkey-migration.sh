@@ -13,6 +13,7 @@ replacement_binding='  { mod="SUPER",            key="a",       desc="ChatGPT", 
 migration="$repo_dir/scripts/migrate-chatgpt-hotkey.sh"
 config_home="$work/config"
 hotkeys="$config_home/dwm-titus/hotkeys.toml"
+backup="$hotkeys.pre-chatgpt-native.bak"
 
 mkdir -p "${hotkeys%/*}"
 
@@ -25,6 +26,7 @@ XDG_CONFIG_HOME="$work/missing" HOME="$work/home" "$migration"
 	printf '%s\n' '# retain custom footer'
 } >"$hotkeys"
 chmod 640 "$hotkeys"
+cp "$hotkeys" "$work/hotkeys.before"
 
 XDG_CONFIG_HOME="$config_home" HOME="$work/home" "$migration"
 grep -Fqx "$replacement_binding" "$hotkeys"
@@ -35,11 +37,21 @@ fi
 grep -Fqx '# retain custom header' "$hotkeys"
 grep -Fqx '# retain custom footer' "$hotkeys"
 test "$(stat -c %a "$hotkeys")" = 640
+cmp "$work/hotkeys.before" "$backup"
+test "$(stat -c %a "$backup")" = 640
 
 # Repeated migration is idempotent.
 before=$(sha256sum "$hotkeys")
 XDG_CONFIG_HOME="$config_home" HOME="$work/home" "$migration"
 test "$(sha256sum "$hotkeys")" = "$before"
+
+# An existing backup makes a later stock migration a safe no-op.
+printf '%s\n' "$legacy_binding" >"$hotkeys"
+before=$(sha256sum "$hotkeys")
+XDG_CONFIG_HOME="$config_home" HOME="$work/home" "$migration" \
+	2>"$work/backup-exists.err"
+test "$(sha256sum "$hotkeys")" = "$before"
+grep -Fq 'migration backup already exists' "$work/backup-exists.err"
 
 # Customized bindings are never rewritten.
 # shellcheck disable=SC2016
