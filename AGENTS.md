@@ -62,6 +62,49 @@ package or installation path.
 - Treat phase boundaries as review and rollback points. Do not begin the next
   phase in a change that was scoped only to complete the current one.
 
+## Git and Review Workflow
+
+- Before implementation work, determine the intended pull request base
+  (`main` unless the work is explicitly stacked), verify the current branch's
+  ancestry and divergence, and create a valid `codex/<short-topic>` branch from
+  that base. Use that topic branch in the current worktree or place it in a
+  separate worktree when isolation is needed; never use the base branch itself
+  as the task worktree. If the name already exists, add a distinct short
+  suffix; never build the pull request from an unrelated or unexpectedly
+  diverged branch.
+- Automatically make small coherent commits, push the branch, and open a
+  ready-for-review pull request after the available applicable local gates
+  pass. If a required local gate cannot run because the environment or tooling
+  is unavailable, document the exact gap and limitation in the pull request
+  and use hosted CI to supply the missing coverage; do not claim that coverage
+  passed until it does. Do not pause for repeated Git-action approval unless
+  the user requests local-only work or sets an explicit stop point.
+- Run `git status --short` before editing, preserve all pre-existing worktree
+  changes, and inspect the exact staged files before every commit. When
+  unrelated changes cannot be isolated safely, use a separate worktree or ask
+  the user for direction. Never stage or publish credentials, tokens, private
+  keys, secret files, or other sensitive data.
+- Keep each pull request to one independently testable review boundary. Split
+  larger work into ordered pull requests, and avoid mixing unrelated code,
+  tests, documentation, or cleanup.
+- When a pull request depends on unmerged work, base it on the prerequisite
+  branch and state the dependency in the pull request. After the prerequisite
+  merges, rebase the dependent branch onto updated `main` or merge updated
+  `main` into it. Publish a rebase with `git push --force-with-lease`, or
+  publish a merge with a normal push; verify the remote head and that the pull
+  request diff contains only its intended review boundary, and then retarget it
+  to `main`.
+- Before publishing, run focused validation, the full relevant repository
+  gates, the built-in Codex review loop, and an independent review when the
+  review tooling is available. Address valid findings and repeat affected
+  checks until the local review loop is clean.
+- After publishing, wait for exact-head hosted checks and reviews. Inspect
+  unresolved review threads, apply valid fixes in follow-up commits, push, and
+  repeat the review loop until the pull request is merge-ready or a concrete
+  blocker requires user input.
+- Open ready pull requests by default, not drafts. Never merge, release,
+  deploy, or send external announcements without explicit user authorization.
+
 ## Fedora Image Rules
 
 - Base released images on the Fedora Server Network Install ISO documented in
