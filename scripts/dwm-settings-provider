@@ -88,6 +88,78 @@ appearance_mutation_ready() {
 	fi
 }
 
+emit_text_scale_capability() {
+	command_path=$(provider_path dwm-settings-personalization 2>/dev/null || true)
+	if [ -z "$command_path" ]; then
+		emit_capability appearance accessibility-text-scale 'Text scaling' unavailable user-session \
+			dwm-settings-personalization 'Install the managed personalization provider'
+		return
+	fi
+
+	timeout_path=$(command -v timeout 2>/dev/null || true)
+	if [ -z "$timeout_path" ] ||
+		! personalization_snapshot=$("$timeout_path" --signal=TERM --kill-after=1 \
+			5 "$command_path" status 2>/dev/null); then
+		emit_capability appearance accessibility-text-scale 'Text scaling' unavailable user-session \
+			dwm-settings-personalization 'The personalization provider is not responding'
+		return
+	fi
+
+	text_scale_record=$(printf '%s\n' "$personalization_snapshot" |
+		awk -F '\t' '
+			NR == 1 { header = ($0 == "personalization-protocol\t1\t0"); next }
+			$1 == "selection" && $2 == "text-size" {
+				selections++
+				if (NF == 6 &&
+					($3 == "available" || $3 == "partial" || $3 == "unavailable") &&
+					($3 == "unavailable" || $4 != "") && $5 != "" && $6 != "") {
+					state = $3
+					detail = $6
+					valid_selections++
+				}
+			}
+			$1 == "complete" && $2 == "status" && NF == 2 {
+				complete_line = NR
+				completions++
+			}
+			END {
+				if (header && selections == 1 && valid_selections == 1 && completions == 1 &&
+					complete_line == NR && detail != "")
+					printf "%s\t%s\n", state, detail
+				else
+					exit 1
+			}
+		' 2>/dev/null) || text_scale_record=
+	if [ -z "$text_scale_record" ]; then
+		emit_capability appearance accessibility-text-scale 'Text scaling' unavailable user-session \
+			dwm-settings-personalization 'The personalization provider returned an unsupported response'
+		return
+	fi
+
+	tab=$(printf '\t')
+	text_scale_state=${text_scale_record%%"$tab"*}
+	text_scale_detail=${text_scale_record#*"$tab"}
+	emit_capability appearance accessibility-text-scale 'Text scaling' "$text_scale_state" user-session \
+		dwm-settings-personalization "$text_scale_detail"
+}
+
+emit_accessibility_capabilities() {
+	emit_text_scale_capability
+	emit_capability appearance accessibility-contrast 'High contrast' partial user-session \
+		quickshell-theme 'Semantic colors are available; a dedicated high-contrast policy is not configured'
+	emit_capability appearance accessibility-reduced-motion 'Reduced motion' unsupported user-session \
+		quickshell-theme 'Managed shell animations do not yet expose a reduced-motion policy'
+	emit_capability appearance accessibility-notifications 'Notification policy' partial user-session \
+		quickshell-notifications 'Notification history and D-Bus ownership are available; policy controls are not configured'
+	if provider_available dwm-settings-input && provider_available xinput; then
+		emit_capability appearance accessibility-input 'Keyboard and pointer access' partial user-session x11 \
+			'Input discovery and settings are available; dedicated accessibility controls are not configured'
+	else
+		emit_capability appearance accessibility-input 'Keyboard and pointer access' unavailable user-session x11 \
+			'Install xinput and the managed input Settings provider'
+	fi
+}
+
 emit_capability() {
 	section=$1
 	id=$2
@@ -303,8 +375,7 @@ discover() {
 		emit_capability appearance themes Themes unavailable read-only dwm-settings-appearance \
 			'Restore a valid themes.toml configuration or inspect the appearance snapshot errors'
 	fi
-	emit_capability appearance accessibility Accessibility unsupported user-session x11 \
-		'Accessibility settings begin in Phase 5'
+	emit_accessibility_capabilities
 
 	if provider_available dwm-system-health; then
 		emit_capability system health 'System health' available read-only dwm-system-health \

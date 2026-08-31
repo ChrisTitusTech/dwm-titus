@@ -7,22 +7,19 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
 
 ## Verified Checkpoint
 
-Status reconciled 2026-08-30 against `origin/main` at `37600c1`. Eleven of the
-25 Phase 5 implementation checkboxes are merged. The current optional-component
-qualification boundary validates one additional checkbox, leaving 13 open in
-this branch. Panel-widget persistence merged in PR #186 with its focused,
-full-suite, QML, shell, nested-X11, hosted, and live-session evidence recorded
-in `docs/P5-PANEL-WIDGETS.md` and `docs/P5-STATUS.md`.
+Status reconciled 2026-08-30 against `origin/main` at `edb5478`. Twelve of the
+25 Phase 5 implementation checkboxes are merged. Cross-capability
+optional-component qualification merged in PR #188, completing
+`APPEARANCE-001`; the automatic small-PR workflow merged in PR #189. Only the
+primary worktree remains registered.
 
-Cross-capability optional-component qualification passes its focused helper,
-source-contract, shell, nested-X11, clean-build, full managed-suite, QML lint,
-documentation, staged-install, repeated-install, and diff checks. Missing
-Picom, Feh, toolkit themes, wallpaper directories, and delegated tools remain
-scoped to their own capability. `docs/P5-OPTIONAL-COMPONENTS.md` records the
-detailed evidence. The boundary also repairs the stale compact-display source
-assertion that caused the latest `main` CI run to fail after the panel slice
-had already passed at its merge head. Review and merge this boundary before
-starting accessibility and notification policy.
+The current accessibility capability boundary validates one additional
+checkbox, leaving 12 open in this branch. It replaces the generic Phase 5
+placeholder with separate records for text scaling, contrast, reduced motion,
+notification policy, and practical keyboard or pointer access. Text-scale
+state comes from the existing versioned personalization protocol; missing or
+incomplete providers degrade only that capability. Settings controls and state
+mutation remain separate review boundaries.
 
 ## Active Phase: Personalization and Accessibility
 
@@ -100,7 +97,7 @@ Acceptance:
 
 ### ACCESSIBILITY-001: Practical X11 Accessibility and Notification Policy
 
-- [ ] Define capability records for text scaling, contrast, reduced motion,
+- [x] Define capability records for text scaling, contrast, reduced motion,
   notification policy, and practical keyboard or pointer accessibility features
   available through supported Fedora/X11 interfaces.
 - [ ] Add accessible Settings controls with keyboard navigation, visible focus,
