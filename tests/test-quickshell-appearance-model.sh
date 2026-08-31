@@ -28,7 +28,31 @@ test "$(grep -Fc 'root.appearanceModel.closeSettings()' "$settings_model")" -eq 
 grep -Fq 'property bool capabilityRefreshPending: false' "$settings_model"
 grep -Fq 'function refreshCapabilities()' "$settings_model"
 grep -Fq 'root.capabilityRefreshPending = true;' "$settings_model"
-grep -Fq 'Qt.callLater(root.refreshCapabilities);' "$settings_model"
+grep -Fq 'if (root.discoveryState !== "ready" || root.capabilityRefreshPending)' "$settings_model"
+grep -Fq '"detail": "Capability discovery is still refreshing"' "$settings_model"
+awk '
+	/id: providerProcess/ { in_provider = 1 }
+	in_provider && /onRunningChanged: \{/ {
+		in_handler = 1
+		depth = 0
+	}
+	in_handler {
+		line = $0
+		opens = gsub(/\{/, "", line)
+		closes = gsub(/\}/, "", line)
+		depth += opens - closes
+		if (/root.capabilityRefreshPending = false;/ && !cleared) cleared = NR
+		if (/Qt.callLater\(function\(\) \{/ && !deferred) deferred = NR
+		if (/if \(!providerProcess.running\) root.refreshCapabilities\(\);/ && !guarded) guarded = NR
+		if (depth == 0) {
+			in_handler = 0
+			verified = cleared && deferred && guarded && cleared < deferred && deferred < guarded
+		}
+	}
+	END {
+		exit !verified
+	}
+' "$settings_model"
 grep -Fq 'function onPersonalizationSelectionsChanged()' "$settings_model"
 grep -Fq 'root.refreshCapabilities();' "$settings_model"
 grep -Fq 'AppearanceSettingsPane {' "$settings_window"

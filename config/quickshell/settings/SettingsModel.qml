@@ -98,6 +98,8 @@ Scope {
     }
 
     function capabilityById(id) {
+        if (root.discoveryState !== "ready" || root.capabilityRefreshPending)
+            return { "status": "unavailable", "detail": "Capability discovery is still refreshing" };
         for (const capability of root.capabilities) {
             if (capability.id === id) return capability;
         }
@@ -584,8 +586,12 @@ Scope {
         }
 
         onRunningChanged: {
-            if (!running && root.capabilityRefreshPending && root.visible)
-                Qt.callLater(root.refreshCapabilities);
+            if (!running && root.capabilityRefreshPending && root.visible) {
+                root.capabilityRefreshPending = false;
+                Qt.callLater(function() {
+                    if (!providerProcess.running) root.refreshCapabilities();
+                });
+            }
         }
     }
 
