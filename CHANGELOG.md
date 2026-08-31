@@ -15,6 +15,14 @@ versions from `config.mk`.
 
 ### Added
 
+- Group the existing bounded application text-scale choices under a dedicated
+  Settings Accessibility section with keyboard-focusable apply and reset
+  controls, wrapping actions for compact display sizes, and capability-scoped
+  explanations for contrast, reduced motion, notification policy, and input
+  features that are not yet managed. Event-driven personalization changes
+  coalesce a fresh strict capability snapshot so recovery cannot leave the
+  text-scale controls incorrectly disabled.
+
 - Replace the generic Phase 5 accessibility placeholder with distinct Settings
   capability records for text scaling, high contrast, reduced motion,
   notification policy, and keyboard or pointer access. Text scaling consumes

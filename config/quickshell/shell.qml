@@ -806,6 +806,14 @@ ShellRoot {
             return appearanceModel.personalizationStatusBusy;
         }
 
+        function appearanceRefresh(): void {
+            appearanceModel.refreshAll(true);
+        }
+
+        function capabilityStatus(capabilityId: string): string {
+            return settingsModel.capabilityById(capabilityId).status;
+        }
+
         function appearancePersonalizationMutationState(): string {
             return appearanceModel.personalizationMutationState;
         }

@@ -391,9 +391,10 @@ cat >"$data_home/dwm-titus/scripts/dwm-settings-personalization" <<'SH'
 #!/bin/sh
 set -eu
 fixture=${DWM_SETTINGS_TEST_APPEARANCE_FAILURE:?}
-if [ "${1:-}" = status ] && [ -f "$fixture" ] &&
-	[ "$(cat "$fixture")" = optional-loss ]; then
-	"$(dirname -- "$0")/dwm-settings-personalization.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
+if [ "${1:-}" = status ] && [ -f "$fixture" ]; then
+	case $(cat "$fixture") in
+	optional-loss)
+		"$(dirname -- "$0")/dwm-settings-personalization.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
 		$1 == "action-readiness" && ($2 == "gtk" || $2 == "qt") {
 			$3 = "available"; $4 = "available";
 			$5 = "Built-in personalization actions remain available";
@@ -403,7 +404,17 @@ if [ "${1:-}" = status ] && [ -f "$fixture" ] &&
 			$5 = "No trusted advanced editor is installed";
 		}
 		{ print }'
-	exit 0
+		exit 0
+		;;
+	invalid-text-scale)
+		"$(dirname -- "$0")/dwm-settings-personalization.real" "$@" | awk -F '\t' 'BEGIN { OFS = "\t" }
+			$1 == "selection" && $2 == "text-size" {
+				$3 = "available"; $4 = "";
+			}
+			{ print }'
+		exit 0
+		;;
+	esac
 fi
 exec "$(dirname -- "$0")/dwm-settings-personalization.real" "$@"
 SH
@@ -1439,6 +1450,36 @@ appearance_recovery=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home X
 [ "$appearance_application" = partial ]
 [ "$appearance_preview" = none ]
 [ "$appearance_recovery" = none ]
+
+# A malformed text-scale record can pass the Appearance model's append-only
+# parser but must remain unavailable through the stricter Settings capability
+# contract. Removing the fault must refresh that strict gate from the
+# event-driven personalization selection change without a Settings refresh.
+test_stage='validating text-scale capability recovery synchronization'
+baseline_text_scale_capability=$(settings_ipc_retry capabilityStatus accessibility-text-scale)
+case $baseline_text_scale_capability in available | partial) ;; *) exit 1 ;; esac
+printf '%s\n' invalid-text-scale >"$appearance_failure_fixture"
+settings_ipc_retry appearanceRefresh >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	strict_text_scale_state=$(settings_ipc_retry capabilityStatus accessibility-text-scale)
+	live_text_scale_state=$(settings_ipc_retry appearancePersonalizationEffectiveState text-size)
+	[ "$strict_text_scale_state" = unavailable ] && [ "$live_text_scale_state" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$strict_text_scale_state" = unavailable ]
+[ "$live_text_scale_state" = available ]
+rm -f -- "$appearance_failure_fixture"
+settings_ipc_retry appearanceRefresh >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	recovered_text_scale_capability=$(settings_ipc_retry capabilityStatus accessibility-text-scale)
+	[ "$recovered_text_scale_capability" = "$baseline_text_scale_capability" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$recovered_text_scale_capability" = "$baseline_text_scale_capability" ]
 
 test_stage='validating shared panel widget persistence'
 panel_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \

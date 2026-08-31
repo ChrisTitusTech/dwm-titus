@@ -12,6 +12,7 @@ Scope {
     property string selectedSectionId: "displays"
     property string discoveryState: "idle"
     property string message: ""
+    property bool capabilityRefreshPending: false
     property string platformId: "unknown"
     property string platformFamily: "unknown"
     property string platformName: "Unknown Linux"
@@ -94,6 +95,13 @@ Scope {
         return root.capabilities.filter(function(capability) {
             return capability.section === id;
         });
+    }
+
+    function capabilityById(id) {
+        for (const capability of root.capabilities) {
+            if (capability.id === id) return capability;
+        }
+        return { "status": "unavailable", "detail": "Capability has not been discovered" };
     }
 
     function watchOwnerArguments() {
@@ -482,7 +490,16 @@ Scope {
     function refresh() {
         if (root.visible && root.selectedSectionId === "appearance" && root.panelSettingsModel)
             root.panelSettingsModel.refresh();
-        if (!root.visible || providerProcess.running) return;
+        root.refreshCapabilities();
+    }
+
+    function refreshCapabilities() {
+        if (!root.visible) return;
+        if (providerProcess.running) {
+            root.capabilityRefreshPending = true;
+            return;
+        }
+        root.capabilityRefreshPending = false;
         root.busy = true;
         root.discoveryState = "loading";
         root.message = "Discovering capabilities...";
@@ -525,6 +542,7 @@ Scope {
 			}
 		}
         providerProcess.running = false;
+        root.capabilityRefreshPending = false;
         displayDiscoverProcess.running = false;
         inputDiscoverProcess.running = false;
         displayWatchProcess.running = false;
@@ -563,6 +581,21 @@ Scope {
                 const error = this.text.trim();
                 if (error.length > 0) root.message = error;
             }
+        }
+
+        onRunningChanged: {
+            if (!running && root.capabilityRefreshPending && root.visible)
+                Qt.callLater(root.refreshCapabilities);
+        }
+    }
+
+    Connections {
+        target: root.appearanceModel
+        enabled: root.appearanceModel !== null
+
+        function onPersonalizationSelectionsChanged() {
+            if (root.visible && root.selectedSectionId === "appearance")
+                root.refreshCapabilities();
         }
     }
 
