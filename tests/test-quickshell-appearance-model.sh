@@ -25,9 +25,41 @@ grep -Fq 'appearanceModel: appearanceModel' "$shell_qml"
 grep -Fq 'root.appearanceModel.openSettings()' "$settings_model"
 grep -Fq 'root.appearanceModel.closeSettings()' "$settings_model"
 test "$(grep -Fc 'root.appearanceModel.closeSettings()' "$settings_model")" -eq 2
+grep -Fq 'property bool capabilityRefreshPending: false' "$settings_model"
+grep -Fq 'function refreshCapabilities()' "$settings_model"
+grep -Fq 'root.capabilityRefreshPending = true;' "$settings_model"
+grep -Fq 'if (root.discoveryState !== "ready" || root.capabilityRefreshPending)' "$settings_model"
+grep -Fq '"detail": "Capability discovery is still refreshing"' "$settings_model"
+awk '
+	/id: providerProcess/ { in_provider = 1 }
+	in_provider && /onRunningChanged: \{/ {
+		in_handler = 1
+		depth = 0
+	}
+	in_handler {
+		line = $0
+		opens = gsub(/\{/, "", line)
+		closes = gsub(/\}/, "", line)
+		depth += opens - closes
+		if (/root.capabilityRefreshPending = false;/ && !cleared) cleared = NR
+		if (/Qt.callLater\(function\(\) \{/ && !deferred) deferred = NR
+		if (/if \(!providerProcess.running\) root.refreshCapabilities\(\);/ && !guarded) guarded = NR
+		if (depth == 0) {
+			in_handler = 0
+			verified = cleared && deferred && guarded && cleared < deferred && deferred < guarded
+		}
+	}
+	END {
+		exit !verified
+	}
+' "$settings_model"
+grep -Fq 'function onPersonalizationSelectionsChanged()' "$settings_model"
+grep -Fq 'root.refreshCapabilities();' "$settings_model"
 grep -Fq 'AppearanceSettingsPane {' "$settings_window"
 grep -Fq 'root.settingsModel.selectedSectionId === "appearance"' "$settings_window"
 grep -Fq 'capability.id !== "themes"' "$settings_window"
+grep -Fq 'textScaleCapability: root.settingsModel.capabilityById(' "$settings_window"
+grep -Fq 'function capabilityById(id)' "$settings_model"
 
 grep -Fq 'function settingsAppearanceCommand(action, args)' "$commands"
 grep -Fq 'function settingsFontCommand(action, args)' "$commands"
@@ -398,7 +430,30 @@ grep -Fq 'Component.onCompleted: {' "$pane"
 grep -Fq 'root.ensureWallpaperSelection();' "$pane"
 grep -Fq 'preferred = root.appearanceModel.resolvedTheme' "$pane"
 grep -Fq 'label: "Additional capabilities"' "$pane"
-grep -Fq 'model: root.capabilities' "$pane"
+grep -Fq 'SectionLabel { label: "Accessibility" }' "$pane"
+grep -Fq 'readonly property var accessibilityCapabilities:' "$pane"
+grep -Fq 'capability.id !== "accessibility-text-scale"' "$pane"
+grep -Fq 'required property var textScaleCapability' "$pane"
+grep -Fq 'property var capabilityGate: null' "$pane"
+grep -Fq 'readonly property bool gateAllowsActions:' "$pane"
+grep -Fq 'personalizationControl.capabilityGate.status === "partial"' "$pane"
+grep -Fq 'capabilityGate: root.textScaleCapability' "$pane"
+test "$(grep -Fc '&& personalizationControl.gateAllowsActions' "$pane")" -eq 2
+grep -Fq 'enabled: personalizationControl.gateAllowsActions && !root.appearanceBusy' "$pane"
+grep -Fq 'model: root.accessibilityCapabilities' "$pane"
+grep -Fq 'model: root.additionalCapabilities' "$pane"
+grep -Fq 'text: "Use the text-scale controls below when their provider is available.' "$pane"
+if grep -Fq 'Text scaling is available now' "$pane"; then
+	printf 'Accessibility summary makes an unconditional text-scale availability claim\n' >&2
+	exit 1
+fi
+test "$(grep -Fc 'component PersonalizationControl: ColumnLayout' "$pane")" -eq 1
+personalization_actions=$(sed -n '/component PersonalizationControl: ColumnLayout/,/^    }/p' "$pane")
+printf '%s\n' "$personalization_actions" | grep -Fq 'Flow {'
+if printf '%s\n' "$personalization_actions" | grep -Fq 'RowLayout {'; then
+	printf 'Personalization actions do not wrap at compact display sizes\n' >&2
+	exit 1
+fi
 grep -Fq 'onActivated: root.appearanceModel.keepPreview()' "$pane"
 grep -Fq 'onActivated: root.appearanceModel.revertPreview()' "$pane"
 grep -Fq 'onActivated: root.appearanceModel.abandonPreview()' "$pane"
@@ -414,6 +469,8 @@ grep -Fq 'function appearanceFontScale(): string' "$shell_qml"
 grep -Fq 'function appearanceFontPreviewState(): string' "$shell_qml"
 grep -Fq 'function appearancePersonalizationStatus(): string' "$shell_qml"
 grep -Fq 'function appearancePersonalizationOption(capability: string): string' "$shell_qml"
+grep -Fq 'function appearanceRefresh(): void' "$shell_qml"
+grep -Fq 'function capabilityStatus(capabilityId: string): string' "$shell_qml"
 test "$(grep -Fc 'root.selectedTheme.valid && root.selectedTheme.mutable' "$pane")" -eq 2
 
 if grep -ERq 'Quickshell\.(Wayland|Hyprland)|WlrLayershell|hyprctl|uwsm-app|wl-copy|wl-paste' \

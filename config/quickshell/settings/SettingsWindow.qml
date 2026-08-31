@@ -381,6 +381,8 @@ FloatingWindow {
                                 visible: root.settingsModel.selectedSectionId === "appearance"
                                 appearanceModel: root.appearanceModel
                                 panelSettingsModel: root.panelSettingsModel
+                                textScaleCapability: root.settingsModel.capabilityById(
+                                    "accessibility-text-scale")
                                 capabilities: root.settingsModel.capabilitiesForSection("appearance")
                                     .filter(function(capability) {
                                         return capability.id !== "themes" && capability.id !== "wallpaper";

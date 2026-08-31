@@ -7,19 +7,19 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
 
 ## Verified Checkpoint
 
-Status reconciled 2026-08-30 against `origin/main` at `edb5478`. Twelve of the
-25 Phase 5 implementation checkboxes are merged. Cross-capability
-optional-component qualification merged in PR #188, completing
-`APPEARANCE-001`; the automatic small-PR workflow merged in PR #189. Only the
-primary worktree remains registered.
+Status reconciled 2026-08-31 against `origin/main` at `63e49ab`. Thirteen of
+the 25 Phase 5 implementation checkboxes are merged. PR #190 completed the
+accessibility capability contract after PR #188 completed `APPEARANCE-001` and
+PR #189 established the automatic small-PR workflow. Only the primary worktree
+remains registered.
 
-The current accessibility capability boundary validates one additional
-checkbox, leaving 12 open in this branch. It replaces the generic Phase 5
-placeholder with separate records for text scaling, contrast, reduced motion,
-notification policy, and practical keyboard or pointer access. Text-scale
-state comes from the existing versioned personalization protocol; missing or
-incomplete providers degrade only that capability. Settings controls and state
-mutation remain separate review boundaries.
+The current accessibility Settings boundary exposes the already-supported
+application text scale in a dedicated group with apply, reset, keyboard focus,
+and compact-width action wrapping. Contrast, reduced motion, notification
+policy, and practical keyboard or pointer access remain explanatory
+capability-scoped cards until their mutation contracts land separately. The
+overall Settings-controls checkbox remains open until those controls and the
+required interaction evidence are complete.
 
 ## Active Phase: Personalization and Accessibility
 

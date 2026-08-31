@@ -10,6 +10,7 @@ Flickable {
     required property var appearanceModel
     required property var panelSettingsModel
     required property var capabilities
+    required property var textScaleCapability
     property string selectedThemeId: ""
     property string selectedWallpaperPath: ""
     property string selectedWallpaperFit: "fill"
@@ -34,6 +35,13 @@ Flickable {
         !root.appearanceModel.personalizationStatusBusy
         && root.appearanceModel.previewState === "none"
         && root.appearanceModel.recoveryState === "none"
+    readonly property var accessibilityCapabilities: root.capabilities.filter(function(capability) {
+        return capability.id.indexOf("accessibility-") === 0
+            && capability.id !== "accessibility-text-scale";
+    })
+    readonly property var additionalCapabilities: root.capabilities.filter(function(capability) {
+        return capability.id.indexOf("accessibility-") !== 0;
+    })
     contentWidth: width
     contentHeight: content.implicitHeight
     clip: true
@@ -208,6 +216,7 @@ Flickable {
         required property string title
         required property string resetLabel
         required property var candidates
+        property var capabilityGate: null
         property bool advancedEditor: false
         property string selectedValue: ""
         property bool selectionDirty: false
@@ -218,10 +227,15 @@ Flickable {
             personalizationControl.capability)
         readonly property var inventorySelection: root.appearanceModel.inventorySelection(
             personalizationControl.capability)
-        readonly property string effectiveState: root.appearanceModel.personalizationEffectiveState(
-            personalizationControl.capability)
-        readonly property string effectiveDetail: root.appearanceModel.personalizationEffectiveDetail(
-            personalizationControl.capability)
+        readonly property bool gateAllowsActions: personalizationControl.capabilityGate === null
+            || personalizationControl.capabilityGate.status === "available"
+            || personalizationControl.capabilityGate.status === "partial"
+        readonly property string effectiveState: personalizationControl.gateAllowsActions
+            ? root.appearanceModel.personalizationEffectiveState(personalizationControl.capability)
+            : personalizationControl.capabilityGate.status
+        readonly property string effectiveDetail: personalizationControl.gateAllowsActions
+            ? root.appearanceModel.personalizationEffectiveDetail(personalizationControl.capability)
+            : personalizationControl.capabilityGate.detail
         readonly property var delegateRecord: root.appearanceModel.personalizationDelegates[
             personalizationControl.capability] || ({ "state": "unavailable", "tool": "",
                 "detail": "No trusted advanced editor is installed" })
@@ -288,7 +302,7 @@ Flickable {
                             === personalizationControl.selectedValue ? " / Selected" : "")
                         + (personalizationButton.modelData.token
                             === personalizationControl.selection.option ? " / Saved" : "")
-                    enabled: !root.appearanceBusy
+                    enabled: personalizationControl.gateAllowsActions && !root.appearanceBusy
                         && personalizationButton.modelData.state === "available"
                     onActivated: {
                         personalizationControl.selectedValue = personalizationButton.modelData.token;
@@ -317,12 +331,13 @@ Flickable {
             wrapMode: Text.WordWrap
         }
 
-        RowLayout {
+        Flow {
             Layout.fillWidth: true
             spacing: Theme.spacingSm
             ShellButton {
                 label: "Apply " + personalizationControl.title.toLowerCase()
                 enabled: root.personalizationActionsReady
+                    && personalizationControl.gateAllowsActions
                     && root.appearanceModel.personalizationApplyReady(
                         personalizationControl.capability)
                     && personalizationControl.candidateAvailable(
@@ -333,6 +348,7 @@ Flickable {
             ShellButton {
                 label: personalizationControl.resetLabel
                 enabled: root.personalizationActionsReady
+                    && personalizationControl.gateAllowsActions
                     && root.appearanceModel.personalizationResetReady(
                         personalizationControl.capability)
                     && !root.appearanceBusy
@@ -949,13 +965,6 @@ Flickable {
         }
 
         PersonalizationControl {
-            capability: "text-size"
-            title: "Application text scale"
-            resetLabel: "Follow system scale"
-            candidates: root.appearanceModel.desktopTextScaleCandidates
-        }
-
-        PersonalizationControl {
             capability: "cursor"
             title: "Cursor theme"
             resetLabel: "Follow DWM theme"
@@ -983,6 +992,35 @@ Flickable {
             resetLabel: "Follow DWM theme"
             candidates: root.appearanceModel.personalizationCandidates("qt", 24)
             advancedEditor: true
+        }
+
+        SectionLabel { label: "Accessibility" }
+
+        UiText {
+            Layout.fillWidth: true
+            text: "Use the text-scale controls below when their provider is available. The remaining cards explain which keyboard, pointer, contrast, motion, and notification controls are not yet managed by this desktop."
+            color: Theme.menuMutedText
+            wrapMode: Text.WordWrap
+        }
+
+        PersonalizationControl {
+            capability: "text-size"
+            title: "Application text scale"
+            resetLabel: "Follow system scale"
+            candidates: root.appearanceModel.desktopTextScaleCandidates
+            capabilityGate: root.textScaleCapability
+        }
+
+        Repeater {
+            model: root.accessibilityCapabilities
+            delegate: StatusCard {
+                id: accessibilityCard
+                required property var modelData
+                label: accessibilityCard.modelData.label
+                statusState: accessibilityCard.modelData.status
+                value: accessibilityCard.modelData.status
+                detail: accessibilityCard.modelData.detail
+            }
         }
 
         SectionLabel { label: "Panel widgets" }
@@ -1080,12 +1118,12 @@ Flickable {
         }
 
         SectionLabel {
-            visible: root.capabilities.length > 0
+            visible: root.additionalCapabilities.length > 0
             label: "Additional capabilities"
         }
 
         Repeater {
-            model: root.capabilities
+            model: root.additionalCapabilities
             delegate: StatusCard {
                 id: capabilityCard
                 required property var modelData
