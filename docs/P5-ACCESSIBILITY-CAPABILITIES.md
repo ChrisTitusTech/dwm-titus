@@ -17,7 +17,7 @@ in the Appearance section:
 | `accessibility-contrast` | `quickshell-theme` | `partial`: semantic colors exist, but a dedicated high-contrast policy is not configured. |
 | `accessibility-reduced-motion` | `quickshell-theme` | `unsupported`: managed animations do not yet expose a reduced-motion policy. |
 | `accessibility-notifications` | `dbus` | `partial` when a session notification owner is active; otherwise `unavailable`. Policy controls are not configured. |
-| `accessibility-input` | `x11` | `partial` when the managed input provider and `xinput` exist; otherwise `unavailable`. |
+| `accessibility-input` | `x11` | `partial` when bounded managed input discovery succeeds; otherwise `unavailable`. |
 
 ## Failure Isolation
 
@@ -54,7 +54,7 @@ git diff --check
 ```
 
 The focused contract covers all five healthy records, exactly five emitted
-accessibility records, missing input tooling, unresponsive and missing
+accessibility records, missing or unresponsive input tooling, unresponsive and missing
 personalization providers, incomplete or duplicate responses, empty required
 fields, unsupported persisted modes, the valid unavailable state with no live
 scale, and both present and missing notification D-Bus owners. The full suite

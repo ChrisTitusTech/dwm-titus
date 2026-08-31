@@ -59,6 +59,7 @@ cat >"$work/bin/xinput" <<'EOF'
 #!/bin/sh
 case $1 in
 --list)
+	[ "${TEST_FAIL_LIST:-0}" != 1 ] || exit 1
 	cat "$TEST_DEVICES"
 	;;
 list-props)
@@ -222,6 +223,15 @@ grep -Fq $'keyboard	Keyboard with spaces' "$work/discover"
 grep -Fq $'touchpad	Portable TouchPad' "$work/discover"
 grep -Fq $'pointer-speed	Pointer acceleration / speed	number	0.000000	0.000000	-1	1' "$work/discover"
 grep -Fq $'keyboard-layout	Keyboard layout	text	us	us	0	0' "$work/discover"
+
+if env "${env_common[@]}" TEST_FAIL_LIST=1 "$helper" discover \
+	>"$work/discover-list-failure" 2>"$work/discover-list-failure.err"; then
+	printf 'input discovery succeeded after the XInput device query failed\n' >&2
+	exit 1
+fi
+[[ ! -s $work/discover-list-failure ]]
+grep -Fqx 'dwm-settings-input: unable to query XInput devices' \
+	"$work/discover-list-failure.err"
 
 mouse_key=$(awk -F '\t' '$1 == "device" && $4 == "pointer" {print $2; exit}' "$work/discover")
 keyboard_key=$(awk -F '\t' '$1 == "device" && $4 == "keyboard" {print $2}' "$work/discover")

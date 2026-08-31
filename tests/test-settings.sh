@@ -99,6 +99,20 @@ make_preamble_appearance_stub() {
 	chmod +x "$path"
 }
 
+make_input_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' 'printf "input-protocol\t1\n"' >"$path"
+	chmod +x "$path"
+}
+
+make_malformed_input_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' 'printf "input-protocol\t2\n"' >"$path"
+	chmod +x "$path"
+}
+
 base_bin=$work/base-bin
 fedora_bin=$work/fedora-bin
 make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
@@ -111,6 +125,7 @@ done
 make_stub "$fedora_bin/dwm-xdg-autostart"
 make_appearance_stub "$fedora_bin/dwm-settings-appearance"
 make_personalization_stub "$fedora_bin/dwm-settings-personalization"
+make_input_stub "$fedora_bin/dwm-settings-input"
 make_stub "$fedora_bin/dwm-settings-theme"
 make_stub "$fedora_bin/inotifywait"
 make_failing_stub "$fedora_bin/pkexec"
@@ -256,6 +271,34 @@ missing_accessibility_input_output=$(PATH="$missing_accessibility_input_bin" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$missing_accessibility_input_output" | grep -Fqx \
 	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	user-session	x11	Install xinput and the managed input Settings provider'
+
+unready_accessibility_input_bin=$work/unready-accessibility-input-bin
+cp -a "$fedora_bin" "$unready_accessibility_input_bin"
+make_failing_stub "$unready_accessibility_input_bin/dwm-settings-input"
+unready_accessibility_input_output=$(PATH="$unready_accessibility_input_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$unready_accessibility_input_output" | grep -Fqx \
+	'capability	input	input-devices	Input devices	unavailable	user-session	dwm-settings-input	Input tools are installed, but no responsive XInput session is available'
+printf '%s\n' "$unready_accessibility_input_output" | grep -Fqx \
+	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	user-session	x11	Input tools are installed, but no responsive XInput session is available'
+
+for invalid_input_case in empty malformed; do
+	invalid_input_bin=$work/invalid-input-$invalid_input_case-bin
+	cp -a "$fedora_bin" "$invalid_input_bin"
+	if [ "$invalid_input_case" = empty ]; then
+		make_stub "$invalid_input_bin/dwm-settings-input"
+	else
+		make_malformed_input_stub "$invalid_input_bin/dwm-settings-input"
+	fi
+	invalid_input_output=$(PATH="$invalid_input_bin" \
+		XDG_CONFIG_HOME="$work/fedora-config" \
+		DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+	printf '%s\n' "$invalid_input_output" | grep -Fqx \
+		'capability	input	input-devices	Input devices	unavailable	user-session	dwm-settings-input	Input tools are installed, but no responsive XInput session is available'
+	printf '%s\n' "$invalid_input_output" | grep -Fqx \
+		'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	user-session	x11	Input tools are installed, but no responsive XInput session is available'
+done
 
 missing_notification_owner_bin=$work/missing-notification-owner-bin
 cp -a "$fedora_bin" "$missing_notification_owner_bin"
