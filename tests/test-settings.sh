@@ -43,7 +43,7 @@ make_personalization_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
 	printf '%s\n' '#!/bin/sh' \
-		'printf "personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tfollow-system\tPersistent desktop text scale\ncomplete\tstatus\n"' >"$path"
+		'printf "personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tfollow-system\tPersistent desktop text scale\nfuture-personalization-record\tappend-only-fixture\ncomplete\tstatus\n"' >"$path"
 	chmod +x "$path"
 }
 
@@ -196,7 +196,7 @@ incomplete_personalization_output=$(PATH="$incomplete_personalization_bin" \
 printf '%s\n' "$incomplete_personalization_output" | grep -Fqx \
 	'capability	appearance	accessibility-text-scale	Text scaling	unavailable	user-session	dwm-settings-personalization	The personalization provider returned an unsupported response'
 
-for malformed_text_scale_case in empty-value empty-preference unsupported-preference malformed-scale duplicate-header malformed-duplicate; do
+for malformed_text_scale_case in empty-value empty-preference unsupported-preference malformed-scale duplicate-header malformed-duplicate malformed-known-record; do
 	malformed_text_scale_bin=$work/malformed-text-scale-$malformed_text_scale_case-bin
 	cp -a "$fedora_bin" "$malformed_text_scale_bin"
 	case $malformed_text_scale_case in
@@ -223,6 +223,10 @@ for malformed_text_scale_case in empty-value empty-preference unsupported-prefer
 	malformed-duplicate)
 		malformed_text_scale_payload=$(printf \
 			'personalization-protocol\t1\t0\nselection\ttext-size\tavailable\t1.25\tfollow-system\tValid record\nselection\ttext-size\tbogus\t1.25\tfollow-system\tMalformed duplicate\ncomplete\tstatus')
+		;;
+	malformed-known-record)
+		malformed_text_scale_payload=$(printf \
+			'personalization-protocol\t1\t0\nprovider\tbroken\nselection\ttext-size\tavailable\t1.25\tfollow-system\tValid record\ncomplete\tstatus')
 		;;
 	esac
 	make_custom_personalization_stub \

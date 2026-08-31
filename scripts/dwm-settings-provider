@@ -132,32 +132,98 @@ emit_text_scale_capability() {
 
 	text_scale_record=$(printf '%s\n' "$personalization_snapshot" |
 		awk -F '\t' '
+			function valid_state(value) {
+				return value == "available" || value == "partial" ||
+					value == "restricted" || value == "unavailable"
+			}
+			function valid_ready_state(value) {
+				return value == "available" || value == "restricted" || value == "unavailable"
+			}
+			function valid_capability(value) {
+				return value == "font" || value == "text-size" || value == "cursor" ||
+					value == "icon" || value == "gtk" || value == "qt"
+			}
+			function valid_option(capability, value) {
+				if (value == "unknown") return 1
+				if (capability == "text-size")
+					return value == "follow-system" || value == "0.75" || value == "0.875" ||
+						value == "1.0" || value == "1.125" || value == "1.25" || value == "1.5" ||
+						value == "1.75" || value == "2.0"
+				if (capability == "qt")
+					return value == "follow-theme" || value == "gtk3" ||
+						value == "qt6ct" || value == "qt5ct"
+				return value != ""
+			}
 			$1 == "personalization-protocol" {
 				protocols++
 				if (NR == 1 && $0 == "personalization-protocol\t1\t0") header = 1
 				next
 			}
+			$1 == "provider" {
+				providers++
+				if (NF != 5 || $2 != "personalization" || !valid_state($3) ||
+					$4 != "user-session" || $5 == "" || providers != 1) invalid = 1
+				next
+			}
+			$1 == "mutation" {
+				mutations++
+				if (NF != 3 || !valid_state($2) || $3 == "" || mutations != 1) invalid = 1
+				next
+			}
+			$1 == "repair" {
+				repairs++
+				if (NF != 3 || !valid_ready_state($2) || $3 == "" || repairs != 1) invalid = 1
+				next
+			}
+			$1 == "watch-readiness" {
+				watches++
+				if (NF != 4 || $2 != "text-size" ||
+					($3 != "available" && $3 != "unavailable") || $4 == "" || watches != 1) invalid = 1
+				next
+			}
 			$1 == "selection" && $2 == "text-size" {
 				selections++
+				selection_seen[$2]++
 				if (NF == 6 &&
 					($3 == "available" || $3 == "partial" || $3 == "unavailable") &&
 					($3 == "unavailable" || $4 != "") &&
-					($5 == "unknown" || $5 == "follow-system" ||
-						$5 == "0.75" || $5 == "0.875" || $5 == "1.0" ||
-						$5 == "1.125" || $5 == "1.25" || $5 == "1.5" ||
-						$5 == "1.75" || $5 == "2.0") &&
-					$6 != "") {
+					valid_option($2, $5) && $6 != "" && selection_seen[$2] == 1) {
 					state = $3
 					detail = $6
 					valid_selections++
-				}
+				} else invalid = 1
+				next
+			}
+			$1 == "selection" {
+				selection_seen[$2]++
+				if (NF != 6 || !valid_capability($2) || !valid_state($3) ||
+					!valid_option($2, $5) || $6 == "" || selection_seen[$2] != 1) invalid = 1
+				next
+			}
+			$1 == "action-readiness" {
+				readiness_seen[$2]++
+				if (NF != 5 || !valid_capability($2) || !valid_ready_state($3) ||
+					!valid_ready_state($4) || $5 == "" || readiness_seen[$2] != 1) invalid = 1
+				next
+			}
+			$1 == "delegate" {
+				delegate_seen[$2]++
+				if (NF != 5 || ($2 != "gtk" && $2 != "qt") ||
+					($3 != "available" && $3 != "unavailable") ||
+					($3 == "available" && $4 == "") || $5 == "" || delegate_seen[$2] != 1) invalid = 1
+				next
 			}
 			$1 == "complete" && $2 == "status" && NF == 2 {
 				complete_line = NR
 				completions++
+				next
 			}
+			$1 == "complete" { invalid = 1; next }
+			# Version 1 is append-only: reject malformed known records, but ignore new record types.
+			{ next }
 			END {
-				if (header && protocols == 1 && selections == 1 && valid_selections == 1 && completions == 1 &&
+				if (!invalid && header && protocols == 1 && selections == 1 &&
+					valid_selections == 1 && completions == 1 &&
 					complete_line == NR && detail != "")
 					printf "%s\t%s\n", state, detail
 				else
