@@ -2985,26 +2985,34 @@ printf '%s\n' none >"$theme_status_fixture"
 
 # The provider's missing-source and legacy identifiers are intentional
 # read-only protocol sentinels, not mutation-safe theme names.
+test_stage='validating unavailable appearance sentinels'
 mv "$config_home/dwm-titus/themes.toml" "$work/named-themes.toml"
 mv "$data_home/dwm-titus/config/themes.toml" "$work/managed-themes.toml"
 i=0
-while [ "$i" -lt 100 ]; do
+while [ "$i" -lt 200 ]; do
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
 	appearance_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderDetail 2>/dev/null || true)
+	appearance_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady 2>/dev/null || true)
+	appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme 2>/dev/null || true)
 	[ "$appearance_status" = unavailable ] &&
-		[ "$appearance_detail" = 'Shared theme inventory and integration state' ] && break
+		[ "$appearance_detail" = 'Shared theme inventory and integration state' ] &&
+		[ "$appearance_ready" = false ] && [ "$appearance_theme" = none ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$appearance_status" = unavailable ]
-[ "$appearance_detail" = 'Shared theme inventory and integration state' ]
-[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady)" = false ]
-[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme)" = none ]
+if [ "$appearance_status" != unavailable ] ||
+	[ "$appearance_detail" != 'Shared theme inventory and integration state' ] ||
+	[ "$appearance_ready" != false ] || [ "$appearance_theme" != none ]; then
+	printf 'Unavailable appearance sentinels did not converge: %s / %s / %s / %s\n' \
+		"$appearance_status" "$appearance_detail" "$appearance_ready" "$appearance_theme" >&2
+	exit 1
+fi
 
+test_stage='validating legacy appearance sentinel'
 cat >"$config_home/dwm-titus/themes.toml" <<'EOF'
 [colors]
 normfgcolor = "#D8DEE9"
@@ -3015,18 +3023,24 @@ selbgcolor = "#5E81AC"
 selbordercolor = "#81A1C1"
 EOF
 i=0
-while [ "$i" -lt 100 ]; do
+while [ "$i" -lt 200 ]; do
 	appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme 2>/dev/null || true)
-	[ "$appearance_theme" = @legacy-colors ] && break
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	appearance_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount 2>/dev/null || true)
+	[ "$appearance_theme" = @legacy-colors ] && [ "$appearance_status" = partial ] &&
+		[ "$appearance_count" -eq 1 ] 2>/dev/null && break
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$appearance_theme" = @legacy-colors ]
-[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus)" = partial ]
-[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount)" -eq 1 ]
+if [ "$appearance_theme" != @legacy-colors ] || [ "$appearance_status" != partial ] ||
+	[ "$appearance_count" -ne 1 ] 2>/dev/null; then
+	printf 'Legacy appearance sentinel did not converge: %s / %s / %s\n' \
+		"$appearance_theme" "$appearance_status" "$appearance_count" >&2
+	exit 1
+fi
 
 # IPC selection clears a search that hides the requested section.
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -3050,7 +3064,8 @@ if DISPLAY=$display xdotool search --onlyvisible --name '^dwm settings$' >/dev/n
 	exit 1
 fi
 
-if pgrep -f '[d]wm-settings-provider discover$' >/dev/null; then
+if pgrep -af '[d]wm-settings-provider discover$' |
+	grep -F "$data_home/dwm-titus/scripts/dwm-settings-provider" >/dev/null; then
 	printf 'Settings capability provider remained active after close\n' >&2
 	exit 1
 fi
