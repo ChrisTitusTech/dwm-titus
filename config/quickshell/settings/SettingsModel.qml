@@ -35,6 +35,7 @@ Scope {
     property string displayState: "idle"
     property string displayMessage: ""
     property string displayBaseline: ""
+    property bool displayRefreshPending: false
     property var inputDevices: []
     property var inputSettings: []
     property var inputUnsupported: []
@@ -487,7 +488,12 @@ Scope {
     }
 
     function refreshDisplays() {
-        if (!root.visible || displayDiscoverProcess.running) return;
+        if (!root.visible) return;
+        if (displayDiscoverProcess.running) {
+            root.displayRefreshPending = true;
+            return;
+        }
+        root.displayRefreshPending = false;
         root.displayState = "loading";
         displayDiscoverProcess.running = true;
     }
@@ -630,6 +636,7 @@ Scope {
 		}
         providerProcess.running = false;
         root.capabilityRefreshPending = false;
+        root.displayRefreshPending = false;
         displayDiscoverProcess.running = false;
         inputDiscoverProcess.running = false;
         displayWatchProcess.running = false;
@@ -703,6 +710,15 @@ Scope {
         running: false
         stdout: StdioCollector { onStreamFinished: root.parseDisplays(this.text) }
         stderr: StdioCollector { onStreamFinished: { const error = this.text.trim(); if (error) { root.displayState = "failure"; root.displayMessage = error; } } }
+        onRunningChanged: {
+            if (!running && root.displayRefreshPending && root.visible) {
+                root.displayRefreshPending = false;
+                Qt.callLater(function() {
+                    if (root.visible && !displayDiscoverProcess.running)
+                        root.refreshDisplays();
+                });
+            }
+        }
     }
 
     Process {

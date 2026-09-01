@@ -72,7 +72,9 @@ Flickable {
             ShellButton {
                 label: "Apply changes"
                 primary: true
-                enabled: root.settingsModel.displayHasPendingChanges && !root.settingsModel.previewOperationLocked
+                enabled: root.settingsModel.displayState === "ready"
+                    && root.settingsModel.displayHasPendingChanges
+                    && !root.settingsModel.previewOperationLocked
                 onActivated: root.settingsModel.previewDisplay()
             }
         }

@@ -511,9 +511,17 @@ grep -Fq 'root.settingsModel.displayUnsupportedProfiles' "$repo/config/quickshel
 grep -Fq 'if (!visible) root.confirmation = "";' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'label: "Apply changes"' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
-grep -Fq 'enabled: root.settingsModel.displayHasPendingChanges' \
+grep -Fq 'enabled: root.settingsModel.displayState === "ready"' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq '&& root.settingsModel.displayHasPendingChanges' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'readonly property bool displayHasPendingChanges:' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'property bool displayRefreshPending: false' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'root.displayRefreshPending = true;' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'if (!running && root.displayRefreshPending && root.visible) {' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq '? "Display changes are ready to apply" : outputs.length + " connected outputs";' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
@@ -584,6 +592,8 @@ grep -Fq 'root.searchQuery = ""' "$repo/config/quickshell/settings/SettingsModel
 grep -Fq 'activeFocusOnTab: root.enabled' "$repo/config/quickshell/core/ShellButton.qml"
 grep -Fq 'event.key === Qt.Key_Return' "$repo/config/quickshell/core/ShellButton.qml"
 grep -Fq 'property bool primary: false' "$repo/config/quickshell/core/ShellButton.qml"
+grep -Fq ': root.danger ? (root.hovered ? Theme.controlHoverFill : Theme.controlNormalFill)' \
+	"$repo/config/quickshell/core/ShellButton.qml"
 grep -Fq 'title: "dwm settings"' "$repo/config/quickshell/settings/SettingsWindow.qml"
 grep -Fq 'label: "Settings"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'root.settingsModel.openOnScreen(targetScreen)' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"

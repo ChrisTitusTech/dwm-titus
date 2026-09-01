@@ -3031,12 +3031,12 @@ while [ "$i" -lt 200 ]; do
 	appearance_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount 2>/dev/null || true)
 	[ "$appearance_theme" = @legacy-colors ] && [ "$appearance_status" = partial ] &&
-		[ "$appearance_count" -eq 1 ] 2>/dev/null && break
+		[ "$appearance_count" = 1 ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
 if [ "$appearance_theme" != @legacy-colors ] || [ "$appearance_status" != partial ] ||
-	[ "$appearance_count" -ne 1 ] 2>/dev/null; then
+	[ "$appearance_count" != 1 ]; then
 	printf 'Legacy appearance sentinel did not converge: %s / %s / %s\n' \
 		"$appearance_theme" "$appearance_status" "$appearance_count" >&2
 	exit 1

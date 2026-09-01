@@ -16,6 +16,7 @@ Rectangle {
     implicitHeight: Theme.controlHeight
     activeFocusOnTab: root.enabled
     color: !root.enabled ? Theme.controlDisabledFill
+        : root.danger ? (root.hovered ? Theme.controlHoverFill : Theme.controlNormalFill)
         : root.primary ? (root.hovered ? Theme.accentSecondary : Theme.accent)
         : root.hovered ? Theme.controlHoverFill : Theme.controlNormalFill
     border.color: root.activeFocus ? (root.primary ? Theme.textStrong : Theme.controlFocusBorder)

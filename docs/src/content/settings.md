@@ -28,8 +28,8 @@ confirmation and administrator authorization.
 The machine-oriented `dwm-settings-display` helper exposes `discover` and
 `watch`, complete-layout `save` and `preview`, named `preview-profile`, timed
 `keep`, `revert`, and `preview-status`, plus authorized `install-profile` and
-`rollback-system` actions. Named profiles live under the dwm-titus XDG config
-directory. Legacy incomplete profiles remain available to
+`rollback-system` actions. Named layouts live under the dwm-titus XDG config
+directory. Legacy incomplete layouts remain available to
 `dwm-display-profile`, but Settings requires them to be resaved as complete
 layouts before preview or persistent installation.
 
