@@ -34,6 +34,8 @@ Scope {
     property var displayUnsupportedProfiles: []
     property string displayState: "idle"
     property string displayMessage: ""
+    property string displayBaseline: ""
+    property bool displayRefreshPending: false
     property var inputDevices: []
     property var inputSettings: []
     property var inputUnsupported: []
@@ -58,9 +60,11 @@ Scope {
         return { "status": "restricted", "detail": "Persistent display controls are unavailable" };
     }
     readonly property bool displayPersistenceAvailable: root.displayPersistenceCapability.status === "available"
+    readonly property bool displayHasPendingChanges: root.displayBaseline.length > 0
+        && root.displayLayoutKey(root.displayOutputs) !== root.displayBaseline
 
     readonly property var sections: [
-        { "id": "displays", "label": "Displays", "description": "Monitors, layouts, and profiles" },
+        { "id": "displays", "label": "Displays", "description": "Resolution, refresh rate, and layouts" },
         { "id": "input", "label": "Input", "description": "Keyboard, pointer, and touchpad" },
         { "id": "network", "label": "Network", "description": "Connections and VPN providers" },
         { "id": "bluetooth", "label": "Bluetooth", "description": "Adapters and devices" },
@@ -208,6 +212,7 @@ Scope {
             }
         }
         root.displayOutputs = outputs;
+        root.displayBaseline = valid ? root.displayLayoutKey(outputs) : "";
         root.displayModes = modes;
         root.displayProfiles = profiles;
         root.displayUnsupportedProfiles = unsupportedProfiles;
@@ -254,6 +259,15 @@ Scope {
             }
         }
         root.displayOutputs = outputs;
+        root.displayMessage = root.displayLayoutKey(outputs) !== root.displayBaseline
+            ? "Display changes are ready to apply" : outputs.length + " connected outputs";
+    }
+
+    function displayLayoutKey(outputs) {
+        return JSON.stringify(outputs.map(function(output) {
+            return [output.name, output.enabled, output.mode, output.rate, output.x, output.y,
+                output.rotation, output.primary];
+        }));
     }
 
     function displaySizeLabel(modeName) {
@@ -308,6 +322,8 @@ Scope {
         changed.rate = mode.rate;
         outputs[index] = changed;
         root.displayOutputs = outputs;
+        root.displayMessage = root.displayLayoutKey(outputs) !== root.displayBaseline
+            ? "Display changes are ready to apply" : outputs.length + " connected outputs";
     }
 
     function setDisplayResolution(index, size) {
@@ -383,8 +399,8 @@ Scope {
         root.runDisplay("preview-profile", [token, "15", name]);
     }
 
-    function keepPreview(name) {
-        if (root.previewKind === "display") root.runDisplay("keep", [root.previewToken].concat(name && !root.previewRollbackFailed ? [name] : []));
+    function keepPreview() {
+        if (root.previewKind === "display") root.runDisplay("keep", [root.previewToken]);
         else if (root.previewKind === "input") root.runInput("keep", [root.previewToken]);
     }
 
@@ -472,7 +488,12 @@ Scope {
     }
 
     function refreshDisplays() {
-        if (!root.visible || displayDiscoverProcess.running) return;
+        if (!root.visible) return;
+        if (displayDiscoverProcess.running) {
+            root.displayRefreshPending = true;
+            return;
+        }
+        root.displayRefreshPending = false;
         root.displayState = "loading";
         displayDiscoverProcess.running = true;
     }
@@ -615,6 +636,7 @@ Scope {
 		}
         providerProcess.running = false;
         root.capabilityRefreshPending = false;
+        root.displayRefreshPending = false;
         displayDiscoverProcess.running = false;
         inputDiscoverProcess.running = false;
         displayWatchProcess.running = false;
@@ -688,6 +710,15 @@ Scope {
         running: false
         stdout: StdioCollector { onStreamFinished: root.parseDisplays(this.text) }
         stderr: StdioCollector { onStreamFinished: { const error = this.text.trim(); if (error) { root.displayState = "failure"; root.displayMessage = error; } } }
+        onRunningChanged: {
+            if (!running && root.displayRefreshPending && root.visible) {
+                root.displayRefreshPending = false;
+                Qt.callLater(function() {
+                    if (root.visible && !displayDiscoverProcess.running)
+                        root.refreshDisplays();
+                });
+            }
+        }
     }
 
     Process {

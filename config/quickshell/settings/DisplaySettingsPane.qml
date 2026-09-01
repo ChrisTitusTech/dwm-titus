@@ -69,7 +69,14 @@ Flickable {
             }
 
             ShellButton { label: "Refresh"; enabled: root.settingsModel.displayState !== "loading"; onActivated: root.settingsModel.refreshDisplays() }
-            ShellButton { label: "Preview"; enabled: root.settingsModel.displayOutputs.length > 0 && !root.settingsModel.previewOperationLocked; onActivated: root.settingsModel.previewDisplay() }
+            ShellButton {
+                label: "Apply changes"
+                primary: true
+                enabled: root.settingsModel.displayState === "ready"
+                    && root.settingsModel.displayHasPendingChanges
+                    && !root.settingsModel.previewOperationLocked
+                onActivated: root.settingsModel.previewDisplay()
+            }
         }
 
         Rectangle {
@@ -87,14 +94,18 @@ Flickable {
 				Text {
 					Layout.fillWidth: true
 					text: root.settingsModel.previewSeconds > 0
-						? "Preview reverts in " + root.settingsModel.previewSeconds + " seconds"
-						: "Automatic rollback failed. Revert retries the captured layout; Keep accepts the current layout."
+						? "Keep these display settings? Reverting in " + root.settingsModel.previewSeconds + " seconds."
+						: "Could not restore the previous layout automatically. Revert retries it; Keep current accepts this layout."
 					color: Theme.textStrong
 					font.family: Theme.fontFamily
 					font.pixelSize: Theme.bodyFontSize
 					wrapMode: Text.WordWrap
 				}
-				ShellButton { label: root.settingsModel.previewRollbackFailed ? "Accept current" : "Keep"; onActivated: root.settingsModel.keepPreview(root.profileName.trim()) }
+				ShellButton {
+					label: root.settingsModel.previewRollbackFailed ? "Keep current" : "Keep changes"
+					primary: true
+					onActivated: root.settingsModel.keepPreview()
+				}
                 ShellButton { label: "Revert"; danger: true; onActivated: root.settingsModel.revertPreview() }
             }
         }
@@ -138,7 +149,7 @@ Flickable {
                         Text { Layout.fillWidth: true; text: outputCard.modelData.name; color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize; font.bold: true }
                         Text {
                             text: outputCard.modelData.fullCompositionPipeline === "available"
-                                ? "NVIDIA full composition on persistent install"
+                                ? "NVIDIA anti-tearing available at next login"
                                 : (outputCard.modelData.tearfree === "available" ? "TearFree available" : "Anti-tearing unsupported")
                             color: Theme.textMuted
                             font.family: Theme.fontFamily
@@ -231,7 +242,10 @@ Flickable {
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.inputFontSize
                                 validator: IntValidator {}
-                                onEditingFinished: root.settingsModel.updateDisplay(outputCard.index, "x", Number(text))
+                                onTextEdited: if (acceptableInput)
+                                    root.settingsModel.updateDisplay(outputCard.index, "x", Number(text))
+                                onEditingFinished: if (acceptableInput)
+                                    root.settingsModel.updateDisplay(outputCard.index, "x", Number(text))
                             }
                             Binding {
                                 target: xPositionInput
@@ -255,7 +269,10 @@ Flickable {
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.inputFontSize
                                 validator: IntValidator {}
-                                onEditingFinished: root.settingsModel.updateDisplay(outputCard.index, "y", Number(text))
+                                onTextEdited: if (acceptableInput)
+                                    root.settingsModel.updateDisplay(outputCard.index, "y", Number(text))
+                                onEditingFinished: if (acceptableInput)
+                                    root.settingsModel.updateDisplay(outputCard.index, "y", Number(text))
                             }
                             Binding {
                                 target: yPositionInput
@@ -272,7 +289,7 @@ Flickable {
 
         RowLayout {
             Layout.fillWidth: true
-            Text { text: "Profile"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
+            Text { text: "Layout name"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.max(Theme.controlHeight,
@@ -280,13 +297,13 @@ Flickable {
                 color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
                 TextInput { id: profileNameInput; anchors.fill: parent; anchors.margins: 6; text: root.profileName; color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.inputFontSize; onTextChanged: root.profileName = text }
             }
-			ShellButton { label: "Save profile"; enabled: root.profileName.trim().length > 0; onActivated: root.settingsModel.saveDisplay(root.profileName.trim()) }
+			ShellButton { label: "Save layout"; enabled: root.profileName.trim().length > 0; onActivated: root.settingsModel.saveDisplay(root.profileName.trim()) }
 			ShellButton {
-				label: "Install persistent"
+				label: "Use at next login"
 				enabled: root.settingsModel.displayPersistenceAvailable && root.settingsModel.displayProfiles.indexOf(root.profileName.trim()) >= 0
 				onActivated: root.confirmation = "install"
 			}
-            ShellButton { label: "Rollback system"; danger: true; enabled: root.settingsModel.displayPersistenceAvailable; onActivated: root.confirmation = "rollback" }
+            ShellButton { label: "Restore login backup"; danger: true; enabled: root.settingsModel.displayPersistenceAvailable; onActivated: root.confirmation = "rollback" }
         }
 
         Text {
@@ -312,12 +329,13 @@ Flickable {
                 Text {
                     Layout.fillWidth: true
                     text: root.confirmation === "install"
-                        ? "Authorize installation of profile '" + root.profileName + "' to the managed Xorg fragment. A backup will be created."
-                        : "Authorize restoring the newest managed Xorg backup. This affects the next X11 login."
+                        ? "Use saved layout '" + root.profileName + "' automatically at the next login? Administrator approval is required; the previous dwm-titus next-login layout will be backed up."
+                        : "Restore the previous dwm-titus next-login layout? Administrator approval is required. This changes the next login only."
                     color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize; wrapMode: Text.WordWrap
                 }
                 ShellButton {
-                    label: "Authorize"
+                    label: root.confirmation === "install" ? "Use at next login" : "Restore backup"
+                    primary: root.confirmation === "install"
                     onActivated: {
 						if (root.confirmation === "install") root.settingsModel.installDisplayProfile(root.profileName.trim());
                         else root.settingsModel.rollbackDisplaySystem();
@@ -333,7 +351,12 @@ Flickable {
             spacing: Theme.tightSpacing
             Repeater {
                 model: root.settingsModel.displayProfiles
-                delegate: ShellButton { required property string modelData; label: "Preview " + modelData; enabled: !root.settingsModel.previewOperationLocked; onActivated: root.settingsModel.previewDisplayProfile(modelData) }
+                delegate: ShellButton {
+                    required property string modelData
+                    label: "Try " + modelData
+                    enabled: !root.settingsModel.previewOperationLocked
+                    onActivated: root.settingsModel.previewDisplayProfile(modelData)
+                }
             }
         }
 
@@ -342,7 +365,7 @@ Flickable {
             delegate: Text {
                 required property var modelData
                 Layout.fillWidth: true
-                text: "Profile " + modelData.name + ": " + modelData.detail
+                text: "Saved layout " + modelData.name + ": " + modelData.detail
                 color: Theme.warning
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize

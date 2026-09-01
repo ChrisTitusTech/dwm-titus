@@ -19,14 +19,17 @@ dwm-settings open
 
 The Displays section discovers connected outputs and their advertised modes,
 lets you edit resolution, refresh rate, position, rotation, primary state, and
-output enablement, and manages named profiles. Preview applies the complete
-layout for 15 seconds. Choose Keep to accept it or Revert to restore the
-captured layout; timeout or closing Settings also restores the prior layout.
+output enablement, and manages named layouts. Choose **Apply changes** to test
+the complete layout for 15 seconds, then **Keep changes** to accept it or
+**Revert** to restore the captured layout. Timeout or closing Settings also
+restores the prior layout. Saved layouts can be reused later; **Use at next
+login** installs the selected layout for future X11 sessions after a separate
+confirmation and administrator authorization.
 The machine-oriented `dwm-settings-display` helper exposes `discover` and
 `watch`, complete-layout `save` and `preview`, named `preview-profile`, timed
 `keep`, `revert`, and `preview-status`, plus authorized `install-profile` and
-`rollback-system` actions. Named profiles live under the dwm-titus XDG config
-directory. Legacy incomplete profiles remain available to
+`rollback-system` actions. Named layouts live under the dwm-titus XDG config
+directory. Legacy incomplete layouts remain available to
 `dwm-display-profile`, but Settings requires them to be resaved as complete
 layouts before preview or persistent installation.
 
@@ -64,8 +67,10 @@ predates Settings, add this entry inside its `rules` array:
 Saving the file applies the rule through dwm's normal hot reload. A customized
 rule with the same title can be retained instead.
 
-Persistent display installation writes only the managed
+The **Use at next login** display action writes only the managed
 `90-dwm-titus-display.conf` fragment after a separate confirmation and polkit
 authorization. The installed helper accepts validated display records only,
-creates a backup, and offers a system rollback. Later phases add connectivity,
-audio, power, defaults, personalization, and system-management operations.
+backs up the previous managed next-login fragment, and offers **Restore login
+backup**. It does not capture the live XRandR layout. Later phases add
+connectivity, audio, power, defaults, personalization, and system-management
+operations.
