@@ -256,14 +256,84 @@ Scope {
         root.displayOutputs = outputs;
     }
 
-    function cycleDisplayMode(index) {
+    function displaySizeLabel(modeName) {
+        const match = /^(\d+)x(\d+)(.*)$/.exec(modeName);
+        if (!match) return modeName;
+        const scanVariant = /^([ip])/i.exec(match[3]);
+        return match[1] + " x " + match[2]
+            + (scanVariant ? scanVariant[1].toLowerCase() : "");
+    }
+
+    function displayResolutionChoices(index) {
         const output = root.displayOutputs[index];
-        const choices = root.displayModes.filter(function(mode) { return mode.output === output.name; });
+        if (!output) return [];
+        const choices = [];
+        for (const mode of root.displayModes) {
+            if (mode.output !== output.name) continue;
+            const label = root.displaySizeLabel(mode.mode);
+            if (label.length > 0 && choices.indexOf(label) < 0) choices.push(label);
+        }
+        return choices;
+    }
+
+    function displayResolutionIndex(index) {
+        const output = root.displayOutputs[index];
+        if (!output) return -1;
+        return root.displayResolutionChoices(index).indexOf(root.displaySizeLabel(output.mode));
+    }
+
+    function displayRefreshRateChoices(index) {
+        const output = root.displayOutputs[index];
+        if (!output) return [];
+        const size = root.displaySizeLabel(output.mode);
+        const choices = [];
+        for (const mode of root.displayModes) {
+            if (mode.output !== output.name || root.displaySizeLabel(mode.mode) !== size) continue;
+            if (choices.indexOf(mode.rate) < 0) choices.push(mode.rate);
+        }
+        return choices;
+    }
+
+    function displayRefreshRateIndex(index) {
+        const output = root.displayOutputs[index];
+        if (!output) return -1;
+        return root.displayRefreshRateChoices(index).indexOf(output.rate);
+    }
+
+    function updateDisplayMode(index, mode) {
+        if (!mode) return;
+        const outputs = root.displayOutputs.slice();
+        const changed = Object.assign({}, outputs[index]);
+        changed.mode = mode.mode;
+        changed.rate = mode.rate;
+        outputs[index] = changed;
+        root.displayOutputs = outputs;
+    }
+
+    function setDisplayResolution(index, size) {
+        const output = root.displayOutputs[index];
+        if (!output) return;
+        const choices = root.displayModes.filter(function(mode) {
+            return mode.output === output.name && root.displaySizeLabel(mode.mode) === size;
+        });
         if (choices.length === 0) return;
-        let selected = choices.findIndex(function(mode) { return mode.mode === output.mode && mode.rate === output.rate; });
-        selected = (selected + 1) % choices.length;
-        root.updateDisplay(index, "mode", choices[selected].mode);
-        root.updateDisplay(index, "rate", choices[selected].rate);
+        const selected = choices.find(function(mode) { return mode.rate === output.rate; })
+            || choices.find(function(mode) { return mode.preferred; }) || choices[0];
+        root.updateDisplayMode(index, selected);
+    }
+
+    function setDisplayRefreshRate(index, rate) {
+        const output = root.displayOutputs[index];
+        if (!output) return;
+        const size = root.displaySizeLabel(output.mode);
+        const choices = root.displayModes.filter(function(mode) {
+            return mode.output === output.name && root.displaySizeLabel(mode.mode) === size
+                && mode.rate === rate;
+        });
+        if (choices.length === 0) return;
+        const selected = choices.find(function(mode) { return mode.mode === output.mode; })
+            || choices.find(function(mode) { return mode.preferred; }) || choices[0];
+        root.updateDisplayMode(index, selected);
     }
 
     function cycleRotation(index) {

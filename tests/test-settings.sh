@@ -518,6 +518,38 @@ grep -Fq 'fields.length >= 10 ? fields[9] : "unsupported"' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'NVIDIA full composition on persistent install' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'import QtQuick.Controls as Controls' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'component DisplayComboBox: Controls.ComboBox' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'Accessible.name: accessibleLabel' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'palette.window: Theme.popupBackground' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'highlighted: comboBox.highlightedIndex === index' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'accessibleLabel: "Resolution for " + outputCard.modelData.name' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'root.settingsModel.displayResolutionChoices(outputCard.index)' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'root.settingsModel.setDisplayResolution(outputCard.index, model[index])' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'root.settingsModel.displayRefreshRateChoices(outputCard.index)' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'root.settingsModel.setDisplayRefreshRate(outputCard.index, model[index])' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'function displayResolutionChoices(index)' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'const scanVariant = /^([ip])/i.exec(match[3]);' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq '(scanVariant ? scanVariant[1].toLowerCase() : "")' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'function displayRefreshRateChoices(index)' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+if grep -Fq 'cycleDisplayMode' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"; then
+	printf 'Display resolution must not be presented as a mode-cycling button.\n' >&2
+	exit 1
+fi
 grep -Fq 'migrate or remove it before installing a managed display profile' \
 	"$repo/scripts/dwm-settings-display-root"
 grep -Fq 'watch-apply' "$repo/scripts/autostart.sh"

@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Replace the combined display mode button in Settings with an accessible
+  resolution dropdown backed by each output's supported RandR sizes. Keep
+  refresh-rate selection separate and route both choices through the existing
+  display preview and rollback workflow.
+
 - Rebuild the published documentation as a themed Astro site while preserving
   the existing custom domain and public page URLs. Add responsive navigation,
   light and dark themes, clearer documentation layouts, and a visual project

@@ -378,7 +378,7 @@ grep -Fq 'readonly property int panelIconFontSize: 13' "$theme"
 grep -Fq 'font.pixelSize: Theme.panelIconFontSize + 1' "$icon_text"
 test "$(grep -Fc 'Theme.panelIconFontSize' "$panel")" -eq 5
 grep -Fq 'Math.round(13 * fontScale)' "$theme"
-test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$display_pane")" -eq 9
+test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$display_pane")" -eq 13
 test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$input_pane")" -eq 5
 grep -Fq 'font.pixelSize: Theme.inputFontSize' "$network_pane"
 grep -Fq 'passwordInput.implicitHeight + 2 * Theme.spacingSm' "$network_pane"
