@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls as Controls
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -10,6 +11,38 @@ Flickable {
     required property var settingsModel
     property string profileName: ""
     property string confirmation: ""
+
+	component DisplayComboBox: Controls.ComboBox {
+		id: comboBox
+
+		required property string accessibleLabel
+		property string valueSuffix: ""
+
+		implicitHeight: Theme.controlHeight
+		activeFocusOnTab: enabled
+		displayText: currentIndex >= 0 ? currentText + valueSuffix : ""
+		font.family: Theme.fontFamily
+		font.pixelSize: Theme.inputFontSize
+		palette.button: Theme.controlNormalFill
+		palette.buttonText: Theme.controlNormalText
+		palette.base: Theme.popupBackground
+		palette.window: Theme.popupBackground
+		palette.text: Theme.popupText
+		palette.highlight: Theme.controlSelectedFill
+		palette.highlightedText: Theme.controlSelectedText
+		Accessible.name: accessibleLabel
+
+		delegate: Controls.ItemDelegate {
+			required property var modelData
+			required property int index
+
+			width: comboBox.width
+			text: modelData + comboBox.valueSuffix
+			font: comboBox.font
+			highlighted: comboBox.highlightedIndex === index
+			hoverEnabled: comboBox.hoverEnabled
+		}
+	}
 
 		onVisibleChanged: {
 			if (!visible) root.confirmation = "";
@@ -115,10 +148,75 @@ Flickable {
                         ShellButton { label: outputCard.modelData.primary ? "Primary" : "Make primary"; enabled: outputCard.modelData.enabled; onActivated: root.settingsModel.updateDisplay(outputCard.index, "primary", true) }
                     }
 
+                    Flow {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: implicitHeight
+                        spacing: Theme.tightSpacing
+
+                        Row {
+                            spacing: Theme.tightSpacing
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Resolution"
+                                color: Theme.textMuted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.bodyFontSize
+                            }
+                            DisplayComboBox {
+                                id: resolutionSelector
+
+                                width: 180
+                                accessibleLabel: "Resolution for " + outputCard.modelData.name
+                                enabled: outputCard.modelData.enabled
+                                model: root.settingsModel.displayResolutionChoices(outputCard.index)
+                                currentIndex: root.settingsModel.displayResolutionIndex(outputCard.index)
+                                onActivated: function(index) {
+                                    root.settingsModel.setDisplayResolution(outputCard.index, model[index]);
+                                }
+                            }
+                        }
+
+                        Row {
+                            spacing: Theme.tightSpacing
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Refresh rate"
+                                color: Theme.textMuted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.bodyFontSize
+                            }
+                            DisplayComboBox {
+                                id: refreshRateSelector
+
+                                readonly property var rateChoices: root.settingsModel.displayRefreshRateChoices(outputCard.index)
+
+                                width: 110
+                                accessibleLabel: "Refresh rate for " + outputCard.modelData.name
+                                enabled: outputCard.modelData.enabled
+                                visible: rateChoices.length > 1
+                                model: rateChoices
+                                currentIndex: root.settingsModel.displayRefreshRateIndex(outputCard.index)
+                                valueSuffix: " Hz"
+                                onActivated: function(index) {
+                                    root.settingsModel.setDisplayRefreshRate(outputCard.index, model[index]);
+                                }
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: refreshRateSelector.rateChoices.length <= 1
+                                text: outputCard.modelData.rate + " Hz"
+                                color: outputCard.modelData.enabled ? Theme.textStrong : Theme.controlDisabledText
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.bodyFontSize
+                            }
+                        }
+                        ShellButton { label: "Rotation: " + outputCard.modelData.rotation; enabled: outputCard.modelData.enabled; onActivated: root.settingsModel.cycleRotation(outputCard.index) }
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
-                        ShellButton { label: outputCard.modelData.mode + " @ " + outputCard.modelData.rate + " Hz"; enabled: outputCard.modelData.enabled; onActivated: root.settingsModel.cycleDisplayMode(outputCard.index) }
-                        ShellButton { label: "Rotation: " + outputCard.modelData.rotation; enabled: outputCard.modelData.enabled; onActivated: root.settingsModel.cycleRotation(outputCard.index) }
                         Text { text: "X"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
                         Rectangle {
                             Layout.preferredWidth: 60
