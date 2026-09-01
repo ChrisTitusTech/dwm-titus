@@ -964,20 +964,23 @@ Scope {
     }
 
     function startPreview(theme) {
-        if (!root.mutationReady || !root.validThemeName(theme) || root.previewState !== "none"
+        if (!root.mutationReady || root.mutationReadinessPending
+                || !root.validThemeName(theme) || root.previewState !== "none"
                 || root.recoveryState !== "none") return;
         const token = root.nextPreviewToken();
         root.runAction("preview", [token, "30", theme], theme, token);
     }
 
     function applyTheme(theme) {
-        if (!root.mutationReady || !root.validThemeName(theme) || root.previewState !== "none"
+        if (!root.mutationReady || root.mutationReadinessPending
+                || !root.validThemeName(theme) || root.previewState !== "none"
                 || root.recoveryState !== "none") return;
         root.runAction("apply", [theme], theme, "");
     }
 
     function resetTheme() {
-        if (!root.mutationReady || root.previewState !== "none" || root.recoveryState !== "none") return;
+        if (!root.mutationReady || root.mutationReadinessPending
+                || root.previewState !== "none" || root.recoveryState !== "none") return;
         root.runAction("reset", [], "", "");
     }
 
@@ -1764,10 +1767,12 @@ Scope {
         command: Commands.booleanStatusCommand(Commands.settingsThemeCommand("mutation-ready", []))
         running: false
         stdout: StdioCollector {
-            onStreamFinished: root.mutationReady = this.text.trim() === "available"
+            onStreamFinished: root.mutationReady = !root.mutationReadinessPending
+                && this.text.trim() === "available"
         }
         onRunningChanged: {
             if (!running && root.mutationReadinessPending && !actionProcess.running) {
+                root.mutationReady = false;
                 root.mutationReadinessPending = false;
                 Qt.callLater(root.refreshMutationReadiness);
             }

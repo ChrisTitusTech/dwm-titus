@@ -85,6 +85,11 @@ grep -Fq 'root.mutationReady = false;' "$model"
 grep -Fq 'if (readinessProcess.running || actionProcess.running) {' "$model"
 grep -Fq 'root.mutationReadinessPending = true;' "$model"
 grep -Fq 'if (!running && root.mutationReadinessPending && !actionProcess.running) {' "$model"
+grep -Fq 'onStreamFinished: root.mutationReady = !root.mutationReadinessPending' "$model"
+for mutation_function in startPreview applyTheme resetTheme; do
+	sed -n "/function $mutation_function(/,/^    }/p" "$model" |
+		grep -Fq 'root.mutationReadinessPending'
+done
 grep -Fq 'Theme.applyAppearanceColors(colors, darkMode)' "$model"
 grep -Fq 'watchChanges: true' "$model"
 test "$(grep -Fc 'watchChanges: true' "$model")" -eq 5

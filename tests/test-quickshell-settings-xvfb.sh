@@ -190,8 +190,7 @@ cleanup() {
 	terminate_process_identity "${dwm_identity:-}"
 	terminate_process_identity "${xvfb_identity:-}"
 	if [ -n "${runtime_alias_dir:-}" ]; then
-		rm -f -- "$runtime_alias_dir/runtime"
-		rmdir -- "$runtime_alias_dir" 2>/dev/null || true
+		rm -rf -- "$runtime_alias_dir"
 	fi
 	rm -rf "$work"
 	trap - EXIT HUP INT TERM
@@ -243,8 +242,8 @@ chmod 700 "$fixture_feh"
 export DWM_WALLPAPER_FEH="$fixture_feh"
 if [ "${#runtime}" -gt 64 ]; then
 	runtime_alias_dir=$(mktemp -d /tmp/dwm-settings-runtime.XXXXXX)
-	ln -s "$runtime_storage" "$runtime_alias_dir/runtime"
 	runtime=$runtime_alias_dir/runtime
+	mkdir -m 700 "$runtime"
 fi
 cat >"$schema_dir/apps.light-locker.gschema.xml" <<'EOF'
 <schemalist>
@@ -529,6 +528,17 @@ if [ "${1:-}" = preview-status ] && [ -f "$fixture" ]; then
 		;;
 	esac
 	exit 0
+fi
+if [ "${1:-}" = mutation-ready ] && [ -f "$fixture.mutation-delay" ]; then
+	printf x >>"$fixture.mutation-calls"
+	if [ ! -f "$fixture.mutation-started" ]; then
+		: >"$fixture.mutation-started"
+		i=0
+		while [ ! -f "$fixture.mutation-release" ] && [ "$i" -lt 500 ]; do
+			i=$((i + 1))
+			sleep 0.01
+		done
+	fi
 fi
 exec "$(dirname -- "$0")/dwm-settings-theme.real" "$@"
 SH
@@ -2347,6 +2357,44 @@ if [ "$baseline_inventory_watch_state" != available ] ||
 		"$baseline_text_size_reset_state" "$baseline_theme_mutation_ready" >&2
 	exit 1
 fi
+
+test_stage='validating queued theme readiness'
+rm -f "$theme_status_fixture.mutation-started" "$theme_status_fixture.mutation-release"
+: >"$theme_status_fixture.mutation-calls"
+: >"$theme_status_fixture.mutation-delay"
+settings_ipc_retry appearanceRefresh >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	[ -f "$theme_status_fixture.mutation-started" ] && break
+	i=$((i + 1))
+	sleep 0.01
+done
+if [ ! -f "$theme_status_fixture.mutation-started" ]; then
+	printf 'Delayed theme readiness probe did not start\n' >&2
+	exit 1
+fi
+settings_ipc_retry appearanceRefresh >/dev/null
+if [ "$(settings_ipc_retry appearanceMutationReady)" != false ]; then
+	printf 'Theme mutation remained ready while a refresh retry was pending\n' >&2
+	exit 1
+fi
+: >"$theme_status_fixture.mutation-release"
+i=0
+while [ "$i" -lt 200 ]; do
+	readiness_calls=$(wc -c <"$theme_status_fixture.mutation-calls")
+	readiness_ready=$(settings_ipc_retry appearanceMutationReady)
+	[ "$readiness_calls" -ge 2 ] && [ "$readiness_ready" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$readiness_calls" -lt 2 ] || [ "$readiness_ready" != true ]; then
+	printf 'Queued theme readiness did not converge: calls=%s ready=%s\n' \
+		"$readiness_calls" "$readiness_ready" >&2
+	exit 1
+fi
+rm -f "$theme_status_fixture.mutation-delay" "$theme_status_fixture.mutation-started" \
+	"$theme_status_fixture.mutation-release" "$theme_status_fixture.mutation-calls"
+
 baseline_alacritty_integration=$(settings_ipc_retry appearanceIntegrationState alacritty)
 baseline_kitty_integration=$(settings_ipc_retry appearanceIntegrationState kitty)
 baseline_gtk_integration_detail=$(settings_ipc_retry appearanceIntegrationDetail gtk)
@@ -3066,6 +3114,15 @@ if DISPLAY=$display xdotool search --onlyvisible --name '^dwm settings$' >/dev/n
 	exit 1
 fi
 
+i=0
+while [ "$i" -lt 100 ]; do
+	if ! pgrep -af '[d]wm-settings-provider discover$' |
+		grep -F "$data_home/dwm-titus/scripts/dwm-settings-provider" >/dev/null; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.05
+done
 if pgrep -af '[d]wm-settings-provider discover$' |
 	grep -F "$data_home/dwm-titus/scripts/dwm-settings-provider" >/dev/null; then
 	printf 'Settings capability provider remained active after close\n' >&2
