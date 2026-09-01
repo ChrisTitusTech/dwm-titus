@@ -11,7 +11,7 @@ mkdir -p "$work/bin" "$work/home/.local/share/applications"
 cat >"$work/bin/xdg-settings" <<'EOF'
 #!/bin/sh
 [ "${DWM_TEST_XDG_FAIL:-0}" != 1 ] || exit 1
-printf '%s\n' helium.desktop
+printf '%s\n' "${DWM_TEST_BROWSER_DESKTOP:-helium.desktop}"
 EOF
 
 cat >"$work/bin/dwm-quickshell-launcher" <<'EOF'
@@ -28,12 +28,34 @@ chmod +x \
 	"$work/bin/xdg-settings" \
 	"$work/bin/dwm-quickshell-launcher" \
 	"$work/bin/test-browser"
+ln -s "$work/bin/test-browser" "$work/bin/test browser"
 
 cat >"$work/home/.local/share/applications/helium.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Test Browser
 Exec=$work/bin/test-browser %U
+EOF
+
+cat >"$work/home/.local/share/applications/brave-quoted.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Quoted Test Browser
+Exec="$work/bin/test browser" %U
+EOF
+
+cat >"$work/home/.local/share/applications/brave-escaped.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Escaped Test Browser
+Exec=$work/bin/test\\ browser %U
+EOF
+
+cat >"$work/home/.local/share/applications/brave-wrapper.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Wrapped Test Browser
+Exec=flatpak run com.example.Browser %U
 EOF
 
 run_webapp() {
@@ -71,6 +93,25 @@ grep -Fqx -- '--app=https://example.com --incognito' "$work/browser.log"
 
 DWM_TEST_XDG_FAIL=1 run_webapp https://example.net
 grep -Fqx -- '--app=https://example.net' "$work/browser.log"
+
+DWM_TEST_BROWSER_DESKTOP=brave-quoted.desktop run_webapp https://quoted.example
+grep -Fqx -- '--app=https://quoted.example' "$work/browser.log"
+
+DWM_TEST_BROWSER_DESKTOP=brave-escaped.desktop run_webapp https://escaped.example
+grep -Fqx -- '--app=https://escaped.example' "$work/browser.log"
+
+run_webapp file:///home/user/dashboard.html
+grep -Fqx -- '--app=file:///home/user/dashboard.html' "$work/browser.log"
+
+run_webapp mailto:user@example.com
+grep -Fqx -- '--app=mailto:user@example.com' "$work/browser.log"
+
+if DWM_TEST_BROWSER_DESKTOP=brave-wrapper.desktop \
+	run_webapp https://wrapped.example 2>"$work/wrapper.err"; then
+	printf 'webapp-launch accepted a browser wrapper command.\n' >&2
+	exit 1
+fi
+grep -Fq 'unsupported browser wrapper' "$work/wrapper.err"
 
 if run_webapp 2>"$work/missing.err"; then
 	printf 'webapp-launch accepted a missing URL.\n' >&2

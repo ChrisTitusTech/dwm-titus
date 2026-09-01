@@ -6,19 +6,65 @@ usage() {
 	printf 'usage: %s URL [browser-argument ...]\n' "${0##*/}" >&2
 }
 
+parse_exec_path() {
+	local value=${1#Exec=} character escaped=0 quoted=0 result=
+
+	while [[ $value == [[:space:]]* ]]; do
+		value=${value:1}
+	done
+	[[ -n $value ]] || return 1
+	if [[ ${value:0:1} == '"' ]]; then
+		quoted=1
+		value=${value:1}
+	fi
+
+	while [[ -n $value ]]; do
+		character=${value:0:1}
+		value=${value:1}
+		if [[ $escaped -eq 1 ]]; then
+			result+=$character
+			escaped=0
+		elif [[ $character == \\ ]]; then
+			escaped=1
+		elif [[ $quoted -eq 1 && $character == '"' ]]; then
+			printf '%s\n' "$result"
+			return 0
+		elif [[ $quoted -eq 0 && $character == [[:space:]] ]]; then
+			printf '%s\n' "$result"
+			return 0
+		else
+			result+=$character
+		fi
+	done
+
+	[[ $escaped -eq 0 && $quoted -eq 0 && -n $result ]] || return 1
+	printf '%s\n' "$result"
+}
+
 find_browser_exec() {
-	local desktop_file exec_path
+	local desktop_file exec_line exec_path
 
 	for desktop_file in \
 		"$HOME/.local/share/applications/$browser" \
 		"$HOME/.nix-profile/share/applications/$browser" \
 		"/usr/share/applications/$browser"; do
 		[[ -f $desktop_file ]] || continue
-		exec_path=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p; /^Exec=/q' "$desktop_file")
-		if [[ -n $exec_path ]]; then
-			printf '%s\n' "$exec_path"
-			return 0
+		exec_line=$(grep -m 1 '^Exec=' "$desktop_file" || true)
+		[[ -n $exec_line ]] || continue
+		if ! exec_path=$(parse_exec_path "$exec_line"); then
+			printf '%s: unsupported browser Exec line in %s\n' \
+				"${0##*/}" "$desktop_file" >&2
+			return 1
 		fi
+		case ${exec_path##*/} in
+		flatpak | flatpak-* | snap | env)
+			printf '%s: unsupported browser wrapper in %s: %s\n' \
+				"${0##*/}" "$desktop_file" "$exec_path" >&2
+			return 1
+			;;
+		esac
+		printf '%s\n' "$exec_path"
+		return 0
 	done
 
 	return 1
@@ -30,7 +76,15 @@ if [[ $# -lt 1 ]]; then
 fi
 
 url=$1
-if [[ ! $url =~ ^https?://[^/?#[:space:]]+([/?#][^[:space:]]*)?$ ]]; then
+case $url in
+http://* | https://*)
+	valid_url_pattern='^https?://[^/?#[:space:]]+([/?#][^[:space:]]*)?$'
+	;;
+*)
+	valid_url_pattern='^[A-Za-z][A-Za-z0-9+.-]*:[^[:space:]]+$'
+	;;
+esac
+if [[ ! $url =~ $valid_url_pattern ]]; then
 	printf '%s: invalid web app URL: %s\n' "${0##*/}" "$url" >&2
 	exit 2
 fi
