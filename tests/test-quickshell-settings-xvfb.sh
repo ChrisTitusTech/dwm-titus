@@ -88,7 +88,9 @@ wait_for_settings_countdown_decrement() (
 	countdown_current=$countdown_initial
 	countdown_attempt=0
 	while [ "$countdown_attempt" -lt 100 ]; do
-		if countdown_sample=$(settings_ipc_retry "$countdown_method"); then
+		if countdown_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings \
+			"$countdown_method" 2>/dev/null); then
 			case $countdown_sample in
 			'' | *[!0-9]*) ;;
 			*)
