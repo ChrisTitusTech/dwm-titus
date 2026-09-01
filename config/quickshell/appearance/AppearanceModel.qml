@@ -11,6 +11,7 @@ Scope {
     property bool settingsVisible: false
     property bool busy: false
     property bool mutationReady: false
+    property bool mutationReadinessPending: false
     property string providerState: "idle"
     property string providerDetail: "Appearance has not been loaded"
     property string sourceKind: "none"
@@ -658,8 +659,13 @@ Scope {
     }
 
     function refreshMutationReadiness() {
-        if (!readinessProcess.running && !actionProcess.running)
-            readinessProcess.running = true;
+        root.mutationReady = false;
+        if (readinessProcess.running || actionProcess.running) {
+            root.mutationReadinessPending = true;
+            return;
+        }
+        root.mutationReadinessPending = false;
+        readinessProcess.running = true;
     }
 
     function refreshWallpaperStatus() {
@@ -931,6 +937,7 @@ Scope {
         root.wallpaperStatusPending = false;
         root.inventoryPending = false;
         root.inventoryPendingAllowUnwatched = false;
+        root.mutationReadinessPending = false;
     }
 
     function nextPreviewToken() {
@@ -1759,6 +1766,12 @@ Scope {
         stdout: StdioCollector {
             onStreamFinished: root.mutationReady = this.text.trim() === "available"
         }
+        onRunningChanged: {
+            if (!running && root.mutationReadinessPending && !actionProcess.running) {
+                root.mutationReadinessPending = false;
+                Qt.callLater(root.refreshMutationReadiness);
+            }
+        }
     }
 
     Process {
@@ -2073,7 +2086,17 @@ Scope {
         running: false
         stdout: StdioCollector { onStreamFinished: root.parseActionResult(this.text) }
         stderr: StdioCollector { onStreamFinished: root.actionError = this.text.trim() }
-        onRunningChanged: if (!running && root.busy) root.finishAction()
+        onRunningChanged: {
+            if (running) return;
+            if (root.busy) {
+                root.finishAction();
+                return;
+            }
+            if (root.mutationReadinessPending) {
+                root.mutationReadinessPending = false;
+                Qt.callLater(root.refreshMutationReadiness);
+            }
+        }
     }
 
     Process {

@@ -1422,6 +1422,7 @@ done
 [ "$bluetooth_status" = available ]
 
 rm -f -- "$runtime/dwm-settings-wallpaper/exchange-support"
+test_stage='validating appearance startup readiness'
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
 i=0
@@ -1449,10 +1450,11 @@ available | partial) ;;
 esac
 wallpaper_reset_ready=false
 i=0
-while [ "$i" -lt 100 ]; do
+while [ "$i" -lt 200 ]; do
 	wallpaper_reset_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperResetReady 2>/dev/null || true)
-	[ "$wallpaper_reset_ready" = true ] && break
+	[ "$wallpaper_reset_ready" = true ] &&
+		[ -f "$runtime/dwm-settings-wallpaper/exchange-support" ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
