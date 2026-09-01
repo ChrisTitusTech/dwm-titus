@@ -6,6 +6,7 @@ Rectangle {
 
     required property string label
     property bool danger: false
+    property bool primary: false
     property bool compact: true
     property bool hovered: buttonMouse.containsMouse
 
@@ -15,10 +16,12 @@ Rectangle {
     implicitHeight: Theme.controlHeight
     activeFocusOnTab: root.enabled
     color: !root.enabled ? Theme.controlDisabledFill
+        : root.primary ? (root.hovered ? Theme.accentSecondary : Theme.accent)
         : root.hovered ? Theme.controlHoverFill : Theme.controlNormalFill
-    border.color: root.activeFocus ? Theme.controlFocusBorder
+    border.color: root.activeFocus ? (root.primary ? Theme.textStrong : Theme.controlFocusBorder)
         : !root.enabled ? Theme.controlDisabledBorder
         : root.danger ? Theme.danger
+        : root.primary ? Theme.accent
         : root.hovered ? Theme.controlHoverBorder : Theme.controlNormalBorder
     border.width: root.activeFocus ? Theme.controlFocusBorderWidth : Theme.controlBorderWidth
     radius: Theme.controlRadius
@@ -38,6 +41,7 @@ Rectangle {
         text: root.label
         color: !root.enabled ? Theme.controlDisabledText
             : root.danger ? Theme.textStrong
+            : root.primary ? Theme.accentText
             : root.hovered ? Theme.controlHoverText : Theme.controlNormalText
         font.family: Theme.fontFamily
         font.pixelSize: root.compact ? Theme.fontBodySmallSize : Theme.fontBodySize

@@ -510,13 +510,29 @@ grep -Fq 'root.settingsModel.displayPersistenceAvailable' "$repo/config/quickshe
 grep -Fq 'root.settingsModel.displayUnsupportedProfiles' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'if (!visible) root.confirmation = "";' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'label: "Apply changes"' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'enabled: root.settingsModel.displayHasPendingChanges' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'readonly property bool displayHasPendingChanges:' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq '? "Display changes are ready to apply" : outputs.length + " connected outputs";' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'label: root.settingsModel.previewRollbackFailed ? "Keep current" : "Keep changes"' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'label: "Use at next login"' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'label: "Restore login backup"' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+if grep -Fq 'label: "Install persistent"' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"; then
+	printf 'Displays still exposes implementation-oriented persistence wording.\n' >&2
+	exit 1
+fi
 grep -Fq -- '--no-preview --yes' \
 	"$repo/scripts/dwm-settings-display-root"
 grep -Fq -- '--tearfree auto --force-full-composition-pipeline auto' \
 	"$repo/scripts/dwm-settings-display-root"
 grep -Fq 'fields.length >= 10 ? fields[9] : "unsupported"' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
-grep -Fq 'NVIDIA full composition on persistent install' \
+grep -Fq 'NVIDIA anti-tearing available at next login' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'import QtQuick.Controls as Controls' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
@@ -560,6 +576,7 @@ grep -Fq 'stdout: SplitParser { onRead: inputSettleTimer.restart() }' \
 grep -Fq 'root.searchQuery = ""' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'activeFocusOnTab: root.enabled' "$repo/config/quickshell/core/ShellButton.qml"
 grep -Fq 'event.key === Qt.Key_Return' "$repo/config/quickshell/core/ShellButton.qml"
+grep -Fq 'property bool primary: false' "$repo/config/quickshell/core/ShellButton.qml"
 grep -Fq 'title: "dwm settings"' "$repo/config/quickshell/settings/SettingsWindow.qml"
 grep -Fq 'label: "Settings"' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'root.settingsModel.openOnScreen(targetScreen)' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
