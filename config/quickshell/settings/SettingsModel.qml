@@ -257,8 +257,11 @@ Scope {
     }
 
     function displaySizeLabel(modeName) {
-        const match = /^(\d+)x(\d+)/.exec(modeName);
-        return match ? match[1] + " x " + match[2] : modeName;
+        const match = /^(\d+)x(\d+)(.*)$/.exec(modeName);
+        if (!match) return modeName;
+        const scanVariant = /^([ip])/i.exec(match[3]);
+        return match[1] + " x " + match[2]
+            + (scanVariant ? scanVariant[1].toLowerCase() : "");
     }
 
     function displayResolutionChoices(index) {

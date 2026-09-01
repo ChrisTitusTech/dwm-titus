@@ -540,6 +540,10 @@ grep -Fq 'root.settingsModel.setDisplayRefreshRate(outputCard.index, model[index
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'function displayResolutionChoices(index)' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'const scanVariant = /^([ip])/i.exec(match[3]);' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq '(scanVariant ? scanVariant[1].toLowerCase() : "")' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'function displayRefreshRateChoices(index)' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
 if grep -Fq 'cycleDisplayMode' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"; then
