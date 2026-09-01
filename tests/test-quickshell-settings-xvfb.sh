@@ -82,6 +82,33 @@ settings_ipc_retry() {
 	return 1
 }
 
+wait_for_settings_countdown_decrement() (
+	countdown_method=$1
+	countdown_initial=$2
+	countdown_current=$countdown_initial
+	countdown_attempt=0
+	while [ "$countdown_attempt" -lt 100 ]; do
+		if countdown_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings \
+			"$countdown_method" 2>/dev/null); then
+			case $countdown_sample in
+			'' | *[!0-9]*) ;;
+			*)
+				countdown_current=$countdown_sample
+				if [ "$countdown_current" -lt "$countdown_initial" ]; then
+					printf '%s\n' "$countdown_current"
+					return 0
+				fi
+				;;
+			esac
+		fi
+		countdown_attempt=$((countdown_attempt + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "$countdown_current"
+	return 1
+)
+
 capture_process_identity() (
 	identity_pid=$1
 	[ -r "/proc/$identity_pid/stat" ] || return 1
@@ -1687,10 +1714,10 @@ fi
 font_remaining_before=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontPreviewRemaining)
 [ "$font_remaining_before" -gt 0 ]
-sleep 1
-font_remaining_after=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontPreviewRemaining)
-if [ "$font_remaining_after" -ge "$font_remaining_before" ]; then
+if font_remaining_after=$(wait_for_settings_countdown_decrement \
+	appearanceFontPreviewRemaining "$font_remaining_before"); then
+	:
+else
 	printf 'Font preview countdown did not advance: %s -> %s\n' \
 		"$font_remaining_before" "$font_remaining_after" >&2
 	exit 1
@@ -1809,16 +1836,10 @@ case $wallpaper_message in
 esac
 wallpaper_message_remaining=${wallpaper_message#*within }
 wallpaper_message_remaining=${wallpaper_message_remaining%% seconds*}
-sleep 1.2
-wallpaper_remaining_after=$(settings_ipc_retry appearanceWallpaperPreviewRemaining)
-case $wallpaper_remaining_after in
-'' | *[!0-9]*)
-	printf 'External wallpaper preview reported an invalid later deadline: %s\n' \
-		"$wallpaper_remaining_after" >&2
-	exit 1
-	;;
-esac
-if [ "$wallpaper_remaining_after" -ge "$wallpaper_remaining_before" ]; then
+if wallpaper_remaining_after=$(wait_for_settings_countdown_decrement \
+	appearanceWallpaperPreviewRemaining "$wallpaper_remaining_before"); then
+	:
+else
 	printf 'Wallpaper preview countdown did not advance: %s -> %s\n' \
 		"$wallpaper_remaining_before" "$wallpaper_remaining_after" >&2
 	exit 1
