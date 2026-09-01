@@ -527,6 +527,21 @@ grep -Fq '? "Display changes are ready to apply" : outputs.length + " connected 
 	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'label: root.settingsModel.previewRollbackFailed ? "Keep current" : "Keep changes"' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'onActivated: root.settingsModel.keepPreview()' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'onTextEdited: if (acceptableInput)' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+test "$(grep -Fc 'onTextEdited: if (acceptableInput)' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml")" -eq 2
+grep -Fq 'function keepPreview() {' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'root.runDisplay("keep", [root.previewToken]);' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+if grep -Fq 'keepPreview(root.profileName' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"; then
+	printf 'Keeping a display preview must not implicitly save a typed layout name.\n' >&2
+	exit 1
+fi
 grep -Fq 'label: "Use at next login"' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'label: "Restore login backup"' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'the previous dwm-titus next-login layout will be backed up' \

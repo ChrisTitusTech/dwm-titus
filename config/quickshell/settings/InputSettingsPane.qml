@@ -42,7 +42,7 @@ Flickable {
 					font.family: Theme.fontFamily
 					font.pixelSize: Theme.bodyFontSize
 				}
-                ShellButton { label: "Keep"; onActivated: root.settingsModel.keepPreview("") }
+                ShellButton { label: "Keep"; onActivated: root.settingsModel.keepPreview() }
                 ShellButton { label: "Revert"; danger: true; onActivated: root.settingsModel.revertPreview() }
             }
         }

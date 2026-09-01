@@ -104,7 +104,7 @@ Flickable {
 				ShellButton {
 					label: root.settingsModel.previewRollbackFailed ? "Keep current" : "Keep changes"
 					primary: true
-					onActivated: root.settingsModel.keepPreview(root.profileName.trim())
+					onActivated: root.settingsModel.keepPreview()
 				}
                 ShellButton { label: "Revert"; danger: true; onActivated: root.settingsModel.revertPreview() }
             }
@@ -242,7 +242,10 @@ Flickable {
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.inputFontSize
                                 validator: IntValidator {}
-                                onEditingFinished: root.settingsModel.updateDisplay(outputCard.index, "x", Number(text))
+                                onTextEdited: if (acceptableInput)
+                                    root.settingsModel.updateDisplay(outputCard.index, "x", Number(text))
+                                onEditingFinished: if (acceptableInput)
+                                    root.settingsModel.updateDisplay(outputCard.index, "x", Number(text))
                             }
                             Binding {
                                 target: xPositionInput
@@ -266,7 +269,10 @@ Flickable {
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.inputFontSize
                                 validator: IntValidator {}
-                                onEditingFinished: root.settingsModel.updateDisplay(outputCard.index, "y", Number(text))
+                                onTextEdited: if (acceptableInput)
+                                    root.settingsModel.updateDisplay(outputCard.index, "y", Number(text))
+                                onEditingFinished: if (acceptableInput)
+                                    root.settingsModel.updateDisplay(outputCard.index, "y", Number(text))
                             }
                             Binding {
                                 target: yPositionInput

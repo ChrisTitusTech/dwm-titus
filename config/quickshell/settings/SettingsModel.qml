@@ -399,8 +399,8 @@ Scope {
         root.runDisplay("preview-profile", [token, "15", name]);
     }
 
-    function keepPreview(name) {
-        if (root.previewKind === "display") root.runDisplay("keep", [root.previewToken].concat(name && !root.previewRollbackFailed ? [name] : []));
+    function keepPreview() {
+        if (root.previewKind === "display") root.runDisplay("keep", [root.previewToken]);
         else if (root.previewKind === "input") root.runInput("keep", [root.previewToken]);
     }
 
