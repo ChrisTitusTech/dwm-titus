@@ -2227,6 +2227,12 @@ while [ "$i" -lt 200 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperStatusBusy 2>/dev/null || true)
 	baseline_personalization_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationStatusBusy 2>/dev/null || true)
+	baseline_inventory_watch_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryWatchState 2>/dev/null || true)
+	baseline_font_ready_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontMutationReady 2>/dev/null || true)
+	baseline_theme_ready_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady 2>/dev/null || true)
 	baseline_cursor_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor 2>/dev/null || true)
 	baseline_icon_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2238,6 +2244,9 @@ while [ "$i" -lt 200 ]; do
 	baseline_sample="$baseline_cursor_sample/$baseline_icon_sample/$baseline_gtk_sample/$baseline_qt_sample"
 	if [ "$baseline_inventory_busy" = false ] &&
 		[ "$baseline_personalization_busy" = false ] &&
+		[ "$baseline_inventory_watch_sample" = available ] &&
+		[ "$baseline_font_ready_sample" = true ] &&
+		[ "$baseline_theme_ready_sample" = true ] &&
 		[ "$baseline_sample" = "$baseline_previous_sample" ]; then
 		baseline_stable_samples=$((baseline_stable_samples + 1))
 	else
@@ -2249,8 +2258,10 @@ while [ "$i" -lt 200 ]; do
 	sleep 0.05
 done
 if [ "$baseline_stable_samples" -lt 3 ]; then
-	printf 'Appearance baseline did not settle: inventory-busy=%s personalization-busy=%s states=%s\n' \
-		"$baseline_inventory_busy" "$baseline_personalization_busy" "$baseline_sample" >&2
+	printf 'Appearance baseline did not settle: inventory-busy=%s personalization-busy=%s watch=%s font=%s theme=%s states=%s\n' \
+		"$baseline_inventory_busy" "$baseline_personalization_busy" \
+		"$baseline_inventory_watch_sample" "$baseline_font_ready_sample" \
+		"$baseline_theme_ready_sample" "$baseline_sample" >&2
 	exit 1
 fi
 

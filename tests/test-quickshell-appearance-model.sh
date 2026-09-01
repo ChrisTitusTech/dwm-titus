@@ -93,8 +93,20 @@ fi
 grep -Fq 'Commands.settingsAppearanceCommand("watch-inventory", [])' "$model"
 grep -Fq 'Commands.settingsAppearanceCommand("watch-compositor", [])' "$model"
 grep -Fq 'function startInventoryWatcher(restartIfRunning)' "$model"
+grep -Fq 'function finishInventoryWatcherExit()' "$model"
 sed -n '/function startInventoryWatcher(restartIfRunning)/,/^    }/p' "$model" |
 	grep -Fq 'if (!root.settingsVisible) return;'
+sed -n '/function startInventoryWatcher(restartIfRunning)/,/^    }/p' "$model" |
+	grep -Fq 'if (inventoryWatchExitSettleTimer.running) {'
+watcher_exit_handler=$(sed -n '/id: inventoryWatchProcess/,/^    }/p' "$model")
+printf '%s\n' "$watcher_exit_handler" |
+	grep -Fq 'if (root.settingsVisible) inventoryWatchExitSettleTimer.restart();'
+if printf '%s\n' "$watcher_exit_handler" | grep -Fq 'root.inventoryWatchFailed = true'; then
+	printf 'Inventory watcher still classifies failure before stdout has settled\n' >&2
+	exit 1
+fi
+grep -Fq 'id: inventoryWatchExitSettleTimer' "$model"
+grep -Fq 'onTriggered: root.finishInventoryWatcherExit()' "$model"
 grep -Fq 'root.startInventoryWatcher(true);' "$model"
 grep -Fq 'if (restartIfRunning === true) root.inventoryWatchRestartPending = true;' "$model"
 grep -Fq 'root.inventoryWatchSawEvent = false' "$model"
@@ -309,9 +321,15 @@ if grep -Fq 'wallpaperActionPending' "$model"; then
 	printf 'Wallpaper preview decisions still use a pane-scoped pending queue\n' >&2
 	exit 1
 fi
-grep -Fq '&& !root.inventoryWatchFailed) {' "$model"
-grep -Fq 'root.inventoryWatchRestartPending = false;' "$model"
-grep -Fq 'if (root.inventoryWatchSawEvent) inventoryWatchRestartTimer.restart();' "$model"
+watcher_exit_finalizer=$(sed -n '/function finishInventoryWatcherExit()/,/^    }/p' "$model")
+printf '%s\n' "$watcher_exit_finalizer" |
+	grep -Fq 'if (root.inventoryWatchRestartPending && !root.inventoryWatchFailed) {'
+printf '%s\n' "$watcher_exit_finalizer" |
+	grep -Fq 'root.inventoryWatchRestartPending = false;'
+printf '%s\n' "$watcher_exit_finalizer" |
+	grep -Fq 'if (root.inventoryWatchSawEvent) inventoryWatchRestartTimer.restart();'
+printf '%s\n' "$watcher_exit_finalizer" |
+	grep -Fq '} else if (!root.inventoryWatchSawEvent && !root.inventoryWatchFailed) {'
 grep -Fq 'if (!previewWasActive && preview.state === "active") {' "$model"
 grep -Fq 'root.wallpaperPreviewState = "none";' "$model"
 grep -Fq 'Qt.callLater(root.refreshWallpaperStatus)' "$model"

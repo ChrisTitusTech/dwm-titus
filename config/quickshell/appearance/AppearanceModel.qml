@@ -462,6 +462,7 @@ Scope {
         root.inventoryWatchFailed = true;
         root.inventoryWatchRestartPending = false;
         root.compositorWatchReady = false;
+        inventoryWatchExitSettleTimer.stop();
         inventoryWatchRestartTimer.stop();
         inventoryWatchProcess.running = false;
         compositorWatchRestartTimer.stop();
@@ -874,6 +875,10 @@ Scope {
 
     function startInventoryWatcher(restartIfRunning) {
         if (!root.settingsVisible) return;
+        if (inventoryWatchExitSettleTimer.running) {
+            if (restartIfRunning === true) root.inventoryWatchRestartPending = true;
+            return;
+        }
         if (inventoryWatchProcess.running) {
             if (restartIfRunning === true) root.inventoryWatchRestartPending = true;
             return;
@@ -883,9 +888,29 @@ Scope {
         inventoryWatchProcess.running = true;
     }
 
+    function finishInventoryWatcherExit() {
+        if (!root.settingsVisible || inventoryWatchProcess.running) return;
+        if (root.inventoryWatchRestartPending && !root.inventoryWatchFailed) {
+            root.inventoryWatchRestartPending = false;
+            if (root.inventoryWatchSawEvent) inventoryWatchRestartTimer.restart();
+            else Qt.callLater(root.startInventoryWatcher);
+        } else if (!root.inventoryWatchSawEvent && !root.inventoryWatchFailed) {
+            const error = inventoryWatchError.text.trim();
+            root.inventoryWatchFailed = true;
+            root.inventoryWatchState = "unavailable";
+            root.inventoryWatchDetail = error.length > 0 ? error
+                : "Live appearance asset watching stopped unexpectedly";
+            root.refreshInventory(true);
+        } else if (!root.inventoryWatchFailed && (root.inventoryWatchState === "available"
+                || root.inventoryWatchState === "idle")) {
+            inventoryWatchRestartTimer.restart();
+        }
+    }
+
     function closeSettings() {
         root.settingsVisible = false;
         root.inventoryGeneration++;
+        inventoryWatchExitSettleTimer.stop();
         inventoryWatchRestartTimer.stop();
         root.inventoryWatchRestartPending = false;
         inventoryWatchProcess.running = false;
@@ -1877,24 +1902,12 @@ Scope {
             id: inventoryWatchError
         }
         onRunningChanged: {
-            if (!running) {
-                root.inventoryWatchReady = false;
-                if (root.settingsVisible && root.inventoryWatchRestartPending
-                        && !root.inventoryWatchFailed) {
-                    root.inventoryWatchRestartPending = false;
-                    if (root.inventoryWatchSawEvent) inventoryWatchRestartTimer.restart();
-                    else Qt.callLater(root.startInventoryWatcher);
-                } else if (root.settingsVisible && !root.inventoryWatchSawEvent
-                        && !root.inventoryWatchFailed) {
-                    const error = inventoryWatchError.text.trim();
-                    root.inventoryWatchFailed = true;
-                    root.inventoryWatchState = "unavailable";
-                    root.inventoryWatchDetail = error.length > 0 ? error
-                        : "Live appearance asset watching stopped unexpectedly";
-                    root.refreshInventory(true);
-                } else if (root.settingsVisible && (root.inventoryWatchState === "available"
-                        || root.inventoryWatchState === "idle")) inventoryWatchRestartTimer.restart();
+            if (running) {
+                inventoryWatchExitSettleTimer.stop();
+                return;
             }
+            root.inventoryWatchReady = false;
+            if (root.settingsVisible) inventoryWatchExitSettleTimer.restart();
         }
     }
 
@@ -2138,6 +2151,13 @@ Scope {
         interval: 100
         repeat: false
         onTriggered: if (root.settingsVisible) root.refreshAll()
+    }
+
+    Timer {
+        id: inventoryWatchExitSettleTimer
+        interval: 100
+        repeat: false
+        onTriggered: root.finishInventoryWatcherExit()
     }
 
     Timer {
