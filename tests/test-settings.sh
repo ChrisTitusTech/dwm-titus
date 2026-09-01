@@ -521,6 +521,13 @@ grep -Fq 'label: root.settingsModel.previewRollbackFailed ? "Keep current" : "Ke
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'label: "Use at next login"' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'label: "Restore login backup"' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+grep -Fq 'the previous dwm-titus next-login layout will be backed up' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
+if grep -Fq 'root.profileName = modelData;' \
+	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"; then
+	printf 'Trying a saved layout must not populate the save target.\n' >&2
+	exit 1
+fi
 if grep -Fq 'label: "Install persistent"' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"; then
 	printf 'Displays still exposes implementation-oriented persistence wording.\n' >&2

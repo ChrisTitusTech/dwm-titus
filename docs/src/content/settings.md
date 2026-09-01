@@ -70,6 +70,7 @@ rule with the same title can be retained instead.
 The **Use at next login** display action writes only the managed
 `90-dwm-titus-display.conf` fragment after a separate confirmation and polkit
 authorization. The installed helper accepts validated display records only,
-creates a backup, and offers **Restore login backup**. Later phases add
+backs up the previous managed next-login fragment, and offers **Restore login
+backup**. It does not capture the live XRandR layout. Later phases add
 connectivity, audio, power, defaults, personalization, and system-management
 operations.

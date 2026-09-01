@@ -321,8 +321,8 @@ Flickable {
                 Text {
                     Layout.fillWidth: true
                     text: root.confirmation === "install"
-                        ? "Use saved layout '" + root.profileName + "' automatically at the next login? Administrator approval is required; your current login setup will be backed up."
-                        : "Restore the previous login setup at the next login? Administrator approval is required."
+                        ? "Use saved layout '" + root.profileName + "' automatically at the next login? Administrator approval is required; the previous dwm-titus next-login layout will be backed up."
+                        : "Restore the previous dwm-titus next-login layout? Administrator approval is required. This changes the next login only."
                     color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize; wrapMode: Text.WordWrap
                 }
                 ShellButton {
@@ -347,10 +347,7 @@ Flickable {
                     required property string modelData
                     label: "Try " + modelData
                     enabled: !root.settingsModel.previewOperationLocked
-                    onActivated: {
-                        root.profileName = modelData;
-                        root.settingsModel.previewDisplayProfile(modelData);
-                    }
+                    onActivated: root.settingsModel.previewDisplayProfile(modelData)
                 }
             }
         }
