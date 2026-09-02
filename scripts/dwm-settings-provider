@@ -91,6 +91,9 @@ notification_process_is_managed() {
 	case $config_home in /*) ;; *) return 1 ;; esac
 	case $notification_process_pid in '' | *[!0-9]* | 0) return 1 ;; esac
 	process_executable=$(readlink "/proc/$notification_process_pid/exe" 2>/dev/null) || return 1
+	case $process_executable in
+	*' (deleted)') process_executable=${process_executable%' (deleted)'} ;;
+	esac
 	[ "${process_executable##*/}" = quickshell ] || return 1
 	[ -r "/proc/$notification_process_pid/cmdline" ] || return 1
 	process_path_mode=$(tr '\0' '\n' <"/proc/$notification_process_pid/cmdline" |

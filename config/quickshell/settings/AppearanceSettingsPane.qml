@@ -1284,7 +1284,8 @@ Flickable {
 
             ShellButton {
                 visible: root.notificationCapability.status === "available"
-                label: "Reset notifications"
+                label: root.notificationModel.policyState === "unavailable"
+                    ? "Retry notification reset" : "Reset notifications"
                 enabled: root.notificationCapability.status === "available"
                     && root.notificationModel.policyResetReady
                 onActivated: root.notificationModel.resetPolicy()

@@ -35,6 +35,12 @@ grep -Fq 'root.popupTimeoutMs = root.confirmedPopupTimeoutMs;' "$model"
 grep -Fq 'root.dismissNonCriticalPopups();' "$model"
 grep -Fq 'root.policyReloadPending = true;' "$model"
 grep -Fq 'else root.beginPolicyReload(false);' "$model"
+grep -Fq 'readonly property bool policyResetReady: !root.policySaving' "$model"
+if grep -A1 -F 'readonly property bool policyResetReady:' "$model" |
+	grep -Fq 'policyState !== "unavailable"'; then
+	printf 'Notification reset cannot recover from a transient save failure\n' >&2
+	exit 1
+fi
 if grep -Fq 'policySelfWriteExpected' "$model"; then
 	printf 'Notification policy still guesses FileView save signal ordering\n' >&2
 	exit 1

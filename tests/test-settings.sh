@@ -182,6 +182,9 @@ fedora_bin=$work/fedora-bin
 make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
 cp -a "$base_bin" "$fedora_bin"
 
+grep -Fq "*' (deleted)') process_executable=\${process_executable%' (deleted)'} ;;" \
+	"$provider"
+
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
 	xdg-settings xdg-mime xinput xkbset; do
 	make_stub "$fedora_bin/$command_name"

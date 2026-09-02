@@ -32,7 +32,7 @@ Scope {
     readonly property bool policyMutationReady: !root.policySaving
         && (root.policyState === "available" || root.policyState === "defaults")
     readonly property bool policyResetReady: !root.policySaving
-        && root.policyState !== "loading" && root.policyState !== "unavailable"
+        && root.policyState !== "loading"
     readonly property string homeDir: Quickshell.env("HOME") || ""
     readonly property string configuredConfigHome: Quickshell.env("XDG_CONFIG_HOME") || ""
     readonly property string configHome: root.configuredConfigHome.startsWith("/")
@@ -127,7 +127,8 @@ Scope {
 
     function resetPolicy() {
         if (!root.policyResetReady) return;
-        if (root.policyState !== "partial" && !root.doNotDisturb
+        if ((root.policyState === "available" || root.policyState === "defaults")
+                && !root.doNotDisturb
                 && root.popupTimeoutMs === 6000) return;
         root.usePolicyDefaults();
         root.savePolicy();

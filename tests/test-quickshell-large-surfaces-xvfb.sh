@@ -389,7 +389,7 @@ done
 [ "$(ipc notifications doNotDisturb)" = true ]
 [ "$(ipc notifications popupTimeout)" = 4000 ]
 chmod 700 "$config_home/dwm-titus"
-touch "$config_home/dwm-titus/notification-settings.json"
+ipc notifications resetPolicy >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
 	[ "$(ipc notifications policyState)" = available ] && break
@@ -397,6 +397,26 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ "$(ipc notifications policyState)" = available ]
+[ "$(ipc notifications doNotDisturb)" = false ]
+[ "$(ipc notifications popupTimeout)" = 6000 ]
+ipc notifications setPopupTimeout 4000 >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = available ]
+ipc notifications setDoNotDisturb true >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = available ]
+[ "$(ipc notifications doNotDisturb)" = true ]
+[ "$(ipc notifications popupTimeout)" = 4000 ]
 chmod 000 "$config_home/dwm-titus/notification-settings.json"
 touch "$config_home/dwm-titus/notification-settings.json"
 i=0
