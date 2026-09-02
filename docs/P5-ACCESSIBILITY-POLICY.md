@@ -36,10 +36,12 @@ One root-scoped `AccessibilityModel` runs a bounded status command at startup.
 The helper emits readiness only after inotify confirms its watch on the
 validated owning configuration directory. QML then requests the initial
 validated status snapshot and repeats that request for later events without
-reading the state file itself. High contrast strengthens semantic borders and
-muted text through `Theme.qml`. Reduced motion sets the shared managed animation
-durations to zero. The model introduces no state polling, new privilege
-boundary, compositor dependency, or Wayland API.
+reading the state file itself. Watchers that were established restart after
+directory replacement or child failure; pre-readiness failures use five bounded
+exponential-backoff attempts and then stop. High contrast strengthens semantic
+borders and muted text through `Theme.qml`. Reduced motion sets the shared
+managed animation durations to zero. The model introduces no state polling, new
+privilege boundary, compositor dependency, or Wayland API.
 
 ## Validation
 
@@ -51,7 +53,8 @@ scripts/quickshell-qmllint --root config/quickshell
 ```
 
 The helper tests cover defaults, persistence, reset, file-mode preservation,
-inotify delivery, malformed and future state, unsafe symlink and hard-link
-paths, invalid values, runtime path validation, and mutation lock contention.
+inotify delivery and child failure, malformed and future state, unsafe symlink
+and hard-link paths, invalid values, runtime path validation, and mutation lock
+contention.
 The Quickshell checks cover strict protocol parsing, helper-owned event-driven
 refresh, semantic theme policy, and shell ownership.

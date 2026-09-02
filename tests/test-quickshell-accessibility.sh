@@ -13,7 +13,8 @@ grep -Fq 'stdout: SplitParser {' "$model"
 grep -Fq 'line === "ready\taccessibility"' "$model"
 grep -Fq 'line.indexOf("DELETE_SELF")' "$model"
 grep -Fq 'const shouldRestart = root.watchReady;' "$model"
-grep -Fq 'if (shouldRestart) watchRestartTimer.restart();' "$model"
+grep -Fq 'readonly property int maxWatchSetupFailures: 5' "$model"
+grep -Fq 'root.watchSetupFailures <= root.maxWatchSetupFailures' "$model"
 grep -Fq 'Component.onCompleted: watchProcess.running = true' "$model"
 grep -Fq 'Commands.accessibilitySettingsCommand("status", [])' "$model"
 grep -Fq 'Theme.applyAccessibility(root.highContrast, root.reducedMotion)' "$model"
@@ -33,7 +34,16 @@ if grep -Fq 'FileView {' "$model"; then
 	exit 1
 fi
 
-if grep -Eq 'Timer[[:space:]]*\{[^}]*repeat:[[:space:]]*true' "$model"; then
+if awk '
+	/^[[:space:]]*Timer[[:space:]]*\{/ { in_timer = 1; depth = 0 }
+	in_timer {
+		line = $0
+		depth += gsub(/\{/, "{", line) - gsub(/\}/, "}", line)
+		if ($0 ~ /repeat:[[:space:]]*true/) found = 1
+		if (depth == 0) in_timer = 0
+	}
+	END { exit !found }
+' "$model"; then
 	printf 'Accessibility model introduced a polling timer\n' >&2
 	exit 1
 fi

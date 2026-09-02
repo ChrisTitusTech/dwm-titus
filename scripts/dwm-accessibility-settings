@@ -153,7 +153,7 @@ watch_cleanup() {
 		watch_child=
 	fi
 	if [[ $watch_fd_open == true ]]; then
-		exec 8>&- 8<&-
+		exec 8<&-
 		watch_fd_open=false
 	fi
 	if [[ -n $watch_work ]]; then
@@ -180,12 +180,12 @@ watch_config() {
 	trap 'exit 143' HUP INT TERM
 	mkfifo -- "$watch_work/events"
 	: >"$watch_work/ready"
-	exec 8<>"$watch_work/events"
-	watch_fd_open=true
 	inotifywait -m -P \
 		-e attrib,close_write,create,delete,delete_self,moved_from,moved_to,move_self \
 		--format $'changed\t%e' -- "$config_dir" >"$watch_work/events" 2>"$watch_work/ready" &
 	watch_child=$!
+	exec 8<"$watch_work/events"
+	watch_fd_open=true
 	until grep -Fq 'Watches established.' "$watch_work/ready" 2>/dev/null; do
 		if ! kill -0 "$watch_child" 2>/dev/null; then
 			wait "$watch_child" || status=$?

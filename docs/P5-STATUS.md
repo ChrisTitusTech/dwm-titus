@@ -12,7 +12,8 @@ branch was created, no pull request remained open, and only the primary
 checkout was registered.
 
 The active `TASKS.md` contains 25 implementation checkboxes. Thirteen are
-complete on `main`, leaving 12 open.
+complete on `main`; this boundary completes the fourteenth, leaving 11 after
+merge.
 
 The merged APPEARANCE-001 boundaries and their documentation passed. The
 historical documentation build has since been replaced by the current Astro
@@ -91,14 +92,15 @@ Notification policy remains a separate later boundary.
 | Boundary | Open checkboxes | Verified current state | Next evidence needed |
 | --- | ---: | --- | --- |
 | APPEARANCE-001 | 0 | Complete on `main` through PR #188. | Preserve the merged contracts while completing Phase 5. |
-| ACCESSIBILITY-001 | 3 | The merged boundary defines five distinct capability records; the current UI slice groups text scale and truthful unavailable states without adding mutation. | Finish dedicated controls and interaction evidence, then apply contrast and reduced motion and add notification policy. |
+| ACCESSIBILITY-001 | 2 | Five capability records and the text-scale grouping are merged. This boundary adds persistent contrast and reduced-motion state and applies it event-first across the managed shell. | Finish dedicated Settings and practical-input controls, interaction evidence, and notification policy. |
 | P5-UI5 | 4 | No candidate decision record is complete. | Inventory candidates, record adopt/defer/reject decisions, and qualify each adopted X11-native experience independently. |
 | P5-VALIDATE | 5 | Individual merged slices have focused and full-suite evidence, but the combined Phase 5 product is incomplete. | Run the final Fedora 44, clean build, full suite, QML, shell, install/parity, fresh-login, `startx`, multi-monitor, optional-loss, recovery, and 30-second CPU qualification after all selected Phase 5 work merges. |
 
 ## Phase Position
 
 Phase 5 remains active. THEME-001 and APPEARANCE-001 are complete on `main`.
-The first ACCESSIBILITY-001 checkbox is complete on `main` through PR #190;
-no P5-UI5 or final Phase 5 qualification checkbox is complete. Phase 6 must not
-begin until the Phase 5 exit criteria pass or an explicit roadmap decision
-defers named work and records the resulting limitation.
+The first ACCESSIBILITY-001 checkbox is complete on `main` through PR #190, and
+this boundary completes its managed contrast and motion policy. No P5-UI5 or
+final Phase 5 qualification checkbox is complete. Phase 6 must not begin until
+the Phase 5 exit criteria pass or an explicit roadmap decision defers named work
+and records the resulting limitation.

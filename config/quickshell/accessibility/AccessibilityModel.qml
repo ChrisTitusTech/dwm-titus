@@ -17,6 +17,8 @@ Scope {
     property bool mutationRefreshPending: false
     property bool actionSucceeded: false
     property bool watchReady: false
+    property int watchSetupFailures: 0
+    readonly property int maxWatchSetupFailures: 5
     property string pendingSetting: ""
     property string pendingValue: ""
     readonly property string homeDir: Quickshell.env("HOME") || ""
@@ -120,6 +122,7 @@ Scope {
             onRead: line => {
                 if (line === "ready\taccessibility") {
                     root.watchReady = true;
+                    root.watchSetupFailures = 0;
                     root.refresh();
                     return;
                 }
@@ -134,7 +137,17 @@ Scope {
             const shouldRestart = root.watchReady;
             if (!shouldRestart) root.refresh();
             root.watchReady = false;
-            if (shouldRestart) watchRestartTimer.restart();
+            if (shouldRestart) {
+                watchRestartTimer.interval = 3000;
+                watchRestartTimer.restart();
+            } else {
+                root.watchSetupFailures += 1;
+                if (root.watchSetupFailures <= root.maxWatchSetupFailures) {
+                    watchRestartTimer.interval = Math.min(48000,
+                        3000 * Math.pow(2, root.watchSetupFailures - 1));
+                    watchRestartTimer.restart();
+                }
+            }
         }
     }
 

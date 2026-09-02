@@ -59,8 +59,20 @@ HOME=$home XDG_CONFIG_HOME=$config XDG_RUNTIME_DIR=$runtime \
 watch_pid=$!
 wait_for_line "$work/first-watch.out" 'ready	accessibility'
 [ -d "$config/dwm-titus" ]
-kill "$watch_pid" 2>/dev/null || true
-wait "$watch_pid" 2>/dev/null || true
+watch_child=$(pgrep -P "$watch_pid" -x inotifywait)
+kill "$watch_child"
+for _ in $(seq 1 200); do
+	! kill -0 "$watch_pid" 2>/dev/null && break
+	sleep 0.01
+done
+if kill -0 "$watch_pid" 2>/dev/null; then
+	printf 'Accessibility watcher hid inotifywait termination\n' >&2
+	exit 1
+fi
+if wait "$watch_pid"; then
+	printf 'Accessibility watcher unexpectedly succeeded after inotifywait termination\n' >&2
+	exit 1
+fi
 watch_pid=
 
 contrast_action=$(run_helper set contrast high)
