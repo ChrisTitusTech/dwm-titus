@@ -475,13 +475,15 @@ The planned Settings surface covers:
   recovery guidance.
 
 Phase 5 accessibility discovery uses `settings-protocol 1` to publish separate
-read-only capability records for text scaling, high contrast, reduced motion,
+capability records for text scaling, high contrast, reduced motion,
 notification policy, and keyboard or pointer access. Text scaling derives from
-one complete versioned personalization response, notification readiness from
-the active session D-Bus owner, and input readiness from bounded managed XInput
-discovery. Missing or malformed providers degrade only their own record. These
-records do not imply that dedicated contrast, motion, notification-policy, or
-accessibility-input mutations are implemented.
+one complete versioned personalization response; high contrast and reduced
+motion are user-session mutations owned by the versioned managed accessibility
+helper; notification readiness derives from the active session D-Bus owner;
+and input readiness derives from bounded managed XInput discovery. Missing or
+malformed providers degrade only their own record. Notification and
+accessibility-input records do not imply that dedicated mutations are
+implemented.
 
 Advanced partitioning, unrestricted service control, firewall policy editing,
 and similarly high-risk administration remain delegated unless a later
@@ -671,10 +673,11 @@ Phase 3 NetworkManager, BlueZ, PipeWire, and media workflows, and Phase 4 power,
 session-action, default-application, MIME, and XDG autostart workflows. Active
 Phase 5 now includes merged theme transactions, wallpaper persistence,
 managed-shell typography, desktop font, cursor, icon, GTK, and Qt controls,
-and panel-widget persistence. Cross-capability optional-component isolation and
-the read-only accessibility capability contract are also qualified. The
+panel-widget persistence, plus persistent managed-shell contrast and motion
+policy with dedicated Settings controls. Cross-capability optional-component
+isolation and the accessibility capability contract are also qualified. The
 remaining Phase 5 surface begins with dedicated notification and practical X11
-accessibility controls, followed by selected UI-5 work and final phase
+input accessibility controls, followed by selected UI-5 work and final phase
 qualification. The ordered status is recorded in `ROADMAP.md`,
 `TASKS.md`, and `docs/P5-STATUS.md`.
 

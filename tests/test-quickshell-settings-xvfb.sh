@@ -310,7 +310,7 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-settings-appearance" "$repo/scripts/dwm-settings-wallpaper" \
 	"$repo/scripts/dwm-settings-font" "$repo/scripts/dwm-settings-personalization" \
 	"$repo/scripts/dwm-settings-theme" "$repo/scripts/dwm-xsettings" \
-	"$repo/scripts/dwm-panel-settings" \
+	"$repo/scripts/dwm-panel-settings" "$repo/scripts/dwm-accessibility-settings" \
 	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
 
@@ -1519,6 +1519,59 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ "$recovered_text_scale_capability" = "$baseline_text_scale_capability" ]
+
+test_stage='validating managed-shell accessibility persistence'
+i=0
+while [ "$i" -lt 100 ]; do
+	accessibility_state=$(settings_ipc_retry accessibilityState)
+	accessibility_ready=$(settings_ipc_retry accessibilityMutationReady)
+	case $accessibility_state:$accessibility_ready in
+	defaults:true | available:true | partial:true) break ;;
+	esac
+	i=$((i + 1))
+	sleep 0.05
+done
+case $accessibility_state:$accessibility_ready in
+defaults:true | available:true | partial:true) ;;
+*)
+	printf 'Accessibility controls did not become ready: %s / %s\n' \
+		"$accessibility_state" "$accessibility_ready" >&2
+	exit 1
+	;;
+esac
+[ "$(settings_ipc_retry capabilityStatus accessibility-contrast)" = available ]
+[ "$(settings_ipc_retry capabilityStatus accessibility-reduced-motion)" = available ]
+settings_ipc_retry accessibilitySetContrast true >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(settings_ipc_retry accessibilityHighContrast)" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(settings_ipc_retry accessibilityHighContrast)" = true ]
+grep -Fqx 'contrast	high' "$config_home/dwm-titus/accessibility.conf"
+settings_ipc_retry accessibilitySetReducedMotion true >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(settings_ipc_retry accessibilityReducedMotion)" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(settings_ipc_retry accessibilityReducedMotion)" = true ]
+grep -Fqx 'motion	reduced' "$config_home/dwm-titus/accessibility.conf"
+settings_ipc_retry accessibilityReset >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	accessibility_contrast=$(settings_ipc_retry accessibilityHighContrast)
+	accessibility_motion=$(settings_ipc_retry accessibilityReducedMotion)
+	[ "$accessibility_contrast" = false ] && [ "$accessibility_motion" = false ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$accessibility_contrast" = false ]
+[ "$accessibility_motion" = false ]
+grep -Fqx 'contrast	standard' "$config_home/dwm-titus/accessibility.conf"
+grep -Fqx 'motion	full' "$config_home/dwm-titus/accessibility.conf"
 
 test_stage='validating shared panel widget persistence'
 panel_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \

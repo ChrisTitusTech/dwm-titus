@@ -53,6 +53,8 @@ printf '%s\n' "$status" | grep -Fqx \
 printf '%s\n' "$status" | grep -Fqx 'setting	contrast	standard'
 printf '%s\n' "$status" | grep -Fqx 'setting	motion	full'
 printf '%s\n' "$status" | grep -Fqx 'complete	status'
+printf '%s\n' "$status" | grep -Fqx \
+	'mutation	available	Accessibility policy can be updated'
 
 HOME=$home XDG_CONFIG_HOME=$config XDG_RUNTIME_DIR=$runtime \
 	"$helper" watch >"$work/first-watch.out" 2>"$work/first-watch.err" &
@@ -125,6 +127,8 @@ printf '%s\n' "$malformed_status" | grep -Fqx \
 	'state	partial	Malformed accessibility settings were preserved; using safe defaults'
 printf '%s\n' "$malformed_status" | grep -Fqx 'setting	contrast	standard'
 printf '%s\n' "$malformed_status" | grep -Fqx 'setting	motion	full'
+printf '%s\n' "$malformed_status" | grep -Fqx \
+	'mutation	available	Accessibility policy can be updated'
 run_helper set motion reduced >/dev/null
 grep -Fqx 'contrast	standard' "$config/dwm-titus/accessibility.conf"
 grep -Fqx 'motion	reduced' "$config/dwm-titus/accessibility.conf"
@@ -144,6 +148,8 @@ printf 'accessibility-settings-protocol	2	0\ncontrast	high\nmotion	reduced\n' \
 future_status=$(run_helper status)
 printf '%s\n' "$future_status" | grep -Fqx \
 	'state	partial	Unsupported accessibility settings version was preserved; using safe defaults'
+printf '%s\n' "$future_status" | grep -Fqx \
+	'mutation	unavailable	Persistent accessibility state cannot be safely replaced'
 grep -Fqx 'accessibility-settings-protocol	2	0' "$config/dwm-titus/accessibility.conf"
 cp "$config/dwm-titus/accessibility.conf" "$work/future.before"
 if run_helper set contrast high >"$work/future-set.out" 2>"$work/future-set.err"; then

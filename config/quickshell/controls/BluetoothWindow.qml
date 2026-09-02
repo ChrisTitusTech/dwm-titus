@@ -58,6 +58,8 @@ ClickAwayPopup {
                     checked: root.bluetoothModel.powered
                     busy: root.bluetoothModel.busy
                     enabled: root.bluetoothModel.available && root.bluetoothModel.actionsAvailable
+                    accessibleName: "Bluetooth power"
+                    accessibleDescription: "Turn the Bluetooth adapter on or off"
                     onToggled: root.bluetoothModel.action("bluetooth-power", [checked ? "off" : "on"])
                 }
             }

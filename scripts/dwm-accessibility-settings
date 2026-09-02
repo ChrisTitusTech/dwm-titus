@@ -133,6 +133,11 @@ emit_status() {
 	printf 'state\t%s\t%s\n' "$config_state" "$config_detail"
 	printf 'setting\tcontrast\t%s\n' "${setting_values[contrast]}"
 	printf 'setting\tmotion\t%s\n' "${setting_values[motion]}"
+	if [[ $config_state == unavailable || $config_future_version == true ]]; then
+		printf 'mutation\tunavailable\tPersistent accessibility state cannot be safely replaced\n'
+	else
+		printf 'mutation\tavailable\tAccessibility policy can be updated\n'
+	fi
 	printf 'complete\tstatus\n'
 }
 

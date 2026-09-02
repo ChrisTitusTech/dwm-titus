@@ -12,6 +12,8 @@ Scope {
     property bool reducedMotion: false
     property bool busy: false
     property string message: ""
+    property string mutationState: "unavailable"
+    property string mutationDetail: "Loading accessibility policy"
     property bool statusParsed: false
     property bool refreshPending: false
     property bool mutationRefreshPending: false
@@ -26,7 +28,7 @@ Scope {
     readonly property string configHome: root.configuredConfigHome.startsWith("/")
         ? root.configuredConfigHome : root.homeDir + "/.config"
     readonly property string configPath: root.configHome + "/dwm-titus/accessibility.conf"
-    readonly property bool mutationReady: root.providerState !== "unavailable"
+    readonly property bool mutationReady: root.mutationState === "available"
 
     function useDefaults() {
         root.highContrast = false;
@@ -46,31 +48,43 @@ Scope {
 
     function parseStatus(text) {
         const lines = text.trim().split("\n");
-        if (lines.length !== 5 || lines[0] !== "accessibility-settings-protocol\t1\t0"
-                || lines[4] !== "complete\tstatus") return;
-        const state = lines[1].split("\t");
-        if (state.length !== 3 || state[0] !== "state"
-                || ["available", "defaults", "partial", "unavailable"].indexOf(state[1]) < 0)
-            return;
+        if (lines.length < 6 || lines[0] !== "accessibility-settings-protocol\t1\t0"
+                || lines[lines.length - 1] !== "complete\tstatus") return;
+        let state = null;
+        let mutation = null;
         const parsed = {};
-        for (let index = 2; index < 4; index++) {
+        for (let index = 1; index < lines.length - 1; index++) {
             const fields = lines[index].split("\t");
-            if (fields.length !== 3 || fields[0] !== "setting"
-                    || parsed[fields[1]] !== undefined) return;
-            if (fields[1] === "contrast"
-                    && (fields[2] === "standard" || fields[2] === "high"))
-                parsed.contrast = fields[2];
-            else if (fields[1] === "motion"
-                    && (fields[2] === "full" || fields[2] === "reduced"))
-                parsed.motion = fields[2];
-            else return;
+            if (fields[0] === "state") {
+                if (state !== null || fields.length !== 3 || fields[2].length === 0
+                        || ["available", "defaults", "partial", "unavailable"]
+                            .indexOf(fields[1]) < 0) return;
+                state = fields;
+            } else if (fields[0] === "setting") {
+                if (fields.length !== 3 || parsed[fields[1]] !== undefined) return;
+                if (fields[1] === "contrast"
+                        && (fields[2] === "standard" || fields[2] === "high"))
+                    parsed.contrast = fields[2];
+                else if (fields[1] === "motion"
+                        && (fields[2] === "full" || fields[2] === "reduced"))
+                    parsed.motion = fields[2];
+                else return;
+            } else if (fields[0] === "mutation") {
+                if (mutation !== null || fields.length !== 3 || fields[2].length === 0
+                        || ["available", "unavailable"].indexOf(fields[1]) < 0) return;
+                mutation = fields;
+            } else if (fields[0] === "accessibility-settings-protocol"
+                    || fields[0] === "complete") return;
         }
-        if (parsed.contrast === undefined || parsed.motion === undefined) return;
+        if (state === null || mutation === null || parsed.contrast === undefined
+                || parsed.motion === undefined) return;
         root.highContrast = parsed.contrast === "high";
         root.reducedMotion = parsed.motion === "reduced";
         Theme.applyAccessibility(root.highContrast, root.reducedMotion);
         root.providerState = state[1];
         root.providerDetail = state[2];
+        root.mutationState = mutation[1];
+        root.mutationDetail = mutation[2];
         root.statusParsed = true;
     }
 
@@ -180,6 +194,8 @@ Scope {
                 root.providerDetail = statusError.text.trim().length > 0
                     ? statusError.text.trim()
                     : "Accessibility settings provider returned invalid data";
+                root.mutationState = "unavailable";
+                root.mutationDetail = root.providerDetail;
             }
             if (root.refreshPending) {
                 Qt.callLater(root.refresh);

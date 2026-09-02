@@ -17,6 +17,7 @@ FloatingWindow {
     required property var defaultsModel
     required property var autostartModel
     required property var appearanceModel
+    required property var accessibilityModel
     required property var panelSettingsModel
 
     title: "dwm settings"
@@ -380,6 +381,7 @@ FloatingWindow {
                                 Layout.fillHeight: true
                                 visible: root.settingsModel.selectedSectionId === "appearance"
                                 appearanceModel: root.appearanceModel
+                                accessibilityModel: root.accessibilityModel
                                 panelSettingsModel: root.panelSettingsModel
                                 textScaleCapability: root.settingsModel.capabilityById(
                                     "accessibility-text-scale")
