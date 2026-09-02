@@ -50,7 +50,8 @@ boundaries passed before merge.
 | APPEARANCE-001 panel-widget persistence | Complete | PR #186 | Hosted CI, CodeQL, docs, focused panel, nested-X11, and live-session checks passed. |
 | APPEARANCE-001 optional-component isolation | Complete | PR #188 | Focused and full managed suites, nested X11, install, docs, lint, CodeQL, and hosted checks passed. |
 | ACCESSIBILITY-001 capability contract | Complete | PR #190 | Five hosted checks and exact-head Codex and CodeRabbit review passed; one conditional check skipped. |
-| ACCESSIBILITY-001 accessible Settings controls | Complete | PRs #191, #201, and #202 | Capability grouping, managed policy, Settings mutations, nested-X11 persistence, hosted checks, and review loops passed. |
+| ACCESSIBILITY-001 managed Settings controls | Complete | PRs #191, #201, and #202 | Capability grouping, managed contrast and motion policy, Settings mutations, nested-X11 persistence, hosted checks, and review loops passed. |
+| ACCESSIBILITY-001 practical input controls | Current | PR #203 | This boundary adds AccessX preview, rollback, persistence, replay, reset, and scoped failure handling; merge and exact-head hosted validation remain pending. |
 
 The detailed contracts and focused validation commands remain in
 `P5-THEME-TRANSACTIONS.md`, `P5-APPEARANCE-INVENTORY.md`,

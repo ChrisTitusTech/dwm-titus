@@ -683,9 +683,9 @@ managed-shell typography, desktop font, cursor, icon, GTK, and Qt controls,
 panel-widget persistence, plus persistent managed-shell contrast and motion
 policy with dedicated Settings controls. Cross-capability optional-component
 isolation and the accessibility capability contract are also qualified. The
-remaining Phase 5 surface begins with dedicated notification and practical X11
-input accessibility controls, followed by selected UI-5 work and final phase
-qualification. The ordered status is recorded in `ROADMAP.md`,
+remaining Phase 5 surface begins with dedicated notification controls, followed
+by selected UI-5 work and final phase qualification. The ordered status is
+recorded in `ROADMAP.md`,
 `TASKS.md`, and `docs/P5-STATUS.md`.
 
 The installer contains a Fedora-only package map and rejects other systems.
