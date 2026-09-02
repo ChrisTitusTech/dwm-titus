@@ -11,6 +11,43 @@ for command_name in Xvfb quickshell xdotool xprop getconf; do
 	fi
 done
 
+if [ "$(id -u)" -eq 0 ] && [ "${DWM_LARGE_SURFACE_UNPRIVILEGED:-0}" != 1 ]; then
+	command -v setpriv >/dev/null 2>&1 || {
+		printf 'Quickshell large-surface Xvfb requires setpriv on a root runner\n' >&2
+		exit 1
+	}
+	unprivileged_uid=$(id -u nobody)
+	unprivileged_gid=$(id -g nobody)
+	root_runner_work=$(mktemp -d /var/tmp/dwm-large-surface-root.XXXXXX)
+	trap 'rm -rf -- "$root_runner_work"' EXIT
+	fixture_repo=$root_runner_work/repo
+	mkdir -p "$root_runner_work/cache" "$root_runner_work/config" \
+		"$root_runner_work/data" "$root_runner_work/runtime" \
+		"$root_runner_work/state" "$fixture_repo/tests"
+	cp -a "$test_repo/config" "$test_repo/scripts" "$fixture_repo/"
+	cp "$test_repo/dwm" "$fixture_repo/dwm"
+	cp "$0" "$fixture_repo/tests/test-quickshell-large-surfaces-xvfb.sh"
+	chown -R "$unprivileged_uid:$unprivileged_gid" "$root_runner_work"
+	chmod 700 "$fixture_repo/dwm" "$root_runner_work/runtime"
+	if HOME="$root_runner_work" TMPDIR="$root_runner_work" \
+		DWM_LARGE_SURFACE_REPO="$fixture_repo" \
+		DWM_LARGE_SURFACE_UNPRIVILEGED=1 \
+		XDG_CACHE_HOME="$root_runner_work/cache" \
+		XDG_CONFIG_HOME="$root_runner_work/config" \
+		XDG_DATA_HOME="$root_runner_work/data" \
+		XDG_RUNTIME_DIR="$root_runner_work/runtime" \
+		XDG_STATE_HOME="$root_runner_work/state" \
+		setpriv --reuid "$unprivileged_uid" --regid "$unprivileged_gid" \
+		--clear-groups "$fixture_repo/tests/test-quickshell-large-surfaces-xvfb.sh" "$@"; then
+		root_runner_status=0
+	else
+		root_runner_status=$?
+	fi
+	rm -rf -- "$root_runner_work"
+	trap - EXIT
+	exit "$root_runner_status"
+fi
+
 if [ "${DWM_LARGE_SURFACE_DBUS_SESSION:-0}" != 1 ]; then
 	if ! command -v dbus-run-session >/dev/null 2>&1; then
 		printf 'SKIP: dbus-run-session is unavailable\n'
