@@ -239,8 +239,9 @@ dwm-settings-input preview-status [TOKEN]
 dwm-settings-input reset DEVICE SETTING
 ```
 
-All input actions require `xinput`; keyboard layout and modifier operations
-also require `setxkbmap`; stable hardware identity and hotplug watching use
+Input discovery and per-device actions require `xinput`; keyboard layout and
+modifier operations also require `setxkbmap`; session-wide XKB accessibility
+controls require `xkbset`; stable hardware identity and hotplug watching use
 `udevadm`, and the session watcher uses `flock` from `util-linux` to prevent
 duplicate replay workers. Kept values default to
 `${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/input-settings.conf`. Set

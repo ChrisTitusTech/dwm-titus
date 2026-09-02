@@ -73,6 +73,7 @@ if dwm_packages fedora runtime-required | grep -Fx maim >/dev/null; then
 fi
 dwm_packages fedora screenshot-optional | grep -Fx maim >/dev/null
 dwm_packages fedora x11 | grep -Fx setxkbmap >/dev/null
+dwm_packages fedora x11 | grep -Fx xkbset >/dev/null
 dwm_packages fedora recommended | grep -Fx playerctl >/dev/null
 dwm_packages fedora desktop | grep -Fx quickshell >/dev/null
 dwm_packages fedora desktop | grep -Fx flatpak >/dev/null

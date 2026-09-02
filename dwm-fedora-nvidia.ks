@@ -78,6 +78,7 @@ xset
 xsetroot
 xinput
 setxkbmap
+xkbset
 dbus-x11
 procps-ng
 psmisc

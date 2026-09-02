@@ -247,7 +247,7 @@ Scope {
         root.inputSettings = settings;
         root.inputUnsupported = unsupported;
         root.inputState = valid ? "ready" : "failure";
-        root.inputMessage = valid ? devices.length + " input devices" : "Unsupported input provider response";
+        root.inputMessage = valid ? devices.length + " input groups" : "Unsupported input provider response";
     }
 
     function updateDisplay(index, field, value) {

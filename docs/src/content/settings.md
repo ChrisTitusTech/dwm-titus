@@ -43,6 +43,11 @@ stable udev or physical sysfs identity. Devices without one remain
 session-configurable and report that persistence is unavailable. Unsupported
 per-device properties remain visible with an explanation.
 
+The same section exposes session-wide XKB accessibility shortcuts, sticky keys,
+slow keys, bounce keys, and mouse keys when `xkbset` can reach the X11 session.
+These controls use the same 15-second preview and reset workflow, but are not
+tied to one physical keyboard. Kept choices are restored at the next login.
+
 Type to search section names and descriptions. Use Up and Down to move through
 the filtered sections, Enter to select one, or Escape to close Settings. The
 Refresh button runs a new bounded capability snapshot; Settings does not add an

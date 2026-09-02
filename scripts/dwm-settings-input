@@ -9,6 +9,7 @@ runtime_base="${XDG_RUNTIME_DIR:-/tmp/dwm-titus-$UID}"
 state_dir="$runtime_base/dwm-settings-input"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 self="$script_dir/${BASH_SOURCE[0]##*/}"
+accessibility_key=accessx
 
 declare -a device_ids=() device_keys=() device_kinds=() device_names=() device_persistable=()
 watch_event_fifo=
@@ -43,6 +44,63 @@ need_tools() {
 
 need_setxkbmap() {
 	command -v setxkbmap >/dev/null 2>&1 || die "setxkbmap is unavailable"
+}
+
+need_xkbset() {
+	command -v xkbset >/dev/null 2>&1 || die "xkbset is unavailable"
+	command -v timeout >/dev/null 2>&1 || die "timeout is unavailable"
+	[[ -n ${DISPLAY:-} ]] || die "DISPLAY is not set"
+}
+
+run_xkbset() {
+	local timeout_path
+	timeout_path=$(command -v timeout) || return 127
+	"$timeout_path" --signal=TERM --kill-after=1 2 xkbset "$@"
+}
+
+accessibility_label() {
+	case $1 in
+	accessx-shortcuts) printf '%s\n' 'Accessibility Features (AccessX)' ;;
+	sticky-keys) printf '%s\n' 'Sticky-Keys' ;;
+	slow-keys) printf '%s\n' 'Slow-Keys' ;;
+	bounce-keys) printf '%s\n' 'Bounce-Keys' ;;
+	mouse-keys) printf '%s\n' 'Mouse-Keys' ;;
+	*) return 1 ;;
+	esac
+}
+
+accessibility_value() {
+	local setting=$1 snapshot=${2-} label value
+	label=$(accessibility_label "$setting") || return 1
+	if (($# < 2)); then
+		need_xkbset
+		snapshot=$(LC_ALL=C run_xkbset q) || die "unable to query XKB accessibility controls"
+	fi
+	value=$(awk -F ' = ' -v label="$label" '$1 == label { print $2; found = 1; exit }
+		END { exit !found }' <<<"$snapshot") || return 1
+	case $value in
+	On) printf '1\n' ;;
+	Off) printf '0\n' ;;
+	*) return 1 ;;
+	esac
+}
+
+apply_accessibility_value() {
+	local setting=$1 value=$2 option
+	need_xkbset
+	case $setting in
+	accessx-shortcuts) option=a ;;
+	sticky-keys) option=st ;;
+	slow-keys) option=sl ;;
+	bounce-keys) option=bo ;;
+	mouse-keys) option=m ;;
+	*) die "unsupported accessibility setting: $setting" ;;
+	esac
+	if [[ $value == 1 ]]; then
+		LC_ALL=C run_xkbset "$option"
+	else
+		LC_ALL=C run_xkbset "-$option"
+	fi
 }
 
 trim() {
@@ -144,6 +202,7 @@ scan_devices() {
 
 device_can_persist() {
 	local wanted=$1 index
+	[[ $wanted != "$accessibility_key" ]] || return 0
 	scan_devices
 	for index in "${!device_keys[@]}"; do
 		[[ ${device_keys[$index]} == "$wanted" ]] || continue
@@ -178,9 +237,30 @@ emit_unsupported() {
 }
 
 discover() {
-	local index id key kind name properties value default layout options keyboard_query
+	local index id key kind name properties value default layout options keyboard_query accessibility_query setting label
 	scan_devices
 	printf 'input-protocol\t1\n'
+	printf 'device\t%s\tsession\taccessibility\tKeyboard accessibility\n' "$accessibility_key"
+	if command -v xkbset >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1 &&
+		accessibility_query=$(LC_ALL=C run_xkbset q 2>/dev/null); then
+		for setting in accessx-shortcuts sticky-keys slow-keys bounce-keys mouse-keys; do
+			case $setting in
+			accessx-shortcuts) label='Accessibility shortcuts' ;;
+			sticky-keys) label='Sticky keys' ;;
+			slow-keys) label='Slow keys' ;;
+			bounce-keys) label='Bounce keys' ;;
+			mouse-keys) label='Mouse keys' ;;
+			esac
+			if value=$(accessibility_value "$setting" "$accessibility_query"); then
+				if ! default=$(persisted_default "$accessibility_key" "$setting"); then default=$value; fi
+				emit_setting "$accessibility_key" "$setting" "$label" boolean "$value" "$default" 0 1
+			else
+				emit_unsupported "$accessibility_key" "$setting" "xkbset did not report this XKB control"
+			fi
+		done
+	else
+		emit_unsupported "$accessibility_key" accessx "Install xkbset and open Settings from X11"
+	fi
 	for index in "${!device_ids[@]}"; do
 		id=${device_ids[$index]}
 		key=${device_keys[$index]}
@@ -261,7 +341,9 @@ validate_value() {
 		[[ $value =~ ^-?[0-9]+([.][0-9]+)?$ ]] || return 1
 		awk -v value="$value" 'BEGIN { exit !(value >= -1 && value <= 1) }'
 		;;
-	natural-scroll | tap-to-click) [[ $value == 0 || $value == 1 ]] ;;
+	natural-scroll | tap-to-click | accessx-shortcuts | sticky-keys | slow-keys | bounce-keys | mouse-keys)
+		[[ $value == 0 || $value == 1 ]]
+		;;
 	keyboard-layout) [[ $value =~ ^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$ ]] ;;
 	modifier-options) [[ $value =~ ^[A-Za-z0-9_:+,.-]*$ ]] ;;
 	*) return 1 ;;
@@ -270,6 +352,10 @@ validate_value() {
 
 read_value() {
 	local key=$1 setting=$2 id properties property value
+	if [[ $key == "$accessibility_key" ]]; then
+		accessibility_value "$setting"
+		return
+	fi
 	id=$(resolve_device "$key") || return 1
 	case $setting in
 	keyboard-layout)
@@ -295,6 +381,10 @@ read_value() {
 apply_value() {
 	local key=$1 setting=$2 value=$3 id property
 	validate_value "$setting" "$value" || die "invalid value for $setting"
+	if [[ $key == "$accessibility_key" ]]; then
+		apply_accessibility_value "$setting" "$value"
+		return
+	fi
 	id=$(resolve_device "$key") || return 1
 	case $setting in
 	keyboard-layout)
@@ -511,6 +601,19 @@ preview_status() {
 
 reset_setting() {
 	local key=$1 setting=$2 id properties default_name default
+	if [[ $key == "$accessibility_key" ]]; then
+		case $setting in
+		accessx-shortcuts | sticky-keys | slow-keys | bounce-keys | mouse-keys) ;;
+		*) die "unsupported setting: $setting" ;;
+		esac
+		if ! default=$(persisted_default "$key" "$setting"); then
+			default=$(read_value "$key" "$setting")
+		fi
+		apply_value "$key" "$setting" "$default"
+		remove_persisted_value "$key" "$setting"
+		printf 'result\treset\t%s\n' "$setting"
+		return
+	fi
 	case $setting in
 	pointer-speed) default_name="libinput Accel Speed Default" ;;
 	natural-scroll) default_name="libinput Natural Scrolling Enabled Default" ;;

@@ -297,7 +297,7 @@ Unify normal session behavior and application defaults.
 
 ## Phase 5: Personalization and Accessibility
 
-Status: Active (reconciled 2026-08-30; ACCESSIBILITY-001 in progress)
+Status: Active (reconciled 2026-09-02; ACCESSIBILITY-001 in progress)
 
 ### Current Checkpoint
 
@@ -305,10 +305,11 @@ The shared theme provider and transactions are complete. Appearance inventory,
 wallpaper persistence, managed-shell fonts and scaling, and desktop font,
 cursor, icon, GTK, and Qt controls are merged through PR #184. Panel-widget
 persistence merged in PR #186, and cross-capability optional-component
-qualification merged in PR #188, completing `APPEARANCE-001`. The current
-review boundary adds dedicated Settings controls for the merged managed-shell
-contrast and motion policy. Practical X11 input and notification controls,
-UI-5 decisions, and the combined Phase 5 qualification remain open.
+qualification merged in PR #188, completing `APPEARANCE-001`. Managed-shell
+contrast and motion controls merged in PR #202. The current review boundary
+adds practical XKB input accessibility controls with timed rollback and
+session persistence. Notification controls, UI-5 decisions, and the combined
+Phase 5 qualification remain open.
 `docs/P5-STATUS.md` maps every active checkbox to its current evidence or next
 action.
 

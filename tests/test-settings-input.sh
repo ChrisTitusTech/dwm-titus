@@ -131,6 +131,48 @@ case " $* " in
 esac
 EOF
 
+cat >"$work/bin/xkbset" <<'EOF'
+#!/bin/sh
+set -eu
+command_arg=${1:-}
+state=${TEST_XKBSET_STATE:?}
+[ "${TEST_XKBSET_HANG:-0}" != 1 ] || sleep 30
+set -- $(cat "$state")
+accessx=$1
+sticky=$2
+slow=$3
+bounce=$4
+mouse=$5
+if [ "$command_arg" = q ]; then
+	[ "${TEST_XKBSET_EMPTY:-0}" != 1 ] || exit 0
+	onoff() { [ "$1" = 1 ] && printf On || printf Off; }
+	printf 'Mouse-Keys = %s\n' "$(onoff "$mouse")"
+	printf 'Accessibility Features (AccessX) = %s\n' "$(onoff "$accessx")"
+	printf 'Sticky-Keys = %s\n' "$(onoff "$sticky")"
+	printf 'Slow-Keys = %s\n' "$(onoff "$slow")"
+	[ "${TEST_XKBSET_INCOMPLETE:-0}" = 1 ] ||
+		printf 'Bounce-Keys = %s\n' "$(onoff "$bounce")"
+	exit 0
+fi
+[ "${TEST_XKBSET_SET_HANG:-0}" != 1 ] || sleep 30
+[ "${TEST_FAIL_XKBSET_SET:-0}" != 1 ] || exit 1
+case $command_arg in
+a) accessx=1 ;;
+-a) accessx=0 ;;
+st) sticky=1 ;;
+-st) sticky=0 ;;
+sl) slow=1 ;;
+-sl) slow=0 ;;
+bo) bounce=1 ;;
+-bo) bounce=0 ;;
+m) mouse=1 ;;
+-m) mouse=0 ;;
+*) exit 2 ;;
+esac
+printf '%s %s %s %s %s\n' "$accessx" "$sticky" "$slow" "$bounce" "$mouse" >"$state"
+printf 'xkbset %s\n' "$command_arg" >>"$TEST_LOG"
+EOF
+
 cat >"$work/bin/udevadm" <<'EOF'
 #!/bin/sh
 case ${1:-} in
@@ -174,6 +216,7 @@ monitor)
 esac
 EOF
 chmod +x "$work/bin/"*
+printf '0 0 0 1 0\n' >"$work/xkbset.state"
 
 cat >"$work/watch-owner" <<'EOF'
 #!/bin/bash
@@ -214,10 +257,32 @@ env_common=(
 	TEST_DEVICES="$work/devices"
 	TEST_LOG="$work/actions.log"
 	TEST_COUNTER="$work/list-props.count"
+	TEST_XKBSET_STATE="$work/xkbset.state"
 )
 
 env "${env_common[@]}" "$helper" discover >"$work/discover"
 grep -Fqx 'input-protocol	1' "$work/discover"
+grep -Fqx $'device\taccessx\tsession\taccessibility\tKeyboard accessibility' "$work/discover"
+grep -Fqx $'setting\taccessx\taccessx-shortcuts\tAccessibility shortcuts\tboolean\t0\t0\t0\t1' "$work/discover"
+grep -Fqx $'setting\taccessx\tsticky-keys\tSticky keys\tboolean\t0\t0\t0\t1' "$work/discover"
+grep -Fqx $'setting\taccessx\tslow-keys\tSlow keys\tboolean\t0\t0\t0\t1' "$work/discover"
+grep -Fqx $'setting\taccessx\tbounce-keys\tBounce keys\tboolean\t1\t1\t0\t1' "$work/discover"
+grep -Fqx $'setting\taccessx\tmouse-keys\tMouse keys\tboolean\t0\t0\t0\t1' "$work/discover"
+
+env "${env_common[@]}" TEST_XKBSET_INCOMPLETE=1 "$helper" discover \
+	>"$work/discover-incomplete-xkbset"
+grep -Fqx $'unsupported\taccessx\tbounce-keys\txkbset did not report this XKB control' \
+	"$work/discover-incomplete-xkbset"
+grep -Fq $'setting\taccessx\tsticky-keys\tSticky keys\tboolean' \
+	"$work/discover-incomplete-xkbset"
+env "${env_common[@]}" TEST_XKBSET_EMPTY=1 "$helper" discover \
+	>"$work/discover-empty-xkbset"
+[[ $(grep -Fc $'unsupported\taccessx\t' "$work/discover-empty-xkbset") == 5 ]]
+env "${env_common[@]}" TEST_XKBSET_HANG=1 "$helper" discover \
+	>"$work/discover-hanging-xkbset"
+grep -Fqx $'unsupported\taccessx\taccessx\tInstall xkbset and open Settings from X11' \
+	"$work/discover-hanging-xkbset"
+grep -Fq $'pointer\tMouse, Wild [Name]' "$work/discover-hanging-xkbset"
 grep -Fq $'pointer	Mouse, Wild [Name]' "$work/discover"
 grep -Fq $'keyboard	Keyboard with spaces' "$work/discover"
 grep -Fq $'touchpad	Portable TouchPad' "$work/discover"
@@ -253,6 +318,8 @@ grep -Fq $'unsupported\t'"$keyboard_key"$'\tkeyboard-layout\tsetxkbmap is unavai
 	"$work/discover-no-setxkbmap"
 grep -Fq $'unsupported\t'"$keyboard_key"$'\tmodifier-options\tsetxkbmap is unavailable' \
 	"$work/discover-no-setxkbmap"
+grep -Fqx $'unsupported\taccessx\taccessx\tInstall xkbset and open Settings from X11' \
+	"$work/discover-no-setxkbmap"
 env "${env_common[@]}" TEST_FAIL_QUERY=1 "$helper" discover >"$work/discover-query-failure"
 grep -Fq $'unsupported\t'"$keyboard_key"$'\tkeyboard-layout\tsetxkbmap could not query this keyboard' \
 	"$work/discover-query-failure"
@@ -267,6 +334,42 @@ expected_mouse_key=$(printf '%s' 'pointer|Mouse, Wild [Name]|1133, 49291|path:pc
 expected_keyboard_key=$(printf '%s' 'keyboard|Keyboard with spaces|1234, 5678|serial:test-keyboard' | sha256sum | awk '{print substr($1, 1, 16)}')
 [[ $mouse_key == "$expected_mouse_key" ]]
 [[ $keyboard_key == "$expected_keyboard_key" ]]
+
+env "${env_common[@]}" "$helper" preview sticky-revert 5 accessx sticky-keys 1 >/dev/null
+grep -Fqx '0 1 0 1 0' "$work/xkbset.state"
+env "${env_common[@]}" "$helper" revert sticky-revert >/dev/null
+grep -Fqx '0 0 0 1 0' "$work/xkbset.state"
+
+env "${env_common[@]}" "$helper" preview sticky-keep 5 accessx sticky-keys 1 >/dev/null
+env "${env_common[@]}" "$helper" keep sticky-keep >/dev/null
+grep -Fqx $'accessx\tsticky-keys\t1\t0' \
+	"$work/home/.config/dwm-titus/input-settings.conf"
+printf '0 0 0 1 0\n' >"$work/xkbset.state"
+env "${env_common[@]}" "$helper" apply-saved
+grep -Fqx '0 1 0 1 0' "$work/xkbset.state"
+env "${env_common[@]}" "$helper" reset accessx sticky-keys >/dev/null
+grep -Fqx '0 0 0 1 0' "$work/xkbset.state"
+if [[ -f $work/home/.config/dwm-titus/input-settings.conf ]] &&
+	grep -Fq $'accessx\tsticky-keys\t' "$work/home/.config/dwm-titus/input-settings.conf"; then
+	printf 'sticky-keys reset left a persisted override\n' >&2
+	exit 1
+fi
+
+if env "${env_common[@]}" TEST_FAIL_XKBSET_SET=1 "$helper" preview sticky-failure 5 \
+	accessx sticky-keys 1 2>"$work/sticky-failure.err"; then
+	printf 'failed XKB accessibility preview reported success\n' >&2
+	exit 1
+fi
+grep -Fq 'input preview failed' "$work/sticky-failure.err"
+test ! -e "$work/runtime/dwm-settings-input/sticky-failure.state"
+
+if env "${env_common[@]}" TEST_XKBSET_SET_HANG=1 "$helper" preview sticky-timeout 5 \
+	accessx sticky-keys 1 2>"$work/sticky-timeout.err"; then
+	printf 'timed-out XKB accessibility preview reported success\n' >&2
+	exit 1
+fi
+grep -Fq 'input preview failed' "$work/sticky-timeout.err"
+test ! -e "$work/runtime/dwm-settings-input/sticky-timeout.state"
 
 env "${env_common[@]}" TEST_DEVICES="$work/devices-ascii" "$helper" discover >"$work/discover-ascii"
 ascii_mouse_key=$(awk -F '\t' '$1 == "device" && $4 == "pointer" {print $2; exit}' "$work/discover-ascii")

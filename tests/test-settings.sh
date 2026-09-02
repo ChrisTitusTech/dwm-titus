@@ -126,7 +126,15 @@ make_input_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
 	printf '%s\n' '#!/bin/sh' \
-		'printf "input-protocol\t1\nfuture-input-record\tappend-only-fixture\n"' >"$path"
+		'printf "input-protocol\t1\ndevice\taccessx\tsession\taccessibility\tKeyboard accessibility\nsetting\taccessx\taccessx-shortcuts\tAccessibility shortcuts\tboolean\t0\t0\t0\t1\nsetting\taccessx\tsticky-keys\tSticky keys\tboolean\t0\t0\t0\t1\nsetting\taccessx\tslow-keys\tSlow keys\tboolean\t0\t0\t0\t1\nsetting\taccessx\tbounce-keys\tBounce keys\tboolean\t0\t0\t0\t1\nsetting\taccessx\tmouse-keys\tMouse keys\tboolean\t0\t0\t0\t1\nfuture-input-record\tappend-only-fixture\n"' >"$path"
+	chmod +x "$path"
+}
+
+make_incomplete_accessibility_input_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		'printf "input-protocol\t1\ndevice\taccessx\tsession\taccessibility\tKeyboard accessibility\nsetting\taccessx\tsticky-keys\tSticky keys\tboolean\t0\t0\t0\t1\n"' >"$path"
 	chmod +x "$path"
 }
 
@@ -151,7 +159,7 @@ make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
 cp -a "$base_bin" "$fedora_bin"
 
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
-	xdg-settings xdg-mime xinput busctl; do
+	xdg-settings xdg-mime xinput xkbset busctl; do
 	make_stub "$fedora_bin/$command_name"
 done
 make_stub "$fedora_bin/dwm-xdg-autostart"
@@ -206,9 +214,21 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	appearance	accessibility-notifications	Notification policy	partial	read-only	dbus	A notification D-Bus owner is active; managed policy controls are not configured'
 printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	appearance	accessibility-input	Keyboard and pointer access	partial	read-only	x11	Input discovery and settings are available; dedicated accessibility controls are not configured'
+	'capability	appearance	accessibility-input	Keyboard and pointer access	available	user-session	dwm-settings-input	Persistent XKB accessibility controls are available'
 [ "$(printf '%s\n' "$fedora_output" |
 	grep -c '^capability	appearance	accessibility-')" -eq 5 ]
+
+slow_input_bin=$work/slow-input-bin
+cp -a "$fedora_bin" "$slow_input_bin"
+make_input_stub "$slow_input_bin/dwm-settings-input"
+sed -i '2i /usr/bin/sleep 3' "$slow_input_bin/dwm-settings-input"
+slow_input_output=$(PATH="$slow_input_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$slow_input_output" | grep -Fqx \
+	'capability	input	input-devices	Input devices	available	user-session	dwm-settings-input	Stable device discovery, preview, reset, and persistence are available'
+printf '%s\n' "$slow_input_output" | grep -Fqx \
+	'capability	appearance	accessibility-input	Keyboard and pointer access	available	user-session	dwm-settings-input	Persistent XKB accessibility controls are available'
 
 for invalid_accessibility_case in malformed duplicate-setting missing-complete; do
 	invalid_accessibility_bin=$work/invalid-accessibility-$invalid_accessibility_case-bin
@@ -386,6 +406,35 @@ missing_accessibility_input_output=$(PATH="$missing_accessibility_input_bin" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$missing_accessibility_input_output" | grep -Fqx \
 	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	read-only	x11	Install xinput and the managed input Settings provider'
+
+missing_xkbset_bin=$work/missing-xkbset-bin
+cp -a "$fedora_bin" "$missing_xkbset_bin"
+rm -f "$missing_xkbset_bin/xkbset"
+missing_xkbset_output=$(PATH="$missing_xkbset_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$missing_xkbset_output" | grep -Fqx \
+	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	user-session	x11	Install xkbset to manage XKB accessibility controls'
+
+unready_xkbset_bin=$work/unready-xkbset-bin
+cp -a "$fedora_bin" "$unready_xkbset_bin"
+make_failing_stub "$unready_xkbset_bin/xkbset"
+unready_xkbset_output=$(PATH="$unready_xkbset_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$unready_xkbset_output" | grep -Fqx \
+	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	user-session	x11	xkbset is installed, but no complete responsive XKB state is available'
+
+incomplete_xkb_input_bin=$work/incomplete-xkb-input-bin
+cp -a "$fedora_bin" "$incomplete_xkb_input_bin"
+make_incomplete_accessibility_input_stub "$incomplete_xkb_input_bin/dwm-settings-input"
+incomplete_xkb_input_output=$(PATH="$incomplete_xkb_input_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$incomplete_xkb_input_output" | grep -Fqx \
+	'capability	input	input-devices	Input devices	available	user-session	dwm-settings-input	Stable device discovery, preview, reset, and persistence are available'
+printf '%s\n' "$incomplete_xkb_input_output" | grep -Fqx \
+	'capability	appearance	accessibility-input	Keyboard and pointer access	unavailable	user-session	x11	xkbset is installed, but no complete responsive XKB state is available'
 
 unready_accessibility_input_bin=$work/unready-accessibility-input-bin
 cp -a "$fedora_bin" "$unready_accessibility_input_bin"

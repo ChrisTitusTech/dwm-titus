@@ -506,6 +506,32 @@ ShellRoot {
             return settingsModel.inputState;
         }
 
+        function inputAccessibilityValue(settingId: string): string {
+            const setting = settingsModel.inputSettings.find(function(item) {
+                return item.device === "accessx" && item.id === settingId;
+            });
+            return setting ? setting.value : "";
+        }
+
+        function inputAccessibilityPreview(settingId: string, enabled: bool): void {
+            settingsModel.previewInput("accessx", settingId, enabled ? "1" : "0");
+        }
+
+        function inputPreviewState(): string {
+            return settingsModel.previewKind;
+        }
+
+        function inputPreviewAction(action: string): void {
+            if (settingsModel.previewKind !== "input") return;
+            if (action === "keep") settingsModel.keepPreview();
+            else if (action === "revert") settingsModel.revertPreview();
+        }
+
+        function inputAccessibilityReset(settingId: string): void {
+            if (settingsModel.previewOperationLocked) return;
+            settingsModel.resetInput("accessx", settingId);
+        }
+
         function networkProviderStatus(): string {
             return networkModel.providerState;
         }

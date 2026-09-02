@@ -25,6 +25,12 @@ versions from `config.mk`.
 
 ### Added
 
+- Add session-wide XKB accessibility shortcuts, sticky keys, slow keys, bounce
+  keys, and mouse keys to Input Settings. Fixed `xkbset` actions reuse the
+  existing timed preview, automatic rollback, persistence, session-start replay,
+  and reset workflow, while missing XKB support degrades only the accessibility
+  group.
+
 - Add keyboard-focusable Settings controls for the managed-shell high-contrast
   and reduced-motion policy, including labeled accessibility semantics, reset,
   provider-scoped failure detail, capability discovery, and nested-X11

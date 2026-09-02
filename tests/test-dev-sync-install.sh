@@ -19,6 +19,7 @@ data_dir="$xdg_data_home/dwm-titus"
 output="$work/output"
 install_sources="$work/install-sources"
 test_bin="$work/bin"
+source_update_probe="$work/source-update-probe"
 
 mkdir -p "$test_repo" "$test_bin" "$prefix/bin" "$prefix/libexec/dwm-titus" \
 	"$manprefix/man1" "$xsessions_dir" \
@@ -66,6 +67,16 @@ install -Dm644 "$test_repo/assets/cursors/COPYING" \
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/xsettingsd"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/dump_xsettings"
 chmod +x "$test_bin/xsettingsd" "$test_bin/dump_xsettings"
+
+sed -n '/^source_update_dependencies_ready() {$/,/^}$/p' \
+	"$test_repo/scripts/dev-sync-install.sh" >"$source_update_probe"
+for required_command in xsettingsd dump_xsettings xkbset; do
+	grep -Fq "command -v $required_command" "$source_update_probe" || {
+		printf 'Source-update readiness omits required command: %s\n' \
+			"$required_command" >&2
+		exit 1
+	}
+done
 
 run_check() {
 	PATH="$test_bin:$PATH" \

@@ -13,7 +13,7 @@ dwm_packages() {
 			xcb-util-devel freetype-devel fontconfig-devel
 		;;
 	fedora:x11)
-		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot xinput setxkbmap
+		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot xinput setxkbmap xkbset
 		;;
 	fedora:runtime-required)
 		printf '%s\n' dbus-x11 curl git procps-ng psmisc unzip util-linux xclip xdotool xprop xdg-utils
@@ -31,7 +31,7 @@ dwm_packages() {
 	fedora:source-update)
 		# Dependencies introduced after the initial installation that the supported
 		# source-checkout synchronization path must reconcile for existing systems.
-		printf '%s\n' xsettingsd
+		printf '%s\n' xsettingsd xkbset
 		;;
 	fedora:desktop-optional)
 		printf '%s\n' \

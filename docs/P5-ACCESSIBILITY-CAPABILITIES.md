@@ -22,7 +22,7 @@ in the Appearance section:
 | `accessibility-contrast` | `dwm-accessibility-settings` | `available` only when one bounded, complete version 1 status reports safe mutation readiness; otherwise `unavailable`. |
 | `accessibility-reduced-motion` | `dwm-accessibility-settings` | `available` only when one bounded, complete version 1 status reports safe mutation readiness; otherwise `unavailable`. |
 | `accessibility-notifications` | `dbus` | `partial` when a session notification owner is active; otherwise `unavailable`. Policy controls are not configured. |
-| `accessibility-input` | `x11` | `partial` when bounded managed input discovery succeeds; otherwise `unavailable`. |
+| `accessibility-input` | `dwm-settings-input` | `available` when bounded managed input discovery and `xkbset q` both succeed; missing or unresponsive XInput or XKB tooling reports the scoped `unavailable` reason. |
 
 ## Failure Isolation
 
@@ -46,7 +46,8 @@ capabilities unavailable.
 
 The original capability boundary added no QML object, timer, subscription,
 state file, package, privileged helper, or mutation action. Later boundaries
-own the event-driven model, persistent helper, and Settings controls.
+own the event-driven model, persistent helper, Settings controls, and the fixed
+XKB accessibility actions documented in `P5-INPUT-ACCESSIBILITY.md`.
 
 ## Validation Evidence
 
