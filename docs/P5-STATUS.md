@@ -1,18 +1,19 @@
 # Phase 5 Project Status
 
-Date: 2026-08-31
+Date: 2026-09-01
 
 ## Verification Baseline
 
 This checkpoint was reconciled against `origin/main` at
-`63e49ab5dc7f1e95d1da0667560a5fe9a4c35822`. PR #190 merged the accessibility
-capability contract after PR #188 merged optional-component qualification and
-PR #189 merged the automatic small-PR workflow. The primary checkout matched
-the remote revision before this continuation branch was created, no pull
-request remained open, and only the primary checkout was registered.
+`e2137c2cbb8415d9e839b28938847a62b30a9ced`. PR #191 merged the first accessible
+Settings grouping after PR #190 merged the accessibility capability contract.
+The primary checkout matched the remote revision before this continuation
+branch was created, no pull request remained open, and only the primary
+checkout was registered.
 
 The active `TASKS.md` contains 25 implementation checkboxes. Thirteen are
-complete on `main`, leaving 12 open.
+complete on `main`; this boundary completes the fourteenth, leaving 11 after
+merge.
 
 The merged APPEARANCE-001 boundaries and their documentation passed. The
 historical documentation build has since been replaced by the current Astro
@@ -49,6 +50,7 @@ boundaries passed before merge.
 | APPEARANCE-001 panel-widget persistence | Complete | PR #186 | Hosted CI, CodeQL, docs, focused panel, nested-X11, and live-session checks passed. |
 | APPEARANCE-001 optional-component isolation | Complete | PR #188 | Focused and full managed suites, nested X11, install, docs, lint, CodeQL, and hosted checks passed. |
 | ACCESSIBILITY-001 capability contract | Complete | PR #190 | Five hosted checks and exact-head Codex and CodeRabbit review passed; one conditional check skipped. |
+| ACCESSIBILITY-001 accessible Settings grouping | Open (partial) | PR #191 | Validate, Quickshell QML, analyze, CodeQL, and CodeRabbit passed; one conditional build skipped. |
 
 The detailed contracts and focused validation commands remain in
 `P5-THEME-TRANSACTIONS.md`, `P5-APPEARANCE-INVENTORY.md`,
@@ -72,34 +74,33 @@ nested-X11 validation covers the shared-state path.
 
 ## Current Review Boundary
 
-The current `codex/phase5-accessibility-settings` boundary groups the existing
-bounded application text-scale choices under Accessibility. Its apply and
-reset actions retain the shared personalization transaction, keyboard focus,
-and visible focus border, while action rows wrap at compact widths. The four
-remaining accessibility records render in the same group with explicit
-capability-scoped explanations and no implied mutation path.
+The current `codex/phase5-accessibility-policy` boundary adds versioned,
+user-owned high-contrast and reduced-motion state plus one root-scoped,
+event-driven shell model. Semantic borders and muted text strengthen under high
+contrast, and the existing shared animation durations become zero under reduced
+motion. The helper preserves safe defaults and rejects unsafe persistent state.
 
-Personalization selection changes coalesce a strict capability refresh, so a
-provider or XSETTINGS recovery updates the text-scale gate without polling or a
-second provider. This slice introduces no new persistent state, helper,
-watcher, polling loop, or privilege boundary. The overall Settings-controls
-checkbox stays open for dedicated contrast, reduced-motion,
-notification-policy, and practical input controls plus the required
-real-session interaction evidence.
+The merged text-scale grouping and capability cards remain unchanged. This
+slice introduces persistent helper and shell-model mutations, but no Settings
+UI controls, polling loop, privilege boundary, or compositor dependency. The
+overall Settings-controls checkbox stays open for those dedicated controls,
+practical input behavior, and required real-session interaction evidence.
+Notification policy remains a separate later boundary.
 
 ## Open Task Boundaries
 
 | Boundary | Open checkboxes | Verified current state | Next evidence needed |
 | --- | ---: | --- | --- |
 | APPEARANCE-001 | 0 | Complete on `main` through PR #188. | Preserve the merged contracts while completing Phase 5. |
-| ACCESSIBILITY-001 | 3 | The merged boundary defines five distinct capability records; the current UI slice groups text scale and truthful unavailable states without adding mutation. | Finish dedicated controls and interaction evidence, then apply contrast and reduced motion and add notification policy. |
+| ACCESSIBILITY-001 | 2 | Five capability records and the text-scale grouping are merged. This boundary adds persistent contrast and reduced-motion state and applies it event-first across the managed shell. | Finish dedicated Settings and practical-input controls, interaction evidence, and notification policy. |
 | P5-UI5 | 4 | No candidate decision record is complete. | Inventory candidates, record adopt/defer/reject decisions, and qualify each adopted X11-native experience independently. |
 | P5-VALIDATE | 5 | Individual merged slices have focused and full-suite evidence, but the combined Phase 5 product is incomplete. | Run the final Fedora 44, clean build, full suite, QML, shell, install/parity, fresh-login, `startx`, multi-monitor, optional-loss, recovery, and 30-second CPU qualification after all selected Phase 5 work merges. |
 
 ## Phase Position
 
 Phase 5 remains active. THEME-001 and APPEARANCE-001 are complete on `main`.
-The first ACCESSIBILITY-001 checkbox is complete on `main` through PR #190;
-no P5-UI5 or final Phase 5 qualification checkbox is complete. Phase 6 must not
-begin until the Phase 5 exit criteria pass or an explicit roadmap decision
-defers named work and records the resulting limitation.
+The first ACCESSIBILITY-001 checkbox is complete on `main` through PR #190, and
+this boundary completes its managed contrast and motion policy. No P5-UI5 or
+final Phase 5 qualification checkbox is complete. Phase 6 must not begin until
+the Phase 5 exit criteria pass or an explicit roadmap decision defers named work
+and records the resulting limitation.

@@ -1,0 +1,494 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+
+config_home=${XDG_CONFIG_HOME:-}
+[[ $config_home == /* ]] || config_home=${HOME:?HOME is required for XDG_CONFIG_HOME fallback}/.config
+config_dir=$config_home/dwm-titus
+config_file=$config_dir/accessibility.conf
+runtime_base=${XDG_RUNTIME_DIR:-/tmp/dwm-titus-$UID}
+[[ $runtime_base == /* ]] || {
+	printf 'dwm-accessibility-settings: XDG_RUNTIME_DIR must be absolute\n' >&2
+	exit 1
+}
+lock_file=$runtime_base/dwm-accessibility-settings.lock
+readonly max_config_size=4096
+readonly max_restore_attempts=8
+readonly protocol_header=$'accessibility-settings-protocol\t1\t0'
+
+declare -A setting_values=()
+config_state=defaults
+config_detail='Using standard contrast and full motion defaults'
+mutation_baseline_kind=absent
+mutation_baseline_hash=
+mutation_baseline_mode=600
+mutation_baseline_fingerprint=
+config_future_version=false
+watch_work=
+watch_child=
+watch_fd_open=false
+
+usage() {
+	printf 'usage: %s status | watch | set {contrast|motion} VALUE | reset\n' "${0##*/}" >&2
+}
+
+die() {
+	printf 'dwm-accessibility-settings: %s\n' "$*" >&2
+	exit 1
+}
+
+set_defaults() {
+	setting_values[contrast]=standard
+	setting_values[motion]=full
+}
+
+valid_setting_value() {
+	case $1:$2 in
+	contrast:standard | contrast:high | motion:full | motion:reduced) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+config_dir_safe() {
+	local mode
+	mode=$(stat -c %a -- "$config_dir" 2>/dev/null) || return 1
+	[[ -d $config_dir && ! -L $config_dir && $(stat -c %u -- "$config_dir") == "$UID" ]] &&
+		(((8#$mode & 022) == 0))
+}
+
+config_file_safe() {
+	local mode
+	mode=$(stat -c %a -- "$config_file" 2>/dev/null) || return 1
+	[[ -f $config_file && ! -L $config_file && -r $config_file &&
+		$(stat -c %u -- "$config_file") == "$UID" &&
+		$(stat -c %h -- "$config_file") == 1 &&
+		$(stat -c %s -- "$config_file") -le $max_config_size ]] &&
+		(((8#$mode & 022) == 0))
+}
+
+load_config() {
+	local line first=true setting value count=0
+	local -A seen=()
+	set_defaults
+	config_future_version=false
+	if [[ -e $config_dir || -L $config_dir ]] && ! config_dir_safe; then
+		config_state=unavailable
+		config_detail='Persistent accessibility state directory is unsafe; using safe defaults'
+		return 1
+	fi
+	if [[ ! -e $config_file && ! -L $config_file ]]; then
+		return 0
+	fi
+	if ! config_file_safe; then
+		config_state=unavailable
+		config_detail='Persistent accessibility state is unsafe; using safe defaults'
+		return 1
+	fi
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $first == true ]]; then
+			if [[ $line != "$protocol_header" ]]; then
+				config_state=partial
+				if [[ $line =~ ^accessibility-settings-protocol$'\t'[0-9]+$'\t'[0-9]+$ ]]; then
+					config_future_version=true
+					config_detail='Unsupported accessibility settings version was preserved; using safe defaults'
+				else
+					config_detail='Malformed accessibility settings were preserved; using safe defaults'
+				fi
+				return 1
+			fi
+			first=false
+			continue
+		fi
+		if [[ $line != *$'\t'* || ${line#*$'\t'} == *$'\t'* ]]; then
+			config_state=partial
+			config_detail='Malformed accessibility settings were preserved; using safe defaults'
+			set_defaults
+			return 1
+		fi
+		setting=${line%%$'\t'*}
+		value=${line#*$'\t'}
+		if ! valid_setting_value "$setting" "$value" || [[ -n ${seen[$setting]+x} ]]; then
+			config_state=partial
+			config_detail='Malformed accessibility settings were preserved; using safe defaults'
+			set_defaults
+			return 1
+		fi
+		seen[$setting]=1
+		setting_values[$setting]=$value
+		((count += 1))
+	done <"$config_file"
+	if [[ $first == true || $count -ne 2 ]]; then
+		config_state=partial
+		config_detail='Incomplete accessibility settings were preserved; using safe defaults'
+		set_defaults
+		return 1
+	fi
+	config_state=available
+	config_detail='Persistent managed-shell accessibility policy is active'
+}
+
+emit_status() {
+	load_config || true
+	printf '%s\n' "$protocol_header"
+	printf 'state\t%s\t%s\n' "$config_state" "$config_detail"
+	printf 'setting\tcontrast\t%s\n' "${setting_values[contrast]}"
+	printf 'setting\tmotion\t%s\n' "${setting_values[motion]}"
+	printf 'complete\tstatus\n'
+}
+
+ensure_runtime_dir() {
+	if [[ ! -e $runtime_base ]]; then
+		(umask 077 && mkdir -p -- "$runtime_base")
+	fi
+	[[ -d $runtime_base && ! -L $runtime_base && $(stat -c %u -- "$runtime_base") == "$UID" ]] ||
+		die "unsafe runtime directory: $runtime_base"
+	chmod 700 -- "$runtime_base"
+}
+
+watch_cleanup() {
+	local watch_path
+	if [[ -n $watch_child ]]; then
+		kill -TERM "$watch_child" 2>/dev/null || true
+		wait "$watch_child" 2>/dev/null || true
+		watch_child=
+	fi
+	if [[ $watch_fd_open == true ]]; then
+		exec 8<&-
+		watch_fd_open=false
+	fi
+	if [[ -n $watch_work ]]; then
+		for watch_path in "$watch_work/events" "$watch_work/ready"; do
+			[[ ! -e $watch_path && ! -L $watch_path ]] || unlink -- "$watch_path"
+		done
+		rmdir -- "$watch_work" 2>/dev/null || true
+		watch_work=
+	fi
+}
+
+watch_config() {
+	local event status=0 attempts=0 restart=false
+	command -v inotifywait >/dev/null 2>&1 ||
+		die 'inotifywait is required for accessibility state watching'
+	if [[ ! -e $config_dir && ! -L $config_dir ]]; then
+		(umask 077 && mkdir -p -- "$config_dir")
+	fi
+	config_dir_safe || die "unsafe or unavailable configuration directory: $config_dir"
+	ensure_runtime_dir
+	watch_work=$(umask 077 && mktemp -d "$runtime_base/dwm-accessibility-watch.XXXXXX") ||
+		die 'cannot create accessibility watch workspace'
+	trap watch_cleanup EXIT
+	trap 'exit 143' HUP INT TERM
+	mkfifo -- "$watch_work/events"
+	: >"$watch_work/ready"
+	inotifywait -m -P \
+		-e attrib,close_write,create,delete,delete_self,moved_from,moved_to,move_self \
+		--format $'changed\t%e' -- "$config_dir" >"$watch_work/events" 2>"$watch_work/ready" &
+	watch_child=$!
+	exec 8<"$watch_work/events"
+	watch_fd_open=true
+	until grep -Fq 'Watches established.' "$watch_work/ready" 2>/dev/null; do
+		if ! kill -0 "$watch_child" 2>/dev/null; then
+			wait "$watch_child" || status=$?
+			watch_child=
+			return "$status"
+		fi
+		((attempts += 1))
+		((attempts < 200)) || die 'timed out while establishing accessibility state watch'
+		sleep 0.01
+	done
+	printf 'ready\taccessibility\n'
+	while IFS= read -r event <&8; do
+		printf '%s\n' "$event"
+		if [[ $event == *DELETE_SELF* || $event == *MOVE_SELF* ]]; then
+			restart=true
+			break
+		fi
+	done
+	if [[ $restart == true ]]; then
+		kill -TERM "$watch_child" 2>/dev/null || true
+	fi
+	wait "$watch_child" || status=$?
+	watch_child=
+	[[ $restart == false ]] || return 10
+	return "$status"
+}
+
+ensure_mutation_paths() {
+	ensure_runtime_dir
+	if [[ -e $lock_file || -L $lock_file ]]; then
+		[[ -f $lock_file && ! -L $lock_file && $(stat -c %u -- "$lock_file") == "$UID" &&
+		$(stat -c %h -- "$lock_file") == 1 ]] || die "unsafe lock file: $lock_file"
+	fi
+	: >>"$lock_file"
+	chmod 600 -- "$lock_file"
+	exec 9>"$lock_file"
+	flock -w 5 9 || die 'another accessibility settings operation is still running'
+	if [[ ! -e $config_dir ]]; then
+		(umask 077 && mkdir -p -- "$config_dir")
+	fi
+	config_dir_safe || die "unsafe configuration directory: $config_dir"
+}
+
+file_hash() {
+	sha256sum -- "$1" | awk '{ print $1 }'
+}
+
+entry_fingerprint() {
+	local path=$1 metadata
+	metadata=$(stat -c '%d:%i:%h:%f:%s' -- "$path") || return 1
+	if [[ -L $path ]]; then
+		printf '%s:link:%s\n' "$metadata" "$(readlink -- "$path")"
+	elif [[ -f $path ]]; then
+		printf '%s:file:%s\n' "$metadata" "$(file_hash "$path")"
+	else
+		printf '%s:other\n' "$metadata"
+	fi
+}
+
+capture_mutation_baseline() {
+	mutation_baseline_kind=absent
+	mutation_baseline_hash=
+	mutation_baseline_mode=600
+	mutation_baseline_fingerprint=
+	if [[ -e $config_file || -L $config_file ]]; then
+		config_file_safe || die "unsafe persistent state: $config_file"
+		mutation_baseline_kind='file'
+		mutation_baseline_hash=$(file_hash "$config_file")
+		mutation_baseline_mode=$(stat -c %a -- "$config_file")
+		mutation_baseline_fingerprint=$(entry_fingerprint "$config_file")
+	fi
+}
+
+mutation_baseline_unchanged() {
+	if [[ $mutation_baseline_kind == file ]]; then
+		config_file_safe && [[ $(file_hash "$config_file") == "$mutation_baseline_hash" &&
+		$(stat -c %a -- "$config_file") == "$mutation_baseline_mode" ]]
+	else
+		[[ ! -e $config_file && ! -L $config_file ]]
+	fi
+}
+
+die_mutation_baseline_changed() {
+	if [[ $mutation_baseline_kind == file ]]; then
+		die 'accessibility state changed during the transaction; refusing to overwrite it'
+	else
+		die 'accessibility state appeared during the transaction; refusing to overwrite it'
+	fi
+}
+
+wait_for_baseline_test_release() {
+	if [[ -n ${DWM_TEST_ACCESSIBILITY_BASELINE_READY:-} ]]; then
+		: >"$DWM_TEST_ACCESSIBILITY_BASELINE_READY"
+		while [[ ! -e ${DWM_TEST_ACCESSIBILITY_BASELINE_RELEASE:-} ]]; do
+			sleep 0.01
+		done
+	fi
+}
+
+mv_exchange_options_supported() {
+	local help
+	help=$(LC_ALL=C mv --help 2>/dev/null) || return 1
+	[[ $help == *'--exchange'* && $help == *'--no-copy'* ]]
+}
+
+wait_for_rollback_test_release() {
+	if [[ -n ${DWM_TEST_ACCESSIBILITY_ROLLBACK_READY:-} ]]; then
+		: >"$DWM_TEST_ACCESSIBILITY_ROLLBACK_READY"
+		while [[ ! -e ${DWM_TEST_ACCESSIBILITY_ROLLBACK_RELEASE:-} ]]; do
+			sleep 0.01
+		done
+		DWM_TEST_ACCESSIBILITY_ROLLBACK_READY=
+		DWM_TEST_ACCESSIBILITY_ROLLBACK_RELEASE=
+	fi
+}
+
+restore_concurrent_config() {
+	local staged=$1 expected_fingerprint=$2 published_fingerprint=$3
+	local candidate_fingerprint displaced_fingerprint current_fingerprint attempt=0
+	while ((attempt < max_restore_attempts)); do
+		attempt=$((attempt + 1))
+		candidate_fingerprint=$(entry_fingerprint "$staged" 2>/dev/null || true)
+		if [[ -z $candidate_fingerprint ]]; then
+			printf 'dwm-accessibility-settings: concurrent accessibility state retained at %s\n' \
+				"$staged" >&2
+			return 1
+		fi
+		current_fingerprint=$(entry_fingerprint "$config_file" 2>/dev/null || true)
+		if [[ $current_fingerprint != "$expected_fingerprint" ]]; then
+			printf 'dwm-accessibility-settings: concurrent accessibility state retained at %s\n' \
+				"$staged" >&2
+			return 1
+		fi
+		wait_for_rollback_test_release
+		if ! mv --exchange --no-copy -- "$staged" "$config_file"; then
+			printf 'dwm-accessibility-settings: concurrent accessibility state retained at %s\n' \
+				"$staged" >&2
+			return 1
+		fi
+		displaced_fingerprint=$(entry_fingerprint "$staged" 2>/dev/null || true)
+		if [[ $displaced_fingerprint == "$expected_fingerprint" ]]; then
+			if [[ $displaced_fingerprint == "$published_fingerprint" ]]; then
+				unlink -- "$staged"
+			else
+				printf 'dwm-accessibility-settings: superseded accessibility state retained at %s\n' \
+					"$staged" >&2
+			fi
+			return 0
+		fi
+		expected_fingerprint=$candidate_fingerprint
+	done
+	candidate_fingerprint=$(entry_fingerprint "$staged" 2>/dev/null || true)
+	current_fingerprint=$(entry_fingerprint "$config_file" 2>/dev/null || true)
+	if [[ -n $candidate_fingerprint && $current_fingerprint == "$expected_fingerprint" ]] &&
+		mv --exchange --no-copy -- "$staged" "$config_file"; then
+		displaced_fingerprint=$(entry_fingerprint "$staged" 2>/dev/null || true)
+		if [[ $displaced_fingerprint == "$expected_fingerprint" ]]; then
+			if [[ $displaced_fingerprint == "$published_fingerprint" ]]; then
+				unlink -- "$staged"
+			else
+				printf 'dwm-accessibility-settings: superseded accessibility state retained at %s\n' \
+					"$staged" >&2
+			fi
+			printf 'dwm-accessibility-settings: concurrent accessibility state restored at %s after retry exhaustion\n' \
+				"$config_file" >&2
+			return 1
+		fi
+	fi
+	printf 'dwm-accessibility-settings: concurrent accessibility state retained at %s\n' \
+		"$staged" >&2
+	return 1
+}
+
+publish_config() {
+	local staged=$1 published_hash published_fingerprint captured_hash captured_mode captured_fingerprint
+	published_hash=$(file_hash "$staged") || die 'cannot hash temporary accessibility state'
+	published_fingerprint=$(entry_fingerprint "$staged") || die 'cannot identify temporary accessibility state'
+	if [[ $mutation_baseline_kind == absent ]]; then
+		mv --no-clobber --no-target-directory -- "$staged" "$config_file" ||
+			die 'cannot publish accessibility state'
+		if [[ -e $staged || -L $staged ]]; then
+			unlink -- "$staged"
+			die_mutation_baseline_changed
+		fi
+		[[ $(file_hash "$config_file" 2>/dev/null || true) == "$published_hash" ]] ||
+			die 'published accessibility state could not be verified'
+		return
+	fi
+	if ! mv_exchange_options_supported; then
+		unlink -- "$staged"
+		die 'GNU mv with --exchange and --no-copy is required (coreutils 9.5 or newer)'
+	fi
+	if ! mv --exchange --no-copy -- "$staged" "$config_file"; then
+		unlink -- "$staged"
+		die 'atomic accessibility state exchange is unavailable on the configuration filesystem'
+	fi
+	captured_hash=$(file_hash "$staged" 2>/dev/null || true)
+	captured_mode=$(stat -c %a -- "$staged" 2>/dev/null || true)
+	captured_fingerprint=$(entry_fingerprint "$staged" 2>/dev/null || true)
+	if [[ $captured_hash == "$mutation_baseline_hash" &&
+		$captured_mode == "$mutation_baseline_mode" &&
+		$captured_fingerprint == "$mutation_baseline_fingerprint" ]]; then
+		unlink -- "$staged"
+		return
+	fi
+	restore_concurrent_config "$staged" "$published_fingerprint" "$published_fingerprint" || true
+	die_mutation_baseline_changed
+}
+
+write_config() {
+	local temporary
+	temporary=$(umask 077 && mktemp "$config_dir/.accessibility.conf.XXXXXX") ||
+		die 'cannot create temporary accessibility state'
+	{
+		printf '%s\n' "$protocol_header"
+		printf 'contrast\t%s\n' "${setting_values[contrast]}"
+		printf 'motion\t%s\n' "${setting_values[motion]}"
+	} >"$temporary"
+	chmod "$mutation_baseline_mode" -- "$temporary"
+	if [[ -n ${DWM_TEST_ACCESSIBILITY_PUBLISH_READY:-} ]]; then
+		: >"$DWM_TEST_ACCESSIBILITY_PUBLISH_READY"
+		while [[ ! -e ${DWM_TEST_ACCESSIBILITY_PUBLISH_RELEASE:-} ]]; do
+			sleep 0.01
+		done
+	fi
+	if ! mutation_baseline_unchanged; then
+		unlink -- "$temporary"
+		die_mutation_baseline_changed
+	fi
+	if [[ -n ${DWM_TEST_ACCESSIBILITY_EXCHANGE_READY:-} ]]; then
+		: >"$DWM_TEST_ACCESSIBILITY_EXCHANGE_READY"
+		while [[ ! -e ${DWM_TEST_ACCESSIBILITY_EXCHANGE_RELEASE:-} ]]; do
+			sleep 0.01
+		done
+	fi
+	publish_config "$temporary"
+}
+
+set_setting() {
+	local setting=$1 value=$2
+	valid_setting_value "$setting" "$value" || die "unsupported accessibility setting: $setting=$value"
+	ensure_mutation_paths
+	capture_mutation_baseline
+	wait_for_baseline_test_release
+	load_config || {
+		[[ $config_state == partial && $config_future_version == false ]] ||
+			die 'persistent accessibility state is unsafe or uses an unsupported version'
+	}
+	mutation_baseline_unchanged || die_mutation_baseline_changed
+	setting_values[$setting]=$value
+	write_config
+	printf 'accessibility-settings-action-protocol\t1\t0\nresult\tset\t%s\t%s\n' \
+		"$setting" "$value"
+}
+
+reset_settings() {
+	ensure_mutation_paths
+	capture_mutation_baseline
+	wait_for_baseline_test_release
+	load_config || {
+		[[ $config_state == partial && $config_future_version == false ]] ||
+			die 'persistent accessibility state is unsafe or uses an unsupported version'
+	}
+	mutation_baseline_unchanged || die_mutation_baseline_changed
+	set_defaults
+	write_config
+	printf 'accessibility-settings-action-protocol\t1\t0\nresult\treset\tall\tdefaults\n'
+}
+
+case ${1:-} in
+status)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	emit_status
+	;;
+watch)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	watch_config
+	;;
+set)
+	[[ $# -eq 3 ]] || {
+		usage
+		exit 2
+	}
+	set_setting "$2" "$3"
+	;;
+reset)
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 2
+	}
+	reset_settings
+	;;
+-h | --help | help)
+	usage
+	;;
+*)
+	usage
+	exit 2
+	;;
+esac

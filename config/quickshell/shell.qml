@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.SystemTray
+import qs.accessibility
 import qs.appearance
 import qs.controlcenter
 import qs.controls
@@ -172,6 +173,10 @@ ShellRoot {
 
     AppearanceModel {
         id: appearanceModel
+    }
+
+    AccessibilityModel {
+        id: accessibilityModel
     }
 
     PanelSettingsModel {

@@ -25,6 +25,12 @@ versions from `config.mk`.
 
 ### Added
 
+- Add versioned, user-owned accessibility policy state for managed-shell high
+  contrast and reduced motion. The root-scoped event-driven model applies
+  stronger semantic borders and zero-duration managed animations without
+  polling, while safe defaults, strict parsing, atomic writes, reset, and
+  unsafe-path rejection keep malformed or unavailable state isolated.
+
 - Group the existing bounded application text-scale choices under a dedicated
   Settings Accessibility section with keyboard-focusable apply and reset
   controls, wrapping actions for compact display sizes, and capability-scoped

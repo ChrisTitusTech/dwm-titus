@@ -122,4 +122,8 @@ Singleton {
     function panelSettingsCommand(action, args) {
         return helperCommand("dwm-panel-settings", action, args, true);
     }
+
+    function accessibilitySettingsCommand(action, args) {
+        return helperCommand("dwm-accessibility-settings", action, args, true);
+    }
 }

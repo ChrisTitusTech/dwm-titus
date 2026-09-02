@@ -13,12 +13,11 @@ accessibility capability contract after PR #188 completed `APPEARANCE-001` and
 PR #189 established the automatic small-PR workflow. Only the primary worktree
 remains registered.
 
-The current accessibility Settings boundary exposes the already-supported
-application text scale in a dedicated group with apply, reset, keyboard focus,
-and compact-width action wrapping. Contrast, reduced motion, notification
-policy, and practical keyboard or pointer access remain explanatory
-capability-scoped cards until their mutation contracts land separately. The
-overall Settings-controls checkbox remains open until those controls and the
+The current accessibility policy boundary adds persistent high-contrast and
+reduced-motion state and applies it to the managed shell without polling. The
+Settings pane still exposes those choices, notification policy, and practical
+keyboard or pointer access as explanatory capability cards. The overall
+Settings-controls checkbox remains open until dedicated controls and the
 required interaction evidence are complete.
 
 ## Active Phase: Personalization and Accessibility
@@ -102,7 +101,7 @@ Acceptance:
   available through supported Fedora/X11 interfaces.
 - [ ] Add accessible Settings controls with keyboard navigation, visible focus,
   usable common display sizes, explanatory unavailable states, and reset.
-- [ ] Apply reduced-motion and contrast choices consistently to managed
+- [x] Apply reduced-motion and contrast choices consistently to managed
   Quickshell surfaces without introducing a Wayland, compositor, or polling
   dependency.
 - [ ] Add notification behavior controls that preserve the existing D-Bus owner,
