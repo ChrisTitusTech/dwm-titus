@@ -27,6 +27,7 @@ Scope {
     readonly property int maxHistory: 50
     readonly property var popupTimeoutOptions: [4000, 6000, 10000]
     readonly property bool popupSuppressed: root.policyState === "loading"
+        || root.policyState === "unavailable"
         || root.doNotDisturb || (root.policySaving && root.confirmedDoNotDisturb)
     readonly property bool policyMutationReady: !root.policySaving
         && (root.policyState === "available" || root.policyState === "defaults")
@@ -313,12 +314,14 @@ Scope {
             }
         }
         onLoadFailed: error => {
-            root.usePolicyDefaults();
             if (error === FileViewError.FileNotFound) {
+                root.usePolicyDefaults();
                 root.policyState = "defaults";
                 root.policyDetail = "Default notification policy is active";
                 Qt.callLater(root.savePolicy);
             } else {
+                root.applyDoNotDisturb(root.confirmedDoNotDisturb);
+                root.popupTimeoutMs = root.confirmedPopupTimeoutMs;
                 root.policyState = "unavailable";
                 root.policyDetail = "Notification policy could not be loaded";
             }

@@ -389,6 +389,30 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ "$(ipc notifications policyState)" = available ]
+chmod 000 "$config_home/dwm-titus/notification-settings.json"
+touch "$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = unavailable ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = unavailable ]
+[ "$(ipc notifications doNotDisturb)" = true ]
+[ "$(ipc notifications popupTimeout)" = 4000 ]
+send_test_notification normal 'Suppressed during policy read failure'
+sleep 0.1
+[ "$(ipc notifications count)" = 0 ]
+[ "$(ipc notifications historyLatestSummary)" = 'Suppressed during policy read failure' ]
+chmod 600 "$config_home/dwm-titus/notification-settings.json"
+touch "$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = available ]
 ipc notifications resetPolicy >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
