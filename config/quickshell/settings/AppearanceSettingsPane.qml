@@ -1229,6 +1229,7 @@ Flickable {
                 }
 
                 PanelToggleSwitch {
+                    visible: root.notificationCapability.status === "available"
                     checked: root.notificationModel.doNotDisturb
                     enabled: root.notificationCapability.status === "available"
                         && root.notificationModel.policyMutationReady
@@ -1263,6 +1264,7 @@ Flickable {
             }
 
             NotificationTimeoutComboBox {
+                visible: root.notificationCapability.status === "available"
                 enabled: root.notificationCapability.status === "available"
                     && root.notificationModel.policyMutationReady
             }
@@ -1280,6 +1282,7 @@ Flickable {
             }
 
             ShellButton {
+                visible: root.notificationCapability.status === "available"
                 label: "Reset notifications"
                 enabled: root.notificationCapability.status === "available"
                     && root.notificationModel.policyResetReady
