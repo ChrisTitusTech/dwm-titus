@@ -1643,7 +1643,13 @@ appearance_recovery=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home X
 # contract. Removing the fault must refresh that strict gate from the
 # event-driven personalization selection change without a Settings refresh.
 test_stage='validating text-scale capability recovery synchronization'
-baseline_text_scale_capability=$(settings_ipc_retry capabilityStatus accessibility-text-scale)
+i=0
+while [ "$i" -lt 200 ]; do
+	baseline_text_scale_capability=$(settings_ipc_retry capabilityStatus accessibility-text-scale)
+	case $baseline_text_scale_capability in available | partial) break ;; esac
+	i=$((i + 1))
+	sleep 0.05
+done
 case $baseline_text_scale_capability in available | partial) ;; *) exit 1 ;; esac
 printf '%s\n' invalid-text-scale >"$appearance_failure_fixture"
 settings_ipc_retry appearanceRefresh >/dev/null

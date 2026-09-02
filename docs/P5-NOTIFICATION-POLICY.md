@@ -30,7 +30,9 @@ to the managed `shell.qml`. An unrelated daemon or alternate Quickshell
 configuration therefore remains observable but cannot enable ineffective
 managed controls. An unowned notification name keeps the controls unavailable;
 only the active verified D-Bus owner enables mutations. No privilege boundary
-or arbitrary command construction is added.
+or arbitrary command construction is added. While Settings Appearance is open,
+the existing D-Bus tooling watches `NameOwnerChanged` for the
+notification name and refreshes capability discovery without polling.
 
 ## Delivery Semantics
 

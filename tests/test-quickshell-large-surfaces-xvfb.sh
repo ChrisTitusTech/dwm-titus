@@ -443,9 +443,14 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$(ipc notifications policyState)" = partial ]
 send_test_notification normal 'Suppressed with malformed policy'
-sleep 0.1
-[ "$(ipc notifications count)" = 0 ]
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications historyLatestSummary)" = 'Suppressed with malformed policy' ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
 [ "$(ipc notifications historyLatestSummary)" = 'Suppressed with malformed policy' ]
+[ "$(ipc notifications count)" = 0 ]
 ipc notifications resetPolicy >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do

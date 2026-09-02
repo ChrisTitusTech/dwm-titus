@@ -21,7 +21,7 @@ in the Appearance section:
 | `accessibility-text-scale` | `dwm-settings-personalization` | Publishes the exact `available`, `partial`, or `unavailable` state and detail from one complete version 1 `text-size` selection. |
 | `accessibility-contrast` | `dwm-accessibility-settings` | `available` only when one bounded, complete version 1 status reports safe mutation readiness; otherwise `unavailable`. |
 | `accessibility-reduced-motion` | `dwm-accessibility-settings` | `available` only when one bounded, complete version 1 status reports safe mutation readiness; otherwise `unavailable`. |
-| `accessibility-notifications` | `dwm-notifications` or `dbus` | `available` only when the session notification owner's machine-readable PID resolves to Quickshell running the managed configuration. An unrelated owner is `partial`; no owner is `unavailable`, except for the bounded registration-settling state observed from the managed parent process. |
+| `accessibility-notifications` | `dwm-notifications` or `dbus` | `available` only when the session notification owner's machine-readable PID resolves to Quickshell running the managed configuration. An unrelated owner is `partial`; no owner is `unavailable`. Settings watches the D-Bus ownership signal while Appearance is open and refreshes this capability when the owner changes. |
 | `accessibility-input` | `dwm-settings-input` | `available` when bounded managed input discovery and `xkbset q` both succeed; missing or unresponsive XInput or XKB tooling reports the scoped `unavailable` reason. |
 
 ## Failure Isolation

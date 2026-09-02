@@ -34,6 +34,10 @@ grep -Fq 'root.applyDoNotDisturb(root.confirmedDoNotDisturb);' "$model"
 grep -Fq 'root.popupTimeoutMs = root.confirmedPopupTimeoutMs;' "$model"
 grep -Fq 'root.dismissNonCriticalPopups();' "$model"
 grep -Fq 'root.policyReloadPending = true;' "$model"
+if grep -Fq '} else if (root.policySaving)' "$model"; then
+	printf 'Notification policy reload still discards the next change as a self-write\n' >&2
+	exit 1
+fi
 grep -Fq 'error === FileViewError.FileNotFound' "$model"
 grep -Fq 'root.policyState = "partial";' "$model"
 policy_detail_line=$(grep -nF 'text: root.notificationModel.policyDetail' "$pane" | cut -d: -f1)

@@ -281,7 +281,8 @@ Scope {
             if (root.policySelfWriteExpected) {
                 root.policySelfWriteExpected = false;
                 policySelfWriteGuard.stop();
-            } else if (root.policySaving) root.policyReloadPending = true;
+            }
+            if (root.policySaving) root.policyReloadPending = true;
             else root.beginPolicyReload(true);
         }
         onSaved: {

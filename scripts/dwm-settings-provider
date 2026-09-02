@@ -6,7 +6,7 @@ script_dir=$(
 	cd -- "$(dirname -- "$0")" && pwd
 )
 usage() {
-	printf 'usage: %s discover\n' "$0" >&2
+	printf 'usage: %s discover|watch-notifications\n' "$0" >&2
 }
 
 clean_field() {
@@ -140,6 +140,15 @@ notification_process_is_managed() {
 		;;
 	esac
 	[ "$process_config_home" = "$config_home" ]
+}
+
+watch_notifications() {
+	monitor_path=$(provider_path busctl) || {
+		printf 'dwm-settings-provider: busctl is required\n' >&2
+		return 127
+	}
+	exec "$monitor_path" --user --no-pager monitor \
+		"--match=type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.Notifications'"
 }
 
 input_snapshot_valid() {
@@ -745,6 +754,13 @@ discover)
 		exit 2
 	}
 	discover
+	;;
+watch-notifications)
+	[ "$#" -eq 1 ] || {
+		usage
+		exit 2
+	}
+	watch_notifications
 	;;
 -h | --help | help)
 	usage
