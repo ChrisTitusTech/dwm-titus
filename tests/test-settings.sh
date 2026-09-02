@@ -170,7 +170,7 @@ make_malformed_known_input_stub() {
 
 base_bin=$work/base-bin
 fedora_bin=$work/fedora-bin
-make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
+make_tools "$base_bin" dirname awk tr stat find grep timeout readlink getconf
 cp -a "$base_bin" "$fedora_bin"
 
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
@@ -497,6 +497,8 @@ mismatched_notification_owner_output=$(PATH="$mismatched_notification_owner_bin"
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$mismatched_notification_owner_output" | grep -Fqx \
 	'capability	appearance	accessibility-notifications	Notification policy	partial	read-only	dbus	A notification owner is active, but it is not the managed policy provider'
+grep -Fq "notification_process_started_recently \"\$PPID\"" "$provider"
+grep -Fq "[ \"\$process_age_seconds\" -ge 0 ] && [ \"\$process_age_seconds\" -le 15 ]" "$provider"
 
 unsafe_theme_bin=$work/unsafe-theme-bin
 cp -a "$fedora_bin" "$unsafe_theme_bin"
