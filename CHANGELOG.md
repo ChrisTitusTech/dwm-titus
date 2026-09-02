@@ -25,6 +25,14 @@ versions from `config.mk`.
 
 ### Added
 
+- Add persistent notification policy controls to Settings Appearance. Do Not
+  Disturb suppresses low- and normal-urgency popups while retaining notification
+  history, critical notifications bypass suppression, and a bounded duration
+  selector controls ordinary popups. Capability discovery verifies that the
+  managed Quickshell process and configuration own the session notification
+  D-Bus name, while atomic save acknowledgement keeps failed persistence
+  visible and disables unsafe follow-up mutations.
+
 - Add session-wide XKB accessibility shortcuts, sticky keys, slow keys, bounce
   keys, and mouse keys to Input Settings. Fixed `xkbset` actions reuse the
   existing timed preview, automatic rollback, persistence, session-start replay,

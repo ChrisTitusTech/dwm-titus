@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls as Controls
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -9,9 +10,11 @@ Flickable {
 
     required property var appearanceModel
     required property var accessibilityModel
+    required property var notificationModel
     required property var panelSettingsModel
     required property var capabilities
     required property var textScaleCapability
+    required property var notificationCapability
     property string selectedThemeId: ""
     property string selectedWallpaperPath: ""
     property string selectedWallpaperFit: "fill"
@@ -40,7 +43,8 @@ Flickable {
         return capability.id.indexOf("accessibility-") === 0
             && capability.id !== "accessibility-text-scale"
             && capability.id !== "accessibility-contrast"
-            && capability.id !== "accessibility-reduced-motion";
+            && capability.id !== "accessibility-reduced-motion"
+            && capability.id !== "accessibility-notifications";
     })
     readonly property var additionalCapabilities: root.capabilities.filter(function(capability) {
         return capability.id.indexOf("accessibility-") !== 0;
@@ -267,6 +271,43 @@ Flickable {
                     accessibilityToggle.checked ? accessibilityToggle.disabledValue
                         : accessibilityToggle.enabledValue)
             }
+        }
+    }
+
+    component NotificationTimeoutComboBox: Controls.ComboBox {
+        id: notificationTimeoutCombo
+
+        readonly property var timeoutValues: [4000, 6000, 10000]
+
+        Layout.preferredWidth: 150
+        implicitHeight: Theme.controlHeight
+        activeFocusOnTab: enabled
+        model: ["4 seconds", "6 seconds", "10 seconds"]
+        currentIndex: notificationTimeoutCombo.timeoutValues.indexOf(
+            root.notificationModel.popupTimeoutMs)
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.inputFontSize
+        palette.button: Theme.controlNormalFill
+        palette.buttonText: Theme.controlNormalText
+        palette.base: Theme.popupBackground
+        palette.window: Theme.popupBackground
+        palette.text: Theme.popupText
+        palette.highlight: Theme.controlSelectedFill
+        palette.highlightedText: Theme.controlSelectedText
+        Accessible.name: "Notification popup duration"
+        Accessible.description: "Choose how long non-critical notification popups remain visible"
+        onActivated: index => root.notificationModel.setPopupTimeout(
+            notificationTimeoutCombo.timeoutValues[index])
+
+        delegate: Controls.ItemDelegate {
+            required property var modelData
+            required property int index
+
+            width: notificationTimeoutCombo.width
+            text: modelData
+            font: notificationTimeoutCombo.font
+            highlighted: notificationTimeoutCombo.highlightedIndex === index
+            hoverEnabled: notificationTimeoutCombo.hoverEnabled
         }
     }
 
@@ -1127,6 +1168,121 @@ Flickable {
             resetLabel: "Follow system scale"
             candidates: root.appearanceModel.desktopTextScaleCandidates
             capabilityGate: root.textScaleCapability
+        }
+
+        SectionLabel { label: "Notifications" }
+
+        UiText {
+            Layout.fillWidth: true
+            text: "Do Not Disturb suppresses low and normal urgency popups while retaining history. Critical notifications always remain visible for ten seconds."
+            color: Theme.menuMutedText
+            wrapMode: Text.WordWrap
+        }
+
+        StatusCard {
+            visible: root.notificationCapability.status !== "available"
+                || (root.notificationModel.policyState !== "available"
+                    && root.notificationModel.policyState !== "defaults")
+            label: "Managed notification policy"
+            statusState: root.notificationCapability.status !== "available"
+                ? root.notificationCapability.status : root.notificationModel.policyState
+            value: root.notificationCapability.status === "available"
+                ? root.notificationModel.policyState : root.notificationCapability.status
+            detail: root.notificationCapability.status !== "available"
+                ? root.notificationCapability.detail : root.notificationModel.policyDetail
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.max(64,
+                notificationToggleContent.implicitHeight + Theme.spacingLg * 2)
+            color: Theme.controlNormalFill
+            border.color: Theme.controlNormalBorder
+            border.width: Theme.controlBorderWidth
+            radius: Theme.controlRadius
+
+            RowLayout {
+                id: notificationToggleContent
+                anchors.fill: parent
+                anchors.margins: Theme.spacingLg
+                spacing: Theme.spacingLg
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacingXs
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: "Do Not Disturb"
+                        color: Theme.controlNormalText
+                        font.bold: true
+                    }
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: "Keep non-critical notifications in history without showing popups."
+                        color: Theme.menuMutedText
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                PanelToggleSwitch {
+                    checked: root.notificationModel.doNotDisturb
+                    enabled: root.notificationCapability.status === "available"
+                        && root.notificationModel.policyMutationReady
+                    accessibleName: "Do Not Disturb"
+                    accessibleDescription: "Suppress non-critical notification popups while preserving history"
+                    onToggled: root.notificationModel.setDoNotDisturb(
+                        !root.notificationModel.doNotDisturb)
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spacingXs
+
+                UiText {
+                    Layout.fillWidth: true
+                    text: "Popup duration"
+                    color: Theme.controlNormalText
+                    font.bold: true
+                }
+
+                UiText {
+                    Layout.fillWidth: true
+                    text: "Applies to low and normal urgency notifications."
+                    color: Theme.menuMutedText
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            NotificationTimeoutComboBox {
+                enabled: root.notificationCapability.status === "available"
+                    && root.notificationModel.policyMutationReady
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            UiText {
+                Layout.fillWidth: true
+                text: root.notificationModel.policyDetail
+                color: root.notificationModel.policyState === "unavailable"
+                    ? Theme.danger : Theme.menuMutedText
+                wrapMode: Text.WordWrap
+            }
+
+            ShellButton {
+                label: "Reset notifications"
+                enabled: root.notificationCapability.status === "available"
+                    && root.notificationModel.policyResetReady
+                onActivated: root.notificationModel.resetPolicy()
+            }
         }
 
         Repeater {

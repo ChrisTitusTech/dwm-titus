@@ -31,6 +31,13 @@ make_failing_stub() {
 	chmod +x "$path"
 }
 
+make_notification_bus_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' 'printf '\''{"type":"u","data":[4242]}\n'\''' >"$path"
+	chmod +x "$path"
+}
+
 make_appearance_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
@@ -159,9 +166,10 @@ make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
 cp -a "$base_bin" "$fedora_bin"
 
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
-	xdg-settings xdg-mime xinput xkbset busctl; do
+	xdg-settings xdg-mime xinput xkbset; do
 	make_stub "$fedora_bin/$command_name"
 done
+make_notification_bus_stub "$fedora_bin/busctl"
 make_stub "$fedora_bin/dwm-xdg-autostart"
 make_appearance_stub "$fedora_bin/dwm-settings-appearance"
 make_personalization_stub "$fedora_bin/dwm-settings-personalization"
@@ -212,7 +220,7 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	appearance	accessibility-reduced-motion	Reduced motion	available	user-session	dwm-accessibility-settings	Persistent managed-shell reduced-motion policy is available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	appearance	accessibility-notifications	Notification policy	partial	read-only	dbus	A notification D-Bus owner is active; managed policy controls are not configured'
+	'capability	appearance	accessibility-notifications	Notification policy	partial	read-only	dbus	A notification owner is active, but it is not the managed policy provider'
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	appearance	accessibility-input	Keyboard and pointer access	available	user-session	dwm-settings-input	Persistent XKB accessibility controls are available'
 [ "$(printf '%s\n' "$fedora_output" |
@@ -472,6 +480,14 @@ missing_notification_owner_output=$(PATH="$missing_notification_owner_bin" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
 printf '%s\n' "$missing_notification_owner_output" | grep -Fqx \
 	'capability	appearance	accessibility-notifications	Notification policy	unavailable	read-only	dbus	No notification D-Bus owner is observable in this session'
+
+mismatched_notification_owner_bin=$work/mismatched-notification-owner-bin
+cp -a "$fedora_bin" "$mismatched_notification_owner_bin"
+mismatched_notification_owner_output=$(PATH="$mismatched_notification_owner_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$mismatched_notification_owner_output" | grep -Fqx \
+	'capability	appearance	accessibility-notifications	Notification policy	partial	read-only	dbus	A notification owner is active, but it is not the managed policy provider'
 
 unsafe_theme_bin=$work/unsafe-theme-bin
 cp -a "$fedora_bin" "$unsafe_theme_bin"

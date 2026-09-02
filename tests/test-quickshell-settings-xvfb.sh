@@ -82,6 +82,21 @@ settings_ipc_retry() {
 	return 1
 }
 
+notification_ipc_retry() {
+	notification_ipc_attempt=0
+	while [ "$notification_ipc_attempt" -lt 20 ]; do
+		if notification_ipc_output=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call notifications "$@" 2>/dev/null); then
+			printf '%s\n' "$notification_ipc_output"
+			return 0
+		fi
+		notification_ipc_attempt=$((notification_ipc_attempt + 1))
+		sleep 0.05
+	done
+	printf 'Notification IPC call failed after retries: %s\n' "$*" >&2
+	return 1
+}
+
 start_quickshell() {
 	env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 		XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
@@ -682,6 +697,9 @@ cat >"$data_home/dwm-titus/scripts/busctl" <<'SH'
 #!/bin/sh
 set -eu
 case $* in
+'--user '*)
+	PATH=/usr/bin:/bin exec busctl "$@"
+	;;
 '--system --json=short call org.bluez / org.freedesktop.DBus.ObjectManager GetManagedObjects')
 	cat <<'JSON'
 {"type":"a{oa{sa{sv}}}","data":[{"/org/bluez/hci0":{"org.bluez.Adapter1":{"Address":{"type":"s","data":"00:11:22:33:44:55"},"Alias":{"type":"s","data":"Test Adapter"},"Powered":{"type":"b","data":true},"Discovering":{"type":"b","data":false},"Pairable":{"type":"b","data":true}}}}]}
@@ -1735,6 +1753,61 @@ printf 'accessibility-settings-protocol	1	0\ncontrast	standard\nmotion	full\n' |
 restart_quickshell
 wait_for_accessibility_values false false
 
+test_stage='validating notification policy persistence'
+i=0
+while [ "$i" -lt 200 ]; do
+	notification_capability=$(settings_ipc_retry capabilityStatus accessibility-notifications)
+	notification_policy_state=$(notification_ipc_retry policyState)
+	case $notification_capability:$notification_policy_state in
+	available:available | available:defaults | available:partial) break ;;
+	esac
+	i=$((i + 1))
+	sleep 0.05
+done
+case $notification_capability:$notification_policy_state in
+available:available | available:defaults | available:partial) ;;
+*)
+	printf 'Notification policy did not become ready: %s / %s\n' \
+		"$notification_capability" "$notification_policy_state" >&2
+	exit 1
+	;;
+esac
+notification_ipc_retry setDoNotDisturb true >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(notification_ipc_retry policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(notification_ipc_retry policyState)" = available ]
+notification_ipc_retry setPopupTimeout 4000 >/dev/null
+[ "$(notification_ipc_retry doNotDisturb)" = true ]
+[ "$(notification_ipc_retry popupTimeout)" = 4000 ]
+test_stage='validating notification policy after restart'
+restart_quickshell
+[ "$(notification_ipc_retry doNotDisturb)" = true ]
+[ "$(notification_ipc_retry popupTimeout)" = 4000 ]
+notification_ipc_retry resetPolicy >/dev/null
+[ "$(notification_ipc_retry doNotDisturb)" = false ]
+[ "$(notification_ipc_retry popupTimeout)" = 6000 ]
+printf '%s\n' '{"version":2,"doNotDisturb":true,"popupTimeoutMs":1}' \
+	>"$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	notification_policy_state=$(notification_ipc_retry policyState)
+	[ "$notification_policy_state" = partial ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$notification_policy_state" = partial ]
+[ "$(notification_ipc_retry doNotDisturb)" = false ]
+[ "$(notification_ipc_retry popupTimeout)" = 6000 ]
+notification_ipc_retry resetPolicy >/dev/null
+[ "$(notification_ipc_retry policyState)" = available ]
+restart_quickshell
+[ "$(notification_ipc_retry doNotDisturb)" = false ]
+[ "$(notification_ipc_retry popupTimeout)" = 6000 ]
+
 test_stage='validating shared panel widget persistence'
 panel_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelSettingsState)
@@ -2547,18 +2620,39 @@ baseline_text_size_state=$(settings_ipc_retry appearancePersonalizationEffective
 baseline_text_size_apply_state=$(settings_ipc_retry appearancePersonalizationApplyState text-size)
 baseline_text_size_reset_state=$(settings_ipc_retry appearancePersonalizationResetState text-size)
 baseline_theme_mutation_ready=$(settings_ipc_retry appearanceMutationReady)
-cursor_reset_baseline_valid=false
-case $baseline_cursor_reset_state in available | restricted) cursor_reset_baseline_valid=true ;; esac
-icon_reset_baseline_valid=false
-case $baseline_icon_reset_state in available | restricted) icon_reset_baseline_valid=true ;; esac
-text_size_baseline_valid=false
-case $baseline_text_size_state in
-available | partial)
-	case $baseline_text_size_apply_state/$baseline_text_size_reset_state in
-	available/available | restricted/restricted) text_size_baseline_valid=true ;;
+i=0
+while [ "$i" -lt 200 ]; do
+	baseline_inventory_watch_state=$(settings_ipc_retry appearanceInventoryWatchState)
+	baseline_font_mutation_ready=$(settings_ipc_retry appearanceFontMutationReady)
+	baseline_cursor_reset_state=$(settings_ipc_retry appearancePersonalizationResetState cursor)
+	baseline_icon_reset_state=$(settings_ipc_retry appearancePersonalizationResetState icon)
+	baseline_text_size_state=$(settings_ipc_retry appearancePersonalizationEffectiveState text-size)
+	baseline_text_size_apply_state=$(settings_ipc_retry appearancePersonalizationApplyState text-size)
+	baseline_text_size_reset_state=$(settings_ipc_retry appearancePersonalizationResetState text-size)
+	baseline_theme_mutation_ready=$(settings_ipc_retry appearanceMutationReady)
+	cursor_reset_baseline_valid=false
+	case $baseline_cursor_reset_state in available | restricted) cursor_reset_baseline_valid=true ;; esac
+	icon_reset_baseline_valid=false
+	case $baseline_icon_reset_state in available | restricted) icon_reset_baseline_valid=true ;; esac
+	text_size_baseline_valid=false
+	case $baseline_text_size_state in
+	available | partial)
+		case $baseline_text_size_apply_state/$baseline_text_size_reset_state in
+		available/available | restricted/restricted) text_size_baseline_valid=true ;;
+		esac
+		;;
 	esac
-	;;
-esac
+	if [ "$baseline_inventory_watch_state" = available ] &&
+		[ "$baseline_font_mutation_ready" = true ] &&
+		[ "$cursor_reset_baseline_valid" = true ] &&
+		[ "$icon_reset_baseline_valid" = true ] &&
+		[ "$text_size_baseline_valid" = true ] &&
+		[ "$baseline_theme_mutation_ready" = true ]; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.05
+done
 if [ "$baseline_inventory_watch_state" != available ] ||
 	[ "$baseline_font_mutation_ready" != true ] ||
 	[ "$cursor_reset_baseline_valid" != true ] ||

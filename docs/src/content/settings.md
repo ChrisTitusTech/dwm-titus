@@ -48,6 +48,14 @@ slow keys, bounce keys, and mouse keys when `xkbset` can reach the X11 session.
 These controls use the same 15-second preview and reset workflow, but are not
 tied to one physical keyboard. Kept choices are restored at the next login.
 
+The Appearance section also manages notification behavior. **Do Not Disturb**
+suppresses low and normal urgency popups without discarding their history;
+critical notifications remain visible. Choose a four-, six-, or ten-second
+ordinary popup duration, or reset both choices to Do Not Disturb off and six
+seconds. These choices persist for future managed Quickshell sessions. Settings
+keeps them read-only when another notification daemon owns the session D-Bus
+name.
+
 Type to search section names and descriptions. Use Up and Down to move through
 the filtered sections, Enter to select one, or Escape to close Settings. The
 Refresh button runs a new bounded capability snapshot; Settings does not add an

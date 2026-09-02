@@ -4,9 +4,9 @@
 
 This `ACCESSIBILITY-001` review boundary replaces the generic accessibility
 placeholder in Settings discovery with five independently truthful capability
-records. It defines the read-only contract only. Settings controls, persistent
-contrast and reduced-motion state, and notification-policy mutation remain
-separate review boundaries.
+records. It originally defined the read-only contract only. Later review
+boundaries added Settings controls and persistent contrast, reduced-motion,
+input, and notification policy.
 
 Subsequent `ACCESSIBILITY-001` boundaries added managed-shell contrast and
 motion policy plus dedicated Settings controls. The table below reflects the
@@ -21,7 +21,7 @@ in the Appearance section:
 | `accessibility-text-scale` | `dwm-settings-personalization` | Publishes the exact `available`, `partial`, or `unavailable` state and detail from one complete version 1 `text-size` selection. |
 | `accessibility-contrast` | `dwm-accessibility-settings` | `available` only when one bounded, complete version 1 status reports safe mutation readiness; otherwise `unavailable`. |
 | `accessibility-reduced-motion` | `dwm-accessibility-settings` | `available` only when one bounded, complete version 1 status reports safe mutation readiness; otherwise `unavailable`. |
-| `accessibility-notifications` | `dbus` | `partial` when a session notification owner is active; otherwise `unavailable`. Policy controls are not configured. |
+| `accessibility-notifications` | `dwm-notifications` or `dbus` | `available` only when the session notification owner's machine-readable PID resolves to Quickshell running the managed configuration. An unrelated owner is `partial`; no owner is `unavailable`, except for the bounded registration-settling state observed from the managed parent process. |
 | `accessibility-input` | `dwm-settings-input` | `available` when bounded managed input discovery and `xkbset q` both succeed; missing or unresponsive XInput or XKB tooling reports the scoped `unavailable` reason. |
 
 ## Failure Isolation
@@ -46,8 +46,9 @@ capabilities unavailable.
 
 The original capability boundary added no QML object, timer, subscription,
 state file, package, privileged helper, or mutation action. Later boundaries
-own the event-driven model, persistent helper, Settings controls, and the fixed
-XKB accessibility actions documented in `P5-INPUT-ACCESSIBILITY.md`.
+own the event-driven model, persistent Settings controls, fixed XKB actions
+documented in `P5-INPUT-ACCESSIBILITY.md`, and notification policy documented
+in `P5-NOTIFICATION-POLICY.md`.
 
 ## Validation Evidence
 

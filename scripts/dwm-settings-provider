@@ -60,6 +60,93 @@ run_bounded_probe() {
 		"$command_path" "$@" >/dev/null 2>&1
 }
 
+run_bounded_output() {
+	command_name=$1
+	shift
+	command_path=$(provider_path "$command_name") || return 1
+	timeout_path=$(command -v timeout 2>/dev/null) || return 1
+	"$timeout_path" --signal=TERM --kill-after=1 2 \
+		"$command_path" "$@" 2>/dev/null
+}
+
+notification_owner_pid() {
+	owner_record=$(run_bounded_output busctl --user --json=short call \
+		org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus \
+		GetConnectionUnixProcessID s org.freedesktop.Notifications) || return 1
+	case $owner_record in
+	'{"type":"u","data":['*']}') ;;
+	*) return 1 ;;
+	esac
+	owner_pid=${owner_record#'{"type":"u","data":['}
+	owner_pid=${owner_pid%??}
+	case $owner_pid in
+	'' | *[!0-9]* | 0) return 1 ;;
+	esac
+	printf '%s\n' "$owner_pid"
+}
+
+notification_process_is_managed() {
+	notification_process_pid=$1
+	config_home=${XDG_CONFIG_HOME:-${HOME:-}/.config}
+	case $config_home in /*) ;; *) return 1 ;; esac
+	case $notification_process_pid in '' | *[!0-9]* | 0) return 1 ;; esac
+	process_executable=$(readlink "/proc/$notification_process_pid/exe" 2>/dev/null) || return 1
+	[ "${process_executable##*/}" = quickshell ] || return 1
+	[ -r "/proc/$notification_process_pid/cmdline" ] || return 1
+	process_path_mode=$(tr '\0' '\n' <"/proc/$notification_process_pid/cmdline" |
+		awk -v expected_path="$config_home/quickshell/shell.qml" '
+			$0 == "--path" || $0 == "-p" {
+				explicit = 1
+				if (getline configured_path <= 0 || configured_path != expected_path) invalid = 1
+			}
+			index($0, "--path=") == 1 {
+				explicit = 1
+				if (substr($0, 8) != expected_path) invalid = 1
+			}
+			$0 == "--config" || $0 == "-c" || $0 == "--manifest" || $0 == "-m" {
+				invalid = 1
+				getline ignored
+			}
+			index($0, "--config=") == 1 || index($0, "--manifest=") == 1 { invalid = 1 }
+			END {
+				if (invalid) exit 1
+				print explicit ? "explicit" : "default"
+			}
+		') || return 1
+	[ "$process_path_mode" = default ] || return 0
+	[ -r "/proc/$notification_process_pid/environ" ] || return 1
+	process_selector_mode=$(tr '\0' '\n' <"/proc/$notification_process_pid/environ" |
+		awk -F= -v expected_path="$config_home/quickshell/shell.qml" '
+			$1 == "QS_CONFIG_PATH" { path = substr($0, index($0, "=") + 1) }
+			$1 == "QS_CONFIG_NAME" { name = substr($0, index($0, "=") + 1) }
+			$1 == "QS_MANIFEST" { manifest = substr($0, index($0, "=") + 1) }
+			END {
+				if (path != "") {
+					if (path == expected_path && name == "" && manifest == "") print "explicit"
+					else exit 1
+				} else if ((name == "" || name == "default") && manifest == "") print "default"
+				else exit 1
+			}
+		') || return 1
+	[ "$process_selector_mode" = default ] || return 0
+	process_config_home=$(tr '\0' '\n' <"/proc/$notification_process_pid/environ" |
+		awk -F= '$1 == "XDG_CONFIG_HOME" { print substr($0, index($0, "=") + 1); exit }')
+	case $process_config_home in
+	/*) ;;
+	*)
+		process_home=$(tr '\0' '\n' <"/proc/$notification_process_pid/environ" |
+			awk -F= '$1 == "HOME" { print substr($0, index($0, "=") + 1); exit }')
+		case $process_home in /*) process_config_home=$process_home/.config ;; *) return 1 ;; esac
+		;;
+	esac
+	[ "$process_config_home" = "$config_home" ]
+}
+
+notification_bus_available() {
+	run_bounded_probe busctl --user --quiet call org.freedesktop.DBus \
+		/org/freedesktop/DBus org.freedesktop.DBus GetId
+}
+
 input_snapshot_valid() {
 	command_path=$(provider_path dwm-settings-input) || return 1
 	timeout_path=$(command -v timeout 2>/dev/null) || return 1
@@ -376,9 +463,18 @@ emit_accessibility_capabilities() {
 		emit_capability appearance accessibility-reduced-motion 'Reduced motion' unavailable user-session \
 			dwm-accessibility-settings 'Install the managed accessibility settings provider'
 	fi
-	if run_bounded_probe busctl --user --quiet status org.freedesktop.Notifications; then
-		emit_capability appearance accessibility-notifications 'Notification policy' partial read-only \
-			dbus 'A notification D-Bus owner is active; managed policy controls are not configured'
+	notification_pid=$(notification_owner_pid 2>/dev/null || true)
+	if [ -n "$notification_pid" ]; then
+		if notification_process_is_managed "$notification_pid"; then
+			emit_capability appearance accessibility-notifications 'Notification policy' available user-session \
+				dwm-notifications 'Persistent Do Not Disturb and bounded popup duration controls are available'
+		else
+			emit_capability appearance accessibility-notifications 'Notification policy' partial read-only \
+				dbus 'A notification owner is active, but it is not the managed policy provider'
+		fi
+	elif notification_process_is_managed "$PPID" && notification_bus_available; then
+		emit_capability appearance accessibility-notifications 'Notification policy' available user-session \
+			dwm-notifications 'Managed notification policy is available while D-Bus name registration settles'
 	else
 		emit_capability appearance accessibility-notifications 'Notification policy' unavailable read-only \
 			dbus 'No notification D-Bus owner is observable in this session'
