@@ -72,15 +72,25 @@ Scope {
     }
 
     function loadPolicy() {
-        if (policyFile.version !== 1 || typeof policyFile.doNotDisturb !== "boolean"
-                || !root.validPopupTimeout(policyFile.popupTimeoutMs)) {
+        let policy = null;
+        try {
+            policy = JSON.parse(policyFile.text());
+        } catch (error) {
+            root.usePolicyDefaults();
+            root.policyState = "partial";
+            root.policyDetail = "Saved notification policy could not be parsed; safe defaults are active until reset";
+            return;
+        }
+        if (policy === null || typeof policy !== "object" || Array.isArray(policy)
+                || policy.version !== 1 || typeof policy.doNotDisturb !== "boolean"
+                || !root.validPopupTimeout(policy.popupTimeoutMs)) {
             root.usePolicyDefaults();
             root.policyState = "partial";
             root.policyDetail = "Saved notification policy is invalid; safe defaults are active until reset";
             return;
         }
-        root.applyDoNotDisturb(policyFile.doNotDisturb);
-        root.popupTimeoutMs = policyFile.popupTimeoutMs;
+        root.applyDoNotDisturb(policy.doNotDisturb);
+        root.popupTimeoutMs = policy.popupTimeoutMs;
         if (root.policySaving) return;
         root.confirmedDoNotDisturb = root.doNotDisturb;
         root.confirmedPopupTimeoutMs = root.popupTimeoutMs;
@@ -89,15 +99,16 @@ Scope {
     }
 
     function savePolicy() {
-        policyFile.version = 1;
-        policyFile.doNotDisturb = root.doNotDisturb;
-        policyFile.popupTimeoutMs = root.popupTimeoutMs;
         root.policySaving = true;
         root.policySelfWriteExpected = true;
         policySelfWriteGuard.restart();
         root.policyState = "saving";
         root.policyDetail = "Saving notification policy";
-        policyFile.writeAdapter();
+        policyFile.setText(JSON.stringify({
+            "version": 1,
+            "doNotDisturb": root.doNotDisturb,
+            "popupTimeoutMs": root.popupTimeoutMs
+        }) + "\n");
     }
 
     function setDoNotDisturb(enabled) {
@@ -259,10 +270,6 @@ Scope {
     FileView {
         id: policyFile
 
-        property alias version: policyAdapter.version
-        property alias doNotDisturb: policyAdapter.doNotDisturb
-        property alias popupTimeoutMs: policyAdapter.popupTimeoutMs
-
         path: root.policyPath
         watchChanges: true
         atomicWrites: true
@@ -307,7 +314,7 @@ Scope {
         }
         onLoadFailed: error => {
             root.usePolicyDefaults();
-            if (error === 2) {
+            if (error === FileViewError.FileNotFound) {
                 root.policyState = "defaults";
                 root.policyDetail = "Default notification policy is active";
                 Qt.callLater(root.savePolicy);
@@ -315,15 +322,6 @@ Scope {
                 root.policyState = "unavailable";
                 root.policyDetail = "Notification policy could not be loaded";
             }
-        }
-
-        // qmllint disable unresolved-type
-        adapter: JsonAdapter {
-            id: policyAdapter
-
-            property int version: 0
-            property bool doNotDisturb: false
-            property int popupTimeoutMs: 6000
         }
     }
 

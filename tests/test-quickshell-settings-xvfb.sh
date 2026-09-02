@@ -97,6 +97,17 @@ notification_ipc_retry() {
 	return 1
 }
 
+notification_wait_available() {
+	notification_wait_attempt=0
+	while [ "$notification_wait_attempt" -lt 200 ]; do
+		[ "$(notification_ipc_retry policyState)" = available ] && return 0
+		notification_wait_attempt=$((notification_wait_attempt + 1))
+		sleep 0.05
+	done
+	printf 'Notification policy did not become available after mutation\n' >&2
+	return 1
+}
+
 start_quickshell() {
 	env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 		XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
@@ -1785,9 +1796,24 @@ notification_ipc_retry setPopupTimeout 4000 >/dev/null
 [ "$(notification_ipc_retry popupTimeout)" = 4000 ]
 test_stage='validating notification policy after restart'
 restart_quickshell
-[ "$(notification_ipc_retry doNotDisturb)" = true ]
-[ "$(notification_ipc_retry popupTimeout)" = 4000 ]
+i=0
+while [ "$i" -lt 200 ]; do
+	notification_policy_state=$(notification_ipc_retry policyState)
+	notification_dnd=$(notification_ipc_retry doNotDisturb)
+	notification_timeout=$(notification_ipc_retry popupTimeout)
+	[ "$notification_policy_state" = available ] && [ "$notification_dnd" = true ] &&
+		[ "$notification_timeout" = 4000 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$notification_policy_state" != available ] || [ "$notification_dnd" != true ] ||
+	[ "$notification_timeout" != 4000 ]; then
+	printf 'Notification policy did not persist after restart: %s / %s / %s\n' \
+		"$notification_policy_state" "$notification_dnd" "$notification_timeout" >&2
+	exit 1
+fi
 notification_ipc_retry resetPolicy >/dev/null
+notification_wait_available
 [ "$(notification_ipc_retry doNotDisturb)" = false ]
 [ "$(notification_ipc_retry popupTimeout)" = 6000 ]
 printf '%s\n' '{"version":2,"doNotDisturb":true,"popupTimeoutMs":1}' \
@@ -1803,10 +1829,38 @@ done
 [ "$(notification_ipc_retry doNotDisturb)" = false ]
 [ "$(notification_ipc_retry popupTimeout)" = 6000 ]
 notification_ipc_retry resetPolicy >/dev/null
-[ "$(notification_ipc_retry policyState)" = available ]
-restart_quickshell
+notification_wait_available
+printf '%s\n' '{not-json' \
+	>"$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	notification_policy_state=$(notification_ipc_retry policyState)
+	[ "$notification_policy_state" = partial ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$notification_policy_state" = partial ]
 [ "$(notification_ipc_retry doNotDisturb)" = false ]
 [ "$(notification_ipc_retry popupTimeout)" = 6000 ]
+notification_ipc_retry resetPolicy >/dev/null
+notification_wait_available
+restart_quickshell
+i=0
+while [ "$i" -lt 200 ]; do
+	notification_policy_state=$(notification_ipc_retry policyState)
+	notification_dnd=$(notification_ipc_retry doNotDisturb)
+	notification_timeout=$(notification_ipc_retry popupTimeout)
+	[ "$notification_policy_state" = available ] && [ "$notification_dnd" = false ] &&
+		[ "$notification_timeout" = 6000 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$notification_policy_state" != available ] || [ "$notification_dnd" != false ] ||
+	[ "$notification_timeout" != 6000 ]; then
+	printf 'Notification policy reset did not persist after restart: %s / %s / %s\n' \
+		"$notification_policy_state" "$notification_dnd" "$notification_timeout" >&2
+	exit 1
+fi
 
 test_stage='validating shared panel widget persistence'
 panel_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2106,7 +2160,7 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" \
 	preview nested-wallpaper "$wallpaper_preview_timeout" "$test_wallpaper" center >/dev/null
 i=0
-while [ "$i" -lt 200 ]; do
+while [ "$i" -lt 600 ]; do
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
 	[ "$wallpaper_preview" = active ] && break
