@@ -103,6 +103,27 @@ HOME=$home XDG_CONFIG_HOME=$config XDG_RUNTIME_DIR=$runtime \
 	"$helper" watch >"$work/watch.out" 2>"$work/watch.err" &
 watch_pid=$!
 wait_for_line "$work/watch.out" 'ready	accessibility'
+run_helper status >/dev/null
+sleep 0.1
+if grep -Eq '^changed	' "$work/watch.out"; then
+	printf 'Accessibility readiness probe leaked a policy change event\n' >&2
+	exit 1
+fi
+chmod 0777 "$config/dwm-titus"
+wait_for_line "$work/watch.out" 'changed	ATTRIB,ISDIR	'
+chmod 0700 "$config/dwm-titus"
+for _ in $(seq 1 200); do
+	[ "$(grep -Fxc 'changed	ATTRIB,ISDIR	' "$work/watch.out")" -ge 2 ] && break
+	sleep 0.01
+done
+[ "$(grep -Fxc 'changed	ATTRIB,ISDIR	' "$work/watch.out")" -ge 2 ]
+: >"$config/dwm-titus/cache-MOVE_SELF"
+sleep 0.1
+if ! kill -0 "$watch_pid" 2>/dev/null; then
+	printf 'Accessibility watcher treated a filename as a self event\n' >&2
+	exit 1
+fi
+rm "$config/dwm-titus/cache-MOVE_SELF"
 run_helper set contrast high >/dev/null
 for _ in $(seq 1 200); do
 	grep -Eq '^changed	' "$work/watch.out" 2>/dev/null && break
@@ -167,6 +188,40 @@ cmp "$work/future.before" "$config/dwm-titus/accessibility.conf"
 
 printf 'accessibility-settings-protocol	1	0\ncontrast	standard\nmotion	full\n' \
 	>"$config/dwm-titus/accessibility.conf"
+no_write_status=$(
+	ulimit -f 0
+	run_helper status
+)
+printf '%s\n' "$no_write_status" | grep -Fqx \
+	'mutation	available	Accessibility policy can be updated'
+printf '%s\n' "$no_write_status" | grep -Fqx 'complete	status'
+real_mv=$(command -v mv)
+no_exchange_bin=$work/no-exchange-bin
+mkdir "$no_exchange_bin"
+cat >"$no_exchange_bin/mv" <<EOF
+#!/bin/sh
+for argument do
+	[ "\$argument" != --exchange ] || exit 1
+done
+exec "$real_mv" "\$@"
+EOF
+chmod 700 "$no_exchange_bin/mv"
+no_exchange_config=$work/no-exchange-config
+mkdir "$no_exchange_config"
+initial_exchange_unavailable_status=$(HOME=$home XDG_CONFIG_HOME=$no_exchange_config \
+	XDG_RUNTIME_DIR=$runtime PATH="$no_exchange_bin:$PATH" "$helper" status)
+printf '%s\n' "$initial_exchange_unavailable_status" | grep -Fqx \
+	'mutation	unavailable	Atomic accessibility state exchange is unavailable on the configuration filesystem'
+[ ! -e "$no_exchange_config/dwm-titus/accessibility.conf" ]
+exchange_unavailable_status=$(HOME=$home XDG_CONFIG_HOME=$config XDG_RUNTIME_DIR=$runtime \
+	PATH="$no_exchange_bin:$PATH" "$helper" status)
+printf '%s\n' "$exchange_unavailable_status" | grep -Fqx \
+	'mutation	unavailable	Atomic accessibility state exchange is unavailable on the configuration filesystem'
+if find "$config/dwm-titus" -maxdepth 1 -name '.accessibility-exchange-*' -print -quit |
+	grep -q .; then
+	printf 'Accessibility readiness probe left temporary files behind\n' >&2
+	exit 1
+fi
 exchange_ready=$work/exchange.ready
 exchange_release=$work/exchange.release
 rollback_ready=$work/rollback.ready

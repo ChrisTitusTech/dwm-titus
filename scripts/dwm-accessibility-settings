@@ -27,6 +27,8 @@ config_future_version=false
 watch_work=
 watch_child=
 watch_fd_open=false
+readiness_probe_first=
+readiness_probe_second=
 
 usage() {
 	printf 'usage: %s status | watch | set {contrast|motion} VALUE | reset\n' "${0##*/}" >&2
@@ -128,6 +130,7 @@ load_config() {
 }
 
 emit_status() {
+	local readiness_status
 	load_config || true
 	printf '%s\n' "$protocol_header"
 	printf 'state\t%s\t%s\n' "$config_state" "$config_detail"
@@ -136,7 +139,16 @@ emit_status() {
 	if [[ $config_state == unavailable || $config_future_version == true ]]; then
 		printf 'mutation\tunavailable\tPersistent accessibility state cannot be safely replaced\n'
 	else
-		printf 'mutation\tavailable\tAccessibility policy can be updated\n'
+		if mutation_exchange_ready; then
+			printf 'mutation\tavailable\tAccessibility policy can be updated\n'
+		else
+			readiness_status=$?
+			if ((readiness_status == 1)); then
+				printf 'mutation\tunavailable\tGNU mv atomic exchange support is unavailable\n'
+			else
+				printf 'mutation\tunavailable\tAtomic accessibility state exchange is unavailable on the configuration filesystem\n'
+			fi
+		fi
 	fi
 	printf 'complete\tstatus\n'
 }
@@ -171,7 +183,7 @@ watch_cleanup() {
 }
 
 watch_config() {
-	local event status=0 attempts=0 restart=false
+	local event event_types event_name status=0 attempts=0 restart=false
 	command -v inotifywait >/dev/null 2>&1 ||
 		die 'inotifywait is required for accessibility state watching'
 	if [[ ! -e $config_dir && ! -L $config_dir ]]; then
@@ -187,7 +199,7 @@ watch_config() {
 	: >"$watch_work/ready"
 	inotifywait -m -P \
 		-e attrib,close_write,create,delete,delete_self,moved_from,moved_to,move_self \
-		--format $'changed\t%e' -- "$config_dir" >"$watch_work/events" 2>"$watch_work/ready" &
+		--format $'changed\t%e\t%f' -- "$config_dir" >"$watch_work/events" 2>"$watch_work/ready" &
 	watch_child=$!
 	exec 8<"$watch_work/events"
 	watch_fd_open=true
@@ -203,10 +215,16 @@ watch_config() {
 	done
 	printf 'ready\taccessibility\n'
 	while IFS= read -r event <&8; do
-		printf '%s\n' "$event"
-		if [[ $event == *DELETE_SELF* || $event == *MOVE_SELF* ]]; then
+		event_types=${event#*$'\t'}
+		event_types=${event_types%%$'\t'*}
+		event_name=${event##*$'\t'}
+		if [[ ,$event_types, == *,DELETE_SELF,* || ,$event_types, == *,MOVE_SELF,* ]]; then
+			printf '%s\n' "$event"
 			restart=true
 			break
+		elif [[ $event_name == accessibility.conf ||
+			(-z $event_name && ,$event_types, == *,ATTRIB,* && ,$event_types, == *,ISDIR,*) ]]; then
+			printf '%s\n' "$event"
 		fi
 	done
 	if [[ $restart == true ]]; then
@@ -294,6 +312,55 @@ mv_exchange_options_supported() {
 	local help
 	help=$(LC_ALL=C mv --help 2>/dev/null) || return 1
 	[[ $help == *'--exchange'* && $help == *'--no-copy'* ]]
+}
+
+cleanup_mutation_readiness_probe() {
+	local probe_path
+	for probe_path in "$readiness_probe_first" "$readiness_probe_second"; do
+		[[ -z $probe_path || (! -e $probe_path && ! -L $probe_path) ]] ||
+			unlink -- "$probe_path"
+	done
+	readiness_probe_first=
+	readiness_probe_second=
+}
+
+mutation_exchange_ready() {
+	local exchanged=false first_identity second_identity
+	mv_exchange_options_supported || return 1
+	if [[ ! -e $config_dir && ! -L $config_dir ]]; then
+		(umask 077 && mkdir -p -- "$config_dir") || return 2
+	fi
+	config_dir_safe || return 2
+	trap 'cleanup_mutation_readiness_probe; exit 143' HUP INT TERM
+	trap cleanup_mutation_readiness_probe EXIT
+	readiness_probe_first=$(umask 077 && mktemp "$config_dir/.accessibility-exchange-a.XXXXXX") || {
+		cleanup_mutation_readiness_probe
+		trap - EXIT HUP INT TERM
+		return 2
+	}
+	readiness_probe_second=$(umask 077 && mktemp "$config_dir/.accessibility-exchange-b.XXXXXX") || {
+		cleanup_mutation_readiness_probe
+		trap - EXIT HUP INT TERM
+		return 2
+	}
+	first_identity=$(stat -c '%d:%i' -- "$readiness_probe_first") || {
+		cleanup_mutation_readiness_probe
+		trap - EXIT HUP INT TERM
+		return 2
+	}
+	second_identity=$(stat -c '%d:%i' -- "$readiness_probe_second") || {
+		cleanup_mutation_readiness_probe
+		trap - EXIT HUP INT TERM
+		return 2
+	}
+	if mv --exchange --no-copy -- "$readiness_probe_first" "$readiness_probe_second" &&
+		[[ $(stat -c '%d:%i' -- "$readiness_probe_first") == "$second_identity" &&
+		$(stat -c '%d:%i' -- "$readiness_probe_second") == "$first_identity" ]]; then
+		exchanged=true
+	fi
+	cleanup_mutation_readiness_probe
+	trap - EXIT HUP INT TERM
+	[[ $exchanged == true ]] || return 2
 }
 
 wait_for_rollback_test_release() {

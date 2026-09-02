@@ -828,6 +828,10 @@ ShellRoot {
             return accessibilityModel.mutationReady;
         }
 
+        function accessibilityBusy(): bool {
+            return accessibilityModel.busy;
+        }
+
         function accessibilityHighContrast(): bool {
             return accessibilityModel.highContrast;
         }

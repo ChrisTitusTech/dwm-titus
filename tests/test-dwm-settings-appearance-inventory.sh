@@ -117,6 +117,8 @@ config_dir=$(readlink -m -- "$XDG_CONFIG_HOME/dwm-titus")
 appearance_state_dir=$(readlink -m -- "${XDG_STATE_HOME:-$HOME/.local/state}/dwm-titus/appearance")
 printf 'CREATE\t%s/.font-exchange-a.fixture\n' "$config_dir"
 printf 'DELETE\t%s/.font-exchange-b.fixture\n' "$config_dir"
+printf 'CREATE\t%s/.accessibility-exchange-a.fixture\n' "$config_dir"
+printf 'DELETE\t%s/.accessibility-exchange-b.fixture\n' "$config_dir"
 printf 'ATTRIB,ISDIR\t%s/\n' "$appearance_state_dir"
 printf 'CREATE\t%s/new.png\n' "$DWM_APPEARANCE_WALLPAPER_DIR"
 EOF
@@ -650,6 +652,10 @@ if grep -Fq '.font-exchange-' "$work/watch.out"; then
 	printf 'Inventory watcher exposed managed font capability probe churn\n' >&2
 	exit 1
 fi
+if grep -Fq '.accessibility-exchange-' "$work/watch.out"; then
+	printf 'Inventory watcher exposed managed accessibility capability probe churn\n' >&2
+	exit 1
+fi
 if grep -Fq $'changed\tATTRIB,ISDIR\t' "$work/watch.out"; then
 	printf 'Inventory watcher exposed managed font readiness state churn\n' >&2
 	exit 1
@@ -667,6 +673,10 @@ grep -Fqx $'ready\tinventory' "$work/symlink-watch.out"
 grep -Fqx $'changed\tCREATE\t'"$wallpaper_dir/new.png" "$work/symlink-watch.out"
 if grep -Fq '.font-exchange-' "$work/symlink-watch.out"; then
 	printf 'Inventory watcher exposed font probe churn through a symlinked config path\n' >&2
+	exit 1
+fi
+if grep -Fq '.accessibility-exchange-' "$work/symlink-watch.out"; then
+	printf 'Inventory watcher exposed accessibility probe churn through a symlinked config path\n' >&2
 	exit 1
 fi
 if grep -Fq $'changed\tATTRIB,ISDIR\t' "$work/symlink-watch.out"; then

@@ -473,6 +473,9 @@ grep -Fq 'enabled: personalizationControl.gateAllowsActions && !root.appearanceB
 grep -Fq 'model: root.accessibilityCapabilities' "$pane"
 grep -Fq 'model: root.additionalCapabilities' "$pane"
 grep -Fq 'text: "Managed-shell contrast and motion choices apply immediately' "$pane"
+grep -Fq '|| !root.accessibilityModel.mutationReady' "$pane"
+grep -Fq ': root.accessibilityModel.mutationState' "$pane"
+grep -Fq ': root.accessibilityModel.mutationDetail' "$pane"
 if grep -Fq 'Text scaling is available now' "$pane"; then
 	printf 'Accessibility summary makes an unconditional text-scale availability claim\n' >&2
 	exit 1

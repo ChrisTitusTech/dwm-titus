@@ -82,6 +82,48 @@ settings_ipc_retry() {
 	return 1
 }
 
+start_quickshell() {
+	env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
+		QT_QPA_PLATFORMTHEME= \
+		TMPDIR="$helper_tmp" \
+		DWM_SETTINGS_TEST_POWER_STATE="$power_state" DWM_SETTINGS_TEST_DELAY_POWER=1 \
+		DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT="$malformed_power_snapshot" \
+		DWM_SETTINGS_TEST_APPEARANCE_FAILURE="$appearance_failure_fixture" \
+		DWM_SETTINGS_TEST_WALLPAPER_STATUS="$wallpaper_status_fixture" \
+		DWM_SETTINGS_TEST_THEME_STATUS="$theme_status_fixture" \
+		PATH="$data_home/dwm-titus/scripts:$PATH" \
+		quickshell --no-duplicate >>"$work/quickshell.log" 2>&1 &
+	quickshell_pid=$!
+	quickshell_identity=$(capture_process_identity "$quickshell_pid")
+}
+
+wait_for_quickshell_ipc() {
+	i=0
+	while [ "$i" -lt 200 ]; do
+		if DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings status \
+			>/dev/null 2>&1; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf 'Quickshell Settings IPC did not become ready\n' >&2
+	tail -60 "$work/quickshell.log" >&2
+	return 1
+}
+
+restart_quickshell() {
+	terminate_process_identity "$quickshell_identity"
+	quickshell_pid=
+	quickshell_identity=
+	start_quickshell
+	wait_for_quickshell_ipc
+	settings_ipc_retry open >/dev/null
+	settings_ipc_retry select appearance >/dev/null
+}
+
 wait_for_settings_countdown_decrement() (
 	countdown_method=$1
 	countdown_initial=$2
@@ -732,22 +774,11 @@ HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	gsettings set apps.light-locker lock-on-suspend true
 
-env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
-	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
-	QT_QPA_PLATFORMTHEME= \
-	TMPDIR="$helper_tmp" \
-	DWM_SETTINGS_TEST_POWER_STATE="$power_state" DWM_SETTINGS_TEST_DELAY_POWER=1 \
-	DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT="$malformed_power_snapshot" \
-	DWM_SETTINGS_TEST_APPEARANCE_FAILURE="$appearance_failure_fixture" \
-	DWM_SETTINGS_TEST_WALLPAPER_STATUS="$wallpaper_status_fixture" \
-	DWM_SETTINGS_TEST_THEME_STATUS="$theme_status_fixture" \
-	PATH="$data_home/dwm-titus/scripts:$PATH" \
-	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
-quickshell_pid=$!
-quickshell_identity=$(capture_process_identity "$quickshell_pid")
+config=$config_home/quickshell/shell.qml
+: >"$work/quickshell.log"
+start_quickshell
 test_stage='waiting for Quickshell IPC'
 
-config=$config_home/quickshell/shell.qml
 settings_power_watch_count() {
 	watch_count=0
 	for monitor_pid in $(pgrep -f '[d]bus-monitor --system.*org.freedesktop.UPower.*org.freedesktop.UPower.PowerProfiles.*org.freedesktop.login1' || true); do
@@ -819,21 +850,7 @@ if [ "$cpu_sample_seconds" -gt 0 ] && [ "$cpu_sample_seconds" -lt 30 ]; then
 		"$cpu_sample_seconds" >&2
 	exit 2
 fi
-i=0
-while [ "$i" -lt 200 ]; do
-	if DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings status >/dev/null 2>&1; then
-		break
-	fi
-	i=$((i + 1))
-	sleep 0.05
-done
-if ! DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings status >/dev/null 2>&1; then
-	printf 'Quickshell Settings IPC did not become ready\n' >&2
-	tail -60 "$work/quickshell.log" >&2
-	exit 1
-fi
+wait_for_quickshell_ipc
 
 clock_ticks=$(getconf CLK_TCK)
 baseline_cpu_percent=
@@ -1521,26 +1538,61 @@ done
 [ "$recovered_text_scale_capability" = "$baseline_text_scale_capability" ]
 
 test_stage='validating managed-shell accessibility persistence'
+wait_for_accessibility_idle() {
+	i=0
+	while [ "$i" -lt 100 ]; do
+		[ "$(settings_ipc_retry accessibilityBusy)" = false ] && return 0
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf 'Accessibility mutation did not finish\n' >&2
+	return 1
+}
+
+wait_for_accessibility_values() {
+	expected_contrast=$1
+	expected_motion=$2
+	i=0
+	while [ "$i" -lt 100 ]; do
+		accessibility_state=$(settings_ipc_retry accessibilityState)
+		accessibility_ready=$(settings_ipc_retry accessibilityMutationReady)
+		accessibility_contrast=$(settings_ipc_retry accessibilityHighContrast)
+		accessibility_motion=$(settings_ipc_retry accessibilityReducedMotion)
+		case $accessibility_state:$accessibility_ready in
+		defaults:true | available:true | partial:true)
+			[ "$accessibility_contrast" = "$expected_contrast" ] &&
+				[ "$accessibility_motion" = "$expected_motion" ] && return 0
+			;;
+		esac
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf 'Accessibility values did not reload: %s / %s\n' \
+		"$accessibility_contrast" "$accessibility_motion" >&2
+	return 1
+}
+
 i=0
 while [ "$i" -lt 100 ]; do
 	accessibility_state=$(settings_ipc_retry accessibilityState)
 	accessibility_ready=$(settings_ipc_retry accessibilityMutationReady)
-	case $accessibility_state:$accessibility_ready in
-	defaults:true | available:true | partial:true) break ;;
+	accessibility_contrast_capability=$(settings_ipc_retry capabilityStatus accessibility-contrast)
+	accessibility_motion_capability=$(settings_ipc_retry capabilityStatus accessibility-reduced-motion)
+	case $accessibility_state:$accessibility_ready:$accessibility_contrast_capability:$accessibility_motion_capability in
+	defaults:true:available:available | available:true:available:available | partial:true:available:available) break ;;
 	esac
 	i=$((i + 1))
 	sleep 0.05
 done
-case $accessibility_state:$accessibility_ready in
-defaults:true | available:true | partial:true) ;;
+case $accessibility_state:$accessibility_ready:$accessibility_contrast_capability:$accessibility_motion_capability in
+defaults:true:available:available | available:true:available:available | partial:true:available:available) ;;
 *)
-	printf 'Accessibility controls did not become ready: %s / %s\n' \
-		"$accessibility_state" "$accessibility_ready" >&2
+	printf 'Accessibility controls did not become ready: %s / %s / %s / %s\n' \
+		"$accessibility_state" "$accessibility_ready" \
+		"$accessibility_contrast_capability" "$accessibility_motion_capability" >&2
 	exit 1
 	;;
 esac
-[ "$(settings_ipc_retry capabilityStatus accessibility-contrast)" = available ]
-[ "$(settings_ipc_retry capabilityStatus accessibility-reduced-motion)" = available ]
 settings_ipc_retry accessibilitySetContrast true >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -1549,7 +1601,7 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ "$(settings_ipc_retry accessibilityHighContrast)" = true ]
-grep -Fqx 'contrast	high' "$config_home/dwm-titus/accessibility.conf"
+wait_for_accessibility_idle
 settings_ipc_retry accessibilitySetReducedMotion true >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -1558,7 +1610,12 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ "$(settings_ipc_retry accessibilityReducedMotion)" = true ]
-grep -Fqx 'motion	reduced' "$config_home/dwm-titus/accessibility.conf"
+wait_for_accessibility_idle
+printf 'accessibility-settings-protocol	1	0\ncontrast	high\nmotion	reduced\n' |
+	cmp - "$config_home/dwm-titus/accessibility.conf"
+test_stage='validating managed-shell accessibility persistence after restart'
+restart_quickshell
+wait_for_accessibility_values true true
 settings_ipc_retry accessibilityReset >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -1570,8 +1627,11 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$accessibility_contrast" = false ]
 [ "$accessibility_motion" = false ]
-grep -Fqx 'contrast	standard' "$config_home/dwm-titus/accessibility.conf"
-grep -Fqx 'motion	full' "$config_home/dwm-titus/accessibility.conf"
+wait_for_accessibility_idle
+printf 'accessibility-settings-protocol	1	0\ncontrast	standard\nmotion	full\n' |
+	cmp - "$config_home/dwm-titus/accessibility.conf"
+restart_quickshell
+wait_for_accessibility_values false false
 
 test_stage='validating shared panel widget persistence'
 panel_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \

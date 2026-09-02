@@ -1066,13 +1066,18 @@ Flickable {
         StatusCard {
             visible: root.accessibilityModel.providerState === "partial"
                 || root.accessibilityModel.providerState === "unavailable"
+                || !root.accessibilityModel.mutationReady
             label: "Managed-shell accessibility policy"
-            statusState: root.accessibilityModel.providerState
+            statusState: root.accessibilityModel.providerState === "partial"
+                    || root.accessibilityModel.providerState === "unavailable"
+                ? root.accessibilityModel.providerState
+                : root.accessibilityModel.mutationState
             value: root.accessibilityModel.providerState === "partial"
                 ? "Safe defaults" : "Unavailable"
-            detail: root.accessibilityModel.providerDetail
-                + (root.accessibilityModel.mutationReady ? ""
-                    : " / " + root.accessibilityModel.mutationDetail)
+            detail: root.accessibilityModel.providerState === "partial"
+                    || root.accessibilityModel.providerState === "unavailable"
+                ? root.accessibilityModel.providerDetail
+                : root.accessibilityModel.mutationDetail
         }
 
         AccessibilityToggle {
@@ -1099,7 +1104,10 @@ Flickable {
             UiText {
                 Layout.fillWidth: true
                 text: root.accessibilityModel.message.length > 0
-                    ? root.accessibilityModel.message : root.accessibilityModel.providerDetail
+                    ? root.accessibilityModel.message
+                    : root.accessibilityModel.mutationReady
+                        ? root.accessibilityModel.providerDetail
+                        : root.accessibilityModel.mutationDetail
                 color: root.accessibilityModel.providerState === "unavailable"
                     ? Theme.danger : Theme.menuMutedText
                 wrapMode: Text.WordWrap
