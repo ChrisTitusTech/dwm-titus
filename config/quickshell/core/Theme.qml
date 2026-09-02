@@ -6,6 +6,8 @@ Singleton {
     id: root
 
     property bool dark: true
+    property bool highContrast: false
+    property bool reducedMotion: false
 
     readonly property string transparent: "#00000000"
     property string bg: "#2E3440"
@@ -17,7 +19,8 @@ Singleton {
     property string borderStrong: "#81A1C1"
     property string text: "#D8DEE9"
     property string textStrong: "#ECEFF4"
-    property string textMuted: "#D8DEE9"
+    property string paletteTextMuted: "#D8DEE9"
+    readonly property string textMuted: highContrast ? text : paletteTextMuted
     property string placeholder: "#4C566A"
     property string accent: "#81A1C1"
     property string accentSecondary: "#81A1C1"
@@ -31,7 +34,7 @@ Singleton {
     // Semantic shell roles. Keep these derived from the existing dwm palette
     // so hot-reloaded themes remain the single source of color state.
     readonly property string popupBackground: bg
-    readonly property string popupBorder: borderStrong
+    readonly property string popupBorder: highContrast ? textStrong : borderStrong
     readonly property string popupText: text
     readonly property string menuBackground: bg
     readonly property string menuText: text
@@ -42,19 +45,19 @@ Singleton {
     readonly property string menuSelectedBackground: surfaceActive
     readonly property string menuSelectedText: accentSecondary
     readonly property string controlNormalFill: surface
-    readonly property string controlNormalBorder: border
+    readonly property string controlNormalBorder: highContrast ? textStrong : border
     readonly property string controlNormalText: text
     readonly property string controlHoverFill: surfaceHover
-    readonly property string controlHoverBorder: borderStrong
+    readonly property string controlHoverBorder: highContrast ? textStrong : borderStrong
     readonly property string controlHoverText: text
     readonly property string controlFocusFill: surface
-    readonly property string controlFocusBorder: accent
+    readonly property string controlFocusBorder: highContrast ? textStrong : accent
     readonly property string controlFocusText: text
     readonly property string controlSelectedFill: surfaceActive
-    readonly property string controlSelectedBorder: accentSecondary
+    readonly property string controlSelectedBorder: highContrast ? textStrong : accentSecondary
     readonly property string controlSelectedText: accentSecondary
     readonly property string controlDisabledFill: barBackground
-    readonly property string controlDisabledBorder: border
+    readonly property string controlDisabledBorder: highContrast ? textStrong : border
     readonly property string controlDisabledText: textMuted
 
     // AppearanceModel is the single owner of theme inventory and validation.
@@ -70,7 +73,7 @@ Singleton {
         root.borderStrong = colors["border-strong"];
         root.text = colors.text;
         root.textStrong = colors["text-strong"];
-        root.textMuted = colors["text-muted"];
+        root.paletteTextMuted = colors["text-muted"];
         root.placeholder = colors.placeholder;
         root.accent = colors.accent;
         root.accentSecondary = colors["accent-secondary"];
@@ -88,6 +91,11 @@ Singleton {
     function applyFontPreferences(family, scale) {
         root.fontFamily = family.length > 0 ? family : "MesloLGS Nerd Font Mono";
         root.fontScale = Math.max(0.8, Math.min(1.5, scale));
+    }
+
+    function applyAccessibility(highContrastEnabled, reducedMotionEnabled) {
+        root.highContrast = highContrastEnabled;
+        root.reducedMotion = reducedMotionEnabled;
     }
 
     // Shared spacing and type scales adapted from Omarchy's shell language.
@@ -113,8 +121,8 @@ Singleton {
     readonly property int controlHeight: 30
     readonly property int controlRowHeight: 32
     readonly property int controlPaddingX: 9
-    readonly property int controlBorderWidth: 1
-    readonly property int controlFocusBorderWidth: 2
+    readonly property int controlBorderWidth: highContrast ? 2 : 1
+    readonly property int controlFocusBorderWidth: highContrast ? 3 : 2
     readonly property int controlRadius: 6
     readonly property int menuHeaderHeight: 26
     readonly property int popupPadding: spacingHuge
@@ -152,8 +160,8 @@ Singleton {
     readonly property int compactWidgetHorizontalPadding: 6
     readonly property real networkWidgetHorizontalPadding: 4.5
     readonly property int pillBorderWidth: controlBorderWidth
-    readonly property int animationFast: 120
-    readonly property int animationNormal: 180
+    readonly property int animationFast: reducedMotion ? 0 : 120
+    readonly property int animationNormal: reducedMotion ? 0 : 180
     readonly property int buttonHeight: controlHeight
     readonly property int chipHeight: 28
     readonly property int workspaceButtonSize: 22
