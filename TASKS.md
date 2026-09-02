@@ -7,18 +7,17 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
 
 ## Verified Checkpoint
 
-Status reconciled 2026-08-31 against `origin/main` at `63e49ab`. Thirteen of
-the 25 Phase 5 implementation checkboxes are merged. PR #190 completed the
-accessibility capability contract after PR #188 completed `APPEARANCE-001` and
-PR #189 established the automatic small-PR workflow. Only the primary worktree
-remains registered.
+Status reconciled 2026-09-02 against `main` at `eed7625`. Fourteen of the 25
+Phase 5 implementation checkboxes are merged. PR #201 completed managed-shell
+contrast and motion policy after PR #190 established the accessibility
+capability contract. Only the primary worktree remains registered.
 
-The current accessibility policy boundary adds persistent high-contrast and
-reduced-motion state and applies it to the managed shell without polling. The
-Settings pane still exposes those choices, notification policy, and practical
-keyboard or pointer access as explanatory capability cards. The overall
-Settings-controls checkbox remains open until dedicated controls and the
-required interaction evidence are complete.
+The current accessibility controls boundary exposes the merged persistent
+high-contrast and reduced-motion policy through keyboard-focusable, labeled
+Settings switches and reset. Notification policy and practical keyboard or
+pointer access remain explanatory capability cards. The overall
+Settings-controls checkbox remains open until practical input controls and the
+required real-session evidence are complete.
 
 ## Active Phase: Personalization and Accessibility
 

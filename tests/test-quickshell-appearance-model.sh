@@ -461,6 +461,8 @@ grep -Fq 'label: "Additional capabilities"' "$pane"
 grep -Fq 'SectionLabel { label: "Accessibility" }' "$pane"
 grep -Fq 'readonly property var accessibilityCapabilities:' "$pane"
 grep -Fq 'capability.id !== "accessibility-text-scale"' "$pane"
+grep -Fq 'capability.id !== "accessibility-contrast"' "$pane"
+grep -Fq 'capability.id !== "accessibility-reduced-motion"' "$pane"
 grep -Fq 'required property var textScaleCapability' "$pane"
 grep -Fq 'property var capabilityGate: null' "$pane"
 grep -Fq 'readonly property bool gateAllowsActions:' "$pane"
@@ -470,7 +472,10 @@ test "$(grep -Fc '&& personalizationControl.gateAllowsActions' "$pane")" -eq 2
 grep -Fq 'enabled: personalizationControl.gateAllowsActions && !root.appearanceBusy' "$pane"
 grep -Fq 'model: root.accessibilityCapabilities' "$pane"
 grep -Fq 'model: root.additionalCapabilities' "$pane"
-grep -Fq 'text: "Use the text-scale controls below when their provider is available.' "$pane"
+grep -Fq 'text: "Managed-shell contrast and motion choices apply immediately' "$pane"
+grep -Fq '|| !root.accessibilityModel.mutationReady' "$pane"
+grep -Fq ': root.accessibilityModel.mutationState' "$pane"
+grep -Fq ': root.accessibilityModel.mutationDetail' "$pane"
 if grep -Fq 'Text scaling is available now' "$pane"; then
 	printf 'Accessibility summary makes an unconditional text-scale availability claim\n' >&2
 	exit 1

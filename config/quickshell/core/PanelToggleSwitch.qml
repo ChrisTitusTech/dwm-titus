@@ -6,6 +6,8 @@ Item {
 
     property bool checked: false
     property bool busy: false
+    required property string accessibleName
+    property string accessibleDescription: ""
     signal toggled
 
     readonly property bool hot: toggleMouse.containsMouse || activeFocus
@@ -13,11 +15,22 @@ Item {
     implicitWidth: Theme.panelToggleWidth
     implicitHeight: Theme.panelToggleHeight
     activeFocusOnTab: root.enabled && !root.busy
+    Accessible.role: Accessible.CheckBox
+    Accessible.name: root.accessibleName
+    Accessible.description: root.accessibleDescription
+    Accessible.checkable: true
+    Accessible.checked: root.checked
+    Accessible.onPressAction: root.requestToggle()
+    Accessible.onToggleAction: root.requestToggle()
+
+    function requestToggle() {
+        if (root.enabled && !root.busy) root.toggled();
+    }
 
     Keys.onPressed: function(event) {
         if (!root.enabled || root.busy || event.isAutoRepeat) return;
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
-            root.toggled();
+            root.requestToggle();
             event.accepted = true;
         }
     }
@@ -58,7 +71,7 @@ Item {
         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
         onClicked: {
             root.forceActiveFocus();
-            root.toggled();
+            root.requestToggle();
         }
     }
 }

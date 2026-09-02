@@ -8,6 +8,7 @@ Flickable {
     id: root
 
     required property var appearanceModel
+    required property var accessibilityModel
     required property var panelSettingsModel
     required property var capabilities
     required property var textScaleCapability
@@ -37,7 +38,9 @@ Flickable {
         && root.appearanceModel.recoveryState === "none"
     readonly property var accessibilityCapabilities: root.capabilities.filter(function(capability) {
         return capability.id.indexOf("accessibility-") === 0
-            && capability.id !== "accessibility-text-scale";
+            && capability.id !== "accessibility-text-scale"
+            && capability.id !== "accessibility-contrast"
+            && capability.id !== "accessibility-reduced-motion";
     })
     readonly property var additionalCapabilities: root.capabilities.filter(function(capability) {
         return capability.id.indexOf("accessibility-") !== 0;
@@ -206,6 +209,63 @@ Flickable {
                 text: statusCard.detail
                 color: Theme.menuMutedText
                 wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    component AccessibilityToggle: Rectangle {
+        id: accessibilityToggle
+        required property string title
+        required property string detail
+        required property string setting
+        required property string enabledValue
+        required property string disabledValue
+        required property bool checked
+
+        Layout.fillWidth: true
+        Layout.preferredHeight: Math.max(64,
+            accessibilityToggleContent.implicitHeight + Theme.spacingLg * 2)
+        color: Theme.controlNormalFill
+        border.color: Theme.controlNormalBorder
+        border.width: Theme.controlBorderWidth
+        radius: Theme.controlRadius
+
+        RowLayout {
+            id: accessibilityToggleContent
+            anchors.fill: parent
+            anchors.margins: Theme.spacingLg
+            spacing: Theme.spacingLg
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spacingXs
+
+                UiText {
+                    Layout.fillWidth: true
+                    text: accessibilityToggle.title
+                    color: Theme.controlNormalText
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                }
+
+                UiText {
+                    Layout.fillWidth: true
+                    text: accessibilityToggle.detail
+                    color: Theme.menuMutedText
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            PanelToggleSwitch {
+                checked: accessibilityToggle.checked
+                busy: root.accessibilityModel.busy
+                enabled: root.accessibilityModel.mutationReady
+                accessibleName: accessibilityToggle.title
+                accessibleDescription: accessibilityToggle.detail
+                onToggled: root.accessibilityModel.setSetting(
+                    accessibilityToggle.setting,
+                    accessibilityToggle.checked ? accessibilityToggle.disabledValue
+                        : accessibilityToggle.enabledValue)
             }
         }
     }
@@ -998,9 +1058,67 @@ Flickable {
 
         UiText {
             Layout.fillWidth: true
-            text: "Use the text-scale controls below when their provider is available. The remaining cards explain which keyboard, pointer, contrast, motion, and notification controls are not yet managed by this desktop."
+            text: "Managed-shell contrast and motion choices apply immediately and persist for future sessions. Application text scaling remains independently owned by the desktop personalization provider."
             color: Theme.menuMutedText
             wrapMode: Text.WordWrap
+        }
+
+        StatusCard {
+            visible: root.accessibilityModel.providerState === "partial"
+                || root.accessibilityModel.providerState === "unavailable"
+                || !root.accessibilityModel.mutationReady
+            label: "Managed-shell accessibility policy"
+            statusState: root.accessibilityModel.providerState === "partial"
+                    || root.accessibilityModel.providerState === "unavailable"
+                ? root.accessibilityModel.providerState
+                : root.accessibilityModel.mutationState
+            value: root.accessibilityModel.providerState === "partial"
+                ? "Safe defaults" : "Unavailable"
+            detail: root.accessibilityModel.providerState === "partial"
+                    || root.accessibilityModel.providerState === "unavailable"
+                ? root.accessibilityModel.providerDetail
+                : root.accessibilityModel.mutationDetail
+        }
+
+        AccessibilityToggle {
+            title: "High contrast"
+            detail: "Strengthen semantic borders and keep muted text at full foreground contrast."
+            setting: "contrast"
+            enabledValue: "high"
+            disabledValue: "standard"
+            checked: root.accessibilityModel.highContrast
+        }
+
+        AccessibilityToggle {
+            title: "Reduced motion"
+            detail: "Remove managed-shell transition durations without changing compositor policy."
+            setting: "motion"
+            enabledValue: "reduced"
+            disabledValue: "full"
+            checked: root.accessibilityModel.reducedMotion
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            UiText {
+                Layout.fillWidth: true
+                text: root.accessibilityModel.message.length > 0
+                    ? root.accessibilityModel.message
+                    : root.accessibilityModel.mutationReady
+                        ? root.accessibilityModel.providerDetail
+                        : root.accessibilityModel.mutationDetail
+                color: root.accessibilityModel.providerState === "unavailable"
+                    ? Theme.danger : Theme.menuMutedText
+                wrapMode: Text.WordWrap
+            }
+
+            ShellButton {
+                label: "Reset contrast and motion"
+                enabled: root.accessibilityModel.mutationReady
+                    && !root.accessibilityModel.busy
+                onActivated: root.accessibilityModel.reset()
+            }
         }
 
         PersonalizationControl {
@@ -1070,6 +1188,8 @@ Flickable {
                         checked: root.panelSettingsModel.widgetEnabled(panelWidgetRow.modelData.id)
                         busy: root.panelSettingsModel.busy
                         enabled: root.panelSettingsModel.mutationReady
+                        accessibleName: panelWidgetRow.modelData.label
+                        accessibleDescription: "Show this widget in the managed panel"
                         onToggled: root.panelSettingsModel.toggleWidget(panelWidgetRow.modelData.id)
                     }
                 }

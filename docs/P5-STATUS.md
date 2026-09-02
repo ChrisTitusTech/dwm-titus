@@ -74,33 +74,32 @@ nested-X11 validation covers the shared-state path.
 
 ## Current Review Boundary
 
-The current `codex/phase5-accessibility-policy` boundary adds versioned,
-user-owned high-contrast and reduced-motion state plus one root-scoped,
-event-driven shell model. Semantic borders and muted text strengthen under high
-contrast, and the existing shared animation durations become zero under reduced
-motion. The helper preserves safe defaults and rejects unsafe persistent state.
+The current `codex/phase5-accessibility-controls` boundary exposes the merged
+high-contrast and reduced-motion policy through keyboard-focusable, labeled
+Settings switches and a reset action. Capability discovery now attributes both
+mutations to the managed user-session helper, and nested-X11 coverage exercises
+their persistent set and reset paths through live shell IPC.
 
-The merged text-scale grouping and capability cards remain unchanged. This
-slice introduces persistent helper and shell-model mutations, but no Settings
-UI controls, polling loop, privilege boundary, or compositor dependency. The
-overall Settings-controls checkbox stays open for those dedicated controls,
-practical input behavior, and required real-session interaction evidence.
-Notification policy remains a separate later boundary.
+The controls reuse the one root-scoped, event-driven model and do not add a
+polling loop, privilege boundary, or compositor dependency. The overall
+Settings-controls checkbox stays open for practical input behavior and required
+real-session interaction evidence. Notification policy remains a separate later
+boundary.
 
 ## Open Task Boundaries
 
 | Boundary | Open checkboxes | Verified current state | Next evidence needed |
 | --- | ---: | --- | --- |
 | APPEARANCE-001 | 0 | Complete on `main` through PR #188. | Preserve the merged contracts while completing Phase 5. |
-| ACCESSIBILITY-001 | 2 | Five capability records and the text-scale grouping are merged. This boundary adds persistent contrast and reduced-motion state and applies it event-first across the managed shell. | Finish dedicated Settings and practical-input controls, interaction evidence, and notification policy. |
+| ACCESSIBILITY-001 | 2 | Five capability records, text-scale grouping, and managed contrast and motion policy are merged. This boundary adds dedicated Settings controls and nested-X persistence coverage. | Finish practical-input controls, real-session interaction evidence, and notification policy. |
 | P5-UI5 | 4 | No candidate decision record is complete. | Inventory candidates, record adopt/defer/reject decisions, and qualify each adopted X11-native experience independently. |
 | P5-VALIDATE | 5 | Individual merged slices have focused and full-suite evidence, but the combined Phase 5 product is incomplete. | Run the final Fedora 44, clean build, full suite, QML, shell, install/parity, fresh-login, `startx`, multi-monitor, optional-loss, recovery, and 30-second CPU qualification after all selected Phase 5 work merges. |
 
 ## Phase Position
 
 Phase 5 remains active. THEME-001 and APPEARANCE-001 are complete on `main`.
-The first ACCESSIBILITY-001 checkbox is complete on `main` through PR #190, and
-this boundary completes its managed contrast and motion policy. No P5-UI5 or
-final Phase 5 qualification checkbox is complete. Phase 6 must not begin until
-the Phase 5 exit criteria pass or an explicit roadmap decision defers named work
-and records the resulting limitation.
+The first and third ACCESSIBILITY-001 checkboxes are complete on `main`; this
+boundary adds the dedicated UI for the merged contrast and motion policy. No
+P5-UI5 or final Phase 5 qualification checkbox is complete. Phase 6 must not
+begin until the Phase 5 exit criteria pass or an explicit roadmap decision
+defers named work and records the resulting limitation.

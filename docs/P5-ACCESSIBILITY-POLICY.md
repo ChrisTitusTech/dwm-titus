@@ -2,10 +2,9 @@
 
 ## Scope
 
-This `ACCESSIBILITY-001` review boundary adds the persistent managed-shell
-policy used by later Settings controls. It covers high contrast and reduced
-motion only. Notification behavior and practical X11 input controls remain
-separate Phase 5 boundaries.
+This `ACCESSIBILITY-001` contract covers persistent managed-shell high contrast
+and reduced motion plus their dedicated Settings controls. Notification
+behavior and practical X11 input controls remain separate Phase 5 boundaries.
 
 ## State Contract
 
@@ -21,7 +20,13 @@ contrast	standard
 motion	full
 ```
 
-The helper supports bounded `status`, `set`, and `reset` actions. It serializes
+Status output is append-only within protocol version 1. Consumers validate one
+unique state, contrast, motion, mutation-readiness, and terminal completion
+record while ignoring unknown record types.
+
+The helper supports bounded `status`, `set`, and `reset` actions. Status includes
+an explicit mutation-readiness record so consumers never infer safety from a
+human-readable detail. It serializes
 mutations, publishes a complete file atomically, preserves the existing file
 mode, rejects symlinks, hard links, unsafe ownership and unsafe directories,
 and refuses to overwrite state that changes during a transaction. Malformed or
@@ -43,6 +48,13 @@ borders and muted text through `Theme.qml`. Reduced motion sets the shared
 managed animation durations to zero. The model introduces no state polling, new
 privilege boundary, compositor dependency, or Wayland API.
 
+The Appearance pane exposes keyboard-focusable, labeled high-contrast and
+reduced-motion switches plus reset. Every switch routes pointer, keyboard, and
+assistive press or toggle actions through the same guarded mutation path.
+Capability discovery validates one bounded, complete versioned status response
+before advertising either mutation and degrades malformed, unresponsive, or
+unsafe provider state without affecting other Settings records.
+
 ## Validation
 
 Focused checks:
@@ -52,9 +64,10 @@ make check-accessibility
 scripts/quickshell-qmllint --root config/quickshell
 ```
 
-The helper tests cover defaults, persistence, reset, file-mode preservation,
-inotify delivery and child failure, malformed and future state, unsafe symlink
-and hard-link paths, invalid values, runtime path validation, and mutation lock
-contention.
-The Quickshell checks cover strict protocol parsing, helper-owned event-driven
-refresh, semantic theme policy, and shell ownership.
+The helper and provider tests cover defaults, persistence, reset, file-mode
+preservation, inotify delivery and child failure, malformed and future state, unsafe symlink
+and hard-link paths, invalid values, runtime path validation, mutation lock
+contention, bounded discovery, and malformed-provider isolation. The Quickshell
+checks cover strict protocol parsing, helper-owned event-driven refresh,
+semantic theme policy, accessible control semantics, shell ownership, and
+nested-X11 persistent set and reset actions.

@@ -1472,7 +1472,8 @@ watch_inventory() {
 			event_types=${event%%$'\t'*}
 			event_path=${event#*$'\t'}
 			case $event_path in
-			"$canonical_config_dir"/.font-exchange-a.* | "$canonical_config_dir"/.font-exchange-b.*) continue ;;
+			"$canonical_config_dir"/.font-exchange-a.* | "$canonical_config_dir"/.font-exchange-b.* | \
+				"$canonical_config_dir"/.accessibility-exchange-a.* | "$canonical_config_dir"/.accessibility-exchange-b.*) continue ;;
 			esac
 			if [[ ,$event_types, == *,ATTRIB,* && ,$event_types, == *,ISDIR,* ]]; then
 				canonical_event_path=$(readlink -m -- "$event_path") || canonical_event_path=

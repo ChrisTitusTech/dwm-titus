@@ -215,6 +215,7 @@ ShellRoot {
         defaultsModel: defaultsModel
         autostartModel: autostartModel
         appearanceModel: appearanceModel
+        accessibilityModel: accessibilityModel
         panelSettingsModel: panelSettingsModel
     }
 
@@ -819,6 +820,38 @@ ShellRoot {
             return settingsModel.capabilityById(capabilityId).status;
         }
 
+        function accessibilityState(): string {
+            return accessibilityModel.providerState;
+        }
+
+        function accessibilityMutationReady(): bool {
+            return accessibilityModel.mutationReady;
+        }
+
+        function accessibilityBusy(): bool {
+            return accessibilityModel.busy;
+        }
+
+        function accessibilityHighContrast(): bool {
+            return accessibilityModel.highContrast;
+        }
+
+        function accessibilityReducedMotion(): bool {
+            return accessibilityModel.reducedMotion;
+        }
+
+        function accessibilitySetContrast(enabled: bool): void {
+            accessibilityModel.setSetting("contrast", enabled ? "high" : "standard");
+        }
+
+        function accessibilitySetReducedMotion(enabled: bool): void {
+            accessibilityModel.setSetting("motion", enabled ? "reduced" : "full");
+        }
+
+        function accessibilityReset(): void {
+            accessibilityModel.reset();
+        }
+
         function appearancePersonalizationMutationState(): string {
             return appearanceModel.personalizationMutationState;
         }
@@ -1044,6 +1077,7 @@ ShellRoot {
         defaultsModel: defaultsModel
         autostartModel: autostartModel
         appearanceModel: appearanceModel
+        accessibilityModel: accessibilityModel
         panelSettingsModel: panelSettingsModel
     }
 }

@@ -25,6 +25,11 @@ versions from `config.mk`.
 
 ### Added
 
+- Add keyboard-focusable Settings controls for the managed-shell high-contrast
+  and reduced-motion policy, including labeled accessibility semantics, reset,
+  provider-scoped failure detail, capability discovery, and nested-X11
+  persistence coverage.
+
 - Add versioned, user-owned accessibility policy state for managed-shell high
   contrast and reduced motion. The root-scoped event-driven model applies
   stronger semantic borders and zero-duration managed animations without

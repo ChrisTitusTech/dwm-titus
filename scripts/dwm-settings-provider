@@ -256,12 +256,95 @@ emit_text_scale_capability() {
 		dwm-settings-personalization "$text_scale_detail"
 }
 
+accessibility_mutation_state() {
+	command_path=$(provider_path dwm-accessibility-settings) || return 1
+	timeout_path=$(command -v timeout 2>/dev/null) || return 1
+	accessibility_snapshot=$("$timeout_path" --signal=TERM --kill-after=1 \
+		5 "$command_path" status 2>/dev/null) || return 1
+	printf '%s\n' "$accessibility_snapshot" |
+		awk -F '\t' '
+			function valid_field(value) {
+				return value != "" && length(value) <= 4095
+			}
+			$1 == "accessibility-settings-protocol" {
+				protocols++
+				if (NR == 1 && $0 == "accessibility-settings-protocol\t1\t0") header = 1
+				else invalid = 1
+				next
+			}
+			$1 == "state" {
+				states++
+				if (NF != 3 || ($2 != "defaults" && $2 != "available" &&
+					$2 != "partial" && $2 != "unavailable") || !valid_field($3) ||
+					states != 1) invalid = 1
+				next
+			}
+			$1 == "setting" {
+				settings++
+				setting_seen[$2]++
+				if (NF != 3 || setting_seen[$2] != 1 ||
+					($2 == "contrast" && $3 != "standard" && $3 != "high") ||
+					($2 == "motion" && $3 != "full" && $3 != "reduced") ||
+					($2 != "contrast" && $2 != "motion")) invalid = 1
+				next
+			}
+			$1 == "mutation" {
+				mutations++
+				if (NF != 3 || ($2 != "available" && $2 != "unavailable") ||
+					!valid_field($3) || mutations != 1) invalid = 1
+				else mutation_state = $2
+				next
+			}
+			$1 == "complete" && $2 == "status" && NF == 2 {
+				completions++
+				complete_line = NR
+				next
+			}
+			$1 == "complete" { invalid = 1; next }
+			# Version 1 is append-only: reject malformed known records, but ignore new record types.
+			{ next }
+			END {
+				if (!invalid && header && protocols == 1 && states == 1 &&
+					settings == 2 && setting_seen["contrast"] == 1 &&
+					setting_seen["motion"] == 1 && mutations == 1 &&
+					completions == 1 && complete_line == NR)
+					print mutation_state
+				else
+					exit 1
+			}
+		'
+}
+
 emit_accessibility_capabilities() {
 	emit_text_scale_capability
-	emit_capability appearance accessibility-contrast 'High contrast' partial read-only \
-		quickshell-theme 'Semantic colors are available; a dedicated high-contrast policy is not configured'
-	emit_capability appearance accessibility-reduced-motion 'Reduced motion' unsupported read-only \
-		quickshell-theme 'Managed shell animations do not yet expose a reduced-motion policy'
+	if ! provider_available dwm-accessibility-settings; then
+		accessibility_state=missing
+	elif accessibility_state=$(accessibility_mutation_state); then
+		:
+	else
+		accessibility_state=invalid
+	fi
+	if [ "$accessibility_state" = available ]; then
+		emit_capability appearance accessibility-contrast 'High contrast' available user-session \
+			dwm-accessibility-settings 'Persistent managed-shell high-contrast policy is available'
+		emit_capability appearance accessibility-reduced-motion 'Reduced motion' available user-session \
+			dwm-accessibility-settings 'Persistent managed-shell reduced-motion policy is available'
+	elif [ "$accessibility_state" = unavailable ]; then
+		emit_capability appearance accessibility-contrast 'High contrast' unavailable user-session \
+			dwm-accessibility-settings 'Persistent accessibility state cannot be safely updated'
+		emit_capability appearance accessibility-reduced-motion 'Reduced motion' unavailable user-session \
+			dwm-accessibility-settings 'Persistent accessibility state cannot be safely updated'
+	elif [ "$accessibility_state" = invalid ]; then
+		emit_capability appearance accessibility-contrast 'High contrast' unavailable user-session \
+			dwm-accessibility-settings 'The accessibility settings provider returned an unsupported response'
+		emit_capability appearance accessibility-reduced-motion 'Reduced motion' unavailable user-session \
+			dwm-accessibility-settings 'The accessibility settings provider returned an unsupported response'
+	else
+		emit_capability appearance accessibility-contrast 'High contrast' unavailable user-session \
+			dwm-accessibility-settings 'Install the managed accessibility settings provider'
+		emit_capability appearance accessibility-reduced-motion 'Reduced motion' unavailable user-session \
+			dwm-accessibility-settings 'Install the managed accessibility settings provider'
+	fi
 	if run_bounded_probe busctl --user --quiet status org.freedesktop.Notifications; then
 		emit_capability appearance accessibility-notifications 'Notification policy' partial read-only \
 			dbus 'A notification D-Bus owner is active; managed policy controls are not configured'
