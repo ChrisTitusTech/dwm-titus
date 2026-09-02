@@ -28,11 +28,9 @@ XDG configuration environment to resolve to the same directory. Command-line
 and environment config selectors are rejected unless an explicit path resolves
 to the managed `shell.qml`. An unrelated daemon or alternate Quickshell
 configuration therefore remains observable but cannot enable ineffective
-managed controls. A healthy bus with a momentarily unowned name is accepted
-only during the first 15 seconds of a managed Quickshell process when that
-process launches the provider. After that bounded registration window, an
-unowned name keeps the controls unavailable. No privilege boundary or
-arbitrary command construction is added.
+managed controls. An unowned notification name keeps the controls unavailable;
+only the active verified D-Bus owner enables mutations. No privilege boundary
+or arbitrary command construction is added.
 
 ## Delivery Semantics
 

@@ -27,6 +27,7 @@ Scope {
     readonly property int maxHistory: 50
     readonly property var popupTimeoutOptions: [4000, 6000, 10000]
     readonly property bool popupSuppressed: root.policyState === "loading"
+        || root.policyState === "partial"
         || root.policyState === "unavailable"
         || root.doNotDisturb || (root.policySaving && root.confirmedDoNotDisturb)
     readonly property bool policyMutationReady: !root.policySaving
@@ -322,6 +323,7 @@ Scope {
             } else {
                 root.applyDoNotDisturb(root.confirmedDoNotDisturb);
                 root.popupTimeoutMs = root.confirmedPopupTimeoutMs;
+                root.dismissNonCriticalPopups();
                 root.policyState = "unavailable";
                 root.policyDetail = "Notification policy could not be loaded";
             }

@@ -434,6 +434,18 @@ done
 [ "$policy_dnd" = true ]
 [ "$(ipc notifications count)" = 0 ]
 [ "$(ipc notifications historyCount)" -gt 0 ]
+printf '%s\n' '{malformed' >"$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = partial ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = partial ]
+send_test_notification normal 'Suppressed with malformed policy'
+sleep 0.1
+[ "$(ipc notifications count)" = 0 ]
+[ "$(ipc notifications historyLatestSummary)" = 'Suppressed with malformed policy' ]
 ipc notifications resetPolicy >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do

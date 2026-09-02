@@ -142,27 +142,6 @@ notification_process_is_managed() {
 	[ "$process_config_home" = "$config_home" ]
 }
 
-notification_process_started_recently() {
-	notification_process_pid=$1
-	case $notification_process_pid in '' | *[!0-9]* | 0) return 1 ;; esac
-	[ -r "/proc/$notification_process_pid/stat" ] || return 1
-	[ -r /proc/uptime ] || return 1
-	clock_ticks=$(getconf CLK_TCK 2>/dev/null) || return 1
-	case $clock_ticks in '' | *[!0-9]* | 0) return 1 ;; esac
-	process_start_ticks=$(awk '{ print $22 }' "/proc/$notification_process_pid/stat") || return 1
-	process_uptime_seconds=$(awk '{ print int($1) }' /proc/uptime) || return 1
-	case $process_start_ticks:$process_uptime_seconds in
-	:* | *: | *[!0-9:]*) return 1 ;;
-	esac
-	process_age_seconds=$((process_uptime_seconds - process_start_ticks / clock_ticks))
-	[ "$process_age_seconds" -ge 0 ] && [ "$process_age_seconds" -le 15 ]
-}
-
-notification_bus_available() {
-	run_bounded_probe busctl --user --quiet call org.freedesktop.DBus \
-		/org/freedesktop/DBus org.freedesktop.DBus GetId
-}
-
 input_snapshot_valid() {
 	command_path=$(provider_path dwm-settings-input) || return 1
 	timeout_path=$(command -v timeout 2>/dev/null) || return 1
@@ -488,10 +467,6 @@ emit_accessibility_capabilities() {
 			emit_capability appearance accessibility-notifications 'Notification policy' partial read-only \
 				dbus 'A notification owner is active, but it is not the managed policy provider'
 		fi
-	elif notification_process_is_managed "$PPID" &&
-		notification_process_started_recently "$PPID" && notification_bus_available; then
-		emit_capability appearance accessibility-notifications 'Notification policy' available user-session \
-			dwm-notifications 'Managed notification policy is available while D-Bus name registration settles'
 	else
 		emit_capability appearance accessibility-notifications 'Notification policy' unavailable read-only \
 			dbus 'No notification D-Bus owner is observable in this session'

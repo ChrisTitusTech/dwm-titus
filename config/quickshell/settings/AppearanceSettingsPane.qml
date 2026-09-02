@@ -1272,6 +1272,7 @@ Flickable {
 
         RowLayout {
             Layout.fillWidth: true
+            visible: root.notificationCapability.status === "available"
 
             UiText {
                 Layout.fillWidth: true
