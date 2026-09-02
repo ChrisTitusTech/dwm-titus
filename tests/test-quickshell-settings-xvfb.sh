@@ -7,7 +7,7 @@ expected_window_width=${DWM_SETTINGS_EXPECTED_WINDOW_WIDTH:-1180}
 expected_window_height=${DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT:-760}
 
 for command_name in Xvfb dbus-monitor dbus-run-session glib-compile-schemas \
-	gsettings inotifywait quickshell xdotool xinput xprop pgrep getconf; do
+	gsettings inotifywait quickshell xdotool xinput xkbset xprop pgrep getconf; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -936,6 +936,108 @@ done
 input_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings inputCount)
 [ "$input_count" -ge 1 ]
+
+test_stage='validating XKB accessibility preview and persistence'
+sticky_baseline=$(settings_ipc_retry inputAccessibilityValue sticky-keys)
+case $sticky_baseline in
+0)
+	sticky_preview=true
+	sticky_expected=1
+	;;
+1)
+	sticky_preview=false
+	sticky_expected=0
+	;;
+*)
+	printf 'Missing sticky-keys setting: %s\n' "$sticky_baseline" >&2
+	exit 1
+	;;
+esac
+sticky_record=$(printf 'accessx\tsticky-keys\t%s\t%s' "$sticky_expected" "$sticky_baseline")
+xkb_sticky_value() {
+	sticky_state=$(DISPLAY=$display LC_ALL=C xkbset q |
+		awk -F ' = ' '$1 == "Sticky-Keys" { print $2 }')
+	case $sticky_state in On) printf '1\n' ;; Off) printf '0\n' ;; *) return 1 ;; esac
+}
+settings_ipc_retry inputAccessibilityPreview sticky-keys "$sticky_preview" >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	preview_state=$(settings_ipc_retry inputPreviewState)
+	sticky_live=$(xkb_sticky_value 2>/dev/null || true)
+	[ "$preview_state" = input ] && [ "$sticky_live" = "$sticky_expected" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$preview_state" = input ]
+[ "$sticky_live" = "$sticky_expected" ]
+settings_ipc_retry inputPreviewAction revert >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	preview_state=$(settings_ipc_retry inputPreviewState)
+	sticky_value=$(settings_ipc_retry inputAccessibilityValue sticky-keys)
+	sticky_live=$(xkb_sticky_value 2>/dev/null || true)
+	[ -z "$preview_state" ] && [ "$sticky_value" = "$sticky_baseline" ] &&
+		[ "$sticky_live" = "$sticky_baseline" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -z "$preview_state" ]
+[ "$sticky_value" = "$sticky_baseline" ]
+[ "$sticky_live" = "$sticky_baseline" ]
+
+settings_ipc_retry inputAccessibilityPreview sticky-keys "$sticky_preview" >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	preview_state=$(settings_ipc_retry inputPreviewState)
+	sticky_live=$(xkb_sticky_value 2>/dev/null || true)
+	[ "$preview_state" = input ] && [ "$sticky_live" = "$sticky_expected" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$preview_state" = input ]
+[ "$sticky_live" = "$sticky_expected" ]
+settings_ipc_retry inputPreviewAction keep >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	grep -Fqx "$sticky_record" \
+		"$config_home/dwm-titus/input-settings.conf" 2>/dev/null && break
+	i=$((i + 1))
+	sleep 0.05
+done
+grep -Fqx "$sticky_record" \
+	"$config_home/dwm-titus/input-settings.conf"
+i=0
+while [ "$i" -lt 100 ]; do
+	preview_state=$(settings_ipc_retry inputPreviewState)
+	sticky_value=$(settings_ipc_retry inputAccessibilityValue sticky-keys)
+	[ -z "$preview_state" ] && [ "$sticky_value" = "$sticky_expected" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -z "$preview_state" ]
+[ "$sticky_value" = "$sticky_expected" ]
+if [ "$sticky_baseline" = 1 ]; then DISPLAY=$display xkbset st; else DISPLAY=$display xkbset -st; fi
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_RUNTIME_DIR=$runtime \
+	"$data_home/dwm-titus/scripts/dwm-settings-input" apply-saved
+sticky_live=$(xkb_sticky_value)
+[ "$sticky_live" = "$sticky_expected" ]
+settings_ipc_retry inputAccessibilityReset sticky-keys >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	sticky_value=$(settings_ipc_retry inputAccessibilityValue sticky-keys)
+	sticky_live=$(xkb_sticky_value 2>/dev/null || true)
+	[ "$sticky_value" = "$sticky_baseline" ] && [ "$sticky_live" = "$sticky_baseline" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$sticky_value" = "$sticky_baseline" ]
+[ "$sticky_live" = "$sticky_baseline" ]
+if [ -f "$config_home/dwm-titus/input-settings.conf" ] &&
+	grep -Fq "$(printf 'accessx\tsticky-keys\t')" \
+		"$config_home/dwm-titus/input-settings.conf"; then
+	printf 'XKB accessibility reset retained a persisted override\n' >&2
+	exit 1
+fi
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null

@@ -480,10 +480,17 @@ notification policy, and keyboard or pointer access. Text scaling derives from
 one complete versioned personalization response; high contrast and reduced
 motion are user-session mutations owned by the versioned managed accessibility
 helper; notification readiness derives from the active session D-Bus owner;
-and input readiness derives from bounded managed XInput discovery. Missing or
-malformed providers degrade only their own record. Notification and
-accessibility-input records do not imply that dedicated mutations are
-implemented.
+and input readiness derives from bounded managed XInput discovery plus a
+responsive `xkbset` query. Missing or malformed providers degrade only their
+own record. The notification record does not imply that dedicated mutations
+are implemented.
+
+`input-protocol 1` also publishes one session-scoped `accessx` device group.
+Its fixed boolean settings cover accessibility shortcuts, sticky keys, slow
+keys, bounce keys, and mouse keys. Mutations use the existing timed input
+preview, keep, revert, reset, and session-start replay workflow. Missing or
+unresponsive XKB tooling degrades only that group and its accessibility
+capability record.
 
 Advanced partitioning, unrestricted service control, firewall policy editing,
 and similarly high-risk administration remain delegated unless a later

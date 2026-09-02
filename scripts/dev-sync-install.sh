@@ -150,7 +150,8 @@ source_update_dependencies_ready() {
 		esac
 	fi
 	command -v xsettingsd >/dev/null 2>&1 &&
-		command -v dump_xsettings >/dev/null 2>&1
+		command -v dump_xsettings >/dev/null 2>&1 &&
+		command -v xkbset >/dev/null 2>&1
 }
 
 source_update_dependencies_needed() {

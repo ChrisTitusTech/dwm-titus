@@ -60,6 +60,10 @@ grep -Fq 'root.settingsModel.selectedSectionId === "appearance"' "$settings_wind
 grep -Fq 'capability.id !== "themes"' "$settings_window"
 grep -Fq 'textScaleCapability: root.settingsModel.capabilityById(' "$settings_window"
 grep -Fq 'function capabilityById(id)' "$settings_model"
+grep -Fq 'deviceCard.modelData.kind === "accessibility"' "$input_pane"
+grep -Fq 'accessibleDescription: settingRow.modelData.label + ". Starts a timed preview."' "$input_pane"
+grep -Fq 'if (settingsModel.previewKind !== "input") return;' "$shell_qml"
+grep -Fq 'if (settingsModel.previewOperationLocked) return;' "$shell_qml"
 
 grep -Fq 'function settingsAppearanceCommand(action, args)' "$commands"
 grep -Fq 'function settingsFontCommand(action, args)' "$commands"

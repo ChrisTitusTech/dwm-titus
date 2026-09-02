@@ -109,7 +109,7 @@ else
 	printf "  ${RED}✗${NC} Xorg or Xlibre ${YELLOW}(missing)${NC}\n"
 	MISSING=$((MISSING + 1))
 fi
-for command in startx xrandr xset xsetroot; do
+for command in startx xrandr xset xsetroot xkbset; do
 	check_cmd "$command"
 done
 

@@ -63,7 +63,7 @@ run_bounded_probe() {
 input_snapshot_valid() {
 	command_path=$(provider_path dwm-settings-input) || return 1
 	timeout_path=$(command -v timeout 2>/dev/null) || return 1
-	input_snapshot=$("$timeout_path" --signal=TERM --kill-after=1 2 \
+	input_snapshot=$("$timeout_path" --signal=TERM --kill-after=1 5 \
 		"$command_path" discover 2>/dev/null) || return 1
 	printf '%s\n' "$input_snapshot" |
 		awk -F '\t' '
@@ -81,6 +81,37 @@ input_snapshot_valid() {
 			$1 == "unsupported" { invalid = 1; next }
 			{ next }
 			END { exit(header && protocols == 1 && !invalid ? 0 : 1) }
+		'
+}
+
+input_accessibility_snapshot_valid() {
+	printf '%s\n' "$input_snapshot" |
+		awk -F '\t' '
+			$1 == "device" && $2 == "accessx" {
+				devices++
+				if (NF != 5 || $3 != "session" || $4 != "accessibility" || $5 == "") invalid = 1
+				next
+			}
+			$1 == "setting" && $2 == "accessx" {
+				settings[$3]++
+				if (NF != 9 || $4 == "" || $5 != "boolean" ||
+					($6 != "0" && $6 != "1") || ($7 != "0" && $7 != "1") ||
+					$8 != "0" || $9 != "1") invalid = 1
+				next
+			}
+			$1 == "unsupported" && $2 == "accessx" { invalid = 1; next }
+			END {
+				expected["accessx-shortcuts"] = 1
+				expected["sticky-keys"] = 1
+				expected["slow-keys"] = 1
+				expected["bounce-keys"] = 1
+				expected["mouse-keys"] = 1
+				for (setting in settings)
+					if (!(setting in expected) || settings[setting] != 1) invalid = 1
+				for (setting in expected)
+					if (settings[setting] != 1) invalid = 1
+				exit(devices == 1 && !invalid ? 0 : 1)
+			}
 		'
 }
 
@@ -352,9 +383,16 @@ emit_accessibility_capabilities() {
 		emit_capability appearance accessibility-notifications 'Notification policy' unavailable read-only \
 			dbus 'No notification D-Bus owner is observable in this session'
 	fi
-	if [ "$input_discovery_state" = available ]; then
-		emit_capability appearance accessibility-input 'Keyboard and pointer access' partial read-only x11 \
-			'Input discovery and settings are available; dedicated accessibility controls are not configured'
+	if [ "$input_discovery_state" = available ] && provider_available xkbset &&
+		input_accessibility_snapshot_valid && run_bounded_probe xkbset q; then
+		emit_capability appearance accessibility-input 'Keyboard and pointer access' available user-session \
+			dwm-settings-input 'Persistent XKB accessibility controls are available'
+	elif [ "$input_discovery_state" = available ] && provider_available xkbset; then
+		emit_capability appearance accessibility-input 'Keyboard and pointer access' unavailable user-session x11 \
+			'xkbset is installed, but no complete responsive XKB state is available'
+	elif [ "$input_discovery_state" = available ]; then
+		emit_capability appearance accessibility-input 'Keyboard and pointer access' unavailable user-session x11 \
+			'Install xkbset to manage XKB accessibility controls'
 	elif [ "$input_discovery_state" = unready ]; then
 		emit_capability appearance accessibility-input 'Keyboard and pointer access' unavailable read-only x11 \
 			'Input tools are installed, but no responsive XInput session is available'

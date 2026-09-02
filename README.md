@@ -132,9 +132,10 @@ display with a reversible preview. Persistent generation selects compatible
 TearFree or NVIDIA Full Composition Pipeline behavior automatically; pass
 `--force-full-composition-pipeline off` to disable the NVIDIA default.
 The adjacent `dwm-settings-input` provider uses `xinput`, `setxkbmap` for
-keyboard settings, and `udevadm` for stable device identity and hotplug events.
-Kept values are stored in `input-settings.conf` in the same XDG directory;
-`DWM_INPUT_SETTINGS_FILE` can select another file.
+keyboard settings, `xkbset` for session-wide AccessX controls, and `udevadm`
+for stable device identity and hotplug events. Kept values are stored in
+`input-settings.conf` in the same XDG directory; `DWM_INPUT_SETTINGS_FILE` can
+select another file.
 
 See the [Configuration Guide](https://dwm.christitus.com/configuration.html)
 and [Theming Guide](https://dwm.christitus.com/theming.html) for examples and

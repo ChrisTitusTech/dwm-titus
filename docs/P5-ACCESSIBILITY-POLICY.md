@@ -3,8 +3,9 @@
 ## Scope
 
 This `ACCESSIBILITY-001` contract covers persistent managed-shell high contrast
-and reduced motion plus their dedicated Settings controls. Notification
-behavior and practical X11 input controls remain separate Phase 5 boundaries.
+and reduced motion plus their dedicated Settings controls. Practical X11 input
+controls are documented separately in `P5-INPUT-ACCESSIBILITY.md`; notification
+behavior remains a separate Phase 5 boundary.
 
 ## State Contract
 

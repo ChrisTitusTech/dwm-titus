@@ -144,6 +144,10 @@ rather than applying its settings to another XInput ID. Session startup runs
 replay so returning devices regain saved values. Repeating the apply is safe.
 The replay watcher is scoped to the owning dwm process and exits at logout,
 including when dwm was launched through `startx`.
+The same file stores fixed `accessx` records for session-wide accessibility
+shortcuts, sticky keys, slow keys, bounce keys, and mouse keys. These records
+are reapplied through `xkbset` at session startup and do not depend on a device
+identity or hotplug event.
 
 Power settings are managed from Control Center -> Power. The generated
 `power.conf` is authoritative once created and persists screen DPMS state,

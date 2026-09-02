@@ -7,17 +7,16 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
 
 ## Verified Checkpoint
 
-Status reconciled 2026-09-02 against `main` at `eed7625`. Fourteen of the 25
-Phase 5 implementation checkboxes are merged. PR #201 completed managed-shell
-contrast and motion policy after PR #190 established the accessibility
-capability contract. Only the primary worktree remains registered.
+Status reconciled 2026-09-02 against `main` at `28a374f`. Fourteen of the 25
+Phase 5 implementation checkboxes are merged. PR #202 exposed the managed-shell
+contrast and motion policy through accessible Settings controls after PR #201
+completed the policy backend. Only the primary worktree remains registered.
 
-The current accessibility controls boundary exposes the merged persistent
-high-contrast and reduced-motion policy through keyboard-focusable, labeled
-Settings switches and reset. Notification policy and practical keyboard or
-pointer access remain explanatory capability cards. The overall
-Settings-controls checkbox remains open until practical input controls and the
-required real-session evidence are complete.
+The current accessibility input boundary adds fixed, session-wide XKB controls
+for accessibility shortcuts, sticky keys, slow keys, bounce keys, and mouse
+keys through the existing timed preview, persistence, replay, and reset path.
+Notification policy remains the only open ACCESSIBILITY-001 implementation
+boundary.
 
 ## Active Phase: Personalization and Accessibility
 
@@ -98,7 +97,7 @@ Acceptance:
 - [x] Define capability records for text scaling, contrast, reduced motion,
   notification policy, and practical keyboard or pointer accessibility features
   available through supported Fedora/X11 interfaces.
-- [ ] Add accessible Settings controls with keyboard navigation, visible focus,
+- [x] Add accessible Settings controls with keyboard navigation, visible focus,
   usable common display sizes, explanatory unavailable states, and reset.
 - [x] Apply reduced-motion and contrast choices consistently to managed
   Quickshell surfaces without introducing a Wayland, compositor, or polling

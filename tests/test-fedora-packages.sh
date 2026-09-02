@@ -69,7 +69,8 @@ printf '%s\n' "$installed_provider_packages" | grep -Fxq dbus-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq inotify-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq xsettingsd
 grep -Fq 'check_cmd "xsettingsd"' "$repo/scripts/check-deps.sh"
-[[ $("$repo/scripts/dwm-packages.sh" fedora source-update) == xsettingsd ]]
+grep -Fq 'xsetroot xkbset' "$repo/scripts/check-deps.sh"
+[[ $("$repo/scripts/dwm-packages.sh" fedora source-update) == $'xsettingsd\nxkbset' ]]
 if "$repo/scripts/dwm-packages.sh" fedora unsupported >"$work/unsupported"; then
 	printf 'Unsupported package-map profile unexpectedly passed.\n' >&2
 	exit 1
