@@ -277,12 +277,14 @@ Flickable {
     component NotificationTimeoutComboBox: Controls.ComboBox {
         id: notificationTimeoutCombo
 
-        readonly property var timeoutValues: [4000, 6000, 10000]
+        readonly property var timeoutValues: root.notificationModel.popupTimeoutOptions
 
         Layout.preferredWidth: 150
         implicitHeight: Theme.controlHeight
         activeFocusOnTab: enabled
-        model: ["4 seconds", "6 seconds", "10 seconds"]
+        model: notificationTimeoutCombo.timeoutValues.map(function(value) {
+            return (value / 1000) + " seconds";
+        })
         currentIndex: notificationTimeoutCombo.timeoutValues.indexOf(
             root.notificationModel.popupTimeoutMs)
         font.family: Theme.fontFamily

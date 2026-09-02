@@ -38,6 +38,14 @@ make_notification_bus_stub() {
 	chmod +x "$path"
 }
 
+make_live_notification_bus_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		"printf '{\"type\":\"u\",\"data\":[%s]}\\n' \"\$PPID\"" >"$path"
+	chmod +x "$path"
+}
+
 make_appearance_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
@@ -483,6 +491,7 @@ printf '%s\n' "$missing_notification_owner_output" | grep -Fqx \
 
 mismatched_notification_owner_bin=$work/mismatched-notification-owner-bin
 cp -a "$fedora_bin" "$mismatched_notification_owner_bin"
+make_live_notification_bus_stub "$mismatched_notification_owner_bin/busctl"
 mismatched_notification_owner_output=$(PATH="$mismatched_notification_owner_bin" \
 	XDG_CONFIG_HOME="$work/fedora-config" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
