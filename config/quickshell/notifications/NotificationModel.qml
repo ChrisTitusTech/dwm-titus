@@ -18,7 +18,6 @@ Scope {
     property string policyDetail: "Loading notification policy"
     property bool policySaving: false
     property bool policyReloadPending: false
-    property bool policySelfWriteExpected: false
     property bool confirmedDoNotDisturb: false
     property int confirmedPopupTimeoutMs: 6000
 
@@ -79,6 +78,7 @@ Scope {
             policy = JSON.parse(policyFile.text());
         } catch (error) {
             root.usePolicyDefaults();
+            root.dismissNonCriticalPopups();
             root.policyState = "partial";
             root.policyDetail = "Saved notification policy could not be parsed; safe defaults are active until reset";
             return;
@@ -87,6 +87,7 @@ Scope {
                 || policy.version !== 1 || typeof policy.doNotDisturb !== "boolean"
                 || !root.validPopupTimeout(policy.popupTimeoutMs)) {
             root.usePolicyDefaults();
+            root.dismissNonCriticalPopups();
             root.policyState = "partial";
             root.policyDetail = "Saved notification policy is invalid; safe defaults are active until reset";
             return;
@@ -102,8 +103,6 @@ Scope {
 
     function savePolicy() {
         root.policySaving = true;
-        root.policySelfWriteExpected = true;
-        policySelfWriteGuard.restart();
         root.policyState = "saving";
         root.policyDetail = "Saving notification policy";
         policyFile.setText(JSON.stringify({
@@ -278,12 +277,8 @@ Scope {
         printErrors: false
         onLoaded: root.loadPolicy()
         onFileChanged: {
-            if (root.policySelfWriteExpected) {
-                root.policySelfWriteExpected = false;
-                policySelfWriteGuard.stop();
-            }
             if (root.policySaving) root.policyReloadPending = true;
-            else root.beginPolicyReload(true);
+            else root.beginPolicyReload(false);
         }
         onSaved: {
             root.confirmedDoNotDisturb = root.doNotDisturb;
@@ -300,8 +295,6 @@ Scope {
             }
         }
         onSaveFailed: error => {
-            root.policySelfWriteExpected = false;
-            policySelfWriteGuard.stop();
             root.applyDoNotDisturb(root.confirmedDoNotDisturb);
             root.popupTimeoutMs = root.confirmedPopupTimeoutMs;
             root.policySaving = false;
@@ -329,14 +322,6 @@ Scope {
                 root.policyDetail = "Notification policy could not be loaded";
             }
         }
-    }
-
-    Timer {
-        id: policySelfWriteGuard
-
-        interval: 500
-        repeat: false
-        onTriggered: root.policySelfWriteExpected = false
     }
 
     FileView {

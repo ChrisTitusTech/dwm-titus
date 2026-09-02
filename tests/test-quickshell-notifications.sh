@@ -34,6 +34,11 @@ grep -Fq 'root.applyDoNotDisturb(root.confirmedDoNotDisturb);' "$model"
 grep -Fq 'root.popupTimeoutMs = root.confirmedPopupTimeoutMs;' "$model"
 grep -Fq 'root.dismissNonCriticalPopups();' "$model"
 grep -Fq 'root.policyReloadPending = true;' "$model"
+grep -Fq 'else root.beginPolicyReload(false);' "$model"
+if grep -Fq 'policySelfWriteExpected' "$model"; then
+	printf 'Notification policy still guesses FileView save signal ordering\n' >&2
+	exit 1
+fi
 if grep -Fq '} else if (root.policySaving)' "$model"; then
 	printf 'Notification policy reload still discards the next change as a self-write\n' >&2
 	exit 1

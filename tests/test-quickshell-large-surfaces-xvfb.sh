@@ -340,7 +340,15 @@ if ! grep -Eq '"popupTimeoutMs"[[:space:]]*:[[:space:]]*4000' \
 	sed -n '1,20p' "$config_home/dwm-titus/notification-settings.json" >&2
 	exit 1
 fi
-[ "$(ipc notifications count)" -gt 0 ]
+# FileView does not define whether saved or fileChanged arrives first. Sample a
+# bounded post-save window so either ordering must keep the popup available.
+i=0
+while [ "$i" -lt 20 ]; do
+	[ "$(ipc notifications policyState)" = available ]
+	[ "$(ipc notifications count)" -gt 0 ]
+	i=$((i + 1))
+	sleep 0.05
+done
 capture_root notification-popup
 ipc notifications openHistory >/dev/null
 history_window=$(wait_window '^dwm notification history$')
