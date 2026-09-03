@@ -147,7 +147,11 @@ started by another PackageKit client. The reserved `G_MAXUINT` result
 updates, nor clears this value, and passive `GetUpdates` does not itself
 substitute a timestamp. Missing PackageKit or a call failure is
 `unavailable`/`unknown`, an absent method is `unsupported`/`unknown`, and a
-malformed reply is `partial`/`unknown`.
+malformed reply is `partial`/`unknown`. The call has its own ten-second
+monotonic deadline. On expiry the provider cancels the local D-Bus request,
+discards a late reply, emits `update-last-refresh` as
+`unavailable`/`unknown` with an updates `timeout` error, and completes the rest
+of the bounded snapshot.
 
 ### Regional State
 
@@ -1458,7 +1462,9 @@ discarded.
 History fixtures also stall `GetOldTransactions` before `Finished`, exercise
 cancel, grace, and detach, and prove recovery reaches the conservative
 `interrupted` result without retaining the active slot or consuming a late
-signal. Snapshot-budget fixtures place every list type exactly at its byte and
+signal. Refresh-age fixtures stall `GetTimeSinceAction`, prove its independent
+monotonic deadline preserves the rest of the snapshot, and ignore a late reply.
+Snapshot-budget fixtures place every list type exactly at its byte and
 count limits and one byte or row beyond them, proving the defined owner-scoped
 discard behavior and an encoded stream no larger than 8 MiB.
 Directory-race fixtures rename the whole journal and each user-writable ancestor
