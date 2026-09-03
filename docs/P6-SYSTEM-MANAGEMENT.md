@@ -199,8 +199,8 @@ Allowed operation transitions are:
 
 | From | Allowed next state |
 | --- | --- |
-| `pending` | `authorizing`, `running`, `canceled`, or `failed` |
-| `authorizing` | `running`, `permission-denied`, `canceled`, or `failed` |
+| `pending` | `authorizing`, `running`, `canceled`, `failed`, or `interrupted` |
+| `authorizing` | `running`, `permission-denied`, `canceled`, `failed`, or `interrupted` |
 | `running` | `running`, `cancel-requested`, `succeeded`, `failed`, or `interrupted` |
 | `cancel-requested` | `cancel-requested`, `canceled`, `succeeded`, `failed`, or `interrupted` |
 | Any terminal state | None |
@@ -214,10 +214,11 @@ Snapshot record failures are provider-scoped only when a valid known provider,
 state, action, or list-record ID still identifies the owner; the consumer marks
 that provider invalid and continues parsing unrelated providers. A malformed
 header or completion, a missing or unknown owner ID, duplicate ID, illegal enum,
-operation-ID mismatch, transition outside the table, record after a terminal
-state, or missing completion rejects the entire stream. Operation and audit
-record failures always reject the operation stream. Text fields are capped at
-512 bytes, list records at 10,000 per snapshot, and the entire stream at 8 MiB.
+operation-ID mismatch, transition outside the table, an operation record after
+a terminal state, any record after the required completion, or missing
+completion rejects the entire stream. Operation and audit record failures
+always reject the operation stream. Text fields are capped at 512 bytes, list
+records at 10,000 per snapshot, and the entire stream at 8 MiB.
 
 The initial actions are a closed enum: `updates-refresh`, `updates-install-all`,
 `updates-cancel`, `timezone-set`, `ntp-set`, `locale-set`, `accounts-open`,
@@ -243,13 +244,15 @@ package ID, user, unit, device, path, or elevation mechanism.
   timestamps, operation kinds, terminal results, and sanitized diagnostics. They
   never record passwords, environment dumps, repository credentials, package
   payloads, or unbounded output.
-- A PackageKit-backed `refresh` or `update` operation lacking a terminal
-  PackageKit result is `interrupted`, not successful. Recovery for those
-  operations first checks PackageKit activity/history, then directs the user to
-  retry discovery or open System Health. Regional operations use the terminal
-  result and current state from systemd's owning service. A delegated launch
-  records whether the trusted tool was accepted; the tool owns later completion
-  and recovery, and Settings never infers that its internal work succeeded.
+- A PackageKit-backed `refresh` or `update` operation in any nonterminal state
+  that lacks a terminal PackageKit result is `interrupted`, not successful.
+  The transition table permits this recovery result before and after the
+  operation begins running. Recovery first checks PackageKit activity/history,
+  then directs the user to retry discovery or open System Health. Regional
+  operations use the terminal result and current state from systemd's owning
+  service. A delegated launch records whether the trusted tool was accepted;
+  the tool owns later completion and recovery, and Settings never infers that
+  its internal work succeeded.
 
 ## Event and Resource Contract
 
