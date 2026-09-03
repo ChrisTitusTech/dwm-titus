@@ -1,0 +1,859 @@
+#!/usr/bin/python3
+"""Bounded, machine-readable Phase 6 system-management provider."""
+
+from __future__ import annotations
+
+import hashlib
+import sys
+import time
+from dataclasses import dataclass
+from typing import Iterable, Protocol, Sequence
+
+
+PROTOCOL_MAJOR = 1
+PROTOCOL_MINOR = 0
+MAX_TEXT_BYTES = 512
+MAX_LIST_RECORDS = 4096
+MAX_LIST_BYTES = 3 * 1024 * 1024
+READ_DEADLINE_SECONDS = 120
+REFRESH_AGE_DEADLINE_SECONDS = 10
+CANCEL_GRACE_SECONDS = 5
+
+PACKAGEKIT_NAME = "org.freedesktop.PackageKit"
+PACKAGEKIT_PATH = "/org/freedesktop/PackageKit"
+PACKAGEKIT_INTERFACE = "org.freedesktop.PackageKit"
+TRANSACTION_INTERFACE = "org.freedesktop.PackageKit.Transaction"
+PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
+
+ROLE_REFRESH_CACHE = 13
+EXIT_SUCCESS = 1
+G_MAXUINT = (1 << 32) - 1
+
+UPDATE_INFO = {
+    0: ("unknown", "installable"),
+    2: ("unknown", "installable"),
+    3: ("low", "installable"),
+    4: ("enhancement", "installable"),
+    5: ("normal", "installable"),
+    6: ("bugfix", "installable"),
+    7: ("important", "installable"),
+    8: ("security", "installable"),
+    9: ("unknown", "blocked"),
+    26: ("critical", "installable"),
+}
+PLAN_INFO = {
+    # The protocol accepts transaction-result classifications only. PackageKit
+    # intent enums INSTALL/REMOVE/OBSOLETE/DOWNGRADE (27-30) stay rejected.
+    11: "update",
+    12: "install",
+    13: "remove",
+    15: "obsolete",
+    19: "reinstall",
+    20: "downgrade",
+}
+RESTART_INFO = {
+    1: (0, False, "none"),
+    2: (1, False, "application"),
+    3: (2, False, "session"),
+    4: (3, False, "system"),
+    5: (2, True, "security-session"),
+    6: (3, True, "security-system"),
+}
+
+
+class SnapshotFailure(Exception):
+    """A normalized provider failure safe to expose in the protocol."""
+
+    def __init__(self, code: str, detail: str, status: str = "partial") -> None:
+        super().__init__(detail)
+        self.code = code
+        self.detail = clean_text(detail)
+        self.status = status
+
+
+@dataclass(frozen=True)
+class Package:
+    info: int
+    package_id: str
+    summary: str
+
+
+@dataclass(frozen=True)
+class TransactionResult:
+    packages: tuple[Package, ...]
+    restart_types: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class UpdateRow:
+    package_id: str
+    severity: str
+    installability: str
+    name: str
+    version: str
+    summary: str
+
+    def fields(self) -> tuple[str, ...]:
+        return (
+            "update",
+            self.package_id,
+            self.severity,
+            self.installability,
+            self.name,
+            self.version,
+            self.summary,
+        )
+
+
+@dataclass(frozen=True)
+class PlanRow:
+    package_id: str
+    action: str
+    name: str
+    version: str
+    summary: str
+
+    def fields(self) -> tuple[str, ...]:
+        return (
+            "package-change",
+            self.package_id,
+            self.action,
+            self.name,
+            self.version,
+            self.summary,
+        )
+
+    def generation_fields(self) -> tuple[str, ...]:
+        return (self.action, self.package_id, self.name, self.version, self.summary)
+
+
+class UpdateBackend(Protocol):
+    def last_refresh_age(self) -> int:
+        """Return PackageKit's seconds-since-refresh value."""
+
+    def updates(self) -> TransactionResult:
+        """Return the complete bounded GetUpdates result."""
+
+    def simulate(self, package_ids: Sequence[str]) -> TransactionResult:
+        """Return the complete bounded SIMULATE|ONLY_TRUSTED plan."""
+
+
+def clean_text(value: object, *, truncate: bool = True) -> str:
+    text = str(value).replace("\t", " ").replace("\r", " ").replace("\n", " ")
+    encoded = text.encode("utf-8", "replace")
+    if len(encoded) <= MAX_TEXT_BYTES:
+        return text
+    if not truncate:
+        raise SnapshotFailure("malformed", "PackageKit returned an oversized identity")
+    encoded = encoded[:MAX_TEXT_BYTES]
+    while True:
+        try:
+            return encoded.decode("utf-8")
+        except UnicodeDecodeError:
+            encoded = encoded[:-1]
+
+
+def canonical_identity(value: object) -> str:
+    text = str(value)
+    if clean_text(text, truncate=False) != text:
+        raise SnapshotFailure("malformed", "PackageKit returned an unsafe identity")
+    if not text:
+        raise SnapshotFailure(
+            "malformed", "PackageKit returned an empty package identity"
+        )
+    return text
+
+
+def package_display_fields(package_id: str) -> tuple[str, str]:
+    parts = package_id.split(";", 3)
+    if len(parts) != 4 or not parts[0] or not parts[1]:
+        raise SnapshotFailure(
+            "malformed", "PackageKit returned a malformed package identity"
+        )
+    return clean_text(parts[0]), clean_text(parts[1])
+
+
+def encoded_record_size(fields: Iterable[str]) -> int:
+    return len(("\t".join(fields) + "\n").encode("utf-8"))
+
+
+def enforce_list_budget(rows: Sequence[UpdateRow] | Sequence[PlanRow]) -> None:
+    if len(rows) > MAX_LIST_RECORDS:
+        raise SnapshotFailure(
+            "malformed", "PackageKit returned too many package records"
+        )
+    if sum(encoded_record_size(row.fields()) for row in rows) > MAX_LIST_BYTES:
+        raise SnapshotFailure(
+            "malformed", "PackageKit package records exceeded the protocol budget"
+        )
+
+
+def normalize_updates(packages: Sequence[Package]) -> list[UpdateRow]:
+    rows: list[UpdateRow] = []
+    seen: set[str] = set()
+    for package in packages:
+        package_id = canonical_identity(package.package_id)
+        if package_id in seen:
+            raise SnapshotFailure(
+                "malformed", "PackageKit returned a duplicate update identity"
+            )
+        seen.add(package_id)
+        try:
+            severity, installability = UPDATE_INFO[int(package.info)]
+        except (KeyError, TypeError, ValueError) as error:
+            raise SnapshotFailure(
+                "malformed", "PackageKit returned an unsupported update classification"
+            ) from error
+        name, version = package_display_fields(package_id)
+        rows.append(
+            UpdateRow(
+                package_id,
+                severity,
+                installability,
+                name,
+                version,
+                clean_text(package.summary),
+            )
+        )
+    rows.sort(key=lambda row: row.package_id.encode("utf-8"))
+    enforce_list_budget(rows)
+    return rows
+
+
+def normalize_plan(
+    packages: Sequence[Package], requested_ids: Sequence[str]
+) -> list[PlanRow]:
+    rows: list[PlanRow] = []
+    seen: set[str] = set()
+    for package in packages:
+        package_id = canonical_identity(package.package_id)
+        if package_id in seen:
+            raise SnapshotFailure(
+                "malformed", "PackageKit returned a duplicate plan identity"
+            )
+        seen.add(package_id)
+        try:
+            action = PLAN_INFO[int(package.info)]
+        except (KeyError, TypeError, ValueError) as error:
+            raise SnapshotFailure(
+                "malformed", "PackageKit returned an unsupported plan classification"
+            ) from error
+        name, version = package_display_fields(package_id)
+        rows.append(
+            PlanRow(package_id, action, name, version, clean_text(package.summary))
+        )
+
+    requested = set(requested_ids)
+    represented = {row.package_id for row in rows if row.action == "update"}
+    if requested != represented or any(
+        row.package_id in requested and row.action != "update" for row in rows
+    ):
+        raise SnapshotFailure(
+            "malformed", "PackageKit returned an incomplete update plan"
+        )
+    rows.sort(
+        key=lambda row: tuple(
+            field.encode("utf-8") for field in row.generation_fields()
+        )
+    )
+    enforce_list_budget(rows)
+    return rows
+
+
+def aggregate_restart(restart_types: Sequence[int]) -> str:
+    scope = 0
+    security = False
+    for value in restart_types:
+        try:
+            item_scope, item_security, _label = RESTART_INFO[int(value)]
+        except (KeyError, TypeError, ValueError) as error:
+            raise SnapshotFailure(
+                "malformed", "PackageKit returned an unsupported restart requirement"
+            ) from error
+        scope = max(scope, item_scope)
+        security = security or item_security
+    if security and scope >= 3:
+        return "security-system"
+    if security and scope >= 2:
+        return "security-session"
+    return {0: "none", 1: "application", 2: "session", 3: "system"}[scope]
+
+
+def snapshot_generation(update_ids: Sequence[str], plan: Sequence[PlanRow]) -> str:
+    digest = hashlib.sha256(b"dwm-titus-update-plan-v1")
+    for package_id in sorted(update_ids, key=lambda value: value.encode("utf-8")):
+        encoded = package_id.encode("utf-8")
+        digest.update(b"U")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    for row in sorted(
+        plan,
+        key=lambda value: tuple(
+            field.encode("utf-8") for field in value.generation_fields()
+        ),
+    ):
+        digest.update(b"P")
+        for field in row.generation_fields():
+            encoded = field.encode("utf-8")
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+    return digest.hexdigest()
+
+
+def build_snapshot(backend: UpdateBackend) -> list[str]:
+    errors: list[tuple[str, str]] = []
+    last_refresh_status = "unavailable"
+    last_refresh_value = "unknown"
+    last_refresh_detail = "PackageKit refresh history is unavailable"
+    try:
+        refresh_age = backend.last_refresh_age()
+        if refresh_age == G_MAXUINT:
+            last_refresh_status = "partial"
+            last_refresh_detail = "PackageKit has no successful refresh history"
+        elif isinstance(refresh_age, int) and 0 <= refresh_age < G_MAXUINT:
+            last_refresh_status = "available"
+            last_refresh_value = str(refresh_age)
+            last_refresh_detail = "Seconds since PackageKit last refreshed metadata"
+        else:
+            raise SnapshotFailure(
+                "malformed", "PackageKit returned a malformed refresh age"
+            )
+    except SnapshotFailure as failure:
+        last_refresh_status = failure.status
+        last_refresh_detail = failure.detail
+        errors.append((failure.code, failure.detail))
+
+    update_rows: list[UpdateRow] = []
+    plan_rows: list[PlanRow] = []
+    summary_status = "unavailable"
+    restart_status = "unavailable"
+    restart_value = "unknown"
+    summary_detail = "PackageKit update discovery is unavailable"
+    restart_detail = "PackageKit restart guidance is unavailable"
+    inventory_ok = False
+    try:
+        result = backend.updates()
+    except SnapshotFailure as failure:
+        summary_status = failure.status
+        restart_status = failure.status
+        summary_detail = failure.detail
+        restart_detail = failure.detail
+        errors.append((failure.code, failure.detail))
+    else:
+        try:
+            update_rows = normalize_updates(result.packages)
+            summary_status = "available"
+            summary_detail = "PackageKit update discovery completed"
+            inventory_ok = True
+        except SnapshotFailure as failure:
+            summary_status = failure.status
+            summary_detail = failure.detail
+            errors.append((failure.code, failure.detail))
+        try:
+            restart_value = aggregate_restart(result.restart_types)
+            restart_status = "available"
+            restart_detail = "PackageKit restart guidance from update discovery"
+        except SnapshotFailure as failure:
+            restart_status = failure.status
+            restart_detail = failure.detail
+            errors.append((failure.code, failure.detail))
+
+    installable_ids = [
+        row.package_id for row in update_rows if row.installability == "installable"
+    ]
+    plan_detail = (
+        "No installable updates require a dependency preview"
+        if inventory_ok
+        else "PackageKit dependency preview is unavailable"
+    )
+    if inventory_ok and installable_ids:
+        try:
+            plan_rows = normalize_plan(
+                backend.simulate(installable_ids).packages, installable_ids
+            )
+            if any(row.action in {"reinstall", "downgrade"} for row in plan_rows):
+                plan_detail = (
+                    "PackageKit dependency preview requires unsupported reinstall "
+                    "or downgrade flags"
+                )
+                errors.append(("unsupported", plan_detail))
+            else:
+                plan_detail = "PackageKit dependency preview completed"
+        except SnapshotFailure as failure:
+            plan_detail = failure.detail
+            errors.append((failure.code, failure.detail))
+
+    generation = snapshot_generation(installable_ids, plan_rows)
+    provider_status = "partial" if inventory_ok else summary_status
+    if provider_status not in {"partial", "restricted", "unavailable", "unsupported"}:
+        provider_status = "partial"
+
+    lines = [
+        f"system-management-protocol\t{PROTOCOL_MAJOR}\t{PROTOCOL_MINOR}",
+        f"snapshot-generation\t{generation}",
+        "\t".join(
+            (
+                "provider",
+                "updates",
+                provider_status,
+                "delegated",
+                "PackageKit",
+                clean_text(
+                    "Read-only update discovery is available; managed update operations "
+                    "are not enabled in this build"
+                    if inventory_ok
+                    else summary_detail
+                ),
+            )
+        ),
+        "provider\trecovery\tunsupported\tuser-session\tdwm-system-management\t"
+        "Managed update recovery is not enabled in this build",
+        "\t".join(
+            (
+                "state",
+                "update-summary",
+                summary_status,
+                str(len(update_rows)) if summary_status == "available" else "unknown",
+                clean_text(summary_detail),
+            )
+        ),
+        "\t".join(
+            (
+                "state",
+                "update-last-refresh",
+                last_refresh_status,
+                last_refresh_value,
+                clean_text(last_refresh_detail),
+            )
+        ),
+        "\t".join(
+            (
+                "state",
+                "update-restart",
+                restart_status,
+                restart_value if restart_status == "available" else "unknown",
+                clean_text(restart_detail),
+            )
+        ),
+        "action\tupdates-refresh\tunavailable\tdelegated\tupdates\tRefresh updates\t"
+        "Managed update operations are not enabled in this build",
+        "\t".join(
+            (
+                "action",
+                "updates-install-all",
+                "unavailable",
+                "delegated",
+                "updates",
+                "Install all updates",
+                clean_text(f"Managed update operations are not enabled; {plan_detail}"),
+            )
+        ),
+        "action\tupdates-cancel\tunavailable\tdelegated\tupdates\tCancel update\t"
+        "No managed update operation is active",
+    ]
+    lines.extend("\t".join(row.fields()) for row in update_rows)
+    lines.extend("\t".join(row.fields()) for row in plan_rows)
+    lines.extend(
+        f"error\tupdates\t{code}\t{clean_text(detail)}" for code, detail in errors
+    )
+    lines.append("complete\tsnapshot")
+    return lines
+
+
+class PackageKitBackend:
+    """Small direct D-Bus client with transaction-wide monotonic deadlines."""
+
+    def __init__(self) -> None:
+        try:
+            import gi
+
+            gi.require_version("Gio", "2.0")
+            gi.require_version("PackageKitGlib", "1.0")
+            from gi.repository import Gio, GLib, PackageKitGlib
+        except (ImportError, ValueError) as error:
+            raise SnapshotFailure(
+                "missing-provider",
+                "System Python GObject bindings are unavailable",
+                "unavailable",
+            ) from error
+        self.Gio = Gio
+        self.GLib = GLib
+        # PackageKit's D-Bus arguments are bitfields, not raw enum values. Let
+        # the installed API perform the stable enum-to-bitfield conversion.
+        self.filter_none = PackageKitGlib.filter_bitfield_from_string("none")
+        self.flags_simulate_only_trusted = (
+            PackageKitGlib.transaction_flag_bitfield_from_string(
+                "simulate;only-trusted"
+            )
+        )
+        try:
+            self.connection = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        except GLib.Error as error:
+            raise self._dbus_failure(error) from error
+
+    def _timeout_ms(self, deadline: float) -> int:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise SnapshotFailure(
+                "timeout", "PackageKit request timed out", "unavailable"
+            )
+        return max(1, min(int(remaining * 1000), 2_147_483_647))
+
+    def _call(
+        self,
+        path: str,
+        interface: str,
+        method: str,
+        parameters: object,
+        deadline: float,
+    ) -> object:
+        try:
+            return self.connection.call_sync(
+                PACKAGEKIT_NAME,
+                path,
+                interface,
+                method,
+                parameters,
+                None,
+                self.Gio.DBusCallFlags.NONE,
+                self._timeout_ms(deadline),
+                None,
+            )
+        except self.GLib.Error as error:
+            if time.monotonic() >= deadline:
+                raise SnapshotFailure(
+                    "timeout", "PackageKit request timed out", "unavailable"
+                ) from error
+            raise self._dbus_failure(error) from error
+
+    def _dbus_failure(self, error: Exception) -> SnapshotFailure:
+        message = str(error)
+        lowered = message.lower()
+        if "serviceunknown" in lowered or "namehasnoowner" in lowered:
+            return SnapshotFailure(
+                "missing-provider", "PackageKit service is unavailable", "unavailable"
+            )
+        if "notauthorized" in lowered or "accessdenied" in lowered:
+            return SnapshotFailure(
+                "permission-denied",
+                "PackageKit denied the read-only request",
+                "restricted",
+            )
+        if "unknownmethod" in lowered:
+            return SnapshotFailure(
+                "unsupported",
+                "PackageKit does not support the required method",
+                "unsupported",
+            )
+        if "timedout" in lowered or "timeout" in lowered:
+            return SnapshotFailure(
+                "timeout", "PackageKit request timed out", "unavailable"
+            )
+        return SnapshotFailure(
+            "internal", "PackageKit D-Bus request failed", "unavailable"
+        )
+
+    def last_refresh_age(self) -> int:
+        deadline = time.monotonic() + REFRESH_AGE_DEADLINE_SECONDS
+        reply = self._call(
+            PACKAGEKIT_PATH,
+            PACKAGEKIT_INTERFACE,
+            "GetTimeSinceAction",
+            self.GLib.Variant("(u)", (ROLE_REFRESH_CACHE,)),
+            deadline,
+        )
+        values = reply.unpack()
+        if len(values) != 1 or not isinstance(values[0], int):
+            raise SnapshotFailure(
+                "malformed", "PackageKit returned a malformed refresh age"
+            )
+        return values[0]
+
+    def updates(self) -> TransactionResult:
+        return self._transaction(
+            "GetUpdates", self.GLib.Variant("(t)", (self.filter_none,))
+        )
+
+    def simulate(self, package_ids: Sequence[str]) -> TransactionResult:
+        return self._transaction(
+            "UpdatePackages",
+            self.GLib.Variant(
+                "(tas)",
+                (self.flags_simulate_only_trusted, list(package_ids)),
+            ),
+        )
+
+    def _transaction(self, method: str, parameters: object) -> TransactionResult:
+        deadline = time.monotonic() + READ_DEADLINE_SECONDS
+        created = self._call(
+            PACKAGEKIT_PATH,
+            PACKAGEKIT_INTERFACE,
+            "CreateTransaction",
+            None,
+            deadline,
+        ).unpack()
+        if (
+            len(created) != 1
+            or not isinstance(created[0], str)
+            or not created[0].startswith("/")
+        ):
+            raise SnapshotFailure(
+                "malformed", "PackageKit returned a malformed transaction path"
+            )
+        path = created[0]
+        packages: list[Package] = []
+        restart_types: list[int] = []
+        error_code: tuple[int, str] | None = None
+        finished_exit: int | None = None
+        collection_failure: SnapshotFailure | None = None
+        loop = self.GLib.MainLoop()
+
+        def signal_received(
+            _connection: object,
+            _sender: str,
+            _path: str,
+            _interface: str,
+            signal: str,
+            values: object,
+            _data: object,
+        ) -> None:
+            nonlocal collection_failure, error_code, finished_exit
+            try:
+                unpacked = values.unpack()
+                if collection_failure is not None and signal != "Finished":
+                    return
+                if signal == "Package":
+                    if len(unpacked) != 3:
+                        raise ValueError
+                    packages.append(Package(int(unpacked[0]), unpacked[1], unpacked[2]))
+                elif signal == "Packages":
+                    if len(unpacked) != 1:
+                        raise ValueError
+                    for item in unpacked[0]:
+                        if len(item) != 3:
+                            raise ValueError
+                        info, package_id, summary = item
+                        packages.append(Package(int(info), package_id, summary))
+                elif signal == "RequireRestart":
+                    if len(unpacked) != 2:
+                        raise ValueError
+                    restart_types.append(int(unpacked[0]))
+                elif signal == "ErrorCode":
+                    if len(unpacked) != 2:
+                        raise ValueError
+                    error_code = (int(unpacked[0]), clean_text(unpacked[1]))
+                elif signal == "Finished":
+                    if len(unpacked) != 2:
+                        raise ValueError
+                    finished_exit = int(unpacked[0])
+                    loop.quit()
+            except (TypeError, ValueError):
+                if collection_failure is None:
+                    collection_failure = SnapshotFailure(
+                        "malformed", "PackageKit sent a malformed transaction signal"
+                    )
+                loop.quit()
+                return
+            if len(packages) > MAX_LIST_RECORDS and collection_failure is None:
+                collection_failure = SnapshotFailure(
+                    "malformed", "PackageKit returned too many package records"
+                )
+                loop.quit()
+
+        subscription = self.connection.signal_subscribe(
+            PACKAGEKIT_NAME,
+            TRANSACTION_INTERFACE,
+            None,
+            path,
+            None,
+            self.Gio.DBusSignalFlags.NONE,
+            signal_received,
+            None,
+        )
+        timeout_source = 0
+        try:
+            try:
+                self._call(
+                    path,
+                    TRANSACTION_INTERFACE,
+                    "SetHints",
+                    self.GLib.Variant(
+                        "(as)",
+                        (
+                            [
+                                "background=true",
+                                "interactive=false",
+                                "cache-age=4294967295",
+                            ],
+                        ),
+                    ),
+                    deadline,
+                )
+                self._call(path, TRANSACTION_INTERFACE, method, parameters, deadline)
+            except SnapshotFailure as failure:
+                if failure.code == "timeout":
+                    self._cancel_with_grace(
+                        path, loop, lambda: finished_exit is not None
+                    )
+                raise
+
+            def timed_out() -> bool:
+                nonlocal timeout_source
+                timeout_source = 0
+                loop.quit()
+                return self.GLib.SOURCE_REMOVE
+
+            if collection_failure is None and finished_exit is None:
+                try:
+                    wait_ms = self._timeout_ms(deadline)
+                except SnapshotFailure:
+                    self._cancel_with_grace(
+                        path, loop, lambda: finished_exit is not None
+                    )
+                    raise
+                timeout_source = self.GLib.timeout_add(wait_ms, timed_out)
+                loop.run()
+            if collection_failure is not None:
+                self._cancel_with_grace(path, loop, lambda: finished_exit is not None)
+                raise collection_failure
+            if finished_exit is None:
+                self._cancel_with_grace(path, loop, lambda: finished_exit is not None)
+                raise SnapshotFailure("timeout", "PackageKit transaction timed out")
+        finally:
+            if timeout_source:
+                self.GLib.source_remove(timeout_source)
+            self.connection.signal_unsubscribe(subscription)
+
+        if error_code is not None:
+            raise self._transaction_failure(*error_code)
+        if finished_exit != EXIT_SUCCESS:
+            raise SnapshotFailure("internal", "PackageKit transaction did not succeed")
+        return TransactionResult(tuple(packages), tuple(restart_types))
+
+    def _cancel_with_grace(self, path: str, loop: object, finished: object) -> None:
+        grace_deadline = time.monotonic() + CANCEL_GRACE_SECONDS
+        allow_cancel = False
+        try:
+            reply = self._call(
+                path,
+                PROPERTIES_INTERFACE,
+                "Get",
+                self.GLib.Variant("(ss)", (TRANSACTION_INTERFACE, "AllowCancel")),
+                grace_deadline,
+            ).unpack()
+            allow_cancel = (
+                reply[0] if len(reply) == 1 and isinstance(reply[0], bool) else False
+            )
+            if allow_cancel:
+                self._call(path, TRANSACTION_INTERFACE, "Cancel", None, grace_deadline)
+        except SnapshotFailure:
+            pass
+        if finished():
+            return
+
+        def grace_expired() -> bool:
+            nonlocal source
+            source = 0
+            loop.quit()
+            return self.GLib.SOURCE_REMOVE
+
+        try:
+            grace_ms = self._timeout_ms(grace_deadline)
+        except SnapshotFailure:
+            return
+        source = self.GLib.timeout_add(grace_ms, grace_expired)
+        try:
+            loop.run()
+        finally:
+            if source:
+                self.GLib.source_remove(source)
+
+    def _transaction_failure(self, code: int, _detail: str) -> SnapshotFailure:
+        if code == 2:
+            return SnapshotFailure("network", "PackageKit could not reach the network")
+        if code in {18, 19, 28, 33, 37, 43, 64}:
+            return SnapshotFailure("repository", "PackageKit repository access failed")
+        if code in {13, 26, 35, 36, 61, 67}:
+            return SnapshotFailure("conflict", "PackageKit reported a package conflict")
+        if code in {5, 30, 31, 50, 51}:
+            return SnapshotFailure(
+                "signature", "PackageKit rejected package trust data"
+            )
+        if code == 48:
+            return SnapshotFailure(
+                "permission-denied", "PackageKit denied the transaction", "restricted"
+            )
+        if code == 3:
+            return SnapshotFailure(
+                "unsupported",
+                "PackageKit does not support the transaction",
+                "unsupported",
+            )
+        if code in {17, 65}:
+            return SnapshotFailure("canceled", "PackageKit transaction was canceled")
+        if code in {6, 14}:
+            return SnapshotFailure(
+                "malformed", "PackageKit rejected the transaction input"
+            )
+        if code in {
+            7,
+            8,
+            9,
+            10,
+            20,
+            27,
+            29,
+            32,
+            38,
+            39,
+            40,
+            41,
+            42,
+            45,
+            46,
+            49,
+            55,
+            56,
+            57,
+            58,
+            59,
+            60,
+        }:
+            return SnapshotFailure("package", "PackageKit package processing failed")
+        return SnapshotFailure("internal", "PackageKit transaction failed internally")
+
+
+def usage() -> int:
+    print(f"usage: {sys.argv[0]} snapshot", file=sys.stderr)
+    return 2
+
+
+def main(argv: Sequence[str]) -> int:
+    if list(argv) != ["snapshot"]:
+        return usage()
+    try:
+        backend = PackageKitBackend()
+        lines = build_snapshot(backend)
+    except SnapshotFailure as failure:
+        # Backend construction can fail before a usable source exists. Reuse the
+        # normal snapshot shape so consumers still receive every mandatory ID.
+        class FailedBackend:
+            def __init__(self, backend_failure: SnapshotFailure) -> None:
+                self.failure = backend_failure
+
+            def last_refresh_age(self) -> int:
+                raise self.failure
+
+            def updates(self) -> TransactionResult:
+                raise self.failure
+
+            def simulate(self, _package_ids: Sequence[str]) -> TransactionResult:
+                raise self.failure
+
+        lines = build_snapshot(FailedBackend(failure))
+    print("\n".join(lines))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
