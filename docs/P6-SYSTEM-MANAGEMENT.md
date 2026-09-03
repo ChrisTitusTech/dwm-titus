@@ -195,9 +195,17 @@ changes remain in the Fedora-packaged `lxqt-admin-user` tool. The current user's
 password action opens the fixed `passwd` program in the configured terminal
 without transporting a password through QML.
 
-CUPS remains the printer service. Phase 6 reports service/tool availability and
-opens Fedora's `system-config-printer`; it does not reproduce printer discovery,
-driver, queue, job, or authentication policy.
+CUPS remains the printer service. Phase 6 reads only the fixed
+`cups.service` and `cups.socket` systemd units. `cups-service` is
+`available`/`running` when the service is active, `available`/`socket-ready`
+when the service is inactive and the socket is active/listening, and
+`available`/`stopped` when both loaded units are inactive. If neither unit
+exists it is `unsupported`/`unknown`; bus or property failure is
+`unavailable`/`unknown`, and malformed or transitional state is
+`partial`/`unknown`. This distinguishes Fedora's healthy idle socket-activated
+scheduler from a missing scheduler. Phase 6 reports service/tool availability
+and opens Fedora's `system-config-printer`; it does not reproduce printer
+discovery, driver, queue, job, or authentication policy.
 
 PackageKit supplies read-only repository records through `GetRepoList` with the
 fixed `NONE` filter, including enabled and disabled repositories. Repository
@@ -378,7 +386,9 @@ The initial vocabulary is closed for known record fields:
   integers when status is `available` and `unknown` for any other status. Other
   values are bounded display text owned by the named state. Security-state
   values use the exact per-ID enums and status/value mapping defined in
-  Security Status. PackageKit `RestartEnum.APPLICATION` maps to `application`.
+  Security Status. `cups-service` uses only `running`, `socket-ready`,
+  `stopped`, or `unknown` with the status mapping defined above. PackageKit
+  `RestartEnum.APPLICATION` maps to `application`.
   Repeated PackageKit restart requirements are aggregated across two
   dimensions: maximum scope (`none < application < session < system`) and
   whether any requirement is security-related. `security-session` contributes
@@ -664,9 +674,15 @@ path, or elevation mechanism.
   performs a new read-only discovery and offers diagnostics; it never retries
   the refresh or update automatically. The UI states this ambiguity rather
   than describing the PackageKit transaction itself as failed. Recovery never
-  expands to an unbounded history query. Regional operations use the terminal
-  result and current state from systemd's owning service. A delegated launch
-  records whether the trusted tool was accepted; the tool owns later
+  expands to an unbounded history query. A regional operation recovers a
+  terminal result only from a valid terminal journal record durably written
+  before interruption. Any nonterminal `timezone`, `ntp`, or `locale` record
+  becomes `interrupted` after restart regardless of the owning systemd
+  service's current value, because the journal intentionally stores no target
+  and current state cannot prove this operation caused it. Recovery publishes a
+  fresh read-only regional snapshot and explains that the requested mutation's
+  outcome is unknown; it never retries or audits it as successful. A delegated
+  launch records whether the trusted tool was accepted; the tool owns later
   completion and recovery, and Settings never infers that its internal work
   succeeded.
 
@@ -688,11 +704,12 @@ path, or elevation mechanism.
   The subscriptions and pending refresh stop when the section closes; an
   over-limit enumeration remains explicitly `partial`.
 - The systemd manager's `UnitNew` and `UnitRemoved` signals for the fixed
-  `cups.service` and `firewalld.service` names, plus `PropertiesChanged` for
-  each loaded unit's `ActiveState`, trigger one bounded, coalesced refresh of
-  the owning state while the section is open. Those subscriptions stop on
-  section close. Delegated-tool availability remains a bounded snapshot; Phase
-  6 adds no CUPS or firewalld polling loop.
+  `cups.service`, `cups.socket`, and `firewalld.service` names, plus
+  `PropertiesChanged` for each loaded unit's `ActiveState` and the CUPS
+  socket's `SubState`, trigger one bounded, coalesced refresh of the owning
+  state while the section is open. Those subscriptions stop on section close.
+  Delegated-tool availability remains a bounded snapshot; Phase 6 adds no CUPS
+  or firewalld polling loop.
 - Other system information, storage, and security probes run on open or
   explicit refresh. They add no idle timer.
 
