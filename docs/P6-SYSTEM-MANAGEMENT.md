@@ -192,12 +192,32 @@ The initial vocabulary is closed for known record fields:
 A snapshot emits exactly one provider row for every provider ID, zero or one of
 each singleton state ID, then one `complete<TAB>snapshot`. List record IDs
 (`update`, `repository`, and `account`) must be unique within their record type.
-An operation stream emits exactly one operation ID, may advance only through
-the states above to one terminal state, then emits one
-`complete<TAB>operation`. A malformed record invalidates only its owning
-provider; an invalid header, duplicate ID, illegal enum, impossible transition,
-or missing completion rejects the whole stream. Text fields are capped at 512
-bytes, list records at 10,000 per snapshot, and the entire stream at 8 MiB.
+An operation stream emits exactly one operation ID and then one
+`complete<TAB>operation` after its terminal state.
+
+Allowed operation transitions are:
+
+| From | Allowed next state |
+| --- | --- |
+| `pending` | `authorizing`, `running`, `canceled`, or `failed` |
+| `authorizing` | `running`, `permission-denied`, `canceled`, or `failed` |
+| `running` | `running`, `cancel-requested`, `succeeded`, `failed`, or `interrupted` |
+| `cancel-requested` | `cancel-requested`, `canceled`, `succeeded`, `failed`, or `interrupted` |
+| Any terminal state | None |
+
+Repeated `running` and `cancel-requested` records carry progress or cancellation
+updates. `succeeded` after `cancel-requested` is valid because completion can
+race cancellation. `permission-denied`, `canceled`, `failed`, `interrupted`,
+and `succeeded` are terminal and appear exactly once.
+
+Snapshot record failures are provider-scoped only when a valid known provider,
+state, action, or list-record ID still identifies the owner; the consumer marks
+that provider invalid and continues parsing unrelated providers. A malformed
+header or completion, a missing or unknown owner ID, duplicate ID, illegal enum,
+operation-ID mismatch, transition outside the table, record after a terminal
+state, or missing completion rejects the entire stream. Operation and audit
+record failures always reject the operation stream. Text fields are capped at
+512 bytes, list records at 10,000 per snapshot, and the entire stream at 8 MiB.
 
 The initial actions are a closed enum: `updates-refresh`, `updates-install-all`,
 `updates-cancel`, `timezone-set`, `ntp-set`, `locale-set`, `accounts-open`,
@@ -219,12 +239,17 @@ package ID, user, unit, device, path, or elevation mechanism.
   must finish.
 - The journal lives under
   `${XDG_STATE_HOME:-$HOME/.local/state}/dwm-titus/system-management/`, is mode
-  0600, is bounded, and records IDs, timestamps, operation kinds, terminal
-  results, and sanitized diagnostics. It never records passwords, environment
-  dumps, repository credentials, package payloads, or unbounded output.
-- A local operation lacking a terminal PackageKit result is `interrupted`, not
-  successful. Recovery first checks PackageKit activity/history, then directs
-  the user to retry discovery, open System Health, or use the owning Fedora tool.
+  0700, and contains bounded mode-0600 journal files. The files record IDs,
+  timestamps, operation kinds, terminal results, and sanitized diagnostics. They
+  never record passwords, environment dumps, repository credentials, package
+  payloads, or unbounded output.
+- A PackageKit-backed `refresh` or `update` operation lacking a terminal
+  PackageKit result is `interrupted`, not successful. Recovery for those
+  operations first checks PackageKit activity/history, then directs the user to
+  retry discovery or open System Health. Regional operations use the terminal
+  result and current state from systemd's owning service. A delegated launch
+  records whether the trusted tool was accepted; the tool owns later completion
+  and recovery, and Settings never infers that its internal work succeeded.
 
 ## Event and Resource Contract
 
@@ -267,9 +292,10 @@ section-owned process stops on close.
 The complete phase runs the clean build, managed suite, Quickshell lint,
 ShellCheck, shfmt, staged and repeated installation, nested X11, installed-file
 parity, and a real Fedora 44 X11 exercise. Rollback for this inventory boundary
-is documentation-only. Runtime boundaries remove their new provider, model,
-pane, and package-map entries together without changing existing health or
-session-action contracts.
+removes the contract and package-map/Kickstart entries together; it does not
+automatically remove packages already installed by an image or recommended
+installer run. Runtime boundaries remove their new provider, model, and pane
+together without changing existing health or session-action contracts.
 
 ## Authoritative Interface References
 
