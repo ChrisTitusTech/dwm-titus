@@ -1004,12 +1004,20 @@ path, or elevation mechanism.
   never merged back after the boundary cleared it. Otherwise the provider,
   regardless of the result, merges each member of the durable three-part
   contribution into its corresponding restart bucket, using the current
-  terminal timestamp for the session and application cutoffs. If an update
-  reached `running` and ends `failed`, `canceled`, or `interrupted` with no
-  observed requirement, its effective tuple is system `unknown`, session
-  `none`, and application `no` because packages may have changed before
-  observation stopped. A pre-running denial, conflict, or cancellation with no
-  observed requirement contributes the all-clear tuple. An all-clear
+  terminal timestamp for the session and application cutoffs. An update that
+  ends `failed`, `canceled`, or `interrupted` when sending or backend execution
+  of the mutating `UpdatePackages` method cannot be excluded preserves every
+  durable observed contribution and changes only a system contribution of
+  `none` to `unknown`. This rule applies regardless of the last persisted
+  lifecycle state because packages may have changed before observation stopped.
+  With no observed requirement its effective tuple is
+  therefore system `unknown`, session `none`, and application `no`; observed
+  session and application contributions remain intact, and an observed system
+  or security-system contribution remains more specific than `unknown`. A
+  failure, conflict, cancellation, or interruption that the provider and journal
+  prove occurred before that mutating method was sent contributes the all-clear
+  tuple, as does an authorization denial or cancellation that the exact
+  transaction proves never reached `running`. An all-clear
   contribution never weakens
   an outstanding requirement; multiple updates before a recovery boundary
   therefore retain every unsatisfied bucket and its latest applicable cutoff.
@@ -1203,23 +1211,26 @@ path, or elevation mechanism.
   read cannot form a refresh loop. Bursts never accumulate provider processes
   or overlapping PackageKit transactions.
 - Consuming `Finished` for every journaled, non-simulated `UpdatePackages`
-  transaction that reached `running` marks update discovery dirty before
-  terminal persistence, regardless of terminal result, because a failed or
-  canceled backend may still have changed packages. The unjournaled
+  transaction whose mutating method was sent and whose backend execution cannot
+  be excluded marks update discovery dirty before terminal persistence,
+  regardless of its last persisted lifecycle state or terminal result, because
+  a failed, canceled, or interrupted backend may still have changed packages.
+  The unjournaled
   `SIMULATE|ONLY_TRUSTED` transaction never marks discovery dirty. A successful
-  or unsuccessful `RefreshCache` that reached `running` does the same because
-  it may have refreshed a subset of repositories. These provider-owned
+  or unsuccessful `RefreshCache` whose method was sent and whose backend work
+  cannot be excluded does the same because it may have refreshed a subset of
+  repositories. These provider-owned
   invalidations use the same serialized dirty bit as `UpdatesChanged`, so
   observing both causes exactly one rerun and absence of that signal cannot
   leave post-transaction discovery stale. Transaction-list signals remain
   excluded from discovery invalidation.
-- The root model also marks discovery dirty when an owned journaled operation
-  stream exits after `running` without a terminal record. Every recovery of a
-  nonterminal refresh or update reserves the same coalesced discovery rerun
-  before it publishes an idle provider, whether recovery adopts a transaction,
-  finds history, or records `interrupted`. These fallbacks make invalidation
-  independent of terminal-frame success while preserving the simulation
-  exclusion.
+- The root model also marks discovery dirty when an owned journaled refresh or
+  update stream exits without a terminal record after its external method was
+  sent and backend work cannot be excluded. Every recovery of a nonterminal
+  refresh or update reserves the same coalesced discovery rerun before it
+  publishes an idle provider, whether recovery adopts a transaction, finds
+  history, or records `interrupted`. These fallbacks make invalidation independent
+  of terminal-frame success while preserving the simulation exclusion.
 - systemd D-Bus property changes drive time and locale refresh while the System
   section is open. Because timedate1 marks `NTPSynchronized` and `CanNTP` as not
   emitting change signals, one non-overlapping bounded read of only those
@@ -1312,7 +1323,17 @@ Each implementation boundary must cover valid, malformed, missing-provider,
 authorization-denied, canceled, interrupted, overlapping, and failed states.
 PackageKit fixtures must exercise cancellation before and after `AllowCancel`
 changes, all terminal results, recovery after Settings closure, and reboot
-guidance. They inject both `UpdatesChanged` and `InstalledChanged` at the
+guidance. They terminate updates as `failed` from both `pending` and
+`authorizing` after the mutating method send cannot be excluded and, without an
+observed restart signal, prove the effective tuple is system `unknown`, session
+`none`, and application `no`. A pre-call `failed`/`conflict` fixture proves the
+all-clear tuple. Failed, post-running canceled, and interrupted fixtures seed
+security-session and application contributions and prove those lower-scope
+buckets remain intact when the system contribution becomes `unknown`. They
+also terminate failed, canceled, and interrupted updates from `pending` and
+`authorizing` after method execution becomes ambiguous, omit both global update
+signals, and prove provider-owned invalidation schedules the discovery rerun.
+They inject both `UpdatesChanged` and `InstalledChanged` at the
 discovery-completion boundary and prove exactly one coalesced rerun is scheduled.
 Self-scheduling fixtures emit all three global invalidations during both the
 initial and settling reads, prove the cycle stops after two reads in visible
