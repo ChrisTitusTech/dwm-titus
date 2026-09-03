@@ -262,6 +262,41 @@ class SnapshotTests(unittest.TestCase):
                         (package(info, package_id, "Intent enum"),), (package_id,)
                     )
 
+    def test_reinstall_and_downgrade_plan_remains_visible_but_unsupported(self):
+        update = package(8, "openssl;4.0;x86_64;updates", "TLS library")
+        for extra_info, extra_id in (
+            (19, "openssl;4.0;x86_64;installed"),
+            (20, "compat-lib;1.0;x86_64;updates"),
+        ):
+            with self.subTest(extra_info=extra_info):
+                backend = FixtureBackend(
+                    updates=(update,),
+                    plan=(
+                        package(11, update.package_id, "TLS library"),
+                        package(extra_info, extra_id, "Unsupported change"),
+                    ),
+                )
+
+                output = provider.build_snapshot(backend)
+
+                self.assertEqual(
+                    {row[1] for row in rows(output, "package-change")},
+                    {update.package_id, extra_id},
+                )
+                self.assertIn("unsupported", [row[2] for row in rows(output, "error")])
+                install_action = next(
+                    row
+                    for row in rows(output, "action")
+                    if row[1] == "updates-install-all"
+                )
+                self.assertIn("unsupported reinstall or downgrade", install_action[-1])
+
+    def test_unlisted_packagekit_errors_fall_back_to_internal(self):
+        backend = object.__new__(provider.PackageKitBackend)
+
+        self.assertEqual(backend._transaction_failure(10, "download").code, "package")
+        self.assertEqual(backend._transaction_failure(4, "internal").code, "internal")
+
     def test_blocked_updates_are_not_simulated(self):
         backend = FixtureBackend(
             updates=(package(9, "held;2.0;x86_64;updates", "Blocked"),)

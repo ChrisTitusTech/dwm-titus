@@ -371,7 +371,14 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
             plan_rows = normalize_plan(
                 backend.simulate(installable_ids).packages, installable_ids
             )
-            plan_detail = "PackageKit dependency preview completed"
+            if any(row.action in {"reinstall", "downgrade"} for row in plan_rows):
+                plan_detail = (
+                    "PackageKit dependency preview requires unsupported reinstall "
+                    "or downgrade flags"
+                )
+                errors.append(("unsupported", plan_detail))
+            else:
+                plan_detail = "PackageKit dependency preview completed"
         except SnapshotFailure as failure:
             plan_detail = failure.detail
             errors.append((failure.code, failure.detail))
@@ -766,7 +773,7 @@ class PackageKitBackend:
             return SnapshotFailure("network", "PackageKit could not reach the network")
         if code in {18, 19, 28, 33, 37, 43, 64}:
             return SnapshotFailure("repository", "PackageKit repository access failed")
-        if code in {13, 26, 35, 36, 61}:
+        if code in {13, 26, 35, 36, 61, 67}:
             return SnapshotFailure("conflict", "PackageKit reported a package conflict")
         if code in {5, 30, 31, 50, 51}:
             return SnapshotFailure(
@@ -788,7 +795,32 @@ class PackageKitBackend:
             return SnapshotFailure(
                 "malformed", "PackageKit rejected the transaction input"
             )
-        return SnapshotFailure("package", "PackageKit package processing failed")
+        if code in {
+            7,
+            8,
+            9,
+            10,
+            20,
+            27,
+            29,
+            32,
+            38,
+            39,
+            40,
+            41,
+            42,
+            45,
+            46,
+            49,
+            55,
+            56,
+            57,
+            58,
+            59,
+            60,
+        }:
+            return SnapshotFailure("package", "PackageKit package processing failed")
+        return SnapshotFailure("internal", "PackageKit transaction failed internally")
 
 
 def usage() -> int:
