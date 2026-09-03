@@ -29,7 +29,9 @@ applicable platform source exists on this host or the project intentionally
 exposes no suitable source for that capability, so the UI must explain or hide
 it. An expected implemented interface that cannot be reached is `unavailable`.
 A planned provider that has not been implemented is omitted from runtime
-capability records instead of being advertised as `unsupported`.
+capability records by selecting the latest fully implemented protocol-minor
+active-ID set. It is not advertised as `unsupported`; within the selected set,
+all required provider, state, and action rows remain mandatory.
 
 Provider records use `available` for complete readable state, `partial` for a
 usable incomplete result, `restricted` when the owning interface is reachable
@@ -214,7 +216,7 @@ duplicate Fedora package lists.
 | Themes and GTK integration | `fedora:theme`, `fedora:theme-gtk`, and optional profiles | Missing optional theme packages do not disable Settings. |
 | Polkit authorization | Fedora desktop/image polkit agent and trusted helper | Missing authorization leaves read-only state available. |
 | System health | Fedora/systemd providers | Missing commands, services, hardware, or authorization emit partial or restricted records. |
-| Phase 6 updates | `PackageKit`, `PackageKit-glib`, and `python3-gobject` from `fedora:system-management`; included by `fedora:recommended` and the Fedora image | Missing PackageKit disables updates only and provides installation guidance; DNF or `pkcon` terminal output is never parsed as provider state. |
+| Phase 6 updates | `PackageKit`, `PackageKit-glib`, `python3-gobject`, and `python3-rpm` from `fedora:system-management`; included by `fedora:recommended`, `fedora:source-update`, and the Fedora image | Missing PackageKit disables updates only and provides installation guidance; DNF or `pkcon` terminal output is never parsed as provider state. The supported source-sync path reconciles every required Phase 6 package on existing recommended/full installs before reporting parity. |
 | Phase 6 delegated administration | `accountsservice`, `cups`, and `system-config-printer` from `fedora:system-management`; `lxqt-admin` and `dnfdragora` from `fedora:system-management-optional` | Service absence preserves unrelated state; optional delegated tools expose unavailable entry points with exact package guidance. |
 
 ## Settings Constraints Derived From the Inventory

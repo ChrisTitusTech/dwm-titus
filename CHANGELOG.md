@@ -12,7 +12,8 @@ versions from `config.mk`.
   inventory. Select PackageKit, systemd regional services, AccountsService,
   CUPS, and fixed Fedora tools as bounded owners; define provider, audit,
   cancellation, denial, recovery, and high-risk delegation contracts before
-  adding runtime mutations.
+  adding runtime mutations. Existing recommended/full source installs now
+  reconcile those required packages, including the Python RPM binding.
 
 - Complete Phase 5 personalization and accessibility qualification on Fedora 44
   X11. The combined clean build, managed suite, QML and shell checks, nested-X11

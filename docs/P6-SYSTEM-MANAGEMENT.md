@@ -51,10 +51,28 @@ the DNF5 backend, update discovery, repository discovery, update transactions,
 transaction lists, authorization checks, progress signals, error codes,
 restart guidance, and cancellation state. The provider consumes the documented
 PackageKit GLib/D-Bus API rather than parsing `dnf`, `pkcon`, or terminal text.
-Update inventory always calls `GetUpdates` with PackageKit's `NONE` filter so
-the confirmed install-all action operates on the complete unfiltered snapshot.
-The explicit Refresh action calls `RefreshCache` with `force=true`; passive
-discovery never calls it.
+Update inventory always calls `SetHints` with the exact read-only hints
+`background=true`, `interactive=false`, and `cache-age=4294967295` before
+calling `GetUpdates` with PackageKit's `NONE` filter. The maximum unsigned
+cache age directs PackageKit to reuse any usable metadata. PackageKit may still
+acquire metadata when its backend requires that work to return any result; the
+UI presents that as update discovery, never as a user-requested refresh. The
+explicit Refresh action calls `RefreshCache` with `force=true`; passive
+discovery never calls that method or starts an update transaction.
+
+The update command grammar is fixed:
+
+```text
+dwm-system-management snapshot
+dwm-system-management updates-refresh
+dwm-system-management updates-install-all GENERATION
+dwm-system-management updates-cancel
+```
+
+`GENERATION` is the exact 64-character lowercase hexadecimal generation emitted
+with the confirmed snapshot. It is an opaque provider-created value, not a
+package ID or caller-selected transaction parameter. No update command accepts
+another option or trailing argument.
 
 The PackageKit service is authoritative for package state. The project provider
 adds only validation, bounded record formatting, a private operation journal,
@@ -76,6 +94,43 @@ fixed `SetTimezone`, `SetNTP`, or `SetLocale` methods after confirmation. The
 interactive-authorization argument remains enabled so systemd and polkit own
 the decision. Arbitrary environment variables, keymaps, NTP servers, RTC mode,
 or manual timestamps are not accepted.
+
+The `Locale` array is parsed only as the allowlisted keys `LANG`, `LANGUAGE`,
+and `LC_CTYPE`, `LC_NUMERIC`, `LC_TIME`, `LC_COLLATE`, `LC_MONETARY`,
+`LC_MESSAGES`, `LC_PAPER`, `LC_NAME`, `LC_ADDRESS`, `LC_TELEPHONE`,
+`LC_MEASUREMENT`, and `LC_IDENTIFICATION`. Duplicate, unknown, malformed, or
+oversized assignments make the locale state `partial`/`unknown`. The array may
+contain at most 14 assignments, each complete `KEY=VALUE` assignment may be at
+most 512 UTF-8 bytes, and the sum of assignment byte lengths plus one separator
+byte per assignment may be at most 8192 bytes. A value exactly at any limit is
+accepted; an entry, count, or aggregate one unit over its limit is oversized.
+Otherwise the
+`locale` state value is the exact `LANG` value, or `unknown` when `LANG` is not
+set, and its bounded detail lists nonempty category overrides in the fixed
+order above. Immediately before confirmation and again before the D-Bus call,
+`locale-set LANG=LOCALE` rereads locale1's complete `Locale` array, validates
+the allowlist and bounds above, replaces only `LANG`, preserves every validated
+`LANGUAGE` and `LC_*` assignment, sorts the complete set in the fixed order
+above, and revalidates it before passing it to `SetLocale`. A malformed set or
+a monitored state change before the method is sent produces `conflict` and
+requires fresh confirmation. After the method returns, the provider rereads
+`Locale` and compares effective locale values, not raw array equality: `LANG`
+must equal the requested locale, every preserved `LANGUAGE` value must remain
+equal, and each preserved `LC_*` category must resolve to its prior value after
+applying the normal `LANG` fallback. A notification received after the final
+pre-call read whose complete effective map equals that expected result is the
+notification for this call and is ignored; any non-equivalent notification or
+final effective-value mismatch reports `conflict`, refreshes visible state, and
+warns that a concurrent writer may have won or been overwritten.
+
+locale1 replaces the full assignment array and exposes no lock or compare-and-
+set argument, so no client can make this cross-client read-modify-write fully
+atomic. An external writer in the final read-to-method interval can therefore
+still be overwritten even though the provider detects its notification when
+available. The confirmation states this limitation, shows the preserved
+overrides, and explains that applications require a new login to consume the
+change. This effective-value comparison permits locale1 to omit a redundant
+`LC_*` assignment without producing a false conflict.
 
 The parameterized actions use this exact command grammar:
 
@@ -206,7 +261,11 @@ The individual mappings are:
   ancestry without either is unencrypted. Missing, inaccessible, truncated, or
   internally inconsistent topology is `partial`/`unknown`; an unavailable
   command is `unavailable`/`unknown`, and read denial is
-  `restricted`/`unknown`.
+  `restricted`/`unknown`. The provider starts `lsblk` in a dedicated process
+  group with the same three-second deadline, bounded termination sequence, and
+  2 MiB output cap as `findmnt`, and accepts at most 1024 unique block-device
+  records. Timeout or termination failure is `unavailable`/`unknown`; output or
+  record truncation is `partial`/`unknown` and can never establish encryption.
 - Screen-lock state reuses the `power-lock` record from the versioned power
   protocol documented in `POWER-PROTOCOL.md`; it describes automatic screen
   locking and does not launch a second GSettings or locker probe. An
@@ -232,6 +291,7 @@ the first implementation boundary lands.
 
 ```text
 system-management-protocol<TAB>1<TAB>0
+snapshot-generation<TAB>lowercase-sha256
 provider<TAB>id<TAB>status<TAB>class<TAB>owner<TAB>detail
 state<TAB>id<TAB>status<TAB>value<TAB>detail
 update<TAB>package-id<TAB>severity<TAB>installable|blocked<TAB>name<TAB>version<TAB>summary
@@ -244,6 +304,21 @@ audit<TAB>id<TAB>action-id<TAB>kind<TAB>result<TAB>started<TAB>finished<TAB>deta
 error<TAB>capability<TAB>code<TAB>detail
 complete<TAB>snapshot|operation
 ```
+
+The protocol minor selects a cumulative active-ID set so each small Phase 6
+implementation boundary can produce a truthful complete snapshot:
+
+| Minor | Providers added | States added | Actions added | Lists enabled |
+| --- | --- | --- | --- | --- |
+| `0` | `updates`, `recovery` | `update-summary`, `update-last-refresh`, `update-restart` | `updates-refresh`, `updates-install-all`, `updates-cancel`, `recovery-clear-journal-temporaries` | `update` |
+| `1` | `regional`, `accounts`, `printers`, `sources` | `timezone`, `ntp-enabled`, `ntp-synchronized`, `locale`, `accounts-count`, `cups-service` | `timezone-set`, `ntp-set`, `locale-set`, `accounts-open`, `password-open`, `printers-open`, `sources-open` | `account`, `repository` |
+| `2` | `information`, `storage`, `security`, `diagnostics` | all information states, `filesystem-summary`, `selinux`, `secure-boot`, `firewalld`, `root-encryption`, `screen-lock` | `health-open` | `filesystem` |
+
+A producer emits the highest minor whose complete active set it implements and
+never emits a later planned ID as `unsupported`. Within that minor, every
+active provider, state, and action is mandatory even when its platform source
+is absent. A consumer that supports a later minor accepts earlier cumulative
+sets; a producer bumps the minor only when the entire next row is implemented.
 
 Required fields are single-line UTF-8 with tabs and line breaks replaced by
 spaces. Unknown records and trailing fields are ignored. Consumers reject a
@@ -285,10 +360,14 @@ The initial vocabulary is closed for known record fields:
 - Update severity is `critical`, `security`, `important`, `bugfix`,
   `enhancement`, `normal`, `low`, or `unknown`. Update installability is
   `installable` or `blocked`; blocked package IDs are never passed to
-  `UpdatePackages`. Repository state is `enabled` or `disabled`. Account scope
-  is `current` or `other`. Filesystem status uses the provider-status enum;
-  mount ID is an unsigned decimal integer and the unique record ID within the
-  snapshot, while source and target remain display-only text. `available`
+  `UpdatePackages`. An available `update-summary` value equals the total number
+  of unique emitted `update` rows, including blocked rows; the install-all
+  action is available only when at least one row is installable and all other
+  update mutation gates pass. Repository state is `enabled` or `disabled`.
+  Account scope is `current` or `other`. Filesystem status uses the
+  provider-status enum; mount ID is an unsigned decimal integer and the unique
+  record ID within the snapshot, while source and target remain display-only
+  text. `available`
   requires all three byte fields to be unsigned decimal integers; `partial`
   permits a mix of integers and `unknown`; `restricted`, `unavailable`, or
   `unsupported` requires all three byte fields to be `unknown`.
@@ -312,7 +391,10 @@ The initial vocabulary is closed for known record fields:
   `accounts-open` and `password-open` to `accounts`; `printers-open` to
   `printers`; `sources-open` to `sources`; and `health-open` to `diagnostics`.
   `recovery-clear-journal-temporaries` belongs to `recovery`. Every action row
-  must name that owner.
+  must name that owner. Action class is fixed as well: every action is
+  `delegated` except `health-open` and
+  `recovery-clear-journal-temporaries`, which are `user-session`. A producer or
+  consumer rejects an action row whose class does not match this mapping.
 - Action availability is `available` or `unavailable` and action class uses the
   provider class enum. The error capability field is exactly one provider ID,
   which is also its owner. Error codes are the closed normalized enum
@@ -332,13 +414,19 @@ The initial vocabulary is closed for known record fields:
   localized messages never occupy the code field and may appear only as bounded
   sanitized detail.
 
-A snapshot emits exactly one provider row for every provider ID, exactly one
-row for every action ID, exactly one state row for every state ID, then one
+A snapshot emits exactly one `snapshot-generation` row, one provider row for
+every provider ID active in its header minor, one row for every active action
+ID, one state row for every active state ID, all list records enabled by that
+minor, then one
 `complete<TAB>snapshot`. An unavailable, restricted, or unsupported capability
 therefore retains an explicit status-bearing state row instead of omitting its
-value. List record IDs (`update`, `repository`, `account`, and `filesystem`)
-must be unique within their record type. State and list-record ownership is
-fixed as follows:
+value. The generation is 64 lowercase hexadecimal characters. It is the SHA-256
+digest of the ASCII prefix `dwm-titus-update-set-v1` followed by the exact
+installable package-ID set sorted by unsigned UTF-8 bytes, with each ID encoded
+as an eight-byte big-endian length followed by its raw bytes. The empty set has
+a deterministic generation. List record IDs (`update`, `repository`, `account`,
+and `filesystem`) must be unique within their record type. State and list-record
+ownership is fixed as follows:
 
 - `updates` owns `update-summary`, `update-last-refresh`, `update-restart`, and
   every `update` row.
@@ -402,9 +490,19 @@ path, or elevation mechanism.
 
 ## Operation Lifecycle and Audit
 
-- Passive discovery never refreshes metadata or starts an update.
+- Passive discovery uses the fixed maximum cache-age hint and never calls
+  `RefreshCache` or starts an update; PackageKit may perform only backend work
+  required to return discovery results as described above.
 - Every mutation begins from a visible confirmation describing owner, impact,
   authorization, cancellation limit, and recovery.
+- An install-all confirmation captures the snapshot generation and displays the
+  exact installable package set represented by it. `UpdatesChanged` or any
+  accepted replacement snapshot invalidates an open confirmation. After the
+  user accepts, the provider performs a fresh bounded `GetUpdates(NONE)` using
+  the discovery hints and recomputes the generation before creating a mutable
+  transaction. A mismatch terminates as `failed`/`conflict`, publishes the new
+  snapshot, and requires a new confirmation; only the revalidated exact
+  installable IDs are passed to `UpdatePackages`.
 - One root-scoped model owns update and regional operations. Overlap is rejected.
 - Closing Settings stops pane-only discovery but does not kill an active
   PackageKit transaction. Reopening reconstructs state from PackageKit and the
@@ -437,11 +535,21 @@ path, or elevation mechanism.
   writing the journal first; it still emits the normal operation and audit
   records and accepts no path or slot argument. Unrelated directory entries are
   never read, followed, or removed and cannot increase recovery work. The
-  records contain IDs,
-  originating action IDs, timestamps, operation kinds, terminal results, and
-  sanitized diagnostics. The durable action ID must have the fixed kind defined
-  by the protocol and determines the owning provider used for recovered errors.
-  The files never record passwords, environment dumps, repository credentials,
+  records contain common IDs, originating action IDs, timestamps, operation
+  kinds, terminal results, and sanitized diagnostics, plus three fixed typed
+  fields: update snapshot generation, PackageKit transaction object path, and
+  aggregate restart requirement. An `update` record requires a valid generation,
+  the exact PackageKit path, and a restart value from the protocol enum. A
+  `refresh` record requires the exact PackageKit path and uses the literal `-`
+  for generation and restart. `timezone`, `ntp`, `locale`, `journal-repair`, and
+  `delegate` records require literal `-` in all three fields. A consumer rejects
+  any missing field or value that does not match the operation kind. Each
+  accepted `RequireRestart` signal durably
+  replaces the active record with the newly validated aggregate before any
+  later `Finished` signal is consumed; the terminal record carries that same
+  aggregate. The durable action ID must have the fixed kind defined by the
+  protocol and determines the owning provider used for recovered errors. The
+  files never record passwords, environment dumps, repository credentials,
   package payloads, or unbounded output.
 - Before any mutation other than the explicit journal-temporary repair above,
   the provider obtains the fixed service transaction or operation ID without
@@ -472,10 +580,23 @@ path, or elevation mechanism.
   transactions in old-transaction history. A history result is accepted only
   when its transaction object path exactly matches the journaled path, its role
   is `update-packages`, and its UID is the invoking user's UID.
-  An exact match with `succeeded=true` recovers only the terminal `succeeded`
-  result. An exact match with `succeeded=false` is still `interrupted`, because
-  history cannot distinguish cancellation from another failure or reconstruct
-  the required typed error row. Duplicate matches, malformed identity fields,
+  Exact active-transaction adoption seeds its restart aggregate from the
+  validated nonterminal record, merges every accepted `RequireRestart` signal
+  observed during adoption using the aggregation rule above, and durably
+  persists that merged aggregate in the terminal record before reporting the
+  adopted `Finished` result. Reaching `Finished` without a replayed restart
+  signal therefore retains the validated prior aggregate. A valid durable
+  terminal record written from `Finished` recovers its persisted restart
+  aggregate. A missing or malformed restart field makes either path
+  `interrupted`. An old-transaction history match with `succeeded=true`
+  recovers only the terminal `succeeded` result and sets the restart aggregate
+  to `unknown`, regardless of an earlier journal value, because history cannot
+  replay a `RequireRestart` signal that may have been missed before persistence.
+  It never substitutes or preserves `none` on that path. An exact history match
+  with `succeeded=false` is still
+  `interrupted`, because history cannot distinguish cancellation from another
+  failure or reconstruct the required typed error row. Duplicate matches,
+  malformed identity fields,
   another role or UID, and a success flag without the exact path are ambiguous
   and never consumed as this operation's result.
 
@@ -512,10 +633,14 @@ path, or elevation mechanism.
   `SystemAccount`, so an excluded object becoming eligible refreshes the list.
   The subscriptions and pending refresh stop when the section closes; an
   over-limit enumeration remains explicitly `partial`.
-- CUPS and delegated-tool availability are bounded snapshots. Phase 6 adds no
-  CUPS polling loop.
-- System information, storage, and security probes run on open or explicit
-  refresh. They add no idle timer.
+- The systemd manager's `UnitNew` and `UnitRemoved` signals for the fixed
+  `cups.service` and `firewalld.service` names, plus `PropertiesChanged` for
+  each loaded unit's `ActiveState`, trigger one bounded, coalesced refresh of
+  the owning state while the section is open. Those subscriptions stop on
+  section close. Delegated-tool availability remains a bounded snapshot; Phase
+  6 adds no CUPS or firewalld polling loop.
+- Other system information, storage, and security probes run on open or
+  explicit refresh. They add no idle timer.
 
 ## Authorization and Recovery Rules
 

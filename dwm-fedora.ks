@@ -91,6 +91,7 @@ quickshell
 PackageKit
 PackageKit-glib
 python3-gobject
+python3-rpm
 accountsservice
 cups
 system-config-printer
