@@ -214,14 +214,16 @@ transporting a password through QML.
 
 CUPS remains the printer service. Phase 6 reads only the fixed
 `cups.service` and `cups.socket` systemd units. `cups-service` is
-`available`/`running` only when both units are loaded and the service and socket
-are active, `available`/`socket-ready` only when both are loaded, the service is
-inactive, and the socket is active/listening, and `available`/`stopped` only
-when both are loaded and inactive. If neither unit exists it is
-`unsupported`/`unknown`; bus or property failure is `unavailable`/`unknown`.
-Every other combination, including malformed or transitional state, exactly
-one absent unit, or either loaded unit in `failed`, is `partial`/`unknown`. This distinguishes
-Fedora's healthy idle socket-activated scheduler from a missing scheduler.
+`available`/`running` whenever the loaded service is active; socket state does
+not downgrade that result. When the loaded service is inactive, an
+active/listening loaded socket is
+`available`/`socket-ready`, while an absent or inactive loaded socket is
+`available`/`stopped`. If neither unit exists it is `unsupported`/`unknown`;
+bus or property failure is `unavailable`/`unknown`. Every other combination,
+including a present socket with an absent service, malformed or transitional
+state, a failed service, or a failed socket when the service is not running, is
+`partial`/`unknown`. This distinguishes Fedora's healthy idle socket-activated
+scheduler and valid service-only configurations from a missing scheduler.
 Phase 6 reports service/tool availability and opens Fedora's
 `system-config-printer`; it does not reproduce printer discovery, driver,
 queue, job, or authentication policy.
@@ -287,12 +289,14 @@ The individual mappings are:
 - SELinux runtime enforcement comes from the single-byte
   `/sys/fs/selinux/enforce` kernel interface. `1` is enforcing and `0` is
   permissive. When that interface is absent, the provider parses only the
-  allowlisted `SELINUX` key in `/etc/selinux/config`; the exact value `disabled`
-  is `available`/`disabled`, while `enforcing` or `permissive` without the
-  runtime interface is inconsistent and therefore `partial`/`unknown`. If
-  neither source establishes state, the result is `unsupported`/`unknown`.
-  Read denial is `restricted`/`unknown`; malformed accessible data is
-  `partial`/`unknown`. Neither is silently treated as disabled.
+  allowlisted `SELINUX` key in `/etc/selinux/config`. That fixed-path read is
+  capped at 64 KiB; a larger file is `partial`/`unknown` and is not parsed. The
+  exact value `disabled` is `available`/`disabled`, while `enforcing` or
+  `permissive` without the runtime interface is inconsistent and therefore
+  `partial`/`unknown`. If neither source establishes state, the result is
+  `unsupported`/`unknown`. Read denial is `restricted`/`unknown`; malformed
+  accessible data is `partial`/`unknown`. Neither is silently treated as
+  disabled.
 - Secure Boot comes only from the EFI global-variable path
   `/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c`;
   the provider never enumerates or glob-matches the directory. Its attributes
