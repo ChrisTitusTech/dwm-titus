@@ -326,6 +326,16 @@ including a present socket with an absent service, malformed or transitional
 state, a failed service, or a failed socket when the service is not running, is
 `partial`/`unknown`. This distinguishes Fedora's healthy idle socket-activated
 scheduler and valid service-only configurations from a missing scheduler.
+One ten-second monotonic aggregate deadline covers resolving both fixed unit
+objects and reading their required properties. On expiry the provider cancels
+each unfinished local D-Bus request and discards late replies. If the service
+was already validated active, `cups-service` remains `available`/`running`
+because socket state cannot affect that result; the provider may still emit the
+printers `timeout` error for the incomplete probe. Otherwise unresolved required
+state emits `cups-service` as `unavailable`/`unknown` with that error. The finite
+snapshot continues without degrading unrelated providers. A validated systemd
+no-such-unit reply remains absence evidence under the status mapping above
+rather than a timeout.
 Phase 6 reports service/tool availability and opens Fedora's
 `system-config-printer`; it does not reproduce printer discovery, driver,
 queue, job, or authentication policy.
@@ -1393,10 +1403,17 @@ path, or elevation mechanism.
 - AccountsService manager `UserAdded` and `UserDeleted` signals and the `Changed`
   signal on every valid de-duplicated candidate object selected within the
   256-object bound trigger one bounded, coalesced account-summary refresh while
-  the section is open. Candidate signals are subscribed before filtering
-  `SystemAccount`, so an excluded object becoming eligible refreshes the list.
-  The subscriptions and pending refresh stop when the section closes; an
-  over-limit enumeration remains explicitly `partial`.
+  the section is open. On pane open, the root model installs the two manager
+  subscriptions before starting `ListCachedUsers`. It attaches each candidate's
+  `Changed` subscription after validating its object path and before reading or
+  filtering that object's properties, so an excluded object becoming eligible
+  refreshes the list. A matching signal during the initial enumeration or
+  property reads reserves one serialized reconciliation read. A further signal
+  during that settling read or its completion handoff stops the cycle after two
+  reads, leaves accounts explicitly `partial` with refresh guidance, and
+  suppresses automatic reruns until explicit refresh or pane close/reopen. The
+  subscriptions and pending refresh stop when the section closes; an over-limit
+  enumeration remains explicitly `partial`.
 - The systemd manager's `UnitNew` and `UnitRemoved` signals for the fixed
   `cups.service`, `cups.socket`, and `firewalld.service` names, plus
   `PropertiesChanged` for each loaded unit's `ActiveState` and the CUPS
@@ -1552,10 +1569,17 @@ prove timeout detaches without canceling the target, preserves the nonterminal
 journal, and blocks replacement mutation unless a later bounded lookup proves
 exact absence, while malformed lists preserve the journal and block mutation.
 A pre-handoff conflict fixture proves a terminal stream with no durable handoff
-does not invoke acknowledgment. Hostname fixtures stall each property before and after the other
-property succeeds and prove the ten-second monotonic aggregate deadline discards
-late replies, degrades only unfinished states, and does not block other
-information records.
+does not invoke acknowledgment. Hostname fixtures stall each property before
+and after the other property succeeds and prove the ten-second monotonic
+aggregate deadline discards late replies, degrades only unfinished states, and
+does not block other information records. CUPS fixtures stall unit resolution
+and each property read, prove late replies are discarded, and verify the timeout
+degrades only `cups-service`; a socket timeout after the service is validated
+active must preserve `available`/`running`. Accounts initialization fixtures
+inject manager and candidate changes after subscription attachment but during
+initial reads,
+prove one serialized reconciliation observes them, and exercise the bounded
+unresolved-dirty fallback when the settling read also changes.
 Delegated-action tests must prove the executable allowlist and missing-tool
 behavior. QML tests must prove readable state survives denial and every
 section-owned process stops on close. Mount-monitor fixtures delay readiness and
