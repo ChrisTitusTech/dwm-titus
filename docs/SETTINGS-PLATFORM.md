@@ -7,6 +7,10 @@ contracts for the unified Settings application, including the Phase 2 display
 and input providers. `SPEC.md` remains the product contract, and
 `docs/SETTINGS-CAPABILITIES.md` records the provider inventory.
 
+Phase 6 system-management provider, ownership, audit, cancellation, and
+delegation decisions are defined in `P6-SYSTEM-MANAGEMENT.md`. That
+contract does not widen the project-owned privileged helper allowlist.
+
 ## Application Contract
 
 The Settings application is one Quickshell `FloatingWindow` titled

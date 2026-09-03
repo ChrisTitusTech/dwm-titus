@@ -1,0 +1,282 @@
+# Phase 6 System Management Contract
+
+<!-- markdownlint-disable MD013 -->
+
+Date: 2026-09-02
+
+## Scope and Ownership
+
+Phase 6 adds bounded Fedora system management without making Quickshell an
+administration shell. Settings and all QML remain unprivileged. Each operation
+has one fixed owner, and system policy and authorization stay with the Fedora
+service or trusted Fedora tool that already owns them.
+
+The implementation boundaries are:
+
+1. PackageKit-backed Fedora update status and transactions.
+2. Regional state plus trusted account, printer, and software-source entry
+   points.
+3. System information, storage, privacy/security status, diagnostics, and
+   recovery integration.
+4. Combined Fedora 44 and nested-X11 qualification.
+
+No Phase 6 operation expands the project-owned privileged helper allowlist.
+An operation that cannot satisfy the project privilege contract remains
+delegated or unsupported.
+
+## Capability and Mutation Inventory
+
+| Capability | Read owner | Mutation owner | Class | Cancellation and denial | Phase 6 disposition |
+| --- | --- | --- | --- | --- | --- |
+| Update status and available packages | PackageKit 1.x system D-Bus API using the Fedora DNF5 backend | PackageKit `UpdatePackages` transaction and PackageKit polkit policy | Read-only and delegated | The transaction `AllowCancel` property is authoritative. Cancel is offered only while true. Authorization denial ends the operation without hiding the last readable snapshot. | Implement |
+| Package metadata refresh | PackageKit transaction | PackageKit `RefreshCache` transaction | Delegated | Starts only from an explicit Refresh action. PackageKit owns cancellation and repository/network errors. | Implement |
+| Update interruption and history | PackageKit active transaction list, transaction signals, and PackageKit transaction history | None | Read-only | An operation journal identifies incomplete local operations. PackageKit remains the source of truth for transaction completion. | Implement |
+| Date, timezone, and NTP | `org.freedesktop.timedate1` properties | `SetTimezone` and `SetNTP` with interactive authorization | Read-only and delegated | A pending confirmation can be canceled before the D-Bus call. Denial preserves properties and reports no change. Manual clock setting is not exposed. | Implement |
+| System locale | `org.freedesktop.locale1` properties | `SetLocale` with interactive authorization | Read-only and delegated | A pending confirmation can be canceled before the D-Bus call. Denial preserves properties and reports no change. Success includes logout guidance. Keyboard layout remains owned by Input Settings. | Implement |
+| User accounts | AccountsService object and user properties | Fedora `lxqt-admin-user` entry point; current-user password uses a fixed terminal `passwd` entry point | Read-only and delegated | Settings never accepts usernames, passwords, group names, or arbitrary account commands. Missing tools leave the account summary readable. | Implement entry points; do not implement account mutation |
+| Printers | CUPS service availability and bounded destination summary | Fedora `system-config-printer` | Read-only and delegated | The trusted tool and CUPS own authentication, cancellation, and device policy. Missing CUPS or tool state is capability-scoped. | Implement entry point |
+| Software sources | PackageKit repository records | Fedora `dnfdragora` when installed | Read-only and delegated | Settings does not accept repository identifiers for mutation. The delegated tool owns confirmation and authorization. | Implement entry point |
+| System identity and resources | `/etc/os-release`, kernel, architecture, bounded `/proc` records, and mounted-filesystem APIs | None | Read-only | Probe failures remain per record. No background poller is added. | Implement |
+| Storage overview | Existing `dwm-system-health` structured snapshot | Existing fixed user and installed-helper repairs only | Read-only, user-session, and privileged | Existing confirmation, authorization-denial, and fixed repair allowlists remain unchanged. | Reuse and link |
+| Privacy and security status | The fixed sources in the Security Status section below | Trusted Fedora tools or documented recovery guidance | Read-only, delegated, and unsupported | Unknown, inaccessible, disabled, and unsupported are distinct states. No firewall, encryption, or SELinux mutation is added. | Implement status and guidance |
+| Diagnostics and recovery | Existing `dwm-system-health` and `dwm-diagnostics` records | Existing fixed repair actions and exported evidence | Read-only, user-session, and privileged | Denial leaves the user scan visible. Broad service names and commands remain rejected. | Reuse and link |
+| Advanced storage, firewall policy, general services, encryption setup, and factory reset | No narrow provider | Trusted external administration or reinstall/recovery documentation | Delegated or unsupported | No generic elevation, command runner, device path, service name, or arbitrary file path crosses QML. | Explicitly exclude |
+
+## Selected Fedora Interfaces
+
+### Package Updates
+
+PackageKit is the Phase 6 update owner. Fedora 44 exposes PackageKit 1.3 with
+the DNF5 backend, update discovery, repository discovery, update transactions,
+transaction lists, authorization checks, progress signals, error codes,
+restart guidance, and cancellation state. The provider consumes the documented
+PackageKit GLib/D-Bus API rather than parsing `dnf`, `pkcon`, or terminal text.
+
+The PackageKit service is authoritative for package state. The project provider
+adds only validation, bounded record formatting, a private operation journal,
+and the fixed Settings lifecycle. It never runs DNF concurrently, assumes a
+PackageKit transaction succeeded from process exit alone, or reports an update
+complete before the `Finished` result arrives.
+
+### Regional State
+
+`org.freedesktop.timedate1` and `org.freedesktop.locale1` are the stable systemd
+D-Bus owners. Settings reads their properties directly and invokes only the
+fixed `SetTimezone`, `SetNTP`, or `SetLocale` methods after confirmation. The
+interactive-authorization argument remains enabled so systemd and polkit own
+the decision. Arbitrary environment variables, keymaps, NTP servers, RTC mode,
+or manual timestamps are not accepted.
+
+The parameterized actions use this exact command grammar:
+
+```text
+dwm-system-management timezone-set ZONE
+dwm-system-management ntp-set enabled|disabled
+dwm-system-management locale-set LANG=LOCALE
+```
+
+`ZONE` is at most 255 ASCII bytes, contains no control characters, empty path
+components, `.` or `..` components, and must exactly match a zone in
+`/usr/share/zoneinfo/zone1970.tab` (with `/usr/share/zoneinfo/zone.tab` as the
+documented fallback) or the special value `UTC`. `LOCALE` is at most 128 ASCII
+bytes, contains no control or whitespace characters, and must exactly match a
+name reported by the bounded `locale -a` fallback because locale1 has no locale
+enumeration method. `LANG` is the only accepted locale key. Arguments are
+validated before confirmation and again immediately before the fixed D-Bus
+call. No other option, key, D-Bus argument, or trailing argument is accepted.
+
+### Accounts, Printers, and Sources
+
+AccountsService supplies read-only account objects and properties. Account
+creation, deletion, group membership, and administrator changes remain in the
+Fedora-packaged `lxqt-admin-user` tool. The current user's password action opens
+the fixed `passwd` program in the configured terminal without transporting a
+password through QML.
+
+CUPS remains the printer service. Phase 6 reports service/tool availability and
+opens Fedora's `system-config-printer`; it does not reproduce printer discovery,
+driver, queue, job, or authentication policy.
+
+PackageKit supplies read-only repository records. Repository changes remain in
+the Fedora-packaged `dnfdragora` tool when present. Missing optional delegated
+tools are reported individually and never hide readable service state.
+
+### Security Status
+
+Each probe has a fixed source and emits its own unavailable or restricted state
+instead of making the combined security summary fail:
+
+- SELinux runtime enforcement comes from the single-byte
+  `/sys/fs/selinux/enforce` kernel interface. `1` is enforcing and `0` is
+  permissive. When that interface is absent, the provider parses only the
+  allowlisted `SELINUX` key in `/etc/selinux/config`; the exact value `disabled`
+  is disabled, while `enforcing` or `permissive` without the runtime interface
+  is inconsistent and therefore unknown. If neither source establishes state,
+  the capability is unsupported. Read denial or malformed data is restricted;
+  it is never silently treated as disabled.
+- Secure Boot comes from the EFI `SecureBoot-*` variable under
+  `/sys/firmware/efi/efivars/`. Its attributes prefix is skipped and the one-byte
+  payload must be `0` or `1`. An absent EFI variables filesystem is unsupported;
+  a missing variable on EFI or unreadable/malformed data is unknown.
+- Firewall state comes from the `ActiveState` property for
+  `firewalld.service` on `org.freedesktop.systemd1`. An absent unit is
+  unsupported, a bus or property failure is unavailable, and only an explicit
+  inactive state is disabled.
+- Root-storage encryption evidence comes from bounded `lsblk --json` output
+  with the fixed `NAME,TYPE,FSTYPE,MOUNTPOINTS,PKNAME` columns. A root mount
+  backed by a `crypt`/`crypto_LUKS` ancestry is encrypted; a fully resolved root
+  ancestry without either is unencrypted. Missing, inaccessible, truncated, or
+  internally inconsistent topology is unknown.
+- Screen-lock state reuses the `power-lock` record from the versioned power
+  protocol documented in `POWER-PROTOCOL.md`; it does not launch a second
+  GSettings or locker probe.
+- Update state reuses the PackageKit snapshot from this provider. It never
+  starts a refresh merely to populate the security summary.
+
+No status probe accepts a path, unit, property, command, device, or service name
+from QML.
+
+## Provider Protocol
+
+`dwm-system-management` owns one append-only, tab-separated protocol. Phase 6
+starts at minor version `0`:
+
+```text
+system-management-protocol<TAB>1<TAB>0
+provider<TAB>id<TAB>status<TAB>class<TAB>owner<TAB>detail
+state<TAB>id<TAB>status<TAB>value<TAB>detail
+update<TAB>package-id<TAB>severity<TAB>name<TAB>version<TAB>summary
+repository<TAB>id<TAB>enabled|disabled<TAB>description
+account<TAB>object-path<TAB>current|other<TAB>display-name<TAB>login-name
+action<TAB>id<TAB>available|unavailable<TAB>class<TAB>owner<TAB>label<TAB>detail
+operation<TAB>id<TAB>kind<TAB>state<TAB>percent<TAB>cancelable<TAB>detail
+audit<TAB>id<TAB>kind<TAB>result<TAB>started<TAB>finished<TAB>detail
+error<TAB>capability<TAB>code<TAB>detail
+complete<TAB>snapshot|operation
+```
+
+Required fields are single-line UTF-8 with tabs and line breaks replaced by
+spaces. Unknown records and trailing fields are ignored. Consumers reject a
+missing header, another major version, duplicate completion, or a known record
+with missing required fields. Package IDs and object paths are opaque display
+data unless an action contract explicitly validates and owns them.
+
+The initial vocabulary is closed for known record fields:
+
+- Provider IDs are `updates`, `regional`, `accounts`, `printers`, `sources`,
+  `information`, `storage`, `security`, `diagnostics`, and `recovery`. Provider
+  status is `available`, `partial`, `restricted`, `unavailable`, or
+  `unsupported`; class is `read-only`, `user-session`, `privileged`,
+  `delegated`, or `unsupported`.
+- State IDs are `update-summary`, `update-last-refresh`, `update-restart`,
+  `timezone`, `ntp-enabled`, `ntp-synchronized`, `locale`, `accounts-count`,
+  `cups-service`, `selinux`, `secure-boot`, `firewall`, `root-encryption`, and
+  `screen-lock`. State status uses the provider-status enum. Booleans are
+  `yes`, `no`, or `unknown`; restart values are `none`, `session`, `system`,
+  `security-session`, `security-system`, or `unknown`. Other values are
+  bounded display text owned by the named state.
+- Update severity is `security`, `bugfix`, `enhancement`, `normal`, or
+  `unknown`. Repository state is `enabled` or `disabled`. Account scope is
+  `current` or `other`.
+- Operation kind is `refresh`, `update`, `timezone`, `ntp`, `locale`, or
+  `delegate`. Operation state is `pending`, `authorizing`, `running`,
+  `cancel-requested`, `permission-denied`, `canceled`, `failed`, `interrupted`,
+  or `succeeded`. Percent is `unknown` or an integer from 0 through 100, and
+  cancelable is `yes` or `no`. Audit result uses only the terminal operation
+  states.
+- Action availability is `available` or `unavailable` and action class uses the
+  provider class enum. Error codes are the bounded PackageKit/systemd code or
+  one of `malformed`, `missing-provider`, `permission-denied`, `timeout`,
+  `conflict`, `interrupted`, or `internal`.
+
+A snapshot emits exactly one provider row for every provider ID, zero or one of
+each singleton state ID, then one `complete<TAB>snapshot`. List record IDs
+(`update`, `repository`, and `account`) must be unique within their record type.
+An operation stream emits exactly one operation ID, may advance only through
+the states above to one terminal state, then emits one
+`complete<TAB>operation`. A malformed record invalidates only its owning
+provider; an invalid header, duplicate ID, illegal enum, impossible transition,
+or missing completion rejects the whole stream. Text fields are capped at 512
+bytes, list records at 10,000 per snapshot, and the entire stream at 8 MiB.
+
+The initial actions are a closed enum: `updates-refresh`, `updates-install-all`,
+`updates-cancel`, `timezone-set`, `ntp-set`, `locale-set`, `accounts-open`,
+`password-open`, `printers-open`, `sources-open`, and `health-open`. QML cannot
+select an executable, D-Bus destination, interface, method, repository ID,
+package ID, user, unit, device, path, or elevation mechanism.
+
+## Operation Lifecycle and Audit
+
+- Passive discovery never refreshes metadata or starts an update.
+- Every mutation begins from a visible confirmation describing owner, impact,
+  authorization, cancellation limit, and recovery.
+- One root-scoped model owns update and regional operations. Overlap is rejected.
+- Closing Settings stops pane-only discovery but does not kill an active
+  PackageKit transaction. Reopening reconstructs state from PackageKit and the
+  private journal.
+- Update cancellation is exposed exactly while PackageKit reports `AllowCancel`.
+  Once cancellation becomes unsafe, Settings explains that the RPM transaction
+  must finish.
+- The journal lives under
+  `${XDG_STATE_HOME:-$HOME/.local/state}/dwm-titus/system-management/`, is mode
+  0600, is bounded, and records IDs, timestamps, operation kinds, terminal
+  results, and sanitized diagnostics. It never records passwords, environment
+  dumps, repository credentials, package payloads, or unbounded output.
+- A local operation lacking a terminal PackageKit result is `interrupted`, not
+  successful. Recovery first checks PackageKit activity/history, then directs
+  the user to retry discovery, open System Health, or use the owning Fedora tool.
+
+## Event and Resource Contract
+
+- PackageKit `UpdatesChanged`, `RepoListChanged`, transaction-list, property,
+  progress, package, error, restart, and finished signals drive update state.
+- systemd D-Bus property changes drive time and locale refresh while the System
+  section is open. A bounded snapshot remains available without a monitor.
+- AccountsService user-added, user-deleted, and property signals may refresh
+  the account summary only while the section is open.
+- CUPS and delegated-tool availability are bounded snapshots. Phase 6 adds no
+  CUPS polling loop.
+- System information, storage, and security probes run on open or explicit
+  refresh. They add no idle timer.
+
+## Authorization and Recovery Rules
+
+- PackageKit, systemd, AccountsService, CUPS, and delegated tools keep their own
+  polkit or authentication policy. QML is never elevated.
+- An authorization denial is `permission-denied`, not `unavailable`, and keeps
+  the last validated read-only state visible.
+- Network, metadata, repository, dependency, package, and signature failures
+  remain distinct typed errors with the owning provider named.
+- A completed update reports restart guidance from PackageKit restart data. It
+  never initiates reboot; the existing confirmed session-action model owns that.
+- High-risk storage, firewall, service, encryption, account, and repository
+  operations remain delegated or unsupported until a separate specification
+  defines a narrow interface.
+
+## Validation and Rollback
+
+Each implementation boundary must cover valid, malformed, missing-provider,
+authorization-denied, canceled, interrupted, overlapping, and failed states.
+PackageKit fixtures must exercise cancellation before and after `AllowCancel`
+changes, all terminal results, recovery after Settings closure, and reboot
+guidance. Regional fixtures must prove fixed D-Bus destinations and methods.
+Delegated-action tests must prove the executable allowlist and missing-tool
+behavior. QML tests must prove readable state survives denial and every
+section-owned process stops on close.
+
+The complete phase runs the clean build, managed suite, Quickshell lint,
+ShellCheck, shfmt, staged and repeated installation, nested X11, installed-file
+parity, and a real Fedora 44 X11 exercise. Rollback for this inventory boundary
+is documentation-only. Runtime boundaries remove their new provider, model,
+pane, and package-map entries together without changing existing health or
+session-action contracts.
+
+## Authoritative Interface References
+
+- PackageKit D-Bus API: <https://packagekit.freedesktop.org/gtk-doc/api-reference.html>
+- PackageKit transaction API: <https://packagekit.freedesktop.org/gtk-doc/Transaction.html>
+- systemd timedate1 API: <https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.timedate1.html>
+- systemd locale1 API: <https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.locale1.html>
+- AccountsService manager D-Bus XML: <https://gitlab.freedesktop.org/accountsservice/accountsservice/-/raw/main/data/org.freedesktop.Accounts.xml>
+- AccountsService user D-Bus XML: <https://gitlab.freedesktop.org/accountsservice/accountsservice/-/raw/main/data/org.freedesktop.Accounts.User.xml>
+- CUPS administration guidance: <https://openprinting.github.io/cups/doc/admin.html>

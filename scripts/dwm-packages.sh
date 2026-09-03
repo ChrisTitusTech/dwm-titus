@@ -28,10 +28,19 @@ dwm_packages() {
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
 			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk
 		;;
+	fedora:system-management)
+		printf '%s\n' \
+			PackageKit PackageKit-glib python3-gobject accountsservice cups \
+			system-config-printer
+		;;
+	fedora:system-management-optional)
+		printf '%s\n' lxqt-admin dnfdragora
+		;;
 	fedora:source-update)
 		# Dependencies introduced after the initial installation that the supported
 		# source-checkout synchronization path must reconcile for existing systems.
 		printf '%s\n' xsettingsd xkbset
+		dwm_packages "$family" system-management
 		;;
 	fedora:desktop-optional)
 		printf '%s\n' \
@@ -87,6 +96,7 @@ dwm_packages() {
 		;;
 	fedora:recommended)
 		dwm_packages "$family" desktop
+		dwm_packages "$family" system-management
 		dwm_packages "$family" screenshot-optional
 		dwm_packages "$family" theme
 		dwm_packages "$family" theme-gtk
@@ -95,6 +105,7 @@ dwm_packages() {
 	fedora:optional)
 		dwm_packages "$family" theme-optional
 		dwm_packages "$family" desktop-optional
+		dwm_packages "$family" system-management-optional
 		;;
 	fedora:full)
 		dwm_packages "$family" required

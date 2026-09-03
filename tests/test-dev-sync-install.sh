@@ -77,6 +77,8 @@ for required_command in xsettingsd dump_xsettings xkbset; do
 		exit 1
 	}
 done
+grep -Fq 'scripts/dwm-packages.sh" fedora source-update' "$source_update_probe"
+grep -Fq 'rpm -q "$@" >/dev/null 2>&1' "$source_update_probe"
 
 run_check() {
 	PATH="$test_bin:$PATH" \

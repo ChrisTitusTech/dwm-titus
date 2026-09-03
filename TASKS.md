@@ -29,15 +29,15 @@ validate, and merge each boundary before starting the next one:
 
 ### SYSTEM-001: Capability and Privilege Inventory
 
-- [ ] Inventory every Phase 6 state source and mutation path. Classify each as
+- [x] Inventory every Phase 6 state source and mutation path. Classify each as
   read-only, user-session, privileged, delegated, or unsupported.
-- [ ] Select stable Fedora service, D-Bus, package-manager, AccountsService,
+- [x] Select stable Fedora service, D-Bus, package-manager, AccountsService,
   CUPS, and system-information interfaces without parsing human-oriented output
   when a machine interface exists.
-- [ ] Define the shared versioned provider records, per-capability failure
+- [x] Define the shared versioned provider records, per-capability failure
   isolation, event sources, cancellation, authorization-denial behavior, and
   audit fields before adding mutations.
-- [ ] Record which high-risk tasks remain delegated, including advanced storage,
+- [x] Record which high-risk tasks remain delegated, including advanced storage,
   firewall policy, and general service administration.
 
 Acceptance:

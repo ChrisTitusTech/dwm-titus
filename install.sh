@@ -584,6 +584,7 @@ ok "Required build and runtime dependencies installed."
 if install_recommended_profile; then
 	info "Installing recommended desktop dependencies..."
 	dwm_install_package_profile desktop
+	dwm_install_package_profile system-management
 	if ! env -u DWM_TEST_MODE -u DWM_TEST_QUICKSHELL_VERSION \
 		"$REPO_DIR/scripts/dwm-quickshell-version-check"; then
 		err "The installed Quickshell build is incompatible with dwm-titus."

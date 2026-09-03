@@ -141,6 +141,8 @@ prepare_expected_files() {
 }
 
 source_update_dependencies_ready() {
+	ready_packages_file=$work/source-update-ready-packages
+
 	if [ "${DWM_DEV_SYNC_TEST_MODE:-0}" = 1 ] &&
 		[ -n "${DWM_DEV_SYNC_SOURCE_UPDATE_READY:-}" ]; then
 		case $DWM_DEV_SYNC_SOURCE_UPDATE_READY in
@@ -151,7 +153,15 @@ source_update_dependencies_ready() {
 	fi
 	command -v xsettingsd >/dev/null 2>&1 &&
 		command -v dump_xsettings >/dev/null 2>&1 &&
-		command -v xkbset >/dev/null 2>&1
+		command -v xkbset >/dev/null 2>&1 || return 1
+	command -v rpm >/dev/null 2>&1 || return 1
+	"$repo_dir/scripts/dwm-packages.sh" fedora source-update \
+		>"$ready_packages_file" || return 1
+	set --
+	while IFS= read -r package; do
+		[ -n "$package" ] && set -- "$@" "$package"
+	done <"$ready_packages_file"
+	[ "$#" -gt 0 ] && rpm -q "$@" >/dev/null 2>&1
 }
 
 source_update_dependencies_needed() {
