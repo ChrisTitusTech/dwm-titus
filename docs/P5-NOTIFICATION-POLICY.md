@@ -74,5 +74,6 @@ Disturb off with a 6,000 ms duration. Closed Quickshell CPU measured 0.000% over
 30 seconds. The previously absent policy migrated to the versioned default file
 and the validation restored those equivalent default values. Installed files
 match the checkout; activating the newly installed `dwm` binary still requires
-the expected logout and login. Exact-head hosted gates remain required before
-merge.
+the expected logout and login. Exact-head hosted gates and both review loops
+passed before PR #204 merged; combined Phase 5 results are recorded in
+`P5-EVIDENCE.md`.

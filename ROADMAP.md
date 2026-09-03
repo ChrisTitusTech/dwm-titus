@@ -78,10 +78,10 @@ product roadmap.
 UI-1 is the merged foundation. UI-2 and UI-3 were parallel children and are
 now unified on `main`. `P3-UI4` established the shared large-surface language
 used by the completed Phase 3 provider work and the later power, defaults,
-personalization, accessibility, and system-management phases. Phases 3 and 4
-are complete and product Phase 5 is active. The UI-5 review adopted no runtime
-experience; any future reopening requires a new roadmap decision and an
-independent review boundary. UI-6 closes the desktop during Phase 7 release
+personalization, accessibility, and system-management phases. Phases 3 through
+5 are complete and product Phase 6 is active. The UI-5 review adopted no
+runtime experience; any future reopening requires a new roadmap decision and
+an independent review boundary. UI-6 closes the desktop during Phase 7 release
 qualification.
 
 ### UI Overhaul Exit Criteria
@@ -298,23 +298,7 @@ Unify normal session behavior and application defaults.
 
 ## Phase 5: Personalization and Accessibility
 
-Status: Active (reconciled 2026-09-02; UI-5 review complete, final qualification pending)
-
-### Current Checkpoint
-
-The shared theme provider and transactions are complete. Appearance inventory,
-wallpaper persistence, managed-shell fonts and scaling, and desktop font,
-cursor, icon, GTK, and Qt controls are merged through PR #184. Panel-widget
-persistence merged in PR #186, and cross-capability optional-component
-qualification merged in PR #188, completing `APPEARANCE-001`. Managed-shell
-contrast and motion controls merged in PR #202, practical XKB input
-accessibility controls merged in PR #203, and notification Do Not Disturb and
-bounded popup duration merged in PR #204. The current decision record defers
-clipboard history and reminders, rejects emoji/symbol and generic image
-pickers, and adopts no UI-5 runtime work. Combined Phase 5 qualification
-remains open.
-`docs/P5-STATUS.md` maps every active checkbox to its current evidence or next
-action.
+Status: Complete (2026-09-02)
 
 ### Objective
 
@@ -334,7 +318,29 @@ Make the desktop appearance and interaction model configurable as one system.
 - Invalid themes or missing assets cannot prevent login or shell startup.
 - Accessibility choices persist and are usable at common display sizes.
 
+### Completion Evidence
+
+- Theme, wallpaper, managed-shell typography, desktop font and scale, cursor,
+  icon, GTK, Qt, panel-widget, contrast, reduced-motion, AccessX, and
+  notification-policy workflows are merged through PR #204. PR #205 recorded
+  an empty UI-5 adopted set, preserving deferred privacy and lifecycle work as
+  explicit limitations instead of adding an unqualified runtime owner.
+- The clean build, full managed repository suite, Quickshell lint, focused shell
+  checks, documentation build, nested-X11 workflows, staged and repeated
+  installs, and exact restoration checks passed. The 30-second Settings CPU
+  delta was 0.066 percentage points against the 0.5-point limit.
+- On Fedora 44 X11, the synchronized installed tree ran one managed Quickshell
+  process, five tray clients, and one 30-pixel panel on each of two active
+  monitors. Settings reached `ready` at 1180x760, and closed idle measured
+  0.000 percent CPU over 30 seconds.
+- Live theme and AccessX previews changed and restored their exact starting
+  state. The running, installed, and checkout DWM binaries were byte-identical.
+  Fresh-login, optional-package-removal, and incomplete installed GTK theme
+  limitations are recorded in `docs/P5-EVIDENCE.md`.
+
 ## Phase 6: System Management
+
+Status: Active (2026-09-02)
 
 ### Objective
 
