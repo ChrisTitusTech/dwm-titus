@@ -29,10 +29,11 @@ mapfile -t packages < <(
 		dwm_packages fedora required
 		dwm_packages fedora desktop
 		dwm_packages fedora system-management
+		dwm_packages fedora system-management-optional
 	} | awk 'NF' | sort -u
 )
 if ((${#packages[@]} == 0)); then
-	printf 'Fedora package map returned no required or desktop packages.\n' >&2
+	printf 'Fedora package map returned no required, desktop, or image packages.\n' >&2
 	exit 1
 fi
 
@@ -100,5 +101,5 @@ printf '%s\n' "$missing_provider_packages" | grep -Fxq power-profiles-daemon
 
 "$repo/install.sh" --dry-run --non-interactive --profile core >/dev/null
 
-printf 'Fedora required and desktop package map: PASS (%s packages)\n' \
+printf 'Fedora required, desktop, and image package map: PASS (%s packages)\n' \
 	"${#packages[@]}"

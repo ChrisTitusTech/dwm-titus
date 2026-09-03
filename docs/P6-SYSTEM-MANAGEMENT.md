@@ -101,6 +101,18 @@ provider never runs DNF concurrently, assumes a PackageKit transaction
 succeeded from process exit alone, or reports an update complete before the
 `Finished` result arrives.
 
+`update-last-refresh` comes only from PackageKit's system-bus
+`GetTimeSinceAction(REFRESH_CACHE)` method. A result from 0 through 4294967294 is
+`available` and emitted as canonical unsigned decimal seconds; Settings labels
+it as the age of the latest successful system metadata refresh, including one
+started by another PackageKit client. The reserved `G_MAXUINT` result
+`4294967295` means PackageKit has no usable success history and maps to
+`partial`/`unknown`, never to an elapsed age. The project neither persists,
+updates, nor clears this value, and passive `GetUpdates` does not itself
+substitute a timestamp. Missing PackageKit or a call failure is
+`unavailable`/`unknown`, an absent method is `unsupported`/`unknown`, and a
+malformed reply is `partial`/`unknown`.
+
 ### Regional State
 
 `org.freedesktop.timedate1` and `org.freedesktop.locale1` are the stable systemd
@@ -190,22 +202,29 @@ object returned by `FindUserById(os.getuid())` matches; all other emitted
 objects are `other`.
 `accounts-count` is the emitted row count. More than 256 candidate paths or an
 invalid object makes the accounts provider `partial` while preserving the valid
-bounded subset. Account creation, deletion, group membership, and administrator
-changes remain in the Fedora-packaged `lxqt-admin-user` tool. The current user's
-password action opens the fixed `passwd` program in the configured terminal
-without transporting a password through QML.
+bounded subset. One aggregate three-second deadline starts before
+`ListCachedUsers`; at most eight user-property calls are outstanding at once.
+On expiry the provider cancels its outstanding D-Bus cancellables, ignores late
+replies, preserves records already validated, and reports `partial` with a
+`timeout` error. Signal-coalesced refreshes never overlap this bounded read.
+Account creation, deletion, group membership, and administrator changes remain
+in the Fedora-packaged `lxqt-admin-user` tool. The current user's password
+action opens the fixed `passwd` program in the configured terminal without
+transporting a password through QML.
 
 CUPS remains the printer service. Phase 6 reads only the fixed
 `cups.service` and `cups.socket` systemd units. `cups-service` is
-`available`/`running` when the service is active, `available`/`socket-ready`
-when the service is inactive and the socket is active/listening, and
-`available`/`stopped` when both loaded units are inactive. If neither unit
-exists it is `unsupported`/`unknown`; bus or property failure is
-`unavailable`/`unknown`, and malformed or transitional state is
-`partial`/`unknown`. This distinguishes Fedora's healthy idle socket-activated
-scheduler from a missing scheduler. Phase 6 reports service/tool availability
-and opens Fedora's `system-config-printer`; it does not reproduce printer
-discovery, driver, queue, job, or authentication policy.
+`available`/`running` only when both units are loaded and the service and socket
+are active, `available`/`socket-ready` only when both are loaded, the service is
+inactive, and the socket is active/listening, and `available`/`stopped` only
+when both are loaded and inactive. If neither unit exists it is
+`unsupported`/`unknown`; bus or property failure is `unavailable`/`unknown`.
+Every other combination, including malformed or transitional state, exactly
+one absent unit, or either loaded unit in `failed`, is `partial`/`unknown`. This distinguishes
+Fedora's healthy idle socket-activated scheduler from a missing scheduler.
+Phase 6 reports service/tool availability and opens Fedora's
+`system-config-printer`; it does not reproduce printer discovery, driver,
+queue, job, or authentication policy.
 
 PackageKit supplies read-only repository records through `GetRepoList` with the
 fixed `NONE` filter, including enabled and disabled repositories. Repository
@@ -274,10 +293,12 @@ The individual mappings are:
   neither source establishes state, the result is `unsupported`/`unknown`.
   Read denial is `restricted`/`unknown`; malformed accessible data is
   `partial`/`unknown`. Neither is silently treated as disabled.
-- Secure Boot comes from the EFI `SecureBoot-*` variable under
-  `/sys/firmware/efi/efivars/`. Its attributes prefix is skipped and the one-byte
-  payload must be `0` or `1`; `1` is `available`/`enabled` and `0` is
-  `available`/`disabled`. An absent EFI variables filesystem is
+- Secure Boot comes only from the EFI global-variable path
+  `/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c`;
+  the provider never enumerates or glob-matches the directory. Its attributes
+  prefix is skipped and the one-byte payload must be `0` or `1`; `1` is
+  `available`/`enabled` and `0` is `available`/`disabled`. An absent EFI
+  variables filesystem is
   `unsupported`/`unknown`; a missing variable or malformed payload on EFI is
   `partial`/`unknown`; read denial is `restricted`/`unknown`.
 - Firewalld state comes from the `ActiveState` property for
@@ -503,8 +524,11 @@ action's declared provider for `delegate`. Other terminal results do not
 require an error row.
 The first operation record must be `pending`; consumers reject any other
 initial state. Audit timestamps are canonical UTC RFC 3339 whole seconds in the
-exact `YYYY-MM-DDTHH:MM:SSZ` form. `started` must be no later than `finished`,
-and both are required on the terminal audit row.
+exact `YYYY-MM-DDTHH:MM:SSZ` form and both are required on the terminal audit
+row. Consumers do not compare their wall-clock order: `finished` may precede
+`started` when NTP, a regional action, or another administrator moves the clock
+backward. Record order and the validated operation transition sequence remain
+authoritative for lifecycle ordering.
 
 Allowed operation transitions are:
 
