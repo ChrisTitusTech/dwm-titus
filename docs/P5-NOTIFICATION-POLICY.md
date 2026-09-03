@@ -73,6 +73,8 @@ entry, allowed a critical popup through Do Not Disturb, and reset to Do Not
 Disturb off with a 6,000 ms duration. Closed Quickshell CPU measured 0.000% over
 30 seconds. The previously absent policy migrated to the versioned default file
 and the validation restored those equivalent default values. Installed files
-match the checkout; activating the newly installed `dwm` binary still requires
-the expected logout and login. Exact-head hosted gates remain required before
-merge.
+match the checkout. At this implementation boundary, activating the newly
+installed `dwm` binary still required the expected logout and login. The
+combined Phase 5 qualification completed that fresh LightDM activation and is
+recorded in `P5-EVIDENCE.md`. Exact-head hosted gates and both review loops
+passed before PR #204 merged.

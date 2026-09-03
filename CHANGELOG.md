@@ -8,6 +8,12 @@ versions from `config.mk`.
 
 ### Changed
 
+- Complete Phase 5 personalization and accessibility qualification on Fedora 44
+  X11. The combined clean build, managed suite, QML and shell checks, nested-X11
+  workflows, install parity, live two-monitor panels, reversible theme and
+  AccessX changes, common-size Settings rendering, and closed-idle samples pass;
+  unsupported and deferred paths remain explicit in the closeout evidence.
+
 - Replace the combined display mode button in Settings with an accessible
   resolution dropdown backed by each output's supported RandR sizes. Keep
   refresh-rate selection separate and route both choices through the existing
