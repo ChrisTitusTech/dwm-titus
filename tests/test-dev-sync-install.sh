@@ -78,14 +78,6 @@ for required_command in xsettingsd dump_xsettings xkbset; do
 		exit 1
 	}
 done
-grep -Fq 'scripts/dwm-packages.sh" fedora source-update' "$source_update_probe" || {
-	printf '%s\n' 'Source-update readiness omits the shared package profile.' >&2
-	exit 1
-}
-grep -Fq "rpm -q -- \"\$readiness_package\"" "$source_update_probe" || {
-	printf '%s\n' 'Source-update readiness omits installed-package checks.' >&2
-	exit 1
-}
 run_check() {
 	PATH="$test_bin:$PATH" \
 		DWM_DEV_SYNC_SKIP_RUNTIME=1 \
@@ -107,39 +99,6 @@ run_check() {
 run_check >"$output"
 grep -Fqx 'All managed files match the checkout.' "$output"
 grep -Fqx 'Runtime validation skipped by DWM_DEV_SYNC_SKIP_RUNTIME=1.' "$output"
-
-cat >"$test_bin/rpm" <<EOF
-#!/bin/sh
-[ "\${1:-}" = -q ] && [ "\${2:-}" = -- ] && [ "\$#" -eq 3 ] || exit 2
-printf '%s\n' "\$3" >>"$work/queried-source-update-packages"
-EOF
-chmod +x "$test_bin/rpm"
-PATH="$test_bin:$PATH" \
-	DWM_DEV_SYNC_SKIP_RUNTIME=1 \
-	DWM_DEV_SYNC_SKIP_PRIVILEGED_TRUST=1 \
-	DWM_DEV_SYNC_TEST_MODE=1 \
-	DWM_DEV_SYNC_DESKTOP_FEATURE=1 \
-	DWM_DEV_SYNC_SOURCE_UPDATE_READY='' \
-	USER_HOME="$test_home" \
-	PREFIX="$prefix" \
-	MANPREFIX="$manprefix" \
-	XSESSIONSDIR="$xsessions_dir" \
-	DATADIR="$data_root" \
-	XDG_CONFIG_HOME="$config_home" \
-	XDG_DATA_HOME="$xdg_data_home" \
-	XDG_STATE_HOME="$state_home" \
-	"$test_repo/scripts/dev-sync-install.sh" --check >"$output"
-"$test_repo/scripts/dwm-packages.sh" fedora source-update \
-	>"$work/expected-source-update-packages"
-while IFS= read -r source_update_package; do
-	[ -n "$source_update_package" ] || continue
-	grep -Fxq "$source_update_package" "$work/queried-source-update-packages" || {
-		printf 'Source-update readiness did not query package: %s\n' \
-			"$source_update_package" >&2
-		exit 1
-	}
-done <"$work/expected-source-update-packages"
-rm "$test_bin/rpm"
 
 mv "$test_bin/xsettingsd" "$test_bin/xsettingsd.missing"
 if DWM_DEV_SYNC_SOURCE_UPDATE_READY=0 run_check >"$output" 2>&1; then

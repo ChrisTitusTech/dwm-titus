@@ -141,8 +141,6 @@ prepare_expected_files() {
 }
 
 source_update_dependencies_ready() {
-	readiness_packages_file=$work/source-update-readiness-packages
-
 	if [ "${DWM_DEV_SYNC_TEST_MODE:-0}" = 1 ] &&
 		[ -n "${DWM_DEV_SYNC_SOURCE_UPDATE_READY:-}" ]; then
 		case $DWM_DEV_SYNC_SOURCE_UPDATE_READY in
@@ -151,13 +149,6 @@ source_update_dependencies_ready() {
 		*) die "invalid DWM_DEV_SYNC_SOURCE_UPDATE_READY value" ;;
 		esac
 	fi
-	command -v rpm >/dev/null 2>&1 || return 1
-	"$repo_dir/scripts/dwm-packages.sh" fedora source-update \
-		>"$readiness_packages_file" || return 1
-	while IFS= read -r readiness_package; do
-		[ -n "$readiness_package" ] || continue
-		rpm -q -- "$readiness_package" >/dev/null 2>&1 || return 1
-	done <"$readiness_packages_file"
 	command -v xsettingsd >/dev/null 2>&1 &&
 		command -v dump_xsettings >/dev/null 2>&1 &&
 		command -v xkbset >/dev/null 2>&1

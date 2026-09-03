@@ -73,7 +73,6 @@ printf '%s\n' "$installed_provider_packages" | grep -Fxq xsettingsd
 for package in PackageKit PackageKit-glib python3-gobject python3-rpm accountsservice cups system-config-printer; do
 	dwm_packages fedora system-management | grep -Fxq "$package"
 	dwm_packages fedora recommended | grep -Fxq "$package"
-	dwm_packages fedora source-update | grep -Fxq "$package"
 done
 for package in lxqt-admin dnfdragora; do
 	dwm_packages fedora system-management-optional | grep -Fxq "$package"
@@ -82,6 +81,7 @@ done
 for package in xsettingsd xkbset; do
 	dwm_packages fedora source-update | grep -Fxq "$package"
 done
+[[ $("$repo/scripts/dwm-packages.sh" fedora source-update) == $'xsettingsd\nxkbset' ]]
 grep -Fq 'dwm_install_package_profile system-management' "$repo/install.sh"
 grep -Fq 'check_cmd "xsettingsd"' "$repo/scripts/check-deps.sh"
 grep -Fq 'xsetroot xkbset' "$repo/scripts/check-deps.sh"

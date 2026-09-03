@@ -134,9 +134,10 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   account-summary, and printer entry points. The profile also adds Flathub for
   the target user, installs Gear Lever as the default AppImage manager, installs
   the available Fedora GTK theme packages, and installs Nordic system-wide for
-  the default Nord theme. Later source-checkout synchronization reconciles the
-  required Phase 6 PackageKit, Python RPM binding, AccountsService, CUPS, and
-  printer-tool packages before reporting a recommended/full install current.
+  the default Nord theme. Source-checkout synchronization does not infer this
+  profile from independently installed programs. Existing installations must
+  rerun the recommended or full installer to add the Phase 6 PackageKit,
+  Python RPM binding, AccountsService, CUPS, and printer-tool packages.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
   browsing, network tray utilities, keyring login integration,
   wallpapers, and display-manager setup. x86_64 Fedora full installs also

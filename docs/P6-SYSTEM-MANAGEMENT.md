@@ -103,15 +103,17 @@ including an invalid ID shape, exits with status 2 instead. Before matching,
 idempotent recovery sequence for any terminalized active payload, including its
 restart, terminal-slot, cursor, and empty-active commits. It then requires that
 the ID match either the current validated nonterminal PackageKit refresh or
-update payload or, when the active payload is empty, the validated PackageKit
-terminal record in the ring slot immediately preceding the current cursor. The
-latter is the sole terminal handoff candidate because it is the most recently
-committed operation, and it is accepted only when its validated kind is
-`refresh` or `update`; a regional or delegated terminal kind returns the
-status-3 rejection before any stream starts. The command uses only the transaction path bound inside
-the matching record. It may recover or replay bounded terminal evidence when
-the exact transaction finished after the snapshot, but never accepts an
-arbitrary transaction path or an older terminal slot. If terminalized-active
+update payload or, when the active payload is empty, exactly one validated
+terminal record with that ID among the 32 fixed ring slots. Operation IDs are
+collision-checked against every retained slot when created, so more than one
+matching slot is malformed recovery state. The matching terminal record is
+accepted regardless of its position relative to the cursor, but only when its
+validated kind is `refresh` or `update`; a matching regional or delegated
+terminal kind returns the status-3 rejection before any stream starts. The
+command uses only the transaction path bound inside the matching record. It may
+recover or replay bounded terminal evidence when the exact transaction finished
+after the snapshot, but never accepts an arbitrary transaction path, an
+unrelated terminal record, or a caller-supplied substitute ID. If terminalized-active
 recovery cannot complete, or a correctly shaped ID does not match either
 permitted validated identity, the command emits no stream, exits with status 3,
 and writes
@@ -512,10 +514,18 @@ The initial vocabulary is closed for known record fields:
 - Update severity is `critical`, `security`, `important`, `bugfix`,
   `enhancement`, `normal`, `low`, or `unknown`. Update installability is
   `installable` or `blocked`; blocked package IDs are never passed to
-  `UpdatePackages`. An available `update-summary` value equals the total number
-  of unique emitted `update` rows, including blocked rows; the install-all
-  action is available only when at least one row is installable and all other
-  update mutation gates pass. Repository state is `enabled` or `disabled`.
+  `UpdatePackages`. The accepted `GetUpdates` `InfoEnum` mapping is closed and
+  sets both fields: `CRITICAL` maps to `critical/installable`, `SECURITY` to
+  `security/installable`, `IMPORTANT` to `important/installable`, `BUGFIX` to
+  `bugfix/installable`, `ENHANCEMENT` to `enhancement/installable`, `NORMAL` to
+  `normal/installable`, `LOW` to `low/installable`, `UNKNOWN` and `AVAILABLE`
+  to `unknown/installable`, and `BLOCKED` to `unknown/blocked`. Any other info
+  value makes the `updates` provider `malformed`, discards every update and plan
+  row from that discovery, and makes update actions unavailable; it is never
+  guessed from display text. An available `update-summary` value equals the
+  total number of unique emitted `update` rows, including blocked rows; the
+  install-all action is available only when at least one row is installable and
+  all other update mutation gates pass. Repository state is `enabled` or `disabled`.
   A `package-change` row is one member of the complete dependency-resolved
   simulation result for those installable update IDs at snapshot time. Its
   action maps PackageKit simulation
@@ -813,7 +823,9 @@ path, or elevation mechanism.
   terminal operation, audit, and `complete<TAB>operation` records.
 
   If the active payload was cleared in the snapshot-to-watch race, the permitted
-  newest-terminal match is replay-only and opens no PackageKit object. It emits
+  exact retained-terminal match is replay-only and opens no PackageKit object.
+  A later terminal operation in another ring slot does not hide the requested
+  retained ID. The watcher emits
   `pending`, the minimum transition implied by the durable terminal result
   (`authorizing` before `permission-denied`, or `running` before `succeeded`),
   then that exact terminal operation, its audit, and
@@ -1274,11 +1286,23 @@ path, or elevation mechanism.
   history, or records `interrupted`. These fallbacks make invalidation independent
   of terminal-frame success while preserving the simulation exclusion.
 - systemd D-Bus property changes drive time and locale refresh while the System
-  section is open. Because timedate1 marks `NTPSynchronized` and `CanNTP` as not
-  emitting change signals, one non-overlapping bounded read of only those
-  properties runs every 30 seconds while the section is open and immediately
-  after an NTP action. The fallback stops on section close. A bounded snapshot
-  remains available without a monitor.
+  section is open. On pane open, the root model installs the timedate1 and
+  locale1 property subscriptions before starting their initial bounded reads.
+  A matching change received while a read is in flight marks that provider
+  dirty and reserves one serialized, coalesced reconciliation read. That is the
+  settling read for the initialization burst. A matching change during the
+  settling read or its completion handoff sets an unresolved-dirty bit; the
+  provider stops after those two reads, publishes regional state as `partial`
+  with explicit-refresh guidance, and suppresses further automatic regional
+  reruns until an explicit refresh or pane close/reopen starts a new bounded
+  cycle. A quiet settling read clears both bits and publishes clean state. This
+  prevents both an unmonitored initialization gap and an automatic refresh loop.
+  Because timedate1 marks `NTPSynchronized` and `CanNTP` as not emitting change
+  signals, one non-overlapping bounded read of only those properties runs every
+  30 seconds while the section is open and immediately after an NTP action. The
+  fallback and subscriptions stop on section close. If subscription setup is
+  unavailable, the finite bounded snapshot remains readable but live regional
+  monitoring is explicitly unavailable.
 - AccountsService manager `UserAdded` and `UserDeleted` signals and the `Changed`
   signal on every valid de-duplicated candidate object selected within the
   256-object bound trigger one bounded, coalesced account-summary refresh while
@@ -1398,9 +1422,12 @@ and proves a possibly running `Finished` yields the conservative unknown tuple
 without clearing seeded lower-scope contributions, while a provably pre-running
 denial or cancellation remains all-clear. A
 previous-boot adoption and history fixture proves every result remains all-clear.
-Watch fixtures reject both active and preceding-cursor terminal regional or
-delegated operation IDs with status 3 and no stream. Regional fixtures must prove
-fixed D-Bus destinations and methods. Logind fixtures cover both the manager
+Watch fixtures reject both active and retained-terminal regional or delegated
+operation IDs with status 3 and no stream. They prove that a requested
+PackageKit terminal record replays by its exact retained ID even when one or
+more newer terminal slots exist, while a missing ID, duplicate retained ID,
+malformed slot, or unrelated transaction path fails closed. Regional fixtures
+must prove fixed D-Bus destinations and methods. Logind fixtures cover both the manager
 lookup and session-property read under their shared aggregate deadline,
 including a malformed object path, wrong property type, and timeout after the
 first reply.
@@ -1413,6 +1440,16 @@ active slot, publishes only independently refreshed current state, and never
 retries the mutation.
 Malformed contribution fixtures prove active and terminal records fail closed
 without becoming `interrupted`.
+Update classification fixtures cover every accepted `GetUpdates` info mapping,
+including `BLOCKED` setting `unknown/blocked`, and prove that every other info
+value rejects the updates provider without leaving update or simulation rows.
+Regional initialization fixtures inject timedate1 and locale1 property changes
+after subscription attachment but during the initial reads and prove the one
+coalesced reconciliation publishes the changed values without overlapping
+reads. A second change during the settling read and at its completion handoff
+must stop the cycle after two reads, preserve unresolved-dirty, publish
+`partial` with explicit-refresh guidance, and clear only after a quiet explicit
+refresh or pane close/reopen.
 Delegated-action tests must prove the executable allowlist and missing-tool
 behavior. QML tests must prove readable state survives denial and every
 section-owned process stops on close. Mount-monitor fixtures delay readiness and

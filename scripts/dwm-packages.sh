@@ -40,7 +40,6 @@ dwm_packages() {
 		# Dependencies introduced after the initial installation that the supported
 		# source-checkout synchronization path must reconcile for existing systems.
 		printf '%s\n' xsettingsd xkbset
-		dwm_packages "$family" system-management
 		;;
 	fedora:desktop-optional)
 		printf '%s\n' \
