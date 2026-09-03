@@ -7,16 +7,15 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
 
 ## Verified Checkpoint
 
-Status reconciled 2026-09-02 against `main` at `8b846fb`. Fifteen of the 25
-Phase 5 implementation checkboxes are merged. PR #203 completed practical XKB
-input accessibility controls after PR #202 exposed the managed-shell contrast
-and motion policy through accessible Settings controls. Only the primary
-worktree remains registered.
+Status reconciled 2026-09-02 against `main` at `ad47c20`. Sixteen of the 25
+Phase 5 implementation checkboxes are merged. PR #204 completed persistent
+notification policy after PR #203 completed practical XKB input accessibility
+controls. Only the primary worktree remains registered.
 
-The current notification boundary adds persistent Do Not Disturb and bounded
-popup-duration controls while preserving critical urgency and notification
-history. It completes the final ACCESSIBILITY-001 implementation checkbox;
-UI-5 decisions and combined Phase 5 qualification remain next.
+The current decision-only boundary inventories UI-5 candidates and adopts
+none. It completes all four optional UI-5 planning and compatibility
+checkboxes without adding a runtime surface; combined Phase 5 qualification is
+the only remaining boundary.
 
 ## Active Phase: Personalization and Accessibility
 
@@ -116,15 +115,15 @@ Acceptance:
 
 ### P5-UI5: Optional X11-Native Experience Integration
 
-- [ ] Inventory UI-5 candidates, beginning with event-driven clipboard history,
+- [x] Inventory UI-5 candidates, beginning with event-driven clipboard history,
   and record an adopt, defer, or reject decision for each candidate.
-- [ ] Evaluate every adopted UI-5 experience as an independent review boundary
+- [x] Evaluate every adopted UI-5 experience as an independent review boundary
   with an event-driven provider, explicit data ownership, bounded lifecycle,
   privacy model, and Fedora package impact before implementation.
-- [ ] Integrate only approved X11-native experiences into the existing semantic
+- [x] Integrate only approved X11-native experiences into the existing semantic
   design system and command surfaces; do not copy Wayland, Hyprland, layer-shell,
   UWSM, or Omarchy service/plugin backends.
-- [ ] Preserve current IPC names, X11 focus/click-away/stacking behavior, monitor
+- [x] Preserve current IPC names, X11 focus/click-away/stacking behavior, monitor
   selection, and closed-surface near-idle behavior.
 
 Acceptance:
@@ -134,6 +133,11 @@ Acceptance:
   package/install, and privacy tests.
 - Closing a surface leaves no resident scan, duplicate subscription, helper,
   sensitive history owner, or overlapping process.
+
+Decision: `docs/P5-UI5-DECISIONS.md` records four candidates. Clipboard history
+and reminders are deferred; emoji/symbol and general image pickers are
+rejected. Because the adopted set is empty, no implementation, package, or
+feature-specific qualification obligation is created.
 
 ### P5-VALIDATE: Phase 5 Validation
 

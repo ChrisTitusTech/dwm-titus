@@ -687,10 +687,10 @@ panel-widget persistence, plus persistent managed-shell contrast and motion
 policy with dedicated Settings controls, practical XKB input accessibility,
 and persistent notification Do Not Disturb and popup-duration controls.
 Cross-capability optional-component isolation and the accessibility capability
-contract are also qualified. The remaining Phase 5 surface begins with UI-5
-decisions, followed by selected implementation and final phase qualification.
-The ordered status is recorded in `ROADMAP.md`,
-`TASKS.md`, and `docs/P5-STATUS.md`.
+contract are also qualified. The optional UI-5 inventory adopts no runtime
+experience: clipboard history and reminders are deferred, while emoji/symbol
+and generic image pickers are rejected. Reopening a UI-5 candidate requires an
+explicit product requirement and a separately qualified X11-native boundary.
 
 The installer contains a Fedora-only package map and rejects other systems.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and

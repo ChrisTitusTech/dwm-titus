@@ -55,8 +55,8 @@ product roadmap.
   PR #159.
 - P3-UI4, Settings, System Health, notifications, and launcher: complete in
   PR #163.
-- UI-5, optional X11-native experiences: planned for Phase 5 personalization
-  and accessibility; split backend-heavy work when needed.
+- UI-5, optional X11-native experiences: candidate review complete in Phase 5
+  with no adopted runtime experience.
 - UI-6, whole-shell integration hardening: planned for Phase 7 image and
   release qualification, with no major features.
 
@@ -79,9 +79,10 @@ UI-1 is the merged foundation. UI-2 and UI-3 were parallel children and are
 now unified on `main`. `P3-UI4` established the shared large-surface language
 used by the completed Phase 3 provider work and the later power, defaults,
 personalization, accessibility, and system-management phases. Phases 3 and 4
-are complete and product Phase 5 is active. UI-5 candidates are evaluated in
-Phase 5 and approved experiences are delivered as separate review boundaries;
-UI-6 closes the desktop during Phase 7 release qualification.
+are complete and product Phase 5 is active. The UI-5 review adopted no runtime
+experience; any future reopening requires a new roadmap decision and an
+independent review boundary. UI-6 closes the desktop during Phase 7 release
+qualification.
 
 ### UI Overhaul Exit Criteria
 
@@ -297,7 +298,7 @@ Unify normal session behavior and application defaults.
 
 ## Phase 5: Personalization and Accessibility
 
-Status: Active (reconciled 2026-09-02; notification boundary in review)
+Status: Active (reconciled 2026-09-02; UI-5 review complete, final qualification pending)
 
 ### Current Checkpoint
 
@@ -306,10 +307,12 @@ wallpaper persistence, managed-shell fonts and scaling, and desktop font,
 cursor, icon, GTK, and Qt controls are merged through PR #184. Panel-widget
 persistence merged in PR #186, and cross-capability optional-component
 qualification merged in PR #188, completing `APPEARANCE-001`. Managed-shell
-contrast and motion controls merged in PR #202. The current review boundary
-adds notification Do Not Disturb and bounded popup duration after practical
-XKB input accessibility controls merged in PR #203. UI-5 decisions and the
-combined Phase 5 qualification remain open.
+contrast and motion controls merged in PR #202, practical XKB input
+accessibility controls merged in PR #203, and notification Do Not Disturb and
+bounded popup duration merged in PR #204. The current decision record defers
+clipboard history and reminders, rejects emoji/symbol and generic image
+pickers, and adopts no UI-5 runtime work. Combined Phase 5 qualification
+remains open.
 `docs/P5-STATUS.md` maps every active checkbox to its current evidence or next
 action.
 

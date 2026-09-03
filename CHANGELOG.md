@@ -23,6 +23,11 @@ versions from `config.mk`.
   display and capability cards, and using dense text-scale-aware rows while
   preserving the existing navigation, context, and controls.
 
+- Close the optional Phase 5 UI-5 decision boundary without runtime changes.
+  Clipboard history and reminders are deferred pending explicit privacy,
+  lifecycle, and recovery contracts; emoji/symbol and generic image pickers are
+  rejected because no current product workflow requires them.
+
 ### Added
 
 - Add persistent notification policy controls to Settings Appearance. Do Not
