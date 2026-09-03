@@ -44,6 +44,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-quickshell-version-check \
 	scripts/dwm-status \
 	scripts/dwm-system-health \
+	scripts/dwm-system-management \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
 	scripts/dwm-titus-release \
@@ -460,6 +461,9 @@ check-quickshell-qml:
 check-system-health:
 	tests/test-system-health.sh
 
+check-system-management:
+	/usr/bin/python3 tests/test-system-management.py
+
 check-settings:
 	tests/test-settings.sh
 	tests/test-settings-input.sh
@@ -627,6 +631,7 @@ check:
 	$(MAKE) check-quickshell-notifications
 	$(MAKE) check-quickshell-tray
 	$(MAKE) check-system-health
+	$(MAKE) check-system-management
 	$(MAKE) check-settings
 	$(MAKE) check-appearance
 	$(MAKE) check-quickshell-network

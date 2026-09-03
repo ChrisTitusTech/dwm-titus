@@ -44,6 +44,12 @@ versions from `config.mk`.
 
 ### Added
 
+- Add the Phase 6 system-management provider's first bounded PackageKit
+  snapshot. It reports sanitized update inventory, refresh age, restart scope,
+  dependency-preview records, and deterministic confirmation generations while
+  explicitly keeping refresh, installation, cancellation, and recovery actions
+  unavailable until their managed operation lifecycle lands.
+
 - Add persistent notification policy controls to Settings Appearance. Do Not
   Disturb suppresses low- and normal-urgency popups while retaining notification
   history, critical notifications bypass suppression, and a bounded duration
