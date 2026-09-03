@@ -336,8 +336,9 @@ Make the desktop appearance and interaction model configurable as one system.
   percent CPU over 30 seconds.
 - Live theme and AccessX previews changed and restored their exact starting
   state. The running, installed, and checkout DWM binaries were byte-identical.
-  Optional-package-removal and incomplete installed GTK theme limitations are
-  recorded in `docs/P5-EVIDENCE.md`.
+  Actual optional-package removal was not performed, and some installed GTK
+  theme candidates remain incomplete; both limitations are recorded in
+  `docs/P5-EVIDENCE.md`.
 
 ## Phase 6: System Management
 
