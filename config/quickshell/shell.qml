@@ -422,6 +422,34 @@ ShellRoot {
             return notificationModel.historyLatestSummary();
         }
 
+        function doNotDisturb(): bool {
+            return notificationModel.doNotDisturb;
+        }
+
+        function popupTimeout(): int {
+            return notificationModel.popupTimeoutMs;
+        }
+
+        function policyState(): string {
+            return notificationModel.policyState;
+        }
+
+        function policyStatus(): string {
+            return notificationModel.policyStatus();
+        }
+
+        function resetPolicy(): void {
+            notificationModel.resetPolicy();
+        }
+
+        function setDoNotDisturb(enabled: bool): void {
+            notificationModel.setDoNotDisturb(enabled);
+        }
+
+        function setPopupTimeout(timeoutMs: int): void {
+            notificationModel.setPopupTimeout(timeoutMs);
+        }
+
         function openHistory(): void {
             notificationModel.openHistory();
         }
@@ -1104,6 +1132,7 @@ ShellRoot {
         autostartModel: autostartModel
         appearanceModel: appearanceModel
         accessibilityModel: accessibilityModel
+        notificationModel: notificationModel
         panelSettingsModel: panelSettingsModel
     }
 }

@@ -11,6 +11,43 @@ for command_name in Xvfb quickshell xdotool xprop getconf; do
 	fi
 done
 
+if [ "$(id -u)" -eq 0 ] && [ "${DWM_LARGE_SURFACE_UNPRIVILEGED:-0}" != 1 ]; then
+	command -v setpriv >/dev/null 2>&1 || {
+		printf 'Quickshell large-surface Xvfb requires setpriv on a root runner\n' >&2
+		exit 1
+	}
+	unprivileged_uid=$(id -u nobody)
+	unprivileged_gid=$(id -g nobody)
+	root_runner_work=$(mktemp -d /var/tmp/dwm-large-surface-root.XXXXXX)
+	trap 'rm -rf -- "$root_runner_work"' EXIT
+	fixture_repo=$root_runner_work/repo
+	mkdir -p "$root_runner_work/cache" "$root_runner_work/config" \
+		"$root_runner_work/data" "$root_runner_work/runtime" \
+		"$root_runner_work/state" "$fixture_repo/tests"
+	cp -a "$test_repo/config" "$test_repo/scripts" "$fixture_repo/"
+	cp "$test_repo/dwm" "$fixture_repo/dwm"
+	cp "$0" "$fixture_repo/tests/test-quickshell-large-surfaces-xvfb.sh"
+	chown -R "$unprivileged_uid:$unprivileged_gid" "$root_runner_work"
+	chmod 700 "$fixture_repo/dwm" "$root_runner_work/runtime"
+	if HOME="$root_runner_work" TMPDIR="$root_runner_work" \
+		DWM_LARGE_SURFACE_REPO="$fixture_repo" \
+		DWM_LARGE_SURFACE_UNPRIVILEGED=1 \
+		XDG_CACHE_HOME="$root_runner_work/cache" \
+		XDG_CONFIG_HOME="$root_runner_work/config" \
+		XDG_DATA_HOME="$root_runner_work/data" \
+		XDG_RUNTIME_DIR="$root_runner_work/runtime" \
+		XDG_STATE_HOME="$root_runner_work/state" \
+		setpriv --reuid "$unprivileged_uid" --regid "$unprivileged_gid" \
+		--clear-groups "$fixture_repo/tests/test-quickshell-large-surfaces-xvfb.sh" "$@"; then
+		root_runner_status=0
+	else
+		root_runner_status=$?
+	fi
+	rm -rf -- "$root_runner_work"
+	trap - EXIT
+	exit "$root_runner_status"
+fi
+
 if [ "${DWM_LARGE_SURFACE_DBUS_SESSION:-0}" != 1 ]; then
 	if ! command -v dbus-run-session >/dev/null 2>&1; then
 		printf 'SKIP: dbus-run-session is unavailable\n'
@@ -153,11 +190,18 @@ capture_root() {
 }
 
 send_test_notification() {
+	urgency=${1:-normal}
+	summary=${2:-Nested notification}
 	if [ "${DWM_LARGE_SURFACE_FORCE_DBUS_SEND:-0}" != 1 ] &&
 		command -v notify-send >/dev/null 2>&1; then
 		DISPLAY=$display HOME=$home XDG_CACHE_HOME=$home/.cache XDG_RUNTIME_DIR=$runtime notify-send \
-			--app-name='Large Surface Test' 'Nested notification' 'Pointer dismissal and history fixture'
+			--app-name='Large Surface Test' --urgency="$urgency" \
+			"$summary" 'Pointer dismissal and history fixture'
 		return
+	fi
+	if [ "$urgency" = critical ]; then
+		printf 'SKIP: notify-send is required for critical notification validation\n'
+		exit 77
 	fi
 
 	if ! command -v dbus-send >/dev/null 2>&1; then
@@ -167,7 +211,7 @@ send_test_notification() {
 	DISPLAY=$display HOME=$home XDG_CACHE_HOME=$home/.cache XDG_RUNTIME_DIR=$runtime \
 		dbus-send --session --print-reply --dest=org.freedesktop.Notifications \
 		/org/freedesktop/Notifications org.freedesktop.Notifications.Notify \
-		string:'Large Surface Test' uint32:0 string:'' string:'Nested notification' \
+		string:'Large Surface Test' uint32:0 string:'' string:"$summary" \
 		string:'Pointer dismissal and history fixture' array:string: dict:string:variant: int32:6000 >/dev/null
 }
 
@@ -244,6 +288,33 @@ else
 fi
 
 test_stage='validating notifications'
+i=0
+while [ "$i" -lt 100 ]; do
+	policy_state=$(ipc notifications policyState)
+	case $policy_state in available | defaults | partial) break ;; esac
+	i=$((i + 1))
+	sleep 0.05
+done
+case $policy_state in
+available | defaults | partial) ;;
+*)
+	printf 'Notification policy did not load: %s\n' "$policy_state" >&2
+	exit 1
+	;;
+esac
+ipc notifications resetPolicy >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+policy_state=$(ipc notifications policyState)
+if [ "$policy_state" != available ]; then
+	printf 'Notification policy reset did not save: %s\n' "$policy_state" >&2
+	exit 1
+fi
+ipc notifications clearHistory >/dev/null
 send_test_notification
 i=0
 while [ "$i" -lt 100 ]; do
@@ -251,7 +322,38 @@ while [ "$i" -lt 100 ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
+ipc notifications setPopupTimeout 4000 >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	if [ "$(ipc notifications policyState)" = available ] &&
+		[ "$(ipc notifications count)" -gt 0 ]; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = available ]
 [ "$(ipc notifications count)" -gt 0 ]
+popup_timeout=$(ipc notifications popupTimeout)
+if [ "$popup_timeout" != 4000 ]; then
+	printf 'Notification popup timeout did not update: %s\n' "$popup_timeout" >&2
+	exit 1
+fi
+if ! grep -Eq '"popupTimeoutMs"[[:space:]]*:[[:space:]]*4000' \
+	"$config_home/dwm-titus/notification-settings.json"; then
+	printf 'Notification popup timeout was not persisted:\n' >&2
+	sed -n '1,20p' "$config_home/dwm-titus/notification-settings.json" >&2
+	exit 1
+fi
+# FileView does not define whether saved or fileChanged arrives first. Sample a
+# bounded post-save window so either ordering must keep the popup available.
+i=0
+while [ "$i" -lt 20 ]; do
+	[ "$(ipc notifications count)" -gt 0 ]
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = available ]
 capture_root notification-popup
 ipc notifications openHistory >/dev/null
 history_window=$(wait_window '^dwm notification history$')
@@ -272,8 +374,156 @@ if DISPLAY=$display xdotool search --onlyvisible --name '^dwm notification histo
 	printf 'Notification history did not close on Escape\n' >&2
 	exit 1
 fi
+ipc notifications setDoNotDisturb true >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications doNotDisturb)" = true ]
+chmod 500 "$config_home/dwm-titus"
+ipc notifications setDoNotDisturb false >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = unavailable ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = unavailable ]
+[ "$(ipc notifications doNotDisturb)" = true ]
+[ "$(ipc notifications popupTimeout)" = 4000 ]
+chmod 700 "$config_home/dwm-titus"
+ipc notifications resetPolicy >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = available ]
+[ "$(ipc notifications doNotDisturb)" = false ]
+[ "$(ipc notifications popupTimeout)" = 6000 ]
+ipc notifications setPopupTimeout 4000 >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = available ]
+ipc notifications setDoNotDisturb true >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = available ]
+[ "$(ipc notifications doNotDisturb)" = true ]
+[ "$(ipc notifications popupTimeout)" = 4000 ]
+chmod 000 "$config_home/dwm-titus/notification-settings.json"
+touch "$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = unavailable ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = unavailable ]
+[ "$(ipc notifications doNotDisturb)" = true ]
+[ "$(ipc notifications popupTimeout)" = 4000 ]
+send_test_notification normal 'Suppressed during policy read failure'
+sleep 0.1
+[ "$(ipc notifications count)" = 0 ]
+[ "$(ipc notifications historyLatestSummary)" = 'Suppressed during policy read failure' ]
+chmod 600 "$config_home/dwm-titus/notification-settings.json"
+touch "$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = available ]
+ipc notifications resetPolicy >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications doNotDisturb)" = false ]
+[ "$(ipc notifications popupTimeout)" = 6000 ]
+printf '%s\n' '{"version":1,"doNotDisturb":true,"popupTimeoutMs":6000}' \
+	>"$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	policy_dnd=$(ipc notifications doNotDisturb)
+	[ "$policy_dnd" = true ] && [ "$(ipc notifications count)" = 0 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$policy_dnd" = true ]
+[ "$(ipc notifications count)" = 0 ]
+[ "$(ipc notifications historyCount)" -gt 0 ]
+printf '%s\n' '{malformed' >"$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = partial ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications policyState)" = partial ]
+send_test_notification normal 'Suppressed with malformed policy'
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications historyLatestSummary)" = 'Suppressed with malformed policy' ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications historyLatestSummary)" = 'Suppressed with malformed policy' ]
+[ "$(ipc notifications count)" = 0 ]
+ipc notifications resetPolicy >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications doNotDisturb)" = false ]
 ipc notifications clear >/dev/null
 [ "$(ipc notifications count)" = 0 ]
+
+test_stage='validating Do Not Disturb history and urgency'
+history_before=$(ipc notifications historyCount)
+ipc notifications setDoNotDisturb true >/dev/null
+[ "$(ipc notifications doNotDisturb)" = true ]
+send_test_notification normal 'Suppressed notification'
+i=0
+while [ "$i" -lt 100 ]; do
+	history_after=$(ipc notifications historyCount)
+	latest_summary=$(ipc notifications historyLatestSummary)
+	[ "$history_after" -gt "$history_before" ] &&
+		[ "$latest_summary" = 'Suppressed notification' ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$history_after" -gt "$history_before" ]
+[ "$latest_summary" = 'Suppressed notification' ]
+[ "$(ipc notifications count)" = 0 ]
+
+send_test_notification critical 'Critical notification'
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc notifications count)" -gt 0 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc notifications count)" -gt 0 ]
+[ "$(ipc notifications historyLatestSummary)" = 'Critical notification' ]
+ipc notifications clear >/dev/null
+ipc notifications resetPolicy >/dev/null
 
 test_stage='sampling closed-shell CPU usage'
 clock_ticks=$(getconf CLK_TCK)

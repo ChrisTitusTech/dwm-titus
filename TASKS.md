@@ -7,16 +7,16 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
 
 ## Verified Checkpoint
 
-Status reconciled 2026-09-02 against `main` at `28a374f`. Fourteen of the 25
-Phase 5 implementation checkboxes are merged. PR #202 exposed the managed-shell
-contrast and motion policy through accessible Settings controls after PR #201
-completed the policy backend. Only the primary worktree remains registered.
+Status reconciled 2026-09-02 against `main` at `8b846fb`. Fifteen of the 25
+Phase 5 implementation checkboxes are merged. PR #203 completed practical XKB
+input accessibility controls after PR #202 exposed the managed-shell contrast
+and motion policy through accessible Settings controls. Only the primary
+worktree remains registered.
 
-The current accessibility input boundary adds fixed, session-wide XKB controls
-for accessibility shortcuts, sticky keys, slow keys, bounce keys, and mouse
-keys through the existing timed preview, persistence, replay, and reset path.
-Notification policy remains the only open ACCESSIBILITY-001 implementation
-boundary.
+The current notification boundary adds persistent Do Not Disturb and bounded
+popup-duration controls while preserving critical urgency and notification
+history. It completes the final ACCESSIBILITY-001 implementation checkbox;
+UI-5 decisions and combined Phase 5 qualification remain next.
 
 ## Active Phase: Personalization and Accessibility
 
@@ -102,7 +102,7 @@ Acceptance:
 - [x] Apply reduced-motion and contrast choices consistently to managed
   Quickshell surfaces without introducing a Wayland, compositor, or polling
   dependency.
-- [ ] Add notification behavior controls that preserve the existing D-Bus owner,
+- [x] Add notification behavior controls that preserve the existing D-Bus owner,
   history lifecycle, urgency semantics, and safe failure isolation.
 
 Acceptance:

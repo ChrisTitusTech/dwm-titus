@@ -123,6 +123,7 @@ Scope {
     function activateSection(id) {
         displayWatchProcess.running = id === "displays" && root.visible;
         inputWatchProcess.running = id === "input" && root.visible;
+        notificationOwnerWatchProcess.running = id === "appearance" && root.visible;
 			if (id !== "input") inputSettleTimer.stop();
         if (root.networkModel) {
             const wantNetwork = id === "network" && root.visible;
@@ -161,6 +162,7 @@ Scope {
             if (wantAppearance && !root.appearanceModel.settingsVisible) root.appearanceModel.openSettings();
             else if (!wantAppearance && root.appearanceModel.settingsVisible) root.appearanceModel.closeSettings();
         }
+        if (id === "appearance") root.refreshCapabilities();
         if (id === "appearance" && root.accessibilityModel) root.accessibilityModel.refresh();
         if (id === "appearance" && root.panelSettingsModel) root.panelSettingsModel.refresh();
         if (id === "displays") root.refreshDisplays();
@@ -645,6 +647,7 @@ Scope {
         inputDiscoverProcess.running = false;
         displayWatchProcess.running = false;
         inputWatchProcess.running = false;
+        notificationOwnerWatchProcess.running = false;
 		if (root.networkModel) root.networkModel.closeSettings();
 		if (root.bluetoothModel) root.bluetoothModel.closeSettings();
 		if (root.controlsModel) root.controlsModel.closeSettings();
@@ -745,6 +748,13 @@ Scope {
         command: Commands.settingsInputCommand("watch", root.watchOwnerArguments())
         running: false
 			stdout: SplitParser { onRead: inputSettleTimer.restart() }
+    }
+
+    Process {
+        id: notificationOwnerWatchProcess
+        command: Commands.settingsProviderCommand("watch-notifications", [])
+        running: false
+        stdout: SplitParser { onRead: notificationOwnerSettleTimer.restart() }
     }
 
     Process {
@@ -873,5 +883,14 @@ Scope {
 				}
 				root.refreshInput();
 			}
+    }
+
+    Timer {
+        id: notificationOwnerSettleTimer
+        interval: 100
+        onTriggered: {
+            if (root.visible && root.selectedSectionId === "appearance")
+                root.refreshCapabilities();
+        }
     }
 }

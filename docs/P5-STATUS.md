@@ -5,14 +5,14 @@ Date: 2026-09-02
 ## Verification Baseline
 
 This checkpoint was reconciled against `origin/main` at
-`28a374fc0d6aab232335d6148915948161aae62c`. PR #202 merged the dedicated
-high-contrast and reduced-motion Settings controls after PR #201 merged their
-managed policy. The primary checkout matched the remote revision before this
-continuation branch was created, no pull request remained open, and only the
-primary checkout was registered.
+`8b846fb9594eb46587ce54281a31776284121552`. PR #203 merged practical XKB
+accessibility controls after PR #202 merged dedicated high-contrast and
+reduced-motion Settings controls. The primary checkout matched the remote
+revision before this notification-policy branch was created, no pull request
+remained open, and only the primary checkout was registered.
 
-The active `TASKS.md` contains 25 implementation checkboxes. Fourteen are
-complete on `main`; this boundary completes the fifteenth, leaving 10 after
+The active `TASKS.md` contains 25 implementation checkboxes. Fifteen are
+complete on `main`; this boundary completes the sixteenth, leaving nine after
 merge.
 
 The merged APPEARANCE-001 boundaries and their documentation passed. The
@@ -51,7 +51,8 @@ boundaries passed before merge.
 | APPEARANCE-001 optional-component isolation | Complete | PR #188 | Focused and full managed suites, nested X11, install, docs, lint, CodeQL, and hosted checks passed. |
 | ACCESSIBILITY-001 capability contract | Complete | PR #190 | Five hosted checks and exact-head Codex and CodeRabbit review passed; one conditional check skipped. |
 | ACCESSIBILITY-001 managed Settings controls | Complete | PRs #191, #201, and #202 | Capability grouping, managed contrast and motion policy, Settings mutations, nested-X11 persistence, hosted checks, and review loops passed. |
-| ACCESSIBILITY-001 practical input controls | Current | PR #203 | This boundary adds AccessX preview, rollback, persistence, replay, reset, and scoped failure handling; merge and exact-head hosted validation remain pending. |
+| ACCESSIBILITY-001 practical input controls | Complete | PR #203 | AccessX preview, rollback, persistence, replay, reset, real-session rollback, hosted gates, and exact-head review passed. |
+| ACCESSIBILITY-001 notification policy | Current | Current branch | Persistent Do Not Disturb, bounded popup duration, owner-PID matching, history retention, urgency bypass, and reset are under review. |
 
 The detailed contracts and focused validation commands remain in
 `P5-THEME-TRANSACTIONS.md`, `P5-APPEARANCE-INVENTORY.md`,
@@ -75,32 +76,45 @@ nested-X11 validation covers the shared-state path.
 
 ## Current Review Boundary
 
-The current `codex/phase5-input-accessibility` boundary appends one
-session-scoped AccessX group to the existing input protocol. Its five fixed
-boolean controls reuse input preview, automatic rollback, keep, session replay,
-reset, and the user-owned settings file without adding a poller or privilege
-boundary. Missing or unresponsive `xkbset` degrades only this group.
+The current `codex/phase5-notification-policy` boundary keeps the root
+NotificationModel as the sole delivery and history owner. It adds user-owned
+Do Not Disturb and fixed popup-duration state without a poller or privilege
+boundary. Capability discovery resolves the D-Bus owner's machine-readable PID
+and verifies the Quickshell executable and managed configuration identity
+before exposing mutations.
 
-Focused helper, provider, Fedora package, Kickstart, shell, QML, and nested-X11
-checks pass. The nested shell exercised preview, revert, keep, replay, and reset
-at 0.067% closed idle CPU. A real X11 preview changed sticky keys from Off to On
-and restored the exact Off baseline. Notification policy remains the final
-ACCESSIBILITY-001 implementation boundary.
+Focused provider, shell, QML, and nested-X11 checks pass. The clean managed
+build and full managed repository suite pass. The Settings session persisted
+policy through restart and reset. The large-surface session delivered an
+ordinary notification, retained a suppressed notification in history, allowed
+a critical notification through Do Not Disturb, recovered the last confirmed
+state after a forced save failure, and sampled 0.00% closed idle CPU.
+
+The exact checkout was installed with rollback backup
+`20260902T203714Z-3846857`. The supported restart path removed two stale
+managed Quickshell instances, leaving one instance with healthy IPC and five
+tray items. Settings reported the notification capability available. The live
+policy persisted 4,000 ms, suppressed an ordinary popup while retaining it as
+the newest history entry, allowed a critical popup, and reset to Do Not Disturb
+off at 6,000 ms. Closed CPU measured 0.000% over 30 seconds. The previously
+absent policy migrated to its versioned default file. Installed files match the
+checkout; the newly installed `dwm` binary requires the expected logout and
+login before runtime parity can pass. Exact-head hosted validation remains
+required before merge.
 
 ## Open Task Boundaries
 
 | Boundary | Open checkboxes | Verified current state | Next evidence needed |
 | --- | ---: | --- | --- |
 | APPEARANCE-001 | 0 | Complete on `main` through PR #188. | Preserve the merged contracts while completing Phase 5. |
-| ACCESSIBILITY-001 | 1 | Five capability records, text-scale grouping, managed contrast and motion policy, and their dedicated controls are merged. This boundary adds practical XKB input controls and real-session rollback evidence. | Finish notification behavior controls and final combined interaction evidence. |
+| ACCESSIBILITY-001 | 0 | Five capability records, text-scale grouping, managed contrast and motion policy, and practical XKB input controls are merged. This boundary completes notification policy behavior plus nested-X11 and installed-session evidence. | Finish exact-head hosted review and validation. |
 | P5-UI5 | 4 | No candidate decision record is complete. | Inventory candidates, record adopt/defer/reject decisions, and qualify each adopted X11-native experience independently. |
 | P5-VALIDATE | 5 | Individual merged slices have focused and full-suite evidence, but the combined Phase 5 product is incomplete. | Run the final Fedora 44, clean build, full suite, QML, shell, install/parity, fresh-login, `startx`, multi-monitor, optional-loss, recovery, and 30-second CPU qualification after all selected Phase 5 work merges. |
 
 ## Phase Position
 
 Phase 5 remains active. THEME-001 and APPEARANCE-001 are complete on `main`.
-The first three ACCESSIBILITY-001 checkboxes are complete with this boundary;
-notification policy remains open. No P5-UI5 or final Phase 5 qualification
-checkbox is complete. Phase 6 must not begin until the Phase 5 exit criteria
-pass or an explicit roadmap decision defers named work and records the
-resulting limitation.
+All ACCESSIBILITY-001 implementation checkboxes are complete with this
+boundary. No P5-UI5 or final Phase 5 qualification checkbox is complete. Phase
+6 must not begin until the Phase 5 exit criteria pass or an explicit roadmap
+decision defers named work and records the resulting limitation.

@@ -31,6 +31,30 @@ make_failing_stub() {
 	chmod +x "$path"
 }
 
+make_notification_bus_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' 'printf '\''{"type":"u","data":[4242]}\n'\''' >"$path"
+	chmod +x "$path"
+}
+
+make_live_notification_bus_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		"printf '{\"type\":\"u\",\"data\":[%s]}\\n' \"\$PPID\"" >"$path"
+	chmod +x "$path"
+}
+
+make_notification_monitor_stub() {
+	path=$1
+	mkdir -p "${path%/*}"
+	printf '%s\n' '#!/bin/sh' \
+		"printf '%s\\n' \"\$*\" >\"\${DWM_SETTINGS_MONITOR_LOG:?}\"" \
+		"printf 'signal\\n'" >"$path"
+	chmod +x "$path"
+}
+
 make_appearance_stub() {
 	path=$1
 	mkdir -p "${path%/*}"
@@ -158,10 +182,16 @@ fedora_bin=$work/fedora-bin
 make_tools "$base_bin" dirname awk tr stat find grep timeout readlink
 cp -a "$base_bin" "$fedora_bin"
 
+grep -Fq "*' (deleted)') process_executable=\${process_executable%' (deleted)'} ;;" \
+	"$provider"
+grep -Fq "case \${XDG_CONFIG_HOME:-} in" "$provider"
+grep -Fq "*) config_home=\${HOME:-}/.config ;;" "$provider"
+
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
-	xdg-settings xdg-mime xinput xkbset busctl; do
+	xdg-settings xdg-mime xinput xkbset; do
 	make_stub "$fedora_bin/$command_name"
 done
+make_notification_bus_stub "$fedora_bin/busctl"
 make_stub "$fedora_bin/dwm-xdg-autostart"
 make_appearance_stub "$fedora_bin/dwm-settings-appearance"
 make_personalization_stub "$fedora_bin/dwm-settings-personalization"
@@ -180,6 +210,15 @@ printf 'ID=fedora\nPRETTY_NAME="Fedora\tLinux 44"\n' \
 
 fedora_output=$(PATH="$fedora_bin" XDG_CONFIG_HOME="$work/fedora-config" \
 	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+notification_monitor_bin=$work/notification-monitor-bin
+cp -a "$fedora_bin" "$notification_monitor_bin"
+make_notification_monitor_stub "$notification_monitor_bin/busctl"
+PATH="$notification_monitor_bin" DWM_SETTINGS_MONITOR_LOG="$work/notification-monitor.log" \
+	"$provider" watch-notifications >"$work/notification-monitor.out"
+grep -Fqx 'signal' "$work/notification-monitor.out"
+grep -Fqx -- \
+	"--user --no-pager monitor --match=type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.Notifications'" \
+	"$work/notification-monitor.log"
 printf '%s\n' "$fedora_output" | grep -Fqx 'settings-protocol	1'
 printf '%s\n' "$fedora_output" | grep -Fqx 'platform	fedora	fedora	Fedora Linux 44'
 printf '%s\n' "$fedora_output" | grep -Fqx \
@@ -212,7 +251,7 @@ printf '%s\n' "$fedora_output" | grep -Fqx \
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	appearance	accessibility-reduced-motion	Reduced motion	available	user-session	dwm-accessibility-settings	Persistent managed-shell reduced-motion policy is available'
 printf '%s\n' "$fedora_output" | grep -Fqx \
-	'capability	appearance	accessibility-notifications	Notification policy	partial	read-only	dbus	A notification D-Bus owner is active; managed policy controls are not configured'
+	'capability	appearance	accessibility-notifications	Notification policy	partial	read-only	dbus	A notification owner is active, but it is not the managed policy provider'
 printf '%s\n' "$fedora_output" | grep -Fqx \
 	'capability	appearance	accessibility-input	Keyboard and pointer access	available	user-session	dwm-settings-input	Persistent XKB accessibility controls are available'
 [ "$(printf '%s\n' "$fedora_output" |
@@ -473,6 +512,15 @@ missing_notification_owner_output=$(PATH="$missing_notification_owner_bin" \
 printf '%s\n' "$missing_notification_owner_output" | grep -Fqx \
 	'capability	appearance	accessibility-notifications	Notification policy	unavailable	read-only	dbus	No notification D-Bus owner is observable in this session'
 
+mismatched_notification_owner_bin=$work/mismatched-notification-owner-bin
+cp -a "$fedora_bin" "$mismatched_notification_owner_bin"
+make_live_notification_bus_stub "$mismatched_notification_owner_bin/busctl"
+mismatched_notification_owner_output=$(PATH="$mismatched_notification_owner_bin" \
+	XDG_CONFIG_HOME="$work/fedora-config" \
+	DWM_SETTINGS_OS_RELEASE="$work/fedora-os-release" "$provider" discover)
+printf '%s\n' "$mismatched_notification_owner_output" | grep -Fqx \
+	'capability	appearance	accessibility-notifications	Notification policy	partial	read-only	dbus	A notification owner is active, but it is not the managed policy provider'
+
 unsafe_theme_bin=$work/unsafe-theme-bin
 cp -a "$fedora_bin" "$unsafe_theme_bin"
 make_failing_stub "$unsafe_theme_bin/dwm-settings-theme"
@@ -624,6 +672,14 @@ grep -Fq 'Commands.settingsDisplayCommand("watch", root.watchOwnerArguments())' 
 	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'Commands.settingsInputCommand("watch", root.watchOwnerArguments())' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'Commands.settingsProviderCommand("watch-notifications", [])' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'stdout: SplitParser { onRead: notificationOwnerSettleTimer.restart() }' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'notificationOwnerWatchProcess.running = id === "appearance" && root.visible;' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'if (id === "appearance") root.refreshCapabilities();' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'path: "/proc/" + Quickshell.processId.toString() + "/stat"' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.runInput("preview-status", [])' "$repo/config/quickshell/settings/SettingsModel.qml"
@@ -733,6 +789,8 @@ grep -Fq 'migrate or remove it before installing a managed display profile' \
 grep -Fq 'watch-apply' "$repo/scripts/autostart.sh"
 grep -Fq 'displayWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'inputWatchProcess.running = false' "$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'notificationOwnerWatchProcess.running = false' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'stdout: SplitParser { onRead: inputSettleTimer.restart() }' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.searchQuery = ""' "$repo/config/quickshell/settings/SettingsModel.qml"

@@ -479,11 +479,14 @@ capability records for text scaling, high contrast, reduced motion,
 notification policy, and keyboard or pointer access. Text scaling derives from
 one complete versioned personalization response; high contrast and reduced
 motion are user-session mutations owned by the versioned managed accessibility
-helper; notification readiness derives from the active session D-Bus owner;
+helper; notification readiness requires the active session D-Bus owner's
+process ID and command identity to match the managed Quickshell configuration;
 and input readiness derives from bounded managed XInput discovery plus a
-responsive `xkbset` query. Missing or malformed providers degrade only their
-own record. The notification record does not imply that dedicated mutations
-are implemented.
+responsive `xkbset` query. Missing
+or malformed providers degrade only their own record. Notification policy owns
+Do Not Disturb and one bounded ordinary-popup duration in user configuration;
+history remains active while suppressed, and critical urgency bypasses Do Not
+Disturb with its fixed duration.
 
 `input-protocol 1` also publishes one session-scoped `accessx` device group.
 Its fixed boolean settings cover accessibility shortcuts, sticky keys, slow
@@ -681,11 +684,12 @@ session-action, default-application, MIME, and XDG autostart workflows. Active
 Phase 5 now includes merged theme transactions, wallpaper persistence,
 managed-shell typography, desktop font, cursor, icon, GTK, and Qt controls,
 panel-widget persistence, plus persistent managed-shell contrast and motion
-policy with dedicated Settings controls. Cross-capability optional-component
-isolation and the accessibility capability contract are also qualified. The
-remaining Phase 5 surface begins with dedicated notification controls, followed
-by selected UI-5 work and final phase qualification. The ordered status is
-recorded in `ROADMAP.md`,
+policy with dedicated Settings controls, practical XKB input accessibility,
+and persistent notification Do Not Disturb and popup-duration controls.
+Cross-capability optional-component isolation and the accessibility capability
+contract are also qualified. The remaining Phase 5 surface begins with UI-5
+decisions, followed by selected implementation and final phase qualification.
+The ordered status is recorded in `ROADMAP.md`,
 `TASKS.md`, and `docs/P5-STATUS.md`.
 
 The installer contains a Fedora-only package map and rejects other systems.

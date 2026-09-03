@@ -149,6 +149,13 @@ shortcuts, sticky keys, slow keys, bounce keys, and mouse keys. These records
 are reapplied through `xkbset` at session startup and do not depend on a device
 identity or hotplug event.
 
+Managed notification policy is stored in
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/notification-settings.json`.
+Settings offers only fixed Do Not Disturb and ordinary-popup duration values.
+Do Not Disturb keeps every notification in history, suppresses only low and
+normal urgency popups, and never suppresses critical urgency. Reset restores
+Do Not Disturb off and the six-second ordinary duration.
+
 Power settings are managed from Control Center -> Power. The generated
 `power.conf` is authoritative once created and persists screen DPMS state,
 display-off timing, and automatic idle and suspend locking. Startup reapplies
