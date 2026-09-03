@@ -325,10 +325,15 @@ done
 ipc notifications setPopupTimeout 4000 >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
-	[ "$(ipc notifications policyState)" = available ] && break
+	if [ "$(ipc notifications policyState)" = available ] &&
+		[ "$(ipc notifications count)" -gt 0 ]; then
+		break
+	fi
 	i=$((i + 1))
 	sleep 0.05
 done
+[ "$(ipc notifications policyState)" = available ]
+[ "$(ipc notifications count)" -gt 0 ]
 popup_timeout=$(ipc notifications popupTimeout)
 if [ "$popup_timeout" != 4000 ]; then
 	printf 'Notification popup timeout did not update: %s\n' "$popup_timeout" >&2
@@ -344,11 +349,11 @@ fi
 # bounded post-save window so either ordering must keep the popup available.
 i=0
 while [ "$i" -lt 20 ]; do
-	[ "$(ipc notifications policyState)" = available ]
 	[ "$(ipc notifications count)" -gt 0 ]
 	i=$((i + 1))
 	sleep 0.05
 done
+[ "$(ipc notifications policyState)" = available ]
 capture_root notification-popup
 ipc notifications openHistory >/dev/null
 history_window=$(wait_window '^dwm notification history$')

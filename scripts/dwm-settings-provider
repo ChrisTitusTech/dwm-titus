@@ -87,7 +87,10 @@ notification_owner_pid() {
 
 notification_process_is_managed() {
 	notification_process_pid=$1
-	config_home=${XDG_CONFIG_HOME:-${HOME:-}/.config}
+	case ${XDG_CONFIG_HOME:-} in
+	/*) config_home=$XDG_CONFIG_HOME ;;
+	*) config_home=${HOME:-}/.config ;;
+	esac
 	case $config_home in /*) ;; *) return 1 ;; esac
 	case $notification_process_pid in '' | *[!0-9]* | 0) return 1 ;; esac
 	process_executable=$(readlink "/proc/$notification_process_pid/exe" 2>/dev/null) || return 1

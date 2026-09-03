@@ -28,7 +28,7 @@ Scope {
     readonly property bool popupSuppressed: root.policyState === "loading"
         || root.policyState === "partial"
         || root.policyState === "unavailable"
-        || root.doNotDisturb || (root.policySaving && root.confirmedDoNotDisturb)
+        || root.policySaving || root.doNotDisturb
     readonly property bool policyMutationReady: !root.policySaving
         && (root.policyState === "available" || root.policyState === "defaults")
     readonly property bool policyResetReady: !root.policySaving

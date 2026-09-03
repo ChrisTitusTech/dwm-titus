@@ -184,6 +184,8 @@ cp -a "$base_bin" "$fedora_bin"
 
 grep -Fq "*' (deleted)') process_executable=\${process_executable%' (deleted)'} ;;" \
 	"$provider"
+grep -Fq "case \${XDG_CONFIG_HOME:-} in" "$provider"
+grep -Fq "*) config_home=\${HOME:-}/.config ;;" "$provider"
 
 for command_name in xrandr nmcli bluetoothctl pactl xset gsettings light-locker \
 	xdg-settings xdg-mime xinput xkbset; do

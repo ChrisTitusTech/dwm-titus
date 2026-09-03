@@ -21,6 +21,7 @@ grep -Fq 'readonly property var popupTimeoutOptions: [4000, 6000, 10000]' "$mode
 grep -Fq 'readonly property bool popupSuppressed: root.policyState === "loading"' "$model"
 grep -Fq '|| root.policyState === "partial"' "$model"
 grep -Fq '|| root.policyState === "unavailable"' "$model"
+grep -Fq '|| root.policySaving || root.doNotDisturb' "$model"
 grep -Fq 'root.applyDoNotDisturb(policy.doNotDisturb);' "$model"
 grep -Fq 'if (root.popupSuppressed && item.urgencyName !== "critical") {' "$model"
 grep -Fq 'notification.expire();' "$model"
