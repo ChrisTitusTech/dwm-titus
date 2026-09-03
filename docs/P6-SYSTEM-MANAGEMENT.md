@@ -120,9 +120,11 @@ CUPS remains the printer service. Phase 6 reports service/tool availability and
 opens Fedora's `system-config-printer`; it does not reproduce printer discovery,
 driver, queue, job, or authentication policy.
 
-PackageKit supplies read-only repository records. Repository changes remain in
-the Fedora-packaged `dnfdragora` tool when present. Missing optional delegated
-tools are reported individually and never hide readable service state.
+PackageKit supplies read-only repository records through `GetRepoList` with the
+fixed `NONE` filter, including enabled and disabled repositories. Repository
+changes remain in the Fedora-packaged `dnfdragora` tool when present. Missing
+optional delegated tools are reported individually and never hide readable
+service state.
 
 ### System Information and Filesystems
 
@@ -224,6 +226,10 @@ from QML.
 `dwm-system-management` owns one append-only, tab-separated protocol. Phase 6
 starts at minor version `0`:
 
+This inventory is the preimplementation definition of version 1.0; no earlier
+producer or consumer exists. The record field order becomes append-only when
+the first implementation boundary lands.
+
 ```text
 system-management-protocol<TAB>1<TAB>0
 provider<TAB>id<TAB>status<TAB>class<TAB>owner<TAB>detail
@@ -233,8 +239,8 @@ repository<TAB>id<TAB>enabled|disabled<TAB>description
 account<TAB>object-path<TAB>current|other<TAB>display-name<TAB>login-name
 filesystem<TAB>mount-id<TAB>status<TAB>source<TAB>target<TAB>fstype<TAB>size-bytes<TAB>used-bytes<TAB>available-bytes<TAB>detail
 action<TAB>id<TAB>available|unavailable<TAB>class<TAB>owner<TAB>label<TAB>detail
-operation<TAB>id<TAB>kind<TAB>state<TAB>percent<TAB>cancelable<TAB>detail
-audit<TAB>id<TAB>kind<TAB>result<TAB>started<TAB>finished<TAB>detail
+operation<TAB>id<TAB>action-id<TAB>kind<TAB>state<TAB>percent<TAB>cancelable<TAB>detail
+audit<TAB>id<TAB>action-id<TAB>kind<TAB>result<TAB>started<TAB>finished<TAB>detail
 error<TAB>capability<TAB>code<TAB>detail
 complete<TAB>snapshot|operation
 ```
@@ -268,6 +274,14 @@ The initial vocabulary is closed for known record fields:
   values are bounded display text owned by the named state. Security-state
   values use the exact per-ID enums and status/value mapping defined in
   Security Status. PackageKit `RestartEnum.APPLICATION` maps to `application`.
+  Repeated PackageKit restart requirements are aggregated across two
+  dimensions: maximum scope (`none < application < session < system`) and
+  whether any requirement is security-related. `security-session` contributes
+  session scope plus the security flag, and `security-system` contributes
+  system scope plus that flag. The aggregate maps back to the closed enum, so
+  `system` plus `security-session` becomes `security-system`; any unrecognized
+  value makes the aggregate `unknown`. The result therefore cannot discard
+  either restart scope or security urgency.
 - Update severity is `critical`, `security`, `important`, `bugfix`,
   `enhancement`, `normal`, `low`, or `unknown`. Update installability is
   `installable` or `blocked`; blocked package IDs are never passed to
@@ -278,12 +292,27 @@ The initial vocabulary is closed for known record fields:
   requires all three byte fields to be unsigned decimal integers; `partial`
   permits a mix of integers and `unknown`; `restricted`, `unavailable`, or
   `unsupported` requires all three byte fields to be `unknown`.
-- Operation kind is `refresh`, `update`, `timezone`, `ntp`, `locale`, or
-  `delegate`. Operation state is `pending`, `authorizing`, `running`,
+- Operation kind is `refresh`, `update`, `timezone`, `ntp`, `locale`,
+  `journal-repair`, or `delegate`. Operation state is `pending`, `authorizing`, `running`,
   `cancel-requested`, `permission-denied`, `canceled`, `failed`, `interrupted`,
   or `succeeded`. Percent is `unknown` or an integer from 0 through 100, and
-  cancelable is `yes` or `no`. Audit result uses only the terminal operation
-  states.
+  cancelable is `yes` or `no`. Every terminal operation record must use
+  `cancelable=no`. Audit result uses only the terminal operation states.
+- Every operation and audit row carries the action ID that originated the
+  operation. The fixed action-to-kind mapping is `updates-refresh` to
+  `refresh`, `updates-install-all` to `update`, `timezone-set` to `timezone`,
+  `ntp-set` to `ntp`, `locale-set` to `locale`, and `accounts-open`,
+  `password-open`, `printers-open`, `sources-open`, and `health-open` to
+  `delegate`; `recovery-clear-journal-temporaries` maps to `journal-repair`.
+  `updates-cancel` controls the current update or refresh operation and never
+  starts an operation of its own; every record for that operation retains its
+  original action ID. Action ownership is also fixed:
+  `updates-refresh`, `updates-install-all`, and `updates-cancel` belong to
+  `updates`; `timezone-set`, `ntp-set`, and `locale-set` to `regional`;
+  `accounts-open` and `password-open` to `accounts`; `printers-open` to
+  `printers`; `sources-open` to `sources`; and `health-open` to `diagnostics`.
+  `recovery-clear-journal-temporaries` belongs to `recovery`. Every action row
+  must name that owner.
 - Action availability is `available` or `unavailable` and action class uses the
   provider class enum. The error capability field is exactly one provider ID,
   which is also its owner. Error codes are the closed normalized enum
@@ -304,13 +333,35 @@ The initial vocabulary is closed for known record fields:
   sanitized detail.
 
 A snapshot emits exactly one provider row for every provider ID, exactly one
-row for every action ID, exactly one `filesystem-summary` state, zero or one of
-every other singleton state ID, then one `complete<TAB>snapshot`. List record IDs
-(`update`, `repository`, `account`, and `filesystem`) must be unique within their
-record type. An operation stream emits exactly one operation ID, exactly one
-audit row after the terminal operation record, and then one
-`complete<TAB>operation`. The audit ID and kind must match the operation, its
-result must match the terminal state, and no duplicate audit row is accepted.
+row for every action ID, exactly one state row for every state ID, then one
+`complete<TAB>snapshot`. An unavailable, restricted, or unsupported capability
+therefore retains an explicit status-bearing state row instead of omitting its
+value. List record IDs (`update`, `repository`, `account`, and `filesystem`)
+must be unique within their record type. State and list-record ownership is
+fixed as follows:
+
+- `updates` owns `update-summary`, `update-last-refresh`, `update-restart`, and
+  every `update` row.
+- `regional` owns `timezone`, `ntp-enabled`, `ntp-synchronized`, and `locale`.
+- `accounts` owns `accounts-count` and every `account` row; `printers` owns
+  `cups-service`; `sources` owns every `repository` row.
+- `information` owns the OS, kernel, architecture, hardware, CPU, memory, swap,
+  and uptime states. `storage` owns `filesystem-summary` and every `filesystem`
+  row.
+- `security` owns `selinux`, `secure-boot`, `firewalld`, `root-encryption`, and
+  `screen-lock`. `diagnostics` and `recovery` own no state or list rows.
+
+An operation stream emits exactly one operation ID and originating action ID,
+exactly one audit row after the terminal operation record, and then one
+`complete<TAB>operation`. The action must have the fixed kind defined above.
+The audit ID, action ID, and kind must match the operation, its result must
+match the terminal state, and no duplicate audit row is accepted.
+An operation stream accepts at most one error row. A `failed` terminal operation
+requires exactly one preceding error row whose capability is the provider that
+owns the operation: `updates` for `refresh` and `update`, `regional` for
+`timezone`, `ntp`, and `locale`, `recovery` for `journal-repair`, and the
+action's declared provider for `delegate`. Other terminal results do not
+require an error row.
 The first operation record must be `pending`; consumers reject any other
 initial state. Audit timestamps are canonical UTC RFC 3339 whole seconds in the
 exact `YYYY-MM-DDTHH:MM:SSZ` form. `started` must be no later than `finished`,
@@ -335,17 +386,19 @@ Snapshot record failures are provider-scoped only when a valid known provider,
 state, action, or list-record ID still identifies the owner; the consumer marks
 that provider invalid and continues parsing unrelated providers. A malformed
 header or completion, a missing or unknown owner ID, duplicate ID, illegal enum,
-operation-ID mismatch, transition outside the table, an operation record after
-a terminal state, any record after the required completion, or missing
-completion rejects the entire stream. Operation and audit record failures
-always reject the operation stream. Text fields are capped at 512 bytes, list
-records at 10,000 per snapshot, and the entire stream at 8 MiB.
+operation-ID, action-ID, or action-kind mismatch, transition outside the table,
+an operation record after a terminal state, any record after the required
+completion, or missing completion rejects the entire stream. Operation and
+audit record failures always reject the operation stream. Text fields are
+capped at 512 bytes, list records at 10,000 per snapshot, and the entire stream
+at 8 MiB.
 
 The initial actions are a closed enum: `updates-refresh`, `updates-install-all`,
 `updates-cancel`, `timezone-set`, `ntp-set`, `locale-set`, `accounts-open`,
-`password-open`, `printers-open`, `sources-open`, and `health-open`. QML cannot
-select an executable, D-Bus destination, interface, method, repository ID,
-package ID, user, unit, device, path, or elevation mechanism.
+`password-open`, `printers-open`, `sources-open`, `health-open`, and
+`recovery-clear-journal-temporaries`. QML cannot select an executable, D-Bus
+destination, interface, method, repository ID, package ID, user, unit, device,
+path, or elevation mechanism.
 
 ## Operation Lifecycle and Audit
 
@@ -361,13 +414,39 @@ package ID, user, unit, device, path, or elevation mechanism.
   must finish.
 - The journal lives under
   `${XDG_STATE_HOME:-$HOME/.local/state}/dwm-titus/system-management/`, is mode
-  0700, and contains bounded mode-0600 journal files. The files record IDs,
-  timestamps, operation kinds, terminal results, and sanitized diagnostics. They
-  never record passwords, environment dumps, repository credentials, package
-  payloads, or unbounded output.
-- Before any mutation, the provider obtains the fixed service transaction or
-  operation ID without invoking its mutating method, atomically writes and
-  `fsync`s the pending journal record, and `fsync`s the journal directory. For
+  0700, and contains mode-0600 journal files of at most 16 KiB each. The provider
+  uses only the fixed `active` path and 32 fixed terminal slots named
+  `terminal-00` through `terminal-31`; it never enumerates the directory. It
+  reads those 33 paths through a directory file descriptor without following
+  symlinks, validates ownership, type, mode, link count, and size, and reports
+  an unsafe or malformed owned slot as a recovery error. Before accepting a new
+  operation it requires a safe active path and at least one writable terminal
+  slot. Terminal persistence replaces the missing or oldest valid slot by the
+  required finished timestamp, so the fixed set retains up to the newest 32
+  valid terminal records, limited by the number of safe slots. Atomic writes use
+  one fixed temporary name beside each owned path and create it exclusively.
+  Any existing temporary path is preserved unchanged, reported as a recovery
+  error, and disables further system-management mutation other than the fixed
+  recovery action. Settings offers the user-session action
+  `recovery-clear-journal-temporaries`: it inspects only the 33 known temporary
+  paths, previews their count and bounded hashes, requires explicit
+  confirmation, then removes only regular files owned by the invoking user with
+  mode 0600, link count one, and size at most 16 KiB. An unsafe temporary
+  remains untouched with manual path-specific guidance. Because its purpose is
+  to restore journal persistence, this repair is the sole operation exempt from
+  writing the journal first; it still emits the normal operation and audit
+  records and accepts no path or slot argument. Unrelated directory entries are
+  never read, followed, or removed and cannot increase recovery work. The
+  records contain IDs,
+  originating action IDs, timestamps, operation kinds, terminal results, and
+  sanitized diagnostics. The durable action ID must have the fixed kind defined
+  by the protocol and determines the owning provider used for recovered errors.
+  The files never record passwords, environment dumps, repository credentials,
+  package payloads, or unbounded output.
+- Before any mutation other than the explicit journal-temporary repair above,
+  the provider obtains the fixed service transaction or operation ID without
+  invoking its mutating method, atomically writes and `fsync`s the pending
+  journal record, and `fsync`s the journal directory. For
   PackageKit it calls `CreateTransaction`, persists the returned transaction
   object path, and only then invokes `RefreshCache(force=true)` or
   `UpdatePackages(ONLY_TRUSTED, ...)` on that transaction. Each later state and
@@ -376,12 +455,45 @@ package ID, user, unit, device, path, or elevation mechanism.
 - A PackageKit-backed `refresh` or `update` operation in any nonterminal state
   that lacks a terminal PackageKit result is `interrupted`, not successful.
   The transition table permits this recovery result before and after the
-  operation begins running. Recovery first checks PackageKit activity/history,
-  then directs the user to retry discovery or open System Health. Regional
-  operations use the terminal result and current state from systemd's owning
-  service. A delegated launch records whether the trusted tool was accepted;
-  the tool owns later completion and recovery, and Settings never infers that
-  its internal work succeeded.
+  operation begins running. Recovery first accepts a valid durable terminal
+  journal record that the provider wrote from PackageKit's `Finished` signal
+  only when its operation ID, originating action ID, operation kind, and
+  persisted PackageKit transaction object path exactly match the active
+  record. A missing, malformed, duplicate, or mismatched identity is never
+  consumed as that operation's result.
+  For a nonterminal record, it attempts to adopt the exact recorded transaction
+  object and consume its current or replayed result, then checks the active
+  PackageKit transaction list. For an update transaction only, it finally
+  calls PackageKit transaction method `GetOldTransactions(64)` on a new
+  read-only transaction and consumes at most 64 emitted `Transaction` records.
+  That signal supplies the old transaction object path, success flag, role, and
+  UID used below; this is not the separate package-oriented
+  `GetPackageHistory` method. PackageKit does not record `RefreshCache`
+  transactions in old-transaction history. A history result is accepted only
+  when its transaction object path exactly matches the journaled path, its role
+  is `update-packages`, and its UID is the invoking user's UID.
+  An exact match with `succeeded=true` recovers only the terminal `succeeded`
+  result. An exact match with `succeeded=false` is still `interrupted`, because
+  history cannot distinguish cancellation from another failure or reconstruct
+  the required typed error row. Duplicate matches, malformed identity fields,
+  another role or UID, and a success flag without the exact path are ambiguous
+  and never consumed as this operation's result.
+
+  A negative bounded lookup is never evidence that PackageKit succeeded or
+  failed. If exact adoption or the active transaction list confirms that the
+  exact transaction is still active, the provider keeps the operation
+  nonterminal and continues consuming its signals through `Finished`. Only
+  after that exact transaction is absent and the bounded terminal sources
+  cannot recover a result does the provider record `interrupted` to mean that
+  its observation was interrupted and the backend outcome is unknown. It
+  performs a new read-only discovery and offers diagnostics; it never retries
+  the refresh or update automatically. The UI states this ambiguity rather
+  than describing the PackageKit transaction itself as failed. Recovery never
+  expands to an unbounded history query. Regional operations use the terminal
+  result and current state from systemd's owning service. A delegated launch
+  records whether the trusted tool was accepted; the tool owns later
+  completion and recovery, and Settings never infers that its internal work
+  succeeded.
 
 ## Event and Resource Contract
 
@@ -393,8 +505,13 @@ package ID, user, unit, device, path, or elevation mechanism.
   properties runs every 30 seconds while the section is open and immediately
   after an NTP action. The fallback stops on section close. A bounded snapshot
   remains available without a monitor.
-- AccountsService user-added, user-deleted, and property signals may refresh
-  the account summary only while the section is open.
+- AccountsService manager `UserAdded` and `UserDeleted` signals and the `Changed`
+  signal on every valid de-duplicated candidate object selected within the
+  256-object bound trigger one bounded, coalesced account-summary refresh while
+  the section is open. Candidate signals are subscribed before filtering
+  `SystemAccount`, so an excluded object becoming eligible refreshes the list.
+  The subscriptions and pending refresh stop when the section closes; an
+  over-limit enumeration remains explicitly `partial`.
 - CUPS and delegated-tool availability are bounded snapshots. Phase 6 adds no
   CUPS polling loop.
 - System information, storage, and security probes run on open or explicit
