@@ -195,6 +195,21 @@ overrides, and explains that applications require a new login to consume the
 change. This effective-value comparison permits locale1 to omit a redundant
 `LC_*` assignment without producing a false conflict.
 
+Each regional mutation uses a 60-second monotonic aggregate deadline beginning
+immediately before the fixed mutating D-Bus method is sent and covering its
+reply plus the required verification read. The operation emits `authorizing`
+before the send and emits `running` only after a successful method reply, before
+verification. If the deadline expires after dispatch, the provider cancels its
+local pending call, discards every late callback, durably terminalizes the
+operation as `interrupted` with a regional `timeout` error, and releases the
+active slot. It then attempts a new independently bounded read-only regional
+snapshot for display, but neither that state nor a late reply changes the
+terminal result because the mutation may already have occurred. An explicit
+authorization denial or method error received within the deadline retains its
+normal typed terminal result. A verification mismatch received within the
+deadline remains `failed`/`conflict`. The provider never retries an ambiguous
+post-dispatch mutation automatically.
+
 Provider-backed regional and delegated actions use this exact command grammar:
 
 ```text
@@ -316,7 +331,7 @@ The information snapshot uses only these fixed sources:
   interface. `--uniq` selects one record for an effective over-mounted target
   and the kernel mount ID supplies a collision-free record key even when target
   text requires protocol sanitization. The provider starts it in a dedicated
-  process group with a three-second wall-clock deadline; on expiry it sends
+  process group with a three-second monotonic deadline; on expiry it sends
   `SIGTERM`, waits a bounded grace period, then sends `SIGKILL` to the process
   group and emits `filesystem-summary` as `unavailable`/`unknown`. Output is
   capped at 2 MiB and 256 unique mount-ID records. Source and target are
@@ -652,10 +667,24 @@ a terminal `active-operation`, transition outside the table,
 an operation record after a terminal state, any record after the required
 completion, or missing completion rejects the entire stream. Operation and
 audit record failures always reject the operation stream. Text fields are
-capped at 512 bytes. Fixed per-type list budgets are 4096 `update`, 4096
-`package-change`, 512 `repository`, 256 `account`, and 256 `filesystem` rows,
-so a snapshot contains at most 9216 list records; the entire stream is capped
-at 8 MiB.
+capped at 512 bytes. Fixed per-type count and encoded-byte budgets are 4096 and
+3 MiB for `update`, 4096 and 3 MiB for `package-change`, 512 and 384 KiB for
+`repository`, 256 and 256 KiB for `account`, and 256 and 384 KiB for
+`filesystem`. The encoded-byte budget includes the complete canonical record
+and its terminating newline. The producer buffers each complete list result and
+rejects that owning result before emission if either limit would be exceeded;
+it never truncates a valid result into an apparently complete list. An
+oversized update inventory discards all update rows, reports updates
+`partial`/`malformed`, and does not simulate. An oversized package-change plan
+discards only the plan, preserves the readable update rows, and leaves install
+unavailable with an updates `malformed` error. The other oversized list types
+discard their rows and mark their owning provider or summary state
+`partial`/`malformed` as applicable. Thus a snapshot contains at most 9216 list
+records and at most 7 MiB of list records. The producer separately reserves and
+enforces 1 MiB for the header, snapshot-generation, providers, states, actions,
+errors, audit, active-operation, and completion records, and rejects the entire
+stream if that non-list reservation is exceeded. Exact encoded accounting
+therefore keeps the complete stream at or below 8 MiB.
 
 The initial actions are a closed enum: `updates-refresh`, `updates-install-all`,
 `updates-cancel`, `timezone-set`, `ntp-set`, `locale-set`, `accounts-open`,
@@ -1099,6 +1128,15 @@ path, or elevation mechanism.
   PackageKit transaction list. For an update transaction only, it finally
   calls PackageKit transaction method `GetOldTransactions(64)` on a new
   read-only transaction and consumes at most 64 emitted `Transaction` records.
+  One ten-second monotonic aggregate deadline covers `CreateTransaction`, the
+  `GetOldTransactions` call, every signal, and `Finished`. On expiry the
+  provider requests `Cancel` only if that transaction reports
+  `AllowCancel=true`, waits at most five additional seconds for `Finished`, then
+  detaches and discards every late signal. Expiry supplies no terminal evidence;
+  after the exact transaction is also absent from the bounded active lookup,
+  recovery follows the conservative `interrupted` path below. An over-limit or
+  malformed history result is a recovery `malformed` error and is never treated
+  as negative history.
   That signal supplies the old transaction object path, success flag, role, and
   UID used below; this is not the separate package-oriented
   `GetPackageHistory` method. PackageKit does not record `RefreshCache`
@@ -1364,6 +1402,11 @@ including a malformed object path, wrong property type, and timeout after the
 first reply.
 Locale fixtures change the enumerated allowlist after confirmation and prove the
 second bounded enumeration rejects the stale requested name before `SetLocale`.
+Regional timeout fixtures stall each mutating D-Bus method before its reply and
+stall each post-success verification read. They prove the monotonic aggregate
+deadline terminalizes as `interrupted`, ignores late callbacks, releases the
+active slot, publishes only independently refreshed current state, and never
+retries the mutation.
 Malformed contribution fixtures prove active and terminal records fail closed
 without becoming `interrupted`.
 Delegated-action tests must prove the executable allowlist and missing-tool
@@ -1376,7 +1419,9 @@ through a `mount-change` line. The fixtures make no event-observability
 assertion for a transient change that findmnt does not emit. They cover clean
 descriptor inheritance, the one-second readiness bound, child exit,
 proc-identity change, malformed monitor output, and complete process-group
-cleanup. QML fixtures close
+cleanup. Filesystem and encryption fixtures move wall time backward while
+`findmnt` and `lsblk` are stalled and prove both three-second deadlines remain
+monotonic. QML fixtures close
 and reopen the section with a new generation, invoke ready, mount-change, exit,
 and queued-rerun callbacks captured from the prior generation, and prove those
 callbacks schedule no work or state change while current-generation callbacks
@@ -1410,6 +1455,12 @@ replacement watcher can acquire the lock and restore the active operation. A
 blocked adoption/history mock proves another reader can acquire the lock during
 the D-Bus wait, and a changed active identity causes the later commit to be
 discarded.
+History fixtures also stall `GetOldTransactions` before `Finished`, exercise
+cancel, grace, and detach, and prove recovery reaches the conservative
+`interrupted` result without retaining the active slot or consuming a late
+signal. Snapshot-budget fixtures place every list type exactly at its byte and
+count limits and one byte or row beyond them, proving the defined owner-scoped
+discard behavior and an encoded stream no larger than 8 MiB.
 Directory-race fixtures rename the whole journal and each user-writable ancestor
 between identity checks and prove the root-anchored chain rejects it. They also
 replace each fixed path after its pre-write identity check but
