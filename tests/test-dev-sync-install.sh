@@ -66,7 +66,8 @@ install -Dm644 "$test_repo/assets/cursors/COPYING" \
 	"$data_root/licenses/dwm-titus/capitaine-cursors/COPYING"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/xsettingsd"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/dump_xsettings"
-chmod +x "$test_bin/xsettingsd" "$test_bin/dump_xsettings"
+printf '#!/bin/sh\nexit 0\n' >"$test_bin/xkbset"
+chmod +x "$test_bin/xsettingsd" "$test_bin/dump_xsettings" "$test_bin/xkbset"
 
 sed -n '/^source_update_dependencies_ready() {$/,/^}$/p' \
 	"$test_repo/scripts/dev-sync-install.sh" >"$source_update_probe"
@@ -77,7 +78,6 @@ for required_command in xsettingsd dump_xsettings xkbset; do
 		exit 1
 	}
 done
-
 run_check() {
 	PATH="$test_bin:$PATH" \
 		DWM_DEV_SYNC_SKIP_RUNTIME=1 \

@@ -128,10 +128,16 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   skipped unless `--install-herdr` is provided.
 - `recommended`: `core` plus the recommended desktop layer such as Quickshell,
   Picom, Feh, Dex, fonts, theming, screenshot, audio, Bluetooth control and
-  tray tools, brightness tools, Flatpak, and the GTK desktop portal. It also
-  adds Flathub for the target user, installs Gear Lever as the default AppImage
-  manager, installs the available Fedora GTK theme packages, and installs
-  Nordic system-wide for the default Nord theme.
+  tray tools, brightness tools, Flatpak, the GTK desktop portal, PackageKit,
+  AccountsService, CUPS, and the Fedora printer configuration tool. These
+  system services are prerequisites for the planned Phase 6 Settings update,
+  account-summary, and printer entry points. The profile also adds Flathub for
+  the target user, installs Gear Lever as the default AppImage manager, installs
+  the available Fedora GTK theme packages, and installs Nordic system-wide for
+  the default Nord theme. Source-checkout synchronization does not infer this
+  profile from independently installed programs. Existing installations must
+  rerun the recommended or full installer to add the Phase 6 PackageKit,
+  Python RPM binding, AccountsService, CUPS, and printer-tool packages.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
   browsing, network tray utilities, keyring login integration,
   wallpapers, and display-manager setup. x86_64 Fedora full installs also
@@ -142,6 +148,10 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   group; log out and back in before using its privileged tuning helpers.
 
 The default is `full` to preserve the historical automated installer behavior.
+Existing source-checkout installations upgrading into Phase 6 should rerun
+`./install.sh --profile recommended` (or `full`) to install the new system
+management packages; a dry run previews the added packages first. The update
+does not remove packages or alter the host SELinux policy.
 If `maim` is unavailable in the enabled Fedora repositories, the installer
 skips that add-on instead of failing the desktop install and reports that the
 screenshot hotkeys are unavailable.

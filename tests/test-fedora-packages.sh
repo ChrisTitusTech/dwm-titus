@@ -28,10 +28,12 @@ mapfile -t packages < <(
 	{
 		dwm_packages fedora required
 		dwm_packages fedora desktop
+		dwm_packages fedora system-management
+		dwm_packages fedora system-management-optional
 	} | awk 'NF' | sort -u
 )
 if ((${#packages[@]} == 0)); then
-	printf 'Fedora package map returned no required or desktop packages.\n' >&2
+	printf 'Fedora package map returned no required, desktop, or image packages.\n' >&2
 	exit 1
 fi
 
@@ -68,9 +70,21 @@ printf '%s\n' "$installed_provider_packages" | grep -Fxq upower
 printf '%s\n' "$installed_provider_packages" | grep -Fxq dbus-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq inotify-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq xsettingsd
+for package in PackageKit PackageKit-glib python3-gobject python3-rpm accountsservice cups system-config-printer; do
+	dwm_packages fedora system-management | grep -Fxq "$package"
+	dwm_packages fedora recommended | grep -Fxq "$package"
+done
+for package in lxqt-admin dnfdragora; do
+	dwm_packages fedora system-management-optional | grep -Fxq "$package"
+	dwm_packages fedora optional | grep -Fxq "$package"
+done
+for package in xsettingsd xkbset; do
+	dwm_packages fedora source-update | grep -Fxq "$package"
+done
+[[ $("$repo/scripts/dwm-packages.sh" fedora source-update) == $'xsettingsd\nxkbset' ]]
+grep -Fq 'dwm_install_package_profile system-management' "$repo/install.sh"
 grep -Fq 'check_cmd "xsettingsd"' "$repo/scripts/check-deps.sh"
 grep -Fq 'xsetroot xkbset' "$repo/scripts/check-deps.sh"
-[[ $("$repo/scripts/dwm-packages.sh" fedora source-update) == $'xsettingsd\nxkbset' ]]
 if "$repo/scripts/dwm-packages.sh" fedora unsupported >"$work/unsupported"; then
 	printf 'Unsupported package-map profile unexpectedly passed.\n' >&2
 	exit 1
@@ -87,5 +101,5 @@ printf '%s\n' "$missing_provider_packages" | grep -Fxq power-profiles-daemon
 
 "$repo/install.sh" --dry-run --non-interactive --profile core >/dev/null
 
-printf 'Fedora required and desktop package map: PASS (%s packages)\n' \
+printf 'Fedora required, desktop, and image package map: PASS (%s packages)\n' \
 	"${#packages[@]}"

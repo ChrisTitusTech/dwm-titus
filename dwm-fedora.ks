@@ -88,6 +88,15 @@ xdg-utils
 flatpak
 %include /tmp/dwm-titus-gaming-packages
 quickshell
+PackageKit
+PackageKit-glib
+python3-gobject
+python3-rpm
+accountsservice
+cups
+system-config-printer
+lxqt-admin
+dnfdragora
 lightdm
 slick-greeter
 alacritty

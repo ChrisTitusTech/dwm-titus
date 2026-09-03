@@ -57,6 +57,15 @@ required_packages=(
 	yaru-gtk4-theme
 	deepin-gtk-theme
 	bluebird-gtk3-theme
+	PackageKit
+	PackageKit-glib
+	python3-gobject
+	python3-rpm
+	accountsservice
+	cups
+	system-config-printer
+	lxqt-admin
+	dnfdragora
 )
 
 mapfile -t mapped_fedora_packages < <(

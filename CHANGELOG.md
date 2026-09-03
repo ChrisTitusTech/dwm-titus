@@ -8,6 +8,14 @@ versions from `config.mk`.
 
 ### Changed
 
+- Begin Phase 6 with a complete system-management capability and privilege
+  inventory. Select PackageKit, systemd regional services, AccountsService,
+  CUPS, and fixed Fedora tools as bounded owners; define provider, audit,
+  cancellation, denial, recovery, and high-risk delegation contracts before
+  adding runtime mutations. Recommended/full installs and Fedora images include
+  the required packages, including the Python RPM binding; existing source
+  installs add them by rerunning the matching installer profile.
+
 - Complete Phase 5 personalization and accessibility qualification on Fedora 44
   X11. The combined clean build, managed suite, QML and shell checks, nested-X11
   workflows, install parity, live two-monitor panels, reversible theme and

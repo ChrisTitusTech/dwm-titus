@@ -23,7 +23,26 @@ Every Settings operation uses exactly one primary class:
 | User-session | The invoking user owns the mutation and no elevation is required. |
 | Privileged | A system mutation requires confirmation and a narrow, installed, root-owned helper. |
 | Delegated | A trusted service or platform tool owns the operation and its authorization. |
-| Unsupported | No suitable provider contract exists yet. The UI must explain or hide it. |
+
+Unsupported is a capability status, not an operation class. It means no
+applicable platform source exists on this host or the project intentionally
+exposes no suitable source for that capability, so the UI must explain or hide
+it. An expected implemented interface that cannot be reached is `unavailable`.
+A planned provider that has not been implemented is omitted from runtime
+capability records by selecting the latest fully implemented protocol-minor
+active-ID set. It is not advertised as `unsupported`; within the selected set,
+all required provider, state, and action rows remain mandatory.
+
+Provider records use `available` for complete readable state, `partial` for a
+usable incomplete result, `restricted` when the owning interface is reachable
+but policy or permissions deny that specific read, `unavailable` when an
+expected interface cannot be reached, and `unsupported` when no applicable
+source exists.
+A restricted individual record may therefore have an unknown value; capability
+aggregation preserves and displays any readable sibling records rather than
+treating the entire section as unreadable. Mutation authorization denial is the
+separate terminal `permission-denied` operation/error state and never changes a
+previously readable provider status.
 
 An operation does not become safe for Settings merely because an existing
 script can run it. QML may pass documented arguments to a fixed helper action,
@@ -44,8 +63,8 @@ provider work still required.
 | Audio and media | Native `Quickshell.Services.Pipewire` signals with a versioned `pactl` inventory fallback; `playerctl --follow` for media | Output/input defaults, volume and mute, application streams, and MPRIS media actions | Read-only, user-session | Native signals remain authoritative; audio inventory, media, and Bluetooth fail independently | `make check-quickshell-controls check-quickshell-audio`; live PipeWire and MPRIS exercise |
 | Power and session | Shared Power and session-action models over versioned helper records, UPower, Power Profiles D-Bus, logind, `xset`, `gsettings`, and light-locker | Delegated profile and session actions; user `power.conf`, DPMS, and lock policy; cleanup-aware DWM logout | Read-only, user-session, delegated | Capabilities fail independently; destructive actions share confirmation, origin attribution, overlap rejection, and exact accepted-result checks | `make check-quickshell-power check-quickshell-session-actions check-quickshell-controlcenter check-lock check-quickshell-settings-xvfb`; real X11 and available hardware/service checks |
 | Defaults and autostart | Versioned `dwm-default-apps` and `dwm-xdg-autostart` providers over XDG tools and desktop entries | Browser, terminal, file-manager, MIME, and next-login autostart overrides with verified recovery | Read-only, user-session | Invalid entries fail per item; mutations reject unsafe paths, preserve unrelated state, verify convergence, and never edit vendor files | `make check-default-apps check-terminal check-xdg-autostart check-quickshell-defaults-model check-quickshell-settings-xvfb` |
-| Appearance and accessibility | Versioned appearance, personalization, panel, managed-shell accessibility and notification policy, and `settings-protocol 1` capability records; consumes the shared Input backend's XKB capability and state | User theme, wallpaper, managed-shell typography, desktop personalization, contrast and motion policy, notification Do Not Disturb and popup duration, Input-owned XKB accessibility controls, and shared panel-widget state; transactional toolkit config; external GTK and Qt tools | Read-only, user-session, delegated, unsupported | Invalid or unavailable providers are attributed per capability; an external notification owner leaves managed policy controls read-only | `make check-appearance check-settings check-quickshell-panel-settings check-accessibility check-quickshell-notifications check-quickshell-controlcenter check-quickshell-qml`; nested-X11 appearance, accessibility persistence, notification delivery/history, and live toolkit reload |
-| System and diagnostics | `dwm-system-health` structured snapshots and the full-screen health window | Allowlisted user repairs; installed-helper privileged repairs; selected trusted-tool entry points | Read-only, user-session, privileged, delegated, unsupported | Authorization denial produces a restricted partial report; high-risk administration stays delegated or unsupported | `make check-system-health check-quickshell-health-xvfb` |
+| Appearance and accessibility | Versioned appearance, personalization, panel, managed-shell accessibility and notification policy, and `settings-protocol 1` capability records; consumes the shared Input backend's XKB capability and state | User theme, wallpaper, managed-shell typography, desktop personalization, contrast and motion policy, notification Do Not Disturb and popup duration, Input-owned XKB accessibility controls, and shared panel-widget state; transactional toolkit config; external GTK and Qt tools | Read-only, user-session, delegated | Invalid or unavailable providers are attributed per capability; an external notification owner leaves managed policy controls read-only | `make check-appearance check-settings check-quickshell-panel-settings check-accessibility check-quickshell-notifications check-quickshell-controlcenter check-quickshell-qml`; nested-X11 appearance, accessibility persistence, notification delivery/history, and live toolkit reload |
+| System and diagnostics | `dwm-system-health` structured snapshots plus the Phase 6 `dwm-system-management` provider contract | Allowlisted health repairs, PackageKit updates, systemd regional actions, and trusted Fedora entry points | Read-only, user-session, privileged, delegated | Authorization denial preserves readable state; PackageKit owns update cancellation; unsupported status is explicit and high-risk administration stays delegated | Current: `make check-system-health check-quickshell-health-xvfb`; pending Phase 6: `make check-system-management check-quickshell-system-management check-quickshell-settings-xvfb` |
 
 ## Existing Operation Inventory
 
@@ -171,8 +190,12 @@ error<TAB>capability<TAB>code<TAB>detail
 | Copy/export bounded evidence | `share-evidence` to X11 clipboard or private non-overwriting user file | User-session | Only the two documented evidence IDs are accepted. |
 | Restart desktop/audio components; manage failed user services | `repair-user` fixed allowlist | User-session | Every repair requires UI confirmation; service operations are accepted only for currently failed `.service` units. |
 | Manage failed system services; restart NetworkManager/Bluetooth; repair time sync | `repair-privileged` to root-owned installed helper, then fixed `repair-system` allowlist | Privileged | No repository/XDG helper may be elevated. Denial preserves readable health state. |
-| Updates, users, printers, locale/timezone, software sources | No unified provider; some future actions may open trusted Fedora tools | Delegated or unsupported | Phase 6 must choose a stable service/tool per operation and keep high-risk administration out of QML. |
-| Partitions, arbitrary services, firewall policy | Explicitly outside the current helper allowlist | Unsupported | Delegate to trusted administration tools unless a later specification defines a narrow contract. |
+| Fedora updates | Phase 6 `dwm-system-management` over the PackageKit 1.x D-Bus/GLib API and Fedora DNF5 backend | Read-only and delegated | Passive discovery never refreshes metadata. Confirmed PackageKit transactions expose progress, typed failure, restart guidance, and cancellation only while `AllowCancel` is true. |
+| Date, timezone, NTP, and locale | `org.freedesktop.timedate1` and `org.freedesktop.locale1` properties and fixed methods | Read-only and delegated | systemd and polkit own authorization. Denial leaves the current properties visible. Manual timestamps, NTP servers, RTC mode, and keyboard layout are not accepted. |
+| Users | AccountsService properties; fixed `lxqt-admin-user` and terminal `passwd` entry points | Read-only and delegated | QML never carries a password or constructs account arguments. Missing delegated tools do not hide the read-only account summary. |
+| Printers | CUPS availability; fixed `system-config-printer` entry point | Read-only and delegated | CUPS and the trusted Fedora tool own printer discovery, authentication, jobs, queues, and cancellation. |
+| Software sources | PackageKit repository records; fixed `dnfdragora` entry point | Read-only and delegated | Settings does not accept a repository identifier for mutation. Missing `dnfdragora` leaves repository state readable. |
+| Partitions, arbitrary services, firewall policy | Explicitly outside the current helper allowlist | Delegated | The capability is unsupported until a later specification defines a narrow contract; use trusted administration tools. |
 
 ## Fedora Provider Matrix
 
@@ -193,6 +216,8 @@ duplicate Fedora package lists.
 | Themes and GTK integration | `fedora:theme`, `fedora:theme-gtk`, and optional profiles | Missing optional theme packages do not disable Settings. |
 | Polkit authorization | Fedora desktop/image polkit agent and trusted helper | Missing authorization leaves read-only state available. |
 | System health | Fedora/systemd providers | Missing commands, services, hardware, or authorization emit partial or restricted records. |
+| Phase 6 updates | `PackageKit`, `PackageKit-glib`, `python3-gobject`, and `python3-rpm` from `fedora:system-management`; included by `fedora:recommended` and the Fedora image | Missing PackageKit disables updates only and provides installation guidance; DNF or `pkcon` terminal output is never parsed as provider state. Existing source installations rerun the recommended or full installer because source-sync cannot safely infer the selected profile. |
+| Phase 6 delegated administration | `accountsservice`, `cups`, and `system-config-printer` from `fedora:system-management`; `lxqt-admin` and `dnfdragora` from `fedora:system-management-optional` | Service absence preserves unrelated state; optional delegated tools expose unavailable entry points with exact package guidance. |
 
 ## Settings Constraints Derived From the Inventory
 
@@ -212,3 +237,5 @@ duplicate Fedora package lists.
   inventory inputs, not automatically stable public APIs.
 - No existing or planned operation requires passwordless broad `sudo`, and no
   QML component is assigned ownership of an elevated command.
+- The complete Phase 6 ownership, cancellation, audit, recovery, and exclusion
+  decisions are recorded in `docs/P6-SYSTEM-MANAGEMENT.md`.

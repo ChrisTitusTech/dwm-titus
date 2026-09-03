@@ -372,8 +372,12 @@ Runtime dependencies are classified as:
   chain retained when Alacritty is unavailable.
 - Recommended desktop: Alacritty, Quickshell, Picom, Feh, Dex, a polkit agent,
   notification tools, audio controls, screenshot tooling, Nerd/emoji fonts,
-  Flatpak with its GTK portal, and Gear Lever from a user-scoped Flathub
-  remote.
+  Flatpak with its GTK portal, the Phase 6 system-management runtime
+  (`PackageKit`, `PackageKit-glib`, `python3-gobject`, `python3-rpm`,
+  `accountsservice`, `cups`, and `system-config-printer`), and Gear Lever from a
+  user-scoped Flathub remote. Existing installations add that runtime by
+  rerunning the installer with the `recommended` or `full` profile; source-sync
+  does not infer an install profile from independently installed programs.
 - Optional: the Herdr terminal workspace, file manager, network tray, theme
   utilities, display-manager greeter customization, wallpapers, and
   hardware-specific helpers.
