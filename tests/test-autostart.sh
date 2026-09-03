@@ -260,7 +260,11 @@ if [ "${1:-}" = --version ]; then
 	printf '%s\n' 'quickshell 0.3.0'
 	exit 0
 fi
-managed_config=${XDG_CONFIG_HOME:?}/quickshell/shell.qml
+case ${XDG_CONFIG_HOME:-} in
+/*) managed_config_home=$XDG_CONFIG_HOME ;;
+*) managed_config_home=${HOME:?}/.config ;;
+esac
+managed_config=$managed_config_home/quickshell/shell.qml
 selected_path=
 selected_pid=
 previous=
@@ -496,6 +500,26 @@ run_duplicate_case() {
 		index(":" $1 ":", ":X-DWM:") && index(":" $1 ":", ":dwm:") { found = 1 }
 		END { exit !found }
 	' "$state/systemctl.log"
+}
+
+run_relative_config_home_case() {
+	home="$work/relative-config-home/home"
+	state="$work/relative-config-home/state"
+	runtime="$work/relative-config-home/runtime"
+	mkdir -p "$home/Pictures/backgrounds" "$home/.config/quickshell" "$state" "$runtime"
+	chmod 700 "$runtime"
+	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$home/.config/quickshell/shell.qml"
+	: >"$state/polkit-mate-authentication-agent-1.running"
+
+	DISPLAY=:198 HOME=$home QT_QPA_PLATFORM=wayland TEST_STATE=$state \
+		PATH="$work/bin:/usr/bin:/bin" WAYLAND_DISPLAY=wayland-0 \
+		XDG_CONFIG_HOME=relative XDG_RUNTIME_DIR="$runtime" \
+		XDG_SESSION_TYPE=wayland DWM_AUTOSTART_NO_INPUT_WATCH=1 \
+		DWM_AUTOSTART_NO_SETSID=1 sh "$repo_dir/scripts/autostart.sh"
+	wait_for_marker "$state/quickshell.running"
+	grep -Fq -- "--path $home/.config/quickshell/shell.qml --no-duplicate" \
+		"$state/quickshell.args"
 }
 
 run_wallpaper_recovery_with_existing_feh_case() {
@@ -929,6 +953,7 @@ EOF
 
 run_duplicate_case display-manager
 run_duplicate_case startx
+run_relative_config_home_case
 run_wallpaper_recovery_with_existing_feh_case
 run_status_display_scope_case
 run_status_launch_race_case
