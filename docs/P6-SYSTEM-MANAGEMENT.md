@@ -66,13 +66,28 @@ The update command grammar is fixed:
 dwm-system-management snapshot
 dwm-system-management updates-refresh
 dwm-system-management updates-install-all GENERATION
-dwm-system-management updates-cancel
+dwm-system-management updates-cancel OPERATION_ID
 ```
 
 `GENERATION` is the exact 64-character lowercase hexadecimal generation emitted
 with the confirmed snapshot. It is an opaque provider-created value, not a
 package ID or caller-selected transaction parameter. No update command accepts
 another option or trailing argument.
+
+`OPERATION_ID` must exactly match the `op-` prefix followed by 32 lowercase
+hexadecimal digits emitted for the currently visible operation. The provider
+generates it from the kernel CSPRNG, rejects a collision with the active or 32
+terminal journal records, and fails closed after four collision attempts. A
+cancel request is accepted only when this ID still equals the active journaled
+refresh or update operation and that exact PackageKit transaction currently
+reports `AllowCancel=true`. A stale, unknown, terminal, or replaced ID, or an
+exact active transaction that no longer reports `AllowCancel=true`, produces a
+command-level rejection: the command emits no operation stream, exits with
+status 3, and writes only the fixed diagnostic `cancel target is unavailable`
+to standard error. The root model maps status 3 directly to a visible
+`conflict`, refreshes current state, and never parses the diagnostic. The active
+operation and any newer operation remain unchanged. Malformed command syntax,
+including an invalid ID shape, exits with status 2 instead.
 
 The PackageKit service is authoritative for package state. The project provider
 adds only validation, bounded record formatting, a private operation journal,
@@ -149,6 +164,15 @@ locale1 has no locale enumeration method. `LANG` is the only accepted locale
 key. Arguments are validated before confirmation and again immediately before
 the fixed D-Bus call. No other option, key, D-Bus argument, or trailing argument
 is accepted.
+
+The provider starts `locale -a` in a dedicated process group with a three-second
+deadline, sends `TERM` to the group and then `KILL` after one second, caps output
+at 2 MiB, and accepts at most 4096 unique nonempty locale names of at most 128
+ASCII bytes each. Timeout or termination failure makes `locale-set` unavailable
+with a `timeout` error; missing command, nonzero exit, excess output or records,
+and malformed names make it unavailable with the corresponding
+`missing-provider`, `internal`, or `malformed` error. Readable locale1 state
+remains visible and the rest of the regional provider continues to work.
 
 ### Accounts, Printers, and Sources
 
@@ -299,6 +323,7 @@ repository<TAB>id<TAB>enabled|disabled<TAB>description
 account<TAB>object-path<TAB>current|other<TAB>display-name<TAB>login-name
 filesystem<TAB>mount-id<TAB>status<TAB>source<TAB>target<TAB>fstype<TAB>size-bytes<TAB>used-bytes<TAB>available-bytes<TAB>detail
 action<TAB>id<TAB>available|unavailable<TAB>class<TAB>owner<TAB>label<TAB>detail
+active-operation<TAB>id<TAB>action-id<TAB>kind<TAB>state<TAB>percent<TAB>cancelable<TAB>detail
 operation<TAB>id<TAB>action-id<TAB>kind<TAB>state<TAB>percent<TAB>cancelable<TAB>detail
 audit<TAB>id<TAB>action-id<TAB>kind<TAB>result<TAB>started<TAB>finished<TAB>detail
 error<TAB>capability<TAB>code<TAB>detail
@@ -333,7 +358,12 @@ The initial vocabulary is closed for known record fields:
   status is `available`, `partial`, `restricted`, `unavailable`, or
   `unsupported`; class is `read-only`, `user-session`, `privileged`, or
   `delegated`. Capabilities without a provider retain their applicable class and
-  use the `unsupported` status.
+  use the `unsupported` status. Provider class is fixed: `updates`, `regional`,
+  `accounts`, `printers`, and `sources` are `delegated`; `information`,
+  `storage`, and `security` are `read-only`; `diagnostics` and `recovery` are
+  `user-session`. This field describes the strongest Phase 6 execution boundary
+  owned by that provider; individual action rows retain their fixed classes
+  below. A producer or consumer rejects a provider row with another class.
 - State IDs are `update-summary`, `update-last-refresh`, `update-restart`,
   `timezone`, `ntp-enabled`, `ntp-synchronized`, `locale`, `accounts-count`,
   `cups-service`, `selinux`, `secure-boot`, `firewalld`, `root-encryption`, and
@@ -377,6 +407,17 @@ The initial vocabulary is closed for known record fields:
   or `succeeded`. Percent is `unknown` or an integer from 0 through 100, and
   cancelable is `yes` or `no`. Every terminal operation record must use
   `cancelable=no`. Audit result uses only the terminal operation states.
+- An `active-operation` row is snapshot-only and has the same closed fields as
+  an operation row. It represents the one validated nonterminal active journal
+  record after recovery. Its ID must have the required `op-` shape, its action
+  and kind must match the fixed mapping, and its state must be nonterminal. A
+  snapshot contains at most one such row. The row is omitted when no operation
+  remains active; it is never synthesized from an unsafe or malformed journal
+  record. For a recovered PackageKit refresh or update, `cancelable=yes` is
+  emitted only while the exact adopted transaction reports `AllowCancel=true`.
+  This bounded row lets the root model restore the visible operation identity
+  and pass that exact ID to `updates-cancel` after Settings or the provider
+  restarts.
 - Every operation and audit row carries the action ID that originated the
   operation. The fixed action-to-kind mapping is `updates-refresh` to
   `refresh`, `updates-install-all` to `update`, `timezone-set` to `timezone`,
@@ -417,7 +458,7 @@ The initial vocabulary is closed for known record fields:
 A snapshot emits exactly one `snapshot-generation` row, one provider row for
 every provider ID active in its header minor, one row for every active action
 ID, one state row for every active state ID, all list records enabled by that
-minor, then one
+minor, zero or one validated `active-operation` row, then one
 `complete<TAB>snapshot`. An unavailable, restricted, or unsupported capability
 therefore retains an explicit status-bearing state row instead of omitting its
 value. The generation is 64 lowercase hexadecimal characters. It is the SHA-256
@@ -474,7 +515,8 @@ Snapshot record failures are provider-scoped only when a valid known provider,
 state, action, or list-record ID still identifies the owner; the consumer marks
 that provider invalid and continues parsing unrelated providers. A malformed
 header or completion, a missing or unknown owner ID, duplicate ID, illegal enum,
-operation-ID, action-ID, or action-kind mismatch, transition outside the table,
+duplicate `active-operation`, operation-ID, action-ID, or action-kind mismatch,
+a terminal `active-operation`, transition outside the table,
 an operation record after a terminal state, any record after the required
 completion, or missing completion rejects the entire stream. Operation and
 audit record failures always reject the operation stream. Text fields are
@@ -503,7 +545,19 @@ path, or elevation mechanism.
   transaction. A mismatch terminates as `failed`/`conflict`, publishes the new
   snapshot, and requires a new confirmation; only the revalidated exact
   installable IDs are passed to `UpdatePackages`.
-- One root-scoped model owns update and regional operations. Overlap is rejected.
+- One root-scoped model owns every journaled operation. Refresh, update,
+  regional, delegated, and health-open operations are mutually exclusive; a
+  request received while any other operation is nonterminal is rejected as
+  `failed`/`conflict` before it can replace the active record. The sole exception
+  is journal-temporary repair when at least one validated fixed temporary path
+  is already blocking journal persistence. It may run while a stranded active
+  record remains nonterminal, uses a distinct collision-checked operation ID
+  only in its bounded operation stream, and never replaces, adopts, cancels, or
+  otherwise mutates that active record. The root model keeps the stranded
+  operation visible while presenting repair progress separately, admits no
+  other overlapping request, and reruns normal recovery immediately after the
+  repair terminates. Journal repair remains exempt from writing a new journal
+  record because journal persistence is the capability it restores.
 - Closing Settings stops pane-only discovery but does not kill an active
   PackageKit transaction. Reopening reconstructs state from PackageKit and the
   private journal.
