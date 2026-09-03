@@ -73,6 +73,7 @@ The update command grammar is fixed:
 ```text
 dwm-system-management snapshot
 dwm-system-management watch-operation OPERATION_ID
+dwm-system-management ack-operation OPERATION_ID
 dwm-system-management updates-refresh
 dwm-system-management updates-install-all GENERATION
 dwm-system-management updates-cancel OPERATION_ID
@@ -101,16 +102,20 @@ operation and any newer operation remain unchanged. Malformed command syntax,
 including an invalid ID shape, exits with status 2 instead. Before matching,
 `watch-operation` takes the exclusive journal lock and completes the bounded,
 idempotent recovery sequence for any terminalized active payload, including its
-restart, terminal-slot, cursor, and empty-active commits. It then requires that
+terminal-slot, cursor, handoff, and empty-active commits. A terminalized update
+also completes its restart-record commit; no other operation kind reads or
+writes that record. The command then requires that
 the ID match either the current validated nonterminal PackageKit refresh or
 update payload or, when the active payload is empty, exactly one validated
 terminal record with that ID among the 32 fixed ring slots. Operation IDs are
 collision-checked against every retained slot when created, so more than one
 matching slot is malformed recovery state. The matching terminal record is
 accepted regardless of its position relative to the cursor, but only when its
-validated kind is `refresh` or `update`; a matching regional or delegated
-terminal kind returns the status-3 rejection before any stream starts. The
-command uses only the transaction path bound inside the matching record. It may
+validated kind is any operation kind in the closed protocol enum. Active
+adoption remains limited to PackageKit `refresh` and `update`; a retained
+regional or delegated terminal record is replay-only and opens no service or
+program. The command uses only the transaction path bound inside a matching
+active PackageKit record. It may
 recover or replay bounded terminal evidence when the exact transaction finished
 after the snapshot, but never accepts an arbitrary transaction path, an
 unrelated terminal record, or a caller-supplied substitute ID. If terminalized-active
@@ -121,11 +126,25 @@ only the fixed diagnostic `watch target is unavailable` to standard error. The
 root model maps that status to `conflict` and immediately requests a fresh
 snapshot as the next recovery attempt.
 
-`watch-operation` supports only operation IDs for PackageKit `refresh` and
-`update`. Regional and delegated operations remain owned by their finite
-originating stream and are recovered by `snapshot`, not watched. Passing any
-such correctly shaped but unsupported provider operation ID emits no stream and
-uses the same status-3 `watch target is unavailable` rejection.
+`watch-operation` adopts a nonterminal operation only for PackageKit `refresh`
+and `update`. Regional and delegated operations remain owned by their finite
+originating stream while active, but an exact retained terminal record for any
+valid kind can be replayed without reissuing its external action.
+
+The root model calls `ack-operation` only for an exact durable handoff that it
+has received in a snapshot. It first validates either the matching originating
+terminal operation, audit row, and completion already in memory or their exact
+retained-terminal replay. A terminal stream alone never triggers acknowledgment;
+the root requests a snapshot after it completes so the committed handoff remains
+the authority. Pre-handoff failures therefore require no acknowledgment.
+Acknowledgment takes the exclusive journal lock, completes any terminalized
+active commit sequence, and clears the terminal-handoff record only when it
+names the same validated retained terminal slot and operation ID. It emits no
+protocol stream. Success exits 0; a well-formed ID that is stale, unknown,
+inconsistent with the validated journal state, or replaced exits 3 with only
+`ack target is unavailable` on standard error and leaves the handoff unchanged.
+Invalid command or operation-ID syntax exits 2. Acknowledgment never removes or
+rewrites the retained terminal slot and never invokes an external service.
 
 The PackageKit service is authoritative for package state. The project provider
 adds only validation, bounded record formatting, a private operation journal,
@@ -173,15 +192,20 @@ contain at most 14 assignments, each complete `KEY=VALUE` assignment may be at
 most 512 UTF-8 bytes, and the sum of assignment byte lengths plus one separator
 byte per assignment may be at most 8192 bytes. A value exactly at any limit is
 accepted; an entry, count, or aggregate one unit over its limit is oversized.
-Otherwise the
-`locale` state value is the exact `LANG` value, or `unknown` when `LANG` is not
-set, and its bounded detail lists nonempty category overrides in the fixed
-order above. Immediately before confirmation and again before the D-Bus call,
+Otherwise the `locale` state value is the exact `LANG` value, or `unknown` when
+`LANG` is not set. Its detail is the nonempty `LANGUAGE` and `LC_*` assignments
+in the fixed order above, joined by a comma and one ASCII space, or `none`
+when there are no overrides. If that complete UTF-8 detail exceeds the protocol
+field limit of 512 bytes, the provider never truncates it: locale becomes
+`partial`/`unknown`, `locale-set` becomes unavailable, and the detail reports
+that the override set is too large to confirm safely. Immediately before
+confirmation and again before the D-Bus call,
 `locale-set LANG=LOCALE` rereads locale1's complete `Locale` array, validates
 the allowlist and bounds above, replaces only `LANG`, preserves every validated
 `LANGUAGE` and `LC_*` assignment, sorts the complete set in the fixed order
-above, and revalidates it before passing it to `SetLocale`. A malformed set or
-a monitored state change before the method is sent produces `conflict` and
+above, recomputes the complete display detail, and revalidates every bound
+before passing it to `SetLocale`. A malformed or undisplayable set, or a
+monitored state change before the method is sent, produces `conflict` and
 requires fresh confirmation. After the method returns, the provider rereads
 `Locale` and compares effective locale values, not raw array equality: `LANG`
 must equal the requested locale, every preserved `LANGUAGE` value must remain
@@ -323,6 +347,13 @@ The information snapshot uses only these fixed sources:
 - The Python `os.uname()` binding to `uname(2)` contributes `kernel-release` and
   `architecture`. The fixed `HardwareVendor` and `HardwareModel` properties on
   `org.freedesktop.hostname1` contribute the corresponding states when present.
+  One ten-second monotonic aggregate deadline covers both hostname1 property
+  reads. On expiry the provider cancels each unfinished local D-Bus request,
+  discards every late reply, and emits only the unfinished corresponding states
+  as `unavailable`/`unknown` with an `information` `timeout` error; a property
+  already validated within the deadline remains available. Missing properties
+  and malformed replies remain capability-scoped and do not prevent the other
+  fixed information sources from completing the snapshot.
 - `/proc/cpuinfo` is capped at 4 MiB. On the supported x86_64 architecture, the
   first `model name` field contributes `cpu-model`; logical processor count
   comes from `os.cpu_count()` and is emitted as `available` with a decimal
@@ -438,6 +469,7 @@ account<TAB>object-path<TAB>current|other<TAB>display-name<TAB>login-name
 filesystem<TAB>mount-id<TAB>status<TAB>source<TAB>target<TAB>fstype<TAB>size-bytes<TAB>used-bytes<TAB>available-bytes<TAB>detail
 action<TAB>id<TAB>available|unavailable<TAB>class<TAB>owner<TAB>label<TAB>detail
 active-operation<TAB>id<TAB>action-id<TAB>kind<TAB>state<TAB>percent<TAB>cancelable<TAB>detail
+terminal-handoff<TAB>id<TAB>action-id<TAB>kind
 operation<TAB>id<TAB>action-id<TAB>kind<TAB>state<TAB>percent<TAB>cancelable<TAB>detail
 audit<TAB>id<TAB>action-id<TAB>kind<TAB>result<TAB>started<TAB>finished<TAB>detail
 error<TAB>capability<TAB>code<TAB>detail
@@ -571,6 +603,19 @@ The initial vocabulary is closed for known record fields:
   restarts. Regional and delegated work remains visible through its originating
   operation stream and the kind-specific recovery rules below, never through an
   `active-operation` row.
+- A `terminal-handoff` row is snapshot-only and identifies exactly one durable
+  terminal result not yet acknowledged by the root model. Its ID, action, and
+  kind must exactly match the validated terminal slot named by the handoff
+  journal record. A snapshot contains at most one handoff row, and it is
+  mutually exclusive with `active-operation`; a malformed handoff is a recovery
+  error and is never emitted. When the root model still holds the exact matching
+  validated operation, audit row, and completion, it invokes `ack-operation`
+  directly. If any of those records is unavailable, it first passes the exact
+  ID to `watch-operation` and validates their retained-terminal replay. If the
+  root model exits before acknowledgment, the same handoff is replayed after
+  restart; duplicate presentation is safer than silently losing the terminal
+  result. No new system-management operation starts while a handoff is
+  nonempty.
 - Every operation and audit row carries the action ID that originated the
   operation. The fixed action-to-kind mapping is `updates-refresh` to
   `refresh`, `updates-install-all` to `update`, `timezone-set` to `timezone`,
@@ -611,7 +656,8 @@ The initial vocabulary is closed for known record fields:
 A snapshot emits exactly one `snapshot-generation` row, one provider row for
 every provider ID active in its header minor, one row for every active action
 ID, one state row for every active state ID, all list records enabled by that
-minor, zero or one validated `active-operation` row, then one
+minor, either zero or one validated `active-operation` row or zero or one
+validated `terminal-handoff` row, then one
 `complete<TAB>snapshot`. An unavailable, restricted, or unsupported capability
 therefore retains an explicit status-bearing state row instead of omitting its
 value. The generation is 64 lowercase hexadecimal characters. It is the SHA-256
@@ -676,7 +722,8 @@ Snapshot record failures are provider-scoped only when a valid known provider,
 state, action, or list-record ID still identifies the owner; the consumer marks
 that provider invalid and continues parsing unrelated providers. A malformed
 header or completion, a missing or unknown owner ID, duplicate ID, illegal enum,
-duplicate `active-operation`, operation-ID, action-ID, or action-kind mismatch,
+duplicate `active-operation`, duplicate `terminal-handoff`, both snapshot-only
+operation records in one snapshot, operation-ID, action-ID, or action-kind mismatch,
 a terminal `active-operation`, transition outside the table,
 an operation record after a terminal state, any record after the required
 completion, or missing completion rejects the entire stream. Operation and
@@ -696,7 +743,7 @@ discard their rows and mark their owning provider or summary state
 `partial`/`malformed` as applicable. Thus a snapshot contains at most 9216 list
 records and at most 7 MiB of list records. The producer separately reserves and
 enforces 1 MiB for the header, snapshot-generation, providers, states, actions,
-errors, audit, active-operation, and completion records, and rejects the entire
+errors, audit, active-operation, terminal-handoff, and completion records, and rejects the entire
 stream if that non-list reservation is exceeded. Exact encoded accounting
 therefore keeps the complete stream at or below 8 MiB.
 
@@ -788,10 +835,11 @@ path, or elevation mechanism.
   adds `ALLOW_REINSTALL` or `ALLOW_DOWNGRADE`.
 - One root-scoped model owns every journaled operation. Refresh, update,
   regional, and delegated operations are mutually exclusive; a
-  request to start another operation while one is nonterminal is rejected as
-  `failed`/`conflict` before it can write the active record. The fixed
-  `updates-cancel` control and `watch-operation` observer do not start an
-  operation and retain their exact-ID behavior above.
+  request to start another operation while one is nonterminal or its terminal
+  handoff remains unacknowledged is rejected as `failed`/`conflict` before it
+  can write the active record. The fixed `updates-cancel`, `watch-operation`,
+  and `ack-operation` controls do not start an operation and retain their
+  exact-ID behavior above.
 - Closing Settings stops pane-only discovery but neither kills an active
   PackageKit transaction nor the root-scoped `watch-operation` process. While a
   regional or delegated originating stream is nonterminal, the root model
@@ -822,6 +870,15 @@ path, or elevation mechanism.
   known reached lifecycle state once and remains subscribed until it emits the
   terminal operation, audit, and `complete<TAB>operation` records.
 
+  When a snapshot instead contains `terminal-handoff`, the root model first
+  compares it with the one validated terminal stream it already owns. An exact
+  in-memory operation, audit row, and completion permit immediate
+  acknowledgment; otherwise the root starts the same exact-ID watcher in
+  replay-only mode and acknowledges only after accepting its terminal operation,
+  audit, and completion. It does not clear the visible result until
+  acknowledgment succeeds. A failed acknowledgment retains recovery guidance
+  and the provider continues to reject replacement mutations.
+
   If the active payload was cleared in the snapshot-to-watch race, the permitted
   exact retained-terminal match is replay-only and opens no PackageKit object.
   A later terminal operation in another ring slot does not hide the requested
@@ -845,9 +902,10 @@ path, or elevation mechanism.
   must finish.
 - The journal lives under
   `${XDG_STATE_HOME:-$HOME/.local/state}/dwm-titus/system-management/`, is mode
-  0700, and defines exactly 35 provider-owned paths: fixed `active`, `cursor`,
-  and `restart` paths plus 32 fixed terminal paths named `terminal-00` through
-  `terminal-31`. It never enumerates the directory and ignores unrelated
+  0700, and defines exactly 36 provider-owned paths: fixed `active`, `cursor`,
+  `restart`, and `handoff` paths plus 32 fixed terminal paths named
+  `terminal-00` through `terminal-31`. It never enumerates the directory and
+  ignores unrelated
   entries. Protocol 1.0 is the first shipped provider and has no released
   predecessor to migrate. If a fixed path contains an earlier plain-text
   development record rather than a valid frame file, the provider reports the
@@ -911,19 +969,27 @@ path, or elevation mechanism.
   applies its operation identity idempotently. Existing journal files and inodes
   are never replaced, renamed, truncated, or unlinked after initialization.
   Logical terminal records are reused after ring wrap by committing their next
-  inactive frame, and clearing `active` likewise commits a validated empty
-  payload in its inactive frame.
+  inactive frame, and clearing `active` or `handoff` likewise commits a
+  validated empty payload in its inactive frame.
 
-  The provider opens all 35 paths through the held directory descriptor without
+  The provider opens all 36 paths through the held directory descriptor without
   following symlinks and validates device, inode, owner, regular-file type,
   mode, link count, and exact size. A newly initialized cursor payload is `00`,
-  `restart` is the validated all-clear record defined below, `active` is empty,
-  and terminal payloads are empty. Before accepting an operation it requires a
-  safe writable active, cursor, and restart file and at least one safe writable
+  `restart` is the validated all-clear record defined below, `active` and
+  `handoff` are empty, and terminal payloads are empty. Before accepting an
+  operation it requires a safe writable active, cursor, restart, and handoff
+  file, an empty handoff, and at least one safe writable
   terminal slot. Starting at the cursor index, it selects the first qualifying
   slot in ring order and persists that two-digit slot in `active` before the
   external mutation. Terminalization commits that slot, commits the following
-  cursor index, then commits an empty active payload. Thus safe fixed slots
+  cursor index, commits the operation ID and selected two-digit slot to
+  `handoff`, then commits an empty active payload. If any step fails, recovery
+  completes the same idempotent sequence before output or another mutation.
+  A nonempty handoff payload is exactly the operation ID, one tab, and the
+  selected two-digit terminal slot. Both fields must match that slot's validated
+  terminal record; any extra field, mismatch, or empty selected slot is
+  malformed. `ack-operation` clears only this payload.
+  Thus safe fixed slots
   retain the newest terminal records by durable ring position, never by the
   rollback-prone `finished` wall clock.
 
@@ -963,7 +1029,7 @@ path, or elevation mechanism.
   raced replacement. This post-write identity check catches a replacement made
   after the pre-write check: the descriptor commit affected only the originally
   validated inode, and no external mutation starts from a journal that is no
-  longer reachable at its fixed path at that check. The provider repeats all 35
+  longer reachable at its fixed path at that check. The provider repeats all 36
   identity checks immediately after sending an external mutating D-Bus call,
   whether or not a reply arrives. A replacement in the irreducible interval
   between the last pre-call check and that send is therefore treated as an
@@ -986,15 +1052,15 @@ path, or elevation mechanism.
   descriptor write into the replacement or turn a detected ambiguous outcome
   into success.
 
-  If interruption occurs after the terminal slot commit but before cursor
-  advance or active clearing, recovery accepts only the exact matching
-  operation and selected slot, completes the idempotent cursor commit, and then
-  commits the empty active payload. It never advances the cursor from an
+  If interruption occurs after the terminal slot commit but before cursor,
+  handoff, or active clearing, recovery accepts only the exact matching
+  operation and selected slot, completes the idempotent cursor and handoff
+  commits, and then commits the empty active payload. It never advances the cursor from an
   unmatched record. Unrelated directory entries are never read or followed and
   cannot increase recovery work. Journal records contain common IDs,
-  originating action IDs, timestamps, operation
-  kinds, terminal results, and sanitized diagnostics, plus eight fixed typed
-  fields: update snapshot generation, PackageKit transaction object path,
+  originating action IDs, timestamps, operation kinds, terminal results, the
+  closed normalized error code or literal `-`, and sanitized diagnostics, plus
+  eight fixed typed fields: update snapshot generation, PackageKit transaction object path,
   system restart contribution, session restart contribution, application
   restart contribution, boot identity, terminal-monotonic timestamp, and the
   required two-digit terminal slot. An `update` record requires a valid
@@ -1013,7 +1079,13 @@ path, or elevation mechanism.
   `timezone`, `ntp`, `locale`, and
   `delegate` records require literal `-` in the first seven typed fields.
   Every journaled kind requires its selected terminal slot. A consumer rejects
-  any missing field or value that does not match the operation kind. Each
+  any missing field or value that does not match the operation kind. A
+  nonterminal record and a successful terminal record require `-` as the error
+  code. A failed terminal record requires exactly one normalized code from the
+  protocol error enum. Other terminal states store that normalized code exactly
+  when their operation stream emits an error row and otherwise use `-`.
+  Retained-terminal replay emits the persisted error row immediately before the
+  terminal operation record and never derives a code from diagnostic text. Each
   accepted `RequireRestart` signal durably commits the updated active payload
   through its held descriptor before any later `Finished` signal is consumed;
   PackageKit application, session, security-session, system, and
@@ -1073,28 +1145,28 @@ path, or elevation mechanism.
   that display value.
   Terminalization is a write-ahead sequence under the exclusive journal lock.
   The provider first durably commits `active` with the final result, effective
-  restart contribution tuple, boot UUID, terminal-monotonic timestamp, and
-  reserved slot instead of `pending`. It then commits and syncs the inactive `restart`
+  normalized error code or `-`, restart contribution tuple, boot UUID,
+  terminal-monotonic timestamp, and reserved slot instead of `pending`. It then commits and syncs the inactive `restart`
   frame with the merged buckets and that active operation ID as the
   last-applied ID before committing the terminal slot. Persistence failure at
   either step leaves `active` for recovery and never reports durable success.
   Recovery of a terminalized update active record first compares its captured
   boot UUID with the current boot. A mismatch leaves the new boot's restart
   record all-clear, skips contribution reapplication, and completes only the
-  terminal-slot, cursor, and empty-active commits. On the same boot, recovery
+  terminal-slot, cursor, handoff, and empty-active commits. On the same boot, recovery
   compares the operation ID with the validated restart last-applied ID. A match
   proves the contribution was
   already merged, even if a later snapshot satisfied and pruned its buckets, so
   recovery skips the merge and completes only the idempotent terminal-slot,
-  cursor, and empty-active commit steps. A mismatch reapplies the contribution from
+  cursor, handoff, and empty-active commit steps. A mismatch reapplies the contribution from
   the durable active checkpoint once and records its ID before proceeding. No
-  new mutating operation is admitted while `active` exists, so the single
-  last-applied ID cannot be displaced before that operation is terminally
-  committed. Recovery never reconstructs a later cutoff or changes a durable
+  new mutating operation is admitted while `active` exists or `handoff` remains
+  nonempty, so the single last-applied ID cannot be displaced before that
+  operation is terminally committed and acknowledged. Recovery never reconstructs a later cutoff or changes a durable
   terminal result merely because it resumed after a session boundary.
   Terminalized refresh, timezone, NTP, locale, and delegate records never read,
   merge, or write the restart record; recovery completes only their idempotent
-  terminal-slot, cursor, and empty-active commits.
+  terminal-slot, cursor, handoff, and empty-active commits.
 
   A changed boot UUID satisfies every bucket and resets `restart` to the
   all-clear record for the new UUID. On the same boot, the application and
@@ -1140,8 +1212,23 @@ path, or elevation mechanism.
   For a nonterminal record, recovery validates and copies the bounded record
   under a shared journal lock, releases that lock, and only then attempts to
   adopt the exact recorded transaction object and consume its current or
-  replayed result before checking the active
-  PackageKit transaction list. For an update transaction only, it finally
+  replayed result before checking the active PackageKit transaction list. One
+  independent ten-second monotonic aggregate deadline covers attachment to the
+  recorded object, its required property reads and replayed signals, and the
+  manager `GetTransactionList` call. The active-list reply accepts at most 256
+  unique valid PackageKit transaction object paths and 64 KiB of their complete
+  encoded UTF-8 values. Expiry cancels unfinished local D-Bus requests, detaches
+  every recovery observer without calling `Cancel` on the recorded transaction,
+  and discards late replies and signals. Expiry supplies neither terminal nor
+  absence evidence. An update recovery may still use the independently bounded
+  history query to accept an exact terminal result, but otherwise it preserves
+  the nonterminal journal, emits its validated `active-operation` row with a
+  recovery `timeout` error, and blocks replacement mutation. Only a later
+  successful bounded lookup that proves exact absence may use the conservative
+  `interrupted` path.
+  An over-limit, duplicate, malformed, or wrong-typed active-list reply is a
+  recovery `malformed` error that preserves the journal and blocks mutation.
+  For an update transaction only, recovery finally
   calls PackageKit transaction method `GetOldTransactions(64)` on a new
   read-only transaction and consumes at most 64 emitted `Transaction` records.
   One ten-second monotonic aggregate deadline covers `CreateTransaction`, the
@@ -1422,17 +1509,26 @@ and proves a possibly running `Finished` yields the conservative unknown tuple
 without clearing seeded lower-scope contributions, while a provably pre-running
 denial or cancellation remains all-clear. A
 previous-boot adoption and history fixture proves every result remains all-clear.
-Watch fixtures reject both active and retained-terminal regional or delegated
-operation IDs with status 3 and no stream. They prove that a requested
-PackageKit terminal record replays by its exact retained ID even when one or
-more newer terminal slots exist, while a missing ID, duplicate retained ID,
-malformed slot, or unrelated transaction path fails closed. Regional fixtures
+Watch fixtures reject active regional or delegated operation IDs with status 3
+and no stream, but replay their exact retained terminal records without
+reissuing an action. They prove that a requested PackageKit terminal record
+replays by its exact retained ID even when one or more newer terminal slots
+exist, while a missing ID, duplicate retained ID, malformed slot, or unrelated
+transaction path fails closed. A root-restart fixture terminates after `active`
+is cleared but before stream consumption, proves the next snapshot emits the
+durable terminal handoff, validates exact replay including a persisted failed
+error code, and acknowledges it only after operation completion. Crashes before
+and after acknowledgment prove at-least-once replay, no lost result, and no
+replacement mutation while handoff remains nonempty. Regional fixtures
 must prove fixed D-Bus destinations and methods. Logind fixtures cover both the manager
 lookup and session-property read under their shared aggregate deadline,
 including a malformed object path, wrong property type, and timeout after the
 first reply.
 Locale fixtures change the enumerated allowlist after confirmation and prove the
 second bounded enumeration rejects the stale requested name before `SetLocale`.
+They accept an array within its 8192-byte read bound whose canonical override
+detail exceeds 512 bytes and prove it becomes `partial` with mutation
+unavailable and no truncated or omitted confirmation value.
 Regional timeout fixtures stall each mutating D-Bus method before its reply and
 stall each post-success verification read. They prove the monotonic aggregate
 deadline terminalizes as `interrupted`, ignores late callbacks, releases the
@@ -1450,6 +1546,16 @@ reads. A second change during the settling read and at its completion handoff
 must stop the cycle after two reads, preserve unresolved-dirty, publish
 `partial` with explicit-refresh guidance, and clear only after a quiet explicit
 refresh or pane close/reopen.
+Recovery lookup fixtures stall recorded-object attachment, required property
+reads, and `GetTransactionList`; exceed both its 256-path and 64-KiB limits; and
+prove timeout detaches without canceling the target, preserves the nonterminal
+journal, and blocks replacement mutation unless a later bounded lookup proves
+exact absence, while malformed lists preserve the journal and block mutation.
+A pre-handoff conflict fixture proves a terminal stream with no durable handoff
+does not invoke acknowledgment. Hostname fixtures stall each property before and after the other
+property succeeds and prove the ten-second monotonic aggregate deadline discards
+late replies, degrades only unfinished states, and does not block other
+information records.
 Delegated-action tests must prove the executable allowlist and missing-tool
 behavior. QML tests must prove readable state survives denial and every
 section-owned process stops on close. Mount-monitor fixtures delay readiness and
