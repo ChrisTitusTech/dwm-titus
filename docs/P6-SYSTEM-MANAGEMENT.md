@@ -57,13 +57,22 @@ calling `GetUpdates` with PackageKit's `NONE` filter. The maximum unsigned
 cache age directs PackageKit to reuse any usable metadata. PackageKit may still
 acquire metadata when its backend requires that work to return any result; the
 UI presents that as update discovery, never as a user-requested refresh. The
-explicit Refresh action calls `RefreshCache` with `force=true`; passive
-discovery never calls that method or starts an update transaction.
+transaction has a 120-second monotonic aggregate deadline from
+`CreateTransaction` through `Finished` and accepts at most 4096 unique update
+rows. A timeout or additional row uses the same bounded cancel, five-second
+grace, and detach sequence defined below, reports `timeout` or `malformed`, and
+does not start simulation. The explicit Refresh action calls `RefreshCache`
+with `force=true`; passive
+discovery never calls that method or starts a mutable update transaction.
+Beyond its required read-only `GetUpdates` transaction, it may create only the
+separate unjournaled `SIMULATE|ONLY_TRUSTED` read-only transaction defined in
+the lifecycle contract below.
 
 The update command grammar is fixed:
 
 ```text
 dwm-system-management snapshot
+dwm-system-management watch-operation OPERATION_ID
 dwm-system-management updates-refresh
 dwm-system-management updates-install-all GENERATION
 dwm-system-management updates-cancel OPERATION_ID
@@ -87,7 +96,20 @@ status 3, and writes only the fixed diagnostic `cancel target is unavailable`
 to standard error. The root model maps status 3 directly to a visible
 `conflict`, refreshes current state, and never parses the diagnostic. The active
 operation and any newer operation remain unchanged. Malformed command syntax,
-including an invalid ID shape, exits with status 2 instead.
+including an invalid ID shape, exits with status 2 instead. `watch-operation`
+requires that the ID match either the current validated nonterminal journal
+record for a PackageKit refresh or update or, when `active` is absent, the
+validated PackageKit terminal record in the ring slot immediately preceding the
+current cursor. The latter is the sole terminal handoff candidate because it is
+the most recently committed operation. The command uses only the transaction
+path bound inside the matching record. It may recover or replay bounded terminal
+evidence when the exact transaction finished after the snapshot, but never
+accepts an arbitrary transaction path or an older terminal slot. A correctly
+shaped ID that does not match either permitted validated journal identity emits
+no stream, exits with status 3, and writes
+only the fixed diagnostic `watch target is unavailable` to standard error. The
+root model maps that status to `conflict` and immediately requests a fresh
+snapshot as the next recovery attempt.
 
 The PackageKit service is authoritative for package state. The project provider
 adds only validation, bounded record formatting, a private operation journal,
@@ -159,12 +181,18 @@ overrides, and explains that applications require a new login to consume the
 change. This effective-value comparison permits locale1 to omit a redundant
 `LC_*` assignment without producing a false conflict.
 
-The parameterized actions use this exact command grammar:
+Provider-backed regional, delegated, and recovery actions use this exact
+command grammar:
 
 ```text
 dwm-system-management timezone-set ZONE
 dwm-system-management ntp-set enabled|disabled
 dwm-system-management locale-set LANG=LOCALE
+dwm-system-management accounts-open
+dwm-system-management password-open
+dwm-system-management printers-open
+dwm-system-management sources-open
+dwm-system-management recovery-clear-journal-temporaries
 ```
 
 `ZONE` is at most 255 ASCII bytes, contains no control characters, empty path
@@ -174,8 +202,16 @@ at most 128 ASCII bytes, contains no control or whitespace characters, and must
 exactly match a name reported by the bounded `locale -a` fallback because
 locale1 has no locale enumeration method. `LANG` is the only accepted locale
 key. Arguments are validated before confirmation and again immediately before
-the fixed D-Bus call. No other option, key, D-Bus argument, or trailing argument
-is accepted.
+the fixed D-Bus call. The five no-argument forms reject every positional or
+option argument. No other option, key, D-Bus argument, or trailing argument is
+accepted by any form.
+
+`health-open` is the sole action with no provider command: the root-scoped QML
+model invokes the fixed in-process `SystemHealthModel.openOnScreen` method with
+the current screen and accepts no caller-selected target or argument. It is UI
+navigation, starts no operation stream, and is not journaled. Every other
+advertised action maps one-to-one to an exact command line in this section or
+the update command grammar above.
 
 The provider starts `locale -a` in a dedicated process group with a three-second
 deadline, sends `TERM` to the group and then `KILL` after one second, caps output
@@ -229,10 +265,12 @@ Phase 6 reports service/tool availability and opens Fedora's
 queue, job, or authentication policy.
 
 PackageKit supplies read-only repository records through `GetRepoList` with the
-fixed `NONE` filter, including enabled and disabled repositories. Repository
-changes remain in the Fedora-packaged `dnfdragora` tool when present. Missing
-optional delegated tools are reported individually and never hide readable
-service state.
+fixed `NONE` filter, including enabled and disabled repositories. Its aggregate
+deadline is 30 monotonic seconds and it accepts at most 512 unique repository
+rows; timeout or excess results are provider-scoped errors. Repository changes
+remain in the Fedora-packaged `dnfdragora` tool when present. Missing optional
+delegated tools are reported individually and never hide readable service
+state.
 
 ### System Information and Filesystems
 
@@ -352,6 +390,7 @@ snapshot-generation<TAB>lowercase-sha256
 provider<TAB>id<TAB>status<TAB>class<TAB>owner<TAB>detail
 state<TAB>id<TAB>status<TAB>value<TAB>detail
 update<TAB>package-id<TAB>severity<TAB>installable|blocked<TAB>name<TAB>version<TAB>summary
+package-change<TAB>package-id<TAB>install|update|remove|obsolete|reinstall|downgrade<TAB>name<TAB>version<TAB>summary
 repository<TAB>id<TAB>enabled|disabled<TAB>description
 account<TAB>object-path<TAB>current|other<TAB>display-name<TAB>login-name
 filesystem<TAB>mount-id<TAB>status<TAB>source<TAB>target<TAB>fstype<TAB>size-bytes<TAB>used-bytes<TAB>available-bytes<TAB>detail
@@ -368,7 +407,7 @@ implementation boundary can produce a truthful complete snapshot:
 
 | Minor | Providers added | States added | Actions added | Lists enabled |
 | --- | --- | --- | --- | --- |
-| `0` | `updates`, `recovery` | `update-summary`, `update-last-refresh`, `update-restart` | `updates-refresh`, `updates-install-all`, `updates-cancel`, `recovery-clear-journal-temporaries` | `update` |
+| `0` | `updates`, `recovery` | `update-summary`, `update-last-refresh`, `update-restart` | `updates-refresh`, `updates-install-all`, `updates-cancel`, `recovery-clear-journal-temporaries` | `update`, `package-change` |
 | `1` | `regional`, `accounts`, `printers`, `sources` | `timezone`, `ntp-enabled`, `ntp-synchronized`, `locale`, `accounts-count`, `cups-service` | `timezone-set`, `ntp-set`, `locale-set`, `accounts-open`, `password-open`, `printers-open`, `sources-open` | `account`, `repository` |
 | `2` | `information`, `storage`, `security`, `diagnostics` | all information states, `filesystem-summary`, `selinux`, `secure-boot`, `firewalld`, `root-encryption`, `screen-lock` | `health-open` | `filesystem` |
 
@@ -429,6 +468,21 @@ The initial vocabulary is closed for known record fields:
   of unique emitted `update` rows, including blocked rows; the install-all
   action is available only when at least one row is installable and all other
   update mutation gates pass. Repository state is `enabled` or `disabled`.
+  A `package-change` row is one member of the complete dependency-resolved
+  simulation result for those installable update IDs at snapshot time. Its
+  action maps PackageKit simulation
+  `InfoEnum` values `INSTALLING` to `install`, `UPDATING` to `update`,
+  `REMOVING` to `remove`, `OBSOLETING` to `obsolete`, `REINSTALLING` to
+  `reinstall`, and `DOWNGRADING` to `downgrade`; another info value makes the
+  plan malformed and the install action unavailable. Package IDs are unique
+  within the result, and every requested installable update ID must appear
+  exactly once with action `update`; another action for a requested ID makes
+  the plan malformed. A result containing `reinstall` or `downgrade` remains
+  visible but makes `updates-install-all` unavailable with an `unsupported`
+  error; Phase 6 never adds PackageKit's `ALLOW_REINSTALL` or
+  `ALLOW_DOWNGRADE` flags implicitly.
+  Dependency additions, removals, obsoletes, reinstalls, and downgrades are
+  therefore visible before confirmation rather than inferred from `GetUpdates`.
   Account scope is `current` or `other`. Filesystem status uses the
   provider-status enum; mount ID is an unsigned decimal integer and the unique
   record ID within the snapshot, while source and target remain display-only
@@ -439,26 +493,34 @@ The initial vocabulary is closed for known record fields:
 - Operation kind is `refresh`, `update`, `timezone`, `ntp`, `locale`,
   `journal-repair`, or `delegate`. Operation state is `pending`, `authorizing`, `running`,
   `cancel-requested`, `permission-denied`, `canceled`, `failed`, `interrupted`,
-  or `succeeded`. Percent is `unknown` or an integer from 0 through 100, and
-  cancelable is `yes` or `no`. Every terminal operation record must use
-  `cancelable=no`. Audit result uses only the terminal operation states.
+  or `succeeded`. Percent is `unknown` or an integer from 0 through 100;
+  PackageKit's documented unknown sentinel `Percentage=101` maps to `unknown`
+  and is never clamped to 100. Any other out-of-range value also maps to
+  `unknown` with bounded malformed-progress detail so an otherwise active
+  transaction remains observable. Cancelable is `yes` or `no`. Every terminal
+  operation record must use `cancelable=no`. Audit result uses only the
+  terminal operation states.
 - An `active-operation` row is snapshot-only and has the same closed fields as
-  an operation row. It represents the one validated nonterminal active journal
-  record after recovery. Its ID must have the required `op-` shape, its action
-  and kind must match the fixed mapping, and its state must be nonterminal. A
-  snapshot contains at most one such row. The row is omitted when no operation
-  remains active; it is never synthesized from an unsafe or malformed journal
-  record. For a recovered PackageKit refresh or update, `cancelable=yes` is
+  an operation row. It represents the one validated nonterminal PackageKit
+  `refresh` or `update` journal record after recovery. Its ID must have the
+  required `op-` shape, its action and kind must match the fixed mapping, and
+  its state must be nonterminal. A snapshot contains at most one such row. The
+  row is omitted when no PackageKit operation remains active; it is never
+  synthesized from an unsafe or malformed journal record. `cancelable=yes` is
   emitted only while the exact adopted transaction reports `AllowCancel=true`.
   This bounded row lets the root model restore the visible operation identity
   and pass that exact ID to `updates-cancel` after Settings or the provider
-  restarts.
+  restarts. Regional and delegated work remains visible through its originating
+  operation stream and the kind-specific recovery rules below, never through an
+  `active-operation` row.
 - Every operation and audit row carries the action ID that originated the
   operation. The fixed action-to-kind mapping is `updates-refresh` to
   `refresh`, `updates-install-all` to `update`, `timezone-set` to `timezone`,
   `ntp-set` to `ntp`, `locale-set` to `locale`, and `accounts-open`,
-  `password-open`, `printers-open`, `sources-open`, and `health-open` to
-  `delegate`; `recovery-clear-journal-temporaries` maps to `journal-repair`.
+  `password-open`, `printers-open`, and `sources-open` to `delegate`;
+  `recovery-clear-journal-temporaries` maps to `journal-repair`. As defined
+  above, `health-open` is fixed in-process navigation and never appears in an
+  operation or audit row.
   `updates-cancel` controls the current update or refresh operation and never
   starts an operation of its own; every record for that operation retains its
   original action ID. Action ownership is also fixed:
@@ -497,15 +559,21 @@ minor, zero or one validated `active-operation` row, then one
 `complete<TAB>snapshot`. An unavailable, restricted, or unsupported capability
 therefore retains an explicit status-bearing state row instead of omitting its
 value. The generation is 64 lowercase hexadecimal characters. It is the SHA-256
-digest of the ASCII prefix `dwm-titus-update-set-v1` followed by the exact
-installable package-ID set sorted by unsigned UTF-8 bytes, with each ID encoded
-as an eight-byte big-endian length followed by its raw bytes. The empty set has
-a deterministic generation. List record IDs (`update`, `repository`, `account`,
-and `filesystem`) must be unique within their record type. State and list-record
+digest of the ASCII prefix `dwm-titus-update-plan-v1`, followed first by the
+exact installable update IDs sorted by unsigned UTF-8 bytes and then by the
+complete `package-change` rows sorted by the unsigned UTF-8 tuple
+`(action, package-id, name, version, summary)`. Each update ID is encoded as the
+ASCII byte `U`, an eight-byte big-endian byte length, and its raw bytes. Each
+plan row is encoded as the ASCII byte `P` followed by all five tuple fields in
+order, each as an eight-byte big-endian byte length and its raw bytes. Empty
+sets therefore have a deterministic generation, while any dependency-resolved
+action, identity, version, or displayed plan change invalidates confirmation.
+List record IDs (`update`, `package-change`, `repository`, `account`, and
+`filesystem`) must be unique within their record type. State and list-record
 ownership is fixed as follows:
 
 - `updates` owns `update-summary`, `update-last-refresh`, `update-restart`, and
-  every `update` row.
+  every `update` and `package-change` row.
 - `regional` owns `timezone`, `ntp-enabled`, `ntp-synchronized`, and `locale`.
 - `accounts` owns `accounts-count` and every `account` row; `printers` owns
   `cups-service`; `sources` owns every `repository` row.
@@ -558,7 +626,9 @@ a terminal `active-operation`, transition outside the table,
 an operation record after a terminal state, any record after the required
 completion, or missing completion rejects the entire stream. Operation and
 audit record failures always reject the operation stream. Text fields are
-capped at 512 bytes, list records at 10,000 per snapshot, and the entire stream
+capped at 512 bytes. Fixed per-type list budgets are 4096 `update`, 4096
+`package-change`, 512 `repository`, 256 `account`, and 256 `filesystem` rows,
+so a snapshot contains at most 9216 list records; the entire stream is capped
 at 8 MiB.
 
 The initial actions are a closed enum: `updates-refresh`, `updates-install-all`,
@@ -571,20 +641,83 @@ path, or elevation mechanism.
 ## Operation Lifecycle and Audit
 
 - Passive discovery uses the fixed maximum cache-age hint and never calls
-  `RefreshCache` or starts an update; PackageKit may perform only backend work
-  required to return discovery results as described above.
+  `RefreshCache` or starts a mutable update; after discovery it may invoke only
+  the unjournaled `SIMULATE|ONLY_TRUSTED` read-only transaction defined below.
+  PackageKit may otherwise perform only backend work required to return
+  discovery results as described above.
 - Every mutation begins from a visible confirmation describing owner, impact,
   authorization, cancellation limit, and recovery.
-- An install-all confirmation captures the snapshot generation and displays the
-  exact installable package set represented by it. `UpdatesChanged` or any
-  accepted replacement snapshot invalidates an open confirmation. After the
-  user accepts, the provider performs a fresh bounded `GetUpdates(NONE)` using
-  the discovery hints and recomputes the generation before creating a mutable
-  transaction. A mismatch terminates as `failed`/`conflict`, publishes the new
-  snapshot, and requires a new confirmation; only the revalidated exact
-  installable IDs are passed to `UpdatePackages`.
+- After each bounded `GetUpdates(NONE)`, discovery creates a separate read-only
+  PackageKit transaction and calls `UpdatePackages` with the bitwise
+  `SIMULATE|ONLY_TRUSTED` flags and exactly the installable update IDs. Only a
+  successful `Finished` result with a complete, valid `Package` signal set
+  produces `package-change` rows. This simulation never authorizes or mutates
+  packages. One 120-second monotonic aggregate deadline covers its
+  `CreateTransaction`, `SetHints`, `UpdatePackages`, and wait for `Finished`.
+  On expiry the provider requests `Cancel` only when `AllowCancel=true`, waits
+  no more than five additional seconds for `Finished`, then detaches from the
+  read-only transaction and completes the snapshot with an `updates` `timeout`
+  error and no plan rows. The simulation is never journaled or recovered. It
+  accepts at most 4096 unique `Package` results; an additional result follows
+  the same bounded cancellation sequence and is a `malformed` error. An empty
+  installable update set emits no plan rows and does not call `UpdatePackages`.
+  A missing simulation capability, denial, error, malformed or duplicate
+  package result, or unrepresented requested update preserves the readable
+  `update` rows but leaves `updates-install-all` unavailable with the owning
+  typed error.
+- An install-all confirmation captures the snapshot generation and displays
+  every resolved `package-change` action, including dependency additions and
+  removals. `UpdatesChanged` or any accepted replacement snapshot invalidates
+  an open confirmation. After the user accepts, the provider performs a fresh
+  bounded `GetUpdates(NONE)` and a fresh `SIMULATE|ONLY_TRUSTED` transaction
+  using the same fixed rules, then recomputes the generation before creating a
+  mutable transaction. A mismatch terminates as `failed`/`conflict`, publishes
+  the new snapshot, and requires a new confirmation. Only the revalidated exact
+  installable update IDs are passed to the real
+  `UpdatePackages(ONLY_TRUSTED, ...)`; PackageKit remains the dependency owner,
+  while the immediately preceding simulation is the confirmation's current
+  resolved preview.
+
+  PackageKit exposes no transaction-scoped prepare/commit token that can bind a
+  completed simulation to a later `UpdatePackages` transaction. A package or
+  repository change in that final interval can therefore make PackageKit
+  resolve a different dependency set even after the generation check. The
+  confirmation states this platform limitation and promises a current preview,
+  not an atomic frozen plan. Actual PackageKit `Package` signals update bounded
+  in-memory action counts, a SHA-256 digest, and at most 128 distinct mismatch
+  samples against the preview; they are never emitted one-for-one. The digest
+  begins with the ASCII prefix `dwm-titus-update-observed-v1` and then encodes
+  each accepted signal in arrival order as the normalized action and package
+  ID, each with an eight-byte big-endian byte length followed by its raw bytes.
+  `DOWNLOADING` is phase-only and does not enter the observed set or digest.
+  Actual `INSTALLING`, `UPDATING`, `REMOVING`, and `OBSOLETING` values map to
+  `install`, `update`, `remove`, and `obsolete`. A `CLEANUP` whose package name
+  and architecture match an inbound `update` row is the old half of that
+  ordinary replacement and is also ignored. Another `CLEANUP` maps to
+  `obsolete` only when its exact package ID appears as `obsolete` in the
+  preview; otherwise it and every other info value map to `unknown`, mark
+  comparison `unknown`, and are digested as the literal `unknown`. These rules
+  prevent download and replacement phases from becoming false plan differences
+  while failing closed on unexplained actions.
+
+  Operation output always emits each reached lifecycle state once: `pending`,
+  `authorizing` when required, initial `running`, and the first
+  `cancel-requested` when that transition is valid. Those at most four records
+  cannot be displaced by progress. Integer-percentage, cancelability, and
+  mismatch-summary changes share a separate cap of 252 coalesced nonterminal
+  records. Once that cap is reached, later progress changes update only the
+  in-memory aggregate; a later required lifecycle transition is still emitted.
+  The required terminal record reports the final bounded counts, digest, and
+  `different=yes|no|unknown` summary in its detail. Thus the complete stream
+  stays below the 8 MiB limit and the root model retains at most 256
+  nonterminal records plus the terminal record. These observed summaries are
+  deliberately not journaled; recovery labels them unavailable instead of
+  reconstructing or promising per-package detail. The UI never labels the
+  preview as the completed set. A simulated `reinstall` or `downgrade` is
+  rejected before confirmation, so the real call never requires or silently
+  adds `ALLOW_REINSTALL` or `ALLOW_DOWNGRADE`.
 - One root-scoped model owns every journaled operation. Refresh, update,
-  regional, delegated, and health-open operations are mutually exclusive; a
+  regional, and delegated operations are mutually exclusive; a
   request received while any other operation is nonterminal is rejected as
   `failed`/`conflict` before it can replace the active record. The sole exception
   is journal-temporary repair when at least one validated fixed temporary path
@@ -596,29 +729,80 @@ path, or elevation mechanism.
   other overlapping request, and reruns normal recovery immediately after the
   repair terminates. Journal repair remains exempt from writing a new journal
   record because journal persistence is the capability it restores.
-- Closing Settings stops pane-only discovery but does not kill an active
-  PackageKit transaction. Reopening reconstructs state from PackageKit and the
-  private journal.
+- Closing Settings stops pane-only discovery but neither kills an active
+  PackageKit transaction nor the root-scoped `watch-operation` process. While a
+  regional or delegated originating stream is nonterminal, the root model
+  defers finite snapshot requests until that stream terminates; event-driven
+  read-state refreshes remain coalesced. Thus snapshot recovery terminalizes a
+  stranded non-PackageKit journal record under the kind-specific rules below
+  before producing output and never emits it as `active-operation`. A
+  finite `snapshot` always ends at `complete<TAB>snapshot`; when it contains an
+  `active-operation`, its kind is necessarily PackageKit `refresh` or `update`.
+  The root model first compares its ID with the one live provider stream it
+  already owns. A matching originating refresh or install stream remains the
+  sole observer and no watcher is started. Otherwise the root model immediately
+  starts exactly one
+  `dwm-system-management watch-operation OPERATION_ID` process, and records it
+  as that operation's sole live stream before accepting another snapshot. That
+  process revalidates one of the two permitted journal identities above. For a
+  nonterminal record it adopts only its exact PackageKit object, emits `pending`,
+  then `authorizing` when the adopted transaction is known to have reached
+  authorization. It emits `running` only after the journal or adopted
+  transaction proves that state was reached, followed when applicable by
+  `cancel-requested`. Thus an authorization still in progress remains in
+  `authorizing` and may terminate directly as `permission-denied`. It emits each
+  known reached lifecycle state once and remains subscribed until it emits the
+  terminal operation, audit, and `complete<TAB>operation` records.
+
+  If the active record disappeared in the snapshot-to-watch race, the permitted
+  newest-terminal match is replay-only and opens no PackageKit object. It emits
+  `pending`, the minimum transition implied by the durable terminal result
+  (`authorizing` before `permission-denied`, or `running` before `succeeded`),
+  then that exact terminal operation, its audit, and
+  `complete<TAB>operation`. The other terminal states are valid directly from
+  `pending`. No newer ring record can be consumed as the requested operation.
+
+  Unexpected watcher exit triggers up to three non-overlapping
+  snapshot-and-watch recovery attempts in the root model after delays of one,
+  two, and four seconds. If the third retry fails, it retains the journaled
+  operation and actionable recovery guidance until explicit refresh; it never
+  reports success or starts a replacement mutation. Quickshell restart uses the
+  same finite snapshot followed by live watch sequence, so Settings closure and
+  provider interruption cannot leave an adopted transaction permanently
+  unwatched.
 - Update cancellation is exposed exactly while PackageKit reports `AllowCancel`.
   Once cancellation becomes unsafe, Settings explains that the RPM transaction
   must finish.
 - The journal lives under
   `${XDG_STATE_HOME:-$HOME/.local/state}/dwm-titus/system-management/`, is mode
   0700, and contains mode-0600 journal files of at most 16 KiB each. The provider
-  uses only the fixed `active` path and 32 fixed terminal slots named
-  `terminal-00` through `terminal-31`; it never enumerates the directory. It
-  reads those 33 paths through a directory file descriptor without following
+  uses only the fixed `active` and `cursor` paths and 32 fixed terminal slots
+  named `terminal-00` through `terminal-31`; it never enumerates the directory.
+  It reads those 34 paths through a directory file descriptor without following
   symlinks, validates ownership, type, mode, link count, and size, and reports
-  an unsafe or malformed owned slot as a recovery error. Before accepting a new
-  operation it requires a safe active path and at least one writable terminal
-  slot. Terminal persistence replaces the missing or oldest valid slot by the
-  required finished timestamp, so the fixed set retains up to the newest 32
-  valid terminal records, limited by the number of safe slots. Atomic writes use
-  one fixed temporary name beside each owned path and create it exclusively.
+  an unsafe or malformed owned slot as a recovery error. A missing cursor on a
+  new safe journal is initialized to `00`; otherwise its content must be exactly
+  one terminal index from `00` through `31`. Before accepting a new operation it
+  requires a safe active path, a safe writable cursor, and at least one safe
+  writable terminal slot. Starting at the cursor index, it selects the first
+  safe terminal slot in ring order and persists that two-digit slot in the
+  active operation before mutation. Terminal persistence atomically replaces
+  only that selected slot, `fsync`s the replacement and journal directory,
+  atomically replaces and `fsync`s the cursor at the following ring index, then
+  `fsync`s the directory again before unlinking `active` and durably syncing
+  that unlink. Thus the safe fixed slots retain the newest terminal records by
+  durable ring position, never by the rollback-prone `finished` wall clock.
+
+  If interruption occurs after the terminal slot write but before cursor
+  advance or active-record removal, recovery accepts only the exact matching
+  operation and selected slot, completes the idempotent cursor advance, and
+  then removes `active`. It never advances the cursor from an unmatched record.
+  Atomic writes use one fixed temporary name beside each owned path and create
+  it exclusively.
   Any existing temporary path is preserved unchanged, reported as a recovery
   error, and disables further system-management mutation other than the fixed
   recovery action. Settings offers the user-session action
-  `recovery-clear-journal-temporaries`: it inspects only the 33 known temporary
+  `recovery-clear-journal-temporaries`: it inspects only the 34 known temporary
   paths, previews their count and bounded hashes, requires explicit
   confirmation, then removes only regular files owned by the invoking user with
   mode 0600, link count one, and size at most 16 KiB. An unsafe temporary
@@ -628,13 +812,15 @@ path, or elevation mechanism.
   records and accepts no path or slot argument. Unrelated directory entries are
   never read, followed, or removed and cannot increase recovery work. The
   records contain common IDs, originating action IDs, timestamps, operation
-  kinds, terminal results, and sanitized diagnostics, plus three fixed typed
-  fields: update snapshot generation, PackageKit transaction object path, and
-  aggregate restart requirement. An `update` record requires a valid generation,
-  the exact PackageKit path, and a restart value from the protocol enum. A
-  `refresh` record requires the exact PackageKit path and uses the literal `-`
-  for generation and restart. `timezone`, `ntp`, `locale`, `journal-repair`, and
-  `delegate` records require literal `-` in all three fields. A consumer rejects
+  kinds, terminal results, and sanitized diagnostics, plus four fixed typed
+  fields: update snapshot generation, PackageKit transaction object path,
+  aggregate restart requirement, and the required two-digit terminal slot. An
+  `update` record requires a valid generation, the exact PackageKit
+  path, and a restart value from the protocol enum. A `refresh` record requires
+  the exact PackageKit path and uses the literal `-` for generation and restart.
+  `timezone`, `ntp`, `locale`, and `delegate` records require literal `-` in all
+  three fields. `journal-repair` is never serialized in these journal files.
+  Every journaled kind requires its selected terminal slot. A consumer rejects
   any missing field or value that does not match the operation kind. Each
   accepted `RequireRestart` signal durably
   replaces the active record with the newly validated aggregate before any
@@ -694,9 +880,12 @@ path, or elevation mechanism.
 
   A negative bounded lookup is never evidence that PackageKit succeeded or
   failed. If exact adoption or the active transaction list confirms that the
-  exact transaction is still active, the provider keeps the operation
-  nonterminal and continues consuming its signals through `Finished`. Only
-  after that exact transaction is absent and the bounded terminal sources
+  exact transaction is still active, the finite snapshot emits its validated
+  `active-operation` row. The matching live originating refresh or install
+  stream remains its sole observer; only when no such stream is owned does the
+  root model start the required `watch-operation` process to keep the operation
+  nonterminal while consuming signals through `Finished`. Only after that exact
+  transaction is absent and the bounded terminal sources
   cannot recover a result does the provider record `interrupted` to mean that
   its observation was interrupted and the backend outcome is unknown. It
   performs a new read-only discovery and offers diagnostics; it never retries
@@ -705,14 +894,16 @@ path, or elevation mechanism.
   expands to an unbounded history query. A regional operation recovers a
   terminal result only from a valid terminal journal record durably written
   before interruption. Any nonterminal `timezone`, `ntp`, or `locale` record
-  becomes `interrupted` after restart regardless of the owning systemd
+  encountered by snapshot recovery becomes `interrupted` regardless of the owning systemd
   service's current value, because the journal intentionally stores no target
   and current state cannot prove this operation caused it. Recovery publishes a
   fresh read-only regional snapshot and explains that the requested mutation's
   outcome is unknown; it never retries or audits it as successful. A delegated
-  launch records whether the trusted tool was accepted; the tool owns later
-  completion and recovery, and Settings never infers that its internal work
-  succeeded.
+  launch records its terminal `succeeded` result as soon as the trusted tool is
+  accepted; the tool owns all later internal work. A nonterminal delegated
+  record encountered by snapshot recovery becomes `interrupted`, while a valid
+  durable terminal record replays its exact launch result. Settings never
+  infers that the delegated tool's internal work succeeded.
 
 ## Event and Resource Contract
 
