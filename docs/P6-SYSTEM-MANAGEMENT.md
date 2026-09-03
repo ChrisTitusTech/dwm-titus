@@ -98,8 +98,9 @@ is accepted.
 ### Accounts, Printers, and Sources
 
 AccountsService supplies read-only account objects and properties. The provider
-calls only `org.freedesktop.Accounts.ListCachedUsers`, adds the invoking user's
-object from `FindUserById` when it is absent, and de-duplicates the object
+uses `org.freedesktop.Accounts.ListCachedUsers` for enumeration, then performs
+one bounded `FindUserById(os.getuid())` lookup for the invoking user. It adds
+that object when absent from the enumeration and de-duplicates the resulting
 paths. It reserves one of the 256 record slots for that valid current-user
 object, then sorts and accepts at most 255 other objects. It reads only
 `UserName`, `RealName`, `SystemAccount`, and `LocalAccount` from

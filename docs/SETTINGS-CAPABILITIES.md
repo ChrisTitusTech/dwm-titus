@@ -24,13 +24,18 @@ Every Settings operation uses exactly one primary class:
 | Privileged | A system mutation requires confirmation and a narrow, installed, root-owned helper. |
 | Delegated | A trusted service or platform tool owns the operation and its authorization. |
 
-Unsupported is a capability status, not an operation class. It means no suitable
-provider contract exists yet, so the UI must explain or hide the capability.
+Unsupported is a capability status, not an operation class. It means no
+applicable platform source exists on this host or the project intentionally
+exposes no suitable source for that capability, so the UI must explain or hide
+it. An expected implemented interface that cannot be reached is `unavailable`.
+A planned provider that has not been implemented is omitted from runtime
+capability records instead of being advertised as `unsupported`.
 
 Provider records use `available` for complete readable state, `partial` for a
 usable incomplete result, `restricted` when the owning interface is reachable
 but policy or permissions deny that specific read, `unavailable` when an
-expected interface cannot be reached, and `unsupported` when no source exists.
+expected interface cannot be reached, and `unsupported` when no applicable
+source exists.
 A restricted individual record may therefore have an unknown value; capability
 aggregation preserves and displays any readable sibling records rather than
 treating the entire section as unreadable. Mutation authorization denial is the
