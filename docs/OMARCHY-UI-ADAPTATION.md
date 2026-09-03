@@ -89,19 +89,19 @@ scheduled in `ROADMAP.md`.
   complete in PR #158 and corrective PR #160.
 - UI-3, bar and existing quick panels: Phase 3 prerequisite, complete in
   PR #159.
-- P3-UI4, Settings, System Health, notifications, and launcher: next Phase 3
-  pull request from unified `main`.
-- UI-5, optional X11-native experiences: planned for Phase 5 personalization
-  and accessibility; split backend-heavy work when needed.
+- P3-UI4, Settings, System Health, notifications, and launcher: complete in
+  PR #163.
+- UI-5, optional X11-native experiences: Phase 5 candidate review complete
+  with no adopted runtime experience; see `P5-UI5-DECISIONS.md`.
 - UI-6, integration hardening and approved rollout: planned for Phase 7 release
   qualification, with no major features.
 
 UI-2 and UI-3 were the only parallel branches because they owned mostly
-separate surfaces after UI-1 established shared tokens. `P3-UI4` must reuse the
-merged components and interaction decisions from both. The remaining
-Connectivity and Audio tasks then build on those surfaces as separate Phase 3
-pull requests. UI-5 remains optional and must not make `P3-UI4` depend on a new
-service. UI-6 is a stabilization slice, not a feature catch-all.
+separate surfaces after UI-1 established shared tokens. `P3-UI4` reused the
+merged components and interaction decisions from both, and the later Phase 3
+provider slices built on those surfaces. UI-5 remains optional and its empty
+adopted set adds no service or shell surface. UI-6 is a stabilization slice,
+not a feature catch-all.
 
 ### P3-UI4 Boundary
 
