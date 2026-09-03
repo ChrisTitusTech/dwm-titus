@@ -118,7 +118,8 @@ The information snapshot uses only these fixed sources:
   `org.freedesktop.hostname1` contribute the corresponding states when present.
 - `/proc/cpuinfo` is capped at 4 MiB. On the supported x86_64 architecture, the
   first `model name` field contributes `cpu-model`; logical processor count
-  comes from `os.cpu_count()` and is emitted as a decimal integer.
+  comes from `os.cpu_count()` and is emitted as `available` with a decimal
+  integer. A `None` result is emitted as `partial`/`unknown`.
 - `/proc/meminfo` is capped at 1 MiB and accepts only a decimal integer followed
   by the kernel `kB` unit for `MemTotal`, `MemAvailable`, `SwapTotal`, and
   `SwapFree`. Each value is multiplied by exactly 1024 with overflow checking
