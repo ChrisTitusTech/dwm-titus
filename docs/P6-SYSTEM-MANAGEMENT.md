@@ -36,7 +36,7 @@ delegated or unsupported.
 | User accounts | AccountsService object and user properties | Fedora `lxqt-admin-user` entry point; current-user password uses a fixed terminal `passwd` entry point | Read-only and delegated | Settings never accepts usernames, passwords, group names, or arbitrary account commands. Missing tools leave the account summary readable. | Implement entry points; do not implement account mutation |
 | Printers | CUPS service availability | Fedora `system-config-printer` | Read-only and delegated | The trusted tool and CUPS own printer discovery, authentication, cancellation, and device policy. Missing CUPS or tool state is capability-scoped. | Implement entry point |
 | Software sources | PackageKit repository records | Fedora `dnfdragora` when installed | Read-only and delegated | Settings does not accept repository identifiers for mutation. The delegated tool owns confirmation and authorization. | Implement entry point |
-| System identity and resources | `/etc/os-release`, kernel, architecture, bounded `/proc` records, and mounted-filesystem APIs | None | Read-only | Probe failures remain per record. No background poller is added. | Implement |
+| System identity and resources | Bounded `/etc/os-release`, `uname(2)`, `org.freedesktop.hostname1`, `/proc/cpuinfo`, `/proc/meminfo`, `CLOCK_BOOTTIME`, and fixed `findmnt --json` records | None | Read-only | Probe failures remain per record. No background poller is added. | Implement |
 | Storage overview | Existing `dwm-system-health` structured snapshot | Existing fixed user and installed-helper repairs only | Read-only, user-session, and privileged | Existing confirmation, authorization-denial, and fixed repair allowlists remain unchanged. | Reuse and link |
 | Privacy and security status | The fixed sources in the Security Status section below | Trusted Fedora tools or documented recovery guidance | Read-only and delegated | Probe status and semantic value remain distinct: for example, an inaccessible probe is `restricted` with value `unknown`, while a successful disabled probe is `available` with value `disabled`. No firewall, encryption, or SELinux mutation is added. | Implement status and guidance |
 | Diagnostics and recovery | Existing `dwm-system-health` and `dwm-diagnostics` records | Existing fixed repair actions and exported evidence | Read-only, user-session, and privileged | Denial leaves the user scan visible. Broad service names and commands remain rejected. | Reuse and link |
@@ -107,6 +107,42 @@ PackageKit supplies read-only repository records. Repository changes remain in
 the Fedora-packaged `dnfdragora` tool when present. Missing optional delegated
 tools are reported individually and never hide readable service state.
 
+### System Information and Filesystems
+
+The information snapshot uses only these fixed sources:
+
+- `/etc/os-release` is capped at 64 KiB and contributes only `PRETTY_NAME` and
+  `VERSION_ID` to the `os-name` and `os-version` states.
+- The Python `os.uname()` binding to `uname(2)` contributes `kernel-release` and
+  `architecture`. The fixed `HardwareVendor` and `HardwareModel` properties on
+  `org.freedesktop.hostname1` contribute the corresponding states when present.
+- `/proc/cpuinfo` is capped at 4 MiB. On the supported x86_64 architecture, the
+  first `model name` field contributes `cpu-model`; logical processor count
+  comes from `os.cpu_count()` and is emitted as a decimal integer.
+- `/proc/meminfo` is capped at 1 MiB and accepts only a decimal integer followed
+  by the kernel `kB` unit for `MemTotal`, `MemAvailable`, `SwapTotal`, and
+  `SwapFree`. Each value is multiplied by exactly 1024 with overflow checking
+  and emitted as a decimal byte count. Uptime is a checked whole-second reading
+  from `clock_gettime(CLOCK_BOOTTIME)`.
+- Mounted real filesystems come from the fixed
+  `findmnt --json --bytes --real --uniq --output ID,SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL`
+  interface. `--uniq` selects one record for an effective over-mounted target
+  and the kernel mount ID supplies a collision-free record key even when target
+  text requires protocol sanitization. The provider starts it in a dedicated
+  process group with a three-second wall-clock deadline; on expiry it sends
+  `SIGTERM`, waits a bounded grace period, then sends `SIGKILL` to the process
+  group and emits `filesystem-summary` as `unavailable`/`unknown`. Output is
+  capped at 2 MiB and 256 unique mount-ID records. Source and target are
+  display-only values and are never accepted by an action. Every snapshot emits
+  exactly one `filesystem-summary` state: `available` carries the number of
+  emitted filesystem rows, `partial`/`unknown` accompanies any usable subset,
+  and `restricted`, `unavailable`, or `unsupported` carries `unknown` and no
+  filesystem rows.
+
+Each failed or malformed source degrades only the states or filesystem records
+it owns. A missing hostname1 property does not invalidate OS, kernel, processor,
+memory, or filesystem state.
+
 ### Security Status
 
 Each probe has a fixed source and emits its own state instead of making the
@@ -133,14 +169,16 @@ The individual mappings are:
   `partial`/`unknown`. Neither is silently treated as disabled.
 - Secure Boot comes from the EFI `SecureBoot-*` variable under
   `/sys/firmware/efi/efivars/`. Its attributes prefix is skipped and the one-byte
-  payload must be `0` or `1`. An absent EFI variables filesystem is
+  payload must be `0` or `1`; `1` is `available`/`enabled` and `0` is
+  `available`/`disabled`. An absent EFI variables filesystem is
   `unsupported`/`unknown`; a missing variable or malformed payload on EFI is
   `partial`/`unknown`; read denial is `restricted`/`unknown`.
 - Firewall state comes from the `ActiveState` property for
   `firewalld.service` on `org.freedesktop.systemd1`. An absent unit is
   `unsupported`/`unknown`, a bus or property failure is
-  `unavailable`/`unknown`, and only an explicit inactive state is
-  `available`/`disabled`.
+  `unavailable`/`unknown`, `active` is `available`/`enabled`, and `inactive` is
+  `available`/`disabled`. Failed or transitional active states are
+  `partial`/`unknown`.
 - Root-storage encryption evidence comes from bounded `lsblk --json` output
   with the fixed `NAME,TYPE,FSTYPE,MOUNTPOINTS,PKNAME` columns. A root mount
   backed by a `crypt`/`crypto_LUKS` ancestry is encrypted; a fully resolved root
@@ -169,6 +207,7 @@ state<TAB>id<TAB>status<TAB>value<TAB>detail
 update<TAB>package-id<TAB>severity<TAB>installable|blocked<TAB>name<TAB>version<TAB>summary
 repository<TAB>id<TAB>enabled|disabled<TAB>description
 account<TAB>object-path<TAB>current|other<TAB>display-name<TAB>login-name
+filesystem<TAB>mount-id<TAB>status<TAB>source<TAB>target<TAB>fstype<TAB>size-bytes<TAB>used-bytes<TAB>available-bytes<TAB>detail
 action<TAB>id<TAB>available|unavailable<TAB>class<TAB>owner<TAB>label<TAB>detail
 operation<TAB>id<TAB>kind<TAB>state<TAB>percent<TAB>cancelable<TAB>detail
 audit<TAB>id<TAB>kind<TAB>result<TAB>started<TAB>finished<TAB>detail
@@ -193,15 +232,27 @@ The initial vocabulary is closed for known record fields:
 - State IDs are `update-summary`, `update-last-refresh`, `update-restart`,
   `timezone`, `ntp-enabled`, `ntp-synchronized`, `locale`, `accounts-count`,
   `cups-service`, `selinux`, `secure-boot`, `firewall`, `root-encryption`, and
-  `screen-lock`. State status uses the provider-status enum. Booleans are
+  `screen-lock`, plus information IDs `os-name`, `os-version`,
+  `kernel-release`, `architecture`, `hardware-vendor`, `hardware-model`,
+  `cpu-model`, `logical-cpus`, `memory-total-bytes`, `memory-available-bytes`,
+  `swap-total-bytes`, `swap-free-bytes`, `uptime-seconds`, and
+  `filesystem-summary`. State status uses the provider-status enum. Booleans are
   `yes`, `no`, or `unknown`; restart values are `none`, `session`, `system`,
-  `security-session`, `security-system`, or `unknown`. Other values are
-  bounded display text owned by the named state. Security-state values use the
-  exact per-ID enums and status/value mapping defined in Security Status.
-- Update severity is `security`, `important`, `bugfix`, `enhancement`, `normal`,
-  `low`, or `unknown`. Update installability is `installable` or `blocked`;
-  blocked package IDs are never passed to `UpdatePackages`. Repository state is
-  `enabled` or `disabled`. Account scope is `current` or `other`.
+  `security-session`, `security-system`, or `unknown`. Count, byte, uptime, and
+  filesystem-summary values are unsigned decimal integers when status is
+  `available` and `unknown` for any other status. Other values are bounded
+  display text owned by the named state. Security-state values use the exact
+  per-ID enums and status/value mapping defined in Security Status.
+- Update severity is `critical`, `security`, `important`, `bugfix`,
+  `enhancement`, `normal`, `low`, or `unknown`. Update installability is
+  `installable` or `blocked`; blocked package IDs are never passed to
+  `UpdatePackages`. Repository state is `enabled` or `disabled`. Account scope
+  is `current` or `other`. Filesystem status uses the provider-status enum;
+  mount ID is an unsigned decimal integer and the unique record ID within the
+  snapshot, while source and target remain display-only text. `available`
+  requires all three byte fields to be unsigned decimal integers; `partial`
+  permits a mix of integers and `unknown`; `restricted`, `unavailable`, or
+  `unsupported` requires all three byte fields to be `unknown`.
 - Operation kind is `refresh`, `update`, `timezone`, `ntp`, `locale`, or
   `delegate`. Operation state is `pending`, `authorizing`, `running`,
   `cancel-requested`, `permission-denied`, `canceled`, `failed`, `interrupted`,
@@ -213,11 +264,14 @@ The initial vocabulary is closed for known record fields:
   one of `malformed`, `missing-provider`, `permission-denied`, `timeout`,
   `conflict`, `interrupted`, or `internal`.
 
-A snapshot emits exactly one provider row for every provider ID, zero or one of
-each singleton state ID, then one `complete<TAB>snapshot`. List record IDs
-(`update`, `repository`, and `account`) must be unique within their record type.
-An operation stream emits exactly one operation ID and then one
-`complete<TAB>operation` after its terminal state.
+A snapshot emits exactly one provider row for every provider ID, exactly one
+`filesystem-summary` state, zero or one of every other singleton state ID, then
+one `complete<TAB>snapshot`. List record IDs
+(`update`, `repository`, `account`, and `filesystem`) must be unique within their
+record type. An operation stream emits exactly one operation ID, exactly one
+audit row after the terminal operation record, and then one
+`complete<TAB>operation`. The audit ID and kind must match the operation, its
+result must match the terminal state, and no duplicate audit row is accepted.
 
 Allowed operation transitions are:
 
