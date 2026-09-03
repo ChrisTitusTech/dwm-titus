@@ -28,19 +28,19 @@ delegated or unsupported.
 
 | Capability | Read owner | Mutation owner | Class | Cancellation and denial | Phase 6 disposition |
 | --- | --- | --- | --- | --- | --- |
-| Update status and available packages | PackageKit 1.x system D-Bus API using the Fedora DNF5 backend | PackageKit `UpdatePackages` transaction and PackageKit polkit policy | Read-only and delegated | The transaction `AllowCancel` property is authoritative. Cancel is offered only while true. Authorization denial ends the operation without hiding the last readable snapshot. | Implement |
+| Update status and available packages | Patched PackageKit system D-Bus API using the Fedora DNF5 backend | PackageKit `UpdatePackages` with the fixed `ONLY_TRUSTED` transaction flag and PackageKit polkit policy | Read-only and delegated | Mutation requires upstream PackageKit 1.3.5 or newer, or Fedora's `1.3.4-3.fc44` security backport. Blocked updates remain visible but are excluded from installation. The transaction `AllowCancel` property is authoritative. Cancel is offered only while true. Authorization denial ends the operation without hiding the last readable snapshot. | Implement |
 | Package metadata refresh | PackageKit transaction | PackageKit `RefreshCache` transaction | Delegated | Starts only from an explicit Refresh action. PackageKit owns cancellation and repository/network errors. | Implement |
 | Update interruption and history | PackageKit active transaction list, transaction signals, and PackageKit transaction history | None | Read-only | An operation journal identifies incomplete local operations. PackageKit remains the source of truth for transaction completion. | Implement |
 | Date, timezone, and NTP | `org.freedesktop.timedate1` properties | `SetTimezone` and `SetNTP` with interactive authorization | Read-only and delegated | A pending confirmation can be canceled before the D-Bus call. Denial preserves properties and reports no change. Manual clock setting is not exposed. | Implement |
 | System locale | `org.freedesktop.locale1` properties | `SetLocale` with interactive authorization | Read-only and delegated | A pending confirmation can be canceled before the D-Bus call. Denial preserves properties and reports no change. Success includes logout guidance. Keyboard layout remains owned by Input Settings. | Implement |
 | User accounts | AccountsService object and user properties | Fedora `lxqt-admin-user` entry point; current-user password uses a fixed terminal `passwd` entry point | Read-only and delegated | Settings never accepts usernames, passwords, group names, or arbitrary account commands. Missing tools leave the account summary readable. | Implement entry points; do not implement account mutation |
-| Printers | CUPS service availability and bounded destination summary | Fedora `system-config-printer` | Read-only and delegated | The trusted tool and CUPS own authentication, cancellation, and device policy. Missing CUPS or tool state is capability-scoped. | Implement entry point |
+| Printers | CUPS service availability | Fedora `system-config-printer` | Read-only and delegated | The trusted tool and CUPS own printer discovery, authentication, cancellation, and device policy. Missing CUPS or tool state is capability-scoped. | Implement entry point |
 | Software sources | PackageKit repository records | Fedora `dnfdragora` when installed | Read-only and delegated | Settings does not accept repository identifiers for mutation. The delegated tool owns confirmation and authorization. | Implement entry point |
 | System identity and resources | `/etc/os-release`, kernel, architecture, bounded `/proc` records, and mounted-filesystem APIs | None | Read-only | Probe failures remain per record. No background poller is added. | Implement |
 | Storage overview | Existing `dwm-system-health` structured snapshot | Existing fixed user and installed-helper repairs only | Read-only, user-session, and privileged | Existing confirmation, authorization-denial, and fixed repair allowlists remain unchanged. | Reuse and link |
-| Privacy and security status | The fixed sources in the Security Status section below | Trusted Fedora tools or documented recovery guidance | Read-only, delegated, and unsupported | Unknown, inaccessible, disabled, and unsupported are distinct states. No firewall, encryption, or SELinux mutation is added. | Implement status and guidance |
+| Privacy and security status | The fixed sources in the Security Status section below | Trusted Fedora tools or documented recovery guidance | Read-only and delegated | Probe status and semantic value remain distinct: for example, an inaccessible probe is `restricted` with value `unknown`, while a successful disabled probe is `available` with value `disabled`. No firewall, encryption, or SELinux mutation is added. | Implement status and guidance |
 | Diagnostics and recovery | Existing `dwm-system-health` and `dwm-diagnostics` records | Existing fixed repair actions and exported evidence | Read-only, user-session, and privileged | Denial leaves the user scan visible. Broad service names and commands remain rejected. | Reuse and link |
-| Advanced storage, firewall policy, general services, encryption setup, and factory reset | No narrow provider | Trusted external administration or reinstall/recovery documentation | Delegated or unsupported | No generic elevation, command runner, device path, service name, or arbitrary file path crosses QML. | Explicitly exclude |
+| Advanced storage, firewall policy, general services, encryption setup, and factory reset | No narrow provider | Trusted external administration or reinstall/recovery documentation | Delegated | Unsupported status is used where no trusted entry point exists. No generic elevation, command runner, device path, service name, or arbitrary file path crosses QML. | Explicitly exclude |
 
 ## Selected Fedora Interfaces
 
@@ -54,9 +54,15 @@ PackageKit GLib/D-Bus API rather than parsing `dnf`, `pkcon`, or terminal text.
 
 The PackageKit service is authoritative for package state. The project provider
 adds only validation, bounded record formatting, a private operation journal,
-and the fixed Settings lifecycle. It never runs DNF concurrently, assumes a
-PackageKit transaction succeeded from process exit alone, or reports an update
-complete before the `Finished` result arrives.
+and the fixed Settings lifecycle. `UpdatePackages` always uses PackageKit's
+`ONLY_TRUSTED` transaction flag. Before exposing update mutation, the provider
+uses RPM version comparison and requires upstream PackageKit 1.3.5 or newer, or
+the Fedora 44 security-backport floor `1.3.4-3.fc44`; an older or unrecognized
+build leaves discovery readable but reports the install action unavailable.
+This gate protects the transaction flags from local-client reinvocation. The
+provider never runs DNF concurrently, assumes a PackageKit transaction
+succeeded from process exit alone, or reports an update complete before the
+`Finished` result arrives.
 
 ### Regional State
 
@@ -76,14 +82,14 @@ dwm-system-management locale-set LANG=LOCALE
 ```
 
 `ZONE` is at most 255 ASCII bytes, contains no control characters, empty path
-components, `.` or `..` components, and must exactly match a zone in
-`/usr/share/zoneinfo/zone1970.tab` (with `/usr/share/zoneinfo/zone.tab` as the
-documented fallback) or the special value `UTC`. `LOCALE` is at most 128 ASCII
-bytes, contains no control or whitespace characters, and must exactly match a
-name reported by the bounded `locale -a` fallback because locale1 has no locale
-enumeration method. `LANG` is the only accepted locale key. Arguments are
-validated before confirmation and again immediately before the fixed D-Bus
-call. No other option, key, D-Bus argument, or trailing argument is accepted.
+components, `.` or `..` components, and must exactly match a value returned by
+the fixed `org.freedesktop.timedate1.ListTimezones` method. `LOCALE` is
+at most 128 ASCII bytes, contains no control or whitespace characters, and must
+exactly match a name reported by the bounded `locale -a` fallback because
+locale1 has no locale enumeration method. `LANG` is the only accepted locale
+key. Arguments are validated before confirmation and again immediately before
+the fixed D-Bus call. No other option, key, D-Bus argument, or trailing argument
+is accepted.
 
 ### Accounts, Printers, and Sources
 
@@ -103,30 +109,45 @@ tools are reported individually and never hide readable service state.
 
 ### Security Status
 
-Each probe has a fixed source and emits its own unavailable or restricted state
-instead of making the combined security summary fail:
+Each probe has a fixed source and emits its own state instead of making the
+combined security summary fail. Status describes whether the probe can produce
+authoritative data: `available` for a known value, `partial` for accessible but
+incomplete or malformed evidence, `restricted` for read denial, `unavailable`
+when an expected command or service cannot be reached, and `unsupported` when
+the capability or its platform source does not exist. Semantic values are
+separate: SELinux uses `enforcing`, `permissive`, `disabled`, or `unknown`;
+Secure Boot, firewall, and screen lock use `enabled`, `disabled`, or `unknown`;
+root encryption uses `encrypted`, `unencrypted`, or `unknown`. Every status
+other than `available` uses value `unknown`.
+
+The individual mappings are:
 
 - SELinux runtime enforcement comes from the single-byte
   `/sys/fs/selinux/enforce` kernel interface. `1` is enforcing and `0` is
   permissive. When that interface is absent, the provider parses only the
   allowlisted `SELINUX` key in `/etc/selinux/config`; the exact value `disabled`
-  is disabled, while `enforcing` or `permissive` without the runtime interface
-  is inconsistent and therefore unknown. If neither source establishes state,
-  the capability is unsupported. Read denial or malformed data is restricted;
-  it is never silently treated as disabled.
+  is `available`/`disabled`, while `enforcing` or `permissive` without the
+  runtime interface is inconsistent and therefore `partial`/`unknown`. If
+  neither source establishes state, the result is `unsupported`/`unknown`.
+  Read denial is `restricted`/`unknown`; malformed accessible data is
+  `partial`/`unknown`. Neither is silently treated as disabled.
 - Secure Boot comes from the EFI `SecureBoot-*` variable under
   `/sys/firmware/efi/efivars/`. Its attributes prefix is skipped and the one-byte
-  payload must be `0` or `1`. An absent EFI variables filesystem is unsupported;
-  a missing variable on EFI or unreadable/malformed data is unknown.
+  payload must be `0` or `1`. An absent EFI variables filesystem is
+  `unsupported`/`unknown`; a missing variable or malformed payload on EFI is
+  `partial`/`unknown`; read denial is `restricted`/`unknown`.
 - Firewall state comes from the `ActiveState` property for
   `firewalld.service` on `org.freedesktop.systemd1`. An absent unit is
-  unsupported, a bus or property failure is unavailable, and only an explicit
-  inactive state is disabled.
+  `unsupported`/`unknown`, a bus or property failure is
+  `unavailable`/`unknown`, and only an explicit inactive state is
+  `available`/`disabled`.
 - Root-storage encryption evidence comes from bounded `lsblk --json` output
   with the fixed `NAME,TYPE,FSTYPE,MOUNTPOINTS,PKNAME` columns. A root mount
   backed by a `crypt`/`crypto_LUKS` ancestry is encrypted; a fully resolved root
   ancestry without either is unencrypted. Missing, inaccessible, truncated, or
-  internally inconsistent topology is unknown.
+  internally inconsistent topology is `partial`/`unknown`; an unavailable
+  command is `unavailable`/`unknown`, and read denial is
+  `restricted`/`unknown`.
 - Screen-lock state reuses the `power-lock` record from the versioned power
   protocol documented in `POWER-PROTOCOL.md`; it does not launch a second
   GSettings or locker probe.
@@ -145,7 +166,7 @@ starts at minor version `0`:
 system-management-protocol<TAB>1<TAB>0
 provider<TAB>id<TAB>status<TAB>class<TAB>owner<TAB>detail
 state<TAB>id<TAB>status<TAB>value<TAB>detail
-update<TAB>package-id<TAB>severity<TAB>name<TAB>version<TAB>summary
+update<TAB>package-id<TAB>severity<TAB>installable|blocked<TAB>name<TAB>version<TAB>summary
 repository<TAB>id<TAB>enabled|disabled<TAB>description
 account<TAB>object-path<TAB>current|other<TAB>display-name<TAB>login-name
 action<TAB>id<TAB>available|unavailable<TAB>class<TAB>owner<TAB>label<TAB>detail
@@ -166,18 +187,21 @@ The initial vocabulary is closed for known record fields:
 - Provider IDs are `updates`, `regional`, `accounts`, `printers`, `sources`,
   `information`, `storage`, `security`, `diagnostics`, and `recovery`. Provider
   status is `available`, `partial`, `restricted`, `unavailable`, or
-  `unsupported`; class is `read-only`, `user-session`, `privileged`,
-  `delegated`, or `unsupported`.
+  `unsupported`; class is `read-only`, `user-session`, `privileged`, or
+  `delegated`. Capabilities without a provider retain their applicable class and
+  use the `unsupported` status.
 - State IDs are `update-summary`, `update-last-refresh`, `update-restart`,
   `timezone`, `ntp-enabled`, `ntp-synchronized`, `locale`, `accounts-count`,
   `cups-service`, `selinux`, `secure-boot`, `firewall`, `root-encryption`, and
   `screen-lock`. State status uses the provider-status enum. Booleans are
   `yes`, `no`, or `unknown`; restart values are `none`, `session`, `system`,
   `security-session`, `security-system`, or `unknown`. Other values are
-  bounded display text owned by the named state.
-- Update severity is `security`, `bugfix`, `enhancement`, `normal`, or
-  `unknown`. Repository state is `enabled` or `disabled`. Account scope is
-  `current` or `other`.
+  bounded display text owned by the named state. Security-state values use the
+  exact per-ID enums and status/value mapping defined in Security Status.
+- Update severity is `security`, `important`, `bugfix`, `enhancement`, `normal`,
+  `low`, or `unknown`. Update installability is `installable` or `blocked`;
+  blocked package IDs are never passed to `UpdatePackages`. Repository state is
+  `enabled` or `disabled`. Account scope is `current` or `other`.
 - Operation kind is `refresh`, `update`, `timezone`, `ntp`, `locale`, or
   `delegate`. Operation state is `pending`, `authorizing`, `running`,
   `cancel-requested`, `permission-denied`, `canceled`, `failed`, `interrupted`,
