@@ -35,11 +35,12 @@ lifecycle. The 30-second Settings CPU delta was 0.066 percentage points; the
 large-surface closed sample was 0.00 percent.
 
 The final checkout was synchronized with rollback backup
-`20260903T015133Z-2738591`. On Fedora 44 X11, one managed Quickshell process
-owned working IPC and five tray clients, with one 30-pixel panel on each of two
-real monitors. Settings reached `ready` at 1180x760. Closed live CPU measured
-0.000 percent over 30 seconds. The running, installed, and checkout DWM bytes
-matched exactly.
+`20260903T015133Z-2738591`. A fresh LightDM login activated the installed DWM
+without a deleted executable suffix. On Fedora 44 X11, one managed Quickshell
+process owned working IPC, the available notification policy, and four current
+tray clients, with one 30-pixel panel on each of two real monitors. Settings
+reached `ready` at 1180x760. Closed live CPU measured 0.000 percent over 30
+seconds. The running, installed, and checkout DWM bytes matched exactly.
 
 A live Nord-to-Dracula preview timed out and restored Nord plus all 14 tracked
 theme and integration paths exactly. A live sticky-keys preview changed the
@@ -49,10 +50,6 @@ restart.
 
 ## Preserved Limitations
 
-- The exact final documentation revision did not trigger another disruptive
-  LightDM logout/login. Earlier Phase 5 work passed a fresh real LightDM login;
-  the final active DWM bytes match the checkout, the synchronized Quickshell
-  tree restarted successfully, and LightDM plus `startx` fixtures pass.
 - Actual host package removal was not performed; combined optional loss is
   fixture- and nested-X11-qualified.
 - Some installed GTK candidates are incomplete and correctly remain partial.

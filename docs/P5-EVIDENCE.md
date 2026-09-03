@@ -63,12 +63,17 @@ then reported every managed file matching the checkout.
 
 The supported shell restart left one managed Quickshell process with working
 IPC, five tray clients, and the notification policy available. After closing
-all managed surfaces, a 30-second live sample consumed 0.000 percent CPU. The
-running DWM inode, installed binary, and checkout binary were byte-identical at
-SHA-256 `95e51d1378feefc9ff2c870ad7167dd335c7e52824ea284677810515ad8cbcbb`.
-The active inode retains the normal deleted suffix after same-content install
-replacement, so a later logout/login will refresh its pathname even though its
-executed bytes already match.
+all managed surfaces, a 30-second live sample consumed 0.000 percent CPU.
+
+A subsequent fresh LightDM login in the real X11 session activated
+`/usr/local/bin/dwm` without a deleted executable suffix. The running DWM,
+installed binary, and checkout binary were byte-identical at SHA-256
+`95e51d1378feefc9ff2c870ad7167dd335c7e52824ea284677810515ad8cbcbb`.
+The managed Quickshell process started with that session, exposed working IPC
+and four current tray clients, and owned the available notification policy.
+The graphical-session and XDG autostart targets were active with no failed user
+units. A stale nested Xvfb session from earlier qualification was terminated;
+no residual nested DWM or X server remained.
 
 The real X11 session exposed DP-0 at 2560x1440 and HDMI-0 at 1920x1080. It had
 one 30-pixel panel on each monitor. Installed IPC opened Settings at 1180x760;
@@ -87,16 +92,11 @@ previously absent input settings file remained absent.
 | Phase 5 exit criterion | Qualification evidence |
 | --- | --- |
 | Supported applications and shell surfaces follow the selected appearance. | The live transactional theme preview updated the shared provider and integrations, then restored 14 tracked paths exactly. Automated personalization, wallpaper, toolkit, panel, hot-reload, and nested-X11 tests passed. |
-| Invalid themes or missing assets cannot prevent login or shell startup. | The full suite passed malformed, duplicate, missing-asset, optional-loss, startup, display-manager, and `startx` fixtures. Existing real LightDM evidence reached the managed desktop, and the final installed shell restarted from the synchronized tree with one healthy owner. |
+| Invalid themes or missing assets cannot prevent login or shell startup. | The full suite passed malformed, duplicate, missing-asset, optional-loss, startup, display-manager, and `startx` fixtures. A fresh LightDM login in the real session activated the final installed DWM and managed shell with one healthy owner. |
 | Accessibility choices persist and are usable at common display sizes. | Nested X11 passed keyboard navigation, persistence, reset, notification delivery/history, and compact rendering. Live AccessX restoration, two-monitor panels, the 1180x760 Settings surface, and the 30-second closed-idle sample passed. |
 
 ## Explicit Limitations
 
-- The exact final documentation revision was not followed by another disruptive
-  LightDM logout/login. Earlier Phase 5 activation completed a real fresh
-  LightDM login; the final combined suite covers LightDM and `startx` fixtures,
-  the active DWM bytes match the final checkout, and the synchronized managed
-  Quickshell tree was restarted successfully.
 - Actual removal of optional host packages was not performed. Combined missing
   Picom, Feh, toolkit, wallpaper, and delegated-tool behavior is fixture- and
   nested-X11-qualified.

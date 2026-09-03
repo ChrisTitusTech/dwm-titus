@@ -330,13 +330,14 @@ Make the desktop appearance and interaction model configurable as one system.
   installs, and exact restoration checks passed. The 30-second Settings CPU
   delta was 0.066 percentage points against the 0.5-point limit.
 - On Fedora 44 X11, the synchronized installed tree ran one managed Quickshell
-  process, five tray clients, and one 30-pixel panel on each of two active
-  monitors. Settings reached `ready` at 1180x760, and closed idle measured
-  0.000 percent CPU over 30 seconds.
+  process and one 30-pixel panel on each of two active monitors. A fresh
+  LightDM login activated the installed DWM and registered four current tray
+  clients. Settings reached `ready` at 1180x760, and closed idle measured 0.000
+  percent CPU over 30 seconds.
 - Live theme and AccessX previews changed and restored their exact starting
   state. The running, installed, and checkout DWM binaries were byte-identical.
-  Fresh-login, optional-package-removal, and incomplete installed GTK theme
-  limitations are recorded in `docs/P5-EVIDENCE.md`.
+  Optional-package-removal and incomplete installed GTK theme limitations are
+  recorded in `docs/P5-EVIDENCE.md`.
 
 ## Phase 6: System Management
 
