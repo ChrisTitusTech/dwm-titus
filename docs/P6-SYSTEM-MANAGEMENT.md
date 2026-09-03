@@ -526,8 +526,8 @@ The first operation record must be `pending`; consumers reject any other
 initial state. Audit timestamps are canonical UTC RFC 3339 whole seconds in the
 exact `YYYY-MM-DDTHH:MM:SSZ` form and both are required on the terminal audit
 row. Consumers do not compare their wall-clock order: `finished` may precede
-`started` when NTP, a regional action, or another administrator moves the clock
-backward. Record order and the validated operation transition sequence remain
+`started` when NTP or an administrator moves the system clock backward. Record
+order and the validated operation transition sequence remain
 authoritative for lifecycle ordering.
 
 Allowed operation transitions are:
