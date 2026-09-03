@@ -691,6 +691,8 @@ contract are also qualified. The optional UI-5 inventory adopts no runtime
 experience: clipboard history and reminders are deferred, while emoji/symbol
 and generic image pickers are rejected. Reopening a UI-5 candidate requires an
 explicit product requirement and a separately qualified X11-native boundary.
+Phase 5 is not complete until combined qualification maps every phase exit
+criterion to Section 9 evidence and records all untested or limited paths.
 
 The installer contains a Fedora-only package map and rejects other systems.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and
