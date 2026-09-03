@@ -27,6 +27,16 @@ Every Settings operation uses exactly one primary class:
 Unsupported is a capability status, not an operation class. It means no suitable
 provider contract exists yet, so the UI must explain or hide the capability.
 
+Provider records use `available` for complete readable state, `partial` for a
+usable incomplete result, `restricted` when the owning interface is reachable
+but policy or permissions deny that specific read, `unavailable` when an
+expected interface cannot be reached, and `unsupported` when no source exists.
+A restricted individual record may therefore have an unknown value; capability
+aggregation preserves and displays any readable sibling records rather than
+treating the entire section as unreadable. Mutation authorization denial is the
+separate terminal `permission-denied` operation/error state and never changes a
+previously readable provider status.
+
 An operation does not become safe for Settings merely because an existing
 script can run it. QML may pass documented arguments to a fixed helper action,
 but it must not construct shell commands or request elevation for repository,

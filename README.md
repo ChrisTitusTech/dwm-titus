@@ -79,7 +79,7 @@ before making changes.
 | Profile | Includes |
 | --- | --- |
 | `core` | The X11 session, required dependencies, and one terminal emulator. |
-| `recommended` | The complete everyday desktop, including Alacritty, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, and brightness tools. |
+| `recommended` | The complete everyday desktop, including Alacritty, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, brightness, and the PackageKit, AccountsService, CUPS, and printer-tool prerequisites for Phase 6 system management. |
 | `full` | The recommended desktop plus optional file-manager, keyring, wallpaper, display-manager, and supported Fedora gaming integrations. |
 
 `maim` is an optional dependency used only by the screenshot hotkeys. If it is

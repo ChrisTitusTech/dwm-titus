@@ -51,6 +51,10 @@ the DNF5 backend, update discovery, repository discovery, update transactions,
 transaction lists, authorization checks, progress signals, error codes,
 restart guidance, and cancellation state. The provider consumes the documented
 PackageKit GLib/D-Bus API rather than parsing `dnf`, `pkcon`, or terminal text.
+Update inventory always calls `GetUpdates` with PackageKit's `NONE` filter so
+the confirmed install-all action operates on the complete unfiltered snapshot.
+The explicit Refresh action calls `RefreshCache` with `force=true`; passive
+discovery never calls it.
 
 The PackageKit service is authoritative for package state. The project provider
 adds only validation, bounded record formatting, a private operation journal,
@@ -93,11 +97,23 @@ is accepted.
 
 ### Accounts, Printers, and Sources
 
-AccountsService supplies read-only account objects and properties. Account
-creation, deletion, group membership, and administrator changes remain in the
-Fedora-packaged `lxqt-admin-user` tool. The current user's password action opens
-the fixed `passwd` program in the configured terminal without transporting a
-password through QML.
+AccountsService supplies read-only account objects and properties. The provider
+calls only `org.freedesktop.Accounts.ListCachedUsers`, adds the invoking user's
+object from `FindUserById` when it is absent, and de-duplicates the object
+paths. It reserves one of the 256 record slots for that valid current-user
+object, then sorts and accepts at most 255 other objects. It reads only
+`UserName`, `RealName`, `SystemAccount`, and `LocalAccount` from
+`org.freedesktop.Accounts.User`.
+Other objects with `SystemAccount=true`, and any object with a malformed path or
+missing `UserName`, are excluded. The current scope is assigned only when the
+object returned by `FindUserById(os.getuid())` matches; all other emitted
+objects are `other`.
+`accounts-count` is the emitted row count. More than 256 candidate paths or an
+invalid object makes the accounts provider `partial` while preserving the valid
+bounded subset. Account creation, deletion, group membership, and administrator
+changes remain in the Fedora-packaged `lxqt-admin-user` tool. The current user's
+password action opens the fixed `passwd` program in the configured terminal
+without transporting a password through QML.
 
 CUPS remains the printer service. Phase 6 reports service/tool availability and
 opens Fedora's `system-config-printer`; it does not reproduce printer discovery,
@@ -153,7 +169,7 @@ incomplete or malformed evidence, `restricted` for read denial, `unavailable`
 when an expected command or service cannot be reached, and `unsupported` when
 the capability or its platform source does not exist. Semantic values are
 separate: SELinux uses `enforcing`, `permissive`, `disabled`, or `unknown`;
-Secure Boot, firewall, and screen lock use `enabled`, `disabled`, or `unknown`;
+Secure Boot, firewalld, and screen lock use `enabled`, `disabled`, or `unknown`;
 root encryption uses `encrypted`, `unencrypted`, or `unknown`. Every status
 other than `available` uses value `unknown`.
 
@@ -174,12 +190,13 @@ The individual mappings are:
   `available`/`disabled`. An absent EFI variables filesystem is
   `unsupported`/`unknown`; a missing variable or malformed payload on EFI is
   `partial`/`unknown`; read denial is `restricted`/`unknown`.
-- Firewall state comes from the `ActiveState` property for
+- Firewalld state comes from the `ActiveState` property for
   `firewalld.service` on `org.freedesktop.systemd1`. An absent unit is
   `unsupported`/`unknown`, a bus or property failure is
   `unavailable`/`unknown`, `active` is `available`/`enabled`, and `inactive` is
   `available`/`disabled`. Failed or transitional active states are
-  `partial`/`unknown`.
+  `partial`/`unknown`. This state describes the firewalld service only; it does
+  not claim that direct nftables rules or another firewall manager are absent.
 - Root-storage encryption evidence comes from bounded `lsblk --json` output
   with the fixed `NAME,TYPE,FSTYPE,MOUNTPOINTS,PKNAME` columns. A root mount
   backed by a `crypt`/`crypto_LUKS` ancestry is encrypted; a fully resolved root
@@ -188,8 +205,13 @@ The individual mappings are:
   command is `unavailable`/`unknown`, and read denial is
   `restricted`/`unknown`.
 - Screen-lock state reuses the `power-lock` record from the versioned power
-  protocol documented in `POWER-PROTOCOL.md`; it does not launch a second
-  GSettings or locker probe.
+  protocol documented in `POWER-PROTOCOL.md`; it describes automatic screen
+  locking and does not launch a second GSettings or locker probe. An
+  `available` record with `ENABLED=no` maps to `available`/`disabled`. An
+  `available` record with `ENABLED=yes` and `RUNNING=yes` maps to
+  `available`/`enabled`; `ENABLED=yes` with `RUNNING=no`, or malformed boolean
+  fields, maps to `partial`/`unknown`. A `partial`, `restricted`, or
+  `unavailable` power-lock state retains that status with value `unknown`.
 - Update state reuses the PackageKit snapshot from this provider. It never
   starts a refresh merely to populate the security summary.
 
@@ -232,18 +254,19 @@ The initial vocabulary is closed for known record fields:
   use the `unsupported` status.
 - State IDs are `update-summary`, `update-last-refresh`, `update-restart`,
   `timezone`, `ntp-enabled`, `ntp-synchronized`, `locale`, `accounts-count`,
-  `cups-service`, `selinux`, `secure-boot`, `firewall`, `root-encryption`, and
+  `cups-service`, `selinux`, `secure-boot`, `firewalld`, `root-encryption`, and
   `screen-lock`, plus information IDs `os-name`, `os-version`,
   `kernel-release`, `architecture`, `hardware-vendor`, `hardware-model`,
   `cpu-model`, `logical-cpus`, `memory-total-bytes`, `memory-available-bytes`,
   `swap-total-bytes`, `swap-free-bytes`, `uptime-seconds`, and
   `filesystem-summary`. State status uses the provider-status enum. Booleans are
-  `yes`, `no`, or `unknown`; restart values are `none`, `session`, `system`,
-  `security-session`, `security-system`, or `unknown`. Count, byte, uptime, and
-  filesystem-summary values are unsigned decimal integers when status is
-  `available` and `unknown` for any other status. Other values are bounded
-  display text owned by the named state. Security-state values use the exact
-  per-ID enums and status/value mapping defined in Security Status.
+  `yes`, `no`, or `unknown`; restart values are `none`, `application`,
+  `session`, `system`, `security-session`, `security-system`, or `unknown`.
+  Count, byte, uptime, and filesystem-summary values are unsigned decimal
+  integers when status is `available` and `unknown` for any other status. Other
+  values are bounded display text owned by the named state. Security-state
+  values use the exact per-ID enums and status/value mapping defined in
+  Security Status. PackageKit `RestartEnum.APPLICATION` maps to `application`.
 - Update severity is `critical`, `security`, `important`, `bugfix`,
   `enhancement`, `normal`, `low`, or `unknown`. Update installability is
   `installable` or `blocked`; blocked package IDs are never passed to
@@ -261,18 +284,36 @@ The initial vocabulary is closed for known record fields:
   cancelable is `yes` or `no`. Audit result uses only the terminal operation
   states.
 - Action availability is `available` or `unavailable` and action class uses the
-  provider class enum. Error codes are the bounded PackageKit/systemd code or
-  one of `malformed`, `missing-provider`, `permission-denied`, `timeout`,
-  `conflict`, `interrupted`, or `internal`.
+  provider class enum. The error capability field is exactly one provider ID,
+  which is also its owner. Error codes are the closed normalized enum
+  `network`, `repository`, `conflict`, `signature`, `package`, `unsupported`,
+  `malformed`, `missing-provider`, `permission-denied`, `canceled`, `timeout`,
+  `interrupted`, or `internal`. PackageKit `NO_NETWORK` maps to `network`;
+  repository fetch/configuration/not-found and no-cache errors map to
+  `repository`; dependency, file, database-lock, and package-conflict errors map
+  to `conflict`; GPG, signature, key, and unsigned-repository errors map to
+  `signature`; other package download/install/remove/update errors map to
+  `package`; `NOT_AUTHORIZED`, `NOT_SUPPORTED`, and transaction cancellation
+  map to `permission-denied`, `unsupported`, and `canceled`, respectively.
+  systemd `AccessDenied`, missing service/object/unit, invalid-argument,
+  timeout, and busy/conflict D-Bus errors map to `permission-denied`,
+  `missing-provider`, `malformed`, `timeout`, and `conflict`; every unlisted
+  upstream error maps to `internal`. Raw numeric enums, D-Bus error names, and
+  localized messages never occupy the code field and may appear only as bounded
+  sanitized detail.
 
 A snapshot emits exactly one provider row for every provider ID, exactly one
-`filesystem-summary` state, zero or one of every other singleton state ID, then
-one `complete<TAB>snapshot`. List record IDs
+row for every action ID, exactly one `filesystem-summary` state, zero or one of
+every other singleton state ID, then one `complete<TAB>snapshot`. List record IDs
 (`update`, `repository`, `account`, and `filesystem`) must be unique within their
 record type. An operation stream emits exactly one operation ID, exactly one
 audit row after the terminal operation record, and then one
 `complete<TAB>operation`. The audit ID and kind must match the operation, its
 result must match the terminal state, and no duplicate audit row is accepted.
+The first operation record must be `pending`; consumers reject any other
+initial state. Audit timestamps are canonical UTC RFC 3339 whole seconds in the
+exact `YYYY-MM-DDTHH:MM:SSZ` form. `started` must be no later than `finished`,
+and both are required on the terminal audit row.
 
 Allowed operation transitions are:
 
@@ -323,6 +364,14 @@ package ID, user, unit, device, path, or elevation mechanism.
   timestamps, operation kinds, terminal results, and sanitized diagnostics. They
   never record passwords, environment dumps, repository credentials, package
   payloads, or unbounded output.
+- Before any mutation, the provider obtains the fixed service transaction or
+  operation ID without invoking its mutating method, atomically writes and
+  `fsync`s the pending journal record, and `fsync`s the journal directory. For
+  PackageKit it calls `CreateTransaction`, persists the returned transaction
+  object path, and only then invokes `RefreshCache(force=true)` or
+  `UpdatePackages(ONLY_TRUSTED, ...)` on that transaction. Each later state and
+  terminal result is atomically and durably replaced in order. Failure to
+  create or persist the record prevents the mutation from starting.
 - A PackageKit-backed `refresh` or `update` operation in any nonterminal state
   that lacks a terminal PackageKit result is `interrupted`, not successful.
   The transition table permits this recovery result before and after the
@@ -338,7 +387,11 @@ package ID, user, unit, device, path, or elevation mechanism.
 - PackageKit `UpdatesChanged`, `RepoListChanged`, transaction-list, property,
   progress, package, error, restart, and finished signals drive update state.
 - systemd D-Bus property changes drive time and locale refresh while the System
-  section is open. A bounded snapshot remains available without a monitor.
+  section is open. Because timedate1 marks `NTPSynchronized` and `CanNTP` as not
+  emitting change signals, one non-overlapping bounded read of only those
+  properties runs every 30 seconds while the section is open and immediately
+  after an NTP action. The fallback stops on section close. A bounded snapshot
+  remains available without a monitor.
 - AccountsService user-added, user-deleted, and property signals may refresh
   the account summary only while the section is open.
 - CUPS and delegated-tool availability are bounded snapshots. Phase 6 adds no
