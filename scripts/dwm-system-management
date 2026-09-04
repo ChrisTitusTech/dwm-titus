@@ -119,6 +119,17 @@ JOURNAL_DATA_NAMES = (
     *(f"terminal-{index:02d}" for index in range(JOURNAL_TERMINAL_COUNT)),
 )
 JOURNAL_NAMES = (*JOURNAL_DATA_NAMES, JOURNAL_CURSOR_NAME)
+JOURNAL_ACTIVE_ADMISSION_COMMITS = 12
+JOURNAL_CONTROL_ADMISSION_COMMITS = {
+    # pending, three later nonterminal states, six strictly stronger restart
+    # contributions, the terminal result, and the final empty active payload.
+    "active": JOURNAL_ACTIVE_ADMISSION_COMMITS,
+    # Snapshots may independently prune session and application buckets while
+    # an update runs; terminalization then commits the new contribution.
+    "restart": 3,
+    "handoff": 2,
+    JOURNAL_CURSOR_NAME: 1,
+}
 BOOT_ID_PATTERN = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
@@ -199,6 +210,10 @@ class JournalLayoutError(JournalFileError):
     """The fixed journal path set could not be opened or initialized safely."""
 
 
+class JournalAdmissionError(RuntimeError):
+    """A valid journal state cannot admit another operation."""
+
+
 @dataclass(frozen=True)
 class JournalFrame:
     sequence: int
@@ -249,6 +264,14 @@ class JournalState:
     active: JournalOperation | None
     handoff: JournalHandoff | None
     terminals: tuple[JournalOperation | None, ...]
+
+
+@dataclass(frozen=True)
+class JournalAdmission:
+    """Validated journal state and its next reusable terminal slot."""
+
+    state: JournalState
+    slot: int
 
 
 @dataclass
@@ -2317,6 +2340,48 @@ def open_writable_journal(
                 raise JournalLayoutError(
                     "writable journal descriptor close failed"
                 ) from first_error
+
+
+def _load_writable_journal_state(
+    journal: JournalDescriptorSet,
+) -> tuple[JournalState, dict[str, JournalFrame]]:
+    if not isinstance(journal, JournalDescriptorSet) or not journal.writable:
+        raise JournalLayoutError("writable journal descriptor set is invalid")
+    journal.validate()
+    payloads: dict[str, str] = {}
+    frames: dict[str, JournalFrame] = {}
+    for name in JOURNAL_NAMES:
+        descriptor = journal.descriptor(name)
+        try:
+            _index, frame = _read_journal_file_unlocked(descriptor)
+        except (JournalFileError, JournalFrameError) as error:
+            raise JournalLayoutError(f"journal path {name} is malformed") from error
+        payloads[name] = frame.payload
+        frames[name] = frame
+    state = decode_journal_state(payloads)
+    journal.validate()
+    return state, frames
+
+
+def load_writable_journal_state(journal: JournalDescriptorSet) -> JournalState:
+    """Decode the complete state through an exclusively locked descriptor set."""
+    state, _frames = _load_writable_journal_state(journal)
+    return state
+
+
+def prepare_journal_admission(journal: JournalDescriptorSet) -> JournalAdmission:
+    """Select a reusable ring slot when no operation or handoff blocks admission."""
+    state, frames = _load_writable_journal_state(journal)
+    if state.active is not None or state.handoff is not None:
+        raise JournalAdmissionError("journal operation admission is blocked")
+    for name, required_commits in JOURNAL_CONTROL_ADMISSION_COMMITS.items():
+        if frames[name].sequence >= JOURNAL_SEQUENCE_MAX - required_commits:
+            raise JournalAdmissionError("journal control path has no commit headroom")
+    for offset in range(JOURNAL_TERMINAL_COUNT):
+        slot = (state.cursor + offset) % JOURNAL_TERMINAL_COUNT
+        if frames[f"terminal-{slot:02d}"].sequence < JOURNAL_SEQUENCE_MAX - 1:
+            return JournalAdmission(state, slot)
+    raise JournalAdmissionError("journal has no reusable terminal slot")
 
 
 @dataclass(frozen=True)

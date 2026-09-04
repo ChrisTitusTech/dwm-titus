@@ -2748,6 +2748,260 @@ class JournalWritableOpenTests(unittest.TestCase):
                 chain.close()
 
 
+class JournalAdmissionTests(unittest.TestCase):
+    boot_id = "01234567-89ab-cdef-0123-456789abcdef"
+    operation_id = "op-0123456789abcdef0123456789abcdef"
+
+    def open_initialized_chain(self, directory):
+        journal = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+        chain = provider.open_journal_directory_chain(str(journal))
+        provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
+        return journal, chain
+
+    def operation(self, *, state="running", slot=0):
+        terminal = state in provider.JOURNAL_OPERATION_TERMINAL_STATES
+        return provider.JournalOperation(
+            self.operation_id,
+            "updates-refresh",
+            "2026-09-04T18:00:00Z",
+            "2026-09-04T18:01:00Z" if terminal else None,
+            "refresh",
+            state,
+            None,
+            "Refreshing update metadata",
+            None,
+            "/org/freedesktop/PackageKit/transactions/1_deadbeef",
+            None,
+            None,
+            None,
+            None,
+            1 if terminal else None,
+            slot,
+        )
+
+    def set_sequence(self, journal, name, sequence, payload):
+        image = provider.encode_journal_frame(sequence, payload)
+        descriptor = journal.descriptor(name)
+        os.pwrite(descriptor, image + bytes(provider.JOURNAL_FRAME_SIZE), 0)
+        os.fsync(descriptor)
+
+    def test_loads_complete_state_and_selects_the_cursor_slot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    provider._commit_journal_file_unlocked(
+                        journal.descriptor("cursor"), "31"
+                    )
+                    admission = provider.prepare_journal_admission(journal)
+
+                    self.assertEqual(admission.slot, 31)
+                    self.assertEqual(admission.state.cursor, 31)
+                    self.assertIsNone(admission.state.active)
+                    self.assertIsNone(admission.state.handoff)
+                    self.assertEqual(len(admission.state.terminals), 32)
+                    self.assertEqual(
+                        journal.descriptor("terminal-31"),
+                        journal.descriptor(f"terminal-{admission.slot:02d}"),
+                    )
+            finally:
+                chain.close()
+
+    def test_scans_from_cursor_for_the_first_slot_with_commit_headroom(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    provider._commit_journal_file_unlocked(
+                        journal.descriptor("cursor"), "31"
+                    )
+                    self.set_sequence(
+                        journal,
+                        "terminal-31",
+                        provider.JOURNAL_SEQUENCE_MAX - 1,
+                        "",
+                    )
+                    self.set_sequence(
+                        journal,
+                        "terminal-00",
+                        provider.JOURNAL_SEQUENCE_MAX - 1,
+                        "",
+                    )
+
+                    admission = provider.prepare_journal_admission(journal)
+
+                    self.assertEqual(admission.state.cursor, 31)
+                    self.assertEqual(admission.slot, 1)
+            finally:
+                chain.close()
+
+    def test_rejects_admission_when_every_terminal_slot_lacks_headroom(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    for slot in range(provider.JOURNAL_TERMINAL_COUNT):
+                        self.set_sequence(
+                            journal,
+                            f"terminal-{slot:02d}",
+                            provider.JOURNAL_SEQUENCE_MAX - 1,
+                            "",
+                        )
+
+                    with self.assertRaisesRegex(
+                        provider.JournalAdmissionError,
+                        "no reusable terminal slot",
+                    ):
+                        provider.prepare_journal_admission(journal)
+            finally:
+                chain.close()
+
+    def test_rejects_each_control_path_without_commit_headroom(self):
+        payloads = provider._initial_journal_payloads(self.boot_id)
+        for name, required_commits in (
+            provider.JOURNAL_CONTROL_ADMISSION_COMMITS.items()
+        ):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                _journal_path, chain = self.open_initialized_chain(directory)
+                try:
+                    with provider.open_writable_journal(chain) as journal:
+                        self.set_sequence(
+                            journal,
+                            name,
+                            provider.JOURNAL_SEQUENCE_MAX - required_commits,
+                            payloads[name],
+                        )
+
+                        with self.assertRaisesRegex(
+                            provider.JournalAdmissionError,
+                            "control path has no commit headroom",
+                        ):
+                            provider.prepare_journal_admission(journal)
+                finally:
+                    chain.close()
+
+    def test_accepts_control_paths_with_the_exact_required_headroom(self):
+        payloads = provider._initial_journal_payloads(self.boot_id)
+        for name, required_commits in (
+            provider.JOURNAL_CONTROL_ADMISSION_COMMITS.items()
+        ):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                _journal_path, chain = self.open_initialized_chain(directory)
+                try:
+                    with provider.open_writable_journal(chain) as journal:
+                        self.set_sequence(
+                            journal,
+                            name,
+                            provider.JOURNAL_SEQUENCE_MAX - required_commits - 1,
+                            payloads[name],
+                        )
+
+                        admission = provider.prepare_journal_admission(journal)
+
+                        self.assertEqual(admission.slot, 0)
+                finally:
+                    chain.close()
+
+    def test_nonterminal_active_operation_blocks_admission_without_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    provider._commit_journal_file_unlocked(
+                        journal.descriptor("active"),
+                        provider.encode_journal_operation(self.operation()),
+                    )
+                    active_before = os.pread(
+                        journal.descriptor("active"), provider.JOURNAL_FILE_SIZE, 0
+                    )
+                    with self.assertRaisesRegex(
+                        provider.JournalAdmissionError, "admission is blocked"
+                    ):
+                        provider.prepare_journal_admission(journal)
+                    self.assertEqual(
+                        os.pread(
+                            journal.descriptor("active"),
+                            provider.JOURNAL_FILE_SIZE,
+                            0,
+                        ),
+                        active_before,
+                    )
+            finally:
+                chain.close()
+
+    def test_valid_terminal_handoff_blocks_admission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            terminal = self.operation(state="succeeded", slot=7)
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    provider._commit_journal_file_unlocked(
+                        journal.descriptor("terminal-07"),
+                        provider.encode_journal_operation(terminal),
+                    )
+                    provider._commit_journal_file_unlocked(
+                        journal.descriptor("cursor"), "08"
+                    )
+                    provider._commit_journal_file_unlocked(
+                        journal.descriptor("handoff"),
+                        provider.encode_journal_handoff(
+                            provider.JournalHandoff(self.operation_id, 7)
+                        ),
+                    )
+
+                    with self.assertRaisesRegex(
+                        provider.JournalAdmissionError, "admission is blocked"
+                    ):
+                        provider.prepare_journal_admission(journal)
+            finally:
+                chain.close()
+
+    def test_malformed_fixed_path_names_the_path_and_blocks_admission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    descriptor = journal.descriptor("terminal-12")
+                    os.pwrite(descriptor, bytes(provider.JOURNAL_FILE_SIZE), 0)
+                    os.fsync(descriptor)
+
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "terminal-12 is malformed"
+                    ):
+                        provider.prepare_journal_admission(journal)
+            finally:
+                chain.close()
+
+    def test_replaced_path_is_rejected_after_complete_decode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal_path, chain = self.open_initialized_chain(directory)
+            active = journal_path / "active"
+            detached = journal_path / "active-detached"
+            image = active.read_bytes()
+            original_decode = provider.decode_journal_state
+
+            def replace_active(payloads):
+                state = original_decode(payloads)
+                active.rename(detached)
+                active.write_bytes(image)
+                os.chmod(active, 0o600)
+                return state
+
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active identity is unsafe"
+                ):
+                    with provider.open_writable_journal(chain) as journal:
+                        with mock.patch.object(
+                            provider,
+                            "decode_journal_state",
+                            side_effect=replace_active,
+                        ):
+                            provider.prepare_journal_admission(journal)
+            finally:
+                chain.close()
+
+
 class JournalDirectoryChainTests(unittest.TestCase):
     def test_xdg_state_path_and_home_fallback_are_canonical(self):
         self.assertEqual(
