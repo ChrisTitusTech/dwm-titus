@@ -231,6 +231,138 @@ class SnapshotTests(unittest.TestCase):
         )
         self.assertEqual(rows(output, "error")[0][2], "malformed")
 
+
+class JournalFrameTests(unittest.TestCase):
+    def frame_with_header(self, frame, *, offset, value):
+        changed = bytearray(frame)
+        changed[offset : offset + len(value)] = value
+        length = int.from_bytes(changed[12:16], "little")
+        payload = changed[provider.JOURNAL_PAYLOAD_OFFSET :][:length]
+        changed[32:64] = hashlib.sha256(changed[:32] + payload).digest()
+        return bytes(changed)
+
+    def test_golden_frame_layout_and_initial_image(self):
+        payload = "op-0123456789abcdef0123456789abcdef\tupdate"
+        frame = provider.encode_journal_frame(0x0102030405060708, payload)
+
+        self.assertEqual(len(frame), 8192)
+        self.assertEqual(frame[:8], b"DWMJNL1\0")
+        self.assertEqual(frame[8:10], b"\x01\x00")
+        self.assertEqual(frame[10:12], b"\x00\x00")
+        self.assertEqual(
+            int.from_bytes(frame[12:16], "little"), len(payload.encode("utf-8"))
+        )
+        self.assertEqual(frame[16:24], b"\x08\x07\x06\x05\x04\x03\x02\x01")
+        self.assertEqual(frame[24:32], bytes(8))
+        self.assertEqual(
+            frame[32:64],
+            hashlib.sha256(frame[:32] + payload.encode("utf-8")).digest(),
+        )
+        self.assertEqual(frame[64 : 64 + len(payload)], payload.encode("utf-8"))
+        self.assertEqual(frame[64 + len(payload) :], bytes(8128 - len(payload)))
+        self.assertEqual(
+            provider.decode_journal_frame(frame),
+            provider.JournalFrame(0x0102030405060708, payload),
+        )
+
+        initial = provider.initial_journal_image("00")
+        self.assertEqual(len(initial), 16384)
+        self.assertEqual(initial[8192:], bytes(8192))
+        self.assertEqual(
+            provider.select_journal_frame(initial),
+            (0, provider.JournalFrame(1, "00")),
+        )
+
+    def test_maximum_utf8_payload_round_trips(self):
+        payload = "x" * provider.JOURNAL_PAYLOAD_MAX
+        frame = provider.encode_journal_frame(2, payload)
+
+        self.assertEqual(provider.decode_journal_frame(frame).payload, payload)
+        with self.assertRaisesRegex(provider.JournalFrameError, "too large"):
+            provider.encode_journal_frame(2, payload + "x")
+
+    def test_payload_and_sequence_validation(self):
+        for payload in ("nul\0byte", "line\nbreak", "carriage\rreturn"):
+            with self.subTest(payload=payload):
+                with self.assertRaises(provider.JournalFrameError):
+                    provider.encode_journal_frame(1, payload)
+        with self.assertRaisesRegex(provider.JournalFrameError, "not UTF-8"):
+            provider.encode_journal_frame(1, "unpaired-\udcff")
+        for sequence in (0, -1, provider.JOURNAL_SEQUENCE_MAX + 1, True):
+            with self.subTest(sequence=sequence):
+                with self.assertRaises(provider.JournalFrameError):
+                    provider.encode_journal_frame(sequence, "")
+
+    def test_decoder_rejects_every_canonical_boundary_violation(self):
+        base = provider.encode_journal_frame(4, "payload")
+        cases = {
+            "size": base[:-1],
+            "magic": self.frame_with_header(base, offset=0, value=b"BADJNL1\0"),
+            "major": self.frame_with_header(base, offset=8, value=b"\x02\x00"),
+            "minor": self.frame_with_header(base, offset=10, value=b"\x01\x00"),
+            "length": self.frame_with_header(
+                base,
+                offset=12,
+                value=(provider.JOURNAL_PAYLOAD_MAX + 1).to_bytes(4, "little"),
+            ),
+            "sequence": self.frame_with_header(base, offset=16, value=bytes(8)),
+            "reserved": self.frame_with_header(base, offset=24, value=b"\x01"),
+            "digest": base[:32] + bytes(32) + base[64:],
+            "padding": base[:-1] + b"\x01",
+        }
+        for name, image in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(provider.JournalFrameError):
+                    provider.decode_journal_frame(image)
+
+        invalid_utf8 = bytearray(provider.encode_journal_frame(4, "x"))
+        invalid_utf8[64] = 0xFF
+        invalid_utf8[32:64] = hashlib.sha256(
+            invalid_utf8[:32] + invalid_utf8[64:65]
+        ).digest()
+        with self.assertRaisesRegex(provider.JournalFrameError, "not UTF-8"):
+            provider.decode_journal_frame(bytes(invalid_utf8))
+
+        forbidden = bytearray(provider.encode_journal_frame(4, "x"))
+        forbidden[64] = 0
+        forbidden[32:64] = hashlib.sha256(forbidden[:32] + forbidden[64:65]).digest()
+        with self.assertRaisesRegex(provider.JournalFrameError, "forbidden"):
+            provider.decode_journal_frame(bytes(forbidden))
+
+    def test_selector_uses_highest_valid_sequence_and_survives_torn_peer(self):
+        older = provider.encode_journal_frame(9, "older")
+        newer = provider.encode_journal_frame(10, "newer")
+
+        self.assertEqual(
+            provider.select_journal_frame(older + newer),
+            (1, provider.JournalFrame(10, "newer")),
+        )
+        torn = newer[:40] + bytes(provider.JOURNAL_FRAME_SIZE - 40)
+        self.assertEqual(
+            provider.select_journal_frame(older + torn),
+            (0, provider.JournalFrame(9, "older")),
+        )
+
+    def test_selector_rejects_ambiguous_or_exhausted_files(self):
+        first = provider.encode_journal_frame(7, "first")
+        second = provider.encode_journal_frame(7, "second")
+        exhausted = provider.encode_journal_frame(provider.JOURNAL_SEQUENCE_MAX, "")
+
+        with self.assertRaisesRegex(provider.JournalFrameError, "conflicting"):
+            provider.select_journal_frame(first + second)
+        with self.assertRaisesRegex(provider.JournalFrameError, "no valid"):
+            provider.select_journal_frame(bytes(provider.JOURNAL_FILE_SIZE))
+        with self.assertRaisesRegex(provider.JournalFrameError, "exhausted"):
+            provider.select_journal_frame(
+                exhausted + bytes(provider.JOURNAL_FRAME_SIZE)
+            )
+        self.assertEqual(
+            provider.select_journal_frame(first + first),
+            (0, provider.JournalFrame(7, "first")),
+        )
+
+
+class SnapshotValidationTests(unittest.TestCase):
     def test_duplicate_plan_preserves_readable_updates(self):
         update = package(8, "openssl;4.0;x86_64;updates", "TLS library")
         backend = FixtureBackend(
