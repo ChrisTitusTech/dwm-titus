@@ -3,12 +3,17 @@
 
 from __future__ import annotations
 
+import contextlib
+import errno
+import fcntl
 import hashlib
+import os
+import stat
 import struct
 import sys
 import time
 from dataclasses import dataclass
-from typing import Iterable, Protocol, Sequence
+from typing import Iterable, Iterator, Protocol, Sequence
 
 
 PROTOCOL_MAJOR = 1
@@ -28,6 +33,7 @@ JOURNAL_PAYLOAD_OFFSET = 64
 JOURNAL_PAYLOAD_MAX = JOURNAL_FRAME_SIZE - JOURNAL_PAYLOAD_OFFSET
 JOURNAL_FILE_SIZE = JOURNAL_FRAME_SIZE * 2
 JOURNAL_SEQUENCE_MAX = (1 << 64) - 1
+JOURNAL_LOCK_DEADLINE_SECONDS = 5
 
 PACKAGEKIT_NAME = "org.freedesktop.PackageKit"
 PACKAGEKIT_PATH = "/org/freedesktop/PackageKit"
@@ -83,6 +89,18 @@ class SnapshotFailure(Exception):
 
 class JournalFrameError(ValueError):
     """A journal frame failed canonical validation."""
+
+
+class JournalFileError(OSError):
+    """A journal file descriptor failed bounded validation or I/O."""
+
+
+class JournalCommitError(JournalFileError):
+    """A frame commit may have reached storage and requires recovery."""
+
+
+class JournalLockError(JournalFileError):
+    """The bounded journal directory lock could not be acquired or released."""
 
 
 @dataclass(frozen=True)
@@ -184,6 +202,203 @@ def select_journal_frame(image: bytes) -> tuple[int, JournalFrame]:
     if selected[1].sequence == JOURNAL_SEQUENCE_MAX:
         raise JournalFrameError("journal sequence is exhausted")
     return selected[0], selected[1]
+
+
+def _validate_journal_descriptor(
+    descriptor: int, expected_size: int, *, writable: bool
+) -> os.stat_result:
+    if (
+        not isinstance(descriptor, int)
+        or isinstance(descriptor, bool)
+        or descriptor < 0
+    ):
+        raise JournalFileError("journal file descriptor is invalid")
+    try:
+        metadata = os.fstat(descriptor)
+        flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
+    except (OSError, OverflowError) as error:
+        raise JournalFileError("journal file descriptor is unavailable") from error
+    access = flags & os.O_ACCMODE
+    if (
+        access == os.O_WRONLY
+        or (writable and access != os.O_RDWR)
+        or (writable and flags & os.O_APPEND)
+    ):
+        raise JournalFileError("journal file descriptor has unsafe access")
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+        or metadata.st_nlink != 1
+        or metadata.st_size != expected_size
+    ):
+        raise JournalFileError("journal file metadata is unsafe")
+    return metadata
+
+
+def _validate_journal_lock_descriptor(descriptor: int) -> os.stat_result:
+    if (
+        not isinstance(descriptor, int)
+        or isinstance(descriptor, bool)
+        or descriptor < 0
+    ):
+        raise JournalLockError("journal lock descriptor is invalid")
+    try:
+        metadata = os.fstat(descriptor)
+        flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
+    except (OSError, OverflowError) as error:
+        raise JournalLockError("journal lock descriptor is unavailable") from error
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+        or (flags & os.O_ACCMODE) == os.O_WRONLY
+    ):
+        raise JournalLockError("journal lock directory metadata is unsafe")
+    return metadata
+
+
+@contextlib.contextmanager
+def _journal_lock(descriptor: int, *, exclusive: bool) -> Iterator[None]:
+    held = _validate_journal_lock_descriptor(descriptor)
+    try:
+        lock_descriptor = os.open(
+            ".",
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=descriptor,
+        )
+    except OSError as error:
+        raise JournalLockError("journal lock handle is unavailable") from error
+    try:
+        lock_metadata = _validate_journal_lock_descriptor(lock_descriptor)
+        if (lock_metadata.st_dev, lock_metadata.st_ino) != (
+            held.st_dev,
+            held.st_ino,
+        ):
+            raise JournalLockError("journal lock directory identity changed")
+        deadline = time.monotonic() + JOURNAL_LOCK_DEADLINE_SECONDS
+        operation = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+        while True:
+            try:
+                fcntl.flock(lock_descriptor, operation | fcntl.LOCK_NB)
+                break
+            except OSError as error:
+                if error.errno not in {errno.EACCES, errno.EAGAIN}:
+                    raise JournalLockError("journal lock acquisition failed") from error
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise JournalLockError(
+                        "journal lock acquisition timed out"
+                    ) from error
+                time.sleep(min(remaining, 0.01))
+
+        try:
+            current = _validate_journal_lock_descriptor(descriptor)
+            if (current.st_dev, current.st_ino) != (
+                lock_metadata.st_dev,
+                lock_metadata.st_ino,
+            ):
+                raise JournalLockError("journal lock directory identity changed")
+            yield
+        finally:
+            try:
+                fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+            except OSError as error:
+                raise JournalLockError("journal lock release failed") from error
+    finally:
+        try:
+            os.close(lock_descriptor)
+        except OSError as error:
+            raise JournalLockError("journal lock handle close failed") from error
+
+
+def _read_journal_image(descriptor: int) -> bytes:
+    _validate_journal_descriptor(descriptor, JOURNAL_FILE_SIZE, writable=False)
+    chunks: list[bytes] = []
+    offset = 0
+    while offset < JOURNAL_FILE_SIZE:
+        try:
+            chunk = os.pread(descriptor, JOURNAL_FILE_SIZE - offset, offset)
+        except OSError as error:
+            raise JournalFileError("journal file read failed") from error
+        if not isinstance(chunk, bytes) or not chunk:
+            raise JournalFileError("journal file read was incomplete")
+        chunks.append(chunk)
+        offset += len(chunk)
+    image = b"".join(chunks)
+    _validate_journal_descriptor(descriptor, JOURNAL_FILE_SIZE, writable=False)
+    return image
+
+
+def _read_journal_file_unlocked(descriptor: int) -> tuple[int, JournalFrame]:
+    return select_journal_frame(_read_journal_image(descriptor))
+
+
+def read_journal_file(
+    lock_descriptor: int, descriptor: int
+) -> tuple[int, JournalFrame]:
+    """Load one journal file while holding the shared directory lock."""
+    with _journal_lock(lock_descriptor, exclusive=False):
+        return _read_journal_file_unlocked(descriptor)
+
+
+def _initialize_journal_file_unlocked(
+    descriptor: int, payload: str = ""
+) -> JournalFrame:
+    image = initial_journal_image(payload)
+    _validate_journal_descriptor(descriptor, 0, writable=True)
+    try:
+        written = os.pwrite(descriptor, image, 0)
+        if written != len(image):
+            raise OSError("short journal initialization write")
+        os.fsync(descriptor)
+        _validate_journal_descriptor(descriptor, JOURNAL_FILE_SIZE, writable=True)
+        if _read_journal_image(descriptor) != image:
+            raise OSError("journal initialization readback mismatch")
+    except OSError as error:
+        raise JournalFileError("journal file initialization failed") from error
+    return JournalFrame(1, payload)
+
+
+def initialize_journal_file(
+    lock_descriptor: int, descriptor: int, payload: str = ""
+) -> JournalFrame:
+    """Initialize one empty file while holding the exclusive directory lock."""
+    with _journal_lock(lock_descriptor, exclusive=True):
+        return _initialize_journal_file_unlocked(descriptor, payload)
+
+
+def _commit_journal_file_unlocked(
+    descriptor: int, payload: str
+) -> tuple[int, JournalFrame]:
+    active_index, active = _read_journal_file_unlocked(descriptor)
+    next_frame = JournalFrame(active.sequence + 1, payload)
+    encoded = encode_journal_frame(next_frame.sequence, next_frame.payload)
+    inactive_index = 1 - active_index
+    offset = inactive_index * JOURNAL_FRAME_SIZE
+    _validate_journal_descriptor(descriptor, JOURNAL_FILE_SIZE, writable=True)
+    try:
+        written = os.pwrite(descriptor, encoded, offset)
+        if written != len(encoded):
+            raise OSError("short journal frame write")
+        os.fsync(descriptor)
+        image = _read_journal_image(descriptor)
+        if image[offset : offset + JOURNAL_FRAME_SIZE] != encoded:
+            raise OSError("journal frame readback mismatch")
+        selected_index, selected = select_journal_frame(image)
+        if selected_index != inactive_index or selected != next_frame:
+            raise OSError("journal frame did not become authoritative")
+    except (OSError, JournalFrameError) as error:
+        raise JournalCommitError("journal frame commit is indeterminate") from error
+    return inactive_index, next_frame
+
+
+def commit_journal_file(
+    lock_descriptor: int, descriptor: int, payload: str
+) -> tuple[int, JournalFrame]:
+    """Commit one frame while holding the exclusive directory lock."""
+    with _journal_lock(lock_descriptor, exclusive=True):
+        return _commit_journal_file_unlocked(descriptor, payload)
 
 
 @dataclass(frozen=True)
