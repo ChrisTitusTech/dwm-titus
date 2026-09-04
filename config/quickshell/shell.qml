@@ -548,6 +548,23 @@ ShellRoot {
             return systemManagementModel.updates.length;
         }
 
+        function systemManagementPackageChangeCount(): int {
+            return systemManagementModel.packageChanges.length;
+        }
+
+        function systemManagementInstallAvailability(): string {
+            const action = systemManagementModel.actions.find(function(item) {
+                return item.id === "updates-install-all";
+            });
+            return action === undefined ? "missing" : action.availability;
+        }
+
+        function systemManagementErrorCodes(): string {
+            return systemManagementModel.errors.map(function(item) {
+                return item.code;
+            }).join(",");
+        }
+
         function systemManagementSnapshotState(): string {
             return systemManagementModel.snapshotState;
         }

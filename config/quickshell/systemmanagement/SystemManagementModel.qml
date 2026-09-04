@@ -149,6 +149,7 @@ Scope {
         let fatal = "";
         let updatesInvalid = false;
         let planInvalid = false;
+        let planUnsupported = false;
         let recoveryInvalid = false;
         let parsedUpdateProvider = null;
         let parsedRecoveryProvider = null;
@@ -161,6 +162,8 @@ Scope {
         let parsedHandoff = null;
         let updateBytes = 0;
         let changeBytes = 0;
+        let updateRecordCount = 0;
+        let changeRecordCount = 0;
         let recordIndex = 0;
         const seenProviders = {};
         const seenStates = {};
@@ -279,6 +282,11 @@ Scope {
                     "availability": fields[2], "actionClass": fields[3],
                     "owner": fields[4], "label": fields[5], "detail": fields[6] };
             } else if (type === "update") {
+                updateRecordCount++;
+                if (updateRecordCount > 4096) {
+                    updatesInvalid = true;
+                    continue;
+                }
                 if (fields.length >= 2 && fields[1].length > 0) {
                     if (seenUpdates["$" + fields[1]] !== undefined) {
                         fatal = "System management provider repeated an update identity";
@@ -293,13 +301,21 @@ Scope {
                     updatesInvalid = true;
                     continue;
                 }
+                const recordBytes = root.utf8Bytes(rawLine) + 1;
+                if (updatesInvalid || updateBytes + recordBytes > 3 * 1024 * 1024) {
+                    updatesInvalid = true;
+                    continue;
+                }
                 parsedUpdates.push({ "packageId": fields[1], "severity": fields[2],
                     "installability": fields[3], "name": fields[4],
                     "version": fields[5], "summary": fields[6] });
-                updateBytes += root.utf8Bytes(rawLine) + 1;
-                if (parsedUpdates.length > 4096 || updateBytes > 3 * 1024 * 1024)
-                    updatesInvalid = true;
+                updateBytes += recordBytes;
             } else if (type === "package-change") {
+                changeRecordCount++;
+                if (changeRecordCount > 4096) {
+                    planInvalid = true;
+                    continue;
+                }
                 if (fields.length >= 2 && fields[1].length > 0) {
                     if (seenChanges["$" + fields[1]] !== undefined) {
                         fatal = "System management provider repeated a plan identity";
@@ -313,11 +329,14 @@ Scope {
                     planInvalid = true;
                     continue;
                 }
+                const recordBytes = root.utf8Bytes(rawLine) + 1;
+                if (planInvalid || changeBytes + recordBytes > 3 * 1024 * 1024) {
+                    planInvalid = true;
+                    continue;
+                }
                 parsedChanges.push({ "packageId": fields[1], "action": fields[2],
                     "name": fields[3], "version": fields[4], "summary": fields[5] });
-                changeBytes += root.utf8Bytes(rawLine) + 1;
-                if (parsedChanges.length > 4096 || changeBytes > 3 * 1024 * 1024)
-                    planInvalid = true;
+                changeBytes += recordBytes;
             } else if (type === "error") {
                 if (fields.length < 2 || (fields[1] !== "updates" && fields[1] !== "recovery")) {
                     fatal = "System management provider returned an unknown error owner";
@@ -416,11 +435,12 @@ Scope {
                     }
                 }
             }
+            planUnsupported = planRequiresUnsupportedFlags;
             if (!planInvalid && ((requestedCount === 0 && parsedChanges.length > 0)
                     || (requestedCount > 0 && parsedChanges.length === 0
                         && parsedActions["$updates-install-all"].availability === "available")
                     || (parsedActions["$updates-install-all"].availability === "available"
-                        && (requestedCount === 0 || planRequiresUnsupportedFlags))))
+                        && requestedCount === 0)))
                 planInvalid = true;
         }
 
@@ -455,12 +475,29 @@ Scope {
             parsedErrors.push({ "provider": "updates", "code": "malformed",
                 "detail": detail });
         } else {
+            let installAction = parsedActions["$updates-install-all"];
+            if (planUnsupported) {
+                const detail = "This update plan requires unsupported reinstall or downgrade flags";
+                installAction = { "id": installAction.id, "availability": "unavailable",
+                    "actionClass": installAction.actionClass, "owner": installAction.owner,
+                    "label": installAction.label, "detail": detail };
+                let unsupportedErrorSeen = false;
+                for (const error of parsedErrors) {
+                    if (error.provider === "updates" && error.code === "unsupported") {
+                        unsupportedErrorSeen = true;
+                        break;
+                    }
+                }
+                if (!unsupportedErrorSeen)
+                    parsedErrors.push({ "provider": "updates", "code": "unsupported",
+                        "detail": detail });
+            }
             root.updateProvider = parsedUpdateProvider;
             root.updateSummary = states["$update-summary"];
             root.updateLastRefresh = states["$update-last-refresh"];
             root.updateRestart = states["$update-restart"];
-            root.actions = [parsedActions["$updates-refresh"],
-                parsedActions["$updates-install-all"], parsedActions["$updates-cancel"]];
+            root.actions = [parsedActions["$updates-refresh"], installAction,
+                parsedActions["$updates-cancel"]];
             root.updates = parsedUpdates;
             root.packageChanges = parsedChanges;
         }
@@ -470,7 +507,8 @@ Scope {
                 "detail": "System management provider returned malformed recovery state" }
             : parsedRecoveryProvider;
         root.errors = parsedErrors;
-        root.snapshotState = updatesInvalid || planInvalid || recoveryInvalid ? "partial" : "ready";
+        root.snapshotState = updatesInvalid || planInvalid || planUnsupported || recoveryInvalid
+            ? "partial" : "ready";
         root.message = root.snapshotState === "ready"
             ? parsedUpdates.length + " updates reported"
             : "System management state is incomplete";

@@ -124,6 +124,12 @@ unsafe-reinstall)
 		$1 == "complete" { print "package-change", "beta;1;x86_64;updates", "reinstall", "beta", "1", "Reinstall" }
 		{ print }'
 	;;
+future-record)
+	snapshot | sed '/^complete\t/i\future-list-record\tfuture-value'
+	;;
+oversized)
+	dd if=/dev/zero bs=1048576 count=9 2>/dev/null | tr '\0' x
+	;;
 fail-after-output)
 	snapshot
 	printf 'fixture failure after output\n' >&2
@@ -241,6 +247,23 @@ printf 'unsafe-reinstall\n' >"$fixture/mode"
 ipc refresh >/dev/null
 wait_state partial
 [ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+[ "$(ipc systemManagementPackageChangeCount)" -eq 2 ]
+[ "$(ipc systemManagementInstallAvailability)" = unavailable ]
+[ "$(ipc systemManagementErrorCodes)" = unsupported ]
+
+printf 'future-record\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state ready
+[ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+
+printf 'oversized\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state failure
+[ "$(ipc systemManagementUpdateCount)" -eq 0 ]
+if find "$runtime" -type f -name 'dwm-checked-command.*' -print -quit | grep -q .; then
+	printf 'Bounded command capture left a temporary output file\n' >&2
+	exit 1
+fi
 
 printf 'fail-after-output\n' >"$fixture/mode"
 ipc refresh >/dev/null
