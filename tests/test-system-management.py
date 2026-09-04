@@ -14,6 +14,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from dataclasses import replace
 from unittest import mock
 
 
@@ -472,6 +473,173 @@ class JournalControlRecordTests(unittest.TestCase):
             with self.subTest(record=record):
                 with self.assertRaises(provider.JournalRecordError):
                     provider.encode_journal_restart(record)
+
+    def update_operation(self, **changes):
+        record = provider.JournalOperation(
+            self.operation_id,
+            "updates-install-all",
+            "2026-02-28T01:02:03Z",
+            None,
+            "update",
+            "running",
+            None,
+            "Installing updates",
+            "a" * 64,
+            "/org/freedesktop/PackageKit/transactions/1_deadbeef",
+            "none",
+            "none",
+            False,
+            self.boot_id,
+            None,
+            31,
+        )
+        return replace(record, **changes)
+
+    def test_operation_round_trips_nonterminal_and_terminal_update(self):
+        active = self.update_operation()
+        active_payload = provider.encode_journal_operation(active)
+        self.assertEqual(provider.decode_journal_operation(active_payload), active)
+        self.assertIn("\tpending\tupdate\trunning\t-\t", active_payload)
+        self.assertTrue(active_payload.endswith(f"\t{self.boot_id}\tpending\t31"))
+
+        terminal = replace(
+            active,
+            finished_at="2026-02-28T01:03:04Z",
+            state="failed",
+            error_code="package",
+            system_restart="unknown",
+            session_restart="security-session",
+            application_restart=True,
+            terminal_monotonic=provider.JOURNAL_SEQUENCE_MAX,
+        )
+        payload = provider.encode_journal_operation(terminal)
+        self.assertEqual(provider.decode_journal_operation(payload), terminal)
+
+    def test_operation_round_trips_refresh_and_non_packagekit_kinds(self):
+        refresh = replace(
+            self.update_operation(),
+            action_id="updates-refresh",
+            kind="refresh",
+            generation=None,
+            system_restart=None,
+            session_restart=None,
+            application_restart=None,
+            boot_id=None,
+        )
+        timezone = replace(
+            refresh,
+            action_id="timezone-set",
+            kind="timezone",
+            transaction_path=None,
+        )
+        delegate = replace(
+            timezone,
+            action_id="printers-open",
+            kind="delegate",
+            finished_at="2026-02-28T01:02:04Z",
+            state="succeeded",
+        )
+        for record in (refresh, timezone, delegate):
+            with self.subTest(kind=record.kind):
+                payload = provider.encode_journal_operation(record)
+                self.assertEqual(provider.decode_journal_operation(payload), record)
+
+    def test_operation_rejects_identity_timestamp_and_field_shape_errors(self):
+        active = self.update_operation()
+        invalid_records = (
+            replace(active, operation_id="op-bad"),
+            replace(active, action_id="updates-refresh"),
+            replace(active, started_at="2026-02-30T01:02:03Z"),
+            replace(active, finished_at="2026-02-28T01:03:04Z"),
+            replace(active, state="unknown"),
+            replace(active, slot=32),
+        )
+        for record in invalid_records:
+            with self.subTest(record=record):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.encode_journal_operation(record)
+
+        payload = provider.encode_journal_operation(active)
+        for malformed in (payload + "\textra", "\t".join(payload.split("\t")[:-1])):
+            with self.subTest(payload=malformed):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.decode_journal_operation(malformed)
+
+    def test_operation_rejects_invalid_state_error_combinations(self):
+        active = self.update_operation()
+        invalid = (
+            replace(active, error_code="network"),
+            replace(
+                active,
+                finished_at="2026-02-28T01:03:04Z",
+                state="succeeded",
+                error_code="package",
+                terminal_monotonic=1,
+            ),
+            replace(
+                active,
+                finished_at="2026-02-28T01:03:04Z",
+                state="failed",
+                terminal_monotonic=1,
+            ),
+            replace(
+                active,
+                finished_at="2026-02-28T01:03:04Z",
+                state="failed",
+                error_code="not-normalized",
+                terminal_monotonic=1,
+            ),
+        )
+        for record in invalid:
+            with self.subTest(record=record):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.encode_journal_operation(record)
+
+    def test_operation_rejects_kind_incompatible_typed_fields(self):
+        active = self.update_operation()
+        invalid = (
+            replace(active, generation="A" * 64),
+            replace(active, transaction_path="/not/packagekit"),
+            replace(active, system_restart="session"),
+            replace(active, session_restart="system"),
+            replace(active, application_restart="no"),
+            replace(active, boot_id=None),
+            replace(active, terminal_monotonic=1),
+            replace(
+                active,
+                action_id="timezone-set",
+                kind="timezone",
+                transaction_path=None,
+                generation=None,
+                system_restart=None,
+                session_restart=None,
+                application_restart=None,
+                boot_id=None,
+                terminal_monotonic=1,
+            ),
+        )
+        for record in invalid:
+            with self.subTest(record=record):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.encode_journal_operation(record)
+
+    def test_operation_rejects_noncanonical_diagnostics_and_wire_fields(self):
+        active = self.update_operation()
+        for detail in ("line\nbreak", "tab\tbreak", "x" * 513, "bad\0byte"):
+            with self.subTest(detail=detail):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.encode_journal_operation(replace(active, detail=detail))
+
+        fields = provider.encode_journal_operation(active).split("\t")
+        malformed = {
+            "application": [*fields[:12], "maybe", *fields[13:]],
+            "monotonic": [*fields[:14], "0", fields[15]],
+            "finished": [*fields[:3], "-", *fields[4:]],
+        }
+        for name, changed in malformed.items():
+            with self.subTest(name=name):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.decode_journal_operation("\t".join(changed))
 
 
 class JournalFileTests(unittest.TestCase):

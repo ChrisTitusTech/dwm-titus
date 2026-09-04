@@ -14,6 +14,7 @@ import struct
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Iterable, Iterator, Mapping, Protocol, Sequence
 
 
@@ -47,10 +48,61 @@ JOURNAL_RESTART_ALL_CLEAR_SUFFIX = (
 ).encode("ascii")
 JOURNAL_OPERATION_ID_PATTERN = re.compile(r"op-[0-9a-f]{32}")
 JOURNAL_SLOT_PATTERN = re.compile(r"(?:0[0-9]|[12][0-9]|3[01])")
+JOURNAL_GENERATION_PATTERN = re.compile(r"[0-9a-f]{64}")
+JOURNAL_TIMESTAMP_PATTERN = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"
+)
+JOURNAL_PACKAGEKIT_PATH_PATTERN = re.compile(
+    r"/org/freedesktop/PackageKit/transactions/[A-Za-z0-9_]+"
+)
 JOURNAL_RESTART_SYSTEM_VALUES = frozenset(
     ("none", "system", "security-system", "unknown")
 )
 JOURNAL_RESTART_SESSION_VALUES = frozenset(("none", "session", "security-session"))
+JOURNAL_OPERATION_ACTION_KINDS = {
+    "updates-refresh": "refresh",
+    "updates-install-all": "update",
+    "timezone-set": "timezone",
+    "ntp-set": "ntp",
+    "locale-set": "locale",
+    "accounts-open": "delegate",
+    "password-open": "delegate",
+    "printers-open": "delegate",
+    "sources-open": "delegate",
+}
+JOURNAL_OPERATION_STATES = frozenset(
+    (
+        "pending",
+        "authorizing",
+        "running",
+        "cancel-requested",
+        "permission-denied",
+        "canceled",
+        "failed",
+        "interrupted",
+        "succeeded",
+    )
+)
+JOURNAL_OPERATION_TERMINAL_STATES = frozenset(
+    ("permission-denied", "canceled", "failed", "interrupted", "succeeded")
+)
+JOURNAL_ERROR_CODES = frozenset(
+    (
+        "network",
+        "repository",
+        "conflict",
+        "signature",
+        "package",
+        "unsupported",
+        "malformed",
+        "missing-provider",
+        "permission-denied",
+        "canceled",
+        "timeout",
+        "interrupted",
+        "internal",
+    )
+)
 JOURNAL_DATA_NAMES = (
     "active",
     "restart",
@@ -159,6 +211,26 @@ class JournalRestart:
     session_cutoff: int
     application: bool
     application_cutoff: int
+
+
+@dataclass(frozen=True)
+class JournalOperation:
+    operation_id: str
+    action_id: str
+    started_at: str
+    finished_at: str | None
+    kind: str
+    state: str
+    error_code: str | None
+    detail: str
+    generation: str | None
+    transaction_path: str | None
+    system_restart: str | None
+    session_restart: str | None
+    application_restart: bool | None
+    boot_id: str | None
+    terminal_monotonic: int | None
+    slot: int
 
 
 @dataclass
@@ -726,6 +798,237 @@ def decode_journal_restart(payload: str) -> JournalRestart:
         application == "yes",
         _decode_journal_uint64(app_cutoff, "application cutoff"),
     )
+
+
+def _validate_journal_timestamp(value: str, field: str) -> None:
+    if (
+        not isinstance(value, str)
+        or JOURNAL_TIMESTAMP_PATTERN.fullmatch(value) is None
+    ):
+        raise JournalRecordError(f"journal {field} timestamp is invalid")
+    try:
+        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as error:
+        raise JournalRecordError(f"journal {field} timestamp is invalid") from error
+
+
+def _validate_journal_detail(value: str) -> None:
+    if not isinstance(value, str):
+        raise JournalRecordError("journal diagnostic is invalid")
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise JournalRecordError("journal diagnostic is invalid") from error
+    if (
+        len(encoded) > MAX_TEXT_BYTES
+        or "\t" in value
+        or "\r" in value
+        or "\n" in value
+        or "\0" in value
+    ):
+        raise JournalRecordError("journal diagnostic is not canonical")
+
+
+def _journal_operation_fields(record: JournalOperation) -> tuple[str, ...]:
+    if not isinstance(record, JournalOperation):
+        raise JournalRecordError("journal operation record is invalid")
+    if (
+        not isinstance(record.operation_id, str)
+        or JOURNAL_OPERATION_ID_PATTERN.fullmatch(record.operation_id) is None
+    ):
+        raise JournalRecordError("journal operation ID is invalid")
+    if not isinstance(record.action_id, str):
+        raise JournalRecordError("journal action ID is invalid")
+    expected_kind = JOURNAL_OPERATION_ACTION_KINDS.get(record.action_id)
+    if not isinstance(record.kind, str) or expected_kind != record.kind:
+        raise JournalRecordError("journal action and operation kind do not match")
+    if not isinstance(record.state, str) or record.state not in JOURNAL_OPERATION_STATES:
+        raise JournalRecordError("journal operation state is invalid")
+    _validate_journal_timestamp(record.started_at, "started")
+    terminal = record.state in JOURNAL_OPERATION_TERMINAL_STATES
+    if terminal:
+        if record.finished_at is None:
+            raise JournalRecordError("journal terminal operation has no finish timestamp")
+        _validate_journal_timestamp(record.finished_at, "finished")
+        finished = record.finished_at
+    elif record.finished_at is None:
+        finished = "pending"
+    else:
+        raise JournalRecordError("journal nonterminal operation has a finish timestamp")
+    if record.error_code is not None and (
+        not isinstance(record.error_code, str)
+        or record.error_code not in JOURNAL_ERROR_CODES
+    ):
+        raise JournalRecordError("journal operation error code is invalid")
+    if not terminal or record.state == "succeeded":
+        if record.error_code is not None:
+            raise JournalRecordError("journal operation state cannot carry an error")
+    elif record.state == "failed" and record.error_code is None:
+        raise JournalRecordError("journal failed operation has no error code")
+    _validate_journal_detail(record.detail)
+
+    if record.kind == "update":
+        if (
+            not isinstance(record.generation, str)
+            or JOURNAL_GENERATION_PATTERN.fullmatch(record.generation) is None
+        ):
+            raise JournalRecordError("journal update generation is invalid")
+        if (
+            not isinstance(record.transaction_path, str)
+            or JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(record.transaction_path) is None
+        ):
+            raise JournalRecordError("journal PackageKit path is invalid")
+        if (
+            not isinstance(record.system_restart, str)
+            or record.system_restart not in JOURNAL_RESTART_SYSTEM_VALUES
+        ):
+            raise JournalRecordError("journal system restart value is invalid")
+        if (
+            not isinstance(record.session_restart, str)
+            or record.session_restart not in JOURNAL_RESTART_SESSION_VALUES
+        ):
+            raise JournalRecordError("journal session restart value is invalid")
+        if not isinstance(record.application_restart, bool):
+            raise JournalRecordError("journal application restart value is invalid")
+        if (
+            not isinstance(record.boot_id, str)
+            or BOOT_ID_PATTERN.fullmatch(record.boot_id) is None
+        ):
+            raise JournalRecordError("journal operation boot identity is invalid")
+        typed = (
+            record.generation,
+            record.transaction_path,
+            record.system_restart,
+            record.session_restart,
+            "yes" if record.application_restart else "no",
+            record.boot_id,
+        )
+    elif record.kind == "refresh":
+        if any(
+            value is not None
+            for value in (
+                record.generation,
+                record.system_restart,
+                record.session_restart,
+                record.application_restart,
+                record.boot_id,
+            )
+        ):
+            raise JournalRecordError("journal refresh typed fields are invalid")
+        if (
+            not isinstance(record.transaction_path, str)
+            or JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(record.transaction_path) is None
+        ):
+            raise JournalRecordError("journal PackageKit path is invalid")
+        typed = ("-", record.transaction_path, "-", "-", "-", "-")
+    else:
+        if any(
+            value is not None
+            for value in (
+                record.generation,
+                record.transaction_path,
+                record.system_restart,
+                record.session_restart,
+                record.application_restart,
+                record.boot_id,
+                record.terminal_monotonic,
+            )
+        ):
+            raise JournalRecordError("journal operation typed fields are invalid")
+        typed = ("-", "-", "-", "-", "-", "-")
+
+    if record.kind in ("update", "refresh"):
+        if terminal:
+            monotonic = _encode_journal_uint64(
+                record.terminal_monotonic, "terminal monotonic timestamp"
+            )
+        elif record.terminal_monotonic is None:
+            monotonic = "pending"
+        else:
+            raise JournalRecordError(
+                "journal nonterminal operation has a terminal monotonic timestamp"
+            )
+    else:
+        monotonic = "-"
+    error_code = "-" if record.error_code is None else record.error_code
+    return (
+        record.operation_id,
+        record.action_id,
+        record.started_at,
+        finished,
+        record.kind,
+        record.state,
+        error_code,
+        record.detail,
+        *typed,
+        monotonic,
+        encode_journal_cursor(record.slot),
+    )
+
+
+def encode_journal_operation(record: JournalOperation) -> str:
+    """Encode one canonical active or terminal operation record."""
+    payload = "\t".join(_journal_operation_fields(record))
+    _validate_journal_record_payload(payload)
+    return payload
+
+
+def decode_journal_operation(payload: str) -> JournalOperation:
+    """Decode one canonical active or terminal operation record."""
+    _validate_journal_record_payload(payload)
+    fields = payload.split("\t")
+    if len(fields) != 16:
+        raise JournalRecordError("journal operation field count is invalid")
+    (
+        operation_id,
+        action_id,
+        started,
+        finished,
+        kind,
+        state,
+        error_code,
+        detail,
+        generation,
+        transaction_path,
+        system_restart,
+        session_restart,
+        application_restart,
+        boot_id,
+        terminal_monotonic,
+        slot,
+    ) = fields
+    terminal = state in JOURNAL_OPERATION_TERMINAL_STATES
+    if kind in ("update", "refresh"):
+        decoded_monotonic = (
+            _decode_journal_uint64(
+                terminal_monotonic, "terminal monotonic timestamp"
+            )
+            if terminal
+            else None
+        )
+    else:
+        decoded_monotonic = None
+    record = JournalOperation(
+        operation_id,
+        action_id,
+        started,
+        None if finished == "pending" else finished,
+        kind,
+        state,
+        None if error_code == "-" else error_code,
+        detail,
+        None if generation == "-" else generation,
+        None if transaction_path == "-" else transaction_path,
+        None if system_restart == "-" else system_restart,
+        None if session_restart == "-" else session_restart,
+        None if application_restart == "-" else application_restart == "yes",
+        None if boot_id == "-" else boot_id,
+        decoded_monotonic,
+        decode_journal_cursor(slot),
+    )
+    if encode_journal_operation(record) != payload:
+        raise JournalRecordError("journal operation record is not canonical")
+    return record
 
 
 def _validate_journal_descriptor(
