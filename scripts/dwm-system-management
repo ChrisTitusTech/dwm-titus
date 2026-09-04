@@ -40,6 +40,11 @@ JOURNAL_CURSOR_NAME = "cursor"
 JOURNAL_PATH_MAX = 4095
 JOURNAL_COMPONENT_MAX = 255
 JOURNAL_DIRECTORY_SUFFIX = ("dwm-titus", "system-management")
+JOURNAL_BOOT_ID_TEMPLATE = "00000000-0000-0000-0000-000000000000"
+JOURNAL_RESTART_ALL_CLEAR_TAIL = ("-", "none", "none", "0", "no", "0")
+JOURNAL_RESTART_ALL_CLEAR_SUFFIX = (
+    "\t" + "\t".join(JOURNAL_RESTART_ALL_CLEAR_TAIL)
+).encode("ascii")
 JOURNAL_DATA_NAMES = (
     "active",
     "restart",
@@ -754,7 +759,7 @@ def _initial_journal_payloads(boot_id: str) -> dict[str, str]:
     if not isinstance(boot_id, str) or BOOT_ID_PATTERN.fullmatch(boot_id) is None:
         raise JournalLayoutError("journal boot identity is invalid")
     payloads = {name: "" for name in JOURNAL_DATA_NAMES}
-    payloads["restart"] = f"{boot_id}\t-\tnone\tnone\t0\tno\t0"
+    payloads["restart"] = "\t".join((boot_id, *JOURNAL_RESTART_ALL_CLEAR_TAIL))
     payloads[JOURNAL_CURSOR_NAME] = "00"
     return payloads
 
@@ -812,6 +817,382 @@ def _create_journal_path_unlocked(
             raise JournalLayoutError(f"journal path {name} close failed") from error
 
 
+def _inspect_partial_journal_path_unlocked(
+    directory_descriptor: int, name: str, path_descriptor: int
+) -> os.stat_result:
+    try:
+        held = os.fstat(path_descriptor)
+        descriptor_flags = fcntl.fcntl(path_descriptor, fcntl.F_GETFD)
+        reachable = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
+    except (OSError, OverflowError) as error:
+        raise JournalLayoutError(f"journal path {name} is unavailable") from error
+    if (
+        not stat.S_ISREG(held.st_mode)
+        or not stat.S_ISREG(reachable.st_mode)
+        or (held.st_dev, held.st_ino) != (reachable.st_dev, reachable.st_ino)
+        or held.st_uid != os.geteuid()
+        or reachable.st_uid != held.st_uid
+        or stat.S_IMODE(reachable.st_mode) != stat.S_IMODE(held.st_mode)
+        or held.st_nlink != 1
+        or reachable.st_nlink != 1
+        or held.st_size != reachable.st_size
+        or held.st_size < 0
+        or held.st_size > JOURNAL_FILE_SIZE
+        or not descriptor_flags & fcntl.FD_CLOEXEC
+    ):
+        raise JournalLayoutError(f"journal path {name} partial metadata is unsafe")
+    return held
+
+
+def _open_partial_journal_path_unlocked(
+    directory_descriptor: int,
+    name: str,
+    *,
+    allow_empty_mode_repair: bool,
+) -> tuple[int, bool] | None:
+    try:
+        path_descriptor = os.open(
+            name,
+            os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=directory_descriptor,
+        )
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        raise JournalLayoutError(f"journal path {name} open failed") from error
+    descriptor: int | None = None
+    retained_path_descriptor = False
+    try:
+        held = _inspect_partial_journal_path_unlocked(
+            directory_descriptor, name, path_descriptor
+        )
+        mode = stat.S_IMODE(held.st_mode)
+        if (
+            allow_empty_mode_repair
+            and held.st_size == 0
+            and mode != 0o600
+            and mode & ~0o600 == 0
+        ):
+            retained_path_descriptor = True
+            return path_descriptor, True
+        if mode != 0o600:
+            raise JournalLayoutError(f"journal path {name} partial metadata is unsafe")
+        try:
+            descriptor = os.open(
+                name,
+                os.O_NOFOLLOW | os.O_CLOEXEC | os.O_RDWR,
+                dir_fd=directory_descriptor,
+            )
+        except OSError as error:
+            raise JournalLayoutError(
+                f"journal path {name} writable open failed"
+            ) from error
+        active = _validate_partial_journal_path_identity(
+            directory_descriptor, name, descriptor
+        )
+        if (active.st_dev, active.st_ino) != (held.st_dev, held.st_ino):
+            raise JournalLayoutError(f"journal path {name} identity changed")
+        result = descriptor
+        descriptor = None
+        return result, False
+    finally:
+        first_error: OSError | None = None
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError as error:
+                first_error = error
+        if not retained_path_descriptor:
+            try:
+                os.close(path_descriptor)
+            except OSError as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise JournalLayoutError(
+                f"journal path {name} open descriptor close failed"
+            ) from first_error
+
+
+def _repair_empty_journal_path_mode_unlocked(
+    directory_descriptor: int, name: str, path_descriptor: int
+) -> int:
+    held = _inspect_partial_journal_path_unlocked(
+        directory_descriptor, name, path_descriptor
+    )
+    mode = stat.S_IMODE(held.st_mode)
+    if held.st_size != 0 or mode == 0o600 or mode & ~0o600:
+        raise JournalLayoutError(f"journal path {name} mode recovery is unsafe")
+    try:
+        os.chmod(f"/proc/self/fd/{path_descriptor}", 0o600)
+    except OSError as error:
+        raise JournalLayoutError(f"journal path {name} mode recovery failed") from error
+    held = _inspect_partial_journal_path_unlocked(
+        directory_descriptor, name, path_descriptor
+    )
+    if held.st_size != 0 or stat.S_IMODE(held.st_mode) != 0o600:
+        raise JournalLayoutError(f"journal path {name} mode recovery is unsafe")
+    try:
+        descriptor = os.open(
+            name,
+            os.O_NOFOLLOW | os.O_CLOEXEC | os.O_RDWR,
+            dir_fd=directory_descriptor,
+        )
+    except OSError as error:
+        raise JournalLayoutError(f"journal path {name} writable open failed") from error
+    try:
+        active = _validate_partial_journal_path_identity(
+            directory_descriptor, name, descriptor
+        )
+        if (active.st_dev, active.st_ino) != (held.st_dev, held.st_ino):
+            raise JournalLayoutError(f"journal path {name} identity changed")
+    except OSError:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+    return descriptor
+
+
+def _validate_partial_journal_path_identity(
+    directory_descriptor: int, name: str, descriptor: int
+) -> os.stat_result:
+    try:
+        held = os.fstat(descriptor)
+        flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
+        descriptor_flags = fcntl.fcntl(descriptor, fcntl.F_GETFD)
+        reachable = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
+    except (OSError, OverflowError) as error:
+        raise JournalLayoutError(f"journal path {name} is unavailable") from error
+    if (
+        not stat.S_ISREG(held.st_mode)
+        or not stat.S_ISREG(reachable.st_mode)
+        or (held.st_dev, held.st_ino) != (reachable.st_dev, reachable.st_ino)
+        or held.st_uid != os.geteuid()
+        or reachable.st_uid != held.st_uid
+        or stat.S_IMODE(held.st_mode) != 0o600
+        or stat.S_IMODE(reachable.st_mode) != 0o600
+        or held.st_nlink != 1
+        or reachable.st_nlink != 1
+        or held.st_size != reachable.st_size
+        or held.st_size < 0
+        or held.st_size > JOURNAL_FILE_SIZE
+        or (flags & os.O_ACCMODE) != os.O_RDWR
+        or flags & os.O_APPEND
+        or not descriptor_flags & fcntl.FD_CLOEXEC
+    ):
+        raise JournalLayoutError(f"journal path {name} partial metadata is unsafe")
+    return held
+
+
+def _read_partial_journal_image_unlocked(
+    directory_descriptor: int, name: str, descriptor: int
+) -> bytes:
+    before = _validate_partial_journal_path_identity(
+        directory_descriptor, name, descriptor
+    )
+    chunks: list[bytes] = []
+    offset = 0
+    while offset < before.st_size:
+        try:
+            chunk = os.pread(descriptor, before.st_size - offset, offset)
+        except OSError as error:
+            raise JournalLayoutError(f"journal path {name} read failed") from error
+        if not chunk:
+            raise JournalLayoutError(f"journal path {name} read was incomplete")
+        chunks.append(chunk)
+        offset += len(chunk)
+    after = _validate_partial_journal_path_identity(
+        directory_descriptor, name, descriptor
+    )
+    if (before.st_dev, before.st_ino, before.st_size) != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+    ):
+        raise JournalLayoutError(f"journal path {name} changed while reading")
+    return b"".join(chunks)
+
+
+def _is_safe_initial_fragment(image: bytes, expected: bytes) -> bool:
+    if len(image) > len(expected):
+        return False
+    if image == expected[: len(image)]:
+        return True
+    if len(image) != len(expected):
+        return False
+    common = 0
+    while common < len(expected) and image[common] == expected[common]:
+        common += 1
+    return common > 0 and not any(image[common:])
+
+
+def _is_all_clear_restart_payload(payload: str) -> bool:
+    fields = payload.split("\t")
+    return (
+        len(fields) == 7
+        and BOOT_ID_PATTERN.fullmatch(fields[0]) is not None
+        and tuple(fields[1:]) == JOURNAL_RESTART_ALL_CLEAR_TAIL
+    )
+
+
+def _restart_initial_header() -> bytes:
+    payload_size = len(JOURNAL_BOOT_ID_TEMPLATE.encode("ascii")) + len(
+        JOURNAL_RESTART_ALL_CLEAR_SUFFIX
+    )
+    return struct.pack(
+        "<8sHHIQQ",
+        JOURNAL_MAGIC,
+        JOURNAL_FRAME_MAJOR,
+        JOURNAL_FRAME_MINOR,
+        payload_size,
+        1,
+        0,
+    )
+
+
+def _is_all_clear_restart_payload_prefix(encoded: bytes) -> bool:
+    uuid_template = JOURNAL_BOOT_ID_TEMPLATE
+    suffix = JOURNAL_RESTART_ALL_CLEAR_SUFFIX
+    if len(encoded) > len(uuid_template) + len(suffix):
+        return False
+    for index, byte in enumerate(encoded):
+        if index < len(uuid_template):
+            marker = uuid_template[index]
+            if marker == "-":
+                if byte != ord("-"):
+                    return False
+            elif not (ord("0") <= byte <= ord("9") or ord("a") <= byte <= ord("f")):
+                return False
+        elif byte != suffix[index - len(uuid_template)]:
+            return False
+    return True
+
+
+def _is_safe_restart_initial_fragment(image: bytes) -> bool:
+    if len(image) > JOURNAL_FILE_SIZE:
+        return False
+    header = _restart_initial_header()
+    if len(image) <= len(header):
+        return image == header[: len(image)]
+    if image[: len(header)] != header:
+        return False
+    if len(image) <= JOURNAL_PAYLOAD_OFFSET:
+        return True
+    payload_size = struct.unpack("<I", header[12:16])[0]
+    payload_end = JOURNAL_PAYLOAD_OFFSET + payload_size
+    payload_prefix = image[JOURNAL_PAYLOAD_OFFSET : min(len(image), payload_end)]
+    if not _is_all_clear_restart_payload_prefix(payload_prefix):
+        return False
+    if len(image) < payload_end:
+        return True
+    try:
+        frame = decode_journal_frame(
+            image[:JOURNAL_FRAME_SIZE].ljust(JOURNAL_FRAME_SIZE, b"\0")
+        )
+    except JournalFrameError:
+        return False
+    return (
+        frame.sequence == 1
+        and _is_all_clear_restart_payload(frame.payload)
+        and not any(image[JOURNAL_FRAME_SIZE:])
+    )
+
+
+def _is_safe_restart_rewrite_fragment(image: bytes, expected: bytes) -> bool:
+    header = _restart_initial_header()
+    payload_size = struct.unpack("<I", header[12:16])[0]
+    payload_end = JOURNAL_PAYLOAD_OFFSET + payload_size
+    if len(image) < payload_end or len(image) > JOURNAL_FILE_SIZE:
+        return False
+    try:
+        payload = image[JOURNAL_PAYLOAD_OFFSET:payload_end].decode("ascii")
+    except UnicodeDecodeError:
+        return False
+    if not _is_all_clear_restart_payload(payload):
+        return False
+    previous = initial_journal_image(payload)[: len(image)]
+    current = expected[: len(image)]
+    current_prefix = 0
+    while (
+        current_prefix < len(image) and image[current_prefix] == current[current_prefix]
+    ):
+        current_prefix += 1
+    previous_suffix = len(image)
+    while (
+        previous_suffix > 0
+        and image[previous_suffix - 1] == previous[previous_suffix - 1]
+    ):
+        previous_suffix -= 1
+    return previous_suffix <= current_prefix
+
+
+def _is_safe_initial_path_fragment(name: str, image: bytes, expected: bytes) -> bool:
+    if _is_safe_initial_fragment(image, expected):
+        return True
+    if name != "restart":
+        return False
+    if len(image) == JOURNAL_FILE_SIZE and any(image[JOURNAL_FRAME_SIZE:]):
+        return False
+    if len(image) == JOURNAL_FILE_SIZE:
+        nonzero = image.rstrip(b"\0")
+        if not nonzero:
+            return False
+        payload_size = struct.unpack("<I", _restart_initial_header()[12:16])[0]
+        if len(nonzero) < JOURNAL_PAYLOAD_OFFSET + payload_size:
+            return _is_safe_restart_initial_fragment(nonzero)
+    return _is_safe_restart_initial_fragment(
+        image
+    ) or _is_safe_restart_rewrite_fragment(image, expected)
+
+
+def _rewrite_initial_journal_path_unlocked(
+    directory_descriptor: int,
+    name: str,
+    descriptor: int,
+    payload: str,
+) -> None:
+    expected = initial_journal_image(payload)
+    observed = _read_partial_journal_image_unlocked(
+        directory_descriptor, name, descriptor
+    )
+    if not _is_safe_initial_path_fragment(name, observed, expected):
+        raise JournalLayoutError(f"journal path {name} is not recoverable")
+    try:
+        written = os.pwrite(descriptor, expected, 0)
+        if written != len(expected):
+            raise OSError("short journal recovery write")
+        os.fsync(descriptor)
+        _validate_journal_path_identity(
+            directory_descriptor, name, descriptor, JOURNAL_FILE_SIZE
+        )
+        if _read_journal_image(descriptor) != expected:
+            raise OSError("journal recovery readback mismatch")
+        _validate_journal_path_identity(
+            directory_descriptor, name, descriptor, JOURNAL_FILE_SIZE
+        )
+    except OSError as error:
+        if isinstance(error, JournalLayoutError):
+            raise
+        raise JournalLayoutError(f"journal path {name} recovery failed") from error
+
+
+def _validate_initialized_journal_path_unlocked(
+    directory_descriptor: int, name: str, descriptor: int
+) -> None:
+    try:
+        _validate_journal_path_identity(
+            directory_descriptor, name, descriptor, JOURNAL_FILE_SIZE
+        )
+        select_journal_frame(_read_journal_image(descriptor))
+        _validate_journal_path_identity(
+            directory_descriptor, name, descriptor, JOURNAL_FILE_SIZE
+        )
+    except (JournalFileError, JournalFrameError) as error:
+        raise JournalLayoutError(f"journal path {name} is malformed") from error
+
+
 def _validate_initial_journal_path_unlocked(
     directory_descriptor: int, name: str, expected_payload: str
 ) -> None:
@@ -844,35 +1225,154 @@ def _validate_initial_journal_path_unlocked(
 
 
 def initialize_journal_layout(directory_descriptor: int, boot_id: str) -> None:
-    """Create and verify the fixed journal layout with cursor committed last."""
+    """Create or recover the fixed journal layout with cursor committed last."""
     payloads = _initial_journal_payloads(boot_id)
     with _journal_lock(directory_descriptor, exclusive=True):
-        for name in JOURNAL_DATA_NAMES:
-            _create_journal_path_unlocked(directory_descriptor, name, payloads[name])
+        descriptors: dict[str, int] = {}
+        mode_repair_descriptors: dict[str, int] = {}
+        images: dict[str, bytes] = {}
         try:
-            os.fsync(directory_descriptor)
-        except OSError as error:
-            raise JournalLayoutError("journal directory sync failed") from error
-        for name in JOURNAL_DATA_NAMES:
-            _validate_initial_journal_path_unlocked(
-                directory_descriptor, name, payloads[name]
+            cursor_path = _open_partial_journal_path_unlocked(
+                directory_descriptor,
+                JOURNAL_CURSOR_NAME,
+                allow_empty_mode_repair=True,
             )
-        _create_journal_path_unlocked(
-            directory_descriptor,
-            JOURNAL_CURSOR_NAME,
-            payloads[JOURNAL_CURSOR_NAME],
-        )
-        for name in JOURNAL_NAMES:
-            _validate_initial_journal_path_unlocked(
-                directory_descriptor, name, payloads[name]
-            )
-        try:
-            os.fsync(directory_descriptor)
-        except OSError as error:
-            # A readable cursor does not prove its directory entry reached
-            # storage. Recovery must decide after a later open; this initializer
-            # cannot report success from an indeterminate sync.
-            raise JournalLayoutError("journal directory sync failed") from error
+            cursor = None
+            if cursor_path is not None:
+                cursor_descriptor, cursor_mode_repair = cursor_path
+                if cursor_mode_repair:
+                    mode_repair_descriptors[JOURNAL_CURSOR_NAME] = cursor_descriptor
+                    cursor = b""
+                else:
+                    descriptors[JOURNAL_CURSOR_NAME] = cursor_descriptor
+                    cursor = _read_partial_journal_image_unlocked(
+                        directory_descriptor, JOURNAL_CURSOR_NAME, cursor_descriptor
+                    )
+                images[JOURNAL_CURSOR_NAME] = cursor
+            cursor_expected = initial_journal_image(payloads[JOURNAL_CURSOR_NAME])
+            cursor_present = cursor == cursor_expected
+            if cursor is not None and not cursor_present:
+                if _is_safe_initial_fragment(cursor, cursor_expected):
+                    cursor_present = False
+                elif len(cursor) == JOURNAL_FILE_SIZE:
+                    try:
+                        select_journal_frame(cursor)
+                    except JournalFrameError as error:
+                        raise JournalLayoutError(
+                            "journal path cursor is not recoverable"
+                        ) from error
+                    cursor_present = True
+                else:
+                    raise JournalLayoutError("journal path cursor is not recoverable")
+
+            for name in JOURNAL_DATA_NAMES:
+                path = _open_partial_journal_path_unlocked(
+                    directory_descriptor,
+                    name,
+                    allow_empty_mode_repair=not cursor_present,
+                )
+                if path is None:
+                    continue
+                descriptor, mode_repair = path
+                if mode_repair:
+                    mode_repair_descriptors[name] = descriptor
+                    images[name] = b""
+                else:
+                    descriptors[name] = descriptor
+                    images[name] = _read_partial_journal_image_unlocked(
+                        directory_descriptor, name, descriptor
+                    )
+
+            if cursor_present:
+                for name in JOURNAL_NAMES:
+                    descriptor = descriptors.get(name)
+                    if descriptor is None:
+                        raise JournalLayoutError(
+                            f"journal path {name} is missing after cursor"
+                        )
+                    _validate_initialized_journal_path_unlocked(
+                        directory_descriptor, name, descriptor
+                    )
+                try:
+                    os.fsync(directory_descriptor)
+                except OSError as error:
+                    raise JournalLayoutError("journal directory sync failed") from error
+                return
+
+            for name, image in images.items():
+                expected = initial_journal_image(payloads[name])
+                if not _is_safe_initial_path_fragment(name, image, expected):
+                    raise JournalLayoutError(f"journal path {name} is not recoverable")
+
+            for name, path_descriptor in mode_repair_descriptors.items():
+                descriptors[name] = _repair_empty_journal_path_mode_unlocked(
+                    directory_descriptor, name, path_descriptor
+                )
+
+            for name in JOURNAL_DATA_NAMES:
+                descriptor = descriptors.get(name)
+                if descriptor is None:
+                    _create_journal_path_unlocked(
+                        directory_descriptor, name, payloads[name]
+                    )
+                elif images[name] != initial_journal_image(payloads[name]):
+                    _rewrite_initial_journal_path_unlocked(
+                        directory_descriptor,
+                        name,
+                        descriptor,
+                        payloads[name],
+                    )
+            try:
+                os.fsync(directory_descriptor)
+            except OSError as error:
+                raise JournalLayoutError("journal directory sync failed") from error
+            for name in JOURNAL_DATA_NAMES:
+                _validate_initial_journal_path_unlocked(
+                    directory_descriptor, name, payloads[name]
+                )
+
+            cursor_descriptor = descriptors.get(JOURNAL_CURSOR_NAME)
+            if cursor_descriptor is None:
+                _create_journal_path_unlocked(
+                    directory_descriptor,
+                    JOURNAL_CURSOR_NAME,
+                    payloads[JOURNAL_CURSOR_NAME],
+                )
+            elif cursor != cursor_expected:
+                _rewrite_initial_journal_path_unlocked(
+                    directory_descriptor,
+                    JOURNAL_CURSOR_NAME,
+                    cursor_descriptor,
+                    payloads[JOURNAL_CURSOR_NAME],
+                )
+            for name in JOURNAL_NAMES:
+                _validate_initial_journal_path_unlocked(
+                    directory_descriptor, name, payloads[name]
+                )
+            try:
+                os.fsync(directory_descriptor)
+            except OSError as error:
+                # A readable cursor does not prove its directory entry reached
+                # storage. A later initialization retries the directory sync.
+                raise JournalLayoutError("journal directory sync failed") from error
+        finally:
+            first_error: OSError | None = None
+            for descriptor in reversed(tuple(descriptors.values())):
+                try:
+                    os.close(descriptor)
+                except OSError as error:
+                    if first_error is None:
+                        first_error = error
+            for descriptor in reversed(tuple(mode_repair_descriptors.values())):
+                try:
+                    os.close(descriptor)
+                except OSError as error:
+                    if first_error is None:
+                        first_error = error
+            if first_error is not None:
+                raise JournalLayoutError(
+                    "journal partial descriptor close failed"
+                ) from first_error
 
 
 @dataclass(frozen=True)
