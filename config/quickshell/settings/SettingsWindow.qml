@@ -20,6 +20,7 @@ FloatingWindow {
     required property var accessibilityModel
     required property var notificationModel
     required property var panelSettingsModel
+    required property var systemManagementModel
 
     title: "dwm settings"
     visible: settingsModel.visible
@@ -395,6 +396,14 @@ FloatingWindow {
                                     })
                             }
 
+                            SystemSettingsPane {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                visible: root.settingsModel.selectedSectionId === "system"
+                                systemManagementModel: root.systemManagementModel
+                                capabilities: root.settingsModel.capabilitiesForSection("system")
+                            }
+
                             ListView {
                                 id: capabilityList
 
@@ -408,6 +417,7 @@ FloatingWindow {
                                     && root.settingsModel.selectedSectionId !== "power"
                                     && root.settingsModel.selectedSectionId !== "defaults"
                                     && root.settingsModel.selectedSectionId !== "appearance"
+                                    && root.settingsModel.selectedSectionId !== "system"
                                 clip: true
                                 spacing: Theme.spacingSm
                                 model: root.settingsModel.capabilitiesForSection(root.settingsModel.selectedSectionId)
