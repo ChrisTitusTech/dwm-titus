@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import struct
 import sys
 import time
 from dataclasses import dataclass
@@ -18,6 +19,15 @@ MAX_LIST_BYTES = 3 * 1024 * 1024
 READ_DEADLINE_SECONDS = 120
 REFRESH_AGE_DEADLINE_SECONDS = 10
 CANCEL_GRACE_SECONDS = 5
+
+JOURNAL_MAGIC = b"DWMJNL1\0"
+JOURNAL_FRAME_MAJOR = 1
+JOURNAL_FRAME_MINOR = 0
+JOURNAL_FRAME_SIZE = 8192
+JOURNAL_PAYLOAD_OFFSET = 64
+JOURNAL_PAYLOAD_MAX = JOURNAL_FRAME_SIZE - JOURNAL_PAYLOAD_OFFSET
+JOURNAL_FILE_SIZE = JOURNAL_FRAME_SIZE * 2
+JOURNAL_SEQUENCE_MAX = (1 << 64) - 1
 
 PACKAGEKIT_NAME = "org.freedesktop.PackageKit"
 PACKAGEKIT_PATH = "/org/freedesktop/PackageKit"
@@ -69,6 +79,108 @@ class SnapshotFailure(Exception):
         self.code = code
         self.detail = clean_text(detail)
         self.status = status
+
+
+class JournalFrameError(ValueError):
+    """A journal frame failed canonical validation."""
+
+
+@dataclass(frozen=True)
+class JournalFrame:
+    sequence: int
+    payload: str
+
+
+def _journal_payload_bytes(payload: str) -> bytes:
+    if not isinstance(payload, str):
+        raise JournalFrameError("journal payload must be text")
+    if "\0" in payload or "\r" in payload or "\n" in payload:
+        raise JournalFrameError("journal payload contains a forbidden byte")
+    encoded = payload.encode("utf-8")
+    if len(encoded) > JOURNAL_PAYLOAD_MAX:
+        raise JournalFrameError("journal payload is too large")
+    return encoded
+
+
+def encode_journal_frame(sequence: int, payload: str) -> bytes:
+    """Return one canonical fixed-size journal frame."""
+    if not isinstance(sequence, int) or isinstance(sequence, bool):
+        raise JournalFrameError("journal sequence must be an integer")
+    if sequence < 1 or sequence > JOURNAL_SEQUENCE_MAX:
+        raise JournalFrameError("journal sequence is out of range")
+    encoded = _journal_payload_bytes(payload)
+    header = struct.pack(
+        "<8sHHIQQ",
+        JOURNAL_MAGIC,
+        JOURNAL_FRAME_MAJOR,
+        JOURNAL_FRAME_MINOR,
+        len(encoded),
+        sequence,
+        0,
+    )
+    digest = hashlib.sha256(header + encoded).digest()
+    return header + digest + encoded + bytes(JOURNAL_PAYLOAD_MAX - len(encoded))
+
+
+def decode_journal_frame(image: bytes) -> JournalFrame:
+    """Validate and decode one canonical fixed-size journal frame."""
+    if not isinstance(image, bytes) or len(image) != JOURNAL_FRAME_SIZE:
+        raise JournalFrameError("journal frame has an invalid size")
+    magic, major, minor, length, sequence, reserved = struct.unpack(
+        "<8sHHIQQ", image[:32]
+    )
+    if magic != JOURNAL_MAGIC:
+        raise JournalFrameError("journal frame has invalid magic")
+    if major != JOURNAL_FRAME_MAJOR or minor != JOURNAL_FRAME_MINOR:
+        raise JournalFrameError("journal frame has an unsupported version")
+    if reserved != 0:
+        raise JournalFrameError("journal frame has nonzero reserved bytes")
+    if length > JOURNAL_PAYLOAD_MAX:
+        raise JournalFrameError("journal frame has an invalid payload length")
+    if sequence < 1:
+        raise JournalFrameError("journal frame has an invalid sequence")
+    payload_end = JOURNAL_PAYLOAD_OFFSET + length
+    encoded = image[JOURNAL_PAYLOAD_OFFSET:payload_end]
+    if any(image[payload_end:]):
+        raise JournalFrameError("journal frame has nonzero padding")
+    expected = hashlib.sha256(image[:32] + encoded).digest()
+    if image[32:JOURNAL_PAYLOAD_OFFSET] != expected:
+        raise JournalFrameError("journal frame digest does not match")
+    try:
+        payload = encoded.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise JournalFrameError("journal payload is not UTF-8") from error
+    _journal_payload_bytes(payload)
+    return JournalFrame(sequence, payload)
+
+
+def initial_journal_image(payload: str = "") -> bytes:
+    """Return the canonical sequence-one image for a newly created path."""
+    return encode_journal_frame(1, payload) + bytes(JOURNAL_FRAME_SIZE)
+
+
+def select_journal_frame(image: bytes) -> tuple[int, JournalFrame]:
+    """Select the authoritative valid frame from one dual-frame image."""
+    if not isinstance(image, bytes) or len(image) != JOURNAL_FILE_SIZE:
+        raise JournalFrameError("journal file has an invalid size")
+    decoded: list[tuple[int, JournalFrame, bytes]] = []
+    for index in range(2):
+        raw = image[index * JOURNAL_FRAME_SIZE : (index + 1) * JOURNAL_FRAME_SIZE]
+        try:
+            decoded.append((index, decode_journal_frame(raw), raw))
+        except JournalFrameError:
+            continue
+    if not decoded:
+        raise JournalFrameError("journal file has no valid frame")
+    if len(decoded) == 2 and decoded[0][1].sequence == decoded[1][1].sequence:
+        if decoded[0][2] != decoded[1][2]:
+            raise JournalFrameError("journal frames have conflicting sequences")
+        selected = decoded[0]
+    else:
+        selected = max(decoded, key=lambda candidate: candidate[1].sequence)
+    if selected[1].sequence == JOURNAL_SEQUENCE_MAX:
+        raise JournalFrameError("journal sequence is exhausted")
+    return selected[0], selected[1]
 
 
 @dataclass(frozen=True)
