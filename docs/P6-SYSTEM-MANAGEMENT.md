@@ -1094,6 +1094,14 @@ path, or elevation mechanism.
   code. A failed terminal record requires exactly one normalized code from the
   protocol error enum. Other terminal states store that normalized code exactly
   when their operation stream emits an error row and otherwise use `-`.
+  The canonical operation payload has exactly this fixed field order:
+
+  ```text
+  operation-id<TAB>action-id<TAB>started<TAB>finished-or-pending<TAB>kind<TAB>state<TAB>error-or--<TAB>detail<TAB>generation-or--<TAB>transaction-path-or--<TAB>system-restart-or--<TAB>session-restart-or--<TAB>application-restart-or--<TAB>boot-id-or--<TAB>terminal-monotonic-or-pending-or--<TAB>terminal-slot
+  ```
+
+  `started` and a terminal `finished` use the protocol's canonical UTC
+  timestamp form. Nonterminal records use `pending` for `finished`.
   Retained-terminal replay emits the persisted error row immediately before the
   terminal operation record and never derives a code from diagnostic text. Each
   accepted `RequireRestart` signal durably commits the updated active payload
