@@ -138,6 +138,19 @@ unavailable-summary)
 		-e 's/state\tupdate-summary\tavailable\t1/state\tupdate-summary\tpartial\tunknown/' \
 		-e 's/action\tupdates-install-all\tunavailable/action\tupdates-install-all\tavailable/'
 	;;
+unsafe-cancel)
+	snapshot | sed \
+		's/action\tupdates-cancel\tunavailable/action\tupdates-cancel\tavailable/'
+	;;
+too-many-errors)
+	snapshot | sed '/^complete\t/d'
+	i=0
+	while [ "$i" -le 4096 ]; do
+		printf 'error\tupdates\tinternal\tRepeated diagnostic\n'
+		i=$((i + 1))
+	done
+	printf 'complete\tsnapshot\n'
+	;;
 oversized)
 	dd if=/dev/zero bs=1048576 count=9 2>/dev/null | tr '\0' x
 	;;
@@ -282,6 +295,16 @@ ipc refresh >/dev/null
 wait_state partial
 [ "$(ipc systemManagementUpdateCount)" -eq 0 ]
 [ "$(ipc systemManagementInstallAvailability)" = missing ]
+
+printf 'unsafe-cancel\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state partial
+[ "$(ipc systemManagementInstallAvailability)" = missing ]
+
+printf 'too-many-errors\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state failure
+[ "$(ipc systemManagementUpdateCount)" -eq 0 ]
 
 printf 'oversized\n' >"$fixture/mode"
 ipc refresh >/dev/null

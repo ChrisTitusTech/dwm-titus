@@ -34,6 +34,7 @@ grep -Fq 'updateRecordCount > 4096' "$model"
 grep -Fq 'updateBytes + recordBytes > 3 * 1024 * 1024' "$model"
 grep -Fq 'changeRecordCount > 4096' "$model"
 grep -Fq 'changeBytes + recordBytes > 3 * 1024 * 1024' "$model"
+grep -Fq 'errorRecordCount > 4096 || errorBytes + recordBytes > 1024 * 1024' "$model"
 
 for identifier in updates recovery update-summary update-last-refresh update-restart \
 	updates-refresh updates-install-all updates-cancel; do
@@ -49,6 +50,7 @@ grep -Fq "requestedUpdates[\"\$\" + update.packageId] = false;" "$model"
 grep -Fq 'change.action !== "update"' "$model"
 grep -Fq 'else if (change.action === "update") planInvalid = true;' "$model"
 grep -Fq '!summaryAvailable && parsedUpdates.length > 0' "$model"
+grep -Fq 'cancelAvailable !== canCancelActive' "$model"
 grep -Fq 'let planRequiresUnsupportedFlags = false;' "$model"
 grep -Fq 'planUnsupported = planRequiresUnsupportedFlags;' "$model"
 grep -Fq 'if (planUnsupported) {' "$model"

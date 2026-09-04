@@ -162,8 +162,10 @@ Scope {
         let parsedHandoff = null;
         let updateBytes = 0;
         let changeBytes = 0;
+        let errorBytes = 0;
         let updateRecordCount = 0;
         let changeRecordCount = 0;
+        let errorRecordCount = 0;
         let recordIndex = 0;
         const seenProviders = {};
         const seenStates = {};
@@ -338,6 +340,13 @@ Scope {
                     "name": fields[3], "version": fields[4], "summary": fields[5] });
                 changeBytes += recordBytes;
             } else if (type === "error") {
+                errorRecordCount++;
+                const recordBytes = root.utf8Bytes(rawLine) + 1;
+                if (errorRecordCount > 4096 || errorBytes + recordBytes > 1024 * 1024) {
+                    fatal = "System management provider exceeded the error record budget";
+                    break;
+                }
+                errorBytes += recordBytes;
                 if (fields.length < 2 || (fields[1] !== "updates" && fields[1] !== "recovery")) {
                     fatal = "System management provider returned an unknown error owner";
                     break;
@@ -400,6 +409,11 @@ Scope {
                 || parsedActions["$updates-install-all"] === undefined
                 || parsedActions["$updates-cancel"] === undefined) updatesInvalid = true;
         if (parsedRecoveryProvider === null) recoveryInvalid = true;
+        if (!updatesInvalid) {
+            const cancelAvailable = parsedActions["$updates-cancel"].availability === "available";
+            const canCancelActive = parsedActive !== null && parsedActive.cancelable;
+            if (cancelAvailable !== canCancelActive) updatesInvalid = true;
+        }
         if (!updatesInvalid) {
             const summaryAvailable = states["$update-summary"].status === "available";
             if ((summaryAvailable
