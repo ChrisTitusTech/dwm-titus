@@ -368,6 +368,112 @@ class JournalFrameTests(unittest.TestCase):
         )
 
 
+class JournalControlRecordTests(unittest.TestCase):
+    boot_id = "01234567-89ab-cdef-0123-456789abcdef"
+    operation_id = "op-0123456789abcdef0123456789abcdef"
+
+    def test_cursor_round_trips_every_terminal_slot(self):
+        for slot in range(provider.JOURNAL_TERMINAL_COUNT):
+            with self.subTest(slot=slot):
+                payload = provider.encode_journal_cursor(slot)
+                self.assertEqual(payload, f"{slot:02d}")
+                self.assertEqual(provider.decode_journal_cursor(payload), slot)
+
+    def test_cursor_rejects_noncanonical_or_out_of_range_values(self):
+        for payload in ("", "0", "00 ", "01\t", "32", "-1", "aa"):
+            with self.subTest(payload=payload):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.decode_journal_cursor(payload)
+        for slot in (-1, 32, True, "00"):
+            with self.subTest(slot=slot):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.encode_journal_cursor(slot)
+
+    def test_handoff_round_trips_empty_and_exact_identity(self):
+        self.assertEqual(provider.encode_journal_handoff(None), "")
+        self.assertIsNone(provider.decode_journal_handoff(""))
+        record = provider.JournalHandoff(self.operation_id, 31)
+        payload = f"{self.operation_id}\t31"
+        self.assertEqual(provider.encode_journal_handoff(record), payload)
+        self.assertEqual(provider.decode_journal_handoff(payload), record)
+
+    def test_handoff_rejects_malformed_identity_or_extra_fields(self):
+        invalid = (
+            f"{self.operation_id}",
+            f"{self.operation_id}\t32",
+            f"{self.operation_id}\t00\textra",
+            f"op-{'A' * 32}\t00",
+            f"op-{'0' * 31}\t00",
+        )
+        for payload in invalid:
+            with self.subTest(payload=payload):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.decode_journal_handoff(payload)
+
+    def test_restart_round_trips_all_closed_values_and_uint64_boundary(self):
+        for system in provider.JOURNAL_RESTART_SYSTEM_VALUES:
+            for session in provider.JOURNAL_RESTART_SESSION_VALUES:
+                for application in (False, True):
+                    record = provider.JournalRestart(
+                        self.boot_id,
+                        self.operation_id,
+                        system,
+                        session,
+                        provider.JOURNAL_SEQUENCE_MAX,
+                        application,
+                        provider.JOURNAL_SEQUENCE_MAX,
+                    )
+                    with self.subTest(
+                        system=system, session=session, application=application
+                    ):
+                        payload = provider.encode_journal_restart(record)
+                        self.assertEqual(
+                            provider.decode_journal_restart(payload), record
+                        )
+
+        initial = provider.JournalRestart(
+            self.boot_id, None, "none", "none", 0, False, 0
+        )
+        self.assertEqual(
+            provider.decode_journal_restart(self.boot_id + "\t-\tnone\tnone\t0\tno\t0"),
+            initial,
+        )
+
+    def test_restart_rejects_noncanonical_or_kind_invalid_fields(self):
+        base = provider.encode_journal_restart(
+            provider.JournalRestart(self.boot_id, None, "none", "none", 0, False, 0)
+        ).split("\t")
+        cases = {
+            "field count": base[:-1],
+            "boot": ["not-a-boot-id", *base[1:]],
+            "operation": [base[0], "op-bad", *base[2:]],
+            "system": [*base[:2], "session", *base[3:]],
+            "session": [*base[:3], "system", *base[4:]],
+            "session cutoff": [*base[:4], "01", *base[5:]],
+            "application": [*base[:5], "true", base[6]],
+            "application cutoff": [*base[:6], str(1 << 64)],
+            "oversized cutoff": [*base[:6], "9" * 5000],
+        }
+        for name, fields in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.decode_journal_restart("\t".join(fields))
+
+    def test_restart_encoder_rejects_invalid_typed_values(self):
+        invalid = (
+            provider.JournalRestart(self.boot_id, None, "none", "none", True, False, 0),
+            provider.JournalRestart(self.boot_id, None, "none", "none", 0, "no", 0),
+            provider.JournalRestart(self.boot_id, None, "none", "none", 0, False, -1),
+            provider.JournalRestart(None, None, "none", "none", 0, False, 0),
+            provider.JournalRestart(self.boot_id, 1, "none", "none", 0, False, 0),
+            provider.JournalRestart(self.boot_id, None, [], "none", 0, False, 0),
+        )
+        for record in invalid:
+            with self.subTest(record=record):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.encode_journal_restart(record)
+
+
 class JournalFileTests(unittest.TestCase):
     def open_empty(self, directory, name="journal"):
         path = pathlib.Path(directory) / name

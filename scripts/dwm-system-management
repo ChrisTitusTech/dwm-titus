@@ -45,6 +45,12 @@ JOURNAL_RESTART_ALL_CLEAR_TAIL = ("-", "none", "none", "0", "no", "0")
 JOURNAL_RESTART_ALL_CLEAR_SUFFIX = (
     "\t" + "\t".join(JOURNAL_RESTART_ALL_CLEAR_TAIL)
 ).encode("ascii")
+JOURNAL_OPERATION_ID_PATTERN = re.compile(r"op-[0-9a-f]{32}")
+JOURNAL_SLOT_PATTERN = re.compile(r"(?:0[0-9]|[12][0-9]|3[01])")
+JOURNAL_RESTART_SYSTEM_VALUES = frozenset(
+    ("none", "system", "security-system", "unknown")
+)
+JOURNAL_RESTART_SESSION_VALUES = frozenset(("none", "session", "security-session"))
 JOURNAL_DATA_NAMES = (
     "active",
     "restart",
@@ -112,6 +118,10 @@ class JournalFrameError(ValueError):
     """A journal frame failed canonical validation."""
 
 
+class JournalRecordError(ValueError):
+    """A journal control record failed canonical validation."""
+
+
 class JournalFileError(OSError):
     """A journal file descriptor failed bounded validation or I/O."""
 
@@ -132,6 +142,23 @@ class JournalLayoutError(JournalFileError):
 class JournalFrame:
     sequence: int
     payload: str
+
+
+@dataclass(frozen=True)
+class JournalHandoff:
+    operation_id: str
+    slot: int
+
+
+@dataclass(frozen=True)
+class JournalRestart:
+    boot_id: str
+    last_applied_operation_id: str | None
+    system: str
+    session: str
+    session_cutoff: int
+    application: bool
+    application_cutoff: int
 
 
 @dataclass
@@ -558,6 +585,149 @@ def select_journal_frame(image: bytes) -> tuple[int, JournalFrame]:
     return selected[0], selected[1]
 
 
+def _validate_journal_record_payload(payload: str) -> None:
+    try:
+        _journal_payload_bytes(payload)
+    except JournalFrameError as error:
+        raise JournalRecordError("journal control record is not valid text") from error
+
+
+def _decode_journal_uint64(value: str, field: str) -> int:
+    if re.fullmatch(r"0|[1-9][0-9]*", value) is None:
+        raise JournalRecordError(f"journal {field} is not canonical")
+    maximum = str(JOURNAL_SEQUENCE_MAX)
+    if len(value) > len(maximum) or (len(value) == len(maximum) and value > maximum):
+        raise JournalRecordError(f"journal {field} is out of range")
+    return int(value)
+
+
+def _encode_journal_uint64(value: int, field: str) -> str:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise JournalRecordError(f"journal {field} must be an integer")
+    if value < 0 or value > JOURNAL_SEQUENCE_MAX:
+        raise JournalRecordError(f"journal {field} is out of range")
+    return str(value)
+
+
+def encode_journal_cursor(slot: int) -> str:
+    """Encode one canonical two-digit terminal-ring cursor."""
+    if not isinstance(slot, int) or isinstance(slot, bool):
+        raise JournalRecordError("journal cursor must be an integer")
+    if slot < 0 or slot >= JOURNAL_TERMINAL_COUNT:
+        raise JournalRecordError("journal cursor is out of range")
+    return f"{slot:02d}"
+
+
+def decode_journal_cursor(payload: str) -> int:
+    """Decode one canonical two-digit terminal-ring cursor."""
+    _validate_journal_record_payload(payload)
+    if JOURNAL_SLOT_PATTERN.fullmatch(payload) is None:
+        raise JournalRecordError("journal cursor is not canonical")
+    return int(payload)
+
+
+def encode_journal_handoff(record: JournalHandoff | None) -> str:
+    """Encode an empty or exact operation-to-terminal-slot handoff."""
+    if record is None:
+        return ""
+    if not isinstance(record, JournalHandoff):
+        raise JournalRecordError("journal handoff record is invalid")
+    if (
+        not isinstance(record.operation_id, str)
+        or JOURNAL_OPERATION_ID_PATTERN.fullmatch(record.operation_id) is None
+    ):
+        raise JournalRecordError("journal handoff operation ID is invalid")
+    return f"{record.operation_id}\t{encode_journal_cursor(record.slot)}"
+
+
+def decode_journal_handoff(payload: str) -> JournalHandoff | None:
+    """Decode an empty or exact operation-to-terminal-slot handoff."""
+    _validate_journal_record_payload(payload)
+    if payload == "":
+        return None
+    fields = payload.split("\t")
+    if len(fields) != 2:
+        raise JournalRecordError("journal handoff field count is invalid")
+    if JOURNAL_OPERATION_ID_PATTERN.fullmatch(fields[0]) is None:
+        raise JournalRecordError("journal handoff operation ID is invalid")
+    return JournalHandoff(fields[0], decode_journal_cursor(fields[1]))
+
+
+def encode_journal_restart(record: JournalRestart) -> str:
+    """Encode one canonical restart-guidance control record."""
+    if not isinstance(record, JournalRestart):
+        raise JournalRecordError("journal restart record is invalid")
+    if (
+        not isinstance(record.boot_id, str)
+        or BOOT_ID_PATTERN.fullmatch(record.boot_id) is None
+    ):
+        raise JournalRecordError("journal restart boot identity is invalid")
+    operation_id = record.last_applied_operation_id
+    if operation_id is None:
+        operation_id = "-"
+    elif (
+        not isinstance(operation_id, str)
+        or JOURNAL_OPERATION_ID_PATTERN.fullmatch(operation_id) is None
+    ):
+        raise JournalRecordError("journal restart operation ID is invalid")
+    if (
+        not isinstance(record.system, str)
+        or record.system not in JOURNAL_RESTART_SYSTEM_VALUES
+    ):
+        raise JournalRecordError("journal system restart value is invalid")
+    if (
+        not isinstance(record.session, str)
+        or record.session not in JOURNAL_RESTART_SESSION_VALUES
+    ):
+        raise JournalRecordError("journal session restart value is invalid")
+    if not isinstance(record.application, bool):
+        raise JournalRecordError("journal application restart value is invalid")
+    fields = (
+        record.boot_id,
+        operation_id,
+        record.system,
+        record.session,
+        _encode_journal_uint64(record.session_cutoff, "session cutoff"),
+        "yes" if record.application else "no",
+        _encode_journal_uint64(record.application_cutoff, "application cutoff"),
+    )
+    return "\t".join(fields)
+
+
+def decode_journal_restart(payload: str) -> JournalRestart:
+    """Decode one canonical restart-guidance control record."""
+    _validate_journal_record_payload(payload)
+    fields = payload.split("\t")
+    if len(fields) != 7:
+        raise JournalRecordError("journal restart field count is invalid")
+    boot_id, operation_id, system, session, session_cutoff, application, app_cutoff = (
+        fields
+    )
+    if BOOT_ID_PATTERN.fullmatch(boot_id) is None:
+        raise JournalRecordError("journal restart boot identity is invalid")
+    if operation_id == "-":
+        decoded_operation_id = None
+    elif JOURNAL_OPERATION_ID_PATTERN.fullmatch(operation_id) is not None:
+        decoded_operation_id = operation_id
+    else:
+        raise JournalRecordError("journal restart operation ID is invalid")
+    if system not in JOURNAL_RESTART_SYSTEM_VALUES:
+        raise JournalRecordError("journal system restart value is invalid")
+    if session not in JOURNAL_RESTART_SESSION_VALUES:
+        raise JournalRecordError("journal session restart value is invalid")
+    if application not in ("yes", "no"):
+        raise JournalRecordError("journal application restart value is invalid")
+    return JournalRestart(
+        boot_id,
+        decoded_operation_id,
+        system,
+        session,
+        _decode_journal_uint64(session_cutoff, "session cutoff"),
+        application == "yes",
+        _decode_journal_uint64(app_cutoff, "application cutoff"),
+    )
+
+
 def _validate_journal_descriptor(
     descriptor: int, expected_size: int, *, writable: bool
 ) -> os.stat_result:
@@ -759,8 +929,10 @@ def _initial_journal_payloads(boot_id: str) -> dict[str, str]:
     if not isinstance(boot_id, str) or BOOT_ID_PATTERN.fullmatch(boot_id) is None:
         raise JournalLayoutError("journal boot identity is invalid")
     payloads = {name: "" for name in JOURNAL_DATA_NAMES}
-    payloads["restart"] = "\t".join((boot_id, *JOURNAL_RESTART_ALL_CLEAR_TAIL))
-    payloads[JOURNAL_CURSOR_NAME] = "00"
+    payloads["restart"] = encode_journal_restart(
+        JournalRestart(boot_id, None, "none", "none", 0, False, 0)
+    )
+    payloads[JOURNAL_CURSOR_NAME] = encode_journal_cursor(0)
     return payloads
 
 
@@ -1029,11 +1201,17 @@ def _is_safe_initial_fragment(image: bytes, expected: bytes) -> bool:
 
 
 def _is_all_clear_restart_payload(payload: str) -> bool:
-    fields = payload.split("\t")
+    try:
+        record = decode_journal_restart(payload)
+    except JournalRecordError:
+        return False
     return (
-        len(fields) == 7
-        and BOOT_ID_PATTERN.fullmatch(fields[0]) is not None
-        and tuple(fields[1:]) == JOURNAL_RESTART_ALL_CLEAR_TAIL
+        record.last_applied_operation_id is None
+        and record.system == "none"
+        and record.session == "none"
+        and record.session_cutoff == 0
+        and not record.application
+        and record.application_cutoff == 0
     )
 
 
