@@ -55,15 +55,13 @@ JOURNAL_TIMESTAMP_PATTERN = re.compile(
 JOURNAL_PACKAGEKIT_PATH_PATTERN = re.compile(
     r"/org/freedesktop/PackageKit/transactions/[A-Za-z0-9_]+"
 )
-JOURNAL_RESTART_SYSTEM_VALUES = frozenset(
-    ("none", "system", "security-system", "unknown")
-)
 JOURNAL_RESTART_SYSTEM_STRENGTH = {
     "none": 0,
     "unknown": 1,
     "system": 2,
     "security-system": 3,
 }
+JOURNAL_RESTART_SYSTEM_VALUES = frozenset(JOURNAL_RESTART_SYSTEM_STRENGTH)
 JOURNAL_RESTART_SESSION_VALUES = frozenset(("none", "session", "security-session"))
 JOURNAL_OPERATION_ACTION_KINDS = {
     "updates-refresh": "refresh",

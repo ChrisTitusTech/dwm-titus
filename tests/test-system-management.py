@@ -742,29 +742,29 @@ class JournalControlRecordTests(unittest.TestCase):
             state="succeeded",
             terminal_monotonic=123,
         )
-        cases = []
+        cases = {}
         nonterminal = self.state_payloads()
         nonterminal["terminal-07"] = provider.encode_journal_operation(
             self.update_operation(slot=7)
         )
-        cases.append(nonterminal)
+        cases["nonterminal slot"] = nonterminal
         wrong_slot = self.state_payloads()
         wrong_slot["terminal-06"] = provider.encode_journal_operation(terminal)
-        cases.append(wrong_slot)
+        cases["wrong slot identity"] = wrong_slot
         duplicate = self.state_payloads()
         duplicate["terminal-07"] = provider.encode_journal_operation(terminal)
         duplicate["terminal-08"] = provider.encode_journal_operation(
             replace(terminal, slot=8)
         )
-        cases.append(duplicate)
+        cases["duplicate retained identity"] = duplicate
         active_duplicate = self.state_payloads()
         active_duplicate["active"] = provider.encode_journal_operation(
             self.update_operation(slot=7)
         )
         active_duplicate["terminal-07"] = provider.encode_journal_operation(terminal)
-        cases.append(active_duplicate)
-        for index, payloads in enumerate(cases):
-            with self.subTest(index=index):
+        cases["active identity duplicated in terminal"] = active_duplicate
+        for name, payloads in cases.items():
+            with self.subTest(name=name):
                 with self.assertRaises(provider.JournalRecordError):
                     provider.decode_journal_state(payloads)
 
@@ -779,19 +779,19 @@ class JournalControlRecordTests(unittest.TestCase):
             terminal,
             operation_id="op-ffffffffffffffffffffffffffffffff",
         )
-        cases = []
+        cases = {}
         missing = self.state_payloads()
         missing["handoff"] = provider.encode_journal_handoff(
             provider.JournalHandoff(terminal.operation_id, 7)
         )
-        cases.append(missing)
+        cases["handoff terminal missing"] = missing
         mismatch = self.state_payloads()
         mismatch["terminal-07"] = provider.encode_journal_operation(terminal)
         mismatch["cursor"] = "08"
         mismatch["handoff"] = provider.encode_journal_handoff(
             provider.JournalHandoff(other.operation_id, 7)
         )
-        cases.append(mismatch)
+        cases["handoff identity mismatch"] = mismatch
         active_conflict = self.state_payloads()
         active_conflict["active"] = provider.encode_journal_operation(other)
         active_conflict["terminal-07"] = provider.encode_journal_operation(terminal)
@@ -799,9 +799,9 @@ class JournalControlRecordTests(unittest.TestCase):
         active_conflict["handoff"] = provider.encode_journal_handoff(
             provider.JournalHandoff(terminal.operation_id, 7)
         )
-        cases.append(active_conflict)
-        for payloads in cases:
-            with self.subTest():
+        cases["active conflicts with handoff"] = active_conflict
+        for name, payloads in cases.items():
+            with self.subTest(name=name):
                 with self.assertRaises(provider.JournalRecordError):
                     provider.decode_journal_state(payloads)
 
@@ -812,22 +812,22 @@ class JournalControlRecordTests(unittest.TestCase):
             state="succeeded",
             terminal_monotonic=123,
         )
-        cases = []
+        cases = {}
         stale_cursor = self.state_payloads()
         stale_cursor["terminal-07"] = provider.encode_journal_operation(terminal)
         stale_cursor["handoff"] = provider.encode_journal_handoff(
             provider.JournalHandoff(terminal.operation_id, 7)
         )
-        cases.append(stale_cursor)
+        cases["handoff cursor is stale"] = stale_cursor
         missing_restart = self.state_payloads()
         missing_restart["active"] = provider.encode_journal_operation(terminal)
         missing_restart["terminal-07"] = provider.encode_journal_operation(terminal)
-        cases.append(missing_restart)
+        cases["terminal update restart commit missing"] = missing_restart
         missing_retained_restart = self.state_payloads()
         missing_retained_restart["terminal-07"] = provider.encode_journal_operation(
             terminal
         )
-        cases.append(missing_retained_restart)
+        cases["retained update restart identity missing"] = missing_retained_restart
         reused = self.state_payloads()
         reused["restart"] = provider.encode_journal_restart(
             replace(
@@ -838,7 +838,7 @@ class JournalControlRecordTests(unittest.TestCase):
         reused["active"] = provider.encode_journal_operation(
             self.update_operation(slot=8)
         )
-        cases.append(reused)
+        cases["nonterminal active reuses restart identity"] = reused
         non_update = replace(
             terminal,
             action_id="timezone-set",
@@ -854,19 +854,19 @@ class JournalControlRecordTests(unittest.TestCase):
         reused_terminal = self.state_payloads()
         reused_terminal["restart"] = reused["restart"]
         reused_terminal["terminal-07"] = provider.encode_journal_operation(non_update)
-        cases.append(reused_terminal)
+        cases["non-update terminal reuses restart identity"] = reused_terminal
         previous_boot = self.state_payloads()
         previous_boot["restart"] = reused["restart"]
         previous_boot["terminal-07"] = provider.encode_journal_operation(
             replace(terminal, boot_id="11234567-89ab-cdef-0123-456789abcdef")
         )
-        cases.append(previous_boot)
+        cases["previous-boot update reuses restart identity"] = previous_boot
         missing_contribution = self.state_payloads()
         missing_contribution["restart"] = reused["restart"]
         missing_contribution["terminal-07"] = provider.encode_journal_operation(
             replace(terminal, system_restart="security-system")
         )
-        cases.append(missing_contribution)
+        cases["system contribution missing"] = missing_contribution
         older_contribution = self.state_payloads()
         newer = replace(
             terminal,
@@ -884,7 +884,7 @@ class JournalControlRecordTests(unittest.TestCase):
             replace(terminal, system_restart="security-system")
         )
         older_contribution["terminal-08"] = provider.encode_journal_operation(newer)
-        cases.append(older_contribution)
+        cases["older system contribution missing"] = older_contribution
         stale_identity = self.state_payloads()
         stale_identity["restart"] = provider.encode_journal_restart(
             replace(
@@ -894,7 +894,7 @@ class JournalControlRecordTests(unittest.TestCase):
         )
         stale_identity["terminal-07"] = provider.encode_journal_operation(terminal)
         stale_identity["terminal-08"] = provider.encode_journal_operation(newer)
-        cases.append(stale_identity)
+        cases["last-applied identity is stale"] = stale_identity
         for field, changes in (
             (
                 "session",
@@ -926,7 +926,7 @@ class JournalControlRecordTests(unittest.TestCase):
                     application_restart=field == "application",
                 )
             )
-            cases.append(stale_cutoff)
+            cases[f"{field} cutoff is stale"] = stale_cutoff
         unidentified_guidance = self.state_payloads()
         unidentified_guidance["restart"] = provider.encode_journal_restart(
             replace(
@@ -934,9 +934,9 @@ class JournalControlRecordTests(unittest.TestCase):
                 system="unknown",
             )
         )
-        cases.append(unidentified_guidance)
-        for index, payloads in enumerate(cases):
-            with self.subTest(index=index):
+        cases["restart guidance has no identity"] = unidentified_guidance
+        for name, payloads in cases.items():
+            with self.subTest(name=name):
                 with self.assertRaises(provider.JournalRecordError):
                     provider.decode_journal_state(payloads)
 
