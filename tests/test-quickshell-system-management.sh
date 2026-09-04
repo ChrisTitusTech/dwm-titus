@@ -3,11 +3,14 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 model=$repo/config/quickshell/systemmanagement/SystemManagementModel.qml
+pane=$repo/config/quickshell/settings/SystemSettingsPane.qml
 commands=$repo/config/quickshell/core/Commands.qml
 settings=$repo/config/quickshell/settings/SettingsModel.qml
+settings_window=$repo/config/quickshell/settings/SettingsWindow.qml
 shell=$repo/config/quickshell/shell.qml
 
 test -f "$model"
+test -f "$pane"
 grep -Fq 'function systemManagementCommand(action, args)' "$commands"
 grep -Fq 'function terminatingCheckedCommand(command)' "$commands"
 grep -Fq 'trap terminate HUP INT TERM' "$commands"
@@ -72,6 +75,52 @@ grep -Fq 'snapshotProcess.running = false;' "$model"
 grep -Fq 'root.snapshotState === "failure"' "$model"
 grep -Fq 'root.parseSnapshot(snapshotOutput.text, snapshotProcess.generation);' "$model"
 
+grep -Fq 'required property var systemManagementModel' "$pane"
+grep -Fq 'required property var capabilities' "$pane"
+grep -Fq 'READ-ONLY STATUS' "$pane"
+grep -Fq 'component PlainText: UiText {' "$pane"
+grep -Fq 'textFormat: Text.PlainText' "$pane"
+[ "$(grep -Fc 'UiText {' "$pane")" -eq 1 ]
+grep -Fq 'activeFocusOnTab: true' "$pane"
+grep -Fq 'Keys.onPressed: event =>' "$pane"
+for key_name in Down Up PageDown PageUp Home End; do
+	grep -Fq "Qt.Key_$key_name" "$pane"
+done
+grep -Fq 'Math.max(0, Math.min(position, Math.max(0, root.contentHeight - root.height)))' "$pane"
+grep -Fq 'columns: root.width < 720 ? 1 : 3' "$pane"
+grep -Fq 'model: root.systemManagementModel.updates' "$pane"
+grep -Fq 'model: root.systemManagementModel.packageChanges' "$pane"
+grep -Fq 'model: root.systemManagementModel.errors' "$pane"
+grep -Fq 'errorRow.modelData.provider.toUpperCase()' "$pane"
+grep -Fq 'This pane only reads PackageKit and recovery state.' "$pane"
+if grep -Eq 'Quickshell\.Io|\bProcess\b|\bCommands\.|systemManagementCommand' "$pane"; then
+	printf 'System Settings pane must not construct or run commands.\n' >&2
+	exit 1
+fi
+pane_model_members=$(grep -Eo 'systemManagementModel\.[A-Za-z][A-Za-z0-9]*' "$pane" |
+	sort -u)
+expected_pane_model_members=$(printf '%s\n' \
+	'systemManagementModel.activeOperation' \
+	'systemManagementModel.busy' \
+	'systemManagementModel.errors' \
+	'systemManagementModel.message' \
+	'systemManagementModel.packageChanges' \
+	'systemManagementModel.providerDetail' \
+	'systemManagementModel.providerState' \
+	'systemManagementModel.recoveryProvider' \
+	'systemManagementModel.refresh' \
+	'systemManagementModel.snapshotState' \
+	'systemManagementModel.terminalHandoff' \
+	'systemManagementModel.updateLastRefresh' \
+	'systemManagementModel.updateRestart' \
+	'systemManagementModel.updateSummary' \
+	'systemManagementModel.updates')
+if [ "$pane_model_members" != "$expected_pane_model_members" ]; then
+	printf 'System Settings pane accessed a non-read-only model member.\n' >&2
+	exit 1
+fi
+[ "$(grep -Fc 'onActivated: root.systemManagementModel.refresh()' "$pane")" -eq 1 ]
+
 grep -Fq 'property var systemManagementModel: null' "$settings"
 grep -Fq 'root.systemManagementModel.openSettings()' "$settings"
 grep -Fq 'root.systemManagementModel.closeSettings()' "$settings"
@@ -79,6 +128,7 @@ grep -Fq 'root.systemManagementModel.refresh()' "$settings"
 grep -Fq 'import qs.systemmanagement' "$shell"
 [ "$(grep -Fc 'SystemManagementModel {' "$shell")" -eq 1 ]
 grep -Fq 'systemManagementModel: systemManagementModel' "$shell"
+grep -Fq 'SystemSettingsPane {' "$settings_window"
 grep -Fq 'function systemManagementProviderStatus(): string' "$shell"
 grep -Fq 'function systemManagementUpdateCount(): int' "$shell"
 grep -Fq 'function systemManagementPackageChangeCount(): int' "$shell"

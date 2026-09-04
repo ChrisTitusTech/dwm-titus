@@ -355,7 +355,7 @@ if pgrep -af "$helper snapshot" >/dev/null 2>&1; then
 	printf 'System-management helper remained after Settings closure\n' >&2
 	exit 1
 fi
-if grep -F 'SystemManagementModel.qml' "$work/quickshell.log" | grep -Fq 'ERROR'; then
+if grep -E 'System(ManagementModel|SettingsPane)\.qml' "$work/quickshell.log" | grep -Fq 'ERROR'; then
 	tail -60 "$work/quickshell.log" >&2
 	exit 1
 fi

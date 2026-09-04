@@ -1169,5 +1169,6 @@ ShellRoot {
         accessibilityModel: accessibilityModel
         notificationModel: notificationModel
         panelSettingsModel: panelSettingsModel
+        systemManagementModel: systemManagementModel
     }
 }

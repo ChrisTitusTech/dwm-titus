@@ -8,6 +8,12 @@ versions from `config.mk`.
 
 ### Changed
 
+- Show the Phase 6 Fedora update snapshot in a dedicated read-only System
+  Settings pane with provider state, update and plan details, diagnostics,
+  restart guidance, recovery ownership, and existing administration boundaries.
+  Update mutations remain unavailable until their confirmed operation workflow
+  is implemented.
+
 - Begin Phase 6 with a complete system-management capability and privilege
   inventory. Select PackageKit, systemd regional services, AccountsService,
   CUPS, and fixed Fedora tools as bounded owners; define provider, audit,
