@@ -8,6 +8,7 @@ import errno
 import fcntl
 import hashlib
 import os
+import re
 import stat
 import struct
 import sys
@@ -34,6 +35,18 @@ JOURNAL_PAYLOAD_MAX = JOURNAL_FRAME_SIZE - JOURNAL_PAYLOAD_OFFSET
 JOURNAL_FILE_SIZE = JOURNAL_FRAME_SIZE * 2
 JOURNAL_SEQUENCE_MAX = (1 << 64) - 1
 JOURNAL_LOCK_DEADLINE_SECONDS = 5
+JOURNAL_TERMINAL_COUNT = 32
+JOURNAL_CURSOR_NAME = "cursor"
+JOURNAL_DATA_NAMES = (
+    "active",
+    "restart",
+    "handoff",
+    *(f"terminal-{index:02d}" for index in range(JOURNAL_TERMINAL_COUNT)),
+)
+JOURNAL_NAMES = (*JOURNAL_DATA_NAMES, JOURNAL_CURSOR_NAME)
+BOOT_ID_PATTERN = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
 
 PACKAGEKIT_NAME = "org.freedesktop.PackageKit"
 PACKAGEKIT_PATH = "/org/freedesktop/PackageKit"
@@ -101,6 +114,10 @@ class JournalCommitError(JournalFileError):
 
 class JournalLockError(JournalFileError):
     """The bounded journal directory lock could not be acquired or released."""
+
+
+class JournalLayoutError(JournalFileError):
+    """The fixed journal path set could not be initialized safely."""
 
 
 @dataclass(frozen=True)
@@ -399,6 +416,131 @@ def commit_journal_file(
     """Commit one frame while holding the exclusive directory lock."""
     with _journal_lock(lock_descriptor, exclusive=True):
         return _commit_journal_file_unlocked(descriptor, payload)
+
+
+def _initial_journal_payloads(boot_id: str) -> dict[str, str]:
+    if not isinstance(boot_id, str) or BOOT_ID_PATTERN.fullmatch(boot_id) is None:
+        raise JournalLayoutError("journal boot identity is invalid")
+    payloads = {name: "" for name in JOURNAL_DATA_NAMES}
+    payloads["restart"] = f"{boot_id}\t-\tnone\tnone\t0\tno\t0"
+    payloads[JOURNAL_CURSOR_NAME] = "00"
+    return payloads
+
+
+def _validate_journal_path_identity(
+    directory_descriptor: int,
+    name: str,
+    descriptor: int,
+    expected_size: int,
+) -> None:
+    held = _validate_journal_descriptor(descriptor, expected_size, writable=True)
+    try:
+        reachable = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
+    except OSError as error:
+        raise JournalLayoutError(f"journal path {name} is unavailable") from error
+    if (
+        (reachable.st_dev, reachable.st_ino) != (held.st_dev, held.st_ino)
+        or not stat.S_ISREG(reachable.st_mode)
+        or reachable.st_uid != os.geteuid()
+        or stat.S_IMODE(reachable.st_mode) != 0o600
+        or reachable.st_nlink != 1
+        or reachable.st_size != expected_size
+    ):
+        raise JournalLayoutError(f"journal path {name} identity is unsafe")
+
+
+def _create_journal_path_unlocked(
+    directory_descriptor: int, name: str, payload: str
+) -> None:
+    try:
+        descriptor = os.open(
+            name,
+            os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_RDWR,
+            0o600,
+            dir_fd=directory_descriptor,
+        )
+    except OSError as error:
+        raise JournalLayoutError(f"journal path {name} creation failed") from error
+    try:
+        try:
+            os.fchmod(descriptor, 0o600)
+            _validate_journal_path_identity(directory_descriptor, name, descriptor, 0)
+            _initialize_journal_file_unlocked(descriptor, payload)
+            _validate_journal_path_identity(
+                directory_descriptor, name, descriptor, JOURNAL_FILE_SIZE
+            )
+        except (OSError, JournalFrameError) as error:
+            raise JournalLayoutError(
+                f"journal path {name} initialization failed"
+            ) from error
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError as error:
+            raise JournalLayoutError(f"journal path {name} close failed") from error
+
+
+def _validate_initial_journal_path_unlocked(
+    directory_descriptor: int, name: str, expected_payload: str
+) -> None:
+    try:
+        descriptor = os.open(
+            name,
+            os.O_NOFOLLOW | os.O_CLOEXEC | os.O_RDWR,
+            dir_fd=directory_descriptor,
+        )
+    except OSError as error:
+        raise JournalLayoutError(f"journal path {name} open failed") from error
+    try:
+        _validate_journal_path_identity(
+            directory_descriptor, name, descriptor, JOURNAL_FILE_SIZE
+        )
+        try:
+            observed = _read_journal_file_unlocked(descriptor)
+        except JournalFrameError as error:
+            raise JournalLayoutError(f"journal path {name} is not initial") from error
+        if observed != (0, JournalFrame(1, expected_payload)):
+            raise JournalLayoutError(f"journal path {name} is not initial")
+        _validate_journal_path_identity(
+            directory_descriptor, name, descriptor, JOURNAL_FILE_SIZE
+        )
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError as error:
+            raise JournalLayoutError(f"journal path {name} close failed") from error
+
+
+def initialize_journal_layout(directory_descriptor: int, boot_id: str) -> None:
+    """Create and verify the fixed journal layout with cursor committed last."""
+    payloads = _initial_journal_payloads(boot_id)
+    with _journal_lock(directory_descriptor, exclusive=True):
+        for name in JOURNAL_DATA_NAMES:
+            _create_journal_path_unlocked(directory_descriptor, name, payloads[name])
+        try:
+            os.fsync(directory_descriptor)
+        except OSError as error:
+            raise JournalLayoutError("journal directory sync failed") from error
+        for name in JOURNAL_DATA_NAMES:
+            _validate_initial_journal_path_unlocked(
+                directory_descriptor, name, payloads[name]
+            )
+        _create_journal_path_unlocked(
+            directory_descriptor,
+            JOURNAL_CURSOR_NAME,
+            payloads[JOURNAL_CURSOR_NAME],
+        )
+        for name in JOURNAL_NAMES:
+            _validate_initial_journal_path_unlocked(
+                directory_descriptor, name, payloads[name]
+            )
+        try:
+            os.fsync(directory_descriptor)
+        except OSError as error:
+            # A readable cursor does not prove its directory entry reached
+            # storage. Recovery must decide after a later open; this initializer
+            # cannot report success from an indeterminate sync.
+            raise JournalLayoutError("journal directory sync failed") from error
 
 
 @dataclass(frozen=True)

@@ -614,6 +614,188 @@ class JournalFileTests(unittest.TestCase):
                 os.close(lock_descriptor)
 
 
+class JournalLayoutTests(unittest.TestCase):
+    boot_id = "01234567-89ab-cdef-0123-456789abcdef"
+
+    def open_directory(self, directory):
+        return os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+
+    def read_path(self, directory_descriptor, name):
+        descriptor = os.open(
+            name,
+            os.O_NOFOLLOW | os.O_CLOEXEC | os.O_RDWR,
+            dir_fd=directory_descriptor,
+        )
+        try:
+            return provider.read_journal_file(directory_descriptor, descriptor)
+        finally:
+            os.close(descriptor)
+
+    def test_fresh_layout_has_exact_initial_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory_descriptor = self.open_directory(directory)
+            try:
+                provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+                self.assertEqual(
+                    set(os.listdir(directory)), set(provider.JOURNAL_NAMES)
+                )
+                payloads = provider._initial_journal_payloads(self.boot_id)
+                for name in provider.JOURNAL_NAMES:
+                    with self.subTest(name=name):
+                        path = pathlib.Path(directory) / name
+                        metadata = path.stat()
+                        self.assertEqual(metadata.st_mode & 0o7777, 0o600)
+                        self.assertEqual(metadata.st_nlink, 1)
+                        self.assertEqual(metadata.st_size, provider.JOURNAL_FILE_SIZE)
+                        self.assertEqual(
+                            self.read_path(directory_descriptor, name),
+                            (0, provider.JournalFrame(1, payloads[name])),
+                        )
+            finally:
+                os.close(directory_descriptor)
+
+    def test_invalid_boot_identity_creates_nothing(self):
+        invalid = (
+            "",
+            "01234567-89AB-cdef-0123-456789abcdef",
+            "0123456789ab-cdef-0123-456789abcdef",
+            "01234567-89ab-cdef-0123-456789abcdeg",
+        )
+        for boot_id in invalid:
+            with self.subTest(boot_id=boot_id):
+                with tempfile.TemporaryDirectory() as directory:
+                    directory_descriptor = self.open_directory(directory)
+                    try:
+                        with self.assertRaisesRegex(
+                            provider.JournalLayoutError, "boot identity"
+                        ):
+                            provider.initialize_journal_layout(
+                                directory_descriptor, boot_id
+                            )
+                        self.assertEqual(os.listdir(directory), [])
+                    finally:
+                        os.close(directory_descriptor)
+
+    def test_fixed_symlink_collision_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            victim = pathlib.Path(directory) / "victim"
+            victim.write_bytes(b"do not modify")
+            os.symlink("victim", pathlib.Path(directory) / "active")
+            directory_descriptor = self.open_directory(directory)
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active creation"
+                ):
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                self.assertEqual(victim.read_bytes(), b"do not modify")
+                self.assertFalse(
+                    (pathlib.Path(directory) / provider.JOURNAL_CURSOR_NAME).exists()
+                )
+            finally:
+                os.close(directory_descriptor)
+
+    def test_directory_sync_failure_leaves_cursor_absent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory_descriptor = self.open_directory(directory)
+            original_fsync = os.fsync
+
+            def fail_directory_sync(descriptor):
+                if descriptor == directory_descriptor:
+                    raise OSError("injected directory sync failure")
+                return original_fsync(descriptor)
+
+            try:
+                with mock.patch.object(
+                    provider.os, "fsync", side_effect=fail_directory_sync
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "directory sync"
+                    ):
+                        provider.initialize_journal_layout(
+                            directory_descriptor, self.boot_id
+                        )
+                self.assertEqual(
+                    set(os.listdir(directory)), set(provider.JOURNAL_DATA_NAMES)
+                )
+                self.assertFalse(
+                    (pathlib.Path(directory) / provider.JOURNAL_CURSOR_NAME).exists()
+                )
+            finally:
+                os.close(directory_descriptor)
+
+    def test_final_directory_sync_failure_is_not_accepted_as_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory_descriptor = self.open_directory(directory)
+            original_fsync = os.fsync
+            directory_syncs = 0
+
+            def fail_final_directory_sync(descriptor):
+                nonlocal directory_syncs
+                if descriptor == directory_descriptor:
+                    directory_syncs += 1
+                    if directory_syncs == 2:
+                        raise OSError("injected final directory sync failure")
+                return original_fsync(descriptor)
+
+            try:
+                with mock.patch.object(
+                    provider.os, "fsync", side_effect=fail_final_directory_sync
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "directory sync"
+                    ):
+                        provider.initialize_journal_layout(
+                            directory_descriptor, self.boot_id
+                        )
+                self.assertEqual(
+                    set(os.listdir(directory)), set(provider.JOURNAL_NAMES)
+                )
+                self.assertEqual(
+                    self.read_path(directory_descriptor, provider.JOURNAL_CURSOR_NAME),
+                    (0, provider.JournalFrame(1, "00")),
+                )
+            finally:
+                os.close(directory_descriptor)
+
+    def test_existing_fixed_file_is_never_replaced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            active = pathlib.Path(directory) / "active"
+            active.write_bytes(b"legacy record")
+            os.chmod(active, 0o600)
+            directory_descriptor = self.open_directory(directory)
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active creation"
+                ):
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                self.assertEqual(active.read_bytes(), b"legacy record")
+                self.assertFalse(
+                    (pathlib.Path(directory) / provider.JOURNAL_CURSOR_NAME).exists()
+                )
+            finally:
+                os.close(directory_descriptor)
+
+    def test_invalid_initial_frame_uses_layout_error_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            active = pathlib.Path(directory) / "active"
+            active.write_bytes(b"\0" * provider.JOURNAL_FILE_SIZE)
+            os.chmod(active, 0o600)
+            directory_descriptor = self.open_directory(directory)
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active is not initial"
+                ):
+                    provider._validate_initial_journal_path_unlocked(
+                        directory_descriptor, "active", "0"
+                    )
+            finally:
+                os.close(directory_descriptor)
+
+
 class SnapshotValidationTests(unittest.TestCase):
     def test_duplicate_plan_preserves_readable_updates(self):
         update = package(8, "openssl;4.0;x86_64;updates", "TLS library")
