@@ -718,6 +718,28 @@ class JournalControlRecordTests(unittest.TestCase):
         )
         self.assertEqual(provider.decode_journal_state(payloads).active, current)
 
+    def test_state_accepts_pruned_lower_scope_restart_guidance(self):
+        terminal = replace(
+            self.update_operation(slot=7),
+            finished_at="2026-02-28T01:03:04Z",
+            state="succeeded",
+            session_restart="security-session",
+            application_restart=True,
+            terminal_monotonic=123,
+        )
+        payloads = self.state_payloads()
+        payloads["terminal-07"] = provider.encode_journal_operation(terminal)
+        payloads["cursor"] = "08"
+        payloads["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(payloads["restart"]),
+                last_applied_operation_id=terminal.operation_id,
+            )
+        )
+        state = provider.decode_journal_state(payloads)
+        self.assertEqual(state.restart.session, "none")
+        self.assertFalse(state.restart.application)
+
     def test_state_rejects_missing_extra_or_wrong_typed_paths(self):
         payloads = self.state_payloads()
         invalid = []
@@ -935,6 +957,105 @@ class JournalControlRecordTests(unittest.TestCase):
             )
         )
         cases["restart guidance has no identity"] = unidentified_guidance
+        for name, payloads in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.decode_journal_state(payloads)
+
+    def test_state_rejects_cross_record_recovery_conflicts(self):
+        terminal = replace(
+            self.update_operation(slot=7),
+            finished_at="2026-02-28T01:03:04Z",
+            state="succeeded",
+            terminal_monotonic=123,
+        )
+        cases = {}
+
+        newer = replace(
+            terminal,
+            operation_id="op-ffffffffffffffffffffffffffffffff",
+            terminal_monotonic=200,
+        )
+        stale_active = self.state_payloads()
+        stale_active["terminal-07"] = provider.encode_journal_operation(newer)
+        stale_active["cursor"] = "08"
+        stale_active["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(stale_active["restart"]),
+                last_applied_operation_id=newer.operation_id,
+            )
+        )
+        stale_active["active"] = provider.encode_journal_operation(
+            replace(terminal, slot=8, terminal_monotonic=100)
+        )
+        cases["active update predates retained history"] = stale_active
+
+        old_boot_handoff = self.state_payloads()
+        old_boot_terminal = replace(
+            terminal, boot_id="11234567-89ab-cdef-0123-456789abcdef"
+        )
+        old_boot_handoff["terminal-07"] = provider.encode_journal_operation(
+            old_boot_terminal
+        )
+        old_boot_handoff["cursor"] = "08"
+        old_boot_handoff["handoff"] = provider.encode_journal_handoff(
+            provider.JournalHandoff(old_boot_terminal.operation_id, 7)
+        )
+        old_boot_handoff["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(old_boot_handoff["restart"]),
+                last_applied_operation_id="op-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                system="unknown",
+            )
+        )
+        cases["old-boot handoff restart is not clear"] = old_boot_handoff
+
+        downgraded_session = self.state_payloads()
+        downgraded_session["terminal-07"] = provider.encode_journal_operation(
+            replace(terminal, session_restart="security-session")
+        )
+        downgraded_session["cursor"] = "08"
+        downgraded_session["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(downgraded_session["restart"]),
+                last_applied_operation_id=terminal.operation_id,
+                session="session",
+                session_cutoff=terminal.terminal_monotonic,
+            )
+        )
+        cases["security-session urgency is downgraded"] = downgraded_session
+
+        stale_handoff = self.state_payloads()
+        refresh = replace(
+            terminal,
+            action_id="updates-refresh",
+            kind="refresh",
+            generation=None,
+            system_restart=None,
+            session_restart=None,
+            application_restart=None,
+            boot_id=None,
+            terminal_monotonic=100,
+        )
+        later_update = replace(newer, slot=8)
+        stale_handoff["terminal-07"] = provider.encode_journal_operation(refresh)
+        stale_handoff["terminal-08"] = provider.encode_journal_operation(later_update)
+        stale_handoff["cursor"] = "08"
+        stale_handoff["handoff"] = provider.encode_journal_handoff(
+            provider.JournalHandoff(refresh.operation_id, 7)
+        )
+        stale_handoff["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(stale_handoff["restart"]),
+                last_applied_operation_id=later_update.operation_id,
+            )
+        )
+        cases["handoff is superseded by retained update"] = stale_handoff
+
+        stale_cursor = self.state_payloads()
+        stale_cursor["terminal-07"] = provider.encode_journal_operation(refresh)
+        cases["completed terminal cursor is stale"] = stale_cursor
+
         for name, payloads in cases.items():
             with self.subTest(name=name):
                 with self.assertRaises(provider.JournalRecordError):

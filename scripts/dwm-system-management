@@ -62,7 +62,12 @@ JOURNAL_RESTART_SYSTEM_STRENGTH = {
     "security-system": 3,
 }
 JOURNAL_RESTART_SYSTEM_VALUES = frozenset(JOURNAL_RESTART_SYSTEM_STRENGTH)
-JOURNAL_RESTART_SESSION_VALUES = frozenset(("none", "session", "security-session"))
+JOURNAL_RESTART_SESSION_STRENGTH = {
+    "none": 0,
+    "session": 1,
+    "security-session": 2,
+}
+JOURNAL_RESTART_SESSION_VALUES = frozenset(JOURNAL_RESTART_SESSION_STRENGTH)
 JOURNAL_OPERATION_ACTION_KINDS = {
     "updates-refresh": "refresh",
     "updates-install-all": "update",
@@ -1073,20 +1078,46 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         retained_ids.add(operation.operation_id)
         terminals.append(operation)
 
+    filled_slots = [
+        slot for slot, operation in enumerate(terminals) if operation is not None
+    ]
+    if (
+        active is None
+        and handoff is None
+        and len(filled_slots) == 1
+        and cursor != (filled_slots[0] + 1) % JOURNAL_TERMINAL_COUNT
+    ):
+        raise JournalRecordError("journal cursor is stale")
+
+    handoff_terminal = None
     if handoff is not None:
-        terminal = terminals[handoff.slot]
-        if terminal is None or terminal.operation_id != handoff.operation_id:
+        handoff_terminal = terminals[handoff.slot]
+        if (
+            handoff_terminal is None
+            or handoff_terminal.operation_id != handoff.operation_id
+        ):
             raise JournalRecordError("journal handoff has no matching terminal")
         if cursor != (handoff.slot + 1) % JOURNAL_TERMINAL_COUNT:
             raise JournalRecordError("journal handoff cursor has not advanced")
         if (
-            terminal.kind == "update"
-            and terminal.boot_id == restart.boot_id
-            and restart.last_applied_operation_id != terminal.operation_id
+            handoff_terminal.kind == "update"
+            and handoff_terminal.boot_id == restart.boot_id
+            and restart.last_applied_operation_id != handoff_terminal.operation_id
         ):
             raise JournalRecordError("journal update handoff has no restart commit")
+        if handoff_terminal.kind == "update" and handoff_terminal.boot_id != restart.boot_id:
+            if (
+                restart.last_applied_operation_id is not None
+                or restart.system != "none"
+                or restart.session != "none"
+                or restart.session_cutoff != 0
+                or restart.application
+                or restart.application_cutoff != 0
+            ):
+                raise JournalRecordError("journal old-boot handoff is not all-clear")
         if active is not None and (
-            active.state not in JOURNAL_OPERATION_TERMINAL_STATES or active != terminal
+            active.state not in JOURNAL_OPERATION_TERMINAL_STATES
+            or active != handoff_terminal
         ):
             raise JournalRecordError("journal active and handoff records conflict")
 
@@ -1112,6 +1143,33 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         and operation.kind == "update"
         and operation.boot_id == restart.boot_id
     ]
+    matching_updates: list[JournalOperation] = []
+    if (
+        active is not None
+        and active.kind == "update"
+        and active.boot_id == restart.boot_id
+        and active.state in JOURNAL_OPERATION_TERMINAL_STATES
+        and any(
+            operation.terminal_monotonic > active.terminal_monotonic
+            for operation in applied_updates
+            if operation != active
+        )
+    ):
+        raise JournalRecordError("journal active update timestamp is stale")
+    if (
+        handoff_terminal is not None
+        and handoff_terminal.kind in ("update", "refresh")
+        and (
+            handoff_terminal.kind == "refresh"
+            or handoff_terminal.boot_id == restart.boot_id
+        )
+        and any(
+            operation.operation_id != handoff_terminal.operation_id
+            and operation.terminal_monotonic > handoff_terminal.terminal_monotonic
+            for operation in applied_updates
+        )
+    ):
+        raise JournalRecordError("journal handoff is superseded")
     if restart_operation_id is None:
         if (
             restart.system != "none"
@@ -1171,6 +1229,15 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         )
     ):
         raise JournalRecordError("journal session restart cutoff is stale")
+    if (
+        restart.session != "none"
+        and any(
+            JOURNAL_RESTART_SESSION_STRENGTH[restart.session]
+            < JOURNAL_RESTART_SESSION_STRENGTH[operation.session_restart]
+            for operation in matching_updates
+        )
+    ):
+        raise JournalRecordError("journal session restart contribution is incomplete")
     if restart.application and (
         restart.application_cutoff == 0
         or any(
