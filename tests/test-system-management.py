@@ -633,6 +633,12 @@ class JournalLayoutTests(unittest.TestCase):
         finally:
             os.close(descriptor)
 
+    def write_path(self, directory, name, image):
+        path = pathlib.Path(directory) / name
+        path.write_bytes(image)
+        os.chmod(path, 0o600)
+        return path
+
     def test_fresh_layout_has_exact_initial_records(self):
         with tempfile.TemporaryDirectory() as directory:
             directory_descriptor = self.open_directory(directory)
@@ -685,9 +691,7 @@ class JournalLayoutTests(unittest.TestCase):
             os.symlink("victim", pathlib.Path(directory) / "active")
             directory_descriptor = self.open_directory(directory)
             try:
-                with self.assertRaisesRegex(
-                    provider.JournalLayoutError, "active creation"
-                ):
+                with self.assertRaisesRegex(provider.JournalLayoutError, "active open"):
                     provider.initialize_journal_layout(
                         directory_descriptor, self.boot_id
                     )
@@ -758,10 +762,25 @@ class JournalLayoutTests(unittest.TestCase):
                     self.read_path(directory_descriptor, provider.JOURNAL_CURSOR_NAME),
                     (0, provider.JournalFrame(1, "00")),
                 )
+                observed_directory_sync = False
+
+                def observe_retry_sync(descriptor):
+                    nonlocal observed_directory_sync
+                    if descriptor == directory_descriptor:
+                        observed_directory_sync = True
+                    return original_fsync(descriptor)
+
+                with mock.patch.object(
+                    provider.os, "fsync", side_effect=observe_retry_sync
+                ):
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                self.assertTrue(observed_directory_sync)
             finally:
                 os.close(directory_descriptor)
 
-    def test_existing_fixed_file_is_never_replaced(self):
+    def test_legacy_plaintext_is_rejected_without_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             active = pathlib.Path(directory) / "active"
             active.write_bytes(b"legacy record")
@@ -769,7 +788,7 @@ class JournalLayoutTests(unittest.TestCase):
             directory_descriptor = self.open_directory(directory)
             try:
                 with self.assertRaisesRegex(
-                    provider.JournalLayoutError, "active creation"
+                    provider.JournalLayoutError, "active is not recoverable"
                 ):
                     provider.initialize_journal_layout(
                         directory_descriptor, self.boot_id
@@ -779,6 +798,301 @@ class JournalLayoutTests(unittest.TestCase):
                     (pathlib.Path(directory) / provider.JOURNAL_CURSOR_NAME).exists()
                 )
             finally:
+                os.close(directory_descriptor)
+
+    def test_missing_and_short_initial_fragments_are_recovered(self):
+        with tempfile.TemporaryDirectory() as directory:
+            payloads = provider._initial_journal_payloads(self.boot_id)
+            active_image = provider.initial_journal_image(payloads["active"])
+            cursor_image = provider.initial_journal_image(
+                payloads[provider.JOURNAL_CURSOR_NAME]
+            )
+            active = self.write_path(directory, "active", active_image[:113])
+            cursor = self.write_path(
+                directory, provider.JOURNAL_CURSOR_NAME, cursor_image[:31]
+            )
+            active_identity = (active.stat().st_dev, active.stat().st_ino)
+            cursor_identity = (cursor.stat().st_dev, cursor.stat().st_ino)
+            directory_descriptor = self.open_directory(directory)
+            try:
+                provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+                self.assertEqual(
+                    set(os.listdir(directory)), set(provider.JOURNAL_NAMES)
+                )
+                self.assertEqual(
+                    (active.stat().st_dev, active.stat().st_ino), active_identity
+                )
+                self.assertEqual(
+                    (cursor.stat().st_dev, cursor.stat().st_ino), cursor_identity
+                )
+                for name in provider.JOURNAL_NAMES:
+                    with self.subTest(name=name):
+                        self.assertEqual(
+                            self.read_path(directory_descriptor, name),
+                            (0, provider.JournalFrame(1, payloads[name])),
+                        )
+            finally:
+                os.close(directory_descriptor)
+
+    def test_previous_boot_restart_fragments_are_recovered(self):
+        previous_boot = "11234567-89ab-cdef-0123-456789abcdef"
+        previous_payload = provider._initial_journal_payloads(previous_boot)["restart"]
+        previous_image = provider.initial_journal_image(previous_payload)
+        for image in (
+            previous_image,
+            previous_image[:48],
+            previous_image[:100],
+            previous_image[:100] + bytes(len(previous_image) - 100),
+        ):
+            with (
+                self.subTest(size=len(image)),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                restart = self.write_path(directory, "restart", image)
+                identity = (restart.stat().st_dev, restart.stat().st_ino)
+                directory_descriptor = self.open_directory(directory)
+                try:
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                    self.assertEqual(
+                        (restart.stat().st_dev, restart.stat().st_ino), identity
+                    )
+                    current_payload = provider._initial_journal_payloads(self.boot_id)[
+                        "restart"
+                    ]
+                    self.assertEqual(
+                        self.read_path(directory_descriptor, "restart"),
+                        (0, provider.JournalFrame(1, current_payload)),
+                    )
+                finally:
+                    os.close(directory_descriptor)
+
+    def test_noninitial_restart_records_still_block_recovery(self):
+        previous_boot = "11234567-89ab-cdef-0123-456789abcdef"
+        previous_payload = provider._initial_journal_payloads(previous_boot)["restart"]
+        cases = (
+            provider.encode_journal_frame(1, "not-an-all-clear-record")
+            + bytes(provider.JOURNAL_FRAME_SIZE),
+            provider.encode_journal_frame(1, previous_payload)
+            + provider.encode_journal_frame(2, previous_payload),
+        )
+        for image in cases:
+            with (
+                self.subTest(image=image[:72]),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                restart = self.write_path(directory, "restart", image)
+                before = restart.read_bytes()
+                directory_descriptor = self.open_directory(directory)
+                try:
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "restart is not recoverable"
+                    ):
+                        provider.initialize_journal_layout(
+                            directory_descriptor, self.boot_id
+                        )
+                    self.assertEqual(restart.read_bytes(), before)
+                    self.assertEqual(os.listdir(directory), ["restart"])
+                finally:
+                    os.close(directory_descriptor)
+
+    def test_interrupted_previous_boot_rewrite_remains_retryable(self):
+        previous_boot = "11234567-89ab-cdef-0123-456789abcdef"
+        previous_payload = provider._initial_journal_payloads(previous_boot)["restart"]
+        with tempfile.TemporaryDirectory() as directory:
+            restart = self.write_path(
+                directory, "restart", provider.initial_journal_image(previous_payload)
+            )
+            restart_identity = (restart.stat().st_dev, restart.stat().st_ino)
+            directory_descriptor = self.open_directory(directory)
+            original_pwrite = os.pwrite
+            injected = False
+
+            def interrupt_restart_rewrite(descriptor, image, offset):
+                nonlocal injected
+                metadata = os.fstat(descriptor)
+                if (
+                    not injected
+                    and (metadata.st_dev, metadata.st_ino) == restart_identity
+                    and offset == 0
+                    and len(image) == provider.JOURNAL_FILE_SIZE
+                ):
+                    injected = True
+                    self.assertEqual(
+                        original_pwrite(descriptor, image[:40], offset), 40
+                    )
+                    return 40
+                return original_pwrite(descriptor, image, offset)
+
+            try:
+                with mock.patch.object(
+                    provider.os, "pwrite", side_effect=interrupt_restart_rewrite
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "restart recovery failed"
+                    ):
+                        provider.initialize_journal_layout(
+                            directory_descriptor, self.boot_id
+                        )
+                provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+                current_payload = provider._initial_journal_payloads(self.boot_id)[
+                    "restart"
+                ]
+                self.assertEqual(
+                    self.read_path(directory_descriptor, "restart"),
+                    (0, provider.JournalFrame(1, current_payload)),
+                )
+            finally:
+                os.close(directory_descriptor)
+
+    def test_safe_fragments_cover_short_and_torn_initial_writes(self):
+        expected = provider.initial_journal_image("payload")
+        for length in (0, 1, 7, 8, 31, 64, 8191, 8192, 10000, 16383):
+            with self.subTest(length=length):
+                self.assertTrue(
+                    provider._is_safe_initial_fragment(expected[:length], expected)
+                )
+        first_difference = next(
+            index for index, byte in enumerate(expected) if byte != 0
+        )
+        torn = expected[: first_difference + 1] + bytes(
+            len(expected) - first_difference - 1
+        )
+        self.assertTrue(provider._is_safe_initial_fragment(torn, expected))
+        self.assertFalse(provider._is_safe_initial_fragment(b"legacy record", expected))
+        self.assertFalse(
+            provider._is_safe_initial_fragment(expected + b"extra", expected)
+        )
+
+    def test_invalid_precursor_file_blocks_all_recovery_mutation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            expected = provider.initial_journal_image("")
+            active = self.write_path(directory, "active", expected[:47])
+            restart = self.write_path(directory, "restart", b"legacy record")
+            active_before = active.read_bytes()
+            restart_before = restart.read_bytes()
+            directory_descriptor = self.open_directory(directory)
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "restart is not recoverable"
+                ):
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                self.assertEqual(active.read_bytes(), active_before)
+                self.assertEqual(restart.read_bytes(), restart_before)
+                self.assertEqual(set(os.listdir(directory)), {"active", "restart"})
+            finally:
+                os.close(directory_descriptor)
+
+    def test_advanced_precursor_file_blocks_reinitialization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            advanced = provider.encode_journal_frame(
+                1, ""
+            ) + provider.encode_journal_frame(2, "changed")
+            active = self.write_path(directory, "active", advanced)
+            before = active.read_bytes()
+            directory_descriptor = self.open_directory(directory)
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active is not recoverable"
+                ):
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                self.assertEqual(active.read_bytes(), before)
+                self.assertEqual(os.listdir(directory), ["active"])
+            finally:
+                os.close(directory_descriptor)
+
+    def test_missing_file_after_cursor_is_not_recreated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory_descriptor = self.open_directory(directory)
+            try:
+                provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+                active = pathlib.Path(directory) / "active"
+                active.unlink()
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active is missing after cursor"
+                ):
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                self.assertFalse(active.exists())
+            finally:
+                os.close(directory_descriptor)
+
+    def test_damaged_file_after_cursor_is_not_rewritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory_descriptor = self.open_directory(directory)
+            try:
+                provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+                active = pathlib.Path(directory) / "active"
+                active.write_bytes(b"damage")
+                damaged = active.read_bytes()
+                with self.assertRaises(provider.JournalLayoutError):
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                self.assertEqual(active.read_bytes(), damaged)
+            finally:
+                os.close(directory_descriptor)
+
+    def test_valid_advanced_file_after_cursor_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory_descriptor = self.open_directory(directory)
+            try:
+                provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+                active_descriptor = os.open(
+                    "active",
+                    os.O_NOFOLLOW | os.O_CLOEXEC | os.O_RDWR,
+                    dir_fd=directory_descriptor,
+                )
+                try:
+                    provider.commit_journal_file(
+                        directory_descriptor, active_descriptor, "changed"
+                    )
+                finally:
+                    os.close(active_descriptor)
+                active = pathlib.Path(directory) / "active"
+                before = active.read_bytes()
+                provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+                self.assertEqual(active.read_bytes(), before)
+                self.assertEqual(
+                    self.read_path(directory_descriptor, "active"),
+                    (1, provider.JournalFrame(2, "changed")),
+                )
+            finally:
+                os.close(directory_descriptor)
+
+    def test_interrupted_creation_is_private_and_retryable_under_strict_umask(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory_descriptor = self.open_directory(directory)
+            previous_umask = os.umask(0o777)
+            try:
+                with mock.patch.object(
+                    provider,
+                    "_initialize_journal_file_unlocked",
+                    side_effect=provider.JournalFrameError(
+                        "injected initialization interruption"
+                    ),
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "active initialization"
+                    ):
+                        provider.initialize_journal_layout(
+                            directory_descriptor, self.boot_id
+                        )
+                active = pathlib.Path(directory) / "active"
+                self.assertEqual(stat.S_IMODE(active.stat().st_mode), 0o600)
+                self.assertEqual(active.stat().st_size, 0)
+                provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+                self.assertEqual(
+                    set(os.listdir(directory)), set(provider.JOURNAL_NAMES)
+                )
+            finally:
+                os.umask(previous_umask)
                 os.close(directory_descriptor)
 
     def test_invalid_initial_frame_uses_layout_error_contract(self):
