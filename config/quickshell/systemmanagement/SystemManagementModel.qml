@@ -400,9 +400,13 @@ Scope {
                 || parsedActions["$updates-install-all"] === undefined
                 || parsedActions["$updates-cancel"] === undefined) updatesInvalid = true;
         if (parsedRecoveryProvider === null) recoveryInvalid = true;
-        if (!updatesInvalid && states["$update-summary"].status === "available"
-                && Number(states["$update-summary"].value) !== parsedUpdates.length)
-            updatesInvalid = true;
+        if (!updatesInvalid) {
+            const summaryAvailable = states["$update-summary"].status === "available";
+            if ((summaryAvailable
+                    && Number(states["$update-summary"].value) !== parsedUpdates.length)
+                    || (!summaryAvailable && parsedUpdates.length > 0))
+                updatesInvalid = true;
+        }
         if (!updatesInvalid && !planInvalid) {
             const requestedUpdates = {};
             let requestedCount = 0;
@@ -424,7 +428,7 @@ Scope {
                             break;
                         }
                         requestedUpdates[key] = true;
-                    }
+                    } else if (change.action === "update") planInvalid = true;
                 }
                 if (!planInvalid && requestedCount > 0) {
                     for (const key in requestedUpdates) {

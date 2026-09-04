@@ -127,8 +127,23 @@ unsafe-reinstall)
 future-record)
 	snapshot | sed '/^complete\t/i\future-list-record\tfuture-value'
 	;;
+unexpected-update)
+	snapshot | awk 'BEGIN { FS = OFS = "\t" }
+		$1 == "action" && $2 == "updates-install-all" { $3 = "available" }
+		$1 == "complete" { print "package-change", "beta;1;x86_64;updates", "update", "beta", "1", "Unexpected update" }
+		{ print }'
+	;;
+unavailable-summary)
+	snapshot | sed \
+		-e 's/state\tupdate-summary\tavailable\t1/state\tupdate-summary\tpartial\tunknown/' \
+		-e 's/action\tupdates-install-all\tunavailable/action\tupdates-install-all\tavailable/'
+	;;
 oversized)
 	dd if=/dev/zero bs=1048576 count=9 2>/dev/null | tr '\0' x
+	;;
+noisy-stderr)
+	snapshot
+	dd if=/dev/zero bs=1048576 count=9 2>/dev/null | tr '\0' x >&2
 	;;
 fail-after-output)
 	snapshot
@@ -256,12 +271,32 @@ ipc refresh >/dev/null
 wait_state ready
 [ "$(ipc systemManagementUpdateCount)" -eq 1 ]
 
+printf 'unexpected-update\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state partial
+[ "$(ipc systemManagementPackageChangeCount)" -eq 0 ]
+[ "$(ipc systemManagementInstallAvailability)" = unavailable ]
+
+printf 'unavailable-summary\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state partial
+[ "$(ipc systemManagementUpdateCount)" -eq 0 ]
+[ "$(ipc systemManagementInstallAvailability)" = missing ]
+
 printf 'oversized\n' >"$fixture/mode"
 ipc refresh >/dev/null
 wait_state failure
 [ "$(ipc systemManagementUpdateCount)" -eq 0 ]
 if find "$runtime" -type f -name 'dwm-checked-command.*' -print -quit | grep -q .; then
 	printf 'Bounded command capture left a temporary output file\n' >&2
+	exit 1
+fi
+
+printf 'noisy-stderr\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state failure
+if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .; then
+	printf 'Bounded command capture left a temporary diagnostic file\n' >&2
 	exit 1
 fi
 
