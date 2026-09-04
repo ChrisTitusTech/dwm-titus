@@ -2758,10 +2758,10 @@ class JournalAdmissionTests(unittest.TestCase):
         provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
         return journal, chain
 
-    def operation(self, *, state="running", slot=0):
+    def operation(self, *, operation_id=None, state="running", slot=0):
         terminal = state in provider.JOURNAL_OPERATION_TERMINAL_STATES
         return provider.JournalOperation(
-            self.operation_id,
+            operation_id or self.operation_id,
             "updates-refresh",
             "2026-09-04T18:00:00Z",
             "2026-09-04T18:01:00Z" if terminal else None,
@@ -2793,9 +2793,14 @@ class JournalAdmissionTests(unittest.TestCase):
                     provider._commit_journal_file_unlocked(
                         journal.descriptor("cursor"), "31"
                     )
-                    admission = provider.prepare_journal_admission(journal)
+                    with mock.patch.object(
+                        provider.os, "urandom", return_value=b"\xab" * 16
+                    ) as urandom:
+                        admission = provider.prepare_journal_admission(journal)
 
                     self.assertEqual(admission.slot, 31)
+                    self.assertEqual(admission.operation_id, f"op-{'ab' * 16}")
+                    urandom.assert_called_once_with(16)
                     self.assertEqual(admission.state.cursor, 31)
                     self.assertIsNone(admission.state.active)
                     self.assertIsNone(admission.state.handoff)
@@ -2804,6 +2809,139 @@ class JournalAdmissionTests(unittest.TestCase):
                         journal.descriptor("terminal-31"),
                         journal.descriptor(f"terminal-{admission.slot:02d}"),
                     )
+            finally:
+                chain.close()
+
+    def test_retries_a_retained_terminal_collision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            terminal = self.operation(
+                operation_id=f"op-{'11' * 16}", state="succeeded", slot=0
+            )
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    provider._commit_journal_file_unlocked(
+                        journal.descriptor("terminal-00"),
+                        provider.encode_journal_operation(terminal),
+                    )
+                    provider._commit_journal_file_unlocked(
+                        journal.descriptor("cursor"), "01"
+                    )
+                    with mock.patch.object(
+                        provider.os,
+                        "urandom",
+                        side_effect=(b"\x11" * 16, b"\x22" * 16),
+                    ) as urandom:
+                        admission = provider.prepare_journal_admission(journal)
+
+                    self.assertEqual(admission.slot, 1)
+                    self.assertEqual(admission.operation_id, f"op-{'22' * 16}")
+                    self.assertEqual(urandom.call_count, 2)
+            finally:
+                chain.close()
+
+    def test_rejects_restart_only_collision_after_four_attempts(self):
+        restart_operation_id = f"op-{'ff' * 16}"
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    for slot in range(provider.JOURNAL_TERMINAL_COUNT):
+                        terminal = self.operation(
+                            operation_id=f"op-{slot + 1:032x}",
+                            state="succeeded",
+                            slot=slot,
+                        )
+                        provider._commit_journal_file_unlocked(
+                            journal.descriptor(f"terminal-{slot:02d}"),
+                            provider.encode_journal_operation(terminal),
+                        )
+                    provider._commit_journal_file_unlocked(
+                        journal.descriptor("restart"),
+                        provider.encode_journal_restart(
+                            provider.JournalRestart(
+                                self.boot_id,
+                                restart_operation_id,
+                                "none",
+                                "none",
+                                0,
+                                False,
+                                0,
+                            )
+                        ),
+                    )
+                    with mock.patch.object(
+                        provider.os, "urandom", return_value=b"\xff" * 16
+                    ) as urandom:
+                        with self.assertRaisesRegex(
+                            provider.JournalAdmissionError,
+                            "collision limit reached",
+                        ):
+                            provider.prepare_journal_admission(journal)
+
+                    self.assertEqual(
+                        urandom.call_count, provider.JOURNAL_OPERATION_ID_ATTEMPTS
+                    )
+            finally:
+                chain.close()
+
+    def test_rng_failure_blocks_admission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    with mock.patch.object(
+                        provider.os, "urandom", side_effect=OSError("unavailable")
+                    ) as urandom:
+                        with self.assertRaisesRegex(
+                            provider.JournalAdmissionError,
+                            "generation failed",
+                        ):
+                            provider.prepare_journal_admission(journal)
+
+                    urandom.assert_called_once_with(16)
+            finally:
+                chain.close()
+
+    def test_rejects_malformed_nested_state_before_randomness(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    admission = provider.prepare_journal_admission(journal)
+                    terminal = self.operation(state="succeeded", slot=0)
+                    cases = {
+                        "restart record": replace(admission.state, restart=None),
+                        "restart ID": replace(
+                            admission.state,
+                            restart=replace(
+                                admission.state.restart,
+                                last_applied_operation_id=17,
+                            ),
+                        ),
+                        "active ID": replace(
+                            admission.state,
+                            active=replace(self.operation(), operation_id=[]),
+                        ),
+                        "terminal ID": replace(
+                            admission.state,
+                            terminals=(
+                                replace(terminal, operation_id="op-bad"),
+                                *admission.state.terminals[1:],
+                            ),
+                        ),
+                    }
+                    for name, malformed in cases.items():
+                        with self.subTest(name=name), mock.patch.object(
+                            provider.os, "urandom"
+                        ) as urandom:
+                            with self.assertRaisesRegex(
+                                provider.JournalAdmissionError,
+                                "state is invalid",
+                            ):
+                                provider.generate_journal_operation_id(malformed)
+
+                            urandom.assert_not_called()
             finally:
                 chain.close()
 
