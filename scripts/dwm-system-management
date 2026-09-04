@@ -1155,6 +1155,7 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         and operation.boot_id == restart.boot_id
     ]
     matching_updates: list[JournalOperation] = []
+    ring_may_have_evicted = len(filled_slots) == JOURNAL_TERMINAL_COUNT
     if (
         active is not None
         and active.kind in ("update", "refresh")
@@ -1218,7 +1219,7 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
             for operation in applied_updates
             if operation.operation_id == restart_operation_id
         ]
-        if not matching_updates and len(filled_slots) < JOURNAL_TERMINAL_COUNT:
+        if not matching_updates and not ring_may_have_evicted:
             raise JournalRecordError("journal restart identity is not retained")
         if applied_updates and not matching_updates:
             raise JournalRecordError("journal restart identity is stale")
@@ -1233,8 +1234,20 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         for operation in applied_updates
     ):
         raise JournalRecordError("journal restart contribution is incomplete")
+    if not ring_may_have_evicted:
+        expected_system = max(
+            ("none", *(operation.system_restart for operation in applied_updates)),
+            key=JOURNAL_RESTART_SYSTEM_STRENGTH.__getitem__,
+        )
+        if restart.system != expected_system:
+            raise JournalRecordError("journal system restart bucket is unsupported")
     if restart.session == "none" and restart.session_cutoff != 0:
         raise JournalRecordError("journal cleared session restart has a cutoff")
+    session_contributors = [
+        operation
+        for operation in applied_updates
+        if operation.session_restart != "none"
+    ]
     if restart.session != "none" and (
         restart.session_cutoff == 0
         or (
@@ -1257,8 +1270,32 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         )
     ):
         raise JournalRecordError("journal session restart contribution is incomplete")
+    if not ring_may_have_evicted and restart.session != "none":
+        if (
+            not session_contributors
+            or restart.session
+            not in {operation.session_restart for operation in session_contributors}
+        ):
+            raise JournalRecordError("journal session restart bucket is unsupported")
+        latest_session_cutoff = max(
+            operation.terminal_monotonic for operation in session_contributors
+        )
+        latest_session_strength = max(
+            JOURNAL_RESTART_SESSION_STRENGTH[operation.session_restart]
+            for operation in session_contributors
+            if operation.terminal_monotonic == latest_session_cutoff
+        )
+        if (
+            restart.session_cutoff != latest_session_cutoff
+            or JOURNAL_RESTART_SESSION_STRENGTH[restart.session]
+            < latest_session_strength
+        ):
+            raise JournalRecordError("journal session restart state is not derivable")
     if not restart.application and restart.application_cutoff != 0:
         raise JournalRecordError("journal cleared application restart has a cutoff")
+    application_contributors = [
+        operation for operation in applied_updates if operation.application_restart
+    ]
     if restart.application and (
         restart.application_cutoff == 0
         or (
@@ -1272,6 +1309,14 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         )
     ):
         raise JournalRecordError("journal application restart cutoff is stale")
+    if not ring_may_have_evicted and restart.application and (
+        not application_contributors
+        or restart.application_cutoff
+        != max(
+            operation.terminal_monotonic for operation in application_contributors
+        )
+    ):
+        raise JournalRecordError("journal application restart state is not derivable")
 
     return JournalState(cursor, restart, active, handoff, tuple(terminals))
 

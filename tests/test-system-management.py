@@ -740,6 +740,26 @@ class JournalControlRecordTests(unittest.TestCase):
         self.assertEqual(state.restart.session, "none")
         self.assertFalse(state.restart.application)
 
+        later = replace(
+            terminal,
+            operation_id="op-ffffffffffffffffffffffffffffffff",
+            session_restart="session",
+            application_restart=False,
+            terminal_monotonic=200,
+            slot=8,
+        )
+        payloads["terminal-08"] = provider.encode_journal_operation(later)
+        payloads["cursor"] = "09"
+        payloads["restart"] = provider.encode_journal_restart(
+            replace(
+                state.restart,
+                last_applied_operation_id=later.operation_id,
+                session="session",
+                session_cutoff=later.terminal_monotonic,
+            )
+        )
+        self.assertEqual(provider.decode_journal_state(payloads).restart.session, "session")
+
     def test_state_rejects_missing_extra_or_wrong_typed_paths(self):
         payloads = self.state_payloads()
         invalid = []
@@ -849,6 +869,7 @@ class JournalControlRecordTests(unittest.TestCase):
         missing_retained_restart["terminal-07"] = provider.encode_journal_operation(
             terminal
         )
+        missing_retained_restart["cursor"] = "08"
         cases["retained update restart identity missing"] = missing_retained_restart
         reused = self.state_payloads()
         reused["restart"] = provider.encode_journal_restart(
@@ -876,18 +897,21 @@ class JournalControlRecordTests(unittest.TestCase):
         reused_terminal = self.state_payloads()
         reused_terminal["restart"] = reused["restart"]
         reused_terminal["terminal-07"] = provider.encode_journal_operation(non_update)
+        reused_terminal["cursor"] = "08"
         cases["non-update terminal reuses restart identity"] = reused_terminal
         previous_boot = self.state_payloads()
         previous_boot["restart"] = reused["restart"]
         previous_boot["terminal-07"] = provider.encode_journal_operation(
             replace(terminal, boot_id="11234567-89ab-cdef-0123-456789abcdef")
         )
+        previous_boot["cursor"] = "08"
         cases["previous-boot update reuses restart identity"] = previous_boot
         missing_contribution = self.state_payloads()
         missing_contribution["restart"] = reused["restart"]
         missing_contribution["terminal-07"] = provider.encode_journal_operation(
             replace(terminal, system_restart="security-system")
         )
+        missing_contribution["cursor"] = "08"
         cases["system contribution missing"] = missing_contribution
         older_contribution = self.state_payloads()
         newer = replace(
@@ -948,6 +972,7 @@ class JournalControlRecordTests(unittest.TestCase):
                     application_restart=field == "application",
                 )
             )
+            stale_cutoff["cursor"] = "08"
             cases[f"{field} cutoff is stale"] = stale_cutoff
         for field, changes in (
             (
@@ -980,7 +1005,62 @@ class JournalControlRecordTests(unittest.TestCase):
                     application_restart=field == "application",
                 )
             )
+            future_cutoff["cursor"] = "08"
             cases[f"{field} cutoff is newer than the last update"] = future_cutoff
+        for field, restart_changes in (
+            ("system", {"system": "security-system"}),
+            (
+                "session",
+                {"session": "security-session", "session_cutoff": 123},
+            ),
+            ("application", {"application": True, "application_cutoff": 123}),
+        ):
+            unsupported_bucket = self.state_payloads()
+            unsupported_bucket["restart"] = provider.encode_journal_restart(
+                replace(
+                    provider.decode_journal_restart(unsupported_bucket["restart"]),
+                    last_applied_operation_id=terminal.operation_id,
+                    **restart_changes,
+                )
+            )
+            unsupported_bucket["terminal-07"] = provider.encode_journal_operation(
+                terminal
+            )
+            unsupported_bucket["cursor"] = "08"
+            cases[f"{field} bucket is unsupported by retained history"] = (
+                unsupported_bucket
+            )
+        for field, contribution_changes, restart_changes in (
+            (
+                "session",
+                {"session_restart": "session"},
+                {"session": "session", "session_cutoff": 150},
+            ),
+            (
+                "application",
+                {"application_restart": True},
+                {"application": True, "application_cutoff": 150},
+            ),
+        ):
+            inexact_cutoff = self.state_payloads()
+            older = replace(terminal, terminal_monotonic=100, **contribution_changes)
+            latest = replace(
+                terminal,
+                operation_id="op-ffffffffffffffffffffffffffffffff",
+                terminal_monotonic=200,
+                slot=8,
+            )
+            inexact_cutoff["restart"] = provider.encode_journal_restart(
+                replace(
+                    provider.decode_journal_restart(inexact_cutoff["restart"]),
+                    last_applied_operation_id=latest.operation_id,
+                    **restart_changes,
+                )
+            )
+            inexact_cutoff["terminal-07"] = provider.encode_journal_operation(older)
+            inexact_cutoff["terminal-08"] = provider.encode_journal_operation(latest)
+            inexact_cutoff["cursor"] = "09"
+            cases[f"{field} cutoff is not a retained contribution"] = inexact_cutoff
         unidentified_guidance = self.state_payloads()
         unidentified_guidance["restart"] = provider.encode_journal_restart(
             replace(
@@ -1015,9 +1095,44 @@ class JournalControlRecordTests(unittest.TestCase):
             )
             cleared_cutoff["cursor"] = "08"
             cases[f"cleared {field} bucket retains cutoff"] = cleared_cutoff
+        expected_errors = {
+            "system contribution missing": "restart contribution is incomplete",
+            "session cutoff is stale": "session restart cutoff is stale",
+            "application cutoff is stale": "application restart cutoff is stale",
+            "session cutoff is newer than the last update": (
+                "session restart cutoff is stale"
+            ),
+            "application cutoff is newer than the last update": (
+                "application restart cutoff is stale"
+            ),
+            "system bucket is unsupported by retained history": (
+                "system restart bucket is unsupported"
+            ),
+            "session bucket is unsupported by retained history": (
+                "session restart bucket is unsupported"
+            ),
+            "application bucket is unsupported by retained history": (
+                "application restart state is not derivable"
+            ),
+            "session cutoff is not a retained contribution": (
+                "session restart state is not derivable"
+            ),
+            "application cutoff is not a retained contribution": (
+                "application restart state is not derivable"
+            ),
+            "cleared session bucket retains cutoff": (
+                "cleared session restart has a cutoff"
+            ),
+            "cleared application bucket retains cutoff": (
+                "cleared application restart has a cutoff"
+            ),
+        }
         for name, payloads in cases.items():
             with self.subTest(name=name):
-                with self.assertRaises(provider.JournalRecordError):
+                with self.assertRaisesRegex(
+                    provider.JournalRecordError,
+                    expected_errors.get(name, "journal"),
+                ):
                     provider.decode_journal_state(payloads)
 
     def test_state_rejects_cross_record_recovery_conflicts(self):
