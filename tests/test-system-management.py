@@ -949,6 +949,38 @@ class JournalControlRecordTests(unittest.TestCase):
                 )
             )
             cases[f"{field} cutoff is stale"] = stale_cutoff
+        for field, changes in (
+            (
+                "session",
+                {
+                    "session": "session",
+                    "session_cutoff": terminal.terminal_monotonic + 1,
+                },
+            ),
+            (
+                "application",
+                {
+                    "application": True,
+                    "application_cutoff": terminal.terminal_monotonic + 1,
+                },
+            ),
+        ):
+            future_cutoff = self.state_payloads()
+            future_cutoff["restart"] = provider.encode_journal_restart(
+                replace(
+                    provider.decode_journal_restart(future_cutoff["restart"]),
+                    last_applied_operation_id=terminal.operation_id,
+                    **changes,
+                )
+            )
+            future_cutoff["terminal-07"] = provider.encode_journal_operation(
+                replace(
+                    terminal,
+                    session_restart="session" if field == "session" else "none",
+                    application_restart=field == "application",
+                )
+            )
+            cases[f"{field} cutoff is newer than the last update"] = future_cutoff
         unidentified_guidance = self.state_payloads()
         unidentified_guidance["restart"] = provider.encode_journal_restart(
             replace(
@@ -989,6 +1021,46 @@ class JournalControlRecordTests(unittest.TestCase):
             replace(terminal, slot=8, terminal_monotonic=100)
         )
         cases["active update predates retained history"] = stale_active
+
+        stale_refresh = self.state_payloads()
+        refresh = replace(
+            terminal,
+            action_id="updates-refresh",
+            kind="refresh",
+            generation=None,
+            system_restart=None,
+            session_restart=None,
+            application_restart=None,
+            boot_id=None,
+            terminal_monotonic=100,
+            slot=8,
+        )
+        stale_refresh["terminal-07"] = provider.encode_journal_operation(newer)
+        stale_refresh["cursor"] = "08"
+        stale_refresh["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(stale_refresh["restart"]),
+                last_applied_operation_id=newer.operation_id,
+            )
+        )
+        stale_refresh["active"] = provider.encode_journal_operation(refresh)
+        cases["active refresh predates retained update history"] = stale_refresh
+
+        old_boot_active = self.state_payloads()
+        old_boot_active["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(old_boot_active["restart"]),
+                last_applied_operation_id="op-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                system="unknown",
+            )
+        )
+        old_boot_active["active"] = provider.encode_journal_operation(
+            replace(
+                self.update_operation(slot=7),
+                boot_id="11234567-89ab-cdef-0123-456789abcdef",
+            )
+        )
+        cases["old-boot active update restart is not clear"] = old_boot_active
 
         old_boot_handoff = self.state_payloads()
         old_boot_terminal = replace(

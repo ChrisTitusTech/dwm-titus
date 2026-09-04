@@ -1058,6 +1058,14 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
 
     cursor = decode_journal_cursor(payloads[JOURNAL_CURSOR_NAME])
     restart = decode_journal_restart(payloads["restart"])
+    restart_is_all_clear = (
+        restart.last_applied_operation_id is None
+        and restart.system == "none"
+        and restart.session == "none"
+        and restart.session_cutoff == 0
+        and not restart.application
+        and restart.application_cutoff == 0
+    )
     active_payload = payloads["active"]
     active = None if active_payload == "" else decode_journal_operation(active_payload)
     handoff = decode_journal_handoff(payloads["handoff"])
@@ -1105,16 +1113,12 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
             and restart.last_applied_operation_id != handoff_terminal.operation_id
         ):
             raise JournalRecordError("journal update handoff has no restart commit")
-        if handoff_terminal.kind == "update" and handoff_terminal.boot_id != restart.boot_id:
-            if (
-                restart.last_applied_operation_id is not None
-                or restart.system != "none"
-                or restart.session != "none"
-                or restart.session_cutoff != 0
-                or restart.application
-                or restart.application_cutoff != 0
-            ):
-                raise JournalRecordError("journal old-boot handoff is not all-clear")
+        if (
+            handoff_terminal.kind == "update"
+            and handoff_terminal.boot_id != restart.boot_id
+            and not restart_is_all_clear
+        ):
+            raise JournalRecordError("journal old-boot handoff is not all-clear")
         if active is not None and (
             active.state not in JOURNAL_OPERATION_TERMINAL_STATES
             or active != handoff_terminal
@@ -1134,6 +1138,13 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         selected = terminals[active.slot]
         if active.state not in JOURNAL_OPERATION_TERMINAL_STATES or selected != active:
             raise JournalRecordError("journal active operation ID is duplicated")
+    if (
+        active is not None
+        and active.kind == "update"
+        and active.boot_id != restart.boot_id
+        and not restart_is_all_clear
+    ):
+        raise JournalRecordError("journal old-boot active update is not all-clear")
 
     restart_operation_id = restart.last_applied_operation_id
     applied_updates = [
@@ -1146,8 +1157,8 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
     matching_updates: list[JournalOperation] = []
     if (
         active is not None
-        and active.kind == "update"
-        and active.boot_id == restart.boot_id
+        and active.kind in ("update", "refresh")
+        and (active.kind == "refresh" or active.boot_id == restart.boot_id)
         and active.state in JOURNAL_OPERATION_TERMINAL_STATES
         and any(
             operation.terminal_monotonic > active.terminal_monotonic
@@ -1155,7 +1166,7 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
             if operation != active
         )
     ):
-        raise JournalRecordError("journal active update timestamp is stale")
+        raise JournalRecordError("journal active timestamp is stale")
     if (
         handoff_terminal is not None
         and handoff_terminal.kind in ("update", "refresh")
@@ -1222,6 +1233,10 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         raise JournalRecordError("journal restart contribution is incomplete")
     if restart.session != "none" and (
         restart.session_cutoff == 0
+        or (
+            matching_updates
+            and restart.session_cutoff > matching_updates[0].terminal_monotonic
+        )
         or any(
             operation.session_restart != "none"
             and restart.session_cutoff < operation.terminal_monotonic
@@ -1240,6 +1255,10 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         raise JournalRecordError("journal session restart contribution is incomplete")
     if restart.application and (
         restart.application_cutoff == 0
+        or (
+            matching_updates
+            and restart.application_cutoff > matching_updates[0].terminal_monotonic
+        )
         or any(
             operation.application_restart
             and restart.application_cutoff < operation.terminal_monotonic
