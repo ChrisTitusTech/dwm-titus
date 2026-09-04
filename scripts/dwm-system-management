@@ -288,6 +288,38 @@ class JournalDirectoryChain:
         self.close()
 
 
+@dataclass
+class JournalDescriptorSet:
+    """Fixed journal file descriptors retained under one directory lock."""
+
+    chain: JournalDirectoryChain
+    _descriptors: dict[str, int]
+    writable: bool
+    closed: bool = False
+
+    def descriptor(self, name: str) -> int:
+        if self.closed:
+            raise JournalLayoutError("journal descriptor set is closed")
+        if not isinstance(name, str) or name not in self._descriptors:
+            raise JournalLayoutError("journal descriptor name is invalid")
+        return self._descriptors[name]
+
+    def validate(self) -> None:
+        if self.closed:
+            raise JournalLayoutError("journal descriptor set is closed")
+        self.chain.validate()
+        directory_descriptor = self.chain.directory_descriptor
+        for name in JOURNAL_NAMES:
+            _validate_journal_path_identity(
+                directory_descriptor,
+                name,
+                self.descriptor(name),
+                JOURNAL_FILE_SIZE,
+                writable=self.writable,
+            )
+        self.chain.validate()
+
+
 def _close_descriptors(descriptors: Iterable[int]) -> OSError | None:
     """Close every descriptor and return the first close error, if any."""
     first_error: OSError | None = None
@@ -2235,6 +2267,55 @@ def load_journal_state(chain: JournalDirectoryChain) -> JournalState:
             if first_error is not None and completed:
                 raise JournalLayoutError(
                     "journal state descriptor close failed"
+                ) from first_error
+
+
+@contextlib.contextmanager
+def open_writable_journal(
+    chain: JournalDirectoryChain,
+) -> Iterator[JournalDescriptorSet]:
+    """Retain the complete writable journal under one exclusive lock."""
+    chain.validate()
+    directory_descriptor = chain.directory_descriptor
+    with _journal_lock(directory_descriptor, exclusive=True):
+        journal = JournalDescriptorSet(chain, {}, writable=True)
+        completed = False
+        try:
+            chain.validate()
+            for name in JOURNAL_NAMES:
+                try:
+                    descriptor = os.open(
+                        name,
+                        os.O_RDWR
+                        | os.O_NONBLOCK
+                        | os.O_NOFOLLOW
+                        | os.O_CLOEXEC,
+                        dir_fd=directory_descriptor,
+                    )
+                except OSError as error:
+                    raise JournalLayoutError(
+                        f"journal path {name} writable open failed"
+                    ) from error
+                journal._descriptors[name] = descriptor
+                _validate_journal_path_identity(
+                    directory_descriptor,
+                    name,
+                    descriptor,
+                    JOURNAL_FILE_SIZE,
+                )
+
+            journal.validate()
+            yield journal
+            journal.validate()
+            completed = True
+        finally:
+            journal.closed = True
+            first_error = _close_descriptors(
+                reversed(tuple(journal._descriptors.values()))
+            )
+            if first_error is not None and completed:
+                raise JournalLayoutError(
+                    "writable journal descriptor close failed"
                 ) from first_error
 
 
