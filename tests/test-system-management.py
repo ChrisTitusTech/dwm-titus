@@ -691,7 +691,9 @@ class JournalLayoutTests(unittest.TestCase):
             os.symlink("victim", pathlib.Path(directory) / "active")
             directory_descriptor = self.open_directory(directory)
             try:
-                with self.assertRaisesRegex(provider.JournalLayoutError, "active open"):
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active partial metadata is unsafe"
+                ):
                     provider.initialize_journal_layout(
                         directory_descriptor, self.boot_id
                     )
@@ -1039,6 +1041,24 @@ class JournalLayoutTests(unittest.TestCase):
             finally:
                 os.close(directory_descriptor)
 
+    def test_empty_mode_zero_file_after_cursor_is_not_repaired(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory_descriptor = self.open_directory(directory)
+            try:
+                provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+                active = pathlib.Path(directory) / "active"
+                active.write_bytes(b"")
+                os.chmod(active, 0)
+                with self.assertRaises(provider.JournalLayoutError):
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                self.assertEqual(stat.S_IMODE(active.stat().st_mode), 0)
+                self.assertEqual(active.stat().st_size, 0)
+            finally:
+                os.chmod(pathlib.Path(directory) / "active", 0o600)
+                os.close(directory_descriptor)
+
     def test_valid_advanced_file_after_cursor_is_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             directory_descriptor = self.open_directory(directory)
@@ -1094,6 +1114,27 @@ class JournalLayoutTests(unittest.TestCase):
             finally:
                 os.umask(previous_umask)
                 os.close(directory_descriptor)
+
+    def test_empty_owner_mode_precursors_are_repaired_through_held_descriptors(self):
+        for mode in (0, 0o200, 0o400):
+            with (
+                self.subTest(mode=oct(mode)),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                active = self.write_path(directory, "active", b"")
+                os.chmod(active, mode)
+                directory_descriptor = self.open_directory(directory)
+                try:
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                    self.assertEqual(stat.S_IMODE(active.stat().st_mode), 0o600)
+                    self.assertEqual(
+                        self.read_path(directory_descriptor, "active"),
+                        (0, provider.JournalFrame(1, "")),
+                    )
+                finally:
+                    os.close(directory_descriptor)
 
     def test_invalid_initial_frame_uses_layout_error_contract(self):
         with tempfile.TemporaryDirectory() as directory:
