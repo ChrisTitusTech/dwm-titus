@@ -196,7 +196,7 @@ class JournalLockError(JournalFileError):
 
 
 class JournalLayoutError(JournalFileError):
-    """The fixed journal path set could not be initialized safely."""
+    """The fixed journal path set could not be opened or initialized safely."""
 
 
 @dataclass(frozen=True)
@@ -273,13 +273,7 @@ class JournalDirectoryChain:
         if self.closed:
             return
         self.closed = True
-        first_error: OSError | None = None
-        for descriptor in reversed(self.descriptors):
-            try:
-                os.close(descriptor)
-            except OSError as error:
-                if first_error is None:
-                    first_error = error
+        first_error = _close_descriptors(reversed(self.descriptors))
         if first_error is not None:
             raise JournalLayoutError(
                 "journal directory chain close failed"
@@ -292,6 +286,18 @@ class JournalDirectoryChain:
 
     def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
         self.close()
+
+
+def _close_descriptors(descriptors: Iterable[int]) -> OSError | None:
+    """Close every descriptor and return the first close error, if any."""
+    first_error: OSError | None = None
+    for descriptor in descriptors:
+        try:
+            os.close(descriptor)
+        except OSError as error:
+            if first_error is None:
+                first_error = error
+    return first_error
 
 
 def _absolute_path_components(path: str) -> tuple[str, ...]:
@@ -1534,8 +1540,17 @@ def _validate_journal_path_identity(
     name: str,
     descriptor: int,
     expected_size: int,
+    *,
+    writable: bool = True,
 ) -> None:
-    held = _validate_journal_descriptor(descriptor, expected_size, writable=True)
+    try:
+        held = _validate_journal_descriptor(
+            descriptor, expected_size, writable=writable
+        )
+    except JournalFileError as error:
+        raise JournalLayoutError(
+            f"journal path {name} identity is unsafe"
+        ) from error
     try:
         reachable = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
     except OSError as error:
@@ -2002,6 +2017,7 @@ def initialize_journal_layout(directory_descriptor: int, boot_id: str) -> None:
         descriptors: dict[str, int] = {}
         mode_repair_descriptors: dict[str, int] = {}
         images: dict[str, bytes] = {}
+        completed = False
         try:
             cursor_path = _open_partial_journal_path_unlocked(
                 directory_descriptor,
@@ -2068,6 +2084,7 @@ def initialize_journal_layout(directory_descriptor: int, boot_id: str) -> None:
                     os.fsync(directory_descriptor)
                 except OSError as error:
                     raise JournalLayoutError("journal directory sync failed") from error
+                completed = True
                 return
 
             for name, image in images.items():
@@ -2126,23 +2143,98 @@ def initialize_journal_layout(directory_descriptor: int, boot_id: str) -> None:
                 # A readable cursor does not prove its directory entry reached
                 # storage. A later initialization retries the directory sync.
                 raise JournalLayoutError("journal directory sync failed") from error
+            completed = True
         finally:
-            first_error: OSError | None = None
-            for descriptor in reversed(tuple(descriptors.values())):
-                try:
-                    os.close(descriptor)
-                except OSError as error:
-                    if first_error is None:
-                        first_error = error
-            for descriptor in reversed(tuple(mode_repair_descriptors.values())):
-                try:
-                    os.close(descriptor)
-                except OSError as error:
-                    if first_error is None:
-                        first_error = error
-            if first_error is not None:
+            first_error = _close_descriptors(
+                reversed(tuple(descriptors.values()))
+            )
+            repair_error = _close_descriptors(
+                reversed(tuple(mode_repair_descriptors.values()))
+            )
+            if first_error is None:
+                first_error = repair_error
+            if first_error is not None and completed:
                 raise JournalLayoutError(
                     "journal partial descriptor close failed"
+                ) from first_error
+
+
+def load_journal_state(chain: JournalDirectoryChain) -> JournalState:
+    """Load the complete validated journal through retained descriptors."""
+    chain.validate()
+    directory_descriptor = chain.directory_descriptor
+    with _journal_lock(directory_descriptor, exclusive=False):
+        descriptors: dict[str, int] = {}
+        completed = False
+        try:
+            chain.validate()
+            for name in JOURNAL_NAMES:
+                try:
+                    descriptor = os.open(
+                        name,
+                        os.O_RDONLY
+                        | os.O_NONBLOCK
+                        | os.O_NOFOLLOW
+                        | os.O_CLOEXEC,
+                        dir_fd=directory_descriptor,
+                    )
+                except OSError as error:
+                    raise JournalLayoutError(
+                        f"journal path {name} open failed"
+                    ) from error
+                descriptors[name] = descriptor
+                _validate_journal_path_identity(
+                    directory_descriptor,
+                    name,
+                    descriptor,
+                    JOURNAL_FILE_SIZE,
+                    writable=False,
+                )
+
+            payloads: dict[str, str] = {}
+            for name in JOURNAL_NAMES:
+                descriptor = descriptors[name]
+                _validate_journal_path_identity(
+                    directory_descriptor,
+                    name,
+                    descriptor,
+                    JOURNAL_FILE_SIZE,
+                    writable=False,
+                )
+                try:
+                    _index, frame = _read_journal_file_unlocked(descriptor)
+                except (JournalFileError, JournalFrameError) as error:
+                    raise JournalLayoutError(
+                        f"journal path {name} is malformed"
+                    ) from error
+                _validate_journal_path_identity(
+                    directory_descriptor,
+                    name,
+                    descriptor,
+                    JOURNAL_FILE_SIZE,
+                    writable=False,
+                )
+                payloads[name] = frame.payload
+
+            state = decode_journal_state(payloads)
+            for name in JOURNAL_NAMES:
+                _validate_journal_path_identity(
+                    directory_descriptor,
+                    name,
+                    descriptors[name],
+                    JOURNAL_FILE_SIZE,
+                    writable=False,
+                )
+            chain.validate()
+            completed = True
+            return state
+        finally:
+            first_error = _close_descriptors(
+                reversed(tuple(descriptors.values()))
+            )
+            if first_error is not None and completed:
+                raise JournalLayoutError(
+                    "journal state descriptor close failed"
                 ) from first_error
 
 
