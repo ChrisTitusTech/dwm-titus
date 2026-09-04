@@ -13,6 +13,7 @@ import stat
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from dataclasses import replace
 from unittest import mock
@@ -1712,6 +1713,79 @@ class JournalLayoutTests(unittest.TestCase):
             finally:
                 os.close(directory_descriptor)
 
+    def test_descriptor_close_failure_does_not_mask_layout_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory_descriptor = self.open_directory(directory)
+            provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+            original_close_descriptors = provider._close_descriptors
+            cleanup_calls = 0
+
+            def close_descriptors_then_fail(descriptors):
+                nonlocal cleanup_calls
+                cleanup_calls += 1
+                self.assertIsNone(original_close_descriptors(descriptors))
+                return OSError(errno.EIO, "injected close failure")
+
+            try:
+                with (
+                    mock.patch.object(
+                        provider,
+                        "_validate_initialized_journal_path_unlocked",
+                        side_effect=provider.JournalLayoutError(
+                            "injected primary layout error"
+                        ),
+                    ),
+                    mock.patch.object(
+                        provider,
+                        "_close_descriptors",
+                        side_effect=close_descriptors_then_fail,
+                    ),
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "injected primary layout error"
+                    ):
+                        provider.initialize_journal_layout(
+                            directory_descriptor, self.boot_id
+                        )
+            finally:
+                os.close(directory_descriptor)
+
+            self.assertEqual(cleanup_calls, 2)
+
+    def test_successful_layout_close_failure_inside_exception_handler_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory_descriptor = self.open_directory(directory)
+            provider.initialize_journal_layout(directory_descriptor, self.boot_id)
+            original_close_descriptors = provider._close_descriptors
+            cleanup_calls = 0
+
+            def close_descriptors_then_fail(descriptors):
+                nonlocal cleanup_calls
+                cleanup_calls += 1
+                self.assertIsNone(original_close_descriptors(descriptors))
+                return OSError(errno.EIO, "injected close failure")
+
+            try:
+                try:
+                    raise RuntimeError("outer handled error")
+                except RuntimeError:
+                    with mock.patch.object(
+                        provider,
+                        "_close_descriptors",
+                        side_effect=close_descriptors_then_fail,
+                    ):
+                        with self.assertRaisesRegex(
+                            provider.JournalLayoutError,
+                            "journal partial descriptor close failed",
+                        ):
+                            provider.initialize_journal_layout(
+                                directory_descriptor, self.boot_id
+                            )
+            finally:
+                os.close(directory_descriptor)
+
+            self.assertEqual(cleanup_calls, 2)
+
     def test_legacy_plaintext_is_rejected_without_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             active = pathlib.Path(directory) / "active"
@@ -2100,6 +2174,359 @@ class JournalLayoutTests(unittest.TestCase):
                     )
             finally:
                 os.close(directory_descriptor)
+
+
+class JournalStateLoadTests(unittest.TestCase):
+    boot_id = "01234567-89ab-cdef-0123-456789abcdef"
+
+    def open_initialized_chain(self, directory):
+        state = pathlib.Path(directory) / "state"
+        journal = state / "dwm-titus" / "system-management"
+        chain = provider.open_journal_directory_chain(str(journal))
+        provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
+        return state, journal, chain
+
+    def test_loads_exact_fixed_paths_read_only_without_enumeration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _state, _journal, chain = self.open_initialized_chain(directory)
+            opened = {}
+            first_read_saw_all_descriptors = False
+            original_open = os.open
+            original_read = provider._read_journal_file_unlocked
+
+            def track_open(path, flags, *args, **kwargs):
+                descriptor = original_open(path, flags, *args, **kwargs)
+                if (
+                    path in provider.JOURNAL_NAMES
+                    and kwargs.get("dir_fd") == chain.directory_descriptor
+                ):
+                    opened[path] = (descriptor, flags)
+                return descriptor
+
+            def observe_first_read(descriptor):
+                nonlocal first_read_saw_all_descriptors
+                if not first_read_saw_all_descriptors:
+                    self.assertEqual(tuple(opened), provider.JOURNAL_NAMES)
+                    first_read_saw_all_descriptors = True
+                return original_read(descriptor)
+
+            try:
+                with (
+                    mock.patch.object(provider.os, "open", side_effect=track_open),
+                    mock.patch.object(
+                        provider.os,
+                        "listdir",
+                        side_effect=AssertionError("directory enumeration is forbidden"),
+                    ),
+                    mock.patch.object(
+                        provider.os,
+                        "scandir",
+                        side_effect=AssertionError("directory enumeration is forbidden"),
+                    ),
+                    mock.patch.object(
+                        provider,
+                        "_read_journal_file_unlocked",
+                        side_effect=observe_first_read,
+                    ),
+                ):
+                    state = provider.load_journal_state(chain)
+            finally:
+                chain.close()
+
+            self.assertTrue(first_read_saw_all_descriptors)
+            self.assertEqual(
+                state,
+                provider.decode_journal_state(
+                    provider._initial_journal_payloads(self.boot_id)
+                ),
+            )
+            self.assertEqual(tuple(opened), provider.JOURNAL_NAMES)
+            for descriptor, flags in opened.values():
+                self.assertEqual(flags & os.O_ACCMODE, os.O_RDONLY)
+                self.assertTrue(flags & os.O_NONBLOCK)
+                self.assertTrue(flags & os.O_NOFOLLOW)
+                self.assertTrue(flags & os.O_CLOEXEC)
+                with self.assertRaises(OSError):
+                    os.fstat(descriptor)
+
+    def test_record_error_closes_every_retained_file_descriptor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _state, _journal, chain = self.open_initialized_chain(directory)
+            active_descriptor = os.open(
+                "active",
+                os.O_NOFOLLOW | os.O_CLOEXEC | os.O_RDWR,
+                dir_fd=chain.directory_descriptor,
+            )
+            try:
+                provider.commit_journal_file(
+                    chain.directory_descriptor, active_descriptor, "malformed"
+                )
+            finally:
+                os.close(active_descriptor)
+
+            opened = []
+            original_open = os.open
+
+            def track_open(path, flags, *args, **kwargs):
+                descriptor = original_open(path, flags, *args, **kwargs)
+                if (
+                    path in provider.JOURNAL_NAMES
+                    and kwargs.get("dir_fd") == chain.directory_descriptor
+                ):
+                    opened.append(descriptor)
+                return descriptor
+
+            try:
+                with mock.patch.object(provider.os, "open", side_effect=track_open):
+                    with self.assertRaisesRegex(
+                        provider.JournalRecordError, "operation field count"
+                    ):
+                        provider.load_journal_state(chain)
+            finally:
+                chain.close()
+
+            self.assertEqual(len(opened), len(provider.JOURNAL_NAMES))
+            for descriptor in opened:
+                with self.assertRaises(OSError):
+                    os.fstat(descriptor)
+
+    def test_close_failure_does_not_mask_primary_record_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _state, _journal, chain = self.open_initialized_chain(directory)
+            opened = []
+            original_open = os.open
+            original_close = os.close
+            failed_close = False
+
+            def track_open(path, flags, *args, **kwargs):
+                descriptor = original_open(path, flags, *args, **kwargs)
+                if (
+                    path in provider.JOURNAL_NAMES
+                    and kwargs.get("dir_fd") == chain.directory_descriptor
+                ):
+                    opened.append(descriptor)
+                return descriptor
+
+            def close_then_fail_once(descriptor):
+                nonlocal failed_close
+                original_close(descriptor)
+                if descriptor in opened and not failed_close:
+                    failed_close = True
+                    raise OSError(errno.EIO, "injected close failure")
+
+            try:
+                with (
+                    mock.patch.object(provider.os, "open", side_effect=track_open),
+                    mock.patch.object(
+                        provider,
+                        "decode_journal_state",
+                        side_effect=provider.JournalRecordError(
+                            "injected primary record error"
+                        ),
+                    ),
+                    mock.patch.object(
+                        provider.os, "close", side_effect=close_then_fail_once
+                    ),
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalRecordError, "injected primary record error"
+                    ):
+                        provider.load_journal_state(chain)
+            finally:
+                chain.close()
+
+            self.assertTrue(failed_close)
+            for descriptor in opened:
+                with self.assertRaises(OSError):
+                    os.fstat(descriptor)
+
+    def test_successful_load_close_failure_inside_exception_handler_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _state, _journal, chain = self.open_initialized_chain(directory)
+            opened = []
+            original_open = os.open
+            original_close = os.close
+            failed_close = False
+
+            def track_open(path, flags, *args, **kwargs):
+                descriptor = original_open(path, flags, *args, **kwargs)
+                if (
+                    path in provider.JOURNAL_NAMES
+                    and kwargs.get("dir_fd") == chain.directory_descriptor
+                ):
+                    opened.append(descriptor)
+                return descriptor
+
+            def close_then_fail_once(descriptor):
+                nonlocal failed_close
+                original_close(descriptor)
+                if descriptor in opened and not failed_close:
+                    failed_close = True
+                    raise OSError(errno.EIO, "injected close failure")
+
+            try:
+                try:
+                    raise RuntimeError("outer handled error")
+                except RuntimeError:
+                    with (
+                        mock.patch.object(
+                            provider.os, "open", side_effect=track_open
+                        ),
+                        mock.patch.object(
+                            provider.os, "close", side_effect=close_then_fail_once
+                        ),
+                    ):
+                        with self.assertRaisesRegex(
+                            provider.JournalLayoutError,
+                            "journal state descriptor close failed",
+                        ):
+                            provider.load_journal_state(chain)
+            finally:
+                chain.close()
+
+            self.assertTrue(failed_close)
+            for descriptor in opened:
+                with self.assertRaises(OSError):
+                    os.fstat(descriptor)
+
+    def test_open_failure_closes_every_previously_opened_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _state, _journal, chain = self.open_initialized_chain(directory)
+            opened = []
+            original_open = os.open
+
+            def fail_later_open(path, flags, *args, **kwargs):
+                if (
+                    path == "terminal-05"
+                    and kwargs.get("dir_fd") == chain.directory_descriptor
+                ):
+                    raise OSError(errno.EIO, "injected open failure")
+                descriptor = original_open(path, flags, *args, **kwargs)
+                if (
+                    path in provider.JOURNAL_NAMES
+                    and kwargs.get("dir_fd") == chain.directory_descriptor
+                ):
+                    opened.append(descriptor)
+                return descriptor
+
+            try:
+                with mock.patch.object(provider.os, "open", side_effect=fail_later_open):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "terminal-05 open failed"
+                    ):
+                        provider.load_journal_state(chain)
+            finally:
+                chain.close()
+
+            self.assertGreater(len(opened), 1)
+            for descriptor in opened:
+                with self.assertRaises(OSError):
+                    os.fstat(descriptor)
+
+    def test_fixed_symlink_is_rejected_without_following_the_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _state, journal, chain = self.open_initialized_chain(directory)
+            path = journal / "terminal-31"
+            target = journal / "terminal-31-retained"
+            path.rename(target)
+            path.symlink_to(target.name)
+            before = target.read_bytes()
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "terminal-31 open failed"
+                ):
+                    provider.load_journal_state(chain)
+                self.assertEqual(target.read_bytes(), before)
+            finally:
+                chain.close()
+
+    def test_unsafe_metadata_reports_the_exact_fixed_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _state, journal, chain = self.open_initialized_chain(directory)
+            active = journal / "active"
+            os.chmod(active, 0o644)
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active identity is unsafe"
+                ):
+                    provider.load_journal_state(chain)
+            finally:
+                os.chmod(active, 0o600)
+                chain.close()
+
+    def test_fifo_path_fails_without_waiting_for_a_writer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _state, journal, chain = self.open_initialized_chain(directory)
+            path = journal / "terminal-31"
+            path.unlink()
+            os.mkfifo(path, 0o600)
+            os.chmod(path, 0o600)
+            started = time.monotonic()
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "terminal-31 identity is unsafe"
+                ):
+                    provider.load_journal_state(chain)
+                self.assertLess(time.monotonic() - started, 1)
+            finally:
+                chain.close()
+
+    def test_replaced_path_is_rejected_after_descriptor_bound_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _state, journal, chain = self.open_initialized_chain(directory)
+            active = journal / "active"
+            detached = journal / "active-detached"
+            image = active.read_bytes()
+            original_read = provider._read_journal_file_unlocked
+            replaced = False
+
+            def replace_active(descriptor):
+                nonlocal replaced
+                if not replaced:
+                    replaced = True
+                    active.rename(detached)
+                    active.write_bytes(image)
+                    os.chmod(active, 0o600)
+                return original_read(descriptor)
+
+            try:
+                with mock.patch.object(
+                    provider,
+                    "_read_journal_file_unlocked",
+                    side_effect=replace_active,
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "active identity is unsafe"
+                    ):
+                        provider.load_journal_state(chain)
+                self.assertTrue(replaced)
+                self.assertEqual(detached.read_bytes(), image)
+                self.assertEqual(active.read_bytes(), image)
+            finally:
+                chain.close()
+
+    def test_replaced_ancestor_is_rejected_after_complete_decode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path, _journal, chain = self.open_initialized_chain(directory)
+            moved = pathlib.Path(directory) / "state-moved"
+            original_decode = provider.decode_journal_state
+
+            def replace_state(payloads):
+                result = original_decode(payloads)
+                state_path.rename(moved)
+                state_path.mkdir()
+                return result
+
+            try:
+                with mock.patch.object(
+                    provider, "decode_journal_state", side_effect=replace_state
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "state is unsafe"
+                    ):
+                        provider.load_journal_state(chain)
+            finally:
+                chain.close()
 
 
 class JournalDirectoryChainTests(unittest.TestCase):
