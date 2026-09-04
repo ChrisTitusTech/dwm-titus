@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import hashlib
 import importlib.util
@@ -2525,6 +2526,224 @@ class JournalStateLoadTests(unittest.TestCase):
                         provider.JournalLayoutError, "state is unsafe"
                     ):
                         provider.load_journal_state(chain)
+            finally:
+                chain.close()
+
+
+class JournalWritableOpenTests(unittest.TestCase):
+    boot_id = "01234567-89ab-cdef-0123-456789abcdef"
+
+    def open_initialized_chain(self, directory):
+        journal = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+        chain = provider.open_journal_directory_chain(str(journal))
+        provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
+        return journal, chain
+
+    def test_retains_exact_fixed_writable_paths_under_exclusive_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            opened = {}
+            lock_events = []
+            original_open = os.open
+            original_lock = provider._journal_lock
+
+            def track_open(path, flags, *args, **kwargs):
+                descriptor = original_open(path, flags, *args, **kwargs)
+                if (
+                    path in provider.JOURNAL_NAMES
+                    and kwargs.get("dir_fd") == chain.directory_descriptor
+                ):
+                    opened[path] = (descriptor, flags)
+                return descriptor
+
+            @contextlib.contextmanager
+            def observe_lock(descriptor, *, exclusive):
+                lock_events.append(("enter", descriptor, exclusive))
+                with original_lock(descriptor, exclusive=exclusive):
+                    yield
+                lock_events.append(("exit", descriptor, exclusive))
+
+            try:
+                with (
+                    mock.patch.object(provider.os, "open", side_effect=track_open),
+                    mock.patch.object(provider, "_journal_lock", side_effect=observe_lock),
+                    mock.patch.object(
+                        provider.os,
+                        "listdir",
+                        side_effect=AssertionError("directory enumeration is forbidden"),
+                    ),
+                    mock.patch.object(
+                        provider.os,
+                        "scandir",
+                        side_effect=AssertionError("directory enumeration is forbidden"),
+                    ),
+                ):
+                    with provider.open_writable_journal(chain) as journal:
+                        self.assertEqual(
+                            lock_events,
+                            [("enter", chain.directory_descriptor, True)],
+                        )
+                        self.assertEqual(tuple(opened), provider.JOURNAL_NAMES)
+                        journal.validate()
+                        for name, (descriptor, flags) in opened.items():
+                            self.assertEqual(journal.descriptor(name), descriptor)
+                            self.assertEqual(flags & os.O_ACCMODE, os.O_RDWR)
+                            self.assertTrue(flags & os.O_NONBLOCK)
+                            self.assertTrue(flags & os.O_NOFOLLOW)
+                            self.assertTrue(flags & os.O_CLOEXEC)
+
+                self.assertEqual(
+                    lock_events,
+                    [
+                        ("enter", chain.directory_descriptor, True),
+                        ("exit", chain.directory_descriptor, True),
+                    ],
+                )
+                self.assertTrue(journal.closed)
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "descriptor set is closed"
+                ):
+                    journal.descriptor("active")
+                for descriptor, _flags in opened.values():
+                    with self.assertRaises(OSError):
+                        os.fstat(descriptor)
+            finally:
+                chain.close()
+
+    def test_open_failure_closes_every_previously_retained_descriptor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            opened = []
+            original_open = os.open
+
+            def fail_later_open(path, flags, *args, **kwargs):
+                if (
+                    path == "terminal-05"
+                    and kwargs.get("dir_fd") == chain.directory_descriptor
+                ):
+                    raise OSError(errno.EIO, "injected open failure")
+                descriptor = original_open(path, flags, *args, **kwargs)
+                if (
+                    path in provider.JOURNAL_NAMES
+                    and kwargs.get("dir_fd") == chain.directory_descriptor
+                ):
+                    opened.append(descriptor)
+                return descriptor
+
+            try:
+                with mock.patch.object(provider.os, "open", side_effect=fail_later_open):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError,
+                        "terminal-05 writable open failed",
+                    ):
+                        with provider.open_writable_journal(chain):
+                            self.fail("journal opened after a fixed-path failure")
+                self.assertGreater(len(opened), 1)
+                for descriptor in opened:
+                    with self.assertRaises(OSError):
+                        os.fstat(descriptor)
+            finally:
+                chain.close()
+
+    def test_fifo_path_is_rejected_without_waiting_for_a_peer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal_path, chain = self.open_initialized_chain(directory)
+            path = journal_path / "terminal-31"
+            path.unlink()
+            os.mkfifo(path, 0o600)
+            os.chmod(path, 0o600)
+            started = time.monotonic()
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "terminal-31 identity is unsafe"
+                ):
+                    with provider.open_writable_journal(chain):
+                        self.fail("FIFO was accepted as a journal file")
+                self.assertLess(time.monotonic() - started, 1)
+            finally:
+                chain.close()
+
+    def test_replaced_path_is_rejected_before_releasing_the_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal_path, chain = self.open_initialized_chain(directory)
+            active = journal_path / "active"
+            detached = journal_path / "active-detached"
+            image = active.read_bytes()
+            held_descriptors = ()
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active identity is unsafe"
+                ):
+                    with provider.open_writable_journal(chain) as journal:
+                        held_descriptors = tuple(
+                            journal.descriptor(name) for name in provider.JOURNAL_NAMES
+                        )
+                        active.rename(detached)
+                        active.write_bytes(image)
+                        os.chmod(active, 0o600)
+                self.assertEqual(detached.read_bytes(), image)
+                self.assertEqual(active.read_bytes(), image)
+                for descriptor in held_descriptors:
+                    with self.assertRaises(OSError):
+                        os.fstat(descriptor)
+            finally:
+                chain.close()
+
+    def test_close_failure_does_not_mask_body_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            original_close_descriptors = provider._close_descriptors
+            cleanup_calls = 0
+
+            def close_descriptors_then_fail(descriptors):
+                nonlocal cleanup_calls
+                cleanup_calls += 1
+                self.assertIsNone(original_close_descriptors(descriptors))
+                return OSError(errno.EIO, "injected close failure")
+
+            try:
+                with mock.patch.object(
+                    provider,
+                    "_close_descriptors",
+                    side_effect=close_descriptors_then_fail,
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalRecordError, "injected body error"
+                    ):
+                        with provider.open_writable_journal(chain):
+                            raise provider.JournalRecordError("injected body error")
+                self.assertEqual(cleanup_calls, 1)
+            finally:
+                chain.close()
+
+    def test_successful_close_failure_inside_exception_handler_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            original_close_descriptors = provider._close_descriptors
+            cleanup_calls = 0
+
+            def close_descriptors_then_fail(descriptors):
+                nonlocal cleanup_calls
+                cleanup_calls += 1
+                self.assertIsNone(original_close_descriptors(descriptors))
+                return OSError(errno.EIO, "injected close failure")
+
+            try:
+                try:
+                    raise RuntimeError("outer handled error")
+                except RuntimeError:
+                    with mock.patch.object(
+                        provider,
+                        "_close_descriptors",
+                        side_effect=close_descriptors_then_fail,
+                    ):
+                        with self.assertRaisesRegex(
+                            provider.JournalLayoutError,
+                            "writable journal descriptor close failed",
+                        ):
+                            with provider.open_writable_journal(chain):
+                                pass
+                self.assertEqual(cleanup_calls, 1)
             finally:
                 chain.close()
 
