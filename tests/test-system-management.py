@@ -286,6 +286,8 @@ class JournalFrameTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 with self.assertRaises(provider.JournalFrameError):
                     provider.encode_journal_frame(1, payload)
+        with self.assertRaisesRegex(provider.JournalFrameError, "not UTF-8"):
+            provider.encode_journal_frame(1, "unpaired-\udcff")
         for sequence in (0, -1, provider.JOURNAL_SEQUENCE_MAX + 1, True):
             with self.subTest(sequence=sequence):
                 with self.assertRaises(provider.JournalFrameError):

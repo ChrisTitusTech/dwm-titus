@@ -96,7 +96,10 @@ def _journal_payload_bytes(payload: str) -> bytes:
         raise JournalFrameError("journal payload must be text")
     if "\0" in payload or "\r" in payload or "\n" in payload:
         raise JournalFrameError("journal payload contains a forbidden byte")
-    encoded = payload.encode("utf-8")
+    try:
+        encoded = payload.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise JournalFrameError("journal payload is not UTF-8") from error
     if len(encoded) > JOURNAL_PAYLOAD_MAX:
         raise JournalFrameError("journal payload is too large")
     return encoded
