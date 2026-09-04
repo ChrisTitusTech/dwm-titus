@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import importlib.util
 import importlib.machinery
@@ -809,12 +810,21 @@ class JournalDirectoryChainTests(unittest.TestCase):
             provider.journal_directory_path({"HOME": "/var/tmp/home"}),
             "/var/tmp/home/.local/state/dwm-titus/system-management",
         )
+        self.assertEqual(
+            provider.journal_directory_path(
+                {"XDG_STATE_HOME": "relative", "HOME": "/var/tmp/home/"}
+            ),
+            "/var/tmp/home/.local/state/dwm-titus/system-management",
+        )
+        self.assertEqual(
+            provider.journal_directory_path({"XDG_STATE_HOME": "/var/tmp/state/"}),
+            "/var/tmp/state/dwm-titus/system-management",
+        )
 
     def test_invalid_state_inputs_fail_before_filesystem_access(self):
         cases = (
             {},
             {"HOME": "relative"},
-            {"XDG_STATE_HOME": "relative", "HOME": "/ignored"},
             {"XDG_STATE_HOME": "/tmp/../state"},
             {"XDG_STATE_HOME": "/tmp//state"},
             {"XDG_STATE_HOME": "/tmp/state\0suffix"},
@@ -868,6 +878,156 @@ class JournalDirectoryChainTests(unittest.TestCase):
                     chain.validate()
             finally:
                 os.chmod(ancestor, 0o700)
+
+    def test_execute_only_parent_is_rejected_before_child_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ancestor = pathlib.Path(directory) / "traverse-only"
+            ancestor.mkdir()
+            os.chmod(ancestor, 0o311)
+            ancestor_identity = (ancestor.stat().st_dev, ancestor.stat().st_ino)
+            original_open = os.open
+
+            def reject_readable_ancestor(path, flags, *args, **kwargs):
+                descriptor = kwargs.get("dir_fd")
+                if path == "." and descriptor is not None:
+                    metadata = os.fstat(descriptor)
+                    if (metadata.st_dev, metadata.st_ino) == ancestor_identity:
+                        raise PermissionError(errno.EACCES, "injected access denial")
+                return original_open(path, flags, *args, **kwargs)
+
+            try:
+                journal = ancestor / "state" / "dwm-titus" / "system-management"
+                with mock.patch.object(
+                    provider.os, "open", side_effect=reject_readable_ancestor
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "sync handle"
+                    ):
+                        provider.open_journal_directory_chain(str(journal))
+                self.assertFalse((ancestor / "state").exists())
+            finally:
+                os.chmod(ancestor, 0o700)
+
+    def test_restrictive_umask_cannot_remove_created_owner_access(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal = (
+                pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+            )
+            previous_umask = os.umask(0o777)
+            try:
+                with provider.open_journal_directory_chain(str(journal)) as chain:
+                    self.assertEqual(
+                        stat.S_IMODE(os.fstat(chain.directory_descriptor).st_mode),
+                        0o700,
+                    )
+            finally:
+                os.umask(previous_umask)
+
+    def test_retry_resyncs_an_indeterminate_created_parent_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = pathlib.Path(directory) / "state" / "dwm-titus"
+            parent.mkdir(parents=True)
+            journal = parent / "system-management"
+            parent_identity = (parent.stat().st_dev, parent.stat().st_ino)
+            original_fsync = os.fsync
+            failed_parent_sync = False
+
+            def fail_created_entry_sync(descriptor):
+                nonlocal failed_parent_sync
+                metadata = os.fstat(descriptor)
+                if (
+                    not failed_parent_sync
+                    and journal.exists()
+                    and (metadata.st_dev, metadata.st_ino) == parent_identity
+                ):
+                    failed_parent_sync = True
+                    raise OSError("injected parent sync failure")
+                return original_fsync(descriptor)
+
+            with mock.patch.object(
+                provider.os, "fsync", side_effect=fail_created_entry_sync
+            ):
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "directory sync failed"
+                ):
+                    provider.open_journal_directory_chain(str(journal))
+            self.assertTrue(journal.is_dir())
+
+            observed_parent_sync = False
+
+            def observe_parent_sync(descriptor):
+                nonlocal observed_parent_sync
+                metadata = os.fstat(descriptor)
+                if (metadata.st_dev, metadata.st_ino) == parent_identity:
+                    observed_parent_sync = True
+                return original_fsync(descriptor)
+
+            with mock.patch.object(
+                provider.os, "fsync", side_effect=observe_parent_sync
+            ):
+                with provider.open_journal_directory_chain(str(journal)) as chain:
+                    chain.validate()
+            self.assertTrue(observed_parent_sync)
+
+    def test_retry_resyncs_an_indeterminate_created_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = pathlib.Path(directory) / "state" / "dwm-titus"
+            parent.mkdir(parents=True)
+            journal = parent / "system-management"
+            original_fsync = os.fsync
+
+            def fail_final_sync(descriptor):
+                metadata = os.fstat(descriptor)
+                if journal.exists():
+                    current = journal.stat()
+                    if (metadata.st_dev, metadata.st_ino) == (
+                        current.st_dev,
+                        current.st_ino,
+                    ):
+                        raise OSError("injected directory sync failure")
+                return original_fsync(descriptor)
+
+            with mock.patch.object(provider.os, "fsync", side_effect=fail_final_sync):
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "directory sync failed"
+                ):
+                    provider.open_journal_directory_chain(str(journal))
+            journal_identity = (journal.stat().st_dev, journal.stat().st_ino)
+
+            observed_directory_sync = False
+
+            def observe_directory_sync(descriptor):
+                nonlocal observed_directory_sync
+                metadata = os.fstat(descriptor)
+                if (metadata.st_dev, metadata.st_ino) == journal_identity:
+                    observed_directory_sync = True
+                return original_fsync(descriptor)
+
+            with mock.patch.object(
+                provider.os, "fsync", side_effect=observe_directory_sync
+            ):
+                with provider.open_journal_directory_chain(str(journal)) as chain:
+                    chain.validate()
+            self.assertTrue(observed_directory_sync)
+
+    def test_created_directory_mode_update_follows_the_held_descriptor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original = pathlib.Path(directory) / "original"
+            replacement = pathlib.Path(directory) / "replacement"
+            original.mkdir(mode=0o755)
+            replacement.mkdir(mode=0o755)
+            os.chmod(original, 0o755)
+            os.chmod(replacement, 0o755)
+            descriptor = os.open(original, os.O_PATH | os.O_DIRECTORY)
+            try:
+                moved = pathlib.Path(directory) / "moved"
+                original.rename(moved)
+                replacement.rename(original)
+                provider._chmod_directory_descriptor(descriptor, 0o700)
+                self.assertEqual(stat.S_IMODE(moved.stat().st_mode), 0o700)
+                self.assertEqual(stat.S_IMODE(original.stat().st_mode), 0o755)
+            finally:
+                os.close(descriptor)
 
     def test_existing_nonprivate_ancestor_is_not_modified(self):
         with tempfile.TemporaryDirectory() as directory:

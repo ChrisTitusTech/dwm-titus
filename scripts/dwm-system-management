@@ -198,10 +198,20 @@ def journal_directory_path(environment: Mapping[str, str] | None = None) -> str:
     """Resolve the canonical absolute journal directory from XDG state inputs."""
     source = os.environ if environment is None else environment
     state_home = source.get("XDG_STATE_HOME", "")
+    if (
+        isinstance(state_home, str)
+        and state_home not in {"", "/"}
+        and not state_home.startswith("//")
+    ):
+        state_home = state_home.rstrip("/")
+    if not isinstance(state_home, str) or not state_home.startswith("/"):
+        state_home = ""
     if not state_home:
         home = source.get("HOME", "")
-        if not home:
+        if not isinstance(home, str) or not home:
             raise JournalLayoutError("HOME is required for journal state")
+        if isinstance(home, str) and home != "/":
+            home = home.rstrip("/")
         state_home = os.path.join(home, ".local", "state")
     _absolute_path_components(state_home)
     path = os.path.join(state_home, *JOURNAL_DIRECTORY_SUFFIX)
@@ -242,7 +252,9 @@ def _validate_directory_component(
         raise JournalLayoutError(f"journal directory component {name} is not private")
 
 
-def _sync_directory_descriptor(descriptor: int) -> None:
+def _sync_directory_descriptor(
+    descriptor: int, *, allow_unreadable: bool = False
+) -> bool:
     try:
         held = os.fstat(descriptor)
         flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
@@ -255,7 +267,7 @@ def _sync_directory_descriptor(descriptor: int) -> None:
             os.fsync(descriptor)
         except OSError as error:
             raise JournalLayoutError("journal directory sync failed") from error
-        return
+        return True
     try:
         sync_descriptor = os.open(
             ".",
@@ -263,6 +275,8 @@ def _sync_directory_descriptor(descriptor: int) -> None:
             dir_fd=descriptor,
         )
     except OSError as error:
+        if allow_unreadable and error.errno in {errno.EACCES, errno.EPERM}:
+            return False
         raise JournalLayoutError(
             "journal directory sync handle is unavailable"
         ) from error
@@ -282,6 +296,15 @@ def _sync_directory_descriptor(descriptor: int) -> None:
             raise JournalLayoutError(
                 "journal directory sync handle close failed"
             ) from error
+    return True
+
+
+def _chmod_directory_descriptor(descriptor: int, mode: int) -> None:
+    """Change a held directory's mode without reopening its mutable pathname."""
+    try:
+        os.chmod(f"/proc/self/fd/{descriptor}", mode)
+    except (OSError, ValueError) as error:
+        raise JournalLayoutError("journal directory mode update failed") from error
 
 
 def _open_directory_component(
@@ -289,19 +312,29 @@ def _open_directory_component(
 ) -> int:
     created = False
     try:
-        os.mkdir(name, 0o700, dir_fd=parent_descriptor)
-        created = True
-    except FileExistsError:
-        pass
+        os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+        exists = True
+    except FileNotFoundError:
+        exists = False
     except OSError as error:
         raise JournalLayoutError(
-            f"journal directory component {name} creation failed"
+            f"journal directory component {name} lookup failed"
         ) from error
+    if not exists:
+        _sync_directory_descriptor(parent_descriptor)
+        try:
+            os.mkdir(name, 0o700, dir_fd=parent_descriptor)
+            created = True
+        except FileExistsError:
+            pass
+        except OSError as error:
+            raise JournalLayoutError(
+                f"journal directory component {name} creation failed"
+            ) from error
     try:
-        access = os.O_RDONLY if private or created else os.O_PATH
         descriptor = os.open(
             name,
-            access | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
             dir_fd=parent_descriptor,
         )
     except OSError as error:
@@ -313,9 +346,31 @@ def _open_directory_component(
             parent_descriptor, name, descriptor, private=False
         )
         if created:
-            os.fchmod(descriptor, 0o700)
+            _chmod_directory_descriptor(descriptor, 0o700)
+            _validate_directory_component(
+                parent_descriptor, name, descriptor, private=True
+            )
+        if private or created:
+            readable_descriptor = os.open(
+                ".",
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                dir_fd=descriptor,
+            )
+            readable = os.fstat(readable_descriptor)
+            held = os.fstat(descriptor)
+            if (readable.st_dev, readable.st_ino) != (held.st_dev, held.st_ino):
+                os.close(readable_descriptor)
+                raise JournalLayoutError(
+                    f"journal directory component {name} identity changed"
+                )
+            os.close(descriptor)
+            descriptor = readable_descriptor
+        if created:
             _sync_directory_descriptor(descriptor)
             _sync_directory_descriptor(parent_descriptor)
+        else:
+            _sync_directory_descriptor(descriptor, allow_unreadable=not private)
+            _sync_directory_descriptor(parent_descriptor, allow_unreadable=True)
         _validate_directory_component(
             parent_descriptor, name, descriptor, private=private or created
         )
