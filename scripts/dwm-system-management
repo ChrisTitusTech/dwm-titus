@@ -1218,6 +1218,8 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
             for operation in applied_updates
             if operation.operation_id == restart_operation_id
         ]
+        if not matching_updates and len(filled_slots) < JOURNAL_TERMINAL_COUNT:
+            raise JournalRecordError("journal restart identity is not retained")
         if applied_updates and not matching_updates:
             raise JournalRecordError("journal restart identity is stale")
         if matching_updates and any(
@@ -1231,6 +1233,8 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         for operation in applied_updates
     ):
         raise JournalRecordError("journal restart contribution is incomplete")
+    if restart.session == "none" and restart.session_cutoff != 0:
+        raise JournalRecordError("journal cleared session restart has a cutoff")
     if restart.session != "none" and (
         restart.session_cutoff == 0
         or (
@@ -1253,6 +1257,8 @@ def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
         )
     ):
         raise JournalRecordError("journal session restart contribution is incomplete")
+    if not restart.application and restart.application_cutoff != 0:
+        raise JournalRecordError("journal cleared application restart has a cutoff")
     if restart.application and (
         restart.application_cutoff == 0
         or (

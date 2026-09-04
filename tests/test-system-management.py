@@ -989,6 +989,32 @@ class JournalControlRecordTests(unittest.TestCase):
             )
         )
         cases["restart guidance has no identity"] = unidentified_guidance
+        orphan_identity = self.state_payloads()
+        orphan_identity["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(orphan_identity["restart"]),
+                last_applied_operation_id="op-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                system="unknown",
+            )
+        )
+        cases["restart identity is absent before ring wrap"] = orphan_identity
+        for field, changes in (
+            ("session", {"session_cutoff": 123}),
+            ("application", {"application_cutoff": 123}),
+        ):
+            cleared_cutoff = self.state_payloads()
+            cleared_cutoff["restart"] = provider.encode_journal_restart(
+                replace(
+                    provider.decode_journal_restart(cleared_cutoff["restart"]),
+                    last_applied_operation_id=terminal.operation_id,
+                    **changes,
+                )
+            )
+            cleared_cutoff["terminal-07"] = provider.encode_journal_operation(
+                terminal
+            )
+            cleared_cutoff["cursor"] = "08"
+            cases[f"cleared {field} bucket retains cutoff"] = cleared_cutoff
         for name, payloads in cases.items():
             with self.subTest(name=name):
                 with self.assertRaises(provider.JournalRecordError):
@@ -1060,6 +1086,29 @@ class JournalControlRecordTests(unittest.TestCase):
                 boot_id="11234567-89ab-cdef-0123-456789abcdef",
             )
         )
+        old_boot_active["cursor"] = "07"
+        regional_terminal = replace(
+            terminal,
+            action_id="timezone-set",
+            kind="timezone",
+            generation=None,
+            transaction_path=None,
+            system_restart=None,
+            session_restart=None,
+            application_restart=None,
+            boot_id=None,
+            terminal_monotonic=None,
+        )
+        for slot in range(provider.JOURNAL_TERMINAL_COUNT):
+            old_boot_active[f"terminal-{slot:02d}"] = (
+                provider.encode_journal_operation(
+                    replace(
+                        regional_terminal,
+                        operation_id=f"op-{slot + 1:032x}",
+                        slot=slot,
+                    )
+                )
+            )
         cases["old-boot active update restart is not clear"] = old_boot_active
 
         old_boot_handoff = self.state_payloads()
