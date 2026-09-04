@@ -1136,6 +1136,25 @@ class JournalLayoutTests(unittest.TestCase):
                 finally:
                     os.close(directory_descriptor)
 
+    def test_mode_repair_waits_until_every_path_is_recoverable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            active = self.write_path(directory, "active", b"")
+            os.chmod(active, 0)
+            restart = self.write_path(directory, "restart", b"legacy record")
+            directory_descriptor = self.open_directory(directory)
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "restart is not recoverable"
+                ):
+                    provider.initialize_journal_layout(
+                        directory_descriptor, self.boot_id
+                    )
+                self.assertEqual(stat.S_IMODE(active.stat().st_mode), 0)
+                self.assertEqual(active.stat().st_size, 0)
+                self.assertEqual(restart.read_bytes(), b"legacy record")
+            finally:
+                os.close(directory_descriptor)
+
     def test_invalid_initial_frame_uses_layout_error_contract(self):
         with tempfile.TemporaryDirectory() as directory:
             active = pathlib.Path(directory) / "active"
