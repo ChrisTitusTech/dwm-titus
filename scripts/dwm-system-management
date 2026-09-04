@@ -495,10 +495,11 @@ def _validate_initial_journal_path_unlocked(
         _validate_journal_path_identity(
             directory_descriptor, name, descriptor, JOURNAL_FILE_SIZE
         )
-        if _read_journal_file_unlocked(descriptor) != (
-            0,
-            JournalFrame(1, expected_payload),
-        ):
+        try:
+            observed = _read_journal_file_unlocked(descriptor)
+        except JournalFrameError as error:
+            raise JournalLayoutError(f"journal path {name} is not initial") from error
+        if observed != (0, JournalFrame(1, expected_payload)):
             raise JournalLayoutError(f"journal path {name} is not initial")
         _validate_journal_path_identity(
             directory_descriptor, name, descriptor, JOURNAL_FILE_SIZE

@@ -779,6 +779,22 @@ class JournalLayoutTests(unittest.TestCase):
             finally:
                 os.close(directory_descriptor)
 
+    def test_invalid_initial_frame_uses_layout_error_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            active = pathlib.Path(directory) / "active"
+            active.write_bytes(b"\0" * provider.JOURNAL_FILE_SIZE)
+            os.chmod(active, 0o600)
+            directory_descriptor = self.open_directory(directory)
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active is not initial"
+                ):
+                    provider._validate_initial_journal_path_unlocked(
+                        directory_descriptor, "active", "0"
+                    )
+            finally:
+                os.close(directory_descriptor)
+
 
 class SnapshotValidationTests(unittest.TestCase):
     def test_duplicate_plan_preserves_readable_updates(self):
