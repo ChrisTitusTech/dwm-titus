@@ -495,6 +495,9 @@ class JournalControlRecordTests(unittest.TestCase):
         )
         return replace(record, **changes)
 
+    def state_payloads(self):
+        return provider._initial_journal_payloads(self.boot_id)
+
     def test_operation_round_trips_nonterminal_and_terminal_update(self):
         active = self.update_operation()
         active_payload = provider.encode_journal_operation(active)
@@ -640,6 +643,659 @@ class JournalControlRecordTests(unittest.TestCase):
             with self.subTest(name=name):
                 with self.assertRaises(provider.JournalRecordError):
                     provider.decode_journal_operation("\t".join(changed))
+
+    def test_state_round_trips_initial_and_nonterminal_active_payloads(self):
+        payloads = self.state_payloads()
+        state = provider.decode_journal_state(payloads)
+        self.assertEqual(state.cursor, 0)
+        self.assertIsNone(state.active)
+        self.assertIsNone(state.handoff)
+        self.assertEqual(state.restart.boot_id, self.boot_id)
+        self.assertEqual(state.terminals, (None,) * provider.JOURNAL_TERMINAL_COUNT)
+
+        active = self.update_operation(slot=7)
+        payloads["active"] = provider.encode_journal_operation(active)
+        self.assertEqual(provider.decode_journal_state(payloads).active, active)
+
+    def test_state_accepts_each_terminalization_checkpoint(self):
+        active = replace(
+            self.update_operation(slot=7),
+            finished_at="2026-02-28T01:03:04Z",
+            state="succeeded",
+            terminal_monotonic=123,
+        )
+        active_payload = provider.encode_journal_operation(active)
+        checkpoints = []
+
+        payloads = self.state_payloads()
+        payloads["active"] = active_payload
+        checkpoints.append(payloads.copy())
+        payloads["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(payloads["restart"]),
+                last_applied_operation_id=active.operation_id,
+            )
+        )
+        payloads["terminal-07"] = active_payload
+        checkpoints.append(payloads.copy())
+        payloads["cursor"] = "08"
+        checkpoints.append(payloads.copy())
+        payloads["handoff"] = provider.encode_journal_handoff(
+            provider.JournalHandoff(active.operation_id, 7)
+        )
+        checkpoints.append(payloads.copy())
+        payloads["active"] = ""
+        checkpoints.append(payloads.copy())
+
+        for index, checkpoint in enumerate(checkpoints):
+            with self.subTest(checkpoint=index):
+                state = provider.decode_journal_state(checkpoint)
+                self.assertEqual(state.terminals[7], active if index >= 1 else None)
+
+    def test_state_accepts_old_selected_slot_before_terminal_overwrite(self):
+        payloads = self.state_payloads()
+        old = replace(
+            self.update_operation(
+                operation_id="op-ffffffffffffffffffffffffffffffff", slot=7
+            ),
+            finished_at="2026-02-27T01:03:04Z",
+            state="succeeded",
+            terminal_monotonic=100,
+        )
+        current = replace(
+            self.update_operation(slot=7),
+            finished_at="2026-02-28T01:03:04Z",
+            state="succeeded",
+            terminal_monotonic=123,
+        )
+        payloads["active"] = provider.encode_journal_operation(current)
+        payloads["terminal-07"] = provider.encode_journal_operation(old)
+        payloads["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(payloads["restart"]),
+                last_applied_operation_id=old.operation_id,
+            )
+        )
+        self.assertEqual(provider.decode_journal_state(payloads).active, current)
+
+    def test_state_accepts_pruned_lower_scope_restart_guidance(self):
+        terminal = replace(
+            self.update_operation(slot=7),
+            finished_at="2026-02-28T01:03:04Z",
+            state="succeeded",
+            session_restart="security-session",
+            application_restart=True,
+            terminal_monotonic=123,
+        )
+        payloads = self.state_payloads()
+        payloads["terminal-07"] = provider.encode_journal_operation(terminal)
+        payloads["cursor"] = "08"
+        payloads["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(payloads["restart"]),
+                last_applied_operation_id=terminal.operation_id,
+            )
+        )
+        state = provider.decode_journal_state(payloads)
+        self.assertEqual(state.restart.session, "none")
+        self.assertFalse(state.restart.application)
+
+        later = replace(
+            terminal,
+            operation_id="op-ffffffffffffffffffffffffffffffff",
+            session_restart="session",
+            application_restart=False,
+            terminal_monotonic=200,
+            slot=8,
+        )
+        payloads["terminal-08"] = provider.encode_journal_operation(later)
+        payloads["cursor"] = "09"
+        payloads["restart"] = provider.encode_journal_restart(
+            replace(
+                state.restart,
+                last_applied_operation_id=later.operation_id,
+                session="session",
+                session_cutoff=later.terminal_monotonic,
+            )
+        )
+        self.assertEqual(provider.decode_journal_state(payloads).restart.session, "session")
+
+    def test_state_rejects_missing_extra_or_wrong_typed_paths(self):
+        payloads = self.state_payloads()
+        invalid = []
+        missing = payloads.copy()
+        del missing["active"]
+        invalid.append(missing)
+        extra = payloads.copy()
+        extra["terminal-32"] = ""
+        invalid.append(extra)
+        wrong_type = payloads.copy()
+        wrong_type["active"] = None
+        invalid.append(wrong_type)
+        for state in invalid:
+            with self.subTest(paths=state.keys()):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.decode_journal_state(state)
+
+    def test_state_rejects_invalid_terminal_slot_records(self):
+        terminal = replace(
+            self.update_operation(slot=7),
+            finished_at="2026-02-28T01:03:04Z",
+            state="succeeded",
+            terminal_monotonic=123,
+        )
+        cases = {}
+        nonterminal = self.state_payloads()
+        nonterminal["terminal-07"] = provider.encode_journal_operation(
+            self.update_operation(slot=7)
+        )
+        cases["nonterminal slot"] = nonterminal
+        wrong_slot = self.state_payloads()
+        wrong_slot["terminal-06"] = provider.encode_journal_operation(terminal)
+        cases["wrong slot identity"] = wrong_slot
+        duplicate = self.state_payloads()
+        duplicate["terminal-07"] = provider.encode_journal_operation(terminal)
+        duplicate["terminal-08"] = provider.encode_journal_operation(
+            replace(terminal, slot=8)
+        )
+        cases["duplicate retained identity"] = duplicate
+        active_duplicate = self.state_payloads()
+        active_duplicate["active"] = provider.encode_journal_operation(
+            self.update_operation(slot=7)
+        )
+        active_duplicate["terminal-07"] = provider.encode_journal_operation(terminal)
+        cases["active identity duplicated in terminal"] = active_duplicate
+        for name, payloads in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.decode_journal_state(payloads)
+
+    def test_state_rejects_handoff_and_terminalization_conflicts(self):
+        terminal = replace(
+            self.update_operation(slot=7),
+            finished_at="2026-02-28T01:03:04Z",
+            state="succeeded",
+            terminal_monotonic=123,
+        )
+        other = replace(
+            terminal,
+            operation_id="op-ffffffffffffffffffffffffffffffff",
+        )
+        cases = {}
+        missing = self.state_payloads()
+        missing["handoff"] = provider.encode_journal_handoff(
+            provider.JournalHandoff(terminal.operation_id, 7)
+        )
+        cases["handoff terminal missing"] = missing
+        mismatch = self.state_payloads()
+        mismatch["terminal-07"] = provider.encode_journal_operation(terminal)
+        mismatch["cursor"] = "08"
+        mismatch["handoff"] = provider.encode_journal_handoff(
+            provider.JournalHandoff(other.operation_id, 7)
+        )
+        cases["handoff identity mismatch"] = mismatch
+        active_conflict = self.state_payloads()
+        active_conflict["active"] = provider.encode_journal_operation(other)
+        active_conflict["terminal-07"] = provider.encode_journal_operation(terminal)
+        active_conflict["cursor"] = "08"
+        active_conflict["handoff"] = provider.encode_journal_handoff(
+            provider.JournalHandoff(terminal.operation_id, 7)
+        )
+        cases["active conflicts with handoff"] = active_conflict
+        for name, payloads in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.decode_journal_state(payloads)
+
+    def test_state_rejects_stale_cursor_restart_and_restart_id_reuse(self):
+        terminal = replace(
+            self.update_operation(slot=7),
+            finished_at="2026-02-28T01:03:04Z",
+            state="succeeded",
+            terminal_monotonic=123,
+        )
+        cases = {}
+        stale_cursor = self.state_payloads()
+        stale_cursor["terminal-07"] = provider.encode_journal_operation(terminal)
+        stale_cursor["handoff"] = provider.encode_journal_handoff(
+            provider.JournalHandoff(terminal.operation_id, 7)
+        )
+        cases["handoff cursor is stale"] = stale_cursor
+        missing_restart = self.state_payloads()
+        missing_restart["active"] = provider.encode_journal_operation(terminal)
+        missing_restart["terminal-07"] = provider.encode_journal_operation(terminal)
+        cases["terminal update restart commit missing"] = missing_restart
+        missing_retained_restart = self.state_payloads()
+        missing_retained_restart["terminal-07"] = provider.encode_journal_operation(
+            terminal
+        )
+        missing_retained_restart["cursor"] = "08"
+        cases["retained update restart identity missing"] = missing_retained_restart
+        reused = self.state_payloads()
+        reused["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(reused["restart"]),
+                last_applied_operation_id=terminal.operation_id,
+            )
+        )
+        reused["active"] = provider.encode_journal_operation(
+            self.update_operation(slot=8)
+        )
+        cases["nonterminal active reuses restart identity"] = reused
+        non_update = replace(
+            terminal,
+            action_id="timezone-set",
+            kind="timezone",
+            generation=None,
+            transaction_path=None,
+            system_restart=None,
+            session_restart=None,
+            application_restart=None,
+            boot_id=None,
+            terminal_monotonic=None,
+        )
+        reused_terminal = self.state_payloads()
+        reused_terminal["restart"] = reused["restart"]
+        reused_terminal["terminal-07"] = provider.encode_journal_operation(non_update)
+        reused_terminal["cursor"] = "08"
+        cases["non-update terminal reuses restart identity"] = reused_terminal
+        previous_boot = self.state_payloads()
+        previous_boot["restart"] = reused["restart"]
+        previous_boot["terminal-07"] = provider.encode_journal_operation(
+            replace(terminal, boot_id="11234567-89ab-cdef-0123-456789abcdef")
+        )
+        previous_boot["cursor"] = "08"
+        cases["previous-boot update reuses restart identity"] = previous_boot
+        missing_contribution = self.state_payloads()
+        missing_contribution["restart"] = reused["restart"]
+        missing_contribution["terminal-07"] = provider.encode_journal_operation(
+            replace(terminal, system_restart="security-system")
+        )
+        missing_contribution["cursor"] = "08"
+        cases["system contribution missing"] = missing_contribution
+        older_contribution = self.state_payloads()
+        newer = replace(
+            terminal,
+            operation_id="op-ffffffffffffffffffffffffffffffff",
+            terminal_monotonic=200,
+            slot=8,
+        )
+        older_contribution["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(older_contribution["restart"]),
+                last_applied_operation_id=newer.operation_id,
+            )
+        )
+        older_contribution["terminal-07"] = provider.encode_journal_operation(
+            replace(terminal, system_restart="security-system")
+        )
+        older_contribution["terminal-08"] = provider.encode_journal_operation(newer)
+        cases["older system contribution missing"] = older_contribution
+        stale_identity = self.state_payloads()
+        stale_identity["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(stale_identity["restart"]),
+                last_applied_operation_id=terminal.operation_id,
+            )
+        )
+        stale_identity["terminal-07"] = provider.encode_journal_operation(terminal)
+        stale_identity["terminal-08"] = provider.encode_journal_operation(newer)
+        cases["last-applied identity is stale"] = stale_identity
+        for field, changes in (
+            (
+                "session",
+                {
+                    "session": "session",
+                    "session_cutoff": terminal.terminal_monotonic - 1,
+                },
+            ),
+            (
+                "application",
+                {
+                    "application": True,
+                    "application_cutoff": terminal.terminal_monotonic - 1,
+                },
+            ),
+        ):
+            stale_cutoff = self.state_payloads()
+            stale_cutoff["restart"] = provider.encode_journal_restart(
+                replace(
+                    provider.decode_journal_restart(stale_cutoff["restart"]),
+                    last_applied_operation_id=terminal.operation_id,
+                    **changes,
+                )
+            )
+            stale_cutoff["terminal-07"] = provider.encode_journal_operation(
+                replace(
+                    terminal,
+                    session_restart="session" if field == "session" else "none",
+                    application_restart=field == "application",
+                )
+            )
+            stale_cutoff["cursor"] = "08"
+            cases[f"{field} cutoff is stale"] = stale_cutoff
+        for field, changes in (
+            (
+                "session",
+                {
+                    "session": "session",
+                    "session_cutoff": terminal.terminal_monotonic + 1,
+                },
+            ),
+            (
+                "application",
+                {
+                    "application": True,
+                    "application_cutoff": terminal.terminal_monotonic + 1,
+                },
+            ),
+        ):
+            future_cutoff = self.state_payloads()
+            future_cutoff["restart"] = provider.encode_journal_restart(
+                replace(
+                    provider.decode_journal_restart(future_cutoff["restart"]),
+                    last_applied_operation_id=terminal.operation_id,
+                    **changes,
+                )
+            )
+            future_cutoff["terminal-07"] = provider.encode_journal_operation(
+                replace(
+                    terminal,
+                    session_restart="session" if field == "session" else "none",
+                    application_restart=field == "application",
+                )
+            )
+            future_cutoff["cursor"] = "08"
+            cases[f"{field} cutoff is newer than the last update"] = future_cutoff
+        for field, restart_changes in (
+            ("system", {"system": "security-system"}),
+            (
+                "session",
+                {"session": "security-session", "session_cutoff": 123},
+            ),
+            ("application", {"application": True, "application_cutoff": 123}),
+        ):
+            unsupported_bucket = self.state_payloads()
+            unsupported_bucket["restart"] = provider.encode_journal_restart(
+                replace(
+                    provider.decode_journal_restart(unsupported_bucket["restart"]),
+                    last_applied_operation_id=terminal.operation_id,
+                    **restart_changes,
+                )
+            )
+            unsupported_bucket["terminal-07"] = provider.encode_journal_operation(
+                terminal
+            )
+            unsupported_bucket["cursor"] = "08"
+            cases[f"{field} bucket is unsupported by retained history"] = (
+                unsupported_bucket
+            )
+        for field, contribution_changes, restart_changes in (
+            (
+                "session",
+                {"session_restart": "session"},
+                {"session": "session", "session_cutoff": 150},
+            ),
+            (
+                "application",
+                {"application_restart": True},
+                {"application": True, "application_cutoff": 150},
+            ),
+        ):
+            inexact_cutoff = self.state_payloads()
+            older = replace(terminal, terminal_monotonic=100, **contribution_changes)
+            latest = replace(
+                terminal,
+                operation_id="op-ffffffffffffffffffffffffffffffff",
+                terminal_monotonic=200,
+                slot=8,
+            )
+            inexact_cutoff["restart"] = provider.encode_journal_restart(
+                replace(
+                    provider.decode_journal_restart(inexact_cutoff["restart"]),
+                    last_applied_operation_id=latest.operation_id,
+                    **restart_changes,
+                )
+            )
+            inexact_cutoff["terminal-07"] = provider.encode_journal_operation(older)
+            inexact_cutoff["terminal-08"] = provider.encode_journal_operation(latest)
+            inexact_cutoff["cursor"] = "09"
+            cases[f"{field} cutoff is not a retained contribution"] = inexact_cutoff
+        unidentified_guidance = self.state_payloads()
+        unidentified_guidance["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(unidentified_guidance["restart"]),
+                system="unknown",
+            )
+        )
+        cases["restart guidance has no identity"] = unidentified_guidance
+        orphan_identity = self.state_payloads()
+        orphan_identity["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(orphan_identity["restart"]),
+                last_applied_operation_id="op-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                system="unknown",
+            )
+        )
+        cases["restart identity is absent before ring wrap"] = orphan_identity
+        for field, changes in (
+            ("session", {"session_cutoff": 123}),
+            ("application", {"application_cutoff": 123}),
+        ):
+            cleared_cutoff = self.state_payloads()
+            cleared_cutoff["restart"] = provider.encode_journal_restart(
+                replace(
+                    provider.decode_journal_restart(cleared_cutoff["restart"]),
+                    last_applied_operation_id=terminal.operation_id,
+                    **changes,
+                )
+            )
+            cleared_cutoff["terminal-07"] = provider.encode_journal_operation(
+                terminal
+            )
+            cleared_cutoff["cursor"] = "08"
+            cases[f"cleared {field} bucket retains cutoff"] = cleared_cutoff
+        expected_errors = {
+            "system contribution missing": "restart contribution is incomplete",
+            "session cutoff is stale": "session restart cutoff is stale",
+            "application cutoff is stale": "application restart cutoff is stale",
+            "session cutoff is newer than the last update": (
+                "session restart cutoff is stale"
+            ),
+            "application cutoff is newer than the last update": (
+                "application restart cutoff is stale"
+            ),
+            "system bucket is unsupported by retained history": (
+                "system restart bucket is unsupported"
+            ),
+            "session bucket is unsupported by retained history": (
+                "session restart bucket is unsupported"
+            ),
+            "application bucket is unsupported by retained history": (
+                "application restart state is not derivable"
+            ),
+            "session cutoff is not a retained contribution": (
+                "session restart state is not derivable"
+            ),
+            "application cutoff is not a retained contribution": (
+                "application restart state is not derivable"
+            ),
+            "cleared session bucket retains cutoff": (
+                "cleared session restart has a cutoff"
+            ),
+            "cleared application bucket retains cutoff": (
+                "cleared application restart has a cutoff"
+            ),
+        }
+        for name, payloads in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(
+                    provider.JournalRecordError,
+                    expected_errors.get(name, "journal"),
+                ):
+                    provider.decode_journal_state(payloads)
+
+    def test_state_rejects_cross_record_recovery_conflicts(self):
+        terminal = replace(
+            self.update_operation(slot=7),
+            finished_at="2026-02-28T01:03:04Z",
+            state="succeeded",
+            terminal_monotonic=123,
+        )
+        cases = {}
+
+        newer = replace(
+            terminal,
+            operation_id="op-ffffffffffffffffffffffffffffffff",
+            terminal_monotonic=200,
+        )
+        stale_active = self.state_payloads()
+        stale_active["terminal-07"] = provider.encode_journal_operation(newer)
+        stale_active["cursor"] = "08"
+        stale_active["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(stale_active["restart"]),
+                last_applied_operation_id=newer.operation_id,
+            )
+        )
+        stale_active["active"] = provider.encode_journal_operation(
+            replace(terminal, slot=8, terminal_monotonic=100)
+        )
+        cases["active update predates retained history"] = stale_active
+
+        stale_refresh = self.state_payloads()
+        refresh = replace(
+            terminal,
+            action_id="updates-refresh",
+            kind="refresh",
+            generation=None,
+            system_restart=None,
+            session_restart=None,
+            application_restart=None,
+            boot_id=None,
+            terminal_monotonic=100,
+            slot=8,
+        )
+        stale_refresh["terminal-07"] = provider.encode_journal_operation(newer)
+        stale_refresh["cursor"] = "08"
+        stale_refresh["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(stale_refresh["restart"]),
+                last_applied_operation_id=newer.operation_id,
+            )
+        )
+        stale_refresh["active"] = provider.encode_journal_operation(refresh)
+        cases["active refresh predates retained update history"] = stale_refresh
+
+        old_boot_active = self.state_payloads()
+        old_boot_active["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(old_boot_active["restart"]),
+                last_applied_operation_id="op-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                system="unknown",
+            )
+        )
+        old_boot_active["active"] = provider.encode_journal_operation(
+            replace(
+                self.update_operation(slot=7),
+                boot_id="11234567-89ab-cdef-0123-456789abcdef",
+            )
+        )
+        old_boot_active["cursor"] = "07"
+        regional_terminal = replace(
+            terminal,
+            action_id="timezone-set",
+            kind="timezone",
+            generation=None,
+            transaction_path=None,
+            system_restart=None,
+            session_restart=None,
+            application_restart=None,
+            boot_id=None,
+            terminal_monotonic=None,
+        )
+        for slot in range(provider.JOURNAL_TERMINAL_COUNT):
+            old_boot_active[f"terminal-{slot:02d}"] = (
+                provider.encode_journal_operation(
+                    replace(
+                        regional_terminal,
+                        operation_id=f"op-{slot + 1:032x}",
+                        slot=slot,
+                    )
+                )
+            )
+        cases["old-boot active update restart is not clear"] = old_boot_active
+
+        old_boot_handoff = self.state_payloads()
+        old_boot_terminal = replace(
+            terminal, boot_id="11234567-89ab-cdef-0123-456789abcdef"
+        )
+        old_boot_handoff["terminal-07"] = provider.encode_journal_operation(
+            old_boot_terminal
+        )
+        old_boot_handoff["cursor"] = "08"
+        old_boot_handoff["handoff"] = provider.encode_journal_handoff(
+            provider.JournalHandoff(old_boot_terminal.operation_id, 7)
+        )
+        old_boot_handoff["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(old_boot_handoff["restart"]),
+                last_applied_operation_id="op-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                system="unknown",
+            )
+        )
+        cases["old-boot handoff restart is not clear"] = old_boot_handoff
+
+        downgraded_session = self.state_payloads()
+        downgraded_session["terminal-07"] = provider.encode_journal_operation(
+            replace(terminal, session_restart="security-session")
+        )
+        downgraded_session["cursor"] = "08"
+        downgraded_session["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(downgraded_session["restart"]),
+                last_applied_operation_id=terminal.operation_id,
+                session="session",
+                session_cutoff=terminal.terminal_monotonic,
+            )
+        )
+        cases["security-session urgency is downgraded"] = downgraded_session
+
+        stale_handoff = self.state_payloads()
+        refresh = replace(
+            terminal,
+            action_id="updates-refresh",
+            kind="refresh",
+            generation=None,
+            system_restart=None,
+            session_restart=None,
+            application_restart=None,
+            boot_id=None,
+            terminal_monotonic=100,
+        )
+        later_update = replace(newer, slot=8)
+        stale_handoff["terminal-07"] = provider.encode_journal_operation(refresh)
+        stale_handoff["terminal-08"] = provider.encode_journal_operation(later_update)
+        stale_handoff["cursor"] = "08"
+        stale_handoff["handoff"] = provider.encode_journal_handoff(
+            provider.JournalHandoff(refresh.operation_id, 7)
+        )
+        stale_handoff["restart"] = provider.encode_journal_restart(
+            replace(
+                provider.decode_journal_restart(stale_handoff["restart"]),
+                last_applied_operation_id=later_update.operation_id,
+            )
+        )
+        cases["handoff is superseded by retained update"] = stale_handoff
+
+        stale_cursor = self.state_payloads()
+        stale_cursor["terminal-07"] = provider.encode_journal_operation(refresh)
+        cases["completed terminal cursor is stale"] = stale_cursor
+
+        for name, payloads in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(provider.JournalRecordError):
+                    provider.decode_journal_state(payloads)
 
 
 class JournalFileTests(unittest.TestCase):

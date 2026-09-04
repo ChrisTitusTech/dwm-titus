@@ -55,10 +55,19 @@ JOURNAL_TIMESTAMP_PATTERN = re.compile(
 JOURNAL_PACKAGEKIT_PATH_PATTERN = re.compile(
     r"/org/freedesktop/PackageKit/transactions/[A-Za-z0-9_]+"
 )
-JOURNAL_RESTART_SYSTEM_VALUES = frozenset(
-    ("none", "system", "security-system", "unknown")
-)
-JOURNAL_RESTART_SESSION_VALUES = frozenset(("none", "session", "security-session"))
+JOURNAL_RESTART_SYSTEM_STRENGTH = {
+    "none": 0,
+    "unknown": 1,
+    "system": 2,
+    "security-system": 3,
+}
+JOURNAL_RESTART_SYSTEM_VALUES = frozenset(JOURNAL_RESTART_SYSTEM_STRENGTH)
+JOURNAL_RESTART_SESSION_STRENGTH = {
+    "none": 0,
+    "session": 1,
+    "security-session": 2,
+}
+JOURNAL_RESTART_SESSION_VALUES = frozenset(JOURNAL_RESTART_SESSION_STRENGTH)
 JOURNAL_OPERATION_ACTION_KINDS = {
     "updates-refresh": "refresh",
     "updates-install-all": "update",
@@ -231,6 +240,15 @@ class JournalOperation:
     boot_id: str | None
     terminal_monotonic: int | None
     slot: int
+
+
+@dataclass(frozen=True)
+class JournalState:
+    cursor: int
+    restart: JournalRestart
+    active: JournalOperation | None
+    handoff: JournalHandoff | None
+    terminals: tuple[JournalOperation | None, ...]
 
 
 @dataclass
@@ -1029,6 +1047,278 @@ def decode_journal_operation(payload: str) -> JournalOperation:
     if encode_journal_operation(record) != payload:
         raise JournalRecordError("journal operation record is not canonical")
     return record
+
+
+def decode_journal_state(payloads: Mapping[str, str]) -> JournalState:
+    """Validate the complete fixed journal payload set without changing it."""
+    if not isinstance(payloads, Mapping) or set(payloads) != set(JOURNAL_NAMES):
+        raise JournalRecordError("journal state path set is invalid")
+    if any(not isinstance(value, str) for value in payloads.values()):
+        raise JournalRecordError("journal state payload is invalid")
+
+    cursor = decode_journal_cursor(payloads[JOURNAL_CURSOR_NAME])
+    restart = decode_journal_restart(payloads["restart"])
+    restart_is_all_clear = (
+        restart.last_applied_operation_id is None
+        and restart.system == "none"
+        and restart.session == "none"
+        and restart.session_cutoff == 0
+        and not restart.application
+        and restart.application_cutoff == 0
+    )
+    active_payload = payloads["active"]
+    active = None if active_payload == "" else decode_journal_operation(active_payload)
+    handoff = decode_journal_handoff(payloads["handoff"])
+    terminals: list[JournalOperation | None] = []
+    retained_ids: set[str] = set()
+    for slot in range(JOURNAL_TERMINAL_COUNT):
+        payload = payloads[f"terminal-{slot:02d}"]
+        if payload == "":
+            terminals.append(None)
+            continue
+        operation = decode_journal_operation(payload)
+        if operation.state not in JOURNAL_OPERATION_TERMINAL_STATES:
+            raise JournalRecordError("journal terminal slot is nonterminal")
+        if operation.slot != slot:
+            raise JournalRecordError("journal terminal slot identity does not match")
+        if operation.operation_id in retained_ids:
+            raise JournalRecordError("journal terminal operation ID is duplicated")
+        retained_ids.add(operation.operation_id)
+        terminals.append(operation)
+
+    filled_slots = [
+        slot for slot, operation in enumerate(terminals) if operation is not None
+    ]
+    if (
+        active is None
+        and handoff is None
+        and len(filled_slots) == 1
+        and cursor != (filled_slots[0] + 1) % JOURNAL_TERMINAL_COUNT
+    ):
+        raise JournalRecordError("journal cursor is stale")
+
+    handoff_terminal = None
+    if handoff is not None:
+        handoff_terminal = terminals[handoff.slot]
+        if (
+            handoff_terminal is None
+            or handoff_terminal.operation_id != handoff.operation_id
+        ):
+            raise JournalRecordError("journal handoff has no matching terminal")
+        if cursor != (handoff.slot + 1) % JOURNAL_TERMINAL_COUNT:
+            raise JournalRecordError("journal handoff cursor has not advanced")
+        if (
+            handoff_terminal.kind == "update"
+            and handoff_terminal.boot_id == restart.boot_id
+            and restart.last_applied_operation_id != handoff_terminal.operation_id
+        ):
+            raise JournalRecordError("journal update handoff has no restart commit")
+        if (
+            handoff_terminal.kind == "update"
+            and handoff_terminal.boot_id != restart.boot_id
+            and not restart_is_all_clear
+        ):
+            raise JournalRecordError("journal old-boot handoff is not all-clear")
+        if active is not None and (
+            active.state not in JOURNAL_OPERATION_TERMINAL_STATES
+            or active != handoff_terminal
+        ):
+            raise JournalRecordError("journal active and handoff records conflict")
+
+    if active is not None and active.state in JOURNAL_OPERATION_TERMINAL_STATES:
+        selected = terminals[active.slot]
+        if (
+            selected == active
+            and active.kind == "update"
+            and active.boot_id == restart.boot_id
+            and restart.last_applied_operation_id != active.operation_id
+        ):
+            raise JournalRecordError("journal terminal update has no restart commit")
+    if active is not None and active.operation_id in retained_ids:
+        selected = terminals[active.slot]
+        if active.state not in JOURNAL_OPERATION_TERMINAL_STATES or selected != active:
+            raise JournalRecordError("journal active operation ID is duplicated")
+    if (
+        active is not None
+        and active.kind == "update"
+        and active.boot_id != restart.boot_id
+        and not restart_is_all_clear
+    ):
+        raise JournalRecordError("journal old-boot active update is not all-clear")
+
+    restart_operation_id = restart.last_applied_operation_id
+    applied_updates = [
+        operation
+        for operation in terminals
+        if operation is not None
+        and operation.kind == "update"
+        and operation.boot_id == restart.boot_id
+    ]
+    matching_updates: list[JournalOperation] = []
+    ring_may_have_evicted = len(filled_slots) == JOURNAL_TERMINAL_COUNT
+    if (
+        active is not None
+        and active.kind in ("update", "refresh")
+        and (active.kind == "refresh" or active.boot_id == restart.boot_id)
+        and active.state in JOURNAL_OPERATION_TERMINAL_STATES
+        and any(
+            operation.terminal_monotonic > active.terminal_monotonic
+            for operation in applied_updates
+            if operation != active
+        )
+    ):
+        raise JournalRecordError("journal active timestamp is stale")
+    if (
+        handoff_terminal is not None
+        and handoff_terminal.kind in ("update", "refresh")
+        and (
+            handoff_terminal.kind == "refresh"
+            or handoff_terminal.boot_id == restart.boot_id
+        )
+        and any(
+            operation.operation_id != handoff_terminal.operation_id
+            and operation.terminal_monotonic > handoff_terminal.terminal_monotonic
+            for operation in applied_updates
+        )
+    ):
+        raise JournalRecordError("journal handoff is superseded")
+    if restart_operation_id is None:
+        if (
+            restart.system != "none"
+            or restart.session != "none"
+            or restart.session_cutoff != 0
+            or restart.application
+            or restart.application_cutoff != 0
+        ):
+            raise JournalRecordError("journal restart guidance has no identity")
+        if applied_updates:
+            raise JournalRecordError("journal update history has no restart identity")
+    else:
+        matching_operations = [
+            operation
+            for operation in (*terminals, active)
+            if operation is not None and operation.operation_id == restart_operation_id
+        ]
+        if any(
+            operation.kind != "update"
+            or operation.boot_id != restart.boot_id
+            or operation.state not in JOURNAL_OPERATION_TERMINAL_STATES
+            for operation in matching_operations
+        ):
+            raise JournalRecordError("journal operation ID reuses restart identity")
+        if (
+            active is not None
+            and active.operation_id == restart_operation_id
+            and active.kind == "update"
+            and active.boot_id == restart.boot_id
+            and active not in applied_updates
+        ):
+            applied_updates.append(active)
+        matching_updates = [
+            operation
+            for operation in applied_updates
+            if operation.operation_id == restart_operation_id
+        ]
+        if not matching_updates and not ring_may_have_evicted:
+            raise JournalRecordError("journal restart identity is not retained")
+        if applied_updates and not matching_updates:
+            raise JournalRecordError("journal restart identity is stale")
+        if matching_updates and any(
+            operation.terminal_monotonic > matching_updates[0].terminal_monotonic
+            for operation in applied_updates
+        ):
+            raise JournalRecordError("journal restart identity is stale")
+    if any(
+        JOURNAL_RESTART_SYSTEM_STRENGTH[restart.system]
+        < JOURNAL_RESTART_SYSTEM_STRENGTH[operation.system_restart]
+        for operation in applied_updates
+    ):
+        raise JournalRecordError("journal restart contribution is incomplete")
+    if not ring_may_have_evicted:
+        expected_system = max(
+            ("none", *(operation.system_restart for operation in applied_updates)),
+            key=JOURNAL_RESTART_SYSTEM_STRENGTH.__getitem__,
+        )
+        if restart.system != expected_system:
+            raise JournalRecordError("journal system restart bucket is unsupported")
+    if restart.session == "none" and restart.session_cutoff != 0:
+        raise JournalRecordError("journal cleared session restart has a cutoff")
+    session_contributors = [
+        operation
+        for operation in applied_updates
+        if operation.session_restart != "none"
+    ]
+    if restart.session != "none" and (
+        restart.session_cutoff == 0
+        or (
+            matching_updates
+            and restart.session_cutoff > matching_updates[0].terminal_monotonic
+        )
+        or any(
+            operation.session_restart != "none"
+            and restart.session_cutoff < operation.terminal_monotonic
+            for operation in applied_updates
+        )
+    ):
+        raise JournalRecordError("journal session restart cutoff is stale")
+    if (
+        restart.session != "none"
+        and any(
+            JOURNAL_RESTART_SESSION_STRENGTH[restart.session]
+            < JOURNAL_RESTART_SESSION_STRENGTH[operation.session_restart]
+            for operation in matching_updates
+        )
+    ):
+        raise JournalRecordError("journal session restart contribution is incomplete")
+    if not ring_may_have_evicted and restart.session != "none":
+        if (
+            not session_contributors
+            or restart.session
+            not in {operation.session_restart for operation in session_contributors}
+        ):
+            raise JournalRecordError("journal session restart bucket is unsupported")
+        latest_session_cutoff = max(
+            operation.terminal_monotonic for operation in session_contributors
+        )
+        latest_session_strength = max(
+            JOURNAL_RESTART_SESSION_STRENGTH[operation.session_restart]
+            for operation in session_contributors
+            if operation.terminal_monotonic == latest_session_cutoff
+        )
+        if (
+            restart.session_cutoff != latest_session_cutoff
+            or JOURNAL_RESTART_SESSION_STRENGTH[restart.session]
+            < latest_session_strength
+        ):
+            raise JournalRecordError("journal session restart state is not derivable")
+    if not restart.application and restart.application_cutoff != 0:
+        raise JournalRecordError("journal cleared application restart has a cutoff")
+    application_contributors = [
+        operation for operation in applied_updates if operation.application_restart
+    ]
+    if restart.application and (
+        restart.application_cutoff == 0
+        or (
+            matching_updates
+            and restart.application_cutoff > matching_updates[0].terminal_monotonic
+        )
+        or any(
+            operation.application_restart
+            and restart.application_cutoff < operation.terminal_monotonic
+            for operation in applied_updates
+        )
+    ):
+        raise JournalRecordError("journal application restart cutoff is stale")
+    if not ring_may_have_evicted and restart.application and (
+        not application_contributors
+        or restart.application_cutoff
+        != max(
+            operation.terminal_monotonic for operation in application_contributors
+        )
+    ):
+        raise JournalRecordError("journal application restart state is not derivable")
+
+    return JournalState(cursor, restart, active, handoff, tuple(terminals))
 
 
 def _validate_journal_descriptor(
