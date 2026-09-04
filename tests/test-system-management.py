@@ -923,6 +923,30 @@ class JournalDirectoryChainTests(unittest.TestCase):
             finally:
                 os.umask(previous_umask)
 
+    def test_interrupted_mode_repair_leaves_a_retryable_private_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = pathlib.Path(directory) / "state" / "dwm-titus"
+            parent.mkdir(parents=True)
+            journal = parent / "system-management"
+            previous_umask = os.umask(0o777)
+            try:
+                with mock.patch.object(
+                    provider,
+                    "_chmod_directory_descriptor",
+                    side_effect=provider.JournalLayoutError(
+                        "injected mode update interruption"
+                    ),
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalLayoutError, "mode update interruption"
+                    ):
+                        provider.open_journal_directory_chain(str(journal))
+                self.assertEqual(stat.S_IMODE(journal.stat().st_mode), 0o700)
+                with provider.open_journal_directory_chain(str(journal)) as chain:
+                    chain.validate()
+            finally:
+                os.umask(previous_umask)
+
     def test_retry_resyncs_an_indeterminate_created_parent_entry(self):
         with tempfile.TemporaryDirectory() as directory:
             parent = pathlib.Path(directory) / "state" / "dwm-titus"
