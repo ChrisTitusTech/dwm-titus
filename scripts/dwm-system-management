@@ -14,7 +14,7 @@ import struct
 import sys
 import time
 from dataclasses import dataclass
-from typing import Iterable, Iterator, Protocol, Sequence
+from typing import Iterable, Iterator, Mapping, Protocol, Sequence
 
 
 PROTOCOL_MAJOR = 1
@@ -37,6 +37,9 @@ JOURNAL_SEQUENCE_MAX = (1 << 64) - 1
 JOURNAL_LOCK_DEADLINE_SECONDS = 5
 JOURNAL_TERMINAL_COUNT = 32
 JOURNAL_CURSOR_NAME = "cursor"
+JOURNAL_PATH_MAX = 4095
+JOURNAL_COMPONENT_MAX = 255
+JOURNAL_DIRECTORY_SUFFIX = ("dwm-titus", "system-management")
 JOURNAL_DATA_NAMES = (
     "active",
     "restart",
@@ -124,6 +127,335 @@ class JournalLayoutError(JournalFileError):
 class JournalFrame:
     sequence: int
     payload: str
+
+
+@dataclass
+class JournalDirectoryChain:
+    """Held root-to-journal directory descriptors and their child names."""
+
+    path: str
+    names: tuple[str, ...]
+    descriptors: tuple[int, ...]
+    closed: bool = False
+
+    @property
+    def directory_descriptor(self) -> int:
+        if self.closed:
+            raise JournalLayoutError("journal directory chain is closed")
+        return self.descriptors[-1]
+
+    def validate(self) -> None:
+        validate_journal_directory_chain(self)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        first_error: OSError | None = None
+        for descriptor in reversed(self.descriptors):
+            try:
+                os.close(descriptor)
+            except OSError as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise JournalLayoutError(
+                "journal directory chain close failed"
+            ) from first_error
+
+    def __enter__(self) -> JournalDirectoryChain:
+        if self.closed:
+            raise JournalLayoutError("journal directory chain is closed")
+        return self
+
+    def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        self.close()
+
+
+def _absolute_path_components(path: str) -> tuple[str, ...]:
+    if not isinstance(path, str) or not path.startswith("/") or path.startswith("//"):
+        raise JournalLayoutError("journal state path must be absolute")
+    if "\0" in path:
+        raise JournalLayoutError("journal state path contains a forbidden byte")
+    if path != "/" and os.path.normpath(path) != path:
+        raise JournalLayoutError("journal state path must be canonical")
+    try:
+        encoded = path.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise JournalLayoutError("journal state path must be UTF-8") from error
+    if not encoded or len(encoded) > JOURNAL_PATH_MAX:
+        raise JournalLayoutError("journal state path is too long")
+    components = tuple(component for component in path.split("/") if component)
+    if any(
+        len(component.encode("utf-8")) > JOURNAL_COMPONENT_MAX
+        for component in components
+    ):
+        raise JournalLayoutError("journal state path component is too long")
+    return components
+
+
+def journal_directory_path(environment: Mapping[str, str] | None = None) -> str:
+    """Resolve the canonical absolute journal directory from XDG state inputs."""
+    source = os.environ if environment is None else environment
+    state_home = source.get("XDG_STATE_HOME", "")
+    if (
+        isinstance(state_home, str)
+        and state_home not in {"", "/"}
+        and not state_home.startswith("//")
+    ):
+        state_home = state_home.rstrip("/")
+    if not isinstance(state_home, str) or not state_home.startswith("/"):
+        state_home = ""
+    if not state_home:
+        home = source.get("HOME", "")
+        if not isinstance(home, str) or not home:
+            raise JournalLayoutError("HOME is required for journal state")
+        if isinstance(home, str) and home != "/":
+            home = home.rstrip("/")
+        state_home = os.path.join(home, ".local", "state")
+    _absolute_path_components(state_home)
+    path = os.path.join(state_home, *JOURNAL_DIRECTORY_SUFFIX)
+    _absolute_path_components(path)
+    return path
+
+
+def _validate_directory_component(
+    parent_descriptor: int,
+    name: str,
+    descriptor: int,
+    *,
+    private: bool,
+) -> None:
+    try:
+        held = os.fstat(descriptor)
+        flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
+        descriptor_flags = fcntl.fcntl(descriptor, fcntl.F_GETFD)
+        reachable = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+    except (OSError, OverflowError) as error:
+        raise JournalLayoutError(
+            f"journal directory component {name} is unavailable"
+        ) from error
+    if (
+        not stat.S_ISDIR(held.st_mode)
+        or not stat.S_ISDIR(reachable.st_mode)
+        or (held.st_dev, held.st_ino) != (reachable.st_dev, reachable.st_ino)
+        or (flags & os.O_ACCMODE) == os.O_WRONLY
+        or not descriptor_flags & fcntl.FD_CLOEXEC
+    ):
+        raise JournalLayoutError(f"journal directory component {name} is unsafe")
+    if private and (
+        held.st_uid != os.geteuid()
+        or stat.S_IMODE(held.st_mode) != 0o700
+        or reachable.st_uid != held.st_uid
+        or stat.S_IMODE(reachable.st_mode) != 0o700
+    ):
+        raise JournalLayoutError(f"journal directory component {name} is not private")
+
+
+def _sync_directory_descriptor(
+    descriptor: int, *, allow_unreadable: bool = False
+) -> bool:
+    try:
+        held = os.fstat(descriptor)
+        flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
+    except (OSError, OverflowError) as error:
+        raise JournalLayoutError(
+            "journal directory sync handle is unavailable"
+        ) from error
+    if not flags & os.O_PATH:
+        try:
+            os.fsync(descriptor)
+        except OSError as error:
+            raise JournalLayoutError("journal directory sync failed") from error
+        return True
+    try:
+        sync_descriptor = os.open(
+            ".",
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=descriptor,
+        )
+    except OSError as error:
+        if allow_unreadable and error.errno in {errno.EACCES, errno.EPERM}:
+            return False
+        raise JournalLayoutError(
+            "journal directory sync handle is unavailable"
+        ) from error
+    try:
+        current = os.fstat(sync_descriptor)
+        if (current.st_dev, current.st_ino) != (held.st_dev, held.st_ino):
+            raise JournalLayoutError("journal directory sync identity changed")
+        os.fsync(sync_descriptor)
+    except OSError as error:
+        if isinstance(error, JournalLayoutError):
+            raise
+        raise JournalLayoutError("journal directory sync failed") from error
+    finally:
+        try:
+            os.close(sync_descriptor)
+        except OSError as error:
+            raise JournalLayoutError(
+                "journal directory sync handle close failed"
+            ) from error
+    return True
+
+
+def _chmod_directory_descriptor(descriptor: int, mode: int) -> None:
+    """Change a held directory's mode without reopening its mutable pathname."""
+    try:
+        os.chmod(f"/proc/self/fd/{descriptor}", mode)
+    except (OSError, ValueError) as error:
+        raise JournalLayoutError("journal directory mode update failed") from error
+
+
+def _mkdir_private_directory(parent_descriptor: int, name: str) -> None:
+    """Create a mode-0700 directory without an umask interruption window."""
+    previous_umask = os.umask(0)
+    try:
+        os.mkdir(name, 0o700, dir_fd=parent_descriptor)
+    finally:
+        os.umask(previous_umask)
+
+
+def _open_directory_component(
+    parent_descriptor: int, name: str, *, private: bool
+) -> int:
+    created = False
+    try:
+        os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+        exists = True
+    except FileNotFoundError:
+        exists = False
+    except OSError as error:
+        raise JournalLayoutError(
+            f"journal directory component {name} lookup failed"
+        ) from error
+    if not exists:
+        _sync_directory_descriptor(parent_descriptor)
+        try:
+            _mkdir_private_directory(parent_descriptor, name)
+            created = True
+        except FileExistsError:
+            pass
+        except OSError as error:
+            raise JournalLayoutError(
+                f"journal directory component {name} creation failed"
+            ) from error
+    try:
+        descriptor = os.open(
+            name,
+            os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=parent_descriptor,
+        )
+    except OSError as error:
+        raise JournalLayoutError(
+            f"journal directory component {name} open failed"
+        ) from error
+    try:
+        _validate_directory_component(
+            parent_descriptor, name, descriptor, private=False
+        )
+        if created:
+            _chmod_directory_descriptor(descriptor, 0o700)
+            _validate_directory_component(
+                parent_descriptor, name, descriptor, private=True
+            )
+        if private or created:
+            readable_descriptor = os.open(
+                ".",
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                dir_fd=descriptor,
+            )
+            readable = os.fstat(readable_descriptor)
+            held = os.fstat(descriptor)
+            if (readable.st_dev, readable.st_ino) != (held.st_dev, held.st_ino):
+                os.close(readable_descriptor)
+                raise JournalLayoutError(
+                    f"journal directory component {name} identity changed"
+                )
+            os.close(descriptor)
+            descriptor = readable_descriptor
+        if created:
+            _sync_directory_descriptor(descriptor)
+            _sync_directory_descriptor(parent_descriptor)
+        else:
+            _sync_directory_descriptor(descriptor, allow_unreadable=not private)
+            _sync_directory_descriptor(parent_descriptor, allow_unreadable=True)
+        _validate_directory_component(
+            parent_descriptor, name, descriptor, private=private or created
+        )
+    except OSError as error:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        if isinstance(error, JournalLayoutError):
+            raise
+        raise JournalLayoutError(
+            f"journal directory component {name} initialization failed"
+        ) from error
+    return descriptor
+
+
+def validate_journal_directory_chain(chain: JournalDirectoryChain) -> None:
+    """Prove every retained child is still reachable from its held parent."""
+    if chain.closed or len(chain.descriptors) != len(chain.names) + 1:
+        raise JournalLayoutError("journal directory chain is invalid")
+    try:
+        root = os.fstat(chain.descriptors[0])
+        root_flags = fcntl.fcntl(chain.descriptors[0], fcntl.F_GETFL)
+        root_descriptor_flags = fcntl.fcntl(chain.descriptors[0], fcntl.F_GETFD)
+    except (OSError, OverflowError) as error:
+        raise JournalLayoutError("journal root descriptor is unavailable") from error
+    if (
+        not stat.S_ISDIR(root.st_mode)
+        or (root_flags & os.O_ACCMODE) == os.O_WRONLY
+        or not root_descriptor_flags & fcntl.FD_CLOEXEC
+    ):
+        raise JournalLayoutError("journal root descriptor is unsafe")
+    for index, name in enumerate(chain.names):
+        _validate_directory_component(
+            chain.descriptors[index],
+            name,
+            chain.descriptors[index + 1],
+            private=index == len(chain.names) - 1,
+        )
+
+
+def open_journal_directory_chain(path: str) -> JournalDirectoryChain:
+    """Open or create a root-anchored journal directory descriptor chain."""
+    names = _absolute_path_components(path)
+    if not names:
+        raise JournalLayoutError("journal directory path must not be root")
+    descriptors: list[int] = []
+    try:
+        descriptors.append(
+            os.open("/", os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        )
+        for index, name in enumerate(names):
+            descriptors.append(
+                _open_directory_component(
+                    descriptors[-1], name, private=index == len(names) - 1
+                )
+            )
+        chain = JournalDirectoryChain(path, names, tuple(descriptors))
+        chain.validate()
+        return chain
+    except (OSError, JournalLayoutError) as error:
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        if isinstance(error, JournalLayoutError):
+            raise
+        raise JournalLayoutError("journal directory chain open failed") from error
+
+
+def open_journal_directory(
+    environment: Mapping[str, str] | None = None,
+) -> JournalDirectoryChain:
+    """Resolve and open the fixed journal directory from XDG state inputs."""
+    return open_journal_directory_chain(journal_directory_path(environment))
 
 
 def _journal_payload_bytes(payload: str) -> bytes:
