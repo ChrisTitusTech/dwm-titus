@@ -27,6 +27,7 @@ Scope {
     property var appearanceModel: null
     property var accessibilityModel: null
     property var panelSettingsModel: null
+    property var systemManagementModel: null
     property var capabilities: []
     property int selectedIndex: 0
     property var displayOutputs: []
@@ -161,6 +162,13 @@ Scope {
             const wantAppearance = id === "appearance" && root.visible;
             if (wantAppearance && !root.appearanceModel.settingsVisible) root.appearanceModel.openSettings();
             else if (!wantAppearance && root.appearanceModel.settingsVisible) root.appearanceModel.closeSettings();
+        }
+        if (root.systemManagementModel) {
+            const wantSystem = id === "system" && root.visible;
+            if (wantSystem && !root.systemManagementModel.settingsVisible)
+                root.systemManagementModel.openSettings();
+            else if (!wantSystem && root.systemManagementModel.settingsVisible)
+                root.systemManagementModel.closeSettings();
         }
         if (id === "appearance") root.refreshCapabilities();
         if (id === "appearance" && root.accessibilityModel) root.accessibilityModel.refresh();
@@ -589,6 +597,8 @@ Scope {
             root.accessibilityModel.refresh();
         if (root.visible && root.selectedSectionId === "appearance" && root.panelSettingsModel)
             root.panelSettingsModel.refresh();
+        if (root.visible && root.selectedSectionId === "system" && root.systemManagementModel)
+            root.systemManagementModel.refresh();
         root.refreshCapabilities();
     }
 
@@ -656,6 +666,7 @@ Scope {
 		if (root.defaultsModel) root.defaultsModel.closeSettings();
 		if (root.autostartModel) root.autostartModel.closeSettings();
 		if (root.appearanceModel) root.appearanceModel.closeSettings();
+		if (root.systemManagementModel) root.systemManagementModel.closeSettings();
 			inputSettleTimer.stop();
         root.visible = false;
         root.busy = false;

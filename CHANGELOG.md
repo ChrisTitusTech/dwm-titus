@@ -44,6 +44,11 @@ versions from `config.mk`.
 
 ### Added
 
+- Add a pane-scoped Quickshell system-management model that strictly consumes
+  the bounded 1.0 snapshot protocol, isolates malformed provider state, rejects
+  ambiguous streams, coalesces user refreshes, and stops its read process when
+  the System section or Settings closes without exposing update mutations.
+
 - Add the Phase 6 system-management provider's first bounded PackageKit
   snapshot. It reports sanitized update inventory, refresh age, restart scope,
   dependency-preview records, and deterministic confirmation generations while

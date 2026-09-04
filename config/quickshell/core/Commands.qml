@@ -30,6 +30,35 @@ Singleton {
         return ["sh", "-c", script, "dwm-checked-command"].concat(command);
     }
 
+    function terminatingCheckedCommand(command) {
+        // Preserve checkedCommand's success gate while forwarding surface-close
+        // signals to a long-running helper instead of orphaning it.
+        const script = [
+            'runtime_dir=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}',
+            'output_file=$(mktemp "$runtime_dir/dwm-checked-command.XXXXXX") || exit 1',
+            'error_file=',
+            'child=',
+            'terminate_requested=0',
+            'cleanup() { status=$?; trap - EXIT; rm -f -- "$output_file" "$error_file"; exit "$status"; }',
+            'terminate() { terminate_requested=1; if [ -n "$child" ]; then trap - HUP INT TERM; kill -TERM "$child" 2>/dev/null || :; wait "$child" 2>/dev/null || :; exit 143; fi; }',
+            'trap cleanup EXIT',
+            'error_file=$(mktemp "$runtime_dir/dwm-checked-command-error.XXXXXX") || exit 1',
+            'trap terminate HUP INT TERM',
+            'file_limit=$(ulimit -f)',
+            'if [ "$file_limit" = unlimited ] || [ "$file_limit" -gt 16384 ]; then ulimit -f 16384 || exit 1; fi',
+            '"$@" >"$output_file" 2>"$error_file" &',
+            'child=$!',
+            '[ "$terminate_requested" -eq 0 ] || terminate',
+            'wait "$child"',
+            'status=$?',
+            'child=',
+            'head -c 512 "$error_file" >&2 || :',
+            '[ "$status" -eq 0 ] || exit "$status"',
+            'cat "$output_file"'
+        ].join("\n");
+        return ["sh", "-c", script, "dwm-terminating-checked-command"].concat(command);
+    }
+
     function booleanStatusCommand(command) {
         const script = 'if "$@" >/dev/null 2>&1; then printf "available\\n"; else printf "restricted\\n"; fi';
         return ["sh", "-c", script, "dwm-boolean-status"].concat(command);
@@ -81,6 +110,10 @@ Singleton {
 
     function systemHealthHelperCommand(action, args) {
         return helperCommand("dwm-system-health", action, args, true);
+    }
+
+    function systemManagementCommand(action, args) {
+        return helperCommand("dwm-system-management", action, args, true);
     }
 
     function settingsProviderCommand(action, args) {
