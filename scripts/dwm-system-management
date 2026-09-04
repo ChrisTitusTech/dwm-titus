@@ -2371,6 +2371,26 @@ def load_writable_journal_state(journal: JournalDescriptorSet) -> JournalState:
     return state
 
 
+def commit_writable_journal_path(
+    journal: JournalDescriptorSet, name: str, payload: str
+) -> tuple[int, JournalFrame]:
+    """Commit one retained path between complete journal identity checks."""
+    if not isinstance(journal, JournalDescriptorSet) or not journal.writable:
+        raise JournalLayoutError("writable journal descriptor set is invalid")
+    journal.validate()
+    descriptor = journal.descriptor(name)
+    try:
+        result = _commit_journal_file_unlocked(descriptor, payload)
+    except JournalCommitError as commit_error:
+        try:
+            journal.validate()
+        except JournalLayoutError as validation_error:
+            raise commit_error from validation_error
+        raise
+    journal.validate()
+    return result
+
+
 def generate_journal_operation_id(state: JournalState) -> str:
     """Generate a unique journal operation ID from the kernel CSPRNG."""
     if (

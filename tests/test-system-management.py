@@ -2748,6 +2748,177 @@ class JournalWritableOpenTests(unittest.TestCase):
                 chain.close()
 
 
+class JournalWritableCommitTests(unittest.TestCase):
+    boot_id = "01234567-89ab-cdef-0123-456789abcdef"
+
+    def open_initialized_chain(self, directory):
+        journal = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+        chain = provider.open_journal_directory_chain(str(journal))
+        provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
+        return journal, chain
+
+    def test_commits_retained_path_between_complete_validations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _journal_path, chain = self.open_initialized_chain(directory)
+            try:
+                with provider.open_writable_journal(chain) as journal:
+                    index, frame = provider.commit_writable_journal_path(
+                        journal, "active", ""
+                    )
+
+                    self.assertEqual(index, 1)
+                    self.assertEqual(frame, provider.JournalFrame(2, ""))
+                    self.assertEqual(
+                        provider._read_journal_file_unlocked(
+                            journal.descriptor("active")
+                        ),
+                        (index, frame),
+                    )
+            finally:
+                chain.close()
+
+    def test_replaced_target_is_rejected_before_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal_path, chain = self.open_initialized_chain(directory)
+            active = journal_path / "active"
+            detached = journal_path / "active-detached"
+            image = active.read_bytes()
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active identity is unsafe"
+                ):
+                    with provider.open_writable_journal(chain) as journal:
+                        active.rename(detached)
+                        active.write_bytes(image)
+                        os.chmod(active, 0o600)
+                        provider.commit_writable_journal_path(journal, "active", "")
+
+                self.assertEqual(
+                    provider.select_journal_frame(detached.read_bytes())[1].sequence,
+                    1,
+                )
+                self.assertEqual(
+                    provider.select_journal_frame(active.read_bytes())[1].sequence,
+                    1,
+                )
+            finally:
+                chain.close()
+
+    def test_replaced_target_is_rejected_after_descriptor_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal_path, chain = self.open_initialized_chain(directory)
+            active = journal_path / "active"
+            detached = journal_path / "active-detached"
+            image = active.read_bytes()
+            original_commit = provider._commit_journal_file_unlocked
+
+            def replace_after_commit(descriptor, payload):
+                result = original_commit(descriptor, payload)
+                active.rename(detached)
+                active.write_bytes(image)
+                os.chmod(active, 0o600)
+                return result
+
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "active identity is unsafe"
+                ):
+                    with provider.open_writable_journal(chain) as journal:
+                        with mock.patch.object(
+                            provider,
+                            "_commit_journal_file_unlocked",
+                            side_effect=replace_after_commit,
+                        ):
+                            provider.commit_writable_journal_path(
+                                journal, "active", ""
+                            )
+
+                self.assertEqual(
+                    provider.select_journal_frame(detached.read_bytes())[1].sequence,
+                    2,
+                )
+                self.assertEqual(
+                    provider.select_journal_frame(active.read_bytes())[1].sequence,
+                    1,
+                )
+            finally:
+                chain.close()
+
+    def test_unrelated_replaced_path_is_rejected_after_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal_path, chain = self.open_initialized_chain(directory)
+            terminal = journal_path / "terminal-12"
+            detached = journal_path / "terminal-12-detached"
+            terminal_image = terminal.read_bytes()
+            original_commit = provider._commit_journal_file_unlocked
+
+            def replace_after_commit(descriptor, payload):
+                result = original_commit(descriptor, payload)
+                terminal.rename(detached)
+                terminal.write_bytes(terminal_image)
+                os.chmod(terminal, 0o600)
+                return result
+
+            try:
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "terminal-12 identity is unsafe"
+                ):
+                    with provider.open_writable_journal(chain) as journal:
+                        with mock.patch.object(
+                            provider,
+                            "_commit_journal_file_unlocked",
+                            side_effect=replace_after_commit,
+                        ):
+                            provider.commit_writable_journal_path(
+                                journal, "active", ""
+                            )
+
+                self.assertEqual(
+                    provider.select_journal_frame(
+                        (journal_path / "active").read_bytes()
+                    )[1].sequence,
+                    2,
+                )
+            finally:
+                chain.close()
+
+    def test_indeterminate_commit_revalidates_and_preserves_primary_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal_path, chain = self.open_initialized_chain(directory)
+            active = journal_path / "active"
+            detached = journal_path / "active-detached"
+            image = active.read_bytes()
+            commit_error = provider.JournalCommitError(
+                "injected indeterminate commit"
+            )
+
+            def fail_after_replacement(_descriptor, _payload):
+                active.rename(detached)
+                active.write_bytes(image)
+                os.chmod(active, 0o600)
+                raise commit_error
+
+            try:
+                with self.assertRaises(provider.JournalCommitError) as caught:
+                    with provider.open_writable_journal(chain) as journal:
+                        with mock.patch.object(
+                            provider,
+                            "_commit_journal_file_unlocked",
+                            side_effect=fail_after_replacement,
+                        ):
+                            provider.commit_writable_journal_path(
+                                journal, "active", ""
+                            )
+
+                self.assertIs(caught.exception, commit_error)
+                self.assertIsInstance(
+                    caught.exception.__cause__, provider.JournalLayoutError
+                )
+                self.assertIn("active identity is unsafe", str(caught.exception.__cause__))
+            finally:
+                chain.close()
+
+
 class JournalAdmissionTests(unittest.TestCase):
     boot_id = "01234567-89ab-cdef-0123-456789abcdef"
     operation_id = "op-0123456789abcdef0123456789abcdef"
