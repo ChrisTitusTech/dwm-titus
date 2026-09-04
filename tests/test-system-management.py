@@ -8,6 +8,7 @@ import importlib.util
 import importlib.machinery
 import os
 import pathlib
+import stat
 import sys
 import tempfile
 import threading
@@ -794,6 +795,151 @@ class JournalLayoutTests(unittest.TestCase):
                     )
             finally:
                 os.close(directory_descriptor)
+
+
+class JournalDirectoryChainTests(unittest.TestCase):
+    def test_xdg_state_path_and_home_fallback_are_canonical(self):
+        self.assertEqual(
+            provider.journal_directory_path(
+                {"XDG_STATE_HOME": "/var/tmp/state", "HOME": "/ignored"}
+            ),
+            "/var/tmp/state/dwm-titus/system-management",
+        )
+        self.assertEqual(
+            provider.journal_directory_path({"HOME": "/var/tmp/home"}),
+            "/var/tmp/home/.local/state/dwm-titus/system-management",
+        )
+
+    def test_invalid_state_inputs_fail_before_filesystem_access(self):
+        cases = (
+            {},
+            {"HOME": "relative"},
+            {"XDG_STATE_HOME": "relative", "HOME": "/ignored"},
+            {"XDG_STATE_HOME": "/tmp/../state"},
+            {"XDG_STATE_HOME": "/tmp//state"},
+            {"XDG_STATE_HOME": "/tmp/state\0suffix"},
+            {"XDG_STATE_HOME": f"/tmp/{'x' * 256}"},
+        )
+        for environment in cases:
+            with self.subTest(environment=environment):
+                with self.assertRaises(provider.JournalLayoutError):
+                    provider.journal_directory_path(environment)
+
+    def test_fresh_chain_creates_private_journal_and_retains_each_component(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_home = pathlib.Path(directory) / "new" / "state"
+            chain = provider.open_journal_directory(
+                {"XDG_STATE_HOME": str(state_home), "HOME": "/ignored"}
+            )
+            descriptors = chain.descriptors
+            try:
+                self.assertEqual(
+                    chain.path,
+                    str(state_home / "dwm-titus" / "system-management"),
+                )
+                self.assertEqual(len(descriptors), len(chain.names) + 1)
+                self.assertEqual(
+                    stat.S_IMODE(os.fstat(chain.directory_descriptor).st_mode), 0o700
+                )
+                chain.validate()
+            finally:
+                chain.close()
+            for descriptor in descriptors:
+                with self.assertRaises(OSError):
+                    os.fstat(descriptor)
+
+    def test_root_path_is_rejected_before_opening_a_descriptor(self):
+        with mock.patch.object(provider.os, "open") as open_mock:
+            with self.assertRaisesRegex(
+                provider.JournalLayoutError, "must not be root"
+            ):
+                provider.open_journal_directory_chain("/")
+        open_mock.assert_not_called()
+
+    def test_execute_only_existing_ancestor_can_be_retained(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ancestor = pathlib.Path(directory) / "traverse-only"
+            journal = ancestor / "state" / "dwm-titus" / "system-management"
+            journal.mkdir(parents=True, mode=0o700)
+            os.chmod(journal, 0o700)
+            os.chmod(ancestor, 0o311)
+            try:
+                with provider.open_journal_directory_chain(str(journal)) as chain:
+                    chain.validate()
+            finally:
+                os.chmod(ancestor, 0o700)
+
+    def test_existing_nonprivate_ancestor_is_not_modified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ancestor = pathlib.Path(directory) / "shared"
+            ancestor.mkdir(mode=0o755)
+            os.chmod(ancestor, 0o755)
+            with provider.open_journal_directory_chain(
+                str(ancestor / "state" / "dwm-titus" / "system-management")
+            ) as chain:
+                chain.validate()
+                self.assertEqual(stat.S_IMODE(ancestor.stat().st_mode), 0o755)
+
+    def test_nonprivate_existing_journal_is_rejected_without_chmod(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal = pathlib.Path(directory) / "dwm-titus" / "system-management"
+            journal.mkdir(parents=True, mode=0o755)
+            os.chmod(journal, 0o755)
+            with self.assertRaisesRegex(
+                provider.JournalLayoutError, "system-management is not private"
+            ):
+                provider.open_journal_directory_chain(str(journal))
+            self.assertEqual(stat.S_IMODE(journal.stat().st_mode), 0o755)
+
+    def test_symlink_and_nondirectory_components_fail_closed(self):
+        for collision in ("symlink", "file"):
+            with (
+                self.subTest(collision=collision),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                state = pathlib.Path(directory) / "state"
+                if collision == "symlink":
+                    target = pathlib.Path(directory) / "target"
+                    target.mkdir()
+                    state.symlink_to(target, target_is_directory=True)
+                else:
+                    state.write_text("not a directory", encoding="utf-8")
+                with self.assertRaises(provider.JournalLayoutError):
+                    provider.open_journal_directory_chain(
+                        str(state / "dwm-titus" / "system-management")
+                    )
+
+    def test_renamed_ancestor_fails_identity_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = pathlib.Path(directory) / "state"
+            journal = state / "dwm-titus" / "system-management"
+            chain = provider.open_journal_directory_chain(str(journal))
+            try:
+                moved = pathlib.Path(directory) / "state-moved"
+                state.rename(moved)
+                state.mkdir()
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "state is unsafe"
+                ):
+                    chain.validate()
+            finally:
+                chain.close()
+
+    def test_renamed_journal_fails_identity_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = pathlib.Path(directory) / "state"
+            journal = state / "dwm-titus" / "system-management"
+            chain = provider.open_journal_directory_chain(str(journal))
+            try:
+                moved = journal.with_name("system-management-moved")
+                journal.rename(moved)
+                journal.mkdir(mode=0o700)
+                with self.assertRaisesRegex(
+                    provider.JournalLayoutError, "system-management is unsafe"
+                ):
+                    chain.validate()
+            finally:
+                chain.close()
 
 
 class SnapshotValidationTests(unittest.TestCase):
