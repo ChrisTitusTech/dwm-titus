@@ -17,6 +17,7 @@ import qs.panel
 import qs.power
 import qs.settings
 import qs.state
+import qs.systemmanagement
 
 pragma ComponentBehavior: Bound
 
@@ -205,6 +206,10 @@ ShellRoot {
         id: systemHealthModel
     }
 
+    SystemManagementModel {
+        id: systemManagementModel
+    }
+
     SettingsModel {
         id: settingsModel
         networkModel: networkModel
@@ -217,6 +222,7 @@ ShellRoot {
         appearanceModel: appearanceModel
         accessibilityModel: accessibilityModel
         panelSettingsModel: panelSettingsModel
+        systemManagementModel: systemManagementModel
     }
 
     LazyLoader {
@@ -532,6 +538,18 @@ ShellRoot {
 
         function inputStatus(): string {
             return settingsModel.inputState;
+        }
+
+        function systemManagementProviderStatus(): string {
+            return systemManagementModel.providerState;
+        }
+
+        function systemManagementUpdateCount(): int {
+            return systemManagementModel.updates.length;
+        }
+
+        function systemManagementSnapshotState(): string {
+            return systemManagementModel.snapshotState;
         }
 
         function inputAccessibilityValue(settingId: string): string {

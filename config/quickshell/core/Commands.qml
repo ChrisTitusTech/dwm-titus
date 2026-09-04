@@ -30,6 +30,28 @@ Singleton {
         return ["sh", "-c", script, "dwm-checked-command"].concat(command);
     }
 
+    function terminatingCheckedCommand(command) {
+        // Preserve checkedCommand's success gate while forwarding surface-close
+        // signals to a long-running helper instead of orphaning it.
+        const script = [
+            'runtime_dir=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}',
+            'output_file=$(mktemp "$runtime_dir/dwm-checked-command.XXXXXX") || exit 1',
+            'child=',
+            'cleanup() { status=$?; trap - EXIT; rm -f -- "$output_file"; exit "$status"; }',
+            'terminate() { trap - HUP INT TERM; if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null || :; wait "$child" 2>/dev/null || :; fi; exit 143; }',
+            'trap cleanup EXIT',
+            'trap terminate HUP INT TERM',
+            '"$@" >"$output_file" &',
+            'child=$!',
+            'wait "$child"',
+            'status=$?',
+            'child=',
+            '[ "$status" -eq 0 ] || exit "$status"',
+            'cat "$output_file"'
+        ].join("\n");
+        return ["sh", "-c", script, "dwm-terminating-checked-command"].concat(command);
+    }
+
     function booleanStatusCommand(command) {
         const script = 'if "$@" >/dev/null 2>&1; then printf "available\\n"; else printf "restricted\\n"; fi';
         return ["sh", "-c", script, "dwm-boolean-status"].concat(command);
@@ -81,6 +103,10 @@ Singleton {
 
     function systemHealthHelperCommand(action, args) {
         return helperCommand("dwm-system-health", action, args, true);
+    }
+
+    function systemManagementCommand(action, args) {
+        return helperCommand("dwm-system-management", action, args, true);
     }
 
     function settingsProviderCommand(action, args) {
