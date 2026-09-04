@@ -6,9 +6,13 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import importlib.machinery
+import os
 import pathlib
 import sys
+import tempfile
+import threading
 import unittest
+from unittest import mock
 
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -360,6 +364,254 @@ class JournalFrameTests(unittest.TestCase):
             provider.select_journal_frame(first + first),
             (0, provider.JournalFrame(7, "first")),
         )
+
+
+class JournalFileTests(unittest.TestCase):
+    def open_empty(self, directory, name="journal"):
+        path = pathlib.Path(directory) / name
+        lock_descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+        return path, lock_descriptor, descriptor
+
+    def test_initialize_and_load_exact_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path, lock_descriptor, descriptor = self.open_empty(directory)
+            try:
+                initialized = provider.initialize_journal_file(
+                    lock_descriptor, descriptor, "initial"
+                )
+                selected = provider.read_journal_file(lock_descriptor, descriptor)
+            finally:
+                os.close(descriptor)
+                os.close(lock_descriptor)
+
+            self.assertEqual(initialized, provider.JournalFrame(1, "initial"))
+            self.assertEqual(selected, (0, initialized))
+            self.assertEqual(path.stat().st_size, provider.JOURNAL_FILE_SIZE)
+            self.assertEqual(path.stat().st_mode & 0o7777, 0o600)
+
+    def test_commits_alternate_frames_without_resizing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path, lock_descriptor, descriptor = self.open_empty(directory)
+            try:
+                provider.initialize_journal_file(lock_descriptor, descriptor)
+                self.assertEqual(
+                    provider.commit_journal_file(lock_descriptor, descriptor, "second"),
+                    (1, provider.JournalFrame(2, "second")),
+                )
+                self.assertEqual(
+                    provider.commit_journal_file(lock_descriptor, descriptor, "third"),
+                    (0, provider.JournalFrame(3, "third")),
+                )
+                self.assertEqual(
+                    provider.read_journal_file(lock_descriptor, descriptor),
+                    (0, provider.JournalFrame(3, "third")),
+                )
+            finally:
+                os.close(descriptor)
+                os.close(lock_descriptor)
+
+            self.assertEqual(path.stat().st_size, provider.JOURNAL_FILE_SIZE)
+
+    def test_reads_until_the_exact_image_is_complete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _path, lock_descriptor, descriptor = self.open_empty(directory)
+            try:
+                provider.initialize_journal_file(lock_descriptor, descriptor, "chunked")
+                original_pread = os.pread
+
+                def chunked_pread(fd, length, offset):
+                    return original_pread(fd, min(length, 17), offset)
+
+                with mock.patch.object(provider.os, "pread", side_effect=chunked_pread):
+                    self.assertEqual(
+                        provider.read_journal_file(lock_descriptor, descriptor),
+                        (0, provider.JournalFrame(1, "chunked")),
+                    )
+            finally:
+                os.close(descriptor)
+                os.close(lock_descriptor)
+
+    def test_rejects_unsafe_metadata_and_descriptor_access(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path, lock_descriptor, descriptor = self.open_empty(directory)
+            provider.initialize_journal_file(lock_descriptor, descriptor)
+            os.close(descriptor)
+
+            os.chmod(path, 0o644)
+            descriptor = os.open(path, os.O_RDONLY)
+            try:
+                with self.assertRaisesRegex(provider.JournalFileError, "metadata"):
+                    provider.read_journal_file(lock_descriptor, descriptor)
+            finally:
+                os.close(descriptor)
+
+            os.chmod(path, 0o600)
+            descriptor = os.open(path, os.O_RDONLY)
+            try:
+                with self.assertRaisesRegex(provider.JournalFileError, "access"):
+                    provider.commit_journal_file(lock_descriptor, descriptor, "new")
+            finally:
+                os.close(descriptor)
+
+            descriptor = os.open(path, os.O_RDWR | os.O_APPEND)
+            try:
+                with self.assertRaisesRegex(provider.JournalFileError, "access"):
+                    provider.commit_journal_file(lock_descriptor, descriptor, "new")
+                self.assertEqual(path.stat().st_size, provider.JOURNAL_FILE_SIZE)
+            finally:
+                os.close(descriptor)
+
+            os.link(path, pathlib.Path(directory) / "extra-link")
+            descriptor = os.open(path, os.O_RDWR)
+            try:
+                with self.assertRaisesRegex(provider.JournalFileError, "metadata"):
+                    provider.read_journal_file(lock_descriptor, descriptor)
+            finally:
+                os.close(descriptor)
+                os.close(lock_descriptor)
+
+    def test_torn_inactive_frame_preserves_previous_frame(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _path, lock_descriptor, descriptor = self.open_empty(directory)
+            try:
+                provider.initialize_journal_file(
+                    lock_descriptor, descriptor, "previous"
+                )
+                original_pwrite = os.pwrite
+
+                def short_pwrite(fd, data, offset):
+                    return original_pwrite(fd, data[:32], offset)
+
+                with mock.patch.object(provider.os, "pwrite", side_effect=short_pwrite):
+                    with self.assertRaisesRegex(
+                        provider.JournalCommitError, "indeterminate"
+                    ):
+                        provider.commit_journal_file(lock_descriptor, descriptor, "new")
+                self.assertEqual(
+                    provider.read_journal_file(lock_descriptor, descriptor),
+                    (0, provider.JournalFrame(1, "previous")),
+                )
+            finally:
+                os.close(descriptor)
+                os.close(lock_descriptor)
+
+    def test_concurrent_writers_are_serialized_by_directory_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path, first_lock, first_file = self.open_empty(directory)
+            second_file = os.open(path, os.O_RDWR)
+            first_in_sync = threading.Event()
+            release_first = threading.Event()
+            second_done = threading.Event()
+            failures = []
+            original_fsync = os.fsync
+
+            def blocking_fsync(fd):
+                if fd == first_file and not first_in_sync.is_set():
+                    first_in_sync.set()
+                    if not release_first.wait(2):
+                        raise OSError("test did not release the first writer")
+                return original_fsync(fd)
+
+            def write(lock_descriptor, descriptor, payload, done=None):
+                try:
+                    provider.commit_journal_file(lock_descriptor, descriptor, payload)
+                except Exception as error:  # unittest thread boundary
+                    failures.append(error)
+                finally:
+                    if done is not None:
+                        done.set()
+
+            try:
+                provider.initialize_journal_file(first_lock, first_file, "initial")
+                with mock.patch.object(
+                    provider.os, "fsync", side_effect=blocking_fsync
+                ):
+                    first = threading.Thread(
+                        target=write,
+                        args=(first_lock, first_file, "first"),
+                    )
+                    second = threading.Thread(
+                        target=write,
+                        args=(first_lock, second_file, "second", second_done),
+                    )
+                    first.start()
+                    self.assertTrue(first_in_sync.wait(1))
+                    second.start()
+                    self.assertFalse(second_done.wait(0.05))
+                    release_first.set()
+                    first.join(2)
+                    second.join(2)
+
+                self.assertFalse(first.is_alive())
+                self.assertFalse(second.is_alive())
+                self.assertEqual(failures, [])
+                self.assertEqual(
+                    provider.read_journal_file(first_lock, first_file),
+                    (0, provider.JournalFrame(3, "second")),
+                )
+            finally:
+                release_first.set()
+                os.close(second_file)
+                os.close(first_file)
+                os.close(first_lock)
+
+    def test_sync_failure_can_leave_new_frame_authoritative(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _path, lock_descriptor, descriptor = self.open_empty(directory)
+            try:
+                provider.initialize_journal_file(
+                    lock_descriptor, descriptor, "previous"
+                )
+                with mock.patch.object(
+                    provider.os, "fsync", side_effect=OSError("injected sync failure")
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalCommitError, "indeterminate"
+                    ):
+                        provider.commit_journal_file(lock_descriptor, descriptor, "new")
+                self.assertEqual(
+                    provider.read_journal_file(lock_descriptor, descriptor),
+                    (1, provider.JournalFrame(2, "new")),
+                )
+            finally:
+                os.close(descriptor)
+                os.close(lock_descriptor)
+
+    def test_readback_mismatch_is_indeterminate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _path, lock_descriptor, descriptor = self.open_empty(directory)
+            try:
+                provider.initialize_journal_file(
+                    lock_descriptor, descriptor, "previous"
+                )
+                original_read = provider._read_journal_image
+                read_count = 0
+
+                def mismatched_readback(fd):
+                    nonlocal read_count
+                    read_count += 1
+                    image = original_read(fd)
+                    if read_count == 2:
+                        changed = bytearray(image)
+                        changed[provider.JOURNAL_FRAME_SIZE + 32] ^= 1
+                        return bytes(changed)
+                    return image
+
+                with mock.patch.object(
+                    provider, "_read_journal_image", side_effect=mismatched_readback
+                ):
+                    with self.assertRaisesRegex(
+                        provider.JournalCommitError, "indeterminate"
+                    ):
+                        provider.commit_journal_file(lock_descriptor, descriptor, "new")
+                self.assertEqual(
+                    provider.read_journal_file(lock_descriptor, descriptor),
+                    (1, provider.JournalFrame(2, "new")),
+                )
+            finally:
+                os.close(descriptor)
+                os.close(lock_descriptor)
 
 
 class SnapshotValidationTests(unittest.TestCase):
