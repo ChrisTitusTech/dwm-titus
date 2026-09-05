@@ -1230,10 +1230,18 @@ path, or elevation mechanism.
   For a nonterminal record, recovery validates and copies the bounded record
   under a shared journal lock, releases that lock, and only then attempts to
   adopt the exact recorded transaction object and consume its current or
-  replayed result before checking the active PackageKit transaction list. One
+  replayed result before checking the active PackageKit transaction list. Signals
+  received during the initial object-property read remain bounded in memory:
+  no running or restart checkpoint is written until the role and invoking UID
+  are validated. An absent or mismatched object cannot contribute those signals
+  to the journal. One
   independent ten-second monotonic aggregate deadline covers attachment to the
   recorded object, its required property reads and replayed signals, and the
-  manager `GetTransactionList` call. The active-list reply accepts at most 256
+  manager `GetTransactionList` call. An exact validated `Finished` result skips
+  the secondary active-list lookup. If it arrives while that lookup is already
+  in flight, a failed or malformed list reply cannot discard the captured result;
+  malformed transaction evidence or a journal checkpoint failure still prevents
+  terminal recovery. Without terminal evidence, the active-list reply accepts at most 256
   unique valid PackageKit transaction object paths and 64 KiB of their complete
   encoded UTF-8 values. Expiry cancels unfinished local D-Bus requests, detaches
   every recovery observer without calling `Cancel` on the recorded transaction,
@@ -1279,7 +1287,14 @@ path, or elevation mechanism.
   cannot be excluded sets the system contribution to `unknown` while retaining
   the validated session and application contributions already in `active`; a
   restart signal may have occurred after the last successful active-frame
-  commit. A valid durable
+  commit. A partial replay containing only application, session, or `none`
+  signals also cannot exclude a missed system-restart requirement: unless
+  execution is proven excluded, an otherwise `none` system contribution becomes
+  `unknown`. Specific system or security-system guidance is retained on that
+  partial-replay path. The no-replayed-signal and history paths still use their
+  explicitly required uncertainty replacement, even when `active` previously
+  recorded specific system guidance.
+  A valid durable
   terminal record written from `Finished` recovers its persisted tuple. A
   missing, malformed, or kind-incompatible contribution field in the active or
   terminal record is a `malformed` recovery error that preserves the record and
@@ -1292,7 +1307,11 @@ path, or elevation mechanism.
   because history cannot
   replay a `RequireRestart` signal that may have been missed before persistence.
   It never substitutes or preserves `none` on that path. An exact history match
-  with `succeeded=false` is still `interrupted`, because history cannot
+  with `succeeded=false` is usable only after a successful bounded lookup proves
+  exact absence: PackageKit inserts that row at its ready state, before
+  execution finishes. A still-active transaction or a lookup timeout retains
+  ownership despite this unsuccessful history row. With confirmed absence the
+  result is `interrupted`, because history cannot
   distinguish cancellation from another failure or reconstruct the required
   typed error row. It uses the same conservative system `unknown` contribution
   while retaining validated session and application evidence regardless of the

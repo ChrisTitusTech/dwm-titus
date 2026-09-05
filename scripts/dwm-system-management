@@ -2587,6 +2587,8 @@ def advance_journal_operation(
     journal: JournalDescriptorSet,
     expected: JournalOperation,
     following: JournalOperation,
+    *,
+    recovery_boot_id: str | None = None,
 ) -> JournalOperation:
     """Commit one legal state/contribution change, rejecting stale observations."""
     encode_journal_operation(expected)
@@ -2617,7 +2619,20 @@ def advance_journal_operation(
         not same_state and following.state not in JOURNAL_TRANSITIONS[expected.state]
     ):
         raise JournalAdmissionError("journal operation transition is invalid")
-    if expected.kind == "update" and (
+    recovery_replacement = False
+    if recovery_boot_id is not None:
+        if (not isinstance(recovery_boot_id, str) or BOOT_ID_PATTERN.fullmatch(recovery_boot_id) is None
+                or expected.kind != "update" or following.state not in JOURNAL_OPERATION_TERMINAL_STATES):
+            raise JournalAdmissionError("journal recovery boundary is invalid")
+        recovery_replacement = (
+            recovery_boot_id != expected.boot_id
+            and (following.system_restart, following.session_restart, following.application_restart) == ("none", "none", False)
+        ) or (
+            recovery_boot_id == expected.boot_id and following.system_restart == "unknown"
+            and following.session_restart == expected.session_restart
+            and following.application_restart == expected.application_restart
+        )
+    if expected.kind == "update" and not recovery_replacement and (
         JOURNAL_RESTART_SYSTEM_STRENGTH[following.system_restart]
         < JOURNAL_RESTART_SYSTEM_STRENGTH[expected.system_restart]
         or JOURNAL_RESTART_SESSION_STRENGTH[following.session_restart]
@@ -2797,6 +2812,62 @@ class Package:
 class TransactionResult:
     packages: tuple[Package, ...]
     restart_types: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class RecoveryEvidence:
+    """Finite exact-object evidence; absence is distinct from a failed lookup."""
+    present: bool
+    state: str | None = None
+    failure: SnapshotFailure | None = None
+    restart_types: tuple[int, ...] = ()
+    status: int = 0
+    allow_cancel: bool = False
+    percent: int | None = None
+    terminal_monotonic: int | None = None
+
+
+def validate_transaction_list(values: object) -> tuple[str, ...]:
+    if not isinstance(values, (list, tuple)) or len(values) > 256:
+        raise SnapshotFailure("malformed", "PackageKit active transaction list is malformed")
+    seen = set()
+    size = 0
+    for path in values:
+        if not isinstance(path, str) or JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(path) is None or path in seen:
+            raise SnapshotFailure("malformed", "PackageKit active transaction identity is malformed")
+        seen.add(path)
+        size += len(path.encode("utf-8"))
+        if size > 65536:
+            raise SnapshotFailure("malformed", "PackageKit active transaction list exceeds its byte budget")
+    return tuple(values)
+
+
+def validate_history_record(values: object) -> tuple[str, bool, int, int]:
+    """Discard package data and command lines; retain only exact typed identity."""
+    if not isinstance(values, (list, tuple)) or len(values) != 8:
+        raise SnapshotFailure("malformed", "PackageKit history record is malformed")
+    path, timespec, succeeded, role, duration, data, uid, command = values
+    if (
+        not isinstance(path, str) or JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(path) is None
+        or type(succeeded) is not bool
+        or any(type(value) is not int or not 0 <= value <= G_MAXUINT for value in (role, duration, uid))
+        or any(not isinstance(value, str) for value in (timespec, data, command))
+        or len(timespec) > 128
+    ):
+        raise SnapshotFailure("malformed", "PackageKit history identity is malformed")
+    return path, succeeded, role, uid
+
+
+def match_update_history(records: Sequence[tuple[str, bool, int, int]], path: str, uid: int) -> bool | None:
+    """A wrong owner or duplicate exact match is ambiguity, never negative history."""
+    if len(records) > 64:
+        raise SnapshotFailure("malformed", "PackageKit history exceeds its record budget")
+    matches = [record for record in records if record[0] == path]
+    if not matches:
+        return None
+    if len(matches) != 1 or matches[0][2:] != (22, uid):
+        raise SnapshotFailure("malformed", "PackageKit history does not uniquely identify this update")
+    return matches[0][1]
 
 
 @dataclass(frozen=True)
@@ -3491,6 +3562,141 @@ def read_fedora_identity() -> dict[str, str]:
         raise SnapshotFailure("unsupported", "Fedora platform identity is unavailable", "unsupported") from error
 
 
+def recover_journal_active(
+    journal: JournalDescriptorSet, backend: PackageKitBackend, *,
+    boot_id: str, session_started: int | None = None,
+) -> tuple[JournalState, RecoveryEvidence | None, SnapshotFailure | None]:
+    """Recover one copied owner without holding a journal lock across service work."""
+    if not isinstance(boot_id, str) or BOOT_ID_PATTERN.fullmatch(boot_id) is None:
+        raise JournalRecordError("recovery boot identity is invalid")
+    if session_started is not None:
+        _encode_journal_uint64(session_started, "session start")
+    original = load_journal_state(journal.chain).active
+    if original is None:
+        with lock_writable_journal(journal):
+            prune_journal_restart(journal, boot_id, session_started)
+            return load_writable_journal_state(journal), None, None
+    evidence = None
+    lookup_failure = None
+    history_match = None
+    history_used = False
+    identity = ("operation_id", "action_id", "started_at", "kind", "generation", "transaction_path", "boot_id", "slot")
+
+    def checkpoint_running():
+        with lock_writable_journal(journal):
+            current = load_writable_journal_state(journal).active
+            if current is None or any(getattr(current, field) != getattr(original, field) for field in identity) or current.state in JOURNAL_OPERATION_TERMINAL_STATES:
+                raise SnapshotFailure("conflict", "Recovery owner changed; discard the stale observation")
+            if current.state in {"pending", "authorizing"}:
+                advance_journal_operation(journal, current, replace(current, state="running", detail="PackageKit execution observed during recovery"))
+
+    def checkpoint_restart(value):
+        if original.kind != "update" or original.boot_id != boot_id:
+            return
+        with lock_writable_journal(journal):
+            current = load_writable_journal_state(journal).active
+            if current is None or any(getattr(current, field) != getattr(original, field) for field in identity) or current.state in JOURNAL_OPERATION_TERMINAL_STATES:
+                raise SnapshotFailure("conflict", "Recovery owner changed; discard the stale observation")
+            changes = {}
+            if value == 2:
+                changes["application_restart"] = True
+            elif value in {3, 5}:
+                changes["session_restart"] = max(current.session_restart, "security-session" if value == 5 else "session", key=JOURNAL_RESTART_SESSION_STRENGTH.__getitem__)
+            elif value != 1:
+                changes["system_restart"] = max(current.system_restart, {4: "system", 6: "security-system"}.get(value, "unknown"), key=JOURNAL_RESTART_SYSTEM_STRENGTH.__getitem__)
+            following = replace(current, **changes)
+            if following != current:
+                advance_journal_operation(journal, current, following)
+
+    if original.state not in JOURNAL_OPERATION_TERMINAL_STATES and original.kind in {"update", "refresh"}:
+        try:
+            evidence = backend.probe_operation(original, on_restart=checkpoint_restart, on_running=checkpoint_running)
+        except SnapshotFailure as failure:
+            lookup_failure = failure
+        if original.kind == "update" and (evidence is None or evidence.state is None) and (
+                lookup_failure is None or lookup_failure.code == "timeout"):
+            try:
+                history_match = match_update_history(backend.operation_history(), original.transaction_path, os.getuid())
+                # PackageKit inserts history at READY with succeeded=false.
+                # That row alone cannot distinguish a live job from failure.
+                history_used = history_match is True or (
+                    history_match is False and evidence is not None and not evidence.present)
+            except SnapshotFailure as failure:
+                if failure.code == "malformed" or lookup_failure is None:
+                    lookup_failure = failure
+    with lock_writable_journal(journal):
+        current_state = load_writable_journal_state(journal)
+        current = current_state.active
+        if current is None or any(getattr(current, field) != getattr(original, field) for field in identity):
+            return current_state, None, None
+        # Boot/session satisfaction is independent of the recovered operation.
+        # Apply it before comparing a new boot's monotonic terminal cutoff.
+        prune_journal_restart(journal, boot_id, session_started)
+        current_state = load_writable_journal_state(journal)
+        if current.state in JOURNAL_OPERATION_TERMINAL_STATES:
+            complete_journal_terminal(journal, boot_id=boot_id, session_started=session_started)
+            return load_writable_journal_state(journal), None, None
+        if lookup_failure is not None and (lookup_failure.code == "malformed" or (
+                not history_used and (evidence is None or evidence.present))):
+            return current_state, evidence, lookup_failure
+        if evidence is not None and evidence.status == 3 and current.state in {"pending", "authorizing"}:
+            current = advance_journal_operation(journal, current, replace(current, state="running", detail="PackageKit execution observed during recovery"))
+            current_state = load_writable_journal_state(journal)
+        if evidence is not None and evidence.state is None and evidence.present and not history_used:
+            prune_journal_restart(journal, boot_id, session_started)
+            return load_writable_journal_state(journal), evidence, lookup_failure
+        state = evidence.state if evidence is not None and evidence.state is not None else "succeeded" if history_match is True else "interrupted"
+        failure = evidence.failure if evidence is not None and evidence.state is not None else None
+        if state == "interrupted":
+            failure = SnapshotFailure("interrupted", "Operation observation was interrupted; the platform outcome is unknown. Refresh status and inspect diagnostics before retrying")
+        pre_running = current.state in {"pending", "authorizing"}
+        if state == "permission-denied" and not pre_running:
+            state = "failed"
+        if state == "succeeded" and pre_running:
+            current = advance_journal_operation(journal, current, replace(current, state="running", detail="Recovered PackageKit completion"))
+        elif state == "permission-denied" and current.state == "pending":
+            current = advance_journal_operation(journal, current, replace(current, state="authorizing", detail="Recovered PackageKit authorization result"))
+        elif state == "canceled" and current.state == "running":
+            current = advance_journal_operation(journal, current, replace(current, state="cancel-requested", detail="Recovered PackageKit cancellation"))
+        changes = {}
+        recovery_boot = None
+        if current.kind == "update":
+            system, session, application = current.system_restart, current.session_restart, current.application_restart
+            if current.boot_id != boot_id:
+                system, session, application = "none", "none", False
+                recovery_boot = boot_id
+            else:
+                observed = evidence.restart_types if evidence is not None and evidence.state is not None else ()
+                for value in observed:
+                    if value == 2:
+                        application = True
+                    elif value in {3, 5}:
+                        session = max(session, "security-session" if value == 5 else "session", key=JOURNAL_RESTART_SESSION_STRENGTH.__getitem__)
+                    elif value != 1:
+                        system = max(system, {4: "system", 6: "security-system"}.get(value, "unknown"), key=JOURNAL_RESTART_SYSTEM_STRENGTH.__getitem__)
+                excluded = pre_running and evidence is not None and evidence.status == 31 and state in {"permission-denied", "canceled"}
+                if history_used or (not observed and not excluded):
+                    # History or incomplete adoption cannot reconstruct missed
+                    # signals. This is uncertainty replacement, not satisfaction.
+                    system = "unknown"
+                    recovery_boot = boot_id
+                elif not excluded and system == "none":
+                    # A partial replay containing only lower-scope (or NONE)
+                    # signals cannot exclude an earlier missed reboot signal.
+                    system = "unknown"
+            changes = dict(system_restart=system, session_restart=session, application_restart=application)
+        cutoff = evidence.terminal_monotonic if evidence is not None and evidence.state is not None else None
+        terminal = replace(current, state=state,
+            finished_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            terminal_monotonic=(cutoff if cutoff is not None else time.monotonic_ns() // 1000) if current.kind in {"update", "refresh"} else None,
+            error_code=None if failure is None else failure.code,
+            detail="Recovered PackageKit completion; missed restart evidence remains unknown" if failure is None else failure.detail,
+            **changes)
+        advance_journal_operation(journal, current, terminal, recovery_boot_id=recovery_boot)
+        complete_journal_terminal(journal, boot_id=boot_id, session_started=session_started)
+        return load_writable_journal_state(journal), None, lookup_failure
+
+
 class PackageKitMutation:
     """Own one exact journaled transaction; callbacks never hold a service-wait lock."""
 
@@ -3799,27 +4005,36 @@ class PackageKitBackend:
             raise self._dbus_failure(error) from error
 
     def _dbus_failure(self, error: Exception) -> SnapshotFailure:
-        message = str(error)
-        lowered = message.lower()
-        if "serviceunknown" in lowered or "namehasnoowner" in lowered:
+        name = self.Gio.dbus_error_get_remote_error(error)
+        if name in {"org.freedesktop.DBus.Error.ServiceUnknown",
+                    "org.freedesktop.DBus.Error.NameHasNoOwner",
+                    "org.freedesktop.DBus.Error.UnknownObject"}:
             return SnapshotFailure(
                 "missing-provider", "PackageKit service is unavailable", "unavailable"
             )
-        if "notauthorized" in lowered or "accessdenied" in lowered:
+        if name in {"org.freedesktop.DBus.Error.AccessDenied",
+                    "org.freedesktop.DBus.Error.AuthFailed",
+                    "org.freedesktop.PackageKit.Transaction.RefusedByPolicy"}:
             return SnapshotFailure(
                 "permission-denied",
                 "PackageKit denied the request",
                 "restricted",
             )
-        if "unknownmethod" in lowered:
+        if name in {"org.freedesktop.DBus.Error.UnknownMethod",
+                    "org.freedesktop.DBus.Error.UnknownInterface"}:
             return SnapshotFailure(
                 "unsupported",
                 "PackageKit does not support the required method",
                 "unsupported",
             )
-        if "invalidargs" in lowered:
+        if name in {"org.freedesktop.DBus.Error.InvalidArgs",
+                    "org.freedesktop.DBus.Error.InvalidSignature"}:
             return SnapshotFailure("malformed", "PackageKit rejected the method arguments")
-        if "timedout" in lowered or "timeout" in lowered:
+        if name in {"org.freedesktop.DBus.Error.Timeout",
+                    "org.freedesktop.DBus.Error.TimedOut",
+                    "org.freedesktop.DBus.Error.NoReply"} or (
+                name is None and callable(getattr(error, "matches", None))
+                and error.matches(self.Gio.io_error_quark(), self.Gio.IOErrorEnum.TIMED_OUT)):
             return SnapshotFailure(
                 "timeout", "PackageKit request timed out", "unavailable"
             )
@@ -3838,7 +4053,7 @@ class PackageKitBackend:
             try:
                 reply = self.connection.call_sync(
                     "org.freedesktop.login1", path, interface, method, parameters,
-                    self.GLib.VariantType.new(signature), self.Gio.DBusCallFlags.NONE,
+                    None, self.Gio.DBusCallFlags.NONE,
                     max(1, min(int(remaining * 1000), 10000)), None)
             except self.GLib.Error as error:
                 name = self.Gio.dbus_error_get_remote_error(error)
@@ -3964,6 +4179,315 @@ class PackageKitBackend:
         self._call(path, TRANSACTION_INTERFACE, "SetHints",
                    self.GLib.Variant("(as)", (["background=false", "interactive=true"],)), deadline)
         return path
+
+    def _recovery_call(self, path: str, interface: str, method: str,
+                       parameters: object, deadline: float, signature: str) -> object:
+        """Dispatch signals in order during a bounded request; validate its reply locally.
+
+        Local signature validation keeps a wrong reply type classified as
+        malformed instead of a GIO-generated transport or argument error.
+        """
+        wait_ms = self._timeout_ms(deadline)
+        loop = self.GLib.MainLoop()
+        request = self.Gio.Cancellable()
+        live = True
+        reply = None
+        failure = None
+        source = 0
+
+        def completed(connection, result, _data):
+            nonlocal reply, failure
+            if not live:
+                return
+            try:
+                reply = connection.call_finish(result)
+            except self.GLib.Error as error:
+                failure = error
+            loop.quit()
+
+        def expired():
+            nonlocal source
+            source = 0
+            loop.quit()
+            return self.GLib.SOURCE_REMOVE
+
+        try:
+            source = self.GLib.timeout_add(wait_ms, expired)
+            self.connection.call(PACKAGEKIT_NAME, path, interface, method, parameters,
+                None, self.Gio.DBusCallFlags.NONE,
+                wait_ms, request, completed, None)
+            if reply is None and failure is None and source:
+                loop.run()
+        finally:
+            live = False
+            request.cancel()
+            if source:
+                self.GLib.source_remove(source)
+        if time.monotonic() >= deadline or (reply is None and failure is None):
+            raise SnapshotFailure("timeout", "PackageKit recovery lookup timed out")
+        if failure is not None:
+            raise self._dbus_failure(failure) from failure
+        if reply.get_type_string() != signature:
+            raise SnapshotFailure("malformed", "PackageKit recovery reply is malformed")
+        return reply
+
+    def probe_operation(self, operation: JournalOperation, *,
+                        on_restart: Callable[[int], object] | None = None,
+                        on_running: Callable[[], object] | None = None) -> RecoveryEvidence:
+        """Attach only to the recorded object, then obtain a bounded active list."""
+        encode_journal_operation(operation)
+        if operation.kind not in {"refresh", "update"} or operation.state in JOURNAL_OPERATION_TERMINAL_STATES:
+            raise SnapshotFailure("malformed", "PackageKit recovery target is not active")
+        path = operation.transaction_path
+        deadline = time.monotonic() + 10
+        live = True
+        present = False
+        destroyed = False
+        status = 0
+        allow_cancel = False
+        percent = None
+        saw_running = False
+        uncertain_status = False
+        cancel_blocked = False
+        terminal_state = None
+        terminal_time = None
+        transaction_failure = None
+        malformed = None
+        checkpoint_failure = None
+        restarts = set()
+        subscriptions = []
+        identity_verified = None
+
+        def checkpoint(callback, *args):
+            nonlocal checkpoint_failure
+            if callback is not None and checkpoint_failure is None:
+                try:
+                    callback(*args)
+                except (SnapshotFailure, JournalFileError, JournalRecordError, JournalFrameError, JournalAdmissionError) as error:
+                    checkpoint_failure = error
+
+        def properties(values):
+            nonlocal status, allow_cancel, percent, saw_running, uncertain_status, cancel_blocked, checkpoint_failure
+            if not isinstance(values, dict):
+                raise ValueError
+            if "Status" in values:
+                value = values["Status"]
+                status = value if type(value) is int and 0 <= value <= 36 else 0
+                uncertain_status = uncertain_status or status == 0
+                if not saw_running and status not in {0, 1, 2, 18, 31}:
+                    saw_running = True
+                    if identity_verified is True:
+                        checkpoint(on_running)
+            if "AllowCancel" in values:
+                allow_cancel = values["AllowCancel"] if type(values["AllowCancel"]) is bool else False
+                cancel_blocked = cancel_blocked or not allow_cancel
+            if "Percentage" in values:
+                value = values["Percentage"]
+                percent = value if type(value) is int and 0 <= value <= 100 else None
+
+        def signal_received(_connection, _sender, _path, interface, signal, variant, _data):
+            nonlocal terminal_state, terminal_time, transaction_failure, malformed, present, destroyed, checkpoint_failure
+            if not live or identity_verified is False or malformed is not None or checkpoint_failure is not None or time.monotonic() >= deadline:
+                return
+            if terminal_state is not None:
+                if signal == "Finished":
+                    malformed = SnapshotFailure("malformed", "PackageKit recovery completion is duplicated")
+                return
+            try:
+                values = variant.unpack()
+                if interface == PROPERTIES_INTERFACE:
+                    if variant.get_type_string() != "(sa{sv}as)" or values[0] != TRANSACTION_INTERFACE:
+                        raise ValueError
+                    changed = dict(values[1])
+                    for key in values[2]:
+                        changed[key] = None
+                    properties(changed)
+                elif signal == "RequireRestart":
+                    if variant.get_type_string() != "(us)":
+                        raise ValueError
+                    value = values[0] if values[0] in {1, 2, 3, 4, 5, 6} else 0
+                    if identity_verified is True:
+                        checkpoint(on_restart, value)
+                        if checkpoint_failure is not None:
+                            return
+                    restarts.add(value)
+                elif signal == "ErrorCode":
+                    if variant.get_type_string() != "(us)":
+                        raise ValueError
+                    transaction_failure = transaction_failure or self._transaction_failure(values[0], "")
+                elif signal == "Finished":
+                    if variant.get_type_string() != "(uu)" or terminal_state is not None:
+                        raise ValueError
+                    terminal_time = time.monotonic_ns() // 1000
+                    if transaction_failure is not None:
+                        terminal_state = {"permission-denied": "permission-denied", "canceled": "canceled"}.get(transaction_failure.code, "failed")
+                    elif values[0] == EXIT_SUCCESS:
+                        terminal_state = "succeeded"
+                    elif values[0] == 3:
+                        terminal_state = "canceled"
+                        transaction_failure = SnapshotFailure("canceled", "PackageKit canceled the transaction")
+                    else:
+                        terminal_state = "failed"
+                        transaction_failure = SnapshotFailure("internal", "PackageKit transaction did not succeed")
+                elif signal == "Destroy":
+                    if variant.get_type_string() != "()":
+                        raise ValueError
+                    destroyed = True
+                    present = False
+            except (TypeError, ValueError, IndexError):
+                malformed = SnapshotFailure("malformed", "PackageKit recovery signal is malformed")
+
+        def service_changed(_connection, _sender, _path, _interface, _signal, variant, _data):
+            nonlocal malformed
+            if live and variant.get_type_string() == "(sss)":
+                values = variant.unpack()
+                if values[0] == PACKAGEKIT_NAME and values[1] != values[2]:
+                    malformed = SnapshotFailure("missing-provider", "PackageKit changed during recovery; retry the lookup")
+
+        try:
+            subscriptions.append(self.connection.signal_subscribe(PACKAGEKIT_NAME, TRANSACTION_INTERFACE, None, path, None, self.Gio.DBusSignalFlags.NONE, signal_received, None))
+            subscriptions.append(self.connection.signal_subscribe(PACKAGEKIT_NAME, PROPERTIES_INTERFACE, "PropertiesChanged", path, TRANSACTION_INTERFACE, self.Gio.DBusSignalFlags.NONE, signal_received, None))
+            subscriptions.append(self.connection.signal_subscribe("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged", "/org/freedesktop/DBus", PACKAGEKIT_NAME, self.Gio.DBusSignalFlags.NONE, service_changed, None))
+            try:
+                reply = self._recovery_call(path, PROPERTIES_INTERFACE, "GetAll",
+                    self.GLib.Variant("(s)", (TRANSACTION_INTERFACE,)), deadline, "(a{sv})")
+            except SnapshotFailure as failure:
+                cause = failure.__cause__
+                if not isinstance(cause, self.GLib.Error) or self.Gio.dbus_error_get_remote_error(cause) not in {
+                        "org.freedesktop.DBus.Error.UnknownObject", "org.freedesktop.DBus.Error.UnknownMethod"}:
+                    raise
+                # No object identity was established. Discard buffered signals
+                # and ignore later ones; only the bounded list/history may help.
+                identity_verified = False
+                restarts.clear()
+                destroyed = False
+                saw_running = False
+                status, allow_cancel, percent = 0, False, None
+                terminal_state, terminal_time, transaction_failure = None, None, None
+            else:
+                values = reply.unpack()[0]
+                role, uid = values.get("Role"), values.get("Uid")
+                expected_role = 13 if operation.kind == "refresh" else 22
+                allowed_roles = {expected_role, 0} if operation.state in {"pending", "authorizing"} else {expected_role}
+                if type(role) is not int or role not in allowed_roles or type(uid) is not int or uid != os.getuid():
+                    raise SnapshotFailure("malformed", "PackageKit active object does not match the recorded operation")
+                if malformed is not None:
+                    raise malformed
+                # Before this point callbacks collect only a fixed-size status
+                # tuple and at most seven restart enums, never journal writes.
+                identity_verified = True
+                if saw_running:
+                    checkpoint(on_running)
+                for value in sorted(restarts):
+                    checkpoint(on_restart, value)
+                properties(values)
+                present = not destroyed and status != 18
+            if checkpoint_failure is not None:
+                raise checkpoint_failure
+            listed = ()
+            if terminal_state is None:
+                try:
+                    reply = self._recovery_call(PACKAGEKIT_PATH, PACKAGEKIT_INTERFACE, "GetTransactionList", None, deadline, "(ao)")
+                    if terminal_state is None:
+                        listed = validate_transaction_list(reply.unpack()[0])
+                except SnapshotFailure:
+                    # Finished may arrive while the secondary request is in
+                    # flight. Its exact result does not depend on that lookup.
+                    if terminal_state is None:
+                        raise
+            if malformed is not None:
+                raise malformed
+            return RecoveryEvidence(not destroyed and (present or path in listed), terminal_state, transaction_failure,
+                                    tuple(sorted(restarts)), 3 if saw_running else 0 if uncertain_status else status,
+                                    allow_cancel and not cancel_blocked and not destroyed, percent, terminal_time)
+        finally:
+            live = False
+            for subscription in subscriptions:
+                self.connection.signal_unsubscribe(subscription)
+            if checkpoint_failure is not None:
+                raise checkpoint_failure
+
+    def operation_history(self) -> tuple[tuple[str, bool, int, int], ...]:
+        """Collect no more than 64 old transactions under an independent deadline."""
+        deadline = time.monotonic() + 10
+        reply = self._recovery_call(PACKAGEKIT_PATH, PACKAGEKIT_INTERFACE, "CreateTransaction", None, deadline, "(o)")
+        path = reply.unpack()[0]
+        if not isinstance(path, str) or JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(path) is None:
+            raise SnapshotFailure("malformed", "PackageKit returned an invalid history transaction")
+        loop = self.GLib.MainLoop()
+        records = []
+        finished = None
+        failure = None
+        live = True
+        discarding = False
+        source = 0
+
+        def signal_received(_connection, _sender, _path, _interface, signal, variant, _data):
+            nonlocal finished, failure
+            if not live:
+                return
+            if discarding:
+                # Grace consumes only stop-observing evidence, never a late
+                # history result that could turn expiry into success.
+                if signal == "Finished" and variant.get_type_string() == "(uu)":
+                    finished = variant.unpack()[0]
+                    loop.quit()
+                return
+            if time.monotonic() >= deadline:
+                return
+            if finished is not None:
+                if signal == "Finished":
+                    failure = SnapshotFailure("malformed", "PackageKit history completion is duplicated")
+                return
+            try:
+                if signal == "Transaction":
+                    if variant.get_type_string() != "(osbuusus)" or len(records) >= 64:
+                        raise SnapshotFailure("malformed", "PackageKit history exceeds its typed record budget")
+                    records.append(validate_history_record(variant.unpack()))
+                elif signal == "ErrorCode":
+                    if variant.get_type_string() != "(us)":
+                        raise SnapshotFailure("malformed", "PackageKit history error is malformed")
+                    failure = failure or self._transaction_failure(variant.unpack()[0], "")
+                elif signal == "Finished":
+                    if variant.get_type_string() != "(uu)" or finished is not None:
+                        raise SnapshotFailure("malformed", "PackageKit history completion is malformed")
+                    finished = variant.unpack()[0]
+                    loop.quit()
+            except SnapshotFailure as error:
+                failure = error
+                loop.quit()
+
+        def expired():
+            nonlocal source
+            source = 0
+            loop.quit()
+            return self.GLib.SOURCE_REMOVE
+
+        subscription = self.connection.signal_subscribe(PACKAGEKIT_NAME, TRANSACTION_INTERFACE, None, path, None, self.Gio.DBusSignalFlags.NONE, signal_received, None)
+        try:
+            try:
+                self._recovery_call(path, TRANSACTION_INTERFACE, "GetOldTransactions",
+                    self.GLib.Variant("(u)", (64,)), deadline, "()")
+                if finished is None and failure is None:
+                    source = self.GLib.timeout_add(self._timeout_ms(deadline), expired)
+                    loop.run()
+                if finished is None and failure is None:
+                    raise SnapshotFailure("timeout", "PackageKit recovery history timed out")
+                if failure is not None:
+                    raise failure
+                if finished != EXIT_SUCCESS:
+                    raise SnapshotFailure("internal", "PackageKit recovery history did not succeed")
+                return tuple(records)
+            except SnapshotFailure:
+                if finished is None:
+                    discarding = True
+                    self._cancel_with_grace(path, loop, lambda: finished is not None)
+                raise
+        finally:
+            live = False
+            if source:
+                self.GLib.source_remove(source)
+            self.connection.signal_unsubscribe(subscription)
 
     def execute_mutation(self, owner: PackageKitMutation, package_ids: Sequence[str]) -> None:
         """Observe the exact object through Finished; a missing reply is not a result."""

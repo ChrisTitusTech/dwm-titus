@@ -71,7 +71,12 @@ now repeats bounded inventory and simulation reads and compares the confirmed
 generation before creating its mutable transaction. Callers cannot supply their
 own package IDs or preview to bypass that check. Fixed, bounded kernel boot and
 typed logind session evidence readers are available for recovery integration.
-Public mutation commands remain disabled: recovery integration and the root-scoped
+The internal recovery coordinator now uses exact-object adoption and a bounded
+active list, plus at most 64 history records for updates only. It distinguishes
+lookup failure from absence, checkpoints adopted restart signals, rejects stale
+ownership, and durably recovers terminal evidence or conservative interruption.
+Previous-boot records cannot reintroduce satisfied guidance. Public mutation
+commands remain disabled: snapshot/control integration and the root-scoped
 confirmation and operation UI must be completed before this boundary can be accepted.
 
 - [ ] Add user-initiated Fedora update discovery and status through the selected
