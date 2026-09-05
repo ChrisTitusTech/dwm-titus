@@ -318,12 +318,13 @@ class JournalDirectoryChain:
 
 @dataclass
 class JournalDescriptorSet:
-    """Fixed journal file descriptors retained under one directory lock."""
+    """Fixed journal file identities retained across bounded lock intervals."""
 
     chain: JournalDirectoryChain
     _descriptors: dict[str, int]
     writable: bool
     closed: bool = False
+    _exclusive: bool = False
 
     def descriptor(self, name: str) -> int:
         if self.closed:
@@ -2299,59 +2300,107 @@ def load_journal_state(chain: JournalDirectoryChain) -> JournalState:
 
 
 @contextlib.contextmanager
+def _retain_journal_files_unlocked(
+    chain: JournalDirectoryChain,
+) -> Iterator[JournalDescriptorSet]:
+    """Open under the caller's lock; retain every file until context exit."""
+    chain.validate()
+    directory_descriptor = chain.directory_descriptor
+    journal = JournalDescriptorSet(chain, {}, writable=True)
+    completed = False
+    try:
+        for name in JOURNAL_NAMES:
+            try:
+                descriptor = os.open(
+                    name,
+                    os.O_RDWR | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC,
+                    dir_fd=directory_descriptor,
+                )
+            except OSError as error:
+                raise JournalLayoutError(
+                    f"journal path {name} writable open failed"
+                ) from error
+            journal._descriptors[name] = descriptor
+            _validate_journal_path_identity(
+                directory_descriptor, name, descriptor, JOURNAL_FILE_SIZE,
+            )
+
+        journal.validate()
+        yield journal
+        journal.validate()
+        completed = True
+    finally:
+        journal.closed = True
+        first_error = _close_descriptors(
+            reversed(tuple(journal._descriptors.values()))
+        )
+        if first_error is not None and completed:
+            raise JournalLayoutError(
+                "writable journal descriptor close failed"
+            ) from first_error
+
+
+@contextlib.contextmanager
+def retain_writable_journal(
+    chain: JournalDirectoryChain,
+) -> Iterator[JournalDescriptorSet]:
+    """Retain exact files without holding a lock during external service work.
+
+    Callers use lock_writable_journal for every state read and checkpoint,
+    and validate the retained identities immediately before external mutations.
+    """
+    with contextlib.ExitStack() as retained:
+        with _journal_lock(chain.directory_descriptor, exclusive=True):
+            journal = retained.enter_context(_retain_journal_files_unlocked(chain))
+        yield journal
+
+
+@contextlib.contextmanager
+def lock_writable_journal(
+    journal: JournalDescriptorSet,
+) -> Iterator[JournalDescriptorSet]:
+    """Revalidate retained identities around one bounded exclusive interval."""
+    if not isinstance(journal, JournalDescriptorSet) or not journal.writable:
+        raise JournalLayoutError("writable journal descriptor set is invalid")
+    if journal._exclusive:
+        raise JournalLockError("journal exclusive interval is already active")
+    journal.validate()
+    with _journal_lock(journal.chain.directory_descriptor, exclusive=True):
+        journal.validate()
+        journal._exclusive = True
+        try:
+            yield journal
+            journal.validate()
+        finally:
+            journal._exclusive = False
+
+
+@contextlib.contextmanager
 def open_writable_journal(
     chain: JournalDirectoryChain,
 ) -> Iterator[JournalDescriptorSet]:
     """Retain the complete writable journal under one exclusive lock."""
     chain.validate()
-    directory_descriptor = chain.directory_descriptor
-    with _journal_lock(directory_descriptor, exclusive=True):
-        journal = JournalDescriptorSet(chain, {}, writable=True)
-        completed = False
-        try:
-            chain.validate()
-            for name in JOURNAL_NAMES:
-                try:
-                    descriptor = os.open(
-                        name,
-                        os.O_RDWR
-                        | os.O_NONBLOCK
-                        | os.O_NOFOLLOW
-                        | os.O_CLOEXEC,
-                        dir_fd=directory_descriptor,
-                    )
-                except OSError as error:
-                    raise JournalLayoutError(
-                        f"journal path {name} writable open failed"
-                    ) from error
-                journal._descriptors[name] = descriptor
-                _validate_journal_path_identity(
-                    directory_descriptor,
-                    name,
-                    descriptor,
-                    JOURNAL_FILE_SIZE,
-                )
+    with _journal_lock(chain.directory_descriptor, exclusive=True):
+        with _retain_journal_files_unlocked(chain) as journal:
+            journal._exclusive = True
+            try:
+                yield journal
+            finally:
+                journal._exclusive = False
 
-            journal.validate()
-            yield journal
-            journal.validate()
-            completed = True
-        finally:
-            journal.closed = True
-            first_error = _close_descriptors(
-                reversed(tuple(journal._descriptors.values()))
-            )
-            if first_error is not None and completed:
-                raise JournalLayoutError(
-                    "writable journal descriptor close failed"
-                ) from first_error
+
+def _require_exclusive_journal(journal: JournalDescriptorSet) -> None:
+    if not isinstance(journal, JournalDescriptorSet) or not journal.writable:
+        raise JournalLayoutError("writable journal descriptor set is invalid")
+    if not journal._exclusive:
+        raise JournalLockError("journal state access requires an exclusive interval")
 
 
 def _load_writable_journal_state(
     journal: JournalDescriptorSet,
 ) -> tuple[JournalState, dict[str, JournalFrame]]:
-    if not isinstance(journal, JournalDescriptorSet) or not journal.writable:
-        raise JournalLayoutError("writable journal descriptor set is invalid")
+    _require_exclusive_journal(journal)
     journal.validate()
     payloads: dict[str, str] = {}
     frames: dict[str, JournalFrame] = {}
@@ -2378,8 +2427,7 @@ def commit_writable_journal_path(
     journal: JournalDescriptorSet, name: str, payload: str
 ) -> tuple[int, JournalFrame]:
     """Commit one retained path between complete journal identity checks."""
-    if not isinstance(journal, JournalDescriptorSet) or not journal.writable:
-        raise JournalLayoutError("writable journal descriptor set is invalid")
+    _require_exclusive_journal(journal)
     journal.validate()
     descriptor = journal.descriptor(name)
     try:

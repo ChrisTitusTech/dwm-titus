@@ -2919,6 +2919,125 @@ class JournalWritableCommitTests(unittest.TestCase):
                 chain.close()
 
 
+class JournalRetainedSessionTests(unittest.TestCase):
+    boot_id = "01234567-89ab-cdef-0123-456789abcdef"
+
+    @contextlib.contextmanager
+    def session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+            with provider.open_journal_directory_chain(str(path)) as chain:
+                provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
+                with provider.retain_writable_journal(chain) as journal:
+                    yield path, chain, journal
+
+    def begin(self, journal):
+        return provider.begin_journal_operation(
+            journal, "updates-refresh", "2026-09-04T18:00:00Z", "Starting refresh",
+            transaction_path="/1_test", boot_id=self.boot_id,
+        )
+
+    def test_service_interval_releases_lock_but_retains_all_file_identities(self):
+        with self.session() as (_path, chain, journal):
+            identities = {
+                name: (journal.descriptor(name), os.fstat(journal.descriptor(name)).st_ino)
+                for name in provider.JOURNAL_NAMES
+            }
+            with provider._journal_lock(chain.directory_descriptor, exclusive=True):
+                pass
+            with provider.lock_writable_journal(journal):
+                operation = self.begin(journal)
+                with mock.patch.object(provider, "JOURNAL_LOCK_DEADLINE_SECONDS", 0.01):
+                    with self.assertRaises(provider.JournalLockError):
+                        with provider._journal_lock(chain.directory_descriptor, exclusive=True):
+                            self.fail("checkpoint lock did not exclude another writer")
+            with provider._journal_lock(chain.directory_descriptor, exclusive=True):
+                pass
+            with provider.lock_writable_journal(journal):
+                self.assertEqual(provider.load_writable_journal_state(journal).active, operation)
+                for name, (descriptor, inode) in identities.items():
+                    self.assertEqual(journal.descriptor(name), descriptor)
+                    self.assertEqual(os.fstat(descriptor).st_ino, inode)
+        self.assertTrue(journal.closed)
+        for descriptor, _inode in identities.values():
+            with self.assertRaises(OSError):
+                os.fstat(descriptor)
+
+    def test_unlocked_state_reads_and_commits_are_rejected(self):
+        with self.session() as (path, _chain, journal):
+            before = (path / "active").read_bytes()
+            with self.assertRaisesRegex(provider.JournalLockError, "exclusive interval"):
+                provider.load_writable_journal_state(journal)
+            with self.assertRaisesRegex(provider.JournalLockError, "exclusive interval"):
+                provider.commit_writable_journal_path(journal, "active", "active\tempty")
+            with self.assertRaisesRegex(provider.JournalLockError, "exclusive interval"):
+                self.begin(journal)
+            self.assertEqual((path / "active").read_bytes(), before)
+
+    def test_reacquisition_observes_concurrent_checkpoint_and_rejects_stale_owner(self):
+        with self.session() as (_path, chain, journal):
+            with provider.lock_writable_journal(journal):
+                pending = self.begin(journal)
+            running = replace(pending, state="running")
+            with provider.open_writable_journal(chain) as observer:
+                provider.advance_journal_operation(observer, pending, running)
+            with provider.lock_writable_journal(journal):
+                self.assertEqual(provider.load_writable_journal_state(journal).active, running)
+                with self.assertRaises(provider.JournalAdmissionError):
+                    provider.advance_journal_operation(journal, pending, running)
+
+    def test_replaced_file_during_service_wait_is_rejected_before_checkpoint(self):
+        descriptors = ()
+        with self.assertRaisesRegex(provider.JournalLayoutError, "active identity"):
+            with self.session() as (path, _chain, journal):
+                descriptors = tuple(journal.descriptor(name) for name in provider.JOURNAL_NAMES)
+                active = path / "active"
+                before = active.read_bytes()
+                active.rename(path / "detached-active")
+                active.write_bytes(before)
+                active.chmod(0o600)
+                with provider.lock_writable_journal(journal):
+                    self.fail("replacement was accepted")
+        for descriptor in descriptors:
+            with self.assertRaises(OSError):
+                os.fstat(descriptor)
+
+    def test_replaced_directory_during_service_wait_is_rejected(self):
+        with self.assertRaises(provider.JournalLayoutError):
+            with self.session() as (path, _chain, journal):
+                path.rename(path.with_name("detached-journal"))
+                path.mkdir(mode=0o700)
+                with provider.lock_writable_journal(journal):
+                    self.fail("directory replacement was accepted")
+
+    def test_nested_interval_and_body_error_release_lock(self):
+        with self.session() as (_path, chain, journal):
+            with self.assertRaisesRegex(RuntimeError, "service error"):
+                with provider.lock_writable_journal(journal):
+                    with self.assertRaisesRegex(provider.JournalLockError, "already active"):
+                        with provider.lock_writable_journal(journal):
+                            self.fail("nested interval was accepted")
+                    raise RuntimeError("service error")
+            self.assertFalse(journal._exclusive)
+            with provider._journal_lock(chain.directory_descriptor, exclusive=True):
+                pass
+            with provider.lock_writable_journal(journal):
+                self.assertIsNone(provider.load_writable_journal_state(journal).active)
+
+    def test_contended_reacquisition_remains_bounded_and_can_be_retried(self):
+        with self.session() as (_path, chain, journal):
+            with provider._journal_lock(chain.directory_descriptor, exclusive=True):
+                started = time.monotonic()
+                with mock.patch.object(provider, "JOURNAL_LOCK_DEADLINE_SECONDS", 0.01):
+                    with self.assertRaises(provider.JournalLockError):
+                        with provider.lock_writable_journal(journal):
+                            self.fail("contended interval was entered")
+                self.assertLess(time.monotonic() - started, 1)
+            self.assertFalse(journal._exclusive)
+            with provider.lock_writable_journal(journal):
+                self.assertIsNone(provider.load_writable_journal_state(journal).active)
+
+
 class JournalLifecycleTests(unittest.TestCase):
     boot_id = "01234567-89ab-cdef-0123-456789abcdef"
     started = "2026-09-04T18:00:00Z"
