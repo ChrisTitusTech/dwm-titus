@@ -62,6 +62,12 @@ versions from `config.mk`.
 
 ### Added
 
+- Add exact-operation PackageKit cancellation with bounded peer, ownership,
+  and cancelability checks. Stale requests leave the journal unchanged, accepted
+  requests remain observable until the real terminal result, and lost replies
+  retain recovery guidance. New update execution and its Settings controls
+  remain disabled pending integration.
+
 - Add a pane-scoped Quickshell system-management model that strictly consumes
   the bounded 1.0 snapshot protocol, isolates malformed provider state, rejects
   ambiguous streams, coalesces user refreshes, and stops its read process when

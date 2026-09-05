@@ -6203,11 +6203,12 @@ class OperationWatchTests(unittest.TestCase):
 
     def test_control_cli_has_fixed_syntax_and_stream_free_stale_diagnostics(self):
         for args in ([], ["watch-operation"], ["ack-operation", "bad"], ["watch-operation", "op-" + "a" * 32, "extra"],
-                     ["updates-refresh"]):
+                     ["updates-refresh"], ["updates-cancel"], ["updates-cancel", "bad"],
+                     ["updates-cancel", "op-" + "a" * 32, "extra"]):
             with self.subTest(args=args), contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(provider.main(args), 2)
                 self.assertEqual(stdout.getvalue(), "")
-        for command, diagnostic in (("watch-operation", "watch"), ("ack-operation", "ack")):
+        for command, diagnostic in (("watch-operation", "watch"), ("ack-operation", "ack"), ("updates-cancel", "cancel")):
             with self.subTest(command=command), mock.patch.object(provider, "open_journal_directory", side_effect=provider.JournalLayoutError("Unsafe raw text")), \
                     mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
                     contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
@@ -6282,6 +6283,218 @@ class OperationWatchTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertEqual(result.stderr, b"operation observation was interrupted\n")
             self.assertEqual(provider.load_journal_state(journal.chain).handoff.operation_id, operation.operation_id)
+
+
+class OperationCancelTests(unittest.TestCase):
+    boot_id = PackageKitExecutionTests.boot_id
+    package_id = PackageKitExecutionTests.package_id
+    journal = PackageKitExecutionTests.journal
+    begin = OperationRecoveryTests.begin
+    emit = RecoveryAdapterTests.emit
+    properties = RecoveryAdapterTests.properties
+
+    def backend(self, journal, *, changes=None, event=None):
+        backend = RecoveryAdapterTests.backend(self, journal)
+        backend.GLib.MainContext = types.SimpleNamespace(default=lambda: types.SimpleNamespace(pending=lambda: False))
+        def request(path, interface, method, parameters, deadline, signature, *, destination):
+            self.assertFalse(journal._exclusive)
+            if event is not None:
+                event(backend, method)
+            if method == "GetNameOwner":
+                self.assertEqual((destination, path, interface, parameters.unpack(), signature),
+                    ("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", (provider.PACKAGEKIT_NAME,), "(s)"))
+                return SessionEvidenceTests.Variant("(s)", (":1.77",))
+            self.assertEqual((destination, path), (":1.77", "/1_test"))
+            if method == "GetAll":
+                self.assertEqual((interface, parameters.unpack(), signature),
+                    (provider.PROPERTIES_INTERFACE, (provider.TRANSACTION_INTERFACE,), "(a{sv})"))
+                return SessionEvidenceTests.Variant("(a{sv})", (self.properties(**(changes or {})),))
+            self.assertEqual((method, interface, parameters, signature), ("Cancel", provider.TRANSACTION_INTERFACE, None, "()"))
+            return SessionEvidenceTests.Variant("()", ())
+        backend._recovery_call = mock.Mock(side_effect=request)
+        return backend
+
+    def cancel(self, journal, operation, backend, *, boot_id=None):
+        dispatched = mock.Mock()
+        provider.cancel_journal_operation(journal, operation.operation_id, boot_id=boot_id or self.boot_id,
+            backend_factory=lambda: backend, on_dispatch=dispatched)
+        return dispatched
+
+    def cli(self, journal, operation_id, backend):
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(pathlib.Path(journal.chain.path).parents[1])}), \
+                mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                mock.patch.object(provider, "PackageKitBackend", return_value=backend), \
+                contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+            code = provider.main(["updates-cancel", operation_id])
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_exact_cancel_is_unlocked_pinned_and_never_claims_completion(self):
+        for kind in ("refresh", "update"):
+            for state in ("pending", "authorizing", "running"):
+                with self.subTest(kind=kind, state=state), self.journal() as journal:
+                    operation = self.begin(journal, kind, **({} if state == "pending" else {"state": state}))
+                    backend = self.backend(journal, changes={"Role": 13 if kind == "refresh" else 22})
+                    dispatched = self.cancel(journal, operation, backend)
+                    dispatched.assert_called_once_with()
+                    current = provider.load_journal_state(journal.chain)
+                    self.assertEqual(current.active.state, "cancel-requested" if state == "running" else state)
+                    self.assertEqual(current.active.operation_id, operation.operation_id)
+                    self.assertIsNone(current.handoff)
+                    self.assertEqual(current.terminals, (None,) * 32)
+                    self.assertEqual([call.args[2] for call in backend._recovery_call.call_args_list],
+                                     ["GetNameOwner", "GetAll", "Cancel"])
+                    self.assertEqual(len({call.args[4] for call in backend._recovery_call.call_args_list}), 1)
+                    self.assertEqual(backend.connection.subscriptions, {})
+
+    def test_stale_terminal_regional_and_previous_boot_never_open_backend(self):
+        for case in ("stale", "terminal", "regional", "boot"):
+            with self.subTest(case=case), self.journal() as journal:
+                operation = self.begin(journal, "timezone" if case == "regional" else "update")
+                if case == "terminal":
+                    with provider.lock_writable_journal(journal):
+                        provider.advance_journal_operation(journal, operation, replace(operation, state="failed",
+                            error_code="internal", finished_at="2026-09-05T01:00:00Z", terminal_monotonic=100))
+                before = provider.load_journal_state(journal.chain)
+                factory = mock.Mock()
+                with self.assertRaises(provider.CancelTargetUnavailable):
+                    provider.cancel_journal_operation(journal, "op-" + "0" * 32 if case == "stale" else operation.operation_id,
+                        boot_id="abcdef01-2345-6789-abcd-ef0123456789" if case == "boot" else self.boot_id,
+                        backend_factory=factory, on_dispatch=mock.Mock())
+                factory.assert_not_called()
+                self.assertEqual(provider.load_journal_state(journal.chain), before)
+
+    def test_unavailable_identity_and_cancelability_leave_active_unchanged(self):
+        for changes in ({"Role": 13}, {"Role": 0}, {"Role": True}, {"Uid": os.getuid() + 1},
+                        {"Uid": True}, {"AllowCancel": False}, {"AllowCancel": 1},
+                        {"Status": 18}, {"Status": None}, {"Status": 37}):
+            with self.subTest(changes=changes), self.journal() as journal:
+                operation = self.begin(journal, state="running")
+                backend = self.backend(journal, changes=changes)
+                self.assertEqual(self.cli(journal, operation.operation_id, backend), (3, "", "cancel target is unavailable\n"))
+                self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+                self.assertNotIn("Cancel", [call.args[2] for call in backend._recovery_call.call_args_list])
+                self.assertEqual(backend.connection.subscriptions, {})
+
+    def test_revocation_or_finish_during_getall_cannot_be_overwritten(self):
+        for member, signature, values, interface in (
+            ("PropertiesChanged", "(sa{sv}as)", (provider.TRANSACTION_INTERFACE, {"AllowCancel": False}, []), provider.PROPERTIES_INTERFACE),
+            ("PropertiesChanged", "(sa{sv}as)", (provider.TRANSACTION_INTERFACE, {}, ["Uid"]), provider.PROPERTIES_INTERFACE),
+            ("Finished", "(uu)", (1, 1), None), ("Destroy", "()", (), None),
+            ("NameOwnerChanged", "(sss)", (provider.PACKAGEKIT_NAME, ":1.77", ":1.88"), "org.freedesktop.DBus"),
+        ):
+            with self.subTest(member=member, values=values), self.journal() as journal:
+                operation = self.begin(journal)
+                def event(backend, method):
+                    if method == "GetAll":
+                        self.emit(backend, member, signature, values, interface)
+                backend = self.backend(journal, event=event)
+                self.assertEqual(self.cli(journal, operation.operation_id, backend), (3, "", "cancel target is unavailable\n"))
+                self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_queued_revocation_after_journal_check_prevents_dispatch(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            backend = self.backend(journal)
+            queued = [True]
+            def iterate(_blocking):
+                queued.clear()
+                self.emit(backend, "PropertiesChanged", "(sa{sv}as)",
+                    (provider.TRANSACTION_INTERFACE, {"AllowCancel": False}, []), provider.PROPERTIES_INTERFACE)
+            backend.GLib.MainContext = types.SimpleNamespace(default=lambda: types.SimpleNamespace(
+                pending=lambda: bool(queued), iteration=iterate))
+            self.assertEqual(self.cli(journal, operation.operation_id, backend), (3, "", "cancel target is unavailable\n"))
+            self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_noisy_context_is_bounded_and_never_dispatches(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            backend = self.backend(journal)
+            iterate = mock.Mock()
+            backend.GLib.MainContext = types.SimpleNamespace(default=lambda: types.SimpleNamespace(pending=lambda: True, iteration=iterate))
+            self.assertEqual(self.cli(journal, operation.operation_id, backend)[0], 3)
+            self.assertEqual(iterate.call_count, 64)
+            self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_completion_during_lookup_is_rechecked_before_send(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, state="running")
+            def event(_backend, method):
+                if method == "GetAll":
+                    with provider.lock_writable_journal(journal):
+                        provider.advance_journal_operation(journal, operation, replace(operation, state="succeeded",
+                            finished_at="2026-09-05T01:00:00Z", terminal_monotonic=100))
+            backend = self.backend(journal, event=event)
+            self.assertEqual(self.cli(journal, operation.operation_id, backend)[0], 3)
+            self.assertEqual(provider.load_journal_state(journal.chain).active.state, "succeeded")
+            self.assertNotIn("Cancel", [call.args[2] for call in backend._recovery_call.call_args_list])
+
+    def test_accepted_cancel_cannot_advance_a_replacement_operation(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, state="running")
+            replacement = []
+            def event(_backend, method):
+                if method == "Cancel":
+                    with provider.lock_writable_journal(journal):
+                        provider.advance_journal_operation(journal, operation, replace(operation, state="succeeded",
+                            finished_at="2026-09-05T01:00:00Z", terminal_monotonic=100))
+                        provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+                        provider.acknowledge_journal_handoff(journal, operation.operation_id)
+                    replacement.append(self.begin(journal, "refresh", state="running"))
+            self.assertEqual(self.cli(journal, operation.operation_id, self.backend(journal, event=event)), (0, "", ""))
+            self.assertEqual(provider.load_journal_state(journal.chain).active, replacement[0])
+
+    def test_lost_cancel_reply_is_not_stale_rejection_or_completion(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, state="running")
+            def event(_backend, method):
+                if method == "Cancel":
+                    raise provider.SnapshotFailure("timeout", "Lost cancel reply")
+            result = self.cli(journal, operation.operation_id, self.backend(journal, event=event))
+            self.assertEqual(result, (1, "", "cancellation request could not be confirmed; observe the existing operation\n"))
+            self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_backend_stale_rejection_after_send_is_stream_free_status_three(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, state="running")
+            def event(backend, method):
+                if method == "Cancel":
+                    failure = provider.SnapshotFailure("internal", "Backend rejected stale cancel")
+                    failure.__cause__ = backend.GLib.Error("stale")
+                    raise failure
+            backend = self.backend(journal, event=event)
+            backend.Gio.dbus_error_get_remote_error = lambda _error: provider.TRANSACTION_INTERFACE + ".NotRunning"
+            self.assertEqual(self.cli(journal, operation.operation_id, backend), (3, "", "cancel target is unavailable\n"))
+            self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_cancel_persistence_failure_retains_observation_guidance(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, state="running")
+            with mock.patch.object(provider, "advance_journal_operation", side_effect=provider.JournalCommitError("Injected write failure")):
+                result = self.cli(journal, operation.operation_id, self.backend(journal))
+            self.assertEqual(result[0], 1)
+            self.assertEqual(result[1], "")
+            self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_lookup_failure_cleans_subscriptions_without_dispatch_or_journal_change(self):
+        for stage in ("GetNameOwner", "GetAll"):
+            with self.subTest(stage=stage), self.journal() as journal:
+                operation = self.begin(journal)
+                def event(_backend, method):
+                    if method == stage:
+                        raise provider.SnapshotFailure("timeout", "Lookup timed out")
+                backend = self.backend(journal, event=event)
+                self.assertEqual(self.cli(journal, operation.operation_id, backend), (3, "", "cancel target is unavailable\n"))
+                self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+                self.assertEqual(backend.connection.subscriptions, {})
+
+    def test_invalid_peer_is_rejected_before_object_access(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            backend = self.backend(journal)
+            backend._recovery_call = mock.Mock(return_value=SessionEvidenceTests.Variant("(s)", (provider.PACKAGEKIT_NAME,)))
+            self.assertEqual(self.cli(journal, operation.operation_id, backend), (3, "", "cancel target is unavailable\n"))
+            backend._recovery_call.assert_called_once()
+            self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
 
 
 class RecoverySnapshotTests(unittest.TestCase):
@@ -6398,7 +6611,8 @@ class RecoverySnapshotTests(unittest.TestCase):
             backend.probe_operation.side_effect = probe
             output = self.snapshot(journal, backend)
             self.assertEqual(rows(output, "active-operation")[0][1:7],
-                [operation.operation_id, operation.action_id, "refresh", "pending", "27", "no"])
+                [operation.operation_id, operation.action_id, "refresh", "pending", "27", "yes"])
+            self.assertEqual(next(row[2] for row in rows(output, "action") if row[1] == "updates-cancel"), "available")
             self.assertEqual(rows(output, "terminal-handoff"), [])
             self.assertEqual(output[-1], "complete\tsnapshot")
 
@@ -6409,6 +6623,8 @@ class RecoverySnapshotTests(unittest.TestCase):
             backend.probe_operation.side_effect = provider.SnapshotFailure("timeout", "Lookup expired")
             output = self.snapshot(journal, backend)
             self.assertEqual(rows(output, "active-operation")[0][1], operation.operation_id)
+            self.assertEqual(rows(output, "active-operation")[0][6], "no")
+            self.assertEqual(next(row[2] for row in rows(output, "action") if row[1] == "updates-cancel"), "unavailable")
             self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
             self.assertIn(["error", "recovery", "timeout", "Lookup expired"], rows(output, "error"))
 

@@ -221,6 +221,10 @@ class JournalAdmissionError(RuntimeError):
     """A valid journal state cannot admit another operation."""
 
 
+class CancelTargetUnavailable(JournalAdmissionError):
+    """An exact cancellation target was rejected without an accepted request."""
+
+
 @dataclass(frozen=True)
 class JournalFrame:
     sequence: int
@@ -3477,9 +3481,15 @@ def build_managed_snapshot(backend: PackageKitBackend) -> list[str]:
     if state is not None and state.active is not None:
         operation = state.active
         percent = recovery.evidence.percent if recovery.evidence is not None else None
+        cancelable = recovery.evidence is not None and recovery.evidence.allow_cancel
+        for index, line in enumerate(lines):
+            if line.startswith("action\tupdates-cancel\t"):
+                lines[index] = "\t".join(("action", "updates-cancel", "available" if cancelable else "unavailable",
+                    "delegated", "updates", "Cancel update", "Exact PackageKit transaction permits cancellation"
+                    if cancelable else "Exact PackageKit transaction does not currently permit cancellation"))
         lines.append("\t".join(("active-operation", operation.operation_id, operation.action_id,
-            operation.kind, operation.state, "unknown" if percent is None else str(percent), "no",
-            "Exact journaled operation remains active; use watch-operation. Cancellation controls are not enabled in this build")))
+            operation.kind, operation.state, "unknown" if percent is None else str(percent), "yes" if cancelable else "no",
+            "Exact journaled operation remains active; use watch-operation to observe its result")))
     elif state is not None and state.handoff is not None:
         operation = state.terminals[state.handoff.slot]
         lines.append("\t".join(("terminal-handoff", operation.operation_id, operation.action_id, operation.kind)))
@@ -4339,7 +4349,8 @@ class PackageKitBackend:
         return path
 
     def _recovery_call(self, path: str, interface: str, method: str,
-                       parameters: object, deadline: float, signature: str) -> object:
+                       parameters: object, deadline: float, signature: str, *,
+                       destination: str = PACKAGEKIT_NAME) -> object:
         """Dispatch signals in order during a bounded request; validate its reply locally.
 
         Local signature validation keeps a wrong reply type classified as
@@ -4371,7 +4382,7 @@ class PackageKitBackend:
 
         try:
             source = self.GLib.timeout_add(wait_ms, expired)
-            self.connection.call(PACKAGEKIT_NAME, path, interface, method, parameters,
+            self.connection.call(destination, path, interface, method, parameters,
                 None, self.Gio.DBusCallFlags.NONE,
                 wait_ms, request, completed, None)
             if reply is None and failure is None and source:
@@ -4388,6 +4399,104 @@ class PackageKitBackend:
         if reply.get_type_string() != signature:
             raise SnapshotFailure("malformed", "PackageKit recovery reply is malformed")
         return reply
+
+    def cancel_operation(self, operation: JournalOperation, before_send: Callable[[], object],
+                         on_dispatch: Callable[[], object]) -> None:
+        """Request cancellation from one pinned peer; never infer its final result."""
+        encode_journal_operation(operation)
+        if operation.kind not in {"refresh", "update"} or operation.state in JOURNAL_OPERATION_TERMINAL_STATES:
+            raise CancelTargetUnavailable("cancel target is unavailable")
+        deadline = time.monotonic() + 10
+        reply = self._recovery_call("/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner",
+            self.GLib.Variant("(s)", (PACKAGEKIT_NAME,)), deadline, "(s)", destination="org.freedesktop.DBus")
+        peer = reply.unpack()[0]
+        if not isinstance(peer, str) or re.fullmatch(r":[0-9]+\.[0-9]+", peer) is None:
+            raise CancelTargetUnavailable("cancel target is unavailable")
+        fields = ("Role", "Uid", "Status", "AllowCancel")
+        observed = {}
+        pending = {}
+        snapshot_applied = False
+        blocked = False
+        live = True
+        subscriptions = []
+
+        def changed(_connection, _sender, _path, interface, member, variant, _data):
+            nonlocal blocked
+            if not live:
+                return
+            try:
+                if interface == "org.freedesktop.DBus":
+                    blocked = blocked or variant.get_type_string() != "(sss)" or variant.unpack()[1] != variant.unpack()[2]
+                elif interface == TRANSACTION_INTERFACE:
+                    if member in {"Finished", "Destroy"}:
+                        blocked = True
+                elif interface == PROPERTIES_INTERFACE:
+                    if variant.get_type_string() != "(sa{sv}as)":
+                        raise ValueError
+                    owner, values, invalidated = variant.unpack()
+                    if owner != TRANSACTION_INTERFACE or not isinstance(values, dict):
+                        raise ValueError
+                    target = observed if snapshot_applied else pending
+                    for key in fields:
+                        if key in invalidated:
+                            target[key] = None
+                        elif key in values:
+                            target[key] = values[key] if type(values[key]) in {int, bool} else None
+            except (TypeError, ValueError, IndexError):
+                blocked = True
+
+        def require_available():
+            expected_role = 13 if operation.kind == "refresh" else 22
+            if (blocked or type(observed.get("Role")) is not int or observed["Role"] != expected_role
+                    or type(observed.get("Uid")) is not int or observed["Uid"] != os.getuid()
+                    or type(observed.get("Status")) is not int or not 0 <= observed["Status"] <= 36
+                    or observed["Status"] == 18 or observed.get("AllowCancel") is not True):
+                raise CancelTargetUnavailable("cancel target is unavailable")
+
+        try:
+            subscriptions.append(self.connection.signal_subscribe(peer, TRANSACTION_INTERFACE, None,
+                operation.transaction_path, None, self.Gio.DBusSignalFlags.NONE, changed, None))
+            subscriptions.append(self.connection.signal_subscribe(peer, PROPERTIES_INTERFACE, "PropertiesChanged",
+                operation.transaction_path, TRANSACTION_INTERFACE, self.Gio.DBusSignalFlags.NONE, changed, None))
+            subscriptions.append(self.connection.signal_subscribe("org.freedesktop.DBus", "org.freedesktop.DBus",
+                "NameOwnerChanged", "/org/freedesktop/DBus", PACKAGEKIT_NAME, self.Gio.DBusSignalFlags.NONE, changed, None))
+            values = self._recovery_call(operation.transaction_path, PROPERTIES_INTERFACE, "GetAll",
+                self.GLib.Variant("(s)", (TRANSACTION_INTERFACE,)), deadline, "(a{sv})", destination=peer).unpack()[0]
+            if not isinstance(values, dict):
+                raise CancelTargetUnavailable("cancel target is unavailable")
+            observed.update({key: values.get(key) if type(values.get(key)) in {int, bool} else None for key in fields})
+            observed.update(pending)
+            pending.clear()
+            snapshot_applied = True
+            require_available()
+            before_send()  # Revalidate journal ownership without holding a lock across D-Bus.
+            # Dispatch queued property revocations after the bounded journal lock.
+            # A noisy peer cannot turn this finite control into an unbounded watcher.
+            context = self.GLib.MainContext.default()
+            for _ in range(64):
+                if not context.pending():
+                    break
+                context.iteration(False)
+            else:
+                raise CancelTargetUnavailable("cancel target is unavailable")
+            require_available()
+            self._timeout_ms(deadline)
+            on_dispatch()
+            try:
+                self._recovery_call(operation.transaction_path, TRANSACTION_INTERFACE, "Cancel",
+                    None, deadline, "()", destination=peer)
+            except SnapshotFailure as failure:
+                cause = failure.__cause__
+                if isinstance(cause, self.GLib.Error) and self.Gio.dbus_error_get_remote_error(cause) in {
+                        TRANSACTION_INTERFACE + ".NotRunning", TRANSACTION_INTERFACE + ".NoRole",
+                        TRANSACTION_INTERFACE + ".CannotCancel", TRANSACTION_INTERFACE + ".NoSuchTransaction",
+                        "org.freedesktop.DBus.Error.UnknownObject"}:
+                    raise CancelTargetUnavailable("cancel target is unavailable") from failure
+                raise
+        finally:
+            live = False
+            for subscription in subscriptions:
+                self.connection.signal_unsubscribe(subscription)
 
     def probe_operation(self, operation: JournalOperation, *,
                         on_restart: Callable[[int], object] | None = None,
@@ -5180,9 +5289,42 @@ def watch_journal_operation(
                   if terminal.kind == "update" else terminal.detail)
 
 
+def cancel_journal_operation(journal: JournalDescriptorSet, operation_id: str, *, boot_id: str,
+                             on_dispatch: Callable[[], object],
+                             backend_factory: Callable[[], PackageKitBackend] = PackageKitBackend) -> None:
+    """Cancel only one active identity, leaving completion to its observer."""
+    identity = ("operation_id", "action_id", "started_at", "kind", "generation", "transaction_path", "boot_id", "slot")
+    with lock_writable_journal(journal):
+        original = load_writable_journal_state(journal).active
+        if (original is None or original.operation_id != operation_id or original.kind not in {"refresh", "update"}
+                or original.state in JOURNAL_OPERATION_TERMINAL_STATES
+                or (original.kind == "update" and original.boot_id != boot_id)):
+            raise CancelTargetUnavailable("cancel target is unavailable")
+
+    def before_send():
+        with lock_writable_journal(journal):
+            current = load_writable_journal_state(journal).active
+            if (current is None or current.state in JOURNAL_OPERATION_TERMINAL_STATES
+                    or any(getattr(current, key) != getattr(original, key) for key in identity)):
+                raise CancelTargetUnavailable("cancel target is unavailable")
+
+    backend_factory().cancel_operation(original, before_send, on_dispatch)
+    with lock_writable_journal(journal):
+        current = load_writable_journal_state(journal).active
+        if (current is not None and current.state == "running"
+                and all(getattr(current, key) == getattr(original, key) for key in identity)):
+            advance_journal_operation(journal, current, replace(current, state="cancel-requested",
+                detail="Cancellation requested; waiting for PackageKit completion"))
+
+
 def operation_control(command: str, operation_id: str) -> int:
     """Keep stale control rejection stream-free and watch failure distinct."""
     started = False
+    cancel_dispatched = False
+
+    def dispatched():
+        nonlocal cancel_dispatched
+        cancel_dispatched = True
 
     def write(chunk):
         nonlocal started
@@ -5195,12 +5337,21 @@ def operation_control(command: str, operation_id: str) -> int:
         with open_journal_directory() as chain, retain_writable_journal(chain) as journal:
             if command == "watch-operation":
                 watch_journal_operation(journal, operation_id, write, boot_id=boot_id)
+            elif command == "updates-cancel":
+                cancel_journal_operation(journal, operation_id, boot_id=boot_id,
+                    on_dispatch=dispatched, backend_factory=PackageKitBackend)
             else:
                 control_journal_target(journal, operation_id, boot_id)
                 with lock_writable_journal(journal):
                     acknowledge_journal_handoff(journal, operation_id)
         return 0
     except (SnapshotFailure, JournalFrameError, JournalRecordError, JournalAdmissionError, OSError, OperationProtocolError) as error:
+        if command == "updates-cancel":
+            if cancel_dispatched and not isinstance(error, CancelTargetUnavailable):
+                print("cancellation request could not be confirmed; observe the existing operation", file=sys.stderr)
+                return 1
+            print("cancel target is unavailable", file=sys.stderr)
+            return 3
         if started:
             if isinstance(error, BrokenPipeError):
                 # Avoid a second buffered flush at interpreter shutdown changing
@@ -5214,12 +5365,12 @@ def operation_control(command: str, operation_id: str) -> int:
 
 
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | watch-operation OPERATION_ID | ack-operation OPERATION_ID", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
-    if len(argv) == 2 and argv[0] in {"watch-operation", "ack-operation"} and JOURNAL_OPERATION_ID_PATTERN.fullmatch(argv[1]):
+    if len(argv) == 2 and argv[0] in {"watch-operation", "ack-operation", "updates-cancel"} and JOURNAL_OPERATION_ID_PATTERN.fullmatch(argv[1]):
         return operation_control(argv[0], argv[1])
     if list(argv) != ["snapshot"]:
         return usage()

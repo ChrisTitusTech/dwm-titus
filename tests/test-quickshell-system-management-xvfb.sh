@@ -120,6 +120,11 @@ requested-remove)
 partial-restart)
 	snapshot | sed 's/state\tupdate-restart\tavailable\tsystem/state\tupdate-restart\tpartial\tsecurity-session/'
 	;;
+cancelable-active)
+	snapshot | sed \
+		-e 's/action\tupdates-cancel\tunavailable/action\tupdates-cancel\tavailable/' \
+		-e '/^complete\t/i\active-operation\top-11111111111111111111111111111111\tupdates-refresh\trefresh\trunning\t45\tyes\tCancelable fixture'
+	;;
 regional-handoff)
 	snapshot | sed '/^complete\t/i\terminal-handoff\top-11111111111111111111111111111111\ttimezone-set\ttimezone'
 	;;
@@ -328,6 +333,12 @@ printf 'regional-handoff\n' >"$fixture/mode"
 ipc refresh >/dev/null
 wait_state ready
 [ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+
+printf 'cancelable-active\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state ready
+[ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+[ -z "$(ipc systemManagementErrorCodes)" ]
 
 printf 'invalid-handoff\n' >"$fixture/mode"
 ipc refresh >/dev/null
