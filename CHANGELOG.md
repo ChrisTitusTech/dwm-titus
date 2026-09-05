@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Changed
 
+- Preserve a pending Input discovery refresh when a preview finishes during an
+  earlier read, so kept accessibility settings do not remain stale in Settings.
+
 - Accept Fedora PackageKit's actual root-level transaction object IDs in the
   operation journal. The previous namespaced-path assumption rejected real
   transactions; update execution remains disabled pending its integration.

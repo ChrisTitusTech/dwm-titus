@@ -707,6 +707,12 @@ grep -Fq 'readonly property bool displayHasPendingChanges:' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'property bool displayRefreshPending: false' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'property bool inputRefreshPending: false' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'root.inputRefreshPending = true;' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
+grep -Fq 'if (!running && root.inputRefreshPending && root.visible) {' \
+	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'root.displayRefreshPending = true;' \
 	"$repo/config/quickshell/settings/SettingsModel.qml"
 grep -Fq 'if (!running && root.displayRefreshPending && root.visible) {' \
