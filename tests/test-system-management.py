@@ -4542,6 +4542,8 @@ class PackageKitSafetyTests(unittest.TestCase):
             (installed, ":1.8", True),
             (types.SimpleNamespace(st_mode=regular, st_uid=0, st_dev=1, st_ino=1), ":1.8", False),
             (types.SimpleNamespace(st_mode=regular, st_uid=1000, st_dev=1, st_ino=2), ":1.8", False),
+            (types.SimpleNamespace(st_mode=stat.S_IFREG | 0o775, st_uid=0, st_dev=1, st_ino=2), ":1.8", False),
+            (types.SimpleNamespace(st_mode=stat.S_IFREG | 0o757, st_uid=0, st_dev=1, st_ino=2), ":1.8", False),
             (PermissionError("procfs denied"), ":1.8", False),
             (installed, ":1.9", False),
         ):
@@ -4600,6 +4602,7 @@ class PackageKitSafetyTests(unittest.TestCase):
             source.assert_called_once_with("/etc/os-release", "rb")
             source().read.assert_called_once_with(65537)
         for data in (b"ID=ubuntu\nID_LIKE=fedora", b"ID=fedora\nID=fedora", b"ID=$(false)",
+                     b"ID=fedora#variant", b'ID="fedora"#variant', b"ID=fedora #inline",
                      b"ID='fedora", b"\xff", b"x" * 65537):
             with self.subTest(data=data[:20]), mock.patch("builtins.open", mock.mock_open(read_data=data)):
                 with self.assertRaises(provider.SnapshotFailure):
@@ -4718,6 +4721,7 @@ class PackageKitExecutionTests(unittest.TestCase):
                                             VariantType=types.SimpleNamespace(new=lambda value: value))
         backend.Gio = types.SimpleNamespace(
             Cancellable=lambda: types.SimpleNamespace(cancel=lambda: None),
+            dbus_error_get_remote_error=lambda error: "org.freedesktop.DBus.Error." + str(error),
             DBusSignalFlags=types.SimpleNamespace(NONE=0),
             DBusCallFlags=types.SimpleNamespace(NONE=0, ALLOW_INTERACTIVE_AUTHORIZATION=1))
         backend.require_mutation_safe = mock.Mock()
@@ -4785,6 +4789,35 @@ class PackageKitExecutionTests(unittest.TestCase):
             terminal = self.run_operation(journal, backend, chunks, update=True)
             self.assertEqual((terminal.state, terminal.system_restart), ("permission-denied", "none"))
             self.assertIn("error\tupdates\tpermission-denied", "".join(chunks))
+
+    def test_definitive_method_rejection_does_not_wait_for_terminal_signals(self):
+        for error in ("UnknownMethod", "InvalidArgs", "UnknownInterface", "UnknownObject"):
+            with self.subTest(error=error), self.journal() as journal:
+                backend = self.backend(journal, [lambda bus: bus.reply_error(error)])
+                chunks = []
+                terminal = self.run_operation(journal, backend, chunks, update=True)
+                self.assertEqual((terminal.state, terminal.system_restart), ("failed", "none"))
+                self.assertIn("complete\toperation", "".join(chunks))
+
+    def test_definitive_rejection_does_not_clear_observed_execution_uncertainty(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [lambda bus: bus.progress(Status=3),
+                                            lambda bus: bus.reply_error("InvalidArgs")])
+            terminal = self.run_operation(journal, backend, [], update=True)
+            self.assertEqual((terminal.state, terminal.system_restart), ("failed", "unknown"))
+
+    def test_invalidated_or_malformed_status_cannot_prove_prerunning_cancellation(self):
+        for invalidate in (True, False):
+            with self.subTest(invalidate=invalidate), self.journal() as journal:
+                def invalidate_status(bus):
+                    if invalidate:
+                        bus.emit("PropertiesChanged", (provider.TRANSACTION_INTERFACE, {}, ["Status"]), properties=True)
+                    else:
+                        bus.progress(Status="bad")
+                backend = self.backend(journal, [lambda bus: bus.progress(Status=31), invalidate_status,
+                                                lambda bus: bus.emit("Finished", (3, 0))])
+                terminal = self.run_operation(journal, backend, [], update=True)
+                self.assertEqual((terminal.state, terminal.system_restart), ("canceled", "unknown"))
 
     def test_lost_object_or_bus_after_send_is_interrupted_unknown(self):
         for event in (lambda bus: bus.emit("Destroy", ()), lambda bus: bus.closed_callback()):

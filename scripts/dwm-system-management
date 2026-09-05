@@ -3451,7 +3451,7 @@ def read_fedora_identity() -> dict[str, str]:
             key = line.partition("=")[0]
             if key not in {"ID", "VERSION_ID"}:
                 continue
-            fields = shlex.split(line, comments=True)
+            fields = shlex.split(line, comments=False)
             if len(fields) != 1 or key in identity or "=" not in fields[0]:
                 raise ValueError
             identity[key] = fields[0].partition("=")[2]
@@ -3584,6 +3584,7 @@ class PackageKitMutation:
                 if status not in {0, 1, 2, 18, 31} and self.operation.state not in {"running", "cancel-requested"}:
                     self._checkpoint("running")
             else:
+                self.last_status = 0
                 self.progress_warning = "PackageKit phase is unknown"
         if old_progress != (self.percent, self.allow_cancel, self.progress_warning):
             # A cooperating cancel control may have checkpointed while the
@@ -3622,7 +3623,8 @@ class PackageKitMutation:
         if changes and any(getattr(self.operation, key) != value for key, value in changes.items()):
             self._checkpoint(**changes)
 
-    def finish(self, state: str, failure: SnapshotFailure | None = None) -> None:
+    def finish(self, state: str, failure: SnapshotFailure | None = None,
+               *, invocation_rejected: bool = False) -> None:
         cutoff = time.monotonic_ns() // 1000
         finished_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if self.persistence_error is not None or self.terminal is not None:
@@ -3643,7 +3645,8 @@ class PackageKitMutation:
                 current = self._current()
                 contribution = current.system_restart
                 pre_running = current.state in {"pending", "authorizing"}
-                excluded = state == "permission-denied" or (state == "canceled" and pre_running and self.last_status == 31)
+                excluded = state == "permission-denied" or (pre_running and (
+                    invocation_rejected or (state == "canceled" and self.last_status == 31)))
                 if current.kind == "update" and self.sent and not excluded and state != "succeeded" and contribution == "none":
                     contribution = "unknown"
                 terminal = replace(current, state=state, finished_at=finished_at,
@@ -3787,6 +3790,8 @@ class PackageKitBackend:
                 "PackageKit does not support the required method",
                 "unsupported",
             )
+        if "invalidargs" in lowered:
+            return SnapshotFailure("malformed", "PackageKit rejected the method arguments")
         if "timedout" in lowered or "timeout" in lowered:
             return SnapshotFailure(
                 "timeout", "PackageKit request timed out", "unavailable"
@@ -3897,13 +3902,14 @@ class PackageKitBackend:
         call_failure: SnapshotFailure | None = None
         subscriptions = []
 
-        def stop(state: str, failure: SnapshotFailure | None = None) -> None:
+        def stop(state: str, failure: SnapshotFailure | None = None,
+                 *, invocation_rejected: bool = False) -> None:
             nonlocal active
             if not active:
                 return
             active = False
             try:
-                owner.finish(state, failure)
+                owner.finish(state, failure, invocation_rejected=invocation_rejected)
             finally:
                 loop.quit()
 
@@ -3999,6 +4005,13 @@ class PackageKitBackend:
                     call_failure = self._dbus_failure(error)
                     if call_failure.code == "permission-denied":
                         stop("permission-denied", call_failure)
+                    elif self.Gio.dbus_error_get_remote_error(error) in {
+                        "org.freedesktop.DBus.Error.UnknownMethod",
+                        "org.freedesktop.DBus.Error.InvalidArgs",
+                        "org.freedesktop.DBus.Error.UnknownInterface",
+                        "org.freedesktop.DBus.Error.UnknownObject",
+                    }:
+                        stop("failed", call_failure, invocation_rejected=True)
                     else:
                         owner.progress_warning = "PackageKit method reply failed; still observing the exact transaction"
                         owner._progress()
