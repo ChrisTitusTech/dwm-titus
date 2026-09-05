@@ -62,11 +62,17 @@ versions from `config.mk`.
 
 ### Added
 
+- Add explicit metadata-refresh and generation-confirmed install CLI commands
+  backed by durable PackageKit execution and exact terminal results. Rejected
+  requests do not fabricate transactions, and uncertain admission or observation
+  retains recovery guidance. Settings update buttons remain disabled pending
+  confirmation and operation-model integration.
+
 - Add exact-operation PackageKit cancellation with bounded peer, ownership,
   and cancelability checks. Stale requests leave the journal unchanged, accepted
   requests remain observable until the real terminal result, and lost replies
-  retain recovery guidance. New update execution and its Settings controls
-  remain disabled pending integration.
+  retain recovery guidance. Settings update controls remain disabled pending
+  integration.
 
 - Add a pane-scoped Quickshell system-management model that strictly consumes
   the bounded 1.0 snapshot protocol, isolates malformed provider state, rejects

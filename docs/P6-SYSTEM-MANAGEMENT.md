@@ -84,6 +84,23 @@ with the confirmed snapshot. It is an opaque provider-created value, not a
 package ID or caller-selected transaction parameter. No update command accepts
 another option or trailing argument.
 
+The refresh and install CLI entry points now use the durable execution owner.
+An explicit install request requires the exact confirmed generation, repeats
+inventory and simulation, and rejects mismatch before mutable admission. These
+commands return 0 only after a durable `succeeded` result and complete stream;
+every other terminal result returns 1. A rejection before admission emits a
+`pending` then `failed` request, its typed error, audit, and completion, using a
+fresh ID collision-checked against validated journal identities under the lock.
+This rejected request is not persisted or replayable: no PackageKit path,
+active record, terminal slot, restart contribution, or handoff is fabricated.
+The original operation, if any, is unchanged. If the journal cannot safely
+supply an ID, the command instead returns 1 without a stream and with fixed
+recovery guidance. Once an admission write may have started or output has been
+attempted, a failure never falls back to that rejected-request stream. It
+returns 1 with recovery guidance and leaves the actual journal for observation.
+Settings mutation actions remain unavailable until root-scoped confirmation,
+observation, and acknowledgment are integrated.
+
 `OPERATION_ID` must exactly match the `op-` prefix followed by 32 lowercase
 hexadecimal digits emitted for the currently visible operation. The provider
 generates and reserves it while holding the exclusive journal lock, using the
@@ -148,8 +165,8 @@ Finite snapshots now initialize or validate the fixed journal, recover its
 bounded state, and apply restart satisfaction before publishing active or
 handoff identities. Journal or logind failure preserves readable update
 discovery and reports recovery errors; known restart guidance remains visible
-with `partial` status. This incremental build still leaves new mutation commands
-unavailable. Snapshot active rows and the cancel action now advertise the exact
+with `partial` status. This incremental build still leaves new mutation actions
+unavailable in Settings. Snapshot active rows and the cancel action now advertise the exact
 observed cancelability, or remain unavailable when no trustworthy observation
 exists. The public cancel command always revalidates that hint. Live watch
 streams continue to report the exact PackageKit cancelability observation.

@@ -6203,7 +6203,7 @@ class OperationWatchTests(unittest.TestCase):
 
     def test_control_cli_has_fixed_syntax_and_stream_free_stale_diagnostics(self):
         for args in ([], ["watch-operation"], ["ack-operation", "bad"], ["watch-operation", "op-" + "a" * 32, "extra"],
-                     ["updates-refresh"], ["updates-cancel"], ["updates-cancel", "bad"],
+                     ["updates-refresh", "extra"], ["updates-cancel"], ["updates-cancel", "bad"],
                      ["updates-cancel", "op-" + "a" * 32, "extra"]):
             with self.subTest(args=args), contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(provider.main(args), 2)
@@ -6283,6 +6283,205 @@ class OperationWatchTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertEqual(result.stderr, b"operation observation was interrupted\n")
             self.assertEqual(provider.load_journal_state(journal.chain).handoff.operation_id, operation.operation_id)
+
+
+class UpdateCommandTests(unittest.TestCase):
+    boot_id = PackageKitExecutionTests.boot_id
+    package_id = PackageKitExecutionTests.package_id
+    journal = PackageKitExecutionTests.journal
+    backend = PackageKitExecutionTests.backend
+    begin = OperationRecoveryTests.begin
+
+    def generation(self):
+        return provider.snapshot_generation([self.package_id],
+            [provider.PlanRow(self.package_id, "update", "example", "2", "Example")])
+
+    def invoke(self, journal, args, backend, output=None):
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(pathlib.Path(journal.chain.path).parents[1])}), \
+                mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                mock.patch.object(provider, "PackageKitBackend", **({"side_effect": backend} if isinstance(backend, Exception) else {"return_value": backend})), \
+                contextlib.redirect_stdout(io.StringIO() if output is None else output) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+            code = provider.main(args)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_fixed_grammar_rejects_before_opening_journal_or_backend(self):
+        for args in (["updates-refresh", "extra"], ["updates-install-all"], ["updates-install-all", "bad"],
+                     ["updates-install-all", "A" * 64], ["updates-install-all", "a" * 64, "extra"],
+                     ["updates-install-all", "--force"], ["--updates-refresh"]):
+            with self.subTest(args=args), mock.patch.object(provider, "open_journal_directory") as journal, \
+                    mock.patch.object(provider, "PackageKitBackend") as backend, \
+                    contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(provider.main(args), 2)
+                journal.assert_not_called()
+                backend.assert_not_called()
+                self.assertEqual(stdout.getvalue(), "")
+
+    def test_refresh_and_confirmed_install_use_real_owner_and_durable_handoff(self):
+        for update in (False, True):
+            with self.subTest(update=update), self.journal() as journal:
+                backend = self.backend(journal, [lambda bus: bus.progress(Status=3, Percentage=45),
+                    lambda bus: bus.emit("Finished", (1, 0))])
+                args = ["updates-install-all", self.generation()] if update else ["updates-refresh"]
+                code, output, diagnostic = self.invoke(journal, args, backend)
+                self.assertEqual((code, diagnostic), (0, ""))
+                state = provider.load_journal_state(journal.chain)
+                self.assertIsNone(state.active)
+                terminal = state.terminals[state.handoff.slot]
+                self.assertEqual(terminal.state, "succeeded")
+                self.assertEqual(rows(output.splitlines(), "audit")[0][1:5],
+                    [terminal.operation_id, args[0], "update" if update else "refresh", "succeeded"])
+                self.assertEqual(output.splitlines()[-1], "complete\toperation")
+                self.assertEqual(backend.connection.calls[0][3], "UpdatePackages" if update else "RefreshCache")
+                backend.require_mutation_safe.assert_called_once_with()
+
+    def test_denied_failed_and_canceled_terminal_results_exit_one(self):
+        for exit_code, error_code, expected in ((8, 48, "permission-denied"), (2, 1, "failed"), (3, 17, "canceled")):
+            with self.subTest(expected=expected), self.journal() as journal:
+                backend = self.backend(journal, [lambda bus: bus.emit("ErrorCode", (error_code, "Fixture result")),
+                    lambda bus: bus.emit("Finished", (exit_code, 0))])
+                code, output, diagnostic = self.invoke(journal, ["updates-refresh"], backend)
+                self.assertEqual((code, diagnostic), (1, ""))
+                self.assertEqual(rows(output.splitlines(), "operation")[-1][4], expected)
+                self.assertEqual(provider.load_journal_state(journal.chain).terminals[0].state, expected)
+
+    def test_preflight_and_backend_failures_emit_rejection_without_journal_change(self):
+        for stage in ("backend", "security", "inventory", "simulation", "generation", "create"):
+            with self.subTest(stage=stage), self.journal() as journal:
+                before = provider.load_journal_state(journal.chain)
+                backend = self.backend(journal, [])
+                failure = provider.SnapshotFailure("network", "Fixture preflight failure")
+                args = ["updates-install-all", self.generation()]
+                if stage == "backend":
+                    backend = failure
+                elif stage == "generation":
+                    args[1] = "0" * 64
+                else:
+                    attribute = {"security": "require_mutation_safe", "inventory": "updates",
+                                 "simulation": "simulate", "create": "create_mutation"}[stage]
+                    getattr(backend, attribute).side_effect = failure
+                code, output, diagnostic = self.invoke(journal, args, backend)
+                self.assertEqual((code, diagnostic), (1, ""))
+                self.assertEqual([row[4] for row in rows(output.splitlines(), "operation")], ["pending", "failed"])
+                self.assertEqual(rows(output.splitlines(), "error")[0][2], "conflict" if stage == "generation" else "network")
+                self.assertEqual(len(rows(output.splitlines(), "audit")), 1)
+                self.assertEqual(output.splitlines()[-1], "complete\toperation")
+                self.assertIn("no package mutation was dispatched", output)
+                self.assertEqual(provider.load_journal_state(journal.chain), before)
+                if stage != "backend":
+                    self.assertEqual(backend.connection.calls, [])
+
+    def test_active_and_handoff_conflicts_preserve_existing_identity(self):
+        for handoff in (False, True):
+            with self.subTest(handoff=handoff), self.journal() as journal:
+                operation = self.begin(journal)
+                if handoff:
+                    with provider.lock_writable_journal(journal):
+                        provider.advance_journal_operation(journal, operation, replace(operation, state="failed",
+                            error_code="internal", finished_at="2026-09-05T01:00:00Z", terminal_monotonic=100))
+                        provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+                before = provider.load_journal_state(journal.chain)
+                backend = self.backend(journal, [])
+                code, output, diagnostic = self.invoke(journal, ["updates-refresh"], backend)
+                self.assertEqual((code, diagnostic), (1, ""))
+                self.assertEqual(rows(output.splitlines(), "error")[0][2], "conflict")
+                self.assertNotEqual(rows(output.splitlines(), "audit")[0][1], operation.operation_id)
+                self.assertEqual(provider.load_journal_state(journal.chain), before)
+                backend.require_mutation_safe.assert_not_called()
+                backend.create_mutation.assert_not_called()
+
+    def test_admission_race_rejects_before_any_write_attempt(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [])
+            competing = []
+            def create():
+                competing.append(self.begin(journal, "refresh"))
+                return "/1_test"
+            backend.create_mutation.side_effect = create
+            code, output, diagnostic = self.invoke(journal, ["updates-refresh"], backend)
+            self.assertEqual((code, diagnostic), (1, ""))
+            self.assertEqual(rows(output.splitlines(), "error")[0][2], "conflict")
+            self.assertEqual(provider.load_journal_state(journal.chain).active, competing[0])
+            self.assertEqual(backend.connection.calls, [])
+
+    def test_failed_admission_commit_never_fabricates_rejected_or_terminal_stream(self):
+        for after_commit in (False, True):
+            with self.subTest(after_commit=after_commit), self.journal() as journal:
+                backend = self.backend(journal, [])
+                begin = provider.begin_journal_operation
+                def fail(*args, **kwargs):
+                    if after_commit:
+                        begin(*args, **kwargs)
+                    raise provider.JournalCommitError("Uncertain commit")
+                with mock.patch.object(provider, "begin_journal_operation", side_effect=fail):
+                    code, output, diagnostic = self.invoke(journal, ["updates-refresh"], backend)
+                self.assertEqual((code, output), (1, ""))
+                self.assertIn("refresh status and observe the existing operation", diagnostic)
+                self.assertEqual(provider.load_journal_state(journal.chain).active is not None, after_commit)
+                self.assertEqual(backend.connection.calls, [])
+
+    def test_lost_observation_after_admission_keeps_one_incomplete_stream(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [])
+            backend.execute_mutation = mock.Mock(side_effect=provider.SnapshotFailure("interrupted", "Lost observation"))
+            code, output, diagnostic = self.invoke(journal, ["updates-refresh"], backend)
+            self.assertEqual(code, 1)
+            self.assertEqual(len(rows(output.splitlines(), "operation")), 1)
+            self.assertNotIn("complete\toperation", output)
+            self.assertNotIn("audit\t", output)
+            self.assertNotIn("Request rejected", output)
+            self.assertIsNotNone(provider.load_journal_state(journal.chain).active)
+            self.assertIn("observe the existing operation", diagnostic)
+
+    def test_unsafe_journal_or_id_generation_failure_has_fixed_stream_free_guidance(self):
+        for stage in ("open", "id"):
+            with self.subTest(stage=stage), self.journal() as journal:
+                failure = provider.SnapshotFailure("missing-provider", "Backend unavailable")
+                name = "open_journal_directory" if stage == "open" else "generate_journal_operation_id"
+                with mock.patch.object(provider, name, side_effect=provider.JournalLayoutError("Raw unsafe diagnostic")):
+                    code, output, diagnostic = self.invoke(journal, ["updates-refresh"], failure)
+                self.assertEqual((code, output), (1, ""))
+                self.assertEqual(diagnostic, "operation result could not be confirmed; refresh status and observe the existing operation\n")
+
+    def test_output_failure_before_or_after_dispatch_preserves_recovery_without_retry(self):
+        for phase in ("pending", "running"):
+            with self.subTest(phase=phase), self.journal() as journal:
+                class FailingOutput(io.StringIO):
+                    failed_writes = 0
+
+                    def write(self, value):
+                        if f"\t{phase}\t" in value:
+                            self.failed_writes += 1
+                            raise OSError("Injected output failure")
+                        return super().write(value)
+
+                output = FailingOutput()
+                backend = self.backend(journal, [lambda bus: bus.progress(Status=3),
+                    lambda bus: bus.emit("Finished", (1, 0))])
+                code, text, diagnostic = self.invoke(journal, ["updates-refresh"], backend, output)
+                self.assertEqual((code, output.failed_writes), (1, 1))
+                self.assertNotIn("Request rejected", text)
+                self.assertNotIn("complete\toperation", text)
+                self.assertIn("observe the existing operation", diagnostic)
+                state = provider.load_journal_state(journal.chain)
+                if phase == "pending":
+                    self.assertEqual(state.active.state, "pending")
+                    self.assertEqual(backend.connection.calls, [])
+                else:
+                    self.assertIsNone(state.active)
+                    self.assertEqual(state.terminals[state.handoff.slot].state, "succeeded")
+
+    def test_rejected_request_formatter_validates_before_output_and_never_builds_journal_payload(self):
+        for failure in (provider.SnapshotFailure("unknown", "Invalid"), None):
+            output = []
+            with self.assertRaises(provider.OperationProtocolError):
+                provider.reject_unadmitted_operation("op-" + "1" * 32, "updates-refresh",
+                    "2026-09-05T01:00:00Z", failure, output.append)
+            self.assertEqual(output, [])
+        output = []
+        with mock.patch.object(provider, "encode_journal_operation", side_effect=AssertionError("Must not fabricate a transaction")):
+            provider.reject_unadmitted_operation("op-" + "1" * 32, "updates-install-all",
+                "2026-09-05T01:00:00Z", provider.SnapshotFailure("conflict", "Changed preview"), output.append)
+        self.assertEqual(rows("".join(output).splitlines(), "audit")[0][2:5], ["updates-install-all", "update", "failed"])
 
 
 class OperationCancelTests(unittest.TestCase):

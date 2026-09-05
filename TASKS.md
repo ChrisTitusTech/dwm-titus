@@ -53,7 +53,7 @@ Progress: Read-only PackageKit discovery and its Settings pane are implemented.
 The journal now supports durable pending admission, identity-checked lifecycle
 transitions, restart pruning, recoverable terminal commits, exact retained-result
 lookup, and handoff acknowledgment. These are tested foundations, not an enabled
-update execution workflow. Operation owners can retain every journal file
+Settings update execution workflow. Operation owners can retain every journal file
 identity across unlocked service waits and reacquire bounded exclusive intervals
 for checkpoints; unlocked state access and stale ownership are rejected.
 The operation formatter reserves required lifecycle records separately from its
@@ -75,16 +75,20 @@ The internal recovery coordinator now uses exact-object adoption and a bounded
 active list, plus at most 64 history records for updates only. It distinguishes
 lookup failure from absence, checkpoints adopted restart signals, rejects stale
 ownership, and durably recovers terminal evidence or conservative interruption.
-Previous-boot records cannot reintroduce satisfied guidance. Public mutation
-commands remain disabled. Exact-ID watch and acknowledgment controls now replay
+Previous-boot records cannot reintroduce satisfied guidance. Exact-ID watch and
+acknowledgment controls now replay
 retained results without a service call or keep a verified PackageKit observer
 subscribed through completion without reissuing the action. Finite snapshots now
 integrate validated journal recovery, boot/session restart pruning, exact active
 identities, and terminal handoffs without hiding readable package discovery.
 The exact-ID cancel control now pins the backend peer, revalidates ownership and
 cancelability, and records only an accepted cancellation request without claiming
-a terminal result. New mutation commands and the root-scoped confirmation and
-operation UI must be completed before this boundary can be accepted.
+a terminal result. Explicit refresh and generation-confirmed install CLI commands
+now use the existing execution owner. Pre-admission failures emit a failed request
+without inventing a journal transaction; uncertain admission, output, or later
+observation failures retain recovery guidance and never fabricate a terminal
+result. The root-scoped confirmation and operation UI must be completed before
+this boundary can be accepted. Settings mutation actions remain disabled.
 The preview validators now preserve requested `install` as well as `update`
 actions, matching the PackageKit DNF5 backend's discovery/simulation contract.
 Missing or duplicate requested IDs, outbound requested actions, and unrequested
@@ -92,7 +96,7 @@ updates still fail closed. A Fedora 44 / PackageKit 1.3.6 read-only snapshot
 preserved all 23 requested IDs in 29 preview rows (five installs, 18 updates,
 six removals), without the prior malformed-plan error. No package mutation was
 performed; this agent process still lacks a logind session, reported separately
-as partial recovery evidence. Confirmed execution remains disabled.
+as partial recovery evidence. Confirmed execution in Settings remains disabled.
 
 - [ ] Add user-initiated Fedora update discovery and status through the selected
   stable package-management interface.
