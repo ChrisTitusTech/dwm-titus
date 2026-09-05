@@ -3583,6 +3583,7 @@ def recover_journal_active(
     boot_id: str, session_started: int | None = None,
     watch: bool = False, expected_operation_id: str | None = None,
     on_progress: Callable[[RecoveryEvidence], object] | None = None,
+    session_reader: Callable[[], int | None] | None = None,
 ) -> tuple[JournalState, RecoveryEvidence | None, SnapshotFailure | None]:
     """Recover one copied owner without holding a journal lock across service work."""
     if not isinstance(boot_id, str) or BOOT_ID_PATTERN.fullmatch(boot_id) is None:
@@ -3647,6 +3648,16 @@ def recover_journal_active(
             except SnapshotFailure as failure:
                 if failure.code == "malformed" or lookup_failure is None:
                     lookup_failure = failure
+    if session_reader is not None and (history_used or (evidence is not None and (
+            evidence.state is not None or not evidence.present))):
+        # Never delay attachment with an unrelated service lookup. Exact
+        # terminal/absence evidence is already captured before reading logind.
+        try:
+            session_started = session_reader()
+        except SnapshotFailure:
+            session_started = None
+        if session_started is not None:
+            _encode_journal_uint64(session_started, "session start")
     with lock_writable_journal(journal):
         current_state = load_writable_journal_state(journal)
         current = current_state.active
@@ -4287,9 +4298,12 @@ class PackageKitBackend:
         watch_loop = None
         connection_closed = None
 
-        def evidence():
+        def evidence(*, progress=False):
+            # A current display phase is not proof that earlier execution was
+            # excluded. Preserve uncertainty in terminal recovery evidence.
+            observed_status = status if progress else 3 if saw_running else 0 if uncertain_status else status
             return RecoveryEvidence(not destroyed and (present or path in listed), terminal_state, transaction_failure,
-                tuple(sorted(restarts)), 3 if saw_running else 0 if uncertain_status else status,
+                tuple(sorted(restarts)), observed_status,
                 allow_cancel and not cancel_blocked and not destroyed, percent, terminal_time)
 
         def watch_changed():
@@ -4298,7 +4312,7 @@ class PackageKitBackend:
             if terminal_state is not None or destroyed or malformed is not None or checkpoint_failure is not None:
                 watch_loop.quit()
             elif identity_verified is True:
-                checkpoint(on_progress, evidence())
+                checkpoint(on_progress, evidence(progress=True))
                 if checkpoint_failure is not None:
                     watch_loop.quit()
 
@@ -4435,11 +4449,11 @@ class PackageKitBackend:
                     checkpoint(on_running)
                 for value in sorted(restarts):
                     checkpoint(on_restart, value)
-                properties(values)
+                properties({"Status": None, **values})
                 present = not destroyed and status != 18
                 snapshot_applied = True
                 if watch:
-                    checkpoint(on_progress, evidence())
+                    checkpoint(on_progress, evidence(progress=True))
             if checkpoint_failure is not None:
                 raise checkpoint_failure
             if terminal_state is None:
@@ -5009,12 +5023,8 @@ def watch_journal_operation(
 
     progress(RecoveryEvidence(True))
     backend = backend_factory()
-    try:
-        session_started = backend.session_started()
-    except SnapshotFailure:
-        session_started = None
     state, evidence, failure = recover_journal_active(journal, backend, boot_id=boot_id,
-        session_started=session_started, watch=True, expected_operation_id=operation_id, on_progress=progress)
+        session_reader=backend.session_started, watch=True, expected_operation_id=operation_id, on_progress=progress)
     if state.active is not None:
         raise failure or SnapshotFailure("interrupted", "PackageKit observation ended without terminal evidence")
     terminal = next((item for item in state.terminals if item is not None and item.operation_id == operation_id), None)

@@ -136,6 +136,11 @@ Bus loss, malformed evidence, or a failed output/checkpoint ends observation
 without a terminal success claim or a `Cancel` call. A failure after stream
 output begins exits 1 with fixed interruption guidance, not the stream-free
 stale-target status 3.
+The watcher obtains logind session evidence only after transaction observation
+has captured a terminal result or exact absence, before the unlocked result is
+committed. A current live phase can update displayed authorization state without
+erasing uncertainty about earlier execution; a later authorization phase alone
+cannot prove an earlier unknown phase never changed packages.
 
 The root model calls `ack-operation` only for an exact durable handoff that it
 has received in a snapshot. It first validates either the matching originating

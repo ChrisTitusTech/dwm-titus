@@ -5927,6 +5927,28 @@ class OperationWatchTests(unittest.TestCase):
             self.assertEqual(result.state, "succeeded")
             self.assertEqual(backend.connection.calls, [])
 
+    def test_logind_lookup_follows_terminal_observation_and_precedes_commit(self):
+        for kind in ("refresh", "update"):
+            with self.subTest(kind=kind), self.journal() as journal:
+                operation = self.begin(journal, kind)
+                finished = []
+                def finish(bus):
+                    finished.append(True)
+                    self.emit(bus, "Finished", "(uu)", (1, 1))
+                    self.emit(bus, "Destroy", "()", ())
+                backend = self.live_backend(journal, [finish], Role=13 if kind == "refresh" else 22)
+                def session():
+                    self.assertEqual(finished, [True])
+                    self.assertFalse(journal._exclusive)
+                    self.assertIsNotNone(provider.load_journal_state(journal.chain).active)
+                    return None
+                backend.session_started.side_effect = session
+                chunks = []
+                provider.watch_journal_operation(journal, operation.operation_id, chunks.append,
+                    boot_id=self.boot_id, backend_factory=lambda: backend)
+                backend.session_started.assert_called_once_with()
+                self.assertIn("\tsucceeded\t", "".join(chunks))
+
     def test_watch_uses_new_live_cancelability_not_stale_initial_false(self):
         with self.journal() as journal:
             operation = self.begin(journal)
@@ -5951,6 +5973,24 @@ class OperationWatchTests(unittest.TestCase):
             self.assertEqual([row[6] for row in authorizing], ["yes", "no"])
             self.assertNotIn("running", [row[4] for row in operation_rows])
             self.assertEqual(operation_rows[-1][4], "canceled")
+
+    def test_live_authorization_is_displayed_without_erasing_unknown_execution(self):
+        for initial in ("invalid", "missing"):
+            with self.subTest(initial=initial), self.journal() as journal:
+                operation = self.begin(journal)
+                backend = self.live_backend(journal, [lambda bus: self.progress(bus, Status=31),
+                    lambda bus: self.emit(bus, "Finished", "(uu)", (3, 0))], Status="invalid")
+                if initial == "missing":
+                    values = self.properties()
+                    del values["Status"]
+                    backend._recovery_call.side_effect = [SessionEvidenceTests.Variant("(a{sv})", (values,)),
+                        SessionEvidenceTests.Variant("(ao)", ([operation.transaction_path],))]
+                chunks = []
+                provider.watch_journal_operation(journal, operation.operation_id, chunks.append,
+                    boot_id=self.boot_id, backend_factory=lambda: backend)
+                self.assertIn("\tauthorizing\t", "".join(chunks))
+                state = provider.load_journal_state(journal.chain)
+                self.assertEqual((state.terminals[operation.slot].state, state.restart.system), ("canceled", "unknown"))
 
     def test_cancelability_change_during_active_list_is_not_latched_out(self):
         with self.journal() as journal:
