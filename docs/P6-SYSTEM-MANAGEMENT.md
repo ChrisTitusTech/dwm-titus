@@ -780,6 +780,17 @@ row. Consumers do not compare their wall-clock order: `finished` may precede
 order and the validated operation transition sequence remain
 authoritative for lifecycle ordering.
 
+The standalone `SystemOperationProtocol.js` consumer accepts cumulative raw
+`StdioCollector.data` buffers and validates complete newline-delimited records
+incrementally. It never decodes arbitrary pipe chunks as independent strings,
+so split UTF-8 remains intact. Its caller must stop accepting a faulted stream,
+call `finish` after normal or abnormal process exit, and accept a result only
+when that call succeeds. Originating streams require exit 0 for success or 1
+for another terminal result; retained-result watchers require exit 0 regardless
+of the terminal result. Protocol completion alone never proves process success
+or authorizes handoff acknowledgment. This parser does not start processes,
+own a journal, or enable Settings mutation controls.
+
 Allowed operation transitions are:
 
 | From | Allowed next state |
@@ -790,8 +801,9 @@ Allowed operation transitions are:
 | `cancel-requested` | `cancel-requested`, `canceled`, `succeeded`, `failed`, or `interrupted` |
 | Any terminal state | None |
 
-Repeated `running` and `cancel-requested` records carry progress or cancellation
-updates. `succeeded` after `cancel-requested` is valid because completion can
+Repeated nonterminal records (`pending`, `authorizing`, `running`, and
+`cancel-requested`) carry progress or cancelability updates without changing
+the lifecycle state. `succeeded` after `cancel-requested` is valid because completion can
 race cancellation. `permission-denied`, `canceled`, `failed`, `interrupted`,
 and `succeeded` are terminal and appear exactly once.
 

@@ -62,6 +62,11 @@ versions from `config.mk`.
 
 ### Added
 
+- Add a bounded Quickshell operation-stream parser with strict identity,
+  lifecycle, audit, UTF-8, and exit-status checks. Native nested-X11 fixtures
+  verify live progress and failed-result streams; Settings operation ownership
+  and update confirmation remain pending integration.
+
 - Add explicit metadata-refresh and generation-confirmed install CLI commands
   backed by durable PackageKit execution and exact terminal results. Rejected
   requests do not fabricate transactions, and uncertain admission or observation

@@ -3,7 +3,7 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
-for command_name in Xvfb dbus-run-session quickshell xprop pgrep; do
+for command_name in Xvfb dbus-run-session quickshell xprop pgrep timeout; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -234,6 +234,28 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 DISPLAY=$display xprop -root >/dev/null
+
+# Run the isolated operation parser on the same nested display before loading
+# the managed shell. This fixture never connects to host PackageKit.
+mkdir -p "$work/operation-parser"
+cp "$repo/tests/qml/SystemOperationParser.qml" "$work/operation-parser/shell.qml"
+cp "$repo/config/quickshell/systemmanagement/SystemOperationProtocol.js" "$work/operation-parser/"
+timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	quickshell --no-duplicate --path "$work/operation-parser/shell.qml" \
+	>"$work/operation-parser.log" 2>&1 &
+quickshell_pid=$!
+parser_status=0
+wait "$quickshell_pid" || parser_status=$?
+quickshell_pid=
+if [ "$parser_status" -ne 0 ]; then
+	cat "$work/operation-parser.log" >&2
+	exit "$parser_status"
+fi
+if ! grep -F 'Operation parser native tests: PASS' "$work/operation-parser.log"; then
+	cat "$work/operation-parser.log" >&2
+	exit 1
+fi
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime "$repo/dwm" >"$work/dwm.log" 2>&1 &
