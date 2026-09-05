@@ -56,7 +56,11 @@ lookup, and handoff acknowledgment. These are tested foundations, not an enabled
 update execution workflow. Operation owners can retain every journal file
 identity across unlocked service waits and reacquire bounded exclusive intervals
 for checkpoints; unlocked state access and stale ownership are rejected.
-PackageKit execution/recovery integration and its
+The operation formatter reserves required lifecycle records separately from its
+bounded progress budget, validates terminal/audit identity, and replays retained
+results without an external action. Observed package comparisons use bounded
+counts and mismatch samples plus an arrival-ordered digest; they are not persisted
+as an atomic completed plan. PackageKit execution/recovery integration and its
 root-scoped confirmation and operation UI remain to be completed before this
 boundary can be accepted.
 

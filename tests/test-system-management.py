@@ -80,6 +80,243 @@ def rows(lines, kind):
     return [line.split("\t") for line in lines if line.startswith(f"{kind}\t")]
 
 
+class OperationStreamTests(unittest.TestCase):
+    operation_id = "op-" + "1" * 32
+    started = "2026-09-05T01:00:00Z"
+    finished = "2026-09-05T00:00:00Z"  # A wall-clock rollback is valid.
+
+    def terminal(self, action="updates-refresh", state="succeeded", error=None):
+        kind = provider.JOURNAL_OPERATION_ACTION_KINDS[action]
+        return provider.JournalOperation(
+            self.operation_id, action, self.started, self.finished, kind, state,
+            error, "Durable result", "a" * 64 if kind == "update" else None,
+            "/18_adcbcaed" if kind in {"refresh", "update"} else None,
+            "none" if kind == "update" else None,
+            "none" if kind == "update" else None,
+            False if kind == "update" else None,
+            "01234567-89ab-cdef-0123-456789abcdef" if kind == "update" else None,
+            123 if kind in {"refresh", "update"} else None, 0,
+        )
+
+    def stream(self, output, action="updates-refresh"):
+        return provider.OperationStream(self.operation_id, action, self.started, "Starting", output.append)
+
+    def test_progress_cap_reserves_every_lifecycle_and_terminal_record(self):
+        output = []
+        stream = self.stream(output)
+        stream.transition("authorizing", "Authorization")
+        stream.transition("running", "Running")
+        for index in range(400):
+            emitted = stream.transition("running", str(index), percent=index % 101, cancelable=True)
+            self.assertEqual(emitted, index < 252)
+        self.assertTrue(stream.transition("cancel-requested", "Cancellation requested", cancelable=False))
+        self.assertFalse(stream.transition("cancel-requested", "Still waiting", percent=100))
+        stream.finish(self.terminal())  # Success may race cancellation.
+        lines = "".join(output).splitlines()
+        operations = rows(lines, "operation")
+        self.assertEqual(len(operations), 257)
+        self.assertEqual([row[4] for row in operations[:3]], ["pending", "authorizing", "running"])
+        self.assertEqual([row[4] for row in operations[-2:]], ["cancel-requested", "succeeded"])
+        self.assertEqual(operations[-1][6], "no")
+        self.assertEqual(rows(lines, "audit")[0][1:7], [self.operation_id, "updates-refresh", "refresh", "succeeded", self.started, self.finished])
+        self.assertEqual(lines[-1], "complete\toperation")
+        self.assertLess(len("".join(output).encode()), 8 * 1024 * 1024)
+        self.assertEqual(stream.progress_records, 252)
+
+    def test_repeated_progress_is_coalesced_but_changed_cancelability_is_visible(self):
+        output = []
+        stream = self.stream(output)
+        stream.transition("running", "Working", percent=0)
+        self.assertFalse(stream.transition("running", "Working", percent=0))
+        self.assertTrue(stream.transition("running", "Working", percent=0, cancelable=True))
+        self.assertEqual(stream.progress_records, 1)
+
+    def test_replay_all_kinds_and_results_preserves_exact_terminal_and_error_owner(self):
+        for action in provider.JOURNAL_OPERATION_ACTION_KINDS:
+            for state in sorted(provider.JOURNAL_OPERATION_TERMINAL_STATES):
+                with self.subTest(action=action, state=state):
+                    error = "internal" if state == "failed" else None
+                    record = self.terminal(action, state, error)
+                    output = []
+                    provider.replay_terminal_operation(record, output.append)
+                    lines = "".join(output).splitlines()
+                    states = [row[4] for row in rows(lines, "operation")]
+                    implied = ["running"] if state == "succeeded" else ["authorizing"] if state == "permission-denied" else []
+                    self.assertEqual(states, ["pending", *implied, state])
+                    self.assertEqual(rows(lines, "operation")[-1][7], record.detail)
+                    self.assertEqual(rows(lines, "audit")[0][-1], record.detail)
+                    self.assertEqual(len(rows(lines, "audit")), 1)
+                    self.assertEqual(len(rows(lines, "complete")), 1)
+                    if error:
+                        owner = "updates" if record.kind in {"refresh", "update"} else "regional" if record.kind != "delegate" else "accounts" if action in {"accounts-open", "password-open"} else action.split("-")[0]
+                        self.assertEqual(rows(lines, "error"), [["error", owner, error, record.detail]])
+                        self.assertEqual(lines[-4].split("\t")[0], "error")
+                    else:
+                        self.assertEqual(rows(lines, "error"), [])
+                    if record.kind == "update":
+                        self.assertIn("comparison is unavailable", rows(lines, "operation")[0][-1])
+
+    def test_invalid_transitions_fields_and_terminal_identity_emit_nothing(self):
+        output = []
+        stream = self.stream(output)
+        before = tuple(output)
+        for state, options in (
+            ("pending", {}), ("cancel-requested", {}), ("succeeded", {}),
+            ("running", {"percent": 101}), ("running", {"percent": True}),
+            ("running", {"percent": "50"}), ("running", {"cancelable": 1}),
+        ):
+            with self.subTest(state=state, options=options), self.assertRaises(ValueError):
+                stream.transition(state, "Invalid", **options)
+            self.assertEqual(tuple(output), before)
+        for detail in ("bad\tvalue", "bad\nvalue", "bad\0value", "x" * 513, "\ud800"):
+            with self.subTest(detail=repr(detail)), self.assertRaises(ValueError):
+                stream.transition("running", detail)
+            self.assertEqual(tuple(output), before)
+        for record in (
+            self.terminal(),  # Success before running is invalid.
+            self.terminal(state="failed"),  # Failed requires an error.
+            replace(self.terminal(state="failed", error="internal"), operation_id="op-" + "2" * 32),
+            replace(self.terminal(state="failed", error="internal"), started_at=self.finished),
+        ):
+            with self.assertRaises(ValueError):
+                stream.finish(record)
+            self.assertEqual(tuple(output), before)
+
+    def test_terminal_error_and_completion_are_final_and_output_failure_is_not_retried(self):
+        output = []
+        stream = self.stream(output)
+        stream.finish(self.terminal(state="failed", error="conflict"))
+        before = tuple(output)
+        with self.assertRaises(ValueError):
+            stream.finish(self.terminal(state="failed", error="conflict"))
+        with self.assertRaises(ValueError):
+            stream.transition("running", "Late")
+        self.assertEqual(tuple(output), before)
+        output = []
+        stream = self.stream(output)
+        broken_pipe = BrokenPipeError("closed consumer")
+        writer = mock.Mock(side_effect=broken_pipe)
+        stream._write = writer
+        with self.assertRaises(BrokenPipeError) as caught:
+            stream.finish(self.terminal(state="interrupted", error="timeout"))
+        self.assertIs(caught.exception, broken_pipe)
+        self.assertTrue(stream.faulted)
+        with self.assertRaises(ValueError):
+            stream.finish(self.terminal(state="interrupted", error="timeout"))
+        writer.assert_called_once()
+
+    def test_live_terminal_summary_is_not_written_into_retained_record(self):
+        record = self.terminal()
+        output = []
+        stream = self.stream(output)
+        stream.transition("running", "Running")
+        stream.finish(record, detail="Live observed summary")
+        self.assertEqual(record.detail, "Durable result")
+        replay = []
+        provider.replay_terminal_operation(record, replay.append)
+        self.assertNotIn("Live observed summary", "".join(replay))
+
+    def test_invalid_construction_or_nonterminal_replay_has_no_output(self):
+        for operation_id, action, started in (
+            ("bad", "updates-refresh", self.started),
+            (self.operation_id, "updates-cancel", self.started),
+            (self.operation_id, "health-open", self.started),
+            (self.operation_id, "updates-refresh", "2026-02-30T00:00:00Z"),
+        ):
+            output = []
+            with self.assertRaises(ValueError):
+                provider.OperationStream(operation_id, action, started, "Starting", output.append)
+            self.assertEqual(output, [])
+        output = []
+        pending = replace(self.terminal(), state="pending", finished_at=None, terminal_monotonic=None)
+        with self.assertRaises(ValueError):
+            provider.replay_terminal_operation(pending, output.append)
+        self.assertEqual(output, [])
+
+
+class ObservedUpdateTests(unittest.TestCase):
+    def preview(self, action="update", package_id="pkg;2;x86_64;updates"):
+        return provider.PlanRow(package_id, action, "pkg", "2", "Preview")
+
+    def test_normalized_digest_matches_fixed_bytes_and_ignores_download_and_old_cleanup(self):
+        preview = [self.preview(), self.preview("install", "dep;1;x86_64;updates"),
+                   self.preview("obsolete", "old;1;noarch;installed")]
+        observed = provider.ObservedUpdateSummary(preview)
+        self.assertFalse(observed.observe(10, "pkg;2;x86_64;updates"))
+        self.assertFalse(observed.observe(14, "pkg;1;x86_64;installed"))
+        accepted = [(11, "update", "pkg;2;x86_64;updates"),
+                    (12, "install", "dep;1;x86_64;updates"),
+                    (14, "obsolete", "old;1;noarch;installed")]
+        expected = hashlib.sha256(b"dwm-titus-update-observed-v1")
+        for info, action, package_id in accepted:
+            self.assertTrue(observed.observe(info, package_id))
+            for field in (action, package_id):
+                encoded = field.encode()
+                expected.update(len(encoded).to_bytes(8, "big") + encoded)
+        self.assertEqual(observed._digest.hexdigest(), expected.hexdigest())
+        self.assertEqual(observed.counts, {"install": 1, "update": 1, "remove": 0, "obsolete": 1, "unknown": 0})
+        self.assertEqual(observed.comparison(), "unknown")
+        self.assertEqual(observed.comparison(final=True), "no")
+        self.assertEqual(observed.samples, [])
+
+    def test_cleanup_uses_architecture_and_exact_obsolete_identity(self):
+        observed = provider.ObservedUpdateSummary([self.preview()])
+        self.assertTrue(observed.observe(14, "pkg;1;i686;installed"))
+        self.assertEqual(observed.counts["unknown"], 1)
+        self.assertEqual(observed.comparison(final=True), "unknown")
+
+    def test_repeated_expected_signals_are_digested_without_unbounded_identity_storage(self):
+        observed = provider.ObservedUpdateSummary([self.preview()])
+        observed.observe(11, "pkg;2;x86_64;updates")
+        digest = observed._digest.hexdigest()
+        observed.observe(11, "pkg;2;x86_64;updates")
+        self.assertNotEqual(observed._digest.hexdigest(), digest)
+        self.assertEqual(observed.counts["update"], 2)
+        self.assertEqual(len(observed._matched), 1)
+        self.assertEqual(observed.comparison(final=True), "no")
+
+    def test_missing_extra_and_unknown_actions_never_report_equal(self):
+        observed = provider.ObservedUpdateSummary([self.preview()])
+        self.assertEqual(observed.comparison(final=True), "yes")
+        observed.observe(11, "pkg;2;x86_64;updates")
+        self.assertEqual(observed.comparison(final=True), "no")
+        observed.observe(13, "other;1;x86_64;installed")
+        self.assertEqual(observed.comparison(), "yes")
+        observed.observe(99, "unknown;1;x86_64;installed")
+        self.assertEqual(observed.comparison(final=True), "unknown")
+
+    def test_samples_and_summary_size_remain_bounded_and_duplicate_samples_coalesce(self):
+        observed = provider.ObservedUpdateSummary([])
+        for index in range(4096):
+            observed.observe(12, f"extra-{index};1;x86_64;updates")
+        observed.observe(12, "extra-0;1;x86_64;updates")
+        self.assertEqual(len(observed.samples), 128)
+        self.assertEqual(observed.counts["install"], 4097)
+        self.assertEqual(len(observed._matched), 0)
+        self.assertEqual(observed.comparison(final=True), "yes")
+        observed.counts = dict.fromkeys(observed.actions, provider.JOURNAL_SEQUENCE_MAX)
+        observed.observe(12, "extra-0;1;x86_64;updates")
+        self.assertEqual(observed.counts["install"], provider.JOURNAL_SEQUENCE_MAX)
+        self.assertEqual(observed.comparison(final=True), "unknown")
+        self.assertLessEqual(len(observed.detail(final=True).encode()), 512)
+
+    def test_invalid_input_cannot_change_counts_or_digest(self):
+        observed = provider.ObservedUpdateSummary([])
+        before = observed.detail(final=True)
+        for info, package_id in ((True, "pkg;1;x86_64;repo"), (-1, "pkg;1;x86_64;repo"),
+                                 (12, "malformed"), (12, "pkg;1;;repo"),
+                                 (12, "pkg;1;x86_64;bad\nrepo"), (12, "\ud800;1;x86_64;repo"),
+                                 (12, "x" * 513), (12, "pkg;1;x86_64;bad\0repo")):
+            with self.subTest(info=info, package_id=repr(package_id)), self.assertRaises(provider.SnapshotFailure):
+                observed.observe(info, package_id)
+            self.assertEqual(observed.detail(final=True), before)
+        for preview in ([self.preview(), self.preview()], [self.preview("reinstall")],
+                        [self.preview("downgrade")], [replace(self.preview(), package_id=[])],
+                        [None], [self.preview()] * 4097):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.ObservedUpdateSummary(preview)
+
+
 class SnapshotTests(unittest.TestCase):
     def test_complete_read_only_snapshot(self):
         backend = FixtureBackend(
