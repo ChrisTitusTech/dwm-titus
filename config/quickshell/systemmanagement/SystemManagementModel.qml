@@ -22,9 +22,15 @@ Scope {
     property var activeOperation: null
     property var terminalHandoff: null
     property bool snapshotPending: false
+    property bool requiredPending: false
+    property bool snapshotOwned: false
+    property bool snapshotRequired: false
+    property bool snapshotHasOutput: false
+    property string snapshotErrorDetail: ""
     property int requestGeneration: 0
+    readonly property alias operation: operationModel
 
-    readonly property bool busy: snapshotProcess.running
+    readonly property bool busy: snapshotOwned
     readonly property string providerState: root.updateProvider.status
     readonly property string providerDetail: root.updateProvider.detail
 
@@ -148,7 +154,7 @@ Scope {
     }
 
     function parseSnapshot(text, responseGeneration) {
-        if (responseGeneration !== root.requestGeneration || !root.settingsVisible) return;
+        if (responseGeneration !== root.requestGeneration) return false;
         if (root.utf8Bytes(text) > 8 * 1024 * 1024) {
             root.clearState("System management provider returned an oversized response");
             return;
@@ -474,8 +480,10 @@ Scope {
         }
 
         root.generation = parsedGeneration;
-        root.activeOperation = parsedActive;
-        root.terminalHandoff = parsedHandoff;
+        root.activeOperation = parsedActive !== null && operationModel.wasAcknowledged(parsedActive.id)
+            ? null : parsedActive;
+        root.terminalHandoff = parsedHandoff !== null && operationModel.wasAcknowledged(parsedHandoff.id)
+            ? null : parsedHandoff;
         if (updatesInvalid) {
             const detail = "System management provider returned malformed update state";
             root.updateProvider = { "status": "partial", "providerClass": "delegated",
@@ -541,6 +549,10 @@ Scope {
         root.message = root.snapshotState === "ready"
             ? parsedUpdates.length + " updates reported"
             : "System management state is incomplete";
+        // No identities is evidence of an empty journal only after successful
+        // recovery. A partial response may have failed to read the owner at all.
+        return !recoveryInvalid && (parsedActive !== null || parsedHandoff !== null
+            || parsedRecoveryProvider.status === "available");
     }
 
     function openSettings() {
@@ -550,23 +562,77 @@ Scope {
 
     function closeSettings() {
         root.settingsVisible = false;
-        root.requestGeneration++;
         root.snapshotPending = false;
-        snapshotProcess.running = false;
+        if (!root.snapshotRequired) {
+            root.requestGeneration++;
+            snapshotProcess.running = false;
+        }
     }
 
     function refresh() {
         if (!root.settingsVisible) return;
-        if (snapshotProcess.running) {
-            root.snapshotPending = true;
+        const requiredRecovery = operationModel.waitingSnapshot || operationModel.blocked
+            || operationModel.state === "recovering";
+        operationModel.resetRecovery();
+        if (requiredRecovery) operationModel.requestSnapshot();
+        else root.requestSnapshot(false);
+    }
+
+    function requestSnapshot(required) {
+        if (!required && !root.settingsVisible) return;
+        if (root.snapshotOwned) {
+            root.snapshotPending = root.snapshotPending || !required;
+            root.requiredPending = root.requiredPending || required;
             return;
         }
         root.snapshotPending = false;
+        root.requiredPending = false;
         root.requestGeneration++;
         snapshotProcess.generation = root.requestGeneration;
+        root.snapshotRequired = required;
+        root.snapshotHasOutput = false;
+        root.snapshotErrorDetail = "";
+        root.snapshotOwned = true;
         root.snapshotState = "loading";
         root.message = "Reading system update status...";
         snapshotProcess.running = true;
+    }
+
+    function finishSnapshot(exitCode, normalExit) {
+        if (!root.snapshotOwned) return;
+        const current = snapshotProcess.generation === root.requestGeneration;
+        root.snapshotOwned = false;
+        root.snapshotRequired = false;
+        if (current) {
+            if (normalExit && exitCode === 0 && root.snapshotHasOutput) {
+                if (root.parseSnapshot(snapshotOutput.text, snapshotProcess.generation))
+                    operationModel.acceptSnapshot(root.activeOperation, root.terminalHandoff);
+                else operationModel.snapshotFailed();
+            } else {
+                root.clearState("System management snapshot process failed"
+                    + (root.snapshotErrorDetail ? ": " + root.snapshotErrorDetail : ""));
+                operationModel.snapshotFailed();
+            }
+        }
+        // The old process emits runningChanged after exited. Queue the next
+        // launch so that signal cannot finalize a new run's ownership.
+        Qt.callLater(function() {
+            if (root.requiredPending) root.requestSnapshot(true);
+            else if (root.snapshotPending && root.settingsVisible) root.requestSnapshot(false);
+        });
+    }
+
+    Component.onCompleted: Qt.callLater(function() { operationModel.requestSnapshot(); })
+
+    SystemOperationModel {
+        id: operationModel
+        onSnapshotRequested: root.requestSnapshot(true)
+        onAcknowledged: operationId => {
+            if (root.terminalHandoff !== null && root.terminalHandoff.id === operationId)
+                root.terminalHandoff = null;
+            if (root.activeOperation !== null && root.activeOperation.id === operationId)
+                root.activeOperation = null;
+        }
     }
 
     Process {
@@ -577,24 +643,21 @@ Scope {
         running: false
         stdout: StdioCollector {
             id: snapshotOutput
+            onStreamFinished: { if (root.snapshotOwned) root.snapshotHasOutput = true; }
         }
         stderr: StdioCollector {
             id: snapshotError
+            onStreamFinished: {
+                if (root.snapshotOwned) {
+                    const rawError = text.replace(/\s+/g, " ").trim();
+                    root.snapshotErrorDetail = root.utf8Bytes(rawError) <= 512 ? rawError
+                        : "Provider error detail exceeded the protocol limit";
+                }
+            }
         }
+        onExited: (exitCode, exitStatus) => root.finishSnapshot(exitCode, exitStatus === 0)
         onRunningChanged: {
-            if (!running && snapshotProcess.generation === root.requestGeneration
-                    && root.settingsVisible) {
-                root.parseSnapshot(snapshotOutput.text, snapshotProcess.generation);
-                const rawError = snapshotError.text.replace(/\s+/g, " ").trim();
-                const detail = root.utf8Bytes(rawError) <= 512 ? rawError
-                    : "Provider error detail exceeded the protocol limit";
-                if (root.snapshotState === "failure" && detail.length > 0)
-                    root.message = "System management snapshot process failed: " + detail;
-            }
-            if (!running && root.snapshotPending && root.settingsVisible) {
-                root.snapshotPending = false;
-                Qt.callLater(root.refresh);
-            }
+            if (!running && root.snapshotOwned) root.finishSnapshot(-1, false);
         }
     }
 }

@@ -27,6 +27,7 @@ if [ "$(id -u)" -eq 0 ] && [ "${DWM_LARGE_SURFACE_UNPRIVILEGED:-0}" != 1 ]; then
 	cp -a "$test_repo/config" "$test_repo/scripts" "$fixture_repo/"
 	cp "$test_repo/dwm" "$fixture_repo/dwm"
 	cp "$0" "$fixture_repo/tests/test-quickshell-large-surfaces-xvfb.sh"
+	cp -a "$test_repo/tests/fixtures" "$fixture_repo/tests/"
 	chown -R "$unprivileged_uid:$unprivileged_gid" "$root_runner_work"
 	chmod 700 "$fixture_repo/dwm" "$root_runner_work/runtime"
 	if HOME="$root_runner_work" TMPDIR="$root_runner_work" \
@@ -98,6 +99,8 @@ if [ "${#runtime}" -gt 64 ]; then
 	runtime=$runtime_alias_dir/runtime
 fi
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
+cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-titus/scripts/dwm-system-management"
+chmod +x "$data_home/dwm-titus/scripts/dwm-system-management"
 cp "$repo/config/"*.toml "$config_home/dwm-titus/"
 cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-settings-display" "$repo/scripts/dwm-settings-input" \

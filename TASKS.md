@@ -89,9 +89,13 @@ without inventing a journal transaction; uncertain admission, output, or later
 observation failures retain recovery guidance and never fabricate a terminal
 result. A standalone Quickshell parser now validates cumulative raw-byte streams,
 preserves split UTF-8, retains bounded progress, and requires matching terminal,
-audit, completion, and process-exit evidence. Native nested-X11 fixtures exercise
-it without host service calls; it is not yet connected to operation ownership.
-The root-scoped confirmation and operation UI must be completed before
+audit, completion, and process-exit evidence. A root-scoped observer now restores
+exact active and retained identities from startup snapshots, preserves its stream
+across pane closure, verifies results before acknowledgment, and bounds failed
+recovery to three retries. Native nested-X11 fixtures exercise live progress,
+failed-result replay, stale collector data, restart adoption, and failed process
+starts without host service calls. Originating mutation, confirmation, and cancel
+UI integration plus event-driven discovery invalidation must be completed before
 this boundary can be accepted. Settings mutation actions remain disabled.
 The preview validators now preserve requested `install` as well as `update`
 actions, matching the PackageKit DNF5 backend's discovery/simulation contract.
