@@ -5952,6 +5952,20 @@ class OperationWatchTests(unittest.TestCase):
             self.assertNotIn("running", [row[4] for row in operation_rows])
             self.assertEqual(operation_rows[-1][4], "canceled")
 
+    def test_cancelability_change_during_active_list_is_not_latched_out(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            backend = self.live_backend(journal, [lambda bus: self.emit(bus, "Finished", "(uu)", (1, 1))], AllowCancel=False)
+            def request(_path, _interface, method, *_args):
+                if method == "GetAll":
+                    return SessionEvidenceTests.Variant("(a{sv})", (self.properties(AllowCancel=False),))
+                self.progress(backend, AllowCancel=True)
+                return SessionEvidenceTests.Variant("(ao)", ([operation.transaction_path],))
+            backend._recovery_call.side_effect = request
+            progress = []
+            backend.probe_operation(operation, watch=True, on_progress=progress.append)
+            self.assertTrue(progress[-1].allow_cancel)
+
     def test_watch_bus_loss_malformed_signal_or_output_failure_detaches_without_cancel(self):
         for fault in ("bus", "malformed", "output"):
             with self.subTest(fault=fault), self.journal() as journal:
@@ -6016,6 +6030,25 @@ class OperationWatchTests(unittest.TestCase):
                 self.assertEqual(chunks, [])
                 backend.assert_not_called()
                 self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_service_free_controls_retain_lower_guidance_until_snapshot_has_session_evidence(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, session_restart="security-session", application_restart=True)
+            terminal = replace(operation, state="failed", error_code="internal", detail="Fixture",
+                finished_at="2026-09-05T00:01:00Z", terminal_monotonic=100)
+            with provider.lock_writable_journal(journal):
+                provider.advance_journal_operation(journal, operation, terminal)
+            backend = mock.Mock(side_effect=AssertionError("Replay opened a service"))
+            provider.watch_journal_operation(journal, operation.operation_id, lambda _chunk: None,
+                boot_id=self.boot_id, backend_factory=backend)
+            backend.assert_not_called()
+            with provider.lock_writable_journal(journal):
+                provider.acknowledge_journal_handoff(journal, operation.operation_id)
+                state = provider.load_writable_journal_state(journal)
+                self.assertEqual((state.restart.session, state.restart.application), ("security-session", True))
+                provider.prune_journal_restart(journal, self.boot_id, 200)
+                state = provider.load_writable_journal_state(journal)
+                self.assertEqual((state.restart.session, state.restart.application), ("none", False))
 
     def test_control_cli_has_fixed_syntax_and_stream_free_stale_diagnostics(self):
         for args in ([], ["watch-operation"], ["ack-operation", "bad"], ["watch-operation", "op-" + "a" * 32, "extra"],

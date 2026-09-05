@@ -151,6 +151,11 @@ inconsistent with the validated journal state, or replaced exits 3 with only
 `ack target is unavailable` on standard error and leaves the handoff unchanged.
 Invalid command or operation-ID syntax exits 2. Acknowledgment never removes or
 rewrites the retained terminal slot and never invokes an external service.
+Journal-only control completion uses the boot evidence but does not invent a
+logind timestamp or open logind for replay/acknowledgment. Same-boot session and
+application guidance is conservatively retained until snapshot recovery obtains
+session evidence and prunes it before publishing `update-restart`. The required
+snapshot before acknowledgment is also the normal display reconciliation point.
 
 The PackageKit service is authoritative for package state. The project provider
 adds only validation, bounded record formatting, a private operation journal,

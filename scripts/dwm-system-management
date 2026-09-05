@@ -4283,6 +4283,7 @@ class PackageKitBackend:
         restarts = set()
         subscriptions = []
         identity_verified = None
+        snapshot_applied = False
         watch_loop = None
         connection_closed = None
 
@@ -4323,7 +4324,7 @@ class PackageKitBackend:
                         checkpoint(on_running)
             if "AllowCancel" in values:
                 allow_cancel = values["AllowCancel"] if type(values["AllowCancel"]) is bool else False
-                cancel_blocked = (cancel_blocked or not allow_cancel) if watch_loop is None else False
+                cancel_blocked = False if watch and snapshot_applied else cancel_blocked or not allow_cancel
             if "Percentage" in values:
                 value = values["Percentage"]
                 percent = value if type(value) is int and 0 <= value <= 100 else None
@@ -4436,6 +4437,7 @@ class PackageKitBackend:
                     checkpoint(on_restart, value)
                 properties(values)
                 present = not destroyed and status != 18
+                snapshot_applied = True
                 if watch:
                     checkpoint(on_progress, evidence())
             if checkpoint_failure is not None:
