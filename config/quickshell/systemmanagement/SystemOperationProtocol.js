@@ -87,6 +87,7 @@ function acceptLine(parser, line) {
     if (parser.complete) return fail(parser, "Records after operation completion");
     const fields = line.split("\t");
     const type = fields[0];
+    if (!type) return fail(parser, "Empty operation record type");
     if (!parser.header) {
         if (type !== "system-management-protocol" || !fieldsFit(fields, 3)
                 || fields[1] !== "1" || fields[2] !== "0")

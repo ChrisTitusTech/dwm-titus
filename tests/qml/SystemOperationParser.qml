@@ -64,6 +64,8 @@ ShellRoot {
         const invalid = [
             good.slice(root.header.length), good.replace("\t1\t0", "\t2\t0"),
             good.replace("\t1\t0", "\t1\t1"), root.header + good,
+            good.replace(pending, "\n" + pending),
+            good.replace(running, "\tunnamed extension\n" + running),
             good.replace(pending, running), good.replace(running, ""),
             good.replace(running, root.operation("permission-denied")),
             good.replace("\tsucceeded\tunknown\tno", "\tsucceeded\tunknown\tyes"),
@@ -158,7 +160,7 @@ ShellRoot {
             process.running = true;
         } catch (error) {
             console.error("Operation parser fixture failed: " + error);
-            Qt.quit();
+            Qt.callLater(function() { Qt.quit(); });
         }
     }
 
