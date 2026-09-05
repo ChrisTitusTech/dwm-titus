@@ -4726,13 +4726,15 @@ class PackageKitExecutionTests(unittest.TestCase):
             DBusCallFlags=types.SimpleNamespace(NONE=0, ALLOW_INTERACTIVE_AUTHORIZATION=1))
         backend.require_mutation_safe = mock.Mock()
         backend.create_mutation = mock.Mock(return_value="/1_test")
+        backend.updates = mock.Mock(return_value=provider.TransactionResult((provider.Package(5, self.package_id, "Example"),)))
+        backend.simulate = mock.Mock(return_value=provider.TransactionResult((provider.Package(11, self.package_id, "Example"),)))
         return backend
 
     def run_operation(self, journal, backend, chunks, update=False, write=None):
         args = {}
         if update:
-            args = dict(generation="a" * 64, package_ids=[self.package_id],
-                        preview=[provider.PlanRow(self.package_id, "update", "example", "2", "Example")])
+            args = dict(generation=provider.snapshot_generation([self.package_id],
+                        [provider.PlanRow(self.package_id, "update", "example", "2", "Example")]))
         return provider.run_packagekit_mutation(
             journal, backend, "updates-install-all" if update else "updates-refresh",
             write or chunks.append, boot_id=self.boot_id, **args)
@@ -4905,7 +4907,7 @@ class PackageKitExecutionTests(unittest.TestCase):
             self.assertEqual(len(backend.connection.calls), before)
             with self.assertRaises(provider.SnapshotFailure):
                 provider.run_packagekit_mutation(journal, backend, "updates-install-all", lambda value: None,
-                                                boot_id=self.boot_id, generation="a" * 64)
+                                                boot_id=self.boot_id, generation="invalid")
             self.assertEqual(len(backend.connection.calls), before)
 
     def test_security_rejection_never_creates_or_journals_a_transaction(self):
@@ -4917,6 +4919,93 @@ class PackageKitExecutionTests(unittest.TestCase):
             backend.create_mutation.assert_not_called()
             with provider.lock_writable_journal(journal):
                 self.assertIsNone(provider.load_writable_journal_state(journal).active)
+
+    def test_changed_plan_rejects_before_mutable_transaction_or_journal_write(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [])
+            backend.simulate.return_value = provider.TransactionResult((provider.Package(11, self.package_id, "Changed preview"),))
+            with self.assertRaises(provider.SnapshotFailure) as raised:
+                self.run_operation(journal, backend, [], update=True)
+            self.assertEqual(raised.exception.code, "conflict")
+            backend.create_mutation.assert_not_called()
+            with provider.lock_writable_journal(journal):
+                state = provider.load_writable_journal_state(journal)
+                self.assertIsNone(state.active)
+                self.assertIsNone(state.handoff)
+
+    def test_preflight_waits_are_unlocked_and_competing_admission_is_rechecked(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [])
+            def competing_owner(package_ids):
+                with provider.lock_writable_journal(journal):
+                    provider.begin_journal_operation(journal, "updates-refresh", "2026-09-05T00:00:00Z",
+                                                     "Competing owner", transaction_path="/2_other")
+                return provider.TransactionResult((provider.Package(11, self.package_id, "Example"),))
+            backend.simulate.side_effect = competing_owner
+            with self.assertRaises(provider.JournalAdmissionError):
+                self.run_operation(journal, backend, [], update=True)
+            self.assertEqual(backend.connection.calls, [])
+
+    def test_fresh_complete_plan_matches_snapshot_generation(self):
+        backend = FixtureBackend(updates=(provider.Package(5, self.package_id, "Example"),
+                                         provider.Package(9, "blocked;1;x86_64;updates", "Blocked")),
+                                 plan=(provider.Package(12, "dependency;1;x86_64;updates", "Dependency"),
+                                       provider.Package(11, self.package_id, "Example")))
+        generation = rows(provider.build_snapshot(backend), "snapshot-generation")[0][1]
+        package_ids, preview = provider.confirmed_update_plan(backend, generation)
+        self.assertEqual(package_ids, (self.package_id,))
+        self.assertEqual({row.action for row in preview}, {"install", "update"})
+
+    def test_invalid_generation_never_reads_backend(self):
+        for generation in (None, "", "A" * 64, "a" * 65, "a" * 63):
+            with self.subTest(generation=generation):
+                backend = mock.Mock()
+                with self.assertRaises(provider.SnapshotFailure) as raised:
+                    provider.confirmed_update_plan(backend, generation)
+                self.assertEqual(raised.exception.code, "malformed")
+                self.assertEqual(backend.mock_calls, [])
+
+    def test_empty_set_never_simulates_even_when_generation_matches(self):
+        backend = mock.Mock()
+        backend.updates.return_value = provider.TransactionResult(())
+        with self.assertRaises(provider.SnapshotFailure) as raised:
+            provider.confirmed_update_plan(backend, provider.snapshot_generation((), ()))
+        self.assertEqual(raised.exception.code, "conflict")
+        backend.simulate.assert_not_called()
+
+    def test_failed_or_unsupported_plan_never_becomes_confirmed(self):
+        for result, code in (
+            (provider.SnapshotFailure("permission-denied", "Denied"), "permission-denied"),
+            (provider.TransactionResult(()), "malformed"),
+            (provider.TransactionResult((provider.Package(11, self.package_id, "Example"),) * 2), "malformed"),
+            (provider.TransactionResult((provider.Package(11, self.package_id, "Example"),
+                                          provider.Package(20, "dependency;1;x86_64;updates", "Downgrade"))), "unsupported"),
+        ):
+            with self.subTest(code=code):
+                backend = mock.Mock()
+                backend.updates.return_value = provider.TransactionResult((provider.Package(5, self.package_id, "Example"),))
+                if isinstance(result, Exception):
+                    backend.simulate.side_effect = result
+                else:
+                    backend.simulate.return_value = result
+                with self.assertRaises(provider.SnapshotFailure) as raised:
+                    provider.confirmed_update_plan(backend, "a" * 64)
+                self.assertEqual(raised.exception.code, code)
+
+    def test_boot_identity_is_fixed_bounded_and_strict(self):
+        value = "01234567-89ab-cdef-0123-456789abcdef"
+        for data in (value.encode(), (value + "\n").encode()):
+            with mock.patch("builtins.open", mock.mock_open(read_data=data)) as source:
+                self.assertEqual(provider.read_boot_id(), value)
+                source.assert_called_once_with("/proc/sys/kernel/random/boot_id", "rb")
+                source().read.assert_called_once_with(37)
+        for data in (b"", value.upper().encode(), b" " + value.encode(), value.encode() + b"x", b"\xff"):
+            with self.subTest(data=data), mock.patch("builtins.open", mock.mock_open(read_data=data)):
+                with self.assertRaises(provider.SnapshotFailure):
+                    provider.read_boot_id()
+        with mock.patch("builtins.open", side_effect=PermissionError):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.read_boot_id()
 
     def test_output_failure_before_dispatch_preserves_recoverable_active_record(self):
         with self.journal() as journal:
@@ -4953,6 +5042,92 @@ class PackageKitExecutionTests(unittest.TestCase):
             terminal = self.run_operation(journal, backend, [], update=True)
             self.assertEqual((terminal.state, terminal.error_code, terminal.system_restart),
                              ("interrupted", "malformed", "unknown"))
+
+
+class SessionEvidenceTests(unittest.TestCase):
+    class Variant:
+        def __init__(self, signature, value):
+            self.signature, self.value = signature, value
+
+        def get_type_string(self):
+            return self.signature
+
+        def unpack(self):
+            return self.value
+
+        def get_child_value(self, index):
+            return self.value[index]
+
+        def get_variant(self):
+            return self.value
+
+    def backend(self, path="/org/freedesktop/login1/session/_31", timestamp=None):
+        backend = provider.PackageKitBackend.__new__(provider.PackageKitBackend)
+        backend.GLib = types.SimpleNamespace(Variant=self.Variant, Error=RuntimeError,
+                                            VariantType=types.SimpleNamespace(new=lambda value: value))
+        backend.Gio = types.SimpleNamespace(DBusCallFlags=types.SimpleNamespace(NONE=0),
+            dbus_error_get_remote_error=lambda error: "org.freedesktop.DBus.Error." + str(error))
+        backend.connection = mock.Mock()
+        backend.connection.call_sync.side_effect = [self.Variant("(o)", (path,)),
+            self.Variant("(v)", (self.Variant("v", timestamp or self.Variant("t", 123)),))]
+        return backend
+
+    def test_fixed_own_session_and_typed_timestamp_share_deadline(self):
+        backend = self.backend()
+        with mock.patch.object(provider.time, "monotonic", side_effect=[100, 101, 102, 103, 104]), \
+                mock.patch.object(provider.os, "getpid", return_value=456):
+            self.assertEqual(backend.session_started(), 123)
+        first, second = backend.connection.call_sync.call_args_list
+        self.assertEqual(first.args[:4], ("org.freedesktop.login1", "/org/freedesktop/login1",
+                                          "org.freedesktop.login1.Manager", "GetSessionByPID"))
+        self.assertEqual(first.args[4].unpack(), (456,))
+        self.assertEqual(second.args[:4], ("org.freedesktop.login1", "/org/freedesktop/login1/session/_31",
+                                           provider.PROPERTIES_INTERFACE, "Get"))
+        self.assertEqual(second.args[4].unpack(), ("org.freedesktop.login1.Session", "TimestampMonotonic"))
+        self.assertEqual((first.args[5], second.args[5]), ("(o)", "(v)"))
+        self.assertEqual((first.args[7], second.args[7]), (9000, 7000))
+
+    def test_malformed_session_path_never_reads_property(self):
+        for path in ("/other", "/org/freedesktop/login1/session/", "/org/freedesktop/login1/session/" + "x" * 257):
+            with self.subTest(path=path):
+                backend = self.backend(path=path)
+                with self.assertRaises(provider.SnapshotFailure) as raised:
+                    backend.session_started()
+                self.assertEqual(raised.exception.code, "malformed")
+                self.assertEqual(backend.connection.call_sync.call_count, 1)
+
+    def test_signed_boolean_or_out_of_range_timestamp_is_not_recovery_evidence(self):
+        for signature, value in (("x", 123), ("b", True), ("t", True), ("t", -1), ("t", 1 << 64)):
+            with self.subTest(signature=signature, value=value):
+                with self.assertRaises(provider.SnapshotFailure) as raised:
+                    self.backend(timestamp=self.Variant(signature, value)).session_started()
+                self.assertEqual(raised.exception.code, "malformed")
+
+    def test_missing_service_or_expired_deadline_does_not_guess_clear(self):
+        backend = self.backend()
+        backend.connection.call_sync.side_effect = RuntimeError("ServiceUnknown")
+        with self.assertRaises(provider.SnapshotFailure) as raised:
+            backend.session_started()
+        self.assertEqual(raised.exception.status, "unavailable")
+        self.assertEqual(raised.exception.code, "missing-provider")
+        backend = self.backend()
+        with mock.patch.object(provider.time, "monotonic", side_effect=[100, 101, 110]):
+            with self.assertRaises(provider.SnapshotFailure) as raised:
+                backend.session_started()
+        self.assertEqual(raised.exception.code, "timeout")
+        self.assertEqual(backend.connection.call_sync.call_count, 1)
+
+
+    def test_denied_and_timeout_replies_keep_distinct_failure_codes(self):
+        for message, code in (("AccessDenied", "permission-denied"), ("NoReply", "timeout"),
+                              ("TimedOut", "timeout"), ("Timeout", "timeout"),
+                              ("InvalidArgs", "malformed"), ("Unrecognized", "internal")):
+            with self.subTest(message=message):
+                backend = self.backend()
+                backend.connection.call_sync.side_effect = RuntimeError(message)
+                with self.assertRaises(provider.SnapshotFailure) as raised:
+                    backend.session_started()
+                self.assertEqual(raised.exception.code, code)
 
 
 if __name__ == "__main__":

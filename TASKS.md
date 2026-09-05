@@ -66,10 +66,13 @@ running-executable identity required for the same-version Fedora backport), disp
 only a durably admitted exact transaction, checkpoints restart signals, and
 observes through terminal evidence even after a lost method reply. Persistence
 failure suppresses terminal success and permits only narrowly bound cancellation.
-Fake-bus coverage exercises these paths without changing host packages. Public
-mutation commands remain disabled: fresh-plan confirmation, recovery integration,
-and the root-scoped operation UI must be completed before this boundary can be
-accepted.
+Fake-bus coverage exercises these paths without changing host packages. Execution
+now repeats bounded inventory and simulation reads and compares the confirmed
+generation before creating its mutable transaction. Callers cannot supply their
+own package IDs or preview to bypass that check. Fixed, bounded kernel boot and
+typed logind session evidence readers are available for recovery integration.
+Public mutation commands remain disabled: recovery integration and the root-scoped
+confirmation and operation UI must be completed before this boundary can be accepted.
 
 - [ ] Add user-initiated Fedora update discovery and status through the selected
   stable package-management interface.

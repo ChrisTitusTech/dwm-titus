@@ -3015,6 +3015,35 @@ def snapshot_generation(update_ids: Sequence[str], plan: Sequence[PlanRow]) -> s
     return digest.hexdigest()
 
 
+def confirmed_update_plan(backend: UpdateBackend, generation: str) -> tuple[tuple[str, ...], tuple[PlanRow, ...]]:
+    """Revalidate a confirmation using fresh bounded read-only transactions."""
+    if not isinstance(generation, str) or JOURNAL_GENERATION_PATTERN.fullmatch(generation) is None:
+        raise SnapshotFailure("malformed", "Confirmed update generation is invalid")
+    updates = normalize_updates(backend.updates().packages)
+    package_ids = tuple(row.package_id for row in updates if row.installability == "installable")
+    preview = tuple(normalize_plan(backend.simulate(package_ids).packages, package_ids)) if package_ids else ()
+    if any(row.action in {"reinstall", "downgrade"} for row in preview):
+        raise SnapshotFailure("unsupported", "PackageKit preview requires unsupported reinstall or downgrade flags", "unsupported")
+    if snapshot_generation(package_ids, preview) != generation:
+        raise SnapshotFailure("conflict", "The update plan changed; refresh the preview and confirm again")
+    if not package_ids:
+        raise SnapshotFailure("conflict", "There are no installable updates; refresh the preview")
+    return package_ids, preview
+
+
+def read_boot_id() -> str:
+    """Read only the bounded kernel boot identity, never a caller-selected path."""
+    try:
+        with open("/proc/sys/kernel/random/boot_id", "rb") as source:
+            data = source.read(37)
+        value = data.removesuffix(b"\n").decode("ascii")
+    except (OSError, UnicodeError) as error:
+        raise SnapshotFailure("internal", "Kernel boot identity is unavailable", "unavailable") from error
+    if BOOT_ID_PATTERN.fullmatch(value) is None:
+        raise SnapshotFailure("malformed", "Kernel boot identity is malformed")
+    return value
+
+
 class OperationProtocolError(ValueError):
     """An operation stream would violate its closed lifecycle or field bounds."""
 
@@ -3668,24 +3697,22 @@ class PackageKitMutation:
 def run_packagekit_mutation(
     journal: JournalDescriptorSet, backend: PackageKitBackend, action_id: str,
     write: Callable[[str], object], *, boot_id: str, session_started: int | None = None,
-    generation: str | None = None, package_ids: Sequence[str] = (), preview: Sequence[PlanRow] = (),
+    generation: str | None = None,
 ) -> JournalOperation:
-    """Run an already revalidated confirmed plan; no public command enables this yet."""
+    """Revalidate and run a confirmed request; public commands remain disabled."""
     if action_id not in {"updates-refresh", "updates-install-all"}:
         raise SnapshotFailure("unsupported", "Unsupported PackageKit mutation", "unsupported")
     if action_id == "updates-install-all":
-        ObservedUpdateSummary(preview)
-        if (
-            not isinstance(generation, str) or JOURNAL_GENERATION_PATTERN.fullmatch(generation) is None
-            or not package_ids or len(package_ids) > MAX_LIST_RECORDS
-            or any(not isinstance(package_id, str) for package_id in package_ids)
-            or len(set(package_ids)) != len(package_ids)
-            or not set(package_ids).issubset({row.package_id for row in preview if row.action == "update"})
-        ):
-            raise SnapshotFailure("malformed", "Confirmed PackageKit update inputs are invalid")
-    elif generation is not None or package_ids or preview:
+        if not isinstance(generation, str) or JOURNAL_GENERATION_PATTERN.fullmatch(generation) is None:
+            raise SnapshotFailure("malformed", "Confirmed update generation is invalid")
+    elif generation is not None:
         raise SnapshotFailure("malformed", "Metadata refresh cannot select packages")
+    # Reject existing owners before service work, then repeat admission under
+    # the lock after the unlocked preflight to close concurrent-start races.
+    with lock_writable_journal(journal):
+        prepare_journal_admission(journal)
     backend.require_mutation_safe()
+    package_ids, preview = confirmed_update_plan(backend, generation) if action_id == "updates-install-all" else ((), ())
     path = backend.create_mutation()
     if not isinstance(path, str) or JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(path) is None:
         raise SnapshotFailure("malformed", "PackageKit returned an invalid operation path")
@@ -3799,6 +3826,54 @@ class PackageKitBackend:
         return SnapshotFailure(
             "internal", "PackageKit D-Bus request failed", "unavailable"
         )
+
+    def session_started(self) -> int:
+        """Read this process's logind session timestamp under one fixed deadline."""
+        deadline = time.monotonic() + 10
+
+        def call(path: str, interface: str, method: str, parameters: object, signature: str) -> object:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise SnapshotFailure("timeout", "Current logind session read timed out; restart guidance is retained", "unavailable")
+            try:
+                reply = self.connection.call_sync(
+                    "org.freedesktop.login1", path, interface, method, parameters,
+                    self.GLib.VariantType.new(signature), self.Gio.DBusCallFlags.NONE,
+                    max(1, min(int(remaining * 1000), 10000)), None)
+            except self.GLib.Error as error:
+                name = self.Gio.dbus_error_get_remote_error(error)
+                if time.monotonic() >= deadline or name in {"org.freedesktop.DBus.Error.Timeout", "org.freedesktop.DBus.Error.TimedOut", "org.freedesktop.DBus.Error.NoReply"}:
+                    raise SnapshotFailure("timeout", "Current logind session read timed out; restart guidance is retained", "unavailable") from error
+                if name == "org.freedesktop.DBus.Error.AccessDenied":
+                    raise SnapshotFailure("permission-denied", "Current logind session read was denied; restart guidance is retained", "restricted") from error
+                code = {
+                    "org.freedesktop.DBus.Error.ServiceUnknown": "missing-provider",
+                    "org.freedesktop.DBus.Error.NameHasNoOwner": "missing-provider",
+                    "org.freedesktop.DBus.Error.UnknownObject": "missing-provider",
+                    "org.freedesktop.login1.NoSessionForPID": "missing-provider",
+                    "org.freedesktop.DBus.Error.InvalidArgs": "malformed",
+                }.get(name, "internal")
+                raise SnapshotFailure(code, "Current logind session is unavailable; restart guidance is retained", "unavailable") from error
+            if time.monotonic() >= deadline:
+                raise SnapshotFailure("timeout", "Current logind session read timed out; restart guidance is retained", "unavailable")
+            if reply.get_type_string() != signature:
+                raise SnapshotFailure("malformed", "Current logind session reply is malformed")
+            return reply
+
+        reply = call("/org/freedesktop/login1", "org.freedesktop.login1.Manager", "GetSessionByPID",
+                     self.GLib.Variant("(u)", (os.getpid(),)), "(o)")
+        path = reply.unpack()[0]
+        if not isinstance(path, str) or len(path) > 256 or re.fullmatch(r"/org/freedesktop/login1/session/[A-Za-z0-9_]+", path) is None:
+            raise SnapshotFailure("malformed", "Current logind session path is malformed")
+        reply = call(path, PROPERTIES_INTERFACE, "Get",
+                     self.GLib.Variant("(ss)", ("org.freedesktop.login1.Session", "TimestampMonotonic")), "(v)")
+        value = reply.get_child_value(0).get_variant()
+        if value.get_type_string() != "t":
+            raise SnapshotFailure("malformed", "Current logind session timestamp is not unsigned 64-bit")
+        timestamp = value.unpack()
+        if type(timestamp) is not int or not 0 <= timestamp <= JOURNAL_SEQUENCE_MAX:
+            raise SnapshotFailure("malformed", "Current logind session timestamp is malformed")
+        return timestamp
 
     def last_refresh_age(self) -> int:
         deadline = time.monotonic() + REFRESH_AGE_DEADLINE_SECONDS
