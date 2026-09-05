@@ -78,9 +78,15 @@ ownership, and durably recovers terminal evidence or conservative interruption.
 Previous-boot records cannot reintroduce satisfied guidance. Public mutation
 commands remain disabled. Exact-ID watch and acknowledgment controls now replay
 retained results without a service call or keep a verified PackageKit observer
-subscribed through completion without reissuing the action. Snapshot, cancel,
-and mutation-command integration and the root-scoped
+subscribed through completion without reissuing the action. Finite snapshots now
+integrate validated journal recovery, boot/session restart pruning, exact active
+identities, and terminal handoffs without hiding readable package discovery.
+Cancel and mutation-command integration and the root-scoped
 confirmation and operation UI must be completed before this boundary can be accepted.
+Native Fedora 44 discovery exposed a separate preview validation gap: PackageKit
+represented all 23 requested IDs, but marked five as `install` rather than
+`update`. The current validator rejects those rows. Qualify and correct that
+mapping in its own review boundary before enabling confirmed execution.
 
 - [ ] Add user-initiated Fedora update discovery and status through the selected
   stable package-management interface.
