@@ -113,6 +113,8 @@ function acceptLine(parser, line) {
             return fail(parser, "Invalid operation transition or terminal cancelability");
         if (fields[4] === "failed" && !parser.error)
             return fail(parser, "Failed operation has no preceding error");
+        if (fields[4] === "succeeded" && parser.error)
+            return fail(parser, "Successful operation carries an error");
         if (!terminal(fields[4]) && parser.records.length >= 256)
             return fail(parser, "Too many operation progress records");
         parser.operation = { id: fields[1], actionId: fields[2], kind: fields[3],

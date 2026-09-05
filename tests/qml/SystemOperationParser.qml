@@ -68,6 +68,7 @@ ShellRoot {
             good.replace(running, "\tunnamed extension\n" + running),
             good.replace(pending, running), good.replace(running, ""),
             good.replace(running, root.operation("permission-denied")),
+            good.replace(running, "error\tupdates\tinternal\tConflicting failure\n" + running),
             good.replace("\tsucceeded\tunknown\tno", "\tsucceeded\tunknown\tyes"),
             good.replace("\tunknown\tno", "\t101\tno"),
             good.replace("\tunknown\tno", "\t01\tno"),
