@@ -5410,6 +5410,12 @@ def update_command(action_id: str, generation: str | None = None) -> int:
             with retain_writable_journal(chain) as journal:
                 started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 try:
+                    with lock_writable_journal(journal):
+                        # A reboot satisfies restart guidance before any backend
+                        # work. Never clear an active owner or unacknowledged
+                        # handoff to make a replacement command admissible.
+                        prepare_journal_admission(journal)
+                        prune_journal_restart(journal, boot_id, None)
                     terminal = run_packagekit_mutation(journal, PackageKitBackend(), action_id, write,
                         boot_id=boot_id, generation=generation, on_admission=admitted)
                     return 0 if terminal.state == "succeeded" else 1

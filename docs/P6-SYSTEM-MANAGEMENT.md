@@ -85,6 +85,11 @@ package ID or caller-selected transaction parameter. No update command accepts
 another option or trailing argument.
 
 The refresh and install CLI entry points now use the durable execution owner.
+Before opening a backend, they require an empty active record and handoff and
+apply current-boot restart pruning under the journal lock. A direct CLI request
+after reboot therefore does not depend on a prior snapshot. Existing active or
+unacknowledged operations still reject as conflicts without changing their
+journal state; snapshot recovery and exact acknowledgment remain explicit.
 An explicit install request requires the exact confirmed generation, repeats
 inventory and simulation, and rejects mismatch before mutable admission. These
 commands return 0 only after a durable `succeeded` result and complete stream;

@@ -6296,9 +6296,9 @@ class UpdateCommandTests(unittest.TestCase):
         return provider.snapshot_generation([self.package_id],
             [provider.PlanRow(self.package_id, "update", "example", "2", "Example")])
 
-    def invoke(self, journal, args, backend, output=None):
+    def invoke(self, journal, args, backend, output=None, boot_id=None):
         with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(pathlib.Path(journal.chain.path).parents[1])}), \
-                mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                mock.patch.object(provider, "read_boot_id", return_value=boot_id or self.boot_id), \
                 mock.patch.object(provider, "PackageKitBackend", **({"side_effect": backend} if isinstance(backend, Exception) else {"return_value": backend})), \
                 contextlib.redirect_stdout(io.StringIO() if output is None else output) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
             code = provider.main(args)
@@ -6385,6 +6385,50 @@ class UpdateCommandTests(unittest.TestCase):
                 self.assertEqual((code, diagnostic), (1, ""))
                 self.assertEqual(rows(output.splitlines(), "error")[0][2], "conflict")
                 self.assertNotEqual(rows(output.splitlines(), "audit")[0][1], operation.operation_id)
+                self.assertEqual(provider.load_journal_state(journal.chain), before)
+                backend.require_mutation_safe.assert_not_called()
+                backend.create_mutation.assert_not_called()
+
+    def test_direct_post_reboot_commands_prune_before_any_backend_preflight(self):
+        new_boot = "abcdef01-2345-6789-abcd-ef0123456789"
+        for update in (False, True):
+            with self.subTest(update=update), self.journal() as journal:
+                operation = self.begin(journal, state="running")
+                with provider.lock_writable_journal(journal):
+                    provider.advance_journal_operation(journal, operation, replace(operation, state="succeeded",
+                        system_restart="system", session_restart="session", application_restart=True,
+                        finished_at="2026-09-05T01:00:00Z", terminal_monotonic=100))
+                    provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+                    provider.acknowledge_journal_handoff(journal, operation.operation_id)
+                backend = self.backend(journal, [lambda bus: bus.progress(Status=3),
+                    lambda bus: bus.emit("Finished", (1, 0))])
+                def preflight():
+                    state = provider.load_journal_state(journal.chain)
+                    self.assertEqual(state.restart, provider.JournalRestart(new_boot, None, "none", "none", 0, False, 0))
+                    self.assertIsNone(state.active)
+                    self.assertIsNone(state.handoff)
+                backend.require_mutation_safe.side_effect = preflight
+                args = ["updates-install-all", self.generation()] if update else ["updates-refresh"]
+                code, output, diagnostic = self.invoke(journal, args, backend, boot_id=new_boot)
+                self.assertEqual((code, diagnostic), (0, ""))
+                self.assertEqual(rows(output.splitlines(), "operation")[-1][4], "succeeded")
+                self.assertEqual(provider.load_journal_state(journal.chain).restart.boot_id, new_boot)
+
+    def test_old_boot_active_or_handoff_is_still_a_read_only_conflict(self):
+        new_boot = "abcdef01-2345-6789-abcd-ef0123456789"
+        for handoff in (False, True):
+            with self.subTest(handoff=handoff), self.journal() as journal:
+                operation = self.begin(journal)
+                if handoff:
+                    with provider.lock_writable_journal(journal):
+                        provider.advance_journal_operation(journal, operation, replace(operation, state="failed",
+                            error_code="internal", finished_at="2026-09-05T01:00:00Z", terminal_monotonic=100))
+                        provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+                before = provider.load_journal_state(journal.chain)
+                backend = self.backend(journal, [])
+                code, output, diagnostic = self.invoke(journal, ["updates-refresh"], backend, boot_id=new_boot)
+                self.assertEqual((code, diagnostic), (1, ""))
+                self.assertEqual(rows(output.splitlines(), "error")[0][2], "conflict")
                 self.assertEqual(provider.load_journal_state(journal.chain), before)
                 backend.require_mutation_safe.assert_not_called()
                 backend.create_mutation.assert_not_called()
