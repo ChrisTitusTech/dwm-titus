@@ -600,8 +600,14 @@ The initial vocabulary is closed for known record fields:
   `reinstall`, and `DOWNGRADING` to `downgrade`; another info value makes the
   plan malformed and the install action unavailable. Package IDs are unique
   within the result, and every requested installable update ID must appear
-  exactly once with action `update`; another action for a requested ID makes
-  the plan malformed. A result containing `reinstall` or `downgrade` remains
+  exactly once with action `install` or `update`; another action for a requested
+  ID makes the plan malformed. Preserve the reported action rather than
+  relabeling a requested install as an update. PackageKit's
+  [DNF5 backend at v1.3.6](https://github.com/PackageKit/PackageKit/blob/v1.3.6/backends/dnf5/dnf5-backend-thread.cpp)
+  includes both install and upgrade actions in `GetUpdates`, and reports them
+  as `INSTALLING` and `UPDATING` during simulation. An `update` action for an
+  unrequested ID remains malformed; dependency installs remain visible.
+  A result containing dependency `reinstall` or `downgrade` remains
   visible but makes `updates-install-all` unavailable with an `unsupported`
   error; Phase 6 never adds PackageKit's `ALLOW_REINSTALL` or
   `ALLOW_DOWNGRADE` flags implicitly.

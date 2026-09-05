@@ -448,7 +448,7 @@ Scope {
                         planRequiresUnsupportedFlags = true;
                     const key = "$" + change.packageId;
                     if (requestedUpdates[key] !== undefined) {
-                        if (change.action !== "update") {
+                        if (change.action !== "update" && change.action !== "install") {
                             planInvalid = true;
                             break;
                         }

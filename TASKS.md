@@ -83,10 +83,14 @@ integrate validated journal recovery, boot/session restart pruning, exact active
 identities, and terminal handoffs without hiding readable package discovery.
 Cancel and mutation-command integration and the root-scoped
 confirmation and operation UI must be completed before this boundary can be accepted.
-Native Fedora 44 discovery exposed a separate preview validation gap: PackageKit
-represented all 23 requested IDs, but marked five as `install` rather than
-`update`. The current validator rejects those rows. Qualify and correct that
-mapping in its own review boundary before enabling confirmed execution.
+The preview validators now preserve requested `install` as well as `update`
+actions, matching the PackageKit DNF5 backend's discovery/simulation contract.
+Missing or duplicate requested IDs, outbound requested actions, and unrequested
+updates still fail closed. A Fedora 44 / PackageKit 1.3.6 read-only snapshot
+preserved all 23 requested IDs in 29 preview rows (five installs, 18 updates,
+six removals), without the prior malformed-plan error. No package mutation was
+performed; this agent process still lacks a logind session, reported separately
+as partial recovery evidence. Confirmed execution remains disabled.
 
 - [ ] Add user-initiated Fedora update discovery and status through the selected
   stable package-management interface.

@@ -107,6 +107,16 @@ case $mode in
 valid)
 	snapshot
 	;;
+requested-install)
+	snapshot | sed \
+		-e 's/action\tupdates-install-all\tunavailable/action\tupdates-install-all\tavailable/' \
+		-e 's/package-change\talpha;1;x86_64;updates\tupdate/package-change\talpha;1;x86_64;updates\tinstall/'
+	;;
+requested-remove)
+	snapshot | sed \
+		-e 's/action\tupdates-install-all\tunavailable/action\tupdates-install-all\tavailable/' \
+		-e 's/package-change\talpha;1;x86_64;updates\tupdate/package-change\talpha;1;x86_64;updates\tremove/'
+	;;
 partial-restart)
 	snapshot | sed 's/state\tupdate-restart\tavailable\tsystem/state\tupdate-restart\tpartial\tsecurity-session/'
 	;;
@@ -269,6 +279,21 @@ wait_state() {
 
 wait_state ready
 [ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+
+printf 'requested-install\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state ready
+[ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+[ "$(ipc systemManagementPackageChangeCount)" -eq 1 ]
+[ "$(ipc systemManagementInstallAvailability)" = available ]
+[ -z "$(ipc systemManagementErrorCodes)" ]
+
+printf 'requested-remove\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state partial
+[ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+[ "$(ipc systemManagementPackageChangeCount)" -eq 0 ]
+[ "$(ipc systemManagementInstallAvailability)" = unavailable ]
 
 printf 'bad-plan\n' >"$fixture/mode"
 ipc refresh >/dev/null

@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Preserve Fedora DNF5 dependency previews when a requested update is reported
+  as an install. Keep the actual package actions visible and retain strict
+  missing, duplicate, and unexpected-update checks; confirmed update execution
+  remains disabled pending its integration.
+
 - Preserve a pending Input discovery refresh when a preview finishes during an
   earlier read, so kept accessibility settings do not remain stale in Settings.
 

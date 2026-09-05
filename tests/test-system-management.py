@@ -4410,6 +4410,62 @@ class JournalDirectoryChainTests(unittest.TestCase):
 
 
 class SnapshotValidationTests(unittest.TestCase):
+    def test_dnf5_requested_installs_remain_visible_in_complete_plan(self):
+        updates = tuple(package(8, f"pkg-{index};2;x86_64;updates", "Update")
+                        for index in range(23))
+        plan = tuple(package(12 if index < 5 else 11, update.package_id, "Change")
+                     for index, update in enumerate(updates)) + tuple(
+            package(13, f"old-{index};1;x86_64;installed", "Removal")
+            for index in range(6))
+        backend = FixtureBackend(updates=updates, plan=plan)
+
+        output = provider.build_snapshot(backend)
+
+        self.assertEqual(len(rows(output, "update")), 23)
+        changes = rows(output, "package-change")
+        self.assertEqual(len(changes), 29)
+        self.assertEqual([row[2] for row in changes].count("install"), 5)
+        self.assertEqual([row[2] for row in changes].count("update"), 18)
+        self.assertEqual([row[2] for row in changes].count("remove"), 6)
+        self.assertEqual(rows(output, "error"), [])
+        generation = rows(output, "snapshot-generation")[0][1]
+        requested, preview = provider.confirmed_update_plan(backend, generation)
+        self.assertEqual(set(requested), {update.package_id for update in updates})
+        self.assertEqual({row.package_id for row in preview if row.action == "install"},
+                         {update.package_id for update in updates[:5]})
+
+    def test_requested_install_action_change_invalidates_confirmation(self):
+        update = package(8, "example;2;x86_64;updates", "Update")
+        backend = FixtureBackend(updates=(update,),
+                                 plan=(package(12, update.package_id, "Install"),))
+        generation = rows(provider.build_snapshot(backend), "snapshot-generation")[0][1]
+        backend.plan_records = (package(11, update.package_id, "Update"),)
+
+        with self.assertRaises(provider.SnapshotFailure) as raised:
+            provider.confirmed_update_plan(backend, generation)
+        self.assertEqual(raised.exception.code, "conflict")
+
+    def test_requested_outbound_or_unsupported_plan_action_is_malformed(self):
+        package_id = "example;2;x86_64;updates"
+        for info in (13, 15, 19, 20):
+            with self.subTest(info=info), self.assertRaisesRegex(
+                    provider.SnapshotFailure, "incomplete update plan"):
+                provider.normalize_plan((package(info, package_id, "Change"),),
+                                        (package_id,))
+
+    def test_requested_install_does_not_relax_missing_duplicate_or_extra_update_checks(self):
+        package_id = "example;2;x86_64;updates"
+        install = package(12, package_id, "Install")
+        extra_id = "dependency;1;x86_64;updates"
+        for plan in ((), (install, install), (package(12, extra_id, "Dependency"),),
+                     (install, package(11, extra_id, "Unexpected update"))):
+            with self.subTest(plan=plan), self.assertRaises(provider.SnapshotFailure):
+                provider.normalize_plan(plan, (package_id,))
+        valid = provider.normalize_plan(
+            (install, package(12, extra_id, "Dependency")), (package_id,))
+        self.assertEqual({row.package_id for row in valid}, {package_id, extra_id})
+        self.assertEqual({row.action for row in valid}, {"install"})
+
     def test_duplicate_plan_preserves_readable_updates(self):
         update = package(8, "openssl;4.0;x86_64;updates", "TLS library")
         backend = FixtureBackend(
