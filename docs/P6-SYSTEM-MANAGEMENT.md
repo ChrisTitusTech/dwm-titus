@@ -771,7 +771,8 @@ An operation stream accepts at most one error row. A `failed` terminal operation
 requires exactly one preceding error row whose capability is the provider that
 owns the operation: `updates` for `refresh` and `update`, `regional` for
 `timezone`, `ntp`, and `locale`, and the action's declared provider for
-`delegate`. Other terminal results do not require an error row.
+`delegate`. A `succeeded` terminal result forbids an error row, matching the
+durable journal contract. Other terminal results do not require an error row.
 The first operation record must be `pending`; consumers reject any other
 initial state. Audit timestamps are canonical UTC RFC 3339 whole seconds in the
 exact `YYYY-MM-DDTHH:MM:SSZ` form and both are required on the terminal audit
@@ -779,6 +780,21 @@ row. Consumers do not compare their wall-clock order: `finished` may precede
 `started` when NTP or an administrator moves the system clock backward. Record
 order and the validated operation transition sequence remain
 authoritative for lifecycle ordering.
+
+The standalone `SystemOperationProtocol.js` consumer accepts cumulative raw
+`StdioCollector.data` buffers and validates complete newline-delimited records
+incrementally. It never decodes arbitrary pipe chunks as independent strings,
+so split UTF-8 remains intact. Its caller must stop accepting a faulted stream,
+call `finish` after normal or abnormal process exit, and accept a result only
+when that call succeeds. Originating streams require exit 0 for success or 1
+for another terminal result; retained-result watchers require exit 0 regardless
+of the terminal result. Protocol completion alone never proves process success
+or authorizes handoff acknowledgment. This parser does not start processes,
+own a journal, or enable Settings mutation controls.
+The minor's active-ID table governs snapshot capability advertisement, not the
+closed journal action-to-kind mapping: as specified for `watch-operation`, a
+1.0 stream can replay an exact retained regional or delegated result without
+advertising or invoking that action.
 
 Allowed operation transitions are:
 
@@ -790,8 +806,9 @@ Allowed operation transitions are:
 | `cancel-requested` | `cancel-requested`, `canceled`, `succeeded`, `failed`, or `interrupted` |
 | Any terminal state | None |
 
-Repeated `running` and `cancel-requested` records carry progress or cancellation
-updates. `succeeded` after `cancel-requested` is valid because completion can
+Repeated nonterminal records (`pending`, `authorizing`, `running`, and
+`cancel-requested`) carry progress or cancelability updates without changing
+the lifecycle state. `succeeded` after `cancel-requested` is valid because completion can
 race cancellation. `permission-denied`, `canceled`, `failed`, `interrupted`,
 and `succeeded` are terminal and appear exactly once.
 
