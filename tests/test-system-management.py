@@ -487,7 +487,7 @@ class JournalControlRecordTests(unittest.TestCase):
             None,
             "Installing updates",
             "a" * 64,
-            "/org/freedesktop/PackageKit/transactions/1_deadbeef",
+            "/1_deadbeef",
             "none",
             "none",
             False,
@@ -2906,17 +2906,374 @@ class JournalWritableCommitTests(unittest.TestCase):
                             "_commit_journal_file_unlocked",
                             side_effect=fail_after_replacement,
                         ):
-                            provider.commit_writable_journal_path(
-                                journal, "active", ""
-                            )
+                            provider.commit_writable_journal_path(journal, "active", "")
 
                 self.assertIs(caught.exception, commit_error)
                 self.assertIsInstance(
                     caught.exception.__cause__, provider.JournalLayoutError
                 )
-                self.assertIn("active identity is unsafe", str(caught.exception.__cause__))
+                self.assertIn(
+                    "active identity is unsafe", str(caught.exception.__cause__)
+                )
             finally:
                 chain.close()
+
+
+class JournalLifecycleTests(unittest.TestCase):
+    boot_id = "01234567-89ab-cdef-0123-456789abcdef"
+    started = "2026-09-04T18:00:00Z"
+    finished = "2026-09-04T18:01:00Z"
+
+    def test_fedora_transaction_paths_are_root_level_bounded_ids(self):
+        for path in ("/18_adcbcaed", "/45_dafeca"):
+            self.assertIsNotNone(provider.JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(path))
+        for path in (
+            "/org/freedesktop/PackageKit/transactions/18_adcbcaed",
+            "/org/freedesktop/PackageKit", "/", "/18_adcbcaed/child",
+            "/18_", "/18_" + "a" * 65, "/" + "1" * 21 + "_abcd",
+            "/18_abcd\n", "/18_ab-cd",
+        ):
+            self.assertIsNone(provider.JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(path))
+
+    @contextlib.contextmanager
+    def journal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+            with provider.open_journal_directory_chain(str(path)) as chain:
+                provider.initialize_journal_layout(
+                    chain.directory_descriptor, self.boot_id
+                )
+                with provider.open_writable_journal(chain) as journal:
+                    yield journal
+
+    def begin(self, journal, action="updates-refresh"):
+        args = {}
+        if action in ("updates-refresh", "updates-install-all"):
+            args["transaction_path"] = "/1_test"
+            args["boot_id"] = self.boot_id
+        if action == "updates-install-all":
+            args.update(generation="a" * 64, boot_id=self.boot_id)
+        return provider.begin_journal_operation(
+            journal, action, self.started, "Starting operation", **args
+        )
+
+    def finish(self, journal, operation, **contributions):
+        running = replace(operation, state="running", **contributions)
+        provider.advance_journal_operation(journal, operation, running)
+        terminal = replace(
+            running,
+            state="succeeded",
+            finished_at=self.finished,
+            terminal_monotonic=100 if running.kind in ("refresh", "update") else None,
+        )
+        provider.advance_journal_operation(journal, running, terminal)
+        return terminal
+
+    def image(self, journal, name):
+        return os.pread(journal.descriptor(name), provider.JOURNAL_FILE_SIZE, 0)
+
+    def test_pending_is_durable_and_blocks_overlap(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            self.assertEqual(
+                provider.load_writable_journal_state(journal).active, operation
+            )
+            self.assertEqual(operation.state, "pending")
+            before = self.image(journal, "active")
+            with self.assertRaises(provider.JournalAdmissionError):
+                self.begin(journal)
+            self.assertEqual(self.image(journal, "active"), before)
+
+    def test_invalid_admission_arguments_never_commit(self):
+        with self.journal() as journal:
+            with mock.patch.object(provider, "commit_writable_journal_path") as commit:
+                for action, args in (
+                    ("unknown", {}),
+                    ("updates-refresh", {"transaction_path": "/arbitrary"}),
+                    ("timezone-set", {"generation": "a" * 64}),
+                    (
+                        "updates-install-all",
+                        {
+                            "generation": "a" * 64,
+                            "transaction_path": "/1_test",
+                            "boot_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                        },
+                    ),
+                ):
+                    with self.subTest(action=action):
+                        with self.assertRaises(
+                            (
+                                provider.JournalRecordError,
+                                provider.JournalAdmissionError,
+                            )
+                        ):
+                            provider.begin_journal_operation(
+                                journal, action, self.started, "Starting", **args
+                            )
+                commit.assert_not_called()
+
+    def test_rejects_stale_identity_illegal_transition_and_progress_writes(self):
+        with self.journal() as journal:
+            pending = self.begin(journal)
+            running = replace(pending, state="running")
+            provider.advance_journal_operation(journal, pending, running)
+            for expected, following in (
+                (pending, running),
+                (
+                    running,
+                    replace(
+                        running,
+                        transaction_path="/2_other",
+                    ),
+                ),
+                (running, replace(running, state="authorizing")),
+                (running, replace(running, detail="Progress only")),
+            ):
+                with self.subTest(following=following):
+                    before = self.image(journal, "active")
+                    with self.assertRaises(provider.JournalAdmissionError):
+                        provider.advance_journal_operation(journal, expected, following)
+                    self.assertEqual(self.image(journal, "active"), before)
+
+    def test_restart_contributions_only_strengthen(self):
+        with self.journal() as journal:
+            pending = self.begin(journal, "updates-install-all")
+            stronger = replace(
+                pending, session_restart="security-session", application_restart=True
+            )
+            provider.advance_journal_operation(journal, pending, stronger)
+            with self.assertRaises(provider.JournalAdmissionError):
+                provider.advance_journal_operation(journal, stronger, pending)
+
+    def test_every_kind_retains_exact_terminal_until_acknowledged(self):
+        for action in provider.JOURNAL_OPERATION_ACTION_KINDS:
+            with self.subTest(action=action), self.journal() as journal:
+                terminal = self.finish(journal, self.begin(journal, action))
+                restart_before = self.image(journal, "restart")
+                provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+                state = provider.load_writable_journal_state(journal)
+                self.assertIsNone(state.active)
+                self.assertEqual(
+                    state.handoff, provider.JournalHandoff(terminal.operation_id, 0)
+                )
+                self.assertEqual(state.cursor, 1)
+                self.assertEqual(
+                    provider.retained_journal_operation(journal, terminal.operation_id),
+                    terminal,
+                )
+                with self.assertRaises(provider.JournalAdmissionError):
+                    self.begin(journal)
+                with self.assertRaises(provider.JournalAdmissionError):
+                    provider.acknowledge_journal_handoff(journal, "op-" + "f" * 32)
+                provider.acknowledge_journal_handoff(journal, terminal.operation_id)
+                self.assertIsNone(provider.load_writable_journal_state(journal).handoff)
+                self.assertEqual(
+                    provider.retained_journal_operation(journal, terminal.operation_id),
+                    terminal,
+                )
+                if terminal.kind != "update":
+                    self.assertEqual(self.image(journal, "restart"), restart_before)
+
+    def test_terminalization_recovers_before_and_after_every_commit(self):
+        for action in (
+            "updates-refresh",
+            "updates-install-all",
+            "timezone-set",
+            "accounts-open",
+        ):
+            names = ["terminal-00", "cursor", "handoff", "active"]
+            if action == "updates-install-all":
+                names.insert(0, "restart")
+            for target in names:
+                for after in (False, True):
+                    with (
+                        self.subTest(action=action, target=target, after=after),
+                        self.journal() as journal,
+                    ):
+                        contributions = {}
+                        if action == "updates-install-all":
+                            contributions = dict(
+                                system_restart="system",
+                                session_restart="security-session",
+                                application_restart=True,
+                            )
+                        terminal = self.finish(
+                            journal, self.begin(journal, action), **contributions
+                        )
+                        real_commit = provider.commit_writable_journal_path
+
+                        def crash(journal, name, payload):
+                            if name == target and not after:
+                                raise provider.JournalCommitError(
+                                    "injected before commit"
+                                )
+                            result = real_commit(journal, name, payload)
+                            if name == target:
+                                raise provider.JournalCommitError(
+                                    "injected after commit"
+                                )
+                            return result
+
+                        with mock.patch.object(
+                            provider, "commit_writable_journal_path", side_effect=crash
+                        ):
+                            with self.assertRaises(provider.JournalCommitError):
+                                provider.complete_journal_terminal(
+                                    journal, boot_id=self.boot_id
+                                )
+                        provider.load_writable_journal_state(journal)
+                        provider.complete_journal_terminal(
+                            journal, boot_id=self.boot_id
+                        )
+                        state = provider.load_writable_journal_state(journal)
+                        self.assertIsNone(state.active)
+                        self.assertEqual(state.terminals[0], terminal)
+                        self.assertEqual(state.cursor, 1)
+                        self.assertEqual(
+                            state.handoff.operation_id, terminal.operation_id
+                        )
+                        if action == "updates-install-all":
+                            self.assertEqual(state.restart.system, "system")
+                            self.assertEqual(state.restart.session, "security-session")
+                            self.assertEqual(state.restart.application_cutoff, 100)
+
+    def test_boot_and_login_boundaries_never_reapply_satisfied_contributions(self):
+        for new_boot, login in (
+            (self.boot_id, 101),
+            ("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", None),
+        ):
+            with self.subTest(boot=new_boot), self.journal() as journal:
+                terminal = self.finish(
+                    journal,
+                    self.begin(journal, "updates-install-all"),
+                    system_restart="system",
+                    session_restart="security-session",
+                    application_restart=True,
+                )
+                provider.complete_journal_terminal(
+                    journal, boot_id=new_boot, session_started=login
+                )
+                state = provider.load_writable_journal_state(journal)
+                self.assertEqual(state.restart.session, "none")
+                self.assertFalse(state.restart.application)
+                self.assertEqual(
+                    state.restart.system,
+                    "system" if new_boot == self.boot_id else "none",
+                )
+                self.assertEqual(state.terminals[0], terminal)
+
+    def test_ring_wrap_replays_older_exact_identity_not_newest_slot(self):
+        with self.journal() as journal:
+            terminals = []
+            for _ in range(34):
+                terminal = self.finish(journal, self.begin(journal))
+                provider.complete_journal_terminal(journal)
+                provider.acknowledge_journal_handoff(journal, terminal.operation_id)
+                terminals.append(terminal)
+            self.assertEqual(
+                provider.retained_journal_operation(journal, terminals[2].operation_id),
+                terminals[2],
+            )
+            with self.assertRaises(provider.JournalAdmissionError):
+                provider.retained_journal_operation(journal, terminals[0].operation_id)
+            self.assertEqual(provider.load_writable_journal_state(journal).cursor, 2)
+
+    def test_pending_and_ack_commit_errors_preserve_durable_authority(self):
+        for target in ("active", "handoff"):
+            for after in (False, True):
+                with self.subTest(target=target, after=after), self.journal() as journal:
+                    operation = None
+                    if target == "handoff":
+                        operation = self.finish(journal, self.begin(journal))
+                        provider.complete_journal_terminal(journal)
+                    real_commit = provider.commit_writable_journal_path
+
+                    def fail(journal, name, payload):
+                        self.assertEqual(name, target)
+                        if after:
+                            real_commit(journal, name, payload)
+                        raise provider.JournalCommitError("indeterminate commit")
+
+                    with mock.patch.object(provider, "commit_writable_journal_path", side_effect=fail):
+                        with self.assertRaises(provider.JournalCommitError):
+                            if target == "active":
+                                self.begin(journal)
+                            else:
+                                provider.acknowledge_journal_handoff(journal, operation.operation_id)
+                    state = provider.load_writable_journal_state(journal)
+                    if target == "active":
+                        self.assertEqual(state.active is not None, after)
+                    else:
+                        self.assertEqual(state.handoff is None, after)
+                        self.assertEqual(state.terminals[0], operation)
+
+    def test_stale_terminal_timestamp_is_rejected_before_checkpoint(self):
+        with self.journal() as journal:
+            terminal = self.finish(journal, self.begin(journal, "updates-install-all"))
+            provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+            provider.acknowledge_journal_handoff(journal, terminal.operation_id)
+            pending = self.begin(journal)
+            interrupted = replace(
+                pending, state="interrupted", finished_at=self.finished,
+                terminal_monotonic=99,
+            )
+            before = self.image(journal, "active")
+            with self.assertRaises(provider.JournalRecordError):
+                provider.advance_journal_operation(journal, pending, interrupted)
+            self.assertEqual(self.image(journal, "active"), before)
+
+    def test_refresh_requires_boot_reconciliation_without_storing_a_boot_field(self):
+        with self.journal() as journal:
+            terminal = self.finish(journal, self.begin(journal, "updates-install-all"))
+            provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+            provider.acknowledge_journal_handoff(journal, terminal.operation_id)
+            new_boot = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+            with self.assertRaises(provider.JournalAdmissionError):
+                provider.begin_journal_operation(
+                    journal, "updates-refresh", self.started, "Starting",
+                    transaction_path="/18_adcbcaed", boot_id=new_boot,
+                )
+            provider.prune_journal_restart(journal, new_boot, None)
+            pending = provider.begin_journal_operation(
+                journal, "updates-refresh", self.started, "Starting",
+                transaction_path="/18_adcbcaed", boot_id=new_boot,
+            )
+            self.assertIsNone(pending.boot_id)
+            interrupted = replace(
+                pending, state="interrupted", finished_at=self.finished,
+                terminal_monotonic=1,
+            )
+            provider.advance_journal_operation(journal, pending, interrupted)
+            before = self.image(journal, "restart")
+            provider.complete_journal_terminal(journal)
+            self.assertEqual(self.image(journal, "restart"), before)
+
+    def test_terminal_pruning_shares_the_three_commit_restart_budget(self):
+        for prune_before_terminal in (False, True):
+            with self.subTest(prune_before_terminal=prune_before_terminal), self.journal() as journal:
+                for cutoff, contributions in (
+                    (100, {"session_restart": "session"}),
+                    (200, {"application_restart": True}),
+                ):
+                    pending = self.begin(journal, "updates-install-all")
+                    running = replace(pending, state="running", **contributions)
+                    provider.advance_journal_operation(journal, pending, running)
+                    terminal = replace(running, state="succeeded", finished_at=self.finished, terminal_monotonic=cutoff)
+                    provider.advance_journal_operation(journal, running, terminal)
+                    provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+                    provider.acknowledge_journal_handoff(journal, terminal.operation_id)
+                pending = self.begin(journal, "updates-install-all")
+                real_commit = provider.commit_writable_journal_path
+                with mock.patch.object(provider, "commit_writable_journal_path", wraps=real_commit) as commits:
+                    provider.prune_journal_restart(journal, self.boot_id, 150)
+                    if prune_before_terminal:
+                        provider.prune_journal_restart(journal, self.boot_id, 250)
+                    running = replace(pending, state="running")
+                    provider.advance_journal_operation(journal, pending, running)
+                    terminal = replace(running, state="succeeded", finished_at=self.finished, terminal_monotonic=300)
+                    provider.advance_journal_operation(journal, running, terminal)
+                    provider.complete_journal_terminal(journal, boot_id=self.boot_id, session_started=250)
+                self.assertEqual(sum(call.args[1] == "restart" for call in commits.call_args_list), 3)
 
 
 class JournalAdmissionTests(unittest.TestCase):
@@ -2941,7 +3298,7 @@ class JournalAdmissionTests(unittest.TestCase):
             None,
             "Refreshing update metadata",
             None,
-            "/org/freedesktop/PackageKit/transactions/1_deadbeef",
+            "/1_deadbeef",
             None,
             None,
             None,

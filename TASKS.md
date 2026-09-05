@@ -49,6 +49,14 @@ Acceptance:
 
 ### UPDATE-001: Fedora Updates
 
+Progress: Read-only PackageKit discovery and its Settings pane are implemented.
+The journal now supports durable pending admission, identity-checked lifecycle
+transitions, restart pruning, recoverable terminal commits, exact retained-result
+lookup, and handoff acknowledgment. These are tested foundations, not an enabled
+update execution workflow. PackageKit execution/recovery integration and its
+root-scoped confirmation and operation UI remain to be completed before this
+boundary can be accepted.
+
 - [ ] Add user-initiated Fedora update discovery and status through the selected
   stable package-management interface.
 - [ ] Add confirmed update execution with transparent progress and logs, strict

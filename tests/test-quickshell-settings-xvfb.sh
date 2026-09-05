@@ -382,6 +382,30 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
 
+input_discovery_fixture=$config_home/dwm-titus/input-discovery-fixture
+mv "$data_home/dwm-titus/scripts/dwm-settings-input" \
+	"$data_home/dwm-titus/scripts/dwm-settings-input.real"
+cat >"$data_home/dwm-titus/scripts/dwm-settings-input" <<'SH'
+#!/bin/sh
+set -eu
+fixture=$XDG_CONFIG_HOME/dwm-titus/input-discovery-fixture
+if [ "${1:-}" = discover ] && [ -f "$fixture.hold" ]; then
+	rm -f "$fixture.hold"
+	"$(dirname -- "$0")/dwm-settings-input.real" "$@" >"$fixture.snapshot"
+	: >"$fixture.captured"
+	attempt=0
+	while [ ! -f "$fixture.release" ] && [ "$attempt" -lt 1000 ]; do
+		attempt=$((attempt + 1))
+		sleep 0.01
+	done
+	[ -f "$fixture.release" ] || exit 1
+	cat "$fixture.snapshot"
+	exit 0
+fi
+exec "$(dirname -- "$0")/dwm-settings-input.real" "$@"
+SH
+chmod +x "$data_home/dwm-titus/scripts/dwm-settings-input"
+
 appearance_failure_fixture=$work/appearance-snapshot-failure
 mv "$data_home/dwm-titus/scripts/dwm-settings-appearance" \
 	"$data_home/dwm-titus/scripts/dwm-settings-appearance.real"
@@ -1014,6 +1038,16 @@ done
 [ "$sticky_value" = "$sticky_baseline" ]
 [ "$sticky_live" = "$sticky_baseline" ]
 
+# Hold a pre-change discovery result across Keep. The model must queue the
+# resulting refresh instead of letting this stale snapshot win permanently.
+: >"$input_discovery_fixture.hold"
+settings_ipc_retry select input >/dev/null
+i=0
+while [ ! -f "$input_discovery_fixture.captured" ] && [ "$i" -lt 100 ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -f "$input_discovery_fixture.captured" ]
 settings_ipc_retry inputAccessibilityPreview sticky-keys "$sticky_preview" >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -1035,6 +1069,15 @@ while [ "$i" -lt 100 ]; do
 done
 grep -Fqx "$sticky_record" \
 	"$config_home/dwm-titus/input-settings.conf"
+i=0
+while [ "$i" -lt 100 ]; do
+	preview_state=$(settings_ipc_retry inputPreviewState)
+	[ -z "$preview_state" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -z "$preview_state" ]
+: >"$input_discovery_fixture.release"
 i=0
 while [ "$i" -lt 100 ]; do
 	preview_state=$(settings_ipc_retry inputPreviewState)
@@ -2175,6 +2218,12 @@ while [ "$i" -lt 600 ]; do
 done
 if [ "$wallpaper_preview" != active ]; then
 	printf 'External wallpaper preview did not become active: %s\n' "$wallpaper_preview" >&2
+	printf 'Wallpaper watcher: %s; status busy: %s\n' \
+		"$(settings_ipc_retry appearanceInventoryWatchState)" \
+		"$(settings_ipc_retry appearanceWallpaperStatusBusy)" >&2
+	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
+		"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" status --read-only >&2 || true
 	exit 1
 fi
 wallpaper_remaining_before=$(settings_ipc_retry appearanceWallpaperPreviewRemaining)
