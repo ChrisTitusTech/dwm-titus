@@ -548,6 +548,10 @@ ShellRoot {
             return systemManagementModel.updates.length;
         }
 
+        function systemManagementRestartState(): string {
+            return systemManagementModel.updateRestart.status + ":" + systemManagementModel.updateRestart.value;
+        }
+
         function systemManagementPackageChangeCount(): int {
             return systemManagementModel.packageChanges.length;
         }

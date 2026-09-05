@@ -130,6 +130,14 @@ snapshot as the next recovery attempt.
 and `update`. Regional and delegated operations remain owned by their finite
 originating stream while active, but an exact retained terminal record for any
 valid kind can be replayed without reissuing its external action.
+Finite snapshots now initialize or validate the fixed journal, recover its
+bounded state, and apply restart satisfaction before publishing active or
+handoff identities. Journal or logind failure preserves readable update
+discovery and reports recovery errors; known restart guidance remains visible
+with `partial` status. This incremental build still leaves mutation and cancel
+commands unavailable, so snapshot active rows advertise `cancelable=no` until
+the exact-ID cancel control is integrated. Live watch streams continue to report
+the exact PackageKit cancelability observation.
 After bounded initial adoption validates the exact object, the live watcher
 keeps those same subscriptions without a silence deadline or polling timer.
 Bus loss, malformed evidence, or a failed output/checkpoint ends observation

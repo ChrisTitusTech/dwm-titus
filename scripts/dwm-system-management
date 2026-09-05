@@ -3370,6 +3370,121 @@ class ObservedUpdateSummary:
                 f"different={self.comparison(final=final)}; mismatch-samples={len(self.samples)}")
 
 
+@dataclass(frozen=True)
+class RecoverySnapshot:
+    """Finite validated journal projection; no open descriptors escape it."""
+
+    state: JournalState | None = None
+    evidence: RecoveryEvidence | None = None
+    prior_restart: JournalRestart | None = None
+    failures: tuple[SnapshotFailure, ...] = ()
+
+
+def read_recovery_snapshot(backend: PackageKitBackend) -> RecoverySnapshot:
+    """Recover and prune before display, without holding locks over service calls."""
+    prior_restart = None
+    failures = []
+    session_read = False
+    session_started = None
+
+    def read_session():
+        nonlocal session_read, session_started
+        if not session_read:
+            session_read = True
+            try:
+                session_started = backend.session_started()
+                _encode_journal_uint64(session_started, "session start")
+            except (SnapshotFailure, JournalRecordError) as error:
+                session_started = None
+                failures.append(error if isinstance(error, SnapshotFailure) else
+                    SnapshotFailure("malformed", "Session start evidence is malformed; restart guidance is retained"))
+        return session_started
+
+    try:
+        boot_id = read_boot_id()
+        with open_journal_directory() as chain:
+            try:
+                initialize_journal_layout(chain.directory_descriptor, boot_id)
+            except OSError:
+                # A read-only filesystem can still supply trustworthy prior
+                # guidance even though initialization/pruning is unavailable.
+                try:
+                    prior_restart = load_journal_state(chain).restart
+                except (OSError, JournalFrameError, JournalRecordError):
+                    pass
+                raise
+            prior_restart = load_journal_state(chain).restart
+            with retain_writable_journal(chain) as journal:
+                state, evidence, failure = recover_journal_active(journal, backend,
+                    boot_id=boot_id, session_reader=read_session)
+                if failure is not None:
+                    failures.append(failure)
+                # The finite PackageKit attachment comes first. The same
+                # cached logind result also prunes journal-only recovery paths.
+                read_session()
+                with lock_writable_journal(journal):
+                    prune_journal_restart(journal, boot_id, session_started)
+                    current = load_writable_journal_state(journal)
+                    if current.active is not None and current.active.state in JOURNAL_OPERATION_TERMINAL_STATES:
+                        complete_journal_terminal(journal, boot_id=boot_id, session_started=session_started)
+                        current = load_writable_journal_state(journal)
+                    if current.active != state.active:
+                        evidence = None
+                    if current.active is not None and current.active.kind not in {"update", "refresh"}:
+                        raise JournalAdmissionError("Another regional or delegated owner appeared during recovery")
+                    return RecoverySnapshot(current, evidence, prior_restart, tuple(failures))
+    except (SnapshotFailure, JournalFrameError, JournalRecordError, JournalAdmissionError, OSError) as error:
+        if isinstance(error, SnapshotFailure):
+            failure = error
+        elif isinstance(error, (JournalLockError, JournalAdmissionError)):
+            failure = SnapshotFailure("conflict", "Journal recovery could not obtain stable ownership; refresh status before retrying")
+        elif isinstance(error, JournalCommitError) or not isinstance(error, (JournalFrameError, JournalRecordError, JournalFileError)):
+            failure = SnapshotFailure("internal", "Journal storage is unavailable; check free space, mount writability, and permissions before refreshing. Prior guidance is retained")
+        else:
+            failure = SnapshotFailure("malformed", f"Journal recovery failed: {error}. Keep the journal intact; reboot before moving a legacy journal aside, then refresh and inspect diagnostics")
+        return RecoverySnapshot(prior_restart=prior_restart, failures=tuple(failures + [failure]))
+
+
+def build_managed_snapshot(backend: PackageKitBackend) -> list[str]:
+    """Combine readable discovery with independently validated durable recovery."""
+    recovery = read_recovery_snapshot(backend)
+    lines = build_snapshot(backend)
+    state = recovery.state
+    restart = state.restart if state is not None else recovery.prior_restart
+    value = "unknown"
+    if restart is not None and restart.system != "unknown":
+        value = aggregate_restart((
+            {"none": 1, "system": 4, "security-system": 6}[restart.system],
+            {"none": 1, "session": 3, "security-session": 5}[restart.session],
+            2 if restart.application else 1,
+        ))
+    partial = bool(recovery.failures) or state is None
+    if state is None and value == "none":
+        value = "unknown"
+    detail = "Durable journal restart guidance; session and reboot satisfaction applied"
+    if partial:
+        detail = "Known restart guidance is retained; recovery evidence is incomplete. Refresh status and inspect recovery errors"
+    for index, line in enumerate(lines):
+        if line.startswith("provider\trecovery\t"):
+            lines[index] = "\t".join(("provider", "recovery", "partial" if partial else "available",
+                "user-session", "dwm-system-management", detail if partial else "Durable journal recovery completed"))
+        elif line.startswith("state\tupdate-restart\t"):
+            lines[index] = "\t".join(("state", "update-restart", "partial" if partial else "available", value, detail))
+    lines.pop()  # Restore the single final completion after recovery records.
+    if state is not None and state.active is not None:
+        operation = state.active
+        percent = recovery.evidence.percent if recovery.evidence is not None else None
+        lines.append("\t".join(("active-operation", operation.operation_id, operation.action_id,
+            operation.kind, operation.state, "unknown" if percent is None else str(percent), "no",
+            "Exact journaled operation remains active; use watch-operation. Cancellation controls are not enabled in this build")))
+    elif state is not None and state.handoff is not None:
+        operation = state.terminals[state.handoff.slot]
+        lines.append("\t".join(("terminal-handoff", operation.operation_id, operation.action_id, operation.kind)))
+    lines.extend(f"error\trecovery\t{failure.code}\t{failure.detail}" for failure in recovery.failures)
+    lines.append("complete\tsnapshot")
+    return lines
+
+
 def build_snapshot(backend: UpdateBackend) -> list[str]:
     errors: list[tuple[str, str]] = []
     last_refresh_status = "unavailable"
@@ -5107,7 +5222,6 @@ def main(argv: Sequence[str]) -> int:
         return usage()
     try:
         backend = PackageKitBackend()
-        lines = build_snapshot(backend)
     except SnapshotFailure as failure:
         # Backend construction can fail before a usable source exists. Reuse the
         # normal snapshot shape so consumers still receive every mandatory ID.
@@ -5124,7 +5238,17 @@ def main(argv: Sequence[str]) -> int:
             def simulate(self, _package_ids: Sequence[str]) -> TransactionResult:
                 raise self.failure
 
-        lines = build_snapshot(FailedBackend(failure))
+            def session_started(self) -> int:
+                raise self.failure
+
+            def probe_operation(self, _operation, **_kwargs):
+                raise self.failure
+
+            def operation_history(self):
+                raise self.failure
+
+        backend = FailedBackend(failure)
+    lines = build_managed_snapshot(backend)
     print("\n".join(lines))
     return 0
 

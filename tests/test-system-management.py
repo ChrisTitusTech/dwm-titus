@@ -6228,5 +6228,208 @@ class OperationWatchTests(unittest.TestCase):
             self.assertEqual(provider.load_journal_state(journal.chain).handoff.operation_id, operation.operation_id)
 
 
+class RecoverySnapshotTests(unittest.TestCase):
+    boot_id = PackageKitExecutionTests.boot_id
+    journal = PackageKitExecutionTests.journal
+    begin = OperationRecoveryTests.begin
+
+    def backend(self, **kwargs):
+        backend = FixtureBackend(**kwargs)
+        backend.session_started = mock.Mock(return_value=0)
+        backend.probe_operation = mock.Mock(return_value=provider.RecoveryEvidence(False))
+        backend.operation_history = mock.Mock(return_value=())
+        return backend
+
+    def snapshot(self, journal, backend, *, boot_id=None):
+        state_home = str(pathlib.Path(journal.chain.path).parents[1])
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": state_home}), \
+                mock.patch.object(provider, "read_boot_id", return_value=boot_id or self.boot_id):
+            return provider.build_managed_snapshot(backend)
+
+    def restart(self, journal, **changes):
+        cutoffs = sorted({changes[key] for key in ("session_cutoff", "application_cutoff") if key in changes}) or [100]
+        for index, cutoff in enumerate(cutoffs):
+            operation = self.begin(journal, state="running",
+                system_restart=changes.get("system", "none") if index == 0 else "none",
+                session_restart=changes.get("session", "none") if cutoff == changes.get("session_cutoff") else "none",
+                application_restart=changes.get("application", False) if cutoff == changes.get("application_cutoff") else False)
+            with provider.lock_writable_journal(journal):
+                provider.advance_journal_operation(journal, operation, replace(operation,
+                    state="succeeded", finished_at="2026-09-05T01:00:00Z", terminal_monotonic=cutoff))
+                provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+                provider.acknowledge_journal_handoff(journal, operation.operation_id)
+
+    def restart_row(self, output):
+        return next(row for row in rows(output, "state") if row[1] == "update-restart")
+
+    def test_cli_initializes_only_its_fixed_journal_and_keeps_actions_disabled(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.dict(os.environ, {"XDG_STATE_HOME": directory}), \
+                mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                mock.patch.object(provider, "PackageKitBackend", return_value=self.backend()), \
+                contextlib.redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(provider.main(["snapshot"]), 0)
+            output = stdout.getvalue().splitlines()
+            self.assertEqual(output[-1], "complete\tsnapshot")
+            self.assertEqual(self.restart_row(output)[2:4], ["available", "none"])
+            self.assertEqual([row[2] for row in rows(output, "action")], ["unavailable"] * 3)
+            path = pathlib.Path(directory) / "dwm-titus" / "system-management"
+            self.assertEqual({item.name for item in path.iterdir()}, set(provider.JOURNAL_NAMES))
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
+
+    def test_durable_restart_overrides_discovery_and_survives_missing_packagekit(self):
+        for unavailable in (False, True):
+            with self.subTest(unavailable=unavailable), self.journal() as journal:
+                self.restart(journal, system="system", session="security-session", session_cutoff=100)
+                backend = self.backend(restart_types=(1,), updates_failure=
+                    provider.SnapshotFailure("missing-provider", "PackageKit is absent", "unavailable") if unavailable else None)
+                output = self.snapshot(journal, backend)
+                self.assertEqual(self.restart_row(output)[2:4], ["available", "security-system"])
+                self.assertEqual(output[-1], "complete\tsnapshot")
+
+    def test_new_session_prunes_independent_cutoffs_before_display(self):
+        with self.journal() as journal:
+            self.restart(journal, session="security-session", session_cutoff=100, application=True, application_cutoff=300)
+            backend = self.backend()
+            backend.session_started.return_value = 200
+            output = self.snapshot(journal, backend)
+            self.assertEqual(self.restart_row(output)[2:4], ["available", "application"])
+            state = provider.load_journal_state(journal.chain)
+            self.assertEqual((state.restart.session, state.restart.application), ("none", True))
+
+    def test_missing_session_evidence_retains_known_guidance_as_partial(self):
+        with self.journal() as journal:
+            self.restart(journal, session="security-session", session_cutoff=100)
+            backend = self.backend()
+            backend.session_started.side_effect = provider.SnapshotFailure("timeout", "Logind timed out")
+            output = self.snapshot(journal, backend)
+            self.assertEqual(self.restart_row(output)[2:4], ["partial", "security-session"])
+            self.assertIn(["error", "recovery", "timeout", "Logind timed out"], rows(output, "error"))
+            self.assertEqual(provider.load_journal_state(journal.chain).restart.session, "security-session")
+
+    def test_new_boot_clears_all_guidance_durably(self):
+        with self.journal() as journal:
+            self.restart(journal, system="unknown", session="session", session_cutoff=100, application=True, application_cutoff=100)
+            new_boot = "abcdef01-2345-6789-abcd-ef0123456789"
+            output = self.snapshot(journal, self.backend(), boot_id=new_boot)
+            self.assertEqual(self.restart_row(output)[2:4], ["available", "none"])
+            self.assertEqual(provider.load_journal_state(journal.chain).restart.boot_id, new_boot)
+
+    def test_logind_failure_does_not_reintroduce_guidance_satisfied_by_reboot(self):
+        with self.journal() as journal:
+            self.restart(journal, system="unknown", session="session", session_cutoff=100)
+            backend = self.backend()
+            backend.session_started.side_effect = provider.SnapshotFailure("missing-provider", "Logind missing")
+            output = self.snapshot(journal, backend, boot_id="abcdef01-2345-6789-abcd-ef0123456789")
+            self.assertEqual(self.restart_row(output)[2:4], ["partial", "none"])
+
+    def test_read_only_journal_failure_preserves_validated_prior_guidance(self):
+        with self.journal() as journal:
+            self.restart(journal, system="security-system")
+            with mock.patch.object(provider, "initialize_journal_layout", side_effect=OSError(errno.EROFS, "Read-only fixture")):
+                output = self.snapshot(journal, self.backend())
+            self.assertEqual(self.restart_row(output)[2:4], ["partial", "security-system"])
+
+    def test_active_lookup_precedes_logind_and_emits_exact_finite_identity(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, "refresh")
+            backend = self.backend()
+            def probe(record, **_kwargs):
+                self.assertEqual(record, operation)
+                self.assertFalse(journal._exclusive)
+                backend.session_started.assert_not_called()
+                return provider.RecoveryEvidence(True, percent=27, allow_cancel=True)
+            backend.probe_operation.side_effect = probe
+            output = self.snapshot(journal, backend)
+            self.assertEqual(rows(output, "active-operation")[0][1:7],
+                [operation.operation_id, operation.action_id, "refresh", "pending", "27", "no"])
+            self.assertEqual(rows(output, "terminal-handoff"), [])
+            self.assertEqual(output[-1], "complete\tsnapshot")
+
+    def test_lookup_timeout_preserves_active_identity_and_does_not_guess_absence(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, "refresh")
+            backend = self.backend()
+            backend.probe_operation.side_effect = provider.SnapshotFailure("timeout", "Lookup expired")
+            output = self.snapshot(journal, backend)
+            self.assertEqual(rows(output, "active-operation")[0][1], operation.operation_id)
+            self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+            self.assertIn(["error", "recovery", "timeout", "Lookup expired"], rows(output, "error"))
+
+    def test_absent_refresh_becomes_durable_interrupted_handoff(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, "refresh")
+            output = self.snapshot(journal, self.backend())
+            self.assertEqual(rows(output, "active-operation"), [])
+            self.assertEqual(rows(output, "terminal-handoff"),
+                [["terminal-handoff", operation.operation_id, operation.action_id, "refresh"]])
+            self.assertEqual(provider.load_journal_state(journal.chain).terminals[operation.slot].state, "interrupted")
+
+    def test_terminalized_update_is_completed_and_pruned_before_handoff(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, state="running", session_restart="session")
+            with provider.lock_writable_journal(journal):
+                provider.advance_journal_operation(journal, operation, replace(operation,
+                    state="succeeded", finished_at="2026-09-05T01:00:00Z", terminal_monotonic=100))
+            backend = self.backend()
+            backend.session_started.return_value = 200
+            output = self.snapshot(journal, backend)
+            backend.probe_operation.assert_not_called()
+            backend.operation_history.assert_not_called()
+            self.assertEqual(self.restart_row(output)[2:4], ["available", "none"])
+            self.assertEqual(rows(output, "terminal-handoff")[0][1], operation.operation_id)
+            self.assertIsNone(provider.load_journal_state(journal.chain).active)
+
+    def test_stranded_regional_state_is_not_emitted_as_packagekit_active(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, "timezone")
+            backend = self.backend()
+            output = self.snapshot(journal, backend)
+            backend.probe_operation.assert_not_called()
+            self.assertEqual(rows(output, "active-operation"), [])
+            self.assertEqual(rows(output, "terminal-handoff")[0][1], operation.operation_id)
+            self.assertEqual(provider.load_journal_state(journal.chain).terminals[operation.slot].state, "interrupted")
+
+    def test_prune_failure_retains_prior_guidance_without_publishing_handoff(self):
+        with self.journal() as journal:
+            self.restart(journal, session="security-session", session_cutoff=100)
+            backend = self.backend()
+            backend.session_started.return_value = 200
+            with mock.patch.object(provider, "commit_writable_journal_path", side_effect=provider.JournalCommitError("Injected write failure")):
+                output = self.snapshot(journal, backend)
+            self.assertEqual(self.restart_row(output)[2:4], ["partial", "security-session"])
+            self.assertEqual(rows(output, "active-operation") + rows(output, "terminal-handoff"), [])
+            self.assertEqual(provider.load_journal_state(journal.chain).restart.session, "security-session")
+
+    def test_unsafe_journal_does_not_hide_readable_inventory_or_touch_replacement(self):
+        with self.journal() as journal:
+            path = pathlib.Path(journal.chain.path) / "handoff"
+            path.chmod(0o644)
+            try:
+                before = path.read_bytes()
+                backend = self.backend(updates=(package(9, "held;2;x86_64;updates", "Held"),))
+                output = self.snapshot(journal, backend)
+                self.assertEqual(len(rows(output, "update")), 1)
+                self.assertEqual(rows(output, "active-operation") + rows(output, "terminal-handoff"), [])
+                self.assertEqual(self.restart_row(output)[2:4], ["partial", "unknown"])
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o644)
+            finally:
+                path.chmod(0o600)
+
+    def test_backend_construction_failure_still_completes_durable_handoff(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, "refresh")
+            with provider.lock_writable_journal(journal):
+                provider.advance_journal_operation(journal, operation, replace(operation,
+                    state="failed", error_code="internal", finished_at="2026-09-05T01:00:00Z", terminal_monotonic=100))
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(pathlib.Path(journal.chain.path).parents[1])}), \
+                    mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                    mock.patch.object(provider, "PackageKitBackend", side_effect=provider.SnapshotFailure("missing-provider", "Bindings missing")), \
+                    contextlib.redirect_stdout(io.StringIO()) as stdout:
+                self.assertEqual(provider.main(["snapshot"]), 0)
+            self.assertEqual(rows(stdout.getvalue().splitlines(), "terminal-handoff")[0][1], operation.operation_id)
+
+
 if __name__ == "__main__":
     unittest.main()

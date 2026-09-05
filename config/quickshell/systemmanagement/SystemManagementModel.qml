@@ -119,6 +119,17 @@ Scope {
         return "";
     }
 
+    function operationActionKind(actionId) {
+        const updateKind = root.updateActionKind(actionId);
+        if (updateKind.length > 0) return updateKind;
+        if (actionId === "timezone-set") return "timezone";
+        if (actionId === "ntp-set") return "ntp";
+        if (actionId === "locale-set") return "locale";
+        if (actionId === "accounts-open" || actionId === "password-open"
+                || actionId === "printers-open" || actionId === "sources-open") return "delegate";
+        return "";
+    }
+
     function clearState(detail) {
         root.snapshotState = "failure";
         root.message = detail;
@@ -254,7 +265,7 @@ Scope {
                         && Number(fields[3]) <= 4294967294 : fields[3] === "unknown";
                 } else {
                     valueValid = root.validRestart(fields[3])
-                        && (available || fields[3] === "unknown");
+                        && (available || fields[2] === "partial" || fields[3] === "unknown");
                 }
                 if (!valueValid) {
                     updatesInvalid = true;
@@ -381,8 +392,8 @@ Scope {
                     break;
                 }
                 if (!root.fieldsFit(fields, 4) || !root.validOperationId(fields[1])
-                        || root.updateActionKind(fields[2]).length === 0
-                        || root.updateActionKind(fields[2]) !== fields[3]) {
+                        || root.operationActionKind(fields[2]).length === 0
+                        || root.operationActionKind(fields[2]) !== fields[3]) {
                     fatal = "System management provider returned an invalid terminal handoff";
                     break;
                 }
