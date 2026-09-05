@@ -3263,6 +3263,26 @@ class OperationStream:
         self.closed = True
 
 
+def reject_unadmitted_operation(operation_id: str, action_id: str, started_at: str,
+                               failure: SnapshotFailure, write: Callable[[str], object]) -> None:
+    """Report a rejected request without inventing a durable transaction or result."""
+    if (not isinstance(action_id, str) or action_id not in {"updates-refresh", "updates-install-all"}
+            or not isinstance(failure, SnapshotFailure) or failure.code not in JOURNAL_ERROR_CODES):
+        raise OperationProtocolError("rejected update request is invalid")
+    _validate_journal_detail(failure.detail)
+    finished_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stream = OperationStream(operation_id, action_id, started_at,
+        "Request rejected before operation admission; no package mutation was dispatched", write)
+    stream._send([
+        f"error\tupdates\t{failure.code}\t{failure.detail}",
+        stream._operation_line("failed", "unknown", False, failure.detail),
+        "\t".join(("audit", operation_id, action_id, stream.kind, "failed", started_at, finished_at, failure.detail)),
+        "complete\toperation",
+    ])
+    stream.state = "failed"
+    stream.closed = True
+
+
 def replay_terminal_operation(
     operation: JournalOperation, write: Callable[[str], object],
 ) -> None:
@@ -3597,8 +3617,8 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
                 "delegated",
                 "PackageKit",
                 clean_text(
-                    "Read-only update discovery is available; managed update operations "
-                    "are not enabled in this build"
+                    "Read-only update discovery is available; managed update controls "
+                    "are not enabled in Settings"
                     if inventory_ok
                     else summary_detail
                 ),
@@ -3634,7 +3654,7 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
             )
         ),
         "action\tupdates-refresh\tunavailable\tdelegated\tupdates\tRefresh updates\t"
-        "Managed update operations are not enabled in this build",
+        "Managed update controls are not enabled in Settings",
         "\t".join(
             (
                 "action",
@@ -3643,7 +3663,7 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
                 "delegated",
                 "updates",
                 "Install all updates",
-                clean_text(f"Managed update operations are not enabled; {plan_detail}"),
+                clean_text(f"Managed update controls are not enabled in Settings; {plan_detail}"),
             )
         ),
         "action\tupdates-cancel\tunavailable\tdelegated\tupdates\tCancel update\t"
@@ -4072,8 +4092,9 @@ def run_packagekit_mutation(
     journal: JournalDescriptorSet, backend: PackageKitBackend, action_id: str,
     write: Callable[[str], object], *, boot_id: str, session_started: int | None = None,
     generation: str | None = None,
+    on_admission: Callable[[], object] | None = None,
 ) -> JournalOperation:
-    """Revalidate and run a confirmed request; public commands remain disabled."""
+    """Revalidate and run a confirmed request with write-ahead ownership."""
     if action_id not in {"updates-refresh", "updates-install-all"}:
         raise SnapshotFailure("unsupported", "Unsupported PackageKit mutation", "unsupported")
     if action_id == "updates-install-all":
@@ -4091,6 +4112,9 @@ def run_packagekit_mutation(
     if not isinstance(path, str) or JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(path) is None:
         raise SnapshotFailure("malformed", "PackageKit returned an invalid operation path")
     with lock_writable_journal(journal):
+        if on_admission is not None:
+            prepare_journal_admission(journal)
+            on_admission()  # From here, even a failed commit may require recovery.
         operation = begin_journal_operation(journal, action_id,
             datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "Starting PackageKit operation",
             transaction_path=path, generation=generation, boot_id=boot_id)
@@ -5364,12 +5388,74 @@ def operation_control(command: str, operation_id: str) -> int:
         return 3
 
 
+def update_command(action_id: str, generation: str | None = None) -> int:
+    """Own an explicit CLI request; never replace a possibly admitted operation."""
+    admission_started = False
+    output_started = False
+
+    def admitted():
+        nonlocal admission_started
+        admission_started = True
+
+    def write(chunk):
+        nonlocal output_started
+        output_started = True  # A failed write may already have delivered bytes.
+        sys.stdout.write(chunk)
+        sys.stdout.flush()
+
+    try:
+        boot_id = read_boot_id()
+        with open_journal_directory() as chain:
+            initialize_journal_layout(chain.directory_descriptor, boot_id)
+            with retain_writable_journal(chain) as journal:
+                started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                try:
+                    with lock_writable_journal(journal):
+                        # A reboot satisfies restart guidance before any backend
+                        # work. Never clear an active owner or unacknowledged
+                        # handoff to make a replacement command admissible.
+                        prepare_journal_admission(journal)
+                        prune_journal_restart(journal, boot_id, None)
+                    terminal = run_packagekit_mutation(journal, PackageKitBackend(), action_id, write,
+                        boot_id=boot_id, generation=generation, on_admission=admitted)
+                    return 0 if terminal.state == "succeeded" else 1
+                except (SnapshotFailure, JournalFrameError, JournalRecordError, JournalAdmissionError,
+                        OSError, OperationProtocolError) as error:
+                    if admission_started or output_started:
+                        raise
+                    # This ID represents only the rejected request. No active,
+                    # terminal, handoff, or restart payload is fabricated for it.
+                    with lock_writable_journal(journal):
+                        operation_id = generate_journal_operation_id(load_writable_journal_state(journal))
+                    if isinstance(error, SnapshotFailure):
+                        failure = error
+                    elif isinstance(error, (JournalAdmissionError, JournalLockError)):
+                        failure = SnapshotFailure("conflict", "Another operation or recovery state blocks this request; refresh status before retrying")
+                    elif isinstance(error, (JournalFrameError, JournalRecordError, OperationProtocolError)):
+                        failure = SnapshotFailure("malformed", "Operation preflight is malformed; refresh status and inspect recovery guidance")
+                    else:
+                        failure = SnapshotFailure("internal", "Operation preflight failed; check journal storage and refresh status before retrying")
+                    reject_unadmitted_operation(operation_id, action_id, started_at, failure, write)
+                    return 1
+    except (SnapshotFailure, JournalFrameError, JournalRecordError, JournalAdmissionError,
+            OSError, OperationProtocolError) as error:
+        if isinstance(error, BrokenPipeError):
+            with open(os.devnull, "w") as sink:
+                os.dup2(sink.fileno(), sys.stdout.fileno())
+        print("operation result could not be confirmed; refresh status and observe the existing operation", file=sys.stderr)
+        return 1
+
+
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if list(argv) == ["updates-refresh"]:
+        return update_command("updates-refresh")
+    if len(argv) == 2 and argv[0] == "updates-install-all" and JOURNAL_GENERATION_PATTERN.fullmatch(argv[1]):
+        return update_command("updates-install-all", argv[1])
     if len(argv) == 2 and argv[0] in {"watch-operation", "ack-operation", "updates-cancel"} and JOURNAL_OPERATION_ID_PATTERN.fullmatch(argv[1]):
         return operation_control(argv[0], argv[1])
     if list(argv) != ["snapshot"]:
