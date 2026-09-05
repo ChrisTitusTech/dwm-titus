@@ -3617,7 +3617,10 @@ def recover_journal_active(
                 lookup_failure is None or lookup_failure.code == "timeout"):
             try:
                 history_match = match_update_history(backend.operation_history(), original.transaction_path, os.getuid())
-                history_used = history_match is not None
+                # PackageKit inserts history at READY with succeeded=false.
+                # That row alone cannot distinguish a live job from failure.
+                history_used = history_match is True or (
+                    history_match is False and evidence is not None and not evidence.present)
             except SnapshotFailure as failure:
                 if failure.code == "malformed" or lookup_failure is None:
                     lookup_failure = failure
@@ -4239,6 +4242,7 @@ class PackageKitBackend:
         deadline = time.monotonic() + 10
         live = True
         present = False
+        destroyed = False
         status = 0
         allow_cancel = False
         percent = None
@@ -4282,7 +4286,7 @@ class PackageKitBackend:
                 percent = value if type(value) is int and 0 <= value <= 100 else None
 
         def signal_received(_connection, _sender, _path, interface, signal, variant, _data):
-            nonlocal terminal_state, terminal_time, transaction_failure, malformed, present, checkpoint_failure
+            nonlocal terminal_state, terminal_time, transaction_failure, malformed, present, destroyed, checkpoint_failure
             if not live or identity_verified is False or malformed is not None or checkpoint_failure is not None or time.monotonic() >= deadline:
                 return
             if terminal_state is not None:
@@ -4326,6 +4330,9 @@ class PackageKitBackend:
                         terminal_state = "failed"
                         transaction_failure = SnapshotFailure("internal", "PackageKit transaction did not succeed")
                 elif signal == "Destroy":
+                    if variant.get_type_string() != "()":
+                        raise ValueError
+                    destroyed = True
                     present = False
             except (TypeError, ValueError, IndexError):
                 malformed = SnapshotFailure("malformed", "PackageKit recovery signal is malformed")
@@ -4353,6 +4360,7 @@ class PackageKitBackend:
                 # and ignore later ones; only the bounded list/history may help.
                 identity_verified = False
                 restarts.clear()
+                destroyed = False
                 saw_running = False
                 status, allow_cancel, percent = 0, False, None
                 terminal_state, terminal_time, transaction_failure = None, None, None
@@ -4373,7 +4381,7 @@ class PackageKitBackend:
                 for value in sorted(restarts):
                     checkpoint(on_restart, value)
                 properties(values)
-                present = status != 18
+                present = not destroyed and status != 18
             if checkpoint_failure is not None:
                 raise checkpoint_failure
             listed = ()
@@ -4389,9 +4397,9 @@ class PackageKitBackend:
                         raise
             if malformed is not None:
                 raise malformed
-            return RecoveryEvidence(present or path in listed, terminal_state, transaction_failure,
+            return RecoveryEvidence(not destroyed and (present or path in listed), terminal_state, transaction_failure,
                                     tuple(sorted(restarts)), 3 if saw_running else 0 if uncertain_status else status,
-                                    allow_cancel and not cancel_blocked, percent, terminal_time)
+                                    allow_cancel and not cancel_blocked and not destroyed, percent, terminal_time)
         finally:
             live = False
             for subscription in subscriptions:

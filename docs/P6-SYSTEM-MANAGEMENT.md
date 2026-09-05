@@ -1307,7 +1307,11 @@ path, or elevation mechanism.
   because history cannot
   replay a `RequireRestart` signal that may have been missed before persistence.
   It never substitutes or preserves `none` on that path. An exact history match
-  with `succeeded=false` is still `interrupted`, because history cannot
+  with `succeeded=false` is usable only after a successful bounded lookup proves
+  exact absence: PackageKit inserts that row at its ready state, before
+  execution finishes. A still-active transaction or a lookup timeout retains
+  ownership despite this unsuccessful history row. With confirmed absence the
+  result is `interrupted`, because history cannot
   distinguish cancellation from another failure or reconstruct the required
   typed error row. It uses the same conservative system `unknown` contribution
   while retaining validated session and application evidence regardless of the

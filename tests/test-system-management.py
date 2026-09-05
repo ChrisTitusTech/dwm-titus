@@ -5203,6 +5203,25 @@ class OperationRecoveryTests(unittest.TestCase):
                     self.assertEqual(state.active, operation)
                     self.assertIsNone(state.handoff)
 
+    def test_unsuccessful_history_requires_confirmed_absence(self):
+        for lookup in ("present", "timeout"):
+            with self.subTest(lookup=lookup), self.journal() as journal:
+                operation = self.begin(journal, state="running")
+                observation = provider.RecoveryEvidence(True, status=3)
+                backend = self.backend(observation,
+                    ((operation.transaction_path, False, 22, os.getuid()),))
+                if lookup == "timeout":
+                    backend.probe_operation.side_effect = provider.SnapshotFailure("timeout", "Expired")
+                state, evidence, failure = self.recover(journal, backend)
+                self.assertEqual(state.active, operation)
+                self.assertIsNone(state.handoff)
+                self.assertTrue(all(terminal is None for terminal in state.terminals))
+                self.assertEqual(evidence, observation if lookup == "present" else None)
+                self.assertEqual(failure.code if failure else None, "timeout" if lookup == "timeout" else None)
+                with provider.lock_writable_journal(journal):
+                    with self.assertRaises(provider.JournalAdmissionError):
+                        provider.prepare_journal_admission(journal)
+
     def test_history_timeout_after_exact_absence_is_conservative_interruption(self):
         with self.journal() as journal:
             operation = self.begin(journal)
@@ -5474,6 +5493,48 @@ class RecoveryAdapterTests(unittest.TestCase):
                 return SessionEvidenceTests.Variant("(ao)", ([],))
             backend._recovery_call = mock.Mock(side_effect=request)
             self.assertEqual(backend.probe_operation(operation, on_running=lambda: checkpointed.append("running")).state, "succeeded")
+
+    def test_destroy_cannot_be_overwritten_by_an_inflight_snapshot(self):
+        for stage in ("GetAll", "GetTransactionList"):
+            for listed in ([], ["/1_test"]):
+                with self.subTest(stage=stage, listed=listed), self.journal() as journal:
+                    operation = self.begin(journal, "refresh")
+                    backend = self.backend(journal)
+                    def request(_path, _interface, method, *_args):
+                        if method == stage:
+                            self.emit(backend, "Destroy", "()", ())
+                        if method == "GetAll":
+                            return SessionEvidenceTests.Variant("(a{sv})", (self.properties(Role=13),))
+                        return SessionEvidenceTests.Variant("(ao)", (listed,))
+                    backend._recovery_call = mock.Mock(side_effect=request)
+                    evidence = backend.probe_operation(operation)
+                    self.assertFalse(evidence.present)
+                    self.assertFalse(evidence.allow_cancel)
+                    state, _, _ = provider.recover_journal_active(journal, backend, boot_id=self.boot_id)
+                    self.assertEqual(state.terminals[operation.slot].state, "interrupted")
+
+    def test_destroy_requires_valid_signature_and_verified_identity(self):
+        for fault in ("signature", "identity"):
+            with self.subTest(fault=fault), self.journal() as journal:
+                operation = self.begin(journal)
+                backend = self.backend(journal)
+                def request(_path, _interface, method, *_args):
+                    if method == "GetAll":
+                        self.emit(backend, "Destroy", "(s)" if fault == "signature" else "()",
+                            ("invalid",) if fault == "signature" else ())
+                        if fault == "identity":
+                            failure = provider.SnapshotFailure("missing-provider", "No object identity")
+                            failure.__cause__ = backend.GLib.Error("UnknownObject")
+                            raise failure
+                        return SessionEvidenceTests.Variant("(a{sv})", (self.properties(),))
+                    return SessionEvidenceTests.Variant("(ao)", ([operation.transaction_path],))
+                backend._recovery_call = mock.Mock(side_effect=request)
+                if fault == "signature":
+                    with self.assertRaises(provider.SnapshotFailure) as raised:
+                        backend.probe_operation(operation)
+                    self.assertEqual(raised.exception.code, "malformed")
+                else:
+                    self.assertTrue(backend.probe_operation(operation).present)
 
     def test_malformed_list_or_owner_never_becomes_absence(self):
         for properties, listed in ((self.properties(Uid=os.getuid() + 1), []),
