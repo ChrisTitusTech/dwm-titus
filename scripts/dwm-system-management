@@ -15,7 +15,7 @@ import sys
 import time
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Iterable, Iterator, Mapping, Protocol, Sequence
+from typing import Callable, Iterable, Iterator, Mapping, Protocol, Sequence
 
 
 PROTOCOL_MAJOR = 1
@@ -26,6 +26,8 @@ MAX_LIST_BYTES = 3 * 1024 * 1024
 READ_DEADLINE_SECONDS = 120
 REFRESH_AGE_DEADLINE_SECONDS = 10
 CANCEL_GRACE_SECONDS = 5
+MAX_OPERATION_PROGRESS_RECORDS = 252
+MAX_OPERATION_MISMATCH_SAMPLES = 128
 
 JOURNAL_MAGIC = b"DWMJNL1\0"
 JOURNAL_FRAME_MAJOR = 1
@@ -3010,6 +3012,245 @@ def snapshot_generation(update_ids: Sequence[str], plan: Sequence[PlanRow]) -> s
             digest.update(len(encoded).to_bytes(8, "big"))
             digest.update(encoded)
     return digest.hexdigest()
+
+
+class OperationProtocolError(ValueError):
+    """An operation stream would violate its closed lifecycle or field bounds."""
+
+
+class OperationStream:
+    """Emit bounded progress and one validated terminal/audit/completion bundle.
+
+    The owner supplies only durably reached lifecycle states. This formatter
+    never starts a service call or commits a journal frame. A failed output
+    write poisons the stream so callers cannot retry a possibly partial record.
+    """
+
+    def __init__(
+        self, operation_id: str, action_id: str, started_at: str, detail: str,
+        write: Callable[[str], object],
+    ) -> None:
+        if (
+            not isinstance(operation_id, str)
+            or JOURNAL_OPERATION_ID_PATTERN.fullmatch(operation_id) is None
+            or not isinstance(action_id, str)
+            or action_id not in JOURNAL_OPERATION_ACTION_KINDS
+            or not callable(write)
+        ):
+            raise OperationProtocolError("operation stream identity is invalid")
+        _validate_journal_timestamp(started_at, "operation start")
+        _validate_journal_detail(detail)
+        self.operation_id = operation_id
+        self.action_id = action_id
+        self.kind = JOURNAL_OPERATION_ACTION_KINDS[action_id]
+        self.started_at = started_at
+        self.state = "pending"
+        self.progress_records = 0
+        self.closed = False
+        self.faulted = False
+        self._write = write
+        self._last_progress: tuple[str, bool, str] | None = None
+        self._send([
+            f"system-management-protocol\t{PROTOCOL_MAJOR}\t{PROTOCOL_MINOR}",
+            self._operation_line("pending", "unknown", False, detail),
+        ])
+
+    def _send(self, lines: Sequence[str]) -> None:
+        if self.closed or self.faulted:
+            raise OperationProtocolError("operation stream is no longer writable")
+        try:
+            self._write("\n".join(lines) + "\n")
+        except BaseException:
+            self.faulted = True
+            raise
+
+    def _operation_line(
+        self, state: str, percent: str, cancelable: bool, detail: str,
+    ) -> str:
+        return "\t".join((
+            "operation", self.operation_id, self.action_id, self.kind, state,
+            percent, "yes" if cancelable else "no", detail,
+        ))
+
+    def transition(
+        self, state: str, detail: str, *, percent: int | None = None,
+        cancelable: bool = False,
+    ) -> bool:
+        """Emit a reached state; coalesce and cap only repeated progress rows."""
+        if self.closed or self.faulted:
+            raise OperationProtocolError("operation stream is no longer writable")
+        if (
+            not isinstance(state, str)
+            or state not in JOURNAL_TRANSITIONS[self.state]
+            or state in JOURNAL_OPERATION_TERMINAL_STATES
+            or type(cancelable) is not bool
+            or (percent is not None and (type(percent) is not int or not 0 <= percent <= 100))
+        ):
+            raise OperationProtocolError("operation progress or transition is invalid")
+        _validate_journal_detail(detail)
+        percentage = "unknown" if percent is None else str(percent)
+        progress = (percentage, cancelable, detail)
+        repeated = state == self.state
+        if repeated and (
+            progress == self._last_progress
+            or self.progress_records >= MAX_OPERATION_PROGRESS_RECORDS
+        ):
+            return False
+        self._send([self._operation_line(state, percentage, cancelable, detail)])
+        self.state = state
+        self._last_progress = progress
+        if repeated:
+            self.progress_records += 1
+        return True
+
+    def finish(self, operation: JournalOperation, *, detail: str | None = None) -> None:
+        """Publish only an exact terminal record after the owner's durable handoff."""
+        if self.closed or self.faulted:
+            raise OperationProtocolError("operation stream is no longer writable")
+        encode_journal_operation(operation)
+        if (
+            operation.operation_id != self.operation_id
+            or operation.action_id != self.action_id
+            or operation.kind != self.kind
+            or operation.started_at != self.started_at
+            or operation.state not in JOURNAL_OPERATION_TERMINAL_STATES
+            or operation.state not in JOURNAL_TRANSITIONS[self.state]
+        ):
+            raise OperationProtocolError("operation terminal identity or transition is invalid")
+        terminal_detail = operation.detail if detail is None else detail
+        _validate_journal_detail(terminal_detail)
+        lines = []
+        if operation.error_code is not None:
+            owner = (
+                "updates" if self.kind in {"refresh", "update"}
+                else "regional" if self.kind in {"timezone", "ntp", "locale"}
+                else {"accounts-open": "accounts", "password-open": "accounts",
+                      "printers-open": "printers", "sources-open": "sources"}[self.action_id]
+            )
+            lines.append(f"error\t{owner}\t{operation.error_code}\t{terminal_detail}")
+        lines.extend([
+            self._operation_line(operation.state, "unknown", False, terminal_detail),
+            "\t".join(("audit", self.operation_id, self.action_id, self.kind,
+                       operation.state, self.started_at, operation.finished_at, terminal_detail)),
+            "complete\toperation",
+        ])
+        self._send(lines)
+        self.state = operation.state
+        self.closed = True
+
+
+def replay_terminal_operation(
+    operation: JournalOperation, write: Callable[[str], object],
+) -> None:
+    """Replay exact retained evidence without opening a service or relaunching a tool."""
+    encode_journal_operation(operation)
+    if operation.state not in JOURNAL_OPERATION_TERMINAL_STATES:
+        raise OperationProtocolError("operation replay requires a terminal record")
+    stream = OperationStream(
+        operation.operation_id, operation.action_id, operation.started_at,
+        "Replaying retained result; observed package comparison is unavailable"
+        if operation.kind == "update" else "Replaying retained operation result",
+        write,
+    )
+    if operation.state == "permission-denied":
+        stream.transition("authorizing", "Replaying the retained authorization result")
+    elif operation.state == "succeeded":
+        stream.transition("running", "Replaying the retained completion result")
+    stream.finish(operation)
+
+
+class ObservedUpdateSummary:
+    """Bounded, nonpersistent comparison of actual PackageKit signals to a preview.
+
+    Preview membership is bounded by the discovery contract. Unexpected package
+    IDs never enter an unbounded set: only 128 distinct samples are retained.
+    Counts and the digest describe signal observations, not an atomic frozen plan.
+    """
+
+    actions = ("install", "update", "remove", "obsolete", "unknown")
+
+    def __init__(self, preview: Sequence[PlanRow]) -> None:
+        if len(preview) > MAX_LIST_RECORDS:
+            raise SnapshotFailure("malformed", "Observed comparison preview is oversized")
+        self._preview: dict[str, str] = {}
+        self._inbound: set[tuple[str, str]] = set()
+        for row in preview:
+            if (
+                not isinstance(row, PlanRow)
+                or row.action not in self.actions[:-1]
+                or not isinstance(row.package_id, str)
+                or row.package_id in self._preview
+            ):
+                raise SnapshotFailure("malformed", "Observed comparison preview is invalid")
+            name, architecture = self._package_key(row.package_id)
+            self._preview[row.package_id] = row.action
+            if row.action == "update":
+                self._inbound.add((name, architecture))
+        enforce_list_budget(preview)
+        self.counts = dict.fromkeys(self.actions, 0)
+        self.samples: list[tuple[str, str]] = []
+        self._matched: set[str] = set()
+        self._different = False
+        self._unknown = False
+        self._digest = hashlib.sha256(b"dwm-titus-update-observed-v1")
+
+    @staticmethod
+    def _package_key(package_id: str) -> tuple[str, str]:
+        if not isinstance(package_id, str):
+            raise SnapshotFailure("malformed", "Observed package identity is invalid")
+        try:
+            package_id.encode("utf-8")
+        except UnicodeEncodeError as error:
+            raise SnapshotFailure("malformed", "Observed package identity is invalid") from error
+        canonical_identity(package_id)
+        parts = package_id.split(";")
+        if len(parts) != 4 or not all(parts[:3]) or "\0" in package_id:
+            raise SnapshotFailure("malformed", "Observed package identity is invalid")
+        return parts[0], parts[2]
+
+    def observe(self, info: int, package_id: str) -> bool:
+        """Digest one accepted action in arrival order, excluding phase-only signals."""
+        if type(info) is not int or not 0 <= info <= G_MAXUINT:
+            raise SnapshotFailure("malformed", "Observed package classification is invalid")
+        key = self._package_key(package_id)
+        if info == 10 or (info == 14 and key in self._inbound):
+            return False
+        action = {11: "update", 12: "install", 13: "remove", 15: "obsolete"}.get(info)
+        if info == 14 and self._preview.get(package_id) == "obsolete":
+            action = "obsolete"
+        if action is None:
+            action = "unknown"
+            self._unknown = True
+        if self.counts[action] == JOURNAL_SEQUENCE_MAX:
+            self._unknown = True
+        else:
+            self.counts[action] += 1
+        for field in (action, package_id):
+            encoded = field.encode("utf-8")
+            self._digest.update(len(encoded).to_bytes(8, "big"))
+            self._digest.update(encoded)
+        if self._preview.get(package_id) == action:
+            self._matched.add(package_id)
+        else:
+            self._different = True
+            sample = (action, package_id)
+            if len(self.samples) < MAX_OPERATION_MISMATCH_SAMPLES and sample not in self.samples:
+                self.samples.append(sample)
+        return True
+
+    def comparison(self, *, final: bool = False) -> str:
+        """Keep incomplete or unclassified evidence explicitly unknown."""
+        if self._unknown:
+            return "unknown"
+        if self._different or (final and len(self._matched) != len(self._preview)):
+            return "yes"
+        return "no" if final else "unknown"
+
+    def detail(self, *, final: bool = False) -> str:
+        """Return a fixed-size aggregate suitable for one operation detail field."""
+        counts = " ".join(f"{action}={self.counts[action]}" for action in self.actions)
+        return (f"Observed signals: {counts}; sha256={self._digest.hexdigest()}; "
+                f"different={self.comparison(final=final)}; mismatch-samples={len(self.samples)}")
 
 
 def build_snapshot(backend: UpdateBackend) -> list[str]:
