@@ -5634,6 +5634,46 @@ class RecoveryAdapterTests(unittest.TestCase):
             self.assertEqual(backend.connection.subscriptions, {})
             self.assertEqual(backend.connection.calls, [])
 
+    def test_native_error_names_are_independent_of_message_text(self):
+        with self.journal() as journal:
+            backend = self.backend(journal)
+            cases = (("NoReply", "timeout"), ("Timeout", "timeout"), ("TimedOut", "timeout"),
+                     ("ServiceUnknown", "missing-provider"), ("NameHasNoOwner", "missing-provider"),
+                     ("UnknownObject", "missing-provider"), ("AccessDenied", "permission-denied"),
+                     ("AuthFailed", "permission-denied"), ("UnknownMethod", "unsupported"),
+                     ("UnknownInterface", "unsupported"), ("InvalidArgs", "malformed"),
+                     ("InvalidSignature", "malformed"), ("Failed", "internal"))
+            for name, expected in cases:
+                with self.subTest(name=name):
+                    backend.Gio.dbus_error_get_remote_error = mock.Mock(return_value="org.freedesktop.DBus.Error." + name)
+                    self.assertEqual(backend._dbus_failure(backend.GLib.Error("Opaque remote message")).code, expected)
+            backend.Gio.dbus_error_get_remote_error = mock.Mock(return_value="org.example.Unlisted")
+            self.assertEqual(backend._dbus_failure(backend.GLib.Error("NoReply Timeout AccessDenied")).code, "internal")
+            backend.Gio.dbus_error_get_remote_error = mock.Mock(return_value="org.freedesktop.PackageKit.Transaction.RefusedByPolicy")
+            self.assertEqual(backend._dbus_failure(backend.GLib.Error("Opaque policy denial")).code, "permission-denied")
+            backend.Gio.dbus_error_get_remote_error = mock.Mock(return_value=None)
+            backend.Gio.io_error_quark = lambda: 42
+            backend.Gio.IOErrorEnum = types.SimpleNamespace(TIMED_OUT=24)
+            local = mock.Mock(matches=lambda domain, code: (domain, code) == (42, 24))
+            self.assertEqual(backend._dbus_failure(local).code, "timeout")
+
+    def test_no_reply_before_deadline_can_use_exact_update_history(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            backend = self.backend(journal)
+            backend.Gio.dbus_error_get_remote_error = mock.Mock(return_value="org.freedesktop.DBus.Error.NoReply")
+            backend.operation_history = mock.Mock(return_value=((operation.transaction_path, True, 22, os.getuid()),))
+            def request(*_args):
+                error = backend.GLib.Error("Opaque connection loss")
+                raise backend._dbus_failure(error) from error
+            backend._recovery_call = mock.Mock(side_effect=request)
+            state, evidence, failure = provider.recover_journal_active(journal, backend, boot_id=self.boot_id)
+            self.assertIsNone(state.active)
+            self.assertIsNone(evidence)
+            self.assertEqual((state.terminals[operation.slot].state, state.restart.system), ("succeeded", "unknown"))
+            self.assertEqual(failure.code, "timeout")
+            backend.operation_history.assert_called_once_with()
+
     def test_service_owner_change_invalidates_bounded_probe(self):
         with self.journal() as journal:
             operation = self.begin(journal)

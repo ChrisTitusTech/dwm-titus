@@ -4002,27 +4002,36 @@ class PackageKitBackend:
             raise self._dbus_failure(error) from error
 
     def _dbus_failure(self, error: Exception) -> SnapshotFailure:
-        message = str(error)
-        lowered = message.lower()
-        if "serviceunknown" in lowered or "namehasnoowner" in lowered:
+        name = self.Gio.dbus_error_get_remote_error(error)
+        if name in {"org.freedesktop.DBus.Error.ServiceUnknown",
+                    "org.freedesktop.DBus.Error.NameHasNoOwner",
+                    "org.freedesktop.DBus.Error.UnknownObject"}:
             return SnapshotFailure(
                 "missing-provider", "PackageKit service is unavailable", "unavailable"
             )
-        if "notauthorized" in lowered or "accessdenied" in lowered:
+        if name in {"org.freedesktop.DBus.Error.AccessDenied",
+                    "org.freedesktop.DBus.Error.AuthFailed",
+                    "org.freedesktop.PackageKit.Transaction.RefusedByPolicy"}:
             return SnapshotFailure(
                 "permission-denied",
                 "PackageKit denied the request",
                 "restricted",
             )
-        if "unknownmethod" in lowered:
+        if name in {"org.freedesktop.DBus.Error.UnknownMethod",
+                    "org.freedesktop.DBus.Error.UnknownInterface"}:
             return SnapshotFailure(
                 "unsupported",
                 "PackageKit does not support the required method",
                 "unsupported",
             )
-        if "invalidargs" in lowered:
+        if name in {"org.freedesktop.DBus.Error.InvalidArgs",
+                    "org.freedesktop.DBus.Error.InvalidSignature"}:
             return SnapshotFailure("malformed", "PackageKit rejected the method arguments")
-        if "timedout" in lowered or "timeout" in lowered:
+        if name in {"org.freedesktop.DBus.Error.Timeout",
+                    "org.freedesktop.DBus.Error.TimedOut",
+                    "org.freedesktop.DBus.Error.NoReply"} or (
+                name is None and callable(getattr(error, "matches", None))
+                and error.matches(self.Gio.io_error_quark(), self.Gio.IOErrorEnum.TIMED_OUT)):
             return SnapshotFailure(
                 "timeout", "PackageKit request timed out", "unavailable"
             )
