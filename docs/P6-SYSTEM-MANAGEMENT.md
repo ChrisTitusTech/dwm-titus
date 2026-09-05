@@ -130,6 +130,17 @@ snapshot as the next recovery attempt.
 and `update`. Regional and delegated operations remain owned by their finite
 originating stream while active, but an exact retained terminal record for any
 valid kind can be replayed without reissuing its external action.
+After bounded initial adoption validates the exact object, the live watcher
+keeps those same subscriptions without a silence deadline or polling timer.
+Bus loss, malformed evidence, or a failed output/checkpoint ends observation
+without a terminal success claim or a `Cancel` call. A failure after stream
+output begins exits 1 with fixed interruption guidance, not the stream-free
+stale-target status 3.
+The watcher obtains logind session evidence only after transaction observation
+has captured a terminal result or exact absence, before the unlocked result is
+committed. A current live phase can update displayed authorization state without
+erasing uncertainty about earlier execution; a later authorization phase alone
+cannot prove an earlier unknown phase never changed packages.
 
 The root model calls `ack-operation` only for an exact durable handoff that it
 has received in a snapshot. It first validates either the matching originating
@@ -145,6 +156,11 @@ inconsistent with the validated journal state, or replaced exits 3 with only
 `ack target is unavailable` on standard error and leaves the handoff unchanged.
 Invalid command or operation-ID syntax exits 2. Acknowledgment never removes or
 rewrites the retained terminal slot and never invokes an external service.
+Journal-only control completion uses the boot evidence but does not invent a
+logind timestamp or open logind for replay/acknowledgment. Same-boot session and
+application guidance is conservatively retained until snapshot recovery obtains
+session evidence and prunes it before publishing `update-restart`. The required
+snapshot before acknowledgment is also the normal display reconciliation point.
 
 The PackageKit service is authoritative for package state. The project provider
 adds only validation, bounded record formatting, a private operation journal,

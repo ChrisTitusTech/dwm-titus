@@ -76,7 +76,10 @@ active list, plus at most 64 history records for updates only. It distinguishes
 lookup failure from absence, checkpoints adopted restart signals, rejects stale
 ownership, and durably recovers terminal evidence or conservative interruption.
 Previous-boot records cannot reintroduce satisfied guidance. Public mutation
-commands remain disabled: snapshot/control integration and the root-scoped
+commands remain disabled. Exact-ID watch and acknowledgment controls now replay
+retained results without a service call or keep a verified PackageKit observer
+subscribed through completion without reissuing the action. Snapshot, cancel,
+and mutation-command integration and the root-scoped
 confirmation and operation UI must be completed before this boundary can be accepted.
 
 - [ ] Add user-initiated Fedora update discovery and status through the selected

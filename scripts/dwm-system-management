@@ -3150,7 +3150,7 @@ class OperationStream:
         self.closed = False
         self.faulted = False
         self._write = write
-        self._last_progress: tuple[str, bool, str] | None = None
+        self._last_progress: tuple[str, bool, str] | None = ("unknown", False, detail)
         self._send([
             f"system-management-protocol\t{PROTOCOL_MAJOR}\t{PROTOCOL_MINOR}",
             self._operation_line("pending", "unknown", False, detail),
@@ -3202,6 +3202,22 @@ class OperationStream:
         self._last_progress = progress
         if repeated:
             self.progress_records += 1
+        return True
+
+    def progress(self, detail: str, *, percent: int | None = None, cancelable: bool = False) -> bool:
+        """Update current-state fields without inventing a lifecycle transition."""
+        if self.closed or self.faulted:
+            raise OperationProtocolError("operation stream is no longer writable")
+        if type(cancelable) is not bool or (percent is not None and (type(percent) is not int or not 0 <= percent <= 100)):
+            raise OperationProtocolError("operation progress is invalid")
+        _validate_journal_detail(detail)
+        percentage = "unknown" if percent is None else str(percent)
+        progress = (percentage, cancelable, detail)
+        if progress == self._last_progress or self.progress_records >= MAX_OPERATION_PROGRESS_RECORDS:
+            return False
+        self._send([self._operation_line(self.state, percentage, cancelable, detail)])
+        self._last_progress = progress
+        self.progress_records += 1
         return True
 
     def finish(self, operation: JournalOperation, *, detail: str | None = None) -> None:
@@ -3565,6 +3581,9 @@ def read_fedora_identity() -> dict[str, str]:
 def recover_journal_active(
     journal: JournalDescriptorSet, backend: PackageKitBackend, *,
     boot_id: str, session_started: int | None = None,
+    watch: bool = False, expected_operation_id: str | None = None,
+    on_progress: Callable[[RecoveryEvidence], object] | None = None,
+    session_reader: Callable[[], int | None] | None = None,
 ) -> tuple[JournalState, RecoveryEvidence | None, SnapshotFailure | None]:
     """Recover one copied owner without holding a journal lock across service work."""
     if not isinstance(boot_id, str) or BOOT_ID_PATTERN.fullmatch(boot_id) is None:
@@ -3572,6 +3591,14 @@ def recover_journal_active(
     if session_started is not None:
         _encode_journal_uint64(session_started, "session start")
     original = load_journal_state(journal.chain).active
+    if expected_operation_id is not None and original is None:
+        # Completion can race the watcher's initial target selection. Validate
+        # the exact retained result without following a replacement owner.
+        with lock_writable_journal(journal):
+            retained_journal_operation(journal, expected_operation_id)
+            return load_writable_journal_state(journal), None, None
+    if expected_operation_id is not None and (original is None or original.operation_id != expected_operation_id):
+        raise JournalAdmissionError("recovery target changed")
     if original is None:
         with lock_writable_journal(journal):
             prune_journal_restart(journal, boot_id, session_started)
@@ -3589,6 +3616,8 @@ def recover_journal_active(
                 raise SnapshotFailure("conflict", "Recovery owner changed; discard the stale observation")
             if current.state in {"pending", "authorizing"}:
                 advance_journal_operation(journal, current, replace(current, state="running", detail="PackageKit execution observed during recovery"))
+        if watch and on_progress is not None:
+            on_progress(RecoveryEvidence(True, status=3))
 
     def checkpoint_restart(value):
         if original.kind != "update" or original.boot_id != boot_id:
@@ -3610,7 +3639,8 @@ def recover_journal_active(
 
     if original.state not in JOURNAL_OPERATION_TERMINAL_STATES and original.kind in {"update", "refresh"}:
         try:
-            evidence = backend.probe_operation(original, on_restart=checkpoint_restart, on_running=checkpoint_running)
+            watch_options = dict(watch=True, on_progress=on_progress) if watch else {}
+            evidence = backend.probe_operation(original, on_restart=checkpoint_restart, on_running=checkpoint_running, **watch_options)
         except SnapshotFailure as failure:
             lookup_failure = failure
         if original.kind == "update" and (evidence is None or evidence.state is None) and (
@@ -3624,6 +3654,16 @@ def recover_journal_active(
             except SnapshotFailure as failure:
                 if failure.code == "malformed" or lookup_failure is None:
                     lookup_failure = failure
+    if session_reader is not None and (history_used or (evidence is not None and (
+            evidence.state is not None or not evidence.present))):
+        # Never delay attachment with an unrelated service lookup. Exact
+        # terminal/absence evidence is already captured before reading logind.
+        try:
+            session_started = session_reader()
+        except SnapshotFailure:
+            session_started = None
+        if session_started is not None:
+            _encode_journal_uint64(session_started, "session start")
     with lock_writable_journal(journal):
         current_state = load_writable_journal_state(journal)
         current = current_state.active
@@ -4233,8 +4273,10 @@ class PackageKitBackend:
 
     def probe_operation(self, operation: JournalOperation, *,
                         on_restart: Callable[[int], object] | None = None,
-                        on_running: Callable[[], object] | None = None) -> RecoveryEvidence:
-        """Attach only to the recorded object, then obtain a bounded active list."""
+                        on_running: Callable[[], object] | None = None,
+                        watch: bool = False,
+                        on_progress: Callable[[RecoveryEvidence], object] | None = None) -> RecoveryEvidence:
+        """Bound adoption; optionally keep its verified subscriptions until completion."""
         encode_journal_operation(operation)
         if operation.kind not in {"refresh", "update"} or operation.state in JOURNAL_OPERATION_TERMINAL_STATES:
             raise SnapshotFailure("malformed", "PackageKit recovery target is not active")
@@ -4243,6 +4285,7 @@ class PackageKitBackend:
         live = True
         present = False
         destroyed = False
+        listed = ()
         status = 0
         allow_cancel = False
         percent = None
@@ -4257,13 +4300,35 @@ class PackageKitBackend:
         restarts = set()
         subscriptions = []
         identity_verified = None
+        snapshot_applied = False
+        pending_properties = {}
+        watch_loop = None
+        connection_closed = None
+
+        def evidence(*, progress=False):
+            # A current display phase is not proof that earlier execution was
+            # excluded. Preserve uncertainty in terminal recovery evidence.
+            observed_status = status if progress else 3 if saw_running else 0 if uncertain_status else status
+            return RecoveryEvidence(not destroyed and (present or path in listed), terminal_state, transaction_failure,
+                tuple(sorted(restarts)), observed_status,
+                allow_cancel and not cancel_blocked and not destroyed, percent, terminal_time)
+
+        def watch_changed():
+            if watch_loop is None:
+                return
+            if terminal_state is not None or destroyed or malformed is not None or checkpoint_failure is not None:
+                watch_loop.quit()
+            elif identity_verified is True:
+                checkpoint(on_progress, evidence(progress=True))
+                if checkpoint_failure is not None:
+                    watch_loop.quit()
 
         def checkpoint(callback, *args):
             nonlocal checkpoint_failure
             if callback is not None and checkpoint_failure is None:
                 try:
                     callback(*args)
-                except (SnapshotFailure, JournalFileError, JournalRecordError, JournalFrameError, JournalAdmissionError) as error:
+                except Exception as error:
                     checkpoint_failure = error
 
         def properties(values):
@@ -4280,7 +4345,7 @@ class PackageKitBackend:
                         checkpoint(on_running)
             if "AllowCancel" in values:
                 allow_cancel = values["AllowCancel"] if type(values["AllowCancel"]) is bool else False
-                cancel_blocked = cancel_blocked or not allow_cancel
+                cancel_blocked = False if watch and snapshot_applied else cancel_blocked or not allow_cancel
             if "Percentage" in values:
                 value = values["Percentage"]
                 percent = value if type(value) is int and 0 <= value <= 100 else None
@@ -4289,10 +4354,13 @@ class PackageKitBackend:
             nonlocal terminal_state, terminal_time, transaction_failure, malformed, present, destroyed, checkpoint_failure
             if not live or identity_verified is False or malformed is not None or checkpoint_failure is not None or time.monotonic() >= deadline:
                 return
+            if interface != PROPERTIES_INTERFACE and signal not in {"RequireRestart", "ErrorCode", "Finished", "Destroy"}:
+                return
             if terminal_state is not None:
                 if signal == "Finished":
                     malformed = SnapshotFailure("malformed", "PackageKit recovery completion is duplicated")
                 return
+            previous = evidence(progress=True)
             try:
                 values = variant.unpack()
                 if interface == PROPERTIES_INTERFACE:
@@ -4301,11 +4369,20 @@ class PackageKitBackend:
                     changed = dict(values[1])
                     for key in values[2]:
                         changed[key] = None
+                    if not snapshot_applied:
+                        # Coalesce only three fields; never retain package or
+                        # arbitrary property payloads while identity is pending.
+                        for key in ("Status", "AllowCancel", "Percentage"):
+                            if key in changed:
+                                value = changed[key]
+                                pending_properties[key] = value if type(value) is (bool if key == "AllowCancel" else int) else None
                     properties(changed)
                 elif signal == "RequireRestart":
                     if variant.get_type_string() != "(us)":
                         raise ValueError
                     value = values[0] if values[0] in {1, 2, 3, 4, 5, 6} else 0
+                    if value in restarts:
+                        return
                     if identity_verified is True:
                         checkpoint(on_restart, value)
                         if checkpoint_failure is not None:
@@ -4336,6 +4413,9 @@ class PackageKitBackend:
                     present = False
             except (TypeError, ValueError, IndexError):
                 malformed = SnapshotFailure("malformed", "PackageKit recovery signal is malformed")
+            finally:
+                if malformed is not None or checkpoint_failure is not None or evidence(progress=True) != previous:
+                    watch_changed()
 
         def service_changed(_connection, _sender, _path, _interface, _signal, variant, _data):
             nonlocal malformed
@@ -4343,8 +4423,17 @@ class PackageKitBackend:
                 values = variant.unpack()
                 if values[0] == PACKAGEKIT_NAME and values[1] != values[2]:
                     malformed = SnapshotFailure("missing-provider", "PackageKit changed during recovery; retry the lookup")
+                    watch_changed()
+
+        def bus_closed(*_args):
+            nonlocal malformed
+            if live:
+                malformed = SnapshotFailure("missing-provider", "PackageKit connection closed; retry recovery")
+                watch_changed()
 
         try:
+            if watch:
+                connection_closed = self.connection.connect("closed", bus_closed)
             subscriptions.append(self.connection.signal_subscribe(PACKAGEKIT_NAME, TRANSACTION_INTERFACE, None, path, None, self.Gio.DBusSignalFlags.NONE, signal_received, None))
             subscriptions.append(self.connection.signal_subscribe(PACKAGEKIT_NAME, PROPERTIES_INTERFACE, "PropertiesChanged", path, TRANSACTION_INTERFACE, self.Gio.DBusSignalFlags.NONE, signal_received, None))
             subscriptions.append(self.connection.signal_subscribe("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged", "/org/freedesktop/DBus", PACKAGEKIT_NAME, self.Gio.DBusSignalFlags.NONE, service_changed, None))
@@ -4380,11 +4469,15 @@ class PackageKitBackend:
                     checkpoint(on_running)
                 for value in sorted(restarts):
                     checkpoint(on_restart, value)
-                properties(values)
+                properties({"Status": None, **values})
+                snapshot_applied = True
+                properties(pending_properties)
+                pending_properties.clear()
                 present = not destroyed and status != 18
+                if watch:
+                    checkpoint(on_progress, evidence(progress=True))
             if checkpoint_failure is not None:
                 raise checkpoint_failure
-            listed = ()
             if terminal_state is None:
                 try:
                     reply = self._recovery_call(PACKAGEKIT_PATH, PACKAGEKIT_INTERFACE, "GetTransactionList", None, deadline, "(ao)")
@@ -4397,13 +4490,27 @@ class PackageKitBackend:
                         raise
             if malformed is not None:
                 raise malformed
-            return RecoveryEvidence(not destroyed and (present or path in listed), terminal_state, transaction_failure,
-                                    tuple(sorted(restarts)), 3 if saw_running else 0 if uncertain_status else status,
-                                    allow_cancel and not cancel_blocked and not destroyed, percent, terminal_time)
+            if watch and terminal_state is None and evidence().present:
+                if identity_verified is not True:
+                    raise SnapshotFailure("interrupted", "Active PackageKit object could not be verified; retry recovery")
+                # Only attachment has a deadline. A verified live transaction
+                # has no silence watchdog, polling timer, or reinvocation.
+                deadline = float("inf")
+                watch_loop = self.GLib.MainLoop()
+                watch_changed()
+                if checkpoint_failure is None:
+                    watch_loop.run()
+                if malformed is not None:
+                    raise malformed
+                if terminal_state is None and not destroyed and checkpoint_failure is None:
+                    raise SnapshotFailure("interrupted", "PackageKit watch ended without terminal evidence")
+            return evidence()
         finally:
             live = False
             for subscription in subscriptions:
                 self.connection.signal_unsubscribe(subscription)
+            if connection_closed is not None:
+                self.connection.disconnect(connection_closed)
             if checkpoint_failure is not None:
                 raise checkpoint_failure
 
@@ -4894,12 +5001,108 @@ class PackageKitBackend:
         return SnapshotFailure("internal", "PackageKit transaction failed internally")
 
 
+def control_journal_target(journal: JournalDescriptorSet, operation_id: str, boot_id: str) -> JournalOperation:
+    """Complete interrupted terminal commits, then select only the exact control ID."""
+    with lock_writable_journal(journal):
+        state = load_writable_journal_state(journal)
+        if state.active is not None and state.active.state in JOURNAL_OPERATION_TERMINAL_STATES:
+            complete_journal_terminal(journal, boot_id=boot_id)
+            state = load_writable_journal_state(journal)
+        if state.active is None:
+            return retained_journal_operation(journal, operation_id)
+        if state.active.operation_id != operation_id or state.active.kind not in {"refresh", "update"}:
+            raise JournalAdmissionError("journal control target is unavailable")
+        return state.active
+
+
+def watch_journal_operation(
+    journal: JournalDescriptorSet, operation_id: str, write: Callable[[str], object], *,
+    boot_id: str, backend_factory: Callable[[], PackageKitBackend] = PackageKitBackend,
+) -> None:
+    """Replay a retained result or observe one exact live owner without reinvocation."""
+    original = control_journal_target(journal, operation_id, boot_id)
+    if original.state in JOURNAL_OPERATION_TERMINAL_STATES:
+        replay_terminal_operation(original, write)
+        return
+    detail = "Observing recovered PackageKit operation; package comparison is unavailable"
+    stream = OperationStream(original.operation_id, original.action_id, original.started_at, detail, write)
+
+    def progress(evidence):
+        with lock_writable_journal(journal):
+            current = load_writable_journal_state(journal).active
+            identity = ("operation_id", "action_id", "started_at", "kind", "generation", "transaction_path", "boot_id", "slot")
+            if current is None or any(getattr(current, key) != getattr(original, key) for key in identity) or current.state in JOURNAL_OPERATION_TERMINAL_STATES:
+                raise JournalAdmissionError("journal watch owner changed")
+            if current.state == "pending" and evidence.status == 31:
+                current = advance_journal_operation(journal, current, replace(current, state="authorizing", detail=detail))
+        target = current.state
+        if target in {"running", "cancel-requested"} and stream.state in {"pending", "authorizing"}:
+            stream.transition("running", detail)
+        if target != stream.state:
+            stream.transition(target, detail, percent=evidence.percent, cancelable=evidence.allow_cancel)
+        else:
+            stream.progress(detail, percent=evidence.percent, cancelable=evidence.allow_cancel)
+
+    progress(RecoveryEvidence(True))
+    backend = backend_factory()
+    state, evidence, failure = recover_journal_active(journal, backend, boot_id=boot_id,
+        session_reader=backend.session_started, watch=True, expected_operation_id=operation_id, on_progress=progress)
+    if state.active is not None:
+        raise failure or SnapshotFailure("interrupted", "PackageKit observation ended without terminal evidence")
+    terminal = next((item for item in state.terminals if item is not None and item.operation_id == operation_id), None)
+    if terminal is None:
+        raise JournalAdmissionError("journal watch result is unavailable")
+    if terminal.state == "succeeded" and stream.state in {"pending", "authorizing"}:
+        stream.transition("running", detail)
+    elif terminal.state == "permission-denied" and stream.state == "pending":
+        stream.transition("authorizing", detail)
+    elif terminal.state == "canceled" and stream.state == "running":
+        stream.transition("cancel-requested", detail)
+    stream.finish(terminal, detail=clean_text(f"{terminal.detail}; recovered package comparison is unavailable")
+                  if terminal.kind == "update" else terminal.detail)
+
+
+def operation_control(command: str, operation_id: str) -> int:
+    """Keep stale control rejection stream-free and watch failure distinct."""
+    started = False
+
+    def write(chunk):
+        nonlocal started
+        started = True
+        sys.stdout.write(chunk)
+        sys.stdout.flush()
+
+    try:
+        boot_id = read_boot_id()
+        with open_journal_directory() as chain, retain_writable_journal(chain) as journal:
+            if command == "watch-operation":
+                watch_journal_operation(journal, operation_id, write, boot_id=boot_id)
+            else:
+                control_journal_target(journal, operation_id, boot_id)
+                with lock_writable_journal(journal):
+                    acknowledge_journal_handoff(journal, operation_id)
+        return 0
+    except (SnapshotFailure, JournalFrameError, JournalRecordError, JournalAdmissionError, OSError, OperationProtocolError) as error:
+        if started:
+            if isinstance(error, BrokenPipeError):
+                # Avoid a second buffered flush at interpreter shutdown changing
+                # the exit status or writing an unraisable-exception diagnostic.
+                with open(os.devnull, "w") as sink:
+                    os.dup2(sink.fileno(), sys.stdout.fileno())
+            print("operation observation was interrupted", file=sys.stderr)
+            return 1
+        print("watch target is unavailable" if command == "watch-operation" else "ack target is unavailable", file=sys.stderr)
+        return 3
+
+
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | watch-operation OPERATION_ID | ack-operation OPERATION_ID", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if len(argv) == 2 and argv[0] in {"watch-operation", "ack-operation"} and JOURNAL_OPERATION_ID_PATTERN.fullmatch(argv[1]):
+        return operation_control(argv[0], argv[1])
     if list(argv) != ["snapshot"]:
         return usage()
     try:
