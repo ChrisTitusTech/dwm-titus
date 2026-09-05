@@ -1279,7 +1279,11 @@ path, or elevation mechanism.
   cannot be excluded sets the system contribution to `unknown` while retaining
   the validated session and application contributions already in `active`; a
   restart signal may have occurred after the last successful active-frame
-  commit. A valid durable
+  commit. A partial replay containing only application, session, or `none`
+  signals also cannot exclude a missed system-restart requirement: unless
+  execution is proven excluded, an otherwise `none` system contribution becomes
+  `unknown`. Specific observed system or security-system guidance is retained.
+  A valid durable
   terminal record written from `Finished` recovers its persisted tuple. A
   missing, malformed, or kind-incompatible contribution field in the active or
   terminal record is a `malformed` recovery error that preserves the record and
