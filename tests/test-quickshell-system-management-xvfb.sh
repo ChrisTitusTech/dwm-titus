@@ -82,16 +82,39 @@ cat >"$helper" <<'HELPER'
 #!/bin/sh
 set -eu
 
-[ "${1:-}" = snapshot ] || exit 2
 fixture=${DWM_SYSTEM_MANAGEMENT_TEST_FIXTURE:?}
 mode=$(sed -n '1p' "$fixture/mode")
+case ${1:-} in
+watch-operation | ack-operation)
+	case ${2:-} in
+	op-11111111111111111111111111111111) action=timezone-set; kind=timezone ;;
+	op-22222222222222222222222222222222) action=updates-refresh; kind=refresh ;;
+	*) exit 3 ;;
+	esac
+	if [ "$1" = ack-operation ]; then
+		: >"$fixture/ack-$2"
+		exit 0
+	fi
+	printf 'system-management-protocol\t1\t0\n'
+	printf 'operation\t%s\t%s\t%s\tpending\tunknown\tno\tRestoring operation\n' "$2" "$action" "$kind"
+	printf 'operation\t%s\t%s\t%s\trunning\t50\tno\tObserving operation\n' "$2" "$action" "$kind"
+	sleep 0.1
+	: >"$fixture/finished-$2"
+	printf 'operation\t%s\t%s\t%s\tsucceeded\t100\tno\tVerified fixture result\n' "$2" "$action" "$kind"
+	printf 'audit\t%s\t%s\t%s\tsucceeded\t2026-09-05T12:00:00Z\t2026-09-05T12:01:00Z\tFixture result\n' "$2" "$action" "$kind"
+	printf 'complete\toperation\n'
+	exit 0
+	;;
+snapshot) ;;
+*) exit 2 ;;
+esac
 
 snapshot() {
 	printf '%b\n' \
 		'system-management-protocol	1	0' \
 		'snapshot-generation	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
 		'provider	updates	partial	delegated	PackageKit	Read-only update state' \
-		'provider	recovery	unsupported	user-session	dwm-system-management	Recovery unavailable' \
+		'provider	recovery	available	user-session	dwm-system-management	Isolated journal recovery' \
 		'state	update-summary	available	1	One update' \
 		'state	update-last-refresh	available	10	Recently refreshed' \
 		'state	update-restart	available	system	Restart required' \
@@ -121,12 +144,22 @@ partial-restart)
 	snapshot | sed 's/state\tupdate-restart\tavailable\tsystem/state\tupdate-restart\tpartial\tsecurity-session/'
 	;;
 cancelable-active)
-	snapshot | sed \
-		-e 's/action\tupdates-cancel\tunavailable/action\tupdates-cancel\tavailable/' \
-		-e '/^complete\t/i\active-operation\top-11111111111111111111111111111111\tupdates-refresh\trefresh\trunning\t45\tyes\tCancelable fixture'
+	if [ -f "$fixture/ack-op-22222222222222222222222222222222" ]; then
+		snapshot
+	elif [ -f "$fixture/finished-op-22222222222222222222222222222222" ]; then
+		snapshot | sed '/^complete\t/i\terminal-handoff\top-22222222222222222222222222222222\tupdates-refresh\trefresh'
+	else
+		snapshot | sed \
+			-e 's/action\tupdates-cancel\tunavailable/action\tupdates-cancel\tavailable/' \
+			-e '/^complete\t/i\active-operation\top-22222222222222222222222222222222\tupdates-refresh\trefresh\trunning\t45\tyes\tCancelable fixture'
+	fi
 	;;
 regional-handoff)
-	snapshot | sed '/^complete\t/i\terminal-handoff\top-11111111111111111111111111111111\ttimezone-set\ttimezone'
+	if [ -f "$fixture/ack-op-11111111111111111111111111111111" ]; then
+		snapshot
+	else
+		snapshot | sed '/^complete\t/i\terminal-handoff\top-11111111111111111111111111111111\ttimezone-set\ttimezone'
+	fi
 	;;
 invalid-handoff)
 	snapshot | sed '/^complete\t/i\terminal-handoff\top-11111111111111111111111111111111\ttimezone-set\tdelegate'
@@ -257,6 +290,125 @@ if ! grep -F 'Operation parser native tests: PASS' "$work/operation-parser.log";
 	exit 1
 fi
 
+# Exercise the real root-owned Process lifecycle with a private fixed helper.
+mkdir -p "$work/operation-owner" "$work/owner-data/dwm-titus/scripts" "$work/owner-state"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/operation-owner/"
+cp "$repo/tests/qml/SystemOperationOwner.qml" "$work/operation-owner/shell.qml"
+cp "$repo/tests/fixtures/system-operation-provider.py" "$work/owner-data/dwm-titus/scripts/dwm-system-management"
+chmod +x "$work/owner-data/dwm-titus/scripts/dwm-system-management"
+timeout --foreground --kill-after=2s 60s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/owner-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_OPERATION_FIXTURE="$work/owner-state" \
+	quickshell --no-duplicate --path "$work/operation-owner/shell.qml" \
+	>"$work/operation-owner.log" 2>&1 &
+quickshell_pid=$!
+owner_status=0
+wait "$quickshell_pid" || owner_status=$?
+quickshell_pid=
+if [ "$owner_status" -ne 0 ]; then
+	cat "$work/operation-owner.log" >&2
+	exit "$owner_status"
+fi
+if ! grep -F 'Operation owner native tests: PASS' "$work/operation-owner.log" || grep -Fq 'Operation owner FAILED:' "$work/operation-owner.log"; then
+	cat "$work/operation-owner.log" >&2
+	exit 1
+fi
+[ "$(sed -n '1p' "$work/owner-state/watch-operation-10")" -eq 2 ]
+[ "$(sed -n '1p' "$work/owner-state/ack-operation-10")" -eq 1 ]
+quickshell_binary=$(command -v quickshell)
+timeout --foreground --kill-after=2s 15s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/owner-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_OWNER_FAILED_START=1 PATH="$work/no-executables" \
+	"$quickshell_binary" --no-duplicate --path "$work/operation-owner/shell.qml" \
+	>"$work/operation-owner-start-failure.log" 2>&1 &
+quickshell_pid=$!
+owner_status=0
+wait "$quickshell_pid" || owner_status=$?
+quickshell_pid=
+if [ "$owner_status" -ne 0 ]; then
+	cat "$work/operation-owner-start-failure.log" >&2
+	exit "$owner_status"
+fi
+if ! grep -F 'Operation owner native tests: PASS' "$work/operation-owner-start-failure.log" || grep -Fq 'Operation owner FAILED:' "$work/operation-owner-start-failure.log"; then
+	cat "$work/operation-owner-start-failure.log" >&2
+	exit 1
+fi
+timeout --foreground --kill-after=2s 15s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/owner-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_OPERATION_FIXTURE="$work/owner-state" DWM_OWNER_INCOMPLETE_RECOVERY=1 \
+	"$quickshell_binary" --no-duplicate --path "$work/operation-owner/shell.qml" \
+	>"$work/operation-owner-incomplete-recovery.log" 2>&1 &
+quickshell_pid=$!
+owner_status=0
+wait "$quickshell_pid" || owner_status=$?
+quickshell_pid=
+if [ "$owner_status" -ne 0 ]; then
+	cat "$work/operation-owner-incomplete-recovery.log" >&2
+	exit "$owner_status"
+fi
+if ! grep -F 'Operation owner native tests: PASS' "$work/operation-owner-incomplete-recovery.log" || grep -Fq 'Operation owner FAILED:' "$work/operation-owner-incomplete-recovery.log"; then
+	cat "$work/operation-owner-incomplete-recovery.log" >&2
+	exit 1
+fi
+[ "$(sed -n '1p' "$work/owner-state/incomplete-snapshots")" -eq 4 ]
+timeout --foreground --kill-after=2s 15s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/owner-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_OPERATION_FIXTURE="$work/owner-state" DWM_OWNER_CLOSE_RETRY=1 \
+	"$quickshell_binary" --no-duplicate --path "$work/operation-owner/shell.qml" \
+	>"$work/operation-owner-close-retry.log" 2>&1 &
+quickshell_pid=$!
+owner_status=0
+wait "$quickshell_pid" || owner_status=$?
+quickshell_pid=
+if [ "$owner_status" -ne 0 ]; then
+	cat "$work/operation-owner-close-retry.log" >&2
+	exit "$owner_status"
+fi
+if ! grep -F 'Operation owner native tests: PASS' "$work/operation-owner-close-retry.log" || grep -Fq 'Operation owner FAILED:' "$work/operation-owner-close-retry.log"; then
+	cat "$work/operation-owner-close-retry.log" >&2
+	exit 1
+fi
+[ "$(sed -n '1p' "$work/owner-state/retry-snapshots")" -eq 3 ]
+[ "$(sed -n '1p' "$work/owner-state/watch-operation-15")" -eq 2 ]
+[ "$(sed -n '1p' "$work/owner-state/ack-operation-15")" -eq 1 ]
+timeout --foreground --kill-after=2s 15s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/owner-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_OPERATION_FIXTURE="$work/owner-state" DWM_OWNER_DELAYED_SNAPSHOT=1 \
+	"$quickshell_binary" --no-duplicate --path "$work/operation-owner/shell.qml" \
+	>"$work/operation-owner-delayed-snapshot.log" 2>&1 &
+quickshell_pid=$!
+owner_status=0
+wait "$quickshell_pid" || owner_status=$?
+quickshell_pid=
+if [ "$owner_status" -ne 0 ]; then
+	cat "$work/operation-owner-delayed-snapshot.log" >&2
+	exit "$owner_status"
+fi
+if ! grep -F 'Operation owner native tests: PASS' "$work/operation-owner-delayed-snapshot.log" || grep -Fq 'Operation owner FAILED:' "$work/operation-owner-delayed-snapshot.log"; then
+	cat "$work/operation-owner-delayed-snapshot.log" >&2
+	exit 1
+fi
+[ "$(sed -n '1p' "$work/owner-state/delayed-snapshots")" -eq 2 ]
+[ "$(sed -n '1p' "$work/owner-state/ack-operation-16")" -eq 1 ]
+cp "$repo/tests/qml/SystemOperationHandoff.qml" "$work/operation-owner/handoff.qml"
+timeout --foreground --kill-after=2s 10s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/owner-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_OPERATION_FIXTURE="$work/owner-state" \
+	"$quickshell_binary" --no-duplicate --path "$work/operation-owner/handoff.qml" \
+	>"$work/operation-handoff.log" 2>&1 &
+quickshell_pid=$!
+owner_status=0
+wait "$quickshell_pid" || owner_status=$?
+quickshell_pid=
+if [ "$owner_status" -ne 0 ]; then
+	cat "$work/operation-handoff.log" >&2
+	exit "$owner_status"
+fi
+if ! grep -F 'Operation handoff native tests: PASS' "$work/operation-handoff.log" || grep -Fq 'Operation handoff FAILED:' "$work/operation-handoff.log"; then
+	cat "$work/operation-handoff.log" >&2
+	exit 1
+fi
+
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime "$repo/dwm" >"$work/dwm.log" 2>&1 &
 dwm_pid=$!
@@ -299,7 +451,8 @@ wait_state() {
 		i=$((i + 1))
 		sleep 0.05
 	done
-	printf 'System-management state did not become %s\n' "$expected" >&2
+	printf 'System-management state did not become %s (mode=%s, state=%s, operation=%s)\n' \
+		"$expected" "$(sed -n '1p' "$fixture/mode")" "$state" "$(ipc systemManagementOperationState 2>/dev/null || true)" >&2
 	tail -60 "$work/quickshell.log" >&2
 	return 1
 }
@@ -355,12 +508,31 @@ printf 'regional-handoff\n' >"$fixture/mode"
 ipc refresh >/dev/null
 wait_state ready
 [ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc systemManagementOperationState)" = result ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc systemManagementOperationResult)" = timezone-set:succeeded ]
+[ -f "$fixture/ack-op-11111111111111111111111111111111" ]
+if [ -n "${DWM_SYSTEM_MANAGEMENT_CAPTURE_DIR:-}" ]; then
+	mkdir -p -- "$DWM_SYSTEM_MANAGEMENT_CAPTURE_DIR"
+	DISPLAY=$display import -window root "$DWM_SYSTEM_MANAGEMENT_CAPTURE_DIR/verified-operation.png"
+fi
 
 printf 'cancelable-active\n' >"$fixture/mode"
 ipc refresh >/dev/null
 wait_state ready
 [ "$(ipc systemManagementUpdateCount)" -eq 1 ]
 [ -z "$(ipc systemManagementErrorCodes)" ]
+i=0
+while [ "$i" -lt 100 ]; do
+	[ -f "$fixture/ack-op-22222222222222222222222222222222" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -f "$fixture/ack-op-22222222222222222222222222222222" ]
 
 printf 'invalid-handoff\n' >"$fixture/mode"
 ipc refresh >/dev/null
@@ -410,6 +582,13 @@ printf 'fail-after-output\n' >"$fixture/mode"
 ipc refresh >/dev/null
 wait_state failure
 [ "$(ipc systemManagementUpdateCount)" -eq 0 ]
+
+# Finish the preceding recovery before testing cancellation of a pane-only
+# read. A replacement recovery snapshot must survive closure (tested above).
+printf 'valid\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state ready
+[ "$(ipc systemManagementOperationState)" = result ]
 
 printf 'delay-once\n' >"$fixture/mode"
 printf '0\n' >"$fixture/count"

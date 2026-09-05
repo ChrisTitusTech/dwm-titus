@@ -62,6 +62,12 @@ versions from `config.mk`.
 
 ### Added
 
+- Restore journaled system operations in the shell root and keep their progress
+  visible across Settings closure. Verify complete terminal results before exact
+  acknowledgment; retain guidance after bounded recovery or acknowledgment
+  failure. Update mutation controls remain disabled pending confirmation and
+  execution integration.
+
 - Add a bounded Quickshell operation-stream parser with strict identity,
   lifecycle, audit, UTF-8, and exit-status checks. Native nested-X11 fixtures
   verify live progress and failed-result streams; Settings operation ownership

@@ -68,13 +68,14 @@ grep -Fq "Number(states[\"\$update-summary\"].value) !== parsedUpdates.length" "
 grep -Fq 'parsedActive !== null || parsedHandoff !== null' "$model"
 [ "$(grep -Fc 'root.updateActionKind(fields[2]).length === 0' "$model")" -eq 1 ]
 grep -Fq 'root.operationActionKind(fields[2]).length === 0' "$model"
-grep -Fq 'responseGeneration !== root.requestGeneration || !root.settingsVisible' "$model"
-grep -Fq 'if (snapshotProcess.running)' "$model"
-grep -Fq 'root.snapshotPending = true;' "$model"
-grep -Fq 'if (!running && root.snapshotPending && root.settingsVisible)' "$model"
+grep -Fq 'responseGeneration !== root.requestGeneration' "$model"
+grep -Fq 'if (root.snapshotOwned)' "$model"
+grep -Fq 'root.requiredPending = root.requiredPending || required;' "$model"
+grep -Fq 'root.snapshotPending && root.settingsVisible' "$model"
 grep -Fq 'snapshotProcess.running = false;' "$model"
-grep -Fq 'root.snapshotState === "failure"' "$model"
-grep -Fq 'root.parseSnapshot(snapshotOutput.text, snapshotProcess.generation);' "$model"
+grep -Fq 'root.snapshotState = "failure"' "$model"
+grep -Fq 'root.parseSnapshot(snapshotOutput.text, snapshotProcess.generation)' "$model"
+grep -Fq 'onExited: (exitCode, exitStatus) => root.finishSnapshot(exitCode, exitStatus === 0)' "$model"
 
 grep -Fq 'required property var systemManagementModel' "$pane"
 grep -Fq 'required property var capabilities' "$pane"
@@ -105,6 +106,7 @@ expected_pane_model_members=$(printf '%s\n' \
 	'systemManagementModel.busy' \
 	'systemManagementModel.errors' \
 	'systemManagementModel.message' \
+	'systemManagementModel.operation' \
 	'systemManagementModel.packageChanges' \
 	'systemManagementModel.providerDetail' \
 	'systemManagementModel.providerState' \

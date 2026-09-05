@@ -191,17 +191,31 @@ Flickable {
         }
 
         StatusCard {
-            visible: root.systemManagementModel.activeOperation !== null
-            label: root.systemManagementModel.activeOperation === null ? "Active operation"
-                : root.systemManagementModel.activeOperation.actionId
+            readonly property var operation: root.systemManagementModel.operation.progress
+                || root.systemManagementModel.activeOperation
+            visible: operation !== null
+            label: operation === null ? "Active operation" : operation.actionId
             status: "partial"
-            value: root.systemManagementModel.activeOperation === null ? ""
-                : root.systemManagementModel.activeOperation.percent === "unknown"
-                    ? root.systemManagementModel.activeOperation.state
-                    : root.systemManagementModel.activeOperation.state + " / "
-                        + root.systemManagementModel.activeOperation.percent + "%"
-            detail: root.systemManagementModel.activeOperation === null ? ""
-                : root.systemManagementModel.activeOperation.detail
+            value: operation === null ? "" : operation.percent === "unknown"
+                ? operation.state : operation.state + " / " + operation.percent + "%"
+            detail: operation === null ? "" : operation.detail
+        }
+
+        StatusCard {
+            readonly property var result: root.systemManagementModel.operation.result
+            visible: result !== null
+            label: result === null ? "Verified operation result" : result.actionId
+            status: result !== null && result.state === "succeeded" ? "available" : "partial"
+            value: result === null ? "" : result.state
+            detail: result === null ? "" : result.detail
+        }
+
+        PlainText {
+            Layout.fillWidth: true
+            visible: root.systemManagementModel.operation.detail.length > 0
+            text: root.systemManagementModel.operation.detail
+            color: root.systemManagementModel.operation.blocked ? Theme.danger : Theme.menuMutedText
+            wrapMode: Text.WordWrap
         }
 
         StatusCard {

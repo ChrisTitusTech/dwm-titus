@@ -103,8 +103,32 @@ supply an ID, the command instead returns 1 without a stream and with fixed
 recovery guidance. Once an admission write may have started or output has been
 attempted, a failure never falls back to that rejected-request stream. It
 returns 1 with recovery guidance and leaves the actual journal for observation.
-Settings mutation actions remain unavailable until root-scoped confirmation,
-observation, and acknowledgment are integrated.
+The root-scoped Quickshell observer now restores active operations and terminal
+handoffs from a finite startup snapshot, retains a sole exact-ID watch across
+Settings closure, and acknowledges only a fully validated matching result.
+Stream parsing consumes each run's raw-byte notifications; process completion
+never reuses output retained by an earlier collector run. Terminal text is
+provisional until audit, completion, and normal exit pass. Malformed observers
+are terminated without canceling the PackageKit transaction. Three delayed
+snapshot-and-watch retries use one, two, and four seconds; exhaustion and failed
+acknowledgment retain explicit reload guidance. Pane-only reads still stop when
+Settings closes, while required recovery reads continue. Settings mutation
+actions remain unavailable until originating execution, confirmation,
+cancellation, and event-driven discovery invalidation are integrated.
+An identity-free snapshot establishes an empty journal only when recovery is
+available. Incomplete journal evidence retains the readable snapshot and takes
+the same bounded recovery path; it cannot silently abandon an unknown owner.
+An exact validated active identity or handoff remains usable when unrelated
+restart or session evidence is partial.
+Snapshots received while acknowledgment is in flight retain any newer active
+identity or handoff. The root resumes observation after that control exits,
+without clearing a different operation's handoff or overlapping live streams.
+Opening or explicitly refreshing Settings during recovery may replace its
+backoff with an immediate read, but that replacement remains required recovery
+work. Closing the pane cannot cancel it and strand the operation.
+The root retains the last 32 successful acknowledgment identities in memory,
+matching the journal's retention bound. A delayed snapshot cannot resurrect
+their active/handoff cards or send an acknowledgment that already succeeded.
 
 `OPERATION_ID` must exactly match the `op-` prefix followed by 32 lowercase
 hexadecimal digits emitted for the currently visible operation. The provider

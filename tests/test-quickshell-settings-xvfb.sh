@@ -33,6 +33,7 @@ if [ "$(id -u)" -eq 0 ] && [ "${DWM_SETTINGS_XVFB_UNPRIVILEGED:-0}" != 1 ]; then
 	cp -a "$repo/config" "$repo/scripts" "$fixture_repo/"
 	cp "$repo/dwm" "$fixture_repo/dwm"
 	cp "$0" "$fixture_repo/tests/test-quickshell-settings-xvfb.sh"
+	cp -a "$repo/tests/fixtures" "$fixture_repo/tests/"
 	chown -R "$unprivileged_uid:$unprivileged_gid" "$root_runner_work"
 	chmod 700 "$fixture_repo/dwm" "$root_runner_work/runtime"
 	if HOME="$root_runner_work" TMPDIR="$root_runner_work" \
@@ -329,6 +330,8 @@ glib-compile-schemas "$schema_dir"
 export GSETTINGS_SCHEMA_DIR="$schema_dir"
 export GSETTINGS_BACKEND=keyfile
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
+cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-titus/scripts/dwm-system-management"
+chmod +x "$data_home/dwm-titus/scripts/dwm-system-management"
 cp "$repo/config/quickshell/assets/ctt_logo.png" "$home/Pictures/backgrounds/test-wallpaper.png"
 # Keep this nested-X11 fixture independent from the host system UPower service
 # so versioned helper battery records exercise the fallback parser.

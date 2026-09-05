@@ -573,6 +573,15 @@ ShellRoot {
             return systemManagementModel.snapshotState;
         }
 
+        function systemManagementOperationState(): string {
+            return systemManagementModel.operation.state;
+        }
+
+        function systemManagementOperationResult(): string {
+            const result = systemManagementModel.operation.result;
+            return result === null ? "" : result.actionId + ":" + result.state;
+        }
+
         function inputAccessibilityValue(settingId: string): string {
             const setting = settingsModel.inputSettings.find(function(item) {
                 return item.device === "accessx" && item.id === settingId;
