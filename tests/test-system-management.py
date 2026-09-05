@@ -15,6 +15,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 from dataclasses import replace
 from unittest import mock
@@ -4509,6 +4510,449 @@ class SnapshotValidationTests(unittest.TestCase):
 
         self.assertEqual(rows(output, "update"), [])
         self.assertEqual(rows(output, "error")[0][2], "malformed")
+
+
+class PackageKitSafetyTests(unittest.TestCase):
+    def test_backport_gate_is_required_before_mutation_is_enabled(self):
+        for micro in (4, 6):
+            with self.subTest(micro=micro):
+                backend = provider.PackageKitBackend.__new__(provider.PackageKitBackend)
+                backend.GLib = types.SimpleNamespace(Variant=lambda signature, values: values)
+                backend._call = mock.Mock(return_value=types.SimpleNamespace(unpack=lambda: (
+                    {"VersionMajor": 1, "VersionMinor": 3, "VersionMicro": micro},)))
+                backend._require_running_backport_identity = mock.Mock(
+                    side_effect=provider.SnapshotFailure("unsupported", "Old running executable", "unsupported"))
+                rpm = types.SimpleNamespace(error=RuntimeError, labelCompare=lambda left, right: 0,
+                    TransactionSet=lambda: types.SimpleNamespace(dbMatch=lambda *args: [
+                        {"epoch": None, "version": f"1.3.{micro}", "release": "3.fc44"}]))
+                with mock.patch.dict(sys.modules, {"rpm": rpm}), mock.patch.object(
+                    provider, "read_fedora_identity", return_value={"ID": "fedora", "VERSION_ID": "44"}):
+                    if micro == 4:
+                        with self.assertRaises(provider.SnapshotFailure):
+                            backend.require_mutation_safe()
+                        backend._require_running_backport_identity.assert_called_once_with()
+                    else:
+                        backend.require_mutation_safe()
+                        backend._require_running_backport_identity.assert_not_called()
+
+    def test_backport_requires_running_executable_identity_and_stable_bus_owner(self):
+        regular = stat.S_IFREG | 0o755
+        installed = types.SimpleNamespace(st_mode=regular, st_uid=0, st_dev=1, st_ino=2)
+        for running, final_owner, accepted in (
+            (installed, ":1.8", True),
+            (types.SimpleNamespace(st_mode=regular, st_uid=0, st_dev=1, st_ino=1), ":1.8", False),
+            (types.SimpleNamespace(st_mode=regular, st_uid=1000, st_dev=1, st_ino=2), ":1.8", False),
+            (types.SimpleNamespace(st_mode=stat.S_IFREG | 0o775, st_uid=0, st_dev=1, st_ino=2), ":1.8", False),
+            (types.SimpleNamespace(st_mode=stat.S_IFREG | 0o757, st_uid=0, st_dev=1, st_ino=2), ":1.8", False),
+            (PermissionError("procfs denied"), ":1.8", False),
+            (installed, ":1.9", False),
+        ):
+            with self.subTest(running=running, final_owner=final_owner):
+                backend = provider.PackageKitBackend.__new__(provider.PackageKitBackend)
+                backend.GLib = types.SimpleNamespace(Variant=lambda signature, values: values, Error=RuntimeError)
+                backend.Gio = types.SimpleNamespace(DBusCallFlags=types.SimpleNamespace(NONE=0))
+                replies = [types.SimpleNamespace(unpack=lambda: (":1.8",)),
+                           types.SimpleNamespace(unpack=lambda: (123,)),
+                           types.SimpleNamespace(unpack=lambda: (final_owner,))]
+                backend.connection = mock.Mock()
+                backend.connection.call_sync.side_effect = replies
+                with mock.patch.object(provider.os, "stat", side_effect=[installed, running]) as read:
+                    if accepted:
+                        backend._require_running_backport_identity()
+                    else:
+                        with self.assertRaises(provider.SnapshotFailure) as raised:
+                            backend._require_running_backport_identity()
+                        self.assertEqual(raised.exception.status, "unsupported")
+                self.assertEqual(read.call_args_list, [mock.call("/usr/libexec/packagekitd", follow_symlinks=False),
+                                                      mock.call("/proc/123/exe")])
+                self.assertEqual(backend.connection.call_sync.call_args_list[1].args[4], (":1.8",))
+
+    def test_unknown_action_reports_unsupported_without_touching_backend(self):
+        backend = mock.Mock()
+        with self.assertRaises(provider.SnapshotFailure) as raised:
+            provider.run_packagekit_mutation(None, backend, "arbitrary", lambda value: None,
+                                            boot_id="01234567-89ab-cdef-0123-456789abcdef")
+        self.assertEqual((raised.exception.code, raised.exception.status), ("unsupported", "unsupported"))
+        self.assertEqual(backend.mock_calls, [])
+
+    def test_security_floor_uses_rpm_order_and_checks_running_daemon(self):
+        compare = mock.Mock(return_value=0)
+        self.assertTrue(provider.packagekit_security_floor("1.3.5", "1.fc44", "44", (1, 3, 5), compare))
+        compare.assert_called_once_with(("0", "1.3.5", "1.fc44"), ("0", "1.3.5", "0"))
+        compare = mock.Mock(side_effect=[-1, 0])
+        self.assertTrue(provider.packagekit_security_floor("1.3.4", "3.fc44", "44", (1, 3, 4), compare))
+        self.assertEqual(compare.call_args.args[1], ("0", "1.3.4", "3.fc44"))
+        for version, release, fedora, daemon in (
+            ("1.3.4", "2.fc44", "44", (1, 3, 4)),
+            ("1.3.4", "3.fc44", "43", (1, 3, 4)),
+            ("1.3.4", "3.fc43", "44", (1, 3, 4)),
+            ("1.3.4", "3.fc44.custom", "44", (1, 3, 4)),
+            ("1.3.6", "1.fc44", "44", (1, 3, 4)),
+            ("1.3.6", "1.fc44", "44", (True, 3, 6)),
+            ("1.3.6", "1.fc44", "44", None),
+            ("1.3.6;bad", "1.fc44", "44", (1, 3, 6)),
+        ):
+            with self.subTest(version=version, release=release, fedora=fedora, daemon=daemon):
+                self.assertFalse(provider.packagekit_security_floor(version, release, fedora, daemon,
+                                                                    mock.Mock(return_value=-1)))
+
+    def test_platform_identity_is_fixed_bounded_and_never_evaluated(self):
+        with mock.patch("builtins.open", mock.mock_open(read_data=b'ID=fedora\nVERSION_ID="44"\nNAME="ignored"\n')) as source:
+            self.assertEqual(provider.read_fedora_identity(), {"ID": "fedora", "VERSION_ID": "44"})
+            source.assert_called_once_with("/etc/os-release", "rb")
+            source().read.assert_called_once_with(65537)
+        for data in (b"ID=ubuntu\nID_LIKE=fedora", b"ID=fedora\nID=fedora", b"ID=$(false)",
+                     b"ID=fedora#variant", b'ID="fedora"#variant', b"ID=fedora #inline",
+                     b"ID='fedora", b"\xff", b"x" * 65537):
+            with self.subTest(data=data[:20]), mock.patch("builtins.open", mock.mock_open(read_data=data)):
+                with self.assertRaises(provider.SnapshotFailure):
+                    provider.read_fedora_identity()
+
+
+class PackageKitExecutionTests(unittest.TestCase):
+    boot_id = "01234567-89ab-cdef-0123-456789abcdef"
+    package_id = "example;2;x86_64;updates"
+
+    @contextlib.contextmanager
+    def journal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+            with provider.open_journal_directory_chain(str(path)) as chain:
+                provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
+                with provider.retain_writable_journal(chain) as journal:
+                    yield journal
+
+    def backend(self, journal, events):
+        """Drive the real adapter with a deterministic, host-independent bus."""
+        test = self
+
+        class Variant:
+            def __init__(self, signature, values):
+                self.signature, self.values = signature, values
+
+            def unpack(self):
+                return self.values
+
+        class BusError(Exception):
+            pass
+
+        class Loop:
+            stopped = False
+
+            def quit(self):
+                self.stopped = True
+
+            def run(self):
+                for event in events:
+                    if self.stopped:
+                        break
+                    test.assertFalse(journal._exclusive)
+                    event(connection)
+                test.assertTrue(self.stopped, "adapter did not reach a terminal observation")
+
+        class Connection:
+            def __init__(self):
+                self.subscriptions = {}
+                self.calls = []
+                self.cancel_allowed = True
+                self.closed_callback = None
+
+            def connect(self, signal, callback):
+                test.assertEqual(signal, "closed")
+                self.closed_callback = callback
+                return 19
+
+            def disconnect(self, handle):
+                test.assertEqual(handle, 19)
+                self.closed_callback = None
+
+            def signal_subscribe(self, *args):
+                key = len(self.subscriptions) + 1
+                self.subscriptions[key] = args
+                return key
+
+            def signal_unsubscribe(self, key):
+                del self.subscriptions[key]
+
+            def call(self, *args):
+                test.assertFalse(journal._exclusive)
+                with provider.lock_writable_journal(journal):
+                    active = provider.load_writable_journal_state(journal).active
+                test.assertEqual(active.state, "authorizing")
+                test.assertEqual(active.transaction_path, args[1])
+                test.assertEqual(len(self.subscriptions), 3)
+                self.calls.append(args)
+                self.reply_callback = args[-2]
+
+            def call_finish(self, result):
+                if isinstance(result, Exception):
+                    raise result
+                return Variant("()", ())
+
+            def call_sync(self, *args):
+                test.assertFalse(journal._exclusive)
+                self.calls.append(args)
+                test.assertEqual(args[1], "/1_test")
+                if args[3] == "Get":
+                    return Variant("(v)", (self.cancel_allowed,))
+                test.assertEqual(args[3], "Cancel")
+                return Variant("()", ())
+
+            def emit(self, signal, values, *, properties=False):
+                interface = provider.PROPERTIES_INTERFACE if properties else provider.TRANSACTION_INTERFACE
+                for args in tuple(self.subscriptions.values()):
+                    if args[1] == interface:
+                        test.assertEqual(args[0], provider.PACKAGEKIT_NAME)
+                        test.assertEqual(args[3], "/1_test")
+                        args[-2](self, provider.PACKAGEKIT_NAME, "/1_test", interface,
+                                 signal, Variant("", values), None)
+
+            def progress(self, **properties):
+                self.emit("PropertiesChanged", (provider.TRANSACTION_INTERFACE, properties, []), properties=True)
+
+            def reply_error(self, message):
+                self.reply_callback(self, BusError(message), None)
+
+        connection = Connection()
+        backend = provider.PackageKitBackend.__new__(provider.PackageKitBackend)
+        backend.connection = connection
+        backend.flags_only_trusted = 2
+        backend.GLib = types.SimpleNamespace(Variant=Variant, MainLoop=Loop, Error=BusError,
+                                            VariantType=types.SimpleNamespace(new=lambda value: value))
+        backend.Gio = types.SimpleNamespace(
+            Cancellable=lambda: types.SimpleNamespace(cancel=lambda: None),
+            dbus_error_get_remote_error=lambda error: "org.freedesktop.DBus.Error." + str(error),
+            DBusSignalFlags=types.SimpleNamespace(NONE=0),
+            DBusCallFlags=types.SimpleNamespace(NONE=0, ALLOW_INTERACTIVE_AUTHORIZATION=1))
+        backend.require_mutation_safe = mock.Mock()
+        backend.create_mutation = mock.Mock(return_value="/1_test")
+        return backend
+
+    def run_operation(self, journal, backend, chunks, update=False, write=None):
+        args = {}
+        if update:
+            args = dict(generation="a" * 64, package_ids=[self.package_id],
+                        preview=[provider.PlanRow(self.package_id, "update", "example", "2", "Example")])
+        return provider.run_packagekit_mutation(
+            journal, backend, "updates-install-all" if update else "updates-refresh",
+            write or chunks.append, boot_id=self.boot_id, **args)
+
+    def test_refresh_dispatch_and_durable_handoff_precede_terminal_output(self):
+        with self.journal() as journal:
+            chunks = []
+            backend = self.backend(journal, [lambda bus: bus.progress(Status=3, Percentage=42, AllowCancel=True),
+                                            lambda bus: bus.emit("Finished", (1, 10))])
+
+            def write(chunk):
+                if "complete\toperation" in chunk:
+                    with provider.lock_writable_journal(journal):
+                        state = provider.load_writable_journal_state(journal)
+                    self.assertIsNone(state.active)
+                    self.assertIsNotNone(state.handoff)
+                    self.assertEqual(state.terminals[0].state, "succeeded")
+                chunks.append(chunk)
+
+            terminal = self.run_operation(journal, backend, chunks, write=write)
+            self.assertEqual(terminal.state, "succeeded")
+            self.assertEqual(backend.connection.calls[0][3], "RefreshCache")
+            self.assertEqual(backend.connection.calls[0][4].unpack(), (True,))
+            self.assertEqual(backend.connection.subscriptions, {})
+            self.assertIsNone(backend.connection.closed_callback)
+            self.assertIn("\t42\tyes\t", "".join(chunks))
+
+    def test_update_uses_exact_ids_and_accumulates_restart_contributions(self):
+        with self.journal() as journal:
+            chunks = []
+            backend = self.backend(journal, [lambda bus: bus.emit("Package", (11, self.package_id, "Example")),
+                lambda bus: bus.emit("RequireRestart", (3, self.package_id)),
+                lambda bus: bus.emit("RequireRestart", (6, self.package_id)),
+                lambda bus: bus.emit("RequireRestart", (2, self.package_id)),
+                lambda bus: bus.emit("Finished", (1, 10))])
+            terminal = self.run_operation(journal, backend, chunks, update=True)
+            self.assertEqual(backend.connection.calls[0][3], "UpdatePackages")
+            self.assertEqual(backend.connection.calls[0][4].unpack(), (2, [self.package_id]))
+            self.assertEqual((terminal.system_restart, terminal.session_restart, terminal.application_restart),
+                             ("security-system", "session", True))
+            self.assertIn("different=no", "".join(chunks))
+
+    def test_lost_method_reply_keeps_observing_until_finished(self):
+        with self.journal() as journal:
+            chunks = []
+            backend = self.backend(journal, [lambda bus: bus.reply_error("TimedOut"),
+                lambda bus: bus.progress(Status=3), lambda bus: bus.emit("Finished", (1, 1))])
+            self.assertEqual(self.run_operation(journal, backend, chunks, update=True).state, "succeeded")
+
+    def test_denial_before_running_does_not_add_restart_uncertainty(self):
+        with self.journal() as journal:
+            chunks = []
+            backend = self.backend(journal, [lambda bus: bus.reply_error("AccessDenied")])
+            terminal = self.run_operation(journal, backend, chunks, update=True)
+            self.assertEqual((terminal.state, terminal.system_restart), ("permission-denied", "none"))
+            self.assertIn("error\tupdates\tpermission-denied", "".join(chunks))
+
+    def test_definitive_method_rejection_does_not_wait_for_terminal_signals(self):
+        for error in ("UnknownMethod", "InvalidArgs", "UnknownInterface", "UnknownObject"):
+            with self.subTest(error=error), self.journal() as journal:
+                backend = self.backend(journal, [lambda bus: bus.reply_error(error)])
+                chunks = []
+                terminal = self.run_operation(journal, backend, chunks, update=True)
+                self.assertEqual((terminal.state, terminal.system_restart), ("failed", "none"))
+                self.assertIn("complete\toperation", "".join(chunks))
+
+    def test_definitive_rejection_does_not_clear_observed_execution_uncertainty(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [lambda bus: bus.progress(Status=3),
+                                            lambda bus: bus.reply_error("InvalidArgs")])
+            terminal = self.run_operation(journal, backend, [], update=True)
+            self.assertEqual((terminal.state, terminal.system_restart), ("failed", "unknown"))
+
+    def test_invalidated_or_malformed_status_cannot_prove_prerunning_cancellation(self):
+        for invalidate in (True, False):
+            with self.subTest(invalidate=invalidate), self.journal() as journal:
+                def invalidate_status(bus):
+                    if invalidate:
+                        bus.emit("PropertiesChanged", (provider.TRANSACTION_INTERFACE, {}, ["Status"]), properties=True)
+                    else:
+                        bus.progress(Status="bad")
+                backend = self.backend(journal, [lambda bus: bus.progress(Status=31), invalidate_status,
+                                                lambda bus: bus.emit("Finished", (3, 0))])
+                terminal = self.run_operation(journal, backend, [], update=True)
+                self.assertEqual((terminal.state, terminal.system_restart), ("canceled", "unknown"))
+
+    def test_lost_object_or_bus_after_send_is_interrupted_unknown(self):
+        for event in (lambda bus: bus.emit("Destroy", ()), lambda bus: bus.closed_callback()):
+            with self.subTest(event=event), self.journal() as journal:
+                backend = self.backend(journal, [event])
+                terminal = self.run_operation(journal, backend, [], update=True)
+                self.assertEqual((terminal.state, terminal.system_restart), ("interrupted", "unknown"))
+
+    def test_error_cancels_only_with_fresh_allow_cancel_and_never_after_finished(self):
+        for allowed in (True, False):
+            with self.subTest(allowed=allowed), self.journal() as journal:
+                chunks = []
+                backend = self.backend(journal, [lambda bus: bus.progress(Status=3, AllowCancel=True),
+                    lambda bus: bus.emit("ErrorCode", (13, "Untrusted raw text")),
+                    lambda bus: bus.emit("Finished", (2, 10))])
+                backend.connection.cancel_allowed = allowed
+                terminal = self.run_operation(journal, backend, chunks, update=True)
+                self.assertEqual(terminal.state, "failed")
+                methods = [call[3] for call in backend.connection.calls]
+                self.assertEqual(methods.count("Cancel"), int(allowed))
+                self.assertEqual(methods.count("Get"), 1)
+                self.assertNotIn("Untrusted raw text", "".join(chunks))
+
+    def test_canceled_while_running_has_legal_transition_and_uncertainty(self):
+        with self.journal() as journal:
+            chunks = []
+            backend = self.backend(journal, [lambda bus: bus.progress(Status=3),
+                                            lambda bus: bus.emit("Finished", (3, 0))])
+            terminal = self.run_operation(journal, backend, chunks, update=True)
+            self.assertEqual((terminal.state, terminal.system_restart), ("canceled", "unknown"))
+            self.assertIn("\tcancel-requested\t", "".join(chunks))
+
+    def test_malformed_percentage_is_unknown_and_invalidated_cancel_is_not_reused(self):
+        with self.journal() as journal:
+            chunks = []
+            backend = self.backend(journal, [lambda bus: bus.progress(Status=3, Percentage=True, AllowCancel=True),
+                lambda bus: bus.emit("PropertiesChanged", (provider.TRANSACTION_INTERFACE, {}, ["AllowCancel"]), properties=True),
+                lambda bus: bus.emit("ErrorCode", (13, "")), lambda bus: bus.emit("Finished", (2, 1))])
+            self.run_operation(journal, backend, chunks)
+            self.assertIn("percentage is malformed", "".join(chunks))
+            self.assertEqual([call[3] for call in backend.connection.calls], ["RefreshCache"])
+
+    def test_persistence_failure_keeps_observer_but_suppresses_terminal(self):
+        with self.journal() as journal:
+            chunks = []
+            observed = []
+
+            def damage(bus):
+                os.fchmod(journal.descriptor("terminal-31"), 0o644)
+                bus.progress(Status=3, AllowCancel=True)
+
+            def finish(bus):
+                observed.append(True)
+                bus.emit("Finished", (1, 0))
+
+            backend = self.backend(journal, [damage, finish])
+            with self.assertRaises(provider.JournalFileError):
+                self.run_operation(journal, backend, chunks, update=True)
+            self.assertEqual(observed, [True])
+            self.assertNotIn("complete\toperation", "".join(chunks))
+            self.assertIn("Cancel", [call[3] for call in backend.connection.calls])
+            os.fchmod(journal.descriptor("terminal-31"), 0o600)
+
+    def test_output_failure_after_send_does_not_abandon_durable_result(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [lambda bus: bus.progress(Status=3),
+                                            lambda bus: bus.emit("Finished", (1, 0))])
+            def write(chunk):
+                if "\trunning\t" in chunk:
+                    raise BrokenPipeError("closed consumer")
+            with self.assertRaises(BrokenPipeError):
+                self.run_operation(journal, backend, [], write=write)
+            with provider.lock_writable_journal(journal):
+                state = provider.load_writable_journal_state(journal)
+            self.assertIsNone(state.active)
+            self.assertEqual(state.terminals[0].state, "succeeded")
+
+    def test_overlap_and_invalid_inputs_never_dispatch(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [lambda bus: bus.emit("Finished", (1, 0))])
+            self.run_operation(journal, backend, [])
+            before = len(backend.connection.calls)
+            with self.assertRaises(provider.JournalAdmissionError):
+                self.run_operation(journal, backend, [])
+            self.assertEqual(len(backend.connection.calls), before)
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.run_packagekit_mutation(journal, backend, "updates-install-all", lambda value: None,
+                                                boot_id=self.boot_id, generation="a" * 64)
+            self.assertEqual(len(backend.connection.calls), before)
+
+    def test_security_rejection_never_creates_or_journals_a_transaction(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [])
+            backend.require_mutation_safe.side_effect = provider.SnapshotFailure("unsupported", "Unsafe build")
+            with self.assertRaises(provider.SnapshotFailure):
+                self.run_operation(journal, backend, [])
+            backend.create_mutation.assert_not_called()
+            with provider.lock_writable_journal(journal):
+                self.assertIsNone(provider.load_writable_journal_state(journal).active)
+
+    def test_output_failure_before_dispatch_preserves_recoverable_active_record(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [])
+            def write(chunk):
+                if "\tauthorizing\t" in chunk:
+                    raise BrokenPipeError("closed consumer")
+            with self.assertRaises(BrokenPipeError):
+                self.run_operation(journal, backend, [], write=write)
+            self.assertEqual(backend.connection.calls, [])
+            self.assertEqual(backend.connection.subscriptions, {})
+            with provider.lock_writable_journal(journal):
+                self.assertEqual(provider.load_writable_journal_state(journal).active.state, "authorizing")
+
+    def test_external_cancellation_checkpoint_is_reconciled_without_regression(self):
+        with self.journal() as journal:
+            def cancel(bus):
+                with provider.lock_writable_journal(journal):
+                    current = provider.load_writable_journal_state(journal).active
+                    provider.advance_journal_operation(journal, current,
+                        replace(current, state="cancel-requested", detail="Canceled by a second control"))
+                bus.progress(Status=3, Percentage=55)
+            chunks = []
+            backend = self.backend(journal, [lambda bus: bus.progress(Status=3), cancel,
+                                            lambda bus: bus.emit("Finished", (3, 0))])
+            self.assertEqual(self.run_operation(journal, backend, chunks).state, "canceled")
+            output = "".join(chunks)
+            self.assertIn("\tcancel-requested\t55\t", output)
+            self.assertNotIn("\trunning\t55\t", output)
+
+    def test_malformed_finished_is_interrupted_not_success(self):
+        with self.journal() as journal:
+            backend = self.backend(journal, [lambda bus: bus.emit("Finished", (True, 0))])
+            terminal = self.run_operation(journal, backend, [], update=True)
+            self.assertEqual((terminal.state, terminal.error_code, terminal.system_restart),
+                             ("interrupted", "malformed", "unknown"))
 
 
 if __name__ == "__main__":

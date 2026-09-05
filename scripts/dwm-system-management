@@ -9,12 +9,13 @@ import fcntl
 import hashlib
 import os
 import re
+import shlex
 import stat
 import struct
 import sys
 import time
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Iterable, Iterator, Mapping, Protocol, Sequence
 
 
@@ -3413,6 +3414,296 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
     return lines
 
 
+def packagekit_security_floor(
+    version: str, release: str, fedora_release: str,
+    daemon_version: tuple[int, int, int], compare: Callable,
+) -> bool:
+    """Use RPM ordering, including Fedora 44's explicitly patched backport."""
+    if (
+        not isinstance(version, str) or not isinstance(release, str)
+        or len(version) > 128 or len(release) > 128
+        or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[~^][0-9A-Za-z.+_-]+)?", version) is None
+        or re.fullmatch(r"[0-9A-Za-z.+_~^-]+", release) is None
+        or not isinstance(daemon_version, tuple) or len(daemon_version) != 3
+        or any(type(value) is not int or not 0 <= value <= G_MAXUINT for value in daemon_version)
+    ):
+        return False
+    numeric = re.match(r"([0-9]+)\.([0-9]+)\.([0-9]+)", version)
+    if tuple(int(value) for value in numeric.groups()) != daemon_version:
+        return False
+    candidate = ("0", version, release)
+    return compare(candidate, ("0", "1.3.5", "0")) >= 0 or (
+        fedora_release == "44" and version == "1.3.4"
+        and re.fullmatch(r"[0-9]+(?:\.[0-9]+)*\.fc44(?:\.[0-9]+)*", release) is not None
+        and compare(candidate, ("0", "1.3.4", "3.fc44")) >= 0
+    )
+
+
+def read_fedora_identity() -> dict[str, str]:
+    """Read only the fixed platform identity keys; never evaluate shell content."""
+    try:
+        with open("/etc/os-release", "rb") as source:
+            data = source.read(65537)
+        if len(data) > 65536:
+            raise ValueError
+        identity = {}
+        for line in data.decode("utf-8").splitlines():
+            key = line.partition("=")[0]
+            if key not in {"ID", "VERSION_ID"}:
+                continue
+            fields = shlex.split(line, comments=False)
+            if len(fields) != 1 or key in identity or "=" not in fields[0]:
+                raise ValueError
+            identity[key] = fields[0].partition("=")[2]
+        if identity.get("ID") != "fedora":
+            raise SnapshotFailure("unsupported", "System changes are supported only on Fedora", "unsupported")
+        return identity
+    except (OSError, UnicodeError, ValueError) as error:
+        raise SnapshotFailure("unsupported", "Fedora platform identity is unavailable", "unsupported") from error
+
+
+class PackageKitMutation:
+    """Own one exact journaled transaction; callbacks never hold a service-wait lock."""
+
+    def __init__(
+        self, journal: JournalDescriptorSet, operation: JournalOperation,
+        write: Callable[[str], object], preview: Sequence[PlanRow],
+        boot_id: str, session_started: int | None,
+    ) -> None:
+        self.journal = journal
+        self.operation = operation
+        self.boot_id = boot_id
+        self.session_started = session_started
+        self.stream = OperationStream(operation.operation_id, operation.action_id,
+                                      operation.started_at, operation.detail, write)
+        self.observed = ObservedUpdateSummary(preview) if operation.kind == "update" else None
+        self.sent = False
+        self.allow_cancel = False
+        self.percent: int | None = None
+        self.last_status = 0
+        self.progress_warning = ""
+        self.failure: SnapshotFailure | None = None
+        self.persistence_error: Exception | None = None
+        self.output_error: Exception | None = None
+        self.terminal: JournalOperation | None = None
+
+    def _current(self) -> JournalOperation:
+        current = load_writable_journal_state(self.journal).active
+        identity = ("operation_id", "action_id", "kind", "started_at", "generation",
+                    "transaction_path", "boot_id", "slot")
+        if current is None or any(getattr(current, key) != getattr(self.operation, key) for key in identity):
+            raise JournalAdmissionError("PackageKit operation ownership changed")
+        if current.state in JOURNAL_OPERATION_TERMINAL_STATES:
+            raise JournalAdmissionError("PackageKit operation was terminalized by another observer")
+        return current
+
+    def _output(self, callback: Callable[[], object]) -> None:
+        if self.output_error is None:
+            try:
+                callback()
+            except Exception as error:
+                if not self.stream.faulted:
+                    raise
+                self.output_error = error
+
+    def _sync_stream(self) -> None:
+        target = self.operation.state
+        if self.output_error is not None or target == self.stream.state:
+            return
+        if target == "authorizing":
+            self._output(lambda: self.stream.transition("authorizing", self.operation.detail))
+        else:
+            if self.stream.state in {"pending", "authorizing"}:
+                self._output(lambda: self.stream.transition("running", "PackageKit is processing the transaction"))
+            if target == "cancel-requested" and self.stream.state != target:
+                self._output(lambda: self.stream.transition("cancel-requested", "PackageKit cancellation requested"))
+
+    def _checkpoint(self, state: str | None = None, **changes: object) -> None:
+        if self.persistence_error is not None:
+            return
+        try:
+            with lock_writable_journal(self.journal):
+                current = self._current()
+                target = state or current.state
+                if target in {"authorizing", "running"} and current.state == "cancel-requested":
+                    target = current.state
+                if target == "authorizing" and current.state == "running":
+                    target = current.state
+                for key, strength in (("system_restart", JOURNAL_RESTART_SYSTEM_STRENGTH),
+                                      ("session_restart", JOURNAL_RESTART_SESSION_STRENGTH)):
+                    if key in changes:
+                        changes[key] = max(getattr(current, key), changes[key], key=strength.__getitem__)
+                if target != current.state and "detail" not in changes:
+                    changes["detail"] = "PackageKit cancellation requested" if target == "cancel-requested" else "PackageKit is processing the transaction"
+                following = replace(current, state=target, **changes)
+                self.operation = advance_journal_operation(self.journal, current, following)
+            self._sync_stream()
+        except (JournalFileError, JournalRecordError, JournalFrameError, JournalAdmissionError) as error:
+            self.persistence_error = error
+
+    def before_send(self) -> None:
+        self._checkpoint("authorizing", detail="PackageKit authorization is pending")
+        if self.persistence_error is not None:
+            raise self.persistence_error
+        if self.output_error is not None:
+            raise self.output_error
+        self.journal.validate()
+        self.sent = True
+
+    def after_send(self) -> None:
+        try:
+            self.journal.validate()
+        except JournalFileError as error:
+            self.persistence_error = error
+
+    def _detail(self) -> str:
+        detail = self.observed.detail() if self.observed is not None else "PackageKit metadata refresh is running"
+        return clean_text(f"{detail}; {self.progress_warning}" if self.progress_warning else detail)
+
+    def _progress(self) -> None:
+        if self.persistence_error is None and self.operation.state in {"running", "cancel-requested"}:
+            self._output(lambda: self.stream.transition(self.operation.state, self._detail(),
+                                                       percent=self.percent, cancelable=self.allow_cancel))
+
+    def on_properties(self, properties: Mapping[str, object]) -> None:
+        old_progress = (self.percent, self.allow_cancel, self.progress_warning)
+        if "AllowCancel" in properties:
+            value = properties["AllowCancel"]
+            self.allow_cancel = value if type(value) is bool else False
+            if type(value) is not bool:
+                self.progress_warning = "PackageKit cancellation state is malformed"
+        if "Percentage" in properties:
+            value = properties["Percentage"]
+            self.percent = value if type(value) is int and 0 <= value <= 100 else None
+            if type(value) is not int or not 0 <= value <= 101:
+                self.progress_warning = "PackageKit percentage is malformed; progress is unknown"
+        if "Status" in properties:
+            status = properties["Status"]
+            if type(status) is int and 0 <= status <= 36:
+                self.last_status = status
+                if status not in {0, 1, 2, 18, 31} and self.operation.state not in {"running", "cancel-requested"}:
+                    self._checkpoint("running")
+            else:
+                self.last_status = 0
+                self.progress_warning = "PackageKit phase is unknown"
+        if old_progress != (self.percent, self.allow_cancel, self.progress_warning):
+            # A cooperating cancel control may have checkpointed while the
+            # transaction was running. Reconcile its exact identity once here.
+            self._checkpoint()
+            self._progress()
+
+    def on_package(self, info: int, package_id: str) -> None:
+        if self.observed is None or self.persistence_error is not None:
+            return
+        previous = (self.observed.comparison(), len(self.observed.samples))
+        try:
+            self.observed.observe(info, package_id)
+        except SnapshotFailure as error:
+            self.failure = self.failure or error
+            return
+        if self.operation.state not in {"running", "cancel-requested"}:
+            self._checkpoint("running")
+        if previous != (self.observed.comparison(), len(self.observed.samples)):
+            self._progress()
+
+    def on_restart(self, value: int) -> None:
+        if self.operation.kind != "update" or self.persistence_error is not None:
+            return
+        changes = {}
+        if value == 2:
+            changes["application_restart"] = True
+        elif value in {3, 5}:
+            requested = "security-session" if value == 5 else "session"
+            changes["session_restart"] = max(self.operation.session_restart, requested,
+                key=JOURNAL_RESTART_SESSION_STRENGTH.__getitem__)
+        elif value != 1:
+            requested = {4: "system", 6: "security-system"}.get(value, "unknown")
+            changes["system_restart"] = max(self.operation.system_restart, requested,
+                key=JOURNAL_RESTART_SYSTEM_STRENGTH.__getitem__)
+        if changes and any(getattr(self.operation, key) != value for key, value in changes.items()):
+            self._checkpoint(**changes)
+
+    def finish(self, state: str, failure: SnapshotFailure | None = None,
+               *, invocation_rejected: bool = False) -> None:
+        cutoff = time.monotonic_ns() // 1000
+        finished_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if self.persistence_error is not None or self.terminal is not None:
+            return
+        try:
+            with lock_writable_journal(self.journal):
+                self.operation = self._current()
+            self._sync_stream()
+            if state == "succeeded":
+                self._checkpoint("running")
+            elif state == "permission-denied" and self.operation.state in {"running", "cancel-requested"}:
+                state = "failed"
+            elif state == "canceled" and self.operation.state == "running":
+                self._checkpoint("cancel-requested")
+            if self.persistence_error is not None:
+                return
+            with lock_writable_journal(self.journal):
+                current = self._current()
+                contribution = current.system_restart
+                pre_running = current.state in {"pending", "authorizing"}
+                excluded = state == "permission-denied" or (pre_running and (
+                    invocation_rejected or (state == "canceled" and self.last_status == 31)))
+                if current.kind == "update" and self.sent and not excluded and state != "succeeded" and contribution == "none":
+                    contribution = "unknown"
+                terminal = replace(current, state=state, finished_at=finished_at,
+                                   error_code=None if failure is None else failure.code,
+                                   detail="PackageKit transaction completed" if failure is None else failure.detail,
+                                   system_restart=contribution, terminal_monotonic=cutoff)
+                advance_journal_operation(self.journal, current, terminal)
+                complete_journal_terminal(self.journal, boot_id=self.boot_id,
+                                          session_started=self.session_started)
+            self.terminal = terminal
+            detail = terminal.detail
+            if self.observed is not None:
+                detail = clean_text(f"{self.observed.detail(final=True)}; {detail}")
+            self._output(lambda: self.stream.finish(terminal, detail=detail))
+        except (JournalFileError, JournalRecordError, JournalFrameError, JournalAdmissionError) as error:
+            self.persistence_error = error
+
+
+def run_packagekit_mutation(
+    journal: JournalDescriptorSet, backend: PackageKitBackend, action_id: str,
+    write: Callable[[str], object], *, boot_id: str, session_started: int | None = None,
+    generation: str | None = None, package_ids: Sequence[str] = (), preview: Sequence[PlanRow] = (),
+) -> JournalOperation:
+    """Run an already revalidated confirmed plan; no public command enables this yet."""
+    if action_id not in {"updates-refresh", "updates-install-all"}:
+        raise SnapshotFailure("unsupported", "Unsupported PackageKit mutation", "unsupported")
+    if action_id == "updates-install-all":
+        ObservedUpdateSummary(preview)
+        if (
+            not isinstance(generation, str) or JOURNAL_GENERATION_PATTERN.fullmatch(generation) is None
+            or not package_ids or len(package_ids) > MAX_LIST_RECORDS
+            or any(not isinstance(package_id, str) for package_id in package_ids)
+            or len(set(package_ids)) != len(package_ids)
+            or not set(package_ids).issubset({row.package_id for row in preview if row.action == "update"})
+        ):
+            raise SnapshotFailure("malformed", "Confirmed PackageKit update inputs are invalid")
+    elif generation is not None or package_ids or preview:
+        raise SnapshotFailure("malformed", "Metadata refresh cannot select packages")
+    backend.require_mutation_safe()
+    path = backend.create_mutation()
+    if not isinstance(path, str) or JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(path) is None:
+        raise SnapshotFailure("malformed", "PackageKit returned an invalid operation path")
+    with lock_writable_journal(journal):
+        operation = begin_journal_operation(journal, action_id,
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "Starting PackageKit operation",
+            transaction_path=path, generation=generation, boot_id=boot_id)
+    owner = PackageKitMutation(journal, operation, write, preview, boot_id, session_started)
+    backend.execute_mutation(owner, package_ids)
+    if owner.persistence_error is not None:
+        raise owner.persistence_error
+    if owner.output_error is not None:
+        raise owner.output_error
+    if owner.terminal is None:
+        raise SnapshotFailure("interrupted", "PackageKit observation ended without a durable terminal result")
+    return owner.terminal
+
+
 class PackageKitBackend:
     """Small direct D-Bus client with transaction-wide monotonic deadlines."""
 
@@ -3439,6 +3730,7 @@ class PackageKitBackend:
                 "simulate;only-trusted"
             )
         )
+        self.flags_only_trusted = PackageKitGlib.transaction_flag_bitfield_from_string("only-trusted")
         try:
             self.connection = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
         except GLib.Error as error:
@@ -3489,7 +3781,7 @@ class PackageKitBackend:
         if "notauthorized" in lowered or "accessdenied" in lowered:
             return SnapshotFailure(
                 "permission-denied",
-                "PackageKit denied the read-only request",
+                "PackageKit denied the request",
                 "restricted",
             )
         if "unknownmethod" in lowered:
@@ -3498,6 +3790,8 @@ class PackageKitBackend:
                 "PackageKit does not support the required method",
                 "unsupported",
             )
+        if "invalidargs" in lowered:
+            return SnapshotFailure("malformed", "PackageKit rejected the method arguments")
         if "timedout" in lowered or "timeout" in lowered:
             return SnapshotFailure(
                 "timeout", "PackageKit request timed out", "unavailable"
@@ -3521,6 +3815,231 @@ class PackageKitBackend:
                 "malformed", "PackageKit returned a malformed refresh age"
             )
         return values[0]
+
+    def require_mutation_safe(self) -> None:
+        """Keep discovery readable while rejecting unknown or vulnerable mutation owners."""
+        identity = read_fedora_identity()
+        try:
+            import rpm
+        except ImportError as error:
+            raise SnapshotFailure("missing-provider", "System RPM bindings are unavailable", "unavailable") from error
+        try:
+            headers = []
+            for header in rpm.TransactionSet().dbMatch("name", "PackageKit"):
+                headers.append(header)
+                if len(headers) > 1:
+                    break
+            if len(headers) != 1 or headers[0]["epoch"] not in (None, 0):
+                raise ValueError
+            values = self._call(PACKAGEKIT_PATH, PROPERTIES_INTERFACE, "GetAll",
+                self.GLib.Variant("(s)", (PACKAGEKIT_INTERFACE,)), time.monotonic() + 10).unpack()
+            if len(values) != 1 or not isinstance(values[0], dict):
+                raise ValueError
+            properties = values[0]
+            version = tuple(properties.get(key) for key in ("VersionMajor", "VersionMinor", "VersionMicro"))
+            if not packagekit_security_floor(headers[0]["version"], headers[0]["release"],
+                                            identity.get("VERSION_ID", ""), version, rpm.labelCompare):
+                raise ValueError
+            if version == (1, 3, 4):
+                self._require_running_backport_identity()
+        except (OSError, ValueError, TypeError, KeyError, rpm.error) as error:
+            raise SnapshotFailure("unsupported", "PackageKit requires 1.3.5 or Fedora 44 security backport 1.3.4-3.fc44", "unsupported") from error
+
+    def _require_running_backport_identity(self) -> None:
+        """A release-only security fix needs more than the daemon's semantic version."""
+        deadline = time.monotonic() + 10
+
+        def bus_identity(method: str, argument: str) -> object:
+            values = self.connection.call_sync(
+                "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                method, self.GLib.Variant("(s)", (argument,)), None,
+                self.Gio.DBusCallFlags.NONE, self._timeout_ms(deadline), None).unpack()
+            if len(values) != 1:
+                raise ValueError
+            return values[0]
+
+        try:
+            owner = bus_identity("GetNameOwner", PACKAGEKIT_NAME)
+            if not isinstance(owner, str) or re.fullmatch(r":[0-9]+\.[0-9]+", owner) is None:
+                raise ValueError
+            pid = bus_identity("GetConnectionUnixProcessID", owner)
+            if type(pid) is not int or not 0 < pid <= 2_147_483_647:
+                raise ValueError
+            installed = os.stat("/usr/libexec/packagekitd", follow_symlinks=False)
+            running = os.stat(f"/proc/{pid}/exe")
+            if any(not stat.S_ISREG(item.st_mode) or item.st_uid != 0 or item.st_mode & 0o022
+                   for item in (installed, running)):
+                raise ValueError
+            if (installed.st_dev, installed.st_ino) != (running.st_dev, running.st_ino):
+                raise ValueError
+            if bus_identity("GetNameOwner", PACKAGEKIT_NAME) != owner:
+                raise ValueError
+        except (OSError, ValueError, TypeError, self.GLib.Error, SnapshotFailure) as error:
+            # Some Fedora procfs policies deny this read to session clients.
+            # Do not elevate or guess that a same-version daemon was restarted.
+            raise SnapshotFailure("unsupported", "Cannot verify the running PackageKit security backport; PackageKit 1.3.5 or newer is required when executable identity is unreadable", "unsupported") from error
+
+    def create_mutation(self) -> str:
+        """Create and configure an empty transaction, without invoking package work."""
+        deadline = time.monotonic() + 10
+        result = self._call(PACKAGEKIT_PATH, PACKAGEKIT_INTERFACE, "CreateTransaction", None, deadline).unpack()
+        if len(result) != 1 or not isinstance(result[0], str) or JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(result[0]) is None:
+            raise SnapshotFailure("malformed", "PackageKit returned an invalid operation path")
+        path = result[0]
+        self._call(path, TRANSACTION_INTERFACE, "SetHints",
+                   self.GLib.Variant("(as)", (["background=false", "interactive=true"],)), deadline)
+        return path
+
+    def execute_mutation(self, owner: PackageKitMutation, package_ids: Sequence[str]) -> None:
+        """Observe the exact object through Finished; a missing reply is not a result."""
+        path = owner.operation.transaction_path
+        method = "RefreshCache" if owner.operation.kind == "refresh" else "UpdatePackages"
+        parameters = self.GLib.Variant("(b)", (True,)) if method == "RefreshCache" else self.GLib.Variant("(tas)", (self.flags_only_trusted, list(package_ids)))
+        loop = self.GLib.MainLoop()
+        request = self.Gio.Cancellable()
+        active = True
+        cancel_sent = False
+        call_failure: SnapshotFailure | None = None
+        subscriptions = []
+
+        def stop(state: str, failure: SnapshotFailure | None = None,
+                 *, invocation_rejected: bool = False) -> None:
+            nonlocal active
+            if not active:
+                return
+            active = False
+            try:
+                owner.finish(state, failure, invocation_rejected=invocation_rejected)
+            finally:
+                loop.quit()
+
+        def cancel_faulted() -> None:
+            nonlocal cancel_sent
+            if not active or cancel_sent or not owner.allow_cancel or not (owner.persistence_error or owner.failure):
+                return
+            deadline = time.monotonic() + CANCEL_GRACE_SECONDS
+            try:
+                reply = self._call(path, PROPERTIES_INTERFACE, "Get",
+                    self.GLib.Variant("(ss)", (TRANSACTION_INTERFACE, "AllowCancel")), deadline).unpack()
+                allowed = len(reply) == 1 and type(reply[0]) is bool and reply[0]
+                owner.allow_cancel = bool(allowed)
+                if allowed:
+                    cancel_sent = True
+                    if owner.persistence_error is None:
+                        if owner.operation.state == "running":
+                            owner._checkpoint("cancel-requested")
+                        owner.journal.validate()
+                    try:
+                        self._call(path, TRANSACTION_INTERFACE, "Cancel", None, deadline)
+                    finally:
+                        owner.after_send()
+            except (SnapshotFailure, JournalFileError):
+                pass
+
+        def signal_received(_connection, _sender, _path, interface, signal, values, _data):
+            if not active:
+                return
+            try:
+                unpacked = values.unpack()
+                if interface == PROPERTIES_INTERFACE:
+                    if len(unpacked) != 3 or unpacked[0] != TRANSACTION_INTERFACE or not isinstance(unpacked[1], dict):
+                        raise ValueError
+                    properties = dict(unpacked[1])
+                    if not isinstance(unpacked[2], (list, tuple)):
+                        raise ValueError
+                    # Never retain an invalidated cancellation permission.
+                    for key in unpacked[2]:
+                        if key in {"Status", "Percentage", "AllowCancel"}:
+                            properties[key] = None
+                    owner.on_properties(properties)
+                elif signal in {"Package", "Packages"}:
+                    packages = [unpacked] if signal == "Package" else unpacked[0] if len(unpacked) == 1 else None
+                    if not isinstance(packages, (list, tuple)):
+                        raise ValueError
+                    for item in packages:
+                        if len(item) != 3:
+                            raise ValueError
+                        owner.on_package(item[0], item[1])
+                elif signal == "RequireRestart":
+                    if len(unpacked) != 2 or type(unpacked[0]) is not int:
+                        raise ValueError
+                    owner.on_restart(unpacked[0])
+                elif signal == "ErrorCode":
+                    if len(unpacked) != 2 or type(unpacked[0]) is not int:
+                        raise ValueError
+                    owner.failure = owner.failure or self._transaction_failure(unpacked[0], "")
+                elif signal == "Finished":
+                    if len(unpacked) != 2 or type(unpacked[0]) is not int:
+                        raise ValueError
+                    failure = owner.failure
+                    if failure is not None:
+                        state = "permission-denied" if failure.code == "permission-denied" else "canceled" if failure.code == "canceled" else "failed"
+                        stop(state, failure)
+                    elif unpacked[0] == EXIT_SUCCESS:
+                        stop("succeeded")
+                    elif unpacked[0] == 3:
+                        stop("canceled", SnapshotFailure("canceled", "PackageKit canceled the transaction"))
+                    else:
+                        stop("failed", SnapshotFailure("internal", "PackageKit transaction did not succeed"))
+                elif signal == "Destroy":
+                    stop("interrupted", call_failure or SnapshotFailure("interrupted", "PackageKit object disappeared without a terminal result; refresh status before retrying"))
+                cancel_faulted()
+            except (TypeError, ValueError, IndexError):
+                owner.failure = SnapshotFailure("malformed", "PackageKit sent malformed transaction evidence")
+                if signal == "Finished":
+                    stop("interrupted", owner.failure)
+                else:
+                    cancel_faulted()
+
+        def owner_changed(_connection, _sender, _path, _interface, _signal, values, _data):
+            unpacked = values.unpack()
+            if len(unpacked) == 3 and unpacked[0] == PACKAGEKIT_NAME and unpacked[1] != unpacked[2]:
+                stop("interrupted", SnapshotFailure("missing-provider", "PackageKit service changed; transaction outcome is unknown"))
+
+        def method_finished(connection, result, _data):
+            nonlocal call_failure
+            try:
+                connection.call_finish(result)
+            except self.GLib.Error as error:
+                if active:
+                    call_failure = self._dbus_failure(error)
+                    if call_failure.code == "permission-denied":
+                        stop("permission-denied", call_failure)
+                    elif self.Gio.dbus_error_get_remote_error(error) in {
+                        "org.freedesktop.DBus.Error.UnknownMethod",
+                        "org.freedesktop.DBus.Error.InvalidArgs",
+                        "org.freedesktop.DBus.Error.UnknownInterface",
+                        "org.freedesktop.DBus.Error.UnknownObject",
+                    }:
+                        stop("failed", call_failure, invocation_rejected=True)
+                    else:
+                        owner.progress_warning = "PackageKit method reply failed; still observing the exact transaction"
+                        owner._progress()
+
+        closed_handler = self.connection.connect("closed", lambda *_args: stop("interrupted", SnapshotFailure("missing-provider", "System bus connection closed; transaction outcome is unknown")))
+        try:
+            subscriptions.append(self.connection.signal_subscribe(PACKAGEKIT_NAME, TRANSACTION_INTERFACE, None, path, None, self.Gio.DBusSignalFlags.NONE, signal_received, None))
+            subscriptions.append(self.connection.signal_subscribe(PACKAGEKIT_NAME, PROPERTIES_INTERFACE, "PropertiesChanged", path, TRANSACTION_INTERFACE, self.Gio.DBusSignalFlags.NONE, signal_received, None))
+            subscriptions.append(self.connection.signal_subscribe("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged", "/org/freedesktop/DBus", PACKAGEKIT_NAME, self.Gio.DBusSignalFlags.NONE, owner_changed, None))
+            owner.before_send()
+            try:
+                self.connection.call(PACKAGEKIT_NAME, path, TRANSACTION_INTERFACE, method, parameters,
+                    self.GLib.VariantType.new("()"), self.Gio.DBusCallFlags.ALLOW_INTERACTIVE_AUTHORIZATION,
+                    60000, request, method_finished, None)
+            finally:
+                owner.after_send()
+            cancel_faulted()
+            if active:
+                # Silence is not terminal evidence: authorization or a package
+                # script can remain quiet while the exact backend is still live.
+                # An idle watchdog must not clear admission by terminalizing it.
+                loop.run()
+        finally:
+            active = False
+            request.cancel()
+            for subscription in subscriptions:
+                self.connection.signal_unsubscribe(subscription)
+            self.connection.disconnect(closed_handler)
 
     def updates(self) -> TransactionResult:
         return self._transaction(
