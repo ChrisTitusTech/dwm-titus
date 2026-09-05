@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Accept Fedora PackageKit's actual root-level transaction object IDs in the
+  operation journal. The previous namespaced-path assumption rejected real
+  transactions; update execution remains disabled pending its integration.
+
 - Show the Phase 6 Fedora update snapshot in a dedicated read-only System
   Settings pane with provider state, update and plan details, diagnostics,
   restart guidance, recovery ownership, and existing administration boundaries.

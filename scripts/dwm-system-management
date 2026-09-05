@@ -13,7 +13,7 @@ import stat
 import struct
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Iterable, Iterator, Mapping, Protocol, Sequence
 
@@ -53,7 +53,9 @@ JOURNAL_TIMESTAMP_PATTERN = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"
 )
 JOURNAL_PACKAGEKIT_PATH_PATTERN = re.compile(
-    r"/org/freedesktop/PackageKit/transactions/[A-Za-z0-9_]+"
+    # PackageKit CreateTransaction returns a root-level ID (e.g. /18_adcbcaed),
+    # not a child of the manager's /org/freedesktop/PackageKit object.
+    r"/[0-9]{1,20}_[A-Za-z0-9_]{1,64}"
 )
 JOURNAL_RESTART_SYSTEM_STRENGTH = {
     "none": 0,
@@ -125,8 +127,9 @@ JOURNAL_CONTROL_ADMISSION_COMMITS = {
     # pending, three later nonterminal states, six strictly stronger restart
     # contributions, the terminal result, and the final empty active payload.
     "active": JOURNAL_ACTIVE_ADMISSION_COMMITS,
-    # Snapshots may independently prune session and application buckets while
-    # an update runs; terminalization then commits the new contribution.
+    # Each existing session/application bucket can be pruned at most once by
+    # snapshots OR terminalization (no-op pruning writes nothing). One further
+    # commit applies the new terminal contribution: at most three in total.
     "restart": 3,
     "handoff": 2,
     JOURNAL_CURSOR_NAME: 1,
@@ -2453,6 +2456,269 @@ def prepare_journal_admission(journal: JournalDescriptorSet) -> JournalAdmission
         if frames[f"terminal-{slot:02d}"].sequence < JOURNAL_SEQUENCE_MAX - 1:
             return JournalAdmission(state, slot, generate_journal_operation_id(state))
     raise JournalAdmissionError("journal has no reusable terminal slot")
+
+
+JOURNAL_TRANSITIONS = {
+    "pending": frozenset(
+        ("authorizing", "running", "canceled", "failed", "interrupted")
+    ),
+    "authorizing": frozenset(
+        ("running", "permission-denied", "canceled", "failed", "interrupted")
+    ),
+    "running": frozenset(
+        ("running", "cancel-requested", "succeeded", "failed", "interrupted")
+    ),
+    "cancel-requested": frozenset(
+        ("cancel-requested", "canceled", "succeeded", "failed", "interrupted")
+    ),
+}
+
+
+def begin_journal_operation(
+    journal: JournalDescriptorSet,
+    action_id: str,
+    started_at: str,
+    detail: str,
+    *,
+    transaction_path: str | None = None,
+    generation: str | None = None,
+    boot_id: str | None = None,
+) -> JournalOperation:
+    """Reserve and durably publish pending before the caller can mutate anything.
+
+    The caller holds open_writable_journal only for this local critical section,
+    never while creating a service transaction or waiting for its result.
+    """
+    admission = prepare_journal_admission(journal)
+    kind = JOURNAL_OPERATION_ACTION_KINDS.get(action_id)
+    operation = JournalOperation(
+        admission.operation_id,
+        action_id,
+        started_at,
+        None,
+        kind,
+        "pending",
+        None,
+        detail,
+        generation,
+        transaction_path,
+        "none" if kind == "update" else None,
+        "none" if kind == "update" else None,
+        False if kind == "update" else None,
+        boot_id if kind != "refresh" else None,
+        None,
+        admission.slot,
+    )
+    payload = encode_journal_operation(operation)
+    # Refresh terminal timestamps also use this boot's monotonic clock. Reject
+    # stale boot evidence for both PackageKit kinds before comparing history.
+    if kind in ("refresh", "update") and boot_id != admission.state.restart.boot_id:
+        raise JournalAdmissionError("journal boot boundary needs recovery")
+    commit_writable_journal_path(journal, "active", payload)
+    return operation
+
+
+def advance_journal_operation(
+    journal: JournalDescriptorSet,
+    expected: JournalOperation,
+    following: JournalOperation,
+) -> JournalOperation:
+    """Commit one legal state/contribution change, rejecting stale observations."""
+    encode_journal_operation(expected)
+    payload = encode_journal_operation(following)
+    state = load_writable_journal_state(journal)
+    current = state.active
+    if current != expected:
+        raise JournalAdmissionError("journal active operation changed")
+    if following == expected:
+        return current
+    immutable = (
+        "operation_id",
+        "action_id",
+        "started_at",
+        "kind",
+        "generation",
+        "transaction_path",
+        "boot_id",
+        "slot",
+    )
+    if any(
+        getattr(expected, field) != getattr(following, field) for field in immutable
+    ):
+        raise JournalAdmissionError("journal operation identity changed")
+    # RequireRestart can strengthen a tuple before running or during authorization.
+    same_state = following.state == expected.state
+    if expected.state in JOURNAL_OPERATION_TERMINAL_STATES or (
+        not same_state and following.state not in JOURNAL_TRANSITIONS[expected.state]
+    ):
+        raise JournalAdmissionError("journal operation transition is invalid")
+    if expected.kind == "update" and (
+        JOURNAL_RESTART_SYSTEM_STRENGTH[following.system_restart]
+        < JOURNAL_RESTART_SYSTEM_STRENGTH[expected.system_restart]
+        or JOURNAL_RESTART_SESSION_STRENGTH[following.session_restart]
+        < JOURNAL_RESTART_SESSION_STRENGTH[expected.session_restart]
+        or (expected.application_restart and not following.application_restart)
+    ):
+        raise JournalAdmissionError("journal restart contribution weakened")
+    # Progress/detail-only changes are in-memory; reserve frame headroom for
+    # actual lifecycle and strictly stronger restart contributions only.
+    if same_state and (
+        expected.system_restart,
+        expected.session_restart,
+        expected.application_restart,
+    ) == (
+        following.system_restart,
+        following.session_restart,
+        following.application_restart,
+    ):
+        raise JournalAdmissionError("journal operation has no durable change")
+    # A valid individual record can still contradict retained history (for
+    # example, a stale monotonic cutoff). Reject it before poisoning active.
+    prospective = {
+        "active": payload,
+        "restart": encode_journal_restart(state.restart),
+        "cursor": encode_journal_cursor(state.cursor),
+        "handoff": encode_journal_handoff(state.handoff),
+        **{
+            f"terminal-{slot:02d}": (
+                "" if operation is None else encode_journal_operation(operation)
+            )
+            for slot, operation in enumerate(state.terminals)
+        },
+    }
+    decode_journal_state(prospective)
+    commit_writable_journal_path(journal, "active", payload)
+    return following
+
+
+def prune_journal_restart(
+    journal: JournalDescriptorSet,
+    boot_id: str,
+    session_started: int | None,
+) -> JournalRestart:
+    """Apply already-obtained boot/logind evidence; no service calls under lock."""
+    if not isinstance(boot_id, str) or BOOT_ID_PATTERN.fullmatch(boot_id) is None:
+        raise JournalRecordError("journal restart boot identity is invalid")
+    if session_started is not None:
+        _encode_journal_uint64(session_started, "session start")
+    restart = load_writable_journal_state(journal).restart
+    if restart.boot_id != boot_id:
+        pruned = JournalRestart(boot_id, None, "none", "none", 0, False, 0)
+    else:
+        pruned = restart
+        if session_started is not None:
+            if session_started > restart.session_cutoff:
+                pruned = replace(pruned, session="none", session_cutoff=0)
+            if session_started > restart.application_cutoff:
+                pruned = replace(pruned, application=False, application_cutoff=0)
+    if pruned != restart:
+        commit_writable_journal_path(journal, "restart", encode_journal_restart(pruned))
+    return pruned
+
+
+def complete_journal_terminal(
+    journal: JournalDescriptorSet,
+    *,
+    boot_id: str | None = None,
+    session_started: int | None = None,
+) -> JournalOperation | None:
+    """Idempotently finish a durable terminal checkpoint through its handoff.
+
+    Callers checkpoint the final result with advance_journal_operation first.
+    Every return implies all required commits were synced and identity-checked;
+    any failure leaves the last durable checkpoint for bounded recovery.
+    """
+    state = load_writable_journal_state(journal)
+    operation = state.active
+    if operation is None:
+        return None
+    if operation.state not in JOURNAL_OPERATION_TERMINAL_STATES:
+        raise JournalAdmissionError("journal operation is not terminal")
+    if operation.kind == "update":
+        restart = prune_journal_restart(journal, boot_id, session_started)
+        if (
+            operation.boot_id == boot_id
+            and restart.last_applied_operation_id != operation.operation_id
+        ):
+            restart = replace(
+                restart,
+                last_applied_operation_id=operation.operation_id,
+                system=max(
+                    restart.system,
+                    operation.system_restart,
+                    key=JOURNAL_RESTART_SYSTEM_STRENGTH.__getitem__,
+                ),
+                session=max(
+                    restart.session,
+                    operation.session_restart,
+                    key=JOURNAL_RESTART_SESSION_STRENGTH.__getitem__,
+                ),
+                session_cutoff=(
+                    operation.terminal_monotonic
+                    if operation.session_restart != "none"
+                    else restart.session_cutoff
+                ),
+                application=restart.application or operation.application_restart,
+                application_cutoff=(
+                    operation.terminal_monotonic
+                    if operation.application_restart
+                    else restart.application_cutoff
+                ),
+            )
+            # A recovered checkpoint can predate the current login. Its original
+            # cutoff is authoritative; never reintroduce already satisfied work.
+            if session_started is not None:
+                if session_started > restart.session_cutoff:
+                    restart = replace(restart, session="none", session_cutoff=0)
+                if session_started > restart.application_cutoff:
+                    restart = replace(restart, application=False, application_cutoff=0)
+            commit_writable_journal_path(
+                journal, "restart", encode_journal_restart(restart)
+            )
+    payload = encode_journal_operation(operation)
+    name = f"terminal-{operation.slot:02d}"
+    if state.terminals[operation.slot] != operation:
+        commit_writable_journal_path(journal, name, payload)
+    cursor = (operation.slot + 1) % JOURNAL_TERMINAL_COUNT
+    if state.cursor != cursor:
+        commit_writable_journal_path(journal, "cursor", encode_journal_cursor(cursor))
+    handoff = JournalHandoff(operation.operation_id, operation.slot)
+    if state.handoff != handoff:
+        commit_writable_journal_path(
+            journal, "handoff", encode_journal_handoff(handoff)
+        )
+    commit_writable_journal_path(journal, "active", "")
+    load_writable_journal_state(journal)
+    return operation
+
+
+def retained_journal_operation(
+    journal: JournalDescriptorSet, operation_id: str
+) -> JournalOperation:
+    """Find exactly the requested retained terminal, independent of ring age."""
+    if (
+        not isinstance(operation_id, str)
+        or JOURNAL_OPERATION_ID_PATTERN.fullmatch(operation_id) is None
+    ):
+        raise JournalRecordError("journal operation ID is invalid")
+    state = load_writable_journal_state(journal)
+    if state.active is not None:
+        raise JournalAdmissionError("journal active operation needs recovery")
+    for operation in state.terminals:
+        if operation is not None and operation.operation_id == operation_id:
+            return operation
+    raise JournalAdmissionError("journal terminal operation is unavailable")
+
+
+def acknowledge_journal_handoff(
+    journal: JournalDescriptorSet, operation_id: str
+) -> None:
+    """Clear only an exact validated handoff, retaining its audit evidence."""
+    operation = retained_journal_operation(journal, operation_id)
+    state = load_writable_journal_state(journal)
+    if state.handoff != JournalHandoff(operation_id, operation.slot):
+        raise JournalAdmissionError("journal handoff is unavailable")
+    commit_writable_journal_path(journal, "handoff", "")
 
 
 @dataclass(frozen=True)
