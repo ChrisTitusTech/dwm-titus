@@ -53,7 +53,10 @@ Progress: Read-only PackageKit discovery and its Settings pane are implemented.
 The journal now supports durable pending admission, identity-checked lifecycle
 transitions, restart pruning, recoverable terminal commits, exact retained-result
 lookup, and handoff acknowledgment. These are tested foundations, not an enabled
-update execution workflow. PackageKit execution/recovery integration and its
+update execution workflow. Operation owners can retain every journal file
+identity across unlocked service waits and reacquire bounded exclusive intervals
+for checkpoints; unlocked state access and stale ownership are rejected.
+PackageKit execution/recovery integration and its
 root-scoped confirmation and operation UI remain to be completed before this
 boundary can be accepted.
 
