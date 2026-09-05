@@ -3591,6 +3591,12 @@ def recover_journal_active(
     if session_started is not None:
         _encode_journal_uint64(session_started, "session start")
     original = load_journal_state(journal.chain).active
+    if expected_operation_id is not None and original is None:
+        # Completion can race the watcher's initial target selection. Validate
+        # the exact retained result without following a replacement owner.
+        with lock_writable_journal(journal):
+            retained_journal_operation(journal, expected_operation_id)
+            return load_writable_journal_state(journal), None, None
     if expected_operation_id is not None and (original is None or original.operation_id != expected_operation_id):
         raise JournalAdmissionError("recovery target changed")
     if original is None:
@@ -4295,6 +4301,7 @@ class PackageKitBackend:
         subscriptions = []
         identity_verified = None
         snapshot_applied = False
+        pending_properties = {}
         watch_loop = None
         connection_closed = None
 
@@ -4347,10 +4354,13 @@ class PackageKitBackend:
             nonlocal terminal_state, terminal_time, transaction_failure, malformed, present, destroyed, checkpoint_failure
             if not live or identity_verified is False or malformed is not None or checkpoint_failure is not None or time.monotonic() >= deadline:
                 return
+            if interface != PROPERTIES_INTERFACE and signal not in {"RequireRestart", "ErrorCode", "Finished", "Destroy"}:
+                return
             if terminal_state is not None:
                 if signal == "Finished":
                     malformed = SnapshotFailure("malformed", "PackageKit recovery completion is duplicated")
                 return
+            previous = evidence(progress=True)
             try:
                 values = variant.unpack()
                 if interface == PROPERTIES_INTERFACE:
@@ -4359,11 +4369,20 @@ class PackageKitBackend:
                     changed = dict(values[1])
                     for key in values[2]:
                         changed[key] = None
+                    if not snapshot_applied:
+                        # Coalesce only three fields; never retain package or
+                        # arbitrary property payloads while identity is pending.
+                        for key in ("Status", "AllowCancel", "Percentage"):
+                            if key in changed:
+                                value = changed[key]
+                                pending_properties[key] = value if type(value) is (bool if key == "AllowCancel" else int) else None
                     properties(changed)
                 elif signal == "RequireRestart":
                     if variant.get_type_string() != "(us)":
                         raise ValueError
                     value = values[0] if values[0] in {1, 2, 3, 4, 5, 6} else 0
+                    if value in restarts:
+                        return
                     if identity_verified is True:
                         checkpoint(on_restart, value)
                         if checkpoint_failure is not None:
@@ -4395,7 +4414,8 @@ class PackageKitBackend:
             except (TypeError, ValueError, IndexError):
                 malformed = SnapshotFailure("malformed", "PackageKit recovery signal is malformed")
             finally:
-                watch_changed()
+                if malformed is not None or checkpoint_failure is not None or evidence(progress=True) != previous:
+                    watch_changed()
 
         def service_changed(_connection, _sender, _path, _interface, _signal, variant, _data):
             nonlocal malformed
@@ -4450,8 +4470,10 @@ class PackageKitBackend:
                 for value in sorted(restarts):
                     checkpoint(on_restart, value)
                 properties({"Status": None, **values})
-                present = not destroyed and status != 18
                 snapshot_applied = True
+                properties(pending_properties)
+                pending_properties.clear()
+                present = not destroyed and status != 18
                 if watch:
                     checkpoint(on_progress, evidence(progress=True))
             if checkpoint_failure is not None:

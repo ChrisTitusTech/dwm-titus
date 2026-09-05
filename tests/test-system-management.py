@@ -5949,6 +5949,61 @@ class OperationWatchTests(unittest.TestCase):
                 backend.session_started.assert_called_once_with()
                 self.assertIn("\tsucceeded\t", "".join(chunks))
 
+    def test_completion_during_backend_creation_replays_the_exact_retained_result(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            backend = mock.Mock()
+            def attach():
+                with provider.lock_writable_journal(journal):
+                    running = provider.advance_journal_operation(journal, operation,
+                        replace(operation, state="running"))
+                    provider.advance_journal_operation(journal, running, replace(running,
+                        state="succeeded", finished_at="2026-09-05T01:00:00Z", terminal_monotonic=10))
+                    provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+                return backend
+            chunks = []
+            provider.watch_journal_operation(journal, operation.operation_id, chunks.append,
+                boot_id=self.boot_id, backend_factory=attach)
+            backend.probe_operation.assert_not_called()
+            backend.operation_history.assert_not_called()
+            backend.session_started.assert_not_called()
+            output = "".join(chunks).splitlines()
+            self.assertEqual(rows(output, "operation")[-1][1:5],
+                [operation.operation_id, operation.action_id, "update", "succeeded"])
+            self.assertEqual(output[-1], "complete\toperation")
+            self.assertEqual(provider.load_journal_state(journal.chain).handoff.operation_id, operation.operation_id)
+
+    def test_property_deltas_during_getall_override_its_stale_snapshot(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            backend = self.live_backend(journal, [lambda bus: self.emit(bus, "Finished", "(uu)", (3, 0))])
+            def request(_path, _interface, method, *_args):
+                if method == "GetAll":
+                    self.progress(backend, Status=31, AllowCancel=True, Percentage=27)
+                    return SessionEvidenceTests.Variant("(a{sv})", (self.properties(Status=1, AllowCancel=False, Percentage=0),))
+                return SessionEvidenceTests.Variant("(ao)", ([operation.transaction_path],))
+            backend._recovery_call.side_effect = request
+            chunks = []
+            provider.watch_journal_operation(journal, operation.operation_id, chunks.append,
+                boot_id=self.boot_id, backend_factory=lambda: backend)
+            self.assertIn("\tauthorizing\t27\tyes\t", "".join(chunks))
+
+    def test_unrelated_and_unchanged_signals_do_not_reload_the_journal(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            def noise(bus):
+                with mock.patch.object(provider, "load_writable_journal_state", side_effect=AssertionError("Noise reloaded journal")):
+                    for _ in range(100):
+                        self.emit(bus, "Package", "(uss)", (12, self.package_id, "Package"))
+                        self.emit(bus, "Packages", "(a(uss))", ([(12, self.package_id, "Package")],))
+                        self.progress(bus, Percentage=45, AllowCancel=True, Status=3)
+                        self.progress(bus, Speed=100)
+            backend = self.live_backend(journal, [noise, lambda bus: self.emit(bus, "Finished", "(uu)", (1, 0))])
+            chunks = []
+            provider.watch_journal_operation(journal, operation.operation_id, chunks.append,
+                boot_id=self.boot_id, backend_factory=lambda: backend)
+            self.assertEqual("".join(chunks).splitlines()[-1], "complete\toperation")
+
     def test_watch_uses_new_live_cancelability_not_stale_initial_false(self):
         with self.journal() as journal:
             operation = self.begin(journal)
