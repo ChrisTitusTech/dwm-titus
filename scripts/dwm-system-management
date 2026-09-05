@@ -3030,9 +3030,12 @@ def normalize_plan(
         )
 
     requested = set(requested_ids)
-    represented = {row.package_id for row in rows if row.action == "update"}
+    # DNF5 GetUpdates includes install actions as well as upgrades. Preserve
+    # those simulated actions, but do not admit an unrequested update identity.
+    represented = {row.package_id for row in rows
+                   if row.package_id in requested and row.action in {"install", "update"}}
     if requested != represented or any(
-        row.package_id in requested and row.action != "update" for row in rows
+        row.action == "update" and row.package_id not in requested for row in rows
     ):
         raise SnapshotFailure(
             "malformed", "PackageKit returned an incomplete update plan"
