@@ -4347,8 +4347,17 @@ class PackageKitBackend:
                 present = status != 18
             if checkpoint_failure is not None:
                 raise checkpoint_failure
-            reply = self._recovery_call(PACKAGEKIT_PATH, PACKAGEKIT_INTERFACE, "GetTransactionList", None, deadline, "(ao)")
-            listed = validate_transaction_list(reply.unpack()[0])
+            listed = ()
+            if terminal_state is None:
+                try:
+                    reply = self._recovery_call(PACKAGEKIT_PATH, PACKAGEKIT_INTERFACE, "GetTransactionList", None, deadline, "(ao)")
+                    if terminal_state is None:
+                        listed = validate_transaction_list(reply.unpack()[0])
+                except SnapshotFailure:
+                    # Finished may arrive while the secondary request is in
+                    # flight. Its exact result does not depend on that lookup.
+                    if terminal_state is None:
+                        raise
             if malformed is not None:
                 raise malformed
             return RecoveryEvidence(present or path in listed, terminal_state, transaction_failure,

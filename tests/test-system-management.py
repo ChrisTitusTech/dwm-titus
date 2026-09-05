@@ -5333,6 +5333,16 @@ class OperationRecoveryTests(unittest.TestCase):
                 state, _, _ = self.recover(journal, backend)
                 self.assertEqual((state.terminals[operation.slot].state, state.restart.system), (result, "none"))
 
+    def test_no_replay_replaces_system_evidence_but_partial_replay_merges_it(self):
+        for signals, expected in (((), "unknown"), ((2,), "security-system")):
+            with self.subTest(signals=signals), self.journal() as journal:
+                operation = self.begin(journal, state="running", system_restart="security-system")
+                backend = self.backend(provider.RecoveryEvidence(False, "succeeded",
+                    restart_types=signals, status=3, terminal_monotonic=100))
+                state, _, _ = self.recover(journal, backend)
+                self.assertEqual(state.terminals[operation.slot].system_restart, expected)
+                self.assertEqual(state.restart.system, expected)
+
     def test_new_boot_prunes_old_cutoffs_before_recovered_terminal_commit(self):
         with self.journal() as journal:
             first = self.begin(journal, state="running", system_restart="system")
@@ -5478,6 +5488,45 @@ class RecoveryAdapterTests(unittest.TestCase):
                     backend.probe_operation(operation)
                 self.assertEqual(raised.exception.code, "malformed")
                 self.assertEqual(backend.connection.subscriptions, {})
+
+    def test_terminal_evidence_does_not_depend_on_secondary_list(self):
+        for kind in ("refresh", "update"):
+            for result, expected in ((1, "succeeded"), (2, "failed")):
+                for stage in ("before-list", "timeout", "malformed", "invalid-list"):
+                    with self.subTest(kind=kind, result=result, stage=stage), self.journal() as journal:
+                        operation = self.begin(journal, kind)
+                        backend = self.backend(journal)
+                        def request(_path, _interface, method, *_args):
+                            if method == "GetAll":
+                                if stage == "before-list":
+                                    self.emit(backend, "Finished", "(uu)", (result, 1))
+                                return SessionEvidenceTests.Variant("(a{sv})", (self.properties(Role=13 if kind == "refresh" else 22),))
+                            self.assertNotEqual(stage, "before-list")
+                            self.emit(backend, "Finished", "(uu)", (result, 1))
+                            if stage == "invalid-list":
+                                return SessionEvidenceTests.Variant("(ao)", (["/1_duplicate", "/1_duplicate"],))
+                            raise provider.SnapshotFailure(stage, "Secondary lookup failed")
+                        backend._recovery_call = mock.Mock(side_effect=request)
+                        evidence = backend.probe_operation(operation)
+                        self.assertEqual(evidence.state, expected)
+                        self.assertIsInstance(evidence.terminal_monotonic, int)
+                        self.assertEqual(backend._recovery_call.call_count, 1 if stage == "before-list" else 2)
+                        self.assertEqual(backend.connection.subscriptions, {})
+
+    def test_terminal_evidence_does_not_override_wrong_owner_or_duplicate_finish(self):
+        for fault in ("owner", "duplicate"):
+            with self.subTest(fault=fault), self.journal() as journal:
+                operation = self.begin(journal)
+                backend = self.backend(journal)
+                def request(*_args):
+                    self.emit(backend, "Finished", "(uu)", (1, 1))
+                    if fault == "duplicate":
+                        self.emit(backend, "Finished", "(uu)", (1, 1))
+                    return SessionEvidenceTests.Variant("(a{sv})", (self.properties(Uid=os.getuid() + (fault == "owner")),))
+                backend._recovery_call = mock.Mock(side_effect=request)
+                with self.assertRaises(provider.SnapshotFailure) as raised:
+                    backend.probe_operation(operation)
+                self.assertEqual(raised.exception.code, "malformed")
 
     def test_probe_checkpoints_restart_before_finished_and_discards_late_signal(self):
         with self.journal() as journal:

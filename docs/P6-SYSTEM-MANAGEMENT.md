@@ -1233,7 +1233,11 @@ path, or elevation mechanism.
   replayed result before checking the active PackageKit transaction list. One
   independent ten-second monotonic aggregate deadline covers attachment to the
   recorded object, its required property reads and replayed signals, and the
-  manager `GetTransactionList` call. The active-list reply accepts at most 256
+  manager `GetTransactionList` call. An exact validated `Finished` result skips
+  the secondary active-list lookup. If it arrives while that lookup is already
+  in flight, a failed or malformed list reply cannot discard the captured result;
+  malformed transaction evidence or a journal checkpoint failure still prevents
+  terminal recovery. Without terminal evidence, the active-list reply accepts at most 256
   unique valid PackageKit transaction object paths and 64 KiB of their complete
   encoded UTF-8 values. Expiry cancels unfinished local D-Bus requests, detaches
   every recovery observer without calling `Cancel` on the recorded transaction,
@@ -1282,7 +1286,10 @@ path, or elevation mechanism.
   commit. A partial replay containing only application, session, or `none`
   signals also cannot exclude a missed system-restart requirement: unless
   execution is proven excluded, an otherwise `none` system contribution becomes
-  `unknown`. Specific observed system or security-system guidance is retained.
+  `unknown`. Specific system or security-system guidance is retained on that
+  partial-replay path. The no-replayed-signal and history paths still use their
+  explicitly required uncertainty replacement, even when `active` previously
+  recorded specific system guidance.
   A valid durable
   terminal record written from `Finished` recovers its persisted tuple. A
   missing, malformed, or kind-incompatible contribution field in the active or
