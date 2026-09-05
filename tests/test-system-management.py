@@ -3024,6 +3024,45 @@ class JournalRetainedSessionTests(unittest.TestCase):
             with provider.lock_writable_journal(journal):
                 self.assertIsNone(provider.load_writable_journal_state(journal).active)
 
+    def test_service_error_reports_replacement_and_closes_every_descriptor(self):
+        service_error = RuntimeError("service call failed after send")
+        with self.assertRaises(RuntimeError) as caught:
+            with self.session() as (path, _chain, journal):
+                descriptors = tuple(journal.descriptor(name) for name in provider.JOURNAL_NAMES)
+                active = path / "active"
+                image = active.read_bytes()
+                active.rename(path / "detached-active")
+                active.write_bytes(image)
+                active.chmod(0o600)
+                raise service_error
+        self.assertIs(caught.exception, service_error)
+        self.assertIsInstance(caught.exception.__cause__, provider.JournalLayoutError)
+        self.assertIn("active identity", str(caught.exception.__cause__))
+        self.assertTrue(journal.closed)
+        for descriptor in descriptors:
+            with self.assertRaises(OSError):
+                os.fstat(descriptor)
+
+    def test_interval_error_revalidates_before_unlock_even_when_caught_by_owner(self):
+        with self.session() as (_path, _chain, journal):
+            checkpoint_error = RuntimeError("checkpoint failed")
+            identity_error = provider.JournalLayoutError("injected identity loss")
+            with self.assertRaises(RuntimeError) as caught:
+                with provider.lock_writable_journal(journal):
+                    original_validate = journal.validate
+                    # Keep validation fault active during context unwinding, but
+                    # restore it before the retained-session context is closed.
+                    journal.validate = mock.Mock(side_effect=identity_error)
+                    raise checkpoint_error
+            validation = journal.validate
+            journal.validate = original_validate
+            self.assertIs(caught.exception, checkpoint_error)
+            self.assertIs(caught.exception.__cause__, identity_error)
+            validation.assert_called_once_with()
+            self.assertFalse(journal._exclusive)
+            with provider.lock_writable_journal(journal):
+                self.assertIsNone(provider.load_writable_journal_state(journal).active)
+
     def test_contended_reacquisition_remains_bounded_and_can_be_retried(self):
         with self.session() as (_path, chain, journal):
             with provider._journal_lock(chain.directory_descriptor, exclusive=True):

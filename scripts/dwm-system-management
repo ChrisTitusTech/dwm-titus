@@ -2326,7 +2326,14 @@ def _retain_journal_files_unlocked(
             )
 
         journal.validate()
-        yield journal
+        try:
+            yield journal
+        except BaseException as body_error:
+            try:
+                journal.validate()
+            except JournalLayoutError as validation_error:
+                raise body_error from validation_error
+            raise
         journal.validate()
         completed = True
     finally:
@@ -2369,7 +2376,14 @@ def lock_writable_journal(
         journal.validate()
         journal._exclusive = True
         try:
-            yield journal
+            try:
+                yield journal
+            except BaseException as body_error:
+                try:
+                    journal.validate()
+                except JournalLayoutError as validation_error:
+                    raise body_error from validation_error
+                raise
             journal.validate()
         finally:
             journal._exclusive = False
