@@ -60,9 +60,16 @@ The operation formatter reserves required lifecycle records separately from its
 bounded progress budget, validates terminal/audit identity, and replays retained
 results without an external action. Observed package comparisons use bounded
 counts and mismatch samples plus an arrival-ordered digest; they are not persisted
-as an atomic completed plan. PackageKit execution/recovery integration and its
-root-scoped confirmation and operation UI remain to be completed before this
-boundary can be accepted.
+as an atomic completed plan. The internal PackageKit execution owner now gates
+mutations on the installed security floor and running daemon version (with exact
+running-executable identity required for the same-version Fedora backport), dispatches
+only a durably admitted exact transaction, checkpoints restart signals, and
+observes through terminal evidence even after a lost method reply. Persistence
+failure suppresses terminal success and permits only narrowly bound cancellation.
+Fake-bus coverage exercises these paths without changing host packages. Public
+mutation commands remain disabled: fresh-plan confirmation, recovery integration,
+and the root-scoped operation UI must be completed before this boundary can be
+accepted.
 
 - [ ] Add user-initiated Fedora update discovery and status through the selected
   stable package-management interface.
