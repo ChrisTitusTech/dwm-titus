@@ -107,6 +107,15 @@ case $mode in
 valid)
 	snapshot
 	;;
+partial-restart)
+	snapshot | sed 's/state\tupdate-restart\tavailable\tsystem/state\tupdate-restart\tpartial\tsecurity-session/'
+	;;
+regional-handoff)
+	snapshot | sed '/^complete\t/i\terminal-handoff\top-11111111111111111111111111111111\ttimezone-set\ttimezone'
+	;;
+invalid-handoff)
+	snapshot | sed '/^complete\t/i\terminal-handoff\top-11111111111111111111111111111111\ttimezone-set\tdelegate'
+	;;
 bad-plan)
 	snapshot | sed \
 		-e 's/action\tupdates-install-all\tunavailable/action\tupdates-install-all\tavailable/' \
@@ -283,6 +292,22 @@ printf 'future-record\n' >"$fixture/mode"
 ipc refresh >/dev/null
 wait_state ready
 [ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+
+printf 'partial-restart\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state ready
+[ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+[ "$(ipc systemManagementRestartState)" = partial:security-session ]
+
+printf 'regional-handoff\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state ready
+[ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+
+printf 'invalid-handoff\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state failure
+[ "$(ipc systemManagementUpdateCount)" -eq 0 ]
 
 printf 'unexpected-update\n' >"$fixture/mode"
 ipc refresh >/dev/null
