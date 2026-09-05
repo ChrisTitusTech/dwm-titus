@@ -6,11 +6,13 @@ from __future__ import annotations
 import contextlib
 import errno
 import hashlib
+import io
 import importlib.util
 import importlib.machinery
 import os
 import pathlib
 import stat
+import subprocess
 import sys
 import tempfile
 import threading
@@ -131,6 +133,21 @@ class OperationStreamTests(unittest.TestCase):
         self.assertFalse(stream.transition("running", "Working", percent=0))
         self.assertTrue(stream.transition("running", "Working", percent=0, cancelable=True))
         self.assertEqual(stream.progress_records, 1)
+
+    def test_pending_and_authorizing_progress_share_the_budget_without_consuming_lifecycle(self):
+        output = []
+        stream = self.stream(output)
+        stream.progress("Pending", cancelable=True)
+        stream.transition("authorizing", "Authorization")
+        for index in range(300):
+            stream.progress("Authorization", cancelable=index % 2 == 0)
+        self.assertEqual(stream.progress_records, 252)
+        stream.transition("running", "Running")
+        stream.transition("cancel-requested", "Cancel requested")
+        stream.finish(self.terminal())
+        operation_rows = rows("".join(output).splitlines(), "operation")
+        self.assertEqual(len(operation_rows), 257)
+        self.assertEqual([row[4] for row in operation_rows[-3:]], ["running", "cancel-requested", "succeeded"])
 
     def test_replay_all_kinds_and_results_preserves_exact_terminal_and_error_owner(self):
         for action in provider.JOURNAL_OPERATION_ACTION_KINDS:
@@ -5829,6 +5846,258 @@ class RecoveryAdapterTests(unittest.TestCase):
                 before = backend.connection.call_finish.call_count
                 state["reply"](backend.connection, object(), None)
                 self.assertEqual(backend.connection.call_finish.call_count, before)
+
+
+class OperationWatchTests(unittest.TestCase):
+    """Live fixtures use the real adapter but never invoke a package action."""
+    boot_id = PackageKitExecutionTests.boot_id
+    package_id = PackageKitExecutionTests.package_id
+    journal = PackageKitExecutionTests.journal
+    begin = OperationRecoveryTests.begin
+    backend = RecoveryAdapterTests.backend
+    emit = RecoveryAdapterTests.emit
+    properties = RecoveryAdapterTests.properties
+
+    def live_backend(self, journal, events, **properties):
+        backend = self.backend(journal)
+        backend.session_started = mock.Mock(return_value=None)
+        backend._recovery_call = mock.Mock(side_effect=lambda _path, _interface, method, *_args:
+            SessionEvidenceTests.Variant("(a{sv})", (self.properties(**properties),)) if method == "GetAll"
+            else SessionEvidenceTests.Variant("(ao)", (["/1_test"],)))
+        test = self
+
+        class Loop:
+            stopped = False
+
+            def quit(self):
+                self.stopped = True
+
+            def run(self):
+                for event in events:
+                    test.assertFalse(journal._exclusive)
+                    if self.stopped:
+                        break
+                    event(backend)
+                test.assertTrue(self.stopped, "watch did not terminate from exact evidence")
+
+        backend.GLib.MainLoop = Loop
+        return backend
+
+    def progress(self, backend, **values):
+        self.emit(backend, "PropertiesChanged", "(sa{sv}as)",
+            (provider.TRANSACTION_INTERFACE, values, []), provider.PROPERTIES_INTERFACE)
+
+    def test_live_watch_keeps_subscriptions_and_commits_before_terminal_output(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            chunks = []
+            backend = self.live_backend(journal, [lambda bus: self.progress(bus, Status=3, AllowCancel=True, Percentage=42),
+                lambda bus: self.emit(bus, "RequireRestart", "(us)", (6, self.package_id)),
+                lambda bus: self.emit(bus, "Finished", "(uu)", (1, 1))], Status=31)
+
+            def write(chunk):
+                if "complete\toperation" in chunk:
+                    state = provider.load_journal_state(journal.chain)
+                    self.assertIsNone(state.active)
+                    self.assertEqual(state.handoff.operation_id, operation.operation_id)
+                chunks.append(chunk)
+
+            provider.watch_journal_operation(journal, operation.operation_id, write,
+                boot_id=self.boot_id, backend_factory=lambda: backend)
+            output = "".join(chunks)
+            for value in ("\tauthorizing\t", "\trunning\t", "\t42\tyes\t", "\tsucceeded\t", "comparison is unavailable"):
+                self.assertIn(value, output)
+            self.assertEqual(backend.connection.calls, [])
+            self.assertEqual([call.args[2] for call in backend._recovery_call.call_args_list], ["GetAll", "GetTransactionList"])
+            self.assertEqual(backend.connection.subscriptions, {})
+            self.assertIsNone(backend.connection.closed_callback)
+            self.assertEqual(provider.load_journal_state(journal.chain).restart.system, "security-system")
+
+    def test_watch_has_no_silence_deadline_after_verified_adoption(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            clock = [100]
+            def later(bus):
+                clock[0] = 100000
+                self.progress(bus, Status=3)
+                self.emit(bus, "Finished", "(uu)", (1, 1))
+            backend = self.live_backend(journal, [later])
+            with mock.patch.object(provider.time, "monotonic", side_effect=lambda: clock[0]):
+                result = backend.probe_operation(operation, watch=True)
+            self.assertEqual(result.state, "succeeded")
+            self.assertEqual(backend.connection.calls, [])
+
+    def test_watch_uses_new_live_cancelability_not_stale_initial_false(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            progress = []
+            backend = self.live_backend(journal, [lambda bus: self.progress(bus, AllowCancel=True),
+                lambda bus: self.progress(bus, AllowCancel=False),
+                lambda bus: self.emit(bus, "Finished", "(uu)", (1, 1))], AllowCancel=False)
+            backend.probe_operation(operation, watch=True, on_progress=progress.append)
+            self.assertIn(True, [item.allow_cancel for item in progress])
+            self.assertFalse(progress[-1].allow_cancel)
+
+    def test_authorizing_watch_emits_cancelability_loss_without_claiming_running(self):
+        with self.journal() as journal:
+            operation = self.begin(journal)
+            backend = self.live_backend(journal, [lambda bus: self.progress(bus, AllowCancel=False),
+                lambda bus: self.emit(bus, "Finished", "(uu)", (3, 0))], Status=31)
+            chunks = []
+            provider.watch_journal_operation(journal, operation.operation_id, chunks.append,
+                boot_id=self.boot_id, backend_factory=lambda: backend)
+            operation_rows = rows("".join(chunks).splitlines(), "operation")
+            authorizing = [row for row in operation_rows if row[4] == "authorizing"]
+            self.assertEqual([row[6] for row in authorizing], ["yes", "no"])
+            self.assertNotIn("running", [row[4] for row in operation_rows])
+            self.assertEqual(operation_rows[-1][4], "canceled")
+
+    def test_watch_bus_loss_malformed_signal_or_output_failure_detaches_without_cancel(self):
+        for fault in ("bus", "malformed", "output"):
+            with self.subTest(fault=fault), self.journal() as journal:
+                operation = self.begin(journal)
+                def event(bus):
+                    if fault == "bus":
+                        bus.connection.closed_callback()
+                    elif fault == "malformed":
+                        self.emit(bus, "Destroy", "(s)", ("wrong",))
+                    else:
+                        self.progress(bus, Percentage=40)
+                backend = self.live_backend(journal, [event])
+                def progress(evidence):
+                    if evidence.percent == 40:
+                        raise BrokenPipeError("closed consumer")
+                with self.assertRaises((provider.SnapshotFailure, BrokenPipeError)):
+                    backend.probe_operation(operation, watch=True, on_progress=progress)
+                self.assertEqual(backend.connection.calls, [])
+                self.assertEqual(backend.connection.subscriptions, {})
+                self.assertIsNone(backend.connection.closed_callback)
+                self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_destroyed_watch_recovers_conservative_interruption(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, "refresh")
+            backend = self.live_backend(journal, [lambda bus: self.emit(bus, "Destroy", "()", ())], Role=13)
+            chunks = []
+            provider.watch_journal_operation(journal, operation.operation_id, chunks.append,
+                boot_id=self.boot_id, backend_factory=lambda: backend)
+            self.assertIn("\tinterrupted\t", "".join(chunks))
+            self.assertIn("complete\toperation", "".join(chunks))
+
+    def test_terminalized_active_replays_and_acknowledges_without_backend(self):
+        for kind in ("update", "refresh", "timezone"):
+            with self.subTest(kind=kind), self.journal() as journal:
+                operation = self.begin(journal, kind)
+                terminal = replace(operation, state="failed", error_code="internal",
+                    finished_at="2026-09-05T00:01:00Z", detail="Fixture failure",
+                    terminal_monotonic=100 if kind in {"refresh", "update"} else None)
+                with provider.lock_writable_journal(journal):
+                    provider.advance_journal_operation(journal, operation, terminal)
+                chunks = []
+                backend = mock.Mock(side_effect=AssertionError("replay opened a service"))
+                provider.watch_journal_operation(journal, operation.operation_id, chunks.append,
+                    boot_id=self.boot_id, backend_factory=backend)
+                backend.assert_not_called()
+                self.assertIn("complete\toperation", "".join(chunks))
+                with provider.lock_writable_journal(journal):
+                    provider.acknowledge_journal_handoff(journal, operation.operation_id)
+                    self.assertEqual(provider.retained_journal_operation(journal, operation.operation_id), terminal)
+
+    def test_stale_id_and_active_regional_emit_no_stream(self):
+        for kind in ("refresh", "timezone"):
+            with self.subTest(kind=kind), self.journal() as journal:
+                operation = self.begin(journal, kind)
+                requested = "op-" + "0" * 32 if kind == "refresh" else operation.operation_id
+                chunks = []
+                backend = mock.Mock()
+                with self.assertRaises(provider.JournalAdmissionError):
+                    provider.watch_journal_operation(journal, requested, chunks.append,
+                        boot_id=self.boot_id, backend_factory=backend)
+                self.assertEqual(chunks, [])
+                backend.assert_not_called()
+                self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_control_cli_has_fixed_syntax_and_stream_free_stale_diagnostics(self):
+        for args in ([], ["watch-operation"], ["ack-operation", "bad"], ["watch-operation", "op-" + "a" * 32, "extra"],
+                     ["updates-refresh"]):
+            with self.subTest(args=args), contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(provider.main(args), 2)
+                self.assertEqual(stdout.getvalue(), "")
+        for command, diagnostic in (("watch-operation", "watch"), ("ack-operation", "ack")):
+            with self.subTest(command=command), mock.patch.object(provider, "open_journal_directory", side_effect=provider.JournalLayoutError("Unsafe raw text")), \
+                    mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                    contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+                self.assertEqual(provider.main([command, "op-" + "a" * 32]), 3)
+                self.assertEqual(stdout.getvalue(), "")
+                self.assertEqual(stderr.getvalue(), f"{diagnostic} target is unavailable\n")
+
+    def test_owner_replaced_before_adoption_is_never_followed(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, "refresh")
+            backend = mock.Mock()
+            backend.session_started.return_value = None
+            following = []
+            def factory():
+                with provider.lock_writable_journal(journal):
+                    terminal = replace(operation, state="failed", error_code="internal", detail="Fixture",
+                        finished_at="2026-09-05T00:01:00Z", terminal_monotonic=100)
+                    provider.advance_journal_operation(journal, operation, terminal)
+                    provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+                    provider.acknowledge_journal_handoff(journal, operation.operation_id)
+                following.append(self.begin(journal, "refresh"))
+                return backend
+            chunks = []
+            with self.assertRaises(provider.JournalAdmissionError):
+                provider.watch_journal_operation(journal, operation.operation_id, chunks.append,
+                    boot_id=self.boot_id, backend_factory=factory)
+            backend.probe_operation.assert_not_called()
+            self.assertNotIn("complete\toperation", "".join(chunks))
+            self.assertEqual(provider.load_journal_state(journal.chain).active, following[0])
+
+    def test_cli_replay_and_ack_preserve_terminal_and_use_no_service(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, "refresh")
+            terminal = replace(operation, state="failed", error_code="internal", detail="Fixture",
+                finished_at="2026-09-05T00:01:00Z", terminal_monotonic=100)
+            with provider.lock_writable_journal(journal):
+                provider.advance_journal_operation(journal, operation, terminal)
+            state_home = str(pathlib.Path(journal.chain.path).parents[1])
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": state_home}), \
+                    mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                    mock.patch.object(provider.PackageKitBackend, "__init__", side_effect=AssertionError("Unexpected service")), \
+                    contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+                self.assertEqual(provider.main(["watch-operation", operation.operation_id]), 0)
+                self.assertIn("complete\toperation", stdout.getvalue())
+                stdout.seek(0)
+                stdout.truncate(0)
+                self.assertEqual(provider.main(["ack-operation", operation.operation_id]), 0)
+                self.assertEqual(stdout.getvalue(), "")
+                self.assertEqual(stderr.getvalue(), "")
+                self.assertEqual(provider.main(["ack-operation", operation.operation_id]), 3)
+                self.assertEqual(stderr.getvalue(), "ack target is unavailable\n")
+            state = provider.load_journal_state(journal.chain)
+            self.assertEqual(state.terminals[operation.slot], terminal)
+            self.assertIsNone(state.handoff)
+
+    def test_closed_cli_pipe_has_fixed_exit_and_preserves_handoff(self):
+        with self.journal() as journal:
+            operation = self.begin(journal, "refresh")
+            terminal = replace(operation, state="failed", error_code="internal", detail="Fixture",
+                finished_at="2026-09-05T00:01:00Z", terminal_monotonic=100)
+            with provider.lock_writable_journal(journal):
+                provider.advance_journal_operation(journal, operation, terminal)
+                provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+            environment = dict(os.environ, XDG_STATE_HOME=str(pathlib.Path(journal.chain.path).parents[1]))
+            reader, writer = os.pipe()
+            os.close(reader)
+            try:
+                result = subprocess.run(["/usr/bin/python3", str(PROVIDER_PATH), "watch-operation", operation.operation_id],
+                    stdout=writer, stderr=subprocess.PIPE, env=environment, timeout=10)
+            finally:
+                os.close(writer)
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stderr, b"operation observation was interrupted\n")
+            self.assertEqual(provider.load_journal_state(journal.chain).handoff.operation_id, operation.operation_id)
 
 
 if __name__ == "__main__":

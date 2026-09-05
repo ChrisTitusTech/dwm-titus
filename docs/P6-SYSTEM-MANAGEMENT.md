@@ -130,6 +130,12 @@ snapshot as the next recovery attempt.
 and `update`. Regional and delegated operations remain owned by their finite
 originating stream while active, but an exact retained terminal record for any
 valid kind can be replayed without reissuing its external action.
+After bounded initial adoption validates the exact object, the live watcher
+keeps those same subscriptions without a silence deadline or polling timer.
+Bus loss, malformed evidence, or a failed output/checkpoint ends observation
+without a terminal success claim or a `Cancel` call. A failure after stream
+output begins exits 1 with fixed interruption guidance, not the stream-free
+stale-target status 3.
 
 The root model calls `ack-operation` only for an exact durable handoff that it
 has received in a snapshot. It first validates either the matching originating
