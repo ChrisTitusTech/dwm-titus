@@ -130,14 +130,29 @@ snapshot as the next recovery attempt.
 and `update`. Regional and delegated operations remain owned by their finite
 originating stream while active, but an exact retained terminal record for any
 valid kind can be replayed without reissuing its external action.
+The public cancel control pins PackageKit's unique D-Bus peer and uses one
+ten-second aggregate deadline for owner lookup, exact-object validation, and
+the `Cancel` request. It checks the transaction's exact role and invoking UID,
+observes cancelability revocation, completion, destruction, and owner changes,
+and revalidates the journal identity before sending. It drains at most 64 queued
+main-context dispatches after the bounded journal lock; excess activity rejects
+the control instead of creating an unbounded watcher. No D-Bus call runs under
+the journal lock. A successful method reply records `cancel-requested` only
+when the same operation is still `running`; pending/authorizing operations do
+not acquire a fabricated running phase. The existing observer alone records
+the eventual terminal result. An uncertain post-dispatch failure exits 1 with
+fixed observation guidance and no stream, preserving the operation for recovery.
+A typed backend stale-target rejection retains the stream-free status 3 above.
+
 Finite snapshots now initialize or validate the fixed journal, recover its
 bounded state, and apply restart satisfaction before publishing active or
 handoff identities. Journal or logind failure preserves readable update
 discovery and reports recovery errors; known restart guidance remains visible
-with `partial` status. This incremental build still leaves mutation and cancel
-commands unavailable, so snapshot active rows advertise `cancelable=no` until
-the exact-ID cancel control is integrated. Live watch streams continue to report
-the exact PackageKit cancelability observation.
+with `partial` status. This incremental build still leaves new mutation commands
+unavailable. Snapshot active rows and the cancel action now advertise the exact
+observed cancelability, or remain unavailable when no trustworthy observation
+exists. The public cancel command always revalidates that hint. Live watch
+streams continue to report the exact PackageKit cancelability observation.
 After bounded initial adoption validates the exact object, the live watcher
 keeps those same subscriptions without a silence deadline or polling timer.
 Bus loss, malformed evidence, or a failed output/checkpoint ends observation

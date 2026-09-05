@@ -81,8 +81,10 @@ retained results without a service call or keep a verified PackageKit observer
 subscribed through completion without reissuing the action. Finite snapshots now
 integrate validated journal recovery, boot/session restart pruning, exact active
 identities, and terminal handoffs without hiding readable package discovery.
-Cancel and mutation-command integration and the root-scoped
-confirmation and operation UI must be completed before this boundary can be accepted.
+The exact-ID cancel control now pins the backend peer, revalidates ownership and
+cancelability, and records only an accepted cancellation request without claiming
+a terminal result. New mutation commands and the root-scoped confirmation and
+operation UI must be completed before this boundary can be accepted.
 The preview validators now preserve requested `install` as well as `update`
 actions, matching the PackageKit DNF5 backend's discovery/simulation contract.
 Missing or duplicate requested IDs, outbound requested actions, and unrequested
