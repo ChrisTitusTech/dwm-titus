@@ -5528,6 +5528,51 @@ class RecoveryAdapterTests(unittest.TestCase):
                     backend.probe_operation(operation)
                 self.assertEqual(raised.exception.code, "malformed")
 
+    def test_unverified_object_cannot_checkpoint_buffered_signals(self):
+        for fault in ("uid", "role", "absent", "service", "signal", "valid"):
+            with self.subTest(fault=fault), self.journal() as journal:
+                operation = self.begin(journal)
+                backend = self.backend(journal)
+                checkpoints = []
+                def request(_path, _interface, method, *_args):
+                    if method == "GetAll":
+                        if fault == "service":
+                            self.emit(backend, "NameOwnerChanged", "(sss)",
+                                (provider.PACKAGEKIT_NAME, ":1.2", ":1.3"), "org.freedesktop.DBus")
+                        elif fault == "signal":
+                            self.emit(backend, "RequireRestart", "(s)", ("invalid",))
+                        self.emit(backend, "PropertiesChanged", "(sa{sv}as)",
+                            (provider.TRANSACTION_INTERFACE, {"Status": 3}, []), provider.PROPERTIES_INTERFACE)
+                        self.emit(backend, "RequireRestart", "(us)", (6, self.package_id))
+                        self.emit(backend, "Finished", "(uu)", (1, 1))
+                        self.assertEqual(checkpoints, [])
+                        if fault == "absent":
+                            failure = provider.SnapshotFailure("missing-provider", "Absent object")
+                            failure.__cause__ = backend.GLib.Error("UnknownObject")
+                            raise failure
+                        return SessionEvidenceTests.Variant("(a{sv})", (self.properties(
+                            Uid=os.getuid() + (fault == "uid"), Role=13 if fault == "role" else 22),))
+                    self.emit(backend, "RequireRestart", "(us)", (4, self.package_id))
+                    self.emit(backend, "Finished", "(uu)", (1, 1))
+                    return SessionEvidenceTests.Variant("(ao)", ([],))
+                backend._recovery_call = mock.Mock(side_effect=request)
+                def probe():
+                    return backend.probe_operation(operation,
+                        on_running=lambda: checkpoints.append("running"),
+                        on_restart=lambda value: checkpoints.append(value))
+                if fault in {"uid", "role", "service", "signal"}:
+                    with self.assertRaises(provider.SnapshotFailure) as raised:
+                        probe()
+                    self.assertEqual(raised.exception.code, "missing-provider" if fault == "service" else "malformed")
+                else:
+                    evidence = probe()
+                    self.assertEqual(evidence.state, "succeeded" if fault == "valid" else None)
+                    self.assertEqual(evidence.restart_types, (6,) if fault == "valid" else ())
+                    if fault == "absent":
+                        self.assertEqual((evidence.status, evidence.allow_cancel, evidence.percent), (0, False, None))
+                self.assertEqual(checkpoints, ["running", 6] if fault == "valid" else [])
+                self.assertEqual(backend.connection.subscriptions, {})
+
     def test_probe_checkpoints_restart_before_finished_and_discards_late_signal(self):
         with self.journal() as journal:
             operation = self.begin(journal)
@@ -5593,15 +5638,18 @@ class RecoveryAdapterTests(unittest.TestCase):
         with self.journal() as journal:
             operation = self.begin(journal)
             backend = self.backend(journal)
+            checkpoint = mock.Mock()
             def request(_path, _interface, method, *_args):
                 if method == "GetAll":
                     return SessionEvidenceTests.Variant("(a{sv})", (self.properties(),))
                 self.emit(backend, "NameOwnerChanged", "(sss)", (provider.PACKAGEKIT_NAME, ":1.2", ":1.3"), "org.freedesktop.DBus")
+                self.emit(backend, "RequireRestart", "(us)", (6, self.package_id))
                 return SessionEvidenceTests.Variant("(ao)", ([],))
             backend._recovery_call = mock.Mock(side_effect=request)
             with self.assertRaises(provider.SnapshotFailure) as raised:
-                backend.probe_operation(operation)
+                backend.probe_operation(operation, on_restart=checkpoint)
             self.assertEqual(raised.exception.code, "missing-provider")
+            checkpoint.assert_not_called()
             self.assertEqual(backend.connection.subscriptions, {})
 
     def test_history_timeout_grace_does_not_accept_late_success(self):

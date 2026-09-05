@@ -4243,6 +4243,15 @@ class PackageKitBackend:
         checkpoint_failure = None
         restarts = set()
         subscriptions = []
+        identity_verified = None
+
+        def checkpoint(callback, *args):
+            nonlocal checkpoint_failure
+            if callback is not None and checkpoint_failure is None:
+                try:
+                    callback(*args)
+                except (SnapshotFailure, JournalFileError, JournalRecordError, JournalFrameError, JournalAdmissionError) as error:
+                    checkpoint_failure = error
 
         def properties(values):
             nonlocal status, allow_cancel, percent, saw_running, uncertain_status, cancel_blocked, checkpoint_failure
@@ -4254,11 +4263,8 @@ class PackageKitBackend:
                 uncertain_status = uncertain_status or status == 0
                 if not saw_running and status not in {0, 1, 2, 18, 31}:
                     saw_running = True
-                    if on_running is not None:
-                        try:
-                            on_running()
-                        except (SnapshotFailure, JournalFileError, JournalRecordError, JournalFrameError, JournalAdmissionError) as error:
-                            checkpoint_failure = error
+                    if identity_verified is True:
+                        checkpoint(on_running)
             if "AllowCancel" in values:
                 allow_cancel = values["AllowCancel"] if type(values["AllowCancel"]) is bool else False
                 cancel_blocked = cancel_blocked or not allow_cancel
@@ -4268,7 +4274,7 @@ class PackageKitBackend:
 
         def signal_received(_connection, _sender, _path, interface, signal, variant, _data):
             nonlocal terminal_state, terminal_time, transaction_failure, malformed, present, checkpoint_failure
-            if not live or checkpoint_failure is not None or time.monotonic() >= deadline:
+            if not live or identity_verified is False or malformed is not None or checkpoint_failure is not None or time.monotonic() >= deadline:
                 return
             if terminal_state is not None:
                 if signal == "Finished":
@@ -4287,11 +4293,9 @@ class PackageKitBackend:
                     if variant.get_type_string() != "(us)":
                         raise ValueError
                     value = values[0] if values[0] in {1, 2, 3, 4, 5, 6} else 0
-                    if on_restart is not None:
-                        try:
-                            on_restart(value)
-                        except (SnapshotFailure, JournalFileError, JournalRecordError, JournalFrameError, JournalAdmissionError) as error:
-                            checkpoint_failure = error
+                    if identity_verified is True:
+                        checkpoint(on_restart, value)
+                        if checkpoint_failure is not None:
                             return
                     restarts.add(value)
                 elif signal == "ErrorCode":
@@ -4336,6 +4340,13 @@ class PackageKitBackend:
                 if not isinstance(cause, self.GLib.Error) or self.Gio.dbus_error_get_remote_error(cause) not in {
                         "org.freedesktop.DBus.Error.UnknownObject", "org.freedesktop.DBus.Error.UnknownMethod"}:
                     raise
+                # No object identity was established. Discard buffered signals
+                # and ignore later ones; only the bounded list/history may help.
+                identity_verified = False
+                restarts.clear()
+                saw_running = False
+                status, allow_cancel, percent = 0, False, None
+                terminal_state, terminal_time, transaction_failure = None, None, None
             else:
                 values = reply.unpack()[0]
                 role, uid = values.get("Role"), values.get("Uid")
@@ -4343,6 +4354,15 @@ class PackageKitBackend:
                 allowed_roles = {expected_role, 0} if operation.state in {"pending", "authorizing"} else {expected_role}
                 if type(role) is not int or role not in allowed_roles or type(uid) is not int or uid != os.getuid():
                     raise SnapshotFailure("malformed", "PackageKit active object does not match the recorded operation")
+                if malformed is not None:
+                    raise malformed
+                # Before this point callbacks collect only a fixed-size status
+                # tuple and at most seven restart enums, never journal writes.
+                identity_verified = True
+                if saw_running:
+                    checkpoint(on_running)
+                for value in sorted(restarts):
+                    checkpoint(on_restart, value)
                 properties(values)
                 present = status != 18
             if checkpoint_failure is not None:

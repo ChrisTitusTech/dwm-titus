@@ -1230,7 +1230,11 @@ path, or elevation mechanism.
   For a nonterminal record, recovery validates and copies the bounded record
   under a shared journal lock, releases that lock, and only then attempts to
   adopt the exact recorded transaction object and consume its current or
-  replayed result before checking the active PackageKit transaction list. One
+  replayed result before checking the active PackageKit transaction list. Signals
+  received during the initial object-property read remain bounded in memory:
+  no running or restart checkpoint is written until the role and invoking UID
+  are validated. An absent or mismatched object cannot contribute those signals
+  to the journal. One
   independent ten-second monotonic aggregate deadline covers attachment to the
   recorded object, its required property reads and replayed signals, and the
   manager `GetTransactionList` call. An exact validated `Finished` result skips
