@@ -159,6 +159,12 @@ apply dwm patches to install and use the desktop.
 
 ## Troubleshooting
 
+**Settings -> System** separates read-only **Reload status** from confirmed
+metadata refresh and package installation. Review all package changes, including
+dependency additions and removals, before confirming. PackageKit owns
+authorization and cancellation; closing Settings does not cancel an operation.
+If discovery or recovery is incomplete, reload status and follow its guidance.
+
 Start with the built-in diagnostic report:
 
 ```bash

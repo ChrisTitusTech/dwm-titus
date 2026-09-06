@@ -87,7 +87,7 @@ grep -Fq 'onExited: (exitCode, exitStatus) => root.finishSnapshot(exitCode, exit
 
 grep -Fq 'required property var systemManagementModel' "$pane"
 grep -Fq 'required property var capabilities' "$pane"
-grep -Fq 'READ-ONLY STATUS' "$pane"
+grep -Fq 'SYSTEM STATUS' "$pane"
 grep -Fq 'component PlainText: UiText {' "$pane"
 grep -Fq 'textFormat: Text.PlainText' "$pane"
 [ "$(grep -Fc 'UiText {' "$pane")" -eq 1 ]
@@ -102,7 +102,23 @@ grep -Fq 'model: root.systemManagementModel.updates' "$pane"
 grep -Fq 'model: root.systemManagementModel.packageChanges' "$pane"
 grep -Fq 'model: root.systemManagementModel.errors' "$pane"
 grep -Fq 'errorRow.modelData.provider.toUpperCase()' "$pane"
-grep -Fq 'This pane only reads PackageKit and recovery state.' "$pane"
+grep -Fq 'Metadata refresh and update installation require visible confirmation.' "$pane"
+grep -Fq 'SystemUpdateControls {' "$pane"
+grep -Fq 'onRevealRequested: target => root.reveal(target)' "$pane"
+controls=$repo/config/quickshell/settings/SystemUpdateControls.qml
+grep -Fq 'root.model.prepareUpdate("updates-refresh")' "$controls"
+grep -Fq 'root.model.prepareUpdate("updates-install-all")' "$controls"
+grep -Fq 'root.model.confirmUpdate()' "$controls"
+grep -Fq 'root.model.operation.requestCancel()' "$controls"
+grep -Fq 'root.confirmation.changes' "$controls"
+grep -Fq 'change.modelData.packageId' "$controls"
+grep -Fq 'textFormat: Text.PlainText' "$controls"
+grep -Fq 'pending.generation !== root.generation' "$model"
+grep -Fq 'pending.epoch !== discoveryModel.cycle.epoch' "$model"
+if grep -Eq 'Quickshell\.Io|\bProcess\b|\bCommands\.' "$controls"; then
+	printf 'Update controls must not construct or run commands.\n' >&2
+	exit 1
+fi
 if grep -Eq 'Quickshell\.Io|\bProcess\b|\bCommands\.|systemManagementCommand' "$pane"; then
 	printf 'System Settings pane must not construct or run commands.\n' >&2
 	exit 1

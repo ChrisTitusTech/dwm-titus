@@ -8,28 +8,30 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add visible System Settings confirmation for metadata refresh and update
+  installation, with complete dependency-change previews, fresh-state guards,
+  verified progress/audit logs, and exact-ID cancellation. Keyboard navigation
+  keeps focused controls visible and supports the full bounded preview. Closing
+  Settings keeps the operation owner alive; passive discovery never starts it.
+
 - Add root-owned update start/cancel lifecycle and bounded verified progress
   logs. Cancellation remains an exact-ID request, never a fabricated result;
-  interrupted origins recover by observation. Settings mutation controls remain
-  disabled pending their visible confirmation workflow.
+  interrupted origins recover by observation.
 
 - Preserve Fedora DNF5 dependency previews when a requested update is reported
   as an install. Keep the actual package actions visible and retain strict
-  missing, duplicate, and unexpected-update checks; confirmed update execution
-  remains disabled pending its integration.
+  missing, duplicate, and unexpected-update checks.
 
 - Preserve a pending Input discovery refresh when a preview finishes during an
   earlier read, so kept accessibility settings do not remain stale in Settings.
 
 - Accept Fedora PackageKit's actual root-level transaction object IDs in the
   operation journal. The previous namespaced-path assumption rejected real
-  transactions; update execution remains disabled pending its integration.
+  transactions.
 
-- Show the Phase 6 Fedora update snapshot in a dedicated read-only System
+- Show the Phase 6 Fedora update snapshot in a dedicated System
   Settings pane with provider state, update and plan details, diagnostics,
   restart guidance, recovery ownership, and existing administration boundaries.
-  Update mutations remain unavailable until their confirmed operation workflow
-  is implemented.
 
 - Begin Phase 6 with a complete system-management capability and privilege
   inventory. Select PackageKit, systemd regional services, AccountsService,
@@ -79,25 +81,21 @@ versions from `config.mk`.
 - Restore journaled system operations in the shell root and keep their progress
   visible across Settings closure. Verify complete terminal results before exact
   acknowledgment; retain guidance after bounded recovery or acknowledgment
-  failure. Update mutation controls remain disabled pending confirmation and
-  execution integration.
+  failure.
 
 - Add a bounded Quickshell operation-stream parser with strict identity,
   lifecycle, audit, UTF-8, and exit-status checks. Native nested-X11 fixtures
-  verify live progress and failed-result streams; Settings operation ownership
-  and update confirmation remain pending integration.
+  verify live progress and failed-result streams.
 
 - Add explicit metadata-refresh and generation-confirmed install CLI commands
   backed by durable PackageKit execution and exact terminal results. Rejected
   requests do not fabricate transactions, and uncertain admission or observation
-  retains recovery guidance. Settings update buttons remain disabled pending
-  confirmation and operation-model integration.
+  retains recovery guidance.
 
 - Add exact-operation PackageKit cancellation with bounded peer, ownership,
   and cancelability checks. Stale requests leave the journal unchanged, accepted
   requests remain observable until the real terminal result, and lost replies
-  retain recovery guidance. Settings update controls remain disabled pending
-  integration.
+  retain recovery guidance.
 
 - Add a pane-scoped Quickshell system-management model that strictly consumes
   the bounded 1.0 snapshot protocol, isolates malformed provider state, rejects
@@ -107,8 +105,7 @@ versions from `config.mk`.
 - Add the Phase 6 system-management provider's first bounded PackageKit
   snapshot. It reports sanitized update inventory, refresh age, restart scope,
   dependency-preview records, and deterministic confirmation generations while
-  explicitly keeping refresh, installation, cancellation, and recovery actions
-  unavailable until their managed operation lifecycle lands.
+  separating passive discovery from confirmed managed operations.
 
 - Add persistent notification policy controls to Settings Appearance. Do Not
   Disturb suppresses low- and normal-urgency popups while retaining notification

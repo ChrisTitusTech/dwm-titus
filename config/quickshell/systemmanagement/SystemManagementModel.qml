@@ -29,6 +29,9 @@ Scope {
     property bool snapshotHasOutput: false
     property string snapshotErrorDetail: ""
     property int requestGeneration: 0
+    property var updateConfirmation: null
+    property string confirmationMessage: ""
+    property bool dispatchingUpdate: false
     readonly property alias operation: operationModel
     readonly property alias discovery: discoveryModel
 
@@ -38,6 +41,73 @@ Scope {
         ? "partial" : root.updateProvider.status
     readonly property string providerDetail: root.updateProvider.detail
     readonly property string discoveryDetail: discoveryModel.detail
+
+    function updateActionReason(actionId) {
+        if (actionId !== "updates-refresh" && actionId !== "updates-install-all")
+            return "This update action is not supported.";
+        if (!root.settingsVisible || root.dispatchingUpdate)
+            return "Open System Settings to prepare an update action.";
+        if (root.snapshotOwned || root.snapshotPending || root.requiredPending || !discoveryModel.fresh)
+            return "Wait for fresh update discovery, or reload status to retry.";
+        if (!root.validGeneration(root.generation) || root.recoveryProvider.status !== "available")
+            return "Complete recovery evidence is required. Reload status to retry.";
+        if (!operationModel.canStart)
+            return "An operation or its recovery still owns the update workflow.";
+        const action = root.actions.find(item => item.id === actionId);
+        if (!action || action.availability !== "available")
+            return action && action.detail.length > 0 ? action.detail : "The provider did not offer this action.";
+        if (actionId === "updates-install-all" && root.packageChanges.length === 0)
+            return "No complete installable package-change preview is available.";
+        return "";
+    }
+
+    function prepareUpdate(actionId) {
+        const reason = root.updateActionReason(actionId);
+        if (reason.length > 0) {
+            root.confirmationMessage = reason;
+            return false;
+        }
+        root.confirmationMessage = "";
+        root.updateConfirmation = {
+            actionId: actionId, generation: root.generation,
+            requestGeneration: root.requestGeneration, epoch: discoveryModel.cycle.epoch,
+            changes: actionId === "updates-install-all"
+                ? JSON.parse(JSON.stringify(root.packageChanges)) : []
+        };
+        return true;
+    }
+
+    function discardUpdate() {
+        root.updateConfirmation = null;
+        root.confirmationMessage = "";
+    }
+
+    function confirmUpdate() {
+        const pending = root.updateConfirmation;
+        if (pending === null || root.dispatchingUpdate) return false;
+        const reason = root.updateActionReason(pending.actionId);
+        if (reason.length > 0 || pending.generation !== root.generation
+                || pending.requestGeneration !== root.requestGeneration
+                || pending.epoch !== discoveryModel.cycle.epoch) {
+            root.confirmationInvalidated();
+            return false;
+        }
+        // Capture the fixed arguments and claim dispatch before clearing the
+        // prompt: reentrant UI callbacks must not dispatch another origin.
+        root.dispatchingUpdate = true;
+        root.updateConfirmation = null;
+        const started = operationModel.startUpdate(pending.actionId,
+            pending.actionId === "updates-install-all" ? pending.generation : "");
+        root.confirmationMessage = started ? "" : "Update state changed. Reload status and confirm again.";
+        root.dispatchingUpdate = false;
+        return started;
+    }
+
+    onConfirmationInvalidated: {
+        if (root.updateConfirmation !== null)
+            root.confirmationMessage = "Update state changed. Review a fresh preview and confirm again.";
+        root.updateConfirmation = null;
+    }
 
     function providerFallback(detail) {
         return { "status": "unavailable", "providerClass": "delegated",
@@ -568,6 +638,7 @@ Scope {
 
     function closeSettings() {
         root.settingsVisible = false;
+        root.confirmationInvalidated();
         discoveryModel.close();
         root.snapshotPending = false;
         if (!root.snapshotRequired) {
@@ -659,6 +730,7 @@ Scope {
                 root.terminalHandoff = null;
             if (root.activeOperation !== null && root.activeOperation.id === operationId)
                 root.activeOperation = null;
+            discoveryModel.invalidate();
         }
     }
 
