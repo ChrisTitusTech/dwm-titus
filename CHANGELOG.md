@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Preserve appearance inventory streams when a producer exits before the parent
+  captures its identity. Keep buffered output and failure status instead of
+  crashing the asset watcher and leaving wallpaper preview state stale.
+
 - Offer confirmed update actions only after complete idle recovery and the
   PackageKit security check. Installation also requires a supported dependency
   preview; failures preserve readable inventory and explicit refresh guidance.

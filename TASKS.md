@@ -175,8 +175,15 @@ tests cover filtering, malformed and missing properties, overflow, denial,
 absence, timeout, and late replies. A read-only Fedora 44 probe returned the
 current account in 0.042 seconds. These readers share a single-use cancellable
 service lifetime; none adds account mutations, CLI exposure, or a protocol minor.
-Printer/source readers, event subscriptions, lifecycle integration, and Settings
-controls remain outstanding.
+A separate printer reader now queries only the fixed CUPS service and socket,
+without D-Bus auto-start, under one ten-second deadline. It distinguishes running,
+socket-ready, stopped, absent, and incomplete state while preserving a validated
+running service if the socket probe fails. Unit and private-bus tests cover
+status combinations, typed bounds, denial, absence, deadlines, and late replies.
+A read-only Fedora 44 probe returned running CUPS state in 0.030 seconds without
+errors or service changes. This reader adds no CLI command or protocol minor.
+Source readers, event subscriptions, lifecycle integration, and Settings controls
+remain outstanding.
 
 - [ ] Add date, time, timezone, and locale status plus safe common actions
   through stable platform services.

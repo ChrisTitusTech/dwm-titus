@@ -84,6 +84,260 @@ def rows(lines, kind):
     return [line.split("\t") for line in lines if line.startswith(f"{kind}\t")]
 
 
+class CupsReadTests(unittest.TestCase):
+    def state(self, load="loaded", active="inactive", sub="dead"):
+        return provider.UnitState("/org/freedesktop/systemd1/unit/fixture", load, active, sub)
+
+    def reply(self, variant, state=None, **overrides):
+        state = self.state() if state is None else state
+        row = ["cups.service", "Fixture", state.load, state.active, state.sub, "", state.path, 0, "", "/"]
+        for index, value in overrides.items():
+            row[int(index)] = value
+        return variant.Variant(provider.UNIT_REPLY_TYPE, ([tuple(row)],))
+
+    def reader(self):
+        _unused, connection, gio, glib, variant = RegionalReadTests.reader(self)
+        return provider.CupsRead(gio, glib), connection, gio, glib, variant
+
+    def collect(self, replies=None, *, mode="normal", remote_error=None, transform=None):
+        read, connection, gio, glib, variant = self.reader()
+        gio.dbus_error_get_remote_error.return_value = remote_error
+        calls = []
+        connection.call.side_effect = lambda *args: calls.append(args)
+        def during_loop():
+            if mode == "connection-timeout":
+                read.expire()
+                return
+            if mode == "connection-error":
+                gio.bus_get_finish.side_effect = variant.Error("fixture")
+            read.connected(None, object(), None)
+            if mode == "method-timeout":
+                read.expire()
+            for call in calls:
+                unit = call[-1]
+                if mode == "socket-timeout" and unit == "cups.socket":
+                    read.expire()
+                reply = (replies or {}).get(unit, self.reply(variant))
+                if isinstance(reply, Exception):
+                    connection.call_finish.side_effect = reply
+                else:
+                    connection.call_finish.side_effect = None
+                    connection.call_finish.return_value = reply
+                if transform:
+                    transform(read, connection, unit)
+                read.replied(connection, object(), unit)
+        read.loop.run.side_effect = during_loop
+        result = read.run()
+        return result, read, connection, gio, glib, calls
+
+    def test_cups_status_matrix_preserves_running_service_and_socket_activation(self):
+        absent = self.state("not-found")
+        stopped = self.state()
+        running = self.state(active="active", sub="running")
+        listening = self.state(active="active", sub="listening")
+        failed = self.state(active="failed", sub="failed")
+        cases = [(running, listening, "available", "running"),
+                 (running, absent, "available", "running"),
+                 (running, failed, "available", "running"),
+                 (stopped, listening, "available", "socket-ready"),
+                 (stopped, absent, "available", "stopped"),
+                 (stopped, stopped, "available", "stopped"),
+                 (absent, absent, "unsupported", "unknown"),
+                 (absent, listening, "partial", "unknown"),
+                 (failed, listening, "partial", "unknown"),
+                 (stopped, failed, "partial", "unknown"),
+                 (stopped, self.state(active="active", sub="running"), "partial", "unknown"),
+                 (self.state(active="activating", sub="start"), listening, "partial", "unknown"),
+                 (stopped, self.state(active="deactivating", sub="stop-pre"), "partial", "unknown"),
+                 (self.state("masked"), listening, "partial", "unknown")]
+        for service, socket, status, value in cases:
+            with self.subTest(service=service, socket=socket):
+                result = provider.classify_cups(dict(zip(provider.CUPS_UNITS, (service, socket))))
+                self.assertEqual((result.status, result.value), (status, value))
+
+    def test_only_fixed_read_queries_are_sent_with_one_aggregate_lifetime(self):
+        result, read, connection, gio, glib, calls = self.collect()
+        self.assertEqual((result.status, result.value), ("available", "stopped"))
+        self.assertEqual(len(calls), 2)
+        for call, unit in zip(calls, provider.CUPS_UNITS):
+            self.assertEqual(call[:4], (provider.SYSTEMD_NAME, provider.SYSTEMD_PATH,
+                             provider.SYSTEMD_MANAGER, "ListUnitsByNames"))
+            self.assertEqual(call[4].unpack(), ([unit],))
+            self.assertEqual(call[5].dup_string(), provider.UNIT_REPLY_TYPE)
+            self.assertEqual(call[6], gio.DBusCallFlags.NO_AUTO_START)
+            self.assertGreater(call[7], 0)
+            self.assertLessEqual(call[7], 10000)
+            self.assertIs(call[8], read.cancellable)
+        glib.timeout_add.assert_called_once_with(10000, read.expire)
+        glib.source_remove.assert_called_once_with(17)
+        connection.close_sync.assert_not_called()
+        self.assertTrue(read.cancellable.cancel.called)
+        with self.assertRaises(RuntimeError):
+            read.run()
+
+    def test_decoder_checks_structure_and_bounds_before_unpacking(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        for reply in (variant.Variant("(s)", ("bad",)),
+                      variant.Variant(provider.UNIT_REPLY_TYPE, ([],)),
+                      variant.Variant(provider.UNIT_REPLY_TYPE, ([self.reply(variant).unpack()[0][0]] * 2,)),
+                      self.reply(variant, **{"1": "x" * provider.UNIT_REPLY_BYTES}),
+                      self.reply(variant, **{"2": "x" * 513}),
+                      self.reply(variant, **{"3": "active\n"}),
+                      self.reply(variant, **{"4": ""}),
+                      self.reply(variant, **{"6": "/wrong/unit"})):
+            with self.subTest(reply_type=reply.get_type_string()):
+                with self.assertRaises(provider.SnapshotFailure) as caught:
+                    provider.decode_unit_state(reply)
+                self.assertEqual(caught.exception.code, "malformed")
+        oversized = mock.Mock()
+        oversized.get_type_string.return_value = provider.UNIT_REPLY_TYPE
+        oversized.get_size.return_value = provider.UNIT_REPLY_BYTES + 1
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.decode_unit_state(oversized)
+        oversized.get_child_value.assert_not_called()
+        # Canonical aliases need not equal the fixed query name or a guessed path.
+        self.assertEqual(provider.decode_unit_state(self.reply(variant, **{"0": "org.cups.cupsd.service"})),
+                         self.state())
+
+    def test_connection_and_method_deadlines_cancel_and_ignore_late_replies(self):
+        for mode in ("connection-timeout", "method-timeout"):
+            result, read, connection, gio, glib, _calls = self.collect(mode=mode)
+            self.assertEqual((result.status, result.value), ("unavailable", "unknown"))
+            self.assertEqual([error.code for error in result.errors], ["timeout"])
+            self.assertTrue(read.cancellable.cancel.called)
+            glib.source_remove.assert_not_called()
+            connection.call_finish.assert_not_called()
+            before = tuple(result.units)
+            read.connected(None, object(), None)
+            read.replied(connection, object(), "cups.service")
+            self.assertEqual(result.units, before)
+            if mode == "connection-timeout":
+                gio.bus_get_finish.assert_not_called()
+
+    def test_active_service_survives_socket_timeout_but_inactive_does_not(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        for active in (False, True):
+            state = self.state(active="active", sub="running") if active else self.state()
+            result, read, _connection, _gio, _glib, _calls = self.collect(
+                {"cups.service": self.reply(variant, state)}, mode="socket-timeout")
+            self.assertEqual((result.status, result.value),
+                             ("available", "running") if active else ("unavailable", "unknown"))
+            self.assertEqual([error.code for error in result.errors], ["timeout"])
+            self.assertEqual(result.units, (("cups.service", state),))
+            self.assertIs(read.value, result)
+
+    def test_error_and_malformed_socket_cannot_downgrade_running_service(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        for bad in (variant.Error("fixture"), variant.Variant("(s)", ("bad",))):
+            result, *_ = self.collect({"cups.service": self.reply(variant, self.state(active="active")),
+                                      "cups.socket": bad}, remote_error="org.freedesktop.DBus.Error.AccessDenied")
+            self.assertEqual((result.status, result.value), ("available", "running"))
+            self.assertEqual(len(result.errors), 1)
+
+    def test_denial_absence_and_malformed_states_are_distinct(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        for remote, code in (("org.freedesktop.DBus.Error.AccessDenied", "permission-denied"),
+                             ("org.freedesktop.DBus.Error.ServiceUnknown", "missing-provider")):
+            result, *_ = self.collect(mode="connection-error", remote_error=remote)
+            self.assertEqual((result.status, result.value), ("unavailable", "unknown"))
+            self.assertEqual([error.code for error in result.errors], [code])
+        result, *_ = self.collect({unit: variant.Error("fixture") for unit in provider.CUPS_UNITS},
+                                 remote_error="org.freedesktop.systemd1.NoSuchUnit")
+        self.assertEqual((result.status, result.value, result.errors), ("unsupported", "unknown", ()))
+        for remote in ("org.freedesktop.DBus.Error.UnknownObject", "org.freedesktop.DBus.Error.UnknownMethod"):
+            result, *_ = self.collect({unit: variant.Error("fixture") for unit in provider.CUPS_UNITS},
+                                     remote_error=remote)
+            self.assertEqual(result.status, "unavailable")
+        result, *_ = self.collect({"cups.service": variant.Variant("(s)", ("bad",))})
+        self.assertEqual((result.status, result.value), ("partial", "unknown"))
+
+    def test_decoder_result_or_error_after_deadline_is_discarded(self):
+        for raises in (False, True):
+            read, connection, _gio, _glib, variant = self.reader()
+            read.deadline = 10
+            state = self.state(active="active")
+            def late(_reply):
+                read.deadline = 1
+                if raises:
+                    raise provider.SnapshotFailure("malformed", "late")
+                return state
+            with mock.patch.object(provider.time, "monotonic", return_value=2), \
+                    mock.patch.object(provider, "decode_unit_state", side_effect=late):
+                read.replied(connection, object(), "cups.service")
+            self.assertEqual(read.value.units, ())
+            self.assertEqual([error.code for error in read.value.errors], ["timeout"])
+            read.unit_failed("cups.socket", variant.Error("late"))
+            self.assertEqual(len(read.value.errors), 1)
+
+    def test_unexpected_loop_exit_and_duplicate_callbacks_do_not_fake_success(self):
+        read, connection, _gio, _glib, _variant = self.reader()
+        result = read.run()
+        self.assertEqual((result.status, result.value), ("unavailable", "unknown"))
+        self.assertEqual([error.code for error in result.errors], ["internal"])
+        result, read, connection, *_ = self.collect()
+        calls = connection.call_finish.call_count
+        read.replied(connection, object(), "cups.service")
+        self.assertEqual(connection.call_finish.call_count, calls)
+        self.assertIs(result, read.value)
+
+    def test_reversed_replies_and_synchronous_dispatch_errors_keep_both_units_bounded(self):
+        for reverse, synchronous_error in ((True, False), (False, True)):
+            read, connection, gio, _glib, variant = self.reader()
+            calls = []
+            def sent(*args):
+                calls.append(args)
+                if synchronous_error:
+                    raise variant.Error("dispatch failure")
+            connection.call.side_effect = sent
+            gio.dbus_error_get_remote_error.return_value = "org.freedesktop.systemd1.NoSuchUnit"
+            def during_loop():
+                read.connected(None, object(), None)
+                if not synchronous_error:
+                    for call in reversed(calls) if reverse else calls:
+                        connection.call_finish.return_value = self.reply(variant)
+                        read.replied(connection, object(), call[-1])
+                        read.replied(connection, object(), call[-1])
+            read.loop.run.side_effect = during_loop
+            result = read.run()
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(result.status, "unsupported" if synchronous_error else "available")
+            self.assertEqual(result.errors, ())
+            self.assertEqual(len(result.units), 2)
+            self.assertEqual(connection.call_finish.call_count, 0 if synchronous_error else 2)
+
+    def test_elapsed_deadline_prevents_dispatch_and_normalizes_late_bus_failure(self):
+        for during_finish in (False, True):
+            read, connection, gio, _glib, variant = self.reader()
+            read.deadline = 10 if during_finish else 1
+            def late(_result):
+                read.deadline = 1
+                raise variant.Error("late failure")
+            connection.call_finish.side_effect = late
+            with mock.patch.object(provider.time, "monotonic", return_value=2):
+                if during_finish:
+                    read.replied(connection, object(), "cups.service")
+                else:
+                    read.connected(None, object(), None)
+                    gio.bus_get_finish.assert_not_called()
+            self.assertEqual(read.value.units, ())
+            self.assertEqual([error.code for error in read.value.errors], ["timeout"])
+            connection.call.assert_not_called()
+
+    def test_real_cups_reads_use_an_isolated_private_bus(self):
+        process = subprocess.Popen(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-cups-read-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        try:
+            stdout, stderr = process.communicate(timeout=35)
+            self.assertEqual(process.returncode, 0, stderr.decode("utf-8", "replace"))
+            self.assertIn(b"Private-bus printer reads: PASS", stdout)
+        finally:
+            if process.poll() is None:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, 9)
+                process.communicate(timeout=3)
+
+
 class AccountReadTests(unittest.TestCase):
     current_path = "/org/freedesktop/Accounts/Current"
 
