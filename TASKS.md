@@ -52,8 +52,7 @@ Acceptance:
 Progress: Read-only PackageKit discovery and its Settings pane are implemented.
 The journal now supports durable pending admission, identity-checked lifecycle
 transitions, restart pruning, recoverable terminal commits, exact retained-result
-lookup, and handoff acknowledgment. These are tested foundations, not an enabled
-Settings update execution workflow. Operation owners can retain every journal file
+lookup, and handoff acknowledgment. Operation owners can retain every journal file
 identity across unlocked service waits and reacquire bounded exclusive intervals
 for checkpoints; unlocked state access and stale ownership are rejected.
 The operation formatter reserves required lifecycle records separately from its
@@ -105,8 +104,14 @@ are not exposed by IPC. Settings now requires a visible confirmation, fresh
 discovery, available recovery and action evidence, and an empty operation owner.
 The confirmation copies every package change and invalidates on global events,
 replacement reads, generation changes, or closure. Explicit cancellation keeps
-the owner alive until a verified outcome. Real PackageKit execution qualification
-and the combined phase acceptance evidence remain outstanding.
+the owner alive until a verified outcome. Managed snapshots now offer origins
+only after complete, idle recovery and the PackageKit security check; installation
+also requires a complete supported dependency preview. A disposable Fedora 44
+guest exercised real refresh, signed fixture updates with dependency installation
+and obsoletion, stale-generation rejection, authorization denial, retained replay,
+and acknowledgment. See `docs/P6-UPDATE-EVIDENCE.md` for exact identities and
+limitations. Combined installed-X11 acceptance remains outstanding; real in-flight
+cancellation and crash recovery remain fixture-qualified, not guest-qualified.
 The fixed `watch-updates` command now observes only global PackageKit discovery
 changes and daemon ownership changes. It establishes subscriptions before
 reporting readiness, bounds setup to ten seconds, and never starts a transaction.
@@ -128,15 +133,19 @@ six removals), without the prior malformed-plan error. No package mutation was
 performed; this agent process still lacks a logind session, reported separately
 as partial recovery evidence; that session therefore cannot enable execution.
 
-- [ ] Add user-initiated Fedora update discovery and status through the selected
+- [x] Add user-initiated Fedora update discovery and status through the selected
   stable package-management interface.
-- [ ] Add confirmed update execution with transparent progress and logs, strict
+- [x] Add confirmed update execution with transparent progress and logs, strict
   success detection, cancellation, and overlap rejection. Keep an operation
   delegated when the platform cannot expose a safe cancellation contract.
-- [ ] Distinguish authorization denial, network or repository failure, package
+- [x] Distinguish authorization denial, network or repository failure, package
   conflicts, interrupted transactions, completed updates, and reboot guidance.
-- [ ] Preserve recovery guidance across Settings closure or helper interruption
+- [x] Preserve recovery guidance across Settings closure or helper interruption
   without claiming ambiguous success.
+- [ ] Complete combined installed Fedora 44 X11 update qualification under
+  P6-VALIDATE, including graphical authorization. Record real in-flight
+  cancellation, crash recovery, and hardware restart as untested unless exercised;
+  the current fixture and guest evidence does not establish those runtime paths.
 
 Acceptance:
 

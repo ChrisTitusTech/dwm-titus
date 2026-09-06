@@ -3476,8 +3476,23 @@ def read_recovery_snapshot(backend: PackageKitBackend) -> RecoverySnapshot:
 def build_managed_snapshot(backend: PackageKitBackend) -> list[str]:
     """Combine readable discovery with independently validated durable recovery."""
     recovery = read_recovery_snapshot(backend)
-    lines = build_snapshot(backend)
     state = recovery.state
+    mutation_blocker = None
+    mutation_failure = None
+    if recovery.failures or state is None:
+        mutation_blocker = "Complete durable recovery evidence is required; reload status and inspect recovery errors"
+    elif state.active is not None or state.handoff is not None:
+        mutation_blocker = "An operation or its unacknowledged result still owns the update workflow"
+    else:
+        try:
+            backend.require_mutation_safe()
+        except SnapshotFailure as failure:
+            mutation_failure = failure
+            mutation_blocker = failure.detail
+    # This is advisory availability, not admission. The mutation command repeats
+    # its security, journal-ownership, session, and generation checks at dispatch.
+    lines = build_snapshot(backend, mutation_blocker=mutation_blocker,
+        mutation_failure=mutation_failure)
     restart = state.restart if state is not None else recovery.prior_restart
     value = "unknown"
     if restart is not None and restart.system != "unknown":
@@ -3519,8 +3534,13 @@ def build_managed_snapshot(backend: PackageKitBackend) -> list[str]:
     return lines
 
 
-def build_snapshot(backend: UpdateBackend) -> list[str]:
+def build_snapshot(backend: UpdateBackend, *,
+                   mutation_blocker: str | None = "Managed recovery and backend safety have not been verified",
+                   mutation_failure: SnapshotFailure | None = None) -> list[str]:
+    """Render bounded discovery; only the managed caller can offer mutations."""
     errors: list[tuple[str, str]] = []
+    if mutation_failure is not None:
+        errors.append((mutation_failure.code, mutation_failure.detail))
     last_refresh_status = "unavailable"
     last_refresh_value = "unknown"
     last_refresh_detail = "PackageKit refresh history is unavailable"
@@ -3553,6 +3573,8 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
     try:
         result = backend.updates()
     except SnapshotFailure as failure:
+        if failure.code == "malformed":
+            mutation_blocker = mutation_blocker or failure.detail
         summary_status = failure.status
         restart_status = failure.status
         summary_detail = failure.detail
@@ -3565,6 +3587,7 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
             summary_detail = "PackageKit update discovery completed"
             inventory_ok = True
         except SnapshotFailure as failure:
+            mutation_blocker = mutation_blocker or failure.detail
             summary_status = failure.status
             summary_detail = failure.detail
             errors.append((failure.code, failure.detail))
@@ -3580,6 +3603,7 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
     installable_ids = [
         row.package_id for row in update_rows if row.installability == "installable"
     ]
+    plan_ok = False
     plan_detail = (
         "No installable updates require a dependency preview"
         if inventory_ok
@@ -3597,14 +3621,16 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
                 )
                 errors.append(("unsupported", plan_detail))
             else:
+                plan_ok = True
                 plan_detail = "PackageKit dependency preview completed"
         except SnapshotFailure as failure:
             plan_detail = failure.detail
             errors.append((failure.code, failure.detail))
 
     generation = snapshot_generation(installable_ids, plan_rows)
-    provider_status = "partial" if inventory_ok else summary_status
-    if provider_status not in {"partial", "restricted", "unavailable", "unsupported"}:
+    mutation_ready = mutation_blocker is None and mutation_failure is None
+    provider_status = ("available" if mutation_ready and not errors else "partial") if inventory_ok else summary_status
+    if provider_status not in {"available", "partial", "restricted", "unavailable", "unsupported"}:
         provider_status = "partial"
 
     lines = [
@@ -3618,8 +3644,7 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
                 "delegated",
                 "PackageKit",
                 clean_text(
-                    "Read-only update discovery is available; managed update controls "
-                    "are not enabled in Settings"
+                    "PackageKit discovery is readable; update actions require explicit confirmation and platform authorization"
                     if inventory_ok
                     else summary_detail
                 ),
@@ -3654,17 +3679,18 @@ def build_snapshot(backend: UpdateBackend) -> list[str]:
                 clean_text(restart_detail),
             )
         ),
-        "action\tupdates-refresh\tunavailable\tdelegated\tupdates\tRefresh updates\t"
-        "Managed update controls are not enabled in Settings",
+        "\t".join(("action", "updates-refresh", "available" if mutation_ready else "unavailable",
+            "delegated", "updates", "Refresh updates", clean_text(mutation_blocker or
+                "Confirm a PackageKit metadata refresh; package installation is a separate action"))),
         "\t".join(
             (
                 "action",
                 "updates-install-all",
-                "unavailable",
+                "available" if mutation_ready and plan_ok else "unavailable",
                 "delegated",
                 "updates",
                 "Install all updates",
-                clean_text(f"Managed update controls are not enabled in Settings; {plan_detail}"),
+                clean_text(f"{mutation_blocker}; {plan_detail}" if mutation_blocker else plan_detail),
             )
         ),
         "action\tupdates-cancel\tunavailable\tdelegated\tupdates\tCancel update\t"

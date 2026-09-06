@@ -916,6 +916,15 @@ path, or elevation mechanism.
 
 ## Operation Lifecycle and Audit
 
+- Managed snapshots offer update origins only after complete durable recovery,
+  no active operation or unacknowledged handoff, and the existing PackageKit
+  security-floor/running-daemon check. Installation additionally requires a
+  nonempty, complete supported dependency preview. Explicit metadata refresh
+  can remain available for non-malformed discovery failures or failed simulation, since it is a
+  separately confirmed recovery action. Malformed update inventory blocks both
+  origins. An unavailable security check does not
+  hide readable inventory. Availability is advisory: admission repeats journal,
+  session, backend security, and confirmed-generation checks at dispatch.
 - Passive discovery uses the fixed maximum cache-age hint and never calls
   `RefreshCache` or starts a mutable update; after discovery it may invoke only
   the unjournaled `SIMULATE|ONLY_TRUSTED` read-only transaction defined below.
@@ -1721,6 +1730,10 @@ remain a separate implementation boundary.
   defines a narrow interface.
 
 ## Validation and Rollback
+
+Real Fedora 44 PackageKit execution evidence and its explicit limitations are
+recorded in [P6-UPDATE-EVIDENCE.md](P6-UPDATE-EVIDENCE.md). This does not replace
+the combined installed-X11 Phase 6 acceptance check.
 
 Each implementation boundary must cover valid, malformed, missing-provider,
 authorization-denied, canceled, interrupted, overlapping, and failed states.
