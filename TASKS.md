@@ -133,15 +133,19 @@ six removals), without the prior malformed-plan error. No package mutation was
 performed; this agent process still lacks a logind session, reported separately
 as partial recovery evidence; that session therefore cannot enable execution.
 
-- [ ] Add user-initiated Fedora update discovery and status through the selected
+- [x] Add user-initiated Fedora update discovery and status through the selected
   stable package-management interface.
-- [ ] Add confirmed update execution with transparent progress and logs, strict
+- [x] Add confirmed update execution with transparent progress and logs, strict
   success detection, cancellation, and overlap rejection. Keep an operation
   delegated when the platform cannot expose a safe cancellation contract.
-- [ ] Distinguish authorization denial, network or repository failure, package
+- [x] Distinguish authorization denial, network or repository failure, package
   conflicts, interrupted transactions, completed updates, and reboot guidance.
-- [ ] Preserve recovery guidance across Settings closure or helper interruption
+- [x] Preserve recovery guidance across Settings closure or helper interruption
   without claiming ambiguous success.
+- [ ] Complete combined installed Fedora 44 X11 update qualification under
+  P6-VALIDATE, including graphical authorization. Record real in-flight
+  cancellation, crash recovery, and hardware restart as untested unless exercised;
+  the current fixture and guest evidence does not establish those runtime paths.
 
 Acceptance:
 
