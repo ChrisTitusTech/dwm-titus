@@ -415,6 +415,50 @@ overrides, and explains that applications require a new login to consume the
 change. This effective-value comparison permits locale1 to omit a redundant
 `LC_*` assignment without producing a false conflict.
 
+A locale selection with an existing explicit `LANGUAGE` that is empty or
+identical to the new `LANG` is rejected before confirmation or dispatch.
+localed's fallback and simplification cannot preserve that assignment exactly.
+Read-only parsing still preserves its presence; the provider neither drops the
+override from its comparison nor sends a known non-preserving change. See the
+[systemd 259 simplification implementation](https://github.com/systemd/systemd/blob/v259/src/basic/locale-util.c).
+
+Mutation preflight also checks the complete prepared array against localed's
+write-value grammar before admission. Every value must be a nonempty locale
+name of fewer than 128 ASCII bytes using letters, digits, underscore, dot,
+hyphen, or `@`, excluding `.` and `..`. This excludes some readable override
+sets, including colon-separated LANGUAGE preference lists and empty LC values.
+They remain readable and generation-bound; the mutation reports `unsupported`
+instead of dropping an override or sending a known-invalid array. This grammar
+check does not normalize preserved aliases or claim they are installed; the
+platform remains responsible for accepting installed values. See the
+[systemd 259.8 SetLocale validation](https://github.com/systemd/systemd/blob/v259.8/src/locale/localed.c).
+
+The internal regional mutation client now validates Fedora identity and fresh
+catalog/configuration evidence, pins the unique platform-service owner, and
+requires acknowledged property and owner subscriptions before its final read.
+It calls only the three fixed methods with both interactive-authorization flags
+enabled. Required caller hooks reserve durable admission/authorization before
+dispatch and a running checkpoint only after a successful reply. The client
+drains at most 64 nonblocking event-loop iterations after synchronous admission
+work; a busy or changed configuration rejects the request. Relevant non-equivalent
+or invalidated notifications remain conflicts even if final state later matches.
+Synchronization-only NTP samples do not invalidate configuration. Completion
+requires a fresh typed read and a final owner check under the same 60-second
+budget as the mutating call. Local cancellation stops observation, not the
+platform action, and late callbacks cannot publish a result.
+
+Unit and private-bus fixtures cover fixed arguments, generation rejection,
+authorization denial, owner replacement, conflict retention, callback floods,
+failed lifecycle hooks, unsupported preserved locale values, cleanup, and a real
+60-second ambiguous timeout after the fixture service has changed state. Cleanup
+removes local subscriptions and acknowledged match rules without closing the shared bus or removing another
+client's rejected/unrequested rule. An unconfirmed rule whose acknowledgment
+cannot be recovered is ultimately removed when that bus connection exits.
+This client is preparatory: native journal-owner integration, terminal commit,
+post-timeout display refresh, CLI origins, and Settings controls remain disabled
+or outstanding. These fixtures do not change host settings or qualify graphical
+polkit authorization.
+
 Each regional mutation uses a 60-second monotonic aggregate deadline beginning
 immediately before the fixed mutating D-Bus method is sent and covering its
 reply plus the required verification read. The operation emits `authorizing`

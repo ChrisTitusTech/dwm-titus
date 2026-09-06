@@ -175,6 +175,8 @@ TRANSACTION_INTERFACE = "org.freedesktop.PackageKit.Transaction"
 PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
 
 REGIONAL_READ_SECONDS = 10
+REGIONAL_MUTATION_SECONDS = 60
+REGIONAL_CALLBACK_LIMIT = 64
 REGIONAL_TIME_PROPERTY_COUNT = 64
 REGIONAL_READ_REQUESTS = {
     "time-state": ("org.freedesktop.timedate1", "/org/freedesktop/timedate1",
@@ -367,6 +369,11 @@ def prepare_locale_change(
     if locale not in choices:
         raise SnapshotFailure("conflict", "The selected locale is no longer available")
     current = parse_locale_configuration(values)
+    language = dict(value.split("=", 1) for value in current.assignments).get("LANGUAGE")
+    if language is not None and language in ("", locale):
+        # localed applies language fallback and simplifies every non-LANG key.
+        # Such an explicit LANGUAGE cannot survive SetLocale unchanged.
+        raise SnapshotFailure("conflict", "The locale service cannot preserve this explicit LANGUAGE override; review locale configuration before changing LANG")
     preserved = [value for value in current.assignments if not value.startswith("LANG=")]
     return parse_locale_configuration([f"LANG={locale}", *preserved])
 
@@ -387,6 +394,20 @@ def locale_change_matches(expected_values: object, observed_values: object) -> b
     return all((expected.get(key) or expected.get("LANG", ""))
                == (observed.get(key) or observed.get("LANG", ""))
                for key in REGIONAL_LOCALE_KEYS[2:])
+
+
+def require_locale_service_arguments(configuration: LocaleConfiguration) -> None:
+    """Keep broader readable state, but never send known-invalid localed values.
+
+    systemd 259 validates every SetLocale value, including LANGUAGE, as a locale
+    name. Do not omit an unsupported override to make an otherwise valid LANG
+    selection writable. Installed aliases remain the platform's responsibility.
+    """
+    for assignment in parse_locale_configuration(configuration.assignments).assignments:
+        value = assignment.split("=", 1)[1]
+        if (not 1 <= len(value) < 128 or value in {".", ".."}
+                or re.fullmatch(r"[A-Za-z0-9_.@-]+", value) is None):
+            raise SnapshotFailure("unsupported", "The locale service cannot accept the complete preserved assignment set; review locale configuration without dropping overrides", "unsupported")
 
 
 @dataclass(frozen=True)
@@ -1061,6 +1082,329 @@ class RegionalRead(ServiceRead):
         except SnapshotFailure as error:
             if self.pending():
                 self.finish(failure=error)
+
+
+class RegionalMutation(ServiceRead):
+    """Internal fixed service client; durable admission is a required caller hook.
+
+    No CLI or Settings origin uses this client yet. The caller must retain its
+    native journal lease, checkpoint authorizing in before_send, checkpoint
+    running in after_reply, and commit the result before releasing ownership.
+    A sent timeout is ambiguous, not proof of failure or service cancellation.
+    """
+
+    label = "Regional operation"
+
+    def __init__(self, action: str, argument: str, generation: str,
+                 before_send: Callable[[RegionalPreview], None],
+                 after_reply: Callable[[], None], Gio=None, GLib=None) -> None:
+        self.action = action
+        self.argument = validate_regional_argument(action, argument)
+        if not isinstance(generation, str) or JOURNAL_GENERATION_PATTERN.fullmatch(generation) is None:
+            raise SnapshotFailure("malformed", "Invalid regional confirmation generation")
+        if not callable(before_send) or not callable(after_reply):
+            raise ValueError("Regional operation requires durable lifecycle hooks")
+        self.generation = generation
+        self.before_send, self.after_reply = before_send, after_reply
+        self.kind = "locale-state" if action == "locale-set" else "time-state"
+        self.name, self.path = REGIONAL_READ_REQUESTS[self.kind][:2]
+        self.owner = ""
+        self.sent = self.acknowledged = False
+        self.dirty = False
+        self.observed = self.expected = self.preview = None
+        self.choices = ()
+        self.hook_error = None
+        self.subscriptions = []
+        self.rules = []
+        self.installed_rules = []
+        self.closed_handler = 0
+        super().__init__(Gio, GLib)
+
+    def timeout_failure(self) -> SnapshotFailure:
+        detail = ("Regional operation timed out after dispatch; the outcome is unknown. Refresh state before a new confirmation"
+                  if self.sent else "Regional operation preflight timed out; no change was sent")
+        return SnapshotFailure("timeout", detail, "unavailable")
+
+    def request(self, name, path, interface, method, parameters, reply_type, handler,
+                *, interactive=False, match_rule=None) -> None:
+        if not self.pending():
+            return
+
+        def replied(connection, result, _data):
+            if match_rule is None and not self.pending():
+                return
+            try:
+                reply = connection.call_finish(result)
+                if match_rule is not None:
+                    # Pair only a successful AddMatch with RemoveMatch. An
+                    # unrequested or rejected rule can belong to another user
+                    # of this shared connection. Late acknowledgments perform
+                    # cleanup only, never resume the operation.
+                    if self.done:
+                        self.remove_match(match_rule)
+                        return
+                    self.installed_rules.append(match_rule)
+                if not self.pending():
+                    return
+                if reply.get_type_string() != reply_type:
+                    raise SnapshotFailure("malformed", "Unexpected regional operation reply")
+                if self.pending():
+                    handler(reply)
+            except self.GLib.Error as error:
+                if self.pending():
+                    self.fail(self.bus_failure(error))
+            except SnapshotFailure as error:
+                if self.pending():
+                    self.fail(error)
+
+        flags = (self.Gio.DBusCallFlags.ALLOW_INTERACTIVE_AUTHORIZATION
+                 if interactive else self.Gio.DBusCallFlags.NONE)
+        try:
+            self.connection.call(name, path, interface, method, parameters,
+                self.GLib.VariantType.new(reply_type), flags,
+                max(1, int((self.deadline - time.monotonic()) * 1000)),
+                self.cancellable, replied, None)
+        except self.GLib.Error as error:
+            self.fail(self.bus_failure(error))
+
+    def bus_request(self, method, value, reply_type, handler):
+        self.request("org.freedesktop.DBus", "/org/freedesktop/DBus",
+            "org.freedesktop.DBus", method, self.GLib.Variant("(s)", (value,)),
+            reply_type, handler)
+
+    def bus_failure(self, error):
+        name = self.Gio.dbus_error_get_remote_error(error)
+        if (time.monotonic() < self.deadline
+                and name == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired"):
+            return SnapshotFailure("permission-denied", "Regional authorization was not granted", "restricted")
+        failure = super().bus_failure(error)
+        if failure.code == "timeout":
+            return self.timeout_failure()
+        if self.sent and name is None:
+            return SnapshotFailure("interrupted", "Regional transport failed after dispatch; the outcome is unknown. Refresh state before a new confirmation")
+        return failure
+
+    def remove_match(self, rule):
+        with contextlib.suppress(self.GLib.Error):
+            self.connection.call("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                "org.freedesktop.DBus", "RemoveMatch", self.GLib.Variant("(s)", (rule,)),
+                None, self.Gio.DBusCallFlags.NONE, 1000, None, None, None)
+
+    def read_state(self, handler, *, activate=False):
+        _name, path, interface, method, signature, arguments, reply_type = REGIONAL_READ_REQUESTS[self.kind]
+        self.request(self.name if activate else self.owner, path, interface, method,
+            self.GLib.Variant(signature, arguments), reply_type, handler)
+
+    def connected(self, _source, result, _data) -> None:
+        if not self.pending():
+            return
+        try:
+            self.connection = self.Gio.bus_get_finish(result)
+            self.connection.set_exit_on_close(False)
+            self.closed_handler = self.connection.connect("closed", lambda *_args: self.fail(
+                SnapshotFailure("interrupted", "Regional service connection was lost; refresh state before retrying")))
+            # A fixed read may activate an idle platform service. Its result is
+            # not confirmation evidence; the pinned, subscribed read below is.
+            self.read_state(lambda _reply: self.resolve_owner(self.pinned), activate=True)
+        except self.GLib.Error as error:
+            self.fail(self.bus_failure(error))
+
+    def resolve_owner(self, handler):
+        self.bus_request("GetNameOwner", self.name, "(s)", handler)
+
+    def pinned(self, reply):
+        value = reply.get_child_value(0)
+        if value.get_size() > 256:
+            raise SnapshotFailure("malformed", "Invalid regional service owner")
+        owner = value.unpack()
+        if not self.Gio.dbus_is_unique_name(owner):
+            raise SnapshotFailure("malformed", "Invalid regional service owner")
+        self.owner = owner
+        specs = [
+            (None, PROPERTIES_INTERFACE, "PropertiesChanged", self.path, self.name,
+             self.properties_changed,
+             f"type='signal',sender='{owner}',interface='{PROPERTIES_INTERFACE}',member='PropertiesChanged',path='{self.path}',arg0='{self.name}'"),
+            ("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+             "/org/freedesktop/DBus", self.name, self.owner_changed,
+             f"type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0='{self.name}'"),
+        ]
+        for sender, interface, member, path, arg0, callback, rule in specs:
+            self.subscriptions.append(self.connection.signal_subscribe(sender, interface,
+                member, path, arg0, self.Gio.DBusSignalFlags.NO_MATCH_RULE, callback, None))
+            self.rules.append(rule)
+        self.add_match(0)
+
+    def add_match(self, index):
+        if index < len(self.rules):
+            rule = self.rules[index]
+            self.request("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                "org.freedesktop.DBus", "AddMatch", self.GLib.Variant("(s)", (rule,)),
+                "()", lambda _reply: self.add_match(index + 1), match_rule=rule)
+        else:
+            self.resolve_owner(self.ready)
+
+    def require_owner(self, reply):
+        if reply.get_child_value(0).get_size() > 256 or reply.unpack()[0] != self.owner:
+            raise SnapshotFailure("conflict", "Regional service owner changed; refresh state before retrying")
+
+    def ready(self, reply):
+        self.require_owner(reply)
+        if self.action == "timezone-set":
+            self.request(self.owner, self.path, self.name, "ListTimezones", None,
+                "(as)", self.catalog_read)
+        else:
+            self.read_state(self.preflight_read)
+
+    def catalog_read(self, reply):
+        self.choices = decode_regional_reply("timezone-choices", reply)
+        self.read_state(self.preflight_read)
+
+    def drain(self) -> bool:
+        # Flush already queued notifications after synchronous journal work.
+        # Never turn a signal flood into an unbounded nested event loop.
+        context = self.loop.get_context()
+        for _ in range(REGIONAL_CALLBACK_LIMIT):
+            if not self.pending():
+                return False
+            if not context.pending():
+                return True
+            context.iteration(False)
+        if self.pending() and context.pending():
+            self.fail(SnapshotFailure("conflict", "Regional state notifications did not settle; refresh before retrying"))
+        return self.pending()
+
+    def hook(self, callback, *args) -> bool:
+        try:
+            callback(*args)
+        except Exception as error:
+            # A failed durable checkpoint must never escape a GLib callback
+            # and leave the loop able to send or publish a later success.
+            self.hook_error = error
+            self.fail(SnapshotFailure("interrupted", "Regional operation checkpoint failed; inspect recovery before retrying"))
+        return self.pending()
+
+    def preflight_read(self, reply):
+        state = decode_regional_reply(self.kind, reply)
+        self.preview = make_regional_preview(self.action, self.argument, state, self.choices)
+        require_regional_generation(self.preview, self.generation)
+        self.expected = (parse_locale_configuration((self.argument, *(value for value in state.assignments
+            if not value.startswith("LANG=")))) if self.action == "locale-set" else
+            replace(state, timezone=self.argument) if self.action == "timezone-set" else
+            replace(state, ntp_enabled=self.argument == "enabled"))
+        if self.action == "locale-set":
+            require_locale_service_arguments(self.expected)
+        if not self.drain():
+            return
+        if self.dirty:
+            raise SnapshotFailure("conflict", "Regional state changed before dispatch; review a fresh confirmation")
+        if not self.hook(self.before_send, self.preview) or not self.drain():
+            return
+        require_regional_generation(self.preview, self.generation)
+        if self.dirty:
+            raise SnapshotFailure("conflict", "Regional state changed before dispatch; review a fresh confirmation")
+        method, parameters = {
+            "timezone-set": ("SetTimezone", lambda: self.GLib.Variant("(sb)", (self.argument, True))),
+            "ntp-set": ("SetNTP", lambda: self.GLib.Variant("(bb)", (self.argument == "enabled", True))),
+            "locale-set": ("SetLocale", lambda: self.GLib.Variant("(asb)", (self.expected.assignments, True))),
+        }[self.action]
+        arguments = parameters()
+        self.GLib.source_remove(self.deadline_source)
+        self.deadline = time.monotonic() + REGIONAL_MUTATION_SECONDS
+        self.deadline_source = self.GLib.timeout_add(REGIONAL_MUTATION_SECONDS * 1000, self.expire)
+        self.sent = True
+        self.request(self.owner, self.path, self.name, method, arguments, "()",
+            self.method_replied, interactive=True)
+
+    def method_replied(self, _reply):
+        self.acknowledged = True
+        if self.hook(self.after_reply):
+            self.read_state(self.verified)
+
+    def matches(self, state):
+        if self.action == "locale-set":
+            return locale_change_matches(self.expected.assignments, state.assignments)
+        if self.action == "timezone-set":
+            return state.timezone == self.expected.timezone
+        return state.can_ntp and state.ntp_enabled == self.expected.ntp_enabled
+
+    def verified(self, reply):
+        self.observed = decode_regional_reply(self.kind, reply)
+        if not self.matches(self.observed):
+            self.dirty = True
+        self.resolve_owner(self.completed)
+
+    def completed(self, reply):
+        self.require_owner(reply)
+        if not self.drain():
+            return
+        if self.dirty:
+            raise SnapshotFailure("conflict", "Regional state differs from the confirmed result; a concurrent writer may have changed or been overwritten. Refresh state before retrying")
+        self.finish(value=self.observed)
+
+    def owner_changed(self, _connection, _sender, _path, _interface, _member, parameters, _data):
+        if self.pending():
+            self.fail(SnapshotFailure("interrupted" if self.sent else "conflict",
+                "Regional service owner changed; the result cannot be confirmed. Refresh state before retrying"))
+
+    def properties_changed(self, _connection, sender, _path, _interface, _member, parameters, _data):
+        if not self.pending() or sender != self.owner:
+            return
+        try:
+            if parameters.get_type_string() != "(sa{sv}as)" or parameters.get_size() > 16384:
+                raise SnapshotFailure("malformed", "Invalid regional notification")
+            if parameters.get_child_value(0).unpack() != self.name:
+                return
+            changed = parameters.get_child_value(1)
+            invalidated = regional_string_array(parameters.get_child_value(2),
+                REGIONAL_TIME_PROPERTY_COUNT, MAX_TEXT_BYTES, 8192)
+            if changed.n_children() > REGIONAL_TIME_PROPERTY_COUNT:
+                raise SnapshotFailure("malformed", "Oversized regional notification")
+            keys = set()
+            for index in range(changed.n_children()):
+                key = changed.get_child_value(index).get_child_value(0)
+                if key.get_size() > MAX_TEXT_BYTES + 1 or key.unpack() in keys:
+                    raise SnapshotFailure("malformed", "Invalid regional notification key")
+                keys.add(key.unpack())
+            relevant = ({"Locale"} if self.action == "locale-set" else
+                        {"Timezone"} if self.action == "timezone-set" else {"NTP", "CanNTP"})
+            if not relevant.intersection(keys.union(invalidated)):
+                return
+            if not self.sent or relevant.intersection(invalidated):
+                self.dirty = True
+                return
+            for key in relevant.intersection(keys):
+                value = changed.lookup_value(key, None)
+                if key == "Locale":
+                    state = parse_locale_configuration(regional_string_array(value,
+                        len(REGIONAL_LOCALE_KEYS), MAX_TEXT_BYTES, REGIONAL_LOCALE_ARRAY_BYTES, separators=True))
+                    equivalent = self.matches(state)
+                elif key == "Timezone":
+                    equivalent = (value.get_type_string() == "s" and value.get_size() <= REGIONAL_TIMEZONE_MAX + 1
+                                  and value.unpack() == self.expected.timezone)
+                else:
+                    equivalent = (value.get_type_string() == "b" and value.unpack()
+                                  == (True if key == "CanNTP" else self.expected.ntp_enabled))
+                if not equivalent:
+                    self.dirty = True
+        except SnapshotFailure:
+            self.dirty = True
+
+    def run(self):
+        if self.started:
+            raise RuntimeError("Regional operations are single-use")
+        read_fedora_identity()
+        if self.action == "locale-set":
+            self.choices = validate_locale_catalog(read_locale_choices())
+        try:
+            return super().run()
+        finally:
+            if self.connection is not None:
+                for subscription in self.subscriptions:
+                    self.connection.signal_unsubscribe(subscription)
+                if self.closed_handler:
+                    self.connection.disconnect(self.closed_handler)
+                for rule in self.installed_rules:
+                    self.remove_match(rule)
 
 
 @dataclass(frozen=True)
