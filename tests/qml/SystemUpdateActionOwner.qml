@@ -62,6 +62,9 @@ ShellRoot {
             root.check(accepted || root.scenario === "cancel-conflict"
                 ? model.cancelUncertainId === "" : model.cancelUncertainId === root.identity.id,
                 "Unconfirmed dispatch has its own exact-ID guard, separate from acceptance");
+            root.check(root.scenario === "cancel-conflict"
+                ? model.cancelConflictId === root.identity.id : model.cancelConflictId === "",
+                "Stale-target conflicts have a distinct guard without claiming dispatch or acceptance");
             root.check(model.cancelDetail.indexOf(accepted ? "Waiting" : "not confirmed") >= 0
                 || root.scenario === "cancel-conflict", "Cancellation outcome has separate guidance");
         }
@@ -94,7 +97,11 @@ ShellRoot {
                 if (model.controlOwned && model.controlPurpose === "cancel") root.sawHandoffDuringCancel = true;
                 model.acceptSnapshot(null, root.scenario === "rejected" ? null : root.identity);
                 if (root.scenario === "rejected") Qt.callLater(root.finish);
-            } else model.acceptSnapshot(root.identity, null);
+            } else {
+                model.acceptSnapshot(root.identity, null);
+                if (root.scenario === "cancel-conflict")
+                    root.check(!model.canCancel && !model.requestCancel(), "Same-ID snapshot cannot revive a stale cancellation target");
+            }
         }
         onWaitingSnapshotChanged: {
             if (!waitingSnapshot && root.snapshots > 0 && model.result === null && !model.streamOwned)
@@ -105,9 +112,9 @@ ShellRoot {
         }
         onControlOwnedChanged: {
             if (!controlOwned && model.controlPurpose === "cancel" && model.streamOwned
-                    && root.scenario !== "cancel-conflict" && !root.retryProbed) {
+                    && !root.retryProbed) {
                 root.retryProbed = true;
-                root.check(!model.requestCancel(), "Accepted or uncertain cancellation cannot be dispatched twice");
+                root.check(!model.requestCancel(), "Accepted, uncertain or conflicting cancellation cannot be dispatched twice");
             }
         }
         onLogChanged: {
@@ -169,8 +176,10 @@ ShellRoot {
         model.acceptSnapshot(null, null);
         model.cancelUncertainId = "op-" + "d".repeat(32);
         model.cancelRequestedId = "op-" + "d".repeat(32);
+        model.cancelConflictId = "op-" + "d".repeat(32);
         root.check(model.startUpdate(root.identity.actionId, root.scenario === "install" ? "c".repeat(64) : ""), "Fixed update command starts once");
-        root.check(model.cancelUncertainId === "" && model.cancelRequestedId === "", "A new explicit origin clears previous-operation guards");
+        root.check(model.cancelUncertainId === "" && model.cancelRequestedId === "" && model.cancelConflictId === "",
+            "A new explicit origin clears previous-operation guards");
         root.check(!model.startUpdate("updates-refresh", ""), "No overlap before first output");
     }
     Timer {

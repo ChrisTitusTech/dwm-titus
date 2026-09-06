@@ -128,6 +128,9 @@ without claiming acceptance or resending the control. Same-ID observer recovery
 keeps that guard despite repeated `AllowCancel` hints; a different operation does
 not inherit it. The existing stream and bounded recovery remain the outcome
 owners.
+A stale-target cancellation response uses a distinct exact-ID conflict guard
+before releasing control ownership. Cached progress and same-ID recovery cannot
+resend that rejected control; a different operation establishes a new target.
 An identity-free snapshot establishes an empty journal only when recovery is
 available. Incomplete journal evidence retains the readable snapshot and takes
 the same bounded recovery path; it cannot silently abandon an unknown owner.

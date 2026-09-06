@@ -38,6 +38,7 @@ Scope {
     property string controlPurpose: ""
     property string cancelRequestedId: ""
     property string cancelUncertainId: ""
+    property string cancelConflictId: ""
     property string cancelDetail: ""
     property bool controlInvalid: false
     readonly property bool busy: streamOwned || controlOwned || waitingSnapshot || retryTimer.running
@@ -48,6 +49,7 @@ Scope {
         && (root.progress.kind === "update" || root.progress.kind === "refresh")
         && root.progress.state !== "cancel-requested" && root.cancelRequestedId !== root.progress.id
         && root.cancelUncertainId !== root.progress.id
+        && root.cancelConflictId !== root.progress.id
 
     function matches(left, right) {
         return left !== null && right !== null && left.id === right.id
@@ -118,7 +120,8 @@ Scope {
             root.terminalPending = false;
             if (root.cancelRequestedId !== target.id) root.cancelRequestedId = "";
             if (root.cancelUncertainId !== target.id) root.cancelUncertainId = "";
-            if (!root.cancelRequestedId && !root.cancelUncertainId) root.cancelDetail = "";
+            if (root.cancelConflictId !== target.id) root.cancelConflictId = "";
+            if (!root.cancelRequestedId && !root.cancelUncertainId && !root.cancelConflictId) root.cancelDetail = "";
             if (active !== null) root.discoveryInvalidated();
             root.progress = active;
             root.state = "observing";
@@ -159,6 +162,7 @@ Scope {
         root.operationError = null;
         root.cancelRequestedId = "";
         root.cancelUncertainId = "";
+        root.cancelConflictId = "";
         root.cancelDetail = "";
         root.state = "observing";
         root.detail = "Starting " + action;
@@ -226,7 +230,7 @@ Scope {
                 || (current.kind !== "update" && current.kind !== "refresh")
                 || !current.cancelable || current.state === "cancel-requested"
                 || root.state === "verifying" || root.cancelRequestedId === current.id
-                || root.cancelUncertainId === current.id) return null;
+                || root.cancelUncertainId === current.id || root.cancelConflictId === current.id) return null;
         return current;
     }
 
@@ -259,6 +263,10 @@ Scope {
         // dispatched. Keep a distinct guard without claiming acceptance, even
         // if a recovered same-ID stream repeats an old AllowCancel=true hint.
         if (!accepted && !unavailable) root.cancelUncertainId = root.controlId;
+        // A stale target cannot be made safe by the same observer's cached
+        // AllowCancel hint. Retire its control before releasing ownership;
+        // recovery of a different operation can establish a new target.
+        if (unavailable) root.cancelConflictId = root.controlId;
         root.cancelDetail = accepted
             ? "Cancellation requested. Waiting for PackageKit's verified terminal result."
             : unavailable
