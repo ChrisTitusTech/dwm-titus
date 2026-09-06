@@ -83,6 +83,137 @@ def rows(lines, kind):
     return [line.split("\t") for line in lines if line.startswith(f"{kind}\t")]
 
 
+class RegionalValidationTests(unittest.TestCase):
+    def malformed(self, function, *args):
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            function(*args)
+        self.assertEqual(caught.exception.code, "malformed")
+
+    def test_timezone_names_are_exact_bounded_ascii_paths(self):
+        for name in ("UTC", "America/Chicago", "Etc/GMT+5", "x" * 255):
+            self.assertEqual(provider.validate_timezone_name(name), name)
+        for name in (None, 1, "", "x" * 256, "/UTC", "UTC/", "A//B",
+                     ".", "..", "A/../B", "A/./B", "A\nB", "A\x7fB", "é"):
+            with self.subTest(name=name):
+                self.malformed(provider.validate_timezone_name, name)
+
+    def test_timezone_choices_preserve_order_and_reject_duplicates(self):
+        self.assertEqual(provider.validate_timezone_choices(["UTC", "Etc/UTC"]),
+                         ("UTC", "Etc/UTC"))
+        self.assertEqual(provider.validate_timezone_choices([]), ())
+        for values in ("UTC", {"UTC"}, ["UTC", "UTC"], ["UTC", None]):
+            self.malformed(provider.validate_timezone_choices, values)
+        self.assertEqual(len(provider.validate_timezone_choices(
+            [f"Zone/{index}" for index in range(2048)])), 2048)
+        self.malformed(provider.validate_timezone_choices,
+                       [f"Zone/{index}" for index in range(2049)])
+
+    def test_timezone_reply_byte_limit_is_inclusive(self):
+        values = [f"{index:04d}" + "x" * 124 for index in range(2048)]
+        self.assertEqual(sum(len(value) for value in values), 256 * 1024)
+        self.assertEqual(len(provider.validate_timezone_choices(values)), 2048)
+        values[-1] += "x"
+        self.malformed(provider.validate_timezone_choices, values)
+
+    def test_timezone_choice_requires_exact_fresh_membership(self):
+        self.assertEqual(provider.prepare_timezone_change("UTC", ["UTC"]), "UTC")
+        for choices in ([], ["Etc/UTC"], ["utc"]):
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.prepare_timezone_change("UTC", choices)
+            self.assertEqual(caught.exception.code, "conflict")
+        self.malformed(provider.prepare_timezone_change, "UTC", ["UTC", "UTC"])
+
+    def test_locale_names_and_output_are_strict_and_not_normalized(self):
+        for name in ("C", "C.utf8", "en_US.utf8", "sr_RS@latin", "x" * 128):
+            self.assertEqual(provider.validate_locale_name(name), name)
+        for name in (None, "", "x" * 129, "en US", "C\t", "C\r", "C\n",
+                     "C\x00", "C\x7f", "é", "\ud800"):
+            self.malformed(provider.validate_locale_name, name)
+        self.assertEqual(provider.validate_locale_choices(b"C\nen_US.utf8\n"),
+                         ("C", "en_US.utf8"))
+        self.assertEqual(provider.validate_locale_choices(b"C"), ("C",))
+        self.assertEqual(provider.validate_locale_choices(b""), ())
+        for output in ("C\n", b"\n", b"C\n\n", b"C\r\n", b"C\nC\n",
+                       b"C\n\xff", b"x" * (2 * 1024 * 1024 + 1)):
+            self.malformed(provider.validate_locale_choices, output)
+
+    def test_locale_record_count_and_name_limits_are_inclusive(self):
+        names = [f"{index:04d}" + "x" * 124 for index in range(4096)]
+        self.assertEqual(provider.validate_locale_choices(
+            ("\n".join(names) + "\n").encode("ascii")), tuple(names))
+        self.malformed(provider.validate_locale_choices,
+                       ("\n".join(names) + "\nextra\n").encode("ascii"))
+
+    def test_locale_configuration_preserves_and_orders_all_allowlisted_keys(self):
+        values = [f"{key}=C" for key in reversed(provider.REGIONAL_LOCALE_KEYS)]
+        parsed = provider.parse_locale_configuration(values)
+        self.assertEqual(parsed.assignments,
+                         tuple(f"{key}=C" for key in provider.REGIONAL_LOCALE_KEYS))
+        self.assertEqual(parsed.lang, "C")
+        self.assertEqual(parsed.detail, ", ".join(parsed.assignments[1:]))
+        empty = provider.parse_locale_configuration(["LC_TIME=", "LANGUAGE="])
+        self.assertEqual(empty.lang, "unknown")
+        self.assertEqual(empty.detail, "none")
+        self.assertEqual(empty.assignments, ("LANGUAGE=", "LC_TIME="))
+        self.assertEqual(provider.parse_locale_configuration([]).assignments, ())
+        self.assertEqual(provider.parse_locale_configuration(["LANG="]).lang, "")
+
+    def test_locale_configuration_rejects_malformed_arrays_without_sanitizing(self):
+        for values in ("LANG=C", {"LANG=C"}, [None], ["LANG"], ["=C"],
+                       ["LC_ALL=C"], ["PATH=/tmp"], ["LANG=C", "LANG=C"],
+                       ["LANG=C\n"], ["LANG=\x00"], ["LANG=\x85"],
+                       ["LANG=C\u2028x"], ["LANG=C\u2029x"], ["LANG=C\u202ex"],
+                       ["LANG=\ud800"], ["LANG=C"] * 15):
+            with self.subTest(values=values):
+                self.malformed(provider.parse_locale_configuration, values)
+
+    def test_locale_assignment_and_detail_utf8_limits_are_inclusive(self):
+        # LANG is not an override, so its assignment limit can be tested alone.
+        self.assertEqual(len(provider.parse_locale_configuration(
+            ["LANG=" + "é" * 253 + "x"]).lang.encode("utf-8")), 507)
+        self.malformed(provider.parse_locale_configuration, ["LANG=" + "é" * 254])
+        values = ["LANG=C", "LC_TIME=" + "é" * 250, "LC_NUMERIC=x"]
+        self.malformed(provider.parse_locale_configuration, values)
+        values = ["LC_TIME=" + "x" * 493, "LC_NAME=x"]
+        self.assertEqual(len(provider.parse_locale_configuration(values).detail), 512)
+        values[-1] += "x"
+        self.malformed(provider.parse_locale_configuration, values)
+
+    def test_locale_change_requires_exact_fresh_choice_and_preserves_overrides(self):
+        before = ["LC_TIME=de_DE.utf8", "LANG=en_US.utf8", "LANGUAGE=de:en"]
+        result = provider.prepare_locale_change(before, "LANG=fr_FR.utf8",
+                                                b"C\nfr_FR.utf8\n")
+        self.assertEqual(result.assignments,
+                         ("LANG=fr_FR.utf8", "LANGUAGE=de:en", "LC_TIME=de_DE.utf8"))
+        self.assertEqual(before[1], "LANG=en_US.utf8")
+        for argument in ("fr_FR.utf8", "LC_TIME=fr_FR.utf8", "LANG=", None):
+            self.malformed(provider.prepare_locale_change, before, argument,
+                           b"fr_FR.utf8\n")
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            provider.prepare_locale_change(before, "LANG=fr_FR.utf8", b"C\n")
+        self.assertEqual(caught.exception.code, "conflict")
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.prepare_locale_change(before, "LANG=fr_FR.UTF-8", b"fr_FR.utf8\n")
+
+    def test_effective_locale_comparison_preserves_overrides_not_array_spelling(self):
+        expected = ["LANG=C", "LC_TIME=C", "LC_NUMERIC=de_DE.utf8", "LANGUAGE=de:en"]
+        self.assertTrue(provider.locale_change_matches(expected,
+            ["LANGUAGE=de:en", "LC_NUMERIC=de_DE.utf8", "LANG=C"]))
+        for observed in (["LANG=C", "LANGUAGE=de:en"],
+                         ["LANG=C", "LC_NUMERIC=de_DE.utf8"],
+                         ["LANG=C", "LC_NUMERIC=de_DE.utf8", "LANGUAGE=en:de"],
+                         ["LANG=C", "LC_NUMERIC=de_DE.utf8", "LANGUAGE=de:en", "LC_TIME=fr"],
+                         ["LANG=fr", "LC_NUMERIC=de_DE.utf8", "LANGUAGE=de:en"]):
+            self.assertFalse(provider.locale_change_matches(expected, observed))
+        self.assertTrue(provider.locale_change_matches(["LANG=C", "LC_TIME="], ["LANG=C"]))
+        self.assertTrue(provider.locale_change_matches(["LANG=C"], ["LANG=C", "LANGUAGE=en"]))
+        self.assertFalse(provider.locale_change_matches(["LANG=C", "LANGUAGE="],
+                                                        ["LANG=C", "LANGUAGE=en"]))
+        self.assertFalse(provider.locale_change_matches(["LANG=C", "LANGUAGE="],
+                                                        ["LANG=C"]))
+        self.malformed(provider.locale_change_matches, ["LANG=C"], ["LC_ALL=C"])
+
+
 class UpdateEventMonitorTests(unittest.TestCase):
     def monitor(self):
         class BusError(Exception):
