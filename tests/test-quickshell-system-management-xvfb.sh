@@ -41,7 +41,12 @@ cleanup() {
 	set +e
 	stop_process "${quickshell_pid:-}"
 	if [ -n "${helper:-}" ]; then
-		for helper_pid in $(pgrep -f "$helper snapshot" 2>/dev/null || true); do
+		for helper_pid in $(pgrep -f "$helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
+	if [ -n "${discovery_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$discovery_helper " 2>/dev/null || true); do
 			stop_process "$helper_pid"
 		done
 	fi
@@ -85,6 +90,11 @@ set -eu
 fixture=${DWM_SYSTEM_MANAGEMENT_TEST_FIXTURE:?}
 mode=$(sed -n '1p' "$fixture/mode")
 case ${1:-} in
+watch-updates)
+	[ "$mode" != monitor-failure ] || exit 1
+	printf '%s\n' "$$" >"$fixture/monitor-pid"
+	exec /usr/bin/python3 -c 'import signal; print("update-event\tready", flush=True); signal.pause()' "$0" watch-updates
+	;;
 watch-operation | ack-operation)
 	case ${2:-} in
 	op-11111111111111111111111111111111) action=timezone-set; kind=timezone ;;
@@ -127,7 +137,7 @@ snapshot() {
 }
 
 case $mode in
-valid)
+valid | monitor-failure)
 	snapshot
 	;;
 requested-install)
@@ -268,6 +278,47 @@ while [ "$i" -lt 100 ]; do
 done
 DISPLAY=$display xprop -root >/dev/null
 
+# Exercise pane-scoped events and atomic dirty-cycle handoffs on a private bus.
+mkdir -p "$work/discovery" "$work/discovery-data/dwm-titus/scripts" "$work/discovery-state"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/discovery/"
+cp "$repo/tests/qml/SystemDiscovery.qml" "$work/discovery/shell.qml"
+discovery_helper=$work/discovery-data/dwm-titus/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-discovery-provider.py" "$discovery_helper"
+chmod +x "$discovery_helper"
+for pipe_case in absent regular no-reader; do
+	pipe_fixture=$work/discovery-pipe-$pipe_case
+	mkdir -p "$pipe_fixture"
+	case $pipe_case in
+	regular) : >"$pipe_fixture/events" ;;
+	no-reader) mkfifo "$pipe_fixture/events" ;;
+	esac
+	pipe_status=0
+	timeout --kill-after=1s 2s env DWM_DISCOVERY_FIXTURE="$pipe_fixture" \
+		"$discovery_helper" fixture-control events >"$pipe_fixture/log" 2>&1 || pipe_status=$?
+	if [ "$pipe_status" -eq 0 ] || [ "$pipe_status" -eq 124 ] || [ "$pipe_status" -eq 137 ]; then
+		printf 'Fixture event writer did not fail promptly for %s\n' "$pipe_case" >&2
+		exit 1
+	fi
+	[ ! -s "$pipe_fixture/events" ]
+	[ "$pipe_case" != absent ] || [ ! -e "$pipe_fixture/events" ]
+done
+printf 'Discovery fixture event-writer failure cases: PASS\n'
+timeout --foreground --kill-after=2s 50s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/discovery-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_DISCOVERY_FIXTURE="$work/discovery-state" \
+	quickshell --no-duplicate --path "$work/discovery/shell.qml" >"$work/discovery.log" 2>&1 &
+quickshell_pid=$!
+discovery_status=0
+wait "$quickshell_pid" || discovery_status=$?
+quickshell_pid=
+if [ "$discovery_status" -ne 0 ] || ! grep -F 'Discovery native tests: PASS' "$work/discovery.log" ||
+	grep -Fq 'Discovery FAILED:' "$work/discovery.log" || [ -e "$work/discovery-state/overlap" ] ||
+	[ -e "$work/discovery-state/unmonitored-read" ]; then
+	[ ! -e "$work/discovery-state/unmonitored-read" ] || printf 'Discovery snapshot preceded replacement readiness\n' >&2
+	cat "$work/discovery.log" >&2
+	exit 1
+fi
+
 # Run the isolated operation parser on the same nested display before loading
 # the managed shell. This fixture never connects to host PackageKit.
 mkdir -p "$work/operation-parser"
@@ -388,7 +439,7 @@ if ! grep -F 'Operation owner native tests: PASS' "$work/operation-owner-delayed
 	cat "$work/operation-owner-delayed-snapshot.log" >&2
 	exit 1
 fi
-[ "$(sed -n '1p' "$work/owner-state/delayed-snapshots")" -eq 2 ]
+[ "$(sed -n '1p' "$work/owner-state/delayed-snapshots")" -eq 3 ]
 [ "$(sed -n '1p' "$work/owner-state/ack-operation-16")" -eq 1 ]
 cp "$repo/tests/qml/SystemOperationHandoff.qml" "$work/operation-owner/handoff.qml"
 timeout --foreground --kill-after=2s 10s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
@@ -447,7 +498,11 @@ wait_state() {
 			return 1
 		fi
 		state=$(ipc systemManagementSnapshotState 2>/dev/null || true)
-		[ "$state" != "$expected" ] || return 0
+		if [ "$state" = "$expected" ]; then
+			case $(ipc systemManagementDiscoveryStatus) in
+			idle:* | blocked:*) return 0 ;;
+			esac
+		fi
 		i=$((i + 1))
 		sleep 0.05
 	done
@@ -459,6 +514,19 @@ wait_state() {
 
 wait_state ready
 [ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+[ "$(pgrep -f "$helper watch-updates")" = "$(sed -n '1p' "$fixture/monitor-pid")" ]
+
+printf 'monitor-failure\n' >"$fixture/mode"
+ipc close >/dev/null
+ipc open >/dev/null
+ipc select system >/dev/null
+wait_state ready
+[ "$(ipc systemManagementDiscoveryStatus)" = idle:failed ]
+[ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+if [ -n "${DWM_SYSTEM_MANAGEMENT_CAPTURE_DIR:-}" ]; then
+	mkdir -p -- "$DWM_SYSTEM_MANAGEMENT_CAPTURE_DIR"
+	DISPLAY=$display import -window root "$DWM_SYSTEM_MANAGEMENT_CAPTURE_DIR/discovery-unavailable.png"
+fi
 
 printf 'requested-install\n' >"$fixture/mode"
 ipc refresh >/dev/null

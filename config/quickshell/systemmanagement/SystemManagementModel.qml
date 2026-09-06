@@ -6,6 +6,7 @@ import qs.core
 Scope {
     id: root
 
+    signal confirmationInvalidated()
     property bool settingsVisible: false
     property string snapshotState: "idle"
     property string message: "System management has not been loaded"
@@ -29,10 +30,14 @@ Scope {
     property string snapshotErrorDetail: ""
     property int requestGeneration: 0
     readonly property alias operation: operationModel
+    readonly property alias discovery: discoveryModel
 
     readonly property bool busy: snapshotOwned
-    readonly property string providerState: root.updateProvider.status
+    readonly property string providerState: root.settingsVisible
+        && (discoveryModel.unresolved || discoveryModel.failed) && root.updateProvider.status === "available"
+        ? "partial" : root.updateProvider.status
     readonly property string providerDetail: root.updateProvider.detail
+    readonly property string discoveryDetail: discoveryModel.detail
 
     function providerFallback(detail) {
         return { "status": "unavailable", "providerClass": "delegated",
@@ -557,11 +562,13 @@ Scope {
 
     function openSettings() {
         root.settingsVisible = true;
-        root.refresh();
+        discoveryModel.open();
+        root.refreshRecovery();
     }
 
     function closeSettings() {
         root.settingsVisible = false;
+        discoveryModel.close();
         root.snapshotPending = false;
         if (!root.snapshotRequired) {
             root.requestGeneration++;
@@ -571,11 +578,15 @@ Scope {
 
     function refresh() {
         if (!root.settingsVisible) return;
+        discoveryModel.refresh();
+        root.refreshRecovery();
+    }
+
+    function refreshRecovery() {
         const requiredRecovery = operationModel.waitingSnapshot || operationModel.blocked
             || operationModel.state === "recovering";
         operationModel.resetRecovery();
         if (requiredRecovery) operationModel.requestSnapshot();
-        else root.requestSnapshot(false);
     }
 
     function requestSnapshot(required) {
@@ -585,14 +596,19 @@ Scope {
             root.requiredPending = root.requiredPending || required;
             return;
         }
+        required = required || root.requiredPending;
+        if (!required && !discoveryModel.canTake()) return;
         root.snapshotPending = false;
         root.requiredPending = false;
+        // Claim the owner before any QML signal from discovery.take/publication.
+        root.snapshotOwned = true;
+        snapshotProcess.cycleToken = discoveryModel.take();
         root.requestGeneration++;
         snapshotProcess.generation = root.requestGeneration;
         root.snapshotRequired = required;
         root.snapshotHasOutput = false;
         root.snapshotErrorDetail = "";
-        root.snapshotOwned = true;
+        root.confirmationInvalidated();
         root.snapshotState = "loading";
         root.message = "Reading system update status...";
         snapshotProcess.running = true;
@@ -601,8 +617,7 @@ Scope {
     function finishSnapshot(exitCode, normalExit) {
         if (!root.snapshotOwned) return;
         const current = snapshotProcess.generation === root.requestGeneration;
-        root.snapshotOwned = false;
-        root.snapshotRequired = false;
+        discoveryModel.beforePublish(snapshotProcess.cycleToken);
         if (current) {
             if (normalExit && exitCode === 0 && root.snapshotHasOutput) {
                 if (root.parseSnapshot(snapshotOutput.text, snapshotProcess.generation))
@@ -614,6 +629,11 @@ Scope {
                 operationModel.snapshotFailed();
             }
         }
+        // Reentrant invalidations during parse/acceptSnapshot still belong to
+        // this completion handoff. Reserve the settling read before idle.
+        discoveryModel.complete(snapshotProcess.cycleToken, current && root.snapshotState !== "failure");
+        root.snapshotRequired = false;
+        root.snapshotOwned = false;
         // The old process emits runningChanged after exited. Queue the next
         // launch so that signal cannot finalize a new run's ownership.
         Qt.callLater(function() {
@@ -624,8 +644,15 @@ Scope {
 
     Component.onCompleted: Qt.callLater(function() { operationModel.requestSnapshot(); })
 
+    SystemUpdateDiscovery {
+        id: discoveryModel
+        onSnapshotRequested: root.requestSnapshot(false)
+        onInvalidated: root.confirmationInvalidated()
+    }
+
     SystemOperationModel {
         id: operationModel
+        onDiscoveryInvalidated: discoveryModel.invalidate()
         onSnapshotRequested: root.requestSnapshot(true)
         onAcknowledged: operationId => {
             if (root.terminalHandoff !== null && root.terminalHandoff.id === operationId)
@@ -638,6 +665,7 @@ Scope {
     Process {
         id: snapshotProcess
         property int generation: 0
+        property var cycleToken: null
         command: Commands.terminatingCheckedCommand(
             Commands.systemManagementCommand("snapshot", []))
         running: false

@@ -573,6 +573,12 @@ ShellRoot {
             return systemManagementModel.snapshotState;
         }
 
+        function systemManagementDiscoveryStatus(): string {
+            const discovery = systemManagementModel.discovery;
+            return discovery.phase + ":" + (discovery.ready ? "ready"
+                : discovery.failed ? "failed" : "inactive");
+        }
+
         function systemManagementOperationState(): string {
             return systemManagementModel.operation.state;
         }

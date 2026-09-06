@@ -62,10 +62,14 @@ versions from `config.mk`.
 
 ### Added
 
+- Monitor update changes while the System Settings section is open. Coalesce
+  bursts into an initial read plus at most one settling read, preserve readable
+  status with reload guidance when state keeps changing or monitoring fails,
+  and stop optional discovery on closure without losing operation recovery.
+
 - Add a read-only PackageKit change monitor with fixed global subscriptions,
   bounded setup, and explicit readiness. Private-bus tests verify signal
-  filtering, daemon replacement, closure, and lost output. Settings discovery
-  coalescing and confirmation invalidation remain pending integration.
+  filtering, daemon replacement, closure, and lost output.
 
 - Restore journaled system operations in the shell root and keep their progress
   visible across Settings closure. Verify complete terminal results before exact

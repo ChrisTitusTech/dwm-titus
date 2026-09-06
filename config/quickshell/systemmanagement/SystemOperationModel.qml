@@ -10,6 +10,7 @@ Scope {
 
     signal snapshotRequested()
     signal acknowledged(string operationId)
+    signal discoveryInvalidated()
 
     property string state: "idle"
     property string detail: ""
@@ -87,6 +88,7 @@ Scope {
             const target = active !== null ? active : terminal;
             root.parser = Protocol.create(target.id, target.actionId);
             root.streamOwned = true;
+            if (active !== null) root.discoveryInvalidated();
             root.progress = active;
             root.state = "observing";
             root.detail = "Observing " + target.actionId;
@@ -123,6 +125,8 @@ Scope {
 
     function finishWatch(exitCode, normalExit) {
         if (!root.streamOwned) return;
+        if (root.parser.expectedAction === "updates-refresh" || root.parser.expectedAction === "updates-install-all")
+            root.discoveryInvalidated();
         root.streamOwned = false;
         if (!Protocol.finish(root.parser, exitCode, normalExit, true)) {
             root.recover(exitCode === 3 ? "Operation watch target changed (conflict)" : root.parser.failure);

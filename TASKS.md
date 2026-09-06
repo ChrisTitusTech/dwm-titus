@@ -95,14 +95,20 @@ across pane closure, verifies results before acknowledgment, and bounds failed
 recovery to three retries. Native nested-X11 fixtures exercise live progress,
 failed-result replay, stale collector data, restart adoption, and failed process
 starts without host service calls. Originating mutation, confirmation, and cancel
-UI integration plus event-driven discovery invalidation must be completed before
-this boundary can be accepted. Settings mutation actions remain disabled.
+UI integration must be completed before this boundary can be accepted.
+Settings mutation actions remain disabled.
 The fixed `watch-updates` command now observes only global PackageKit discovery
 changes and daemon ownership changes. It establishes subscriptions before
 reporting readiness, bounds setup to ten seconds, and never starts a transaction.
 Private-bus and callback fixtures cover filtering, startup races, cleanup, and
-lost output. The pane-scoped subscriber and bounded dirty-state coalescing remain
-the next integration step; this helper alone does not invalidate Settings state.
+lost output. The pane-scoped subscriber now waits for readiness before its first
+discovery read, reserves at most one settling read per automatic burst, and
+retains explicit-refresh guidance if that read changes again. Snapshot publication
+retains ownership through reentrant completion callbacks. Failed monitoring keeps
+finite status readable; pane closure stops the subscriber and optional reads
+without stopping required recovery or the root operation owner. PackageKit
+observer completion and uncertain exit also invalidate discovery without relying
+on a global signal. Confirmation invalidation is exposed for the next UI boundary.
 The preview validators now preserve requested `install` as well as `update`
 actions, matching the PackageKit DNF5 backend's discovery/simulation contract.
 Missing or duplicate requested IDs, outbound requested actions, and unrequested
