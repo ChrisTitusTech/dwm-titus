@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import bisect
 import contextlib
 import errno
 import fcntl
@@ -177,6 +178,15 @@ REGIONAL_READ_REQUESTS = {
                          "org.freedesktop.timedate1", "ListTimezones", None,
                          None, "(as)"),
 }
+
+ACCOUNTS_NAME = "org.freedesktop.Accounts"
+ACCOUNTS_PATH = "/org/freedesktop/Accounts"
+ACCOUNT_INTERFACE = "org.freedesktop.Accounts.User"
+ACCOUNT_PROPERTIES = {"UserName": "s", "RealName": "s", "SystemAccount": "b", "LocalAccount": "b"}
+ACCOUNT_LIMIT = 256
+ACCOUNT_LIST_BYTES = 256 * 1024
+ACCOUNT_PROPERTY_CONCURRENCY = 8
+DBUS_OBJECT_PATH = re.compile(r"/(?:[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*)?")
 
 ROLE_REFRESH_CACHE = 13
 EXIT_SUCCESS = 1
@@ -416,12 +426,13 @@ def decode_regional_reply(kind: str, reply: object) -> object:
     return RegionalTimeState(validate_timezone_name(values[0]), *values[1:])
 
 
-class RegionalRead:
-    """One fixed read with an aggregate connection, reply, and decoding deadline."""
+class ServiceRead:
+    """Shared single-use lifetime for bounded, asynchronous service readers."""
 
-    def __init__(self, kind: str, Gio=None, GLib=None) -> None:
-        if not isinstance(kind, str) or kind not in REGIONAL_READ_REQUESTS:
-            raise SnapshotFailure("malformed", "Unknown regional read")
+    label = "Service"
+    seconds = REGIONAL_READ_SECONDS
+
+    def __init__(self, Gio=None, GLib=None) -> None:
         if Gio is None or GLib is None:
             try:
                 import gi
@@ -430,7 +441,7 @@ class RegionalRead:
             except (ImportError, ValueError) as error:
                 raise SnapshotFailure("missing-provider", "System Python GObject bindings are unavailable",
                                       "unavailable") from error
-        self.kind, self.Gio, self.GLib = kind, Gio, GLib
+        self.Gio, self.GLib = Gio, GLib
         self.loop = GLib.MainLoop()
         self.cancellable = Gio.Cancellable()
         self.connection = None
@@ -449,22 +460,28 @@ class RegionalRead:
         self.cancellable.cancel()
         self.loop.quit()
 
+    def fail(self, failure: SnapshotFailure) -> None:
+        self.finish(failure=failure)
+
+    def timeout_failure(self) -> SnapshotFailure:
+        return SnapshotFailure("timeout", f"{self.label} read timed out", "unavailable")
+
     def expire(self) -> bool:
         self.deadline_source = 0
-        self.finish(failure=SnapshotFailure("timeout", "Regional read timed out", "unavailable"))
+        self.fail(self.timeout_failure())
         return self.GLib.SOURCE_REMOVE
 
     def pending(self) -> bool:
         if self.done:
             return False
         if time.monotonic() >= self.deadline:
-            self.finish(failure=SnapshotFailure("timeout", "Regional read timed out", "unavailable"))
+            self.fail(self.timeout_failure())
             return False
         return True
 
     def bus_failure(self, error: Exception) -> SnapshotFailure:
         if time.monotonic() >= self.deadline:
-            return SnapshotFailure("timeout", "Regional read timed out", "unavailable")
+            return self.timeout_failure()
         name = self.Gio.dbus_error_get_remote_error(error)
         code, status = {
             "org.freedesktop.DBus.Error.ServiceUnknown": ("missing-provider", "unavailable"),
@@ -483,7 +500,48 @@ class RegionalRead:
         if (name is None and error.matches(self.Gio.io_error_quark(),
                                           self.Gio.IOErrorEnum.TIMED_OUT)):
             code, status = "timeout", "unavailable"
-        return SnapshotFailure(code, "Regional service read failed", status)
+        return SnapshotFailure(code, f"{self.label} service read failed", status)
+
+    def connected(self, _source, result, _data) -> None:
+        raise NotImplementedError
+
+    def run(self) -> object:
+        if self.started:
+            raise RuntimeError(f"{self.label} reads are single-use")
+        self.started = True
+        self.deadline = time.monotonic() + self.seconds
+        try:
+            self.deadline_source = self.GLib.timeout_add(self.seconds * 1000, self.expire)
+            self.Gio.bus_get(self.Gio.BusType.SYSTEM, self.cancellable, self.connected, None)
+            if not self.done:
+                self.loop.run()
+            if not self.done:
+                self.fail(SnapshotFailure("internal", f"{self.label} read ended without a reply", "unavailable"))
+        except self.GLib.Error as error:
+            self.fail(self.bus_failure(error))
+        finally:
+            self.done = True
+            self.cancellable.cancel()
+            self.loop.quit()
+            if self.deadline_source:
+                self.GLib.source_remove(self.deadline_source)
+                self.deadline_source = 0
+            # bus_get returns a shared connection; never close another reader's bus.
+        if self.failure:
+            raise self.failure
+        return self.value
+
+
+class RegionalRead(ServiceRead):
+    """One fixed read with an aggregate connection, reply, and decoding deadline."""
+
+    label = "Regional"
+
+    def __init__(self, kind: str, Gio=None, GLib=None) -> None:
+        if not isinstance(kind, str) or kind not in REGIONAL_READ_REQUESTS:
+            raise SnapshotFailure("malformed", "Unknown regional read")
+        self.kind = kind
+        super().__init__(Gio, GLib)
 
     def connected(self, _source, result, _data) -> None:
         if not self.pending():
@@ -515,31 +573,247 @@ class RegionalRead:
             if self.pending():
                 self.finish(failure=error)
 
-    def run(self) -> object:
-        if self.started:
-            raise RuntimeError("Regional reads are single-use")
-        self.started = True
-        self.deadline = time.monotonic() + REGIONAL_READ_SECONDS
+
+@dataclass(frozen=True)
+class AccountRecord:
+    path: str
+    scope: str
+    display_name: str
+    login_name: str
+    local_account: bool
+
+    def fields(self) -> tuple[str, ...]:
+        return "account", self.path, self.scope, self.display_name, self.login_name
+
+
+@dataclass(frozen=True)
+class AccountInventory:
+    records: tuple[AccountRecord, ...]
+    candidates: tuple[str, ...]
+    current_path: str | None
+    status: str
+    errors: tuple[SnapshotFailure, ...]
+
+
+def account_object_path(value: object) -> str:
+    if value.get_type_string() != "o" or value.get_size() > MAX_TEXT_BYTES + 1:
+        raise SnapshotFailure("malformed", "Invalid AccountsService object path")
+    path = value.unpack()
+    if not isinstance(path, str) or DBUS_OBJECT_PATH.fullmatch(path) is None:
+        raise SnapshotFailure("malformed", "Invalid AccountsService object path")
+    return path
+
+
+class AccountRead(ServiceRead):
+    """Bounded account discovery; neither publishes a protocol nor changes users."""
+
+    label = "Account"
+    seconds = 3
+
+    def __init__(self, Gio=None, GLib=None) -> None:
+        super().__init__(Gio, GLib)
+        self.enumerated = False
+        self.selected: list[str] = []
+        self.seen: set[str] = set()
+        self.current_path = None
+        self.candidates: tuple[str, ...] = ()
+        self.errors: dict[str, SnapshotFailure] = {}
+        self.values: dict[str, dict[str, object]] = {}
+        self.records: dict[str, AccountRecord] = {}
+        self.invalid: set[str] = set()
+        self.queue: tuple[tuple[str, str], ...] = ()
+        self.offset = 0
+        self.outstanding = 0
+        self.draining = False
+
+    def note(self, error: SnapshotFailure) -> None:
+        # One diagnostic per closed error code, not one per failed property.
+        self.errors.setdefault(error.code, error)
+
+    def inventory(self) -> AccountInventory:
+        records = tuple(self.records[path] for path in self.candidates if path in self.records)
+        errors = dict(self.errors)
+        if (len(records) > ACCOUNT_LIMIT
+                or sum(encoded_record_size(row.fields()) for row in records) > ACCOUNT_LIST_BYTES):
+            records = ()
+            errors["malformed"] = SnapshotFailure("malformed", "Account rows exceeded the protocol budget")
+        status = "available"
+        if errors:
+            status = "partial" if self.enumerated or records or "timeout" in errors else next(iter(errors.values())).status
+        return AccountInventory(records, self.candidates, self.current_path, status, tuple(errors.values()))
+
+    def fail(self, failure: SnapshotFailure) -> None:
+        if not self.done:
+            self.note(failure)
+            self.finish(value=self.inventory())
+
+    def request(self, path, interface, method, parameters, reply_type, callback, data=None):
+        if self.pending():
+            self.connection.call(ACCOUNTS_NAME, path, interface, method, parameters,
+                self.GLib.VariantType.new(reply_type), self.Gio.DBusCallFlags.NONE,
+                max(1, int((self.deadline - time.monotonic()) * 1000)),
+                self.cancellable, callback, data)
+
+    def connected(self, _source, result, _data) -> None:
+        if not self.pending():
+            return
         try:
-            self.deadline_source = self.GLib.timeout_add(REGIONAL_READ_SECONDS * 1000, self.expire)
-            self.Gio.bus_get(self.Gio.BusType.SYSTEM, self.cancellable, self.connected, None)
-            if not self.done:
-                self.loop.run()
-            if not self.done:
-                self.finish(failure=SnapshotFailure("internal", "Regional read ended without a reply", "unavailable"))
+            self.connection = self.Gio.bus_get_finish(result)
+            self.connection.set_exit_on_close(False)
+            self.request(ACCOUNTS_PATH, ACCOUNTS_NAME, "ListCachedUsers", None, "(ao)", self.cached)
         except self.GLib.Error as error:
-            self.finish(failure=self.bus_failure(error))
+            self.fail(self.bus_failure(error))
+
+    def cached(self, connection, result, _data) -> None:
+        if not self.pending():
+            return
+        try:
+            reply = connection.call_finish(result)
+            if reply.get_type_string() != "(ao)":
+                raise SnapshotFailure("malformed", "Invalid cached account list")
+            self.enumerated = True
+            paths = reply.get_child_value(0)
+            # Never unpack or sort an unbounded reply. Retain at most 257
+            # unique identities for overflow evidence and the lowest 256 paths.
+            for index in range(paths.n_children()):
+                if not self.pending():
+                    return
+                try:
+                    path = account_object_path(paths.get_child_value(index))
+                except SnapshotFailure as error:
+                    if not self.pending():
+                        return
+                    self.note(error)
+                    continue
+                if not self.pending():
+                    return
+                if len(self.seen) <= ACCOUNT_LIMIT:
+                    self.seen.add(path)
+                if len(self.seen) > ACCOUNT_LIMIT:
+                    self.note(SnapshotFailure("malformed", "Too many AccountsService candidates"))
+                if path not in self.selected and (len(self.selected) < ACCOUNT_LIMIT or path < self.selected[-1]):
+                    bisect.insort(self.selected, path)
+                    if len(self.selected) > ACCOUNT_LIMIT:
+                        self.selected.pop()
+        except self.GLib.Error as error:
+            if not self.pending():
+                return
+            self.note(self.bus_failure(error))
+        except SnapshotFailure as error:
+            if not self.pending():
+                return
+            self.note(error)
+        if self.pending():
+            try:
+                self.request(ACCOUNTS_PATH, ACCOUNTS_NAME, "FindUserById",
+                    self.GLib.Variant("(x)", (os.getuid(),)), "(o)", self.current)
+            except self.GLib.Error as error:
+                self.note(self.bus_failure(error))
+                self.start_properties()
+
+    def current(self, connection, result, _data) -> None:
+        if not self.pending():
+            return
+        try:
+            reply = connection.call_finish(result)
+            if reply.get_type_string() != "(o)":
+                raise SnapshotFailure("malformed", "Invalid current account reply")
+            current = account_object_path(reply.get_child_value(0))
+            if not self.pending():
+                return
+            if len(self.seen) >= ACCOUNT_LIMIT and current not in self.seen:
+                self.note(SnapshotFailure("malformed", "Too many AccountsService candidates"))
+            if self.pending():
+                self.current_path = current
+        except self.GLib.Error as error:
+            if not self.pending():
+                return
+            self.note(self.bus_failure(error))
+        except SnapshotFailure as error:
+            if not self.pending():
+                return
+            self.note(error)
+        self.start_properties()
+
+    def start_properties(self) -> None:
+        if not self.pending():
+            return
+        others = [path for path in self.selected if path != self.current_path][:ACCOUNT_LIMIT - 1]
+        self.candidates = ((self.current_path,) if self.current_path is not None else ()) + tuple(others)
+        self.values = {path: {} for path in self.candidates}
+        self.queue = tuple((path, name) for path in self.candidates for name in ACCOUNT_PROPERTIES)
+        self.pump()
+
+    def pump(self) -> None:
+        if self.draining or not self.pending():
+            return
+        self.draining = True
+        try:
+            while self.pending() and self.outstanding < ACCOUNT_PROPERTY_CONCURRENCY and self.offset < len(self.queue):
+                path, name = self.queue[self.offset]
+                self.offset += 1
+                if path in self.invalid:
+                    continue
+                self.outstanding += 1
+                try:
+                    self.request(path, PROPERTIES_INTERFACE, "Get",
+                        self.GLib.Variant("(ss)", (ACCOUNT_INTERFACE, name)), "(v)", self.property_reply, (path, name))
+                except self.GLib.Error as error:
+                    self.outstanding -= 1
+                    self.invalid.add(path)
+                    self.note(self.bus_failure(error))
+            if not self.outstanding and self.offset == len(self.queue):
+                value = self.inventory()
+                if self.pending():
+                    self.finish(value=value)
         finally:
-            self.done = True
-            self.cancellable.cancel()
-            self.loop.quit()
-            if self.deadline_source:
-                self.GLib.source_remove(self.deadline_source)
-                self.deadline_source = 0
-            # bus_get returns a shared connection; never close another reader's bus.
-        if self.failure:
-            raise self.failure
-        return self.value
+            self.draining = False
+
+    def property_reply(self, connection, result, data) -> None:
+        if not self.pending():
+            return
+        path, name = data
+        self.outstanding -= 1
+        try:
+            reply = connection.call_finish(result)
+            if reply.get_type_string() != "(v)":
+                raise SnapshotFailure("malformed", "Invalid account property reply")
+            value = reply.get_child_value(0).get_variant()
+            signature = ACCOUNT_PROPERTIES[name]
+            if (value.get_type_string() != signature
+                    or (signature == "s" and value.get_size() > MAX_TEXT_BYTES + 1)):
+                raise SnapshotFailure("malformed", "Invalid account property type or size")
+            decoded = value.unpack()
+            if name == "UserName" and not decoded:
+                raise SnapshotFailure("malformed", "Account has no login name")
+            if not self.pending():
+                return
+            if path not in self.invalid:
+                self.values[path][name] = decoded
+                fields = self.values[path]
+                if len(fields) == len(ACCOUNT_PROPERTIES):
+                    scope = "current" if path == self.current_path else "other"
+                    if scope == "current" or not fields["SystemAccount"]:
+                        record = AccountRecord(path, scope,
+                            clean_text(fields["RealName"] or fields["UserName"]),
+                            clean_text(fields["UserName"]), fields["LocalAccount"])
+                        if not self.pending():
+                            return
+                        self.records[path] = record
+        except self.GLib.Error as error:
+            if not self.pending():
+                return
+            self.invalid.add(path)
+            if self.Gio.dbus_error_get_remote_error(error) == "org.freedesktop.DBus.Error.UnknownProperty":
+                self.note(SnapshotFailure("malformed", "Missing account property"))
+            else:
+                self.note(self.bus_failure(error))
+        except SnapshotFailure as error:
+            if not self.pending():
+                return
+            self.invalid.add(path)
+            self.note(error)
+        self.pump()
 
 
 def locale_process_status(process: subprocess.Popen):
