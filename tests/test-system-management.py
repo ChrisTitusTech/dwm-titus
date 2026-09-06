@@ -11,6 +11,7 @@ import importlib.util
 import importlib.machinery
 import os
 import pathlib
+import select
 import signal
 import stat
 import subprocess
@@ -7064,6 +7065,278 @@ class SessionEvidenceTests(unittest.TestCase):
                 with self.assertRaises(provider.SnapshotFailure) as raised:
                     backend.session_started()
                 self.assertEqual(raised.exception.code, code)
+
+
+class NativeJournalOwnerTests(unittest.TestCase):
+    boot_id = JournalRetainedSessionTests.boot_id
+    session = JournalRetainedSessionTests.session
+
+    def begin(self, journal, action="timezone-set"):
+        return provider.begin_journal_operation(journal, action,
+            "2026-09-06T17:00:00Z", "Native ownership fixture")
+
+    @contextlib.contextmanager
+    def owner(self, journal, action="timezone-set"):
+        with contextlib.ExitStack() as retained:
+            with provider.lock_writable_journal(journal):
+                operation = self.begin(journal, action)
+                retained.enter_context(provider.retain_native_journal_owner(journal, operation))
+            yield operation
+
+    def recover(self, journal):
+        backend = mock.Mock()
+        result = provider.recover_journal_active(journal, backend, boot_id=self.boot_id)
+        self.assertEqual(backend.mock_calls, [])
+        return result
+
+    def test_every_native_kind_retains_live_state_without_backend_or_terminal_writes(self):
+        for action in ("timezone-set", "ntp-set", "locale-set", "accounts-open", "password-open",
+                       "printers-open", "sources-open"):
+            with self.subTest(action=action), self.session() as (path, chain, journal):
+                with self.owner(journal, action) as operation:
+                    before = {name: (path / name).read_bytes() for name in ("active", "cursor", "handoff")}
+                    # Required service work does not retain the directory lock.
+                    with provider._journal_lock(chain.directory_descriptor, exclusive=True):
+                        pass
+                    with provider.retain_writable_journal(chain) as observer:
+                        for _ in range(2):
+                            state, evidence, failure = self.recover(observer)
+                            self.assertEqual(state.active, operation)
+                            self.assertIsNone(state.handoff)
+                            self.assertTrue(all(item is None for item in state.terminals))
+                            self.assertIsNone(evidence)
+                            self.assertIsNone(failure)
+                    self.assertEqual(before,
+                        {name: (path / name).read_bytes() for name in before})
+                state, _, _ = self.recover(journal)
+                self.assertIsNone(state.active)
+                self.assertEqual(state.terminals[operation.slot].state, "interrupted")
+                self.assertEqual(state.handoff.operation_id, operation.operation_id)
+
+    def test_same_descriptor_set_probe_and_recovery_cannot_release_its_owner(self):
+        with self.session() as (_path, chain, journal), self.owner(journal) as operation:
+            for state_name in ("pending", "authorizing", "running"):
+                with provider.lock_writable_journal(journal):
+                    if operation.state != state_name:
+                        operation = provider.advance_journal_operation(journal, operation,
+                            replace(operation, state=state_name))
+                    self.assertTrue(provider.native_journal_owner_busy(journal, operation))
+                    with self.assertRaises(provider.JournalAdmissionError):
+                        with provider.retain_native_journal_owner(journal, operation):
+                            self.fail("nested owner stole the lease")
+                self.assertEqual(self.recover(journal)[0].active, operation)
+                with provider.retain_writable_journal(chain) as observer:
+                    with provider.lock_writable_journal(observer):
+                        self.assertTrue(provider.native_journal_owner_busy(observer, operation))
+                        with self.assertRaises(provider.JournalAdmissionError):
+                            with provider.retain_native_journal_owner(observer, operation):
+                                self.fail("a second descriptor set stole the lease")
+
+    def test_unlocked_stale_wrong_kind_and_terminal_targets_are_rejected(self):
+        with self.session() as (_path, _chain, journal):
+            with provider.lock_writable_journal(journal):
+                operation = self.begin(journal)
+            for function in (provider.native_journal_owner_busy, provider.retain_native_journal_owner):
+                with self.assertRaises(provider.JournalLockError):
+                    if function is provider.native_journal_owner_busy:
+                        function(journal, operation)
+                    else:
+                        with function(journal, operation):
+                            self.fail("unlocked lease was acquired")
+            with provider.lock_writable_journal(journal):
+                for invalid in (None, replace(operation, operation_id="op-" + "f" * 32),
+                                replace(operation, kind="update"), replace(operation, state="failed")):
+                    with self.assertRaises(provider.JournalAdmissionError):
+                        provider.native_journal_owner_busy(journal, invalid)
+                    with self.assertRaises(provider.JournalAdmissionError):
+                        with provider.retain_native_journal_owner(journal, invalid):
+                            self.fail("invalid lease was acquired")
+                self.assertFalse(provider.native_journal_owner_busy(journal, operation))
+            self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_body_and_unlock_failures_release_the_independent_lease_descriptor(self):
+        original_close = provider._close_descriptors
+        def close_failure(descriptors):
+            return original_close(descriptors) or OSError("close fixture")
+        for failure in ("body", "unlock", "close"):
+            with self.subTest(failure=failure), self.session() as (_path, _chain, journal):
+                if failure == "unlock":
+                    patch = mock.patch.object(provider, "_unlock_native_owner",
+                        side_effect=provider.JournalLockError("unlock fixture"))
+                elif failure == "close":
+                    patch = mock.patch.object(provider, "_close_descriptors", side_effect=close_failure)
+                else:
+                    patch = contextlib.nullcontext()
+                with self.assertRaisesRegex(RuntimeError if failure == "body" else provider.JournalLockError,
+                                            "fixture" if failure != "close" else "descriptor close failed"):
+                    with patch:
+                        with self.owner(journal) as operation:
+                            if failure == "body":
+                                raise RuntimeError("body fixture")
+                # The dedicated file description must be closed even when
+                # the explicit unlock failed, leaving no inherited lease.
+                with provider.lock_writable_journal(journal):
+                    self.assertFalse(provider.native_journal_owner_busy(journal, operation))
+
+    def test_kernel_lock_errors_are_explicit_and_do_not_clear_the_active_record(self):
+        with self.session() as (path, _chain, journal):
+            with provider.lock_writable_journal(journal):
+                operation = self.begin(journal)
+                before = (path / "active").read_bytes()
+                for number, expected in ((errno.EAGAIN, True), (errno.EACCES, True)):
+                    with mock.patch.object(provider.fcntl, "flock", side_effect=OSError(number, "fixture")):
+                        self.assertEqual(provider.native_journal_owner_busy(journal, operation), expected)
+                with mock.patch.object(provider.fcntl, "flock", side_effect=OSError(errno.EIO, "fixture")):
+                    with self.assertRaises(provider.JournalLockError):
+                        provider.native_journal_owner_busy(journal, operation)
+                self.assertEqual((path / "active").read_bytes(), before)
+
+    def test_lease_handle_is_separate_nonblocking_close_on_exec_and_closed_on_failure(self):
+        for fail in (False, True):
+            with self.subTest(fail=fail), self.session() as (_path, chain, journal):
+                captured = []
+                original_open = os.open
+                def opened(name, flags, *args, **kwargs):
+                    descriptor = original_open(name, flags, *args, **kwargs)
+                    if name == "active" and kwargs.get("dir_fd") == chain.directory_descriptor:
+                        captured.append(descriptor)
+                        self.assertNotEqual(descriptor, journal.descriptor("active"))
+                        self.assertTrue(flags & os.O_NOFOLLOW)
+                        self.assertTrue(flags & os.O_NONBLOCK)
+                        self.assertTrue(flags & os.O_CLOEXEC)
+                        self.assertFalse(os.get_inheritable(descriptor))
+                    return descriptor
+                with provider.lock_writable_journal(journal):
+                    operation = self.begin(journal)
+                    with mock.patch.object(provider.os, "open", side_effect=opened):
+                        if fail:
+                            with mock.patch.object(provider, "_try_native_owner_lock",
+                                    side_effect=provider.JournalLockError("fixture")):
+                                with self.assertRaises(provider.JournalLockError):
+                                    with provider.retain_native_journal_owner(journal, operation):
+                                        self.fail("failed acquisition was accepted")
+                        else:
+                            with provider.retain_native_journal_owner(journal, operation):
+                                self.assertTrue(provider.native_journal_owner_busy(journal, operation))
+                    self.assertEqual(len(captured), 1)
+                    with self.assertRaises(OSError):
+                        os.fstat(captured[0])
+                    self.assertFalse(provider.native_journal_owner_busy(journal, operation))
+
+    def test_open_failure_is_explicit_and_preserves_active_state(self):
+        with self.session() as (path, _chain, journal):
+            with provider.lock_writable_journal(journal):
+                operation = self.begin(journal)
+                before = (path / "active").read_bytes()
+                with mock.patch.object(provider.os, "open", side_effect=OSError(errno.EACCES, "fixture")):
+                    with self.assertRaises(provider.JournalLockError):
+                        with provider.retain_native_journal_owner(journal, operation):
+                            self.fail("failed open was accepted")
+                self.assertEqual((path / "active").read_bytes(), before)
+                self.assertFalse(provider.native_journal_owner_busy(journal, operation))
+
+    def test_replaced_path_during_lease_open_is_rejected_and_handle_closed(self):
+        captured = []
+        with self.assertRaises(provider.JournalLayoutError):
+            with self.session() as (path, chain, journal):
+                with provider.lock_writable_journal(journal):
+                    operation = self.begin(journal)
+                    original_open = os.open
+                    def replaced(name, flags, *args, **kwargs):
+                        descriptor = original_open(name, flags, *args, **kwargs)
+                        if name == "active" and kwargs.get("dir_fd") == chain.directory_descriptor:
+                            captured.append(descriptor)
+                            active = path / "active"
+                            content = active.read_bytes()
+                            active.rename(path / "detached-active")
+                            active.write_bytes(content)
+                            active.chmod(0o600)
+                        return descriptor
+                    with mock.patch.object(provider.os, "open", side_effect=replaced):
+                        with provider.retain_native_journal_owner(journal, operation):
+                            self.fail("replaced lease path was accepted")
+        self.assertEqual(len(captured), 1)
+        with self.assertRaises(OSError):
+            os.fstat(captured[0])
+
+    def test_replaced_directory_during_owned_interval_is_rejected_before_recovery(self):
+        with self.assertRaises(provider.JournalLayoutError):
+            with self.session() as (path, _chain, journal), self.owner(journal):
+                before = (path / "active").read_bytes()
+                detached = path.with_name("detached-journal")
+                path.rename(detached)
+                path.mkdir(mode=0o700)
+                try:
+                    self.recover(journal)
+                    self.fail("detached journal was recovered")
+                finally:
+                    self.assertEqual((detached / "active").read_bytes(), before)
+
+    def test_recovery_probe_error_never_terminalizes_an_unknown_owner(self):
+        with self.session() as (path, _chain, journal):
+            with provider.lock_writable_journal(journal):
+                operation = self.begin(journal)
+            before = (path / "active").read_bytes()
+            backend = mock.Mock()
+            with mock.patch.object(provider, "_try_native_owner_lock",
+                    side_effect=provider.JournalLockError("probe fixture")):
+                with self.assertRaises(provider.JournalLockError):
+                    provider.recover_journal_active(journal, backend, boot_id=self.boot_id)
+            self.assertEqual(backend.mock_calls, [])
+            self.assertEqual((path / "active").read_bytes(), before)
+            self.assertEqual(provider.load_journal_state(journal.chain).active, operation)
+
+    def test_durable_terminal_recovery_does_not_wait_for_live_owner_release(self):
+        with self.session() as (_path, chain, journal), self.owner(journal) as operation:
+            with provider.lock_writable_journal(journal):
+                operation = provider.advance_journal_operation(journal, operation,
+                    replace(operation, state="running"))
+                terminal = provider.advance_journal_operation(journal, operation,
+                    replace(operation, state="succeeded", finished_at="2026-09-06T17:01:00Z"))
+            with provider.retain_writable_journal(chain) as observer:
+                state, evidence, failure = self.recover(observer)
+            self.assertIsNone(state.active)
+            self.assertEqual(state.terminals[operation.slot], terminal)
+            self.assertEqual(state.handoff.operation_id, operation.operation_id)
+            self.assertIsNone(evidence)
+            self.assertIsNone(failure)
+
+    def test_process_exit_and_sigkill_release_ownership_before_orphan_recovery(self):
+        program = """
+import contextlib, runpy, sys
+p = runpy.run_path(sys.argv[1])
+with p["open_journal_directory_chain"](sys.argv[2]) as chain:
+    with p["retain_writable_journal"](chain) as journal, contextlib.ExitStack() as owner:
+        with p["lock_writable_journal"](journal):
+            operation = p["load_writable_journal_state"](journal).active
+            owner.enter_context(p["retain_native_journal_owner"](journal, operation))
+        print("ready", flush=True)
+        sys.stdin.buffer.read(1)
+"""
+        for killed in (False, True):
+            with self.subTest(killed=killed), self.session() as (_path, chain, journal):
+                with provider.lock_writable_journal(journal):
+                    operation = self.begin(journal)
+                child = subprocess.Popen([sys.executable, "-c", program, str(PROVIDER_PATH), chain.path],
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
+                try:
+                    self.assertTrue(select.select([child.stdout], [], [], 3)[0], "owner did not become ready")
+                    self.assertEqual(child.stdout.readline(16), b"ready\n")
+                    self.assertEqual(self.recover(journal)[0].active, operation)
+                    if killed:
+                        child.kill()
+                    _stdout, stderr = child.communicate(input=None if killed else b"x", timeout=3)
+                    self.assertEqual(child.returncode, -signal.SIGKILL if killed else 0, stderr)
+                    self.assertEqual(stderr, b"")
+                finally:
+                    if child.poll() is None:
+                        child.kill()
+                    child.communicate(timeout=3)
+                state, evidence, failure = self.recover(journal)
+                self.assertIsNone(state.active)
+                self.assertIsNone(evidence)
+                self.assertIsNone(failure)
+                self.assertEqual(state.terminals[operation.slot].state, "interrupted")
 
 
 class OperationRecoveryTests(unittest.TestCase):

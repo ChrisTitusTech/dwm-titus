@@ -1300,6 +1300,21 @@ path, or elevation mechanism.
   long-running operation; descriptor checks remain mandatory because another
   same-user process can ignore advisory locks.
 
+  Regional and delegated-launch owners additionally retain an exclusive
+  `flock` lease on the existing `active` file. They admit the exact operation
+  and acquire this lease in the same short exclusive directory interval, before
+  dispatch. Lease acquisition and recovery probes are nonblocking; contention
+  never waits while holding the directory lock. The lease uses a separately
+  opened, validated, no-symlink, nonblocking, close-on-exec file description,
+  not `dup(active)`, so even a probe through the originating journal's retained
+  descriptor cannot release its own owner lock. The directory lock is then
+  released for bounded service work while the file lease remains held. Lease
+  release and descriptor closure run on every exit; process death also releases
+  the lease. A failed recovery probe preserves the active record as unresolved,
+  never as evidence that no owner exists. This adds no persistent path, journal
+  field, or authorization mechanism. A lease is liveness evidence only; it does
+  not authorize a new caller to repeat an existing operation.
+
   The absolute state path is opened component-by-component from a held root
   directory descriptor with directory-only, no-symlink semantics; a symlink or
   non-directory component fails closed. The provider retains each parent and
@@ -1604,7 +1619,7 @@ path, or elevation mechanism.
   full path chain, fixed files, and exact active operation identity, and only
   then commits recovered state. A mismatch discards the stale D-Bus result and
   changes no journal frame. No D-Bus method, signal wait, or bounded history
-  collection runs while either journal lock is held.
+  collection runs while a shared or exclusive directory lock is held.
 
   A negative bounded lookup is never evidence that PackageKit succeeded or
   failed. If exact adoption or the active transaction list confirms that the
@@ -1621,17 +1636,27 @@ path, or elevation mechanism.
   than describing the PackageKit transaction itself as failed. Recovery never
   expands to an unbounded history query. A regional operation recovers a
   terminal result only from a valid terminal journal record durably written
-  before interruption. Any nonterminal `timezone`, `ntp`, or `locale` record
-  encountered by snapshot recovery becomes `interrupted` regardless of the owning systemd
+  before interruption. Recovery first probes the exact nonterminal native
+  owner's file lease under the short directory lock. A held lease preserves
+  the validated active record without querying the service or writing a
+  terminal result. A nonterminal `timezone`, `ntp`, or `locale` record whose
+  lease is no longer held becomes `interrupted` regardless of the owning systemd
   service's current value, because the journal intentionally stores no target
   and current state cannot prove this operation caused it. Recovery publishes a
   fresh read-only regional snapshot and explains that the requested mutation's
   outcome is unknown; it never retries or audits it as successful. A delegated
   launch records its terminal `succeeded` result as soon as the trusted tool is
   accepted; the tool owns all later internal work. A nonterminal delegated
-  record encountered by snapshot recovery becomes `interrupted`, while a valid
+  record whose owner lease is no longer held becomes `interrupted`, while a valid
   durable terminal record replays its exact launch result. Settings never
   infers that the delegated tool's internal work succeeded.
+
+The internal native-owner lease and recovery guard are implemented independently
+of mutation commands. Tests cover all regional and delegated kinds, competing
+and originating descriptors, path replacement, lock and cleanup failures,
+normal process exit, abrupt process death, and durable terminal replay. Public
+native snapshot/watch integration and bounded service owners remain gated;
+this foundation enables no native command, Settings action, or snapshot minor.
 
 ## Event and Resource Contract
 
