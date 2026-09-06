@@ -519,6 +519,22 @@ remain in the Fedora-packaged `dnfdragora` tool when present. Missing optional
 delegated tools are reported individually and never hide readable service
 state.
 
+The internal repository reader now bounds connection setup, optional activation
+of an absent PackageKit daemon, transaction setup, signals, and decoding under
+that one deadline. It pins the daemon's unique bus identity and new transaction,
+acknowledges its exact signal match before calling `GetRepoList`, uses fixed
+noninteractive background/cache hints, and requires both the method acknowledgment
+and successful `Finished` signal. A final owner lookup rejects daemon replacement.
+Each text field is limited to 512 UTF-8 bytes before copying; the complete result
+is limited to 512 unique rows and 384 KiB of canonical encoded rows including
+newlines. Any failure discards all rows; no partial list is presented as complete.
+Timeout cancels local requests and ignores late replies. On failure before
+`Finished`, it queues a best-effort noninteractive `Cancel` only for its own exact
+read transaction, without extending the deadline or claiming daemon cancellation.
+It removes its subscriptions and match rule without closing the shared bus.
+Private-bus fixtures exercise the real 30-second timeout and late completion.
+This reader adds no command, mutation, Settings control, or protocol minor.
+
 ### System Information and Filesystems
 
 The information snapshot uses only these fixed sources:

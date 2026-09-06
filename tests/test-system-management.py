@@ -84,6 +84,324 @@ def rows(lines, kind):
     return [line.split("\t") for line in lines if line.startswith(f"{kind}\t")]
 
 
+class RepositoryReadTests(unittest.TestCase):
+    def reader(self):
+        _unused, connection, gio, glib, variant = RegionalReadTests.reader(self)
+        return provider.RepositoryRead(gio, glib), connection, gio, glib, variant
+
+    def collect(self, *, records=None, overrides=None, stall=None, before_ack=False,
+                terminal=None, no_terminal=False, transform=None, remote_error=None, activate=False):
+        read, connection, gio, glib, variant = self.reader()
+        calls = []
+        connection.call.side_effect = lambda *args: calls.append(args)
+        gio.dbus_error_get_remote_error.return_value = remote_error
+        replies = {"start": variant.Variant("(u)", (2,)),
+                   "owner": variant.Variant("(s)", (":1.42",)),
+                   "owner-after-start": variant.Variant("(s)", (":1.42",)),
+                   "verify-owner": variant.Variant("(s)", (":1.42",)),
+                   "create": variant.Variant("(o)", ("/12_fixture",))}
+        replies.update(overrides or {})
+        if activate:
+            replies["owner"] = variant.Error("no owner")
+        def signals():
+            for record in records if records is not None else (
+                    variant.Variant("(ssb)", ("z-disabled", "Disabled", False)),
+                    variant.Variant("(ssb)", ("a-enabled", "Enabled", True))):
+                read.received(connection, read.owner, read.path, provider.TRANSACTION_INTERFACE,
+                              "RepoDetail", record, None)
+            if not no_terminal:
+                member, values = terminal or ("Finished", variant.Variant("(uu)", (1, 4)))
+                read.received(connection, read.owner, read.path, provider.TRANSACTION_INTERFACE,
+                              member, values, None)
+        def during_loop():
+            if stall == "connect":
+                read.expire()
+            read.connected(None, object(), None)
+            for call in calls:
+                stage = call[-1]
+                if stage is None:
+                    continue  # Best-effort cleanup does not own a new read.
+                if transform:
+                    transform(read, connection, stage)
+                if stage == "fetch" and before_ack:
+                    signals()
+                if stall == stage:
+                    read.expire()
+                reply = replies.get(stage, variant.Variant("()", ()))
+                gio.dbus_error_get_remote_error.return_value = (
+                    "org.freedesktop.DBus.Error.NameHasNoOwner" if activate and stage == "owner" else remote_error)
+                connection.call_finish.side_effect = reply if isinstance(reply, Exception) else None
+                connection.call_finish.return_value = reply
+                call[-2](connection, object(), stage)
+                call[-2](connection, object(), stage)  # Duplicate callbacks are inert.
+                if stage == "fetch" and not before_ack:
+                    signals()
+            if not read.done:
+                read.expire()
+        read.loop.run.side_effect = during_loop
+        failure = None
+        try:
+            value = read.run()
+        except provider.SnapshotFailure as error:
+            value, failure = None, error
+        return value, failure, read, connection, gio, glib, calls
+
+    def test_complete_enabled_disabled_rows_and_exact_fixed_calls(self):
+        for before_ack in (False, True):
+            value, failure, read, connection, gio, glib, calls = self.collect(before_ack=before_ack)
+            self.assertIsNone(failure)
+            self.assertEqual([row.fields() for row in value], [
+                ("repository", "a-enabled", "enabled", "Enabled"),
+                ("repository", "z-disabled", "disabled", "Disabled")])
+            self.assertEqual([call[3] for call in calls], ["GetNameOwner",
+                "CreateTransaction", "AddMatch", "SetHints", "GetRepoList", "GetNameOwner", "RemoveMatch"])
+            for call in calls:
+                self.assertEqual(call[6], gio.DBusCallFlags.NONE)
+                self.assertGreater(call[7], 0)
+                self.assertLessEqual(call[7], 30000)
+            fetch = next(call for call in calls if call[3] == "GetRepoList")
+            self.assertEqual(fetch[:4], (":1.42", "/12_fixture", provider.TRANSACTION_INTERFACE, "GetRepoList"))
+            self.assertEqual(fetch[4].get_type_string(), "(t)")
+            self.assertEqual(fetch[4].unpack(), (2,))
+            hints = next(call for call in calls if call[3] == "SetHints")
+            self.assertEqual(hints[4].unpack(), (["background=true", "interactive=false", "cache-age=4294967295"],))
+            self.assertEqual(connection.signal_subscribe.call_args.args[5], gio.DBusSignalFlags.NO_MATCH_RULE)
+            connection.signal_unsubscribe.assert_called_once()
+            connection.disconnect.assert_called_once()
+            connection.close_sync.assert_not_called()
+            glib.source_remove.assert_called_once_with(17)
+            self.assertTrue(read.cancellable.cancel.called)
+            self.assertEqual(read.rows, {})
+            with self.assertRaises(RuntimeError):
+                read.run()
+
+    def test_empty_success_requires_both_method_ack_and_finished(self):
+        value, failure, *_ = self.collect(records=[])
+        self.assertEqual(value, ())
+        self.assertIsNone(failure)
+        value, failure, *_ = self.collect(records=[], no_terminal=True)
+        self.assertIsNone(value)
+        self.assertEqual(failure.code, "timeout")
+        for before_ack in (False, True):
+            _read, _connection, _gio, _glib, variant = self.reader()
+            value, failure, *_ = self.collect(before_ack=before_ack,
+                overrides={"fetch": variant.Error("lost acknowledgment")})
+            self.assertIsNone(value)
+            self.assertEqual(failure.code, "internal")
+
+    def test_every_stage_timeout_discards_rows_and_late_callbacks(self):
+        for stage in ("connect", "start", "owner", "owner-after-start", "create", "match", "hints", "fetch", "verify-owner"):
+            value, failure, read, connection, gio, _glib, calls = self.collect(
+                stall=stage, activate=stage in ("start", "owner-after-start"))
+            self.assertIsNone(value, stage)
+            self.assertEqual(failure.code, "timeout", stage)
+            self.assertEqual(read.rows, {})
+            before = connection.call_finish.call_count
+            read.replied(connection, object(), stage)
+            read.connected(None, object(), None)
+            self.assertEqual(connection.call_finish.call_count, before)
+            if stage == "connect":
+                gio.bus_get_finish.assert_not_called()
+            canceled = [call for call in calls if call[3] == "Cancel"]
+            self.assertEqual(len(canceled), int(stage == "fetch"))
+            if canceled:
+                self.assertEqual(canceled[0][:4], (":1.42", "/12_fixture", provider.TRANSACTION_INTERFACE, "Cancel"))
+            self.assertEqual(sum(call[3] == "RemoveMatch" for call in calls),
+                             int(stage in ("match", "hints", "fetch", "verify-owner")))
+
+    def test_bus_failures_and_replacement_are_provider_scoped(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        for stage, remote, code, status in (
+                ("owner", "org.freedesktop.DBus.Error.ServiceUnknown", "missing-provider", "unavailable"),
+                ("match", "org.freedesktop.DBus.Error.AccessDenied", "permission-denied", "restricted"),
+                ("fetch", "org.freedesktop.PackageKit.Transaction.RefusedByPolicy", "permission-denied", "restricted"),
+                ("fetch", "org.freedesktop.PackageKit.Transaction.NotSupported", "unsupported", "unsupported")):
+            value, failure, *_ = self.collect(overrides={stage: variant.Error("fixture")}, remote_error=remote)
+            self.assertIsNone(value)
+            self.assertEqual((failure.code, failure.status), (code, status))
+        value, failure, *_ = self.collect(overrides={"verify-owner": variant.Variant("(s)", (":1.43",))})
+        self.assertIsNone(value)
+        self.assertEqual(failure.code, "conflict")
+
+    def test_typed_reply_validation_rejects_invalid_setup(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        for stage, reply in (("start", variant.Variant("(u)", (0,))),
+                ("owner", variant.Variant("(s)", ("org.freedesktop.PackageKit",))),
+                ("owner", variant.Variant("(s)", (":" + "1" * 255 + ".1",))),
+                ("create", variant.Variant("(o)", ("/unrelated",))),
+                ("match", variant.Variant("(b)", (True,))),
+                ("hints", variant.Variant("(s)", ("bad",))),
+                ("fetch", variant.Variant("(b)", (True,)))):
+            value, failure, *_ = self.collect(overrides={stage: reply}, activate=stage == "start")
+            self.assertIsNone(value)
+            self.assertEqual(failure.code, "malformed", stage)
+
+    def test_absent_daemon_activation_is_bounded_and_attempted_only_once(self):
+        value, failure, _read, _connection, _gio, _glib, calls = self.collect(activate=True)
+        self.assertIsNone(failure)
+        self.assertEqual(len(value), 2)
+        self.assertEqual([call[3] for call in calls[:3]], ["GetNameOwner", "StartServiceByName", "GetNameOwner"])
+        self.assertEqual(calls[1][4].unpack(), (provider.PACKAGEKIT_NAME, 0))
+        _read, _connection, _gio, _glib, variant = self.reader()
+        value, failure, *_rest, calls = self.collect(activate=True,
+            overrides={"owner-after-start": variant.Error("still absent")},
+            remote_error="org.freedesktop.DBus.Error.NameHasNoOwner")
+        self.assertIsNone(value)
+        self.assertEqual(failure.code, "missing-provider")
+        self.assertEqual(sum(call[3] == "StartServiceByName" for call in calls), 1)
+
+    def test_repository_fields_are_bounded_before_unpacking(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        row = provider.decode_repository_row(variant.Variant("(ssb)", ("x" * 512, "é" * 256, True)))
+        self.assertEqual(len(row.repository_id), 512)
+        self.assertEqual(len(row.description.encode()), 512)
+        for record in (variant.Variant("(ssb)", ("", "description", True)),
+                       variant.Variant("(ssb)", ("bad\tid", "description", True)),
+                       variant.Variant("(ssb)", ("id", "é" * 257, True)),
+                       variant.Variant("(ssb)", ("x" * 513, "description", True)),
+                       variant.Variant("(sss)", ("id", "description", "true"))):
+            value, failure, *_ = self.collect(records=[record])
+            self.assertIsNone(value)
+            self.assertEqual(failure.code, "malformed")
+        oversized = mock.Mock()
+        oversized.get_type_string.return_value = "(ssb)"
+        oversized.get_size.return_value = 1000000
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.decode_repository_row(oversized)
+        oversized.unpack.assert_not_called()
+        self.assertEqual(provider.decode_repository_row(variant.Variant("(ssb)",
+            ("id", "one\ntwo\tthree", False))).description, "one two three")
+
+    def test_duplicate_count_and_encoded_byte_overflow_discard_complete_result(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        record = lambda index: variant.Variant("(ssb)", (f"repo-{index}", "description", True))
+        value, failure, *_ = self.collect(records=[record(index) for index in range(512)])
+        self.assertIsNone(failure)
+        self.assertEqual(len(value), 512)
+        for records in ([record(0), record(0)], [record(index) for index in range(513)]):
+            value, failure, read, *_ = self.collect(records=records)
+            self.assertIsNone(value)
+            self.assertEqual(failure.code, "malformed")
+            self.assertEqual(read.rows, {})
+        records = [variant.Variant("(ssb)", (f"{index:03d}" + "i" * 509, "d" * 512, True)) for index in range(512)]
+        value, failure, *_ = self.collect(records=records)
+        self.assertIsNone(value)
+        self.assertEqual(failure.code, "malformed")
+        size = provider.encoded_record_size(provider.decode_repository_row(record(0)).fields())
+        for limit, success in ((size, True), (size - 1, False)):
+            with mock.patch.object(provider, "REPOSITORY_MAX_BYTES", limit):
+                value, failure, *_ = self.collect(records=[record(0)])
+            self.assertEqual(failure is None, success)
+
+    def test_transaction_errors_and_malformed_terminal_signals_never_succeed(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        for terminal, code in (
+                (("ErrorCode", variant.Variant("(us)", (18, "private details"))), "repository"),
+                (("ErrorCode", variant.Variant("(us)", (48, "private details"))), "permission-denied"),
+                (("ErrorCode", variant.Variant("(us)", (2, "private details"))), "network"),
+                (("ErrorCode", variant.Variant("(us)", (18, "x" * 513))), "malformed"),
+                (("Finished", variant.Variant("(uu)", (2, 4))), "internal"),
+                (("Finished", variant.Variant("(u)", (1,))), "malformed"),
+                (("Destroy", variant.Variant("()", ())), "missing-provider"),
+                (("Destroy", variant.Variant("(b)", (True,))), "malformed")):
+            value, failure, *_ = self.collect(terminal=terminal)
+            self.assertIsNone(value)
+            self.assertEqual(failure.code, code)
+            self.assertNotIn("private details", str(failure))
+
+    def test_wrong_peer_and_unrelated_signals_are_ignored_without_unpacking(self):
+        def unrelated(read, connection, stage):
+            if stage != "fetch":
+                return
+            values = mock.Mock()
+            for sender, path, interface, member in ((":1.99", read.path, provider.TRANSACTION_INTERFACE, "RepoDetail"),
+                    (read.owner, "/99_other", provider.TRANSACTION_INTERFACE, "Finished"),
+                    (read.owner, read.path, "other.Interface", "ErrorCode"),
+                    (read.owner, read.path, provider.TRANSACTION_INTERFACE, "Package")):
+                read.received(connection, sender, path, interface, member, values, None)
+            values.unpack.assert_not_called()
+            values.get_type_string.assert_not_called()
+        value, failure, *_ = self.collect(transform=unrelated)
+        self.assertIsNone(failure)
+        self.assertEqual(len(value), 2)
+
+    def test_premature_signal_and_unexpected_loop_exit_fail_closed(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        def premature(read, connection, stage):
+            if stage == "match":
+                read.received(connection, read.owner, read.path, provider.TRANSACTION_INTERFACE,
+                    "Finished", variant.Variant("(uu)", (1, 0)), None)
+        value, failure, *_ = self.collect(transform=premature)
+        self.assertIsNone(value)
+        self.assertEqual(failure.code, "malformed")
+        read, *_ = self.reader()
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            read.run()
+        self.assertEqual(caught.exception.code, "internal")
+
+    def test_real_repository_reads_use_an_isolated_private_bus(self):
+        process = subprocess.Popen(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-repository-read-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        try:
+            output, error = process.communicate(timeout=50)
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.communicate()
+        self.assertEqual(process.returncode, 0, error.decode(errors="replace"))
+        self.assertIn(b"Private-bus repository reads: PASS", output)
+
+    def test_expired_decoding_never_publishes_a_value_or_late_error(self):
+        for raises in (False, True):
+            def decode_late(_values):
+                current.deadline = 0
+                if raises:
+                    raise provider.SnapshotFailure("malformed", "late decoding error")
+                return provider.RepositoryRow("late", True, "Late")
+            def capture(read, _connection, _stage):
+                nonlocal current
+                current = read
+            current = None
+            with mock.patch.object(provider, "decode_repository_row", side_effect=decode_late):
+                value, failure, read, *_ = self.collect(transform=capture)
+            self.assertIsNone(value)
+            self.assertEqual(failure.code, "timeout")
+            self.assertEqual(read.rows, {})
+
+    def test_bus_close_is_bounded_and_cannot_override_terminal_evidence(self):
+        for expired in (False, True):
+            def close(read, _connection, stage):
+                if stage == "fetch":
+                    if expired:
+                        read.deadline = 0
+                    read.connection_closed()
+            value, failure, read, *_ = self.collect(transform=close)
+            self.assertIsNone(value)
+            self.assertEqual(failure.code, "timeout" if expired else "missing-provider")
+            read.connection_closed()
+            self.assertIs(read.failure, failure)
+        value, failure, read, *_ = self.collect()
+        read.connection_closed()
+        self.assertIs(read.value, value)
+        self.assertIsNone(read.failure)
+
+    def test_synchronous_dispatch_and_cleanup_failures_remain_bounded(self):
+        read, connection, _gio, _glib, variant = self.reader()
+        connection.call.side_effect = variant.Error("send failed")
+        read.loop.run.side_effect = lambda: read.connected(None, object(), None)
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            read.run()
+        self.assertEqual(caught.exception.code, "internal")
+        connection.close_sync.assert_not_called()
+        def reject_cleanup(_read, connection, stage):
+            if stage == "verify-owner":
+                connection.call.side_effect = variant.Error("cleanup failed")
+        value, failure, *_ = self.collect(transform=reject_cleanup)
+        self.assertIsNone(failure)
+        self.assertEqual(len(value), 2)
+
+
 class CupsReadTests(unittest.TestCase):
     def state(self, load="loaded", active="inactive", sub="dead"):
         return provider.UnitState("/org/freedesktop/systemd1/unit/fixture", load, active, sub)
