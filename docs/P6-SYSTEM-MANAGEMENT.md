@@ -1951,9 +1951,10 @@ and proves a possibly running `Finished` yields the conservative unknown tuple
 without clearing seeded lower-scope contributions, while a provably pre-running
 denial or cancellation remains all-clear. A
 previous-boot adoption and history fixture proves every result remains all-clear.
-Watch fixtures reject active regional or delegated operation IDs with status 3
-and no stream, but replay their exact retained terminal records without
-reissuing an action. They prove that a requested PackageKit terminal record
+Watch fixtures reject stale active IDs with status 3 and no stream. Exact
+regional and delegated IDs observe durable checkpoints through completion, or
+replay their retained terminal records, without reissuing an action. They prove
+that a requested PackageKit terminal record
 replays by its exact retained ID even when one or more newer terminal slots
 exist, while a missing ID, duplicate retained ID, malformed slot, or unrelated
 transaction path fails closed. A root-restart fixture terminates after `active`
