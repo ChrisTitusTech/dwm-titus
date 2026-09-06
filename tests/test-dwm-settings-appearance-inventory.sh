@@ -131,6 +131,30 @@ inventory=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
 	"$helper" inventory)
 
+# Force every small fixture producer to exit before the parent captures its
+# identity. Bash removes a completed named coprocess's PID and descriptor array;
+# an explicitly owned process-substitution pipe must retain its buffered data.
+race_env=$work/stream-race.env
+race_marker=$work/stream-race.marker
+cat >"$race_env" <<'EOF'
+set -T
+trap 'case $BASH_COMMAND in inventory_stream_pid=\$*) wait "$!" || :; printf "reaped\n" >>"$DWM_TEST_STREAM_RACE_MARKER" ;; esac' DEBUG
+EOF
+race_inventory=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	BASH_ENV=$race_env DWM_TEST_STREAM_RACE_MARKER=$race_marker "$helper" inventory)
+[[ -s $race_marker && $race_inventory == "$inventory" ]] || {
+	printf 'Fast inventory producer lost its stream or bypassed the startup race fixture\n' >&2
+	exit 1
+}
+HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	DWM_APPEARANCE_DATA_DIRS=$data_root DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir \
+	BASH_ENV=$race_env DWM_TEST_STREAM_RACE_MARKER=$race_marker \
+	DWM_TEST_INOTIFY_ARGS=$work/race-watch.args "$helper" watch-inventory >"$work/race-watch.out"
+grep -Fqx $'ready\tinventory' "$work/race-watch.out"
+grep -Fqx $'changed\tCREATE\t'"$wallpaper_dir/new.png" "$work/race-watch.out"
+
 if grep -Eq $'^candidate\t(cursor|icon|gtk)\tavailable\tunknown\t' <<<"$inventory"; then
 	printf 'Reserved unknown sentinel was emitted as an applicable candidate\n' >&2
 	exit 1
@@ -813,6 +837,7 @@ chmod +x "$failing_inventory_bin/find" "$failing_inventory_bin/fc-list"
 failed_inventory=$(HOME=$home PATH=$failing_inventory_bin XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir DWM_TEST_REAL_FIND=$real_find \
+	BASH_ENV=$race_env DWM_TEST_STREAM_RACE_MARKER=$race_marker \
 	QT_QPA_PLATFORMTHEME=qt6ct "$helper" inventory)
 grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tWallpaper candidate discovery did not complete' \
 	<<<"$failed_inventory"

@@ -681,12 +681,13 @@ personalization_candidate_safe() {
 
 start_inventory_stream() {
 	stop_inventory_stream cancel
-	coproc DWM_INVENTORY_STREAM {
+	# Own the read descriptor even if the producer exits before this shell
+	# resumes. Bash can unset a completed named coprocess's PID and fd array.
+	exec {inventory_stream_fd}< <(
 		exec timeout --signal=TERM --kill-after=1 \
-			"$max_inventory_scan_seconds" "$@" 2>/dev/null
-	}
-	inventory_stream_pid=$DWM_INVENTORY_STREAM_PID
-	exec {inventory_stream_fd}<&"${DWM_INVENTORY_STREAM[0]}"
+			"$max_inventory_scan_seconds" "$@" </dev/null 2>/dev/null
+	)
+	inventory_stream_pid=$!
 }
 
 stop_inventory_stream() {

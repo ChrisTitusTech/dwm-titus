@@ -479,8 +479,8 @@ including a present socket with an absent service, malformed or transitional
 state, a failed service, or a failed socket when the service is not running, is
 `partial`/`unknown`. This distinguishes Fedora's healthy idle socket-activated
 scheduler and valid service-only configurations from a missing scheduler.
-One ten-second monotonic aggregate deadline covers resolving both fixed unit
-objects and reading their required properties. On expiry the provider cancels
+One ten-second monotonic aggregate deadline covers bus connection, both fixed
+unit-state requests, and reply decoding. On expiry the provider cancels
 each unfinished local D-Bus request and discards late replies. If the service
 was already validated active, `cups-service` remains `available`/`running`
 because socket state cannot affect that result; the provider may still emit the
