@@ -454,10 +454,31 @@ failed lifecycle hooks, unsupported preserved locale values, cleanup, and a real
 removes local subscriptions and acknowledged match rules without closing the shared bus or removing another
 client's rejected/unrequested rule. An unconfirmed rule whose acknowledgment
 cannot be recovered is ultimately removed when that bus connection exits.
-This client is preparatory: native journal-owner integration, terminal commit,
-post-timeout display refresh, CLI origins, and Settings controls remain disabled
-or outstanding. These fixtures do not change host settings or qualify graphical
-polkit authorization.
+The three fixed regional CLI origins now use a durable native journal owner.
+After fresh service preflight, admission and the active-file lease are acquired
+under one short directory lock; service waits retain the lease, not that lock.
+Every phase is committed before publication, and terminal retention/handoff is
+committed before a complete result is emitted. Native records do not modify the
+update restart aggregate. Locale success includes new-login guidance without
+logging out the user.
+
+Output loss before dispatch aborts the request; after dispatch it suppresses
+further output but keeps verification and durable terminal recording alive.
+Uncertain admission or checkpoint persistence never produces a replacement
+request or fabricated completion. Full, short, or closed CLI output fails
+without changing inherited file-status flags. Pre-admission rejections have a
+typed failed-request stream but create no journal transaction. Journal storage
+operations retain their existing bounded-lock contract, not a hard disk-I/O
+deadline.
+
+Actual CLI/private-bus fixtures cover all three fixed calls, live leases,
+durable handoffs, denial, stale generation, ambiguous replies, output loss after
+dispatch, retained replay, and acknowledgment without repeating the action.
+For an ambiguous sent result, a new independent read begins only after durable
+interruption and lease release; it cannot reclassify the terminal result.
+Settings still needs its own display refresh and confirmation/origin controls,
+and the cumulative snapshot remains minor zero. These fixtures do not change
+host settings or qualify graphical polkit authorization.
 
 Each regional mutation uses a 60-second monotonic aggregate deadline beginning
 immediately before the fixed mutating D-Bus method is sent and covering its
@@ -485,6 +506,9 @@ dwm-system-management password-open
 dwm-system-management printers-open
 dwm-system-management sources-open
 ```
+
+The first three confirmed regional forms are implemented. The four delegated
+launch forms remain planned and are not accepted by the CLI yet.
 
 `ZONE` is at most 255 ASCII bytes, contains no control characters, empty path
 components, `.` or `..` components, and must exactly match a value returned by
@@ -555,12 +579,13 @@ current timezone as its source field. NTP uses `yes|no` for `CanNTP` followed by
 configuration identity. Locale uses every current validated assignment in the
 fixed locale-key order, including explicit empty values and key presence.
 Unselected catalog entries do not affect this token; exact selected membership
-must still be freshly validated. Before any future mutating call, the provider
+must still be freshly validated. Before any mutating call, the provider
 must repeat the preflight and compare the confirmed 64-lowercase-hex generation.
 A mismatch requires new confirmation and sends no mutation. Visible confirmation
 and monitored invalidation remain mandatory; the token is a freshness guard,
-not an atomic service transaction or proof of human approval. The mutating
-forms above remain disabled until their lifecycle and Settings integration land.
+not an atomic service transaction or proof of human approval. The three fixed
+regional CLI forms now enforce this preflight and their durable lifecycle.
+Visible Settings origins remain disabled until confirmation integration lands.
 
 `health-open` is the sole action with no provider command: the root-scoped QML
 model invokes the fixed in-process `SystemHealthModel.openOnScreen` method with
@@ -1740,8 +1765,9 @@ of mutation commands. Tests cover all regional and delegated kinds, competing
 and originating descriptors, path replacement, lock and cleanup failures,
 normal process exit, abrupt process death, and durable terminal replay. Public
 native snapshot/watch integration now observes these owners without taking over
-service work. Bounded service origins remain gated; this enables no native
-mutation command, Settings action, or snapshot minor.
+service work. The fixed regional CLI origins now retain this lease throughout
+their service workflow. Delegated launch commands and originating Settings
+actions remain gated; the cumulative snapshot minor is unchanged.
 
 ## Event and Resource Contract
 

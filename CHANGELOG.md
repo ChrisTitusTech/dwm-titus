@@ -8,18 +8,25 @@ versions from `config.mk`.
 
 ### Changed
 
+- Enable the three generation-confirmed regional CLI commands with durable
+  operation ownership, verified results, retained replay, and acknowledgment.
+  Preserve recovery after uncertain writes or lost output; ambiguous sent
+  changes are never retried or reclassified by later state. Settings origins
+  remain disabled pending their confirmation and display workflow. Tests use
+  private services and do not change host settings or log out the user.
+
 - Reject locale confirmations that the platform cannot apply while preserving
   an explicit LANGUAGE override. Add a preparatory fixed regional service client
   with fresh confirmation checks, authorization hooks, monitored conflicts, and
-  bounded verification. Native CLI and Settings origins remain disabled pending
-  durable owner integration and qualification; tests change only a private bus.
+  bounded verification. The fixed CLI now has durable owner integration;
+  Settings origins remain disabled. Tests change only a private bus.
 
 - Restore exact regional and delegated operation observers from validated
   journal snapshots. Watch durable progress and owner exit without repeating
   the action; stalled or closed control-output consumers preserve recovery.
   Isolate operation and update-event writers from inherited file-status flags,
   preserving concurrent parent output and behavior after forced termination.
-  Native mutation commands and Settings action entry points remain disabled.
+  Originating Settings action entry points remain disabled.
 
 - Preserve appearance inventory streams when a producer exits before the parent
   captures its identity. Keep buffered output and failure status instead of

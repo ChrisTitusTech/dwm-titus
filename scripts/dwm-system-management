@@ -1087,9 +1087,10 @@ class RegionalRead(ServiceRead):
 class RegionalMutation(ServiceRead):
     """Internal fixed service client; durable admission is a required caller hook.
 
-    No CLI or Settings origin uses this client yet. The caller must retain its
-    native journal lease, checkpoint authorizing in before_send, checkpoint
-    running in after_reply, and commit the result before releasing ownership.
+    The fixed CLI owner uses this client; Settings origins remain gated. The
+    caller must retain its native journal lease, checkpoint authorizing in
+    before_send, checkpoint running in after_reply, and commit the result before
+    releasing ownership.
     A sent timeout is ambiguous, not proof of failure or service cancellation.
     """
 
@@ -4920,15 +4921,18 @@ class OperationStream:
 def reject_unadmitted_operation(operation_id: str, action_id: str, started_at: str,
                                failure: SnapshotFailure, write: Callable[[str], object]) -> None:
     """Report a rejected request without inventing a durable transaction or result."""
-    if (not isinstance(action_id, str) or action_id not in {"updates-refresh", "updates-install-all"}
+    if (not isinstance(action_id, str) or action_id not in {
+            "updates-refresh", "updates-install-all", "timezone-set", "ntp-set", "locale-set"}
             or not isinstance(failure, SnapshotFailure) or failure.code not in JOURNAL_ERROR_CODES):
-        raise OperationProtocolError("rejected update request is invalid")
+        raise OperationProtocolError("rejected operation request is invalid")
     _validate_journal_detail(failure.detail)
     finished_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    regional = action_id in {"timezone-set", "ntp-set", "locale-set"}
+    provider_id, mutation = ("regional", "regional") if regional else ("updates", "package")
     stream = OperationStream(operation_id, action_id, started_at,
-        "Request rejected before operation admission; no package mutation was dispatched", write)
+        f"Request rejected before operation admission; no {mutation} mutation was dispatched", write)
     stream._send([
-        f"error\tupdates\t{failure.code}\t{failure.detail}",
+        f"error\t{provider_id}\t{failure.code}\t{failure.detail}",
         stream._operation_line("failed", "unknown", False, failure.detail),
         "\t".join(("audit", operation_id, action_id, stream.kind, "failed", started_at, finished_at, failure.detail)),
         "complete\toperation",
@@ -5575,6 +5579,138 @@ def recover_journal_active(
         advance_journal_operation(journal, current, terminal, recovery_boot_id=recovery_boot)
         complete_journal_terminal(journal, boot_id=boot_id, session_started=session_started)
         return load_writable_journal_state(journal), None, lookup_failure
+
+
+class RegionalOperationOwner:
+    """Checkpoint one leased native owner before publishing its operation stream."""
+
+    def __init__(self, journal: JournalDescriptorSet, operation: JournalOperation,
+                 write: Callable[[str], object]) -> None:
+        self.journal, self.operation = journal, operation
+        self.stream = None
+        self.output_error = self.persistence_error = None
+        self.terminal = None
+        try:
+            self.stream = OperationStream(operation.operation_id, operation.action_id,
+                operation.started_at, operation.detail, write)
+        except Exception as error:
+            # Admission and its lease already exist. A partial first bundle
+            # cannot be retried or replaced with an unadmitted request.
+            self.output_error = error
+
+    def current(self):
+        current = load_writable_journal_state(self.journal).active
+        if current != self.operation or current.state in JOURNAL_OPERATION_TERMINAL_STATES:
+            raise JournalAdmissionError("Regional operation ownership changed")
+        return current
+
+    def output(self, callback):
+        if self.output_error is None:
+            try:
+                callback()
+            except Exception as error:
+                if self.stream is not None and not self.stream.faulted:
+                    raise
+                self.output_error = error
+
+    def checkpoint(self, state, detail):
+        if self.persistence_error is not None:
+            raise self.persistence_error
+        try:
+            with lock_writable_journal(self.journal):
+                current = self.current()
+                self.operation = advance_journal_operation(self.journal, current,
+                    replace(current, state=state, detail=detail))
+        except (OSError, JournalFrameError, JournalRecordError, JournalAdmissionError) as error:
+            self.persistence_error = error
+            raise
+        self.output(lambda: self.stream.transition(state, detail))
+
+    def finish(self, state, failure=None):
+        if self.persistence_error is not None:
+            raise self.persistence_error
+        detail = ("Regional change verified; sign out and back in for applications to use the locale"
+                  if failure is None and self.operation.kind == "locale" else
+                  "Regional change verified" if failure is None else failure.detail)
+        with lock_writable_journal(self.journal):
+            current = self.current()
+            terminal = replace(current, state=state,
+                finished_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                error_code=None if failure is None else failure.code, detail=detail)
+            advance_journal_operation(self.journal, current, terminal)
+            complete_journal_terminal(self.journal)
+        self.terminal = terminal
+        self.output(lambda: self.stream.finish(terminal))
+        return terminal
+
+
+def run_regional_mutation(
+    journal: JournalDescriptorSet, action: str, argument: str, generation: str,
+    write: Callable[[str], object], *, on_admission: Callable[[], None] | None = None,
+) -> JournalOperation:
+    """Own confirmed native execution, retaining liveness but not a service-wait lock."""
+    argument = validate_regional_argument(action, argument)
+    if not isinstance(generation, str) or JOURNAL_GENERATION_PATTERN.fullmatch(generation) is None:
+        raise SnapshotFailure("malformed", "Invalid regional confirmation generation")
+    if not callable(write):
+        raise ValueError("Regional operation requires an output writer")
+    with lock_writable_journal(journal):
+        prepare_journal_admission(journal)
+    owner = None
+    failure = None
+    with contextlib.ExitStack() as retained:
+        def before_send(preview):
+            nonlocal owner
+            # The service client has just checked fresh configuration, choices,
+            # compatibility and confirmation. Admission closes concurrent starts.
+            with lock_writable_journal(journal):
+                prepare_journal_admission(journal)
+                if on_admission is not None:
+                    on_admission()
+                operation = begin_journal_operation(journal, action,
+                    datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    f"Preparing {action}: {preview.target}")
+                retained.enter_context(retain_native_journal_owner(journal, operation))
+            owner = RegionalOperationOwner(journal, operation, write)
+            if owner.output_error is not None:
+                raise owner.output_error
+            owner.checkpoint("authorizing", "Regional authorization is pending; a sent change cannot be canceled")
+            if owner.output_error is not None:
+                raise owner.output_error
+
+        def after_reply():
+            owner.checkpoint("running", "Regional service accepted the change; verifying current state")
+
+        client = RegionalMutation(action, argument, generation, before_send, after_reply)
+        try:
+            client.run()
+        except SnapshotFailure as error:
+            if owner is None:
+                raise client.hook_error or error
+            if owner.persistence_error is not None:
+                raise owner.persistence_error
+            if client.hook_error is not None and client.hook_error is not owner.output_error:
+                raise client.hook_error
+            failure = (SnapshotFailure("internal", "Regional output was unavailable before dispatch; no change was sent")
+                       if not client.sent and owner.output_error is not None else error)
+        if owner is None:
+            raise SnapshotFailure("interrupted", "Regional execution ended without an admitted owner")
+        if failure is None and (not client.sent or not client.acknowledged or owner.operation.state != "running"):
+            failure = SnapshotFailure("interrupted", "Regional execution ended without verified service completion")
+        state = ("succeeded" if failure is None else
+                 "interrupted" if client.sent and failure.code in {"timeout", "interrupted"} else
+                 "permission-denied" if failure.code == "permission-denied" and owner.operation.state == "authorizing" else
+                 "failed")
+        terminal = owner.finish(state, failure)
+    if client.sent and failure is not None and failure.code in {"timeout", "interrupted"}:
+        # The terminal/handoff is durable and the native lease is released
+        # before this independent read. Its outcome cannot reclassify the call.
+        # Settings will publish its own fresh snapshot on origin completion.
+        with contextlib.suppress(SnapshotFailure):
+            RegionalRead(client.kind).run()
+    if owner.output_error is not None:
+        raise owner.output_error
+    return terminal
 
 
 class PackageKitMutation:
@@ -7273,6 +7409,76 @@ def run_operation_control(command: str, operation_id: str,
         return 3
 
 
+def regional_command(action: str, argument: str, generation: str) -> int:
+    """Expose only confirmed native origins with isolated nonblocking output."""
+    try:
+        with control_output_writers() as writers:
+            return run_regional_command(action, argument, generation, *writers)
+    except OSError:
+        return 1
+
+
+def run_regional_command(action: str, argument: str, generation: str,
+                         output_writer: Callable[[bytes], int] | None,
+                         error_writer: Callable[[bytes], int] | None) -> int:
+    admission_started = output_started = False
+
+    def admitted():
+        nonlocal admission_started
+        admission_started = True
+
+    def write(chunk):
+        nonlocal output_started
+        output_started = True
+        if output_writer is None:
+            sys.stdout.write(chunk)
+            sys.stdout.flush()
+        else:
+            payload = chunk.encode("utf-8")
+            if len(payload) > 4096 or output_writer(payload) != len(payload):
+                raise OSError("Incomplete regional operation output")
+
+    def diagnostic():
+        message = "regional result could not be confirmed; refresh state and observe the existing operation"
+        with contextlib.suppress(OSError):
+            if error_writer is None:
+                print(message, file=sys.stderr)
+            else:
+                error_writer((message + "\n").encode("ascii"))
+
+    try:
+        read_fedora_identity()
+        boot_id = read_boot_id()
+        with open_journal_directory() as chain:
+            initialize_journal_layout(chain.directory_descriptor, boot_id)
+            with retain_writable_journal(chain) as journal:
+                started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                try:
+                    terminal = run_regional_mutation(journal, action, argument, generation,
+                                                     write, on_admission=admitted)
+                    return 0 if terminal.state == "succeeded" else 1
+                except (SnapshotFailure, JournalFrameError, JournalRecordError,
+                        JournalAdmissionError, OSError, OperationProtocolError) as error:
+                    if admission_started or output_started:
+                        raise
+                    with lock_writable_journal(journal):
+                        operation_id = generate_journal_operation_id(load_writable_journal_state(journal))
+                    if isinstance(error, SnapshotFailure):
+                        failure = error
+                    elif isinstance(error, (JournalAdmissionError, JournalLockError)):
+                        failure = SnapshotFailure("conflict", "Another operation or recovery state blocks this request; refresh state before retrying")
+                    elif isinstance(error, (JournalFrameError, JournalRecordError, OperationProtocolError)):
+                        failure = SnapshotFailure("malformed", "Regional preflight is malformed; refresh state and inspect recovery guidance")
+                    else:
+                        failure = SnapshotFailure("internal", "Regional preflight failed; check journal storage and refresh state before retrying")
+                    reject_unadmitted_operation(operation_id, action, started_at, failure, write)
+                    return 1
+    except (SnapshotFailure, JournalFrameError, JournalRecordError, JournalAdmissionError,
+            OSError, OperationProtocolError):
+        diagnostic()
+        return 1
+
+
 def update_command(action_id: str, generation: str | None = None) -> int:
     """Own an explicit CLI request; never replace a possibly admitted operation."""
     admission_started = False
@@ -7544,11 +7750,19 @@ def watch_update_events() -> int:
 
 
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | watch-updates | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | watch-updates | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if argv and argv[0] in {"timezone-set", "ntp-set", "locale-set"}:
+        if len(argv) != 3 or JOURNAL_GENERATION_PATTERN.fullmatch(argv[2]) is None:
+            return usage()
+        try:
+            validate_regional_argument(argv[0], argv[1])
+        except SnapshotFailure:
+            return usage()
+        return regional_command(*argv)
     if argv and argv[0] in {"regional-choices", "regional-preview"}:
         try:
             output, code = regional_preflight_output(argv[0], argv[1:])

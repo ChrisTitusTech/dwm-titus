@@ -163,8 +163,8 @@ comparison accepts redundant LC-category elision while checking preserved values
 The validators perform no I/O. Separate fixed timedate1 and locale1 readers now
 bound connection setup, service replies, and decoding under a ten-second deadline.
 Typed private-bus tests cover success, denial, absence, malformed state, timeout,
-and late replies; read-only Fedora 44 probes also passed. No command, D-Bus
-mutation, or new protocol minor is enabled. A separate fixed locale catalog
+and late replies; read-only Fedora 44 probes also passed. Those readers add no
+mutation or new protocol minor. A separate fixed locale catalog
 collector now bounds output, process lifetime, signal cleanup, and reaping, with
 an independent timeout supervisor for abrupt collector death. It preserves exact
 installed identities and starts a new process for every read. A separate
@@ -198,8 +198,8 @@ selected value to current configuration with a generation token, preserve the
 complete locale override description, and require fresh reads for each request.
 Unit and private-bus tests cover stale state, key presence, strict output bounds,
 malformed selections, fixed read-only calls, and closed consumers. Native mutation
-commands remain disabled; their owner lifetime, platform authorization,
-verification, and Settings confirmation integration are still required.
+commands were initially disabled pending owner integration, described below.
+Settings confirmation integration remains required.
 Read-only Fedora 44 CLI probes passed for both catalogs and all three preview
 forms without changing system settings.
 
@@ -225,9 +225,20 @@ retrying. Unit/private-bus fixtures cover a real ambiguous timeout after the
 simulated service changed state. Known non-preserving LANGUAGE selections are
 rejected during preview. Known-invalid complete locale argument sets are rejected
 before admission without narrowing readable state or dropping overrides.
-No host setting was changed. Native journal integration,
-post-timeout display refresh, CLI origins, and originating Settings actions
-remain outstanding; the snapshot minor remains zero.
+No host setting was changed.
+The three generation-confirmed regional CLI commands now retain a native lease
+across unlocked service waits and commit every phase before output. Terminal
+handoffs are durable before completion; native records preserve the update
+restart aggregate. Output failure before dispatch aborts safely, while loss
+after dispatch keeps verification and durable recording alive. Uncertain
+admission or persistence produces no replacement result. An ambiguous sent
+outcome is durably interrupted before releasing the lease and attempting an
+independent fresh read, which cannot change that terminal result. Unit and
+actual CLI/private-bus fixtures cover all three actions, denial, stale
+confirmation, write failures, lost output, replay, and acknowledgment without
+repeating the action. Graphical polkit and host mutations are not qualified.
+Post-timeout Settings display refresh and originating Settings controls remain
+outstanding; the snapshot minor remains zero.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
