@@ -15,6 +15,7 @@ import re
 import selectors
 import shlex
 import signal
+import socket
 import stat
 import struct
 import subprocess
@@ -6799,57 +6800,79 @@ def cancel_journal_operation(journal: JournalDescriptorSet, operation_id: str, *
                 detail="Cancellation requested; waiting for PackageKit completion"))
 
 
+def control_output_writer(output, resources: contextlib.ExitStack) -> Callable[[bytes], int] | None:
+    """Never set file-status flags on an inherited open-file description."""
+    try:
+        descriptor = output.fileno()
+    except io.UnsupportedOperation:
+        return None  # In-memory test consumers have no kernel writer.
+    original = os.fstat(descriptor)
+    flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
+    if (flags & os.O_ACCMODE) not in (os.O_WRONLY, os.O_RDWR):
+        raise OSError("Operation output is not writable")
+    if stat.S_ISFIFO(original.st_mode) or stat.S_ISCHR(original.st_mode):
+        # dup would still share O_NONBLOCK with the parent. Opening the retained
+        # proc descriptor gives pipes/terminals a separate open-file description.
+        descriptor = os.open(f"/proc/self/fd/{descriptor}",
+            os.O_WRONLY | os.O_NONBLOCK | os.O_CLOEXEC | os.O_NOCTTY)
+        resources.callback(os.close, descriptor)
+        if stat.S_ISFIFO(original.st_mode) and flags & os.O_DIRECT:
+            # Packet mode is set after opening a pipe, on this private OFD only.
+            fcntl.fcntl(descriptor, fcntl.F_SETFL, fcntl.fcntl(descriptor, fcntl.F_GETFL) | os.O_DIRECT)
+        current = os.fstat(descriptor)
+        identity = lambda value: (value.st_dev, value.st_ino, value.st_mode, value.st_rdev)
+        if identity(current) != identity(original):
+            raise OSError("Operation output identity changed")
+    elif stat.S_ISSOCK(original.st_mode):
+        # Sockets cannot be reopened through proc. MSG_DONTWAIT is per-call,
+        # unlike O_NONBLOCK, and does not affect another holder of this socket.
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.send.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_size_t, ctypes.c_int]
+        libc.send.restype = ctypes.c_ssize_t
+
+        def send(payload):
+            count = libc.send(descriptor, payload, len(payload), socket.MSG_DONTWAIT | socket.MSG_NOSIGNAL)
+            if count < 0:
+                raise OSError(ctypes.get_errno(), "Operation socket output failed")
+            return count
+
+        return send
+    elif not stat.S_ISREG(original.st_mode):
+        raise OSError("Unsupported operation output type")
+    # Regular files retain their original shared offset and append semantics.
+    # O_NONBLOCK cannot impose a storage-I/O deadline on a regular file.
+    return lambda payload: os.write(descriptor, payload)
+
+
 @contextlib.contextmanager
-def control_output_descriptors() -> Iterator[tuple[int | None, int | None]]:
-    """Bound control output without changing a calling shell's retained writers."""
-    descriptors = []
-    modes = {}
+def control_output_writers() -> Iterator[tuple[Callable[[bytes], int] | None, Callable[[bytes], int] | None]]:
+    """Retain isolated writers and close them even on handled interruption."""
     handlers = {}
 
     def interrupted(_signum, _frame):
         raise InterruptedError("Operation control was interrupted")
 
-    for output in (sys.stdout, sys.stderr):
-        try:
-            descriptor = output.fileno()
-        except io.UnsupportedOperation:
-            descriptor = None  # In-memory test consumers have no kernel writer.
-        descriptors.append(descriptor)
-        if descriptor is not None:
-            modes[descriptor] = os.get_blocking(descriptor)
-    # Capture both original modes before changing either: stderr can share
-    # stdout's open file description, including a completely full pipe.
     try:
         for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
             handlers[signum] = signal.signal(signum, interrupted)
-        for descriptor in modes:
-            os.set_blocking(descriptor, False)
-        yield tuple(descriptors)
+        with contextlib.ExitStack() as resources:
+            yield tuple(control_output_writer(output, resources) for output in (sys.stdout, sys.stderr))
     finally:
-        failure = None
-        try:
-            for descriptor, blocking in modes.items():
-                try:
-                    os.set_blocking(descriptor, blocking)
-                except OSError as error:
-                    failure = error
-        finally:
-            for signum, handler in handlers.items():
-                signal.signal(signum, handler)
-        if failure is not None:
-            raise failure
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
 
 
 def operation_control(command: str, operation_id: str) -> int:
     try:
-        with control_output_descriptors() as descriptors:
-            return run_operation_control(command, operation_id, *descriptors)
+        with control_output_writers() as writers:
+            return run_operation_control(command, operation_id, *writers)
     except OSError:
         return 1  # Output setup/cleanup failed; no trustworthy completion.
 
 
 def run_operation_control(command: str, operation_id: str,
-                          output_descriptor: int | None, error_descriptor: int | None) -> int:
+                          output_writer: Callable[[bytes], int] | None,
+                          error_writer: Callable[[bytes], int] | None) -> int:
     """Keep stale control rejection stream-free and watch failure distinct."""
     started = False
     cancel_dispatched = False
@@ -6861,22 +6884,22 @@ def run_operation_control(command: str, operation_id: str,
     def write(chunk):
         nonlocal started
         started = True
-        if output_descriptor is None:
+        if output_writer is None:
             sys.stdout.write(chunk)
             sys.stdout.flush()
             return
         payload = chunk.encode("utf-8")
         # Each formatter bundle fits Linux PIPE_BUF. A slow consumer must not
         # block observation, hold locks, or create an unbounded output backlog.
-        if len(payload) > 4096 or os.write(output_descriptor, payload) != len(payload):
+        if len(payload) > 4096 or output_writer(payload) != len(payload):
             raise OSError("Incomplete operation control output")
 
     def diagnostic(message):
         with contextlib.suppress(OSError):
-            if error_descriptor is None:
+            if error_writer is None:
                 print(message, file=sys.stderr)
             else:
-                os.write(error_descriptor, (message + "\n").encode("ascii"))
+                error_writer((message + "\n").encode("ascii"))
 
     try:
         boot_id = read_boot_id()
@@ -7139,15 +7162,14 @@ class UpdateEventMonitor:
 
 
 def watch_update_events() -> int:
-    output_descriptor = None
-    original_blocking = None
+    output_writer = None
 
     def emit(record: str) -> None:
         payload = (record + "\n").encode("ascii")
         # Each fixed row fits PIPE_BUF. Never block GLib callbacks behind a
         # stalled reader or queue unbounded notifications. Overflow is an
         # explicit monitoring failure; the consumer must refresh finite state.
-        if os.write(output_descriptor, payload) != len(payload):
+        if output_writer(payload) != len(payload):
             raise OSError("Incomplete event output")
 
     try:
@@ -7157,36 +7179,23 @@ def watch_update_events() -> int:
         gi.require_version("GLibUnix", "2.0")
         from gi.repository import Gio, GLib, GLibUnix
 
-        output_descriptor = sys.stdout.fileno()
-        original_blocking = os.get_blocking(output_descriptor)
-        os.set_blocking(output_descriptor, False)
-        code = UpdateEventMonitor(Gio, GLib, GLibUnix, emit).run()
+        with contextlib.ExitStack() as resources:
+            output_writer = control_output_writer(sys.stdout, resources)
+            if output_writer is None:
+                raise OSError("Event output requires a file descriptor")
+            code = UpdateEventMonitor(Gio, GLib, GLibUnix, emit).run()
     except (ImportError, ValueError, OSError):
         code = 1
-    finally:
-        if output_descriptor is not None and original_blocking is not None:
-            try:
-                # File status flags belong to the shared open-file description.
-                # A shell group may retain this writer for its next command.
-                os.set_blocking(output_descriptor, original_blocking)
-            except OSError:
-                code = 1
     if code:
-        error_descriptor = None
-        error_blocking = None
         try:
-            error_descriptor = sys.stderr.fileno()
-            error_blocking = os.get_blocking(error_descriptor)
-            os.set_blocking(error_descriptor, False)
-            os.write(error_descriptor, b"PackageKit live change monitoring is unavailable; reload status explicitly\n")
+            with contextlib.ExitStack() as resources:
+                error_writer = control_output_writer(sys.stderr, resources)
+                if error_writer is not None:
+                    error_writer(b"PackageKit live change monitoring is unavailable; reload status explicitly\n")
         except (OSError, ValueError):
             # Exit status remains authoritative when even diagnostics cannot
             # be delivered (including stderr sharing the full stdout pipe).
             pass
-        finally:
-            if error_descriptor is not None and error_blocking is not None:
-                with contextlib.suppress(OSError):
-                    os.set_blocking(error_descriptor, error_blocking)
     return code
 
 

@@ -11,8 +11,10 @@ import importlib.util
 import importlib.machinery
 import os
 import pathlib
+import pty
 import select
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -7695,16 +7697,16 @@ raise SystemExit(p["main"](sys.argv[2:]))
             state_home = str(pathlib.Path(chain.path).parents[1])
             with mock.patch.dict(os.environ, {"XDG_STATE_HOME": state_home}), \
                     mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
-                    mock.patch.object(provider.os, "write", return_value=1) as output, \
                     contextlib.redirect_stderr(io.StringIO()) as diagnostic:
-                code = provider.run_operation_control("watch-operation", operation.operation_id, 123, None)
+                output = mock.Mock(return_value=1)
+                code = provider.run_operation_control("watch-operation", operation.operation_id, output, None)
             self.assertEqual(code, 1)
             self.assertEqual(diagnostic.getvalue(), "operation observation was interrupted\n")
             output.assert_called_once()
             self.assertEqual((path / "active").read_bytes(), before)
 
-    def test_control_signals_restore_retained_pipe_modes_and_preserve_ownership(self):
-        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    def test_control_signals_never_change_retained_pipe_modes_or_ownership(self):
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGKILL):
             for blocking in (False, True):
                 with self.subTest(signum=signum, blocking=blocking), self.session() as (path, chain, journal), \
                         self.owner(journal) as operation:
@@ -7718,9 +7720,13 @@ raise SystemExit(p["main"](sys.argv[2:]))
                             operation.operation_id], stdout=writer, stderr=writer, env=environment, close_fds=True)
                         self.assertTrue(select.select([reader], [], [], 3)[0])
                         self.assertIn(b"\tpending\t", os.read(reader, 4096))
+                        self.assertEqual(os.get_blocking(writer), blocking)
+                        os.write(writer, b"parent output\n")
+                        self.assertTrue(select.select([reader], [], [], 3)[0])
+                        self.assertEqual(os.read(reader, 4096), b"parent output\n")
                         child.send_signal(signum)
                         child.communicate(timeout=3)
-                        self.assertEqual(child.returncode, 1)
+                        self.assertEqual(child.returncode, -signal.SIGKILL if signum == signal.SIGKILL else 1)
                         self.assertEqual(os.get_blocking(writer), blocking)
                         self.assertEqual((path / "active").read_bytes(), before)
                     finally:
@@ -7736,12 +7742,131 @@ raise SystemExit(p["main"](sys.argv[2:]))
             for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaisesRegex(OSError, "fixture"):
-                with provider.control_output_descriptors():
+                with provider.control_output_writers():
                     for signum, handler in original.items():
                         self.assertIsNot(signal.getsignal(signum), handler)
                     raise OSError("output fixture")
         for signum, handler in original.items():
             self.assertIs(signal.getsignal(signum), handler)
+
+    def test_isolated_pipe_and_terminal_writers_preserve_flags_and_close(self):
+        for terminal in (False, True):
+            for blocking in (False, True):
+                with self.subTest(terminal=terminal, blocking=blocking):
+                    reader, writer = pty.openpty() if terminal else os.pipe()
+                    opened = []
+                    real_open = os.open
+                    def capture(*args):
+                        descriptor = real_open(*args)
+                        opened.append(descriptor)
+                        return descriptor
+                    try:
+                        os.set_blocking(writer, blocking)
+                        original = provider.fcntl.fcntl(writer, provider.fcntl.F_GETFL)
+                        output = types.SimpleNamespace(fileno=lambda: writer)
+                        with contextlib.ExitStack() as resources, \
+                                mock.patch.object(provider.os, "open", side_effect=capture):
+                            send = provider.control_output_writer(output, resources)
+                            self.assertEqual(len(opened), 1)
+                            self.assertNotEqual(opened[0], writer)
+                            self.assertFalse(os.get_blocking(opened[0]))
+                            self.assertFalse(os.get_inheritable(opened[0]))
+                            self.assertEqual(send(b"watch"), 5)
+                            self.assertTrue(select.select([reader], [], [], 1)[0])
+                            self.assertEqual(os.read(reader, 4096), b"watch")
+                            os.write(writer, b"parent")
+                            self.assertTrue(select.select([reader], [], [], 1)[0])
+                            self.assertEqual(os.read(reader, 4096), b"parent")
+                            with self.assertRaises(BlockingIOError):
+                                for _ in range(256):
+                                    send(b"x" * 4096)
+                            self.assertEqual(provider.fcntl.fcntl(writer, provider.fcntl.F_GETFL), original)
+                        with self.assertRaises(OSError):
+                            os.fstat(opened[0])
+                        self.assertEqual(provider.fcntl.fcntl(writer, provider.fcntl.F_GETFL), original)
+                    finally:
+                        os.close(reader)
+                        os.close(writer)
+
+    def test_packet_pipe_writer_retains_packet_boundaries(self):
+        reader, writer = os.pipe2(os.O_DIRECT)
+        try:
+            with contextlib.ExitStack() as resources:
+                send = provider.control_output_writer(types.SimpleNamespace(fileno=lambda: writer), resources)
+                send(b"first")
+                send(b"second")
+                self.assertTrue(select.select([reader], [], [], 1)[0])
+                self.assertEqual(os.read(reader, 4096), b"first")
+                self.assertTrue(select.select([reader], [], [], 1)[0])
+                self.assertEqual(os.read(reader, 4096), b"second")
+                self.assertTrue(os.get_blocking(writer))
+        finally:
+            os.close(reader)
+            os.close(writer)
+
+    def test_socket_output_is_nonblocking_per_call_without_changing_flags(self):
+        for blocking in (False, True):
+            with self.subTest(blocking=blocking):
+                sender, reader = socket.socketpair()
+                with sender, reader, contextlib.ExitStack() as resources:
+                    sender.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+                    sender.setblocking(blocking)
+                    send = provider.control_output_writer(sender, resources)
+                    self.assertEqual(send(b"watch"), 5)
+                    self.assertEqual(reader.recv(4096), b"watch")
+                    with self.assertRaises(BlockingIOError):
+                        for _ in range(64):
+                            send(b"x" * 4096)
+                    self.assertEqual(os.get_blocking(sender.fileno()), blocking)
+                    reader.close()
+                    with self.assertRaises(OSError):
+                        send(b"closed")
+                    self.assertEqual(os.get_blocking(sender.fileno()), blocking)
+
+    def test_regular_output_preserves_shared_offset_and_append_semantics(self):
+        for append in (False, True):
+            with self.subTest(append=append), tempfile.TemporaryFile() as output:
+                output.write(b"prefix")
+                output.flush()
+                flags = provider.fcntl.fcntl(output.fileno(), provider.fcntl.F_GETFL)
+                if append:
+                    flags |= os.O_APPEND
+                    provider.fcntl.fcntl(output.fileno(), provider.fcntl.F_SETFL, flags)
+                    output.seek(0)
+                with contextlib.ExitStack() as resources:
+                    send = provider.control_output_writer(output, resources)
+                    self.assertEqual(send(b"watch"), 5)
+                    os.write(output.fileno(), b"parent")
+                    self.assertEqual(provider.fcntl.fcntl(output.fileno(), provider.fcntl.F_GETFL), flags)
+                output.seek(0)
+                self.assertEqual(output.read(), b"prefixwatchparent")
+
+    def test_pipe_reopen_rejects_readonly_and_mismatched_output(self):
+        reader, writer = os.pipe()
+        closed = []
+        real_close = os.close
+        try:
+            with contextlib.ExitStack() as resources, mock.patch.object(provider.os, "open") as opened:
+                with self.assertRaisesRegex(OSError, "not writable"):
+                    provider.control_output_writer(types.SimpleNamespace(fileno=lambda: reader), resources)
+                opened.assert_not_called()
+            original = os.fstat(writer)
+            changed = types.SimpleNamespace(st_dev=original.st_dev, st_ino=original.st_ino + 1,
+                st_mode=original.st_mode, st_rdev=original.st_rdev)
+            def close(descriptor):
+                closed.append(descriptor)
+                real_close(descriptor)
+            with self.assertRaisesRegex(OSError, "identity changed"), contextlib.ExitStack() as resources, \
+                    mock.patch.object(provider.os, "fstat", side_effect=[original, changed]), \
+                    mock.patch.object(provider.os, "close", side_effect=close):
+                provider.control_output_writer(types.SimpleNamespace(fileno=lambda: writer), resources)
+            self.assertEqual(len(closed), 1)
+            with self.assertRaises(OSError):
+                os.fstat(closed[0])
+            self.assertTrue(os.get_blocking(writer))
+        finally:
+            os.close(reader)
+            os.close(writer)
 
     def test_path_replacement_during_watch_never_publishes_completion(self):
         chunks = []

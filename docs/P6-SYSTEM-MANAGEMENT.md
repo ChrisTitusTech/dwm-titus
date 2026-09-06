@@ -238,14 +238,20 @@ Closing the observer releases its event descriptor and all associated watches.
 An exact durable terminal record for any valid kind replays without reissuing
 its external action.
 
-Operation controls write fixed formatter bundles directly through nonblocking
-stdout. Each bundle fits Linux `PIPE_BUF`; a full pipe or short write fails the
+Operation controls write fixed formatter bundles through isolated stream
+writers. Each bundle fits Linux `PIPE_BUF`; a full pipe or short write fails the
 observer without a backlog or a shutdown-buffer retry. Failure diagnostics are
 nonblocking and best-effort, including when stderr shares the full output pipe.
-Both original descriptor modes are captured before either changes and restored
-on normal, error, and handled TERM/INT/HUP exits, preserving writers retained
-by the calling shell. The previous signal handlers are restored too; forced
-SIGKILL cannot run userspace cleanup. Control exit status
+Pipes and character devices are reopened through their retained `/proc/self/fd`
+identity with nonblocking, close-on-exec, and no-controlling-terminal flags.
+These handles have independent open-file descriptions, not `dup`-shared flags;
+packet pipes retain packet mode. Sockets use per-call `MSG_DONTWAIT` output.
+Inherited file-status flags never change, including during observation and after
+forced SIGKILL, so concurrent parent writers retain their behavior. Regular-file
+output retains its shared offset and append semantics; bounded record sizes do
+not impose a hard storage-I/O deadline. Private handles close on normal/error
+exit and handled TERM/INT/HUP, with prior signal handlers restored; the kernel
+closes them after SIGKILL too. Control exit status
 remains authoritative when diagnostics cannot be delivered. Output failure does
 not cancel the operation owner or acknowledge its handoff.
 The public cancel control pins PackageKit's unique D-Bus peer and uses one
@@ -1718,11 +1724,11 @@ Writes are nonblocking and each fixed row fits `PIPE_BUF`; a full output pipe
 or short write stops monitoring with the same failure instead of queuing events
 or blocking signal handling. Consumers must treat any unexpected exit as lost
 monitoring and invalidate their preview. There is no userspace output backlog.
-The command restores stdout's original blocking mode on exit, preserving a
-writer retained by a calling shell group. Failure diagnostics are nonblocking
-and best-effort too, including when stderr shares a full stdout pipe; their
-original descriptor mode is restored. Exit status is authoritative when the
-diagnostic cannot be delivered.
+The command uses the same isolated output strategy as operation controls,
+without changing inherited file-status flags while live or on exit. Failure
+diagnostics are nonblocking and best-effort too, including when stderr shares
+a full stdout pipe. Exit status is authoritative when the diagnostic cannot be
+delivered.
 SIGTERM, SIGINT, or SIGHUP stop the subscriptions and exit 0. A missing PackageKit
 owner does not prevent readiness: the monitor waits for owner changes without
 activating the service, while finite discovery reports availability separately.

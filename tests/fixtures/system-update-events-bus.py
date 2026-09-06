@@ -101,10 +101,12 @@ try:
     error = broken.stderr.read()
     assert b"reload status explicitly" in error and b"Traceback" not in error
 
-    # Shell groups can retain the same write-side open-file description for
-    # later commands. Restore its original mode on both clean and failed exits.
-    for originally_blocking, overflow, merged in ((True, False, False), (False, False, False),
-            (True, True, False), (True, True, True)):
+    # Shell groups can retain this writer during monitoring and after a forced
+    # exit. Never change its mode, even temporarily, or disrupt parent output.
+    for originally_blocking, overflow, merged, killed in (
+            (True, False, False, False), (False, False, False, False),
+            (True, True, False, False), (True, True, True, False),
+            (True, False, True, True), (False, False, True, True)):
         reader, writer = os.pipe()
         retained_writers.append(writer)
         os.set_blocking(writer, originally_blocking)
@@ -114,15 +116,18 @@ try:
         inherited.stdout = os.fdopen(reader, "rb", buffering=0)
         fcntl.fcntl(writer, fcntl.F_SETPIPE_SZ, 4096)
         assert line(inherited) == b"update-event\tready\n"
+        assert os.get_blocking(writer) == originally_blocking, "Live monitor changed inherited stdout mode"
+        os.write(writer, b"parent output\n")
+        assert line(inherited) == b"parent output\n"
         if overflow:
             for _ in range(1000):
                 emit("UpdatesChanged")
                 if inherited.poll() is not None:
                     break
         else:
-            inherited.send_signal(signal.SIGTERM)
-        assert inherited.wait(timeout=3) == int(overflow)
-        assert os.get_blocking(writer) == originally_blocking, "Inherited stdout mode was not restored"
+            inherited.send_signal(signal.SIGKILL if killed else signal.SIGTERM)
+        assert inherited.wait(timeout=3) == (-signal.SIGKILL if killed else int(overflow))
+        assert os.get_blocking(writer) == originally_blocking, "Inherited stdout mode changed"
 
     # A reader that remains open but stops draining cannot pin the GLib loop
     # and its subscriptions. Overflow exits explicitly, with no event queue.

@@ -11,6 +11,8 @@ versions from `config.mk`.
 - Restore exact regional and delegated operation observers from validated
   journal snapshots. Watch durable progress and owner exit without repeating
   the action; stalled or closed control-output consumers preserve recovery.
+  Isolate operation and update-event writers from inherited file-status flags,
+  preserving concurrent parent output and behavior after forced termination.
   Native mutation commands and Settings action entry points remain disabled.
 
 - Preserve appearance inventory streams when a producer exits before the parent

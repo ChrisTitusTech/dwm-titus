@@ -213,6 +213,9 @@ owner. A fixed observation budget ends with a fresh lease check, including the
 close-before-unlock race. Snapshots retain native identities, and Settings can
 restore their observer and acknowledge verified results. Control output fails
 boundedly on full or closed pipes while preserving active ownership and handoffs.
+Operation and update-event writers never change inherited file-status flags;
+private stream handles and per-call socket writes preserve concurrent parent
+output, including after forced watcher termination.
 Bounded service execution and originating Settings actions remain disabled.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
