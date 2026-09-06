@@ -1166,31 +1166,33 @@ path, or elevation mechanism.
   PackageKit transaction nor the root-scoped `watch-operation` process. While a
   regional or delegated originating stream is nonterminal, the root model
   defers finite snapshot requests until that stream terminates; event-driven
-  read-state refreshes remain coalesced. Thus snapshot recovery terminalizes a
-  stranded non-PackageKit journal record under the kind-specific rules below
-  before producing output and never emits it as `active-operation`. Under the
-  same exclusive-lock path, it also completes any terminalized PackageKit
-  active payload before selecting snapshot records. This is journal-only
-  completion of an already durable result; it performs no PackageKit lookup,
-  history query, or signal wait while holding the lock. An incomplete recovery
-  is a recovery error, never a nonterminal row. A
-  finite `snapshot` always ends at `complete<TAB>snapshot`; when it contains an
-  `active-operation`, its kind is necessarily PackageKit `refresh` or `update`.
+  read-state refreshes remain coalesced. Snapshot recovery distinguishes a live
+  native owner from an orphan through its exact file lease. A held lease
+  preserves the validated regional or delegated record as `active-operation`;
+  an unheld lease permits conservative interrupted recovery under the
+  kind-specific rules below. Under the short exclusive-lock path, recovery also
+  completes any already terminalized active payload before selecting snapshot
+  records. This is journal-only completion of an already durable result; it
+  performs no service lookup, history query, or signal wait while holding the
+  lock. Recovery errors never synthesize a row from unsafe or malformed state.
+  A finite `snapshot` always ends at `complete<TAB>snapshot`; its optional
+  `active-operation` can have any supported closed operation kind.
   The root model first compares its ID with the one live provider stream it
-  already owns. A matching originating refresh or install stream remains the
+  already owns. A matching live operation stream remains the
   sole observer and no watcher is started. Otherwise the root model immediately
   starts exactly one
   `dwm-system-management watch-operation OPERATION_ID` process, and records it
   as that operation's sole live stream before accepting another snapshot. That
   process revalidates one of the two permitted journal identities above. For a
-  nonterminal record it adopts only its exact PackageKit object, emits `pending`,
-  then `authorizing` when the adopted transaction is known to have reached
-  authorization. It emits `running` only after the journal or adopted
-  transaction proves that state was reached, followed when applicable by
-  `cancel-requested`. Thus an authorization still in progress remains in
-  `authorizing` and may terminate directly as `permission-denied`. It emits each
-  known reached lifecycle state once and remains subscribed until it emits the
-  terminal operation, audit, and `complete<TAB>operation` records.
+  nonterminal PackageKit record it adopts only its exact recorded object. For a
+  native record it observes only the retained inode and durable checkpoints,
+  with the bounded event wait and final lease probe described above. Both paths
+  emit `pending` and subsequently observed lifecycle states only when supported
+  by the journal or, for PackageKit, exact adopted transaction evidence. An
+  observed authorization remains `authorizing` and may terminate directly as
+  `permission-denied`; only PackageKit offers cancellation. A verified durable
+  result emits the terminal operation, audit, and `complete<TAB>operation`
+  records. Lost or expired observation retains recovery guidance, not success.
 
   When a snapshot instead contains `terminal-handoff`, the root model first
   compares it with the one validated terminal stream it already owns. An exact
