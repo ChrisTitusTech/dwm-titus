@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Restore exact regional and delegated operation observers from validated
+  journal snapshots. Watch durable progress and owner exit without repeating
+  the action; stalled or closed control-output consumers preserve recovery.
+  Native mutation commands and Settings action entry points remain disabled.
+
 - Preserve appearance inventory streams when a producer exits before the parent
   captures its identity. Keep buffered output and failure status instead of
   crashing the asset watcher and leaving wallpaper preview state stale.

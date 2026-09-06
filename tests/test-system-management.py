@@ -7339,6 +7339,425 @@ with p["open_journal_directory_chain"](sys.argv[2]) as chain:
                 self.assertEqual(state.terminals[operation.slot].state, "interrupted")
 
 
+class NativeJournalWatchTests(unittest.TestCase):
+    boot_id = NativeJournalOwnerTests.boot_id
+    session = NativeJournalOwnerTests.session
+    begin = NativeJournalOwnerTests.begin
+    owner = NativeJournalOwnerTests.owner
+
+    def checkpoint(self, journal, state, *, complete=True):
+        with provider.lock_writable_journal(journal):
+            current = provider.load_writable_journal_state(journal).active
+            if state == "succeeded" and current.state in {"pending", "authorizing"}:
+                current = provider.advance_journal_operation(journal, current, replace(current, state="running"))
+            if state == "permission-denied" and current.state == "pending":
+                current = provider.advance_journal_operation(journal, current, replace(current, state="authorizing"))
+            changes = dict(state=state, detail=f"Native fixture {state}")
+            if state in provider.JOURNAL_OPERATION_TERMINAL_STATES:
+                changes["finished_at"] = "2026-09-06T17:01:00Z"
+                if state == "failed":
+                    changes["error_code"] = "conflict"
+            current = provider.advance_journal_operation(journal, current, replace(current, **changes))
+            if complete and state in provider.JOURNAL_OPERATION_TERMINAL_STATES:
+                provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+            return current
+
+    def watch(self, journal, operation, write):
+        backend = mock.Mock(side_effect=AssertionError("native watch opened PackageKit"))
+        provider.watch_journal_operation(journal, operation.operation_id, write,
+            boot_id=self.boot_id, backend_factory=backend)
+        backend.assert_not_called()
+
+    @contextlib.contextmanager
+    def events(self, callback):
+        waiter = types.SimpleNamespace(wait=callback)
+        with mock.patch.object(provider, "NativeJournalEvents",
+                return_value=contextlib.nullcontext(waiter)):
+            yield
+
+    def test_each_kind_replays_exact_durable_result_without_backend_or_cancelability(self):
+        for action in ("timezone-set", "ntp-set", "locale-set", "accounts-open", "password-open",
+                       "printers-open", "sources-open"):
+            for result in ("succeeded", "permission-denied", "canceled", "failed", "interrupted"):
+                with self.subTest(action=action, result=result), self.session() as (_path, _chain, journal), \
+                        self.owner(journal, action) as operation:
+                    chunks = []
+                    def finish(_deadline):
+                        self.assertFalse(journal._exclusive)
+                        self.checkpoint(journal, result, complete=False)
+                    def write(chunk):
+                        if "complete\toperation" in chunk:
+                            state = provider.load_journal_state(journal.chain)
+                            self.assertIsNone(state.active)
+                            self.assertEqual(state.handoff.operation_id, operation.operation_id)
+                        chunks.append(chunk)
+                    with self.events(finish):
+                        self.watch(journal, operation, write)
+                    operations = rows("".join(chunks).splitlines(), "operation")
+                    self.assertEqual(operations[0][4], "pending")
+                    self.assertEqual(operations[-1][1:5],
+                        [operation.operation_id, action, operation.kind, result])
+                    self.assertTrue(all(row[5:7] == ["unknown", "no"] for row in operations))
+                    self.assertEqual(len(rows("".join(chunks).splitlines(), "audit")), 1)
+
+    def test_progress_coalesces_without_writing_and_deadline_does_not_extend(self):
+        with self.session() as (_path, _chain, journal), self.owner(journal) as operation:
+            chunks, deadlines = [], []
+            steps = iter(("pending", "authorizing", "authorizing", "running", "succeeded"))
+            def changed(deadline):
+                deadlines.append(deadline)
+                state = next(steps)
+                if state == provider.load_journal_state(journal.chain).active.state:
+                    return
+                self.checkpoint(journal, state)
+            with self.events(changed):
+                self.watch(journal, operation, chunks.append)
+            self.assertEqual(len(set(deadlines)), 1)
+            self.assertEqual([row[4] for row in rows("".join(chunks).splitlines(), "operation")],
+                ["pending", "authorizing", "running", "succeeded"])
+            self.assertEqual(provider.load_journal_state(journal.chain).handoff.operation_id, operation.operation_id)
+
+    def test_orphan_recovery_and_completion_during_watch_setup_are_exact(self):
+        for completed in (False, True):
+            with self.subTest(completed=completed), self.session() as (_path, _chain, journal):
+                with provider.lock_writable_journal(journal):
+                    operation = self.begin(journal)
+                @contextlib.contextmanager
+                def events(_journal):
+                    if completed:
+                        self.checkpoint(journal, "succeeded")
+                    yield types.SimpleNamespace(wait=mock.Mock(side_effect=AssertionError("unneeded wait")))
+                chunks = []
+                with mock.patch.object(provider, "NativeJournalEvents", side_effect=events):
+                    self.watch(journal, operation, chunks.append)
+                self.assertEqual(rows("".join(chunks).splitlines(), "operation")[-1][4],
+                    "succeeded" if completed else "interrupted")
+
+    def test_final_deadline_probe_recovers_close_before_unlock_race(self):
+        with self.session() as (_path, _chain, journal), contextlib.ExitStack() as owner:
+            with provider.lock_writable_journal(journal):
+                operation = self.begin(journal)
+                owner.enter_context(provider.retain_native_journal_owner(journal, operation))
+            clock, waits, chunks = [10], [], []
+            def wait(deadline):
+                waits.append(deadline)
+                if len(waits) == 1:
+                    return  # CLOSE_WRITE arrived while the lease was still busy.
+                owner.close()
+                clock[0] = deadline  # No further filesystem event followed.
+            with self.events(wait), mock.patch.object(provider.time, "monotonic", side_effect=lambda: clock[0]):
+                self.watch(journal, operation, chunks.append)
+            self.assertEqual(len(waits), 2)
+            self.assertEqual(rows("".join(chunks).splitlines(), "operation")[-1][4], "interrupted")
+
+    def test_timeout_or_output_loss_preserves_the_live_owner_and_has_no_terminal(self):
+        for fault in ("timeout", "output", "events"):
+            with self.subTest(fault=fault), self.session() as (path, _chain, journal), self.owner(journal) as operation:
+                before = (path / "active").read_bytes()
+                clock, chunks = [10], []
+                def wait(deadline):
+                    if fault == "events":
+                        raise provider.SnapshotFailure("interrupted", "events fixture")
+                    clock[0] = deadline
+                def write(chunk):
+                    chunks.append(chunk)
+                    if fault == "output":
+                        raise BrokenPipeError("output fixture")
+                with self.events(wait), mock.patch.object(provider.time, "monotonic", side_effect=lambda: clock[0]):
+                    with self.assertRaises(BrokenPipeError if fault == "output" else provider.SnapshotFailure):
+                        self.watch(journal, operation, write)
+                self.assertNotIn("complete\toperation", "".join(chunks))
+                self.assertEqual((path / "active").read_bytes(), before)
+                with provider.lock_writable_journal(journal):
+                    self.assertTrue(provider.native_journal_owner_busy(journal, operation))
+
+    def test_replacement_owner_is_never_followed(self):
+        with self.session() as (_path, _chain, journal), self.owner(journal) as operation:
+            following, chunks = [], []
+            def replace_owner(_deadline):
+                self.checkpoint(journal, "succeeded")
+                with provider.lock_writable_journal(journal):
+                    provider.acknowledge_journal_handoff(journal, operation.operation_id)
+                    following.append(self.begin(journal, "ntp-set"))
+            with self.events(replace_owner), self.assertRaises(provider.JournalAdmissionError):
+                self.watch(journal, operation, chunks.append)
+            self.assertNotIn("complete\toperation", "".join(chunks))
+            self.assertEqual(provider.load_journal_state(journal.chain).active, following[0])
+
+    def test_same_id_changed_immutable_fields_are_rejected_before_recovery_writes(self):
+        for changes in (dict(action_id="ntp-set", kind="ntp"),
+                        dict(action_id="updates-refresh", kind="refresh", transaction_path="/1_test"),
+                        dict(started_at="2026-09-06T16:00:00Z")):
+            with self.subTest(changes=changes), self.session() as (path, _chain, journal):
+                with provider.lock_writable_journal(journal):
+                    operation = self.begin(journal)
+                changed, before, chunks = replace(operation, **changes), {}, []
+                @contextlib.contextmanager
+                def events(_journal):
+                    with provider.lock_writable_journal(journal):
+                        provider.commit_writable_journal_path(journal, "active",
+                            provider.encode_journal_operation(changed))
+                    before.update({name: (path / name).read_bytes() for name in provider.JOURNAL_NAMES})
+                    yield types.SimpleNamespace(wait=mock.Mock(side_effect=AssertionError("unneeded wait")))
+                with mock.patch.object(provider, "NativeJournalEvents", side_effect=events):
+                    with self.assertRaises(provider.JournalAdmissionError):
+                        self.watch(journal, operation, chunks.append)
+                for name, content in before.items():
+                    self.assertTrue((path / name).read_bytes() == content, f"Recovery changed {name}")
+                self.assertNotIn("complete\toperation", "".join(chunks))
+
+    def test_same_id_changed_terminal_is_rejected_without_rewriting_any_record(self):
+        with self.session() as (path, _chain, journal):
+            with provider.lock_writable_journal(journal):
+                operation = self.begin(journal)
+            before, chunks = {}, []
+            @contextlib.contextmanager
+            def events(_journal):
+                with provider.lock_writable_journal(journal):
+                    provider.commit_writable_journal_path(journal, "active",
+                        provider.encode_journal_operation(replace(operation, action_id="ntp-set", kind="ntp")))
+                self.checkpoint(journal, "succeeded")
+                before.update({name: (path / name).read_bytes() for name in provider.JOURNAL_NAMES})
+                yield types.SimpleNamespace(wait=mock.Mock(side_effect=AssertionError("unneeded wait")))
+            with mock.patch.object(provider, "NativeJournalEvents", side_effect=events):
+                with self.assertRaises(provider.JournalAdmissionError):
+                    self.watch(journal, operation, chunks.append)
+            for name, content in before.items():
+                self.assertTrue((path / name).read_bytes() == content, f"Recovery changed {name}")
+            self.assertNotIn("complete\toperation", "".join(chunks))
+
+    def test_real_inode_events_and_descriptor_cleanup(self):
+        with self.session() as (_path, _chain, journal):
+            with provider.NativeJournalEvents(journal) as events:
+                descriptor = events.descriptor
+                self.assertFalse(os.get_blocking(descriptor))
+                self.assertFalse(os.get_inheritable(descriptor))
+                with provider.lock_writable_journal(journal):
+                    self.begin(journal)
+                started = time.monotonic()
+                events.wait(started + 1)
+                self.assertLess(time.monotonic() - started, 0.5)
+            with self.assertRaises(OSError):
+                os.fstat(descriptor)
+
+    def test_overflow_lost_malformed_and_empty_notifications_fail_closed(self):
+        for fault in ("overflow", "ignored", "short", "name", "empty", "cookie", "unknown"):
+            with self.subTest(fault=fault), self.session() as (_path, _chain, journal), \
+                    provider.NativeJournalEvents(journal) as events:
+                data = provider.struct.pack("=iIII", events.watch, 2, 0, 0)
+                if fault == "overflow": data = provider.struct.pack("=iIII", -1, 0x4000, 0, 0)
+                elif fault == "ignored": data = provider.struct.pack("=iIII", events.watch, 0x8000, 0, 0)
+                elif fault == "short": data = data[:-1]
+                elif fault == "empty": data = b""
+                elif fault == "name": data = provider.struct.pack("=iIII", events.watch, 2, 0, 16)
+                elif fault == "cookie": data = provider.struct.pack("=iIII", events.watch, 2, 1, 0)
+                elif fault == "unknown": data = provider.struct.pack("=iIII", events.watch + 1, 2, 0, 0)
+                with mock.patch.object(events.selector, "select", return_value=[True]), \
+                        mock.patch.object(provider.os, "read", return_value=data):
+                    with self.assertRaises(provider.SnapshotFailure):
+                        events.wait(time.monotonic() + 1)
+
+    def test_setup_failure_closes_created_event_descriptor(self):
+        with self.session() as (_path, _chain, journal):
+            events = provider.NativeJournalEvents(journal)
+            captured = []
+            original_close = os.close
+            def close(descriptor):
+                captured.append(descriptor)
+                return original_close(descriptor)
+            with mock.patch.object(provider.selectors, "DefaultSelector", side_effect=OSError("selector fixture")), \
+                    mock.patch.object(provider.os, "close", side_effect=close):
+                with self.assertRaises(OSError):
+                    with events:
+                        self.fail("failed setup entered")
+            self.assertEqual(len(captured), 1)
+            self.assertIsNone(events.descriptor)
+            with self.assertRaises(OSError):
+                os.fstat(captured[0])
+
+    def test_live_snapshot_exposes_native_identity_without_enabling_origins(self):
+        for action in ("timezone-set", "ntp-set", "locale-set", "accounts-open", "password-open",
+                       "printers-open", "sources-open"):
+            with self.subTest(action=action), self.session() as (_path, _chain, journal), \
+                    self.owner(journal, action) as operation:
+                fixture = RecoverySnapshotTests()
+                backend = fixture.backend()
+                output = fixture.snapshot(journal, backend)
+                self.assertEqual(rows(output, "active-operation")[0][1:7],
+                    [operation.operation_id, action, operation.kind, "pending", "unknown", "no"])
+                self.assertEqual([row[2] for row in rows(output, "action")], ["unavailable"] * 3)
+                self.assertEqual(rows(output, "terminal-handoff"), [])
+                backend.probe_operation.assert_not_called()
+                backend.operation_history.assert_not_called()
+
+    def test_real_cli_watch_observes_completion_and_owner_sigkill(self):
+        owner_program = """
+import contextlib, dataclasses, runpy, sys
+p = runpy.run_path(sys.argv[1])
+with p["open_journal_directory_chain"](sys.argv[2]) as chain:
+    with p["retain_writable_journal"](chain) as journal, contextlib.ExitStack() as owner:
+        with p["lock_writable_journal"](journal):
+            operation = p["load_writable_journal_state"](journal).active
+            owner.enter_context(p["retain_native_journal_owner"](journal, operation))
+        print("ready", flush=True)
+        sys.stdin.buffer.read(1)
+        with p["lock_writable_journal"](journal):
+            running = p["advance_journal_operation"](journal, operation,
+                dataclasses.replace(operation, state="running"))
+            p["advance_journal_operation"](journal, running, dataclasses.replace(running,
+                state="succeeded", finished_at="2026-09-06T17:01:00Z"))
+            p["complete_journal_terminal"](journal)
+"""
+        watch_program = """
+import runpy, sys
+p = runpy.run_path(sys.argv[1])
+p["main"].__globals__["NATIVE_WATCH_SECONDS"] = 1
+def unexpected(*args, **kwargs):
+    raise AssertionError("Native watch must not open PackageKit")
+p["PackageKitBackend"].__init__ = unexpected
+raise SystemExit(p["main"](sys.argv[2:]))
+"""
+        for killed in (False, True):
+            with self.subTest(killed=killed), self.session() as (_path, chain, journal):
+                with provider.lock_writable_journal(journal):
+                    operation = self.begin(journal)
+                processes = []
+                try:
+                    owner = subprocess.Popen([sys.executable, "-c", owner_program, str(PROVIDER_PATH), chain.path],
+                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0, close_fds=True)
+                    processes.append(owner)
+                    self.assertTrue(select.select([owner.stdout], [], [], 3)[0])
+                    self.assertEqual(owner.stdout.readline(16), b"ready\n")
+                    environment = dict(os.environ, XDG_STATE_HOME=str(pathlib.Path(chain.path).parents[1]))
+                    watcher = subprocess.Popen([sys.executable, "-c", watch_program, str(PROVIDER_PATH),
+                        "watch-operation", operation.operation_id], stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE, env=environment, bufsize=0, close_fds=True)
+                    processes.append(watcher)
+                    prefix = b""
+                    for _ in range(2):
+                        self.assertTrue(select.select([watcher.stdout], [], [], 3)[0])
+                        prefix += watcher.stdout.readline(1024)
+                    self.assertIn(b"\tpending\t", prefix)
+                    if killed:
+                        owner.kill()
+                    _output, diagnostic = owner.communicate(input=None if killed else b"x", timeout=3)
+                    self.assertEqual((owner.returncode, diagnostic), (-signal.SIGKILL if killed else 0, b""))
+                    output, diagnostic = watcher.communicate(timeout=4)
+                    self.assertEqual((watcher.returncode, diagnostic), (0, b""))
+                    records = (prefix + output).decode().splitlines()
+                    self.assertEqual(rows(records, "operation")[-1][4], "interrupted" if killed else "succeeded")
+                    self.assertEqual(records[-1], "complete\toperation")
+                    self.assertEqual(provider.load_journal_state(chain).handoff.operation_id, operation.operation_id)
+                finally:
+                    for process in processes:
+                        if process.poll() is None:
+                            process.kill()
+                        process.communicate(timeout=3)
+
+    def test_full_control_output_and_shared_diagnostics_detach_and_restore_writer_modes(self):
+        for terminal in (False, True):
+            for shared in (False, True):
+                for blocking in (False, True):
+                    with self.subTest(terminal=terminal, shared=shared, blocking=blocking), \
+                            self.session() as (path, chain, journal), self.owner(journal) as operation:
+                        if terminal:
+                            self.checkpoint(journal, "succeeded")
+                        before = {name: (path / name).read_bytes() for name in ("active", "handoff")}
+                        reader, writer = os.pipe()
+                        child = None
+                        try:
+                            os.set_blocking(writer, False)
+                            with self.assertRaises(BlockingIOError):
+                                while True:
+                                    os.write(writer, b"x" * 4096)
+                            os.set_blocking(writer, blocking)
+                            environment = dict(os.environ, XDG_STATE_HOME=str(pathlib.Path(chain.path).parents[1]))
+                            child = subprocess.Popen([sys.executable, str(PROVIDER_PATH), "watch-operation",
+                                operation.operation_id], stdout=writer, stderr=writer if shared else subprocess.PIPE,
+                                env=environment, close_fds=True)
+                            _output, diagnostic = child.communicate(timeout=3)
+                            self.assertEqual(child.returncode, 1)
+                            if not shared:
+                                self.assertEqual(diagnostic, b"operation observation was interrupted\n")
+                            self.assertEqual(os.get_blocking(writer), blocking)
+                            self.assertEqual(before, {name: (path / name).read_bytes() for name in before})
+                        finally:
+                            if child is not None:
+                                if child.poll() is None:
+                                    child.kill()
+                                child.communicate(timeout=3)
+                            os.close(reader)
+                            os.close(writer)
+
+    def test_short_output_is_failure_without_terminalizing_the_live_owner(self):
+        with self.session() as (path, chain, journal), self.owner(journal) as operation:
+            before = (path / "active").read_bytes()
+            state_home = str(pathlib.Path(chain.path).parents[1])
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": state_home}), \
+                    mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                    mock.patch.object(provider.os, "write", return_value=1) as output, \
+                    contextlib.redirect_stderr(io.StringIO()) as diagnostic:
+                code = provider.run_operation_control("watch-operation", operation.operation_id, 123, None)
+            self.assertEqual(code, 1)
+            self.assertEqual(diagnostic.getvalue(), "operation observation was interrupted\n")
+            output.assert_called_once()
+            self.assertEqual((path / "active").read_bytes(), before)
+
+    def test_control_signals_restore_retained_pipe_modes_and_preserve_ownership(self):
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            for blocking in (False, True):
+                with self.subTest(signum=signum, blocking=blocking), self.session() as (path, chain, journal), \
+                        self.owner(journal) as operation:
+                    before = (path / "active").read_bytes()
+                    reader, writer = os.pipe()
+                    child = None
+                    try:
+                        os.set_blocking(writer, blocking)
+                        environment = dict(os.environ, XDG_STATE_HOME=str(pathlib.Path(chain.path).parents[1]))
+                        child = subprocess.Popen([sys.executable, str(PROVIDER_PATH), "watch-operation",
+                            operation.operation_id], stdout=writer, stderr=writer, env=environment, close_fds=True)
+                        self.assertTrue(select.select([reader], [], [], 3)[0])
+                        self.assertIn(b"\tpending\t", os.read(reader, 4096))
+                        child.send_signal(signum)
+                        child.communicate(timeout=3)
+                        self.assertEqual(child.returncode, 1)
+                        self.assertEqual(os.get_blocking(writer), blocking)
+                        self.assertEqual((path / "active").read_bytes(), before)
+                    finally:
+                        if child is not None:
+                            if child.poll() is None:
+                                child.kill()
+                            child.communicate(timeout=3)
+                        os.close(reader)
+                        os.close(writer)
+
+    def test_control_output_context_restores_existing_signal_handlers(self):
+        original = {signum: signal.getsignal(signum)
+            for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaisesRegex(OSError, "fixture"):
+                with provider.control_output_descriptors():
+                    for signum, handler in original.items():
+                        self.assertIsNot(signal.getsignal(signum), handler)
+                    raise OSError("output fixture")
+        for signum, handler in original.items():
+            self.assertIs(signal.getsignal(signum), handler)
+
+    def test_path_replacement_during_watch_never_publishes_completion(self):
+        chunks = []
+        with self.assertRaises(provider.JournalLayoutError):
+            with self.session() as (path, _chain, journal), self.owner(journal) as operation:
+                def replace_path(_deadline):
+                    active = path / "active"
+                    content = active.read_bytes()
+                    active.rename(path / "detached-active")
+                    active.write_bytes(content)
+                    active.chmod(0o600)
+                with self.events(replace_path):
+                    self.watch(journal, operation, chunks.append)
+        self.assertNotIn("complete\toperation", "".join(chunks))
+
+
 class OperationRecoveryTests(unittest.TestCase):
     boot_id = PackageKitExecutionTests.boot_id
     journal = PackageKitExecutionTests.journal
@@ -8297,11 +8716,11 @@ class OperationWatchTests(unittest.TestCase):
                     provider.acknowledge_journal_handoff(journal, operation.operation_id)
                     self.assertEqual(provider.retained_journal_operation(journal, operation.operation_id), terminal)
 
-    def test_stale_id_and_active_regional_emit_no_stream(self):
+    def test_stale_id_emits_no_stream_for_packagekit_and_native_owners(self):
         for kind in ("refresh", "timezone"):
             with self.subTest(kind=kind), self.journal() as journal:
                 operation = self.begin(journal, kind)
-                requested = "op-" + "0" * 32 if kind == "refresh" else operation.operation_id
+                requested = "op-" + "0" * 32
                 chunks = []
                 backend = mock.Mock()
                 with self.assertRaises(provider.JournalAdmissionError):

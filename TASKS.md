@@ -207,8 +207,13 @@ An internal active-file lease now distinguishes a live native or delegated
 owner from an orphaned record. Recovery preserves live ownership without service
 inference, while owner exit leaves the existing interrupted recovery path intact.
 Focused tests cover competing descriptors, cleanup and path failures, and real
-process death. Native snapshot/watch integration, bounded service execution,
-and Settings actions remain disabled pending their next implementation boundary.
+process death. Exact-ID native watches now observe durable checkpoints through
+inode events without reopening a service, reissuing an action, or canceling an
+owner. A fixed observation budget ends with a fresh lease check, including the
+close-before-unlock race. Snapshots retain native identities, and Settings can
+restore their observer and acknowledge verified results. Control output fails
+boundedly on full or closed pipes while preserving active ownership and handoffs.
+Bounded service execution and originating Settings actions remain disabled.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

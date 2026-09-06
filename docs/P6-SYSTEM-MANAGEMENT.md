@@ -193,16 +193,17 @@ idempotent recovery sequence for any terminalized active payload, including its
 terminal-slot, cursor, handoff, and empty-active commits. A terminalized update
 also completes its restart-record commit; no other operation kind reads or
 writes that record. The command then requires that
-the ID match either the current validated nonterminal PackageKit refresh or
-update payload or, when the active payload is empty, exactly one validated
+the ID match either the current validated nonterminal operation
+payload or, when the active payload is empty, exactly one validated
 terminal record with that ID among the 32 fixed ring slots. Operation IDs are
 collision-checked against every retained slot when created, so more than one
 matching slot is malformed recovery state. The matching terminal record is
 accepted regardless of its position relative to the cursor, but only when its
 validated kind is any operation kind in the closed protocol enum. Active
-adoption remains limited to PackageKit `refresh` and `update`; a retained
-regional or delegated terminal record is replay-only and opens no service or
-program. The command uses only the transaction path bound inside a matching
+service adoption remains limited to PackageKit `refresh` and `update`. Native
+and delegated owners are observed through their journal lease and checkpoints,
+never by reopening a service or program. A retained terminal record is replay-only.
+The command uses only the transaction path bound inside a matching
 active PackageKit record. It may
 recover or replay bounded terminal evidence when the exact transaction finished
 after the snapshot, but never accepts an arbitrary transaction path, an
@@ -214,10 +215,39 @@ only the fixed diagnostic `watch target is unavailable` to standard error. The
 root model maps that status to `conflict` and immediately requests a fresh
 snapshot as the next recovery attempt.
 
-`watch-operation` adopts a nonterminal operation only for PackageKit `refresh`
-and `update`. Regional and delegated operations remain owned by their finite
-originating stream while active, but an exact retained terminal record for any
-valid kind can be replayed without reissuing its external action.
+For regional and delegated operations, `watch-operation` establishes an inotify
+watch on the retained `active` inode before its first recovery read. One bounded
+event batch triggers one exact-ID journal recheck; unchanged progress is coalesced.
+The originating process retains the lease and owns all service work. The observer
+never invokes a service, infers a target from current settings, requests native
+cancellation, or repeats an action. Lost/overflowed notifications and changed
+file or operation identities fail observation without claiming a terminal result.
+Recovery compares the original ID and every immutable action field before any
+service access or journal write, including a same-ID replacement or terminal.
+Every journal access still validates the complete retained path chain.
+
+Native observation has a fixed 120-second event-wait budget, followed by one
+final fresh recovery read through the existing bounded journal-lock intervals.
+Events never extend that deadline. The final read matters because Linux can
+deliver a close notification before releasing its file lock; a dying owner
+must not strand a watcher awaiting another event. If ownership is then free,
+normal orphan recovery records `interrupted`; a still-held lease instead ends
+only observation with timeout guidance and leaves the active owner intact.
+There is no recurring idle poller, auxiliary waiter process, or service lookup.
+Closing the observer releases its event descriptor and all associated watches.
+An exact durable terminal record for any valid kind replays without reissuing
+its external action.
+
+Operation controls write fixed formatter bundles directly through nonblocking
+stdout. Each bundle fits Linux `PIPE_BUF`; a full pipe or short write fails the
+observer without a backlog or a shutdown-buffer retry. Failure diagnostics are
+nonblocking and best-effort, including when stderr shares the full output pipe.
+Both original descriptor modes are captured before either changes and restored
+on normal, error, and handled TERM/INT/HUP exits, preserving writers retained
+by the calling shell. The previous signal handlers are restored too; forced
+SIGKILL cannot run userspace cleanup. Control exit status
+remains authoritative when diagnostics cannot be delivered. Output failure does
+not cancel the operation owner or acknowledge its handoff.
 The public cancel control pins PackageKit's unique D-Bus peer and uses one
 ten-second aggregate deadline for owner lookup, exact-object validation, and
 the `Cancel` request. It checks the transaction's exact role and invoking UID,
@@ -855,18 +885,20 @@ The initial vocabulary is closed for known record fields:
   operation record must use `cancelable=no`. Audit result uses only the
   terminal operation states.
 - An `active-operation` row is snapshot-only and has the same closed fields as
-  an operation row. It represents the one validated nonterminal PackageKit
-  `refresh` or `update` journal record after recovery. Its ID must have the
+  an operation row. It represents the one validated nonterminal
+  journal record after recovery. Its ID must have the
   required `op-` shape, its action and kind must match the fixed mapping, and
   its state must be nonterminal. A snapshot contains at most one such row. The
-  row is omitted when no PackageKit operation remains active; it is never
+  row is omitted when no operation remains active; it is never
   synthesized from an unsafe or malformed journal record. `cancelable=yes` is
   emitted only while the exact adopted transaction reports `AllowCancel=true`.
   This bounded row lets the root model restore the visible operation identity
-  and pass that exact ID to `updates-cancel` after Settings or the provider
-  restarts. Regional and delegated work remains visible through its originating
-  operation stream and the kind-specific recovery rules below, never through an
-  `active-operation` row.
+  and pass that exact ID to `watch-operation` after Settings or the provider
+  restarts. Only PackageKit actions may advertise cancellation or use
+  `updates-cancel`. Regional and delegated rows always use `cancelable=no`;
+  their live lease and durable checkpoints, not service-value inference, govern
+  recovery. The 1.0 snapshot can identify these existing journal owners without
+  advertising native mutation actions or advancing the cumulative minor.
 - A `terminal-handoff` row is snapshot-only and identifies exactly one durable
   terminal result not yet acknowledged by the root model. Its ID, action, and
   kind must exactly match the validated terminal slot named by the handoff
@@ -980,8 +1012,8 @@ or authorizes handoff acknowledgment. This parser does not start processes,
 own a journal, or enable Settings mutation controls.
 The minor's active-ID table governs snapshot capability advertisement, not the
 closed journal action-to-kind mapping: as specified for `watch-operation`, a
-1.0 stream can replay an exact retained regional or delegated result without
-advertising or invoking that action.
+1.0 stream can observe an exact regional or delegated journal owner and replay
+its retained result without advertising or invoking that action.
 
 Allowed operation transitions are:
 
@@ -1655,8 +1687,9 @@ The internal native-owner lease and recovery guard are implemented independently
 of mutation commands. Tests cover all regional and delegated kinds, competing
 and originating descriptors, path replacement, lock and cleanup failures,
 normal process exit, abrupt process death, and durable terminal replay. Public
-native snapshot/watch integration and bounded service owners remain gated;
-this foundation enables no native command, Settings action, or snapshot minor.
+native snapshot/watch integration now observes these owners without taking over
+service work. Bounded service origins remain gated; this enables no native
+mutation command, Settings action, or snapshot minor.
 
 ## Event and Resource Contract
 

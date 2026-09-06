@@ -456,11 +456,12 @@ Scope {
                     break;
                 }
                 if (!root.fieldsFit(fields, 8) || !root.validOperationId(fields[1])
-                        || root.updateActionKind(fields[2]).length === 0
-                        || root.updateActionKind(fields[2]) !== fields[3]
+                        || root.operationActionKind(fields[2]).length === 0
+                        || root.operationActionKind(fields[2]) !== fields[3]
                         || !root.validOperationState(fields[4])
                         || !root.validPercent(fields[5])
-                        || (fields[6] !== "yes" && fields[6] !== "no")) {
+                        || (fields[6] !== "yes" && fields[6] !== "no")
+                        || (root.updateActionKind(fields[2]).length === 0 && fields[6] !== "no")) {
                     fatal = "System management provider returned an invalid active operation";
                     break;
                 }
