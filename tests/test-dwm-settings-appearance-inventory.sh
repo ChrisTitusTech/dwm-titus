@@ -138,20 +138,22 @@ race_env=$work/stream-race.env
 race_marker=$work/stream-race.marker
 cat >"$race_env" <<'EOF'
 set -T
-trap 'case $BASH_COMMAND in inventory_stream_pid=\$*) wait "$!" || :; printf "reaped\n" >>"$DWM_TEST_STREAM_RACE_MARKER" ;; esac' DEBUG
+trap 'case $BASH_COMMAND in inventory_stream_pid=\$*) stream_wait_status=0; wait "$!" || stream_wait_status=$?; printf "%s\n" "$stream_wait_status" >>"$DWM_TEST_STREAM_RACE_MARKER" ;; esac' DEBUG
 EOF
 race_inventory=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
 	BASH_ENV=$race_env DWM_TEST_STREAM_RACE_MARKER=$race_marker "$helper" inventory)
-[[ -s $race_marker && $race_inventory == "$inventory" ]] || {
+[[ -s $race_marker && $(sort -u "$race_marker") == 0 && $race_inventory == "$inventory" ]] || {
 	printf 'Fast inventory producer lost its stream or bypassed the startup race fixture\n' >&2
 	exit 1
 }
+: >"$race_marker"
 HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
 	DWM_APPEARANCE_DATA_DIRS=$data_root DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir \
 	BASH_ENV=$race_env DWM_TEST_STREAM_RACE_MARKER=$race_marker \
 	DWM_TEST_INOTIFY_ARGS=$work/race-watch.args "$helper" watch-inventory >"$work/race-watch.out"
+[[ -s $race_marker && $(sort -u "$race_marker") == 0 ]]
 grep -Fqx $'ready\tinventory' "$work/race-watch.out"
 grep -Fqx $'changed\tCREATE\t'"$wallpaper_dir/new.png" "$work/race-watch.out"
 
@@ -834,11 +836,14 @@ cat >"$failing_inventory_bin/fc-list" <<'EOF'
 exit 9
 EOF
 chmod +x "$failing_inventory_bin/find" "$failing_inventory_bin/fc-list"
+: >"$race_marker"
 failed_inventory=$(HOME=$home PATH=$failing_inventory_bin XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir DWM_TEST_REAL_FIND=$real_find \
 	BASH_ENV=$race_env DWM_TEST_STREAM_RACE_MARKER=$race_marker \
 	QT_QPA_PLATFORMTHEME=qt6ct "$helper" inventory)
+# A collected failing child returns its actual status, not wait's non-child 127.
+[[ -s $race_marker && $(sort -u "$race_marker") == $'0\n7\n9' ]]
 grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tWallpaper candidate discovery did not complete' \
 	<<<"$failed_inventory"
 grep -Fqx $'selection\tfont\tunavailable\tNoto Sans\tNoto Sans 11\tFontconfig candidate discovery did not complete' \
