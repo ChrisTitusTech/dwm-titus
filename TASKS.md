@@ -192,6 +192,17 @@ seconds without requesting metadata refresh or repository changes. This reader
 adds no CLI command or protocol minor. Event subscriptions, lifecycle integration,
 delegated-tool availability, and Settings controls remain outstanding.
 
+Read-only regional choices and preview commands now expose separately bounded
+streams without changing the cumulative snapshot minor. Previews bind the exact
+selected value to current configuration with a generation token, preserve the
+complete locale override description, and require fresh reads for each request.
+Unit and private-bus tests cover stale state, key presence, strict output bounds,
+malformed selections, fixed read-only calls, and closed consumers. Native mutation
+commands remain disabled; their owner lifetime, platform authorization,
+verification, and Settings confirmation integration are still required.
+Read-only Fedora 44 CLI probes passed for both catalogs and all three preview
+forms without changing system settings.
+
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
 confirmation warning that a sent change cannot be canceled. Local cancellation

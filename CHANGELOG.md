@@ -79,6 +79,12 @@ versions from `config.mk`.
 
 ### Added
 
+- Add bounded read-only regional choice and confirmation-preview commands.
+  Bind selected timezone, NTP, or locale values to fresh configuration with a
+  generation token and preserve complete locale override details. Regional
+  mutation commands and Settings controls remain disabled pending lifecycle
+  integration.
+
 - Monitor update changes while the System Settings section is open. Coalesce
   bursts into an initial read plus at most one settling read, preserve readable
   status with reload guidance when state keeps changing or monitoring fails,
