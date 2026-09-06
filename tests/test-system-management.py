@@ -123,16 +123,16 @@ class RegionalPreflightTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "unsupported")
 
     def test_locale_generation_preserves_key_presence_order_and_complete_overrides(self):
-        assignments = ["LANG=C", "LANGUAGE=", "LC_TIME=de_DE.utf8", "LC_NUMERIC=fr_FR.utf8"]
+        assignments = ["LANG=C", "LANGUAGE=de:en", "LC_TIME=de_DE.utf8", "LC_NUMERIC=fr_FR.utf8"]
         before = provider.parse_locale_configuration(assignments)
         preview = provider.make_regional_preview("locale-set", "LANG=en_US.utf8", before, ["C", "en_US.utf8"])
         self.assertEqual((preview.current, preview.target, preview.detail),
-                         ("C", "en_US.utf8", "LC_NUMERIC=fr_FR.utf8, LC_TIME=de_DE.utf8"))
+                         ("C", "en_US.utf8", "LANGUAGE=de:en, LC_NUMERIC=fr_FR.utf8, LC_TIME=de_DE.utf8"))
         reordered = provider.make_regional_preview("locale-set", "LANG=en_US.utf8",
             provider.parse_locale_configuration(list(reversed(assignments))), ["en_US.utf8", "C"])
         self.assertEqual(preview, reordered)
-        for changed in ([item for item in assignments if item != "LANGUAGE="],
-                        [item.replace("LANGUAGE=", "LANGUAGE=en") for item in assignments],
+        for changed in ([item for item in assignments if item != "LANGUAGE=de:en"],
+                        [item.replace("LANGUAGE=de:en", "LANGUAGE=en") for item in assignments],
                         [item.replace("LC_TIME=de_DE.utf8", "LC_TIME=C") for item in assignments]):
             other = provider.make_regional_preview("locale-set", "LANG=en_US.utf8",
                 provider.parse_locale_configuration(changed), ["C", "en_US.utf8"])
@@ -140,6 +140,10 @@ class RegionalPreflightTests(unittest.TestCase):
         forged = replace(before, lang="forged", detail="forged")
         self.assertEqual(provider.make_regional_preview("locale-set", "LANG=en_US.utf8",
             forged, ["C", "en_US.utf8"]), preview)
+        absent, empty = [provider.make_regional_preview("locale-set", "LANG=en_US.utf8",
+            provider.parse_locale_configuration(values), ["en_US.utf8"]).generation
+            for values in (["LANG=C"], ["LANG=C", "LC_TIME="])]
+        self.assertNotEqual(absent, empty)
 
     def test_invalid_selections_and_states_are_rejected_before_io(self):
         for action, argument in (("timezone-set", "../UTC"), ("ntp-set", "yes"),
@@ -1284,6 +1288,402 @@ class RegionalValidationTests(unittest.TestCase):
         self.assertFalse(provider.locale_change_matches(["LANG=C", "LANGUAGE="],
                                                         ["LANG=C"]))
         self.malformed(provider.locale_change_matches, ["LANG=C"], ["LC_ALL=C"])
+
+    def test_locale_confirmation_rejects_known_language_preservation_loss(self):
+        for language in ("", "C"):
+            before = provider.parse_locale_configuration(["LANG=en_US.utf8", "LANGUAGE=" + language])
+            self.assertIn("LANGUAGE=" + language, before.assignments)
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.make_regional_preview("locale-set", "LANG=C", before, ["C"])
+            self.assertEqual(caught.exception.code, "conflict")
+            self.assertIn("cannot preserve", caught.exception.detail)
+        for values in (["LANG=en_US.utf8"], ["LANG=en_US.utf8", "LANGUAGE=de:en"]):
+            self.assertEqual(provider.make_regional_preview("locale-set", "LANG=C",
+                provider.parse_locale_configuration(values), ["C"]).target, "C")
+
+    def test_locale_service_grammar_does_not_narrow_readable_state_or_drop_overrides(self):
+        for value in ("C", "POSIX", "en_US.UTF-8", "sr_RS@latin", "x" * 127):
+            provider.require_locale_service_arguments(provider.parse_locale_configuration(["LANG=" + value]))
+        for key, value in (("LANGUAGE", "de:en"), ("LANGUAGE", "français"),
+                           ("LC_TIME", ""), ("LC_TIME", "."), ("LC_TIME", ".."),
+                           ("LC_TIME", "a/b"), ("LANG", "x" * 128), ("LC_NUMERIC", "C+")):
+            state = provider.parse_locale_configuration([key + "=" + value])
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.require_locale_service_arguments(state)
+            self.assertEqual(caught.exception.code, "unsupported")
+            self.assertEqual(state.assignments, (key + "=" + value,))
+
+
+class RegionalMutationTests(unittest.TestCase):
+    def client(self, action="timezone-set", argument="Etc/UTC"):
+        from gi.repository import Gio, GLib
+        self.GLib = GLib
+        self.clock = 1.0
+        self.methods = []
+        self.events = []
+        self.owner = ":1.42"
+        self.time_state = provider.RegionalTimeState("UTC", True, False, True)
+        self.locale_state = provider.parse_locale_configuration(["LANG=C", "LANGUAGE=C", "LC_TIME=C"])
+        self.before_request = lambda _method: None
+        self.before_hook = lambda: None
+        self.after_hook = lambda: None
+        self.replies = {}
+        self.context = mock.Mock()
+        self.context.pending.return_value = False
+        loop = mock.Mock()
+        loop.get_context.return_value = self.context
+        glib = types.SimpleNamespace(Error=GLib.Error, Variant=GLib.Variant,
+            VariantType=GLib.VariantType, MainLoop=mock.Mock(return_value=loop),
+            timeout_add=mock.Mock(side_effect=range(17, 100)), source_remove=mock.Mock(), SOURCE_REMOVE=False)
+        gio = mock.Mock()
+        gio.BusType, gio.DBusCallFlags, gio.DBusSignalFlags = Gio.BusType, Gio.DBusCallFlags, Gio.DBusSignalFlags
+        gio.dbus_is_unique_name = Gio.dbus_is_unique_name
+        gio.dbus_error_get_remote_error = Gio.dbus_error_get_remote_error
+        gio.io_error_quark = Gio.io_error_quark
+        gio.IOErrorEnum = Gio.IOErrorEnum
+        self.connection = mock.Mock()
+        gio.bus_get_finish.return_value = self.connection
+        self.connection.signal_subscribe.side_effect = range(1, 10)
+        def finish(result):
+            if isinstance(result, Exception):
+                raise result
+            return result
+        self.connection.call_finish.side_effect = finish
+        state = self.locale_state if action == "locale-set" else self.time_state
+        choices = ("C", "en_US.utf8") if action == "locale-set" else ("UTC", "Etc/UTC")
+        preview = provider.make_regional_preview(action, argument, state, choices)
+
+        def before(preflight):
+            self.events.append(("authorizing", preflight))
+            self.before_hook()
+
+        def after():
+            self.events.append(("running", None))
+            self.after_hook()
+
+        client = provider.RegionalMutation(action, argument, preview.generation, before, after, gio, glib)
+        self.current = client
+
+        def call(name, path, interface, method, args, reply_type, flags, timeout, cancellable, callback, data):
+            self.methods.append((name, path, interface, method, None if args is None else args.unpack(), flags, timeout))
+            if method == "RemoveMatch":
+                return
+            self.before_request(method)
+            if method in self.replies:
+                result = self.replies[method]
+            elif method == "GetNameOwner":
+                result = GLib.Variant("(s)", (self.owner,))
+            elif method == "GetAll":
+                values = {"Timezone": GLib.Variant("s", self.time_state.timezone),
+                          "CanNTP": GLib.Variant("b", self.time_state.can_ntp),
+                          "NTP": GLib.Variant("b", self.time_state.ntp_enabled),
+                          "NTPSynchronized": GLib.Variant("b", self.time_state.ntp_synchronized)}
+                result = GLib.Variant("(a{sv})", (values,))
+            elif method == "Get":
+                result = GLib.Variant("(v)", (GLib.Variant("as", self.locale_state.assignments),))
+            elif method == "ListTimezones":
+                result = GLib.Variant("(as)", (["UTC", "Etc/UTC"],))
+            else:
+                if method == "SetTimezone":
+                    self.time_state = replace(self.time_state, timezone=args.unpack()[0])
+                elif method == "SetNTP":
+                    self.time_state = replace(self.time_state, ntp_enabled=args.unpack()[0])
+                elif method == "SetLocale":
+                    self.locale_state = provider.parse_locale_configuration(args.unpack()[0])
+                result = GLib.Variant("()", ())
+            if result is not None:
+                callback(self.connection, result, data)
+        self.connection.call.side_effect = call
+        gio.bus_get.side_effect = lambda *_args: client.connected(None, object(), None)
+        self.gio, self.glib = gio, glib
+        return client
+
+    def run_client(self, client):
+        with mock.patch.object(provider, "read_fedora_identity", return_value={"ID": "fedora"}), \
+                mock.patch.object(provider, "read_locale_choices", return_value=("C", "en_US.utf8")), \
+                mock.patch.object(provider.time, "monotonic", side_effect=lambda: self.clock):
+            return client.run()
+
+    def failure(self, client, code):
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            self.run_client(client)
+        self.assertEqual(caught.exception.code, code)
+        return caught.exception
+
+    def mutations(self):
+        return [method for method in self.methods if method[3].startswith("Set")]
+
+    def notify(self, values, invalidated=(), sender=":1.42"):
+        client = self.current
+        args = self.GLib.Variant("(sa{sv}as)", (client.name, values, invalidated))
+        client.properties_changed(None, sender, client.path, provider.PROPERTIES_INTERFACE,
+                                  "PropertiesChanged", args, None)
+
+    def test_fixed_methods_full_arguments_and_acknowledged_subscription_order(self):
+        for action, argument, method, signature_args in (
+            ("timezone-set", "Etc/UTC", "SetTimezone", ("Etc/UTC", True)),
+            ("ntp-set", "enabled", "SetNTP", (True, True)),
+            ("ntp-set", "disabled", "SetNTP", (False, True)),
+            ("locale-set", "LANG=en_US.utf8", "SetLocale",
+             (["LANG=en_US.utf8", "LANGUAGE=C", "LC_TIME=C"], True)),
+        ):
+            with self.subTest(action=action, argument=argument):
+                client = self.client(action, argument)
+                self.assertIsNotNone(self.run_client(client))
+                calls = self.mutations()
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(calls[0][:6], (":1.42", client.path, client.name, method,
+                    signature_args, self.gio.DBusCallFlags.ALLOW_INTERACTIVE_AUTHORIZATION))
+                self.assertEqual(calls[0][6], 60000)
+                methods = [row[3] for row in self.methods]
+                final_read = methods.index("AddMatch") + 3
+                self.assertEqual(methods[final_read], "ListTimezones" if action == "timezone-set" else
+                                 "Get" if action == "locale-set" else "GetAll")
+                self.assertEqual([event[0] for event in self.events], ["authorizing", "running"])
+                self.assertTrue(client.sent and client.acknowledged and client.done)
+                self.assertEqual(len(client.subscriptions), 2)
+                self.assertEqual(self.connection.signal_unsubscribe.call_count, 2)
+                self.assertEqual(methods[-2:], ["RemoveMatch", "RemoveMatch"])
+                self.connection.close_sync.assert_not_called()
+                self.glib.timeout_add.assert_any_call(60000, client.expire)
+                self.assertEqual(provider.PROTOCOL_MINOR, 0)
+                with self.assertRaises(RuntimeError):
+                    self.run_client(client)
+
+    def test_validation_and_fedora_rejection_precede_connection_or_admission(self):
+        client = self.client()
+        for action, argument, generation in (("SetTime", "UTC", "a" * 64),
+                                            ("timezone-set", "../UTC", "a" * 64),
+                                            ("ntp-set", "true", "a" * 64),
+                                            ("locale-set", "LC_TIME=C", "a" * 64),
+                                            ("timezone-set", "UTC", "A" * 64)):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.RegionalMutation(action, argument, generation, mock.Mock(), mock.Mock(), self.gio, self.glib)
+        with mock.patch.object(provider, "read_fedora_identity", side_effect=provider.SnapshotFailure("unsupported", "Not Fedora")):
+            with self.assertRaises(provider.SnapshotFailure):
+                client.run()
+        self.gio.bus_get.assert_not_called()
+        self.assertEqual(self.events, [])
+
+    def test_fresh_state_and_catalog_reject_stale_generation_before_admission(self):
+        for change in ("state", "catalog", "language"):
+            client = self.client("locale-set", "LANG=en_US.utf8") if change == "language" else self.client()
+            if change == "state":
+                self.time_state = replace(self.time_state, timezone="Etc/UTC")
+            elif change == "catalog":
+                self.replies["ListTimezones"] = self.GLib.Variant("(as)", (["UTC"],))
+            else:
+                self.locale_state = provider.parse_locale_configuration(["LANG=C", "LANGUAGE="])
+            self.failure(client, "conflict")
+            self.assertFalse(client.sent)
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.mutations(), [])
+
+    def test_pre_send_configuration_events_and_journal_delay_prevent_dispatch(self):
+        for scenario in ("changed", "invalidated", "deadline", "flood", "checkpoint"):
+            client = self.client()
+            def before():
+                if scenario == "changed":
+                    self.notify({"Timezone": self.GLib.Variant("s", "Etc/UTC")})
+                elif scenario == "invalidated":
+                    self.notify({}, ["Timezone"])
+                elif scenario == "deadline":
+                    self.clock = 12
+                elif scenario == "flood":
+                    self.context.pending.return_value = True
+                else:
+                    raise OSError("journal sync failed")
+            self.before_hook = before
+            self.failure(client, {"deadline": "timeout", "checkpoint": "interrupted"}.get(scenario, "conflict"))
+            self.assertEqual(self.mutations(), [])
+            self.assertFalse(client.sent)
+            self.assertLessEqual(self.context.iteration.call_count, provider.REGIONAL_CALLBACK_LIMIT)
+            if scenario == "checkpoint":
+                self.assertIsInstance(client.hook_error, OSError)
+
+    def test_matching_notifications_are_accepted_but_conflict_history_is_retained(self):
+        for conflict in (False, True):
+            client = self.client()
+            def after():
+                if conflict:
+                    self.notify({"Timezone": self.GLib.Variant("s", "UTC")})
+                self.notify({"Timezone": self.GLib.Variant("s", "Etc/UTC")})
+            self.after_hook = after
+            if conflict:
+                self.failure(client, "conflict")
+            else:
+                self.assertEqual(self.run_client(client).timezone, "Etc/UTC")
+            self.assertEqual(len(self.mutations()), 1)
+
+    def test_irrelevant_signals_do_not_invalidate_or_extend_the_deadline(self):
+        client = self.client("ntp-set", "enabled")
+        def before():
+            self.notify({"NTPSynchronized": self.GLib.Variant("b", False)})
+            self.notify({"NTP": self.GLib.Variant("b", True)}, sender=":1.99")
+        self.before_hook = before
+        self.after_hook = lambda: self.notify({"NTPSynchronized": self.GLib.Variant("b", True)})
+        self.assertTrue(self.run_client(client).ntp_enabled)
+        self.assertEqual(self.glib.timeout_add.call_count, 2)
+
+    def test_invalidated_malformed_and_mismatched_final_state_cannot_report_success(self):
+        for scenario in ("invalidated", "signature", "duplicate", "final"):
+            client = self.client()
+            def after():
+                if scenario == "invalidated":
+                    self.notify({}, ["Timezone"])
+                elif scenario == "signature":
+                    self.notify({"Timezone": self.GLib.Variant("b", True)})
+                elif scenario == "duplicate":
+                    value = self.GLib.Variant.parse(None,
+                        "('org.freedesktop.timedate1', {'Timezone': <'UTC'>, 'Timezone': <'Etc/UTC'>}, @as [])", None, None)
+                    client.properties_changed(None, client.owner, client.path, provider.PROPERTIES_INTERFACE,
+                        "PropertiesChanged", value, None)
+                else:
+                    self.time_state = replace(self.time_state, timezone="UTC")
+            self.after_hook = after
+            self.failure(client, "conflict")
+            self.assertTrue(client.sent and client.acknowledged)
+
+    def test_effective_locale_notifications_allow_lc_elision_but_not_language_loss(self):
+        for lost in (False, True):
+            client = self.client("locale-set", "LANG=en_US.utf8")
+            self.locale_state = provider.parse_locale_configuration(["LANG=C", "LANGUAGE=C", "LC_TIME=en_US.utf8"])
+            client.generation = provider.make_regional_preview(client.action, client.argument,
+                self.locale_state, ["en_US.utf8"]).generation
+            def after():
+                values = ["LANG=en_US.utf8"] + ([] if lost else ["LANGUAGE=C"])
+                self.locale_state = provider.parse_locale_configuration(values)
+                self.notify({"Locale": self.GLib.Variant("as", values)})
+            self.after_hook = after
+            if lost:
+                self.failure(client, "conflict")
+            else:
+                self.assertEqual(self.run_client(client).lang, "en_US.utf8")
+
+    def test_owner_changes_before_and_after_dispatch_never_retarget_or_retry(self):
+        for after_dispatch in (False, True):
+            client = self.client()
+            def changed():
+                client.owner_changed(None, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                    "org.freedesktop.DBus", "NameOwnerChanged", self.GLib.Variant("(sss)",
+                        (client.name, client.owner, ":1.99")), None)
+            if after_dispatch:
+                self.after_hook = changed
+            else:
+                self.before_hook = changed
+            self.failure(client, "interrupted" if after_dispatch else "conflict")
+            self.assertEqual(len(self.mutations()), int(after_dispatch))
+            self.assertTrue(all(row[0] == ":1.42" for row in self.mutations()))
+        client = self.client()
+        self.after_hook = lambda: setattr(self, "owner", ":1.99")
+        self.failure(client, "conflict")
+
+    def test_unsupported_preserved_locale_values_reject_before_admission(self):
+        for assignment in ("LANGUAGE=de:en", "LANGUAGE=français", "LC_TIME=", "LC_TIME=" + "x" * 128):
+            client = self.client("locale-set", "LANG=en_US.utf8")
+            self.locale_state = provider.parse_locale_configuration(["LANG=C", assignment])
+            client.generation = provider.make_regional_preview(client.action, client.argument,
+                self.locale_state, ["en_US.utf8"]).generation
+            before = self.locale_state.assignments
+            self.failure(client, "unsupported")
+            self.assertEqual(self.locale_state.assignments, before)
+            self.assertEqual(self.events, [])
+            self.assertEqual(self.mutations(), [])
+            self.assertFalse(client.sent)
+
+    def test_aggregate_deadline_covers_reply_verification_and_discards_late_callbacks(self):
+        for stage in ("reply", "verify", "final-owner"):
+            client = self.client()
+            def delay(method):
+                if ((stage == "reply" and method == "SetTimezone")
+                    or (stage == "verify" and method == "GetAll" and client.acknowledged)
+                    or (stage == "final-owner" and method == "GetNameOwner" and client.acknowledged)):
+                    self.clock = 61
+            self.before_request = delay
+            error = self.failure(client, "timeout")
+            self.assertIn("outcome is unknown", error.detail)
+            self.assertTrue(client.sent)
+            self.assertEqual(client.deadline, 61)
+            self.assertIsNone(client.value)
+            before = list(self.methods)
+            client.connected(None, object(), None)
+            client.properties_changed(None, client.owner, client.path, "", "", None, None)
+            self.assertEqual(before, self.methods)
+            self.assertEqual(len(self.mutations()), 1)
+
+    def test_post_reply_checkpoint_failure_cannot_publish_success(self):
+        client = self.client()
+        def fail():
+            raise OSError("journal storage unavailable")
+        self.after_hook = fail
+        self.failure(client, "interrupted")
+        self.assertTrue(client.sent and client.acknowledged)
+        self.assertIsInstance(client.hook_error, OSError)
+        self.assertIsNone(client.value)
+        self.assertEqual(len(self.mutations()), 1)
+
+    def test_rejected_matches_and_typed_method_errors_never_remove_unowned_rules(self):
+        from gi.repository import Gio
+        for method, remote, expected in (
+            ("AddMatch", "AccessDenied", "permission-denied"),
+            ("SetTimezone", "AccessDenied", "permission-denied"),
+            ("SetTimezone", "InteractiveAuthorizationRequired", "permission-denied"),
+            ("SetTimezone", "InvalidArgs", "malformed"),
+            ("SetTimezone", "NoReply", "timeout"),
+        ):
+            client = self.client()
+            self.replies[method] = Gio.DBusError.new_for_dbus_error(
+                "org.freedesktop.DBus.Error." + remote, "fixture error")
+            failure = self.failure(client, expected)
+            if remote == "NoReply":
+                self.assertIn("outcome is unknown", failure.detail)
+            self.assertEqual(len(self.mutations()), int(method.startswith("Set")))
+            self.assertFalse(client.acknowledged)
+            removed = [row for row in self.methods if row[3] == "RemoveMatch"]
+            self.assertEqual(len(removed), 0 if method == "AddMatch" else 2)
+
+    def test_late_match_acknowledgment_only_cleans_up_and_never_resumes(self):
+        client = self.client()
+        self.replies["AddMatch"] = None
+        client.loop.run.side_effect = client.expire
+        self.failure(client, "timeout")
+        call = [call for call in self.connection.call.call_args_list if call.args[3] == "AddMatch"][0]
+        self.assertEqual([row[3] for row in self.methods].count("RemoveMatch"), 0)
+        callback, data = call.args[-2:]
+        callback(self.connection, self.GLib.Variant("()", ()), data)
+        self.assertEqual([row[3] for row in self.methods].count("RemoveMatch"), 1)
+        self.assertEqual(self.events, [])
+        self.assertFalse(client.sent)
+        self.assertEqual(self.mutations(), [])
+
+    def test_local_transport_failure_after_dispatch_is_unknown_not_rejection(self):
+        from gi.repository import Gio, GLib
+        client = self.client()
+        self.replies["SetTimezone"] = GLib.Error.new_literal(
+            Gio.io_error_quark(), "fixture connection closed", Gio.IOErrorEnum.CLOSED)
+        failure = self.failure(client, "interrupted")
+        self.assertIn("outcome is unknown", failure.detail)
+        self.assertTrue(client.sent)
+        self.assertFalse(client.acknowledged)
+        self.assertEqual(len(self.mutations()), 1)
+
+    def test_queued_confirmation_change_is_drained_before_dispatch(self):
+        client = self.client()
+        def before():
+            self.context.pending.side_effect = [True, False]
+            self.context.iteration.side_effect = lambda _block: self.notify(
+                {"Timezone": self.GLib.Variant("s", "UTC")})
+        self.before_hook = before
+        self.failure(client, "conflict")
+        self.context.iteration.assert_called_once_with(False)
+        self.assertEqual(self.mutations(), [])
+
+    def test_private_bus_fixed_execution_and_failure_paths(self):
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-regional-mutation-bus.py"), str(PROVIDER_PATH)],
+            capture_output=True, text=True, timeout=90, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Private-bus regional mutations: PASS", result.stdout)
 
 
 class RegionalReadTests(unittest.TestCase):

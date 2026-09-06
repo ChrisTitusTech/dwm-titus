@@ -216,7 +216,18 @@ boundedly on full or closed pipes while preserving active ownership and handoffs
 Operation and update-event writers never change inherited file-status flags;
 private stream handles and per-call socket writes preserve concurrent parent
 output, including after forced watcher termination.
-Bounded service execution and originating Settings actions remain disabled.
+An internal regional service client now pins a platform owner, acknowledges
+subscriptions before fresh confirmation reads, and restricts calls to the three
+fixed interactive methods. Required lifecycle hooks bracket dispatch and method
+success; one 60-second budget covers reply and verification. Conflicting events,
+replacement owners, invalidated state, and failed hooks suppress success without
+retrying. Unit/private-bus fixtures cover a real ambiguous timeout after the
+simulated service changed state. Known non-preserving LANGUAGE selections are
+rejected during preview. Known-invalid complete locale argument sets are rejected
+before admission without narrowing readable state or dropping overrides.
+No host setting was changed. Native journal integration,
+post-timeout display refresh, CLI origins, and originating Settings actions
+remain outstanding; the snapshot minor remains zero.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

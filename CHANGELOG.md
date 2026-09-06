@@ -8,6 +8,12 @@ versions from `config.mk`.
 
 ### Changed
 
+- Reject locale confirmations that the platform cannot apply while preserving
+  an explicit LANGUAGE override. Add a preparatory fixed regional service client
+  with fresh confirmation checks, authorization hooks, monitored conflicts, and
+  bounded verification. Native CLI and Settings origins remain disabled pending
+  durable owner integration and qualification; tests change only a private bus.
+
 - Restore exact regional and delegated operation observers from validated
   journal snapshots. Watch durable progress and owner exit without repeating
   the action; stalled or closed control-output consumers preserve recovery.
