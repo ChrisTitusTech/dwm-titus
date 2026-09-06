@@ -489,6 +489,13 @@ state emits `cups-service` as `unavailable`/`unknown` with that error. The finit
 snapshot continues without degrading unrelated providers. A validated systemd
 no-such-unit reply remains absence evidence under the status mapping above
 rather than a timeout.
+The internal reader uses one fixed `ListUnitsByNames` request per unit, with
+D-Bus auto-start disabled. Each typed reply supplies the resolved object and
+load/active/substate together; it does not start CUPS or rely on a later property
+read of an unloaded object. Replies are bounded to one row and 64 KiB before
+decoding. Canonical aliases returned by systemd do not change the fixed requested
+unit's identity. Private-bus fixtures stall each unit reply under the shared
+deadline and verify both late-reply rejection and the running-service exception.
 Phase 6 reports service/tool availability and opens Fedora's
 `system-config-printer`; it does not reproduce printer discovery, driver,
 queue, job, or authentication policy.
@@ -1844,8 +1851,8 @@ A pre-handoff conflict fixture proves a terminal stream with no durable handoff
 does not invoke acknowledgment. Hostname fixtures stall each property before
 and after the other property succeeds and prove the ten-second monotonic
 aggregate deadline discards late replies, degrades only unfinished states, and
-does not block other information records. CUPS fixtures stall unit resolution
-and each property read, prove late replies are discarded, and verify the timeout
+does not block other information records. CUPS fixtures stall each fixed
+unit-state reply, prove late replies are discarded, and verify the timeout
 degrades only `cups-service`; a socket timeout after the service is validated
 active must preserve `available`/`running`. Accounts initialization fixtures
 inject manager and candidate changes after subscription attachment but during

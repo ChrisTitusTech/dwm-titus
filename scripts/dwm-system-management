@@ -188,6 +188,15 @@ ACCOUNT_LIST_BYTES = 256 * 1024
 ACCOUNT_PROPERTY_CONCURRENCY = 8
 DBUS_OBJECT_PATH = re.compile(r"/(?:[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*)?")
 
+SYSTEMD_NAME = "org.freedesktop.systemd1"
+SYSTEMD_PATH = "/org/freedesktop/systemd1"
+SYSTEMD_MANAGER = "org.freedesktop.systemd1.Manager"
+CUPS_UNITS = ("cups.service", "cups.socket")
+CUPS_READ_SECONDS = 10
+UNIT_REPLY_TYPE = "(a(ssssssouso))"
+UNIT_REPLY_BYTES = 64 * 1024
+UNIT_STATE_TOKEN = re.compile(r"[a-z][a-z-]{0,63}")
+
 ROLE_REFRESH_CACHE = 13
 EXIT_SUCCESS = 1
 G_MAXUINT = (1 << 32) - 1
@@ -530,6 +539,134 @@ class ServiceRead:
         if self.failure:
             raise self.failure
         return self.value
+
+
+@dataclass(frozen=True)
+class UnitState:
+    path: str
+    load: str
+    active: str
+    sub: str
+
+
+def decode_unit_state(reply: object) -> UnitState:
+    """Decode the single fixed-name query before exposing any unit state."""
+    if (reply.get_type_string() != UNIT_REPLY_TYPE or reply.get_size() > UNIT_REPLY_BYTES
+            or reply.get_child_value(0).n_children() != 1):
+        raise SnapshotFailure("malformed", "Invalid systemd unit reply")
+    row = reply.get_child_value(0).get_child_value(0)
+    # ListUnitsByNames can return a canonical alias name. The fixed request,
+    # not a guessed object-path encoding or canonical name, identifies the unit.
+    values = []
+    for index in (2, 3, 4, 6):
+        child = row.get_child_value(index)
+        if child.get_size() > MAX_TEXT_BYTES + 1:
+            raise SnapshotFailure("malformed", "Oversized systemd unit state")
+        values.append(child.unpack())
+    load, active, sub, path = values
+    if (any(UNIT_STATE_TOKEN.fullmatch(value) is None for value in (load, active, sub))
+            or not path.startswith(SYSTEMD_PATH + "/unit/")
+            or DBUS_OBJECT_PATH.fullmatch(path) is None):
+        raise SnapshotFailure("malformed", "Malformed systemd unit state")
+    return UnitState(path, load, active, sub)
+
+
+@dataclass(frozen=True)
+class CupsState:
+    status: str
+    value: str
+    units: tuple[tuple[str, UnitState], ...]
+    errors: tuple[SnapshotFailure, ...]
+
+
+def classify_cups(units: Mapping[str, UnitState], errors=()) -> CupsState:
+    """Keep a validated running scheduler independent of the socket probe."""
+    service, socket = (units.get(name) for name in CUPS_UNITS)
+    status, value = "partial", "unknown"
+    if service and service.load == "loaded" and service.active == "active":
+        status, value = "available", "running"
+    elif errors or len(units) != 2:
+        status = "partial" if errors and all(error.code == "malformed" for error in errors) else "unavailable"
+    else:
+        service_absent = (service.load, service.active, service.sub) == ("not-found", "inactive", "dead")
+        socket_absent = (socket.load, socket.active, socket.sub) == ("not-found", "inactive", "dead")
+        if service_absent and socket_absent:
+            status = "unsupported"
+        elif service.load == "loaded" and service.active == "inactive":
+            if socket.load == "loaded" and (socket.active, socket.sub) == ("active", "listening"):
+                status, value = "available", "socket-ready"
+            elif socket_absent or (socket.load == "loaded" and socket.active == "inactive"):
+                status, value = "available", "stopped"
+    return CupsState(status, value, tuple((name, units[name]) for name in CUPS_UNITS if name in units),
+                     tuple(errors))
+
+
+class CupsRead(ServiceRead):
+    """Read two fixed CUPS units under one connection-to-decoding deadline."""
+
+    label = "Printer"
+    seconds = CUPS_READ_SECONDS
+
+    def __init__(self, Gio=None, GLib=None) -> None:
+        super().__init__(Gio, GLib)
+        self.units = {}
+        self.errors = []
+        self.waiting = set(CUPS_UNITS)
+
+    def fail(self, failure: SnapshotFailure) -> None:
+        if not self.done:
+            self.errors.append(failure)
+            self.finish(value=classify_cups(self.units, self.errors))
+
+    def connected(self, _source, result, _data) -> None:
+        if not self.pending():
+            return
+        try:
+            self.connection = self.Gio.bus_get_finish(result)
+            self.connection.set_exit_on_close(False)
+        except self.GLib.Error as error:
+            self.fail(self.bus_failure(error))
+            return
+        for unit in CUPS_UNITS:
+            if not self.pending():
+                return
+            try:
+                self.connection.call(SYSTEMD_NAME, SYSTEMD_PATH, SYSTEMD_MANAGER,
+                    "ListUnitsByNames", self.GLib.Variant("(as)", ([unit],)),
+                    self.GLib.VariantType.new(UNIT_REPLY_TYPE), self.Gio.DBusCallFlags.NO_AUTO_START,
+                    max(1, int((self.deadline - time.monotonic()) * 1000)),
+                    self.cancellable, self.replied, unit)
+            except self.GLib.Error as error:
+                self.unit_failed(unit, error)
+
+    def unit_failed(self, unit: str, error: Exception) -> None:
+        if not self.pending():
+            return
+        if self.Gio.dbus_error_get_remote_error(error) == "org.freedesktop.systemd1.NoSuchUnit":
+            self.completed_unit(unit, state=UnitState("", "not-found", "inactive", "dead"))
+        else:
+            self.completed_unit(unit, failure=self.bus_failure(error))
+
+    def completed_unit(self, unit: str, state=None, failure=None) -> None:
+        if not self.pending() or unit not in self.waiting:
+            return
+        self.waiting.remove(unit)
+        if failure is not None:
+            self.errors.append(failure)
+        else:
+            self.units[unit] = state
+        if not self.waiting:
+            self.finish(value=classify_cups(self.units, self.errors))
+
+    def replied(self, connection, result, unit) -> None:
+        if not self.pending() or unit not in self.waiting:
+            return
+        try:
+            self.completed_unit(unit, state=decode_unit_state(connection.call_finish(result)))
+        except self.GLib.Error as error:
+            self.unit_failed(unit, error)
+        except SnapshotFailure as error:
+            self.completed_unit(unit, failure=error)
 
 
 class RegionalRead(ServiceRead):
