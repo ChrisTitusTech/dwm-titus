@@ -114,8 +114,8 @@ are terminated without canceling the PackageKit transaction. Three delayed
 snapshot-and-watch retries use one, two, and four seconds; exhaustion and failed
 acknowledgment retain explicit reload guidance. Pane-only reads still stop when
 Settings closes, while required recovery reads continue. Settings mutation
-actions remain unavailable until originating execution, confirmation,
-cancellation, and event-driven discovery invalidation are integrated.
+actions remain unavailable until originating execution, confirmation, and
+cancellation are integrated.
 An identity-free snapshot establishes an empty journal only when recovery is
 available. Incomplete journal evidence retains the readable snapshot and takes
 the same bounded recovery path; it cannot silently abandon an unknown owner.
@@ -1497,8 +1497,28 @@ owner does not prevent readiness: the monitor waits for owner changes without
 activating the service, while finite discovery reports availability separately.
 There is no idle timer or automatic reconnect. This helper is an event stream,
 not a snapshot, action, journal record, or operation stream; its two exact record
-forms are independent of the cumulative snapshot minor. QML subscription and
-dirty-cycle integration remain pending.
+forms are independent of the cumulative snapshot minor.
+
+The pane-scoped `SystemUpdateDiscovery` subscriber now consumes this stream.
+It starts a discovery cycle only after readiness, with a 12-second frontend
+startup deadline covering the helper's ten-second setup and process startup.
+Failure falls back to a finite read with visible monitoring-unavailable guidance;
+there is no automatic reconnect. Explicit reload or section reopen retries the
+monitor. Closing the section sends TERM and uses a 1.5-second KILL grace if the
+observer does not exit. Required startup/recovery snapshots and root-owned
+operation streams are independent of that optional subscriber.
+
+`SystemDiscoveryCycle.js` serializes initial, settling, and blocked cycles.
+Snapshot ownership spans parsing and recovery publication, so invalidations in
+either completion callback are included before the next read is reserved or the
+provider becomes idle. A failed read or invalidated settling read retains dirty
+state until a later explicit cycle completes a quiet settling read. Readable
+inventory and backend diagnostics remain intact when monitoring fails; available
+update state becomes partial with separate reload guidance. Conservative
+PackageKit observer completion, uncertain exit, and active adoption share the
+same invalidation path. The model exposes confirmation invalidation for every
+global change and replacement read; originating mutation and confirmation UI
+remain a separate implementation boundary.
 
 - PackageKit `UpdatesChanged` and `InstalledChanged` invalidate update
   discovery; `RepoListChanged` invalidates both repository and update discovery

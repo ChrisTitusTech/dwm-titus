@@ -7,6 +7,7 @@ ShellRoot {
     property int scenario: 0
     property int assertions: 0
     property int snapshotRequests: 0
+    property int discoveryInvalidations: 0
     property bool sawProgress: false
     property bool sawVerifying: false
     property bool emptyReplay: false
@@ -38,6 +39,7 @@ ShellRoot {
         }
         root.scenario++;
         root.snapshotRequests = 0;
+        root.discoveryInvalidations = 0;
         root.sawProgress = false;
         root.sawVerifying = false;
         root.emptyReplay = false;
@@ -55,6 +57,7 @@ ShellRoot {
 
     SystemOperationModel {
         id: model
+        onDiscoveryInvalidated: root.discoveryInvalidations++
         onSnapshotRequested: {
             root.snapshotRequests++;
             if (root.scenario === 6) {
@@ -81,6 +84,8 @@ ShellRoot {
                 Qt.callLater(root.finishControlFailure);
         }
         onAcknowledged: operationId => {
+            root.check(root.scenario === 2 ? root.discoveryInvalidations === 0 : root.discoveryInvalidations > 0,
+                "Only PackageKit results invalidate discovery even without a global signal");
             root.check(operationId === root.target.id, "Acknowledgment must name exact validated identity");
             root.check(root.sawProgress && root.sawVerifying, "Stream progress must arrive before exit");
             root.check(result.state === (root.scenario === 2 ? "permission-denied" : "succeeded"),
@@ -104,6 +109,7 @@ ShellRoot {
 
     function finishFailure() {
         if (root.completed || (root.failedStart && !root.integrated.operation.blocked)) return;
+        root.check(root.discoveryInvalidations > 0, "Uncertain PackageKit observer exit invalidates discovery");
         root.check(model.blocked && !model.busy, "Exhausted recovery must stop all automatic work");
         root.check(root.snapshotRequests === 3 && model.retries === 3, "Exactly three bounded recovery reads");
         if (root.failedStart) {
@@ -132,20 +138,25 @@ ShellRoot {
     }
 
     Component { id: integratedComponent; SystemManagementModel {} }
+
+    function finishDelayedSnapshot() {
+        if (root.completed || !root.delayedSnapshot || !root.sawLateAck || root.integrated === null
+                || root.integrated.snapshotState !== "ready" || !root.integrated.discovery.fresh) return;
+        root.check(root.integrated.terminalHandoff === null && root.integrated.activeOperation === null,
+            "Delayed snapshot cannot restore acknowledged UI state");
+        root.check(!root.integrated.operation.controlOwned && !root.integrated.operation.blocked,
+            "Delayed snapshot cannot send a redundant acknowledgment or show failure");
+        root.check(root.integrated.operation.state === "result", "Verified result survives delayed discovery");
+        root.complete();
+    }
+
     Connections {
         target: root.integrated
-        function onSnapshotStateChanged() {
-            if (root.delayedSnapshot && root.sawLateAck && root.integrated.snapshotState === "ready") {
-                Qt.callLater(function() {
-                    root.check(root.integrated.terminalHandoff === null && root.integrated.activeOperation === null,
-                        "Delayed snapshot cannot restore acknowledged UI state");
-                    root.check(!root.integrated.operation.controlOwned && !root.integrated.operation.blocked,
-                        "Delayed snapshot cannot send a redundant acknowledgment or show failure");
-                    root.check(root.integrated.operation.state === "result", "Verified result survives delayed discovery");
-                    root.complete();
-                });
-            }
-        }
+        function onSnapshotStateChanged() { Qt.callLater(root.finishDelayedSnapshot); }
+    }
+    Connections {
+        target: root.integrated === null ? null : root.integrated.discovery
+        function onFreshChanged() { Qt.callLater(root.finishDelayedSnapshot); }
     }
     Connections {
         target: root.integrated === null ? null : root.integrated.operation
@@ -193,6 +204,7 @@ ShellRoot {
             if (root.delayedSnapshot) {
                 root.check(!root.sawLateAck, "The committed handoff is acknowledged exactly once");
                 root.sawLateAck = true;
+                Qt.callLater(root.finishDelayedSnapshot);
                 return;
             }
             if (root.closeRetry) {

@@ -5,6 +5,7 @@ repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 model=$repo/config/quickshell/systemmanagement/SystemManagementModel.qml
 pane=$repo/config/quickshell/settings/SystemSettingsPane.qml
 commands=$repo/config/quickshell/core/Commands.qml
+discovery=$repo/config/quickshell/systemmanagement/SystemUpdateDiscovery.qml
 settings=$repo/config/quickshell/settings/SettingsModel.qml
 settings_window=$repo/config/quickshell/settings/SettingsWindow.qml
 shell=$repo/config/quickshell/shell.qml
@@ -22,6 +23,13 @@ grep -Fq "2>\"\$error_file\" &" "$commands"
 grep -Fq "head -c 512 \"\$error_file\" >&2" "$commands"
 grep -Fq 'command: Commands.terminatingCheckedCommand(' "$model"
 [ "$(grep -Fc 'Process {' "$model")" -eq 1 ]
+[ "$(grep -Fc 'Process {' "$discovery")" -eq 1 ]
+grep -Fq 'Commands.systemManagementCommand("watch-updates", [])' "$discovery"
+grep -Fq 'stdout: SplitParser' "$discovery"
+if grep -Fq 'repeat: true' "$discovery"; then
+	printf 'Update discovery must not poll.\n' >&2
+	exit 1
+fi
 if grep -Fq 'repeat: true' "$model"; then
 	printf 'System-management model must not poll.\n' >&2
 	exit 1
@@ -104,6 +112,7 @@ pane_model_members=$(grep -Eo 'systemManagementModel\.[A-Za-z][A-Za-z0-9]*' "$pa
 expected_pane_model_members=$(printf '%s\n' \
 	'systemManagementModel.activeOperation' \
 	'systemManagementModel.busy' \
+	'systemManagementModel.discoveryDetail' \
 	'systemManagementModel.errors' \
 	'systemManagementModel.message' \
 	'systemManagementModel.operation' \

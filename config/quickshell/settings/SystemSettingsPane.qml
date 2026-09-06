@@ -161,6 +161,14 @@ Flickable {
             wrapMode: Text.WordWrap
         }
 
+        PlainText {
+            Layout.fillWidth: true
+            visible: text.length > 0
+            text: root.systemManagementModel.discoveryDetail
+            color: Theme.warning
+            wrapMode: Text.WordWrap
+        }
+
         SectionLabel { label: "Fedora updates" }
 
         GridLayout {

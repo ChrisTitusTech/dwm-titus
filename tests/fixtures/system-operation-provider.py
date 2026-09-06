@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sys
 import time
+import signal
 
 
 def row(*fields):
@@ -33,7 +34,10 @@ def snapshot():
     row("system-management-protocol", "1", "0")
     row("snapshot-generation", "a" * 64)
     row("provider", "updates", "unsupported", "delegated", "PackageKit", "Isolated fixture")
-    row("provider", "recovery", "partial" if incomplete or os.environ.get("DWM_OPERATION_FIXTURE") else "available",
+    recovery_partial = incomplete or bool(os.environ.get("DWM_OPERATION_FIXTURE"))
+    if delayed_snapshot and not captured_handoff:
+        recovery_partial = False
+    row("provider", "recovery", "partial" if recovery_partial else "available",
         "user-session", "dwm-system-management", "Isolated fixture")
     for name in ("update-summary", "update-last-refresh", "update-restart"):
         row("state", name, "unsupported", "unknown", "Isolated fixture")
@@ -62,6 +66,10 @@ def snapshot():
 
 
 def main():
+    if sys.argv[1:] == ["watch-updates"]:
+        row("update-event", "ready")
+        while True:
+            signal.pause()
     if sys.argv[1:] == ["snapshot"]:
         snapshot()
         return 0
