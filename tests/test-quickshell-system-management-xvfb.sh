@@ -109,6 +109,8 @@ watch-operation | ack-operation)
 	case ${2:-} in
 	op-11111111111111111111111111111111) action=timezone-set; kind=timezone ;;
 	op-22222222222222222222222222222222) action=updates-refresh; kind=refresh ;;
+	op-33333333333333333333333333333333) action=locale-set; kind=locale ;;
+	op-44444444444444444444444444444444) action=printers-open; kind=delegate ;;
 	*) exit 3 ;;
 	esac
 	if [ "$1" = ack-operation ]; then
@@ -180,6 +182,27 @@ regional-handoff)
 	else
 		snapshot | sed '/^complete\t/i\terminal-handoff\top-11111111111111111111111111111111\ttimezone-set\ttimezone'
 	fi
+	;;
+regional-active | delegate-active)
+	if [ "$mode" = regional-active ]; then
+		operation=op-33333333333333333333333333333333
+		action=locale-set
+		kind=locale
+	else
+		operation=op-44444444444444444444444444444444
+		action=printers-open
+		kind=delegate
+	fi
+	if [ -f "$fixture/ack-$operation" ]; then
+		snapshot
+	elif [ -f "$fixture/finished-$operation" ]; then
+		snapshot | sed "/^complete\t/i\terminal-handoff\t$operation\t$action\t$kind"
+	else
+		snapshot | sed "/^complete\t/i\active-operation\t$operation\t$action\t$kind\trunning\tunknown\tno\tNative fixture"
+	fi
+	;;
+invalid-native-cancel)
+	snapshot | sed '/^complete\t/i\active-operation\top-55555555555555555555555555555555\ttimezone-set\ttimezone\trunning\tunknown\tyes\tInvalid cancellation'
 	;;
 invalid-handoff)
 	snapshot | sed '/^complete\t/i\terminal-handoff\top-11111111111111111111111111111111\ttimezone-set\tdelegate'
@@ -710,6 +733,33 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ -f "$fixture/ack-op-22222222222222222222222222222222" ]
+
+for native_mode in regional-active delegate-active; do
+	if [ "$native_mode" = regional-active ]; then
+		native_id=op-33333333333333333333333333333333
+		native_result=locale-set:succeeded
+	else
+		native_id=op-44444444444444444444444444444444
+		native_result=printers-open:succeeded
+	fi
+	printf '%s\n' "$native_mode" >"$fixture/mode"
+	ipc refresh >/dev/null
+	wait_state ready
+	[ "$(ipc systemManagementUpdateCount)" -eq 1 ]
+	i=0
+	while [ "$i" -lt 100 ]; do
+		[ -f "$fixture/ack-$native_id" ] && break
+		i=$((i + 1))
+		sleep 0.05
+	done
+	[ -f "$fixture/ack-$native_id" ]
+	[ "$(ipc systemManagementOperationResult)" = "$native_result" ]
+done
+
+printf 'invalid-native-cancel\n' >"$fixture/mode"
+ipc refresh >/dev/null
+wait_state failure
+[ "$(ipc systemManagementUpdateCount)" -eq 0 ]
 
 printf 'invalid-handoff\n' >"$fixture/mode"
 ipc refresh >/dev/null

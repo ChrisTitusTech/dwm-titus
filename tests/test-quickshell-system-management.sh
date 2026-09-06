@@ -74,8 +74,8 @@ grep -Fq 'property var recoveryProvider: root.recoveryFallback(' "$model"
 grep -Fq '"providerClass": "user-session"' "$model"
 grep -Fq "Number(states[\"\$update-summary\"].value) !== parsedUpdates.length" "$model"
 grep -Fq 'parsedActive !== null || parsedHandoff !== null' "$model"
-[ "$(grep -Fc 'root.updateActionKind(fields[2]).length === 0' "$model")" -eq 1 ]
-grep -Fq 'root.operationActionKind(fields[2]).length === 0' "$model"
+[ "$(grep -Fc 'root.operationActionKind(fields[2]).length === 0' "$model")" -eq 2 ]
+grep -Fq 'root.updateActionKind(fields[2]).length === 0 && fields[6] !== "no"' "$model"
 grep -Fq 'responseGeneration !== root.requestGeneration' "$model"
 grep -Fq 'if (root.snapshotOwned)' "$model"
 grep -Fq 'root.requiredPending = root.requiredPending || required;' "$model"

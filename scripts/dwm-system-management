@@ -5,14 +5,17 @@ from __future__ import annotations
 
 import bisect
 import contextlib
+import ctypes
 import errno
 import fcntl
 import hashlib
+import io
 import os
 import re
 import selectors
 import shlex
 import signal
+import socket
 import stat
 import struct
 import subprocess
@@ -37,6 +40,7 @@ REPOSITORY_MAX_ROWS = 512
 REPOSITORY_MAX_BYTES = 384 * 1024
 MAX_OPERATION_PROGRESS_RECORDS = 252
 MAX_OPERATION_MISMATCH_SAMPLES = 128
+NATIVE_WATCH_SECONDS = 120
 
 REGIONAL_TIMEZONE_MAX = 255
 REGIONAL_TIMEZONE_COUNT = 2048
@@ -4763,8 +4767,6 @@ def read_recovery_snapshot(backend: PackageKitBackend) -> RecoverySnapshot:
                         current = load_writable_journal_state(journal)
                     if current.active != state.active:
                         evidence = None
-                    if current.active is not None and current.active.kind not in {"update", "refresh"}:
-                        raise JournalAdmissionError("Another regional or delegated owner appeared during recovery")
                     return RecoverySnapshot(current, evidence, prior_restart, tuple(failures))
     except (SnapshotFailure, JournalFrameError, JournalRecordError, JournalAdmissionError, OSError) as error:
         if isinstance(error, SnapshotFailure):
@@ -5062,6 +5064,7 @@ def recover_journal_active(
     journal: JournalDescriptorSet, backend: PackageKitBackend, *,
     boot_id: str, session_started: int | None = None,
     watch: bool = False, expected_operation_id: str | None = None,
+    expected_operation: JournalOperation | None = None,
     on_progress: Callable[[RecoveryEvidence], object] | None = None,
     session_reader: Callable[[], int | None] | None = None,
 ) -> tuple[JournalState, RecoveryEvidence | None, SnapshotFailure | None]:
@@ -5070,12 +5073,24 @@ def recover_journal_active(
         raise JournalRecordError("recovery boot identity is invalid")
     if session_started is not None:
         _encode_journal_uint64(session_started, "session start")
+    identity = ("operation_id", "action_id", "started_at", "kind", "generation", "transaction_path", "boot_id", "slot")
+    if expected_operation is not None:
+        if (not isinstance(expected_operation, JournalOperation)
+                or expected_operation_id not in {None, expected_operation.operation_id}):
+            raise JournalAdmissionError("recovery expected identity is invalid")
+        expected_operation_id = expected_operation.operation_id
     original = load_journal_state(journal.chain).active
+    if expected_operation is not None and original is not None and any(
+            getattr(original, field) != getattr(expected_operation, field) for field in identity):
+        raise JournalAdmissionError("recovery owner identity changed")
     if expected_operation_id is not None and original is None:
         # Completion can race the watcher's initial target selection. Validate
         # the exact retained result without following a replacement owner.
         with lock_writable_journal(journal):
-            retained_journal_operation(journal, expected_operation_id)
+            terminal = retained_journal_operation(journal, expected_operation_id)
+            if expected_operation is not None and any(
+                    getattr(terminal, field) != getattr(expected_operation, field) for field in identity):
+                raise JournalAdmissionError("recovery terminal identity changed")
             return load_writable_journal_state(journal), None, None
     if expected_operation_id is not None and (original is None or original.operation_id != expected_operation_id):
         raise JournalAdmissionError("recovery target changed")
@@ -5087,8 +5102,6 @@ def recover_journal_active(
     lookup_failure = None
     history_match = None
     history_used = False
-    identity = ("operation_id", "action_id", "started_at", "kind", "generation", "transaction_path", "boot_id", "slot")
-
     def checkpoint_running():
         with lock_writable_journal(journal):
             current = load_writable_journal_state(journal).active
@@ -6597,9 +6610,116 @@ def control_journal_target(journal: JournalDescriptorSet, operation_id: str, boo
             state = load_writable_journal_state(journal)
         if state.active is None:
             return retained_journal_operation(journal, operation_id)
-        if state.active.operation_id != operation_id or state.active.kind not in {"refresh", "update"}:
+        if state.active.operation_id != operation_id:
             raise JournalAdmissionError("journal control target is unavailable")
         return state.active
+
+
+class NativeJournalEvents:
+    """One inode watch, retained before recovery; notifications are hints only."""
+
+    # IN_MODIFY | IN_ATTRIB | IN_CLOSE_WRITE | IN_DELETE_SELF | IN_MOVE_SELF.
+    mask = 0x0002 | 0x0004 | 0x0008 | 0x0400 | 0x0800
+
+    def __init__(self, journal: JournalDescriptorSet) -> None:
+        self.journal = journal
+        self.descriptor = None
+        self.selector = None
+
+    def __enter__(self):
+        try:
+            self.journal.validate()
+            libc = ctypes.CDLL(None, use_errno=True)
+            libc.inotify_init1.argtypes = [ctypes.c_int]
+            libc.inotify_init1.restype = ctypes.c_int
+            libc.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+            libc.inotify_add_watch.restype = ctypes.c_int
+            descriptor = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+            if descriptor < 0:
+                raise OSError(ctypes.get_errno(), "native journal event setup failed")
+            self.descriptor = descriptor
+            path = f"/proc/self/fd/{self.journal.descriptor('active')}".encode("ascii")
+            self.watch = libc.inotify_add_watch(descriptor, path, self.mask)
+            if self.watch < 0:
+                raise OSError(ctypes.get_errno(), "native journal inode watch failed")
+            self.selector = selectors.DefaultSelector()
+            self.selector.register(descriptor, selectors.EVENT_READ)
+            self.journal.validate()
+            return self
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
+
+    def __exit__(self, *_args):
+        try:
+            if self.selector is not None:
+                self.selector.close()
+        finally:
+            if self.descriptor is not None:
+                descriptor, self.descriptor = self.descriptor, None
+                os.close(descriptor)  # Also frees the instance's inode watch.
+
+    def wait(self, deadline: float) -> None:
+        while time.monotonic() < deadline:
+            if not self.selector.select(max(0, deadline - time.monotonic())):
+                continue
+            try:
+                data = os.read(self.descriptor, 65536)
+            except BlockingIOError:
+                continue
+            # A file-only watch has fixed 16-byte events and no filename.
+            # Overflow, unmount, lost watches, and malformed events fail closed.
+            if not data or len(data) % 16:
+                raise SnapshotFailure("interrupted", "Native journal notifications are incomplete")
+            for offset in range(0, len(data), 16):
+                watch, mask, cookie, length = struct.unpack_from("=iIII", data, offset)
+                if watch != self.watch or not mask or mask & ~self.mask or cookie or length:
+                    raise SnapshotFailure("interrupted", "Native journal monitoring was lost")
+            return  # Coalesce one bounded batch into one validated recovery read.
+
+
+def watch_native_journal_operation(
+    journal: JournalDescriptorSet, original: JournalOperation,
+    write: Callable[[str], object], *, boot_id: str,
+) -> None:
+    """Observe durable native checkpoints, never the service or its target value."""
+    deadline = time.monotonic() + NATIVE_WATCH_SECONDS
+    identity = ("operation_id", "action_id", "started_at", "kind", "generation",
+                "transaction_path", "boot_id", "slot")
+    with NativeJournalEvents(journal) as events:
+        stream = OperationStream(original.operation_id, original.action_id,
+                                 original.started_at, original.detail, write)
+        while True:
+            # Also run after the deadline: Linux can notify close before freeing
+            # flock. A final fresh probe bounds recovery of that last-event race.
+            state, _evidence, failure = recover_journal_active(journal, None,
+                boot_id=boot_id, expected_operation=original)
+            if failure is not None:
+                raise failure
+            current = state.active
+            if current is None:
+                current = next((item for item in state.terminals
+                    if item is not None and item.operation_id == original.operation_id), None)
+            if current is None or any(getattr(current, key) != getattr(original, key) for key in identity):
+                raise JournalAdmissionError("native journal watch owner changed")
+            if current.state in JOURNAL_OPERATION_TERMINAL_STATES:
+                if current.state == "succeeded" and stream.state in {"pending", "authorizing"}:
+                    stream.transition("running", current.detail)
+                elif current.state == "permission-denied" and stream.state == "pending":
+                    stream.transition("authorizing", current.detail)
+                elif current.state == "canceled" and stream.state == "running":
+                    stream.transition("cancel-requested", current.detail)
+                stream.finish(current)
+                return
+            if current.state == "cancel-requested" and stream.state in {"pending", "authorizing"}:
+                stream.transition("running", current.detail)
+            if current.state != stream.state:
+                stream.transition(current.state, current.detail)
+            else:
+                stream.progress(current.detail)
+            if time.monotonic() >= deadline:
+                raise SnapshotFailure("timeout", "Native owner remains active; refresh and observe its result")
+            events.wait(deadline)
 
 
 def watch_journal_operation(
@@ -6610,6 +6730,9 @@ def watch_journal_operation(
     original = control_journal_target(journal, operation_id, boot_id)
     if original.state in JOURNAL_OPERATION_TERMINAL_STATES:
         replay_terminal_operation(original, write)
+        return
+    if original.kind not in {"update", "refresh"}:
+        watch_native_journal_operation(journal, original, write, boot_id=boot_id)
         return
     detail = "Observing recovered PackageKit operation; package comparison is unavailable"
     stream = OperationStream(original.operation_id, original.action_id, original.started_at, detail, write)
@@ -6677,7 +6800,79 @@ def cancel_journal_operation(journal: JournalDescriptorSet, operation_id: str, *
                 detail="Cancellation requested; waiting for PackageKit completion"))
 
 
+def control_output_writer(output, resources: contextlib.ExitStack) -> Callable[[bytes], int] | None:
+    """Never set file-status flags on an inherited open-file description."""
+    try:
+        descriptor = output.fileno()
+    except io.UnsupportedOperation:
+        return None  # In-memory test consumers have no kernel writer.
+    original = os.fstat(descriptor)
+    flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
+    if (flags & os.O_ACCMODE) not in (os.O_WRONLY, os.O_RDWR):
+        raise OSError("Operation output is not writable")
+    if stat.S_ISFIFO(original.st_mode) or stat.S_ISCHR(original.st_mode):
+        # dup would still share O_NONBLOCK with the parent. Opening the retained
+        # proc descriptor gives pipes/terminals a separate open-file description.
+        descriptor = os.open(f"/proc/self/fd/{descriptor}",
+            os.O_WRONLY | os.O_NONBLOCK | os.O_CLOEXEC | os.O_NOCTTY)
+        resources.callback(os.close, descriptor)
+        if stat.S_ISFIFO(original.st_mode) and flags & os.O_DIRECT:
+            # Packet mode is set after opening a pipe, on this private OFD only.
+            fcntl.fcntl(descriptor, fcntl.F_SETFL, fcntl.fcntl(descriptor, fcntl.F_GETFL) | os.O_DIRECT)
+        current = os.fstat(descriptor)
+        identity = lambda value: (value.st_dev, value.st_ino, value.st_mode, value.st_rdev)
+        if identity(current) != identity(original):
+            raise OSError("Operation output identity changed")
+    elif stat.S_ISSOCK(original.st_mode):
+        # Sockets cannot be reopened through proc. MSG_DONTWAIT is per-call,
+        # unlike O_NONBLOCK, and does not affect another holder of this socket.
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.send.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_size_t, ctypes.c_int]
+        libc.send.restype = ctypes.c_ssize_t
+
+        def send(payload):
+            count = libc.send(descriptor, payload, len(payload), socket.MSG_DONTWAIT | socket.MSG_NOSIGNAL)
+            if count < 0:
+                raise OSError(ctypes.get_errno(), "Operation socket output failed")
+            return count
+
+        return send
+    elif not stat.S_ISREG(original.st_mode):
+        raise OSError("Unsupported operation output type")
+    # Regular files retain their original shared offset and append semantics.
+    # O_NONBLOCK cannot impose a storage-I/O deadline on a regular file.
+    return lambda payload: os.write(descriptor, payload)
+
+
+@contextlib.contextmanager
+def control_output_writers() -> Iterator[tuple[Callable[[bytes], int] | None, Callable[[bytes], int] | None]]:
+    """Retain isolated writers and close them even on handled interruption."""
+    handlers = {}
+
+    def interrupted(_signum, _frame):
+        raise InterruptedError("Operation control was interrupted")
+
+    try:
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            handlers[signum] = signal.signal(signum, interrupted)
+        with contextlib.ExitStack() as resources:
+            yield tuple(control_output_writer(output, resources) for output in (sys.stdout, sys.stderr))
+    finally:
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
+
+
 def operation_control(command: str, operation_id: str) -> int:
+    try:
+        with control_output_writers() as writers:
+            return run_operation_control(command, operation_id, *writers)
+    except OSError:
+        return 1  # Output setup/cleanup failed; no trustworthy completion.
+
+
+def run_operation_control(command: str, operation_id: str,
+                          output_writer: Callable[[bytes], int] | None,
+                          error_writer: Callable[[bytes], int] | None) -> int:
     """Keep stale control rejection stream-free and watch failure distinct."""
     started = False
     cancel_dispatched = False
@@ -6689,8 +6884,22 @@ def operation_control(command: str, operation_id: str) -> int:
     def write(chunk):
         nonlocal started
         started = True
-        sys.stdout.write(chunk)
-        sys.stdout.flush()
+        if output_writer is None:
+            sys.stdout.write(chunk)
+            sys.stdout.flush()
+            return
+        payload = chunk.encode("utf-8")
+        # Each formatter bundle fits Linux PIPE_BUF. A slow consumer must not
+        # block observation, hold locks, or create an unbounded output backlog.
+        if len(payload) > 4096 or output_writer(payload) != len(payload):
+            raise OSError("Incomplete operation control output")
+
+    def diagnostic(message):
+        with contextlib.suppress(OSError):
+            if error_writer is None:
+                print(message, file=sys.stderr)
+            else:
+                error_writer((message + "\n").encode("ascii"))
 
     try:
         boot_id = read_boot_id()
@@ -6708,19 +6917,15 @@ def operation_control(command: str, operation_id: str) -> int:
     except (SnapshotFailure, JournalFrameError, JournalRecordError, JournalAdmissionError, OSError, OperationProtocolError) as error:
         if command == "updates-cancel":
             if cancel_dispatched and not isinstance(error, CancelTargetUnavailable):
-                print("cancellation request could not be confirmed; observe the existing operation", file=sys.stderr)
+                diagnostic("cancellation request could not be confirmed; observe the existing operation")
                 return 1
-            print("cancel target is unavailable", file=sys.stderr)
+            diagnostic("cancel target is unavailable")
             return 3
         if started:
-            if isinstance(error, BrokenPipeError):
-                # Avoid a second buffered flush at interpreter shutdown changing
-                # the exit status or writing an unraisable-exception diagnostic.
-                with open(os.devnull, "w") as sink:
-                    os.dup2(sink.fileno(), sys.stdout.fileno())
-            print("operation observation was interrupted", file=sys.stderr)
+            # Raw descriptor writes leave no buffered shutdown flush to retry.
+            diagnostic("operation observation was interrupted")
             return 1
-        print("watch target is unavailable" if command == "watch-operation" else "ack target is unavailable", file=sys.stderr)
+        diagnostic("watch target is unavailable" if command == "watch-operation" else "ack target is unavailable")
         return 3
 
 
@@ -6957,15 +7162,14 @@ class UpdateEventMonitor:
 
 
 def watch_update_events() -> int:
-    output_descriptor = None
-    original_blocking = None
+    output_writer = None
 
     def emit(record: str) -> None:
         payload = (record + "\n").encode("ascii")
         # Each fixed row fits PIPE_BUF. Never block GLib callbacks behind a
         # stalled reader or queue unbounded notifications. Overflow is an
         # explicit monitoring failure; the consumer must refresh finite state.
-        if os.write(output_descriptor, payload) != len(payload):
+        if output_writer(payload) != len(payload):
             raise OSError("Incomplete event output")
 
     try:
@@ -6975,36 +7179,23 @@ def watch_update_events() -> int:
         gi.require_version("GLibUnix", "2.0")
         from gi.repository import Gio, GLib, GLibUnix
 
-        output_descriptor = sys.stdout.fileno()
-        original_blocking = os.get_blocking(output_descriptor)
-        os.set_blocking(output_descriptor, False)
-        code = UpdateEventMonitor(Gio, GLib, GLibUnix, emit).run()
+        with contextlib.ExitStack() as resources:
+            output_writer = control_output_writer(sys.stdout, resources)
+            if output_writer is None:
+                raise OSError("Event output requires a file descriptor")
+            code = UpdateEventMonitor(Gio, GLib, GLibUnix, emit).run()
     except (ImportError, ValueError, OSError):
         code = 1
-    finally:
-        if output_descriptor is not None and original_blocking is not None:
-            try:
-                # File status flags belong to the shared open-file description.
-                # A shell group may retain this writer for its next command.
-                os.set_blocking(output_descriptor, original_blocking)
-            except OSError:
-                code = 1
     if code:
-        error_descriptor = None
-        error_blocking = None
         try:
-            error_descriptor = sys.stderr.fileno()
-            error_blocking = os.get_blocking(error_descriptor)
-            os.set_blocking(error_descriptor, False)
-            os.write(error_descriptor, b"PackageKit live change monitoring is unavailable; reload status explicitly\n")
+            with contextlib.ExitStack() as resources:
+                error_writer = control_output_writer(sys.stderr, resources)
+                if error_writer is not None:
+                    error_writer(b"PackageKit live change monitoring is unavailable; reload status explicitly\n")
         except (OSError, ValueError):
             # Exit status remains authoritative when even diagnostics cannot
             # be delivered (including stderr sharing the full stdout pipe).
             pass
-        finally:
-            if error_descriptor is not None and error_blocking is not None:
-                with contextlib.suppress(OSError):
-                    os.set_blocking(error_descriptor, error_blocking)
     return code
 
 
