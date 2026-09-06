@@ -203,6 +203,13 @@ verification, and Settings confirmation integration are still required.
 Read-only Fedora 44 CLI probes passed for both catalogs and all three preview
 forms without changing system settings.
 
+An internal active-file lease now distinguishes a live native or delegated
+owner from an orphaned record. Recovery preserves live ownership without service
+inference, while owner exit leaves the existing interrupted recovery path intact.
+Focused tests cover competing descriptors, cleanup and path failures, and real
+process death. Native snapshot/watch integration, bounded service execution,
+and Settings actions remain disabled pending their next implementation boundary.
+
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
 confirmation warning that a sent change cannot be canceled. Local cancellation

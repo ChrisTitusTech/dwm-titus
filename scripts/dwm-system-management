@@ -3673,6 +3673,83 @@ def load_writable_journal_state(journal: JournalDescriptorSet) -> JournalState:
     return state
 
 
+def _native_owner_descriptor(journal: JournalDescriptorSet, operation: JournalOperation) -> int:
+    _require_exclusive_journal(journal)
+    if (not isinstance(operation, JournalOperation)
+            or operation.kind not in {"timezone", "ntp", "locale", "delegate"}
+            or operation.state in JOURNAL_OPERATION_TERMINAL_STATES
+            or load_writable_journal_state(journal).active != operation):
+        raise JournalAdmissionError("native lease target is not the exact active operation")
+    return journal.descriptor("active")
+
+
+def _try_native_owner_lock(descriptor: int) -> bool:
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError as error:
+        if error.errno in {errno.EACCES, errno.EAGAIN}:
+            return False
+        raise JournalLockError("native owner lease acquisition failed") from error
+
+
+def _unlock_native_owner(descriptor: int) -> None:
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+    except OSError as error:
+        raise JournalLockError("native owner lease release failed") from error
+
+
+@contextlib.contextmanager
+def retain_native_journal_owner(
+    journal: JournalDescriptorSet, operation: JournalOperation,
+) -> Iterator[None]:
+    """Enter beside admission under the directory lock; retain only a file lease.
+
+    Use an ExitStack to retain this context after the short directory interval
+    ends, and close it before closing the retained journal. This lease is local
+    operation liveness, not authorization or proof of a platform result.
+    """
+    _native_owner_descriptor(journal, operation)
+    try:
+        # A separate open file description is essential: flock on dup(active)
+        # would let a probe through active release the owner's own lock.
+        lease_descriptor = os.open("active",
+            os.O_RDWR | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=journal.chain.directory_descriptor)
+    except OSError as error:
+        raise JournalLockError("native owner lease descriptor open failed") from error
+    try:
+        _validate_journal_path_identity(journal.chain.directory_descriptor, "active",
+                                       lease_descriptor, JOURNAL_FILE_SIZE)
+        journal.validate()
+        if not _try_native_owner_lock(lease_descriptor):
+            journal.validate()
+            raise JournalAdmissionError("another live native owner holds the lease")
+        try:
+            journal.validate()
+            yield
+        finally:
+            _unlock_native_owner(lease_descriptor)
+    finally:
+        error = _close_descriptors((lease_descriptor,))
+        if error is not None:
+            raise JournalLockError("native owner lease descriptor close failed") from error
+
+
+def native_journal_owner_busy(journal: JournalDescriptorSet, operation: JournalOperation) -> bool:
+    """Probe nonblocking under the directory lock without releasing our own lease."""
+    descriptor = _native_owner_descriptor(journal, operation)
+    if not _try_native_owner_lock(descriptor):
+        journal.validate()
+        return True
+    try:
+        journal.validate()
+        return False
+    finally:
+        _unlock_native_owner(descriptor)
+
+
 def commit_writable_journal_path(
     journal: JournalDescriptorSet, name: str, payload: str
 ) -> tuple[int, JournalFrame]:
@@ -5079,6 +5156,9 @@ def recover_journal_active(
         if current.state in JOURNAL_OPERATION_TERMINAL_STATES:
             complete_journal_terminal(journal, boot_id=boot_id, session_started=session_started)
             return load_writable_journal_state(journal), None, None
+        if (current.kind not in {"update", "refresh"}
+                and native_journal_owner_busy(journal, current)):
+            return current_state, None, None
         if lookup_failure is not None and (lookup_failure.code == "malformed" or (
                 not history_used and (evidence is None or evidence.present))):
             return current_state, evidence, lookup_failure
