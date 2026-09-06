@@ -32,6 +32,9 @@ MAX_LIST_BYTES = 3 * 1024 * 1024
 READ_DEADLINE_SECONDS = 120
 REFRESH_AGE_DEADLINE_SECONDS = 10
 CANCEL_GRACE_SECONDS = 5
+REPOSITORY_READ_SECONDS = 30
+REPOSITORY_MAX_ROWS = 512
+REPOSITORY_MAX_BYTES = 384 * 1024
 MAX_OPERATION_PROGRESS_RECORDS = 252
 MAX_OPERATION_MISMATCH_SAMPLES = 128
 
@@ -539,6 +542,228 @@ class ServiceRead:
         if self.failure:
             raise self.failure
         return self.value
+
+
+@dataclass(frozen=True)
+class RepositoryRow:
+    repository_id: str
+    enabled: bool
+    description: str
+
+    def fields(self) -> tuple[str, ...]:
+        return ("repository", self.repository_id,
+                "enabled" if self.enabled else "disabled", self.description)
+
+
+def decode_repository_row(values: object) -> RepositoryRow:
+    """Bound serialized fields before copying a RepoDetail into Python."""
+    if values.get_type_string() != "(ssb)" or values.get_size() > 2 * MAX_TEXT_BYTES + 16:
+        raise SnapshotFailure("malformed", "Invalid PackageKit repository record")
+    for index in (0, 1):
+        if values.get_child_value(index).get_size() > MAX_TEXT_BYTES + 1:
+            raise SnapshotFailure("malformed", "Oversized PackageKit repository field")
+    repository_id, description, enabled = values.unpack()
+    return RepositoryRow(canonical_identity(repository_id), enabled,
+                         clean_text(description, truncate=False))
+
+
+class RepositoryRead(ServiceRead):
+    """Collect one complete fixed GetRepoList transaction, never a mutation."""
+
+    label = "Repository"
+    seconds = REPOSITORY_READ_SECONDS
+
+    def __init__(self, Gio=None, GLib=None) -> None:
+        super().__init__(Gio, GLib)
+        try:
+            import gi
+            gi.require_version("PackageKitGlib", "1.0")
+            from gi.repository import PackageKitGlib
+        except (ImportError, ValueError) as error:
+            raise SnapshotFailure("missing-provider", "PackageKit bindings are unavailable", "unavailable") from error
+        self.filter_none = PackageKitGlib.filter_bitfield_from_string("none")
+        self.stage = "connect"
+        self.owner = self.path = self.match_rule = ""
+        self.subscription = self.closed_handler = 0
+        self.fetch_sent = self.acknowledged = self.finished = False
+        self.rows: dict[str, RepositoryRow] = {}
+        self.row_bytes = 0
+
+    def request(self, stage, method, parameters=None, signature="()", *, bus=False, manager=False):
+        if not self.pending():
+            return
+        self.stage = stage
+        destination = "org.freedesktop.DBus" if bus else self.owner
+        path = "/org/freedesktop/DBus" if bus else PACKAGEKIT_PATH if manager else self.path
+        interface = "org.freedesktop.DBus" if bus else PACKAGEKIT_INTERFACE if manager else TRANSACTION_INTERFACE
+        self.connection.call(destination, path, interface, method, parameters,
+            self.GLib.VariantType.new(signature), self.Gio.DBusCallFlags.NONE,
+            max(1, min(int((self.deadline - time.monotonic()) * 1000), self.seconds * 1000)),
+            self.cancellable, self.replied, stage)
+
+    def connected(self, _source, result, _data):
+        if not self.pending() or self.stage != "connect":
+            return
+        try:
+            self.connection = self.Gio.bus_get_finish(result)
+            if not self.pending():
+                return
+            self.connection.set_exit_on_close(False)
+            self.closed_handler = self.connection.connect("closed", self.connection_closed)
+            self.request("owner", "GetNameOwner",
+                self.GLib.Variant("(s)", (PACKAGEKIT_NAME,)), "(s)", bus=True)
+        except self.GLib.Error as error:
+            self.fail(self.bus_failure(error))
+
+    def connection_closed(self, *_args):
+        if self.pending():
+            self.fail(SnapshotFailure("missing-provider", "Repository service bus disconnected", "unavailable"))
+
+    def bus_failure(self, error):
+        if time.monotonic() < self.deadline:
+            name = self.Gio.dbus_error_get_remote_error(error)
+            if name == "org.freedesktop.PackageKit.Transaction.RefusedByPolicy":
+                return SnapshotFailure("permission-denied", "PackageKit denied repository discovery", "restricted")
+            if name == "org.freedesktop.PackageKit.Transaction.NotSupported":
+                return SnapshotFailure("unsupported", "PackageKit cannot list repositories", "unsupported")
+        return super().bus_failure(error)
+
+    def replied(self, connection, result, stage):
+        if not self.pending() or stage != self.stage:
+            return
+        try:
+            reply = connection.call_finish(result)
+            if not self.pending():
+                return
+            signature = {"start": "(u)", "owner": "(s)", "owner-after-start": "(s)", "verify-owner": "(s)",
+                         "create": "(o)"}.get(stage, "()")
+            if reply.get_type_string() != signature or reply.get_size() > 256:
+                raise SnapshotFailure("malformed", "Invalid repository transaction reply")
+            if stage == "start":
+                if reply.unpack()[0] not in (1, 2):
+                    raise SnapshotFailure("malformed", "Invalid PackageKit activation reply")
+                self.request("owner-after-start", "GetNameOwner", self.GLib.Variant("(s)", (PACKAGEKIT_NAME,)), "(s)", bus=True)
+            elif stage in ("owner", "owner-after-start", "verify-owner"):
+                owner = reply.unpack()[0]
+                if re.fullmatch(r":[0-9]+\.[0-9]+", owner) is None:
+                    raise SnapshotFailure("malformed", "Invalid PackageKit service identity")
+                if stage != "verify-owner":
+                    self.owner = owner
+                    self.request("create", "CreateTransaction", signature="(o)", manager=True)
+                else:
+                    if owner != self.owner:
+                        raise SnapshotFailure("conflict", "PackageKit changed during repository discovery")
+                    rows = tuple(self.rows[key] for key in sorted(self.rows, key=lambda key: key.encode("utf-8")))
+                    if self.pending():
+                        self.finish(rows)
+            elif stage == "create":
+                path = reply.unpack()[0]
+                if JOURNAL_PACKAGEKIT_PATH_PATTERN.fullmatch(path) is None:
+                    raise SnapshotFailure("malformed", "Invalid repository transaction path")
+                self.path = path
+                self.subscription = connection.signal_subscribe(self.owner, TRANSACTION_INTERFACE,
+                    None, self.path, None, self.Gio.DBusSignalFlags.NO_MATCH_RULE, self.received, None)
+                self.match_rule = f"type='signal',sender='{self.owner}',interface='{TRANSACTION_INTERFACE}',path='{self.path}'"
+                # An explicit acknowledgment makes bus policy denial observable.
+                self.request("match", "AddMatch", self.GLib.Variant("(s)", (self.match_rule,)), bus=True)
+            elif stage == "match":
+                self.request("hints", "SetHints", self.GLib.Variant("(as)",
+                    (["background=true", "interactive=false", "cache-age=4294967295"],)))
+            elif stage == "hints":
+                self.fetch_sent = True
+                self.request("fetch", "GetRepoList", self.GLib.Variant("(t)", (self.filter_none,)))
+            elif stage == "fetch":
+                self.acknowledged = True
+                self.stage = "wait"
+                self.maybe_complete()
+        except self.GLib.Error as error:
+            if (stage == "owner" and self.pending()
+                    and self.Gio.dbus_error_get_remote_error(error) == "org.freedesktop.DBus.Error.NameHasNoOwner"):
+                # Activate only an absent daemon, once, within the same deadline.
+                try:
+                    self.request("start", "StartServiceByName",
+                        self.GLib.Variant("(su)", (PACKAGEKIT_NAME, 0)), "(u)", bus=True)
+                except self.GLib.Error as activation_error:
+                    self.fail(self.bus_failure(activation_error))
+                return
+            self.fail(self.bus_failure(error))
+        except (SnapshotFailure, TypeError, ValueError) as error:
+            if self.pending():
+                self.fail(error if isinstance(error, SnapshotFailure) else
+                          SnapshotFailure("malformed", "Malformed repository transaction reply"))
+
+    def maybe_complete(self):
+        if self.acknowledged and self.finished and self.stage == "wait":
+            self.request("verify-owner", "GetNameOwner",
+                self.GLib.Variant("(s)", (PACKAGEKIT_NAME,)), "(s)", bus=True)
+
+    def received(self, _connection, sender, path, interface, member, values, _data):
+        if (not self.pending() or sender != self.owner or path != self.path
+                or interface != TRANSACTION_INTERFACE or self.finished
+                or member not in ("RepoDetail", "ErrorCode", "Finished", "Destroy")):
+            return
+        try:
+            if self.stage not in ("fetch", "wait"):
+                raise SnapshotFailure("malformed", "Premature repository transaction signal")
+            if member == "RepoDetail":
+                if len(self.rows) >= REPOSITORY_MAX_ROWS:
+                    raise SnapshotFailure("malformed", "Too many PackageKit repositories")
+                row = decode_repository_row(values)
+                size = encoded_record_size(row.fields())
+                if row.repository_id in self.rows or self.row_bytes + size > REPOSITORY_MAX_BYTES:
+                    raise SnapshotFailure("malformed", "Duplicate or oversized repository result")
+                if self.pending():
+                    self.rows[row.repository_id] = row
+                    self.row_bytes += size
+            elif member == "ErrorCode":
+                if (values.get_type_string() != "(us)" or values.get_size() > MAX_TEXT_BYTES + 16
+                        or values.get_child_value(1).get_size() > MAX_TEXT_BYTES + 1):
+                    raise SnapshotFailure("malformed", "Invalid PackageKit repository error")
+                raise PackageKitBackend._transaction_failure(values.get_child_value(0).unpack(), "")
+            elif member == "Finished":
+                if values.get_type_string() != "(uu)" or values.get_size() != 8:
+                    raise SnapshotFailure("malformed", "Invalid repository completion signal")
+                self.finished = True
+                if values.unpack()[0] != EXIT_SUCCESS:
+                    raise SnapshotFailure("internal", "Repository transaction did not succeed")
+                self.maybe_complete()
+            else:
+                if values.get_type_string() != "()":
+                    raise SnapshotFailure("malformed", "Invalid repository destruction signal")
+                raise SnapshotFailure("missing-provider", "Repository transaction disappeared", "unavailable")
+        except (SnapshotFailure, TypeError, ValueError) as error:
+            if self.pending():
+                self.fail(error if isinstance(error, SnapshotFailure) else
+                          SnapshotFailure("malformed", "Malformed repository transaction signal"))
+        except self.GLib.Error as error:
+            self.fail(self.bus_failure(error))
+
+    def run(self):
+        try:
+            return super().run()
+        finally:
+            if self.connection is not None:
+                if self.subscription:
+                    self.connection.signal_unsubscribe(self.subscription)
+                    self.subscription = 0
+                if self.closed_handler:
+                    self.connection.disconnect(self.closed_handler)
+                    self.closed_handler = 0
+                if self.failure and self.fetch_sent and not self.finished:
+                    # Only this reader's exact transaction, never another owner's
+                    # work. Best effort is not a claim that the daemon canceled it.
+                    with contextlib.suppress(self.GLib.Error):
+                        self.connection.call(self.owner, self.path, TRANSACTION_INTERFACE, "Cancel",
+                            None, None, self.Gio.DBusCallFlags.NONE, 1000, None, None, None)
+                if self.match_rule:
+                    # Also remove a rule whose AddMatch reply was lost. These
+                    # asynchronous cleanup requests do not extend the deadline.
+                    with contextlib.suppress(self.GLib.Error):
+                        self.connection.call("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                            "org.freedesktop.DBus", "RemoveMatch", self.GLib.Variant("(s)", (self.match_rule,)),
+                            None, self.Gio.DBusCallFlags.NONE, 1000, None, None, None)
+                    self.match_rule = ""
+            self.rows.clear()
 
 
 @dataclass(frozen=True)
@@ -6104,7 +6329,8 @@ class PackageKitBackend:
             if source:
                 self.GLib.source_remove(source)
 
-    def _transaction_failure(self, code: int, _detail: str) -> SnapshotFailure:
+    @staticmethod
+    def _transaction_failure(code: int, _detail: str) -> SnapshotFailure:
         if code == 2:
             return SnapshotFailure("network", "PackageKit could not reach the network")
         if code in {18, 19, 28, 33, 37, 43, 64}:

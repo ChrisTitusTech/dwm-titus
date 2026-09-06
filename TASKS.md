@@ -182,8 +182,15 @@ running service if the socket probe fails. Unit and private-bus tests cover
 status combinations, typed bounds, denial, absence, deadlines, and late replies.
 A read-only Fedora 44 probe returned running CUPS state in 0.030 seconds without
 errors or service changes. This reader adds no CLI command or protocol minor.
-Source readers, event subscriptions, lifecycle integration, and Settings controls
-remain outstanding.
+A separate PackageKit repository reader now collects enabled and disabled sources
+under one 30-second connection-to-completion deadline. It pins its exact service
+and transaction, observes acknowledged signals, requires both method and terminal
+success, and rejects duplicate or oversized complete results. Unit and private-bus
+tests cover bounds, denial, absence, replacement, timeout, and late replies. A
+read-only Fedora 44 probe returned 28 rows (15 enabled and 13 disabled) in 0.826
+seconds without requesting metadata refresh or repository changes. This reader
+adds no CLI command or protocol minor. Event subscriptions, lifecycle integration,
+delegated-tool availability, and Settings controls remain outstanding.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
