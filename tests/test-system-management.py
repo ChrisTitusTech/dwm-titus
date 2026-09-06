@@ -6928,6 +6928,7 @@ class RecoverySnapshotTests(unittest.TestCase):
 
     def backend(self, **kwargs):
         backend = FixtureBackend(**kwargs)
+        backend.require_mutation_safe = mock.Mock()
         backend.session_started = mock.Mock(return_value=0)
         backend.probe_operation = mock.Mock(return_value=provider.RecoveryEvidence(False))
         backend.operation_history = mock.Mock(return_value=())
@@ -6955,7 +6956,7 @@ class RecoverySnapshotTests(unittest.TestCase):
     def restart_row(self, output):
         return next(row for row in rows(output, "state") if row[1] == "update-restart")
 
-    def test_cli_initializes_only_its_fixed_journal_and_keeps_actions_disabled(self):
+    def test_cli_initializes_only_its_fixed_journal_and_offers_safe_refresh(self):
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.dict(os.environ, {"XDG_STATE_HOME": directory}), \
                 mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
@@ -6965,10 +6966,96 @@ class RecoverySnapshotTests(unittest.TestCase):
             output = stdout.getvalue().splitlines()
             self.assertEqual(output[-1], "complete\tsnapshot")
             self.assertEqual(self.restart_row(output)[2:4], ["available", "none"])
-            self.assertEqual([row[2] for row in rows(output, "action")], ["unavailable"] * 3)
+            self.assertEqual([row[2] for row in rows(output, "action")],
+                ["available", "unavailable", "unavailable"])
             path = pathlib.Path(directory) / "dwm-titus" / "system-management"
             self.assertEqual({item.name for item in path.iterdir()}, set(provider.JOURNAL_NAMES))
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
+
+    def test_complete_safe_plan_offers_confirmed_origins_without_dispatch(self):
+        update = package(8, "fixture;2;noarch;updates", "Update")
+        backend = self.backend(updates=(update,), plan=(
+            package(11, update.package_id, "Update"),
+            package(12, "dependency;1;noarch;updates", "Dependency"),
+            package(15, "old;1;noarch;installed", "Obsolete")))
+        with self.journal() as journal:
+            output = self.snapshot(journal, backend)
+            self.assertEqual([row[2] for row in rows(output, "action")],
+                ["available", "available", "unavailable"])
+            self.assertEqual(rows(output, "provider")[0][2], "available")
+            self.assertEqual(len(rows(output, "package-change")), 3)
+            backend.require_mutation_safe.assert_called_once_with()
+            self.assertIsNone(provider.load_journal_state(journal.chain).active)
+            self.assertIsNone(provider.load_journal_state(journal.chain).handoff)
+
+    def test_unsafe_backend_blocks_origins_without_hiding_inventory(self):
+        update = package(8, "fixture;2;noarch;updates", "Update")
+        backend = self.backend(updates=(update,), plan=(package(11, update.package_id, "Update"),))
+        backend.require_mutation_safe.side_effect = provider.SnapshotFailure(
+            "unsupported", "PackageKit security floor is not satisfied", "unsupported")
+        with self.journal() as journal:
+            output = self.snapshot(journal, backend)
+            self.assertEqual([row[2] for row in rows(output, "action")], ["unavailable"] * 3)
+            self.assertEqual(len(rows(output, "update")), 1)
+            self.assertEqual(len(rows(output, "package-change")), 1)
+            self.assertIn(["error", "updates", "unsupported", "PackageKit security floor is not satisfied"],
+                rows(output, "error"))
+
+    def test_failed_or_unsupported_plan_blocks_only_install(self):
+        update = package(8, "fixture;2;noarch;updates", "Update")
+        cases = (
+            {"plan_failure": provider.SnapshotFailure("timeout", "Simulation timed out")},
+            {"plan": ()},
+            {"plan": (package(11, update.package_id, "Update"),
+                      package(19, "extra;1;noarch;installed", "Reinstall"))},
+        )
+        for case in cases:
+            with self.subTest(case=case), self.journal() as journal:
+                output = self.snapshot(journal, self.backend(updates=(update,), **case))
+                self.assertEqual([row[2] for row in rows(output, "action")],
+                    ["available", "unavailable", "unavailable"])
+                self.assertEqual(len(rows(output, "update")), 1)
+
+    def test_failed_discovery_can_offer_explicit_refresh_but_not_install(self):
+        with self.journal() as journal:
+            output = self.snapshot(journal, self.backend(updates_failure=
+                provider.SnapshotFailure("network", "Repository is offline")))
+            self.assertEqual([row[2] for row in rows(output, "action")],
+                ["available", "unavailable", "unavailable"])
+            self.assertIn(["error", "updates", "network", "Repository is offline"], rows(output, "error"))
+
+    def test_incomplete_recovery_blocks_origins_and_skips_security_probe(self):
+        backend = self.backend()
+        backend.session_started.side_effect = provider.SnapshotFailure("timeout", "Logind timed out")
+        with self.journal() as journal:
+            output = self.snapshot(journal, backend)
+            self.assertEqual([row[2] for row in rows(output, "action")], ["unavailable"] * 3)
+            backend.require_mutation_safe.assert_not_called()
+
+    def test_malformed_inventory_blocks_all_origins(self):
+        for result in (
+            {"updates": (package(99, "fixture;2;noarch;updates", "Invalid info"),)},
+            {"updates_failure": provider.SnapshotFailure("malformed", "Invalid transaction output")},
+        ):
+            with self.subTest(result=result), self.journal() as journal:
+                output = self.snapshot(journal, self.backend(**result))
+                self.assertEqual([row[2] for row in rows(output, "action")], ["unavailable"] * 3)
+                self.assertEqual(rows(output, "update"), [])
+                self.assertEqual(rows(output, "package-change"), [])
+                self.assertIn("malformed", [row[2] for row in rows(output, "error")])
+
+    def test_existing_owner_or_handoff_blocks_origins_and_skips_security_probe(self):
+        for active in (True, False):
+            with self.subTest(active=active), self.journal() as journal:
+                operation = self.begin(journal, "refresh")
+                backend = self.backend()
+                if active:
+                    backend.probe_operation.return_value = provider.RecoveryEvidence(True, allow_cancel=True)
+                output = self.snapshot(journal, backend)
+                self.assertEqual([row[2] for row in rows(output, "action")][:2], ["unavailable"] * 2)
+                backend.require_mutation_safe.assert_not_called()
+                self.assertEqual(rows(output, "active-operation" if active else "terminal-handoff")[0][1],
+                    operation.operation_id)
 
     def test_durable_restart_overrides_discovery_and_survives_missing_packagekit(self):
         for unavailable in (False, True):

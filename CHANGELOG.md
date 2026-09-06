@@ -8,6 +8,12 @@ versions from `config.mk`.
 
 ### Changed
 
+- Offer confirmed update actions only after complete idle recovery and the
+  PackageKit security check. Installation also requires a supported dependency
+  preview; failures preserve readable inventory and explicit refresh guidance.
+  Verify the backend with signed disposable Fedora 44 guest packages, including
+  dependency changes, stale confirmation rejection, denial, and retained replay.
+
 - Add visible System Settings confirmation for metadata refresh and update
   installation, with complete dependency-change previews, fresh-state guards,
   verified progress/audit logs, and exact-ID cancellation. Keyboard navigation
