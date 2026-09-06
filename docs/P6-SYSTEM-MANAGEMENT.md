@@ -349,7 +349,7 @@ field limit of 512 bytes, the provider never truncates it: locale becomes
 `partial`/`unknown`, `locale-set` becomes unavailable, and the detail reports
 that the override set is too large to confirm safely. Immediately before
 confirmation and again before the D-Bus call,
-`locale-set LANG=LOCALE` rereads locale1's complete `Locale` array, validates
+`locale-set LANG=LOCALE GENERATION` rereads locale1's complete `Locale` array, validates
 the allowlist and bounds above, replaces only `LANG`, preserves every validated
 `LANGUAGE` and `LC_*` assignment, sorts the complete set in the fixed order
 above, recomputes the complete display detail, and revalidates every bound
@@ -365,8 +365,13 @@ notification for this call and is ignored; any non-equivalent notification or
 final effective-value mismatch reports `conflict`, refreshes visible state, and
 warns that a concurrent writer may have won or been overwritten.
 
-locale1 replaces the full assignment array and exposes no lock or compare-and-
-set argument, so no client can make this cross-client read-modify-write fully
+locale1 merges omitted keys from its current configuration and simplifies
+redundant values; it does not simply replace the whole assignment array.
+It also applies its own language fallback policy. See the
+[systemd 259 SetLocale implementation](https://github.com/systemd/systemd/blob/v259/src/locale/localed.c).
+The provider still supplies the complete validated preserved set and verifies
+the required effective values. locale1 exposes no lock or compare-and-set
+argument, so no client can make this cross-client read-modify-write fully
 atomic. An external writer in the final read-to-method interval can therefore
 still be overwritten even though the provider detects its notification when
 available. The confirmation states this limitation, shows the preserved
@@ -392,9 +397,9 @@ post-dispatch mutation automatically.
 Provider-backed regional and delegated actions use this exact command grammar:
 
 ```text
-dwm-system-management timezone-set ZONE
-dwm-system-management ntp-set enabled|disabled
-dwm-system-management locale-set LANG=LOCALE
+dwm-system-management timezone-set ZONE GENERATION
+dwm-system-management ntp-set enabled|disabled GENERATION
+dwm-system-management locale-set LANG=LOCALE GENERATION
 dwm-system-management accounts-open
 dwm-system-management password-open
 dwm-system-management printers-open
@@ -420,6 +425,62 @@ immediately before `SetLocale`; it never reuses the first allowlist. Arguments
 are validated at both points. The four no-argument forms reject every positional or
 option argument. No other option, key, D-Bus argument, or trailing argument is
 accepted by any form.
+
+#### Read-only Regional Confirmation Preflight
+
+The separate read-only commands are:
+
+```text
+dwm-system-management regional-choices timezone|locale
+dwm-system-management regional-preview timezone-set ZONE
+dwm-system-management regional-preview ntp-set enabled|disabled
+dwm-system-management regional-preview locale-set LANG=LOCALE
+```
+
+These commands never authorize or mutate system state and do not advertise a
+snapshot action or change the cumulative snapshot minor. Unknown forms or arity
+return usage with exit 2 before I/O. A recognized request with an invalid selected
+value or unavailable read returns a complete typed error stream with exit 1.
+
+Choice streams begin with
+`regional-choices-protocol<TAB>1<TAB>0<TAB>timezone|locale`, contain only
+`choice<TAB>exact-id` rows, and end with `complete<TAB>regional-choices`.
+Success requires exit 0, a valid header, unique ascending ASCII identities, and
+completion. The existing catalog validation limits remain in force; the entire
+encoded stream, including every newline, is additionally limited to 512 KiB for
+timezones or 1 MiB for locales. Failed reads emit no choice rows, only the header,
+one `error<TAB>regional<TAB>code<TAB>detail`, and completion. Results are fully
+buffered and validated before any output; an oversized result is not truncated.
+
+Preview streams begin with `regional-preview-protocol<TAB>1<TAB>0`, contain one
+`preview<TAB>action<TAB>argument<TAB>generation<TAB>current<TAB>target<TAB>detail`,
+and end with `complete<TAB>regional-preview`. Success requires exit 0 and all
+three records. Every text field is at most 512 UTF-8 bytes and the whole stream
+is at most 8 KiB including newlines. A failure replaces the preview with one
+typed regional error and exits 1. Locale detail is the complete preserved
+override description, not a truncated summary. Preflight is not authorization
+or proof that a future mutation is available.
+
+Each preview makes fresh fixed reads: timezone state and timezone choices, NTP
+state, or locale state and installed locale choices. Service reads retain their
+ten-second aggregate bounds; the locale collector retains its three-second
+collection and bounded cleanup. No PackageKit read, journal access, arbitrary
+command, or user-selected service is involved.
+
+The generation is SHA-256 over the ASCII prefix `dwm-titus-regional-preview-v1`
+followed by action, selected argument, and source fields, each encoded as an
+eight-byte big-endian UTF-8 byte length followed by its bytes. Timezone uses the
+current timezone as its source field. NTP uses `yes|no` for `CanNTP` followed by
+`enabled|disabled` for its current setting; synchronization samples are not
+configuration identity. Locale uses every current validated assignment in the
+fixed locale-key order, including explicit empty values and key presence.
+Unselected catalog entries do not affect this token; exact selected membership
+must still be freshly validated. Before any future mutating call, the provider
+must repeat the preflight and compare the confirmed 64-lowercase-hex generation.
+A mismatch requires new confirmation and sends no mutation. Visible confirmation
+and monitored invalidation remain mandatory; the token is a freshness guard,
+not an atomic service transaction or proof of human approval. The mutating
+forms above remain disabled until their lifecycle and Settings integration land.
 
 `health-open` is the sole action with no provider command: the root-scoped QML
 model invokes the fixed in-process `SystemHealthModel.openOnScreen` method with

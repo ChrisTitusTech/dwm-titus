@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 """Qualify regional reads on a private bus with no host-service access."""
 
+import contextlib
+import io
 import os
 import runpy
 import sys
@@ -72,8 +74,20 @@ try:
     assert [call[2:] for call in calls] == [
         ("GetAll", ("org.freedesktop.timedate1",)),
         ("Get", ("org.freedesktop.locale1", "Locale")), ("ListTimezones", ())]
+    for arguments in (["regional-choices", "timezone"],
+                      ["regional-preview", "timezone-set", "Etc/UTC"],
+                      ["regional-preview", "ntp-set", "enabled"],
+                      ["regional-preview", "locale-set", "LANG=C"]):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            assert provider["main"](arguments) == 0, arguments
+        assert output.getvalue().startswith(arguments[0] + "-protocol\t1\t0")
+        assert output.getvalue().endswith("complete\t" + arguments[0] + "\n")
     mode = "malformed"
     failure("time-state", "malformed")
+    with contextlib.redirect_stdout(io.StringIO()) as output:
+        assert provider["main"](["regional-preview", "ntp-set", "enabled"]) == 1
+    assert "error\tregional\tmalformed\t" in output.getvalue()
+    assert "\npreview\t" not in output.getvalue()
     mode = "denied"
     failure("locale-state", "permission-denied")
     mode = "normal"
@@ -89,7 +103,7 @@ try:
     mode = "normal"
     assert provider["RegionalRead"]("timezone-choices").run() == ("UTC", "Etc/UTC")
     assert all(call[2] in {"Get", "GetAll", "ListTimezones"} for call in calls)
-    print("Private-bus regional reads: PASS (typed replies, denial, absence, deadline, late reply)")
+    print("Private-bus regional reads: PASS (typed replies, readonly preflight, denial, absence, deadline, late reply)")
 finally:
     for registration in registrations:
         bus.unregister_object(registration)

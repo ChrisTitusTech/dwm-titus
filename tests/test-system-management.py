@@ -84,6 +84,230 @@ def rows(lines, kind):
     return [line.split("\t") for line in lines if line.startswith(f"{kind}\t")]
 
 
+class RegionalPreflightTests(unittest.TestCase):
+    def time_state(self, **changes):
+        return replace(provider.RegionalTimeState("UTC", True, False, True), **changes)
+
+    def test_timezone_preview_requires_membership_and_binds_current_and_target(self):
+        preview = provider.make_regional_preview("timezone-set", "Etc/UTC", self.time_state(), ["UTC", "Etc/UTC"])
+        self.assertEqual(preview.fields()[:3], ("preview", "timezone-set", "Etc/UTC"))
+        self.assertEqual((preview.current, preview.target), ("UTC", "Etc/UTC"))
+        provider.require_regional_generation(preview, preview.generation)
+        for current, target in (("Etc/UTC", "Etc/UTC"), ("UTC", "UTC")):
+            changed = provider.make_regional_preview("timezone-set", target,
+                self.time_state(timezone=current), ["UTC", "Etc/UTC"])
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.require_regional_generation(changed, preview.generation)
+            self.assertEqual(caught.exception.code, "conflict")
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.make_regional_preview("timezone-set", "Etc/UTC", self.time_state(), ["UTC"])
+        same = provider.make_regional_preview("timezone-set", "Etc/UTC",
+            self.time_state(ntp_enabled=True), ["Etc/UTC", "UTC", "Europe/London"])
+        self.assertEqual(same.generation, preview.generation)
+
+    def test_ntp_generation_has_exact_framing_and_ignores_synchronization_samples(self):
+        preview = provider.make_regional_preview("ntp-set", "enabled", self.time_state())
+        framed = b"dwm-titus-regional-preview-v1"
+        for value in (b"ntp-set", b"enabled", b"yes", b"disabled"):
+            framed += len(value).to_bytes(8, "big") + value
+        self.assertEqual(preview.generation, hashlib.sha256(framed).hexdigest())
+        self.assertEqual(provider.make_regional_preview("ntp-set", "enabled",
+            self.time_state(ntp_synchronized=False)).generation, preview.generation)
+        self.assertNotEqual(provider.make_regional_preview("ntp-set", "enabled",
+            self.time_state(ntp_enabled=True)).generation, preview.generation)
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            provider.make_regional_preview("ntp-set", "enabled", self.time_state(can_ntp=False))
+        self.assertEqual(caught.exception.code, "unsupported")
+
+    def test_locale_generation_preserves_key_presence_order_and_complete_overrides(self):
+        assignments = ["LANG=C", "LANGUAGE=", "LC_TIME=de_DE.utf8", "LC_NUMERIC=fr_FR.utf8"]
+        before = provider.parse_locale_configuration(assignments)
+        preview = provider.make_regional_preview("locale-set", "LANG=en_US.utf8", before, ["C", "en_US.utf8"])
+        self.assertEqual((preview.current, preview.target, preview.detail),
+                         ("C", "en_US.utf8", "LC_NUMERIC=fr_FR.utf8, LC_TIME=de_DE.utf8"))
+        reordered = provider.make_regional_preview("locale-set", "LANG=en_US.utf8",
+            provider.parse_locale_configuration(list(reversed(assignments))), ["en_US.utf8", "C"])
+        self.assertEqual(preview, reordered)
+        for changed in ([item for item in assignments if item != "LANGUAGE="],
+                        [item.replace("LANGUAGE=", "LANGUAGE=en") for item in assignments],
+                        [item.replace("LC_TIME=de_DE.utf8", "LC_TIME=C") for item in assignments]):
+            other = provider.make_regional_preview("locale-set", "LANG=en_US.utf8",
+                provider.parse_locale_configuration(changed), ["C", "en_US.utf8"])
+            self.assertNotEqual(other.generation, preview.generation)
+        forged = replace(before, lang="forged", detail="forged")
+        self.assertEqual(provider.make_regional_preview("locale-set", "LANG=en_US.utf8",
+            forged, ["C", "en_US.utf8"]), preview)
+
+    def test_invalid_selections_and_states_are_rejected_before_io(self):
+        for action, argument in (("timezone-set", "../UTC"), ("ntp-set", "yes"),
+                                 ("locale-set", "LC_TIME=C"), ("locale-set", "LANG=C\n"),
+                                 ("arbitrary", "command")):
+            with mock.patch.object(provider, "RegionalRead") as reader, \
+                    mock.patch.object(provider, "read_locale_choices") as locales:
+                with self.assertRaises(provider.SnapshotFailure):
+                    provider.read_regional_preview(action, argument)
+                reader.assert_not_called()
+                locales.assert_not_called()
+        for state in (None, self.time_state(can_ntp=1), self.time_state(timezone="../UTC")):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.make_regional_preview("ntp-set", "enabled", state)
+        for value in (None, "", "A" * 64, "a" * 63, "a" * 65):
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.require_regional_generation(
+                    provider.make_regional_preview("ntp-set", "enabled", self.time_state()), value)
+            self.assertEqual(caught.exception.code, "malformed")
+
+    def test_locale_generation_counts_utf8_bytes_in_each_length_prefix(self):
+        preview = provider.make_regional_preview("locale-set", "LANG=en_US.utf8",
+            provider.parse_locale_configuration(["LANGUAGE=français", "LANG=C"]), ["en_US.utf8"])
+        self.assertEqual(preview.generation, "09ff64d6ea53aa4d497cec2d722b95701f913c40576c7024dfdc6377e9b8fd83")
+
+    def test_preflight_uses_only_fresh_fixed_readers(self):
+        states = {"time-state": self.time_state(), "timezone-choices": ("UTC", "Etc/UTC"),
+                  "locale-state": provider.parse_locale_configuration(["LANG=C"])}
+        with mock.patch.object(provider, "RegionalRead", side_effect=lambda kind: mock.Mock(
+                run=mock.Mock(return_value=states[kind]))) as reader, \
+                mock.patch.object(provider, "read_locale_choices", return_value=("C", "en_US.utf8")) as locales, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                mock.patch.object(provider, "open_journal_directory") as journal:
+            for _ in range(2):
+                provider.read_regional_preview("timezone-set", "Etc/UTC")
+                provider.read_regional_preview("ntp-set", "enabled")
+                provider.read_regional_preview("locale-set", "LANG=en_US.utf8")
+            self.assertEqual([call.args[0] for call in reader.call_args_list],
+                ["time-state", "timezone-choices", "time-state", "locale-state"] * 2)
+            self.assertEqual(locales.call_count, 2)
+            backend.assert_not_called()
+            journal.assert_not_called()
+
+    def test_choice_streams_are_sorted_complete_and_independently_versioned(self):
+        for kind in ("timezone", "locale"):
+            with mock.patch.object(provider, "regional_choices", return_value=("UTC", "C")):
+                output, code = provider.regional_preflight_output("regional-choices", [kind])
+            self.assertEqual(code, 0)
+            self.assertEqual(output.splitlines(), [f"regional-choices-protocol\t1\t0\t{kind}",
+                "choice\tC", "choice\tUTC", "complete\tregional-choices"])
+            self.assertLessEqual(len(output.encode()), provider.REGIONAL_CHOICE_STREAM_BYTES[kind])
+        self.assertEqual(provider.PROTOCOL_MINOR, 0)
+
+    def test_choice_catalog_limits_and_duplicates_are_rejected(self):
+        for values in (("C", "C"), ("bad\nlocale",), ("x" * 129,), tuple(f"x{i}" for i in range(4097))):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.validate_locale_catalog(values)
+        maximum = tuple(f"x{i}" for i in range(4096))
+        self.assertEqual(provider.validate_locale_catalog(maximum), maximum)
+        for kind, patch, value in (("locale", "read_locale_choices", ("C", "C")),
+                                   ("timezone", "RegionalRead", mock.Mock(run=mock.Mock(return_value=("UTC", "UTC"))))):
+            with mock.patch.object(provider, patch, return_value=value):
+                output, code = provider.regional_preflight_output("regional-choices", [kind])
+            self.assertEqual(code, 1)
+            self.assertIn("error\tregional\tmalformed\t", output)
+            self.assertNotIn("\nchoice\t", output)
+
+    def test_preview_stream_and_errors_never_publish_partial_evidence(self):
+        preview = provider.make_regional_preview("ntp-set", "enabled", self.time_state())
+        with mock.patch.object(provider, "read_regional_preview", return_value=preview):
+            output, code = provider.regional_preflight_output("regional-preview", ["ntp-set", "enabled"])
+        self.assertEqual((code, output.splitlines()), (0, ["regional-preview-protocol\t1\t0",
+            "\t".join(preview.fields()), "complete\tregional-preview"]))
+        for command, args, helper in (("regional-preview", ["ntp-set", "enabled"], "read_regional_preview"),
+                                     ("regional-choices", ["locale"], "regional_choices")):
+            for code in ("timeout", "permission-denied", "missing-provider", "malformed"):
+                with mock.patch.object(provider, helper, side_effect=provider.SnapshotFailure(code, "Fixture failure")):
+                    output, status = provider.regional_preflight_output(command, args)
+                self.assertEqual(status, 1)
+                self.assertEqual(len(output.splitlines()), 3)
+                self.assertEqual(output.splitlines()[1], f"error\tregional\t{code}\tFixture failure")
+                self.assertNotIn("\npreview\t", output)
+                self.assertNotIn("\nchoice\t", output)
+
+    def test_full_encoded_stream_limits_include_newlines(self):
+        preview = provider.make_regional_preview("ntp-set", "enabled", self.time_state())
+        with mock.patch.object(provider, "read_regional_preview", return_value=preview):
+            output, _ = provider.regional_preflight_output("regional-preview", ["ntp-set", "enabled"])
+            for limit, expected in ((len(output.encode()), 0), (len(output.encode()) - 1, 1)):
+                with mock.patch.object(provider, "REGIONAL_PREVIEW_STREAM_BYTES", limit):
+                    bounded, code = provider.regional_preflight_output("regional-preview", ["ntp-set", "enabled"])
+                self.assertEqual(code, expected)
+                if code:
+                    self.assertNotIn("\npreview\t", bounded)
+        with mock.patch.object(provider, "regional_choices", return_value=("UTC",)):
+            output, _ = provider.regional_preflight_output("regional-choices", ["timezone"])
+            for limit, expected in ((len(output.encode()), 0), (len(output.encode()) - 1, 1)):
+                with mock.patch.dict(provider.REGIONAL_CHOICE_STREAM_BYTES, timezone=limit):
+                    bounded, code = provider.regional_preflight_output("regional-choices", ["timezone"])
+                self.assertEqual(code, expected)
+                if code:
+                    self.assertNotIn("\nchoice\t", bounded)
+
+    def test_non_utf8_or_oversized_preview_fields_are_not_emitted(self):
+        preview = provider.make_regional_preview("ntp-set", "enabled", self.time_state())
+        for detail in ("x" * 513, "é" * 257, "bad\nfield", "bad\0field", "bad\ud800field", "bad\x1bfield", None):
+            with mock.patch.object(provider, "read_regional_preview", return_value=replace(preview, detail=detail)):
+                output, code = provider.regional_preflight_output("regional-preview", ["ntp-set", "enabled"])
+            self.assertEqual(code, 1)
+            self.assertNotIn("\npreview\t", output)
+        with mock.patch.object(provider, "read_regional_preview", side_effect=provider.SnapshotFailure(
+                "unrecognized\ncode", "bad\ud800\0detail")):
+            output, code = provider.regional_preflight_output("regional-preview", ["ntp-set", "enabled"])
+        self.assertEqual(code, 1)
+        self.assertEqual(output.splitlines()[1], "error\tregional\tinternal\tbad  detail")
+        output.encode("utf-8")
+
+    def test_closed_preflight_consumer_exits_without_traceback_or_shutdown_flush(self):
+        program = """
+import io, runpy, sys
+if int(sys.argv[2]) > 8192:
+    sys.stdout = io.TextIOWrapper(io.FileIO(sys.stdout.fileno(), "w", closefd=False),
+                                encoding="utf-8", write_through=True)
+main = runpy.run_path(sys.argv[1])["main"]
+main.__globals__["regional_preflight_output"] = lambda *_: ("x" * int(sys.argv[2]), 0)
+raise SystemExit(main(["regional-choices", "locale"]))
+"""
+        for size in (32, 65536):
+            with self.subTest(size=size):
+                read_fd, write_fd = os.pipe()
+                os.close(read_fd)
+                try:
+                    result = subprocess.run([sys.executable, "-c", program, str(PROVIDER_PATH), str(size)],
+                        stdin=subprocess.DEVNULL, stdout=write_fd, stderr=subprocess.PIPE, timeout=5)
+                finally:
+                    os.close(write_fd)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stderr, b"")
+
+    def test_cli_grammar_and_native_mutations_remain_disabled(self):
+        invalid = (["regional-choices"], ["regional-choices", "time"], ["regional-choices", "locale", "extra"],
+                   ["regional-preview"], ["regional-preview", "ntp-set"],
+                   ["regional-preview", "arbitrary", "value"], ["regional-preview", "ntp-set", "enabled", "extra"],
+                   ["timezone-set", "UTC", "a" * 64], ["ntp-set", "enabled", "a" * 64],
+                   ["locale-set", "LANG=C", "a" * 64])
+        with mock.patch.object(provider, "RegionalRead") as reader, \
+                mock.patch.object(provider, "read_locale_choices") as locales, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                mock.patch.object(provider, "open_journal_directory") as journal, \
+                contextlib.redirect_stdout(io.StringIO()) as output, contextlib.redirect_stderr(io.StringIO()):
+            for args in invalid:
+                self.assertEqual(provider.main(args), 2, args)
+            self.assertEqual(output.getvalue(), "")
+            for mocked in (reader, locales, backend, journal):
+                mocked.assert_not_called()
+            for args in (["regional-preview", "timezone-set", "../UTC"],
+                         ["regional-preview", "ntp-set", "yes"],
+                         ["regional-preview", "locale-set", "LC_TIME=C"]):
+                output.seek(0)
+                output.truncate(0)
+                self.assertEqual(provider.main(args), 1, args)
+                self.assertEqual(len(output.getvalue().splitlines()), 3)
+                self.assertIn("error\tregional\tmalformed\t", output.getvalue())
+            for mocked in (reader, locales, backend, journal):
+                mocked.assert_not_called()
+        with mock.patch.object(provider, "regional_choices", return_value=("C",)), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(provider.main(["regional-choices", "locale"]), 0)
+            self.assertIn("choice\tC\n", output.getvalue())
+
+
 class RepositoryReadTests(unittest.TestCase):
     def reader(self):
         _unused, connection, gio, glib, variant = RegionalReadTests.reader(self)

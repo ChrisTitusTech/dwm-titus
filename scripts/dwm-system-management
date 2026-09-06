@@ -45,6 +45,8 @@ REGIONAL_LOCALE_MAX = 128
 REGIONAL_LOCALE_COUNT = 4096
 REGIONAL_LOCALE_OUTPUT_BYTES = 2 * 1024 * 1024
 REGIONAL_LOCALE_ARRAY_BYTES = 8192
+REGIONAL_CHOICE_STREAM_BYTES = {"timezone": 512 * 1024, "locale": 1024 * 1024}
+REGIONAL_PREVIEW_STREAM_BYTES = 8192
 REGIONAL_LOCALE_KEYS = (
     "LANG", "LANGUAGE", "LC_CTYPE", "LC_NUMERIC", "LC_TIME", "LC_COLLATE",
     "LC_MONETARY", "LC_MESSAGES", "LC_PAPER", "LC_NAME", "LC_ADDRESS",
@@ -298,7 +300,14 @@ def validate_locale_choices(output: object) -> tuple[str, ...]:
     lines = text.removesuffix("\n").split("\n", REGIONAL_LOCALE_COUNT)
     if len(lines) > REGIONAL_LOCALE_COUNT:
         raise SnapshotFailure("malformed", "Too many regional locale choices")
-    result = tuple(validate_locale_name(line) for line in lines)
+    return validate_locale_catalog(lines)
+
+
+def validate_locale_catalog(values: object) -> tuple[str, ...]:
+    """Validate already decoded identities without rebuilding unbounded stdout."""
+    if not isinstance(values, (list, tuple)) or len(values) > REGIONAL_LOCALE_COUNT:
+        raise SnapshotFailure("malformed", "Invalid regional locale catalog")
+    result = tuple(validate_locale_name(value) for value in values)
     if len(set(result)) != len(result):
         raise SnapshotFailure("malformed", "Duplicate regional locale choices")
     return result
@@ -436,6 +445,120 @@ def decode_regional_reply(kind: str, reply: object) -> object:
             raise SnapshotFailure("malformed", "Missing or malformed timedate1 property")
         values.append(value.unpack())
     return RegionalTimeState(validate_timezone_name(values[0]), *values[1:])
+
+
+@dataclass(frozen=True)
+class RegionalPreview:
+    action: str
+    argument: str
+    generation: str
+    current: str
+    target: str
+    detail: str
+
+    def fields(self) -> tuple[str, ...]:
+        return ("preview", self.action, self.argument, self.generation,
+                self.current, self.target, self.detail)
+
+
+def validate_regional_argument(action: str, argument: object) -> str:
+    """Validate one fixed action's selection before starting any preflight I/O."""
+    if action == "timezone-set":
+        return validate_timezone_name(argument)
+    if action == "ntp-set" and isinstance(argument, str) and argument in ("enabled", "disabled"):
+        return argument
+    if action == "locale-set" and isinstance(argument, str) and argument.startswith("LANG="):
+        return "LANG=" + validate_locale_name(argument[5:])
+    raise SnapshotFailure("malformed", "Invalid regional action or selected value")
+
+
+def make_regional_preview(action: str, argument: object, state: object, choices=()) -> RegionalPreview:
+    """Bind a selection to complete validated current state, without I/O."""
+    argument = validate_regional_argument(action, argument)
+    if action == "locale-set":
+        if not isinstance(state, LocaleConfiguration):
+            raise SnapshotFailure("malformed", "Invalid regional locale state")
+        current = parse_locale_configuration(state.assignments)
+        catalog = validate_locale_catalog(choices)
+        expected = prepare_locale_change(current.assignments, argument,
+                                         ("\n".join(catalog) + ("\n" if catalog else "")).encode("ascii"))
+        current_value, target, detail = current.lang, expected.lang, expected.detail
+        source_fields = current.assignments
+    else:
+        if (not isinstance(state, RegionalTimeState)
+                or any(type(value) is not bool for value in
+                       (state.can_ntp, state.ntp_enabled, state.ntp_synchronized))):
+            raise SnapshotFailure("malformed", "Invalid regional time state")
+        validate_timezone_name(state.timezone)
+        if action == "timezone-set":
+            target = prepare_timezone_change(argument, choices)
+            current_value, detail = state.timezone, "System timezone"
+            source_fields = (state.timezone,)
+        else:
+            if not state.can_ntp:
+                raise SnapshotFailure("unsupported", "No supported network time service is available", "unsupported")
+            current_value = "enabled" if state.ntp_enabled else "disabled"
+            target, detail = argument, "Network time synchronization setting"
+            source_fields = ("yes", current_value)
+    digest = hashlib.sha256(b"dwm-titus-regional-preview-v1")
+    for field in (action, argument, *source_fields):
+        encoded = field.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    return RegionalPreview(action, argument, digest.hexdigest(), current_value, target, detail)
+
+
+def require_regional_generation(preview: RegionalPreview, confirmed: object) -> None:
+    """Future owners must call this with freshly collected preflight evidence."""
+    if not isinstance(confirmed, str) or JOURNAL_GENERATION_PATTERN.fullmatch(confirmed) is None:
+        raise SnapshotFailure("malformed", "Invalid regional confirmation generation")
+    if confirmed != preview.generation:
+        raise SnapshotFailure("conflict", "Regional state changed; review a fresh confirmation")
+
+
+def regional_choices(kind: str) -> tuple[str, ...]:
+    if kind == "timezone":
+        return validate_timezone_choices(RegionalRead("timezone-choices").run())
+    if kind == "locale":
+        return validate_locale_catalog(read_locale_choices())
+    raise SnapshotFailure("malformed", "Unknown regional choice catalog")
+
+
+def read_regional_preview(action: str, argument: object) -> RegionalPreview:
+    argument = validate_regional_argument(action, argument)
+    state = RegionalRead("locale-state" if action == "locale-set" else "time-state").run()
+    choices = regional_choices("locale" if action == "locale-set" else "timezone") if action != "ntp-set" else ()
+    return make_regional_preview(action, argument, state, choices)
+
+
+def regional_preflight_output(command: str, arguments: Sequence[str]) -> tuple[str, int]:
+    """Fully buffer a bounded read-only stream; failures never leak partial rows."""
+    choices = command == "regional-choices"
+    if (choices and (len(arguments) != 1 or arguments[0] not in REGIONAL_CHOICE_STREAM_BYTES)
+            or not choices and (command != "regional-preview" or len(arguments) != 2
+                or arguments[0] not in {"timezone-set", "ntp-set", "locale-set"})):
+        raise ValueError("invalid regional preflight command")
+    header = f"{command}-protocol\t1\t0" + ("\t" + arguments[0] if choices else "")
+    completion = "complete\t" + command
+    limit = REGIONAL_CHOICE_STREAM_BYTES[arguments[0]] if choices else REGIONAL_PREVIEW_STREAM_BYTES
+    try:
+        if choices:
+            records = [("choice", value) for value in sorted(regional_choices(arguments[0]))]
+        else:
+            records = [read_regional_preview(*arguments).fields()]
+        for record in records:
+            if any(not isinstance(field, str) or len(field.encode("utf-8")) > MAX_TEXT_BYTES
+                   or field and not field.isprintable() for field in record):
+                raise SnapshotFailure("malformed", "Undisplayable regional preflight field")
+        output = "\n".join((header, *("\t".join(record) for record in records), completion)) + "\n"
+        if len(output.encode("utf-8")) > limit:
+            raise SnapshotFailure("malformed", "Regional preflight stream is too large")
+        return output, 0
+    except (SnapshotFailure, UnicodeError) as error:
+        failure = error if isinstance(error, SnapshotFailure) else SnapshotFailure("malformed", "Non-UTF-8 regional preflight field")
+        code = failure.code if failure.code in JOURNAL_ERROR_CODES else "internal"
+        detail = "".join(char if char.isprintable() else " " for char in failure.detail)
+        return "\n".join((header, f"error\tregional\t{code}\t{detail}", completion)) + "\n", 1
 
 
 class ServiceRead:
@@ -6806,11 +6929,26 @@ def watch_update_events() -> int:
 
 
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | watch-updates | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | watch-updates | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if argv and argv[0] in {"regional-choices", "regional-preview"}:
+        try:
+            output, code = regional_preflight_output(argv[0], argv[1:])
+        except ValueError:
+            return usage()
+        try:
+            sys.stdout.write(output)
+            sys.stdout.flush()
+        except BrokenPipeError:
+            # Prevent the shutdown flush from replacing the controlled status
+            # or emitting an unraisable-exception diagnostic for a closed pane.
+            with open(os.devnull, "w") as sink:
+                os.dup2(sink.fileno(), sys.stdout.fileno())
+            return 1
+        return code
     if list(argv) == ["watch-updates"]:
         return watch_update_events()
     if list(argv) == ["updates-refresh"]:
