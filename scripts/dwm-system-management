@@ -161,6 +161,20 @@ PACKAGEKIT_INTERFACE = "org.freedesktop.PackageKit"
 TRANSACTION_INTERFACE = "org.freedesktop.PackageKit.Transaction"
 PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
 
+REGIONAL_READ_SECONDS = 10
+REGIONAL_TIME_PROPERTY_COUNT = 64
+REGIONAL_READ_REQUESTS = {
+    "time-state": ("org.freedesktop.timedate1", "/org/freedesktop/timedate1",
+                   PROPERTIES_INTERFACE, "GetAll", "(s)",
+                   ("org.freedesktop.timedate1",), "(a{sv})"),
+    "locale-state": ("org.freedesktop.locale1", "/org/freedesktop/locale1",
+                     PROPERTIES_INTERFACE, "Get", "(ss)",
+                     ("org.freedesktop.locale1", "Locale"), "(v)"),
+    "timezone-choices": ("org.freedesktop.timedate1", "/org/freedesktop/timedate1",
+                         "org.freedesktop.timedate1", "ListTimezones", None,
+                         None, "(as)"),
+}
+
 ROLE_REFRESH_CACHE = 13
 EXIT_SUCCESS = 1
 G_MAXUINT = (1 << 32) - 1
@@ -335,6 +349,194 @@ def locale_change_matches(expected_values: object, observed_values: object) -> b
     return all((expected.get(key) or expected.get("LANG", ""))
                == (observed.get(key) or observed.get("LANG", ""))
                for key in REGIONAL_LOCALE_KEYS[2:])
+
+
+@dataclass(frozen=True)
+class RegionalTimeState:
+    """Typed timedate1 state, independent of locale and mutation availability."""
+
+    timezone: str
+    can_ntp: bool
+    ntp_enabled: bool
+    ntp_synchronized: bool
+
+
+def regional_string_array(values: object, count: int, field_bytes: int,
+                          total_bytes: int, *, separators: bool = False) -> tuple[str, ...]:
+    """Bound serialized string sizes before allocating Python copies of a reply."""
+    if values.get_type_string() != "as" or values.n_children() > count:
+        raise SnapshotFailure("malformed", "Invalid regional string array")
+    result = []
+    size = 0
+    for index in range(values.n_children()):
+        child = values.get_child_value(index)
+        # A serialized GVariant string includes its one terminating NUL byte.
+        payload_bytes = child.get_size() - 1
+        size += payload_bytes + int(separators)
+        if payload_bytes > field_bytes or size > total_bytes:
+            raise SnapshotFailure("malformed", "Oversized regional string array")
+        result.append(child.unpack())
+    return tuple(result)
+
+
+def decode_regional_reply(kind: str, reply: object) -> object:
+    """Validate the exact reply signature and required regional property types."""
+    if not isinstance(kind, str) or kind not in REGIONAL_READ_REQUESTS:
+        raise SnapshotFailure("malformed", "Unknown regional read")
+    if reply.get_type_string() != REGIONAL_READ_REQUESTS[kind][-1]:
+        raise SnapshotFailure("malformed", "Unexpected regional reply signature")
+    if kind == "timezone-choices":
+        return validate_timezone_choices(regional_string_array(reply.get_child_value(0),
+            REGIONAL_TIMEZONE_COUNT, REGIONAL_TIMEZONE_MAX, REGIONAL_TIMEZONE_BYTES))
+    if kind == "locale-state":
+        values = reply.get_child_value(0).get_variant()
+        return parse_locale_configuration(regional_string_array(values,
+            len(REGIONAL_LOCALE_KEYS), MAX_TEXT_BYTES, REGIONAL_LOCALE_ARRAY_BYTES,
+            separators=True))
+    properties = reply.get_child_value(0)
+    if properties.n_children() > REGIONAL_TIME_PROPERTY_COUNT:
+        raise SnapshotFailure("malformed", "Too many timedate1 properties")
+    keys = set()
+    for index in range(properties.n_children()):
+        key = properties.get_child_value(index).get_child_value(0)
+        if key.get_size() > MAX_TEXT_BYTES + 1 or key.unpack() in keys:
+            raise SnapshotFailure("malformed", "Duplicate or oversized timedate1 property name")
+        keys.add(key.unpack())
+    values = []
+    for name, signature in (("Timezone", "s"), ("CanNTP", "b"),
+                            ("NTP", "b"), ("NTPSynchronized", "b")):
+        value = properties.lookup_value(name, None)
+        if (value is None or value.get_type_string() != signature
+                or (signature == "s" and value.get_size() > REGIONAL_TIMEZONE_MAX + 1)):
+            raise SnapshotFailure("malformed", "Missing or malformed timedate1 property")
+        values.append(value.unpack())
+    return RegionalTimeState(validate_timezone_name(values[0]), *values[1:])
+
+
+class RegionalRead:
+    """One fixed read with an aggregate connection, reply, and decoding deadline."""
+
+    def __init__(self, kind: str, Gio=None, GLib=None) -> None:
+        if not isinstance(kind, str) or kind not in REGIONAL_READ_REQUESTS:
+            raise SnapshotFailure("malformed", "Unknown regional read")
+        if Gio is None or GLib is None:
+            try:
+                import gi
+                gi.require_version("Gio", "2.0")
+                from gi.repository import Gio, GLib
+            except (ImportError, ValueError) as error:
+                raise SnapshotFailure("missing-provider", "System Python GObject bindings are unavailable",
+                                      "unavailable") from error
+        self.kind, self.Gio, self.GLib = kind, Gio, GLib
+        self.loop = GLib.MainLoop()
+        self.cancellable = Gio.Cancellable()
+        self.connection = None
+        self.deadline = 0.0
+        self.deadline_source = 0
+        self.started = False
+        self.done = False
+        self.value = None
+        self.failure = None
+
+    def finish(self, value=None, failure=None) -> None:
+        if self.done:
+            return
+        self.done = True
+        self.value, self.failure = value, failure
+        self.cancellable.cancel()
+        self.loop.quit()
+
+    def expire(self) -> bool:
+        self.deadline_source = 0
+        self.finish(failure=SnapshotFailure("timeout", "Regional read timed out", "unavailable"))
+        return self.GLib.SOURCE_REMOVE
+
+    def pending(self) -> bool:
+        if self.done:
+            return False
+        if time.monotonic() >= self.deadline:
+            self.finish(failure=SnapshotFailure("timeout", "Regional read timed out", "unavailable"))
+            return False
+        return True
+
+    def bus_failure(self, error: Exception) -> SnapshotFailure:
+        if time.monotonic() >= self.deadline:
+            return SnapshotFailure("timeout", "Regional read timed out", "unavailable")
+        name = self.Gio.dbus_error_get_remote_error(error)
+        code, status = {
+            "org.freedesktop.DBus.Error.ServiceUnknown": ("missing-provider", "unavailable"),
+            "org.freedesktop.DBus.Error.NameHasNoOwner": ("missing-provider", "unavailable"),
+            "org.freedesktop.DBus.Error.UnknownObject": ("missing-provider", "unavailable"),
+            "org.freedesktop.DBus.Error.AccessDenied": ("permission-denied", "restricted"),
+            "org.freedesktop.DBus.Error.AuthFailed": ("permission-denied", "restricted"),
+            "org.freedesktop.DBus.Error.InvalidArgs": ("malformed", "partial"),
+            "org.freedesktop.DBus.Error.InvalidSignature": ("malformed", "partial"),
+            "org.freedesktop.DBus.Error.UnknownMethod": ("unsupported", "unsupported"),
+            "org.freedesktop.DBus.Error.UnknownInterface": ("unsupported", "unsupported"),
+            "org.freedesktop.DBus.Error.Timeout": ("timeout", "unavailable"),
+            "org.freedesktop.DBus.Error.TimedOut": ("timeout", "unavailable"),
+            "org.freedesktop.DBus.Error.NoReply": ("timeout", "unavailable"),
+        }.get(name, ("internal", "unavailable"))
+        if (name is None and error.matches(self.Gio.io_error_quark(),
+                                          self.Gio.IOErrorEnum.TIMED_OUT)):
+            code, status = "timeout", "unavailable"
+        return SnapshotFailure(code, "Regional service read failed", status)
+
+    def connected(self, _source, result, _data) -> None:
+        if not self.pending():
+            return
+        try:
+            self.connection = self.Gio.bus_get_finish(result)
+            self.connection.set_exit_on_close(False)
+            name, path, interface, method, signature, args, reply_type = REGIONAL_READ_REQUESTS[self.kind]
+            parameters = None if signature is None else self.GLib.Variant(signature, args)
+            if not self.pending():
+                return
+            self.connection.call(name, path, interface, method, parameters,
+                self.GLib.VariantType.new(reply_type), self.Gio.DBusCallFlags.NONE,
+                max(1, int((self.deadline - time.monotonic()) * 1000)),
+                self.cancellable, self.replied, None)
+        except self.GLib.Error as error:
+            self.finish(failure=self.bus_failure(error))
+
+    def replied(self, connection, result, _data) -> None:
+        if not self.pending():
+            return
+        try:
+            value = decode_regional_reply(self.kind, connection.call_finish(result))
+            if self.pending():
+                self.finish(value=value)
+        except self.GLib.Error as error:
+            self.finish(failure=self.bus_failure(error))
+        except SnapshotFailure as error:
+            if self.pending():
+                self.finish(failure=error)
+
+    def run(self) -> object:
+        if self.started:
+            raise RuntimeError("Regional reads are single-use")
+        self.started = True
+        self.deadline = time.monotonic() + REGIONAL_READ_SECONDS
+        try:
+            self.deadline_source = self.GLib.timeout_add(REGIONAL_READ_SECONDS * 1000, self.expire)
+            self.Gio.bus_get(self.Gio.BusType.SYSTEM, self.cancellable, self.connected, None)
+            if not self.done:
+                self.loop.run()
+            if not self.done:
+                self.finish(failure=SnapshotFailure("internal", "Regional read ended without a reply", "unavailable"))
+        except self.GLib.Error as error:
+            self.finish(failure=self.bus_failure(error))
+        finally:
+            self.done = True
+            self.cancellable.cancel()
+            self.loop.quit()
+            if self.deadline_source:
+                self.GLib.source_remove(self.deadline_source)
+                self.deadline_source = 0
+            # bus_get returns a shared connection; never close another reader's bus.
+        if self.failure:
+            raise self.failure
+        return self.value
 
 
 class JournalFrameError(ValueError):
