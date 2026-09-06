@@ -786,6 +786,14 @@ ShellRoot {
             return appearanceModel.inventoryWatchState;
         }
 
+        function appearanceInventoryWatchDetail(): string {
+            return appearanceModel.inventoryWatchDetail;
+        }
+
+        function appearanceInventoryProviderDetail(): string {
+            return appearanceModel.inventoryProviderDetail;
+        }
+
         function appearanceInventoryCandidateState(capability: string, token: string): string {
             const match = appearanceModel.inventoryCandidates.find(function(item) {
                 return item.id === capability && item.token === token;
