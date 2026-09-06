@@ -310,6 +310,17 @@ interactive-authorization argument remains enabled so systemd and polkit own
 the decision. Arbitrary environment variables, keymaps, NTP servers, RTC mode,
 or manual timestamps are not accepted.
 
+The internal read-only regional reader now has three fixed requests: timedate1
+`GetAll`, locale1 `Get(Locale)`, and timedate1 `ListTimezones`. Each single-use
+reader bounds asynchronous bus connection, method reply, and decoding under one
+ten-second monotonic deadline. Timeout cancels local work and discards late
+callbacks without retrying or closing the shared bus connection. Required
+property signatures are checked before publication. The timedate1 property map
+accepts at most 64 unique bounded property names, ignores unknown properties,
+and validates the timezone and three NTP fields. Locale and timezone string
+array counts and serialized field sizes are checked before creating Python
+string copies. These readers enable no new CLI or snapshot minor on their own.
+
 The `Locale` array is parsed only as the allowlisted keys `LANG`, `LANGUAGE`,
 and `LC_CTYPE`, `LC_NUMERIC`, `LC_TIME`, `LC_COLLATE`, `LC_MONETARY`,
 `LC_MESSAGES`, `LC_PAPER`, `LC_NAME`, `LC_ADDRESS`, `LC_TELEPHONE`,

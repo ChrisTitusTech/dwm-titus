@@ -214,6 +214,246 @@ class RegionalValidationTests(unittest.TestCase):
         self.malformed(provider.locale_change_matches, ["LANG=C"], ["LC_ALL=C"])
 
 
+class RegionalReadTests(unittest.TestCase):
+    def reader(self, kind="time-state"):
+        from gi.repository import Gio, GLib
+        loop, cancellable, connection = mock.Mock(), mock.Mock(), mock.Mock()
+        glib = types.SimpleNamespace(Error=GLib.Error, Variant=GLib.Variant,
+            VariantType=GLib.VariantType, MainLoop=mock.Mock(return_value=loop),
+            timeout_add=mock.Mock(return_value=17), source_remove=mock.Mock(),
+            SOURCE_REMOVE=False)
+        gio = mock.Mock()
+        gio.Cancellable.return_value = cancellable
+        gio.bus_get_finish.return_value = connection
+        gio.dbus_error_get_remote_error.return_value = None
+        gio.io_error_quark.return_value = Gio.io_error_quark()
+        gio.IOErrorEnum.TIMED_OUT = Gio.IOErrorEnum.TIMED_OUT
+        read = provider.RegionalRead(kind, gio, glib)
+        return read, connection, gio, glib, GLib
+
+    def time_reply(self, glib, **overrides):
+        values = {"Timezone": glib.Variant("s", "UTC"),
+                  "CanNTP": glib.Variant("b", True),
+                  "NTP": glib.Variant("b", False),
+                  "NTPSynchronized": glib.Variant("b", True)}
+        values.update(overrides)
+        return glib.Variant("(a{sv})", (values,))
+
+    def deliver(self, read, connection):
+        read.connected(None, object(), None)
+        read.replied(connection, object(), None)
+
+    def test_only_three_fixed_read_requests_are_sent(self):
+        expected = {
+            "time-state": ("org.freedesktop.timedate1", "/org/freedesktop/timedate1",
+                           "org.freedesktop.DBus.Properties", "GetAll"),
+            "locale-state": ("org.freedesktop.locale1", "/org/freedesktop/locale1",
+                             "org.freedesktop.DBus.Properties", "Get"),
+            "timezone-choices": ("org.freedesktop.timedate1", "/org/freedesktop/timedate1",
+                                 "org.freedesktop.timedate1", "ListTimezones"),
+        }
+        for kind, target in expected.items():
+            read, connection, gio, glib, variant = self.reader(kind)
+            connection.call_finish.return_value = {
+                "time-state": self.time_reply(variant),
+                "locale-state": variant.Variant("(v)", (variant.Variant("as", ["LANG=C"]),)),
+                "timezone-choices": variant.Variant("(as)", (["UTC"],)),
+            }[kind]
+            read.loop.run.side_effect = lambda: self.deliver(read, connection)
+            result = read.run()
+            self.assertIsNotNone(result)
+            self.assertEqual(connection.call.call_args.args[:4], target)
+            self.assertEqual(connection.call.call_args.args[6], gio.DBusCallFlags.NONE)
+            self.assertGreater(connection.call.call_args.args[7], 0)
+            self.assertLessEqual(connection.call.call_args.args[7], 10000)
+            self.assertEqual(gio.bus_get.call_args.args[0], gio.BusType.SYSTEM)
+            glib.source_remove.assert_called_once_with(17)
+            self.assertTrue(read.cancellable.cancel.called)
+            connection.close_sync.assert_not_called()
+            if kind == "time-state":
+                self.assertEqual(result, provider.RegionalTimeState("UTC", True, False, True))
+            elif kind == "locale-state":
+                self.assertEqual(result.assignments, ("LANG=C",))
+            else:
+                self.assertEqual(result, ("UTC",))
+
+    def test_unknown_read_is_rejected_before_connecting(self):
+        for kind in ("SetNTP", "SetLocale", "Get", "", None, []):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.RegionalRead(kind, mock.Mock(), mock.Mock())
+
+    def test_time_property_types_and_required_fields_are_strict(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        for name in ("Timezone", "CanNTP", "NTP", "NTPSynchronized"):
+            reply = self.time_reply(variant, **{name: variant.Variant("u", 1)})
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.decode_regional_reply("time-state", reply)
+            self.assertEqual(caught.exception.code, "malformed")
+        for reply in (variant.Variant("(a{sv})", ({},)),
+                      variant.Variant("(s)", ("UTC",)),
+                      self.time_reply(variant, Timezone=variant.Variant("s", "../UTC"))):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.decode_regional_reply("time-state", reply)
+        result = provider.decode_regional_reply("time-state", self.time_reply(
+            variant, FutureProperty=variant.Variant("s", "ignored")))
+        self.assertEqual(result.timezone, "UTC")
+
+    def test_locale_and_timezone_replies_use_existing_bounds(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        for kind, reply in (
+            ("locale-state", variant.Variant("(v)", (variant.Variant("s", "LANG=C"),))),
+            ("locale-state", variant.Variant("(v)", (variant.Variant("as", ["LC_ALL=C"]),))),
+            ("timezone-choices", variant.Variant("(as)", (["UTC", "UTC"],))),
+            ("timezone-choices", variant.Variant("(as)", (["x" * 256],))),
+            ("timezone-choices", variant.Variant("(as)", (["UTC"] * 2049,))),
+            ("locale-state", variant.Variant("(v)", (variant.Variant("as", ["LANG=C"] * 15),))),
+            ("locale-state", variant.Variant("(v)", (variant.Variant("as", ["LANG=" + "x" * 508]),))),
+        ):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.decode_regional_reply(kind, reply)
+
+    def test_serialized_string_array_bounds_count_utf8_before_unpacking(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        self.assertEqual(provider.regional_string_array(variant.Variant("as", ["é"]),
+                                                       1, 2, 2), ("é",))
+        for field_bytes, total_bytes, separators in ((1, 2, False), (2, 1, False), (2, 2, True)):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.regional_string_array(variant.Variant("as", ["é"]),
+                    1, field_bytes, total_bytes, separators=separators)
+        oversized = mock.Mock()
+        oversized.get_type_string.return_value = "as"
+        oversized.n_children.return_value = 1
+        child = oversized.get_child_value.return_value
+        child.get_size.return_value = 1000
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.regional_string_array(oversized, 1, 10, 10)
+        child.unpack.assert_not_called()
+
+    def test_oversized_or_duplicate_timedate_properties_are_rejected(self):
+        _read, _connection, _gio, _glib, variant = self.reader()
+        extra = {f"Extra{index}": variant.Variant("b", True) for index in range(61)}
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.decode_regional_reply("time-state", self.time_reply(variant, **extra))
+        duplicate = variant.Variant.parse(None,
+            "({'Timezone': <'UTC'>, 'Timezone': <'Etc/UTC'>},)", None, None)
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.decode_regional_reply("time-state", duplicate)
+
+    def test_deadline_covers_connection_and_ignores_late_callbacks(self):
+        read, connection, gio, glib, _variant = self.reader()
+        read.loop.run.side_effect = read.expire
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            read.run()
+        self.assertEqual(caught.exception.code, "timeout")
+        read.connected(None, object(), None)
+        read.replied(connection, object(), None)
+        gio.bus_get_finish.assert_not_called()
+        connection.call_finish.assert_not_called()
+        connection.call.assert_not_called()
+        glib.source_remove.assert_not_called()
+
+    def test_deadline_covers_method_and_cannot_publish_a_late_reply(self):
+        read, connection, _gio, _glib, variant = self.reader()
+        connection.call_finish.return_value = self.time_reply(variant)
+        def during_loop():
+            read.connected(None, object(), None)
+            read.expire()
+            read.replied(connection, object(), None)
+        read.loop.run.side_effect = during_loop
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            read.run()
+        self.assertEqual(caught.exception.code, "timeout")
+        connection.call.assert_called_once()
+        connection.call_finish.assert_not_called()
+        self.assertIsNone(read.value)
+
+    def test_elapsed_deadline_before_connection_dispatch_is_rejected(self):
+        read, connection, gio, _glib, _variant = self.reader()
+        read.deadline = 10
+        with mock.patch.object(provider.time, "monotonic", return_value=10):
+            read.connected(None, object(), None)
+        self.assertEqual(read.failure.code, "timeout")
+        gio.bus_get_finish.assert_not_called()
+        connection.call.assert_not_called()
+
+    def test_decoding_that_crosses_deadline_cannot_publish_success(self):
+        read, connection, _gio, _glib, variant = self.reader()
+        read.deadline = 10
+        connection.call_finish.return_value = self.time_reply(variant)
+        with mock.patch.object(provider.time, "monotonic", side_effect=[9, 10]):
+            read.replied(connection, object(), None)
+        self.assertEqual(read.failure.code, "timeout")
+        self.assertIsNone(read.value)
+
+    def test_malformed_decode_after_deadline_still_reports_timeout(self):
+        read, connection, _gio, _glib, variant = self.reader()
+        read.deadline = 10
+        connection.call_finish.return_value = variant.Variant("(s)", ("wrong",))
+        with mock.patch.object(provider.time, "monotonic", side_effect=[9, 10]):
+            read.replied(connection, object(), None)
+        self.assertEqual(read.failure.code, "timeout")
+
+    def test_synchronous_callback_completion_does_not_enter_a_dead_loop(self):
+        read, connection, gio, _glib, variant = self.reader()
+        connection.call_finish.return_value = self.time_reply(variant)
+        gio.bus_get.side_effect = lambda *_args: self.deliver(read, connection)
+        self.assertEqual(read.run().timezone, "UTC")
+        read.loop.run.assert_not_called()
+
+    def test_typed_bus_failures_preserve_capability_scope(self):
+        names = {
+            "ServiceUnknown": ("missing-provider", "unavailable"),
+            "AccessDenied": ("permission-denied", "restricted"),
+            "InvalidArgs": ("malformed", "partial"),
+            "UnknownMethod": ("unsupported", "unsupported"),
+            "NoReply": ("timeout", "unavailable"),
+            "Unexpected": ("internal", "unavailable"),
+        }
+        for name, expected in names.items():
+            read, connection, gio, _glib, variant = self.reader()
+            gio.dbus_error_get_remote_error.return_value = "org.freedesktop.DBus.Error." + name
+            connection.call_finish.side_effect = variant.Error("fixture failure")
+            read.loop.run.side_effect = lambda: self.deliver(read, connection)
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                read.run()
+            self.assertEqual((caught.exception.code, caught.exception.status), expected)
+
+    def test_bus_connect_failure_and_local_timeout_are_typed(self):
+        from gi.repository import Gio
+        read, connection, gio, _glib, variant = self.reader()
+        gio.bus_get_finish.side_effect = variant.Error.new_literal(
+            Gio.io_error_quark(), "fixture timeout", Gio.IOErrorEnum.TIMED_OUT)
+        read.loop.run.side_effect = lambda: read.connected(None, object(), None)
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            read.run()
+        self.assertEqual(caught.exception.code, "timeout")
+        connection.call.assert_not_called()
+
+    def test_single_use_and_unexpected_loop_exit_cannot_fake_a_result(self):
+        read, _connection, gio, glib, _variant = self.reader()
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            read.run()
+        self.assertEqual(caught.exception.code, "internal")
+        with self.assertRaises(RuntimeError):
+            read.run()
+        gio.bus_get.assert_called_once()
+        glib.source_remove.assert_called_once_with(17)
+
+    def test_real_regional_reads_use_an_isolated_private_bus(self):
+        process = subprocess.Popen(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-regional-read-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        try:
+            stdout, stderr = process.communicate(timeout=30)
+            self.assertEqual(process.returncode, 0, stderr.decode("utf-8", "replace"))
+            self.assertIn(b"Private-bus regional reads: PASS", stdout)
+        finally:
+            if process.poll() is None:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, 9)
+                process.communicate(timeout=3)
+
+
 class UpdateEventMonitorTests(unittest.TestCase):
     def monitor(self):
         class BusError(Exception):

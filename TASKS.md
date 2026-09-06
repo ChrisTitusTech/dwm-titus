@@ -160,8 +160,12 @@ Progress: Pure provider validators now bound timezone and locale choice lists,
 require exact selected identities, preserve the full allowlisted locale override
 set, and reject undisplayable confirmations without truncation. Effective-locale
 comparison accepts redundant LC-category elision while checking preserved values.
-These helpers perform no I/O and enable no command, D-Bus mutation, or new
-protocol minor. Service readers, lifecycle integration, and Settings controls
+The validators perform no I/O. Separate fixed timedate1 and locale1 readers now
+bound connection setup, service replies, and decoding under a ten-second deadline.
+Typed private-bus tests cover success, denial, absence, malformed state, timeout,
+and late replies; read-only Fedora 44 probes also passed. No command, D-Bus
+mutation, or new protocol minor is enabled. The bounded locale catalog process,
+account/printer/source readers, lifecycle integration, and Settings controls
 remain outstanding.
 
 - [ ] Add date, time, timezone, and locale status plus safe common actions
