@@ -618,6 +618,22 @@ class LocaleEnumerationTests(unittest.TestCase):
                 provider.read_locale_choices()
         self.assertEqual(caught.exception.code, "timeout")
 
+    def test_cleanup_failure_cannot_hide_pending_process_termination(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            for during_cleanup in (False, True):
+                handler = signal.getsignal(number)
+                def cleanup(_process):
+                    if during_cleanup:
+                        signal.raise_signal(number)
+                    raise provider.SnapshotFailure("timeout", "Fixture cleanup failure")
+                with self.subTest(number=number, during_cleanup=during_cleanup), \
+                        self.catalog(signal_number=None if during_cleanup else number), \
+                        mock.patch.object(provider, "close_locale_process", side_effect=cleanup):
+                    with self.assertRaises(SystemExit) as caught:
+                        provider.read_locale_choices()
+                    self.assertEqual(caught.exception.code, 128 + number)
+                self.assertEqual(signal.getsignal(number), handler)
+
     def test_lost_child_ownership_never_signals_a_possibly_reused_group(self):
         process = mock.Mock(pid=123)
         with mock.patch.object(provider, "locale_process_status", side_effect=ChildProcessError), \

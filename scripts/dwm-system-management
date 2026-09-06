@@ -657,8 +657,10 @@ def read_locale_choices() -> tuple[str, ...]:
         finally:
             for number, handler in handlers.items():
                 signal.signal(number, handler)
-        if interrupted:
-            raise SystemExit(128 + interrupted)
+            # Termination must remain terminal even if group cleanup failed;
+            # otherwise callers could catch a read failure and keep running.
+            if interrupted:
+                raise SystemExit(128 + interrupted)
 
 
 class JournalFrameError(ValueError):
