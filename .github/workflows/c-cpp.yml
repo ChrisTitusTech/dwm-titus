@@ -38,8 +38,10 @@ jobs:
           source scripts/dwm-packages.sh
           mapfile -t required_packages < <(dwm_packages fedora required | awk 'NF' | sort -u)
           mapfile -t qml_packages < <(dwm_packages fedora qml-validation | awk 'NF' | sort -u)
+          mapfile -t system_management_packages < <(dwm_packages fedora system-management | awk 'NF' | sort -u)
           dnf install -y --setopt=install_weak_deps=False \
             "${required_packages[@]}" "${qml_packages[@]}" \
+            "${system_management_packages[@]}" \
             diffutils dbus-daemon inotify-tools jq \
             pkgconf-pkg-config ShellCheck shfmt pykickstart \
             xorg-x11-server-Xvfb

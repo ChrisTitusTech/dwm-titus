@@ -97,6 +97,12 @@ failed-result replay, stale collector data, restart adoption, and failed process
 starts without host service calls. Originating mutation, confirmation, and cancel
 UI integration plus event-driven discovery invalidation must be completed before
 this boundary can be accepted. Settings mutation actions remain disabled.
+The fixed `watch-updates` command now observes only global PackageKit discovery
+changes and daemon ownership changes. It establishes subscriptions before
+reporting readiness, bounds setup to ten seconds, and never starts a transaction.
+Private-bus and callback fixtures cover filtering, startup races, cleanup, and
+lost output. The pane-scoped subscriber and bounded dirty-state coalescing remain
+the next integration step; this helper alone does not invalidate Settings state.
 The preview validators now preserve requested `install` as well as `update`
 actions, matching the PackageKit DNF5 backend's discovery/simulation contract.
 Missing or duplicate requested IDs, outbound requested actions, and unrequested

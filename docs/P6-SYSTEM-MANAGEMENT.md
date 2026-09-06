@@ -72,6 +72,7 @@ The update command grammar is fixed:
 
 ```text
 dwm-system-management snapshot
+dwm-system-management watch-updates
 dwm-system-management watch-operation OPERATION_ID
 dwm-system-management ack-operation OPERATION_ID
 dwm-system-management updates-refresh
@@ -1462,6 +1463,42 @@ path, or elevation mechanism.
   infers that the delegated tool's internal work succeeded.
 
 ## Event and Resource Contract
+
+The implemented fixed `dwm-system-management watch-updates` command accepts no
+arguments. It subscribes to the three global PackageKit signals below and the
+bus daemon's `NameOwnerChanged` for exactly `org.freedesktop.PackageKit`. It never
+activates PackageKit, reads its properties, or creates a transaction. An
+explicit successful asynchronous `AddMatch` reply for each fixed bus match rule
+and verified `GetNameOwner` result precede the fixed
+`update-event<TAB>ready` record. Every later matching signal emits the fixed
+`update-event<TAB>changed` record; startup changes coalesce into one such record
+after readiness. Consumers must establish this monitor before their initial
+read, invalidate confirmations on every change, and apply the bounded cycle
+below, rather than launching one process per event.
+
+One ten-second monotonic deadline covers connection and all setup round trips.
+Only a verified `NameHasNoOwner` response is accepted as an absent daemon;
+lookup denial or another failure cannot report readiness. Local callbacks use
+the explicitly tracked unique sender, and an owner notification received during
+lookup takes precedence over its older result.
+Setup or bus failure and lost output exit 1 with best-effort explicit-refresh
+guidance.
+Writes are nonblocking and each fixed row fits `PIPE_BUF`; a full output pipe
+or short write stops monitoring with the same failure instead of queuing events
+or blocking signal handling. Consumers must treat any unexpected exit as lost
+monitoring and invalidate their preview. There is no userspace output backlog.
+The command restores stdout's original blocking mode on exit, preserving a
+writer retained by a calling shell group. Failure diagnostics are nonblocking
+and best-effort too, including when stderr shares a full stdout pipe; their
+original descriptor mode is restored. Exit status is authoritative when the
+diagnostic cannot be delivered.
+SIGTERM, SIGINT, or SIGHUP stop the subscriptions and exit 0. A missing PackageKit
+owner does not prevent readiness: the monitor waits for owner changes without
+activating the service, while finite discovery reports availability separately.
+There is no idle timer or automatic reconnect. This helper is an event stream,
+not a snapshot, action, journal record, or operation stream; its two exact record
+forms are independent of the cumulative snapshot minor. QML subscription and
+dirty-cycle integration remain pending.
 
 - PackageKit `UpdatesChanged` and `InstalledChanged` invalidate update
   discovery; `RepoListChanged` invalidates both repository and update discovery

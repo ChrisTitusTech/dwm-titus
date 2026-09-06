@@ -62,6 +62,11 @@ versions from `config.mk`.
 
 ### Added
 
+- Add a read-only PackageKit change monitor with fixed global subscriptions,
+  bounded setup, and explicit readiness. Private-bus tests verify signal
+  filtering, daemon replacement, closure, and lost output. Settings discovery
+  coalescing and confirmation invalidation remain pending integration.
+
 - Restore journaled system operations in the shell root and keep their progress
   visible across Settings closure. Verify complete terminal results before exact
   acknowledgment; retain guidance after bounded recovery or acknowledgment
