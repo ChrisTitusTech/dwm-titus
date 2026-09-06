@@ -84,6 +84,278 @@ def rows(lines, kind):
     return [line.split("\t") for line in lines if line.startswith(f"{kind}\t")]
 
 
+class AccountReadTests(unittest.TestCase):
+    current_path = "/org/freedesktop/Accounts/Current"
+
+    def collect(self, paths=(), *, current=None, values=None, transform=None,
+                stop_when=None, remote_error=None, connection_error=False):
+        _unused, connection, gio, glib, variant = RegionalReadTests.reader(self)
+        read = provider.AccountRead(gio, glib)
+        current = self.current_path if current is None else current
+        calls, queued = [], []
+        peaks = []
+        gio.dbus_error_get_remote_error.return_value = remote_error
+        error = variant.Error("fixture service error")
+        if connection_error:
+            gio.bus_get_finish.side_effect = error
+
+        def sent(*args):
+            self.assertEqual(args[0], provider.ACCOUNTS_NAME)
+            self.assertEqual(args[6], gio.DBusCallFlags.NONE)
+            self.assertGreater(args[7], 0)
+            self.assertLessEqual(args[7], 3000)
+            self.assertIn(args[3], ("ListCachedUsers", "FindUserById", "Get"))
+            if args[3] == "Get":
+                self.assertEqual(args[2], provider.PROPERTIES_INTERFACE)
+                interface, name = args[4].unpack()
+                self.assertEqual(interface, provider.ACCOUNT_INTERFACE)
+                self.assertIn(name, provider.ACCOUNT_PROPERTIES)
+                self.assertLessEqual(read.outstanding, 8)
+            else:
+                self.assertEqual(args[1:3], (provider.ACCOUNTS_PATH, provider.ACCOUNTS_NAME))
+                if args[3] == "FindUserById":
+                    self.assertEqual(args[4].unpack(), (os.getuid(),))
+                    self.assertEqual(args[4].get_type_string(), "(x)")
+            calls.append(args)
+            queued.append(args)
+            peaks.append(len(queued))
+
+        def finish(reply):
+            if isinstance(reply, variant.Error):
+                raise reply
+            return reply
+
+        def reply_for(args):
+            method = args[3]
+            if method == "ListCachedUsers":
+                reply = variant.Variant("(ao)", (list(paths),))
+            elif method == "FindUserById":
+                reply = variant.Variant("(o)", (current,))
+            else:
+                name = args[4].unpack()[1]
+                default = {"UserName": "login", "RealName": "", "SystemAccount": False, "LocalAccount": True}[name]
+                field = (values or {}).get(args[1], {}).get(name, default)
+                inner = field if isinstance(field, variant.Variant) else variant.Variant(provider.ACCOUNT_PROPERTIES[name], field)
+                reply = variant.Variant("(v)", (inner,))
+            return transform(args, reply, variant, error) if transform else reply
+
+        def drive():
+            read.connected(None, object(), None)
+            while queued and not read.done:
+                args = queued.pop(0)
+                args[9](connection, reply_for(args), args[10])
+                if stop_when and stop_when(read):
+                    read.expire()
+
+        connection.call.side_effect = sent
+        connection.call_finish.side_effect = finish
+        read.loop.run.side_effect = drive
+        result = read.run()
+        self.assertTrue(read.cancellable.cancel.called)
+        connection.close_sync.assert_not_called()
+        return result, read, calls, queued, connection, max(peaks, default=0)
+
+    def codes(self, result):
+        return {error.code for error in result.errors}
+
+    def test_fixed_reads_reserve_current_user_and_cap_concurrency(self):
+        result, read, calls, _queued, _connection, peak = self.collect(
+            ["/users/z", self.current_path, "/users/a", "/users/a"])
+        self.assertEqual(result.status, "available")
+        self.assertEqual(result.candidates, (self.current_path, "/users/a", "/users/z"))
+        self.assertEqual([row.scope for row in result.records], ["current", "other", "other"])
+        self.assertEqual(result.current_path, self.current_path)
+        self.assertEqual((len(calls), peak), (14, 8))
+        self.assertEqual(read.outstanding, 0)
+        self.assertEqual(result.records[0].display_name, "login")
+        with self.assertRaises(RuntimeError):
+            read.run()
+
+    def test_filtering_preserves_current_system_account_and_remote_accounts(self):
+        result, *_ = self.collect(["/system", "/remote"], values={
+            self.current_path: {"SystemAccount": True, "RealName": "Current User"},
+            "/system": {"SystemAccount": True}, "/remote": {"LocalAccount": False}})
+        self.assertEqual(result.status, "available")
+        self.assertEqual([row.path for row in result.records], [self.current_path, "/remote"])
+        self.assertEqual(result.records[0].display_name, "Current User")
+        self.assertFalse(result.records[1].local_account)
+        self.assertIn("/system", result.candidates)
+
+    def test_overflow_keeps_current_and_lowest_255_other_paths(self):
+        paths = [f"/users/u{index:04}" for index in range(300, -1, -1)]
+        result, read, *_ = self.collect(paths)
+        self.assertEqual((result.status, len(result.records)), ("partial", 256))
+        self.assertEqual(result.candidates, (self.current_path, *sorted(paths)[:255]))
+        self.assertEqual(self.codes(result), {"malformed"})
+        self.assertLessEqual(len(read.seen), 257)
+        self.assertLessEqual(len(read.selected), 256)
+
+    def test_256_including_current_is_complete_but_256_plus_current_is_partial(self):
+        others = [f"/users/u{index:04}" for index in range(256)]
+        result, *_ = self.collect([*others[:255], self.current_path])
+        self.assertEqual((result.status, len(result.records)), ("available", 256))
+        result, *_ = self.collect(others)
+        self.assertEqual((result.status, len(result.records)), ("partial", 256))
+
+    def test_repeated_paths_do_not_create_false_overflow(self):
+        result, *_ = self.collect(["/same"] * 300)
+        self.assertEqual((result.status, len(result.records)), ("available", 2))
+
+    def test_bad_account_properties_do_not_hide_valid_rows(self):
+        from gi.repository import GLib
+        for fields in ({"UserName": ""}, {"RealName": "x" * 513},
+                       {"SystemAccount": GLib.Variant("u", 0)}, {"LocalAccount": GLib.Variant("s", "yes")}):
+            with self.subTest(fields=fields):
+                result, *_ = self.collect(["/bad", "/good"], values={"/bad": fields})
+                self.assertEqual(result.status, "partial")
+                self.assertEqual([row.path for row in result.records], [self.current_path, "/good"])
+                self.assertEqual(self.codes(result), {"malformed"})
+
+    def test_field_bounds_are_utf8_and_do_not_truncate_display_text(self):
+        result, *_ = self.collect(values={self.current_path: {"RealName": "é" * 256, "UserName": "a\tb\nc"}})
+        self.assertEqual(result.records[0].display_name, "é" * 256)
+        self.assertEqual(result.records[0].login_name, "a b c")
+        result, *_ = self.collect(values={self.current_path: {"RealName": "é" * 257}})
+        self.assertEqual(result.records, ())
+        self.assertEqual(self.codes(result), {"malformed"})
+
+    def test_oversized_encoded_list_discards_all_rows(self):
+        paths = [f"/users/u{index:04}" for index in range(255)]
+        values = {path: {"RealName": "x" * 512, "UserName": "y" * 512}
+                  for path in [self.current_path, *paths]}
+        result, *_ = self.collect(paths, values=values)
+        self.assertEqual((result.status, result.records), ("partial", ()))
+        self.assertEqual(self.codes(result), {"malformed"})
+
+    def test_oversized_object_path_is_rejected_before_unpacking(self):
+        value = mock.Mock()
+        value.get_type_string.return_value = "o"
+        value.get_size.return_value = 514
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.account_object_path(value)
+        value.unpack.assert_not_called()
+        result, *_ = self.collect(["/" + "x" * 512, "/good"])
+        self.assertEqual([row.path for row in result.records], [self.current_path, "/good"])
+        self.assertEqual(self.codes(result), {"malformed"})
+
+    def test_bad_list_still_allows_a_valid_current_user_lookup(self):
+        def corrupt(args, reply, variant, _error):
+            return variant.Variant("(s)", ("bad",)) if args[3] == "ListCachedUsers" else reply
+        result, *_ = self.collect(transform=corrupt)
+        self.assertEqual((result.status, len(result.records)), ("partial", 1))
+        self.assertEqual(result.records[0].scope, "current")
+
+    def test_failed_current_lookup_never_infers_current_scope_from_a_path(self):
+        def fail(args, reply, _variant, error):
+            return error if args[3] == "FindUserById" else reply
+        result, *_ = self.collect([self.current_path], transform=fail)
+        self.assertIsNone(result.current_path)
+        self.assertEqual(result.records[0].scope, "other")
+        self.assertEqual(result.status, "partial")
+
+    def test_connection_denial_or_missing_service_is_scoped(self):
+        for name, code, status in (("AccessDenied", "permission-denied", "restricted"),
+                                   ("ServiceUnknown", "missing-provider", "unavailable")):
+            with self.subTest(name=name):
+                result, _read, calls, *_ = self.collect(connection_error=True,
+                    remote_error=f"org.freedesktop.DBus.Error.{name}")
+                self.assertEqual((result.status, result.records, calls), (status, (), []))
+                self.assertEqual(self.codes(result), {code})
+
+    def test_deadline_preserves_completed_rows_and_ignores_late_replies(self):
+        result, read, calls, queued, connection, _peak = self.collect(
+            ["/users/a", "/users/b"], stop_when=lambda reader: len(reader.records) == 1)
+        self.assertEqual((result.status, len(result.records)), ("partial", 1))
+        self.assertEqual(self.codes(result), {"timeout"})
+        self.assertTrue(queued)
+        count = len(calls)
+        for args in queued[:]:
+            args[9](connection, object(), args[10])
+        self.assertIs(read.value, result)
+        self.assertEqual(len(calls), count)
+
+    def test_missing_property_excludes_only_its_account(self):
+        def missing(args, reply, _variant, error):
+            return error if args[1] == "/bad" and args[3] == "Get" else reply
+        result, *_ = self.collect(["/bad", "/good"], transform=missing,
+            remote_error="org.freedesktop.DBus.Error.UnknownProperty")
+        self.assertEqual([row.path for row in result.records], [self.current_path, "/good"])
+        self.assertEqual((result.status, self.codes(result)), ("partial", {"malformed"}))
+
+    def test_late_path_decoding_and_errors_cannot_publish_state(self):
+        original = provider.account_object_path
+        for late_call in (1, 2):
+            for malformed in (False, True):
+                with self.subTest(late_call=late_call, malformed=malformed):
+                    count = 0
+                    with mock.patch.object(provider.time, "monotonic", return_value=0) as clock:
+                        def decode(value):
+                            nonlocal count
+                            count += 1
+                            if count == late_call:
+                                clock.return_value = 4
+                                if malformed:
+                                    raise provider.SnapshotFailure("malformed", "late decode")
+                            return original(value)
+                        with mock.patch.object(provider, "account_object_path", side_effect=decode):
+                            result, read, calls, *_ = self.collect(["/cached"])
+                    self.assertEqual((result.status, self.codes(result)), ("partial", {"timeout"}))
+                    self.assertEqual(result.records, ())
+                    self.assertIsNone(result.current_path)
+                    self.assertLessEqual(len(calls), 2)
+                    self.assertEqual(len(read.selected), late_call - 1)
+
+    def test_late_property_decoding_and_errors_cannot_publish_a_row(self):
+        for malformed in (False, True):
+            with self.subTest(malformed=malformed):
+                with mock.patch.object(provider.time, "monotonic", return_value=0) as clock:
+                    def late(args, reply, _variant, _error):
+                        if args[3] != "Get":
+                            return reply
+                        wrapped = mock.Mock(wraps=reply)
+                        inner = mock.Mock(wraps=reply.get_child_value(0).get_variant())
+                        child = mock.Mock()
+                        child.get_variant.return_value = inner
+                        wrapped.get_child_value.return_value = child
+                        def unpack():
+                            clock.return_value = 4
+                            if malformed:
+                                raise provider.SnapshotFailure("malformed", "late property")
+                            return "login"
+                        inner.unpack.side_effect = unpack
+                        return wrapped
+                    result, *_ = self.collect(transform=late)
+                self.assertEqual((result.records, self.codes(result)), ((), {"timeout"}))
+
+    def test_connection_deadline_and_unexpected_loop_exit_do_not_fake_success(self):
+        for expires in (False, True):
+            with self.subTest(expires=expires):
+                _unused, connection, gio, glib, _variant = RegionalReadTests.reader(self)
+                read = provider.AccountRead(gio, glib)
+                if expires:
+                    read.loop.run.side_effect = read.expire
+                result = read.run()
+                self.assertEqual(result.records, ())
+                self.assertEqual(self.codes(result), {"timeout" if expires else "internal"})
+                self.assertEqual(result.status, "partial" if expires else "unavailable")
+                connection.call.assert_not_called()
+                self.assertTrue(read.cancellable.cancel.called)
+
+    def test_real_account_reads_use_an_isolated_private_bus(self):
+        process = subprocess.Popen(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-account-read-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        try:
+            stdout, stderr = process.communicate(timeout=20)
+            self.assertEqual(process.returncode, 0, stderr.decode("utf-8", "replace"))
+            self.assertIn(b"Private-bus account reads: PASS", stdout)
+        finally:
+            if process.poll() is None:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, 9)
+                process.communicate(timeout=3)
+
+
 class RegionalValidationTests(unittest.TestCase):
     def malformed(self, function, *args):
         with self.assertRaises(provider.SnapshotFailure) as caught:

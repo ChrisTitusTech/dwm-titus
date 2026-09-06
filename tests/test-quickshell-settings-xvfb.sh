@@ -2224,6 +2224,9 @@ if [ "$wallpaper_preview" != active ]; then
 	printf 'Wallpaper watcher: %s; status busy: %s\n' \
 		"$(settings_ipc_retry appearanceInventoryWatchState)" \
 		"$(settings_ipc_retry appearanceWallpaperStatusBusy)" >&2
+	printf 'Inventory provider detail: %s; watcher detail: %s\n' \
+		"$(settings_ipc_retry appearanceInventoryProviderDetail)" \
+		"$(settings_ipc_retry appearanceInventoryWatchDetail)" >&2
 	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
 		"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" status --read-only >&2 || true

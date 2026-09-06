@@ -167,8 +167,16 @@ and late replies; read-only Fedora 44 probes also passed. No command, D-Bus
 mutation, or new protocol minor is enabled. A separate fixed locale catalog
 collector now bounds output, process lifetime, signal cleanup, and reaping, with
 an independent timeout supervisor for abrupt collector death. It preserves exact
-installed identities and starts a new process for every read. Account/printer/source
-readers, lifecycle integration, and Settings controls remain outstanding.
+installed identities and starts a new process for every read. A separate
+AccountsService reader now reserves the current user's row, bounds candidate
+selection and encoded rows, reads only four allowlisted properties, and keeps
+validated partial results under one three-second deadline. Unit and private-bus
+tests cover filtering, malformed and missing properties, overflow, denial,
+absence, timeout, and late replies. A read-only Fedora 44 probe returned the
+current account in 0.042 seconds. These readers share a single-use cancellable
+service lifetime; none adds account mutations, CLI exposure, or a protocol minor.
+Printer/source readers, event subscriptions, lifecycle integration, and Settings
+controls remain outstanding.
 
 - [ ] Add date, time, timezone, and locale status plus safe common actions
   through stable platform services.
