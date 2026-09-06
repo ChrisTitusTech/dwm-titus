@@ -10,6 +10,7 @@ import hashlib
 import os
 import re
 import shlex
+import signal
 import stat
 import struct
 import sys
@@ -5446,12 +5447,240 @@ def update_command(action_id: str, generation: str | None = None) -> int:
         return 1
 
 
+class UpdateEventMonitor:
+    """Read-only manager signals, with bounded setup and no transaction calls."""
+
+    def __init__(self, Gio, GLib, GLibUnix, emit: Callable[[str], None]) -> None:
+        self.Gio, self.GLib, self.GLibUnix = Gio, GLib, GLibUnix
+        self.emit = emit
+        self.loop = GLib.MainLoop()
+        self.cancellable = Gio.Cancellable()
+        self.connection = None
+        self.subscriptions: list[int] = []
+        self.match_rules: list[str] = []
+        self.installed_rules: list[str] = []
+        self.sources: list[int] = []
+        self.closed_handler = 0
+        self.deadline_source = 0
+        self.stopped = False
+        self.ready = False
+        self.dirty = False
+        self.exit_code = 1
+        self.deadline = 0.0
+        self.owner = ""
+        self.owner_epoch = 0
+
+    def stop(self, code: int) -> None:
+        if self.stopped:
+            return
+        self.stopped = True
+        self.exit_code = code
+        self.cancellable.cancel()
+        self.loop.quit()
+
+    def write(self, record: str) -> None:
+        try:
+            self.emit(record)
+        except OSError:
+            self.stop(1)
+
+    def changed(self, *_args) -> None:
+        if self.stopped:
+            return
+        if not self.ready:
+            self.dirty = True
+        else:
+            self.write("update-event\tchanged")
+
+    def global_changed(self, _connection, sender, _path, _interface, _member, _parameters, _data) -> None:
+        # The bus-side match restricts the well-known sender. Avoid GDBus's
+        # implicit name cache, whose lookup failures cannot be observed here.
+        if not self.ready or sender == self.owner:
+            self.changed()
+
+    def owner_changed(self, _connection, _sender, _path, _interface, _member, parameters, _data) -> None:
+        if self.stopped:
+            return
+        name, _old, new = parameters.unpack()
+        if name == PACKAGEKIT_NAME:
+            self.owner_epoch += 1
+            self.owner = new
+            self.changed()
+
+    def owner_resolved(self, connection, result, epoch) -> None:
+        if self.stopped:
+            return
+        if time.monotonic() >= self.deadline:
+            self.stop(1)
+            return
+        try:
+            owner = connection.call_finish(result).unpack()[0]
+        except self.GLib.Error as error:
+            if self.Gio.dbus_error_get_remote_error(error) != "org.freedesktop.DBus.Error.NameHasNoOwner":
+                self.stop(1)
+                return
+            owner = ""
+        # A newer owner notification wins over an older in-flight lookup.
+        if self.owner_epoch == epoch:
+            self.owner = owner
+        self.GLib.source_remove(self.deadline_source)
+        self.deadline_source = 0
+        self.ready = True
+        self.write("update-event\tready")
+        if self.dirty and not self.stopped:
+            self.write("update-event\tchanged")
+        self.dirty = False
+
+    def match_finished(self, connection, result, rule) -> None:
+        if self.stopped:
+            return
+        if time.monotonic() >= self.deadline:
+            self.stop(1)
+            return
+        try:
+            connection.call_finish(result)
+        except self.GLib.Error:
+            self.stop(1)
+            return
+        self.installed_rules.append(rule)
+        if len(self.installed_rules) < len(self.match_rules):
+            self.add_match()
+            return
+        self.connection.call("org.freedesktop.DBus", "/org/freedesktop/DBus",
+            "org.freedesktop.DBus", "GetNameOwner", self.GLib.Variant("(s)", (PACKAGEKIT_NAME,)),
+            self.GLib.VariantType.new("(s)"), self.Gio.DBusCallFlags.NONE,
+            10000, self.cancellable, self.owner_resolved, self.owner_epoch)
+
+    def add_match(self) -> None:
+        rule = self.match_rules[len(self.installed_rules)]
+        # NO_MATCH_RULE local subscriptions plus explicit AddMatch replies make
+        # denial observable; signal_subscribe alone cannot report bus rejection.
+        self.connection.call("org.freedesktop.DBus", "/org/freedesktop/DBus",
+            "org.freedesktop.DBus", "AddMatch", self.GLib.Variant("(s)", (rule,)),
+            self.GLib.VariantType.new("()"), self.Gio.DBusCallFlags.NONE,
+            10000, self.cancellable, self.match_finished, rule)
+
+    def connected(self, _source, result, _data) -> None:
+        if self.stopped:
+            return
+        if time.monotonic() >= self.deadline:
+            self.stop(1)
+            return
+        try:
+            self.connection = self.Gio.bus_get_finish(result)
+            self.connection.set_exit_on_close(False)
+            self.closed_handler = self.connection.connect("closed", lambda *_args: self.stop(1))
+            for member in ("UpdatesChanged", "InstalledChanged", "RepoListChanged"):
+                self.subscriptions.append(self.connection.signal_subscribe(
+                    None, PACKAGEKIT_INTERFACE, member, PACKAGEKIT_PATH,
+                    None, self.Gio.DBusSignalFlags.NO_MATCH_RULE, self.global_changed, None))
+                self.match_rules.append(f"type='signal',sender='{PACKAGEKIT_NAME}',interface='{PACKAGEKIT_INTERFACE}',member='{member}',path='{PACKAGEKIT_PATH}'")
+            # Daemon disappearance/replacement invalidates the old preview too.
+            self.subscriptions.append(self.connection.signal_subscribe(
+                "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+                "/org/freedesktop/DBus", PACKAGEKIT_NAME,
+                self.Gio.DBusSignalFlags.NO_MATCH_RULE, self.owner_changed, None))
+            self.match_rules.append(f"type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0='{PACKAGEKIT_NAME}'")
+            self.add_match()
+        except self.GLib.Error:
+            self.stop(1)
+
+    def run(self) -> int:
+        def timeout():
+            self.deadline_source = 0
+            self.stop(1)
+            return self.GLib.SOURCE_REMOVE
+
+        def terminate():
+            self.stop(0)
+            return self.GLib.SOURCE_CONTINUE
+
+        try:
+            self.deadline = time.monotonic() + 10
+            self.deadline_source = self.GLib.timeout_add(10000, timeout)
+            for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                self.sources.append(self.GLibUnix.signal_add(self.GLib.PRIORITY_DEFAULT, signum, terminate))
+            self.Gio.bus_get(self.Gio.BusType.SYSTEM, self.cancellable, self.connected, None)
+            self.loop.run()
+        finally:
+            self.stopped = True
+            self.cancellable.cancel()
+            if self.connection is not None:
+                for subscription in self.subscriptions:
+                    self.connection.signal_unsubscribe(subscription)
+                if self.closed_handler:
+                    self.connection.disconnect(self.closed_handler)
+                for rule in self.installed_rules:
+                    # Best-effort asynchronous cleanup cannot delay pane close.
+                    # Process/bus disconnection also removes every match rule.
+                    self.connection.call("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                        "org.freedesktop.DBus", "RemoveMatch", self.GLib.Variant("(s)", (rule,)),
+                        None, self.Gio.DBusCallFlags.NONE, 1000, None, None, None)
+            for source in self.sources + ([self.deadline_source] if self.deadline_source else []):
+                self.GLib.source_remove(source)
+        return self.exit_code
+
+
+def watch_update_events() -> int:
+    output_descriptor = None
+    original_blocking = None
+
+    def emit(record: str) -> None:
+        payload = (record + "\n").encode("ascii")
+        # Each fixed row fits PIPE_BUF. Never block GLib callbacks behind a
+        # stalled reader or queue unbounded notifications. Overflow is an
+        # explicit monitoring failure; the consumer must refresh finite state.
+        if os.write(output_descriptor, payload) != len(payload):
+            raise OSError("Incomplete event output")
+
+    try:
+        import gi
+
+        gi.require_version("Gio", "2.0")
+        gi.require_version("GLibUnix", "2.0")
+        from gi.repository import Gio, GLib, GLibUnix
+
+        output_descriptor = sys.stdout.fileno()
+        original_blocking = os.get_blocking(output_descriptor)
+        os.set_blocking(output_descriptor, False)
+        code = UpdateEventMonitor(Gio, GLib, GLibUnix, emit).run()
+    except (ImportError, ValueError, OSError):
+        code = 1
+    finally:
+        if output_descriptor is not None and original_blocking is not None:
+            try:
+                # File status flags belong to the shared open-file description.
+                # A shell group may retain this writer for its next command.
+                os.set_blocking(output_descriptor, original_blocking)
+            except OSError:
+                code = 1
+    if code:
+        error_descriptor = None
+        error_blocking = None
+        try:
+            error_descriptor = sys.stderr.fileno()
+            error_blocking = os.get_blocking(error_descriptor)
+            os.set_blocking(error_descriptor, False)
+            os.write(error_descriptor, b"PackageKit live change monitoring is unavailable; reload status explicitly\n")
+        except (OSError, ValueError):
+            # Exit status remains authoritative when even diagnostics cannot
+            # be delivered (including stderr sharing the full stdout pipe).
+            pass
+        finally:
+            if error_descriptor is not None and error_blocking is not None:
+                with contextlib.suppress(OSError):
+                    os.set_blocking(error_descriptor, error_blocking)
+    return code
+
+
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | watch-updates | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if list(argv) == ["watch-updates"]:
+        return watch_update_events()
     if list(argv) == ["updates-refresh"]:
         return update_command("updates-refresh")
     if len(argv) == 2 and argv[0] == "updates-install-all" and JOURNAL_GENERATION_PATTERN.fullmatch(argv[1]):

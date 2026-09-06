@@ -83,6 +83,187 @@ def rows(lines, kind):
     return [line.split("\t") for line in lines if line.startswith(f"{kind}\t")]
 
 
+class UpdateEventMonitorTests(unittest.TestCase):
+    def monitor(self):
+        class BusError(Exception):
+            pass
+
+        glib = mock.Mock(Error=BusError, SOURCE_REMOVE=False, SOURCE_CONTINUE=True,
+            PRIORITY_DEFAULT=0)
+        gio = mock.Mock()
+        unix = mock.Mock()
+        emitted = []
+        monitor = provider.UpdateEventMonitor(gio, glib, unix, emitted.append)
+        monitor.deadline = time.monotonic() + 10
+        monitor.deadline_source = 7
+        monitor.match_rules = ["fixture"]
+        monitor.connection = mock.Mock()
+        return monitor, emitted, gio, glib, unix
+
+    def test_subscriptions_are_fixed_and_setup_never_calls_packagekit(self):
+        monitor, emitted, gio, _glib, _unix = self.monitor()
+        monitor.match_rules = []
+        connection = gio.bus_get_finish.return_value
+        monitor.connected(None, object(), None)
+        calls = connection.signal_subscribe.call_args_list
+        self.assertEqual([call.args[:4] for call in calls], [
+            (None, provider.PACKAGEKIT_INTERFACE, member, provider.PACKAGEKIT_PATH)
+            for member in ("UpdatesChanged", "InstalledChanged", "RepoListChanged")
+        ] + [("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged", "/org/freedesktop/DBus")])
+        self.assertEqual(calls[-1].args[4], provider.PACKAGEKIT_NAME)
+        self.assertEqual(connection.call.call_args.args[:4],
+            ("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "AddMatch"))
+        self.assertTrue(all(call.args[5] == gio.DBusSignalFlags.NO_MATCH_RULE for call in calls))
+        self.assertEqual(len(monitor.match_rules), 4)
+        self.assertEqual(emitted, [])
+
+    def test_setup_events_coalesce_and_ready_precedes_pending_invalidation(self):
+        monitor, emitted, _gio, glib, _unix = self.monitor()
+        for _ in range(1000):
+            monitor.changed()
+        self.assertEqual(emitted, [])
+        monitor.match_finished(mock.Mock(), object(), "fixture")
+        self.assertEqual(emitted, [])
+        connection = mock.Mock()
+        connection.call_finish.return_value.unpack.return_value = (":1.2",)
+        monitor.owner_resolved(connection, object(), 0)
+        self.assertEqual(emitted, ["update-event\tready", "update-event\tchanged"])
+        glib.source_remove.assert_called_once_with(7)
+        self.assertFalse(monitor.dirty)
+        self.assertEqual(monitor.deadline_source, 0)
+        monitor.changed()
+        self.assertEqual(len(emitted), 3)
+
+    def test_readiness_requires_all_four_successful_match_replies(self):
+        monitor, emitted, gio, _glib, _unix = self.monitor()
+        monitor.match_rules = []
+        monitor.connected(None, object(), None)
+        connection = gio.bus_get_finish.return_value
+        for index, rule in enumerate(monitor.match_rules):
+            self.assertEqual(emitted, [])
+            monitor.changed()
+            monitor.match_finished(connection, object(), rule)
+            self.assertEqual(len(monitor.installed_rules), index + 1)
+        self.assertEqual(connection.call.call_count, 5)
+        self.assertEqual(connection.call.call_args.args[3], "GetNameOwner")
+        self.assertEqual(emitted, [])
+        connection.call_finish.return_value.unpack.return_value = (":1.2",)
+        monitor.owner_resolved(connection, object(), 0)
+        self.assertEqual(emitted, ["update-event\tready", "update-event\tchanged"])
+
+    def test_denied_match_after_partial_setup_never_reports_ready(self):
+        monitor, emitted, gio, glib, _unix = self.monitor()
+        monitor.match_rules = []
+        monitor.connected(None, object(), None)
+        connection = gio.bus_get_finish.return_value
+        monitor.match_finished(connection, object(), monitor.match_rules[0])
+        connection.call_finish.side_effect = glib.Error("Policy denied subscription")
+        monitor.match_finished(connection, object(), monitor.match_rules[1])
+        self.assertTrue(monitor.stopped)
+        self.assertEqual(len(monitor.installed_rules), 1)
+        self.assertEqual(emitted, [])
+
+    def test_expired_setup_and_late_callbacks_cannot_publish_ready(self):
+        for callback in ("connected", "match_finished", "owner_resolved"):
+            with self.subTest(callback=callback):
+                monitor, emitted, gio, _glib, _unix = self.monitor()
+                monitor.deadline = time.monotonic() - 1
+                getattr(monitor, callback)(mock.Mock(), object(), None)
+                self.assertTrue(monitor.stopped)
+                self.assertEqual(monitor.exit_code, 1)
+                monitor.changed()
+                monitor.match_finished(mock.Mock(), object(), None)
+                monitor.connected(None, object(), None)
+                self.assertEqual(emitted, [])
+                gio.bus_get_finish.assert_not_called()
+
+    def test_connection_barrier_and_output_failures_stop_without_success(self):
+        for stage in ("connection", "barrier", "output"):
+            with self.subTest(stage=stage):
+                monitor, emitted, gio, glib, _unix = self.monitor()
+                connection = mock.Mock()
+                if stage == "connection":
+                    gio.bus_get_finish.side_effect = glib.Error("private error")
+                    monitor.connected(None, object(), None)
+                elif stage == "barrier":
+                    connection.call_finish.side_effect = glib.Error("private error")
+                    monitor.match_finished(connection, object(), "fixture")
+                else:
+                    monitor.emit = mock.Mock(side_effect=BrokenPipeError())
+                    connection.call_finish.return_value.unpack.return_value = (":1.2",)
+                    monitor.owner_resolved(connection, object(), 0)
+                self.assertTrue(monitor.stopped)
+                self.assertEqual(monitor.exit_code, 1)
+                self.assertEqual(emitted, [])
+                monitor.stop(0)
+                self.assertEqual(monitor.exit_code, 1)
+
+    def test_owner_resolution_absence_is_not_authorization_denial(self):
+        for missing in (True, False):
+            monitor, emitted, gio, glib, _unix = self.monitor()
+            connection = mock.Mock()
+            connection.call_finish.side_effect = glib.Error("Owner lookup failed")
+            gio.dbus_error_get_remote_error.return_value = "org.freedesktop.DBus.Error." + (
+                "NameHasNoOwner" if missing else "AccessDenied")
+            monitor.owner_resolved(connection, object(), 0)
+            self.assertEqual(monitor.ready, missing)
+            self.assertEqual(monitor.stopped, not missing)
+            self.assertEqual(emitted, ["update-event\tready"] if missing else [])
+
+    def test_owner_notification_wins_lookup_race_and_filters_old_senders(self):
+        monitor, emitted, _gio, _glib, _unix = self.monitor()
+        parameters = mock.Mock()
+        parameters.unpack.return_value = (provider.PACKAGEKIT_NAME, ":1.2", ":1.3")
+        monitor.owner_changed(None, None, None, None, None, parameters, None)
+        connection = mock.Mock()
+        connection.call_finish.return_value.unpack.return_value = (":1.2",)
+        monitor.owner_resolved(connection, object(), 0)
+        self.assertEqual(monitor.owner, ":1.3")
+        self.assertEqual(emitted, ["update-event\tready", "update-event\tchanged"])
+        monitor.global_changed(None, ":1.2", None, None, None, None, None)
+        self.assertEqual(len(emitted), 2)
+        monitor.global_changed(None, ":1.3", None, None, None, None, None)
+        self.assertEqual(len(emitted), 3)
+
+    def test_run_cleanup_cancels_callbacks_and_removes_all_sources(self):
+        monitor, _emitted, gio, glib, unix = self.monitor()
+        monitor.match_rules = []
+        connection = gio.bus_get_finish.return_value
+        connection.signal_subscribe.side_effect = [20, 21, 22, 23]
+        connection.connect.return_value = 24
+        glib.timeout_add.return_value = 10
+        unix.signal_add.side_effect = [11, 12, 13]
+        def run():
+            monitor.connected(None, object(), None)
+            monitor.match_finished(connection, object(), monitor.match_rules[0])
+            monitor.stop(0)
+        monitor.loop.run.side_effect = run
+        self.assertEqual(monitor.run(), 0)
+        self.assertEqual([call.args[0] for call in connection.signal_unsubscribe.call_args_list], [20, 21, 22, 23])
+        connection.disconnect.assert_called_once_with(24)
+        self.assertEqual(connection.call.call_args.args[3], "RemoveMatch")
+        self.assertEqual([call.args[0] for call in glib.source_remove.call_args_list], [11, 12, 13, 10])
+        self.assertTrue(monitor.cancellable.cancel.called)
+        self.assertEqual(gio.bus_get.call_args.args[0], gio.BusType.SYSTEM)
+
+    def test_watch_cli_is_argument_free_and_does_not_open_the_backend(self):
+        with mock.patch.object(provider, "watch_update_events", return_value=0) as watch, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(provider.main(["watch-updates"]), 0)
+            for arguments in (["watch-updates", "extra"], ["watch-updates", "--system"]):
+                self.assertEqual(provider.main(arguments), 2)
+            watch.assert_called_once_with()
+            backend.assert_not_called()
+
+    def test_real_private_bus_signals_lifecycle_and_lost_output(self):
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-update-events-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "PackageKit private-bus event monitor: PASS\n")
+
+
 class OperationStreamTests(unittest.TestCase):
     operation_id = "op-" + "1" * 32
     started = "2026-09-05T01:00:00Z"
