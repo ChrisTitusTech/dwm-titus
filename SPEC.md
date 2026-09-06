@@ -464,6 +464,18 @@ must not prevent other sections from opening. Risky changes must provide
 preview, confirmation, rollback, or recovery behavior appropriate to their
 impact.
 
+Phase 6 permits a narrow cancellation exception for the fixed system timezone,
+NTP enablement, and system locale actions. Users can cancel their confirmation
+without issuing a service call. The confirmation must clearly state that a
+change cannot be canceled after dispatch to timedate1 or locale1; local request
+cancellation does not undo a system change. These actions still require fixed
+allowlisted arguments, explicit confirmation, platform authorization, audit
+evidence, and bounded verification. An ambiguous post-dispatch timeout is
+`interrupted`, never success or cancellation, and must trigger a fresh bounded
+read without automatically retrying or rolling back the mutation. Any later
+corrective change requires new confirmation. This exception does not change
+the cancellation requirements of other privileged actions.
+
 The planned Settings surface covers:
 
 - Displays and monitor profiles.

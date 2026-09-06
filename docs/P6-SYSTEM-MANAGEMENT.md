@@ -310,6 +310,17 @@ interactive-authorization argument remains enabled so systemd and polkit own
 the decision. Arbitrary environment variables, keymaps, NTP servers, RTC mode,
 or manual timestamps are not accepted.
 
+The user-approved 2026-09-06 regional exception in `SPEC.md` applies only to
+these three fixed mutations. Before dispatch, the visible confirmation can be
+canceled without a service call. It must explicitly warn that a sent change
+cannot be canceled. After dispatch, the operation reports `cancelable=no` and
+does not offer a cancellation control; canceling a local D-Bus request never
+means that the service mutation was canceled or undone. Closing Settings must
+not stop the required operation owner or verification. The bounded timeout and
+fresh-state recovery below remain mandatory, and any later corrective mutation
+requires a new confirmation. This exception does not permit arbitrary system
+administration or weaken update cancellation.
+
 The internal read-only regional reader now has three fixed requests: timedate1
 `GetAll`, locale1 `Get(Locale)`, and timedate1 `ListTimezones`. Each single-use
 reader bounds asynchronous bus connection, method reply, and decoding under one

@@ -185,6 +185,13 @@ errors or service changes. This reader adds no CLI command or protocol minor.
 Source readers, event subscriptions, lifecycle integration, and Settings controls
 remain outstanding.
 
+The user approved the narrow regional cancellation exception on 2026-09-06.
+Keep native timezone, NTP enablement, and system locale actions, with an explicit
+confirmation warning that a sent change cannot be canceled. Local cancellation
+is not rollback; ambiguous post-dispatch timeouts remain interrupted and require
+fresh state without automatic retry. This approval changes the contract, not
+implementation or qualification status.
+
 - [ ] Add date, time, timezone, and locale status plus safe common actions
   through stable platform services.
 - [ ] Add user-account, printer, and software-source entry points through trusted
@@ -225,9 +232,12 @@ Acceptance:
 - [ ] Run focused provider, parser, privilege, cancellation, lifecycle, failure,
   recovery, QML, and nested-X11 tests for every Phase 6 workflow.
 - [ ] Prove every privileged action is allowlisted, explicitly confirmed,
-  auditable, cancelable, and unavailable from repository- or user-writable
-  helper copies. Exclude or delegate any operation that cannot meet that
-  contract.
+  auditable, and unavailable from repository- or user-writable helper copies.
+  Require cancellation within the platform's safe window, except for the three
+  fixed regional actions permitted by `SPEC.md`. For those actions, verify the
+  cancellation-limit warning, no post-dispatch cancellation claim, bounded
+  verification, interrupted recovery, and fresh confirmation for any correction.
+  Exclude or delegate any other operation that cannot meet the contract.
 - [ ] Exercise authorization denial, interrupted updates, failed delegated tools,
   missing services, and recovery without hiding readable status or reporting
   false success.
