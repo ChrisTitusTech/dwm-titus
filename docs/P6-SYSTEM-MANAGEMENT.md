@@ -426,6 +426,21 @@ and malformed names make it unavailable with the corresponding
 `missing-provider`, `internal`, or `malformed` error. Readable locale1 state
 remains visible and the rest of the regional provider continues to work.
 
+The internal locale collector now executes only `/usr/bin/locale -a`, guarded
+by the existing Fedora coreutils `/usr/bin/timeout` supervisor. Its environment
+contains only a fixed system `PATH`, `LANG=C`, and `LC_ALL=C`; it does not inherit
+`LOCPATH`, loader overrides, or caller-selected commands. Stdout and stderr share
+the 2 MiB byte budget, and diagnostics are counted but never published. Every
+call starts a new process, requires complete stdout and successful exit, and
+validates the catalog before the three-second aggregate deadline. The independent
+supervisor also bounds the command if the collector is killed abruptly.
+Graceful `TERM`, `INT`, or `HUP` requests retain cleanup ownership before exit.
+The collector leaves its child waitable until the final group signal to prevent
+PID reuse, closes both pipes, and bounds reaping after `KILL` to one additional
+second. Cleanup failure cannot publish a successful catalog. This synchronous
+collector runs only on the provider's main thread with normal child-reaping
+semantics. It adds no CLI command, mutation, or snapshot minor by itself.
+
 ### Accounts, Printers, and Sources
 
 AccountsService supplies read-only account objects and properties. The provider

@@ -9,11 +9,14 @@ import fcntl
 import hashlib
 import os
 import re
+import selectors
 import shlex
 import signal
 import stat
 import struct
+import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -537,6 +540,125 @@ class RegionalRead:
         if self.failure:
             raise self.failure
         return self.value
+
+
+def locale_process_status(process: subprocess.Popen):
+    # Leave the child waitable so its PID/process-group ID cannot be reused
+    # between observing exit and signaling any remaining group members.
+    return os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+
+
+def close_locale_process(process: subprocess.Popen) -> None:
+    """Stop only our still-owned group, reap its leader, and close both pipes."""
+    try:
+        status = locale_process_status(process)
+        if status is None:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGTERM)
+            deadline = time.monotonic() + 1
+            # Do not reap an early-exiting supervisor: a descendant may still
+            # resist TERM, and the retained PID protects the final group signal.
+            while time.monotonic() < deadline:
+                time.sleep(min(0.02, max(0, deadline - time.monotonic())))
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        # A separately bounded reap tolerates scheduler delay after KILL. A
+        # kernel-stuck process is a cleanup failure, never a successful catalog.
+        process.wait(timeout=1)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise SnapshotFailure("timeout", "Locale process cleanup could not be confirmed",
+                              "unavailable") from error
+    finally:
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+
+
+def read_locale_choices() -> tuple[str, ...]:
+    """Collect one fresh system locale catalog, never a caller-selected command."""
+    if (threading.current_thread() is not threading.main_thread()
+            or signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL):
+        raise SnapshotFailure("internal", "Locale process ownership is unavailable", "unavailable")
+    process = None
+    handlers = {}
+    interrupted = 0
+
+    def terminate(number, _frame):
+        nonlocal interrupted
+        interrupted = interrupted or number
+
+    def check_deadline():
+        if interrupted:
+            raise SystemExit(128 + interrupted)
+        if time.monotonic() >= deadline:
+            raise SnapshotFailure("timeout", "Locale enumeration timed out", "unavailable")
+
+    try:
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            handlers[number] = signal.signal(number, terminate)
+        deadline = time.monotonic() + 3
+        check_deadline()
+        try:
+            # The independent timeout also bounds the fixed command if this
+            # collector is killed before its finally block can execute. Avoid
+            # Python preexec_fn callbacks in a process that can also use GIO.
+            process = subprocess.Popen(["/usr/bin/timeout", "--signal=TERM",
+                "--kill-after=1", "3", "/usr/bin/locale", "-a"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                start_new_session=True, env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
+        except FileNotFoundError as error:
+            raise SnapshotFailure("missing-provider", "Locale enumeration command is unavailable",
+                                  "unavailable") from error
+        output = bytearray()
+        received = 0
+        with selectors.DefaultSelector() as selector:
+            for stream in (process.stdout, process.stderr):
+                os.set_blocking(stream.fileno(), False)
+                selector.register(stream, selectors.EVENT_READ)
+            while True:
+                check_deadline()
+                status = locale_process_status(process)
+                if status is not None and not selector.get_map():
+                    break
+                for key, _events in selector.select(min(0.05, max(0, deadline - time.monotonic()))):
+                    check_deadline()
+                    try:
+                        chunk = os.read(key.fd, min(65536, REGIONAL_LOCALE_OUTPUT_BYTES - received + 1))
+                    except BlockingIOError:
+                        continue
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    received += len(chunk)
+                    if received > REGIONAL_LOCALE_OUTPUT_BYTES:
+                        raise SnapshotFailure("malformed", "Oversized locale enumeration output")
+                    if key.fileobj is process.stdout:
+                        output.extend(chunk)
+        exit_code = status.si_status if status.si_code == os.CLD_EXITED else -status.si_status
+        if exit_code in (124, 137, -signal.SIGKILL):
+            raise SnapshotFailure("timeout", "Locale enumeration timed out", "unavailable")
+        if exit_code == 127:
+            raise SnapshotFailure("missing-provider", "Locale enumeration command is unavailable", "unavailable")
+        if exit_code != 0:
+            raise SnapshotFailure("internal", "Locale enumeration failed", "unavailable")
+        try:
+            choices = validate_locale_choices(bytes(output))
+        except SnapshotFailure:
+            check_deadline()
+            raise
+        check_deadline()
+        return choices
+    except OSError as error:
+        raise SnapshotFailure("internal", "Locale enumeration failed", "unavailable") from error
+    finally:
+        try:
+            if process is not None:
+                close_locale_process(process)
+        finally:
+            for number, handler in handlers.items():
+                signal.signal(number, handler)
+        if interrupted:
+            raise SystemExit(128 + interrupted)
 
 
 class JournalFrameError(ValueError):
