@@ -13,6 +13,9 @@ ShellRoot {
     property bool sawRevoked: false
     property bool sawVerifying: false
     property bool sawHandoffDuringCancel: false
+    property bool retryProbed: false
+    property bool sawUncertainRecovery: false
+    property bool seededActive: false
     property bool done: false
     property var identity: ({id: "op-" + "b".repeat(32), actionId: root.scenario === "install"
         ? "updates-install-all" : "updates-refresh", kind: root.scenario === "install" ? "update" : "refresh"})
@@ -44,14 +47,21 @@ ShellRoot {
             root.check(root.snapshots === 2, "Uncertain origin recovers by watch, not another origin");
         if (root.scenario === "cancel-recovery" || root.scenario === "cancel-recovery-denied")
             root.check(root.snapshots === 2 && model.retries === 0, "Failed read during cancellation resumes bounded recovery");
+        if (root.scenario === "cancel-uncertain-recover")
+            root.check(root.snapshots === 2 && root.sawUncertainRecovery, "Same-ID recovery retains uncertain cancellation ownership");
+        if (root.scenario === "cancel-pending-snapshot")
+            root.check(root.snapshots === 1 && model.retries === 0, "Awaited handoff is not delayed by cached-active recovery");
         if (root.scenario === "cancel-race")
             root.check(root.sawHandoffDuringCancel, "Terminal handoff is retained while cancellation owns control");
         if (root.scenario.indexOf("cancel-") === 0) {
             root.check(root.cancelSent && root.sawCancelable, "Only live AllowCancel enables the exact-ID control");
             const accepted = root.scenario === "cancel-accepted" || root.scenario === "cancel-race"
-                || root.scenario === "cancel-recovery";
+                || root.scenario === "cancel-recovery" || root.scenario === "cancel-pending-snapshot";
             root.check(accepted ? model.cancelRequestedId === root.identity.id : model.cancelRequestedId === "",
                 "Only a valid successful control claims an accepted request");
+            root.check(accepted || root.scenario === "cancel-conflict"
+                ? model.cancelUncertainId === "" : model.cancelUncertainId === root.identity.id,
+                "Unconfirmed dispatch has its own exact-ID guard, separate from acceptance");
             root.check(model.cancelDetail.indexOf(accepted ? "Waiting" : "not confirmed") >= 0
                 || root.scenario === "cancel-conflict", "Cancellation outcome has separate guidance");
         }
@@ -68,6 +78,10 @@ ShellRoot {
         }
         onSnapshotRequested: {
             root.snapshots++;
+            if (root.scenario === "cancel-pending-snapshot" && root.snapshots === 1) {
+                delayedSnapshot.start();
+                return;
+            }
             if (root.scenario.indexOf("cancel-recovery") === 0
                     && (root.snapshots === 1 || root.scenario === "cancel-recovery-failure")) {
                 root.check(!model.streamOwned && model.result !== null, "Terminal result precedes the failed recovery read");
@@ -89,11 +103,26 @@ ShellRoot {
         onControlIdChanged: {
             root.check(!model.requestCancel(), "Control identity publication cannot admit a duplicate control");
         }
+        onControlOwnedChanged: {
+            if (!controlOwned && model.controlPurpose === "cancel" && model.streamOwned
+                    && root.scenario !== "cancel-conflict" && !root.retryProbed) {
+                root.retryProbed = true;
+                root.check(!model.requestCancel(), "Accepted or uncertain cancellation cannot be dispatched twice");
+            }
+        }
         onLogChanged: {
             if (!model.streamOwned) return;
             const current = model.parser.operation;
             if (current === null) return;
             if (current.cancelable) root.sawCancelable = true;
+            if (root.scenario === "cancel-pending-snapshot" && current.cancelable && !root.seededActive) {
+                root.seededActive = true;
+                model.acceptSnapshot(root.identity, null);
+            }
+            if (root.scenario === "cancel-uncertain-recover" && model.streamReplay && current.cancelable) {
+                root.sawUncertainRecovery = true;
+                root.check(!model.canCancel && !model.requestCancel(), "New AllowCancel progress cannot repeat an ambiguous control");
+            }
             if (current.detail === "Cancellation unsafe") root.sawRevoked = true;
             if (!current.cancelable) root.check(!model.requestCancel(), "Latest parser state rejects stale cancellation callbacks");
             if (model.state === "verifying") {
@@ -138,8 +167,21 @@ ShellRoot {
         root.check(!model.startUpdate("updates-refresh", ""), "Lost journal evidence cannot admit an origin");
         model.resetRecovery();
         model.acceptSnapshot(null, null);
+        model.cancelUncertainId = "op-" + "d".repeat(32);
+        model.cancelRequestedId = "op-" + "d".repeat(32);
         root.check(model.startUpdate(root.identity.actionId, root.scenario === "install" ? "c".repeat(64) : ""), "Fixed update command starts once");
+        root.check(model.cancelUncertainId === "" && model.cancelRequestedId === "", "A new explicit origin clears previous-operation guards");
         root.check(!model.startUpdate("updates-refresh", ""), "No overlap before first output");
+    }
+    Timer {
+        id: delayedSnapshot
+        interval: 200
+        onTriggered: {
+            root.check(!model.controlOwned && model.waitingSnapshot && model.retries === 0,
+                "Control completion must wait for the replacement snapshot, not reuse cached active state");
+            model.acceptSnapshot(null, root.identity);
+            root.check(model.state === "acknowledging", "Fresh handoff can acknowledge immediately without an extra retry");
+        }
     }
     Timer { interval: 18000; running: true; onTriggered: root.check(false, "Scenario timed out in " + model.state) }
 }

@@ -354,9 +354,37 @@ update_action_helper=$work/update-action-data/dwm-titus/scripts/dwm-system-manag
 cp "$repo/tests/fixtures/system-update-action-provider.py" "$update_action_helper"
 chmod +x "$update_action_helper"
 quickshell_binary=$(command -v quickshell)
+assert_action_counter() {
+	counter_name=$1
+	counter_expected=$2
+	counter_file=$action_state/$counter_name
+	if [ "$counter_expected" = absent ]; then
+		[ -e "$counter_file" ] || return 0
+		counter_actual=present
+	else
+		counter_actual=$(sed -n '1p' "$counter_file" 2>/dev/null) || counter_actual=missing
+		[ "$counter_actual" -eq "$counter_expected" ] 2>/dev/null && return 0
+	fi
+	printf 'Update action counter FAILED: %s / %s: expected %s, got %s\n' \
+		"$action_scenario" "$counter_name" "$counter_expected" "$counter_actual" >&2
+	cat "$action_state/log" >&2
+	return 1
+}
+action_scenario=counter-diagnostic
+action_state=$work/counter-diagnostic
+mkdir -p "$action_state"
+printf 'Scenario-specific counter fixture log\n' >"$action_state/log"
+if assert_action_counter updates-refresh 1 >"$action_state/output" 2>&1; then
+	printf 'Missing action counter was accepted\n' >&2
+	exit 1
+fi
+grep -Fq 'counter-diagnostic / updates-refresh: expected 1, got missing' "$action_state/output"
+grep -Fq 'Scenario-specific counter fixture log' "$action_state/output"
+printf 'Update action counter diagnostics: PASS\n'
 for action_scenario in refresh install rejected denied uncertain wrong-exit revoked \
 	cancel-accepted cancel-race cancel-denied cancel-conflict cancel-output \
-	cancel-error-overflow cancel-timeout cancel-recovery cancel-recovery-denied cancel-recovery-failure failed-start; do
+	cancel-error-overflow cancel-timeout cancel-recovery cancel-recovery-denied cancel-recovery-failure \
+	cancel-uncertain-recover cancel-pending-snapshot failed-start; do
 	action_state=$work/update-action-$action_scenario
 	mkdir -p "$action_state"
 	action_path=$PATH
@@ -379,19 +407,19 @@ for action_scenario in refresh install rejected denied uncertain wrong-exit revo
 	[ "$action_scenario" != failed-start ] || continue
 	action_command=updates-refresh
 	[ "$action_scenario" != install ] || action_command=updates-install-all
-	[ "$(sed -n '1p' "$action_state/$action_command")" -eq 1 ]
+	assert_action_counter "$action_command" 1
 	if [ "$action_scenario" = rejected ] || [ "$action_scenario" = cancel-recovery-failure ]; then
-		[ ! -e "$action_state/ack-operation" ]
+		assert_action_counter ack-operation absent
 	else
-		[ "$(sed -n '1p' "$action_state/ack-operation")" -eq 1 ]
+		assert_action_counter ack-operation 1
 	fi
 	case $action_scenario in
-	uncertain | wrong-exit) [ "$(sed -n '1p' "$action_state/watch-operation")" -eq 1 ] ;;
-	*) [ ! -e "$action_state/watch-operation" ] ;;
+	uncertain | wrong-exit | cancel-uncertain-recover) assert_action_counter watch-operation 1 ;;
+	*) assert_action_counter watch-operation absent ;;
 	esac
 	case $action_scenario in
-	cancel-*) [ "$(sed -n '1p' "$action_state/updates-cancel")" -eq 1 ] ;;
-	*) [ ! -e "$action_state/updates-cancel" ] ;;
+	cancel-*) assert_action_counter updates-cancel 1 ;;
+	*) assert_action_counter updates-cancel absent ;;
 	esac
 done
 

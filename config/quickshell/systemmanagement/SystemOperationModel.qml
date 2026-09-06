@@ -37,6 +37,7 @@ Scope {
     property string controlId: ""
     property string controlPurpose: ""
     property string cancelRequestedId: ""
+    property string cancelUncertainId: ""
     property string cancelDetail: ""
     property bool controlInvalid: false
     readonly property bool busy: streamOwned || controlOwned || waitingSnapshot || retryTimer.running
@@ -46,6 +47,7 @@ Scope {
         && !root.terminalPending && root.log.length > 0 && root.progress !== null && root.progress.cancelable
         && (root.progress.kind === "update" || root.progress.kind === "refresh")
         && root.progress.state !== "cancel-requested" && root.cancelRequestedId !== root.progress.id
+        && root.cancelUncertainId !== root.progress.id
 
     function matches(left, right) {
         return left !== null && right !== null && left.id === right.id
@@ -114,8 +116,9 @@ Scope {
             root.streamReplay = true;
             root.streamFailed = false;
             root.terminalPending = false;
-            root.cancelRequestedId = "";
-            root.cancelDetail = "";
+            if (root.cancelRequestedId !== target.id) root.cancelRequestedId = "";
+            if (root.cancelUncertainId !== target.id) root.cancelUncertainId = "";
+            if (!root.cancelRequestedId && !root.cancelUncertainId) root.cancelDetail = "";
             if (active !== null) root.discoveryInvalidated();
             root.progress = active;
             root.state = "observing";
@@ -155,6 +158,7 @@ Scope {
         root.audit = null;
         root.operationError = null;
         root.cancelRequestedId = "";
+        root.cancelUncertainId = "";
         root.cancelDetail = "";
         root.state = "observing";
         root.detail = "Starting " + action;
@@ -221,7 +225,8 @@ Scope {
                 || root.parser.failure.length > 0 || Protocol.terminal(current.state)
                 || (current.kind !== "update" && current.kind !== "refresh")
                 || !current.cancelable || current.state === "cancel-requested"
-                || root.state === "verifying" || root.cancelRequestedId === current.id) return null;
+                || root.state === "verifying" || root.cancelRequestedId === current.id
+                || root.cancelUncertainId === current.id) return null;
         return current;
     }
 
@@ -248,19 +253,25 @@ Scope {
 
     function finishCancellation(exitCode, normalExit) {
         const accepted = normalExit && exitCode === 0 && !root.controlInvalid;
+        const unavailable = normalExit && exitCode === 3 && !root.controlInvalid;
         if (accepted) root.cancelRequestedId = root.controlId;
+        // Exit 1 (or lost/malformed control output) cannot prove Cancel was not
+        // dispatched. Keep a distinct guard without claiming acceptance, even
+        // if a recovered same-ID stream repeats an old AllowCancel=true hint.
+        if (!accepted && !unavailable) root.cancelUncertainId = root.controlId;
         root.cancelDetail = accepted
             ? "Cancellation requested. Waiting for PackageKit's verified terminal result."
-            : exitCode === 3 && normalExit && !root.controlInvalid
+            : unavailable
             ? "The cancellation target changed. Reloading recovery state; no cancellation was confirmed."
-            : "Cancellation was not confirmed. PackageKit still owns the operation; continue watching or reload status.";
+            : "Cancellation was not confirmed. A repeat request is blocked for this operation. Continue watching or reload status.";
         root.controlOwned = false;
         // The operation may finish and a newer handoff may arrive while this
         // control is running. Reconcile only after its final Process signals.
         Qt.callLater(function() {
             if (!root.streamOwned) {
+                if (root.waitingSnapshot) return;
                 if (root.snapshotKnown) root.acceptSnapshot(root.snapshotActive, root.handoff);
-                else if (!root.waitingSnapshot) root.snapshotFailed();
+                else root.snapshotFailed();
             } else if (exitCode === 3) root.requestSnapshot();
         });
     }

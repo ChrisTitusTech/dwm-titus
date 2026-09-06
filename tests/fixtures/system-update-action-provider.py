@@ -37,7 +37,8 @@ def main():
         (DIRECTORY / "cancel-sent").touch()
         if SCENARIO == "cancel-timeout":
             time.sleep(15)  # Frontend's 10-second deadline must kill only this control.
-        elif SCENARIO in ("cancel-race", "cancel-recovery", "cancel-recovery-denied", "cancel-recovery-failure"):
+        elif SCENARIO in ("cancel-race", "cancel-recovery", "cancel-recovery-denied",
+                          "cancel-recovery-failure", "cancel-pending-snapshot"):
             time.sleep(0.3)
         elif SCENARIO == "cancel-output":
             row("unexpected", "control output")
@@ -48,7 +49,8 @@ def main():
         else:
             time.sleep(0.08)
         (DIRECTORY / "control-active").unlink(missing_ok=True)
-        return 3 if SCENARIO == "cancel-conflict" else 1 if SCENARIO in ("cancel-denied", "cancel-recovery-denied") else 0
+        return 3 if SCENARIO == "cancel-conflict" else 1 if SCENARIO in (
+            "cancel-denied", "cancel-recovery-denied", "cancel-uncertain-recover") else 0
 
     replay = command == "watch-operation"
     action = "updates-install-all" if SCENARIO == "install" else "updates-refresh"
@@ -81,6 +83,8 @@ def main():
                 time.sleep(0.15)
                 if SCENARIO == "cancel-error-overflow":
                     (DIRECTORY / "control-active").unlink(missing_ok=True)
+                if SCENARIO == "cancel-uncertain-recover" and not replay:
+                    return 1  # Lost observation after an unconfirmed Cancel.
         if SCENARIO == "revoked":
             time.sleep(0.1)
             row("operation", OPERATION_ID, action, kind, "running", "80", "no", "Cancellation unsafe")

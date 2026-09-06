@@ -123,6 +123,11 @@ bounded control process with acknowledgment; it reports only an accepted request
 keeps the observer alive, and reconciles handoffs received while cancellation is
 running. These internal calls are not exposed by IPC. Settings mutation actions
 remain unavailable until visible confirmation and fresh action guards are added.
+An unconfirmed cancellation reply retains a separate exact-ID uncertainty guard,
+without claiming acceptance or resending the control. Same-ID observer recovery
+keeps that guard despite repeated `AllowCancel` hints; a different operation does
+not inherit it. The existing stream and bounded recovery remain the outcome
+owners.
 An identity-free snapshot establishes an empty journal only when recovery is
 available. Incomplete journal evidence retains the readable snapshot and takes
 the same bounded recovery path; it cannot silently abandon an unknown owner.
