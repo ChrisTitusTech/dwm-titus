@@ -31,6 +31,19 @@ CANCEL_GRACE_SECONDS = 5
 MAX_OPERATION_PROGRESS_RECORDS = 252
 MAX_OPERATION_MISMATCH_SAMPLES = 128
 
+REGIONAL_TIMEZONE_MAX = 255
+REGIONAL_TIMEZONE_COUNT = 2048
+REGIONAL_TIMEZONE_BYTES = 256 * 1024
+REGIONAL_LOCALE_MAX = 128
+REGIONAL_LOCALE_COUNT = 4096
+REGIONAL_LOCALE_OUTPUT_BYTES = 2 * 1024 * 1024
+REGIONAL_LOCALE_ARRAY_BYTES = 8192
+REGIONAL_LOCALE_KEYS = (
+    "LANG", "LANGUAGE", "LC_CTYPE", "LC_NUMERIC", "LC_TIME", "LC_COLLATE",
+    "LC_MONETARY", "LC_MESSAGES", "LC_PAPER", "LC_NAME", "LC_ADDRESS",
+    "LC_TELEPHONE", "LC_MEASUREMENT", "LC_IDENTIFICATION",
+)
+
 JOURNAL_MAGIC = b"DWMJNL1\0"
 JOURNAL_FRAME_MAJOR = 1
 JOURNAL_FRAME_MINOR = 0
@@ -192,6 +205,136 @@ class SnapshotFailure(Exception):
         self.code = code
         self.detail = clean_text(detail)
         self.status = status
+
+
+def validate_timezone_name(value: object) -> str:
+    """Validate a timezone identity without normalizing or resolving its path."""
+    if (not isinstance(value, str) or not value
+            or len(value) > REGIONAL_TIMEZONE_MAX or not value.isascii()
+            or any(ord(char) < 32 or ord(char) == 127 for char in value)
+            or any(part in ("", ".", "..") for part in value.split("/"))):
+        raise SnapshotFailure("malformed", "Invalid regional timezone identity")
+    return value
+
+
+def validate_timezone_choices(values: object) -> tuple[str, ...]:
+    """Validate one complete unpacked ListTimezones reply and its payload bounds."""
+    if not isinstance(values, (list, tuple)) or len(values) > REGIONAL_TIMEZONE_COUNT:
+        raise SnapshotFailure("malformed", "Invalid regional timezone list")
+    result = tuple(validate_timezone_name(value) for value in values)
+    if (len(set(result)) != len(result)
+            or sum(len(value) for value in result) > REGIONAL_TIMEZONE_BYTES):
+        raise SnapshotFailure("malformed", "Duplicate or oversized timezone list")
+    return result
+
+
+def prepare_timezone_change(value: object, choices: object) -> str:
+    """Require exact membership in the caller's fresh ListTimezones reply."""
+    timezone = validate_timezone_name(value)
+    if timezone not in validate_timezone_choices(choices):
+        raise SnapshotFailure("conflict", "The selected timezone is no longer available")
+    return timezone
+
+
+def validate_locale_name(value: object) -> str:
+    """Validate a locale identity; installed availability needs a fresh allowlist."""
+    if (not isinstance(value, str) or not value
+            or len(value) > REGIONAL_LOCALE_MAX or not value.isascii()
+            or any(char.isspace() or ord(char) < 32 or ord(char) == 127
+                   for char in value)):
+        raise SnapshotFailure("malformed", "Invalid regional locale identity")
+    return value
+
+
+def validate_locale_choices(output: object) -> tuple[str, ...]:
+    """Validate complete bounded locale -a stdout without stripping identities."""
+    if not isinstance(output, bytes) or len(output) > REGIONAL_LOCALE_OUTPUT_BYTES:
+        raise SnapshotFailure("malformed", "Invalid regional locale output")
+    try:
+        text = output.decode("ascii")
+    except UnicodeDecodeError as error:
+        raise SnapshotFailure("malformed", "Non-ASCII regional locale output") from error
+    if not text:
+        return ()
+    lines = text.removesuffix("\n").split("\n", REGIONAL_LOCALE_COUNT)
+    if len(lines) > REGIONAL_LOCALE_COUNT:
+        raise SnapshotFailure("malformed", "Too many regional locale choices")
+    result = tuple(validate_locale_name(line) for line in lines)
+    if len(set(result)) != len(result):
+        raise SnapshotFailure("malformed", "Duplicate regional locale choices")
+    return result
+
+
+@dataclass(frozen=True)
+class LocaleConfiguration:
+    """Canonical, fully displayable locale1 assignments, not an authorization."""
+
+    assignments: tuple[str, ...]
+    lang: str
+    detail: str
+
+
+def parse_locale_configuration(values: object) -> LocaleConfiguration:
+    """Preserve the complete allowlisted locale array or reject it without truncation."""
+    if not isinstance(values, (list, tuple)) or len(values) > len(REGIONAL_LOCALE_KEYS):
+        raise SnapshotFailure("malformed", "Invalid regional locale assignment array")
+    assignments: dict[str, str] = {}
+    total_bytes = 0
+    for assignment in values:
+        if not isinstance(assignment, str) or len(assignment) > MAX_TEXT_BYTES:
+            raise SnapshotFailure("malformed", "Invalid regional locale assignment")
+        try:
+            encoded = assignment.encode("utf-8")
+        except UnicodeEncodeError as error:
+            raise SnapshotFailure("malformed", "Non-UTF-8 locale assignment") from error
+        total_bytes += len(encoded) + 1
+        key, separator, value = assignment.partition("=")
+        if (not separator or key not in REGIONAL_LOCALE_KEYS or key in assignments
+                or len(encoded) > MAX_TEXT_BYTES
+                or total_bytes > REGIONAL_LOCALE_ARRAY_BYTES
+                or not assignment.isprintable()):
+            raise SnapshotFailure("malformed", "Unsafe or oversized locale assignment")
+        assignments[key] = value
+    ordered = tuple(f"{key}={assignments[key]}" for key in REGIONAL_LOCALE_KEYS
+                    if key in assignments)
+    detail = ", ".join(f"{key}={assignments[key]}" for key in REGIONAL_LOCALE_KEYS[1:]
+                       if assignments.get(key)) or "none"
+    if len(detail.encode("utf-8")) > MAX_TEXT_BYTES:
+        raise SnapshotFailure("malformed", "Locale overrides are too large to confirm safely")
+    return LocaleConfiguration(ordered, assignments.get("LANG", "unknown"), detail)
+
+
+def prepare_locale_change(
+    values: object, argument: object, choice_output: object
+) -> LocaleConfiguration:
+    """Prepare only LANG using caller-supplied fresh reads, preserving every override."""
+    if not isinstance(argument, str) or not argument.startswith("LANG="):
+        raise SnapshotFailure("malformed", "Only LANG=LOCALE is accepted")
+    locale = validate_locale_name(argument[5:])
+    choices = validate_locale_choices(choice_output)
+    if locale not in choices:
+        raise SnapshotFailure("conflict", "The selected locale is no longer available")
+    current = parse_locale_configuration(values)
+    preserved = [value for value in current.assignments if not value.startswith("LANG=")]
+    return parse_locale_configuration([f"LANG={locale}", *preserved])
+
+
+def locale_change_matches(expected_values: object, observed_values: object) -> bool:
+    """Compare effective LC values, permitting omission of redundant overrides."""
+    expected = dict(value.split("=", 1) for value in
+                    parse_locale_configuration(expected_values).assignments)
+    observed = dict(value.split("=", 1) for value in
+                    parse_locale_configuration(observed_values).assignments)
+    if expected.get("LANG", "") != observed.get("LANG", ""):
+        return False
+    # LANGUAGE is a preference list, not an LC category with LANG fallback.
+    # Only a pre-existing explicit assignment has a preservation requirement.
+    if ("LANGUAGE" in expected
+            and ("LANGUAGE" not in observed or expected["LANGUAGE"] != observed["LANGUAGE"])):
+        return False
+    return all((expected.get(key) or expected.get("LANG", ""))
+               == (observed.get(key) or observed.get("LANG", ""))
+               for key in REGIONAL_LOCALE_KEYS[2:])
 
 
 class JournalFrameError(ValueError):

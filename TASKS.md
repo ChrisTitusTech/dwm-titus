@@ -156,6 +156,14 @@ Acceptance:
 
 ### REGIONAL-ENTRY-001: Regional and Delegated Administration
 
+Progress: Pure provider validators now bound timezone and locale choice lists,
+require exact selected identities, preserve the full allowlisted locale override
+set, and reject undisplayable confirmations without truncation. Effective-locale
+comparison accepts redundant LC-category elision while checking preserved values.
+These helpers perform no I/O and enable no command, D-Bus mutation, or new
+protocol minor. Service readers, lifecycle integration, and Settings controls
+remain outstanding.
+
 - [ ] Add date, time, timezone, and locale status plus safe common actions
   through stable platform services.
 - [ ] Add user-account, printer, and software-source entry points through trusted
