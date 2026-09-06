@@ -363,7 +363,12 @@ without turning Quickshell into an unrestricted administration console.
 
 ### Exit Criteria
 
-- Every privileged action is allowlisted, confirmed, auditable, and cancelable.
+- Every privileged action is allowlisted, confirmed, auditable, and cancelable
+  within the platform's safe cancellation window. The sole regional exception
+  is the fixed timezone, NTP enablement, and system locale actions defined in
+  `SPEC.md`: confirmation is cancelable, but sent changes are not. Their
+  confirmation explains that limit and ambiguous results retain recovery
+  guidance instead of reporting success or cancellation.
 - Read-only status remains available when authorization is denied.
 - Interrupted updates and failed delegated tools produce actionable recovery
   guidance rather than ambiguous success.
