@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add root-owned update start/cancel lifecycle and bounded verified progress
+  logs. Cancellation remains an exact-ID request, never a fabricated result;
+  interrupted origins recover by observation. Settings mutation controls remain
+  disabled pending their visible confirmation workflow.
+
 - Preserve Fedora DNF5 dependency previews when a requested update is reported
   as an install. Keep the actual package actions visible and retain strict
   missing, duplicate, and unexpected-update checks; confirmed update execution

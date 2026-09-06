@@ -50,6 +50,11 @@ cleanup() {
 			stop_process "$helper_pid"
 		done
 	fi
+	if [ -n "${update_action_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$update_action_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	stop_process "${dwm_pid:-}"
 	stop_process "${xvfb_pid:-}"
 	if [ "$cleanup_status" -ne 0 ]; then
@@ -342,6 +347,82 @@ if ! grep -F 'Operation parser native tests: PASS' "$work/operation-parser.log";
 fi
 
 # Exercise the real root-owned Process lifecycle with a private fixed helper.
+mkdir -p "$work/update-action" "$work/update-action-data/dwm-titus/scripts"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/update-action/"
+cp "$repo/tests/qml/SystemUpdateActionOwner.qml" "$work/update-action/shell.qml"
+update_action_helper=$work/update-action-data/dwm-titus/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-update-action-provider.py" "$update_action_helper"
+chmod +x "$update_action_helper"
+quickshell_binary=$(command -v quickshell)
+assert_action_counter() {
+	counter_name=$1
+	counter_expected=$2
+	counter_file=$action_state/$counter_name
+	if [ "$counter_expected" = absent ]; then
+		[ -e "$counter_file" ] || return 0
+		counter_actual=present
+	else
+		counter_actual=$(sed -n '1p' "$counter_file" 2>/dev/null) || counter_actual=missing
+		[ "$counter_actual" -eq "$counter_expected" ] 2>/dev/null && return 0
+	fi
+	printf 'Update action counter FAILED: %s / %s: expected %s, got %s\n' \
+		"$action_scenario" "$counter_name" "$counter_expected" "$counter_actual" >&2
+	cat "$action_state/log" >&2
+	return 1
+}
+action_scenario=counter-diagnostic
+action_state=$work/counter-diagnostic
+mkdir -p "$action_state"
+printf 'Scenario-specific counter fixture log\n' >"$action_state/log"
+if assert_action_counter updates-refresh 1 >"$action_state/output" 2>&1; then
+	printf 'Missing action counter was accepted\n' >&2
+	exit 1
+fi
+grep -Fq 'counter-diagnostic / updates-refresh: expected 1, got missing' "$action_state/output"
+grep -Fq 'Scenario-specific counter fixture log' "$action_state/output"
+printf 'Update action counter diagnostics: PASS\n'
+for action_scenario in refresh install rejected denied uncertain wrong-exit revoked \
+	cancel-accepted cancel-race cancel-denied cancel-conflict cancel-output \
+	cancel-error-overflow cancel-timeout cancel-recovery cancel-recovery-denied cancel-recovery-failure \
+	cancel-uncertain-recover cancel-pending-snapshot failed-start; do
+	action_state=$work/update-action-$action_scenario
+	mkdir -p "$action_state"
+	action_path=$PATH
+	[ "$action_scenario" != failed-start ] || action_path=$work/no-executables
+	timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$work/update-action-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+		DWM_UPDATE_ACTION_FIXTURE="$action_state" DWM_UPDATE_ACTION_SCENARIO="$action_scenario" PATH="$action_path" \
+		"$quickshell_binary" --no-duplicate --path "$work/update-action/shell.qml" \
+		>"$action_state/log" 2>&1 &
+	quickshell_pid=$!
+	action_status=0
+	wait "$quickshell_pid" || action_status=$?
+	quickshell_pid=
+	if [ "$action_status" -ne 0 ] || ! grep -F 'Update action owner native tests: PASS' "$action_state/log" ||
+		grep -Fq 'Update action owner FAILED:' "$action_state/log" || [ -e "$action_state/invalid-arguments" ] ||
+		[ -e "$action_state/control-overlap" ]; then
+		cat "$action_state/log" >&2
+		exit 1
+	fi
+	[ "$action_scenario" != failed-start ] || continue
+	action_command=updates-refresh
+	[ "$action_scenario" != install ] || action_command=updates-install-all
+	assert_action_counter "$action_command" 1
+	if [ "$action_scenario" = rejected ] || [ "$action_scenario" = cancel-recovery-failure ]; then
+		assert_action_counter ack-operation absent
+	else
+		assert_action_counter ack-operation 1
+	fi
+	case $action_scenario in
+	uncertain | wrong-exit | cancel-uncertain-recover) assert_action_counter watch-operation 1 ;;
+	*) assert_action_counter watch-operation absent ;;
+	esac
+	case $action_scenario in
+	cancel-*) assert_action_counter updates-cancel 1 ;;
+	*) assert_action_counter updates-cancel absent ;;
+	esac
+done
+
 mkdir -p "$work/operation-owner" "$work/owner-data/dwm-titus/scripts" "$work/owner-state"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/operation-owner/"
 cp "$repo/tests/qml/SystemOperationOwner.qml" "$work/operation-owner/shell.qml"

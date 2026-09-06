@@ -113,9 +113,24 @@ provisional until audit, completion, and normal exit pass. Malformed observers
 are terminated without canceling the PackageKit transaction. Three delayed
 snapshot-and-watch retries use one, two, and four seconds; exhaustion and failed
 acknowledgment retain explicit reload guidance. Pane-only reads still stop when
-Settings closes, while required recovery reads continue. Settings mutation
-actions remain unavailable until originating execution, confirmation, and
-cancellation are integrated.
+Settings closes, while required recovery reads continue. The root owner also
+accepts the two fixed update origins, validates their origin-specific exit code,
+and retains nonterminal progress logs until a verified terminal can be appended.
+Pre-admission failed requests reconcile a fresh empty journal without inventing
+a handoff or acknowledgment. Uncertain origins use the same bounded watch
+recovery without reissuing the mutable command. Exact-ID cancellation shares one
+bounded control process with acknowledgment; it reports only an accepted request,
+keeps the observer alive, and reconciles handoffs received while cancellation is
+running. These internal calls are not exposed by IPC. Settings mutation actions
+remain unavailable until visible confirmation and fresh action guards are added.
+An unconfirmed cancellation reply retains a separate exact-ID uncertainty guard,
+without claiming acceptance or resending the control. Same-ID observer recovery
+keeps that guard despite repeated `AllowCancel` hints; a different operation does
+not inherit it. The existing stream and bounded recovery remain the outcome
+owners.
+A stale-target cancellation response uses a distinct exact-ID conflict guard
+before releasing control ownership. Cached progress and same-ID recovery cannot
+resend that rejected control; a different operation establishes a new target.
 An identity-free snapshot establishes an empty journal only when recovery is
 available. Incomplete journal evidence retains the readable snapshot and takes
 the same bounded recovery path; it cannot silently abandon an unknown owner.
