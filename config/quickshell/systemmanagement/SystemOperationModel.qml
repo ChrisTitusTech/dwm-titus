@@ -137,8 +137,8 @@ Scope {
         root.snapshotKnown = true;
     }
 
-    // This internal entry point is not exposed by IPC. A future Settings
-    // confirmation must also validate fresh discovery and action availability.
+    // This internal entry point is not exposed by IPC. The Settings caller
+    // also validates visible confirmation, fresh discovery and availability.
     function startUpdate(action, generation) {
         // Recheck fields rather than a UI binding during reentrant publication.
         if (!root.snapshotKnown || root.streamOwned || root.controlOwned || root.waitingSnapshot

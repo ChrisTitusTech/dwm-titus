@@ -55,6 +55,11 @@ cleanup() {
 			stop_process "$helper_pid"
 		done
 	fi
+	if [ -n "${update_ui_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$update_ui_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	stop_process "${dwm_pid:-}"
 	stop_process "${xvfb_pid:-}"
 	if [ "$cleanup_status" -ne 0 ]; then
@@ -326,6 +331,29 @@ fi
 
 # Run the isolated operation parser on the same nested display before loading
 # the managed shell. This fixture never connects to host PackageKit.
+mkdir -p "$work/update-ui" "$work/update-ui-data/dwm-titus/scripts" "$work/update-ui-state"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" \
+	"$repo/config/quickshell/systemmanagement" "$repo/config/quickshell/network" "$work/update-ui/"
+cp "$repo/tests/qml/SystemUpdateUi.qml" "$work/update-ui/shell.qml"
+update_ui_helper=$work/update-ui-data/dwm-titus/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-update-ui-provider.py" "$update_ui_helper"
+chmod +x "$update_ui_helper"
+timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/update-ui-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_UPDATE_UI_FIXTURE="$work/update-ui-state" \
+	quickshell --no-duplicate --path "$work/update-ui/shell.qml" >"$work/update-ui.log" 2>&1 &
+quickshell_pid=$!
+ui_status=0
+wait "$quickshell_pid" || ui_status=$?
+quickshell_pid=
+if [ "$ui_status" -ne 0 ] || ! grep -F 'Update UI native tests: PASS' "$work/update-ui.log" ||
+	grep -Fq 'Update UI FAILED:' "$work/update-ui.log" ||
+	[ "$(sed -n '1p' "$work/update-ui-state/origins" 2>/dev/null)" != 3 ] ||
+	[ -e "$work/update-ui-state/invalid-arguments" ] || [ -e "$work/update-ui-state/overlap" ]; then
+	cat "$work/update-ui.log" >&2
+	exit 1
+fi
+
 mkdir -p "$work/operation-parser"
 cp "$repo/tests/qml/SystemOperationParser.qml" "$work/operation-parser/shell.qml"
 cp "$repo/config/quickshell/systemmanagement/SystemOperationProtocol.js" "$work/operation-parser/"

@@ -121,8 +121,9 @@ a handoff or acknowledgment. Uncertain origins use the same bounded watch
 recovery without reissuing the mutable command. Exact-ID cancellation shares one
 bounded control process with acknowledgment; it reports only an accepted request,
 keeps the observer alive, and reconciles handoffs received while cancellation is
-running. These internal calls are not exposed by IPC. Settings mutation actions
-remain unavailable until visible confirmation and fresh action guards are added.
+running. These internal calls are not exposed by IPC. Settings requires a visible
+confirmation, fresh discovery, complete recovery, exact action availability,
+and an unowned update workflow before preparing or accepting a new action.
 An unconfirmed cancellation reply retains a separate exact-ID uncertainty guard,
 without claiming acceptance or resending the control. Same-ID observer recovery
 keeps that guard despite repeated `AllowCancel` hints; a different operation does
@@ -131,6 +132,31 @@ owners.
 A stale-target cancellation response uses a distinct exact-ID conflict guard
 before releasing control ownership. Cached progress and same-ID recovery cannot
 resend that rejected control; a different operation establishes a new target.
+
+The System pane separates read-only **Reload status** from **Refresh metadata**
+and **Install updates**. Both mutable actions open an explicit confirmation;
+installation captures a copied, complete bounded preview including dependency
+additions and removals, with full package identities. The preview is current
+evidence, not an atomic frozen PackageKit plan. Confirm rechecks the captured
+generation, discovery epoch, request generation, action availability, and owner
+state. Global invalidation publishes nonfresh state before clearing the prompt,
+preventing reentrant callbacks from using the old inventory. Acknowledgment
+invalidates discovery after journal ownership clears; a burst that exhausts the
+two-read limit requires the visible Reload status action, not an automatic third
+read. Denial preserves the readable inventory and verified audit.
+
+The virtualized preview and bounded operation log support Home, End, Page Up,
+Page Down, and arrow navigation. Focusing a control or list scrolls it into the
+outer viewport. Private native fixtures exercise the buttons, invalidation,
+unavailable action/monitor/recovery paths, denial, closure, and cancellation.
+Fedora 44 nested-X11 manual checks on 2026-09-06 covered 640x480, 780x580,
+and 1000x740 windows, Tab/Enter decline and confirmation, and all 4096 preview
+rows through Home/End. No host package mutation was performed. Real PackageKit
+execution qualification and installed-runtime parity remain phase requirements.
+Captured evidence shows the [final preview rows](public/images/p6-update-preview-tail.png)
+and [keyboard-focused confirmation controls](public/images/p6-update-confirmation-focus.png)
+inside the compact viewport.
+
 An identity-free snapshot establishes an empty journal only when recovery is
 available. Incomplete journal evidence retains the readable snapshot and takes
 the same bounded recovery path; it cannot silently abandon an unknown owner.
@@ -210,8 +236,8 @@ Finite snapshots now initialize or validate the fixed journal, recover its
 bounded state, and apply restart satisfaction before publishing active or
 handoff identities. Journal or logind failure preserves readable update
 discovery and reports recovery errors; known restart guidance remains visible
-with `partial` status. This incremental build still leaves new mutation actions
-unavailable in Settings. Snapshot active rows and the cancel action now advertise the exact
+with `partial` status. Incomplete recovery disables new Settings mutations.
+Snapshot active rows and the cancel action now advertise the exact
 observed cancelability, or remain unavailable when no trustworthy observation
 exists. The public cancel command always revalidates that hint. Live watch
 streams continue to report the exact PackageKit cancelability observation.

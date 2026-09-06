@@ -59,9 +59,9 @@ Scope {
     }
 
     function invalidate() {
-        root.invalidated();
         Cycle.invalidate(root.cycle);
         root.publish();
+        root.invalidated();
         root.requestPending();
     }
 

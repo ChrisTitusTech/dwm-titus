@@ -94,16 +94,19 @@ exact active and retained identities from startup snapshots, preserves its strea
 across pane closure, verifies results before acknowledgment, and bounds failed
 recovery to three retries. Native nested-X11 fixtures exercise live progress,
 failed-result replay, stale collector data, restart adoption, and failed process
-starts without host service calls. Originating mutation, confirmation, and cancel
-UI integration must be completed before this boundary can be accepted.
+starts without host service calls.
 The root owner now accepts only fixed update origins, enforces origin-specific
 exit/result validation, and preserves a bounded verified progress log. A shared
 exact-ID cancellation/acknowledgment control preserves the live observer and
 reconciles a terminal handoff that wins the cancellation race. Native private
 fixtures cover rejected admission, uncertain start, denial, revoked cancellation,
 control failure and timeout, and overlap rejection. These internal entry points
-are not exposed by IPC. Settings mutation actions remain disabled until visible
-confirmation and action-availability guards are integrated.
+are not exposed by IPC. Settings now requires a visible confirmation, fresh
+discovery, available recovery and action evidence, and an empty operation owner.
+The confirmation copies every package change and invalidates on global events,
+replacement reads, generation changes, or closure. Explicit cancellation keeps
+the owner alive until a verified outcome. Real PackageKit execution qualification
+and the combined phase acceptance evidence remain outstanding.
 The fixed `watch-updates` command now observes only global PackageKit discovery
 changes and daemon ownership changes. It establishes subscriptions before
 reporting readiness, bounds setup to ten seconds, and never starts a transaction.
@@ -115,7 +118,7 @@ retains ownership through reentrant completion callbacks. Failed monitoring keep
 finite status readable; pane closure stops the subscriber and optional reads
 without stopping required recovery or the root operation owner. PackageKit
 observer completion and uncertain exit also invalidate discovery without relying
-on a global signal. Confirmation invalidation is exposed for the next UI boundary.
+on a global signal. Confirmation invalidation now guards the visible update UI.
 The preview validators now preserve requested `install` as well as `update`
 actions, matching the PackageKit DNF5 backend's discovery/simulation contract.
 Missing or duplicate requested IDs, outbound requested actions, and unrequested
@@ -123,7 +126,7 @@ updates still fail closed. A Fedora 44 / PackageKit 1.3.6 read-only snapshot
 preserved all 23 requested IDs in 29 preview rows (five installs, 18 updates,
 six removals), without the prior malformed-plan error. No package mutation was
 performed; this agent process still lacks a logind session, reported separately
-as partial recovery evidence. Confirmed execution in Settings remains disabled.
+as partial recovery evidence; that session therefore cannot enable execution.
 
 - [ ] Add user-initiated Fedora update discovery and status through the selected
   stable package-management interface.

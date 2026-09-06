@@ -19,6 +19,13 @@ Flickable {
         root.contentY = Math.max(0, Math.min(position, Math.max(0, root.contentHeight - root.height)));
     }
 
+    function reveal(target) {
+        const position = target.mapToItem(content, 0, 0);
+        if (position.y < root.contentY) root.scrollTo(position.y);
+        else if (position.y + target.height > root.contentY + root.height)
+            root.scrollTo(position.y + target.height - root.height);
+    }
+
     Keys.onPressed: event => {
         const lineStep = Math.max(Theme.spacingXl, 40);
         const pageStep = Math.max(lineStep, root.height - Theme.spacingXl);
@@ -139,12 +146,13 @@ Flickable {
                 elide: Text.ElideRight
             }
             PlainText {
-                text: "READ-ONLY STATUS"
+                text: "SYSTEM STATUS"
                 color: Theme.menuMutedText
                 font.pixelSize: Theme.fontCaptionSize
                 font.bold: true
             }
             ShellButton {
+                objectName: "reloadSystemStatus"
                 label: root.systemManagementModel.busy ? "Loading..." : "Reload status"
                 enabled: !root.systemManagementModel.busy
                 onActivated: root.systemManagementModel.refresh()
@@ -170,6 +178,11 @@ Flickable {
         }
 
         SectionLabel { label: "Fedora updates" }
+
+        SystemUpdateControls {
+            model: root.systemManagementModel
+            onRevealRequested: target => root.reveal(target)
+        }
 
         GridLayout {
             Layout.fillWidth: true
@@ -404,7 +417,7 @@ Flickable {
 
         PlainText {
             Layout.fillWidth: true
-            text: "This pane only reads PackageKit and recovery state. Update installation, cache refresh, and cancellation require a separate confirmed operation workflow."
+            text: "Reload status reads PackageKit and recovery state. Metadata refresh and update installation require visible confirmation. PackageKit owns authorization and safe cancellation."
             color: Theme.menuMutedText
             font.pixelSize: Theme.fontCaptionSize
             wrapMode: Text.WordWrap
