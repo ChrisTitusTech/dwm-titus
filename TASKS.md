@@ -164,9 +164,11 @@ The validators perform no I/O. Separate fixed timedate1 and locale1 readers now
 bound connection setup, service replies, and decoding under a ten-second deadline.
 Typed private-bus tests cover success, denial, absence, malformed state, timeout,
 and late replies; read-only Fedora 44 probes also passed. No command, D-Bus
-mutation, or new protocol minor is enabled. The bounded locale catalog process,
-account/printer/source readers, lifecycle integration, and Settings controls
-remain outstanding.
+mutation, or new protocol minor is enabled. A separate fixed locale catalog
+collector now bounds output, process lifetime, signal cleanup, and reaping, with
+an independent timeout supervisor for abrupt collector death. It preserves exact
+installed identities and starts a new process for every read. Account/printer/source
+readers, lifecycle integration, and Settings controls remain outstanding.
 
 - [ ] Add date, time, timezone, and locale status plus safe common actions
   through stable platform services.

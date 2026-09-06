@@ -11,6 +11,7 @@ import importlib.util
 import importlib.machinery
 import os
 import pathlib
+import signal
 import stat
 import subprocess
 import sys
@@ -452,6 +453,241 @@ class RegionalReadTests(unittest.TestCase):
                 with contextlib.suppress(ProcessLookupError):
                     os.killpg(process.pid, 9)
                 process.communicate(timeout=3)
+
+
+class LocaleEnumerationTests(unittest.TestCase):
+    @contextlib.contextmanager
+    def catalog(self, mode="success", *arguments, signal_number=None):
+        popen = subprocess.Popen
+        processes = []
+
+        def launch(command, **options):
+            self.assertEqual(command, ["/usr/bin/timeout", "--signal=TERM",
+                "--kill-after=1", "3", "/usr/bin/locale", "-a"])
+            self.assertEqual(options["env"], {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
+            self.assertTrue(options["start_new_session"])
+            self.assertNotIn("preexec_fn", options)
+            process = popen(command[:4] + ["/usr/bin/python3",
+                str(REPO / "tests/fixtures/system-locale-process.py"), mode, *arguments], **options)
+            processes.append(process)
+            if signal_number is not None:
+                signal.raise_signal(signal_number)
+            return process
+
+        try:
+            with mock.patch.object(provider.subprocess, "Popen", side_effect=launch):
+                yield processes
+        finally:
+            for process in processes:
+                if process.returncode is None:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=2)
+                if process.stdout:
+                    process.stdout.close()
+                if process.stderr:
+                    process.stderr.close()
+
+    def failure(self, code, mode, *arguments):
+        with self.catalog(mode, *arguments) as processes:
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.read_locale_choices()
+            self.assertEqual(caught.exception.code, code)
+            self.assertNotIn("private diagnostic", str(caught.exception))
+            self.assertTrue(all(p.returncode is not None for p in processes))
+
+    def test_fixed_catalog_is_fresh_and_preserves_exact_names(self):
+        handlers = {number: signal.getsignal(number)
+                    for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        with mock.patch.dict(os.environ, {"LOCPATH": "/untrusted", "LC_ALL": "invalid"}), \
+                self.catalog() as processes:
+            for _ in range(2):
+                self.assertEqual(provider.read_locale_choices(), ("C", "C.utf8", "POSIX", "en_US.utf8"))
+            self.assertEqual(len(processes), 2)
+            self.assertTrue(all(p.returncode == 0 and p.stdout.closed and p.stderr.closed for p in processes))
+        self.assertEqual(handlers, {number: signal.getsignal(number) for number in handlers})
+
+    def test_missing_supervisor_is_a_scoped_failure(self):
+        handlers = {number: signal.getsignal(number)
+                    for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        with mock.patch.object(provider.subprocess, "Popen", side_effect=FileNotFoundError):
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.read_locale_choices()
+        self.assertEqual(caught.exception.code, "missing-provider")
+        self.assertEqual(handlers, {number: signal.getsignal(number) for number in handlers})
+
+    def test_exit_status_is_required_and_diagnostics_are_not_exposed(self):
+        for status, code in ((1, "internal"), (125, "internal"), (126, "internal"),
+                             (127, "missing-provider"), (124, "timeout"), (137, "timeout")):
+            with self.subTest(status=status):
+                self.failure(code, "exit", str(status))
+
+    def test_catalog_validates_complete_stdout(self):
+        for mode in ("duplicate", "nonascii", "blank", "oversized-name", "too-many"):
+            with self.subTest(mode=mode):
+                self.failure("malformed", mode)
+
+    def test_stdout_and_stderr_share_one_bounded_budget(self):
+        for mode in ("stdout-overflow", "stderr-overflow", "combined-overflow"):
+            with self.subTest(mode=mode):
+                self.failure("malformed", mode)
+
+    def test_exact_output_budget_and_empty_catalog_are_accepted(self):
+        with self.catalog("exact-budget"):
+            self.assertEqual(provider.read_locale_choices(), ("C",))
+        with self.catalog("empty"):
+            self.assertEqual(provider.read_locale_choices(), ())
+
+    def test_decoding_cannot_publish_success_or_malformed_after_deadline(self):
+        monotonic = time.monotonic
+        for malformed in (False, True):
+            offset = [0]
+            def decode(_output):
+                offset[0] = 4
+                if malformed:
+                    raise provider.SnapshotFailure("malformed", "Late parser failure")
+                return ("C",)
+            with self.subTest(malformed=malformed), self.catalog(), \
+                    mock.patch.object(provider.time, "monotonic", side_effect=lambda: monotonic() + offset[0]), \
+                    mock.patch.object(provider, "validate_locale_choices", side_effect=decode):
+                with self.assertRaises(provider.SnapshotFailure) as caught:
+                    provider.read_locale_choices()
+            self.assertEqual(caught.exception.code, "timeout")
+
+    def test_eof_without_process_exit_still_times_out(self):
+        started = time.monotonic()
+        self.failure("timeout", "closed-pipes")
+        self.assertLess(time.monotonic() - started, 5.5)
+
+    def test_timeout_kills_a_term_resistant_process_group(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pid_file = str(pathlib.Path(directory) / "child-pid")
+            self.failure("timeout", "descendant", pid_file)
+            child = int(pathlib.Path(pid_file).read_text())
+            self.assert_process_stopped(child)
+
+    def assert_process_stopped(self, pid, *, seconds=2):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            try:
+                state = pathlib.Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+            except FileNotFoundError:
+                return
+            if state == "Z":
+                return
+            time.sleep(0.02)
+        self.fail(f"Owned locale fixture {pid} remained running")
+
+    def test_non_main_thread_cannot_install_process_signal_handlers(self):
+        errors = []
+        def run():
+            try:
+                provider.read_locale_choices()
+            except provider.SnapshotFailure as error:
+                errors.append(error.code)
+        with mock.patch.object(provider.subprocess, "Popen") as launch:
+            thread = threading.Thread(target=run)
+            thread.start()
+            thread.join(timeout=2)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, ["internal"])
+        launch.assert_not_called()
+
+    def test_auto_reaped_children_are_rejected_before_launch(self):
+        with mock.patch.object(provider.signal, "getsignal", return_value=signal.SIG_IGN), \
+                mock.patch.object(provider.subprocess, "Popen") as launch:
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.read_locale_choices()
+        self.assertEqual(caught.exception.code, "internal")
+        launch.assert_not_called()
+
+    def test_termination_during_launch_cleans_up_before_exit_and_restores_handlers(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            handler = signal.getsignal(number)
+            with self.subTest(number=number), self.catalog("closed-pipes", signal_number=number) as processes:
+                with self.assertRaises(SystemExit) as caught:
+                    provider.read_locale_choices()
+                self.assertEqual(caught.exception.code, 128 + number)
+                self.assertTrue(all(p.returncode is not None for p in processes))
+            self.assertEqual(signal.getsignal(number), handler)
+
+    def test_cleanup_failure_cannot_publish_a_valid_catalog(self):
+        with self.catalog(), mock.patch.object(provider, "close_locale_process",
+                side_effect=provider.SnapshotFailure("timeout", "Fixture cleanup failure")):
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.read_locale_choices()
+        self.assertEqual(caught.exception.code, "timeout")
+
+    def test_cleanup_failure_cannot_hide_pending_process_termination(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            for during_cleanup in (False, True):
+                handler = signal.getsignal(number)
+                def cleanup(_process):
+                    if during_cleanup:
+                        signal.raise_signal(number)
+                    raise provider.SnapshotFailure("timeout", "Fixture cleanup failure")
+                with self.subTest(number=number, during_cleanup=during_cleanup), \
+                        self.catalog(signal_number=None if during_cleanup else number), \
+                        mock.patch.object(provider, "close_locale_process", side_effect=cleanup):
+                    with self.assertRaises(SystemExit) as caught:
+                        provider.read_locale_choices()
+                    self.assertEqual(caught.exception.code, 128 + number)
+                self.assertEqual(signal.getsignal(number), handler)
+
+    def test_lost_child_ownership_never_signals_a_possibly_reused_group(self):
+        process = mock.Mock(pid=123)
+        with mock.patch.object(provider, "locale_process_status", side_effect=ChildProcessError), \
+                mock.patch.object(provider.os, "killpg") as kill:
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.close_locale_process(process)
+        self.assertEqual(caught.exception.code, "timeout")
+        kill.assert_not_called()
+        process.stdout.close.assert_called_once()
+        process.stderr.close.assert_called_once()
+
+    def test_killed_collector_leaves_a_bounded_independent_supervisor(self):
+        self.interrupt_collector(signal.SIGKILL)
+
+    def test_terminated_collector_cleans_up_a_running_descendant_group(self):
+        self.interrupt_collector(signal.SIGTERM)
+
+    def interrupt_collector(self, number):
+        with tempfile.TemporaryDirectory() as directory:
+            pid_file = pathlib.Path(directory) / "child-pid"
+            supervisor_file = pathlib.Path(directory) / "supervisor-pid"
+            process = subprocess.Popen(["/usr/bin/python3",
+                str(REPO / "tests/fixtures/system-locale-process.py"), "collector",
+                str(PROVIDER_PATH), str(pid_file), str(supervisor_file)],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                start_new_session=True)
+            supervisor = None
+            try:
+                deadline = time.monotonic() + 3
+                while not pid_file.exists() and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(pid_file.exists(), "Locale child did not become ready")
+                supervisor = int(supervisor_file.read_text())
+                child = int(pid_file.read_text())
+                process.send_signal(number)
+                process.communicate(timeout=3)
+                self.assertEqual(process.returncode, -signal.SIGKILL if number == signal.SIGKILL else 143)
+                self.assert_process_stopped(supervisor, seconds=5)
+                self.assert_process_stopped(child)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate(timeout=2)
+                if supervisor is None and supervisor_file.exists():
+                    supervisor = int(supervisor_file.read_text())
+                if supervisor is not None:
+                    # Fixture-only cleanup if an assertion failed while the
+                    # known supervisor and its group are still running.
+                    try:
+                        command = pathlib.Path(f"/proc/{supervisor}/cmdline").read_bytes()
+                        if command.startswith(b"/usr/bin/timeout\0"):
+                            os.killpg(supervisor, signal.SIGKILL)
+                    except (FileNotFoundError, ProcessLookupError):
+                        pass
 
 
 class UpdateEventMonitorTests(unittest.TestCase):
