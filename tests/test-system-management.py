@@ -283,12 +283,12 @@ raise SystemExit(main(["regional-choices", "locale"]))
                 self.assertEqual(result.returncode, 1, result.stderr)
                 self.assertEqual(result.stderr, b"")
 
-    def test_cli_grammar_and_native_mutations_remain_disabled(self):
+    def test_preflight_cli_grammar_and_invalid_native_requests(self):
         invalid = (["regional-choices"], ["regional-choices", "time"], ["regional-choices", "locale", "extra"],
                    ["regional-preview"], ["regional-preview", "ntp-set"],
                    ["regional-preview", "arbitrary", "value"], ["regional-preview", "ntp-set", "enabled", "extra"],
-                   ["timezone-set", "UTC", "a" * 64], ["ntp-set", "enabled", "a" * 64],
-                   ["locale-set", "LANG=C", "a" * 64])
+                   ["timezone-set", "UTC"], ["ntp-set", "enabled", "A" * 64],
+                   ["locale-set", "LC_TIME=C", "a" * 64])
         with mock.patch.object(provider, "RegionalRead") as reader, \
                 mock.patch.object(provider, "read_locale_choices") as locales, \
                 mock.patch.object(provider, "PackageKitBackend") as backend, \
@@ -9356,6 +9356,333 @@ class OperationWatchTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertEqual(result.stderr, b"operation observation was interrupted\n")
             self.assertEqual(provider.load_journal_state(journal.chain).handoff.operation_id, operation.operation_id)
+
+
+class RegionalOwnerTests(unittest.TestCase):
+    boot_id = JournalRetainedSessionTests.boot_id
+    session = JournalRetainedSessionTests.session
+
+    def setup_client(self, journal, mode="success", action="timezone-set", argument="Etc/UTC"):
+        state = (provider.parse_locale_configuration(["LANG=POSIX"]) if action == "locale-set" else
+                 provider.RegionalTimeState("UTC", True, False, True))
+        preview = provider.make_regional_preview(action, argument, state,
+            ["C", "POSIX"] if action == "locale-set" else ["UTC", "Etc/UTC"])
+        self.events = []
+        self.during = lambda: None
+        self.before_admission = lambda: None
+        self.client = None
+
+        def factory(received_action, received_argument, generation, before, after):
+            self.assertEqual((received_action, received_argument), (action, argument))
+            client = types.SimpleNamespace(sent=False, acknowledged=False, hook_error=None,
+                kind="locale-state" if action == "locale-set" else "time-state")
+            self.client = client
+
+            def hook(callback, *args):
+                try:
+                    callback(*args)
+                except Exception as error:
+                    client.hook_error = error
+                    raise provider.SnapshotFailure("interrupted", "Fixture checkpoint failed") from error
+
+            def run():
+                provider.require_regional_generation(preview, generation)
+                if mode == "preflight":
+                    raise provider.SnapshotFailure("missing-provider", "Fixture preflight unavailable")
+                self.before_admission()
+                hook(before, preview)
+                with provider.lock_writable_journal(journal):
+                    current = provider.load_writable_journal_state(journal).active
+                    self.assertEqual(current.state, "authorizing")
+                    self.assertTrue(provider.native_journal_owner_busy(journal, current))
+                # This interval is unlocked; only the active-file lease is held.
+                with provider._journal_lock(journal.chain.directory_descriptor, exclusive=True):
+                    pass
+                if mode == "stale-before-send":
+                    raise provider.SnapshotFailure("conflict", "Fixture confirmation changed")
+                client.sent = True
+                self.events.append("sent")
+                if mode in {"denied", "method-error", "timeout", "transport"}:
+                    code = {"denied": "permission-denied", "method-error": "internal",
+                            "timeout": "timeout", "transport": "interrupted"}[mode]
+                    raise provider.SnapshotFailure(code, "Fixture service outcome")
+                client.acknowledged = True
+                hook(after)
+                self.during()
+                self.events.append("verified")
+                if mode == "mismatch":
+                    raise provider.SnapshotFailure("conflict", "Fixture verification mismatch")
+                return state
+            client.run = run
+            return client
+        return factory, preview.generation
+
+    def invoke(self, journal, mode="success", action="timezone-set", argument="Etc/UTC", write=None,
+               on_admission=None, configure=None):
+        factory, generation = self.setup_client(journal, mode, action, argument)
+        if configure is not None:
+            configure()
+        output = []
+        with mock.patch.object(provider, "RegionalMutation", side_effect=factory) as client, \
+                mock.patch.object(provider, "RegionalRead") as fresh, \
+                mock.patch.object(provider, "PackageKitBackend") as packagekit:
+            terminal = provider.run_regional_mutation(journal, action, argument, generation,
+                output.append if write is None else write, on_admission=on_admission)
+            packagekit.assert_not_called()
+            client.assert_called_once()
+        return terminal, "".join(output), fresh
+
+    def test_successful_fixed_actions_have_durable_handoffs_and_no_update_restart_changes(self):
+        for action, argument in (("timezone-set", "Etc/UTC"), ("ntp-set", "enabled"), ("locale-set", "LANG=C")):
+            with self.subTest(action=action), self.session() as (path, _chain, journal):
+                with provider.lock_writable_journal(journal):
+                    previous = provider.begin_journal_operation(journal, "updates-install-all",
+                        "2026-09-06T21:00:00Z", "Earlier update", generation="a" * 64,
+                        transaction_path="/1_test", boot_id=self.boot_id)
+                    provider.advance_journal_operation(journal, previous, replace(previous, state="running"))
+                    previous = provider.load_writable_journal_state(journal).active
+                    provider.advance_journal_operation(journal, previous, replace(previous, state="succeeded",
+                        system_restart="system", session_restart="session", application_restart=True,
+                        finished_at="2026-09-06T21:01:00Z", terminal_monotonic=100))
+                    provider.complete_journal_terminal(journal, boot_id=self.boot_id)
+                    provider.acknowledge_journal_handoff(journal, previous.operation_id)
+                restart = (path / "restart").read_bytes()
+                terminal, output, fresh = self.invoke(journal, action=action, argument=argument)
+                self.assertEqual(self.events, ["sent", "verified"])
+                self.assertEqual(terminal.state, "succeeded")
+                self.assertIsNone(terminal.boot_id)
+                self.assertIsNone(terminal.generation)
+                self.assertIsNone(terminal.terminal_monotonic)
+                state = provider.load_journal_state(journal.chain)
+                self.assertIsNone(state.active)
+                self.assertEqual(state.handoff.operation_id, terminal.operation_id)
+                self.assertEqual(state.terminals[terminal.slot], terminal)
+                self.assertEqual((path / "restart").read_bytes(), restart)
+                self.assertEqual([row[4] for row in rows(output.splitlines(), "operation")],
+                    ["pending", "authorizing", "running", "succeeded"])
+                self.assertTrue(all(row[5:7] == ["unknown", "no"] for row in rows(output.splitlines(), "operation")))
+                self.assertEqual(output.splitlines()[-1], "complete\toperation")
+                fresh.assert_not_called()
+                if action == "locale-set":
+                    self.assertIn("sign out and back in", terminal.detail)
+
+    def test_denial_conflict_and_explicit_error_have_exact_typed_terminals(self):
+        for mode, state, code in (("denied", "permission-denied", "permission-denied"),
+                                  ("method-error", "failed", "internal"),
+                                  ("mismatch", "failed", "conflict"),
+                                  ("stale-before-send", "failed", "conflict")):
+            with self.subTest(mode=mode), self.session() as (_path, _chain, journal):
+                terminal, output, fresh = self.invoke(journal, mode)
+                self.assertEqual((terminal.state, terminal.error_code), (state, code))
+                self.assertEqual(rows(output.splitlines(), "error")[0][1:3], ["regional", code])
+                self.assertEqual(self.client.sent, mode != "stale-before-send")
+                fresh.assert_not_called()
+
+    def test_ambiguous_terminal_is_durable_and_lease_free_before_independent_read(self):
+        for mode in ("timeout", "transport"):
+            with self.subTest(mode=mode), self.session() as (_path, _chain, journal):
+                factory, generation = self.setup_client(journal, mode)
+                output = []
+                def reread():
+                    state = provider.load_journal_state(journal.chain)
+                    self.assertIsNone(state.active)
+                    self.assertEqual(state.terminals[state.handoff.slot].state, "interrupted")
+                    self.assertTrue(provider._try_native_owner_lock(journal.descriptor("active")))
+                    provider._unlock_native_owner(journal.descriptor("active"))
+                    self.assertTrue(output[-1].endswith("complete\toperation\n"))
+                    raise provider.SnapshotFailure("permission-denied", "Fresh read unavailable")
+                with mock.patch.object(provider, "RegionalMutation", side_effect=factory), \
+                        mock.patch.object(provider, "RegionalRead") as reader:
+                    reader.return_value.run.side_effect = reread
+                    terminal = provider.run_regional_mutation(journal, "timezone-set", "Etc/UTC",
+                        generation, output.append)
+                    reader.assert_called_once_with("time-state")
+                    reader.return_value.run.assert_called_once()
+                self.assertEqual(terminal.state, "interrupted")
+                self.assertEqual(terminal.error_code, "timeout" if mode == "timeout" else "interrupted")
+                self.assertEqual(self.events, ["sent"])
+
+    def test_preflight_failure_never_admits_or_emits_an_operation(self):
+        with self.session() as (_path, _chain, journal):
+            before = provider.load_journal_state(journal.chain)
+            output, admitted = [], mock.Mock()
+            with self.assertRaises(provider.SnapshotFailure):
+                self.invoke(journal, "preflight", write=output.append, on_admission=admitted)
+            self.assertEqual(output, [])
+            admitted.assert_not_called()
+            self.assertEqual(provider.load_journal_state(journal.chain), before)
+
+    def test_output_loss_before_dispatch_aborts_but_after_dispatch_keeps_verification(self):
+        for phase in ("pending", "authorizing", "running", "succeeded"):
+            with self.subTest(phase=phase), self.session() as (_path, _chain, journal):
+                output = []
+                def write(chunk):
+                    if "\t" + phase + "\t" in chunk:
+                        raise BrokenPipeError("Fixture output closed")
+                    output.append(chunk)
+                with self.assertRaises(BrokenPipeError):
+                    self.invoke(journal, write=write)
+                state = provider.load_journal_state(journal.chain)
+                self.assertIsNone(state.active)
+                terminal = state.terminals[state.handoff.slot]
+                sent = phase in {"running", "succeeded"}
+                self.assertEqual(self.client.sent, sent)
+                self.assertEqual(terminal.state, "succeeded" if sent else "failed")
+                self.assertEqual(self.events, ["sent", "verified"] if sent else [])
+                self.assertNotIn("complete\toperation", "".join(output))
+
+    def test_checkpoint_failures_suppress_terminal_success_and_release_the_lease(self):
+        for phase in ("authorizing", "running", "succeeded"):
+            for after_write in (False, True):
+                with self.subTest(phase=phase, after_write=after_write), self.session() as (_path, _chain, journal):
+                    output = []
+                    original = provider.advance_journal_operation
+                    def advance(current_journal, current, following, **kwargs):
+                        if following.state == phase:
+                            if after_write:
+                                original(current_journal, current, following, **kwargs)
+                            raise provider.JournalCommitError("Fixture sync failure")
+                        return original(current_journal, current, following, **kwargs)
+                    with mock.patch.object(provider, "advance_journal_operation", side_effect=advance), \
+                            self.assertRaises(provider.JournalCommitError):
+                        self.invoke(journal, write=output.append)
+                    self.assertNotIn("complete\toperation", "".join(output))
+                    state = provider.load_journal_state(journal.chain)
+                    self.assertIsNotNone(state.active)
+                    self.assertIsNone(state.handoff)
+                    self.assertTrue(provider._try_native_owner_lock(journal.descriptor("active")))
+                    provider._unlock_native_owner(journal.descriptor("active"))
+                    self.assertEqual(self.client.sent, phase != "authorizing")
+
+    def test_admission_race_does_not_replace_a_competing_owner(self):
+        with self.session() as (_path, _chain, journal):
+            admitted = mock.Mock()
+            def configure():
+                def competing():
+                    with provider.lock_writable_journal(journal):
+                        provider.begin_journal_operation(journal, "ntp-set", "2026-09-06T22:00:00Z", "Competing request")
+                self.before_admission = competing
+            with self.assertRaises(provider.JournalAdmissionError):
+                self.invoke(journal, on_admission=admitted, configure=configure)
+            admitted.assert_not_called()
+            self.assertEqual(provider.load_journal_state(journal.chain).active.action_id, "ntp-set")
+            self.assertFalse(self.client.sent)
+
+    def test_native_cli_routes_only_fixed_valid_arguments(self):
+        for args in (["timezone-set", "UTC", "a" * 64], ["ntp-set", "enabled", "b" * 64],
+                     ["locale-set", "LANG=C", "c" * 64]):
+            with mock.patch.object(provider, "regional_command", return_value=0) as command:
+                self.assertEqual(provider.main(args), 0)
+                command.assert_called_once_with(*args)
+        for args in (["timezone-set"], ["timezone-set", "../UTC", "a" * 64],
+                     ["ntp-set", "true", "a" * 64], ["locale-set", "LANG=C", "A" * 64],
+                     ["locale-set", "LANG=C", "a" * 64, "extra"]):
+            with mock.patch.object(provider, "regional_command") as command, \
+                    contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(provider.main(args), 2)
+                command.assert_not_called()
+
+
+class RegionalCommandTests(unittest.TestCase):
+    boot_id = RegionalOwnerTests.boot_id
+    session = RegionalOwnerTests.session
+    setup_client = RegionalOwnerTests.setup_client
+
+    def invoke(self, journal, mode="success", writer=None):
+        factory, generation = self.setup_client(journal, mode)
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(pathlib.Path(journal.chain.path).parents[1])}), \
+                mock.patch.object(provider, "read_fedora_identity", return_value={"ID": "fedora"}), \
+                mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                mock.patch.object(provider, "RegionalMutation", side_effect=factory), \
+                mock.patch.object(provider, "RegionalRead"), \
+                mock.patch.object(provider, "PackageKitBackend") as packagekit, \
+                contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+            code = provider.run_regional_command("timezone-set", "Etc/UTC", generation, writer, None)
+            packagekit.assert_not_called()
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_confirmed_success_and_denial_have_durable_exact_results(self):
+        for mode, expected, code in (("success", "succeeded", 0), ("denied", "permission-denied", 1)):
+            with self.subTest(mode=mode), self.session() as (_path, _chain, journal):
+                result, output, diagnostic = self.invoke(journal, mode)
+                self.assertEqual((result, diagnostic), (code, ""))
+                state = provider.load_journal_state(journal.chain)
+                self.assertIsNone(state.active)
+                terminal = state.terminals[state.handoff.slot]
+                self.assertEqual(terminal.state, expected)
+                self.assertEqual(rows(output.splitlines(), "audit")[0][1:5],
+                    [terminal.operation_id, "timezone-set", "timezone", expected])
+                self.assertEqual(output.splitlines()[-1], "complete\toperation")
+
+    def test_preflight_rejection_and_overlap_do_not_change_the_journal(self):
+        for mode in ("preflight", "active", "handoff"):
+            with self.subTest(mode=mode), self.session() as (_path, _chain, journal):
+                if mode != "preflight":
+                    with provider.lock_writable_journal(journal):
+                        active = provider.begin_journal_operation(journal, "ntp-set", "2026-09-06T22:00:00Z", "Existing")
+                        if mode == "handoff":
+                            provider.advance_journal_operation(journal, active, replace(active, state="failed",
+                                error_code="internal", finished_at="2026-09-06T22:01:00Z"))
+                            provider.complete_journal_terminal(journal)
+                before = provider.load_journal_state(journal.chain)
+                code, output, diagnostic = self.invoke(journal, "preflight" if mode == "preflight" else "success")
+                self.assertEqual((code, diagnostic), (1, ""))
+                self.assertEqual(rows(output.splitlines(), "error")[0][1:3],
+                    ["regional", "missing-provider" if mode == "preflight" else "conflict"])
+                self.assertIn("no regional mutation was dispatched", output)
+                self.assertEqual(output.splitlines()[-1], "complete\toperation")
+                self.assertEqual(provider.load_journal_state(journal.chain), before)
+
+    def test_uncertain_admission_and_terminal_handoff_never_fabricate_completion(self):
+        for stage in ("admission", "handoff"):
+            for after in (False, True):
+                with self.subTest(stage=stage, after=after), self.session() as (_path, _chain, journal):
+                    name = "begin_journal_operation" if stage == "admission" else "complete_journal_terminal"
+                    original = getattr(provider, name)
+                    def fail(*args, **kwargs):
+                        if after:
+                            original(*args, **kwargs)
+                        raise provider.JournalCommitError("Fixture private detail")
+                    with mock.patch.object(provider, name, side_effect=fail):
+                        code, output, diagnostic = self.invoke(journal)
+                    self.assertEqual(code, 1)
+                    self.assertNotIn("complete\toperation", output)
+                    self.assertEqual(diagnostic,
+                        "regional result could not be confirmed; refresh state and observe the existing operation\n")
+                    self.assertEqual(self.client.sent, stage == "handoff")
+                    if stage == "admission":
+                        self.assertEqual(output, "")
+                    state = provider.load_journal_state(journal.chain)
+                    self.assertEqual(state.handoff is not None, stage == "handoff" and after)
+
+    def test_raw_short_full_and_closed_output_abort_before_dispatch(self):
+        for result in (0, BlockingIOError("Full"), BrokenPipeError("Closed")):
+            with self.subTest(result=result), self.session() as (_path, _chain, journal):
+                writer = mock.Mock(**({"side_effect": result} if isinstance(result, Exception) else {"return_value": result}))
+                code, output, diagnostic = self.invoke(journal, writer=writer)
+                self.assertEqual((code, output), (1, ""))
+                self.assertIn("observe the existing operation", diagnostic)
+                writer.assert_called_once()
+                self.assertFalse(self.client.sent)
+                state = provider.load_journal_state(journal.chain)
+                self.assertEqual(state.terminals[state.handoff.slot].state, "failed")
+
+    def test_non_fedora_rejects_before_opening_journal(self):
+        with mock.patch.object(provider, "read_fedora_identity", side_effect=provider.SnapshotFailure("unsupported", "Not Fedora")), \
+                mock.patch.object(provider, "open_journal_directory") as journal, \
+                mock.patch.object(provider, "RegionalMutation") as client, \
+                contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(provider.run_regional_command("timezone-set", "UTC", "a" * 64, None, None), 1)
+            journal.assert_not_called()
+            client.assert_not_called()
+            self.assertEqual(stdout.getvalue(), "")
+
+    def test_private_bus_actual_cli_journal_and_output_loss(self):
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-regional-owner-bus.py"), str(PROVIDER_PATH)],
+            capture_output=True, text=True, timeout=60, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Private-bus regional owner: PASS", result.stdout)
 
 
 class UpdateCommandTests(unittest.TestCase):
