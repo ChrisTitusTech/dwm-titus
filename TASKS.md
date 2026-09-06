@@ -96,7 +96,14 @@ recovery to three retries. Native nested-X11 fixtures exercise live progress,
 failed-result replay, stale collector data, restart adoption, and failed process
 starts without host service calls. Originating mutation, confirmation, and cancel
 UI integration must be completed before this boundary can be accepted.
-Settings mutation actions remain disabled.
+The root owner now accepts only fixed update origins, enforces origin-specific
+exit/result validation, and preserves a bounded verified progress log. A shared
+exact-ID cancellation/acknowledgment control preserves the live observer and
+reconciles a terminal handoff that wins the cancellation race. Native private
+fixtures cover rejected admission, uncertain start, denial, revoked cancellation,
+control failure and timeout, and overlap rejection. These internal entry points
+are not exposed by IPC. Settings mutation actions remain disabled until visible
+confirmation and action-availability guards are integrated.
 The fixed `watch-updates` command now observes only global PackageKit discovery
 changes and daemon ownership changes. It establishes subscriptions before
 reporting readiness, bounds setup to ten seconds, and never starts a transaction.

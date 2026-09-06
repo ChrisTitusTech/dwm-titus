@@ -4,7 +4,8 @@ import Quickshell.Io
 import qs.core
 import "SystemOperationProtocol.js" as Protocol
 
-// Root-owned observation and journal acknowledgment; never starts a mutation.
+// Root-owned operation streams and exact-ID controls. The Settings caller owns
+// visible confirmation; this model accepts only fixed update commands.
 Scope {
     id: root
 
@@ -18,18 +19,33 @@ Scope {
     property var result: null
     property var audit: null
     property var operationError: null
+    property var log: []
     property var handoff: null
     property var snapshotActive: null
     property var acknowledgedIds: []
     property var parser: null
+    property bool streamReplay: true
+    property bool streamFailed: false
+    property bool terminalPending: false
+    property bool snapshotKnown: false
     property bool streamOwned: false
     property bool controlOwned: false
+    property bool controlFinishing: false
     property bool waitingSnapshot: false
     property bool blocked: false
     property int retries: 0
     property string controlId: ""
+    property string controlPurpose: ""
+    property string cancelRequestedId: ""
+    property string cancelDetail: ""
     property bool controlInvalid: false
     readonly property bool busy: streamOwned || controlOwned || waitingSnapshot || retryTimer.running
+    readonly property bool canStart: root.snapshotKnown && !root.busy && !root.blocked
+        && root.snapshotActive === null && root.handoff === null
+    readonly property bool canCancel: root.streamOwned && !root.controlOwned && !root.streamFailed
+        && !root.terminalPending && root.log.length > 0 && root.progress !== null && root.progress.cancelable
+        && (root.progress.kind === "update" || root.progress.kind === "refresh")
+        && root.progress.state !== "cancel-requested" && root.cancelRequestedId !== root.progress.id
 
     function matches(left, right) {
         return left !== null && right !== null && left.id === right.id
@@ -66,6 +82,7 @@ Scope {
     }
 
     function snapshotFailed() {
+        root.snapshotKnown = false;
         root.waitingSnapshot = false;
         if (root.streamOwned || root.controlOwned || root.blocked || retryTimer.running) return;
         root.recover("Operation recovery could not read complete journal evidence");
@@ -74,12 +91,16 @@ Scope {
     // Only fully accepted snapshots may enter this method. A live stream is
     // the sole observer even before it emits its first operation identity.
     function acceptSnapshot(active, terminal) {
+        root.snapshotKnown = false;
         if (active !== null && root.wasAcknowledged(active.id)) active = null;
         if (terminal !== null && root.wasAcknowledged(terminal.id)) terminal = null;
         root.waitingSnapshot = false;
         root.snapshotActive = active;
         root.handoff = terminal;
-        if (root.streamOwned || root.controlOwned || root.blocked || retryTimer.running) return;
+        if (root.streamOwned || root.controlOwned || root.blocked || retryTimer.running) {
+            root.snapshotKnown = true;
+            return;
+        }
         if (terminal !== null && root.matches(terminal, root.result)) {
             root.startAcknowledgment();
         } else if (active !== null && root.matches(active, root.result)) {
@@ -87,7 +108,14 @@ Scope {
         } else if (active !== null || terminal !== null) {
             const target = active !== null ? active : terminal;
             root.parser = Protocol.create(target.id, target.actionId);
+            root.progress = null;
+            root.log = [];
             root.streamOwned = true;
+            root.streamReplay = true;
+            root.streamFailed = false;
+            root.terminalPending = false;
+            root.cancelRequestedId = "";
+            root.cancelDetail = "";
             if (active !== null) root.discoveryInvalidated();
             root.progress = active;
             root.state = "observing";
@@ -100,49 +128,140 @@ Scope {
             root.state = root.result === null ? "idle" : "result";
             root.detail = root.result === null ? "" : root.result.detail;
         }
+        root.snapshotKnown = true;
+    }
+
+    // This internal entry point is not exposed by IPC. A future Settings
+    // confirmation must also validate fresh discovery and action availability.
+    function startUpdate(action, generation) {
+        // Recheck fields rather than a UI binding during reentrant publication.
+        if (!root.snapshotKnown || root.streamOwned || root.controlOwned || root.waitingSnapshot
+                || root.blocked || retryTimer.running || root.snapshotActive !== null || root.handoff !== null
+                || typeof generation !== "string"
+                || (action !== "updates-refresh" && action !== "updates-install-all")
+                || (action === "updates-install-all" ? !/^[0-9a-f]{64}$/.test(generation) : generation !== ""))
+            return false;
+        const command = Commands.systemManagementCommand(action,
+            action === "updates-install-all" ? [generation] : []);
+        root.snapshotKnown = false;
+        root.parser = Protocol.create("", action);
+        root.progress = null;
+        root.log = [];
+        root.streamOwned = true;
+        root.streamReplay = false;
+        root.streamFailed = false;
+        root.terminalPending = false;
+        root.result = null;
+        root.audit = null;
+        root.operationError = null;
+        root.cancelRequestedId = "";
+        root.cancelDetail = "";
+        root.state = "observing";
+        root.detail = "Starting " + action;
+        watchProcess.command = command;
+        root.discoveryInvalidated();
+        Qt.callLater(function() { if (root.streamOwned) watchProcess.running = true; });
+        return true;
     }
 
     function consume(data) {
         if (!root.streamOwned) return;
         if (!Protocol.consume(root.parser, data)) {
+            root.streamFailed = true;
             root.detail = root.parser.failure;
             watchProcess.signal(9);
             return;
         }
         // A terminal row is provisional until EOF, audit, completion AND the
         // exit status pass. Never display it as successful or acknowledge it.
+        if (root.parser.operation !== null && Protocol.terminal(root.parser.operation.state)) {
+            root.terminalPending = true;
+            root.state = "verifying";
+            root.detail = "Verifying the complete operation result...";
+        }
         for (let i = root.parser.records.length - 1; i >= 0; i--) {
             if (!Protocol.terminal(root.parser.records[i].state)) {
                 root.progress = root.parser.records[i];
                 break;
             }
         }
-        if (root.parser.operation !== null && Protocol.terminal(root.parser.operation.state)) {
-            root.state = "verifying";
-            root.detail = "Verifying the complete operation result...";
-        }
+        root.log = root.parser.records.filter(record => !Protocol.terminal(record.state));
     }
 
     function finishWatch(exitCode, normalExit) {
         if (!root.streamOwned) return;
         if (root.parser.expectedAction === "updates-refresh" || root.parser.expectedAction === "updates-install-all")
             root.discoveryInvalidated();
-        root.streamOwned = false;
-        if (!Protocol.finish(root.parser, exitCode, normalExit, true)) {
+        if (!Protocol.finish(root.parser, exitCode, normalExit, root.streamReplay)) {
+            root.streamFailed = true;
             root.recover(exitCode === 3 ? "Operation watch target changed (conflict)" : root.parser.failure);
+            root.streamOwned = false;
             return;
         }
         root.result = root.parser.operation;
         root.audit = root.parser.audit;
         root.operationError = root.parser.error;
         root.progress = null;
+        root.waitingSnapshot = true;
         root.state = "result";
         root.detail = root.result.detail;
+        root.log = root.parser.records.slice();
+        root.streamOwned = false;
         // Even a replay that began from an active snapshot needs a committed
         // handoff snapshot before ack. Never infer that handoff from stdout.
         Qt.callLater(function() {
-            if (root.matches(root.handoff, root.result)) root.startAcknowledgment();
+            if (root.matches(root.handoff, root.result) && !root.controlOwned) root.startAcknowledgment();
             else root.requestSnapshot();
+        });
+    }
+
+    function cancelTarget() {
+        const current = root.parser === null ? null : root.parser.operation;
+        if (!root.streamOwned || root.controlOwned || root.streamFailed || current === null
+                || root.parser.failure.length > 0 || Protocol.terminal(current.state)
+                || (current.kind !== "update" && current.kind !== "refresh")
+                || !current.cancelable || current.state === "cancel-requested"
+                || root.state === "verifying" || root.cancelRequestedId === current.id) return null;
+        return current;
+    }
+
+    function requestCancel() {
+        // Recheck the parser itself: QML log/progress callbacks can run before
+        // a binding catches up with the latest AllowCancel or terminal record.
+        const target = root.cancelTarget();
+        if (target === null) return false;
+        root.controlOwned = true;
+        root.controlId = target.id;
+        root.controlPurpose = "cancel";
+        root.controlInvalid = false;
+        root.cancelDetail = "Requesting cancellation from PackageKit...";
+        ackProcess.command = Commands.systemManagementCommand("updates-cancel", [root.controlId]);
+        Qt.callLater(root.launchControl);
+        return true;
+    }
+
+    function launchControl() {
+        if (!root.controlOwned) return;
+        controlDeadline.restart();
+        ackProcess.running = true;
+    }
+
+    function finishCancellation(exitCode, normalExit) {
+        const accepted = normalExit && exitCode === 0 && !root.controlInvalid;
+        if (accepted) root.cancelRequestedId = root.controlId;
+        root.cancelDetail = accepted
+            ? "Cancellation requested. Waiting for PackageKit's verified terminal result."
+            : exitCode === 3 && normalExit && !root.controlInvalid
+            ? "The cancellation target changed. Reloading recovery state; no cancellation was confirmed."
+            : "Cancellation was not confirmed. PackageKit still owns the operation; continue watching or reload status.";
+        root.controlOwned = false;
+        // The operation may finish and a newer handoff may arrive while this
+        // control is running. Reconcile only after its final Process signals.
+        Qt.callLater(function() {
+            if (!root.streamOwned) {
+                if (root.snapshotKnown) root.acceptSnapshot(root.snapshotActive, root.handoff);
+                else if (!root.waitingSnapshot) root.snapshotFailed();
+            } else if (exitCode === 3) root.requestSnapshot();
         });
     }
 
@@ -150,36 +269,48 @@ Scope {
         if (root.streamOwned || root.controlOwned || root.blocked
                 || !root.matches(root.handoff, root.result)
                 || root.wasAcknowledged(root.result.id)) return;
-        root.controlId = root.result.id;
-        root.controlInvalid = false;
         root.controlOwned = true;
+        root.controlId = root.result.id;
+        root.controlPurpose = "ack";
+        root.controlInvalid = false;
+        root.waitingSnapshot = false;
         root.state = "acknowledging";
         root.detail = "Acknowledging the verified operation result...";
         ackProcess.command = Commands.systemManagementCommand("ack-operation", [root.controlId]);
-        Qt.callLater(function() {
-            if (root.controlOwned) {
-                controlDeadline.restart();
-                ackProcess.running = true;
-            }
-        });
+        Qt.callLater(root.launchControl);
     }
 
     function finishAcknowledgment(exitCode, normalExit) {
-        if (!root.controlOwned) return;
+        if (!root.controlOwned || root.controlFinishing) return;
+        root.controlFinishing = true;
         controlDeadline.stop();
-        root.controlOwned = false;
+        // Keep ownership until the old Process has emitted runningChanged.
+        // Reentrant UI callbacks may request another control on release.
+        Qt.callLater(function() { root.completeControl(exitCode, normalExit); });
+    }
+
+    function completeControl(exitCode, normalExit) {
+        root.controlFinishing = false;
+        if (root.controlPurpose === "cancel") {
+            root.finishCancellation(exitCode, normalExit);
+            return;
+        }
         root.state = "result";
         if (!normalExit || exitCode !== 0 || root.controlInvalid) {
             root.blocked = true;
             root.detail = "The verified result could not be acknowledged. Reload status to retry recovery.";
+            root.controlOwned = false;
             return;
         }
         if (root.matches(root.handoff, root.result)) root.handoff = null;
+        if (root.snapshotActive !== null && root.snapshotActive.id === root.controlId)
+            root.snapshotActive = null;
         // Match the bounded retained journal: late discovery output must not
         // resurrect an acknowledged identity or send a duplicate ack control.
         root.acknowledgedIds = root.acknowledgedIds.concat([root.controlId]).slice(-32);
         root.retries = 0;
         root.detail = root.result.detail;
+        root.controlOwned = false;
         root.acknowledged(root.controlId);
         // Another client can admit or finish its operation after the helper
         // clears our handoff but before that helper exits. Do not drop a newer
@@ -208,6 +339,7 @@ Scope {
             waitForEnd: false
             onDataChanged: {
                 if (root.streamOwned && data.byteLength > 8192) {
+                    root.streamFailed = true;
                     Protocol.fail(root.parser, "Operation error output exceeded its limit");
                     watchProcess.signal(9);
                 }

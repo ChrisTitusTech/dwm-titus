@@ -50,6 +50,11 @@ cleanup() {
 			stop_process "$helper_pid"
 		done
 	fi
+	if [ -n "${update_action_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$update_action_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	stop_process "${dwm_pid:-}"
 	stop_process "${xvfb_pid:-}"
 	if [ "$cleanup_status" -ne 0 ]; then
@@ -342,6 +347,54 @@ if ! grep -F 'Operation parser native tests: PASS' "$work/operation-parser.log";
 fi
 
 # Exercise the real root-owned Process lifecycle with a private fixed helper.
+mkdir -p "$work/update-action" "$work/update-action-data/dwm-titus/scripts"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/update-action/"
+cp "$repo/tests/qml/SystemUpdateActionOwner.qml" "$work/update-action/shell.qml"
+update_action_helper=$work/update-action-data/dwm-titus/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-update-action-provider.py" "$update_action_helper"
+chmod +x "$update_action_helper"
+quickshell_binary=$(command -v quickshell)
+for action_scenario in refresh install rejected denied uncertain wrong-exit revoked \
+	cancel-accepted cancel-race cancel-denied cancel-conflict cancel-output \
+	cancel-error-overflow cancel-timeout cancel-recovery cancel-recovery-denied cancel-recovery-failure failed-start; do
+	action_state=$work/update-action-$action_scenario
+	mkdir -p "$action_state"
+	action_path=$PATH
+	[ "$action_scenario" != failed-start ] || action_path=$work/no-executables
+	timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$work/update-action-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+		DWM_UPDATE_ACTION_FIXTURE="$action_state" DWM_UPDATE_ACTION_SCENARIO="$action_scenario" PATH="$action_path" \
+		"$quickshell_binary" --no-duplicate --path "$work/update-action/shell.qml" \
+		>"$action_state/log" 2>&1 &
+	quickshell_pid=$!
+	action_status=0
+	wait "$quickshell_pid" || action_status=$?
+	quickshell_pid=
+	if [ "$action_status" -ne 0 ] || ! grep -F 'Update action owner native tests: PASS' "$action_state/log" ||
+		grep -Fq 'Update action owner FAILED:' "$action_state/log" || [ -e "$action_state/invalid-arguments" ] ||
+		[ -e "$action_state/control-overlap" ]; then
+		cat "$action_state/log" >&2
+		exit 1
+	fi
+	[ "$action_scenario" != failed-start ] || continue
+	action_command=updates-refresh
+	[ "$action_scenario" != install ] || action_command=updates-install-all
+	[ "$(sed -n '1p' "$action_state/$action_command")" -eq 1 ]
+	if [ "$action_scenario" = rejected ] || [ "$action_scenario" = cancel-recovery-failure ]; then
+		[ ! -e "$action_state/ack-operation" ]
+	else
+		[ "$(sed -n '1p' "$action_state/ack-operation")" -eq 1 ]
+	fi
+	case $action_scenario in
+	uncertain | wrong-exit) [ "$(sed -n '1p' "$action_state/watch-operation")" -eq 1 ] ;;
+	*) [ ! -e "$action_state/watch-operation" ] ;;
+	esac
+	case $action_scenario in
+	cancel-*) [ "$(sed -n '1p' "$action_state/updates-cancel")" -eq 1 ] ;;
+	*) [ ! -e "$action_state/updates-cancel" ] ;;
+	esac
+done
+
 mkdir -p "$work/operation-owner" "$work/owner-data/dwm-titus/scripts" "$work/owner-state"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/operation-owner/"
 cp "$repo/tests/qml/SystemOperationOwner.qml" "$work/operation-owner/shell.qml"
