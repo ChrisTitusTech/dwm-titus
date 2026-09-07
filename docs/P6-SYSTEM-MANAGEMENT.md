@@ -718,7 +718,12 @@ active-file lease precede output, `running` is committed before the single exec,
 and terminal retention/handoff is committed before completion. The child starts
 in its own session with stdin/stdout/stderr on `/dev/null` and every descriptor
 above 2 closed, so an open tool cannot retain the journal lease or operation
-stream. No shell interprets the launch argv. A successful exec is only an
+stream. This isolated launch requires Python 3.13 or newer with
+[`os.POSIX_SPAWN_CLOSEFROM`](https://docs.python.org/3/library/os.html#os.POSIX_SPAWN_CLOSEFROM)
+support in `/usr/bin/python3`; the supported Fedora 44 runtime supplies it.
+The launcher returns a scoped `unsupported` result when that primitive is
+unavailable, without an unsafe fallback. No shell
+interprets the launch argv. A successful exec is only an
 accepted launch; the tool owns its subsequent UI, authorization, changes, and
 cancellation. The provider neither waits for that internal work nor reports it
 as completed. Output loss before launch prevents exec; loss after accepted exec

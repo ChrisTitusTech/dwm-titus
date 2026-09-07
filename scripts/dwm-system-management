@@ -1924,7 +1924,7 @@ def delegated_command(action: str) -> tuple[tuple[str, ...], str]:
     if terminal is None:
         raise SnapshotFailure("missing-provider", "The selected terminal is no longer installed")
     terminal = trusted_delegated_executable(terminal, name)
-    return (terminal, *PASSWORD_TERMINALS[name], passwd), "Change your password"
+    return (terminal, *PASSWORD_TERMINALS[name], passwd), "Password change"
 
 
 def launch_delegated_tool(command: tuple[str, ...]) -> None:

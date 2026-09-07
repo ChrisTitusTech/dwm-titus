@@ -2212,7 +2212,7 @@ class DelegatedToolTests(unittest.TestCase):
                     mock.patch.object(provider, "read_terminal_selection", return_value=name), \
                     mock.patch.object(provider.shutil, "which", side_effect=["/usr/local/bin/dwm-terminal", "/usr/bin/" + name]):
                 self.assertEqual(provider.delegated_command("password-open"),
-                    (("/usr/bin/" + name, *arguments, "/usr/bin/passwd"), "Change your password"))
+                    (("/usr/bin/" + name, *arguments, "/usr/bin/passwd"), "Password change"))
 
     def test_unknown_actions_and_unsupported_terminals_never_launch_or_fall_back(self):
         for action in ("health-open", "password-open user", "accounts-open --root", None, []):
@@ -2245,9 +2245,12 @@ class DelegatedToolTests(unittest.TestCase):
                 def unsafe(current, **options):
                     value = metadata(current, **options)
                     if current == target:
-                        if field == "owner": value.st_uid = 1000
-                        elif field == "writable": value.st_mode |= 0o020
-                        else: value.st_mode = stat.S_IFLNK | 0o777
+                        if field == "owner":
+                            value.st_uid = 1000
+                        elif field == "writable":
+                            value.st_mode |= 0o020
+                        else:
+                            value.st_mode = stat.S_IFLNK | 0o777
                     return value
                 with self.subTest(target=target, field=field), mock.patch.object(provider.os.path, "realpath", return_value=path), \
                         mock.patch.object(provider.os, "stat", side_effect=unsafe):
@@ -2306,6 +2309,15 @@ class DelegatedToolTests(unittest.TestCase):
             self.assertIsNotNone(children[0].returncode)
         self.assertLess(time.monotonic() - started, 5.5)
 
+    def test_missing_closefrom_fails_before_open_or_spawn(self):
+        unavailable = types.SimpleNamespace(open=mock.Mock(), posix_spawn=mock.Mock())
+        with mock.patch.object(provider, "os", unavailable):
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.launch_delegated_tool(("/usr/bin/kitty", "/usr/bin/passwd"))
+        self.assertEqual(caught.exception.code, "unsupported")
+        unavailable.open.assert_not_called()
+        unavailable.posix_spawn.assert_not_called()
+
     def test_launch_uses_new_session_null_stdio_and_closefrom(self):
         command = ("/usr/bin/kitty", "/usr/bin/passwd")
         with mock.patch.object(provider.os, "posix_spawn", return_value=1234) as spawn:
@@ -2317,7 +2329,8 @@ class DelegatedToolTests(unittest.TestCase):
         actions = options["file_actions"]
         self.assertEqual([action[2] for action in actions[:3]], [0, 1, 2])
         self.assertEqual(actions[-1], (os.POSIX_SPAWN_CLOSEFROM, 3))
-        with self.assertRaises(OSError): os.fstat(actions[0][1])
+        with self.assertRaises(OSError):
+            os.fstat(actions[0][1])
         for error, code in ((FileNotFoundError(), "missing-provider"), (PermissionError(), "permission-denied"),
                             (OSError(errno.ENOEXEC, "Fixture"), "internal"), (InterruptedError(), "interrupted"),
                             (NotImplementedError(), "unsupported")):
@@ -9902,7 +9915,8 @@ class DelegatedOwnerTests(unittest.TestCase):
                 self.assertEqual(active.state, "running")
                 self.assertEqual(active.action_id, action)
                 self.assertTrue(provider.native_journal_owner_busy(journal, active))
-            with provider._journal_lock(journal.chain.directory_descriptor, exclusive=True): pass
+            with provider._journal_lock(journal.chain.directory_descriptor, exclusive=True):
+                pass
             if failure is not None:
                 raise provider.SnapshotFailure(failure, "Fixture launch result")
         with mock.patch.object(provider, "delegated_command", return_value=(("/usr/bin/fixture",), "Fixture tool")), \
@@ -9945,7 +9959,8 @@ class DelegatedOwnerTests(unittest.TestCase):
             with self.subTest(phase=phase), self.session() as (_path, _chain, journal):
                 output = []
                 def write(chunk):
-                    if "\t" + phase + "\t" in chunk: raise BrokenPipeError()
+                    if "\t" + phase + "\t" in chunk:
+                        raise BrokenPipeError()
                     output.append(chunk)
                 with mock.patch.object(provider, "delegated_command", return_value=(("/usr/bin/fixture",), "Fixture")), \
                         mock.patch.object(provider, "launch_delegated_tool") as launch, self.assertRaises(BrokenPipeError):
@@ -9960,7 +9975,8 @@ class DelegatedOwnerTests(unittest.TestCase):
             with self.subTest(race=race), self.session() as (_path, _chain, journal):
                 admitted, output = mock.Mock(), []
                 def resolve(_action):
-                    if not race: raise provider.SnapshotFailure("missing-provider", "Unavailable fixture")
+                    if not race:
+                        raise provider.SnapshotFailure("missing-provider", "Unavailable fixture")
                     with provider.lock_writable_journal(journal):
                         provider.begin_journal_operation(journal, "ntp-set", "2026-09-06T23:00:00Z", "Competing")
                     return ("/usr/bin/fixture",), "Fixture"
@@ -9979,7 +9995,8 @@ class DelegatedOwnerTests(unittest.TestCase):
                 with self.subTest(stage=stage, after=after), self.session() as (_path, _chain, journal):
                     original, admitted, output = getattr(provider, stage), mock.Mock(), []
                     def fail(*args, **kwargs):
-                        if after: original(*args, **kwargs)
+                        if after:
+                            original(*args, **kwargs)
                         raise provider.JournalCommitError("Uncertain fixture write")
                     with mock.patch.object(provider, stage, side_effect=fail), self.assertRaises(provider.JournalCommitError):
                         self.invoke(journal, write=output.append, admitted=admitted)
@@ -10022,7 +10039,8 @@ class DelegatedOwnerTests(unittest.TestCase):
                     children.append(pid)
                     return pid
                 def write(chunk):
-                    if mode == "lost-output" and "\tsucceeded\t" in chunk: raise BrokenPipeError()
+                    if mode == "lost-output" and "\tsucceeded\t" in chunk:
+                        raise BrokenPipeError()
                     output.append(chunk)
                 try:
                     with mock.patch.object(provider, "delegated_command", return_value=(command, "Fixture")), \
@@ -10033,7 +10051,8 @@ class DelegatedOwnerTests(unittest.TestCase):
                         else:
                             provider.run_delegated_launch(journal, "sources-open", write)
                     deadline = time.monotonic() + 3
-                    while not report.exists() and time.monotonic() < deadline: time.sleep(0.01)
+                    while not report.exists() and time.monotonic() < deadline:
+                        time.sleep(0.01)
                     value = json.loads(report.read_text())
                     self.assertEqual(value["pid"], children[0])
                     self.assertEqual(value["sid"], children[0])
@@ -10056,7 +10075,8 @@ class DelegatedOwnerTests(unittest.TestCase):
                     self.assertTrue("".join(replay).endswith("complete\toperation\n"))
                 finally:
                     for pid in children:
-                        with contextlib.suppress(ProcessLookupError): os.kill(pid, signal.SIGKILL)
+                        with contextlib.suppress(ProcessLookupError):
+                            os.kill(pid, signal.SIGKILL)
                         os.waitpid(pid, 0)
 
 
