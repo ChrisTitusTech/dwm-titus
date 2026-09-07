@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add a fixed read-only account event monitor that covers candidate changes
+  before enumeration and filtering. Preserve bounded account inventories,
+  authenticated senders, and a monitor without idle polling; Settings activation
+  remains pending.
+
 - Add fixed read-only time and locale event monitors with acknowledged setup,
   bounded output, and quiet handling of normally idle services. Add an internal
   two-property NTP status reader; visible Settings monitoring and sampling

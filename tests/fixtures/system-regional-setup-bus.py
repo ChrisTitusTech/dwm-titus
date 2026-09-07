@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Inject real directly addressed signals at controlled regional setup barriers."""
+"""Inject real directly addressed signals at controlled service setup barriers."""
 
 import os
 import runpy
@@ -9,21 +9,27 @@ os.environ["DBUS_SYSTEM_BUS_ADDRESS"] = os.environ["DBUS_SESSION_BUS_ADDRESS"]
 from gi.repository import Gio, GLib, GLibUnix
 
 provider = runpy.run_path(sys.argv[1], run_name="regional_setup_fixture")
+accounts = len(sys.argv) == 3 and sys.argv[2] == "accounts"
 address = os.environ["DBUS_SESSION_BUS_ADDRESS"]
 flags = Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
 service = Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
 outsider = Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
 
 
-class SetupMonitor(provider["RegionalEventMonitor"]):
+class SetupMonitor(provider["AccountEventMonitor"] if accounts else provider["RegionalEventMonitor"]):
     """Delay only callback publication, leaving actual bus setup and signals intact."""
 
     def inject(self, sender, oversized=False):
         """Bypass match routing using the monitor's actual unique destination."""
-        fields = {"x" * 20000: GLib.Variant("b", True)} if oversized else {"Timezone": GLib.Variant("s", "UTC")}
-        sender.emit_signal(self.connection.get_unique_name(), self.path,
-            "org.freedesktop.DBus.Properties", "PropertiesChanged",
-            GLib.Variant("(sa{sv}as)", (self.name, fields, [])))
+        if accounts:
+            parameters = GLib.Variant("(s)", ("x" * 20000,)) if oversized else GLib.Variant("()", ())
+            sender.emit_signal(self.connection.get_unique_name(), "/users/Setup",
+                provider["ACCOUNT_INTERFACE"], "Changed", parameters)
+        else:
+            fields = {"x" * 20000: GLib.Variant("b", True)} if oversized else {"Timezone": GLib.Variant("s", "UTC")}
+            sender.emit_signal(self.connection.get_unique_name(), self.path,
+                "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                GLib.Variant("(sa{sv}as)", (self.name, fields, [])))
         sender.flush_sync(None)
 
     def owner_initialized(self, connection, result, epoch):
@@ -54,16 +60,17 @@ class SetupMonitor(provider["RegionalEventMonitor"]):
 
 
 try:
-    name = "org.freedesktop.timedate1"
+    name = provider["ACCOUNTS_NAME"] if accounts else "org.freedesktop.timedate1"
     result = service.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
         "org.freedesktop.DBus", "RequestName", GLib.Variant("(su)", (name, 0)),
         GLib.VariantType.new("(u)"), Gio.DBusCallFlags.NONE, 3000, None)
     assert result.unpack() == (1,)
     emitted = []
-    monitor = SetupMonitor("time", Gio, GLib, GLibUnix, emitted.append)
+    monitor = SetupMonitor(Gio, GLib, GLibUnix, emitted.append) if accounts else SetupMonitor("time", Gio, GLib, GLibUnix, emitted.append)
     assert monitor.run() == 0
-    assert emitted == ["regional-event\tready", "regional-event\tchanged"]
-    print("Regional setup unicast authentication: PASS")
+    prefix = "accounts-event" if accounts else "regional-event"
+    assert emitted == [prefix + "\tready", prefix + "\tchanged"]
+    print(("Account" if accounts else "Regional") + " setup unicast authentication: PASS")
 finally:
     outsider.close_sync(None)
     service.close_sync(None)

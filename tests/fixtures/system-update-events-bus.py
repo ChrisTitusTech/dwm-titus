@@ -19,13 +19,13 @@ from gi.repository import Gio, GLib
 NAME = "org.freedesktop.PackageKit"
 PATH = "/org/freedesktop/PackageKit"
 kind = sys.argv[2] if len(sys.argv) == 3 else "updates"
-assert kind in ("updates", "time", "locale")
-command = ["watch-updates"] if kind == "updates" else ["watch-regional", kind]
-prefix = b"update-event" if kind == "updates" else b"regional-event"
+assert kind in ("updates", "time", "locale", "accounts")
+command = ["watch-updates"] if kind == "updates" else ["watch-accounts"] if kind == "accounts" else ["watch-regional", kind]
+prefix = b"update-event" if kind == "updates" else b"accounts-event" if kind == "accounts" else b"regional-event"
 ready = prefix + b"\tready\n"
 changed = prefix + b"\tchanged\n"
 if kind != "updates":
-    NAME = "org.freedesktop." + ("timedate1" if kind == "time" else "locale1")
+    NAME = "org.freedesktop." + {"time": "timedate1", "locale": "locale1", "accounts": "Accounts"}[kind]
     PATH = "/" + NAME.replace(".", "/")
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 address = os.environ["DBUS_SESSION_BUS_ADDRESS"]
@@ -66,8 +66,17 @@ def line(process, timeout=3):
 
 
 def emit(member, *, path=PATH, interface=NAME, parameters=None, connection=bus):
-    """Emit a real signal, adapting global changes for regional properties."""
-    if kind != "updates" and member in ("UpdatesChanged", "InstalledChanged", "RepoListChanged"):
+    """Emit real signals, adapting global changes to the selected service."""
+    if kind == "accounts" and member in ("UpdatesChanged", "InstalledChanged", "RepoListChanged"):
+        interface = NAME
+        if member == "RepoListChanged":
+            member, interface = "Changed", NAME + ".User"
+            path = PATH + "/User1001" if path == PATH else path
+            parameters = GLib.Variant("()", ())
+        else:
+            member = "UserAdded" if member == "UpdatesChanged" else "UserDeleted"
+            parameters = GLib.Variant("(o)", (PATH + "/User1001",))
+    elif kind in ("time", "locale") and member in ("UpdatesChanged", "InstalledChanged", "RepoListChanged"):
         member = "PropertiesChanged"
         interface = "org.freedesktop.DBus.Properties"
         field = "Timezone" if kind == "time" else "Locale"
@@ -86,7 +95,7 @@ try:
         emit(member)
         assert line(process) == changed, member
 
-    if kind != "updates":
+    if kind in ("time", "locale"):
         field = "Timezone" if kind == "time" else "Locale"
         value = GLib.Variant("s", "UTC") if kind == "time" else GLib.Variant("as", ["LANG=C"])
         emit("PropertiesChanged", interface="org.freedesktop.DBus.Properties",
@@ -100,7 +109,7 @@ try:
     outsider = Gio.DBusConnection.new_for_address_sync(address,
         Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
     emit("UpdatesChanged", connection=outsider)
-    if kind != "updates":
+    if kind in ("time", "locale"):
         emit("PropertiesChanged", interface="org.freedesktop.DBus.Properties",
             parameters=GLib.Variant("(sa{sv}as)", (NAME, {"Unrelated": GLib.Variant("b", True)}, [])))
     assert line(process, 0.2) == b"", "Unrelated signals triggered discovery"

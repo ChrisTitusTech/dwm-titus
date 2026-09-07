@@ -2746,6 +2746,157 @@ class RegionalEventMonitorTests(unittest.TestCase):
             self.assertEqual(result.stdout, kind + " private-bus event monitor: PASS\n")
 
 
+class AccountEventMonitorTests(unittest.TestCase):
+    def monitor(self):
+        _regional, emitted, gio, glib, unix = RegionalEventMonitorTests().monitor()
+        monitor = provider.AccountEventMonitor(gio, glib, unix, emitted.append)
+        monitor.deadline = time.monotonic() + 10
+        monitor.deadline_source = 7
+        monitor.connection = gio.bus_get_finish.return_value
+        return monitor, emitted, gio, glib, unix
+
+    def setup(self, monitor, glib):
+        connection = monitor.connection
+        monitor.connected(None, object(), None)
+        for index, rule in enumerate(monitor.match_rules):
+            connection.call_finish.return_value = glib.Variant("()", ())
+            monitor.match_finished(connection, object(), rule)
+            if index == 0:
+                connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+                monitor.owner_initialized(connection, object(), 0)
+
+    def test_four_fixed_matches_precede_ready_without_account_enumeration(self):
+        monitor, emitted, gio, glib, _unix = self.monitor()
+        self.setup(monitor, glib)
+        connection = monitor.connection
+        subscriptions = connection.signal_subscribe.call_args_list
+        self.assertEqual(len(subscriptions), 4)
+        self.assertEqual([call.args[2] for call in subscriptions],
+            ["NameOwnerChanged", "UserAdded", "UserDeleted", "Changed"])
+        self.assertEqual(subscriptions[-1].args[:5], (None, provider.ACCOUNT_INTERFACE,
+            "Changed", None, None))
+        self.assertTrue(all(call.args[5] == gio.DBusSignalFlags.NO_MATCH_RULE for call in subscriptions))
+        self.assertEqual([call.args[3] for call in connection.call.call_args_list],
+            ["AddMatch", "GetNameOwner", "AddMatch", "AddMatch", "AddMatch", "GetNameOwner"])
+        self.assertTrue(all(call.args[0] == "org.freedesktop.DBus" for call in connection.call.call_args_list))
+        self.assertEqual(emitted, [])
+        connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        monitor.owner_resolved(connection, object(), 0)
+        self.assertEqual(emitted, ["accounts-event\tready"])
+
+    def test_every_valid_candidate_path_is_covered_before_and_after_ready(self):
+        monitor, emitted, _gio, glib, _unix = self.monitor()
+        monitor.owner = ":1.2"
+        for path in ("/users/Excluded", "/future/New", "/org/freedesktop/Accounts/User1000"):
+            monitor.user_changed(None, ":1.2", path, provider.ACCOUNT_INTERFACE,
+                "Changed", glib.Variant("()", ()), None)
+        self.assertTrue(monitor.dirty)
+        self.assertEqual(emitted, [])
+        monitor.connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        monitor.owner_resolved(monitor.connection, object(), 0)
+        self.assertEqual(emitted, ["accounts-event\tready", "accounts-event\tchanged"])
+        for member in ("UserAdded", "UserDeleted"):
+            monitor.users_changed(None, ":1.2", provider.ACCOUNTS_PATH, provider.ACCOUNTS_NAME,
+                member, glib.Variant("(o)", ("/users/New",)), None)
+        self.assertEqual(len(emitted), 4)
+
+    def test_untrusted_unicast_never_reaches_payload_parsing(self):
+        for owner, sender in (("", ":1.2"), (":1.2", ":1.8")):
+            monitor, emitted, _gio, _glib, _unix = self.monitor()
+            monitor.owner = owner
+            payload = mock.Mock()
+            monitor.users_changed(None, sender, provider.ACCOUNTS_PATH, provider.ACCOUNTS_NAME,
+                "UserAdded", payload, None)
+            monitor.user_changed(None, sender, "/users/Unknown", provider.ACCOUNT_INTERFACE,
+                "Changed", payload, None)
+            payload.get_type_string.assert_not_called()
+            self.assertFalse(monitor.stopped)
+            self.assertFalse(monitor.dirty)
+            self.assertEqual(emitted, [])
+
+    def test_notifications_are_typed_bounded_and_scope_checked(self):
+        for manager in (True, False):
+            monitor, emitted, _gio, glib, _unix = self.monitor()
+            monitor.owner, monitor.ready = ":1.2", True
+            callback = monitor.users_changed if manager else monitor.user_changed
+            interface = provider.ACCOUNTS_NAME if manager else provider.ACCOUNT_INTERFACE
+            path = provider.ACCOUNTS_PATH if manager else "/users/Changed"
+            member = "UserAdded" if manager else "Changed"
+            callback(None, ":1.2", path, "org.example.Unrelated", member, mock.Mock(), None)
+            callback(None, ":1.2", path, interface, "Unrelated", mock.Mock(), None)
+            self.assertEqual(emitted, [])
+            callback(None, ":1.2", path, interface, member, glib.Variant("(s)", ("wrong",)), None)
+            self.assertTrue(monitor.stopped)
+        for manager in (True, False):
+            monitor, _emitted, _gio, glib, _unix = self.monitor()
+            monitor.owner = ":1.2"
+            path = "/" + "x" * 513
+            if manager:
+                monitor.users_changed(None, ":1.2", provider.ACCOUNTS_PATH, provider.ACCOUNTS_NAME,
+                    "UserDeleted", glib.Variant("(o)", (path,)), None)
+            else:
+                monitor.user_changed(None, ":1.2", path, provider.ACCOUNT_INTERFACE,
+                    "Changed", glib.Variant("()", ()), None)
+            self.assertTrue(monitor.stopped)
+
+    def test_owner_replacement_rejects_old_senders_and_departure_is_quiet(self):
+        monitor, emitted, _gio, glib, _unix = self.monitor()
+        monitor.owner, monitor.ready = ":1.2", True
+        owner = RegionalEventMonitorTests().owner
+        owner(monitor, glib, ":1.2", ":1.3")
+        self.assertEqual(emitted, ["accounts-event\tchanged"])
+        monitor.user_changed(None, ":1.2", "/users/Old", provider.ACCOUNT_INTERFACE,
+            "Changed", glib.Variant("()", ()), None)
+        self.assertEqual(len(emitted), 1)
+        owner(monitor, glib, ":1.3", "")
+        self.assertEqual(len(emitted), 1)
+        self.assertEqual(monitor.owner, "")
+
+    def test_denied_partial_setup_removes_only_owned_rules_and_all_local_sources(self):
+        monitor, emitted, gio, glib, unix = self.monitor()
+        connection = monitor.connection
+        connection.signal_subscribe.side_effect = [20, 21, 22, 23]
+        connection.connect.return_value = 24
+        glib.timeout_add.return_value = 10
+        unix.signal_add.side_effect = [11, 12, 13]
+        def run():
+            monitor.connected(None, object(), None)
+            monitor.match_finished(connection, object(), monitor.match_rules[0])
+            connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+            monitor.owner_initialized(connection, object(), 0)
+            connection.call_finish.side_effect = glib.Error("denied service match")
+            monitor.match_finished(connection, object(), monitor.match_rules[1])
+        monitor.loop.run.side_effect = run
+        self.assertEqual(monitor.run(), 1)
+        self.assertEqual(emitted, [])
+        self.assertEqual([call.args[0] for call in connection.signal_unsubscribe.call_args_list], [20, 21, 22, 23])
+        self.assertEqual([call.args[0] for call in glib.source_remove.call_args_list], [11, 12, 13, 10])
+        removals = [call for call in connection.call.call_args_list if call.args[3] == "RemoveMatch"]
+        self.assertEqual(len(removals), 1)
+        self.assertEqual(removals[0].args[4].unpack(), (monitor.match_rules[0],))
+        connection.close_sync.assert_not_called()
+        with self.assertRaises(RuntimeError):
+            monitor.run()
+        self.assertEqual(gio.bus_get.call_count, 1)
+
+    def test_cli_is_argument_free_and_private_bus_lifecycle_and_unicast_pass(self):
+        with mock.patch.object(provider, "watch_account_events", return_value=0) as watch, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(provider.main(["watch-accounts"]), 0)
+            for extra in ("user", "--system", "/users/Selected"):
+                self.assertEqual(provider.main(["watch-accounts", extra]), 2)
+            watch.assert_called_once_with()
+            backend.assert_not_called()
+        for fixture, expected in (("system-update-events-bus.py", "accounts private-bus event monitor: PASS\n"),
+                                  ("system-regional-setup-bus.py", "Account setup unicast authentication: PASS\n")):
+            result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+                str(REPO / "tests/fixtures" / fixture), str(PROVIDER_PATH), "accounts"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, expected)
+
+
 class NtpReadTests(unittest.TestCase):
     def reader(self):
         _regional, connection, gio, glib, variant = RegionalReadTests().reader()
