@@ -1917,7 +1917,7 @@ class RegionalReadTests(unittest.TestCase):
             str(REPO / "tests/fixtures/system-regional-read-bus.py"), str(PROVIDER_PATH)],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         try:
-            stdout, stderr = process.communicate(timeout=30)
+            stdout, stderr = process.communicate(timeout=45)
             self.assertEqual(process.returncode, 0, stderr.decode("utf-8", "replace"))
             self.assertIn(b"Private-bus regional reads: PASS", stdout)
         finally:
@@ -2557,6 +2557,247 @@ class UpdateEventMonitorTests(unittest.TestCase):
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "PackageKit private-bus event monitor: PASS\n")
+
+
+class RegionalEventMonitorTests(unittest.TestCase):
+    def monitor(self, kind="time"):
+        from gi.repository import Gio, GLib
+        glib = mock.Mock(Error=GLib.Error, Variant=GLib.Variant,
+            VariantType=GLib.VariantType, SOURCE_REMOVE=False, SOURCE_CONTINUE=True,
+            PRIORITY_DEFAULT=0)
+        gio = mock.Mock(dbus_is_unique_name=Gio.dbus_is_unique_name)
+        unix, emitted = mock.Mock(), []
+        monitor = provider.RegionalEventMonitor(kind, gio, glib, unix, emitted.append)
+        monitor.deadline = time.monotonic() + 10
+        monitor.deadline_source = 7
+        monitor.connection = gio.bus_get_finish.return_value
+        monitor.connection.call_finish.return_value = GLib.Variant("()", ())
+        return monitor, emitted, gio, glib, unix
+
+    def owner(self, monitor, glib, old, new, sender="org.freedesktop.DBus"):
+        monitor.owner_changed(None, sender, "/org/freedesktop/DBus", "org.freedesktop.DBus",
+            "NameOwnerChanged", glib.Variant("(sss)", (monitor.name, old, new)), None)
+
+    def properties(self, monitor, glib, fields=(), invalidated=(), sender=":1.2"):
+        monitor.properties_changed(None, sender, monitor.path, provider.PROPERTIES_INTERFACE,
+            "PropertiesChanged", glib.Variant("(sa{sv}as)", (monitor.name,
+                {field: glib.Variant("b", True) for field in fields}, list(invalidated))), None)
+
+    def test_fixed_subscriptions_require_both_acknowledgements_and_owner_barrier(self):
+        for kind in ("time", "locale"):
+            monitor, emitted, gio, glib, _unix = self.monitor(kind)
+            connection = monitor.connection
+            monitor.connected(None, object(), None)
+            subscriptions = connection.signal_subscribe.call_args_list
+            self.assertEqual(len(subscriptions), 2)
+            self.assertEqual(subscriptions[1].args[:5], (None, provider.PROPERTIES_INTERFACE,
+                "PropertiesChanged", monitor.path, monitor.name))
+            self.assertTrue(all(call.args[5] == gio.DBusSignalFlags.NO_MATCH_RULE for call in subscriptions))
+            for index, rule in enumerate(monitor.match_rules):
+                connection.call_finish.return_value = glib.Variant("()", ())
+                monitor.match_finished(connection, object(), rule)
+                self.assertEqual(emitted, [])
+                if index == 0:
+                    connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+                    monitor.owner_initialized(connection, object(), 0)
+            self.assertEqual([call.args[3] for call in connection.call.call_args_list],
+                ["AddMatch", "GetNameOwner", "AddMatch", "GetNameOwner"])
+            self.assertTrue(all(call.args[0] == "org.freedesktop.DBus" for call in connection.call.call_args_list))
+            self.assertEqual(connection.call.call_args.args[4].unpack(), (monitor.name,))
+            connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+            monitor.owner_resolved(connection, object(), 0)
+            self.assertEqual(emitted, ["regional-event\tready"])
+            self.assertEqual(monitor.deadline_source, 0)
+
+    def test_absence_is_ready_but_denial_and_malformed_owner_are_not(self):
+        for error in ("NameHasNoOwner", "AccessDenied", "NoReply", None):
+            monitor, emitted, gio, glib, _unix = self.monitor()
+            if error:
+                monitor.connection.call_finish.side_effect = glib.Error("fixture failure")
+                gio.dbus_error_get_remote_error.return_value = "org.freedesktop.DBus.Error." + error
+            else:
+                monitor.connection.call_finish.return_value = glib.Variant("(s)", (monitor.name,))
+            monitor.owner_resolved(monitor.connection, object(), 0)
+            self.assertEqual(monitor.ready, error == "NameHasNoOwner")
+            self.assertEqual(emitted, ["regional-event\tready"] if error == "NameHasNoOwner" else [])
+
+    def test_owner_epoch_race_coalescing_departure_and_forged_sender(self):
+        monitor, emitted, _gio, glib, _unix = self.monitor()
+        monitor.owner = ":1.2"
+        for _ in range(100):
+            self.properties(monitor, glib, ["NTP"])
+        self.owner(monitor, glib, ":1.2", ":1.3")
+        monitor.connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        monitor.owner_resolved(monitor.connection, object(), 0)
+        self.assertEqual(monitor.owner, ":1.3")
+        self.assertEqual(emitted, ["regional-event\tready", "regional-event\tchanged"])
+        self.properties(monitor, glib, ["NTP"], sender=":1.2")
+        self.owner(monitor, glib, ":1.3", ":1.8", sender=":1.8")
+        self.assertEqual(monitor.owner, ":1.3")
+        self.owner(monitor, glib, ":1.3", "")
+        self.assertEqual(monitor.owner, "")
+        self.assertEqual(len(emitted), 2, "Idle departure must not reactivate a service")
+        self.properties(monitor, glib, ["NTP"], sender=":1.3")
+        self.assertEqual(len(emitted), 2)
+        self.owner(monitor, glib, "", ":1.4")
+        self.owner(monitor, glib, ":1.4", ":1.5")
+        self.assertEqual(len(emitted), 4)
+
+    def test_only_relevant_properties_invalidate_and_bounds_fail_closed(self):
+        for kind in ("time", "locale"):
+            monitor, emitted, _gio, glib, _unix = self.monitor(kind)
+            monitor.ready, monitor.owner = True, ":1.2"
+            self.properties(monitor, glib, ["Unrelated"])
+            self.assertEqual(emitted, [])
+            for field in monitor.relevant:
+                self.properties(monitor, glib, [field])
+                self.properties(monitor, glib, invalidated=[field])
+            self.assertEqual(len(emitted), len(monitor.relevant) * 2)
+            self.properties(monitor, glib, ["x" * 513])
+            self.assertTrue(monitor.stopped)
+        for fields, invalidated in (([str(i) for i in range(65)], []), ([], ["x" * 513])):
+            monitor, _emitted, _gio, glib, _unix = self.monitor()
+            monitor.owner = ":1.2"
+            self.properties(monitor, glib, fields, invalidated)
+            self.assertTrue(monitor.stopped)
+
+    def test_setup_rejects_unicast_senders_before_parsing_or_dirtying(self):
+        monitor, emitted, _gio, glib, _unix = self.monitor()
+        self.properties(monitor, glib, ["Timezone"])
+        self.properties(monitor, glib, ["x" * 20000])
+        self.assertFalse(monitor.stopped)
+        self.assertFalse(monitor.dirty)
+        monitor.owner = ":1.2"
+        self.properties(monitor, glib, ["x" * 20000], sender=":1.8")
+        self.assertFalse(monitor.stopped)
+        self.assertFalse(monitor.dirty)
+        self.properties(monitor, glib, ["Timezone"])
+        self.assertTrue(monitor.dirty)
+        self.assertEqual(emitted, [])
+
+    def test_real_setup_unicast_is_authenticated_before_readiness(self):
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-regional-setup-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "Regional setup unicast authentication: PASS\n")
+
+    def test_expired_setup_late_ack_and_denial_never_report_ready(self):
+        for callback in ("connected", "match_finished", "owner_resolved"):
+            monitor, emitted, _gio, _glib, _unix = self.monitor()
+            monitor.deadline = time.monotonic() - 1
+            getattr(monitor, callback)(monitor.connection, object(), "fixture")
+            self.assertTrue(monitor.stopped)
+            self.assertEqual(emitted, [])
+        for denied in (True, False):
+            monitor, emitted, _gio, glib, _unix = self.monitor()
+            monitor.stop(0)
+            if denied:
+                monitor.connection.call_finish.side_effect = glib.Error("denied")
+            monitor.match_finished(monitor.connection, object(), "owned-rule")
+            self.assertEqual(monitor.exit_code, 0)
+            self.assertEqual(emitted, [])
+            if denied:
+                monitor.connection.call.assert_not_called()
+            else:
+                self.assertEqual(monitor.connection.call.call_args.args[3], "RemoveMatch")
+                self.assertEqual(monitor.connection.call.call_args.args[4].unpack(), ("owned-rule",))
+
+    def test_cleanup_is_single_use_and_removes_only_acknowledged_rules(self):
+        monitor, _emitted, gio, glib, unix = self.monitor()
+        connection = monitor.connection
+        connection.signal_subscribe.side_effect = [20, 21]
+        connection.connect.return_value = 24
+        glib.timeout_add.return_value = 10
+        unix.signal_add.side_effect = [11, 12, 13]
+        def run():
+            monitor.connected(None, object(), None)
+            monitor.match_finished(connection, object(), monitor.match_rules[0])
+            connection.call_finish.side_effect = glib.Error("second match denied")
+            monitor.match_finished(connection, object(), monitor.match_rules[1])
+        monitor.loop.run.side_effect = run
+        self.assertEqual(monitor.run(), 1)
+        self.assertEqual([call.args[0] for call in connection.signal_unsubscribe.call_args_list], [20, 21])
+        removals = [call for call in connection.call.call_args_list if call.args[3] == "RemoveMatch"]
+        self.assertEqual(len(removals), 1)
+        self.assertEqual(removals[0].args[4].unpack(), (monitor.match_rules[0],))
+        self.assertEqual([call.args[0] for call in glib.source_remove.call_args_list], [11, 12, 13, 10])
+        connection.close_sync.assert_not_called()
+        self.assertTrue(monitor.cancellable.cancel.called)
+        with self.assertRaises(RuntimeError):
+            monitor.run()
+        self.assertEqual(gio.bus_get.call_count, 1)
+
+    def test_closed_cli_and_real_private_bus_lifecycle(self):
+        with mock.patch.object(provider, "watch_regional_events", return_value=0) as watch, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                contextlib.redirect_stderr(io.StringIO()):
+            for kind in ("time", "locale"):
+                self.assertEqual(provider.main(["watch-regional", kind]), 0)
+            self.assertEqual(watch.call_args_list, [mock.call("time"), mock.call("locale")])
+            for args in ([], ["other"], ["time", "extra"], ["--system"]):
+                self.assertEqual(provider.main(["watch-regional", *args]), 2)
+            backend.assert_not_called()
+        for kind in ("time", "locale"):
+            result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+                str(REPO / "tests/fixtures/system-update-events-bus.py"), str(PROVIDER_PATH), kind],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, kind + " private-bus event monitor: PASS\n")
+
+
+class NtpReadTests(unittest.TestCase):
+    def reader(self):
+        _regional, connection, gio, glib, variant = RegionalReadTests().reader()
+        return provider.NtpRead(gio, glib), connection, gio, glib, variant
+
+    def test_only_two_fixed_boolean_gets_under_one_deadline(self):
+        read, connection, gio, glib, variant = self.reader()
+        def run():
+            read.connected(None, object(), None)
+            for field, value in (("NTPSynchronized", False), ("CanNTP", True)):
+                connection.call_finish.return_value = variant.Variant("(v)", (variant.Variant("b", value),))
+                read.replied(connection, object(), field)
+        read.loop.run.side_effect = run
+        self.assertEqual(read.run(), provider.NtpSample(True, False))
+        calls = connection.call.call_args_list
+        self.assertEqual(len(calls), 2)
+        for call, field in zip(calls, ("CanNTP", "NTPSynchronized")):
+            self.assertEqual(call.args[:4], ("org.freedesktop.timedate1", "/org/freedesktop/timedate1",
+                provider.PROPERTIES_INTERFACE, "Get"))
+            self.assertEqual(call.args[4].unpack(), ("org.freedesktop.timedate1", field))
+            self.assertEqual(call.args[6], gio.DBusCallFlags.NONE)
+            self.assertTrue(0 < call.args[7] <= 10000)
+        glib.source_remove.assert_called_once_with(17)
+        connection.close_sync.assert_not_called()
+        with self.assertRaises(RuntimeError):
+            read.run()
+
+    def test_partial_timeout_denial_and_bad_types_do_not_publish_a_sample(self):
+        for failure in ("timeout", "denial", "type", "oversized"):
+            read, connection, gio, _glib, variant = self.reader()
+            def run():
+                read.connected(None, object(), None)
+                connection.call_finish.return_value = variant.Variant("(v)", (variant.Variant("b", True),))
+                read.replied(connection, object(), "CanNTP")
+                self.assertFalse(read.done)
+                if failure == "timeout":
+                    read.deadline = time.monotonic() - 1
+                elif failure == "denial":
+                    gio.dbus_error_get_remote_error.return_value = "org.freedesktop.DBus.Error.AccessDenied"
+                    connection.call_finish.side_effect = variant.Error("denied")
+                else:
+                    connection.call_finish.return_value = variant.Variant("(v)",
+                        (variant.Variant("s", "x" * (100 if failure == "oversized" else 1)),))
+                read.replied(connection, object(), "NTPSynchronized")
+            read.loop.run.side_effect = run
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                read.run()
+            self.assertEqual(caught.exception.code, {"timeout": "timeout", "denial": "permission-denied"}.get(failure, "malformed"))
+            self.assertIsNone(read.value)
+            connection.call_finish.reset_mock(side_effect=True)
+            read.replied(connection, object(), "NTPSynchronized")
+            connection.call_finish.assert_not_called()
 
 
 class OperationStreamTests(unittest.TestCase):

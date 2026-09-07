@@ -257,6 +257,26 @@ A read-only Fedora 44 probe resolved the password command through Alacritty in
 0.056 seconds and found the printer tool available. Account and source tools
 were absent and returned their scoped missing-provider results; none was opened.
 
+Read-only regional event streams now observe only the fixed time or locale
+service. Acknowledged subscriptions and bounded owner barriers precede
+readiness; setup events coalesce, and sender replacement invalidates state.
+Normal idle departure clears the pinned sender without triggering a read that
+would repeatedly reactivate the service. Output loss and bus loss fail with
+explicit reload guidance. An internal NTP reader samples only CanNTP and
+NTPSynchronized under one ten-second budget, without enabling a polling loop.
+Settings subscription handoff, two-read settling, and visible-only sampling
+remain outstanding; the cumulative snapshot minor remains zero.
+The 38 focused tests pass, including private-bus lifecycle, owner denial,
+output isolation, and real ten-second read deadlines. A read-only Fedora 44
+probe observed each monitor for 36 seconds after its initial service read:
+each emitted one arrival invalidation and consumed zero sampled CPU ticks.
+Both stopped cleanly; no host settings or administration tools were changed.
+The local review identified a setup-time unicast sender gap. The corrected
+ordering authenticates the owner before property delivery and checks every
+sender before payload parsing. A private-bus fixture injects forged oversized
+unicast signals at both setup barriers while preserving an authentic pending
+notification.
+
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
 confirmation warning that a sent change cannot be canceled. Local cancellation

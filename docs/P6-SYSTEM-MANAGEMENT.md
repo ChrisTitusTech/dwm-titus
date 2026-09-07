@@ -1934,6 +1934,48 @@ remain a separate implementation boundary.
   publishes an idle provider, whether recovery adopts a transaction, finds
   history, or records `interrupted`. These fallbacks make invalidation independent
   of terminal-frame success while preserving the simulation exclusion.
+The preparatory regional event commands are now implemented:
+
+```text
+dwm-system-management watch-regional time
+dwm-system-management watch-regional locale
+```
+
+Each accepts only its fixed selector, subscribes to the service's fixed
+`PropertiesChanged` path/interface and bus-daemon `NameOwnerChanged`, and
+acknowledges the owner-change match and authenticates the initial owner before
+acknowledging the property match and repeating the owner barrier. Only then does
+it emit `regional-event<TAB>ready`. The entire setup has one ten-second
+deadline. Only a missing owner is accepted as dormant; denied or malformed
+setup never reports readiness. Relevant changed or invalidated properties and
+owner arrivals/replacements emit `regional-event<TAB>changed`. Changes during
+setup coalesce into one record immediately after readiness, and a newer owner
+notification wins over an older in-flight lookup.
+Property callbacks require the authenticated unique sender even before
+readiness. This also rejects unicast signals addressed directly to the monitor,
+which can bypass bus-side match rules, before parsing their payload or changing
+the setup dirty bit. Authentic changes during setup still coalesce normally.
+
+Readiness means the subscriptions are installed, not that the service is
+running. systemd's timedated and localed normally exit after being idle;
+departure clears the pinned sender without emitting a change or requesting a
+read. This avoids repeatedly reactivating an idle service. A later owner arrival
+invalidates state, and native actions still establish their own fresh monitored
+confirmation evidence. The monitor never calls a platform service method,
+activates a service, or starts an idle timer. Closed/full output, bus loss, or
+setup failure exits 1 with reload guidance; TERM, INT, and HUP clean up and exit
+0. Output uses the same isolated bounded writes as `watch-updates` and never
+changes inherited descriptor flags. Cleanup removes only acknowledged match
+rules, releases local sources, and does not close shared service connections.
+
+The internal `NtpRead` client separately issues exactly two fixed
+`Properties.Get` requests for `CanNTP` and `NTPSynchronized`, accepts only
+bounded boolean replies, and publishes a pair only after both succeed under
+one ten-second deadline. Partial, late, denied, and malformed replies do not
+publish a sample. This PR adds no sampling CLI or timer. Neither event commands
+nor this internal reader changes the cumulative snapshot minor. Settings
+activation and the following initialization/sampling contract remain pending.
+
 - systemd D-Bus property changes drive time and locale refresh while the System
   section is open. On pane open, the root model installs the timedate1 and
   locale1 property subscriptions before starting their initial bounded reads.
