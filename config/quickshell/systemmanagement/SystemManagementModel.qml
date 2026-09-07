@@ -46,6 +46,7 @@ Scope {
     readonly property alias localeDiscovery: localeDiscoveryModel
     readonly property alias accountDiscovery: accountDiscoveryModel
     readonly property alias printerDiscovery: printerDiscoveryModel
+    readonly property alias regional: regionalModel
 
     readonly property bool busy: snapshotOwned
     readonly property string providerState: root.settingsVisible
@@ -105,7 +106,8 @@ Scope {
             return "This update action is not supported.";
         if (!root.settingsVisible)
             return "Open System Settings to prepare an update action.";
-        if (root.dispatchingUpdate || root.dispatchingNative || root.nativeConfirmation !== null)
+        if (root.dispatchingUpdate || root.dispatchingNative || root.nativeConfirmation !== null
+                || regionalModel.ownsPreparation() || regionalModel.confirmation !== null)
             return "Finish or dismiss the current confirmation first.";
         if (root.snapshotOwned || root.snapshotPending || root.requiredPending || !discoveryModel.fresh)
             return "Wait for fresh update discovery, or reload status to retry.";
@@ -168,6 +170,7 @@ Scope {
             root.confirmationMessage = "Update state changed. Review a fresh preview and confirm again.";
         root.updateConfirmation = null;
         root.invalidateNativeConfirmation("");
+        regionalModel.invalidate("");
     }
 
     function delegateDiscovery(actionId) {
@@ -194,7 +197,8 @@ Scope {
     }
 
     function delegateActionReason(actionId) {
-        if (root.dispatchingUpdate || root.dispatchingNative || root.updateConfirmation !== null)
+        if (root.dispatchingUpdate || root.dispatchingNative || root.updateConfirmation !== null
+                || regionalModel.ownsPreparation() || regionalModel.confirmation !== null)
             return "Finish or dismiss the current confirmation first.";
         return root.delegateContextReason(actionId);
     }
@@ -1005,6 +1009,14 @@ Scope {
 
     function requestSnapshot(required) {
         if (!required && !root.settingsVisible) return;
+        if (regionalModel.ownsPreparation()) {
+            root.snapshotPending = root.snapshotPending || !required;
+            root.requiredPending = root.requiredPending || required;
+            regionalModel.invalidate("");
+            // Optional preflight cancellation must be reaped before recovery
+            // or discovery can claim the shared snapshot owner.
+            if (regionalModel.ownsPreparation()) return;
+        }
         if (root.snapshotOwned || root.discoveryBatch) {
             root.snapshotPending = root.snapshotPending || !required;
             root.requiredPending = root.requiredPending || required;
@@ -1087,11 +1099,13 @@ Scope {
         id: timeDiscoveryModel
         domain: "time"
         onSnapshotRequested: root.requestSnapshot(false)
+        onInvalidated: regionalModel.invalidate("time")
     }
     SystemProviderDiscovery {
         id: localeDiscoveryModel
         domain: "locale"
         onSnapshotRequested: root.requestSnapshot(false)
+        onInvalidated: regionalModel.invalidate("locale")
     }
     SystemProviderDiscovery {
         id: accountDiscoveryModel
@@ -1104,6 +1118,15 @@ Scope {
         domain: "printers"
         onSnapshotRequested: root.requestSnapshot(false)
         onInvalidated: root.invalidateNativeConfirmation("printers")
+    }
+
+    SystemRegionalSettingsModel {
+        id: regionalModel
+        model: root
+        onReleased: Qt.callLater(function() {
+            if (root.requiredPending) root.requestSnapshot(true);
+            else if (root.snapshotPending && root.settingsVisible) root.requestSnapshot(false);
+        })
     }
 
     SystemOperationModel {

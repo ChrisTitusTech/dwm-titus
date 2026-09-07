@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Coordinate internal regional choices, previews, and confirmations with root
+  snapshot recovery. Reject stale or competing preparations, reap optional reads
+  before recovery, and retain sent operations across closure. Regional forms
+  remain pending.
+
 - Expose confirmed account, password, printer, and software-source tool entries
   with scoped availability, readable inventories, and keyboard-accessible
   confirmations. Native launches no longer show update-only cancellation text.
@@ -20,8 +25,7 @@ versions from `config.mk`.
   and prevent helper launch when cancellation arrives during setup.
 
 - Add a standalone read-only regional preflight helper owner with fixed requests,
-  bounded deadlines, close cleanup, and stale-callback rejection. Root confirmation
-  integration and visible native controls remain pending.
+  bounded deadlines, close cleanup, and stale-callback rejection.
 
 - Validate bounded regional choice and confirmation-preview streams in a
   standalone parser, preserving complete locale details and typed read errors.

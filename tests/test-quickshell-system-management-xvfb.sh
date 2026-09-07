@@ -40,6 +40,11 @@ cleanup() {
 	cleanup_status=$?
 	set +e
 	stop_process "${quickshell_pid:-}"
+	if [ -n "${regional_settings_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$regional_settings_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	if [ -n "${delegate_helper:-}" ]; then
 		for helper_pid in $(pgrep -f "$delegate_helper " 2>/dev/null || true); do
 			stop_process "$helper_pid"
@@ -656,6 +661,60 @@ if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .
 	printf 'Parser-only fixture started a capture that outlived its process\n' >&2
 	exit 1
 fi
+
+mkdir -p "$work/regional-settings" "$work/regional-settings-data/dwm-titus/scripts"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/regional-settings/"
+cp "$repo/tests/qml/SystemRegionalSettings.qml" "$work/regional-settings/shell.qml"
+regional_settings_helper=$work/regional-settings-data/dwm-titus/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-regional-settings-provider.py" "$regional_settings_helper"
+cp "$repo/tests/fixtures/system-native-discovery-provider.py" "$repo/tests/fixtures/system-native-action-provider.py" "$(dirname "$regional_settings_helper")/"
+chmod +x "$regional_settings_helper"
+regional_empty=$work/regional-settings-empty-command
+mkdir -p "$regional_empty"
+regional_empty_status=0
+env DWM_NATIVE_DISCOVERY_FIXTURE="$regional_empty" DWM_NATIVE_ACTION_FIXTURE="$regional_empty" \
+	DWM_NATIVE_ACTION=timezone-set DWM_NATIVE_ACTION_SCENARIO=success \
+	"$regional_settings_helper" >"$regional_empty/log" 2>&1 || regional_empty_status=$?
+if [ "$regional_empty_status" -eq 0 ] || [ ! -e "$regional_empty/unexpected-command" ] ||
+	grep -Fq 'IndexError' "$regional_empty/log"; then
+	cat "$regional_empty/log" >&2
+	exit 1
+fi
+for regional_action in timezone-set ntp-set locale-set; do
+	for regional_scenario in success denied unsupported uncertain close-dispatch close-read required-read stale-read \
+		error-read malformed-read close-claim close-publish close-preview required-publish; do
+		regional_state=$work/regional-settings-$regional_action-$regional_scenario
+		mkdir -p "$regional_state"
+		regional_status=0
+		timeout --foreground --kill-after=2s 25s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+			XDG_DATA_HOME="$work/regional-settings-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+			DWM_NATIVE_DISCOVERY_FIXTURE="$regional_state" DWM_NATIVE_ACTION_FIXTURE="$regional_state" \
+			DWM_NATIVE_ACTION="$regional_action" DWM_NATIVE_ACTION_SCENARIO="$regional_scenario" \
+			quickshell --no-duplicate --path "$work/regional-settings/shell.qml" >"$regional_state/log" 2>&1 &
+		quickshell_pid=$!
+		wait "$quickshell_pid" || regional_status=$?
+		quickshell_pid=
+		if [ "$regional_status" -ne 0 ] || ! grep -F 'Regional settings tests: PASS' "$regional_state/log" ||
+			grep -Fq 'Regional settings FAILED:' "$regional_state/log" ||
+			[ -e "$regional_state/invalid-arguments" ] || [ -e "$regional_state/overlap" ] ||
+			[ -e "$regional_state/unexpected-command" ] ||
+			[ -n "$(find "$regional_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+			cat "$regional_state/log" >&2
+			exit 1
+		fi
+		case $regional_scenario in
+		success | denied | unsupported | uncertain)
+			[ "$(sed -n '1p' "$regional_state/$regional_action")" = 1 ]
+			[ "$(sed -n '1p' "$regional_state/ack-operation")" = 1 ]
+			;;
+		*)
+			[ ! -e "$regional_state/$regional_action" ]
+			[ ! -e "$regional_state/ack-operation" ]
+			;;
+		esac
+		[ "$regional_scenario" != close-claim ] || [ ! -e "$regional_state/preflight-count" ]
+	done
+done
 
 mkdir -p "$work/delegate-confirmation" "$work/delegate-data/dwm-titus/scripts"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/delegate-confirmation/"
