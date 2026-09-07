@@ -137,14 +137,14 @@ echo ""
 # ── Terminal emulators ──────────────────────────────────
 echo "Terminal Emulators (at least one required):"
 TERM_FOUND=0
-for term in dwmterm alacritty kitty st; do
+for term in dwmterm alacritty kitty st warp-terminal xterm; do
 	if command -v "$term" &>/dev/null; then
 		printf "  ${GREEN}✓${NC} %s\n" "$term"
 		TERM_FOUND=1
 	fi
 done
 if [ $TERM_FOUND -eq 0 ]; then
-	printf "  ${RED}✗${NC} No supported terminal found ${YELLOW}(install dwmterm, alacritty, kitty, or st)${NC}\n"
+	printf "  ${RED}✗${NC} No supported terminal found ${YELLOW}(install dwmterm, alacritty, kitty, st, warp-terminal, or xterm)${NC}\n"
 	MISSING=$((MISSING + 1))
 fi
 if command -v herdr &>/dev/null; then
