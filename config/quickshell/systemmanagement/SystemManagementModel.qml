@@ -37,6 +37,9 @@ Scope {
     property var updateConfirmation: null
     property string confirmationMessage: ""
     property bool dispatchingUpdate: false
+    property var nativeConfirmation: null
+    property string nativeConfirmationMessage: ""
+    property bool dispatchingNative: false
     readonly property alias operation: operationModel
     readonly property alias discovery: discoveryModel
     readonly property alias timeDiscovery: timeDiscoveryModel
@@ -100,8 +103,10 @@ Scope {
     function updateActionReason(actionId) {
         if (actionId !== "updates-refresh" && actionId !== "updates-install-all")
             return "This update action is not supported.";
-        if (!root.settingsVisible || root.dispatchingUpdate)
+        if (!root.settingsVisible)
             return "Open System Settings to prepare an update action.";
+        if (root.dispatchingUpdate || root.dispatchingNative || root.nativeConfirmation !== null)
+            return "Finish or dismiss the current confirmation first.";
         if (root.snapshotOwned || root.snapshotPending || root.requiredPending || !discoveryModel.fresh)
             return "Wait for fresh update discovery, or reload status to retry.";
         if (!root.validGeneration(root.generation) || root.recoveryProvider.status !== "available")
@@ -162,6 +167,91 @@ Scope {
         if (root.updateConfirmation !== null)
             root.confirmationMessage = "Update state changed. Review a fresh preview and confirm again.";
         root.updateConfirmation = null;
+        root.invalidateNativeConfirmation("");
+    }
+
+    function delegateDiscovery(actionId) {
+        if (actionId === "accounts-open" || actionId === "password-open") return accountDiscoveryModel;
+        if (actionId === "printers-open") return printerDiscoveryModel;
+        if (actionId === "sources-open") return discoveryModel;
+        return null;
+    }
+
+    function delegateContextReason(actionId) {
+        const monitor = root.delegateDiscovery(actionId);
+        if (monitor === null) return "This delegated action is not supported.";
+        if (!root.settingsVisible) return "Open System Settings to prepare this action.";
+        if (root.snapshotOwned || root.snapshotPending || root.requiredPending || root.discoveryBatch
+                || !monitor.visible || !monitor.ready || monitor.failed || !monitor.cycle.enabled
+                || monitor.cycle.phase !== "idle" || monitor.cycle.unresolved)
+            return "Wait for fresh provider status, or reload status to retry.";
+        if (!root.validGeneration(root.generation) || !operationModel.canStart)
+            return "An operation or its recovery still owns the system workflow.";
+        const action = root.actions.find(item => item.id === actionId);
+        if (!action || action.availability !== "available")
+            return action && action.detail.length > 0 ? action.detail : "The provider did not offer this action.";
+        return "";
+    }
+
+    function delegateActionReason(actionId) {
+        if (root.dispatchingUpdate || root.dispatchingNative || root.updateConfirmation !== null)
+            return "Finish or dismiss the current confirmation first.";
+        return root.delegateContextReason(actionId);
+    }
+
+    function prepareDelegate(actionId) {
+        if (root.nativeConfirmation !== null) return false;
+        const reason = root.delegateActionReason(actionId);
+        if (reason.length > 0) {
+            root.nativeConfirmationMessage = reason;
+            return false;
+        }
+        const pending = { actionId: actionId, generation: root.generation,
+            requestGeneration: root.requestGeneration, epoch: root.delegateDiscovery(actionId).cycle.epoch };
+        root.dispatchingNative = true;
+        root.nativeConfirmationMessage = "";
+        // Reentrant closure or discovery callbacks may retire this preparation.
+        if (root.delegateContextReason(actionId) === "" && pending.generation === root.generation
+                && pending.requestGeneration === root.requestGeneration
+                && pending.epoch === root.delegateDiscovery(actionId).cycle.epoch)
+            root.nativeConfirmation = pending;
+        root.dispatchingNative = false;
+        return root.nativeConfirmation === pending;
+    }
+
+    function discardDelegate() {
+        root.nativeConfirmation = null;
+        root.nativeConfirmationMessage = "";
+    }
+
+    function invalidateNativeConfirmation(domain) {
+        const pending = root.nativeConfirmation;
+        if (pending === null) return;
+        const monitor = root.delegateDiscovery(pending.actionId);
+        if (domain !== "" && (monitor === null || monitor.domain !== domain)) return;
+        root.nativeConfirmationMessage = "Provider state changed. Reload status and confirm again.";
+        root.nativeConfirmation = null;
+    }
+
+    function confirmDelegate() {
+        const pending = root.nativeConfirmation;
+        if (pending === null || root.dispatchingUpdate || root.dispatchingNative) return false;
+        if (root.delegateActionReason(pending.actionId) !== "") {
+            root.invalidateNativeConfirmation("");
+            return false;
+        }
+        root.dispatchingNative = true;
+        root.nativeConfirmation = null;
+        // Recheck after prompt callbacks; the operation owner checks its own
+        // source ownership again before constructing the fixed empty argv.
+        const monitor = root.delegateDiscovery(pending.actionId);
+        const current = root.delegateContextReason(pending.actionId) === ""
+            && pending.generation === root.generation && pending.requestGeneration === root.requestGeneration
+            && monitor !== null && pending.epoch === monitor.cycle.epoch;
+        const started = current && operationModel.startNative(pending.actionId, "", "");
+        root.nativeConfirmationMessage = started ? "" : "Provider state changed. Reload status and confirm again.";
+        root.dispatchingNative = false;
+        return started;
     }
 
     function providerFallback(detail) {
@@ -1007,11 +1097,13 @@ Scope {
         id: accountDiscoveryModel
         domain: "accounts"
         onSnapshotRequested: root.requestSnapshot(false)
+        onInvalidated: root.invalidateNativeConfirmation("accounts")
     }
     SystemProviderDiscovery {
         id: printerDiscoveryModel
         domain: "printers"
         onSnapshotRequested: root.requestSnapshot(false)
+        onInvalidated: root.invalidateNativeConfirmation("printers")
     }
 
     SystemOperationModel {

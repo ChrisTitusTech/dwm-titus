@@ -2029,6 +2029,22 @@ points and verify output, child shutdown, and absence of capture files.
 Abrupt process KILL or host failure cannot run shell cleanup handlers and is not
 covered by the graceful-termination guarantee.
 
+The root's internal delegated confirmation entry admits only `accounts-open`,
+`password-open`, `printers-open`, and `sources-open`. It requires a visible
+Settings section, a quiet snapshot owner, fresh owning-provider cycle, validated
+available action, and empty operation/recovery ownership. Native admission does
+not require update-only recovery evidence. A pending confirmation captures the
+action, snapshot generation, request identity, and provider epoch; provider or
+global invalidation, replacement reads, and closure retire it. Update and native
+prompts cannot overlap. Dispatch is claimed before clearing the prompt and state
+is rechecked after reentrant callbacks, then the existing owner independently
+validates fixed empty arguments. Discarding or closing a prompt never starts an
+operation; closing after dispatch preserves observation. Sixteen private nested
+X11 cases cover all four tools, typed denial and unsupported results, and closure
+during dispatch callbacks. Accepted launch still does not verify administration
+inside the tool. These entry points are not exposed by IPC or visible controls;
+regional confirmation and visible native Settings remain separate boundaries.
+
 The shared subscription owner starts a discovery cycle only after readiness, with a 12-second frontend
 startup deadline covering the helper's ten-second setup and process startup.
 Failure falls back to a finite read with visible monitoring-unavailable guidance;
