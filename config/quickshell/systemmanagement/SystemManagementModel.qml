@@ -19,6 +19,10 @@ Scope {
     property var actions: []
     property var updates: []
     property var packageChanges: []
+    property var nativeProviders: ({})
+    property var nativeStates: ({})
+    property var accounts: []
+    property var repositories: []
     property var errors: []
     property var activeOperation: null
     property var terminalHandoff: null
@@ -211,6 +215,37 @@ Scope {
         return "";
     }
 
+    function nativeStateOwner(identifier) {
+        if (identifier === "timezone" || identifier === "ntp-enabled"
+                || identifier === "ntp-synchronized" || identifier === "locale") return "regional";
+        if (identifier === "accounts-count") return "accounts";
+        if (identifier === "cups-service") return "printers";
+        return "";
+    }
+
+    function nativeActionOwner(identifier) {
+        if (identifier === "timezone-set" || identifier === "ntp-set" || identifier === "locale-set") return "regional";
+        if (identifier === "accounts-open" || identifier === "password-open") return "accounts";
+        if (identifier === "printers-open") return "printers";
+        if (identifier === "sources-open") return "sources";
+        return "";
+    }
+
+    function validNativeValue(identifier, status, value) {
+        if (identifier === "accounts-count")
+            return status === "available" ? /^(0|[1-9][0-9]*)$/.test(value)
+                && Number(value) <= 256 : value === "unknown";
+        if (identifier === "cups-service")
+            return status === "available" ? (value === "running" || value === "socket-ready" || value === "stopped")
+                : value === "unknown";
+        if (identifier === "ntp-enabled" || identifier === "ntp-synchronized")
+            return status === "available" ? (value === "yes" || value === "no") : value === "unknown";
+        // An explicit LANG= is readable unset configuration, not a malformed
+        // regional provider. A replacement still requires its own fresh preview.
+        if (identifier === "locale") return status === "available" || value === "unknown";
+        return value.length > 0 && (status === "available" || value === "unknown");
+    }
+
     function clearState(detail) {
         root.snapshotState = "failure";
         root.message = detail;
@@ -223,6 +258,10 @@ Scope {
         root.actions = [];
         root.updates = [];
         root.packageChanges = [];
+        root.nativeProviders = {};
+        root.nativeStates = {};
+        root.accounts = [];
+        root.repositories = [];
         root.errors = [];
         root.activeOperation = null;
         root.terminalHandoff = null;
@@ -236,6 +275,7 @@ Scope {
         }
 
         let headerSeen = false;
+        let minor = 0;
         let completeSeen = false;
         let parsedGeneration = "";
         let fatal = "";
@@ -264,6 +304,17 @@ Scope {
         const seenActions = {};
         const seenUpdates = {};
         const seenChanges = {};
+        const nativeOwners = ["regional", "accounts", "printers", "sources"];
+        const nativeStateIds = ["timezone", "ntp-enabled", "ntp-synchronized", "locale", "accounts-count", "cups-service"];
+        const nativeActionIds = ["timezone-set", "ntp-set", "locale-set", "accounts-open", "password-open", "printers-open", "sources-open"];
+        const nativeInvalid = {};
+        const parsedNativeProviders = {};
+        const nativeLists = { account: [], repository: [] };
+        const nativeListCounts = { account: 0, repository: 0 };
+        const nativeListBytes = { account: 0, repository: 0 };
+        const nativeSeen = { account: {}, repository: {} };
+        let nonListBytes = 0;
+        let listRecordCount = 0;
 
         for (const rawLine of text.split("\n")) {
             if (rawLine.length === 0) continue;
@@ -278,13 +329,28 @@ Scope {
                 break;
             }
             recordIndex++;
+            if (type === "update" || type === "package-change" || type === "account" || type === "repository") {
+                // Keep duplicate tracking through a provider-local overflow,
+                // while the complete protocol reservation bounds its memory.
+                if (++listRecordCount > 9216) {
+                    fatal = "System management provider exceeded the overall list reservation";
+                    break;
+                }
+            } else {
+                nonListBytes += root.utf8Bytes(rawLine) + 1;
+                if (nonListBytes > 1024 * 1024) {
+                    fatal = "System management provider exceeded the non-list byte reservation";
+                    break;
+                }
+            }
 
             if (type === "system-management-protocol") {
-                if (headerSeen || fields.length < 3 || fields[1] !== "1" || fields[2] !== "0") {
+                if (headerSeen || fields.length < 3 || fields[1] !== "1" || (fields[2] !== "0" && fields[2] !== "1")) {
                     fatal = "System management provider returned an unsupported protocol";
                     break;
                 }
                 headerSeen = true;
+                minor = Number(fields[2]);
             } else if (type === "snapshot-generation") {
                 if (parsedGeneration.length > 0 || fields.length < 2
                         || !root.validGeneration(fields[1])) {
@@ -293,6 +359,18 @@ Scope {
                 }
                 parsedGeneration = fields[1];
             } else if (type === "provider") {
+                if (minor === 1 && fields.length >= 2 && nativeOwners.indexOf(fields[1]) !== -1) {
+                    const owner = fields[1];
+                    if (seenProviders["$" + owner] !== undefined) {
+                        fatal = "System management provider repeated a provider record";
+                        break;
+                    }
+                    seenProviders["$" + owner] = true;
+                    if (!root.fieldsFit(fields, 6) || !root.validProviderStatus(fields[2]) || fields[3] !== "delegated") {
+                        nativeInvalid[owner] = true;
+                    } else parsedNativeProviders[owner] = { status: fields[2], providerClass: fields[3], owner: fields[4], detail: fields[5] };
+                    continue;
+                }
                 if (fields.length < 2 || (fields[1] !== "updates" && fields[1] !== "recovery")) {
                     fatal = "System management provider returned an unknown provider owner";
                     break;
@@ -321,6 +399,18 @@ Scope {
                     parsedRecoveryProvider = provider;
                 }
             } else if (type === "state") {
+                const owner = fields.length >= 2 ? root.nativeStateOwner(fields[1]) : "";
+                if (minor === 1 && owner.length > 0) {
+                    if (seenStates["$" + fields[1]] !== undefined) {
+                        fatal = "System management provider repeated a state record";
+                        break;
+                    }
+                    seenStates["$" + fields[1]] = true;
+                    if (!root.fieldsFit(fields, 5) || !root.validProviderStatus(fields[2])
+                            || !root.validNativeValue(fields[1], fields[2], fields[3])) nativeInvalid[owner] = true;
+                    else states["$" + fields[1]] = { status: fields[2], value: fields[3], detail: fields[4] };
+                    continue;
+                }
                 if (fields.length < 2 || (fields[1] !== "update-summary"
                         && fields[1] !== "update-last-refresh"
                         && fields[1] !== "update-restart")) {
@@ -355,6 +445,19 @@ Scope {
                 states["$" + fields[1]] = { "status": fields[2], "value": fields[3],
                     "detail": fields[4] };
             } else if (type === "action") {
+                const owner = fields.length >= 2 ? root.nativeActionOwner(fields[1]) : "";
+                if (minor === 1 && owner.length > 0) {
+                    if (seenActions["$" + fields[1]] !== undefined) {
+                        fatal = "System management provider repeated an action record";
+                        break;
+                    }
+                    seenActions["$" + fields[1]] = true;
+                    if (!root.fieldsFit(fields, 7) || (fields[2] !== "available" && fields[2] !== "unavailable")
+                            || fields[3] !== "delegated" || fields[4] !== owner) nativeInvalid[owner] = true;
+                    else parsedActions["$" + fields[1]] = { id: fields[1], availability: fields[2], actionClass: fields[3],
+                        owner: fields[4], label: fields[5], detail: fields[6] };
+                    continue;
+                }
                 if (fields.length < 2 || (fields[1] !== "updates-refresh"
                         && fields[1] !== "updates-install-all"
                         && fields[1] !== "updates-cancel")) {
@@ -377,16 +480,16 @@ Scope {
                     "owner": fields[4], "label": fields[5], "detail": fields[6] };
             } else if (type === "update") {
                 updateRecordCount++;
-                if (updateRecordCount > 4096) {
-                    updatesInvalid = true;
-                    continue;
-                }
                 if (fields.length >= 2 && fields[1].length > 0) {
                     if (seenUpdates["$" + fields[1]] !== undefined) {
                         fatal = "System management provider repeated an update identity";
                         break;
                     }
                     seenUpdates["$" + fields[1]] = true;
+                }
+                if (updateRecordCount > 4096) {
+                    updatesInvalid = true;
+                    continue;
                 }
                 if (!root.fieldsFit(fields, 7) || fields[1].length === 0
                         || !root.validSeverity(fields[2])
@@ -406,16 +509,16 @@ Scope {
                 updateBytes += recordBytes;
             } else if (type === "package-change") {
                 changeRecordCount++;
-                if (changeRecordCount > 4096) {
-                    planInvalid = true;
-                    continue;
-                }
                 if (fields.length >= 2 && fields[1].length > 0) {
                     if (seenChanges["$" + fields[1]] !== undefined) {
                         fatal = "System management provider repeated a plan identity";
                         break;
                     }
                     seenChanges["$" + fields[1]] = true;
+                }
+                if (changeRecordCount > 4096) {
+                    planInvalid = true;
+                    continue;
                 }
                 if (!root.fieldsFit(fields, 6) || fields[1].length === 0
                         || !root.validPlanAction(fields[2]) || fields[3].length === 0
@@ -431,6 +534,39 @@ Scope {
                 parsedChanges.push({ "packageId": fields[1], "action": fields[2],
                     "name": fields[3], "version": fields[4], "summary": fields[5] });
                 changeBytes += recordBytes;
+            } else if (type === "account" || type === "repository") {
+                if (minor !== 1) {
+                    fatal = "System management provider returned an inactive list owner";
+                    break;
+                }
+                const owner = type === "account" ? "accounts" : "sources";
+                if (fields.length < 2 || fields[1].length === 0) {
+                    fatal = "System management provider returned a list without an identity";
+                    break;
+                }
+                if (nativeSeen[type]["$" + fields[1]] !== undefined) {
+                    fatal = "System management provider repeated a list identity";
+                    break;
+                }
+                nativeSeen[type]["$" + fields[1]] = true;
+                nativeListCounts[type]++;
+                nativeListBytes[type] += root.utf8Bytes(rawLine) + 1;
+                const account = type === "account";
+                if (nativeListCounts[type] > (account ? 256 : 512)
+                        || nativeListBytes[type] > (account ? 256 : 384) * 1024) {
+                    nativeInvalid[owner] = true;
+                    continue;
+                }
+                if (!root.fieldsFit(fields, account ? 5 : 4)
+                        || (account ? (fields[2] !== "current" && fields[2] !== "other")
+                            : (fields[2] !== "enabled" && fields[2] !== "disabled"))
+                        || (account && fields[4].length === 0)) {
+                    nativeInvalid[owner] = true;
+                    continue;
+                }
+                if (!nativeInvalid[owner]) nativeLists[type].push(account
+                    ? { id: fields[1], scope: fields[2], displayName: fields[3], loginName: fields[4] }
+                    : { id: fields[1], state: fields[2], description: fields[3] });
             } else if (type === "error") {
                 errorRecordCount++;
                 const recordBytes = root.utf8Bytes(rawLine) + 1;
@@ -439,6 +575,11 @@ Scope {
                     break;
                 }
                 errorBytes += recordBytes;
+                if (minor === 1 && fields.length >= 2 && nativeOwners.indexOf(fields[1]) !== -1) {
+                    if (!root.fieldsFit(fields, 4) || !root.validErrorCode(fields[2])) nativeInvalid[fields[1]] = true;
+                    else parsedErrors.push({ provider: fields[1], code: fields[2], detail: fields[3] });
+                    continue;
+                }
                 if (fields.length < 2 || (fields[1] !== "updates" && fields[1] !== "recovery")) {
                     fatal = "System management provider returned an unknown error owner";
                     break;
@@ -502,6 +643,26 @@ Scope {
                 || parsedActions["$updates-install-all"] === undefined
                 || parsedActions["$updates-cancel"] === undefined) updatesInvalid = true;
         if (parsedRecoveryProvider === null) recoveryInvalid = true;
+        if (minor === 1) {
+            for (const owner of nativeOwners) {
+                if (parsedNativeProviders[owner] === undefined) nativeInvalid[owner] = true;
+            }
+            for (const identifier of nativeStateIds) {
+                if (states["$" + identifier] === undefined) nativeInvalid[root.nativeStateOwner(identifier)] = true;
+            }
+            for (const identifier of nativeActionIds) {
+                if (parsedActions["$" + identifier] === undefined) nativeInvalid[root.nativeActionOwner(identifier)] = true;
+            }
+            if (!nativeInvalid.accounts) {
+                const count = states["$accounts-count"];
+                if ((count.status === "available" && Number(count.value) !== nativeLists.account.length)
+                        || (count.status !== "available" && count.status !== "partial" && nativeLists.account.length > 0)
+                        || nativeLists.account.filter(item => item.scope === "current").length > 1) nativeInvalid.accounts = true;
+            }
+            if (!nativeInvalid.sources && nativeLists.repository.length > 0
+                    && parsedNativeProviders.sources.status !== "available"
+                    && parsedNativeProviders.sources.status !== "partial") nativeInvalid.sources = true;
+        }
         if (!updatesInvalid) {
             const cancelAvailable = parsedActions["$updates-cancel"].availability === "available";
             const canCancelActive = parsedActive !== null && parsedActive.cancelable;
@@ -619,8 +780,36 @@ Scope {
                 "owner": "dwm-system-management",
                 "detail": "System management provider returned malformed recovery state" }
             : parsedRecoveryProvider;
+        const publishedProviders = {};
+        const publishedStates = {};
+        let nativeMalformed = false;
+        if (minor === 1) {
+            for (const owner of nativeOwners) {
+                if (nativeInvalid[owner]) {
+                    nativeMalformed = true;
+                    const detail = "System management provider returned malformed " + owner + " state";
+                    publishedProviders[owner] = { status: "partial", providerClass: "delegated", owner: "", detail: detail };
+                    parsedErrors.push({ provider: owner, code: "malformed", detail: detail });
+                } else publishedProviders[owner] = parsedNativeProviders[owner];
+            }
+            for (const identifier of nativeStateIds) {
+                const owner = root.nativeStateOwner(identifier);
+                publishedStates[identifier] = nativeInvalid[owner]
+                    ? { status: "partial", value: "unknown", detail: publishedProviders[owner].detail }
+                    : states["$" + identifier];
+            }
+            const nativeActions = [];
+            for (const identifier of nativeActionIds) {
+                if (!nativeInvalid[root.nativeActionOwner(identifier)]) nativeActions.push(parsedActions["$" + identifier]);
+            }
+            root.actions = root.actions.concat(nativeActions);
+        }
+        root.nativeProviders = publishedProviders;
+        root.nativeStates = publishedStates;
+        root.accounts = minor === 1 && !nativeInvalid.accounts ? nativeLists.account : [];
+        root.repositories = minor === 1 && !nativeInvalid.sources ? nativeLists.repository : [];
         root.errors = parsedErrors;
-        root.snapshotState = updatesInvalid || planInvalid || planUnsupported || recoveryInvalid
+        root.snapshotState = updatesInvalid || planInvalid || planUnsupported || recoveryInvalid || nativeMalformed
             ? "partial" : "ready";
         root.message = root.snapshotState === "ready"
             ? parsedUpdates.length + " updates reported"

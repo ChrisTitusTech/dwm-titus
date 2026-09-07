@@ -11129,13 +11129,16 @@ class RecoverySnapshotTests(unittest.TestCase):
                 mock.patch.dict(os.environ, {"XDG_STATE_HOME": directory}), \
                 mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
                 mock.patch.object(provider, "PackageKitBackend", return_value=self.backend()), \
+                mock.patch.object(provider, "NativeSnapshotSources", return_value=FixtureNativeSources()), \
                 contextlib.redirect_stdout(io.StringIO()) as stdout:
             self.assertEqual(provider.main(["snapshot"]), 0)
             output = stdout.getvalue().splitlines()
             self.assertEqual(output[-1], "complete\tsnapshot")
             self.assertEqual(self.restart_row(output)[2:4], ["available", "none"])
-            self.assertEqual([row[2] for row in rows(output, "action")],
+            self.assertEqual([row[2] for row in rows(output, "action")[:3]],
                 ["available", "unavailable", "unavailable"])
+            self.assertEqual(output[0], "system-management-protocol\t1\t1")
+            self.assertEqual(len(rows(output, "action")), 10)
             path = pathlib.Path(directory) / "dwm-titus" / "system-management"
             self.assertEqual({item.name for item in path.iterdir()}, set(provider.JOURNAL_NAMES))
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
@@ -11377,9 +11380,197 @@ class RecoverySnapshotTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(pathlib.Path(journal.chain.path).parents[1])}), \
                     mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
                     mock.patch.object(provider, "PackageKitBackend", side_effect=provider.SnapshotFailure("missing-provider", "Bindings missing")), \
+                    mock.patch.object(provider, "NativeSnapshotSources", return_value=FixtureNativeSources()), \
                     contextlib.redirect_stdout(io.StringIO()) as stdout:
                 self.assertEqual(provider.main(["snapshot"]), 0)
             self.assertEqual(rows(stdout.getvalue().splitlines(), "terminal-handoff")[0][1], operation.operation_id)
+
+
+class FixtureNativeSources:
+    """Typed finite results; no test silently consults or launches host providers."""
+
+    def __init__(self):
+        self.time_state = mock.Mock(return_value=provider.RegionalTimeState("America/Chicago", True, True, False))
+        self.locale_state = mock.Mock(return_value=provider.parse_locale_configuration(("LANG=en_US.UTF-8", "LC_TIME=C")))
+        account = provider.AccountRecord("/arbitrary/current", "current", "Current user", "fixture", True)
+        self.accounts = mock.Mock(return_value=provider.AccountInventory((account,), (account.path,), account.path, "available", ()))
+        self.printers = mock.Mock(return_value=provider.CupsState("available", "socket-ready", (), ()))
+        self.repositories = mock.Mock(return_value=(provider.RepositoryRow("fedora", True, "Fedora"),
+            provider.RepositoryRow("disabled", False, "Disabled source")))
+        self.delegate = mock.Mock(return_value=(("/usr/bin/fixed-fixture",), "Fixture tool"))
+        self.admission = mock.Mock()
+
+
+class NativeSnapshotTests(unittest.TestCase):
+    def snapshot(self, sources=None, *, backend=None, active=False, recovery_failure=None, missing_state=False):
+        fixture = RecoverySnapshotTests()
+        sources = sources or FixtureNativeSources()
+        backend = backend or fixture.backend()
+        with fixture.journal() as journal:
+            if active:
+                fixture.begin(journal, "timezone")
+            recovery = provider.RecoverySnapshot(None if missing_state else provider.load_journal_state(journal.chain),
+                failures=(recovery_failure,) if recovery_failure else ())
+            with mock.patch.object(provider, "read_recovery_snapshot", return_value=recovery), \
+                    mock.patch.object(provider, "launch_delegated_tool") as launch:
+                output = provider.build_managed_snapshot(backend, native_sources=sources)
+            launch.assert_not_called()
+            return output
+
+    def by_id(self, output, kind):
+        return {row[1]: row for row in rows(output, kind)}
+
+    def test_complete_cumulative_set_and_no_dispatch(self):
+        sources = FixtureNativeSources()
+        output = self.snapshot(sources)
+        self.assertEqual(output[0], "system-management-protocol\t1\t1")
+        self.assertEqual(output[-1], "complete\tsnapshot")
+        self.assertEqual(len(rows(output, "provider")), 6)
+        self.assertEqual(len(rows(output, "state")), 9)
+        self.assertEqual(len(rows(output, "action")), 10)
+        self.assertEqual(len(rows(output, "account")), 1)
+        self.assertEqual(len(rows(output, "repository")), 2)
+        self.assertEqual(self.by_id(output, "state")["accounts-count"][2:4], ["available", "1"])
+        self.assertEqual(self.by_id(output, "state")["ntp-synchronized"][3], "no")
+        self.assertEqual(self.by_id(output, "state")["locale"][3:], ["en_US.UTF-8", "LC_TIME=C"])
+        for method in (sources.time_state, sources.locale_state, sources.accounts,
+                       sources.printers, sources.repositories, sources.admission):
+            method.assert_called_once_with()
+        self.assertEqual({call.args[0] for call in sources.delegate.call_args_list}, provider.DELEGATED_ACTIONS)
+        self.assertEqual(rows(output, "error"), [])
+        self.assertEqual(provider.build_snapshot(FixtureBackend())[0], "system-management-protocol\t1\t0")
+
+    def test_independent_reader_failures_keep_every_mandatory_record(self):
+        for name, owner, state_id in (("time_state", "regional", "timezone"),
+                ("locale_state", "regional", "locale"), ("accounts", "accounts", "accounts-count"),
+                ("printers", "printers", "cups-service"), ("repositories", "sources", None)):
+            with self.subTest(name=name):
+                sources = FixtureNativeSources()
+                getattr(sources, name).side_effect = provider.SnapshotFailure("permission-denied", "Read denied", "restricted")
+                output = self.snapshot(sources)
+                self.assertEqual(len(rows(output, "provider")), 6)
+                self.assertEqual(len(rows(output, "state")), 9)
+                self.assertEqual(len(rows(output, "action")), 10)
+                if state_id:
+                    self.assertEqual(self.by_id(output, "state")[state_id][2:4], ["restricted", "unknown"])
+                self.assertIn(["error", owner, "permission-denied", "Read denied"], rows(output, "error"))
+                self.assertEqual(self.by_id(output, "state")["locale" if name == "time_state" else "timezone"][2], "available")
+                self.assertEqual(self.by_id(output, "action")["accounts-open"][2], "available")
+
+    def test_missing_tools_preserve_rows_and_readable_state(self):
+        sources = FixtureNativeSources()
+        sources.delegate.side_effect = provider.SnapshotFailure("missing-provider", "Tool is missing", "unavailable")
+        output = self.snapshot(sources)
+        self.assertEqual(len(rows(output, "account")), 1)
+        self.assertEqual(len(rows(output, "repository")), 2)
+        self.assertEqual(self.by_id(output, "state")["cups-service"][2:4], ["available", "socket-ready"])
+        for identifier in provider.DELEGATED_ACTIONS:
+            self.assertEqual(self.by_id(output, "action")[identifier][2], "unavailable")
+        self.assertEqual(self.by_id(output, "action")["timezone-set"][2], "available")
+
+    def test_partial_accounts_and_running_printer_survive_scoped_errors(self):
+        sources = FixtureNativeSources()
+        failure = provider.SnapshotFailure("timeout", "Optional lookup timed out", "unavailable")
+        sources.accounts.return_value = replace(sources.accounts.return_value, status="partial", errors=(failure,))
+        sources.printers.return_value = provider.CupsState("available", "running", (), (failure,))
+        output = self.snapshot(sources)
+        self.assertEqual(len(rows(output, "account")), 1)
+        self.assertEqual(self.by_id(output, "state")["accounts-count"][2:4], ["partial", "unknown"])
+        self.assertEqual(self.by_id(output, "state")["cups-service"][2:4], ["available", "running"])
+        self.assertEqual(self.by_id(output, "provider")["printers"][2], "partial")
+
+    def test_native_offers_do_not_require_packagekit_or_logind_safety(self):
+        fixture = RecoverySnapshotTests()
+        backend = fixture.backend()
+        backend.require_mutation_safe.side_effect = provider.SnapshotFailure("unsupported", "Update security floor is unavailable")
+        for failure in (None, provider.SnapshotFailure("missing-provider", "No logind session", "unavailable")):
+            with self.subTest(failure=failure):
+                sources = FixtureNativeSources()
+                output = self.snapshot(sources, backend=backend, recovery_failure=failure)
+                actions = self.by_id(output, "action")
+                self.assertEqual(actions["updates-refresh"][2], "unavailable")
+                for identifier in provider.JOURNAL_OPERATION_ACTION_KINDS:
+                    if identifier not in {"updates-refresh", "updates-install-all"}:
+                        self.assertEqual(actions[identifier][2], "available")
+                sources.admission.assert_called_once_with()
+
+    def test_missing_recovery_active_owner_and_admission_failures_block_native(self):
+        for scenario in ("missing", "active", "admission"):
+            with self.subTest(scenario=scenario):
+                sources = FixtureNativeSources()
+                if scenario == "admission":
+                    sources.admission.side_effect = provider.SnapshotFailure("conflict", "Journal is busy")
+                output = self.snapshot(sources, active=scenario == "active", missing_state=scenario == "missing")
+                for row in rows(output, "action")[3:]:
+                    self.assertEqual(row[2], "unavailable")
+                if scenario != "admission":
+                    sources.admission.assert_not_called()
+                self.assertEqual(self.by_id(output, "state")["timezone"][2], "available")
+
+    def test_ntp_and_unwritable_locale_preserve_readable_status(self):
+        for assignments in (("LANG=en_US.UTF-8", "LANGUAGE=en:fr"), ("LANG=en_US.UTF-8", "LC_TIME=")):
+            sources = FixtureNativeSources()
+            sources.time_state.return_value = replace(sources.time_state.return_value, can_ntp=False)
+            sources.locale_state.return_value = provider.parse_locale_configuration(assignments)
+            output = self.snapshot(sources)
+            actions = self.by_id(output, "action")
+            self.assertEqual(actions["ntp-set"][2], "unavailable")
+            self.assertEqual(actions["locale-set"][2], "unavailable")
+            self.assertEqual(actions["timezone-set"][2], "available")
+            self.assertEqual(self.by_id(output, "state")["locale"][2:4], ["available", "en_US.UTF-8"])
+        sources.locale_state.return_value = provider.parse_locale_configuration(("LANG=old:invalid", "LC_TIME=C"))
+        self.assertEqual(self.by_id(self.snapshot(sources), "action")["locale-set"][2], "available")
+        sources.locale_state.return_value = provider.parse_locale_configuration(("LANG=",))
+        output = self.snapshot(sources)
+        self.assertEqual(self.by_id(output, "state")["locale"][2:4], ["available", ""])
+        self.assertEqual(self.by_id(output, "action")["locale-set"][2], "available")
+
+    def test_list_count_byte_and_duplicate_failures_discard_only_owner(self):
+        for family in ("account-count", "account-bytes", "account-duplicate", "repository-count", "repository-bytes", "repository-duplicate"):
+            with self.subTest(family=family):
+                sources = FixtureNativeSources()
+                if family.startswith("account"):
+                    original = sources.accounts.return_value
+                    count = 257 if family.endswith("count") else 256 if family.endswith("bytes") else 2
+                    records = tuple(provider.AccountRecord("/arbitrary/" + str(i) if not family.endswith("duplicate") else "/same",
+                        "other", "x" * 512, "y" * 512, True) for i in range(count))
+                    sources.accounts.return_value = replace(original, records=records)
+                    owner, kind = "accounts", "account"
+                else:
+                    count = 513 if family.endswith("count") else 512 if family.endswith("bytes") else 2
+                    records = tuple(provider.RepositoryRow((str(i) + "x" * 500) if not family.endswith("duplicate") else "same",
+                        True, "y" * 512) for i in range(count))
+                    sources.repositories.return_value = records
+                    owner, kind = "sources", "repository"
+                output = self.snapshot(sources)
+                self.assertEqual(rows(output, kind), [])
+                self.assertTrue(any(row[1:3] == [owner, "malformed"] for row in rows(output, "error")))
+                self.assertEqual(self.by_id(output, "state")["timezone"][2], "available")
+
+    def test_non_list_and_total_byte_reservations(self):
+        provider.validate_snapshot_size(["account\trow"] * 9216)
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.validate_snapshot_size(["account\trow"] * 9217)
+        provider.validate_snapshot_size(["future\t" + "x" * (1024 * 1024 - 8)])
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.validate_snapshot_size(["future\t" + "x" * (1024 * 1024 - 7)])
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.validate_snapshot_size(["account\t" + "x" * (8 * 1024 * 1024)])
+
+    def test_real_native_admission_is_fedora_gated_and_does_not_commit(self):
+        fixture = RecoverySnapshotTests()
+        with fixture.journal() as journal:
+            before = {name: os.pread(journal.descriptor(name), provider.JOURNAL_FILE_SIZE, 0) for name in provider.JOURNAL_NAMES}
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(pathlib.Path(journal.chain.path).parents[1])}), \
+                    mock.patch.object(provider, "read_fedora_identity", return_value={"ID": "fedora"}) as identity:
+                provider.NativeSnapshotSources().admission()
+                identity.assert_called_once_with()
+            self.assertEqual(before, {name: os.pread(journal.descriptor(name), provider.JOURNAL_FILE_SIZE, 0) for name in provider.JOURNAL_NAMES})
+            with mock.patch.object(provider, "read_fedora_identity", side_effect=provider.SnapshotFailure("unsupported", "Not Fedora")), \
+                    mock.patch.object(provider, "open_journal_directory") as open_journal:
+                with self.assertRaises(provider.SnapshotFailure):
+                    provider.NativeSnapshotSources().admission()
+                open_journal.assert_not_called()
 
 
 if __name__ == "__main__":

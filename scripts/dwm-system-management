@@ -30,6 +30,7 @@ from typing import Callable, Iterable, Iterator, Mapping, Protocol, Sequence
 
 PROTOCOL_MAJOR = 1
 PROTOCOL_MINOR = 0
+SNAPSHOT_MINOR = 1
 MAX_TEXT_BYTES = 512
 MAX_LIST_RECORDS = 4096
 MAX_LIST_BYTES = 3 * 1024 * 1024
@@ -5374,7 +5375,211 @@ def read_recovery_snapshot(backend: PackageKitBackend) -> RecoverySnapshot:
         return RecoverySnapshot(prior_restart=prior_restart, failures=tuple(failures + [failure]))
 
 
-def build_managed_snapshot(backend: PackageKitBackend) -> list[str]:
+class NativeSnapshotSources:
+    """Fixed read-only sources; construction neither reads state nor starts tools."""
+
+    def time_state(self):
+        return RegionalRead("time-state").run()
+
+    def locale_state(self):
+        return RegionalRead("locale-state").run()
+
+    def accounts(self):
+        return AccountRead().run()
+
+    def printers(self):
+        return CupsRead().run()
+
+    def repositories(self):
+        return RepositoryRead().run()
+
+    def delegate(self, action):
+        if not hasattr(os, "POSIX_SPAWN_CLOSEFROM"):
+            raise SnapshotFailure("unsupported", "Isolated administration launches are unavailable", "unsupported")
+        return delegated_command(action)
+
+    def admission(self):
+        """Check advisory native admission without PackageKit, logind, or a lease."""
+        read_fedora_identity()
+        try:
+            with open_journal_directory() as chain:
+                with open_writable_journal(chain) as journal:
+                    prepare_journal_admission(journal)
+        except (JournalAdmissionError, JournalLockError) as error:
+            raise SnapshotFailure("conflict", "Another operation or recovery state blocks administration; reload status") from error
+        except (JournalFrameError, JournalRecordError, OSError) as error:
+            raise SnapshotFailure("internal", "Durable journal storage is unavailable; inspect recovery guidance and reload status") from error
+
+
+def native_list_lines(records, limit: int, byte_limit: int) -> list[str]:
+    """Retain a complete bounded source result, never an apparently complete prefix."""
+    if len(records) > limit:
+        raise SnapshotFailure("malformed", "System management list exceeds its record limit")
+    result, seen, size = [], set(), 0
+    for record in records:
+        fields = record.fields()
+        if not fields[1] or fields[1] in seen:
+            raise SnapshotFailure("malformed", "System management list has a missing or duplicate identity")
+        seen.add(fields[1])
+        for field in fields[1:]:
+            clean_text(field, truncate=False)
+            if "\t" in field or "\n" in field or "\r" in field:
+                raise SnapshotFailure("malformed", "System management list has unsafe text")
+        line = "\t".join(fields)
+        size += len(line.encode("utf-8")) + 1
+        if size > byte_limit:
+            raise SnapshotFailure("malformed", "System management list exceeds its byte limit")
+        result.append(line)
+    return result
+
+
+def build_native_snapshot(sources: NativeSnapshotSources,
+                          blocker: SnapshotFailure | None) -> list[str]:
+    """Produce every minor-one record, isolating failures to its fixed owner."""
+    groups = {name: {"states": [], "actions": [], "lists": [], "errors": [], "statuses": []}
+              for name in ("regional", "accounts", "printers", "sources")}
+
+    def error(owner, failure):
+        groups[owner]["errors"].append(failure)
+
+    def state(owner, identifier, status, value, detail):
+        groups[owner]["statuses"].append(status)
+        groups[owner]["states"].append("\t".join(("state", identifier, status, value, clean_text(detail))))
+
+    def action(owner, identifier, label, detail, failure=None):
+        failure = failure or blocker
+        groups[owner]["actions"].append("\t".join(("action", identifier,
+            "unavailable" if failure else "available", "delegated", owner, label,
+            clean_text(failure.detail if failure else detail))))
+
+    try:
+        clock = sources.time_state()
+    except SnapshotFailure as failure:
+        error("regional", failure)
+        for identifier in ("timezone", "ntp-enabled", "ntp-synchronized"):
+            state("regional", identifier, failure.status, "unknown", failure.detail)
+        action("regional", "timezone-set", "Change timezone", "", failure)
+        action("regional", "ntp-set", "Configure network time", "", failure)
+    else:
+        state("regional", "timezone", "available", clock.timezone, "System timezone")
+        state("regional", "ntp-enabled", "available", "yes" if clock.ntp_enabled else "no", "Network time enablement")
+        state("regional", "ntp-synchronized", "available", "yes" if clock.ntp_synchronized else "no", "Network time synchronization at this read")
+        action("regional", "timezone-set", "Change timezone", "Requires a fresh selected timezone preview and explicit confirmation")
+        ntp_failure = None if clock.can_ntp else SnapshotFailure("unsupported", "No supported network time service is available", "unsupported")
+        action("regional", "ntp-set", "Configure network time", "Requires a fresh network time preview and explicit confirmation", ntp_failure)
+
+    try:
+        locale = sources.locale_state()
+    except SnapshotFailure as failure:
+        error("regional", failure)
+        state("regional", "locale", failure.status, "unknown", failure.detail)
+        action("regional", "locale-set", "Change system language", "", failure)
+    else:
+        state("regional", "locale", "available", locale.lang, locale.detail)
+        locale_failure = None
+        try:
+            # The old LANG will be replaced. Only preserved overrides can rule
+            # out every future selection; choices and full preview remain fresh.
+            overrides = tuple(value for value in locale.assignments if not value.startswith("LANG="))
+            require_locale_service_arguments(parse_locale_configuration(("LANG=C", *overrides)))
+        except SnapshotFailure as failure:
+            locale_failure = failure
+            error("regional", failure)
+        action("regional", "locale-set", "Change system language",
+            "Requires a fresh installed locale preview; existing overrides are preserved", locale_failure)
+
+    try:
+        accounts = sources.accounts()
+        account_lines = native_list_lines(accounts.records, ACCOUNT_LIMIT, ACCOUNT_LIST_BYTES)
+    except SnapshotFailure as failure:
+        error("accounts", failure)
+        state("accounts", "accounts-count", failure.status, "unknown", failure.detail)
+    else:
+        groups["accounts"]["lists"] = account_lines
+        groups["accounts"]["errors"].extend(accounts.errors)
+        state("accounts", "accounts-count", accounts.status,
+            str(len(account_lines)) if accounts.status == "available" else "unknown",
+            "AccountsService account inventory" if accounts.status == "available" else "Validated account subset; enumeration is incomplete")
+
+    try:
+        printers = sources.printers()
+    except SnapshotFailure as failure:
+        error("printers", failure)
+        state("printers", "cups-service", failure.status, "unknown", failure.detail)
+    else:
+        groups["printers"]["errors"].extend(printers.errors)
+        state("printers", "cups-service", printers.status, printers.value,
+            "Fixed CUPS scheduler and socket status; printer administration stays in its platform tool")
+
+    try:
+        repositories = native_list_lines(sources.repositories(), REPOSITORY_MAX_ROWS, REPOSITORY_MAX_BYTES)
+    except SnapshotFailure as failure:
+        error("sources", failure)
+        groups["sources"]["statuses"].append(failure.status)
+    else:
+        groups["sources"]["lists"] = repositories
+        groups["sources"]["statuses"].append("available")
+
+    for owner, identifier, label in (("accounts", "accounts-open", "Manage accounts"),
+            ("accounts", "password-open", "Change my password"),
+            ("printers", "printers-open", "Manage printers"),
+            ("sources", "sources-open", "Manage software sources")):
+        failure = None
+        try:
+            sources.delegate(identifier)  # Resolve fixed trusted argv only; never exec it.
+        except SnapshotFailure as unavailable:
+            failure = unavailable
+            error(owner, unavailable)
+        action(owner, identifier, label, "Confirm opening the fixed platform tool; the tool owns authorization and completion", failure)
+
+    lines = []
+    owners = {"regional": "systemd timedated/localed", "accounts": "AccountsService",
+              "printers": "CUPS/systemd", "sources": "PackageKit"}
+    for owner, group in groups.items():
+        if blocker is not None:
+            error(owner, blocker)
+        statuses = group["statuses"]
+        if all(value == "available" for value in statuses) and not group["errors"]:
+            status = "available"
+        elif any(value in {"available", "partial"} for value in statuses):
+            status = "partial"
+        elif all(value == "unsupported" for value in statuses):
+            status = "unsupported"
+        elif all(value == "restricted" for value in statuses):
+            status = "restricted"
+        else:
+            status = "unavailable"
+        lines.append("\t".join(("provider", owner, status, "delegated", owners[owner],
+            "Readable status and individually confirmed platform actions" if status == "available"
+            else "Inspect individual state, action availability, and capability errors")))
+        lines.extend(group["states"])
+        lines.extend(group["actions"])
+        lines.extend(group["lists"])
+        seen = set()
+        for failure in group["errors"]:
+            record = f"error\t{owner}\t{failure.code}\t{clean_text(failure.detail)}"
+            if record not in seen:
+                seen.add(record)
+                lines.append(record)
+    return lines
+
+
+def validate_snapshot_size(lines: Sequence[str]) -> None:
+    """Keep the cumulative non-list reservation separate from bounded lists."""
+    non_list = total = list_count = 0
+    for line in lines:
+        size = len(line.encode("utf-8")) + 1
+        total += size
+        if line.partition("\t")[0] in {"update", "package-change", "repository", "account", "filesystem"}:
+            list_count += 1
+        else:
+            non_list += size
+        if list_count > 9216 or non_list > 1024 * 1024 or total > 8 * 1024 * 1024:
+            raise SnapshotFailure("malformed", "System management snapshot exceeds its output reservation")
+
+
+def build_managed_snapshot(backend: PackageKitBackend, *,
+                           native_sources: NativeSnapshotSources | None = None) -> list[str]:
     """Combine readable discovery with independently validated durable recovery."""
     recovery = read_recovery_snapshot(backend)
     state = recovery.state
@@ -5431,7 +5636,19 @@ def build_managed_snapshot(backend: PackageKitBackend) -> list[str]:
         operation = state.terminals[state.handoff.slot]
         lines.append("\t".join(("terminal-handoff", operation.operation_id, operation.action_id, operation.kind)))
     lines.extend(f"error\trecovery\t{failure.code}\t{failure.detail}" for failure in recovery.failures)
+    if native_sources is not None:
+        native_blocker = None
+        if state is None or state.active is not None or state.handoff is not None:
+            native_blocker = SnapshotFailure("conflict", "Complete idle journal recovery is required before administration; reload status")
+        else:
+            try:
+                native_sources.admission()
+            except SnapshotFailure as failure:
+                native_blocker = failure
+        lines.extend(build_native_snapshot(native_sources, native_blocker))
+        lines[0] = f"system-management-protocol\t{PROTOCOL_MAJOR}\t{SNAPSHOT_MINOR}"
     lines.append("complete\tsnapshot")
+    validate_snapshot_size(lines)
     return lines
 
 
@@ -8720,7 +8937,7 @@ def main(argv: Sequence[str]) -> int:
                 raise self.failure
 
         backend = FailedBackend(failure)
-    lines = build_managed_snapshot(backend)
+    lines = build_managed_snapshot(backend, native_sources=NativeSnapshotSources())
     print("\n".join(lines))
     return 0
 
