@@ -26,6 +26,17 @@ grep -Fq 'command: Commands.terminatingCheckedCommand(' "$model"
 [ "$(grep -Fc 'Process {' "$model")" -eq 1 ]
 [ "$(grep -Fc 'SystemProviderDiscovery {' "$model")" -eq 4 ]
 regional=$repo/config/quickshell/systemmanagement/SystemRegionalSettingsModel.qml
+regional_ui=$repo/config/quickshell/settings/SystemRegionalControls.qml
+grep -Fq 'SystemRegionalControls {' "$pane"
+grep -Fq 'root.regional.prepare(' "$regional_ui"
+grep -Fq 'root.regional.confirm()' "$regional_ui"
+grep -Fq 'root.regional.discard()' "$regional_ui"
+grep -Fq 'cannot be canceled after it is sent' "$regional_ui"
+grep -Fq 'textFormat: Text.PlainText' "$regional_ui"
+if grep -Eq 'Process \{|IpcHandler|Commands\.|Timer \{' "$regional_ui"; then
+	printf 'Regional controls must reuse the fixed coordinator without polling or IPC.\n' >&2
+	exit 1
+fi
 grep -Fq 'SystemRegionalSettingsModel {' "$model"
 grep -Fq 'regionalModel.ownsPreparation()' "$model"
 grep -Fq 'root.requestSnapshot(true)' "$model"

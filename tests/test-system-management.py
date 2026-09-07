@@ -2043,12 +2043,23 @@ class LocaleEnumerationTests(unittest.TestCase):
         while time.monotonic() < deadline:
             try:
                 state = pathlib.Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
-            except FileNotFoundError:
+            except (FileNotFoundError, ProcessLookupError):
                 return
             if state == "Z":
                 return
             time.sleep(0.02)
         self.fail(f"Owned locale fixture {pid} remained running")
+
+    def test_stopped_process_assertion_accepts_disappearance_during_read(self):
+        for error in (FileNotFoundError, ProcessLookupError):
+            with self.subTest(error=error), \
+                    mock.patch.object(pathlib.Path, "read_text", side_effect=error):
+                self.assert_process_stopped(123)
+
+    def test_stopped_process_assertion_preserves_other_read_errors(self):
+        with mock.patch.object(pathlib.Path, "read_text", side_effect=PermissionError):
+            with self.assertRaises(PermissionError):
+                self.assert_process_stopped(123)
 
     def test_non_main_thread_cannot_install_process_signal_handlers(self):
         errors = []

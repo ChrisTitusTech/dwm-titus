@@ -627,9 +627,32 @@ completion cannot become a confirmation. Sent operations remain owned by the
 existing noncancelable native operation lifecycle across Settings closure.
 Forty-two private nested-X11 cases cover all three actions, typed failures,
 uncertainty, stale identity, exact selections, closure during claim/read/catalog/
-preview/dispatch publication, and recovery during read/publication. Visible
-regional forms, clock invalidation, NTP synchronization sampling, and real
-graphical authorization remain separate pending work.
+preview/dispatch publication, and recovery during read/publication.
+
+`SystemRegionalControls` now exposes this coordinator through fixed Settings
+controls. Timezone and locale catalogs load only on explicit request, filter
+reported identities without accepting free-form mutations, and use virtualized
+viewports capped to 144 pixels or the actual content height, whichever is smaller.
+Selection does not dispatch: Review change first requests a
+new preview. NTP exposes only enabled/disabled selections. All three confirmations
+show the complete plaintext current value, target, and backend detail, plus the
+warning that a sent change cannot be canceled. Cancel dismisses preparation and
+restores keyboard focus; it never rolls back or retries a mutation. Closing the
+pane clears catalogs while the root retains any sent operation. Locale guidance
+explains new-session activation without triggering logout. NTP synchronization is
+explicitly labeled as last-read evidence, not a live sample.
+Read-error explanations receive focus and are revealed after layout, so a failed
+catalog or preview request cannot silently leave its only explanation off-screen.
+If a confirmation is larger than the content viewport, keyboard reveal targets
+its focused button rather than oscillating between the card edges. The complete
+preview remains scrollable; neither current values nor override detail is elided.
+
+Sixty-six private UI cases cover three actions at three window sizes with
+success, denial, unsupported results, uncertain output/replay, maximum catalogs,
+denied reads, and malformed reads, plus the NTP disable choice at all sizes.
+`docs/P6-REGIONAL-UI-EVIDENCE.md` records real
+X11 keyboard and screenshot checks. Clock invalidation, NTP synchronization
+sampling, and real graphical authorization remain separate pending work.
 
 Each preview makes fresh fixed reads: timezone state and timezone choices, NTP
 state, or locale state and installed locale choices. Service reads retain their

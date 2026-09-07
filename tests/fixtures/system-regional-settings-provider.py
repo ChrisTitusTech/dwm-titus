@@ -19,6 +19,8 @@ def load(name):
 
 discovery = load("system-native-discovery-provider")
 operation = load("system-native-action-provider")
+if operation.ACTION == "ntp-set" and operation.SCENARIO == "disable":
+    operation.VALUES["ntp-set"] = "disabled"
 directory = operation.DIRECTORY
 original_row = discovery.row
 original_snapshot = discovery.snapshot
@@ -76,12 +78,21 @@ def preflight():
             elif operation.SCENARIO == "malformed-read":
                 original_row("unexpected", "fixture")
             elif choices:
-                for value in (["America/Chicago", "Etc/UTC"] if arguments[1] == "timezone" else ["C", "en_US.UTF-8"]):
+                values = ["America/Chicago", "Etc/UTC"] if arguments[1] == "timezone" else ["C", "en_US.UTF-8"]
+                if operation.SCENARIO == "large":
+                    values += ([f"Zone/{index:04d}" for index in range(2046)] if arguments[1] == "timezone"
+                               else [f"zz_{index:04d}" for index in range(4094)])
+                for value in sorted(values):
                     original_row("choice", value)
             else:
                 target = arguments[2][5:] if operation.ACTION == "locale-set" else arguments[2]
                 current = "disabled" if operation.ACTION == "ntp-set" else "Etc/UTC" if operation.ACTION == "timezone-set" else "C"
-                original_row("preview", operation.ACTION, arguments[2], "c" * 64, current, target, "Full fixture detail")
+                detail = "Full fixture detail"
+                if operation.SCENARIO == "large":
+                    detail = (detail + " " + "LC_TIME=preserved " * 30)[:512]
+                    if operation.ACTION == "locale-set":
+                        current = ("C " + "LC_TIME=preserved " * 30)[:512]
+                original_row("preview", operation.ACTION, arguments[2], "c" * 64, current, target, detail)
             original_row("complete", arguments[0])
             time.sleep(0.1)
             return 1 if operation.SCENARIO == "error-read" else 0

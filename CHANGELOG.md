@@ -8,10 +8,14 @@ versions from `config.mk`.
 
 ### Changed
 
+- Expose searchable timezone and system-locale choices plus fixed network-time
+  controls in System Settings. Require fresh full previews and explicit
+  confirmation, explain the sent-action cancellation limit, and preserve
+  keyboard access, read errors, and verified operation recovery.
+
 - Coordinate internal regional choices, previews, and confirmations with root
   snapshot recovery. Reject stale or competing preparations, reap optional reads
-  before recovery, and retain sent operations across closure. Regional forms
-  remain pending.
+  before recovery, and retain sent operations across closure.
 
 - Expose confirmed account, password, printer, and software-source tool entries
   with scoped availability, readable inventories, and keyboard-accessible

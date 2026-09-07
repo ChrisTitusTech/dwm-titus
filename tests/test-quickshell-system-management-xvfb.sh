@@ -754,6 +754,48 @@ for delegate_action in accounts-open password-open printers-open sources-open; d
 	done
 done
 
+mkdir -p "$work/regional-ui"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" \
+	"$repo/config/quickshell/systemmanagement" "$repo/config/quickshell/network" "$work/regional-ui/"
+cp "$repo/tests/qml/SystemRegionalUi.qml" "$work/regional-ui/shell.qml"
+for regional_size in 640x480 780x580 1000x740; do
+	for regional_action in timezone-set ntp-set locale-set; do
+		for regional_scenario in success denied unsupported uncertain large error-read malformed-read disable; do
+			[ "$regional_scenario" != disable ] || [ "$regional_action" = ntp-set ] || continue
+			regional_state=$work/regional-ui-$regional_size-$regional_action-$regional_scenario
+			mkdir -p "$regional_state"
+			regional_status=0
+			timeout --foreground --kill-after=2s 25s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+				XDG_DATA_HOME="$work/regional-settings-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+				DWM_NATIVE_DISCOVERY_FIXTURE="$regional_state" DWM_NATIVE_ACTION_FIXTURE="$regional_state" \
+				DWM_NATIVE_ACTION="$regional_action" DWM_NATIVE_ACTION_SCENARIO="$regional_scenario" \
+				DWM_DELEGATE_UI_WIDTH="${regional_size%x*}" DWM_DELEGATE_UI_HEIGHT="${regional_size#*x}" \
+				quickshell --no-duplicate --path "$work/regional-ui/shell.qml" >"$regional_state/log" 2>&1 &
+			quickshell_pid=$!
+			wait "$quickshell_pid" || regional_status=$?
+			quickshell_pid=
+			if [ "$regional_status" -ne 0 ] || ! grep -F 'Regional UI tests: PASS' "$regional_state/log" ||
+				grep -Fq 'Regional UI FAILED:' "$regional_state/log" ||
+				[ -e "$regional_state/invalid-arguments" ] || [ -e "$regional_state/overlap" ] ||
+				[ -e "$regional_state/unexpected-command" ] ||
+				[ -n "$(find "$regional_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+				cat "$regional_state/log" >&2
+				exit 1
+			fi
+			case $regional_scenario in
+			error-read | malformed-read)
+				[ ! -e "$regional_state/$regional_action" ]
+				[ ! -e "$regional_state/ack-operation" ]
+				;;
+			*)
+				[ "$(sed -n '1p' "$regional_state/$regional_action")" = 1 ]
+				[ "$(sed -n '1p' "$regional_state/ack-operation")" = 1 ]
+				;;
+			esac
+		done
+	done
+done
+
 mkdir -p "$work/delegate-ui"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" \
 	"$repo/config/quickshell/systemmanagement" "$repo/config/quickshell/network" "$work/delegate-ui/"

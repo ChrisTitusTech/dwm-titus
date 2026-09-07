@@ -14,8 +14,13 @@ Flickable {
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     activeFocusOnTab: true
-    onHeightChanged: Qt.callLater(delegateControls.revealFocusedControl)
-    onContentHeightChanged: Qt.callLater(delegateControls.revealFocusedControl)
+    onHeightChanged: Qt.callLater(root.revealFocusedControl)
+    onContentHeightChanged: Qt.callLater(root.revealFocusedControl)
+
+    function revealFocusedControl() {
+        delegateControls.revealFocusedControl();
+        regionalControls.revealFocusedControl();
+    }
 
     function scrollTo(position) {
         root.contentY = Math.max(0, Math.min(position, Math.max(0, root.contentHeight - root.height)));
@@ -394,6 +399,13 @@ Flickable {
                     }
                 }
             }
+        }
+
+        SystemRegionalControls {
+            id: regionalControls
+            model: root.systemManagementModel
+            viewportHeight: root.height
+            onRevealRequested: target => root.reveal(target)
         }
 
         SystemDelegateControls {

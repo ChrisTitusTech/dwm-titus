@@ -171,6 +171,14 @@ entry. Account and repository inventories remain read-only. A successful launch
 does not mean administration inside the tool completed; authorize and confirm
 those changes in the tool itself. Enter passwords only in the terminal prompt.
 
+For timezone or system locale, **Load choices**, filter and select a reported
+value, then **Review change**. Network time offers fixed enable/disable previews.
+Review the complete preview before **Apply change**: a sent regional change
+cannot be canceled. Cancel only dismisses the preview, and closing Settings does
+not undo an action. An uncertain result requires fresh status and new confirmation,
+not automatic retry. Locale changes apply to new sessions; log out manually when
+ready. Synchronization status is labeled as the last read.
+
 Start with the built-in diagnostic report:
 
 ```bash
