@@ -22,7 +22,8 @@ ShellRoot {
     property var requests: [["regional-choices", "timezone", ""], ["regional-choices", "locale", ""],
         ["regional-preview", "timezone-set", "Etc/UTC"], ["regional-preview", "ntp-set", "enabled"],
         ["regional-preview", "locale-set", "LANG=C"], ["regional-choices", "timezone", ""]]
-    readonly property bool replaces: ["close", "kill-close", "timeout", "cancel-queued", "cancel-claim", "close-result"].indexOf(scenario) >= 0
+    readonly property bool replaces: ["close", "kill-close", "close-stdout-overflow", "close-stderr-overflow",
+        "timeout", "cancel-queued", "cancel-claim", "close-result"].indexOf(scenario) >= 0
 
     function check(condition, detail) {
         assertions++;
@@ -65,6 +66,8 @@ ShellRoot {
             } else {
                 check(received === null && model.result === null && completions === 0, "Retired read publishes no completion or result");
                 if (scenario === "kill-close") check(Date.now() - canceledAt >= 2800, "Close retains ownership through kill grace");
+                if (["close-stdout-overflow", "close-stderr-overflow"].indexOf(scenario) >= 0)
+                    check(Date.now() - canceledAt < 2500, "Retired output flood escalates before kill grace");
             }
             oldRun = lastRun;
             phase++;
@@ -78,6 +81,8 @@ ShellRoot {
             return;
         }
         check(completions === (scenario === "success" ? 6 : scenario === "timeout" ? 2 : 1), "No duplicate or missing completion");
+        if (["stdout-overflow", "stderr-overflow"].indexOf(scenario) >= 0)
+            check(Date.now() - startedAt < 2500, "Output flood is killed without a TERM grace period");
         if (["success", "typed-error", "wrong-exit", "protocol-exit-127"].indexOf(scenario) >= 0 || replaces)
             check(provisional, "Complete bytes were observed before process exit without a result");
         const retained = model.result;
@@ -148,7 +153,8 @@ ShellRoot {
                 root.check(model.result === null, "Result remains provisional before EOF");
                 root.provisional = true;
             }
-            if (["close", "kill-close"].indexOf(root.scenario) >= 0 && root.phase === 0 && run.parser.header && !root.canceled) {
+            if (["close", "kill-close", "close-stdout-overflow", "close-stderr-overflow"].indexOf(root.scenario) >= 0
+                    && root.phase === 0 && run.parser.header && !root.canceled) {
                 root.canceled = true;
                 root.canceledAt = Date.now();
                 model.active = false;

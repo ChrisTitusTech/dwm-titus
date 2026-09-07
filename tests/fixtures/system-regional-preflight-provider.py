@@ -42,12 +42,20 @@ with (directory / "lock").open("a") as lock:
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
         print(header, end="", flush=True)
         time.sleep(60)
-    if scenario == "stderr-overflow":
-        sys.stderr.write("x" * 8200)
-        sys.stderr.flush()
-        time.sleep(60)
-    if scenario == "stdout-overflow":
-        print("x" * 8193, flush=True)
+    flood = scenario in {"stderr-overflow", "stdout-overflow"} or (
+        count == 1 and scenario in {"close-stderr-overflow", "close-stdout-overflow"})
+    if flood:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        if scenario.startswith("close-"):
+            print(header, end="", flush=True)
+            time.sleep(0.2)
+        stream = sys.stderr if scenario.endswith("stderr-overflow") else sys.stdout
+        # Bounded fixture flood: an incorrect grace period must not accumulate
+        # megabytes in the shell after the first over-limit chunk.
+        for _ in range(4096):
+            stream.write("x" * 8193)
+            stream.flush()
+            time.sleep(0.001)
         time.sleep(60)
     code = 0
     if scenario == "typed-error":

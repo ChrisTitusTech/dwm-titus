@@ -65,23 +65,41 @@ Scope {
         else root.stop(run);
     }
 
-    function stop(run) {
-        if (root.current !== run || run.finished || run.stopping) return;
+    function stop(run, immediate) {
+        if (root.current !== run || run.finished || (run.stopping && !immediate)) return;
         run.stopping = true;
         readDeadline.stop();
-        reader.signal(15);
-        stopDeadline.restart();
+        if (immediate) {
+            stopDeadline.stop();
+            reader.signal(9);
+        } else {
+            reader.signal(15);
+            stopDeadline.restart();
+        }
     }
 
     function fail(run, code, detail) {
         if (root.current !== run || run.finished || run.retired || run.failure !== null) return;
         run.failure = { code: code, detail: detail };
-        root.stop(run);
+        root.stop(run, code === "malformed");
+    }
+
+    function overflow(run, detail) {
+        if (run === null || root.current !== run || !run.started || run.finished) return;
+        if (!run.retired && run.failure === null) run.failure = { code: "malformed", detail: detail };
+        // Cumulative collectors still receive bytes during cancellation and
+        // timeout cleanup. Escalate even when publication is already retired.
+        root.stop(run, true);
     }
 
     function consume(data) {
         const run = root.current;
-        if (run === null || !run.started || run.retired || run.finished || run.failure !== null) return;
+        if (run === null || !run.started || run.finished) return;
+        if (data.byteLength > run.parser.limit) {
+            root.overflow(run, "Regional preflight output exceeded its limit.");
+            return;
+        }
+        if (run.retired || run.failure !== null) return;
         if (!Protocol.consume(run.parser, data)) root.fail(run, "malformed", run.parser.failure);
     }
 
@@ -135,7 +153,7 @@ Scope {
             onDataChanged: {
                 const run = root.current;
                 if (run !== null && run.started && data.byteLength > 8192)
-                    root.fail(run, "malformed", "Regional preflight error output exceeded its limit.");
+                    root.overflow(run, "Regional preflight error output exceeded its limit.");
             }
         }
         onExited: (exitCode, exitStatus) => {

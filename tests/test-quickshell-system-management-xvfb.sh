@@ -483,6 +483,7 @@ if [ "$native_discovery_status" -ne 0 ] || ! grep -F 'Native discovery tests: PA
 fi
 if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .; then
 	printf 'Native discovery fixture leaked a checked-command capture\n' >&2
+	find "$runtime" -type f -name 'dwm-checked-command*' -printf '%f (%s bytes)\n' >&2
 	exit 1
 fi
 
@@ -537,7 +538,7 @@ cp "$repo/tests/fixtures/system-regional-preflight-provider.py" "$preflight_help
 chmod +x "$preflight_helper"
 preflight_quickshell=$(command -v quickshell)
 for preflight_scenario in success typed-error wrong-exit protocol-exit-127 malformed truncated stdout-overflow stderr-overflow \
-	close kill-close timeout cancel-queued cancel-claim close-result failed-start missing-helper; do
+	close kill-close close-stdout-overflow close-stderr-overflow timeout cancel-queued cancel-claim close-result failed-start missing-helper; do
 	preflight_directory="$work/preflight-$preflight_scenario"
 	mkdir -p "$preflight_directory"
 	preflight_path=$PATH
@@ -558,7 +559,7 @@ for preflight_scenario in success typed-error wrong-exit protocol-exit-127 malfo
 	quickshell_pid=
 	case "$preflight_scenario" in
 	success) preflight_calls=6 ;;
-	close | kill-close | timeout | close-result) preflight_calls=2 ;;
+	close | kill-close | close-stdout-overflow | close-stderr-overflow | timeout | close-result) preflight_calls=2 ;;
 	failed-start | missing-helper) preflight_calls=0 ;;
 	*) preflight_calls=1 ;;
 	esac
