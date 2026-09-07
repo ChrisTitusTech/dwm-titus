@@ -20,6 +20,19 @@ original_row = discovery.row
 
 
 def row(*fields):
+    if operation.SCENARIO == "large":
+        if fields[:2] == ("state", "accounts-count"):
+            fields = (*fields[:3], "256", *fields[4:])
+        elif fields[0] == "account":
+            original_row(*fields)
+            for index in range(1, 256):
+                original_row("account", f"/opaque/{index}", "other", f"Fixture User {index}", f"fixture-{index}")
+            return
+        elif fields[0] == "repository":
+            original_row(*fields)
+            for index in range(1, 512):
+                original_row("repository", f"fixture-{index:03}", "disabled", "Bounded fixture repository " + str(index))
+            return
     if fields[:2] == ("provider", "recovery"):
         fields = (*fields[:2], "partial", *fields[3:])
     elif fields[0] == "action" and fields[1] != "updates-cancel":

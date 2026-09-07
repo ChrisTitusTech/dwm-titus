@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Expose confirmed account, password, printer, and software-source tool entries
+  with scoped availability, readable inventories, and keyboard-accessible
+  confirmations. Native launches no longer show update-only cancellation text.
+
 - Add internal confirmation guards for the four fixed administration tools,
   with fresh provider evidence, update-workflow exclusion, and reentrant
   dispatch checks. Visible delegated controls remain pending.

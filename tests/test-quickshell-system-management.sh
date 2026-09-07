@@ -114,6 +114,18 @@ grep -Fq 'model: root.systemManagementModel.errors' "$pane"
 grep -Fq 'errorRow.modelData.provider.toUpperCase()' "$pane"
 grep -Fq 'Metadata refresh and update installation require visible confirmation.' "$pane"
 grep -Fq 'SystemUpdateControls {' "$pane"
+grep -Fq 'SystemDelegateControls {' "$pane"
+delegate_controls=$repo/config/quickshell/settings/SystemDelegateControls.qml
+grep -Fq 'root.model.prepareDelegate(toolCard.modelData.id)' "$delegate_controls"
+grep -Fq 'root.model.confirmDelegate()' "$delegate_controls"
+grep -Fq 'root.model.discardDelegate()' "$delegate_controls"
+grep -Fq 'model: root.model.accounts' "$delegate_controls"
+grep -Fq 'model: root.model.repositories' "$delegate_controls"
+grep -Fq 'textFormat: Text.PlainText' "$delegate_controls"
+if grep -Eq 'Quickshell\.Io|\bProcess\b|\bCommands\.' "$delegate_controls"; then
+	printf 'Delegated controls must not construct or run commands.\n' >&2
+	exit 1
+fi
 grep -Fq 'onRevealRequested: target => root.reveal(target)' "$pane"
 controls=$repo/config/quickshell/settings/SystemUpdateControls.qml
 grep -Fq 'root.model.prepareUpdate("updates-refresh")' "$controls"

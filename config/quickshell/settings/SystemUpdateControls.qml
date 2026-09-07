@@ -9,6 +9,8 @@ ColumnLayout {
     required property var model
     signal revealRequested(var target)
     readonly property var confirmation: model.updateConfirmation
+    readonly property bool updateOperation: model.operation.progress !== null
+        && (model.operation.progress.kind === "update" || model.operation.progress.kind === "refresh")
     Layout.fillWidth: true
     spacing: Theme.spacingMd
 
@@ -158,19 +160,20 @@ ColumnLayout {
     }
 
     PlainText {
+        objectName: "operationOwnerNote"
         visible: root.model.operation.busy
-        text: "PackageKit owns the active operation. Keep watching here or close Settings and return later."
+        text: "The active system operation remains owned. Keep watching here or close Settings and return later."
         color: Theme.menuMutedText
     }
     ActionButton {
         objectName: "cancelUpdate"
-        visible: root.model.operation.streamOwned
+        visible: root.model.operation.streamOwned && root.updateOperation
         label: "Request cancellation"
         enabled: root.model.operation.canCancel
         onActivated: root.model.operation.requestCancel()
     }
     PlainText {
-        visible: root.model.operation.streamOwned && !root.model.operation.canCancel
+        visible: root.model.operation.streamOwned && root.updateOperation && !root.model.operation.canCancel
             && root.model.operation.cancelDetail.length === 0
         text: "Cancellation is not currently safe or available. Wait for PackageKit's verified result."
         color: Theme.menuMutedText

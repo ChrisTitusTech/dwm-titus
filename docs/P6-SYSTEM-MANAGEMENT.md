@@ -2042,8 +2042,20 @@ validates fixed empty arguments. Discarding or closing a prompt never starts an
 operation; closing after dispatch preserves observation. Sixteen private nested
 X11 cases cover all four tools, typed denial and unsupported results, and closure
 during dispatch callbacks. Accepted launch still does not verify administration
-inside the tool. These entry points are not exposed by IPC or visible controls;
-regional confirmation and visible native Settings remain separate boundaries.
+inside the tool. These entry points are not exposed by IPC.
+
+`SystemDelegateControls.qml` now exposes the four fixed tool entries and an
+explicit launch-only confirmation. Scoped provider and action failures remain
+readable, including when a tool is missing or its monitor cannot establish fresh
+state. Account and repository lists are read-only, virtualized, and bounded to a
+180-pixel viewport. Confirmation focuses Cancel; Cancel returns to the originating
+card, and geometry notifications keep the whole focused card visible after layout
+or viewport changes. Native operations use neutral shared owner/recovery wording
+and never show update cancellation controls. The private UI matrix covers all
+four actions at three window sizes with success, denial, unsupported, and maximum
+256-account/512-source inventories. Keyboard and screenshot evidence is recorded
+in [P6-DELEGATE-UI-EVIDENCE.md](P6-DELEGATE-UI-EVIDENCE.md). Regional confirmation,
+regional controls, and combined installed acceptance remain separate boundaries.
 
 The shared subscription owner starts a discovery cycle only after readiness, with a 12-second frontend
 startup deadline covering the helper's ten-second setup and process startup.

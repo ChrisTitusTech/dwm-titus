@@ -165,6 +165,12 @@ dependency additions and removals, before confirming. PackageKit owns
 authorization and cancellation; closing Settings does not cancel an operation.
 If discovery or recovery is incomplete, reload status and follow its guidance.
 
+The same section provides confirmed account, password, printer, and software-source
+tool launches. Missing tools or stale provider status disable only the affected
+entry. Account and repository inventories remain read-only. A successful launch
+does not mean administration inside the tool completed; authorize and confirm
+those changes in the tool itself. Enter passwords only in the terminal prompt.
+
 Start with the built-in diagnostic report:
 
 ```bash
