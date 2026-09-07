@@ -40,6 +40,11 @@ cleanup() {
 	cleanup_status=$?
 	set +e
 	stop_process "${quickshell_pid:-}"
+	if [ -n "${checked_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$checked_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	if [ -n "${helper:-}" ]; then
 		for helper_pid in $(pgrep -f "$helper " 2>/dev/null || true); do
 			stop_process "$helper_pid"
@@ -339,6 +344,38 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 DISPLAY=$display xprop -root >/dev/null
+
+# Signals during either capture allocation must not leak files or start work.
+mkdir -p "$work/checked-command" "$work/checked-bin"
+cp -a "$repo/config/quickshell/core" "$work/checked-command/"
+cp "$repo/tests/qml/SystemCheckedCommand.qml" "$work/checked-command/shell.qml"
+checked_helper=$work/checked-bin/capture-helper
+cp "$repo/tests/fixtures/checked-command-provider.py" "$checked_helper"
+chmod +x "$checked_helper"
+ln -s "$checked_helper" "$work/checked-bin/mktemp"
+for checked_scenario in success helper-fail first-fail second-fail first-term second-term stop-child; do
+	checked_directory=$work/checked-$checked_scenario
+	mkdir -m 700 "$checked_directory"
+	checked_status=0
+	timeout --foreground --kill-after=2s 8s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_RUNTIME_DIR="$checked_directory" QT_QPA_PLATFORMTHEME= PATH="$work/checked-bin:$PATH" \
+		DWM_CAPTURE_DIRECTORY="$checked_directory" DWM_CAPTURE_SCENARIO="$checked_scenario" DWM_CAPTURE_HELPER="$checked_helper" \
+		quickshell --no-duplicate --path "$work/checked-command/shell.qml" >"$checked_directory/output.log" 2>&1 &
+	quickshell_pid=$!
+	wait "$quickshell_pid" || checked_status=$?
+	quickshell_pid=
+	if [ "$checked_status" -ne 0 ] || ! grep -F 'Checked command tests: PASS' "$checked_directory/output.log" ||
+		grep -Fq 'Checked command FAILED:' "$checked_directory/output.log" ||
+		[ -n "$(find "$checked_directory" -maxdepth 1 -name 'dwm-checked-command*' -print -quit)" ]; then
+		cat "$checked_directory/output.log" >&2
+		exit 1
+	fi
+	case "$checked_scenario" in
+	first-* | second-*) [ ! -e "$checked_directory/helper-started" ] ;;
+	stop-child) [ -e "$checked_directory/helper-stopped" ] ;;
+	*) [ -e "$checked_directory/helper-started" ] ;;
+	esac
+done
 
 # Exercise pane-scoped events and atomic dirty-cycle handoffs on a private bus.
 mkdir -p "$work/discovery" "$work/discovery-data/dwm-titus/scripts" "$work/discovery-state"

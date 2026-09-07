@@ -2018,7 +2018,18 @@ including required recovery while setup is held and a separate reopen baseline.
 Separate lock-contention cases prove each duplicate fixture monitor records an
 overlap before failing, without removing the existing owner's marker or pipe.
 
-It starts a discovery cycle only after readiness, with a 12-second frontend
+The snapshot's checked-command wrapper installs cleanup and termination handlers
+before allocating either temporary capture. A signal during allocation exits
+with cancellation status after removing the known captures, and does not launch
+the requested helper. Allocation failure also cleans any earlier capture.
+Successful output remains withheld until helper success; helper errors and
+started-child termination retain the existing diagnostic and wait behavior.
+Seven private QML scenarios inject allocation failure or TERM at both setup
+points and verify output, child shutdown, and absence of capture files.
+Abrupt process KILL or host failure cannot run shell cleanup handlers and is not
+covered by the graceful-termination guarantee.
+
+The shared subscription owner starts a discovery cycle only after readiness, with a 12-second frontend
 startup deadline covering the helper's ten-second setup and process startup.
 Failure falls back to a finite read with visible monitoring-unavailable guidance;
 there is no automatic reconnect. Explicit reload or section reopen retries the

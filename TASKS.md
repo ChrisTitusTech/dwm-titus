@@ -351,6 +351,12 @@ Private fixtures cover all seven origins, rejection, denial, unsupported tools,
 uncertain output, replay, and exact acknowledgment without host mutation.
 Native Settings controls, fresh confirmation, and NTP sampling remain pending.
 
+The existing snapshot wrapper now installs termination and cleanup handlers
+before either capture allocation. Deterministic private signal injection
+reproduced leaks at both allocations before the fix; setup-time termination now
+removes captures and prevents helper launch. Native QML fixtures also cover
+allocation failure, successful/error output, and termination of a started child.
+
 A standalone read-only preflight parser now bounds raw choice and preview
 streams, retains split UTF-8 and complete locale detail, validates exact request
 identity, and requires matching completion and normal process exit. Catalog
