@@ -6,6 +6,7 @@ model=$repo/config/quickshell/systemmanagement/SystemManagementModel.qml
 pane=$repo/config/quickshell/settings/SystemSettingsPane.qml
 commands=$repo/config/quickshell/core/Commands.qml
 discovery=$repo/config/quickshell/systemmanagement/SystemUpdateDiscovery.qml
+provider_discovery=$repo/config/quickshell/systemmanagement/SystemProviderDiscovery.qml
 settings=$repo/config/quickshell/settings/SettingsModel.qml
 settings_window=$repo/config/quickshell/settings/SettingsWindow.qml
 shell=$repo/config/quickshell/shell.qml
@@ -23,10 +24,12 @@ grep -Fq "2>\"\$error_file\" &" "$commands"
 grep -Fq "head -c 512 \"\$error_file\" >&2" "$commands"
 grep -Fq 'command: Commands.terminatingCheckedCommand(' "$model"
 [ "$(grep -Fc 'Process {' "$model")" -eq 1 ]
-[ "$(grep -Fc 'Process {' "$discovery")" -eq 1 ]
-grep -Fq 'Commands.systemManagementCommand("watch-updates", [])' "$discovery"
-grep -Fq 'stdout: SplitParser' "$discovery"
-if grep -Fq 'repeat: true' "$discovery"; then
+[ "$(grep -Fc 'Process {' "$provider_discovery")" -eq 1 ]
+grep -Fq 'SystemProviderDiscovery {' "$discovery"
+grep -Fq 'domain: "updates"' "$discovery"
+grep -Fq 'action: "watch-updates", args: []' "$provider_discovery"
+grep -Fq 'stdout: SplitParser' "$provider_discovery"
+if grep -Fq 'repeat: true' "$provider_discovery"; then
 	printf 'Update discovery must not poll.\n' >&2
 	exit 1
 fi

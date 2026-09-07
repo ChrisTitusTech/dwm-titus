@@ -326,6 +326,16 @@ mandatory records, one account, 28 repositories, 31 updates, and 37 package-chan
 rows. Missing tools and unavailable logind evidence were independently reported;
 the isolated test journal was removed and no tool or mutation was dispatched.
 
+The existing update subscriber now uses a shared fixed-domain monitor lifecycle.
+Time, locale, account, and printer streams use the same bounded setup, stop,
+initial/settling, failed-monitor fallback, and explicit-retry rules. Unknown
+domains never spawn a command. Domain replacement invalidates old read tokens
+and clears readiness before callbacks; a new handshake is mandatory even for
+a queued replacement. Private nested-X11 fixtures qualify each stream and
+exit-callback replacement with 91 assertions, repeated five times without host
+service calls. Settings activation and shared-snapshot coordination remain
+pending; native action origins and NTP sampling are still disabled.
+
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
 confirmation warning that a sent change cannot be canceled. Local cancellation

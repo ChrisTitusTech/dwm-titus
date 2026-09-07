@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Share the bounded update-monitor lifecycle with fixed time, locale, account,
+  and printer stream adapters. Preserve update behavior and reject stale
+  replacement readiness; native Settings activation remains pending.
+
 - Add complete cumulative regional, account, printer, and software-source
   discovery with a backward-compatible Settings parser. Preserve readable
   state when a service or tool is missing, independently gate native admission,
