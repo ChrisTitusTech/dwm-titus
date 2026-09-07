@@ -1911,6 +1911,32 @@ not a snapshot, action, journal record, or operation stream; its two exact recor
 forms are independent of the cumulative snapshot minor.
 
 The pane-scoped `SystemUpdateDiscovery` subscriber now consumes this stream.
+Its process and bounded-cycle lifetime is shared through
+`SystemProviderDiscovery`, with a closed mapping for updates, time, locale,
+accounts, and printers. Each mapping fixes the command, arguments, and accepted
+event prefix; callers cannot provide another executable or arbitrary arguments.
+The update component remains a thin compatibility wrapper. Native subscriptions
+are not yet activated by Settings; the shared snapshot coordinator is a separate
+integration boundary. No new idle polling or operation origins are introduced.
+Private nested-X11 tests exercise every fixed stream, event bursts, a dirty
+settling read, explicit retry, wrong-prefix fallback, close cleanup, and unknown
+domain rejection. Replacing a domain retires the old read token and readiness
+before any callback, then waits for the new handshake, including when shutdown
+already has a replacement queued. A regression first reproduced a reentrant
+read during that invalidation and now verifies that it is excluded.
+The fixture also changes domains from an unexpected-exit invalidation and
+verifies the replacement command, fresh baseline, and complete cleanup. All 91
+assertions passed in five repeated Fedora 44 runs. The supported
+[Fedora snapshot](https://github.com/quickshell-mirror/quickshell/blob/dacfa9de829ac7cb173825f593236bf2c21f637e/src/io/process.cpp)
+and [Quickshell 0.3.0](https://github.com/quickshell-mirror/quickshell/blob/v0.3.0/src/io/process.cpp)
+define `running` from the current process object, allocated synchronously when
+starting. An old exit notification therefore reads the replacement's current
+running state, not a captured false value; the existing `!running` guard does
+not finalize that replacement. This resolves the local review concern without
+changing correct process behavior.
+The test harness also includes the shared fixture helper in bounded failure
+cleanup. A live-pipe regression reproduced a leaked monitor before that fix;
+cleanup now removes it while preserving both successful and failing exit status.
 It starts a discovery cycle only after readiness, with a 12-second frontend
 startup deadline covering the helper's ten-second setup and process startup.
 Failure falls back to a finite read with visible monitoring-unavailable guidance;

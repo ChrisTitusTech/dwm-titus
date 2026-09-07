@@ -50,6 +50,11 @@ cleanup() {
 			stop_process "$helper_pid"
 		done
 	fi
+	if [ -n "${provider_discovery_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$provider_discovery_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	if [ -n "${update_action_helper:-}" ]; then
 		for helper_pid in $(pgrep -f "$update_action_helper " 2>/dev/null || true); do
 			stop_process "$helper_pid"
@@ -349,6 +354,59 @@ if [ "$discovery_status" -ne 0 ] || ! grep -F 'Discovery native tests: PASS' "$w
 	[ -e "$work/discovery-state/unmonitored-read" ]; then
 	[ ! -e "$work/discovery-state/unmonitored-read" ] || printf 'Discovery snapshot preceded replacement readiness\n' >&2
 	cat "$work/discovery.log" >&2
+	exit 1
+fi
+
+# Exercise each fixed subscription stream without activating Settings origins.
+mkdir -p "$work/provider-discovery" "$work/provider-discovery-data/dwm-titus/scripts" "$work/provider-discovery-state"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/provider-discovery/"
+cp "$repo/tests/qml/SystemProviderDiscovery.qml" "$work/provider-discovery/shell.qml"
+provider_discovery_helper=$work/provider-discovery-data/dwm-titus/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-provider-discovery.py" "$provider_discovery_helper"
+chmod +x "$provider_discovery_helper"
+for pipe_case in absent regular no-reader; do
+	pipe_fixture=$work/provider-discovery-pipe-$pipe_case
+	mkdir -p "$pipe_fixture"
+	case $pipe_case in
+	absent) expected_pipe_error=missing-pipe ;;
+	regular)
+		: >"$pipe_fixture/time.events"
+		expected_pipe_error=not-pipe
+		;;
+	no-reader)
+		mkfifo "$pipe_fixture/time.events"
+		expected_pipe_error=missing-reader
+		;;
+	esac
+	pipe_status=0
+	timeout --kill-after=1s 2s env DWM_PROVIDER_DISCOVERY_FIXTURE="$pipe_fixture" \
+		"$provider_discovery_helper" fixture-control time emit >"$pipe_fixture/log" 2>&1 || pipe_status=$?
+	if [ "$pipe_status" -eq 0 ] || [ "$pipe_status" -eq 124 ] || [ "$pipe_status" -eq 137 ]; then
+		printf 'Provider fixture event writer did not fail promptly for %s\n' "$pipe_case" >&2
+		exit 1
+	fi
+	if [ "$pipe_status" -ne 3 ] ||
+		! grep -Fxq "$(printf 'fixture-event-error\t%s' "$expected_pipe_error")" "$pipe_fixture/log"; then
+		printf 'Provider fixture event writer returned an unexpected failure for %s\n' "$pipe_case" >&2
+		cat "$pipe_fixture/log" >&2
+		exit 1
+	fi
+	[ ! -s "$pipe_fixture/time.events" ]
+	[ "$pipe_case" != absent ] || [ ! -e "$pipe_fixture/time.events" ]
+done
+timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/provider-discovery-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_PROVIDER_DISCOVERY_FIXTURE="$work/provider-discovery-state" \
+	quickshell --no-duplicate --path "$work/provider-discovery/shell.qml" >"$work/provider-discovery.log" 2>&1 &
+quickshell_pid=$!
+provider_discovery_status=0
+wait "$quickshell_pid" || provider_discovery_status=$?
+quickshell_pid=
+if [ "$provider_discovery_status" -ne 0 ] || ! grep -F 'Provider discovery tests: PASS' "$work/provider-discovery.log" ||
+	grep -Fq 'Provider discovery FAILED:' "$work/provider-discovery.log" ||
+	[ -e "$work/provider-discovery-state/overlap" ] || [ -e "$work/provider-discovery-state/unexpected-command" ] ||
+	[ -n "$(find "$work/provider-discovery-state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+	cat "$work/provider-discovery.log" >&2
 	exit 1
 fi
 
