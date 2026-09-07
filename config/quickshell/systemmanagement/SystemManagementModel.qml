@@ -60,6 +60,15 @@ Scope {
         return root.settingsVisible && root.discoveryModels().every(model => model.visible && (model.ready || model.failed));
     }
 
+    function invalidateActionDiscovery(action) {
+        if (action === "timezone-set" || action === "ntp-set") timeDiscoveryModel.invalidate();
+        else if (action === "locale-set") localeDiscoveryModel.invalidate();
+        else if (action === "accounts-open" || action === "password-open") accountDiscoveryModel.invalidate();
+        else if (action === "printers-open") printerDiscoveryModel.invalidate();
+        else if (action === "sources-open" || action === "updates-refresh" || action === "updates-install-all")
+            discoveryModel.invalidate();
+    }
+
     function stateDiscovery(identifier) {
         if (identifier === "timezone" || identifier === "ntp-enabled" || identifier === "ntp-synchronized") return timeDiscoveryModel;
         if (identifier === "locale") return localeDiscoveryModel;
@@ -644,7 +653,8 @@ Scope {
                         || !root.validOperationState(fields[4])
                         || !root.validPercent(fields[5])
                         || (fields[6] !== "yes" && fields[6] !== "no")
-                        || (root.updateActionKind(fields[2]).length === 0 && fields[6] !== "no")) {
+                        || (root.updateActionKind(fields[2]).length === 0
+                            && (fields[6] !== "no" || fields[4] === "cancel-requested"))) {
                     fatal = "System management provider returned an invalid active operation";
                     break;
                 }
@@ -705,6 +715,11 @@ Scope {
                     && parsedNativeProviders.sources.status !== "available"
                     && parsedNativeProviders.sources.status !== "partial") nativeInvalid.sources = true;
         }
+        const nativeAdmission = minor === 1 && nativeActionIds.some(identifier =>
+            !nativeInvalid[root.nativeActionOwner(identifier)]
+                && parsedActions["$" + identifier].availability === "available");
+        const journalAdmitted = !recoveryInvalid && (parsedActive !== null || parsedHandoff !== null
+            || parsedRecoveryProvider.status === "available" || nativeAdmission);
         if (!updatesInvalid) {
             const cancelAvailable = parsedActions["$updates-cancel"].availability === "available";
             const canCancelActive = parsedActive !== null && parsedActive.cancelable;
@@ -842,7 +857,8 @@ Scope {
             }
             const nativeActions = [];
             for (const identifier of nativeActionIds) {
-                if (!nativeInvalid[root.nativeActionOwner(identifier)]) nativeActions.push(parsedActions["$" + identifier]);
+                if (journalAdmitted && !nativeInvalid[root.nativeActionOwner(identifier)])
+                    nativeActions.push(parsedActions["$" + identifier]);
             }
             root.actions = root.actions.concat(nativeActions);
         }
@@ -856,10 +872,9 @@ Scope {
         root.message = root.snapshotState === "ready"
             ? parsedUpdates.length + " updates reported"
             : "System management state is incomplete";
-        // No identities is evidence of an empty journal only after successful
-        // recovery. A partial response may have failed to read the owner at all.
-        return !recoveryInvalid && (parsedActive !== null || parsedHandoff !== null
-            || parsedRecoveryProvider.status === "available");
+        // Valid native offers independently prove journal admission even when
+        // update-specific recovery (for example logind) is unavailable.
+        return journalAdmitted;
     }
 
     function openSettings() {
@@ -1001,14 +1016,13 @@ Scope {
 
     SystemOperationModel {
         id: operationModel
-        onDiscoveryInvalidated: discoveryModel.invalidate()
+        onDiscoveryInvalidated: actionId => root.invalidateActionDiscovery(actionId)
         onSnapshotRequested: root.requestSnapshot(true)
         onAcknowledged: operationId => {
             if (root.terminalHandoff !== null && root.terminalHandoff.id === operationId)
                 root.terminalHandoff = null;
             if (root.activeOperation !== null && root.activeOperation.id === operationId)
                 root.activeOperation = null;
-            discoveryModel.invalidate();
         }
     }
 

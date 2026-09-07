@@ -342,7 +342,14 @@ remain intact, and time/locale freshness is projected independently. Closure
 retires every optional subscription without stopping required recovery. Private
 nested-X11 coverage passes 53 assertions for readiness, shared reads, blocked
 state, reentrant admission/publication, retry, and required-recovery races.
-Native action origins, native Settings controls, and NTP sampling remain pending.
+The root owner now accepts the seven fixed native origins internally, validates
+every argument before command construction, retains origin/replay ownership,
+and scopes invalidation to the affected provider through acknowledgment.
+Validated native offers can independently prove an empty journal despite
+update-specific recovery limitations; malformed or missing recovery cannot.
+Private fixtures cover all seven origins, rejection, denial, unsupported tools,
+uncertain output, replay, and exact acknowledgment without host mutation.
+Native Settings controls, fresh confirmation, and NTP sampling remain pending.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

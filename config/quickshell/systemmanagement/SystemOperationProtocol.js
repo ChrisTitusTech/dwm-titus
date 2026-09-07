@@ -100,7 +100,9 @@ function acceptLine(parser, line) {
         if (!fieldsFit(fields, 8) || !/^op-[0-9a-f]{32}$/.test(fields[1])
                 || !actionKind(fields[2]) || actionKind(fields[2]) !== fields[3]
                 || !/^(unknown|0|[1-9][0-9]?|100)$/.test(fields[5])
-                || (fields[6] !== "yes" && fields[6] !== "no"))
+                || (fields[6] !== "yes" && fields[6] !== "no")
+                || ((fields[6] === "yes" || fields[4] === "cancel-requested")
+                    && fields[3] !== "update" && fields[3] !== "refresh"))
             return fail(parser, "Invalid operation fields");
         const previous = parser.operation;
         if ((parser.expectedId && fields[1] !== parser.expectedId)

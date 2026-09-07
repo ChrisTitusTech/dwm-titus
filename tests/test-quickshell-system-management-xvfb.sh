@@ -65,6 +65,11 @@ cleanup() {
 			stop_process "$helper_pid"
 		done
 	fi
+	if [ -n "${native_action_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$native_action_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	if [ -n "${update_ui_helper:-}" ]; then
 		for helper_pid in $(pgrep -f "$update_ui_helper " 2>/dev/null || true); do
 			stop_process "$helper_pid"
@@ -542,6 +547,39 @@ if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .
 	printf 'Parser-only fixture started a capture that outlived its process\n' >&2
 	exit 1
 fi
+
+mkdir -p "$work/native-action" "$work/native-action-data/dwm-titus/scripts"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/native-action/"
+cp "$repo/tests/qml/SystemNativeActionOwner.qml" "$work/native-action/shell.qml"
+native_action_helper=$work/native-action-data/dwm-titus/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-native-action-provider.py" "$native_action_helper"
+chmod +x "$native_action_helper"
+for native_action in timezone-set ntp-set locale-set accounts-open password-open printers-open sources-open; do
+	for native_scenario in success denied rejected unsupported uncertain wrong-exit; do
+		native_state=$work/native-action-$native_action-$native_scenario
+		mkdir -p "$native_state"
+		timeout --foreground --kill-after=2s 15s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+			XDG_DATA_HOME="$work/native-action-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+			DWM_NATIVE_ACTION_FIXTURE="$native_state" DWM_NATIVE_ACTION="$native_action" DWM_NATIVE_ACTION_SCENARIO="$native_scenario" \
+			quickshell --no-duplicate --path "$work/native-action/shell.qml" >"$native_state/log" 2>&1 &
+		quickshell_pid=$!
+		native_status=0
+		wait "$quickshell_pid" || native_status=$?
+		quickshell_pid=
+		if [ "$native_status" -ne 0 ] || ! grep -F 'Native action owner tests: PASS' "$native_state/log" ||
+			grep -Fq 'Native action owner FAILED:' "$native_state/log" || [ -e "$native_state/invalid-arguments" ] || [ -e "$native_state/overlap" ]; then
+			cat "$native_state/log" >&2
+			exit 1
+		fi
+		[ "$(sed -n '1p' "$native_state/$native_action")" = 1 ]
+		[ "$(sed -n '1p' "$native_state/ack-operation")" = 1 ]
+		[ ! -e "$native_state/updates-cancel" ]
+		case $native_scenario in
+		uncertain | wrong-exit) [ "$(sed -n '1p' "$native_state/watch-operation")" = 1 ] ;;
+		*) [ ! -e "$native_state/watch-operation" ] ;;
+		esac
+	done
+done
 
 mkdir -p "$work/update-action" "$work/update-action-data/dwm-titus/scripts"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/update-action/"
