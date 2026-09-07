@@ -57,7 +57,10 @@ ShellRoot {
 
     SystemOperationModel {
         id: model
-        onDiscoveryInvalidated: root.discoveryInvalidations++
+        onDiscoveryInvalidated: actionId => {
+            root.discoveryInvalidations++;
+            root.check(actionId === root.target.actionId, "Observer invalidation retains its action identity");
+        }
         onSnapshotRequested: {
             root.snapshotRequests++;
             if (root.scenario === 6) {
@@ -84,8 +87,8 @@ ShellRoot {
                 Qt.callLater(root.finishControlFailure);
         }
         onAcknowledged: operationId => {
-            root.check(root.scenario === 2 ? root.discoveryInvalidations === 0 : root.discoveryInvalidations > 0,
-                "Only PackageKit results invalidate discovery even without a global signal");
+            root.check(root.discoveryInvalidations > 0,
+                "Native and PackageKit results invalidate their provider without a global signal");
             root.check(operationId === root.target.id, "Acknowledgment must name exact validated identity");
             root.check(root.sawProgress && root.sawVerifying, "Stream progress must arrive before exit");
             root.check(result.state === (root.scenario === 2 ? "permission-denied" : "succeeded"),

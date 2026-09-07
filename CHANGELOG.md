@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Route fixed regional and delegated origins through the root operation owner
+  with strict arguments, independent native journal admission, and scoped
+  discovery invalidation. Visible native action controls remain pending.
+
 - Coordinate update, time, locale, account, and printer subscriptions through
   one cumulative snapshot reader. Preserve per-provider freshness and readable
   partial state, and stop optional monitoring when System Settings closes.

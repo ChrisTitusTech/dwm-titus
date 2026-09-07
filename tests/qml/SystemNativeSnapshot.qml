@@ -138,8 +138,45 @@ ShellRoot {
         root.check(model.updates.length === 0 && model.nativeStates.timezone.status === "available"
             && model.actions.some(action => action.id === "timezone-set"), "Malformed updates do not suppress valid native state");
         lines = root.replaceRow(root.snapshot(), "provider\trecovery\t", "provider\trecovery\tpartial\tuser-session\tJournal\tNo session timestamp");
-        root.check(!root.parse(lines), "Native offers do not silently relax root recovery ownership");
+        root.check(root.parse(lines), "Validated native offers prove independent journal admission");
         root.check(model.nativeStates.timezone.status === "available", "Partial recovery preserves readable native state");
+        const nativeIds = ["timezone-set", "ntp-set", "locale-set", "accounts-open", "password-open", "printers-open", "sources-open"];
+        for (const offered of nativeIds) {
+            const selected = lines.map(line => {
+                const fields = line.split("\t");
+                if (fields[0] === "action" && nativeIds.indexOf(fields[1]) >= 0 && fields[1] !== offered)
+                    fields[2] = "unavailable";
+                return fields.join("\t");
+            });
+            root.check(root.parse(selected), offered + " independently proves admission");
+            const owner = model.nativeActionOwner(offered);
+            const unrelated = owner === "regional" ? "printers" : "regional";
+            root.check(root.parse(root.replaceRow(selected, "provider\t" + unrelated + "\t",
+                "provider\t" + unrelated + "\tavailable\tprivileged\tWrong\tInvalid")), "Unrelated invalid owner does not block independent admission");
+            root.check(!root.parse(root.replaceRow(selected, "provider\t" + owner + "\t",
+                "provider\t" + owner + "\tavailable\tprivileged\tWrong\tInvalid")), "Invalid owner cannot prove admission");
+            root.check(!root.parse(selected.filter(line => !line.startsWith("provider\trecovery\t"))), "Missing recovery fails closed");
+            root.check(!root.parse(root.replaceRow(selected, "provider\trecovery\t",
+                "provider\trecovery\tpartial\tprivileged\tWrong\tInvalid")), "Malformed recovery fails closed");
+        }
+        root.check(!root.parse(lines.map(line => line.startsWith("action\t") ? line.replace("\tavailable\t", "\tunavailable\t") : line)),
+            "No native offer cannot establish empty journal");
+        root.parse(lines);
+        model.settingsVisible = true;
+        model.snapshotOwned = false;
+        model.snapshotPending = false;
+        model.requiredPending = false;
+        model.discovery.visible = true;
+        model.discovery.ready = true;
+        root.check(model.updateActionReason("updates-refresh").indexOf("Complete recovery") >= 0,
+            "Independent native admission does not bypass update recovery");
+        model.snapshotOwned = true;
+        model.settingsVisible = false;
+        model.discovery.visible = false;
+        model.discovery.ready = false;
+        model.operation.blocked = true;
+        root.check(root.parse(lines) && model.operation.blocked, "Parsing an offer never clears uncertain owner state");
+        model.operation.blocked = false;
 
         for (const family of ["account", "repository"]) {
             const count = family === "account" ? 256 : 512;
@@ -191,6 +228,20 @@ ShellRoot {
         model.parseSnapshot("malformed", model.requestGeneration - 1);
         root.check(model.nativeStates === old, "Stale snapshot cannot replace current projections");
         root.check(!model.operation.streamOwned, "Parsing never originates an operation");
+        for (const entry of [["timezone-set", 1], ["ntp-set", 1], ["locale-set", 2],
+                ["accounts-open", 3], ["password-open", 3], ["printers-open", 4],
+                ["sources-open", 0], ["updates-refresh", 0], ["updates-install-all", 0], ["unknown", -1]]) {
+            const monitors = model.discoveryModels();
+            for (const monitor of monitors) {
+                monitor.cycle.enabled = true;
+                monitor.cycle.phase = "idle";
+                monitor.publish();
+            }
+            model.invalidateActionDiscovery(entry[0]);
+            for (let index = 0; index < monitors.length; index++)
+                root.check(monitors[index].phase === (index === entry[1] ? "initial-pending" : "idle"),
+                    entry[0] + " invalidates only its fixed provider");
+        }
         console.info("Native snapshot tests: PASS (" + root.assertions + " assertions)");
         Qt.quit();
     }

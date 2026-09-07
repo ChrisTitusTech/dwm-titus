@@ -58,6 +58,14 @@ ShellRoot {
             }
         }
         const good = root.fixture("succeeded");
+        for (const action of ["timezone-set", "ntp-set", "locale-set", "accounts-open",
+                "password-open", "printers-open", "sources-open"]) {
+            for (const state of ["pending", "running"]) {
+                const native = root.fixture("succeeded", action);
+                root.check(!root.parse(native.replace("\t" + state + "\tunknown\tno",
+                    "\t" + state + "\tunknown\tyes"), 0), action + " cannot advertise cancellation in " + state);
+            }
+        }
         const pending = root.operation("pending");
         const running = root.operation("running");
         const failed = root.fixture("failed");

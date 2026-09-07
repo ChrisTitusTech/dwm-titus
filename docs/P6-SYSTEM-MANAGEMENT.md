@@ -114,7 +114,7 @@ are terminated without canceling the PackageKit transaction. Three delayed
 snapshot-and-watch retries use one, two, and four seconds; exhaustion and failed
 acknowledgment retain explicit reload guidance. Pane-only reads still stop when
 Settings closes, while required recovery reads continue. The root owner also
-accepts the two fixed update origins, validates their origin-specific exit code,
+accepts the two fixed update origins and seven fixed native origins, validates their origin-specific exit code,
 and retains nonterminal progress logs until a verified terminal can be appended.
 Pre-admission failed requests reconcile a fresh empty journal without inventing
 a handoff or acknowledgment. Uncertain origins use the same bounded watch
@@ -157,8 +157,13 @@ Captured evidence shows the [final preview rows](public/images/p6-update-preview
 and [keyboard-focused confirmation controls](public/images/p6-update-confirmation-focus.png)
 inside the compact viewport.
 
-An identity-free snapshot establishes an empty journal only when recovery is
-available. Incomplete journal evidence retains the readable snapshot and takes
+An identity-free snapshot establishes an empty journal when recovery is
+available, or a complete minor 1 snapshot with structurally valid recovery
+contains a validated available native offer. The producer offers native actions
+only after independent journal admission; missing update security or session
+evidence cannot block that independent path. Invalid native owners and missing
+or malformed recovery cannot supply this proof. Update controls still require
+available update recovery. Incomplete journal evidence retains the readable snapshot and takes
 the same bounded recovery path; it cannot silently abandon an unknown owner.
 An exact validated active identity or handoff remains usable when unrelated
 restart or session evidence is partial.
@@ -940,14 +945,28 @@ separate fresh reads.
 The Settings parser accepts complete minor 0 and minor 1 snapshots, isolates
 known-owner failures, checks mandatory records and list identity/count/byte
 limits, and removes every action from an invalid native owner. A replacement
-minor 0 snapshot clears older native projections. This boundary does not change
-root operation ownership policy or add originating native/delegated controls,
-monitor coordination, or NTP sampling. Those integrations remain required.
+minor 0 snapshot clears older native projections. The root operation owner now
+accepts three fixed regional and four fixed delegated origins internally, with
+strict action, value, and generation validation before command construction.
+Regional values match the CLI identity grammar; actual catalog membership and
+fresh confirmation generations are rechecked by the backend. Shared admission
+rejects every occupied or uncertain owner state, including before first output.
+Origin, adopted active identity, completion (including uncertain exit), and
+successful acknowledgment invalidate only the action's fixed discovery domain.
+Native streams cannot advertise cancellation; a valid pre-dispatch canceled
+terminal remains readable. These entry points are not exposed by IPC. Visible
+native controls, fresh confirmation, and NTP sampling remain required.
 The update-only compatibility formatter and operation streams retain minor 0;
 the snapshot minor selects capability advertisement, not a new operation format.
-Provider tests and 204 native Quickshell assertions qualify cumulative sets,
+Provider tests and 292 native Quickshell assertions qualify cumulative sets,
 failure isolation, missing tools, partial inventories, encoded bounds, and
 backward compatibility without changing host settings or launching tools.
+The private native-origin fixture covers 42 action/scenario combinations:
+all seven fixed actions with success, denial, rejection, unsupported capability,
+uncertain output, and mismatched originating exit status. Exact counters require
+one origin and acknowledgment, with one replay only for uncertain results and
+no cancellation. Reentrant invalidation and pre-output ownership reject overlaps.
+These fixtures do not qualify real graphical authorization or tool workflows.
 An explicit empty `LANG=` remains readable and does not hide timezone or NTP
 state; replacing it still requires a fresh locale choice and confirmation.
 Duplicate list identities remain stream-fatal even after that provider's count

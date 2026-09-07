@@ -5,13 +5,13 @@ import qs.core
 import "SystemOperationProtocol.js" as Protocol
 
 // Root-owned operation streams and exact-ID controls. The Settings caller owns
-// visible confirmation; this model accepts only fixed update commands.
+// visible confirmation; this model accepts only fixed, validated origins.
 Scope {
     id: root
 
     signal snapshotRequested()
     signal acknowledged(string operationId)
-    signal discoveryInvalidated()
+    signal discoveryInvalidated(string actionId)
 
     property string state: "idle"
     property string detail: ""
@@ -122,7 +122,7 @@ Scope {
             if (root.cancelUncertainId !== target.id) root.cancelUncertainId = "";
             if (root.cancelConflictId !== target.id) root.cancelConflictId = "";
             if (!root.cancelRequestedId && !root.cancelUncertainId && !root.cancelConflictId) root.cancelDetail = "";
-            if (active !== null) root.discoveryInvalidated();
+            if (active !== null) root.discoveryInvalidated(target.actionId);
             root.progress = active;
             root.state = "observing";
             root.detail = "Observing " + target.actionId;
@@ -140,15 +140,40 @@ Scope {
     // This internal entry point is not exposed by IPC. The Settings caller
     // also validates visible confirmation, fresh discovery and availability.
     function startUpdate(action, generation) {
+        if (action !== "updates-refresh" && action !== "updates-install-all") return false;
+        return root.startOperation(action, "", generation);
+    }
+
+    function startNative(action, value, generation) {
+        if (["timezone-set", "ntp-set", "locale-set", "accounts-open", "password-open",
+                "printers-open", "sources-open"].indexOf(action) < 0) return false;
+        return root.startOperation(action, value, generation);
+    }
+
+    function originArguments(action, value, generation) {
+        if (typeof action !== "string" || typeof value !== "string" || typeof generation !== "string") return null;
+        if (action === "updates-refresh") return value === "" && generation === "" ? [] : null;
+        if (action === "updates-install-all")
+            return value === "" && generation.length === 64 && /^[0-9a-f]{64}$/.test(generation) ? [generation] : null;
+        if (["accounts-open", "password-open", "printers-open", "sources-open"].indexOf(action) >= 0)
+            return value === "" && generation === "" ? [] : null;
+        if (generation.length !== 64 || !/^[0-9a-f]{64}$/.test(generation)) return null;
+        if (action === "timezone-set" && value.length > 0 && value.length <= 255 && !/[^\x20-\x7e]/.test(value)
+                && value.split("/").every(part => part !== "" && part !== "." && part !== "..")) return [value, generation];
+        if (action === "ntp-set" && (value === "enabled" || value === "disabled")) return [value, generation];
+        if (action === "locale-set" && value.startsWith("LANG=") && value.length > 5 && value.length <= 133
+                && !/[^\x21-\x7e]/.test(value)) return [value, generation];
+        return null;
+    }
+
+    function startOperation(action, value, generation) {
+        const args = root.originArguments(action, value, generation);
         // Recheck fields rather than a UI binding during reentrant publication.
         if (!root.snapshotKnown || root.streamOwned || root.controlOwned || root.waitingSnapshot
                 || root.blocked || retryTimer.running || root.snapshotActive !== null || root.handoff !== null
-                || typeof generation !== "string"
-                || (action !== "updates-refresh" && action !== "updates-install-all")
-                || (action === "updates-install-all" ? !/^[0-9a-f]{64}$/.test(generation) : generation !== ""))
+                || args === null)
             return false;
-        const command = Commands.systemManagementCommand(action,
-            action === "updates-install-all" ? [generation] : []);
+        const command = Commands.systemManagementCommand(action, args);
         root.snapshotKnown = false;
         root.parser = Protocol.create("", action);
         root.progress = null;
@@ -167,7 +192,7 @@ Scope {
         root.state = "observing";
         root.detail = "Starting " + action;
         watchProcess.command = command;
-        root.discoveryInvalidated();
+        root.discoveryInvalidated(action);
         Qt.callLater(function() { if (root.streamOwned) watchProcess.running = true; });
         return true;
     }
@@ -198,8 +223,7 @@ Scope {
 
     function finishWatch(exitCode, normalExit) {
         if (!root.streamOwned) return;
-        if (root.parser.expectedAction === "updates-refresh" || root.parser.expectedAction === "updates-install-all")
-            root.discoveryInvalidated();
+        root.discoveryInvalidated(root.parser.expectedAction);
         if (!Protocol.finish(root.parser, exitCode, normalExit, root.streamReplay)) {
             root.streamFailed = true;
             root.recover(exitCode === 3 ? "Operation watch target changed (conflict)" : root.parser.failure);
@@ -321,12 +345,14 @@ Scope {
             root.controlOwned = false;
             return;
         }
+        const acknowledgedAction = root.result.actionId;
         if (root.matches(root.handoff, root.result)) root.handoff = null;
         if (root.snapshotActive !== null && root.snapshotActive.id === root.controlId)
             root.snapshotActive = null;
         // Match the bounded retained journal: late discovery output must not
         // resurrect an acknowledged identity or send a duplicate ack control.
         root.acknowledgedIds = root.acknowledgedIds.concat([root.controlId]).slice(-32);
+        root.discoveryInvalidated(acknowledgedAction);
         root.retries = 0;
         root.detail = root.result.detail;
         root.controlOwned = false;
