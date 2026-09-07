@@ -30,12 +30,18 @@ ShellRoot {
         const parser = Protocol.create(command, selection, argument);
         return Protocol.consume(parser, root.bytes(text)) && Protocol.finish(parser, code, normal !== false);
     }
+    function exactChoices(kind, values) {
+        const parser = Protocol.create("regional-choices", kind, "");
+        root.check(Protocol.consume(parser, root.bytes(root.choices(kind, values)))
+            && Protocol.finish(parser, 0, true), kind + " catalog completion");
+        root.check(JSON.stringify(parser.choices) === JSON.stringify(values), kind + " exact catalog identities and order");
+    }
     function unitTests() {
         for (const kind of ["timezone", "locale"]) {
             const values = kind === "timezone" ? ["America/Chicago", "Etc/UTC"] : ["C", "en_US.utf8"];
             const good = root.choices(kind, values);
-            root.check(root.parse("regional-choices", kind, "", good, 0), kind + " choices");
-            root.check(root.parse("regional-choices", kind, "", root.choices(kind, []), 0), "empty catalog");
+            root.exactChoices(kind, values);
+            root.exactChoices(kind, []);
             const bad = [good.slice(0, -1), good + "\n", good + "complete\tregional-choices\n",
                 good.replace("\t1\t0", "\t1\t1"), good.replace("\t1\t0", "\t2\t0"),
                 good.replace("choice\t", "unknown\t"), good.replace("choice\t", "choice\textra\t"),
