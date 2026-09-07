@@ -7,6 +7,7 @@ import contextlib
 import errno
 import hashlib
 import io
+import json
 import importlib.util
 import importlib.machinery
 import os
@@ -2159,6 +2160,222 @@ class LocaleEnumerationTests(unittest.TestCase):
                             os.killpg(supervisor, signal.SIGKILL)
                     except (FileNotFoundError, ProcessLookupError):
                         pass
+
+
+class DelegatedToolTests(unittest.TestCase):
+    environment = {"HOME": "/fixture-home", "PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"}
+
+    @contextlib.contextmanager
+    def selection(self, program="import os; os.write(1, b'kitty\\n')", *, mode=None, signal_number=None):
+        popen, processes = subprocess.Popen, []
+        def launch(command, **options):
+            self.assertEqual(command, ["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "3",
+                "/usr/bin/bash", "/usr/local/bin/dwm-terminal", "--print-command"])
+            self.assertEqual(options["env"], self.environment)
+            self.assertTrue(options["start_new_session"])
+            self.assertEqual(options["stdin"], subprocess.DEVNULL)
+            replacement = (["/usr/bin/python3", "-c", program] if mode is None else
+                           ["/usr/bin/python3", str(REPO / "tests/fixtures/system-locale-process.py"), mode])
+            process = popen(command[:4] + replacement, **options)
+            processes.append(process)
+            if signal_number is not None:
+                signal.raise_signal(signal_number)
+            return process
+        try:
+            with mock.patch.object(provider.subprocess, "Popen", side_effect=launch):
+                yield processes
+        finally:
+            for process in processes:
+                if process.returncode is None:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=2)
+                process.stdout.close()
+                process.stderr.close()
+
+    def read_selection(self):
+        return provider.read_terminal_selection("/usr/local/bin/dwm-terminal", self.environment)
+
+    def test_fixed_tool_paths_and_password_argv(self):
+        expected = {"accounts-open": "/usr/bin/lxqt-admin-user", "printers-open": "/usr/bin/system-config-printer",
+                    "sources-open": "/usr/bin/dnfdragora"}
+        for action, path in expected.items():
+            with self.subTest(action=action), mock.patch.object(provider, "trusted_delegated_executable", side_effect=lambda path, _name: path) as trusted, \
+                    mock.patch.object(provider, "read_terminal_selection") as selector:
+                self.assertEqual(provider.delegated_command(action)[0], (path,))
+                trusted.assert_called_once_with(path, os.path.basename(path))
+                selector.assert_not_called()
+        for name, arguments in provider.PASSWORD_TERMINALS.items():
+            with self.subTest(name=name), \
+                    mock.patch.object(provider, "trusted_delegated_executable", side_effect=lambda path, _name: path), \
+                    mock.patch.object(provider, "terminal_selection_environment", return_value=self.environment), \
+                    mock.patch.object(provider, "read_terminal_selection", return_value=name), \
+                    mock.patch.object(provider.shutil, "which", side_effect=["/usr/local/bin/dwm-terminal", "/usr/bin/" + name]):
+                self.assertEqual(provider.delegated_command("password-open"),
+                    (("/usr/bin/" + name, *arguments, "/usr/bin/passwd"), "Password change"))
+
+    def test_unknown_actions_and_unsupported_terminals_never_launch_or_fall_back(self):
+        for action in ("health-open", "password-open user", "accounts-open --root", None, []):
+            with self.subTest(action=action), mock.patch.object(provider, "trusted_delegated_executable") as target:
+                with self.assertRaises(provider.SnapshotFailure):
+                    provider.delegated_command(action)
+                target.assert_not_called()
+        for selected in ("warp-terminal", "kitty -e sh", "bash", "/usr/bin/foot"):
+            with self.subTest(selected=selected), \
+                    mock.patch.object(provider, "trusted_delegated_executable", side_effect=lambda path, _name: path), \
+                    mock.patch.object(provider, "terminal_selection_environment", return_value=self.environment), \
+                    mock.patch.object(provider, "read_terminal_selection", return_value=selected), \
+                    mock.patch.object(provider.shutil, "which", return_value="/usr/local/bin/dwm-terminal") as which:
+                with self.assertRaises(provider.SnapshotFailure) as caught:
+                    provider.delegated_command("password-open")
+                self.assertEqual(caught.exception.code, "unsupported")
+                which.assert_called_once()
+
+    def test_trust_checks_resolved_executable_and_every_parent(self):
+        path = "/usr/bin/passwd"
+        def metadata(current, **_options):
+            return types.SimpleNamespace(st_uid=0, st_mode=(stat.S_IFREG | 0o4755) if current == path else stat.S_IFDIR | 0o755)
+        with mock.patch.object(provider.os.path, "realpath", return_value=path), \
+                mock.patch.object(provider.os, "stat", side_effect=metadata) as inspected, \
+                mock.patch.object(provider.os, "access", return_value=True):
+            self.assertEqual(provider.trusted_delegated_executable("/alias/passwd", "passwd"), path)
+            self.assertEqual([call.args[0] for call in inspected.call_args_list], [path, "/usr/bin", "/usr", "/"])
+        for target in (path, "/usr/bin", "/usr", "/"):
+            for field in ("owner", "writable", "type"):
+                def unsafe(current, **options):
+                    value = metadata(current, **options)
+                    if current == target:
+                        if field == "owner":
+                            value.st_uid = 1000
+                        elif field == "writable":
+                            value.st_mode |= 0o020
+                        else:
+                            value.st_mode = stat.S_IFLNK | 0o777
+                    return value
+                with self.subTest(target=target, field=field), mock.patch.object(provider.os.path, "realpath", return_value=path), \
+                        mock.patch.object(provider.os, "stat", side_effect=unsafe):
+                    with self.assertRaises(provider.SnapshotFailure) as caught:
+                        provider.trusted_delegated_executable(path, "passwd")
+                    self.assertEqual(caught.exception.code, "unsupported")
+        with mock.patch.object(provider.os.path, "realpath", return_value="/usr/bin/sh"):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.trusted_delegated_executable(path, "passwd")
+
+    def test_selection_environment_excludes_startup_and_loader_inputs(self):
+        source = {**self.environment, "DWM_TERMINAL": "kitty", "XDG_CONFIG_HOME": "/fixture/config",
+                  "BASH_ENV": "/private", "LD_PRELOAD": "/private", "LOCPATH": "/private", "BASH_FUNC_x%%": "() { false; }"}
+        with mock.patch.dict(os.environ, source, clear=True):
+            self.assertEqual(provider.terminal_selection_environment(),
+                {**self.environment, "DWM_TERMINAL": "kitty", "XDG_CONFIG_HOME": "/fixture/config"})
+        for value in ("x" * 4097, "\udcff"):
+            with mock.patch.dict(os.environ, {**self.environment, "DWM_TERMINAL": value}, clear=True):
+                with self.assertRaises(provider.SnapshotFailure):
+                    provider.terminal_selection_environment()
+
+    def test_selection_is_fresh_bounded_and_reaped(self):
+        handlers = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        with self.selection() as children:
+            self.assertEqual(self.read_selection(), "kitty")
+            self.assertEqual(self.read_selection(), "kitty")
+            self.assertEqual(len(children), 2)
+            self.assertTrue(all(child.returncode == 0 and child.stdout.closed and child.stderr.closed for child in children))
+        self.assertEqual(handlers, {number: signal.getsignal(number) for number in handlers})
+
+    def test_selector_rejects_partial_malformed_and_excess_output(self):
+        for output in (b"", b"kitty", b"kitty\nxterm\n", b"kitty\n\xff", b"kitty\t\n", b"x" * 4096 + b"\n"):
+            with self.subTest(output=output[:20]), self.selection("import os; os.write(1, " + repr(output) + ")"):
+                with self.assertRaises(provider.SnapshotFailure) as caught:
+                    self.read_selection()
+                self.assertEqual(caught.exception.code, "malformed")
+        with self.selection("import os; os.write(1, b'kitty\\n'); os.write(2, b'x' * 4091)"):
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                self.read_selection()
+            self.assertEqual(caught.exception.code, "malformed")
+        with self.selection("import os; os.write(1, b'kitty\\n'); os.write(2, b'x' * 4090)"):
+            self.assertEqual(self.read_selection(), "kitty")
+
+    def test_selector_exit_status_and_real_deadline_are_required(self):
+        for status, code in ((1, "internal"), (127, "missing-provider"), (124, "timeout")):
+            with self.subTest(status=status), self.selection("import os; os.write(1, b'kitty\\n'); os._exit(" + str(status) + ")"):
+                with self.assertRaises(provider.SnapshotFailure) as caught:
+                    self.read_selection()
+                self.assertEqual(caught.exception.code, code)
+        started = time.monotonic()
+        with self.selection(mode="closed-pipes") as children:
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                self.read_selection()
+            self.assertEqual(caught.exception.code, "timeout")
+            self.assertTrue(children[0].stdout.closed and children[0].stderr.closed)
+            self.assertIsNotNone(children[0].returncode)
+        self.assertLess(time.monotonic() - started, 5.5)
+
+    def test_missing_closefrom_fails_before_open_or_spawn(self):
+        unavailable = types.SimpleNamespace(open=mock.Mock(), posix_spawn=mock.Mock())
+        with mock.patch.object(provider, "os", unavailable):
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.launch_delegated_tool(("/usr/bin/kitty", "/usr/bin/passwd"))
+        self.assertEqual(caught.exception.code, "unsupported")
+        unavailable.open.assert_not_called()
+        unavailable.posix_spawn.assert_not_called()
+
+    def test_launch_uses_new_session_null_stdio_and_closefrom(self):
+        command = ("/usr/bin/kitty", "/usr/bin/passwd")
+        with mock.patch.object(provider.os, "posix_spawn", return_value=1234) as spawn:
+            provider.launch_delegated_tool(command)
+        args, options = spawn.call_args
+        self.assertEqual(args[:2], (command[0], command))
+        self.assertTrue(options["setsid"])
+        self.assertEqual(options["setsigmask"], ())
+        actions = options["file_actions"]
+        self.assertEqual([action[2] for action in actions[:3]], [0, 1, 2])
+        self.assertEqual(actions[-1], (os.POSIX_SPAWN_CLOSEFROM, 3))
+        with self.assertRaises(OSError):
+            os.fstat(actions[0][1])
+        for error, code in ((FileNotFoundError(), "missing-provider"), (PermissionError(), "permission-denied"),
+                            (OSError(errno.ENOEXEC, "Fixture"), "internal"), (InterruptedError(), "interrupted"),
+                            (NotImplementedError(), "unsupported")):
+            with self.subTest(code=code), mock.patch.object(provider.os, "posix_spawn", side_effect=error):
+                with self.assertRaises(provider.SnapshotFailure) as caught:
+                    provider.launch_delegated_tool(command)
+                self.assertEqual(caught.exception.code, code)
+
+
+    def test_selector_signals_and_cleanup_failure_cannot_publish_selection(self):
+        handlers = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        for number in handlers:
+            with self.subTest(number=number), self.selection(mode="closed-pipes", signal_number=number) as children:
+                with self.assertRaises(SystemExit) as caught:
+                    self.read_selection()
+                self.assertEqual(caught.exception.code, 128 + number)
+                self.assertTrue(children[0].stdout.closed and children[0].stderr.closed)
+                self.assertIsNotNone(children[0].returncode)
+        self.assertEqual(handlers, {number: signal.getsignal(number) for number in handlers})
+        original = provider.close_locale_process
+        def cleanup(process):
+            original(process)
+            raise provider.SnapshotFailure("timeout", "Fixture cleanup failed")
+        with self.selection(), mock.patch.object(provider, "close_locale_process", side_effect=cleanup):
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                self.read_selection()
+            self.assertEqual(caught.exception.code, "timeout")
+            self.assertIn("Terminal selection cleanup", caught.exception.detail)
+
+    def test_kernel_exec_failure_and_post_acceptance_cleanup_are_distinguished(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.launch_delegated_tool((str(pathlib.Path(directory) / "absent"),))
+            self.assertEqual(caught.exception.code, "missing-provider")
+        original = os.close
+        def close(descriptor):
+            original(descriptor)
+            raise OSError(errno.EIO, "Fixture close failure")
+        with mock.patch.object(provider.os, "posix_spawn", return_value=1234) as launch, \
+                mock.patch.object(provider.os, "close", side_effect=close):
+            with self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.launch_delegated_tool(("/usr/bin/kitty", "/usr/bin/passwd"))
+            self.assertEqual(caught.exception.code, "interrupted")
+            self.assertIn("may already be open", caught.exception.detail)
+            launch.assert_called_once()
 
 
 class UpdateEventMonitorTests(unittest.TestCase):
@@ -9571,13 +9788,13 @@ class RegionalOwnerTests(unittest.TestCase):
     def test_native_cli_routes_only_fixed_valid_arguments(self):
         for args in (["timezone-set", "UTC", "a" * 64], ["ntp-set", "enabled", "b" * 64],
                      ["locale-set", "LANG=C", "c" * 64]):
-            with mock.patch.object(provider, "regional_command", return_value=0) as command:
+            with mock.patch.object(provider, "native_command", return_value=0) as command:
                 self.assertEqual(provider.main(args), 0)
                 command.assert_called_once_with(*args)
         for args in (["timezone-set"], ["timezone-set", "../UTC", "a" * 64],
                      ["ntp-set", "true", "a" * 64], ["locale-set", "LANG=C", "A" * 64],
                      ["locale-set", "LANG=C", "a" * 64, "extra"]):
-            with mock.patch.object(provider, "regional_command") as command, \
+            with mock.patch.object(provider, "native_command") as command, \
                     contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(provider.main(args), 2)
                 command.assert_not_called()
@@ -9597,7 +9814,7 @@ class RegionalCommandTests(unittest.TestCase):
                 mock.patch.object(provider, "RegionalRead"), \
                 mock.patch.object(provider, "PackageKitBackend") as packagekit, \
                 contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
-            code = provider.run_regional_command("timezone-set", "Etc/UTC", generation, writer, None)
+            code = provider.run_native_command("timezone-set", "Etc/UTC", generation, writer, None)
             packagekit.assert_not_called()
         return code, stdout.getvalue(), stderr.getvalue()
 
@@ -9672,7 +9889,7 @@ class RegionalCommandTests(unittest.TestCase):
                 mock.patch.object(provider, "open_journal_directory") as journal, \
                 mock.patch.object(provider, "RegionalMutation") as client, \
                 contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(provider.run_regional_command("timezone-set", "UTC", "a" * 64, None, None), 1)
+            self.assertEqual(provider.run_native_command("timezone-set", "UTC", "a" * 64, None, None), 1)
             journal.assert_not_called()
             client.assert_not_called()
             self.assertEqual(stdout.getvalue(), "")
@@ -9683,6 +9900,184 @@ class RegionalCommandTests(unittest.TestCase):
             capture_output=True, text=True, timeout=60, check=False)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("Private-bus regional owner: PASS", result.stdout)
+
+
+class DelegatedOwnerTests(unittest.TestCase):
+    boot_id = RegionalOwnerTests.boot_id
+    session = RegionalOwnerTests.session
+
+    def invoke(self, journal, action="accounts-open", *, write=None, failure=None, admitted=None):
+        output = []
+        def launch(command):
+            self.assertEqual(command, ("/usr/bin/fixture",))
+            with provider.lock_writable_journal(journal):
+                active = provider.load_writable_journal_state(journal).active
+                self.assertEqual(active.state, "running")
+                self.assertEqual(active.action_id, action)
+                self.assertTrue(provider.native_journal_owner_busy(journal, active))
+            with provider._journal_lock(journal.chain.directory_descriptor, exclusive=True):
+                pass
+            if failure is not None:
+                raise provider.SnapshotFailure(failure, "Fixture launch result")
+        with mock.patch.object(provider, "delegated_command", return_value=(("/usr/bin/fixture",), "Fixture tool")), \
+                mock.patch.object(provider, "launch_delegated_tool", side_effect=launch) as launcher, \
+                mock.patch.object(provider, "PackageKitBackend") as packagekit:
+            result = provider.run_delegated_launch(journal, action, output.append if write is None else write,
+                on_admission=admitted)
+            packagekit.assert_not_called()
+        return result, "".join(output), launcher
+
+    def test_all_fixed_launches_have_exact_durable_launch_only_results(self):
+        for action in provider.DELEGATED_ACTIONS:
+            with self.subTest(action=action), self.session() as (path, _chain, journal):
+                restart = (path / "restart").read_bytes()
+                result, output, launcher = self.invoke(journal, action)
+                launcher.assert_called_once()
+                self.assertEqual((result.kind, result.state), ("delegate", "succeeded"))
+                self.assertIn("launch accepted", result.detail)
+                self.assertIn("not tracked here", result.detail)
+                self.assertIsNone(result.generation)
+                self.assertIsNone(result.boot_id)
+                state = provider.load_journal_state(journal.chain)
+                self.assertIsNone(state.active)
+                self.assertEqual(state.terminals[state.handoff.slot], result)
+                self.assertEqual((path / "restart").read_bytes(), restart)
+                self.assertEqual([row[4] for row in rows(output.splitlines(), "operation")], ["pending", "running", "succeeded"])
+                self.assertEqual(output.splitlines()[-1], "complete\toperation")
+                self.assertTrue(all(row[6] == "no" for row in rows(output.splitlines(), "operation")))
+
+    def test_launch_errors_and_ambiguity_have_scoped_results_without_retry(self):
+        for code in ("missing-provider", "permission-denied", "unsupported", "internal", "interrupted"):
+            with self.subTest(code=code), self.session() as (_path, _chain, journal):
+                result, output, launcher = self.invoke(journal, failure=code)
+                launcher.assert_called_once()
+                self.assertEqual(result.state, "interrupted" if code == "interrupted" else "failed")
+                self.assertEqual(rows(output.splitlines(), "error")[0][1:3], ["accounts", code])
+
+    def test_output_loss_before_launch_aborts_and_after_acceptance_preserves_handoff(self):
+        for phase in ("pending", "running", "succeeded"):
+            with self.subTest(phase=phase), self.session() as (_path, _chain, journal):
+                output = []
+                def write(chunk):
+                    if "\t" + phase + "\t" in chunk:
+                        raise BrokenPipeError()
+                    output.append(chunk)
+                with mock.patch.object(provider, "delegated_command", return_value=(("/usr/bin/fixture",), "Fixture")), \
+                        mock.patch.object(provider, "launch_delegated_tool") as launch, self.assertRaises(BrokenPipeError):
+                    provider.run_delegated_launch(journal, "printers-open", write)
+                self.assertEqual(launch.call_count, int(phase == "succeeded"))
+                state = provider.load_journal_state(journal.chain)
+                self.assertEqual(state.terminals[state.handoff.slot].state, "succeeded" if phase == "succeeded" else "failed")
+                self.assertNotIn("complete\toperation", "".join(output))
+
+    def test_unavailable_tool_and_admission_race_preserve_existing_state(self):
+        for race in (False, True):
+            with self.subTest(race=race), self.session() as (_path, _chain, journal):
+                admitted, output = mock.Mock(), []
+                def resolve(_action):
+                    if not race:
+                        raise provider.SnapshotFailure("missing-provider", "Unavailable fixture")
+                    with provider.lock_writable_journal(journal):
+                        provider.begin_journal_operation(journal, "ntp-set", "2026-09-06T23:00:00Z", "Competing")
+                    return ("/usr/bin/fixture",), "Fixture"
+                with mock.patch.object(provider, "delegated_command", side_effect=resolve), \
+                        mock.patch.object(provider, "launch_delegated_tool") as launch, \
+                        self.assertRaises(provider.JournalAdmissionError if race else provider.SnapshotFailure):
+                    provider.run_delegated_launch(journal, "accounts-open", output.append, on_admission=admitted)
+                admitted.assert_not_called()
+                launch.assert_not_called()
+                self.assertEqual(output, [])
+                self.assertEqual(provider.load_journal_state(journal.chain).active is not None, race)
+
+    def test_uncertain_admission_or_handoff_never_emits_complete(self):
+        for stage in ("begin_journal_operation", "complete_journal_terminal"):
+            for after in (False, True):
+                with self.subTest(stage=stage, after=after), self.session() as (_path, _chain, journal):
+                    original, admitted, output = getattr(provider, stage), mock.Mock(), []
+                    def fail(*args, **kwargs):
+                        if after:
+                            original(*args, **kwargs)
+                        raise provider.JournalCommitError("Uncertain fixture write")
+                    with mock.patch.object(provider, stage, side_effect=fail), self.assertRaises(provider.JournalCommitError):
+                        self.invoke(journal, write=output.append, admitted=admitted)
+                    admitted.assert_called_once()
+                    self.assertNotIn("complete\toperation", "".join(output))
+                    self.assertTrue(provider._try_native_owner_lock(journal.descriptor("active")))
+                    provider._unlock_native_owner(journal.descriptor("active"))
+
+    def test_cli_fixed_grammar_and_preflight_rejection(self):
+        for action in provider.DELEGATED_ACTIONS:
+            with mock.patch.object(provider, "native_command", return_value=0) as command:
+                self.assertEqual(provider.main([action]), 0)
+                command.assert_called_once_with(action)
+            with mock.patch.object(provider, "native_command") as command, contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(provider.main([action, "unexpected"]), 2)
+                command.assert_not_called()
+            with self.session() as (path, _chain, journal), \
+                    mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(path.parents[1])}), \
+                    mock.patch.object(provider, "read_fedora_identity", return_value={"ID": "fedora"}), \
+                    mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                    mock.patch.object(provider, "delegated_command", side_effect=provider.SnapshotFailure("missing-provider", "Fixture tool missing")), \
+                    mock.patch.object(provider, "launch_delegated_tool") as launch, \
+                    contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+                self.assertEqual(provider.main([action]), 1)
+                self.assertIn("no administration tool was launched", stdout.getvalue())
+                self.assertEqual(stderr.getvalue(), "")
+                state = provider.load_journal_state(journal.chain)
+                self.assertIsNone(state.active)
+                self.assertIsNone(state.handoff)
+                launch.assert_not_called()
+
+    def test_real_child_is_detached_and_never_inherits_journal_or_output(self):
+        for mode in ("open", "failed-work", "lost-output"):
+            with self.subTest(mode=mode), self.session() as (path, _chain, journal):
+                report = path.parent / "child.json"
+                command = ("/usr/bin/python3", str(REPO / "tests/fixtures/system-delegated-tool.py"), str(report), mode)
+                original, children, output = os.posix_spawn, [], []
+                def spawn(*args, **kwargs):
+                    pid = original(*args, **kwargs)
+                    children.append(pid)
+                    return pid
+                def write(chunk):
+                    if mode == "lost-output" and "\tsucceeded\t" in chunk:
+                        raise BrokenPipeError()
+                    output.append(chunk)
+                try:
+                    with mock.patch.object(provider, "delegated_command", return_value=(command, "Fixture")), \
+                            mock.patch.object(provider.os, "posix_spawn", side_effect=spawn):
+                        if mode == "lost-output":
+                            with self.assertRaises(BrokenPipeError):
+                                provider.run_delegated_launch(journal, "sources-open", write)
+                        else:
+                            provider.run_delegated_launch(journal, "sources-open", write)
+                    deadline = time.monotonic() + 3
+                    while not report.exists() and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    value = json.loads(report.read_text())
+                    self.assertEqual(value["pid"], children[0])
+                    self.assertEqual(value["sid"], children[0])
+                    self.assertEqual(value["descriptors"], {"0": "/dev/null", "1": "/dev/null", "2": "/dev/null"})
+                    state = provider.load_journal_state(journal.chain)
+                    self.assertIsNone(state.active)
+                    terminal = state.terminals[state.handoff.slot]
+                    self.assertEqual(terminal.state, "succeeded")
+                    self.assertIn("launch accepted", terminal.detail)
+                    self.assertTrue(provider._try_native_owner_lock(journal.descriptor("active")))
+                    provider._unlock_native_owner(journal.descriptor("active"))
+                    if mode == "failed-work":
+                        pid, status = os.waitpid(children.pop(), 0)
+                        self.assertEqual(pid, value["pid"])
+                        self.assertEqual(os.waitstatus_to_exitcode(status), 42)
+                        self.assertEqual(provider.load_journal_state(journal.chain).terminals[terminal.slot], terminal)
+                    replay = []
+                    with mock.patch.object(provider, "launch_delegated_tool", side_effect=AssertionError("Unexpected relaunch")):
+                        provider.watch_journal_operation(journal, terminal.operation_id, replay.append, boot_id=self.boot_id)
+                    self.assertTrue("".join(replay).endswith("complete\toperation\n"))
+                finally:
+                    for pid in children:
+                        with contextlib.suppress(ProcessLookupError):
+                            os.kill(pid, signal.SIGKILL)
+                        os.waitpid(pid, 0)
 
 
 class UpdateCommandTests(unittest.TestCase):

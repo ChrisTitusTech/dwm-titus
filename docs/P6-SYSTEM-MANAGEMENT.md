@@ -507,8 +507,8 @@ dwm-system-management printers-open
 dwm-system-management sources-open
 ```
 
-The first three confirmed regional forms are implemented. The four delegated
-launch forms remain planned and are not accepted by the CLI yet.
+All seven forms are implemented as fixed CLI origins. Originating Settings
+controls remain disabled until their confirmation and discovery integration.
 
 `ZONE` is at most 255 ASCII bytes, contains no control characters, empty path
 components, `.` or `..` components, and must exactly match a value returned by
@@ -684,6 +684,58 @@ rows; timeout or excess results are provider-scoped errors. Repository changes
 remain in the Fedora-packaged `dnfdragora` tool when present. Missing optional
 delegated tools are reported individually and never hide readable service
 state.
+
+The four no-argument administration CLI origins are now implemented. Accounts,
+printers, and sources resolve only `/usr/bin/lxqt-admin-user`,
+`/usr/bin/system-config-printer`, and `/usr/bin/dnfdragora`, respectively.
+Resolution uses the canonical executable path and requires the file and every
+resolved parent directory to be root-owned and not group/other-writable. A
+missing, non-executable, or unsupported target fails only that launch. These
+checks select trusted unprivileged launch targets; they do not elevate a
+repository helper or authorize changes inside the tools.
+
+The password entry uses the existing managed `dwm-terminal --print-command`
+selection contract, including the invoking user's configured terminal and
+fallback order. The selected helper must be root-controlled. A fixed
+`/usr/bin/bash` interpreter prevents the helper's env shebang from resolving a
+user-supplied Bash. Only PATH, HOME, XDG_CONFIG_HOME, DWM_TERMINAL, and fixed C
+locale values enter this read-only selector; shell startup and loader overrides
+are excluded. A separate timeout supervisor bounds collection to three seconds,
+stdout and stderr share a 4096-byte budget, and complete UTF-8 output must contain
+exactly one nonempty printable command identity and one final newline. Cleanup
+retains the owned process group through TERM, KILL, and bounded reaping, including
+signal interruption; incomplete cleanup cannot produce a usable selection.
+
+Password launch supports Alacritty, st, and xterm with the fixed `-e` argument,
+and Kitty with its positional-program form. The sole program argument is the
+root-controlled `/usr/bin/passwd`; no username or password is accepted by QML or
+the provider. Other terminal forms, including Warp, leave the password entry
+unsupported with guidance to run `passwd` directly. The provider does not change
+the terminal preference or substitute another command for an unsupported form.
+
+Every delegated launch uses the shared durable native owner: admission and its
+active-file lease precede output, `running` is committed before the single exec,
+and terminal retention/handoff is committed before completion. The child starts
+in its own session with stdin/stdout/stderr on `/dev/null` and every descriptor
+above 2 closed, so an open tool cannot retain the journal lease or operation
+stream. This isolated launch requires Python 3.13 or newer with
+[`os.POSIX_SPAWN_CLOSEFROM`](https://docs.python.org/3/library/os.html#os.POSIX_SPAWN_CLOSEFROM)
+support in `/usr/bin/python3`; the supported Fedora 44 runtime supplies it.
+The launcher returns a scoped `unsupported` result when that primitive is
+unavailable, without an unsafe fallback. No shell
+interprets the launch argv. A successful exec is only an
+accepted launch; the tool owns its subsequent UI, authorization, changes, and
+cancellation. The provider neither waits for that internal work nor reports it
+as completed. Output loss before launch prevents exec; loss after accepted exec
+preserves the durable launch result. Ambiguous launch observation is interrupted
+without retry, and replay/acknowledgment never launches another tool. Local
+filesystem/exec operations do not claim a hard kernel-I/O deadline.
+
+Unit and real private-child fixtures cover fixed argv, trust failures, bounded
+selection, launch errors, lost output, descriptor/session isolation, handoff
+replay, and a tool exiting unsuccessfully after its launch was accepted.
+Originating Settings controls and cumulative minor 1 discovery remain
+outstanding; the cumulative snapshot remains minor zero.
 
 The internal repository reader now bounds connection setup, optional activation
 of an absent PackageKit daemon, transaction setup, signals, and decoding under
@@ -1765,9 +1817,10 @@ of mutation commands. Tests cover all regional and delegated kinds, competing
 and originating descriptors, path replacement, lock and cleanup failures,
 normal process exit, abrupt process death, and durable terminal replay. Public
 native snapshot/watch integration now observes these owners without taking over
-service work. The fixed regional CLI origins now retain this lease throughout
-their service workflow. Delegated launch commands and originating Settings
-actions remain gated; the cumulative snapshot minor is unchanged.
+service work. Fixed regional CLI origins retain this lease throughout their
+service workflow; fixed delegated origins retain it through accepted launch and
+durable handoff. Originating Settings actions remain gated; the cumulative
+snapshot minor is unchanged.
 
 ## Event and Resource Contract
 

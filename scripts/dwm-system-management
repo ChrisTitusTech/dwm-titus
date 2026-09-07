@@ -14,6 +14,7 @@ import os
 import re
 import selectors
 import shlex
+import shutil
 import signal
 import socket
 import stat
@@ -41,6 +42,13 @@ REPOSITORY_MAX_BYTES = 384 * 1024
 MAX_OPERATION_PROGRESS_RECORDS = 252
 MAX_OPERATION_MISMATCH_SAMPLES = 128
 NATIVE_WATCH_SECONDS = 120
+DELEGATED_TOOLS = {
+    "accounts-open": ("/usr/bin/lxqt-admin-user", "User accounts"),
+    "printers-open": ("/usr/bin/system-config-printer", "Printers"),
+    "sources-open": ("/usr/bin/dnfdragora", "Software sources"),
+}
+PASSWORD_TERMINALS = {"alacritty": ("-e",), "kitty": (), "st": ("-e",), "xterm": ("-e",)}
+DELEGATED_ACTIONS = frozenset((*DELEGATED_TOOLS, "password-open"))
 
 REGIONAL_TIMEZONE_MAX = 255
 REGIONAL_TIMEZONE_COUNT = 2048
@@ -1769,6 +1777,182 @@ def read_locale_choices() -> tuple[str, ...]:
             # otherwise callers could catch a read failure and keep running.
             if interrupted:
                 raise SystemExit(128 + interrupted)
+
+
+def trusted_delegated_executable(path: str, basename: str) -> str:
+    """Resolve an unprivileged launch target into a root-controlled executable path."""
+    try:
+        resolved = os.path.realpath(path, strict=True)
+        if os.path.basename(resolved) != basename:
+            raise SnapshotFailure("unsupported", "The configured administration command has an unsupported identity")
+        current = resolved
+        while True:
+            value = os.stat(current, follow_symlinks=False)
+            expected_type = stat.S_ISREG if current == resolved else stat.S_ISDIR
+            if not expected_type(value.st_mode) or value.st_uid != 0 or value.st_mode & 0o022:
+                raise SnapshotFailure("unsupported", "The administration command is not in a root-controlled executable path")
+            if current == "/":
+                break
+            current = os.path.dirname(current)
+        if not os.access(resolved, os.X_OK):
+            raise SnapshotFailure("permission-denied", "The administration command is not executable")
+        return resolved
+    except FileNotFoundError as error:
+        raise SnapshotFailure("missing-provider", "The required administration command is not installed") from error
+    except OSError as error:
+        raise SnapshotFailure("internal", "The administration command could not be inspected") from error
+
+
+def terminal_selection_environment() -> dict[str, str]:
+    """Preserve only terminal-selection inputs, never shell startup or loader overrides."""
+    result = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C", "LC_ALL": "C"}
+    for name in ("HOME", "XDG_CONFIG_HOME", "DWM_TERMINAL"):
+        if name in os.environ:
+            result[name] = os.environ[name]
+    try:
+        invalid = any(len(value.encode("utf-8")) > 4096 or "\0" in value for value in result.values())
+    except UnicodeError:
+        invalid = True
+    if not result.get("HOME", "").startswith("/") or invalid:
+        raise SnapshotFailure("malformed", "Terminal selection environment is unavailable or oversized")
+    return result
+
+
+def read_terminal_selection(helper: str, environment: Mapping[str, str]) -> str:
+    """Bound the managed helper's read-only terminal selection without capturing passwords."""
+    if (threading.current_thread() is not threading.main_thread()
+            or signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL):
+        raise SnapshotFailure("internal", "Terminal selection process ownership is unavailable")
+    process, handlers, interrupted = None, {}, 0
+
+    def terminate(number, _frame):
+        nonlocal interrupted
+        interrupted = interrupted or number
+
+    def check_deadline():
+        if interrupted:
+            raise SystemExit(128 + interrupted)
+        if time.monotonic() >= deadline:
+            raise SnapshotFailure("timeout", "Terminal selection timed out")
+
+    try:
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            handlers[number] = signal.signal(number, terminate)
+        deadline = time.monotonic() + 3
+        # A fixed interpreter avoids resolving the helper's env shebang through
+        # the user's PATH. The helper only prints its selected command identity.
+        check_deadline()
+        process = subprocess.Popen(["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "3",
+            "/usr/bin/bash", helper, "--print-command"], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True, env=dict(environment))
+        output, received = bytearray(), 0
+        with selectors.DefaultSelector() as selector:
+            for stream in (process.stdout, process.stderr):
+                os.set_blocking(stream.fileno(), False)
+                selector.register(stream, selectors.EVENT_READ)
+            while True:
+                check_deadline()
+                status = locale_process_status(process)
+                if status is not None and not selector.get_map():
+                    break
+                for key, _events in selector.select(min(0.05, max(0, deadline - time.monotonic()))):
+                    check_deadline()
+                    try:
+                        chunk = os.read(key.fd, min(4096, 4096 - received + 1))
+                    except BlockingIOError:
+                        continue
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    received += len(chunk)
+                    if received > 4096:
+                        raise SnapshotFailure("malformed", "Terminal selection output is oversized")
+                    if key.fileobj is process.stdout:
+                        output.extend(chunk)
+        check_deadline()
+        code = status.si_status if status.si_code == os.CLD_EXITED else -status.si_status
+        if code in (124, 137, -signal.SIGKILL):
+            raise SnapshotFailure("timeout", "Terminal selection timed out")
+        if code != 0:
+            raise SnapshotFailure("missing-provider" if code == 127 else "internal", "Terminal selection failed")
+        try:
+            value = bytes(output).decode("utf-8")
+        except UnicodeDecodeError as error:
+            check_deadline()
+            raise SnapshotFailure("malformed", "Terminal selection is not UTF-8") from error
+        valid = value.endswith("\n") and bool(value[:-1]) and value[:-1].isprintable()
+        check_deadline()
+        if not valid:
+            raise SnapshotFailure("malformed", "Terminal selection is not one command identity")
+        return value[:-1]
+    except FileNotFoundError as error:
+        raise SnapshotFailure("missing-provider", "Terminal selection helper is unavailable") from error
+    except OSError as error:
+        raise SnapshotFailure("internal", "Terminal selection failed") from error
+    finally:
+        try:
+            if process is not None:
+                try:
+                    close_locale_process(process)
+                except SnapshotFailure as error:
+                    raise SnapshotFailure("timeout", "Terminal selection cleanup could not be confirmed") from error
+        finally:
+            for number, handler in handlers.items():
+                signal.signal(number, handler)
+            if interrupted:
+                raise SystemExit(128 + interrupted)
+
+
+def delegated_command(action: str) -> tuple[tuple[str, ...], str]:
+    """Resolve only fixed administration entries; unavailable tools are capability-local."""
+    if not isinstance(action, str) or action not in DELEGATED_ACTIONS:
+        raise SnapshotFailure("malformed", "Unknown delegated administration action")
+    if action in DELEGATED_TOOLS:
+        path, label = DELEGATED_TOOLS[action]
+        return (trusted_delegated_executable(path, os.path.basename(path)),), label
+    passwd = trusted_delegated_executable("/usr/bin/passwd", "passwd")
+    environment = terminal_selection_environment()
+    helper = shutil.which("dwm-terminal", path=environment["PATH"])
+    if helper is None:
+        raise SnapshotFailure("missing-provider", "The managed terminal selector is not installed")
+    helper = trusted_delegated_executable(helper, "dwm-terminal")
+    selected = read_terminal_selection(helper, environment)
+    name = os.path.basename(selected)
+    if name not in PASSWORD_TERMINALS:
+        raise SnapshotFailure("unsupported", "The configured terminal has no supported password-launch form; run passwd in your terminal")
+    terminal = shutil.which(selected, path=environment["PATH"])
+    if terminal is None:
+        raise SnapshotFailure("missing-provider", "The selected terminal is no longer installed")
+    terminal = trusted_delegated_executable(terminal, name)
+    return (terminal, *PASSWORD_TERMINALS[name], passwd), "Password change"
+
+
+def launch_delegated_tool(command: tuple[str, ...]) -> None:
+    """Accept a resolved fixed exec without waiting for the tool's internal administration."""
+    if not hasattr(os, "POSIX_SPAWN_CLOSEFROM"):
+        raise SnapshotFailure("unsupported", "Isolated administration launches are unavailable")
+    accepted = False
+    try:
+        null = os.open("/dev/null", os.O_RDWR | os.O_CLOEXEC)
+        try:
+            actions = [(os.POSIX_SPAWN_DUP2, null, descriptor) for descriptor in (0, 1, 2)]
+            actions.append((os.POSIX_SPAWN_CLOSEFROM, 3))
+            os.posix_spawn(command[0], command, dict(os.environ), file_actions=actions,
+                setsid=True, setsigmask=(),
+                setsigdef=(signal.SIGPIPE, signal.SIGINT, signal.SIGTERM, signal.SIGHUP))
+            accepted = True
+        finally:
+            os.close(null)
+    except FileNotFoundError as error:
+        raise SnapshotFailure("missing-provider", "The administration tool is no longer installed") from error
+    except PermissionError as error:
+        raise SnapshotFailure("permission-denied", "The administration tool could not be launched") from error
+    except NotImplementedError as error:
+        raise SnapshotFailure("unsupported", "Isolated administration launches are unavailable") from error
+    except OSError as error:
+        if accepted or isinstance(error, InterruptedError):
+            raise SnapshotFailure("interrupted", "Administration launch observation was interrupted; the tool may already be open") from error
+        raise SnapshotFailure("internal", "The administration tool could not be launched") from error
 
 
 class JournalFrameError(ValueError):
@@ -4922,15 +5106,20 @@ def reject_unadmitted_operation(operation_id: str, action_id: str, started_at: s
                                failure: SnapshotFailure, write: Callable[[str], object]) -> None:
     """Report a rejected request without inventing a durable transaction or result."""
     if (not isinstance(action_id, str) or action_id not in {
-            "updates-refresh", "updates-install-all", "timezone-set", "ntp-set", "locale-set"}
+            "updates-refresh", "updates-install-all", "timezone-set", "ntp-set", "locale-set", *DELEGATED_ACTIONS}
             or not isinstance(failure, SnapshotFailure) or failure.code not in JOURNAL_ERROR_CODES):
         raise OperationProtocolError("rejected operation request is invalid")
     _validate_journal_detail(failure.detail)
     finished_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     regional = action_id in {"timezone-set", "ntp-set", "locale-set"}
     provider_id, mutation = ("regional", "regional") if regional else ("updates", "package")
+    detail = f"Request rejected before operation admission; no {mutation} mutation was dispatched"
+    if action_id in DELEGATED_ACTIONS:
+        provider_id = {"accounts-open": "accounts", "password-open": "accounts",
+                       "printers-open": "printers", "sources-open": "sources"}[action_id]
+        detail = "Request rejected before operation admission; no administration tool was launched"
     stream = OperationStream(operation_id, action_id, started_at,
-        f"Request rejected before operation admission; no {mutation} mutation was dispatched", write)
+        detail, write)
     stream._send([
         f"error\t{provider_id}\t{failure.code}\t{failure.detail}",
         stream._operation_line("failed", "unknown", False, failure.detail),
@@ -5581,7 +5770,7 @@ def recover_journal_active(
         return load_writable_journal_state(journal), None, lookup_failure
 
 
-class RegionalOperationOwner:
+class NativeOperationOwner:
     """Checkpoint one leased native owner before publishing its operation stream."""
 
     def __init__(self, journal: JournalDescriptorSet, operation: JournalOperation,
@@ -5601,7 +5790,7 @@ class RegionalOperationOwner:
     def current(self):
         current = load_writable_journal_state(self.journal).active
         if current != self.operation or current.state in JOURNAL_OPERATION_TERMINAL_STATES:
-            raise JournalAdmissionError("Regional operation ownership changed")
+            raise JournalAdmissionError("Native operation ownership changed")
         return current
 
     def output(self, callback):
@@ -5626,10 +5815,13 @@ class RegionalOperationOwner:
             raise
         self.output(lambda: self.stream.transition(state, detail))
 
-    def finish(self, state, failure=None):
+    def finish(self, state, failure=None, *, success_detail=None):
         if self.persistence_error is not None:
             raise self.persistence_error
-        detail = ("Regional change verified; sign out and back in for applications to use the locale"
+        if failure is None and self.operation.kind == "delegate" and success_detail is None:
+            raise OperationProtocolError("Delegated completion requires an explicit launch-only result")
+        detail = (success_detail if failure is None and success_detail is not None else
+                  "Regional change verified; sign out and back in for applications to use the locale"
                   if failure is None and self.operation.kind == "locale" else
                   "Regional change verified" if failure is None else failure.detail)
         with lock_writable_journal(self.journal):
@@ -5671,7 +5863,7 @@ def run_regional_mutation(
                     datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     f"Preparing {action}: {preview.target}")
                 retained.enter_context(retain_native_journal_owner(journal, operation))
-            owner = RegionalOperationOwner(journal, operation, write)
+            owner = NativeOperationOwner(journal, operation, write)
             if owner.output_error is not None:
                 raise owner.output_error
             owner.checkpoint("authorizing", "Regional authorization is pending; a sent change cannot be canceled")
@@ -5708,6 +5900,41 @@ def run_regional_mutation(
         # Settings will publish its own fresh snapshot on origin completion.
         with contextlib.suppress(SnapshotFailure):
             RegionalRead(client.kind).run()
+    if owner.output_error is not None:
+        raise owner.output_error
+    return terminal
+
+
+def run_delegated_launch(journal: JournalDescriptorSet, action: str, write: Callable[[str], object],
+                         *, on_admission: Callable[[], None] | None = None) -> JournalOperation:
+    """Journal only a fixed tool's accepted launch, retaining no ownership of its later work."""
+    if not isinstance(action, str) or action not in DELEGATED_ACTIONS or not callable(write):
+        raise SnapshotFailure("malformed", "Invalid delegated administration request")
+    with lock_writable_journal(journal):
+        prepare_journal_admission(journal)
+    command, label = delegated_command(action)
+    with contextlib.ExitStack() as retained:
+        with lock_writable_journal(journal):
+            prepare_journal_admission(journal)
+            if on_admission is not None:
+                on_admission()
+            operation = begin_journal_operation(journal, action,
+                datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "Preparing " + label)
+            retained.enter_context(retain_native_journal_owner(journal, operation))
+        owner = NativeOperationOwner(journal, operation, write)
+        failure = None
+        if owner.output_error is None:
+            owner.checkpoint("running", "Opening " + label + "; administration remains in that tool")
+        if owner.output_error is not None:
+            failure = SnapshotFailure("internal", "Administration output was unavailable; no tool was launched")
+        else:
+            try:
+                launch_delegated_tool(command)
+            except SnapshotFailure as error:
+                failure = error
+        terminal = owner.finish("succeeded" if failure is None else
+            "interrupted" if failure.code == "interrupted" else "failed", failure,
+            success_detail=label + " launch accepted; continue in the tool. Its changes and authorization are not tracked here")
     if owner.output_error is not None:
         raise owner.output_error
     return terminal
@@ -7409,19 +7636,21 @@ def run_operation_control(command: str, operation_id: str,
         return 3
 
 
-def regional_command(action: str, argument: str, generation: str) -> int:
-    """Expose only confirmed native origins with isolated nonblocking output."""
+def native_command(action: str, argument: str = "", generation: str = "") -> int:
+    """Expose only fixed regional and delegated origins with isolated nonblocking output."""
     try:
         with control_output_writers() as writers:
-            return run_regional_command(action, argument, generation, *writers)
+            return run_native_command(action, argument, generation, *writers)
     except OSError:
         return 1
 
 
-def run_regional_command(action: str, argument: str, generation: str,
+def run_native_command(action: str, argument: str, generation: str,
                          output_writer: Callable[[bytes], int] | None,
                          error_writer: Callable[[bytes], int] | None) -> int:
     admission_started = output_started = False
+    delegated = action in DELEGATED_ACTIONS
+    family = "administration" if delegated else "regional"
 
     def admitted():
         nonlocal admission_started
@@ -7439,7 +7668,7 @@ def run_regional_command(action: str, argument: str, generation: str,
                 raise OSError("Incomplete regional operation output")
 
     def diagnostic():
-        message = "regional result could not be confirmed; refresh state and observe the existing operation"
+        message = family + " result could not be confirmed; refresh state and observe the existing operation"
         with contextlib.suppress(OSError):
             if error_writer is None:
                 print(message, file=sys.stderr)
@@ -7454,8 +7683,9 @@ def run_regional_command(action: str, argument: str, generation: str,
             with retain_writable_journal(chain) as journal:
                 started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 try:
-                    terminal = run_regional_mutation(journal, action, argument, generation,
-                                                     write, on_admission=admitted)
+                    terminal = (run_delegated_launch(journal, action, write, on_admission=admitted)
+                                if delegated else run_regional_mutation(journal, action, argument, generation,
+                                                                       write, on_admission=admitted))
                     return 0 if terminal.state == "succeeded" else 1
                 except (SnapshotFailure, JournalFrameError, JournalRecordError,
                         JournalAdmissionError, OSError, OperationProtocolError) as error:
@@ -7468,9 +7698,9 @@ def run_regional_command(action: str, argument: str, generation: str,
                     elif isinstance(error, (JournalAdmissionError, JournalLockError)):
                         failure = SnapshotFailure("conflict", "Another operation or recovery state blocks this request; refresh state before retrying")
                     elif isinstance(error, (JournalFrameError, JournalRecordError, OperationProtocolError)):
-                        failure = SnapshotFailure("malformed", "Regional preflight is malformed; refresh state and inspect recovery guidance")
+                        failure = SnapshotFailure("malformed", family.capitalize() + " preflight is malformed; refresh state and inspect recovery guidance")
                     else:
-                        failure = SnapshotFailure("internal", "Regional preflight failed; check journal storage and refresh state before retrying")
+                        failure = SnapshotFailure("internal", family.capitalize() + " preflight failed; check journal storage and refresh state before retrying")
                     reject_unadmitted_operation(operation_id, action, started_at, failure, write)
                     return 1
     except (SnapshotFailure, JournalFrameError, JournalRecordError, JournalAdmissionError,
@@ -7750,7 +7980,7 @@ def watch_update_events() -> int:
 
 
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | watch-updates | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | watch-updates | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
     return 2
 
 
@@ -7762,7 +7992,9 @@ def main(argv: Sequence[str]) -> int:
             validate_regional_argument(argv[0], argv[1])
         except SnapshotFailure:
             return usage()
-        return regional_command(*argv)
+        return native_command(*argv)
+    if argv and argv[0] in DELEGATED_ACTIONS:
+        return native_command(argv[0]) if len(argv) == 1 else usage()
     if argv and argv[0] in {"regional-choices", "regional-preview"}:
         try:
             output, code = regional_preflight_output(argv[0], argv[1:])

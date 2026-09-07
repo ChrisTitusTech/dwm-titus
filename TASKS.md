@@ -189,8 +189,9 @@ success, and rejects duplicate or oversized complete results. Unit and private-b
 tests cover bounds, denial, absence, replacement, timeout, and late replies. A
 read-only Fedora 44 probe returned 28 rows (15 enabled and 13 disabled) in 0.826
 seconds without requesting metadata refresh or repository changes. This reader
-adds no CLI command or protocol minor. Event subscriptions, lifecycle integration,
-delegated-tool availability, and Settings controls remain outstanding.
+adds no CLI command or protocol minor. Event subscriptions and cumulative
+Settings integration remain outstanding; delegated entry points are described
+below.
 
 Read-only regional choices and preview commands now expose separately bounded
 streams without changing the cumulative snapshot minor. Previews bind the exact
@@ -239,6 +240,22 @@ confirmation, write failures, lost output, replay, and acknowledgment without
 repeating the action. Graphical polkit and host mutations are not qualified.
 Post-timeout Settings display refresh and originating Settings controls remain
 outstanding; the snapshot minor remains zero.
+
+The four fixed delegated CLI origins now resolve trusted administration tools,
+preserve configured terminal selection for the fixed password command, and
+record only accepted launches. The terminal selector has a three-second
+supervised lifetime and one 4096-byte output budget; unsupported terminal forms
+degrade only the password action. Launched tools receive a new session, null
+stdio, and no inherited journal descriptors. Native admission, checkpoints,
+terminal retention, and replay preserve ownership without tracking the tools'
+internal administration. Unit and real private-child fixtures cover trust,
+selection, denial/failure, lost output, child isolation, and later tool failure
+without falsely reporting its work as completed. No real administration tool or
+password prompt was opened. Settings origins and cumulative minor 1 discovery
+remain outstanding.
+A read-only Fedora 44 probe resolved the password command through Alacritty in
+0.056 seconds and found the printer tool available. Account and source tools
+were absent and returned their scoped missing-provider results; none was opened.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

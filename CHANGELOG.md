@@ -8,6 +8,13 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add fixed account, password, printer, and software-source CLI entry points.
+  Resolve trusted tools, keep password handling in the configured supported
+  terminal, and record only accepted launches with durable recovery. Missing
+  tools and unsupported terminal forms remain capability-local. Launched tools
+  cannot inherit the operation journal or output; Settings origins remain
+  disabled pending discovery and confirmation integration.
+
 - Enable the three generation-confirmed regional CLI commands with durable
   operation ownership, verified results, retained replay, and acknowledgment.
   Preserve recovery after uncertain writes or lost output; ambiguous sent
