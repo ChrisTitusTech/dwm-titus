@@ -1993,6 +1993,41 @@ arrival/replacement invalidates. Finite reads separately report availability.
 The same bounded output, explicit failure guidance, and TERM/INT/HUP cleanup
 apply. This command does not activate Settings or change the snapshot minor.
 
+The fixed `dwm-system-management watch-units printers|security` command is
+implemented separately. It emits only `units-event<TAB>ready` and
+`units-event<TAB>changed`. Printers selects `cups.service` and `cups.socket`;
+security selects only `firewalld.service`. A private asynchronous bus connection
+owns its systemd `Subscribe`, avoiding interference with another subscriber on
+a shared connection. Six acknowledged matches cover owner changes, manager
+`UnitNew`, `UnitRemoved`, `UnitFilesChanged`, `Reloading`, and interface-wide
+unit property changes. Owner authentication, subscription acceptance, fixed
+`GetUnit` lookups, and a final owner barrier all precede readiness within one
+ten-second aggregate setup budget. Every notification requires the pinned
+unique sender before decoding, including directly addressed setup signals.
+
+The monitor never loads, references, starts, or enumerates units. `GetUnit`
+resolves already-loaded fixed names and accepts no-such-unit as dormant state.
+Manager arrivals can name canonical aliases, so they coalesce into one fixed
+lookup pass and at most one settling pass under a shared ten-second burst
+deadline. An unrelated arrival with unchanged fixed mappings does not invalidate
+the UI. Matching removals, configuration reloads, unit-file changes, changed
+fixed mappings, and relevant properties invalidate state. Properties received
+while a mapping is unresolved conservatively invalidate without retaining other
+unit identities. A further manager event during the settling pass fails the
+monitor explicitly; there is no idle polling or reconnect loop. Stale resolution
+or owner-barrier callbacks cannot publish readiness. Systemd owner loss or
+replacement fails monitoring because its replacement does not inherit the old
+sender's subscription. Finite snapshots remain independently readable.
+
+Shutdown cancels outstanding local lookups and closes only the private
+connection, waiting at most one second for close completion. Unconfirmed cleanup
+is failure, not success; process disconnection also removes the sender's matches
+and subscription. Full or closed output retains bounded failure and never
+changes inherited file-status flags. This command adds no Settings activation
+or cumulative protocol minor. The finite CUPS reader still separately uses
+`ListUnitsByNames`, which may load fixed unit configuration but does not start
+the service; that method is not used by the monitor.
+
 - systemd D-Bus property changes drive time and locale refresh while the System
   section is open. On pane open, the root model installs the timedate1 and
   locale1 property subscriptions before starting their initial bounded reads.
@@ -2031,9 +2066,11 @@ apply. This command does not activate Settings or change the snapshot minor.
   enumeration remains explicitly `partial`.
 - The systemd manager's `UnitNew` and `UnitRemoved` signals for the fixed
   `cups.service`, `cups.socket`, and `firewalld.service` names, plus
-  `PropertiesChanged` for each loaded unit's `ActiveState` and the CUPS
-  socket's `SubState`, trigger one bounded, coalesced refresh of the owning
+  `PropertiesChanged` for each loaded unit's `LoadState`, `ActiveState`, and
+  `SubState`, trigger one bounded, coalesced refresh of the owning
   state while the section is open. Those subscriptions stop on section close.
+  Fixed alias mappings are also reconciled after unit-file changes and completed
+  manager reloads, which can retarget an alias without creating a new object.
   Delegated-tool availability remains a bounded snapshot; Phase 6 adds no CUPS
   or firewalld polling loop.
 - A single pane-scoped `dwm-system-management watch-mounts` process monitors
@@ -2279,6 +2316,8 @@ together without changing existing health or session-action contracts.
 - PackageKit transaction API: <https://packagekit.freedesktop.org/gtk-doc/Transaction.html>
 - systemd timedate1 API: <https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.timedate1.html>
 - systemd locale1 API: <https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.locale1.html>
+- systemd manager implementation (GetUnit, ListUnitsByNames, Subscribe): <https://github.com/systemd/systemd/blob/v259/src/core/dbus-manager.c>
+- Gio private connection lifecycle: <https://docs.gtk.org/gio/method.DBusConnection.close.html>
 - AccountsService manager D-Bus XML: <https://gitlab.freedesktop.org/accountsservice/accountsservice/-/raw/main/data/org.freedesktop.Accounts.xml>
 - AccountsService user D-Bus XML: <https://gitlab.freedesktop.org/accountsservice/accountsservice/-/raw/main/data/org.freedesktop.Accounts.User.xml>
 - CUPS administration guidance: <https://openprinting.github.io/cups/doc/admin.html>

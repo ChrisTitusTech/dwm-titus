@@ -211,6 +211,7 @@ SYSTEMD_NAME = "org.freedesktop.systemd1"
 SYSTEMD_PATH = "/org/freedesktop/systemd1"
 SYSTEMD_MANAGER = "org.freedesktop.systemd1.Manager"
 CUPS_UNITS = ("cups.service", "cups.socket")
+WATCH_UNIT_SETS = {"printers": CUPS_UNITS, "security": ("firewalld.service",)}
 CUPS_READ_SECONDS = 10
 UNIT_REPLY_TYPE = "(a(ssssssouso))"
 UNIT_REPLY_BYTES = 64 * 1024
@@ -8116,6 +8117,13 @@ class AuthenticatedEventMonitor(UpdateEventMonitor):
             self.connection = self.Gio.bus_get_finish(result)
             if not self.setting_up():
                 return
+            self.subscribe_connection()
+        except self.GLib.Error:
+            self.stop(1)
+
+    def subscribe_connection(self):
+        """Attach only local filters and acknowledged fixed bus matches."""
+        try:
             self.connection.set_exit_on_close(False)
             self.closed_handler = self.connection.connect("closed", lambda *_args: self.stop(1))
             specs = [
@@ -8223,6 +8231,361 @@ class AccountEventMonitor(AuthenticatedEventMonitor):
         self.changed()
 
 
+class UnitEventMonitor(AuthenticatedEventMonitor):
+    """Observe fixed loaded units on a private, sender-owned systemd subscription."""
+
+    record_prefix = "units-event"
+
+    def __init__(self, kind, Gio, GLib, GLibUnix, emit):
+        if not isinstance(kind, str) or kind not in WATCH_UNIT_SETS:
+            raise ValueError("Unknown unit monitor")
+        super().__init__(Gio, GLib, GLibUnix, emit)
+        self.name, self.path = SYSTEMD_NAME, SYSTEMD_PATH
+        self.units = WATCH_UNIT_SETS[kind]
+        self.paths = dict.fromkeys(self.units, "")
+        self.subscribed_owner = ""
+        self.subscription_ready = False
+        self.resolving = False
+        self.resolve_again = False
+        self.resolve_round = 0
+        self.resolution_epoch = 0
+        self.resolve_source = 0
+        self.resolve_cancel = None
+        self.connecting = False
+        self.closing = False
+        self.cleanup_done = False
+        self.cleanup_loop = None
+
+    def service_specs(self):
+        specs = [(None, SYSTEMD_MANAGER, member, self.path, None, self.manager_event,
+            f"type='signal',sender='{self.name}',interface='{SYSTEMD_MANAGER}',member='{member}',path='{self.path}'")
+            for member in ("UnitNew", "UnitRemoved", "UnitFilesChanged", "Reloading")]
+        specs.append((None, PROPERTIES_INTERFACE, "PropertiesChanged", None, SYSTEMD_NAME + ".Unit", self.properties_changed,
+            f"type='signal',sender='{self.name}',interface='{PROPERTIES_INTERFACE}',member='PropertiesChanged',arg0='{SYSTEMD_NAME}.Unit'"))
+        return specs
+
+    def connected(self, _source, result, _data):
+        self.connecting = False
+        try:
+            self.connection = self.Gio.DBusConnection.new_for_address_finish(result)
+            self.connection.set_exit_on_close(False)
+            if not self.setting_up():
+                self.close_connection()
+                return
+            self.subscribe_connection()
+        except self.GLib.Error:
+            self.stop(1)
+            if self.cleanup_loop is not None:
+                self.cleanup_done = True
+                self.cleanup_loop.quit()
+
+    def owner_resolved(self, connection, result, epoch):
+        """Subscribe only after all matches and an authenticated owner barrier."""
+        if not self.resolve_owner(connection, result, epoch):
+            return
+        if not self.owner:
+            self.stop(1)
+            return
+        self.subscribed_owner = self.owner
+        try:
+            connection.call(self.owner, self.path, SYSTEMD_MANAGER, "Subscribe", None,
+                self.GLib.VariantType.new("()"), self.Gio.DBusCallFlags.NO_AUTO_START,
+                max(1, int((self.deadline - time.monotonic()) * 1000)), self.cancellable,
+                self.subscribed, None)
+        except self.GLib.Error:
+            self.stop(1)
+
+    def subscribed(self, connection, result, _data):
+        try:
+            reply = connection.call_finish(result)
+            if not self.setting_up():
+                return
+            if reply.get_type_string() != "()" or reply.get_size() > 8:
+                self.stop(1)
+                return
+            self.subscription_ready = True
+            self.reconcile()
+        except self.GLib.Error:
+            self.stop(1)
+
+    def owner_changed(self, *args):
+        super().owner_changed(*args)
+        if self.subscribed_owner and self.owner != self.subscribed_owner:
+            # A new daemon does not inherit the old sender's Subscribe state.
+            # Fail explicitly instead of silently reconnecting or reauthorizing.
+            self.stop(1)
+
+    @staticmethod
+    def valid_path(path):
+        return (isinstance(path, str) and len(path) <= MAX_TEXT_BYTES
+                and path.startswith(SYSTEMD_PATH + "/unit/")
+                and DBUS_OBJECT_PATH.fullmatch(path) is not None)
+
+    def manager_event(self, _connection, sender, path, interface, member, parameters, _data):
+        if (self.stopped or not self.owner or sender != self.owner
+                or path != self.path or interface != SYSTEMD_MANAGER):
+            return
+        relevant = True
+        if member in ("UnitNew", "UnitRemoved"):
+            if parameters.get_type_string() != "(so)" or parameters.get_size() > 2 * MAX_TEXT_BYTES + 16:
+                self.stop(1)
+                return
+            name, unit_path = parameters.unpack()
+            if (not name or len(name.encode("utf-8")) > MAX_TEXT_BYTES
+                    or any(ord(char) < 32 or ord(char) == 127 for char in name)
+                    or not self.valid_path(unit_path)):
+                self.stop(1)
+                return
+            relevant = name in self.units or unit_path in self.paths.values()
+            if member == "UnitRemoved" and not relevant:
+                return
+        elif member == "UnitFilesChanged":
+            if parameters.get_type_string() != "()" or parameters.get_size() > 8:
+                self.stop(1)
+                return
+        elif member == "Reloading":
+            if parameters.get_type_string() != "(b)" or parameters.get_size() > 8:
+                self.stop(1)
+                return
+            if parameters.unpack()[0]:
+                return
+        else:
+            return
+        if relevant:
+            self.changed()
+        # An arrival may use a previously unknown canonical alias. Resolve
+        # only our fixed names; never enumerate or load the announced unit.
+        self.reconcile()
+
+    def properties_changed(self, _connection, sender, path, interface, member, parameters, _data):
+        if (self.stopped or not self.owner or sender != self.owner
+                or interface != PROPERTIES_INTERFACE or member != "PropertiesChanged"
+                or not self.valid_path(path)):
+            return
+        if path not in self.paths.values() and self.ready and not self.resolving:
+            return
+        try:
+            if parameters.get_type_string() != "(sa{sv}as)" or parameters.get_size() > UNIT_REPLY_BYTES:
+                raise SnapshotFailure("malformed", "Invalid unit notification")
+            fields = parameters.get_child_value(1)
+            invalidated = parameters.get_child_value(2)
+            if (parameters.get_child_value(0).unpack() != SYSTEMD_NAME + ".Unit"):
+                return
+            if fields.n_children() > 256 or invalidated.n_children() > 256:
+                raise SnapshotFailure("malformed", "Oversized unit notification")
+            relevant = {"LoadState", "ActiveState", "SubState"}
+            changed = False
+            for index in range(fields.n_children()):
+                item = fields.get_child_value(index)
+                key = item.get_child_value(0)
+                if key.get_size() > MAX_TEXT_BYTES + 1:
+                    raise SnapshotFailure("malformed", "Oversized unit property")
+                if key.unpack() in relevant:
+                    value = item.get_child_value(1).get_variant()
+                    if value.get_type_string() != "s" or value.get_size() > 65 or UNIT_STATE_TOKEN.fullmatch(value.unpack()) is None:
+                        raise SnapshotFailure("malformed", "Invalid unit property")
+                    changed = True
+            for index in range(invalidated.n_children()):
+                key = invalidated.get_child_value(index)
+                if key.get_size() > MAX_TEXT_BYTES + 1:
+                    raise SnapshotFailure("malformed", "Oversized invalidated unit property")
+                changed = changed or key.unpack() in relevant
+            if changed:
+                self.changed()
+        except SnapshotFailure:
+            self.stop(1)
+
+    def reconcile(self):
+        """Resolve at most two fixed-name passes for one in-flight event burst."""
+        if self.stopped or not self.subscription_ready:
+            return
+        if self.resolving:
+            self.resolve_again = True
+            return
+        self.resolving = True
+        self.resolution_epoch += 1
+        self.resolve_again = False
+        self.resolve_round = 0
+        self.resolve_deadline = min(self.deadline, time.monotonic() + 10) if not self.ready else time.monotonic() + 10
+        self.resolve_cancel = self.Gio.Cancellable()
+        self.resolve_source = self.GLib.timeout_add(max(1, int((self.resolve_deadline - time.monotonic()) * 1000)), self.resolve_timeout)
+        self.resolve_pass()
+
+    def resolve_timeout(self):
+        self.resolve_source = 0
+        self.stop(1)
+        return self.GLib.SOURCE_REMOVE
+
+    def resolve_pass(self):
+        self.waiting = set(self.units)
+        self.next_paths = {}
+        for name in self.units:
+            if self.stopped or time.monotonic() >= self.resolve_deadline:
+                self.stop(1)
+                return
+            try:
+                self.connection.call(self.subscribed_owner, self.path, SYSTEMD_MANAGER, "GetUnit",
+                    self.GLib.Variant("(s)", (name,)), self.GLib.VariantType.new("(o)"),
+                    self.Gio.DBusCallFlags.NO_AUTO_START,
+                    max(1, int((self.resolve_deadline - time.monotonic()) * 1000)),
+                    self.resolve_cancel, self.unit_resolved, (self.resolution_epoch, self.resolve_round, name))
+            except self.GLib.Error:
+                self.stop(1)
+                return
+
+    def unit_resolved(self, connection, result, identity):
+        epoch, round_id, name = identity
+        if (self.stopped or not self.resolving or epoch != self.resolution_epoch
+                or round_id != self.resolve_round or name not in self.waiting):
+            return
+        if time.monotonic() >= self.resolve_deadline:
+            self.stop(1)
+            return
+        try:
+            reply = connection.call_finish(result)
+            if reply.get_type_string() != "(o)" or reply.get_size() > MAX_TEXT_BYTES + 8:
+                self.stop(1)
+                return
+            path = reply.unpack()[0]
+            if not self.valid_path(path):
+                self.stop(1)
+                return
+        except self.GLib.Error as error:
+            if self.Gio.dbus_error_get_remote_error(error) != "org.freedesktop.systemd1.NoSuchUnit":
+                self.stop(1)
+                return
+            path = ""
+        if time.monotonic() >= self.resolve_deadline:
+            self.stop(1)
+            return
+        self.next_paths[name] = path
+        self.waiting.remove(name)
+        if self.waiting:
+            return
+        changed = self.paths != self.next_paths
+        self.paths = self.next_paths
+        if changed and self.ready:
+            self.changed()
+        if self.resolve_again:
+            if self.resolve_round:
+                self.stop(1)
+                return
+            self.resolve_again = False
+            self.resolve_round = 1
+            self.resolve_pass()
+            return
+        self.resolving = False
+        self.GLib.source_remove(self.resolve_source)
+        self.resolve_source = 0
+        if not self.ready:
+            try:
+                self.connection.call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                    "GetNameOwner", self.GLib.Variant("(s)", (self.name,)), self.GLib.VariantType.new("(s)"),
+                    self.Gio.DBusCallFlags.NONE, max(1, int((self.deadline - time.monotonic()) * 1000)),
+                    self.cancellable, self.final_owner, (self.owner_epoch, self.resolution_epoch))
+            except self.GLib.Error:
+                self.stop(1)
+
+    def final_owner(self, connection, result, identity):
+        owner_epoch, resolution_epoch = identity
+        if (self.stopped or self.ready or self.resolving
+                or resolution_epoch != self.resolution_epoch):
+            return
+        if not self.resolve_owner(connection, result, owner_epoch):
+            return
+        if self.owner != self.subscribed_owner:
+            self.stop(1)
+            return
+        self.GLib.source_remove(self.deadline_source)
+        self.deadline_source = 0
+        self.ready = True
+        self.write(self.record_prefix + "\tready")
+        if self.dirty and not self.stopped:
+            self.write(self.record_prefix + "\tchanged")
+        self.dirty = False
+
+    def close_connection(self):
+        """Close only this sender's connection; never unsubscribe another client."""
+        if self.connection is None or self.closing:
+            return
+        self.closing = True
+        if self.connection.is_closed():
+            self.cleanup_done = True
+            if self.cleanup_loop is not None:
+                self.cleanup_loop.quit()
+            return
+
+        def closed(connection, result, _data):
+            try:
+                connection.close_finish(result)
+            except self.GLib.Error:
+                if not connection.is_closed():
+                    self.exit_code = 1
+            self.cleanup_done = True
+            if self.cleanup_loop is not None:
+                self.cleanup_loop.quit()
+
+        self.connection.close(None, closed, None)
+
+    def run(self):
+        if self.started:
+            raise RuntimeError("Service monitors are single-use")
+        self.started = True
+
+        def expired():
+            self.deadline_source = 0
+            self.stop(1)
+            return self.GLib.SOURCE_REMOVE
+
+        def terminate():
+            self.stop(0)
+            return self.GLib.SOURCE_CONTINUE
+
+        try:
+            self.deadline = time.monotonic() + 10
+            self.deadline_source = self.GLib.timeout_add(10000, expired)
+            for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                self.sources.append(self.GLibUnix.signal_add(self.GLib.PRIORITY_DEFAULT, signum, terminate))
+            address = self.Gio.dbus_address_get_for_bus_sync(self.Gio.BusType.SYSTEM, self.cancellable)
+            if self.setting_up():
+                self.connecting = True
+                flags = self.Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | self.Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
+                self.Gio.DBusConnection.new_for_address(address, flags, None, self.cancellable, self.connected, None)
+                self.loop.run()
+        except self.GLib.Error:
+            self.stop(1)
+        finally:
+            self.stopped = True
+            self.cancellable.cancel()
+            if self.resolve_cancel is not None:
+                self.resolve_cancel.cancel()
+            if self.connection is not None:
+                for subscription in self.subscriptions:
+                    self.connection.signal_unsubscribe(subscription)
+                if self.closed_handler:
+                    self.connection.disconnect(self.closed_handler)
+            for source in self.sources + [self.deadline_source, self.resolve_source]:
+                if source:
+                    self.GLib.source_remove(source)
+            self.cleanup_loop = self.GLib.MainLoop()
+            cleanup_expired = False
+
+            def cleanup_timeout():
+                nonlocal cleanup_expired
+                cleanup_expired = True
+                self.exit_code = 1
+                self.cleanup_loop.quit()
+                return self.GLib.SOURCE_REMOVE
+
+            cleanup_source = self.GLib.timeout_add(1000, cleanup_timeout)
+            self.close_connection()
+            if not self.cleanup_done and (self.connection is not None or self.connecting):
+                self.cleanup_loop.run()
+            if not cleanup_expired:
+                self.GLib.source_remove(cleanup_source)
+        return self.exit_code
+
+
 def watch_service_events(service_kind=None) -> int:
     output_writer = None
 
@@ -8249,6 +8612,8 @@ def watch_service_events(service_kind=None) -> int:
                 monitor = UpdateEventMonitor(Gio, GLib, GLibUnix, emit)
             elif service_kind == "accounts":
                 monitor = AccountEventMonitor(Gio, GLib, GLibUnix, emit)
+            elif service_kind in WATCH_UNIT_SETS:
+                monitor = UnitEventMonitor(service_kind, Gio, GLib, GLibUnix, emit)
             else:
                 monitor = RegionalEventMonitor(service_kind, Gio, GLib, GLibUnix, emit)
             code = monitor.run()
@@ -8259,7 +8624,7 @@ def watch_service_events(service_kind=None) -> int:
             with contextlib.ExitStack() as resources:
                 error_writer = control_output_writer(sys.stderr, resources)
                 if error_writer is not None:
-                    label = "PackageKit" if service_kind is None else "Account" if service_kind == "accounts" else "Regional"
+                    label = "PackageKit" if service_kind is None else "Account" if service_kind == "accounts" else "Unit" if service_kind in WATCH_UNIT_SETS else "Regional"
                     error_writer((label + " live change monitoring is unavailable; reload status explicitly\n").encode("ascii"))
         except (OSError, ValueError):
             # Exit status remains authoritative when even diagnostics cannot
@@ -8281,11 +8646,13 @@ def watch_account_events() -> int:
 
 
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | watch-updates | watch-regional time|locale | watch-accounts | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | watch-updates | watch-regional time|locale | watch-accounts | watch-units printers|security | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if argv and argv[0] == "watch-units":
+        return watch_service_events(argv[1]) if len(argv) == 2 and argv[1] in WATCH_UNIT_SETS else usage()
     if argv and argv[0] == "watch-accounts":
         return watch_account_events() if len(argv) == 1 else usage()
     if argv and argv[0] == "watch-regional":
