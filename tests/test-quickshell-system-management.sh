@@ -25,6 +25,17 @@ grep -Fq "head -c 512 \"\$error_file\" >&2" "$commands"
 grep -Fq 'command: Commands.terminatingCheckedCommand(' "$model"
 [ "$(grep -Fc 'Process {' "$model")" -eq 1 ]
 [ "$(grep -Fc 'SystemProviderDiscovery {' "$model")" -eq 4 ]
+regional=$repo/config/quickshell/systemmanagement/SystemRegionalSettingsModel.qml
+grep -Fq 'SystemRegionalSettingsModel {' "$model"
+grep -Fq 'regionalModel.ownsPreparation()' "$model"
+grep -Fq 'root.requestSnapshot(true)' "$model"
+grep -Fq 'SystemRegionalPreflightModel {' "$regional"
+grep -Fq 'pending.preview.generation' "$regional"
+grep -Fq 'ticket.requestGeneration === model.requestGeneration' "$regional"
+if grep -Eq 'Process \{|IpcHandler|Commands\.|Timer \{' "$regional"; then
+	printf 'Regional Settings must reuse the fixed preflight and operation owners without polling or IPC.\n' >&2
+	exit 1
+fi
 grep -Fq 'root.snapshotOwned || root.discoveryBatch' "$model"
 grep -Fq 'const ready = root.discoveryReady();' "$model"
 grep -Fq 'snapshotProcess.cycleTokens.push({ model: model, token: token });' "$model"

@@ -369,8 +369,19 @@ requests while active. It retains one Process through completion publication,
 close, timeout, and forced-stop cleanup; stale callbacks cannot own a replacement.
 Complete bytes remain provisional until the matching process exits. Private
 nested-X11 fixtures cover 18 success, error, cancellation, timeout, reentrant,
-and failed-start scenarios without host service calls. Regional root confirmation
-integration and visible controls remain separate pending boundaries.
+and failed-start scenarios without host service calls.
+
+The root now integrates that reader through an internal regional Settings
+coordinator. Catalogs and previews require quiet owning-provider discovery and
+journal admission; mutation previews also require an available action. Exact
+catalog selections, snapshot identity, provider epoch, and the backend preview
+generation are retained separately. Confirmation is unavailable until the read
+process and completion publication have released ownership. Required recovery
+retires and reaps an optional read before claiming the shared snapshot. Closure
+and invalidation clear hidden catalogs and prompts without canceling a sent
+operation. Private cases cover all three actions, denial, uncertainty, stale
+state, and reentrant closure/recovery. Visible regional controls, clock refresh,
+NTP sampling, and combined installed qualification remain pending.
 
 The root now provides internal confirmation for the four fixed delegated tools.
 It requires fresh owning-provider and journal evidence, captures snapshot and

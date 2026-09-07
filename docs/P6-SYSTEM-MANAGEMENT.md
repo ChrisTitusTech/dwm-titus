@@ -584,8 +584,8 @@ parser itself owns no Process, authorization, operation, or visible control.
 Nested-X11 parser fixtures exercise byte splits, malformed and replaced streams,
 limits, request mismatches, and typed errors without host service calls.
 
-`SystemRegionalPreflightModel.qml` is a separate optional Process owner, not yet
-wired to root confirmations or visible controls. It admits only fixed catalog
+`SystemRegionalPreflightModel.qml` is a separate optional Process owner, now
+wired to internal root preparation but not visible controls. It admits only fixed catalog
 kinds and validated regional preview arguments while active, and rejects overlap
 before publishing any state. Each request gets a fresh parser and an identity
 guard for queued launches and late callbacks. Results are published only after
@@ -602,6 +602,34 @@ failure; a stream emitted before exit 127 still fails protocol validation.
 This component owns no authorization, journal, mutation, or idle polling. Eighteen
 private nested-X11 scenarios exercise exact requests, provisional output, typed
 errors, bounds, deadlines, close/reopen, reentrant callbacks, and missing helpers.
+
+`SystemRegionalSettingsModel.qml` coordinates this owner with the root snapshot
+and operation models. It accepts only timezone/locale catalog requests and the
+three fixed regional previews. Catalog reads remain possible when an action is
+unavailable, but every request requires quiet, monitored owning-domain status and
+idle journal admission. Timezone and locale previews require exact membership in
+a current catalog; NTP accepts only `enabled` or `disabled`. Snapshot generation,
+request identity, and owning provider epoch bind the preparation. The separate
+backend preview generation is the only generation passed to a confirmed origin.
+
+The coordinator retains its request through catalog or prompt publication and
+waits for the preflight Process owner to release before publishing. Reentrant
+callbacks cannot prepare or confirm a competing origin. Confirmation claims
+dispatch before clearing the prompt and rechecks the source context afterward.
+Update and delegated preparations reject regional read/prompt ownership, and
+regional preparation rejects those other workflows. No new Process, IPC entry,
+polling timer, authorization path, or arbitrary command is added here.
+
+An owning event, shared snapshot replacement, or closure retires preparation and
+clears affected catalogs. Required recovery cancels the optional reader and waits
+for actual reaping before launching the shared snapshot. A read's error or stale
+completion cannot become a confirmation. Sent operations remain owned by the
+existing noncancelable native operation lifecycle across Settings closure.
+Forty-two private nested-X11 cases cover all three actions, typed failures,
+uncertainty, stale identity, exact selections, closure during claim/read/catalog/
+preview/dispatch publication, and recovery during read/publication. Visible
+regional forms, clock invalidation, NTP synchronization sampling, and real
+graphical authorization remain separate pending work.
 
 Each preview makes fresh fixed reads: timezone state and timezone choices, NTP
 state, or locale state and installed locale choices. Service reads retain their
