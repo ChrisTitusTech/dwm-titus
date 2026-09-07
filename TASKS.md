@@ -377,7 +377,13 @@ It requires fresh owning-provider and journal evidence, captures snapshot and
 cycle identity, rejects update-workflow overlap, and rechecks state after prompt
 callbacks before fixed dispatch. Private nested-X11 cases cover each tool's
 success, denial, unsupported result, and reentrant closure without opening real
-administration tools. Visible controls and combined qualification remain pending.
+administration tools. Visible delegated controls now expose those confirmations,
+provider explanations, and bounded read-only account/source lists. Geometry-driven
+focus reveal and Cancel focus restoration preserve keyboard access at small
+window sizes. The private UI matrix covers all four tools at three sizes with
+success, denial, unsupported, and maximum-inventory scenarios. Keyboard and
+screenshot evidence is recorded in `docs/P6-DELEGATE-UI-EVIDENCE.md`. Regional
+controls and combined installed qualification remain pending.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

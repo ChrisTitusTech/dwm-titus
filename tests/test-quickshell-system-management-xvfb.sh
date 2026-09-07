@@ -695,6 +695,39 @@ for delegate_action in accounts-open password-open printers-open sources-open; d
 	done
 done
 
+mkdir -p "$work/delegate-ui"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" \
+	"$repo/config/quickshell/systemmanagement" "$repo/config/quickshell/network" "$work/delegate-ui/"
+cp "$repo/tests/qml/SystemDelegateUi.qml" "$work/delegate-ui/shell.qml"
+for delegate_size in 640x480 780x580 1000x740; do
+	for delegate_action in accounts-open password-open printers-open sources-open; do
+		for delegate_scenario in success denied unsupported large; do
+			delegate_state=$work/delegate-ui-$delegate_size-$delegate_action-$delegate_scenario
+			mkdir -p "$delegate_state"
+			delegate_status=0
+			timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+				XDG_DATA_HOME="$work/delegate-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+				DWM_NATIVE_DISCOVERY_FIXTURE="$delegate_state" DWM_NATIVE_ACTION_FIXTURE="$delegate_state" \
+				DWM_NATIVE_ACTION="$delegate_action" DWM_NATIVE_ACTION_SCENARIO="$delegate_scenario" \
+				DWM_DELEGATE_UI_WIDTH="${delegate_size%x*}" DWM_DELEGATE_UI_HEIGHT="${delegate_size#*x}" \
+				quickshell --no-duplicate --path "$work/delegate-ui/shell.qml" >"$delegate_state/log" 2>&1 &
+			quickshell_pid=$!
+			wait "$quickshell_pid" || delegate_status=$?
+			quickshell_pid=
+			if [ "$delegate_status" -ne 0 ] || ! grep -F 'Delegate UI tests: PASS' "$delegate_state/log" ||
+				grep -Fq 'Delegate UI FAILED:' "$delegate_state/log" ||
+				[ -e "$delegate_state/invalid-arguments" ] || [ -e "$delegate_state/overlap" ] ||
+				[ -e "$delegate_state/unexpected-command" ] ||
+				[ -n "$(find "$delegate_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+				cat "$delegate_state/log" >&2
+				exit 1
+			fi
+			[ "$(sed -n '1p' "$delegate_state/$delegate_action")" = 1 ]
+			[ "$(sed -n '1p' "$delegate_state/ack-operation")" = 1 ]
+		done
+	done
+done
+
 mkdir -p "$work/native-action" "$work/native-action-data/dwm-titus/scripts"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/native-action/"
 cp "$repo/tests/qml/SystemNativeActionOwner.qml" "$work/native-action/shell.qml"

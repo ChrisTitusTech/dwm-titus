@@ -56,6 +56,16 @@ seconds. These choices persist for future managed Quickshell sessions. Settings
 keeps them read-only when another notification daemon owns the session D-Bus
 name.
 
+The System section includes **Manage accounts**, **Change my password**,
+**Manage printers**, and **Manage software sources**. Each opens a fixed trusted
+Fedora tool only after a separate confirmation. Missing tools and stale provider
+status are explained beside the affected control. Reported accounts and enabled
+or disabled software sources are read-only lists here. The tool owns its own
+authorization and changes; an accepted launch is not proof that work inside it
+completed. Enter passwords only in the configured terminal's `passwd` prompt.
+Cancel returns keyboard focus to the originating control. Closing Settings does
+not close a launched tool or undo its changes.
+
 Type to search section names and descriptions. Use Up and Down to move through
 the filtered sections, Enter to select one, or Escape to close Settings. The
 Refresh button runs a new bounded capability snapshot; Settings does not add an
