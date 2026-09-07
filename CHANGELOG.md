@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Changed
 
+- Install snapshot capture cleanup handlers before temporary-file allocation,
+  and prevent helper launch when cancellation arrives during setup.
+
 - Add a standalone read-only regional preflight helper owner with fixed requests,
   bounded deadlines, close cleanup, and stale-callback rejection. Root confirmation
   integration and visible native controls remain pending.
