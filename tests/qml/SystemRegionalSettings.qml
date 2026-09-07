@@ -88,11 +88,13 @@ ShellRoot {
                     check(model.regional.request === null, "Owning event immediately retires request");
                 }
             } else if (!model.regional.ownsPreparation()) {
-                if (scenario === "close-publish" || scenario === "required-publish") {
+                if (scenario === "close-publish") {
                     check(model.regional.choices(kind).length === 0 && model.regional.confirmation === null,
                         "Reentrant publication invalidation retains no catalog or prompt");
                     model.closeSettings();
                     stage = 9;
+                } else if (scenario === "required-publish") {
+                    stage = 8;
                 } else if (scenario === "error-read" || scenario === "malformed-read") {
                     check(model.regional.message.indexOf(scenario === "error-read" ? "permission-denied" : "malformed") >= 0,
                         "Typed read failure retained");
@@ -144,7 +146,8 @@ ShellRoot {
                 : scenario === "unsupported" ? "failed" : "succeeded"), "Verified typed operation result");
             stage = 9;
         } else if (stage === 8 && !model.regional.ownsPreparation() && !model.snapshotOwned && !model.requiredPending) {
-            if (scenario === "required-read") check(model.requestGeneration > priorGeneration && model.operation.canStart,
+            if (scenario === "required-read" || scenario === "required-publish")
+                check(model.requestGeneration > priorGeneration && model.operation.canStart,
                 "Recovery snapshot runs after read releases");
             check(model.regional.confirmation === null && model.regional.choices(kind).length === 0, "Retired read never publishes");
             model.closeSettings();
@@ -164,7 +167,10 @@ ShellRoot {
             root.check(model.regional.ownsPreparation() && !model.regional.prepare(root.action, root.argument),
                 "Catalog callback cannot overlap publication ownership");
             if (root.scenario === "close-publish") model.closeSettings();
-            else if (root.scenario === "required-publish") model.operation.requestSnapshot();
+            else if (root.scenario === "required-publish") {
+                root.priorGeneration = model.requestGeneration;
+                model.operation.requestSnapshot();
+            }
         }
         function onConfirmationChanged() {
             if (model.regional.confirmation !== null) {
