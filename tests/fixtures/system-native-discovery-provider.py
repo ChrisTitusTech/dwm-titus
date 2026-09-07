@@ -47,7 +47,11 @@ def pipe(name):
 def monitor(domain, prefix):
     marker = DIRECTORY / (domain + ".active")
     with (DIRECTORY / (domain + ".lock")).open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            (DIRECTORY / "overlap").touch()
+            raise
         try:
             with pipe(domain) as stream:
                 marker.write_text(str(os.getpid()))

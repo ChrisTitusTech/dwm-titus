@@ -1958,6 +1958,8 @@ operation observers survive. Reentrant close/reopen during token admission or
 loading publication cannot launch the canceled read or consume replacement
 tokens. Private nested-X11 tests cover these boundaries with 53 assertions,
 including required recovery while setup is held and a separate reopen baseline.
+Separate lock-contention cases prove each duplicate fixture monitor records an
+overlap before failing, without removing the existing owner's marker or pipe.
 
 It starts a discovery cycle only after readiness, with a 12-second frontend
 startup deadline covering the helper's ten-second setup and process startup.

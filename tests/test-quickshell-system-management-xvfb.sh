@@ -431,6 +431,31 @@ cp "$repo/tests/qml/SystemNativeDiscovery.qml" "$work/native-discovery/shell.qml
 native_discovery_helper=$work/native-discovery-data/dwm-titus/scripts/dwm-system-management
 cp "$repo/tests/fixtures/system-native-discovery-provider.py" "$native_discovery_helper"
 chmod +x "$native_discovery_helper"
+for lock_domain in updates time locale accounts printers; do
+	lock_fixture=$work/native-discovery-lock-$lock_domain
+	mkdir -p "$lock_fixture"
+	printf 'existing-owner\n' >"$lock_fixture/$lock_domain.active"
+	mkfifo "$lock_fixture/$lock_domain.events"
+	case $lock_domain in
+	updates) set -- watch-updates ;;
+	time | locale) set -- watch-regional "$lock_domain" ;;
+	accounts) set -- watch-accounts ;;
+	printers) set -- watch-units printers ;;
+	esac
+	lock_status=0
+	timeout --kill-after=1s 3s flock -n "$lock_fixture/$lock_domain.lock" \
+		env DWM_NATIVE_DISCOVERY_FIXTURE="$lock_fixture" "$native_discovery_helper" "$@" \
+		>"$lock_fixture/output" 2>"$lock_fixture/error" || lock_status=$?
+	if [ "$lock_status" -ne 1 ] || [ -s "$lock_fixture/output" ] ||
+		! grep -Fq 'BlockingIOError' "$lock_fixture/error" || [ ! -e "$lock_fixture/overlap" ] ||
+		! grep -Fxq 'existing-owner' "$lock_fixture/$lock_domain.active" ||
+		[ ! -p "$lock_fixture/$lock_domain.events" ]; then
+		printf 'Duplicate native fixture monitor was not recorded safely: %s\n' "$lock_domain" >&2
+		cat "$lock_fixture/error" >&2
+		exit 1
+	fi
+done
+printf 'Native discovery fixture duplicate-monitor cases: PASS\n'
 timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$work/native-discovery-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
 	DWM_NATIVE_DISCOVERY_FIXTURE="$work/native-discovery-state" \
