@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add fixed read-only printer and firewall unit event monitors with private
+  subscription ownership, canonical-alias discovery, bounded reconciliation,
+  and no idle polling or service activation. Settings integration remains pending.
+
 - Add a fixed read-only account event monitor that covers candidate changes
   before enumeration and filtering. Preserve bounded account inventories,
   authenticated senders, and a monitor without idle polling; Settings activation

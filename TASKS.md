@@ -293,6 +293,21 @@ A read-only Fedora 44 probe returned one available account row in 0.028
 seconds. The monitor emitted no events and used zero sampled CPU ticks over
 30 seconds, then terminated cleanly. No account or host setting was changed.
 
+The fixed printer and security unit event commands now observe only CUPS or
+firewalld through a private systemd subscription. Six acknowledged matches,
+owner barriers, Subscribe, and fixed non-loading GetUnit lookups precede
+readiness under one ten-second setup budget. Canonical aliases and initially
+unloaded units are reconciled through at most two fixed-name passes per event
+burst; unstable monitoring fails with explicit-refresh guidance. There is no
+idle timer, unit enumeration, service activation, or authorization request.
+Private-bus tests cover alias arrivals, independent subscriber shutdown,
+forged notifications, bounded bursts, denial, malformed state, actual setup
+timeout, canceled lookups, full/closed output, and owner loss. Real Fedora 44
+printer and security watchers each emitted zero events and used zero sampled
+CPU ticks over 30 seconds, then stopped cleanly. No host service was changed.
+Settings integration, cumulative minors, and combined qualification remain
+outstanding.
+
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
 confirmation warning that a sent change cannot be canceled. Local cancellation

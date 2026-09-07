@@ -2897,6 +2897,168 @@ class AccountEventMonitorTests(unittest.TestCase):
             self.assertEqual(result.stdout, expected)
 
 
+class UnitEventMonitorTests(unittest.TestCase):
+    def monitor(self, kind="printers"):
+        _regional, emitted, gio, glib, unix = RegionalEventMonitorTests().monitor()
+        monitor = provider.UnitEventMonitor(kind, gio, glib, unix, emitted.append)
+        monitor.deadline = time.monotonic() + 10
+        monitor.deadline_source = 7
+        monitor.connection = mock.Mock()
+        gio.DBusConnection.new_for_address_finish.return_value = monitor.connection
+        return monitor, emitted, gio, glib, unix
+
+    def resolve(self, monitor, glib):
+        identity = (monitor.resolution_epoch, monitor.resolve_round)
+        for index, name in enumerate(monitor.units):
+            monitor.connection.call_finish.return_value = glib.Variant("(o)",
+                (provider.SYSTEMD_PATH + "/unit/Alias" + str(index),))
+            monitor.unit_resolved(monitor.connection, object(), (*identity, name))
+
+    def setup(self, monitor, glib, finish=True):
+        connection = monitor.connection
+        monitor.connected(None, object(), None)
+        for index, rule in enumerate(monitor.match_rules):
+            connection.call_finish.return_value = glib.Variant("()", ())
+            monitor.match_finished(connection, object(), rule)
+            if index == 0:
+                connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+                monitor.owner_initialized(connection, object(), 0)
+        connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        monitor.owner_resolved(connection, object(), 0)
+        connection.call_finish.return_value = glib.Variant("()", ())
+        monitor.subscribed(connection, object(), None)
+        self.resolve(monitor, glib)
+        if finish:
+            connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+            monitor.final_owner(connection, object(), (0, monitor.resolution_epoch))
+
+    def manager(self, monitor, glib, member="UnitNew", sender=":1.2"):
+        monitor.manager_event(None, sender, monitor.path, provider.SYSTEMD_MANAGER, member,
+            glib.Variant("(so)", ("unrelated.service", provider.SYSTEMD_PATH + "/unit/Unknown")), None)
+
+    def test_private_connection_fixed_calls_and_all_barriers_precede_readiness(self):
+        for kind, count in (("printers", 2), ("security", 1)):
+            monitor, emitted, gio, glib, _unix = self.monitor(kind)
+            self.setup(monitor, glib)
+            self.assertEqual(emitted, ["units-event\tready"])
+            gio.bus_get.assert_not_called()
+            gio.bus_get_finish.assert_not_called()
+            calls = monitor.connection.call.call_args_list
+            self.assertEqual([call.args[3] for call in calls],
+                ["AddMatch", "GetNameOwner", *(["AddMatch"] * 5), "GetNameOwner",
+                 "Subscribe", *(["GetUnit"] * count), "GetNameOwner"])
+            system_calls = [call for call in calls if call.args[0] == ":1.2"]
+            self.assertEqual([call.args[3] for call in system_calls], ["Subscribe", *(["GetUnit"] * count)])
+            self.assertEqual([call.args[4].unpack()[0] for call in system_calls[1:]], list(monitor.units))
+            self.assertTrue(all(call.args[6] == gio.DBusCallFlags.NO_AUTO_START for call in system_calls))
+            subscriptions = monitor.connection.signal_subscribe.call_args_list
+            self.assertEqual(len(subscriptions), 6)
+            self.assertEqual(subscriptions[-1].args[3:5], (None, provider.SYSTEMD_NAME + ".Unit"))
+            self.assertEqual(set(monitor.paths), set(monitor.units))
+
+    def test_authentication_precedes_decoding_during_setup_and_after_readiness(self):
+        for ready in (False, True):
+            monitor, emitted, _gio, glib, _unix = self.monitor()
+            monitor.ready = ready
+            for owner in ("", ":1.2"):
+                monitor.owner = owner
+                bad = glib.Variant("(s)", ("x" * 70000,))
+                monitor.manager_event(None, ":1.9", monitor.path, provider.SYSTEMD_MANAGER, "UnitNew", bad, None)
+                monitor.properties_changed(None, ":1.9", provider.SYSTEMD_PATH + "/unit/Alias",
+                    provider.PROPERTIES_INTERFACE, "PropertiesChanged", bad, None)
+            self.assertFalse(monitor.stopped)
+            self.assertFalse(monitor.dirty)
+            self.assertEqual(emitted, [])
+
+    def test_reconciliation_has_one_settling_pass_and_rejects_late_epochs(self):
+        monitor, emitted, _gio, glib, _unix = self.monitor()
+        self.setup(monitor, glib)
+        monitor.connection.call.reset_mock()
+        self.manager(monitor, glib)
+        old_identity = (monitor.resolution_epoch - 1, 0, monitor.units[0])
+        monitor.unit_resolved(monitor.connection, object(), old_identity)
+        self.assertEqual(monitor.waiting, set(monitor.units))
+        for _ in range(100):
+            self.manager(monitor, glib)
+        self.resolve(monitor, glib)
+        self.assertEqual(monitor.resolve_round, 1)
+        for _ in range(100):
+            self.manager(monitor, glib)
+        self.resolve(monitor, glib)
+        self.assertTrue(monitor.stopped)
+        self.assertEqual(monitor.exit_code, 1)
+        self.assertEqual(len(monitor.connection.call.call_args_list), 4)
+        self.assertEqual(emitted, ["units-event\tready"])
+
+    def test_event_during_final_barrier_cannot_publish_stale_or_duplicate_ready(self):
+        monitor, emitted, _gio, glib, _unix = self.monitor()
+        self.setup(monitor, glib, finish=False)
+        old = (0, monitor.resolution_epoch)
+        self.manager(monitor, glib)
+        monitor.connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        monitor.final_owner(monitor.connection, object(), old)
+        self.assertEqual(emitted, [])
+        self.resolve(monitor, glib)
+        monitor.connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        current = (0, monitor.resolution_epoch)
+        monitor.final_owner(monitor.connection, object(), current)
+        monitor.final_owner(monitor.connection, object(), old)
+        monitor.final_owner(monitor.connection, object(), current)
+        self.assertEqual(emitted, ["units-event\tready"])
+
+    def test_typed_scope_deadline_and_owner_loss_fail_without_reconnect(self):
+        for invalid in ("signature", "path", "deadline", "owner"):
+            monitor, emitted, gio, glib, _unix = self.monitor()
+            self.setup(monitor, glib)
+            if invalid == "owner":
+                RegionalEventMonitorTests().owner(monitor, glib, ":1.2", ":1.3")
+            else:
+                monitor.reconcile()
+                if invalid == "deadline":
+                    monitor.resolve_deadline = time.monotonic() - 1
+                signature, value = ("(s)", "bad") if invalid == "signature" else ("(o)", "/wrong_scope")
+                monitor.connection.call_finish.return_value = glib.Variant(signature, (value,))
+                monitor.unit_resolved(monitor.connection, object(),
+                    (monitor.resolution_epoch, monitor.resolve_round, monitor.units[0]))
+            self.assertTrue(monitor.stopped)
+            self.assertEqual(monitor.exit_code, 1)
+            gio.bus_get.assert_not_called()
+            self.assertEqual(emitted[0], "units-event\tready")
+
+    def test_property_bounds_and_synchronous_call_errors_fail_closed(self):
+        for signature, value in (("(s)", ("x",)),
+                ("(sa{sv}as)", (provider.SYSTEMD_NAME + ".Unit", {"ActiveState": None}, []))):
+            monitor, emitted, _gio, glib, _unix = self.monitor()
+            self.setup(monitor, glib)
+            if signature == "(sa{sv}as)":
+                value[1]["ActiveState"] = glib.Variant("b", True)
+            monitor.properties_changed(None, ":1.2", monitor.paths[monitor.units[0]],
+                provider.PROPERTIES_INTERFACE, "PropertiesChanged", glib.Variant(signature, value), None)
+            self.assertTrue(monitor.stopped)
+            self.assertEqual(emitted, ["units-event\tready"])
+        monitor, _emitted, _gio, glib, _unix = self.monitor()
+        self.setup(monitor, glib)
+        monitor.connection.call.side_effect = glib.Error("fixture call failure")
+        monitor.reconcile()
+        self.assertTrue(monitor.stopped)
+
+    def test_cli_grammar_and_real_private_bus_lifecycle(self):
+        with mock.patch.object(provider, "watch_service_events", return_value=0) as watch, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                contextlib.redirect_stderr(io.StringIO()):
+            for kind in ("printers", "security"):
+                self.assertEqual(provider.main(["watch-units", kind]), 0)
+            for args in ([], ["cups.service"], ["printers", "extra"], ["--system"]):
+                self.assertEqual(provider.main(["watch-units", *args]), 2)
+            self.assertEqual(watch.call_args_list, [mock.call("printers"), mock.call("security")])
+            backend.assert_not_called()
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-unit-events-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=45)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "Private-bus unit events: PASS\n")
+
+
 class NtpReadTests(unittest.TestCase):
     def reader(self):
         _regional, connection, gio, glib, variant = RegionalReadTests().reader()
