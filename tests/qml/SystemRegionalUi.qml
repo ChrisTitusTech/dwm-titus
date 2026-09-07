@@ -53,6 +53,27 @@ ShellRoot {
         stage = action === "ntp-set" ? 3 : 2;
     }
     function settled() { return !model.busy && !model.regional.ownsPreparation(); }
+    function checkUnavailableOffer() {
+        check(find(origin).enabled, "Valid selection enables the mutation before availability changes");
+        const actions = model.actions;
+        model.actions = actions.map(value => value.id === action ? Object.assign({}, value,
+            {availability: "unavailable", detail: "Fixture unavailable action"}) : value);
+        check(!find(origin).enabled, "Unavailable offer disables mutation without hiding state");
+        model.actions = actions;
+    }
+    function checkMessageFocus(names, index, finished) {
+        stage = -2;
+        if (index === names.length) { finished(); return; }
+        const control = find(names[index]);
+        check(control.visible && control.enabled, "Focus fixture control is available");
+        control.forceActiveFocus();
+        model.regional.message = "Fixture asynchronous message for " + names[index];
+        Qt.callLater(function() {
+            check(control.activeFocus, "Asynchronous message preserves " + names[index] + " focus");
+            model.regional.message = "";
+            Qt.callLater(function() { root.checkMessageFocus(names, index + 1, finished); });
+        });
+    }
     function chooseAndPreview() {
         const list = find("choices-" + kind);
         find("search-" + kind).text = "no such reported choice";
@@ -60,8 +81,13 @@ ShellRoot {
         find("search-" + kind).text = selection;
         check(list.count === 1, "Search retains exact reported identity");
         find("regional-card-" + kind).selected = selection;
-        click(origin);
-        stage = 3;
+        checkUnavailableOffer();
+        checkMessageFocus(["load-" + kind, origin, "search-" + kind, "choices-" + kind], 0, function() {
+            root.click(root.origin);
+            root.check(!root.find("choices-" + root.kind).activeFocus,
+                "Mouse-style preview activation leaves the old list focus behind");
+            root.stage = 3;
+        });
     }
     function checkCatalogRow() {
         const list = find("choices-" + kind);
@@ -89,12 +115,10 @@ ShellRoot {
         if (stage === 0 && !model.busy && model.operation.canStart) { model.openSettings(); stage = 1; }
         else if (stage === 1 && settled() && model.regional.actionReason(action) === "") {
             check(find("regional-card-" + kind).visible, "Readable regional state is present");
-            const actions = model.actions;
-            model.actions = actions.map(value => value.id === action ? Object.assign({}, value,
-                {availability: "unavailable", detail: "Fixture unavailable action"}) : value);
-            check(!find(origin).enabled, "Unavailable offer disables mutation without hiding state");
-            model.actions = actions;
-            startPreparation();
+            if (action === "ntp-set") {
+                checkUnavailableOffer();
+                checkMessageFocus(["prepare-ntp-enabled", "prepare-ntp-disabled"], 0, function() { root.startPreparation(); });
+            } else startPreparation();
         } else if (stage === 2 && settled()) {
             if (scenario === "error-read" || scenario === "malformed-read") { finishReadFailure(); return; }
             const list = find("choices-" + kind);
@@ -184,12 +208,15 @@ ShellRoot {
             stage = 62;
         } else if (stage === 62 && ++layoutTicks >= 8) {
             checkFocused("confirmRegional");
-            click("confirmRegional");
-            check(model.operation.streamOwned && !model.operation.canCancel && !find("cancelUpdate").visible,
-                "Only fixed native origin owns sent action; no update cancellation");
-            model.closeSettings();
-            check(model.operation.streamOwned && model.regional.choices(kind).length === 0, "Closure clears catalog but retains operation");
-            stage = 7;
+            checkMessageFocus(["discardRegional", "confirmRegional"], 0, function() {
+                root.click("confirmRegional");
+                root.check(model.operation.streamOwned && !model.operation.canCancel && !root.find("cancelUpdate").visible,
+                    "Only fixed native origin owns sent action; no update cancellation");
+                model.closeSettings();
+                root.check(model.operation.streamOwned && model.regional.choices(root.kind).length === 0,
+                    "Closure clears catalog but retains operation");
+                root.stage = 7;
+            });
         } else if (stage === 7 && settled() && !model.operation.busy && model.operation.acknowledgedIds.length === 1
                 && !model.discoveryModels().some(value => value.monitorOwned)) {
             check(model.operation.result.state === (scenario === "denied" ? "permission-denied"

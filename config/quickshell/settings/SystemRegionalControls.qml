@@ -12,10 +12,22 @@ ColumnLayout {
     readonly property var confirmation: regional.confirmation
     property string preparedAction: ""
     property string preparedArgument: ""
+    property var readOrigin: null
     signal revealRequested(var target)
     Layout.fillWidth: true
     spacing: Theme.spacingMd
 
+    function beginRead(control) {
+        root.readOrigin = control;
+        control.forceActiveFocus();
+    }
+    function hasFocusedControl() {
+        if (discardButton.activeFocus || confirmButton.activeFocus
+                || enableButton.activeFocus || disableButton.activeFocus) return true;
+        for (let index = 0; index < catalogRepeater.count; index++)
+            if (catalogRepeater.itemAt(index).hasFocusedControl()) return true;
+        return false;
+    }
     function revealFocusedControl() {
         if (errorMessage.visible && errorMessage.activeFocus) root.revealRequested(errorMessage);
         else if (discardButton.activeFocus) root.revealRequested(focusTarget(confirmationCard, discardButton));
@@ -99,6 +111,10 @@ ColumnLayout {
             color: Theme.controlNormalFill
             border.color: Theme.controlNormalBorder
             onChoicesChanged: { selected = ""; search.clear(); }
+            function hasFocusedControl() {
+                return loadButton.activeFocus || previewButton.activeFocus
+                    || search.activeFocus || choiceList.activeFocus;
+            }
             function focusOrigin() { if (loadButton.enabled) loadButton.forceActiveFocus(); }
             function revealFocus() {
                 if (loadButton.activeFocus) root.revealRequested(loadButton);
@@ -119,7 +135,10 @@ ColumnLayout {
                     revealTarget: loadButton
                     label: catalogCard.choices.length > 0 ? "Reload choices" : "Load choices"
                     enabled: catalogCard.canRead
-                    onActivated: root.regional.requestChoices(catalogCard.modelData.kind)
+                    onActivated: {
+                        root.beginRead(loadButton);
+                        root.regional.requestChoices(catalogCard.modelData.kind);
+                    }
                 }
                 Rectangle {
                     id: searchBox
@@ -195,8 +214,11 @@ ColumnLayout {
                     label: "Review change..."
                     enabled: root.confirmation === null && catalogCard.reason === "" && catalogCard.selected.length > 0
                         && catalogCard.choices.indexOf(catalogCard.selected) >= 0
-                    onActivated: root.regional.prepare(catalogCard.action,
-                        (catalogCard.modelData.kind === "locale" ? "LANG=" : "") + catalogCard.selected)
+                    onActivated: {
+                        root.beginRead(previewButton);
+                        root.regional.prepare(catalogCard.action,
+                            (catalogCard.modelData.kind === "locale" ? "LANG=" : "") + catalogCard.selected);
+                    }
                 }
                 PlainText { visible: text.length > 0; text: catalogCard.reason; color: Theme.menuMutedText }
             }
@@ -225,7 +247,7 @@ ColumnLayout {
                     revealTarget: root.focusTarget(ntpCard, enableButton)
                     label: "Review enable..."
                     enabled: root.confirmation === null && ntpCard.reason === ""
-                    onActivated: root.regional.prepare("ntp-set", "enabled")
+                    onActivated: { root.beginRead(enableButton); root.regional.prepare("ntp-set", "enabled"); }
                 }
                 ActionButton {
                     id: disableButton
@@ -233,7 +255,7 @@ ColumnLayout {
                     revealTarget: root.focusTarget(ntpCard, disableButton)
                     label: "Review disable..."
                     enabled: enableButton.enabled
-                    onActivated: root.regional.prepare("ntp-set", "disabled")
+                    onActivated: { root.beginRead(disableButton); root.regional.prepare("ntp-set", "disabled"); }
                 }
             }
             PlainText { visible: text.length > 0; text: ntpCard.reason; color: Theme.menuMutedText }
@@ -295,13 +317,19 @@ ColumnLayout {
         text: root.regional.message
         color: Theme.warning
         // Failed optional reads have no prompt to receive focus. Make their
-        // explanation visible after publication and subsequent layout passes.
-        onTextChanged: Qt.callLater(function() {
-            if (errorMessage.visible && root.model.settingsVisible) {
-                errorMessage.forceActiveFocus();
-                root.revealRequested(errorMessage);
-            }
-        })
+        // explanation visible after publication and subsequent layout passes,
+        // without taking focus from a control the user is already using.
+        onTextChanged: {
+            const origin = root.regional.ownsPreparation() ? root.readOrigin : null;
+            const message = errorMessage.text;
+            Qt.callLater(function() {
+                if (errorMessage.visible && errorMessage.text === message && root.model.settingsVisible
+                        && (!root.hasFocusedControl() || (origin !== null && origin.activeFocus))) {
+                    errorMessage.forceActiveFocus();
+                    root.revealRequested(errorMessage);
+                }
+            });
+        }
         onYChanged: Qt.callLater(root.revealFocusedControl)
         onHeightChanged: Qt.callLater(root.revealFocusedControl)
     }

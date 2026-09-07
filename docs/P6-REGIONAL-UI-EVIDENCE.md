@@ -50,6 +50,13 @@ and restore the original size before dispatch. Large locale cases retain full
 512-byte current-value and override-detail fields; the preview remains scrollable.
 Catalogs are additionally capped to the actual content viewport. Maximum-list
 cases verify first/last/current rows at 120 pixels with repeated focus reveal.
+Hosted review added explicit asynchronous-message focus coverage for search,
+catalog, load/review, NTP, and confirmation controls. Messages preserve an active
+control; a failed read can still reveal its explanation when focus remains on
+its initiating control. Catalog availability assertions now begin with an exact
+selected value, so selection requirements cannot mask an unavailable action.
+Regional read buttons establish focus on activation, including mouse clicks;
+tests invoke the same activation path without supplying focus themselves.
 
 ![NTP confirmation at 640x480](evidence/p6-regional/confirmation-640.png)
 
