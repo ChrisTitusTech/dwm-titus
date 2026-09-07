@@ -70,6 +70,11 @@ cleanup() {
 			stop_process "$helper_pid"
 		done
 	fi
+	if [ -n "${preflight_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$preflight_helper" 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	if [ -n "${update_ui_helper:-}" ]; then
 		for helper_pid in $(pgrep -f "$update_ui_helper " 2>/dev/null || true); do
 			stop_process "$helper_pid"
@@ -521,6 +526,44 @@ if [ "$parser_status" -ne 0 ] || ! grep -F 'Regional preflight parser tests: PAS
 	cat "$work/regional-preflight-parser.log" >&2
 	exit 1
 fi
+
+mkdir -p "$work/regional-preflight-owner" "$work/preflight-data/dwm-titus/scripts" "$work/preflight-empty-path"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/regional-preflight-owner/"
+cp "$repo/tests/qml/SystemRegionalPreflightOwner.qml" "$work/regional-preflight-owner/shell.qml"
+preflight_helper="$work/preflight-data/dwm-titus/scripts/dwm-system-management"
+cp "$repo/tests/fixtures/system-regional-preflight-provider.py" "$preflight_helper"
+chmod +x "$preflight_helper"
+preflight_quickshell=$(command -v quickshell)
+for preflight_scenario in success typed-error wrong-exit malformed truncated stdout-overflow stderr-overflow \
+	close kill-close timeout cancel-queued cancel-claim close-result failed-start; do
+	preflight_directory="$work/preflight-$preflight_scenario"
+	mkdir -p "$preflight_directory"
+	preflight_path=$PATH
+	[ "$preflight_scenario" != failed-start ] || preflight_path="$work/preflight-empty-path"
+	timeout --foreground --kill-after=2s 45s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$work/preflight-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= PATH="$preflight_path" \
+		DWM_PREFLIGHT_DIRECTORY="$preflight_directory" DWM_PREFLIGHT_SCENARIO="$preflight_scenario" \
+		"$preflight_quickshell" --no-duplicate --path "$work/regional-preflight-owner/shell.qml" \
+		>"$preflight_directory/output.log" 2>&1 &
+	quickshell_pid=$!
+	preflight_status=0
+	wait "$quickshell_pid" || preflight_status=$?
+	quickshell_pid=
+	case "$preflight_scenario" in
+	success) preflight_calls=6 ;;
+	close | kill-close | timeout | close-result) preflight_calls=2 ;;
+	failed-start) preflight_calls=0 ;;
+	*) preflight_calls=1 ;;
+	esac
+	preflight_actual=$(sed -n '1p' "$preflight_directory/calls" 2>/dev/null || true)
+	if [ "$preflight_status" -ne 0 ] || ! grep -F 'Regional preflight owner tests: PASS' "$preflight_directory/output.log" ||
+		grep -Fq 'Regional preflight owner FAILED:' "$preflight_directory/output.log" ||
+		[ "${preflight_actual:-0}" != "$preflight_calls" ] || [ -e "$preflight_directory/invalid-arguments" ] ||
+		[ -e "$preflight_directory/overlap" ] || pgrep -f "$preflight_helper" >/dev/null 2>&1; then
+		cat "$preflight_directory/output.log" >&2
+		exit 1
+	fi
+done
 
 mkdir -p "$work/operation-parser"
 cp "$repo/tests/qml/SystemOperationParser.qml" "$work/operation-parser/shell.qml"

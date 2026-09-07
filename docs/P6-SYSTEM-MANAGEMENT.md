@@ -584,6 +584,20 @@ parser itself owns no Process, authorization, operation, or visible control.
 Nested-X11 parser fixtures exercise byte splits, malformed and replaced streams,
 limits, request mismatches, and typed errors without host service calls.
 
+`SystemRegionalPreflightModel.qml` is a separate optional Process owner, not yet
+wired to root confirmations or visible controls. It admits only fixed catalog
+kinds and validated regional preview arguments while active, and rejects overlap
+before publishing any state. Each request gets a fresh parser and an identity
+guard for queued launches and late callbacks. Results are published only after
+process exit; closing clears retained data and suppresses retired completion.
+The 25-second read deadline allows sequential bounded service/catalog reads.
+Timeout, malformed output, and closure request TERM, retain ownership through a
+three-second grace, then request KILL if needed. No replacement starts before
+the old process exits. Failed-to-start handling does not consume retained output.
+This component owns no authorization, journal, mutation, or idle polling. Fourteen
+private nested-X11 scenarios exercise exact requests, provisional output, typed
+errors, bounds, deadlines, close/reopen, reentrant callbacks, and missing helpers.
+
 Each preview makes fresh fixed reads: timezone state and timezone choices, NTP
 state, or locale state and installed locale choices. Service reads retain their
 ten-second aggregate bounds; the locale collector retains its three-second

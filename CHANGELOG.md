@@ -8,9 +8,13 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add a standalone read-only regional preflight helper owner with fixed requests,
+  bounded deadlines, close cleanup, and stale-callback rejection. Root confirmation
+  integration and visible native controls remain pending.
+
 - Validate bounded regional choice and confirmation-preview streams in a
   standalone parser, preserving complete locale details and typed read errors.
-  Visible confirmation and helper ownership remain pending.
+  Visible confirmation remains pending.
 
 - Route fixed regional and delegated origins through the root operation owner
   with strict arguments, independent native journal admission, and scoped
