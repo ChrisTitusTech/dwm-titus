@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add fixed read-only time and locale event monitors with acknowledged setup,
+  bounded output, and quiet handling of normally idle services. Add an internal
+  two-property NTP status reader; visible Settings monitoring and sampling
+  remain pending integration.
+
 - Add fixed account, password, printer, and software-source CLI entry points.
   Resolve trusted tools, keep password handling in the configured supported
   terminal, and record only accepted launches with durable recovery. Missing

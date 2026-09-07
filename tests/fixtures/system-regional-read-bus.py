@@ -29,6 +29,7 @@ timedate = Gio.DBusNodeInfo.new_for_xml("""
 
 
 def name_call(method, name):
+    """Manage only the selected fixture-owned name on the private bus."""
     args = GLib.Variant("(su)", (name, 0)) if method == "RequestName" else GLib.Variant("(s)", (name,))
     return bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
         "org.freedesktop.DBus", method, args, GLib.VariantType.new("(u)"),
@@ -36,6 +37,7 @@ def name_call(method, name):
 
 
 def called(_bus, _sender, path, interface, method, args, invocation):
+    """Serve typed read-only replies and retain deliberate stalled requests."""
     calls.append((path, interface, method, args.unpack()))
     if mode == "denied":
         invocation.return_dbus_error("org.freedesktop.DBus.Error.AccessDenied", "fixture denial")
@@ -47,14 +49,21 @@ def called(_bus, _sender, path, interface, method, args, invocation):
             "NTP": GLib.Variant("u", 1) if mode == "malformed" else GLib.Variant("b", False),
             "NTPSynchronized": GLib.Variant("b", True)},)))
     elif method == "Get":
-        invocation.return_value(GLib.Variant("(v)", (GLib.Variant("as", ["LANG=C"]),)))
+        if path == "/org/freedesktop/timedate1":
+            assert args.unpack() in (("org.freedesktop.timedate1", "CanNTP"),
+                                     ("org.freedesktop.timedate1", "NTPSynchronized"))
+            value = GLib.Variant("s", "invalid") if mode == "malformed" else GLib.Variant("b", True)
+        else:
+            value = GLib.Variant("as", ["LANG=C"])
+        invocation.return_value(GLib.Variant("(v)", (value,)))
     else:
         invocation.return_value(GLib.Variant("(as)", (["UTC", "Etc/UTC"],)))
 
 
 def failure(kind, expected):
+    """Require a scoped failure without publishing a successful value."""
     try:
-        provider["RegionalRead"](kind).run()
+        (provider["NtpRead"]() if kind == "ntp" else provider["RegionalRead"](kind)).run()
     except provider["SnapshotFailure"] as error:
         assert error.code == expected, (error.code, expected)
     else:
@@ -74,6 +83,10 @@ try:
     assert [call[2:] for call in calls] == [
         ("GetAll", ("org.freedesktop.timedate1",)),
         ("Get", ("org.freedesktop.locale1", "Locale")), ("ListTimezones", ())]
+    assert provider["NtpRead"]().run() == provider["NtpSample"](True, True)
+    assert [call[2:] for call in calls[-2:]] == [
+        ("Get", ("org.freedesktop.timedate1", "CanNTP")),
+        ("Get", ("org.freedesktop.timedate1", "NTPSynchronized"))]
     for arguments in (["regional-choices", "timezone"],
                       ["regional-preview", "timezone-set", "Etc/UTC"],
                       ["regional-preview", "ntp-set", "enabled"],
@@ -84,12 +97,14 @@ try:
         assert output.getvalue().endswith("complete\t" + arguments[0] + "\n")
     mode = "malformed"
     failure("time-state", "malformed")
+    failure("ntp", "malformed")
     with contextlib.redirect_stdout(io.StringIO()) as output:
         assert provider["main"](["regional-preview", "ntp-set", "enabled"]) == 1
     assert "error\tregional\tmalformed\t" in output.getvalue()
     assert "\npreview\t" not in output.getvalue()
     mode = "denied"
     failure("locale-state", "permission-denied")
+    failure("ntp", "permission-denied")
     mode = "normal"
     assert name_call("ReleaseName", "org.freedesktop.locale1") == 1
     failure("locale-state", "missing-provider")
@@ -102,6 +117,17 @@ try:
     held.pop().return_value(GLib.Variant("(as)", (["Late/Reply"],)))
     mode = "normal"
     assert provider["RegionalRead"]("timezone-choices").run() == ("UTC", "Etc/UTC")
+    mode = "stall"
+    started = time.monotonic()
+    failure("ntp", "timeout")
+    elapsed = time.monotonic() - started
+    assert 9.5 <= elapsed < 15, elapsed
+    assert len(held) == 2
+    for invocation in held:
+        invocation.return_value(GLib.Variant("(v)", (GLib.Variant("b", False),)))
+    held.clear()
+    mode = "normal"
+    assert provider["NtpRead"]().run() == provider["NtpSample"](True, True)
     assert all(call[2] in {"Get", "GetAll", "ListTimezones"} for call in calls)
     print("Private-bus regional reads: PASS (typed replies, readonly preflight, denial, absence, deadline, late reply)")
 finally:

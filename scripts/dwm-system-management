@@ -1092,6 +1092,62 @@ class RegionalRead(ServiceRead):
                 self.finish(failure=error)
 
 
+@dataclass(frozen=True)
+class NtpSample:
+    """The two explicitly sampled, non-emitting network time properties."""
+
+    can_ntp: bool
+    synchronized: bool
+
+
+class NtpRead(ServiceRead):
+    """Read only the two non-emitting timedate1 properties under one deadline."""
+
+    label = "Network time status"
+
+    def __init__(self, Gio=None, GLib=None):
+        super().__init__(Gio, GLib)
+        self.values = {}
+        self.waiting = {"CanNTP", "NTPSynchronized"}
+
+    def connected(self, _source, result, _data):
+        if not self.pending():
+            return
+        try:
+            self.connection = self.Gio.bus_get_finish(result)
+            self.connection.set_exit_on_close(False)
+            name, path = REGIONAL_READ_REQUESTS["time-state"][:2]
+            for field in ("CanNTP", "NTPSynchronized"):
+                if not self.pending():
+                    return
+                self.connection.call(name, path, PROPERTIES_INTERFACE, "Get",
+                    self.GLib.Variant("(ss)", (name, field)), self.GLib.VariantType.new("(v)"),
+                    self.Gio.DBusCallFlags.NONE, max(1, int((self.deadline - time.monotonic()) * 1000)),
+                    self.cancellable, self.replied, field)
+        except self.GLib.Error as error:
+            self.fail(self.bus_failure(error))
+
+    def replied(self, connection, result, field):
+        if not self.pending() or field not in self.waiting:
+            return
+        try:
+            reply = connection.call_finish(result)
+            if reply.get_type_string() != "(v)" or reply.get_size() > 32:
+                raise SnapshotFailure("malformed", "Invalid network time status reply")
+            value = reply.get_child_value(0).get_variant()
+            if value.get_type_string() != "b":
+                raise SnapshotFailure("malformed", "Invalid network time status property")
+            self.values[field] = value.unpack()
+            self.waiting.remove(field)
+            if not self.waiting and self.pending():
+                self.finish(NtpSample(self.values["CanNTP"], self.values["NTPSynchronized"]))
+        except self.GLib.Error as error:
+            self.fail(self.bus_failure(error))
+        except SnapshotFailure as error:
+            if self.pending():
+                self.fail(error)
+
+
 class RegionalMutation(ServiceRead):
     """Internal fixed service client; durable admission is a required caller hook.
 
@@ -7770,6 +7826,8 @@ def update_command(action_id: str, generation: str | None = None) -> int:
 class UpdateEventMonitor:
     """Read-only manager signals, with bounded setup and no transaction calls."""
 
+    record_prefix = "update-event"
+
     def __init__(self, Gio, GLib, GLibUnix, emit: Callable[[str], None]) -> None:
         self.Gio, self.GLib, self.GLibUnix = Gio, GLib, GLibUnix
         self.emit = emit
@@ -7810,7 +7868,7 @@ class UpdateEventMonitor:
         if not self.ready:
             self.dirty = True
         else:
-            self.write("update-event\tchanged")
+            self.write(self.record_prefix + "\tchanged")
 
     def global_changed(self, _connection, sender, _path, _interface, _member, _parameters, _data) -> None:
         # The bus-side match restricts the well-known sender. Avoid GDBus's
@@ -7846,9 +7904,9 @@ class UpdateEventMonitor:
         self.GLib.source_remove(self.deadline_source)
         self.deadline_source = 0
         self.ready = True
-        self.write("update-event\tready")
+        self.write(self.record_prefix + "\tready")
         if self.dirty and not self.stopped:
-            self.write("update-event\tchanged")
+            self.write(self.record_prefix + "\tchanged")
         self.dirty = False
 
     def match_finished(self, connection, result, rule) -> None:
@@ -7941,7 +7999,173 @@ class UpdateEventMonitor:
         return self.exit_code
 
 
-def watch_update_events() -> int:
+class RegionalEventMonitor(UpdateEventMonitor):
+    """Observe fixed regional properties, without activating idle platform services."""
+
+    record_prefix = "regional-event"
+
+    def __init__(self, kind, Gio, GLib, GLibUnix, emit):
+        if not isinstance(kind, str) or kind not in ("time", "locale"):
+            raise ValueError("Unknown regional monitor")
+        super().__init__(Gio, GLib, GLibUnix, emit)
+        self.name, self.path = REGIONAL_READ_REQUESTS[kind + "-state"][:2]
+        self.relevant = {"Locale"} if kind == "locale" else {"Timezone", "CanNTP", "NTP", "NTPSynchronized"}
+        self.started = False
+
+    def setting_up(self):
+        if self.stopped:
+            return False
+        if time.monotonic() >= self.deadline:
+            self.stop(1)
+            return False
+        return True
+
+    def remove_match(self, connection, rule):
+        with contextlib.suppress(self.GLib.Error):
+            connection.call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                "RemoveMatch", self.GLib.Variant("(s)", (rule,)), None,
+                self.Gio.DBusCallFlags.NONE, 1000, None, None, None)
+
+    def match_finished(self, connection, result, rule):
+        try:
+            reply = connection.call_finish(result)
+            # Only acknowledged rules belong to this caller. A late reply can
+            # release that rule, but can never resume an expired monitor.
+            if self.stopped:
+                self.remove_match(connection, rule)
+                return
+            self.installed_rules.append(rule)
+            if not self.setting_up():
+                return
+            if reply.get_type_string() != "()":
+                self.stop(1)
+            else:
+                # Authenticate the owner after the owner-change match, before
+                # enabling property delivery. Bus-side matches do not filter
+                # signals addressed directly to this connection.
+                callback = self.owner_initialized if len(self.installed_rules) == 1 else self.owner_resolved
+                connection.call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                    "GetNameOwner", self.GLib.Variant("(s)", (self.name,)), self.GLib.VariantType.new("(s)"),
+                    self.Gio.DBusCallFlags.NONE, max(1, int((self.deadline - time.monotonic()) * 1000)),
+                    self.cancellable, callback, self.owner_epoch)
+        except self.GLib.Error:
+            self.stop(1)
+
+    def resolve_owner(self, connection, result, epoch):
+        if not self.setting_up():
+            return
+        try:
+            reply = connection.call_finish(result)
+            if reply.get_type_string() != "(s)" or reply.get_size() > 256:
+                self.stop(1)
+                return
+            owner = reply.unpack()[0]
+            if not self.Gio.dbus_is_unique_name(owner):
+                self.stop(1)
+                return
+        except self.GLib.Error as error:
+            if self.Gio.dbus_error_get_remote_error(error) != "org.freedesktop.DBus.Error.NameHasNoOwner":
+                self.stop(1)
+                return
+            owner = ""
+        if not self.setting_up():
+            return
+        if epoch == self.owner_epoch:
+            self.owner = owner
+        return True
+
+    def owner_initialized(self, connection, result, epoch):
+        if self.resolve_owner(connection, result, epoch):
+            self.add_match()
+
+    def owner_resolved(self, connection, result, epoch):
+        if not self.resolve_owner(connection, result, epoch):
+            return
+        self.GLib.source_remove(self.deadline_source)
+        self.deadline_source = 0
+        self.ready = True
+        self.write(self.record_prefix + "\tready")
+        if self.dirty and not self.stopped:
+            self.write(self.record_prefix + "\tchanged")
+        self.dirty = False
+
+    def owner_changed(self, _connection, sender, path, interface, member, parameters, _data):
+        if (self.stopped or sender != "org.freedesktop.DBus" or path != "/org/freedesktop/DBus"
+                or interface != "org.freedesktop.DBus" or member != "NameOwnerChanged"):
+            return
+        if parameters.get_type_string() != "(sss)" or parameters.get_size() > 768:
+            self.stop(1)
+            return
+        name, old, new = parameters.unpack()
+        if name != self.name:
+            return
+        if any(len(value) > 255 or value and not self.Gio.dbus_is_unique_name(value) for value in (old, new)):
+            self.stop(1)
+            return
+        self.owner_epoch += 1
+        self.owner = new
+        # timedated/localed normally exit after 30 idle seconds. Departure is
+        # not a configuration change: rereading here would reactivate forever.
+        # Arrival or replacement reconciles state; mutations still fresh-read.
+        if new:
+            self.changed()
+
+    def properties_changed(self, _connection, sender, path, interface, member, parameters, _data):
+        if (self.stopped or path != self.path or interface != PROPERTIES_INTERFACE
+                or member != "PropertiesChanged" or not self.owner or sender != self.owner):
+            return
+        try:
+            if parameters.get_type_string() != "(sa{sv}as)" or parameters.get_size() > 16384:
+                raise SnapshotFailure("malformed", "Invalid regional notification")
+            if parameters.get_child_value(0).unpack() != self.name:
+                return
+            changed = parameters.get_child_value(1)
+            invalidated = regional_string_array(parameters.get_child_value(2),
+                REGIONAL_TIME_PROPERTY_COUNT, MAX_TEXT_BYTES, 8192)
+            if changed.n_children() > REGIONAL_TIME_PROPERTY_COUNT:
+                raise SnapshotFailure("malformed", "Oversized regional notification")
+            keys = set()
+            for index in range(changed.n_children()):
+                key = changed.get_child_value(index).get_child_value(0)
+                if key.get_size() > MAX_TEXT_BYTES + 1 or key.unpack() in keys:
+                    raise SnapshotFailure("malformed", "Invalid regional notification key")
+                keys.add(key.unpack())
+            if self.relevant.intersection(keys.union(invalidated)):
+                self.changed()
+        except SnapshotFailure:
+            self.stop(1)
+
+    def connected(self, _source, result, _data):
+        if not self.setting_up():
+            return
+        try:
+            self.connection = self.Gio.bus_get_finish(result)
+            if not self.setting_up():
+                return
+            self.connection.set_exit_on_close(False)
+            self.closed_handler = self.connection.connect("closed", lambda *_args: self.stop(1))
+            specs = [
+                ("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged", "/org/freedesktop/DBus", self.name, self.owner_changed,
+                 f"type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0='{self.name}'"),
+                (None, PROPERTIES_INTERFACE, "PropertiesChanged", self.path, self.name, self.properties_changed,
+                 f"type='signal',sender='{self.name}',interface='{PROPERTIES_INTERFACE}',member='PropertiesChanged',path='{self.path}',arg0='{self.name}'"),
+            ]
+            for sender, interface, member, path, arg0, callback, rule in specs:
+                self.subscriptions.append(self.connection.signal_subscribe(sender, interface, member, path,
+                    arg0, self.Gio.DBusSignalFlags.NO_MATCH_RULE, callback, None))
+                self.match_rules.append(rule)
+            self.add_match()
+        except self.GLib.Error:
+            self.stop(1)
+
+    def run(self):
+        if self.started:
+            raise RuntimeError("Regional monitors are single-use")
+        self.started = True
+        return super().run()
+
+
+def watch_service_events(regional_kind=None) -> int:
     output_writer = None
 
     def emit(record: str) -> None:
@@ -7963,7 +8187,9 @@ def watch_update_events() -> int:
             output_writer = control_output_writer(sys.stdout, resources)
             if output_writer is None:
                 raise OSError("Event output requires a file descriptor")
-            code = UpdateEventMonitor(Gio, GLib, GLibUnix, emit).run()
+            monitor = (UpdateEventMonitor(Gio, GLib, GLibUnix, emit) if regional_kind is None else
+                       RegionalEventMonitor(regional_kind, Gio, GLib, GLibUnix, emit))
+            code = monitor.run()
     except (ImportError, ValueError, OSError):
         code = 1
     if code:
@@ -7971,7 +8197,8 @@ def watch_update_events() -> int:
             with contextlib.ExitStack() as resources:
                 error_writer = control_output_writer(sys.stderr, resources)
                 if error_writer is not None:
-                    error_writer(b"PackageKit live change monitoring is unavailable; reload status explicitly\n")
+                    label = "PackageKit" if regional_kind is None else "Regional"
+                    error_writer((label + " live change monitoring is unavailable; reload status explicitly\n").encode("ascii"))
         except (OSError, ValueError):
             # Exit status remains authoritative when even diagnostics cannot
             # be delivered (including stderr sharing the full stdout pipe).
@@ -7979,12 +8206,22 @@ def watch_update_events() -> int:
     return code
 
 
+def watch_update_events() -> int:
+    return watch_service_events()
+
+
+def watch_regional_events(kind: str) -> int:
+    return watch_service_events(kind)
+
+
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | watch-updates | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | watch-updates | watch-regional time|locale | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if argv and argv[0] == "watch-regional":
+        return watch_regional_events(argv[1]) if len(argv) == 2 and argv[1] in ("time", "locale") else usage()
     if argv and argv[0] in {"timezone-set", "ntp-set", "locale-set"}:
         if len(argv) != 3 or JOURNAL_GENERATION_PATTERN.fullmatch(argv[2]) is None:
             return usage()
