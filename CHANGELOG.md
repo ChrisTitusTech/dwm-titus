@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Validate bounded regional choice and confirmation-preview streams in a
+  standalone parser, preserving complete locale details and typed read errors.
+  Visible confirmation and helper ownership remain pending.
+
 - Route fixed regional and delegated origins through the root operation owner
   with strict arguments, independent native journal admission, and scoped
   discovery invalidation. Visible native action controls remain pending.

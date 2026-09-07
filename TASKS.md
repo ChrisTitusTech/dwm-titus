@@ -351,6 +351,14 @@ Private fixtures cover all seven origins, rejection, denial, unsupported tools,
 uncertain output, replay, and exact acknowledgment without host mutation.
 Native Settings controls, fresh confirmation, and NTP sampling remain pending.
 
+A standalone read-only preflight parser now bounds raw choice and preview
+streams, retains split UTF-8 and complete locale detail, validates exact request
+identity, and requires matching completion and normal process exit. Catalog
+rows remain provisional until that final gate. Invalid selections may still
+produce a validated typed read error. The parser does not launch a helper,
+authorize a mutation, or expose a visible control; Process ownership and
+confirmation integration remain separate pending boundaries.
+
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
 confirmation warning that a sent change cannot be canceled. Local cancellation

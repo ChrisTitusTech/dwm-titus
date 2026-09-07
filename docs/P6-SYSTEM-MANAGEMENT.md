@@ -570,6 +570,20 @@ typed regional error and exits 1. Locale detail is the complete preserved
 override description, not a truncated summary. Preflight is not authorization
 or proof that a future mutation is available.
 
+The standalone QML `SystemRegionalPreflightProtocol.js` parser consumes
+cumulative raw bytes with a per-result lifetime. It checks the immutable prefix,
+strict UTF-8, control-free fields, exact record shape and ordering, catalog identity
+and payload limits, selected action/argument/target, and generation syntax.
+Unknown records and trailing fields are not extension space in these separate
+preflight protocols. Parsed choices and preview fields are provisional until
+`finish` verifies completion, a final newline, and normal exit 0; a typed error
+instead requires normal exit 1. A valid empty catalog is distinct from failure.
+The full readable locale detail and current value are preserved, without
+confusing readable aliases with the stricter service mutation grammar. The
+parser itself owns no Process, authorization, operation, or visible control.
+Nested-X11 parser fixtures exercise byte splits, malformed and replaced streams,
+limits, request mismatches, and typed errors without host service calls.
+
 Each preview makes fresh fixed reads: timezone state and timezone choices, NTP
 state, or locale state and installed locale choices. Service reads retain their
 ten-second aggregate bounds; the locale collector retains its three-second
