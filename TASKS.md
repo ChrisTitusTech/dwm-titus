@@ -380,8 +380,13 @@ process and completion publication have released ownership. Required recovery
 retires and reaps an optional read before claiming the shared snapshot. Closure
 and invalidation clear hidden catalogs and prompts without canceling a sent
 operation. Private cases cover all three actions, denial, uncertainty, stale
-state, and reentrant closure/recovery. Visible regional controls, clock refresh,
-NTP sampling, and combined installed qualification remain pending.
+state, and reentrant closure/recovery. Visible controls now provide bounded,
+searchable timezone/locale catalogs, fixed NTP choices, full plaintext previews,
+explicit sent-action cancellation warnings, and passive Cancel focus restoration.
+The private UI matrix covers three sizes, maximum catalogs, denied/unsupported
+outcomes, uncertain output recovery, and malformed/denied reads. Actual keyboard
+and screenshot evidence is recorded in `docs/P6-REGIONAL-UI-EVIDENCE.md`.
+Clock refresh, NTP sampling, and combined installed qualification remain pending.
 
 The root now provides internal confirmation for the four fixed delegated tools.
 It requires fresh owning-provider and journal evidence, captures snapshot and
@@ -393,8 +398,8 @@ provider explanations, and bounded read-only account/source lists. Geometry-driv
 focus reveal and Cancel focus restoration preserve keyboard access at small
 window sizes. The private UI matrix covers all four tools at three sizes with
 success, denial, unsupported, and maximum-inventory scenarios. Keyboard and
-screenshot evidence is recorded in `docs/P6-DELEGATE-UI-EVIDENCE.md`. Regional
-controls and combined installed qualification remain pending.
+screenshot evidence is recorded in `docs/P6-DELEGATE-UI-EVIDENCE.md`.
+Clock/NTP refresh and combined installed qualification remain pending.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

@@ -66,6 +66,15 @@ completed. Enter passwords only in the configured terminal's `passwd` prompt.
 Cancel returns keyboard focus to the originating control. Closing Settings does
 not close a launched tool or undo its changes.
 
+For timezone and system locale, select **Load choices**, filter the reported
+catalog, and select with click or Enter. **Review change** reads a fresh preview;
+it does not apply the selection. Network time offers fixed enable/disable
+previews. Confirm the complete current and target values with **Apply change**.
+A sent change cannot be canceled; Cancel only dismisses the preview. Uncertain
+results require fresh status and a new confirmation, never automatic retry or
+rollback. Locale changes apply to new sessions without automatic logout. NTP
+synchronization is explicitly labeled as last-read status.
+
 Type to search section names and descriptions. Use Up and Down to move through
 the filtered sections, Enter to select one, or Escape to close Settings. The
 Refresh button runs a new bounded capability snapshot; Settings does not add an

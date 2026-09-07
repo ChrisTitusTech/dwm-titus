@@ -627,9 +627,34 @@ completion cannot become a confirmation. Sent operations remain owned by the
 existing noncancelable native operation lifecycle across Settings closure.
 Forty-two private nested-X11 cases cover all three actions, typed failures,
 uncertainty, stale identity, exact selections, closure during claim/read/catalog/
-preview/dispatch publication, and recovery during read/publication. Visible
-regional forms, clock invalidation, NTP synchronization sampling, and real
-graphical authorization remain separate pending work.
+preview/dispatch publication, and recovery during read/publication.
+
+`SystemRegionalControls` now exposes this coordinator through fixed Settings
+controls. Timezone and locale catalogs load only on explicit request, filter
+reported identities without accepting free-form mutations, and use virtualized
+viewports capped to 144 pixels or the actual content height, whichever is smaller.
+Selection does not dispatch: Review change first requests a
+new preview. NTP exposes only enabled/disabled selections. All three confirmations
+show the complete plaintext current value, target, and backend detail, plus the
+warning that a sent change cannot be canceled. Cancel dismisses preparation and
+restores keyboard focus; it never rolls back or retries a mutation. Closing the
+pane clears catalogs while the root retains any sent operation. Locale guidance
+explains new-session activation without triggering logout. NTP synchronization is
+explicitly labeled as last-read evidence, not a live sample.
+Read-error explanations receive focus and are revealed after layout unless the
+user has moved focus elsewhere in Settings. Apply retains its origin until the
+operation releases the workflow, then restores focus if the user has not moved
+elsewhere or closed Settings. Read button activation handles mouse and keyboard.
+If a confirmation is larger than the content viewport, keyboard reveal targets
+its focused button rather than oscillating between the card edges. The complete
+preview remains scrollable; neither current values nor override detail is elided.
+
+Sixty-six private UI cases cover three actions at three window sizes with
+success, denial, unsupported results, uncertain output/replay, maximum catalogs,
+denied reads, and malformed reads, plus the NTP disable choice at all sizes.
+`docs/P6-REGIONAL-UI-EVIDENCE.md` records real
+X11 keyboard and screenshot checks. Clock invalidation, NTP synchronization
+sampling, and real graphical authorization remain separate pending work.
 
 Each preview makes fresh fixed reads: timezone state and timezone choices, NTP
 state, or locale state and installed locale choices. Service reads retain their
@@ -651,7 +676,8 @@ A mismatch requires new confirmation and sends no mutation. Visible confirmation
 and monitored invalidation remain mandatory; the token is a freshness guard,
 not an atomic service transaction or proof of human approval. The three fixed
 regional CLI forms now enforce this preflight and their durable lifecycle.
-Visible Settings origins remain disabled until confirmation integration lands.
+Visible Settings origins use the confirmed coordinator described above. Clock
+refresh, NTP sampling, and combined installed qualification remain pending.
 
 `health-open` is the sole action with no provider command: the root-scoped QML
 model invokes the fixed in-process `SystemHealthModel.openOnScreen` method with
@@ -800,9 +826,9 @@ filesystem/exec operations do not claim a hard kernel-I/O deadline.
 Unit and real private-child fixtures cover fixed argv, trust failures, bounded
 selection, launch errors, lost output, descriptor/session isolation, handoff
 replay, and a tool exiting unsuccessfully after its launch was accepted.
-Originating Settings controls remain outstanding. The cumulative snapshot now
-implements minor 1 as described below; discovery alone does not enable those
-controls.
+Originating Settings controls now require the delegated confirmation described
+below. The cumulative snapshot implements minor 1; discovery alone does not
+dispatch those actions. Combined installed qualification remains pending.
 
 The internal repository reader now bounds connection setup, optional activation
 of an absent PackageKit daemon, transaction setup, signals, and decoding under
@@ -1020,8 +1046,9 @@ successful acknowledgment invalidate only the action's fixed discovery domain.
 Native streams and active snapshots cannot advertise cancellation or a
 `cancel-requested` state; a valid pre-dispatch canceled terminal remains readable.
 Native action rows are published only after journal admission is established;
-rejected recovery still preserves read-only native state. These entry points are not exposed by IPC. Visible
-native controls, fresh confirmation, and NTP sampling remain required.
+rejected recovery still preserves read-only native state. These entry points are
+not exposed by IPC. Visible native controls now require fresh confirmation as
+described above; NTP sampling and combined installed qualification remain pending.
 The update-only compatibility formatter and operation streams retain minor 0;
 the snapshot minor selects capability advertisement, not a new operation format.
 Provider tests and 334 native Quickshell assertions qualify cumulative sets,
@@ -2003,8 +2030,8 @@ event prefix; callers cannot provide another executable or arbitrary arguments.
 The update component remains a thin compatibility wrapper. The root snapshot
 coordinator now starts all five fixed subscriptions while System Settings is
 open; software sources share the update subscription. No new idle polling or
-operation origins are introduced. Native controls and NTP sampling remain a
-separate integration boundary.
+operation origins are introduced by this subscriber. Native controls use the
+confirmed coordinator described above; NTP sampling remains pending.
 Private nested-X11 tests exercise every fixed stream, event bursts, a dirty
 settling read, explicit retry, wrong-prefix fallback, close cleanup, and unknown
 domain rejection. Replacing a domain retires the old read token and readiness
@@ -2197,9 +2224,9 @@ The internal `NtpRead` client separately issues exactly two fixed
 `Properties.Get` requests for `CanNTP` and `NTPSynchronized`, accepts only
 bounded boolean replies, and publishes a pair only after both succeed under
 one ten-second deadline. Partial, late, denied, and malformed replies do not
-publish a sample. This PR adds no sampling CLI or timer. Neither event commands
-nor this internal reader changes the cumulative snapshot minor. Settings
-activation and the following initialization/sampling contract remain pending.
+publish a sample. This internal reader adds no sampling CLI or timer. Neither
+event commands nor this reader changes the cumulative snapshot minor. Settings
+activation uses the shared root subscriptions; visible NTP sampling remains pending.
 
 The fixed `dwm-system-management watch-accounts` command is also implemented.
 It accepts no arguments and emits only `accounts-event<TAB>ready` and
