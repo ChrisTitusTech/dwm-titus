@@ -1976,6 +1976,23 @@ publish a sample. This PR adds no sampling CLI or timer. Neither event commands
 nor this internal reader changes the cumulative snapshot minor. Settings
 activation and the following initialization/sampling contract remain pending.
 
+The fixed `dwm-system-management watch-accounts` command is also implemented.
+It accepts no arguments and emits only `accounts-event<TAB>ready` and
+`accounts-event<TAB>changed`. It shares the authenticated setup lifetime above:
+the owner-change match precedes the initial owner lookup, then three service
+matches are acknowledged before the final owner barrier and readiness. All
+four matches and both owner lookups share one ten-second setup deadline.
+The fixed service matches are manager `UserAdded` and `UserDeleted` plus one
+interface-wide `org.freedesktop.Accounts.User.Changed` subscription. Every
+notification requires the pinned unique sender even during setup; object paths
+and signatures are bounded and validated before invalidation. No account
+method, enumeration, property read, or mutation is called by this monitor.
+It retains no candidate identities and has no idle timer or reconnect loop.
+An absent owner can be dormant, departure quietly clears its identity, and
+arrival/replacement invalidates. Finite reads separately report availability.
+The same bounded output, explicit failure guidance, and TERM/INT/HUP cleanup
+apply. This command does not activate Settings or change the snapshot minor.
+
 - systemd D-Bus property changes drive time and locale refresh while the System
   section is open. On pane open, the root model installs the timedate1 and
   locale1 property subscriptions before starting their initial bounded reads.
@@ -1997,11 +2014,15 @@ activation and the following initialization/sampling contract remain pending.
 - AccountsService manager `UserAdded` and `UserDeleted` signals and the `Changed`
   signal on every valid de-duplicated candidate object selected within the
   256-object bound trigger one bounded, coalesced account-summary refresh while
-  the section is open. On pane open, the root model installs the two manager
-  subscriptions before starting `ListCachedUsers`. It attaches each candidate's
-  `Changed` subscription after validating its object path and before reading or
-  filtering that object's properties, so an excluded object becoming eligible
-  refreshes the list. A matching signal during the initial enumeration or
+  the section is open. On pane open, the root model acknowledges both manager
+  subscriptions and the authenticated interface-wide `Changed` subscription
+  before starting `ListCachedUsers`. The latter already covers every candidate
+  before its properties are read or filtered, including an excluded object
+  becoming eligible. This replaces separate per-candidate attachment without
+  a second monitor enumeration that could select different objects. Valid
+  changes outside the selected set conservatively invalidate, but no additional
+  identities or account values are retained and the 256-object read bound is
+  unchanged. A matching signal during the initial enumeration or
   property reads reserves one serialized reconciliation read. A further signal
   during that settling read or its completion handoff stops the cycle after two
   reads, leaves accounts explicitly `partial` with refresh guidance, and

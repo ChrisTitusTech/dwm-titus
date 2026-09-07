@@ -277,6 +277,22 @@ sender before payload parsing. A private-bus fixture injects forged oversized
 unicast signals at both setup barriers while preserving an authentic pending
 notification.
 
+The fixed read-only account event command now acknowledges manager and user
+change subscriptions before enumeration. One authenticated interface-wide
+Changed match already covers every valid candidate before property reads or
+filtering, including excluded or newly discovered objects. It retains no
+candidate list and performs no independent enumeration, avoiding mismatched
+monitor/read selections. Changes outside the bounded result conservatively
+invalidate without enlarging the inventory. Shared authenticated setup retains
+the regional monitor's owner barriers, bounded output, and quiet departure.
+The 45 focused tests pass, including real signals during enumeration and an
+excluded account changing eligibility during property reads. Setup-unicast,
+owner/denial, full/closed output, and shutdown fixtures also pass. Settings
+activation, two-read settling, and cumulative minor 1 remain outstanding.
+A read-only Fedora 44 probe returned one available account row in 0.028
+seconds. The monitor emitted no events and used zero sampled CPU ticks over
+30 seconds, then terminated cleanly. No account or host setting was changed.
+
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
 confirmation warning that a sent change cannot be canceled. Local cancellation

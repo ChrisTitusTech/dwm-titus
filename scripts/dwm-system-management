@@ -7999,17 +7999,11 @@ class UpdateEventMonitor:
         return self.exit_code
 
 
-class RegionalEventMonitor(UpdateEventMonitor):
-    """Observe fixed regional properties, without activating idle platform services."""
+class AuthenticatedEventMonitor(UpdateEventMonitor):
+    """Acknowledge fixed service matches and authenticate even setup-time signals."""
 
-    record_prefix = "regional-event"
-
-    def __init__(self, kind, Gio, GLib, GLibUnix, emit):
-        if not isinstance(kind, str) or kind not in ("time", "locale"):
-            raise ValueError("Unknown regional monitor")
+    def __init__(self, Gio, GLib, GLibUnix, emit):
         super().__init__(Gio, GLib, GLibUnix, emit)
-        self.name, self.path = REGIONAL_READ_REQUESTS[kind + "-state"][:2]
-        self.relevant = {"Locale"} if kind == "locale" else {"Timezone", "CanNTP", "NTP", "NTPSynchronized"}
         self.started = False
 
     def setting_up(self):
@@ -8039,6 +8033,8 @@ class RegionalEventMonitor(UpdateEventMonitor):
                 return
             if reply.get_type_string() != "()":
                 self.stop(1)
+            elif 1 < len(self.installed_rules) < len(self.match_rules):
+                self.add_match()
             else:
                 # Authenticate the owner after the owner-change match, before
                 # enabling property delivery. Bus-side matches do not filter
@@ -8110,6 +8106,53 @@ class RegionalEventMonitor(UpdateEventMonitor):
         if new:
             self.changed()
 
+    def service_specs(self):
+        raise NotImplementedError
+
+    def connected(self, _source, result, _data):
+        if not self.setting_up():
+            return
+        try:
+            self.connection = self.Gio.bus_get_finish(result)
+            if not self.setting_up():
+                return
+            self.connection.set_exit_on_close(False)
+            self.closed_handler = self.connection.connect("closed", lambda *_args: self.stop(1))
+            specs = [
+                ("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged", "/org/freedesktop/DBus", self.name, self.owner_changed,
+                 f"type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0='{self.name}'"),
+            ] + self.service_specs()
+            for sender, interface, member, path, arg0, callback, rule in specs:
+                self.subscriptions.append(self.connection.signal_subscribe(sender, interface, member, path,
+                    arg0, self.Gio.DBusSignalFlags.NO_MATCH_RULE, callback, None))
+                self.match_rules.append(rule)
+            self.add_match()
+        except self.GLib.Error:
+            self.stop(1)
+
+    def run(self):
+        if self.started:
+            raise RuntimeError("Service monitors are single-use")
+        self.started = True
+        return super().run()
+
+
+class RegionalEventMonitor(AuthenticatedEventMonitor):
+    """Observe fixed regional properties, without activating idle platform services."""
+
+    record_prefix = "regional-event"
+
+    def __init__(self, kind, Gio, GLib, GLibUnix, emit):
+        if not isinstance(kind, str) or kind not in ("time", "locale"):
+            raise ValueError("Unknown regional monitor")
+        super().__init__(Gio, GLib, GLibUnix, emit)
+        self.name, self.path = REGIONAL_READ_REQUESTS[kind + "-state"][:2]
+        self.relevant = {"Locale"} if kind == "locale" else {"Timezone", "CanNTP", "NTP", "NTPSynchronized"}
+
+    def service_specs(self):
+        return [(None, PROPERTIES_INTERFACE, "PropertiesChanged", self.path, self.name, self.properties_changed,
+            f"type='signal',sender='{self.name}',interface='{PROPERTIES_INTERFACE}',member='PropertiesChanged',path='{self.path}',arg0='{self.name}'")]
+
     def properties_changed(self, _connection, sender, path, interface, member, parameters, _data):
         if (self.stopped or path != self.path or interface != PROPERTIES_INTERFACE
                 or member != "PropertiesChanged" or not self.owner or sender != self.owner):
@@ -8135,37 +8178,52 @@ class RegionalEventMonitor(UpdateEventMonitor):
         except SnapshotFailure:
             self.stop(1)
 
-    def connected(self, _source, result, _data):
-        if not self.setting_up():
+
+class AccountEventMonitor(AuthenticatedEventMonitor):
+    """Cover candidate changes before enumeration without retaining an unbounded list."""
+
+    record_prefix = "accounts-event"
+
+    def __init__(self, Gio, GLib, GLibUnix, emit):
+        super().__init__(Gio, GLib, GLibUnix, emit)
+        self.name, self.path = ACCOUNTS_NAME, ACCOUNTS_PATH
+
+    def service_specs(self):
+        specs = [(None, self.name, member, self.path, None, self.users_changed,
+            f"type='signal',sender='{self.name}',interface='{self.name}',member='{member}',path='{self.path}'")
+            for member in ("UserAdded", "UserDeleted")]
+        # This single authenticated interface subscription already covers all
+        # selected candidates, including excluded/new objects, before any read.
+        # Extra objects can only invalidate; no identities or values are kept.
+        specs.append((None, ACCOUNT_INTERFACE, "Changed", None, None, self.user_changed,
+            f"type='signal',sender='{self.name}',interface='{ACCOUNT_INTERFACE}',member='Changed'"))
+        return specs
+
+    def users_changed(self, _connection, sender, path, interface, member, parameters, _data):
+        if (self.stopped or not self.owner or sender != self.owner or path != self.path
+                or interface != self.name or member not in ("UserAdded", "UserDeleted")):
             return
         try:
-            self.connection = self.Gio.bus_get_finish(result)
-            if not self.setting_up():
-                return
-            self.connection.set_exit_on_close(False)
-            self.closed_handler = self.connection.connect("closed", lambda *_args: self.stop(1))
-            specs = [
-                ("org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged", "/org/freedesktop/DBus", self.name, self.owner_changed,
-                 f"type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',path='/org/freedesktop/DBus',arg0='{self.name}'"),
-                (None, PROPERTIES_INTERFACE, "PropertiesChanged", self.path, self.name, self.properties_changed,
-                 f"type='signal',sender='{self.name}',interface='{PROPERTIES_INTERFACE}',member='PropertiesChanged',path='{self.path}',arg0='{self.name}'"),
-            ]
-            for sender, interface, member, path, arg0, callback, rule in specs:
-                self.subscriptions.append(self.connection.signal_subscribe(sender, interface, member, path,
-                    arg0, self.Gio.DBusSignalFlags.NO_MATCH_RULE, callback, None))
-                self.match_rules.append(rule)
-            self.add_match()
-        except self.GLib.Error:
+            if parameters.get_type_string() != "(o)" or parameters.get_size() > MAX_TEXT_BYTES + 8:
+                raise SnapshotFailure("malformed", "Invalid account notification")
+            account_object_path(parameters.get_child_value(0))
+            self.changed()
+        except SnapshotFailure:
             self.stop(1)
 
-    def run(self):
-        if self.started:
-            raise RuntimeError("Regional monitors are single-use")
-        self.started = True
-        return super().run()
+    def user_changed(self, _connection, sender, path, interface, member, parameters, _data):
+        if (self.stopped or not self.owner or sender != self.owner
+                or interface != ACCOUNT_INTERFACE or member != "Changed"):
+            return
+        if (not isinstance(path, str) or len(path) > MAX_TEXT_BYTES
+                or DBUS_OBJECT_PATH.fullmatch(path) is None
+                or parameters.get_type_string() != "()" or parameters.get_size() > 8):
+            self.stop(1)
+            return
+        self.changed()
 
 
-def watch_service_events(regional_kind=None) -> int:
+def watch_service_events(service_kind=None) -> int:
     output_writer = None
 
     def emit(record: str) -> None:
@@ -8187,8 +8245,12 @@ def watch_service_events(regional_kind=None) -> int:
             output_writer = control_output_writer(sys.stdout, resources)
             if output_writer is None:
                 raise OSError("Event output requires a file descriptor")
-            monitor = (UpdateEventMonitor(Gio, GLib, GLibUnix, emit) if regional_kind is None else
-                       RegionalEventMonitor(regional_kind, Gio, GLib, GLibUnix, emit))
+            if service_kind is None:
+                monitor = UpdateEventMonitor(Gio, GLib, GLibUnix, emit)
+            elif service_kind == "accounts":
+                monitor = AccountEventMonitor(Gio, GLib, GLibUnix, emit)
+            else:
+                monitor = RegionalEventMonitor(service_kind, Gio, GLib, GLibUnix, emit)
             code = monitor.run()
     except (ImportError, ValueError, OSError):
         code = 1
@@ -8197,7 +8259,7 @@ def watch_service_events(regional_kind=None) -> int:
             with contextlib.ExitStack() as resources:
                 error_writer = control_output_writer(sys.stderr, resources)
                 if error_writer is not None:
-                    label = "PackageKit" if regional_kind is None else "Regional"
+                    label = "PackageKit" if service_kind is None else "Account" if service_kind == "accounts" else "Regional"
                     error_writer((label + " live change monitoring is unavailable; reload status explicitly\n").encode("ascii"))
         except (OSError, ValueError):
             # Exit status remains authoritative when even diagnostics cannot
@@ -8214,12 +8276,18 @@ def watch_regional_events(kind: str) -> int:
     return watch_service_events(kind)
 
 
+def watch_account_events() -> int:
+    return watch_service_events("accounts")
+
+
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | watch-updates | watch-regional time|locale | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | watch-updates | watch-regional time|locale | watch-accounts | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if argv and argv[0] == "watch-accounts":
+        return watch_account_events() if len(argv) == 1 else usage()
     if argv and argv[0] == "watch-regional":
         return watch_regional_events(argv[1]) if len(argv) == 2 and argv[1] in ("time", "locale") else usage()
     if argv and argv[0] in {"timezone-set", "ntp-set", "locale-set"}:
