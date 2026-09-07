@@ -653,7 +653,8 @@ Scope {
                         || !root.validOperationState(fields[4])
                         || !root.validPercent(fields[5])
                         || (fields[6] !== "yes" && fields[6] !== "no")
-                        || (root.updateActionKind(fields[2]).length === 0 && fields[6] !== "no")) {
+                        || (root.updateActionKind(fields[2]).length === 0
+                            && (fields[6] !== "no" || fields[4] === "cancel-requested"))) {
                     fatal = "System management provider returned an invalid active operation";
                     break;
                 }
@@ -717,6 +718,8 @@ Scope {
         const nativeAdmission = minor === 1 && nativeActionIds.some(identifier =>
             !nativeInvalid[root.nativeActionOwner(identifier)]
                 && parsedActions["$" + identifier].availability === "available");
+        const journalAdmitted = !recoveryInvalid && (parsedActive !== null || parsedHandoff !== null
+            || parsedRecoveryProvider.status === "available" || nativeAdmission);
         if (!updatesInvalid) {
             const cancelAvailable = parsedActions["$updates-cancel"].availability === "available";
             const canCancelActive = parsedActive !== null && parsedActive.cancelable;
@@ -854,7 +857,8 @@ Scope {
             }
             const nativeActions = [];
             for (const identifier of nativeActionIds) {
-                if (!nativeInvalid[root.nativeActionOwner(identifier)]) nativeActions.push(parsedActions["$" + identifier]);
+                if (journalAdmitted && !nativeInvalid[root.nativeActionOwner(identifier)])
+                    nativeActions.push(parsedActions["$" + identifier]);
             }
             root.actions = root.actions.concat(nativeActions);
         }
@@ -870,8 +874,7 @@ Scope {
             : "System management state is incomplete";
         // Valid native offers independently prove journal admission even when
         // update-specific recovery (for example logind) is unavailable.
-        return !recoveryInvalid && (parsedActive !== null || parsedHandoff !== null
-            || parsedRecoveryProvider.status === "available" || nativeAdmission);
+        return journalAdmitted;
     }
 
     function openSettings() {

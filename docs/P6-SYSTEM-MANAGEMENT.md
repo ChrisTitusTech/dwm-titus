@@ -948,17 +948,22 @@ limits, and removes every action from an invalid native owner. A replacement
 minor 0 snapshot clears older native projections. The root operation owner now
 accepts three fixed regional and four fixed delegated origins internally, with
 strict action, value, and generation validation before command construction.
-Regional values match the CLI identity grammar; actual catalog membership and
-fresh confirmation generations are rechecked by the backend. Shared admission
+Timezone and NTP values match the CLI identity grammar. Originating locale
+selections additionally require the service's conservative 1-127 character
+`[A-Za-z0-9_.@-]+` grammar, excluding `.` and `..`; broader readable locale
+state remains unchanged. Actual catalog membership and fresh confirmation
+generations are rechecked by the backend. Shared admission
 rejects every occupied or uncertain owner state, including before first output.
 Origin, adopted active identity, completion (including uncertain exit), and
 successful acknowledgment invalidate only the action's fixed discovery domain.
-Native streams cannot advertise cancellation; a valid pre-dispatch canceled
-terminal remains readable. These entry points are not exposed by IPC. Visible
+Native streams and active snapshots cannot advertise cancellation or a
+`cancel-requested` state; a valid pre-dispatch canceled terminal remains readable.
+Native action rows are published only after journal admission is established;
+rejected recovery still preserves read-only native state. These entry points are not exposed by IPC. Visible
 native controls, fresh confirmation, and NTP sampling remain required.
 The update-only compatibility formatter and operation streams retain minor 0;
 the snapshot minor selects capability advertisement, not a new operation format.
-Provider tests and 292 native Quickshell assertions qualify cumulative sets,
+Provider tests and 334 native Quickshell assertions qualify cumulative sets,
 failure isolation, missing tools, partial inventories, encoded bounds, and
 backward compatibility without changing host settings or launching tools.
 The private native-origin fixture covers 42 action/scenario combinations:

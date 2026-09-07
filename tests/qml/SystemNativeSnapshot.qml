@@ -156,8 +156,16 @@ ShellRoot {
             root.check(!root.parse(root.replaceRow(selected, "provider\t" + owner + "\t",
                 "provider\t" + owner + "\tavailable\tprivileged\tWrong\tInvalid")), "Invalid owner cannot prove admission");
             root.check(!root.parse(selected.filter(line => !line.startsWith("provider\trecovery\t"))), "Missing recovery fails closed");
+            root.check(!model.actions.some(action => nativeIds.indexOf(action.id) >= 0), "Missing recovery removes native offers");
+            root.check(model.nativeStates.timezone.status === "available", "Missing recovery retains readable native state");
             root.check(!root.parse(root.replaceRow(selected, "provider\trecovery\t",
                 "provider\trecovery\tpartial\tprivileged\tWrong\tInvalid")), "Malformed recovery fails closed");
+            root.check(!model.actions.some(action => nativeIds.indexOf(action.id) >= 0), "Malformed recovery removes native offers");
+            root.check(model.nativeStates.timezone.status === "available", "Malformed recovery retains readable native state");
+            const kind = model.operationActionKind(offered);
+            root.check(!root.parse(selected.concat([["active-operation", "op-" + "e".repeat(32), offered, kind,
+                "cancel-requested", "unknown", "no", "Invalid native cancellation"].join("\t")])), "Native cancellation request cannot enter through a snapshot");
+            root.check(model.snapshotState === "failure" && model.actions.length === 0, "Invalid native active record clears all offers");
         }
         root.check(!root.parse(lines.map(line => line.startsWith("action\t") ? line.replace("\tavailable\t", "\tunavailable\t") : line)),
             "No native offer cannot establish empty journal");

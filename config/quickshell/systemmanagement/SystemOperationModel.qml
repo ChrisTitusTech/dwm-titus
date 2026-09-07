@@ -161,8 +161,11 @@ Scope {
         if (action === "timezone-set" && value.length > 0 && value.length <= 255 && !/[^\x20-\x7e]/.test(value)
                 && value.split("/").every(part => part !== "" && part !== "." && part !== "..")) return [value, generation];
         if (action === "ntp-set" && (value === "enabled" || value === "disabled")) return [value, generation];
-        if (action === "locale-set" && value.startsWith("LANG=") && value.length > 5 && value.length <= 133
-                && !/[^\x21-\x7e]/.test(value)) return [value, generation];
+        // Readable locale aliases are broader; never claim an origin for a
+        // selection that the fixed locale service cannot accept.
+        const locale = value.slice(5);
+        if (action === "locale-set" && value.startsWith("LANG=") && locale.length > 0 && locale.length < 128
+                && locale !== "." && locale !== ".." && !/[^A-Za-z0-9_.@-]/.test(locale)) return [value, generation];
         return null;
     }
 

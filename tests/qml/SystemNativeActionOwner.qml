@@ -50,6 +50,9 @@ ShellRoot {
                 ["timezone-set", "UTC\n", "c".repeat(64)], ["timezone-set", "x".repeat(256), "c".repeat(64)],
                 ["ntp-set", "yes", "c".repeat(64)], ["locale-set", "LANG=", "c".repeat(64)],
                 ["locale-set", "LANG=en_US\n", "c".repeat(64)], ["locale-set", "LANG=" + "x".repeat(129), "c".repeat(64)],
+                ["locale-set", "LANG=" + "x".repeat(128), "c".repeat(64)],
+                ["locale-set", "LANG=.", "c".repeat(64)], ["locale-set", "LANG=..", "c".repeat(64)],
+                ["locale-set", "LANG=en/US", "c".repeat(64)], ["locale-set", "LANG=en=US", "c".repeat(64)],
                 ["accounts-open", "extra", ""], ["password-open", "", "c".repeat(64)],
                 ["ntp-set", "enabled", "c".repeat(64) + "\n"], ["ntp-set", "enabled", "C".repeat(64)],
                 ["timezone-set", null, "c".repeat(64)], ["sources-open", "", null]]) {
@@ -57,6 +60,8 @@ ShellRoot {
             check(!model.startOperation(args[0], args[1], args[2]), "Shared entry also validates arguments");
         }
         check(!model.startNative("updates-refresh", "", ""), "Native entry excludes updates");
+        check(model.originArguments("locale-set", "LANG=" + "x".repeat(127), "c".repeat(64)) !== null,
+            "Exact service locale length boundary remains eligible for backend membership checks");
         check(!model.startUpdate(action, generation), "Update entry excludes native actions");
         for (const field of ["streamOwned", "controlOwned", "waitingSnapshot", "blocked"]) {
             model[field] = true;
