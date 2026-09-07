@@ -239,7 +239,7 @@ actual CLI/private-bus fixtures cover all three actions, denial, stale
 confirmation, write failures, lost output, replay, and acknowledgment without
 repeating the action. Graphical polkit and host mutations are not qualified.
 Post-timeout Settings display refresh and originating Settings controls remain
-outstanding; the snapshot minor remains zero.
+outstanding; cumulative minor 1 discovery is described below.
 
 The four fixed delegated CLI origins now resolve trusted administration tools,
 preserve configured terminal selection for the fixed password command, and
@@ -251,8 +251,8 @@ terminal retention, and replay preserve ownership without tracking the tools'
 internal administration. Unit and real private-child fixtures cover trust,
 selection, denial/failure, lost output, child isolation, and later tool failure
 without falsely reporting its work as completed. No real administration tool or
-password prompt was opened. Settings origins and cumulative minor 1 discovery
-remain outstanding.
+password prompt was opened. Settings origins remain outstanding; cumulative
+minor 1 discovery is described below.
 A read-only Fedora 44 probe resolved the password command through Alacritty in
 0.056 seconds and found the printer tool available. Account and source tools
 were absent and returned their scoped missing-provider results; none was opened.
@@ -265,7 +265,7 @@ would repeatedly reactivate the service. Output loss and bus loss fail with
 explicit reload guidance. An internal NTP reader samples only CanNTP and
 NTPSynchronized under one ten-second budget, without enabling a polling loop.
 Settings subscription handoff, two-read settling, and visible-only sampling
-remain outstanding; the cumulative snapshot minor remains zero.
+remain outstanding; cumulative minor 1 discovery is described below.
 The 38 focused tests pass, including private-bus lifecycle, owner denial,
 output isolation, and real ten-second read deadlines. A read-only Fedora 44
 probe observed each monitor for 36 seconds after its initial service read:
@@ -288,7 +288,8 @@ the regional monitor's owner barriers, bounded output, and quiet departure.
 The 45 focused tests pass, including real signals during enumeration and an
 excluded account changing eligibility during property reads. Setup-unicast,
 owner/denial, full/closed output, and shutdown fixtures also pass. Settings
-activation, two-read settling, and cumulative minor 1 remain outstanding.
+activation and two-read settling remain outstanding; cumulative minor 1 discovery
+is described below.
 A read-only Fedora 44 probe returned one available account row in 0.028
 seconds. The monitor emitted no events and used zero sampled CPU ticks over
 30 seconds, then terminated cleanly. No account or host setting was changed.
@@ -305,8 +306,25 @@ forged notifications, bounded bursts, denial, malformed state, actual setup
 timeout, canceled lookups, full/closed output, and owner loss. Real Fedora 44
 printer and security watchers each emitted zero events and used zero sampled
 CPU ticks over 30 seconds, then stopped cleanly. No host service was changed.
-Settings integration, cumulative minors, and combined qualification remain
-outstanding.
+Settings integration and combined qualification remain outstanding; cumulative
+minor 1 discovery is implemented below.
+
+The managed snapshot now emits the complete cumulative minor 1 provider, state,
+action, account, and repository set. Separate native admission verifies Fedora
+and the fixed journal without depending on update security or logind evidence.
+Missing tools and independent reader failures preserve readable unrelated state;
+partial account inventories retain only their validated bounded subset. The
+producer reserves non-list and total output bytes before publication. The
+Settings parser accepts both minor 0 and 1, validates mandatory records and
+closed fields, isolates owned failures, and removes invalid-owner actions.
+Focused producer/recovery tests and 204 nested-X11 parser assertions pass without
+launching tools or changing host settings. Existing update-only and operation
+streams retain minor 0. Originating native controls, confirmation/monitor
+coordination, NTP sampling, and combined installed qualification remain pending.
+A read-only Fedora 44 cumulative snapshot completed in 2.70 seconds with all
+mandatory records, one account, 28 repositories, 31 updates, and 37 package-change
+rows. Missing tools and unavailable logind evidence were independently reported;
+the isolated test journal was removed and no tool or mutation was dispatched.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

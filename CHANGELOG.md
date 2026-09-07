@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add complete cumulative regional, account, printer, and software-source
+  discovery with a backward-compatible Settings parser. Preserve readable
+  state when a service or tool is missing, independently gate native admission,
+  and enforce complete bounded lists. New Settings action controls remain pending.
+
 - Add fixed read-only printer and firewall unit event monitors with private
   subscription ownership, canonical-alias discovery, bounded reconciliation,
   and no idle polling or service activation. Settings integration remains pending.

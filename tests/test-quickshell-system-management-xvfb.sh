@@ -398,6 +398,27 @@ if ! grep -F 'Operation parser native tests: PASS' "$work/operation-parser.log";
 fi
 
 # Exercise the real root-owned Process lifecycle with a private fixed helper.
+mkdir -p "$work/native-snapshot"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/native-snapshot/"
+cp "$repo/tests/qml/SystemNativeSnapshot.qml" "$work/native-snapshot/shell.qml"
+timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_SYSTEM_MANAGEMENT_TEST_FIXTURE="$fixture" \
+	quickshell --no-duplicate --path "$work/native-snapshot/shell.qml" >"$work/native-snapshot.log" 2>&1 &
+quickshell_pid=$!
+native_status=0
+wait "$quickshell_pid" || native_status=$?
+quickshell_pid=
+if [ "$native_status" -ne 0 ] || ! grep -F 'Native snapshot tests: PASS' "$work/native-snapshot.log" ||
+	grep -Fq 'Native snapshot FAILED:' "$work/native-snapshot.log"; then
+	cat "$work/native-snapshot.log" >&2
+	exit 1
+fi
+if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .; then
+	printf 'Parser-only fixture started a capture that outlived its process\n' >&2
+	exit 1
+fi
+
 mkdir -p "$work/update-action" "$work/update-action-data/dwm-titus/scripts"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/update-action/"
 cp "$repo/tests/qml/SystemUpdateActionOwner.qml" "$work/update-action/shell.qml"

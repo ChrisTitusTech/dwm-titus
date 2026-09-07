@@ -36,7 +36,7 @@ if grep -Fq 'repeat: true' "$model"; then
 fi
 
 grep -Fq 'recordIndex === 0 && type !== "system-management-protocol"' "$model"
-grep -Fq 'fields[1] !== "1" || fields[2] !== "0"' "$model"
+grep -Fq 'fields[1] !== "1" || (fields[2] !== "0" && fields[2] !== "1")' "$model"
 grep -Fq 'System management provider emitted records after completion' "$model"
 grep -Fq '!headerSeen || !completeSeen || parsedGeneration.length === 0' "$model"
 grep -Fq 'return /^[0-9a-f]{64}$/.test(value);' "$model"

@@ -476,8 +476,8 @@ durable handoffs, denial, stale generation, ambiguous replies, output loss after
 dispatch, retained replay, and acknowledgment without repeating the action.
 For an ambiguous sent result, a new independent read begins only after durable
 interruption and lease release; it cannot reclassify the terminal result.
-Settings still needs its own display refresh and confirmation/origin controls,
-and the cumulative snapshot remains minor zero. These fixtures do not change
+Settings still needs its own display refresh and confirmation/origin controls.
+Cumulative minor 1 discovery is described below. These fixtures do not change
 host settings or qualify graphical polkit authorization.
 
 Each regional mutation uses a 60-second monotonic aggregate deadline beginning
@@ -734,8 +734,9 @@ filesystem/exec operations do not claim a hard kernel-I/O deadline.
 Unit and real private-child fixtures cover fixed argv, trust failures, bounded
 selection, launch errors, lost output, descriptor/session isolation, handoff
 replay, and a tool exiting unsuccessfully after its launch was accepted.
-Originating Settings controls and cumulative minor 1 discovery remain
-outstanding; the cumulative snapshot remains minor zero.
+Originating Settings controls remain outstanding. The cumulative snapshot now
+implements minor 1 as described below; discovery alone does not enable those
+controls.
 
 The internal repository reader now bounds connection setup, optional activation
 of an absent PackageKit daemon, transaction setup, signals, and decoding under
@@ -913,6 +914,53 @@ never emits a later planned ID as `unsupported`. Within that minor, every
 active provider, state, and action is mandatory even when its platform source
 is absent. A consumer that supports a later minor accepts earlier cumulative
 sets; a producer bumps the minor only when the entire next row is implemented.
+
+The managed `snapshot` command now emits the complete minor 1 set. Time and
+locale are read independently, with all six new states and seven new action
+rows present even when their sources are absent. Missing administration tools
+disable only their own actions, without hiding readable account rows, CUPS
+status, or repository records. Partial account enumeration retains the validated
+subset and uses an unknown count; an available count exactly equals its emitted
+rows. Every repository result is complete or discarded. The producer enforces
+the complete stream and separate non-list byte reservations before publication.
+
+Native offers require a validated empty recovery state and a separate Fedora
+identity and bounded, locked journal-admission check. The check verifies current
+ownership, handoff, commit headroom, and a reusable terminal slot; it neither
+commits an operation nor retains a lease. It has no PackageKit security-floor or
+logind dependency. Failure to read update/session restart evidence therefore
+does not hide independently admissible native actions, while missing journal
+state, an active owner, or an unacknowledged result still blocks them. All offers
+are advisory: originating commands repeat their own admission and fresh-state
+checks. Delegated discovery resolves fixed trusted arguments but never launches
+the tool. Unsupported preserved locale overrides disable the language action
+without discarding readable locale state; choices and complete previews remain
+separate fresh reads.
+
+The Settings parser accepts complete minor 0 and minor 1 snapshots, isolates
+known-owner failures, checks mandatory records and list identity/count/byte
+limits, and removes every action from an invalid native owner. A replacement
+minor 0 snapshot clears older native projections. This boundary does not change
+root operation ownership policy or add originating native/delegated controls,
+monitor coordination, or NTP sampling. Those integrations remain required.
+The update-only compatibility formatter and operation streams retain minor 0;
+the snapshot minor selects capability advertisement, not a new operation format.
+Provider tests and 204 native Quickshell assertions qualify cumulative sets,
+failure isolation, missing tools, partial inventories, encoded bounds, and
+backward compatibility without changing host settings or launching tools.
+An explicit empty `LANG=` remains readable and does not hide timezone or NTP
+state; replacing it still requires a fresh locale choice and confirmation.
+Duplicate list identities remain stream-fatal even after that provider's count
+or byte limit is exceeded. The overall 9216-list-record reservation separately
+bounds duplicate tracking; exceeding it rejects the whole snapshot.
+A read-only Fedora 44 managed snapshot completed in 2.70 seconds with one
+account, 28 repositories, 31 updates, and 37 package-change rows. Missing account
+and source tools disabled only their own launch offers; password and printer
+tool resolution remained available. This agent's missing logind session kept
+update recovery partial while regional status and native admission remained
+independently available. Its journal was isolated in the managed test workspace
+and removed afterward. No system setting, package, or service configuration was
+changed, and no administration tool was opened.
 
 Required fields are single-line UTF-8 with tabs and line breaks replaced by
 spaces. Unknown records and trailing fields are ignored. Consumers reject a
@@ -1161,13 +1209,16 @@ and `succeeded` are terminal and appear exactly once.
 Snapshot record failures are provider-scoped only when a valid known provider,
 state, action, or list-record ID still identifies the owner; the consumer marks
 that provider invalid and continues parsing unrelated providers. A malformed
-header or completion, a missing or unknown owner ID, duplicate ID, illegal enum,
+header or completion, a missing or unknown owner ID, duplicate ID,
 duplicate `active-operation`, duplicate `terminal-handoff`, both snapshot-only
 operation records in one snapshot, operation-ID, action-ID, or action-kind mismatch,
 a terminal `active-operation`, transition outside the table,
 an operation record after a terminal state, any record after the required
 completion, or missing completion rejects the entire stream. Operation and
-audit record failures always reject the operation stream. Text fields are
+audit record failures always reject the operation stream. An illegal enum in a
+snapshot record with a known fixed owner invalidates that owner, just like its
+other malformed fields; illegal header or operation enums remain stream-fatal.
+Text fields are
 capped at 512 bytes. Fixed per-type count and encoded-byte budgets are 4096 and
 3 MiB for `update`, 4096 and 3 MiB for `package-change`, 512 and 384 KiB for
 `repository`, 256 and 256 KiB for `account`, and 256 and 384 KiB for
