@@ -24,6 +24,11 @@ grep -Fq "2>\"\$error_file\" &" "$commands"
 grep -Fq "head -c 512 \"\$error_file\" >&2" "$commands"
 grep -Fq 'command: Commands.terminatingCheckedCommand(' "$model"
 [ "$(grep -Fc 'Process {' "$model")" -eq 1 ]
+[ "$(grep -Fc 'SystemProviderDiscovery {' "$model")" -eq 4 ]
+grep -Fq 'root.snapshotOwned || root.discoveryBatch' "$model"
+grep -Fq 'const ready = root.discoveryReady();' "$model"
+grep -Fq 'snapshotProcess.cycleTokens.push({ model: model, token: token });' "$model"
+grep -Fq 'for (const item of tokens) item.model.beforePublish(item.token);' "$model"
 [ "$(grep -Fc 'Process {' "$provider_discovery")" -eq 1 ]
 grep -Fq 'SystemProviderDiscovery {' "$discovery"
 grep -Fq 'domain: "updates"' "$discovery"

@@ -58,6 +58,13 @@ def snapshot():
 
 
 def main():
+    if tuple(sys.argv[1:]) in (("watch-regional", "time"), ("watch-regional", "locale"),
+                              ("watch-accounts",), ("watch-units", "printers")):
+        prefix = "regional-event" if sys.argv[1] == "watch-regional" else (
+            "accounts-event" if sys.argv[1] == "watch-accounts" else "units-event")
+        row(prefix, "ready")
+        signal.pause()
+        return 0
     command = sys.argv[1]
     if command == "fixture-control" and len(sys.argv) == 3:
         value = sys.argv[2]

@@ -31,6 +31,7 @@ Scope {
     property bool snapshotOwned: false
     property bool snapshotRequired: false
     property bool snapshotHasOutput: false
+    property bool discoveryBatch: false
     property string snapshotErrorDetail: ""
     property int requestGeneration: 0
     property var updateConfirmation: null
@@ -38,6 +39,10 @@ Scope {
     property bool dispatchingUpdate: false
     readonly property alias operation: operationModel
     readonly property alias discovery: discoveryModel
+    readonly property alias timeDiscovery: timeDiscoveryModel
+    readonly property alias localeDiscovery: localeDiscoveryModel
+    readonly property alias accountDiscovery: accountDiscoveryModel
+    readonly property alias printerDiscovery: printerDiscoveryModel
 
     readonly property bool busy: snapshotOwned
     readonly property string providerState: root.settingsVisible
@@ -45,6 +50,43 @@ Scope {
         ? "partial" : root.updateProvider.status
     readonly property string providerDetail: root.updateProvider.detail
     readonly property string discoveryDetail: discoveryModel.detail
+
+    function discoveryModels() {
+        return [discoveryModel, timeDiscoveryModel, localeDiscoveryModel,
+            accountDiscoveryModel, printerDiscoveryModel];
+    }
+
+    function discoveryReady() {
+        return root.settingsVisible && root.discoveryModels().every(model => model.visible && (model.ready || model.failed));
+    }
+
+    function stateDiscovery(identifier) {
+        if (identifier === "timezone" || identifier === "ntp-enabled" || identifier === "ntp-synchronized") return timeDiscoveryModel;
+        if (identifier === "locale") return localeDiscoveryModel;
+        if (identifier === "accounts-count") return accountDiscoveryModel;
+        if (identifier === "cups-service") return printerDiscoveryModel;
+        return null;
+    }
+
+    function nativeStateView(identifier) {
+        const state = root.nativeStates[identifier] || root.stateFallback("This state is unavailable");
+        const monitor = root.stateDiscovery(identifier);
+        if (!root.settingsVisible || monitor === null) return state;
+        return { status: state.status === "available" && (monitor.failed || monitor.unresolved) ? "partial" : state.status,
+            value: state.value, detail: [state.detail, monitor.detail].filter(value => value.length > 0).join(" ") };
+    }
+
+    function nativeProviderView(owner) {
+        const provider = root.nativeProviders[owner] || root.providerFallback("This provider is unavailable");
+        const monitors = owner === "regional" ? [timeDiscoveryModel, localeDiscoveryModel]
+            : owner === "accounts" ? [accountDiscoveryModel] : owner === "printers" ? [printerDiscoveryModel]
+            : owner === "sources" ? [discoveryModel] : [];
+        if (!root.settingsVisible) return provider;
+        return { status: provider.status === "available" && monitors.some(model => model.failed || model.unresolved)
+                ? "partial" : provider.status,
+            providerClass: provider.providerClass, owner: provider.owner,
+            detail: [provider.detail].concat(monitors.map(model => model.detail)).filter(value => value.length > 0).join(" ") };
+    }
 
     function updateActionReason(actionId) {
         if (actionId !== "updates-refresh" && actionId !== "updates-install-all")
@@ -822,14 +864,17 @@ Scope {
 
     function openSettings() {
         root.settingsVisible = true;
-        discoveryModel.open();
+        root.discoveryBatch = true;
+        for (const model of root.discoveryModels()) model.open();
         root.refreshRecovery();
+        root.discoveryBatch = false;
+        root.requestSnapshot(root.requiredPending);
     }
 
     function closeSettings() {
         root.settingsVisible = false;
         root.confirmationInvalidated();
-        discoveryModel.close();
+        for (const model of root.discoveryModels()) model.close();
         root.snapshotPending = false;
         if (!root.snapshotRequired) {
             root.requestGeneration++;
@@ -839,8 +884,11 @@ Scope {
 
     function refresh() {
         if (!root.settingsVisible) return;
-        discoveryModel.refresh();
+        root.discoveryBatch = true;
+        for (const model of root.discoveryModels()) model.refresh();
         root.refreshRecovery();
+        root.discoveryBatch = false;
+        root.requestSnapshot(root.requiredPending);
     }
 
     function refreshRecovery() {
@@ -852,33 +900,52 @@ Scope {
 
     function requestSnapshot(required) {
         if (!required && !root.settingsVisible) return;
-        if (root.snapshotOwned) {
+        if (root.snapshotOwned || root.discoveryBatch) {
             root.snapshotPending = root.snapshotPending || !required;
             root.requiredPending = root.requiredPending || required;
             return;
         }
         required = required || root.requiredPending;
-        if (!required && !discoveryModel.canTake()) return;
+        const ready = root.discoveryReady();
+        if (!required && (!ready || !root.discoveryModels().some(model => model.canTake()))) return;
         root.snapshotPending = false;
         root.requiredPending = false;
         // Claim the owner before any QML signal from discovery.take/publication.
         root.snapshotOwned = true;
-        snapshotProcess.cycleToken = discoveryModel.take();
         root.requestGeneration++;
         snapshotProcess.generation = root.requestGeneration;
         root.snapshotRequired = required;
         root.snapshotHasOutput = false;
         root.snapshotErrorDetail = "";
+        snapshotProcess.cycleTokens = [];
+        // Required recovery can bypass subscription setup, but cannot certify
+        // optional freshness until every domain has a handshake or fallback.
+        if (ready) {
+            for (const model of root.discoveryModels()) {
+                const token = model.take();
+                if (token !== null) snapshotProcess.cycleTokens.push({ model: model, token: token });
+                if (snapshotProcess.generation !== root.requestGeneration) break;
+            }
+        }
         root.confirmationInvalidated();
+        if (snapshotProcess.generation !== root.requestGeneration) {
+            root.finishSnapshot(-1, false);
+            return;
+        }
         root.snapshotState = "loading";
-        root.message = "Reading system update status...";
+        root.message = "Reading system management status...";
+        if (snapshotProcess.generation !== root.requestGeneration) {
+            root.finishSnapshot(-1, false);
+            return;
+        }
         snapshotProcess.running = true;
     }
 
     function finishSnapshot(exitCode, normalExit) {
         if (!root.snapshotOwned) return;
         const current = snapshotProcess.generation === root.requestGeneration;
-        discoveryModel.beforePublish(snapshotProcess.cycleToken);
+        const tokens = snapshotProcess.cycleTokens;
+        for (const item of tokens) item.model.beforePublish(item.token);
         if (current) {
             if (normalExit && exitCode === 0 && root.snapshotHasOutput) {
                 if (root.parseSnapshot(snapshotOutput.text, snapshotProcess.generation))
@@ -892,7 +959,7 @@ Scope {
         }
         // Reentrant invalidations during parse/acceptSnapshot still belong to
         // this completion handoff. Reserve the settling read before idle.
-        discoveryModel.complete(snapshotProcess.cycleToken, current && root.snapshotState !== "failure");
+        for (const item of tokens) item.model.complete(item.token, current && root.snapshotState !== "failure");
         root.snapshotRequired = false;
         root.snapshotOwned = false;
         // The old process emits runningChanged after exited. Queue the next
@@ -911,6 +978,27 @@ Scope {
         onInvalidated: root.confirmationInvalidated()
     }
 
+    SystemProviderDiscovery {
+        id: timeDiscoveryModel
+        domain: "time"
+        onSnapshotRequested: root.requestSnapshot(false)
+    }
+    SystemProviderDiscovery {
+        id: localeDiscoveryModel
+        domain: "locale"
+        onSnapshotRequested: root.requestSnapshot(false)
+    }
+    SystemProviderDiscovery {
+        id: accountDiscoveryModel
+        domain: "accounts"
+        onSnapshotRequested: root.requestSnapshot(false)
+    }
+    SystemProviderDiscovery {
+        id: printerDiscoveryModel
+        domain: "printers"
+        onSnapshotRequested: root.requestSnapshot(false)
+    }
+
     SystemOperationModel {
         id: operationModel
         onDiscoveryInvalidated: discoveryModel.invalidate()
@@ -927,7 +1015,7 @@ Scope {
     Process {
         id: snapshotProcess
         property int generation: 0
-        property var cycleToken: null
+        property var cycleTokens: []
         command: Commands.terminatingCheckedCommand(
             Commands.systemManagementCommand("snapshot", []))
         running: false
