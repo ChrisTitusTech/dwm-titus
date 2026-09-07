@@ -234,8 +234,10 @@ ShellRoot {
     }
     Process {
         id: control
+        stderr: StdioCollector { id: controlError }
         onExited: (code, status) => {
-            root.check(code === 0 && status === 0, "Private fixture control succeeds");
+            root.check(code === 0 && status === 0, "Private fixture control succeeds ("
+                + root.continuation + ", exit " + code + ", status " + status + "): " + controlError.text);
             Qt.callLater(root.controlled);
         }
     }

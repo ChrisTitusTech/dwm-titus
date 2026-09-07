@@ -356,8 +356,15 @@ streams, retains split UTF-8 and complete locale detail, validates exact request
 identity, and requires matching completion and normal process exit. Catalog
 rows remain provisional until that final gate. Invalid selections may still
 produce a validated typed read error. The parser does not launch a helper,
-authorize a mutation, or expose a visible control; Process ownership and
-confirmation integration remain separate pending boundaries.
+authorize a mutation, or expose a visible control.
+
+A separate optional preflight owner now admits only fixed catalog and preview
+requests while active. It retains one Process through completion publication,
+close, timeout, and forced-stop cleanup; stale callbacks cannot own a replacement.
+Complete bytes remain provisional until the matching process exits. Private
+nested-X11 fixtures cover 18 success, error, cancellation, timeout, reentrant,
+and failed-start scenarios without host service calls. Root confirmation
+integration and visible controls remain separate pending boundaries.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
