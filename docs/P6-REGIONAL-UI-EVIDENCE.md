@@ -41,8 +41,9 @@ geometry; production reveal follows geometry notifications without polling.
 A disable-specific regression reproduced incorrect return focus to Enable.
 The corrected UI retains the exact preview argument and restores Disable.
 Post-gate review identified an off-screen read-error explanation. Errors now
-receive focus and follow geometry-driven reveal; every denied/malformed read UI
-case requires the full plaintext explanation to be visible without a mutation.
+receive focus and follow geometry-driven reveal when the user has not moved
+elsewhere. Read UI cases require complete plaintext explanations without a
+mutation; moved-focus cases preserve the user's current interaction.
 Oversized previews keep the focused Cancel or Apply button visible instead of
 alternating between the card's clipped top and bottom. The success/outcome cases
 shrink to a 120-pixel content viewport, repeatedly reveal each focused button,
@@ -57,6 +58,11 @@ its initiating control. Catalog availability assertions now begin with an exact
 selected value, so selection requirements cannot mask an unavailable action.
 Regional read buttons establish focus on activation, including mouse clicks;
 tests invoke the same activation path without supplying focus themselves.
+Window-wide focus checks also preserve Reload status, the outer scrolling pane,
+and a fixture control outside the pane. Malformed-read cases move focus during
+the real pending read. Apply retains its origin until the operation releases the
+workflow; successful open-pane cases restore the exact enabled origin, including
+NTP Disable. Closing Settings or moving focus elsewhere retires that restoration.
 
 ![NTP confirmation at 640x480](evidence/p6-regional/confirmation-640.png)
 

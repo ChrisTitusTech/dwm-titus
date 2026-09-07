@@ -51,6 +51,10 @@ ShellRoot {
         if (action === "ntp-set") click(origin);
         else click("load-" + kind);
         stage = action === "ntp-set" ? 3 : 2;
+        if (scenario === "malformed-read") {
+            check(model.regional.ownsPreparation(), "Focus moves while a real read is pending");
+            find(action === "ntp-set" ? "regionalOuterPane" : "externalRegionalFocus").forceActiveFocus();
+        }
     }
     function settled() { return !model.busy && !model.regional.ownsPreparation(); }
     function checkUnavailableOffer() {
@@ -82,7 +86,8 @@ ShellRoot {
         check(list.count === 1, "Search retains exact reported identity");
         find("regional-card-" + kind).selected = selection;
         checkUnavailableOffer();
-        checkMessageFocus(["load-" + kind, origin, "search-" + kind, "choices-" + kind], 0, function() {
+        checkMessageFocus(["reloadSystemStatus", "externalRegionalFocus", "load-" + kind, origin,
+            "search-" + kind, "choices-" + kind], 0, function() {
             root.click(root.origin);
             root.check(!root.find("choices-" + root.kind).activeFocus,
                 "Mouse-style preview activation leaves the old list focus behind");
@@ -117,7 +122,8 @@ ShellRoot {
             check(find("regional-card-" + kind).visible, "Readable regional state is present");
             if (action === "ntp-set") {
                 checkUnavailableOffer();
-                checkMessageFocus(["prepare-ntp-enabled", "prepare-ntp-disabled"], 0, function() { root.startPreparation(); });
+                checkMessageFocus(["reloadSystemStatus", "externalRegionalFocus",
+                    "prepare-ntp-enabled", "prepare-ntp-disabled"], 0, function() { root.startPreparation(); });
             } else startPreparation();
         } else if (stage === 2 && settled()) {
             if (scenario === "error-read" || scenario === "malformed-read") { finishReadFailure(); return; }
@@ -212,11 +218,25 @@ ShellRoot {
                 root.click("confirmRegional");
                 root.check(model.operation.streamOwned && !model.operation.canCancel && !root.find("cancelUpdate").visible,
                     "Only fixed native origin owns sent action; no update cancellation");
-                model.closeSettings();
-                root.check(model.operation.streamOwned && model.regional.choices(root.kind).length === 0,
-                    "Closure clears catalog but retains operation");
-                root.stage = 7;
+                if (root.scenario === "success" || root.scenario === "disable") root.stage = 70;
+                else if (root.scenario === "denied") {
+                    root.find("externalRegionalFocus").forceActiveFocus();
+                    root.stage = 71;
+                } else {
+                    model.closeSettings();
+                    root.check(model.operation.streamOwned && model.regional.choices(root.kind).length === 0,
+                        "Closure clears catalog but retains operation");
+                    root.stage = 7;
+                }
             });
+        } else if ((stage === 70 || stage === 71) && settled() && !model.operation.busy
+                && model.operation.acknowledgedIds.length === 1) {
+            const name = action === "ntp-set" ? origin : "load-" + kind;
+            if (stage === 70 && !find(name).activeFocus) return;
+            if (stage === 70) checkFocused(name);
+            else check(find("externalRegionalFocus").activeFocus, "Completion preserves focus moved outside regional controls");
+            model.closeSettings();
+            stage = 7;
         } else if (stage === 7 && settled() && !model.operation.busy && model.operation.acknowledgedIds.length === 1
                 && !model.discoveryModels().some(value => value.monitorOwned)) {
             check(model.operation.result.state === (scenario === "denied" ? "permission-denied"
@@ -226,11 +246,18 @@ ShellRoot {
     }
     function finishReadFailure() {
         const error = find("regionalMessage");
-        if (!error.activeFocus || ++errorLayoutTicks < 8) return;
-        const position = error.mapToItem(pane, 0, 0);
-        check(error.visible && error.text === model.regional.message && error.textFormat === Text.PlainText
-            && position.y >= 0 && position.y + error.height <= pane.height + 1,
-            "Read error receives focus and is fully visible");
+        const moved = scenario === "malformed-read";
+        if (!error.visible || (!moved && !error.activeFocus) || ++errorLayoutTicks < 8) return;
+        check(error.text === model.regional.message && error.textFormat === Text.PlainText,
+            "Read error preserves its complete plaintext explanation");
+        if (moved) {
+            check(find(action === "ntp-set" ? "regionalOuterPane" : "externalRegionalFocus").activeFocus,
+                "A real failed read preserves focus moved outside regional controls");
+        } else {
+            const position = error.mapToItem(pane, 0, 0);
+            check(position.y >= 0 && position.y + error.height <= pane.height + 1,
+                "Initiating read error receives focus and is fully visible");
+        }
         check(model.regional.confirmation === null && model.regional.message.length > 0
             && model.regional.choices(kind).length === 0 && model.operation.result === null, "Read failure cannot enable confirmation");
         if (manual) { stage = -1; console.info("Regional UI read failure fixture ready"); return; }
@@ -250,7 +277,8 @@ ShellRoot {
         width: Number(Quickshell.env("DWM_DELEGATE_UI_WIDTH") || "780")
         height: root.originalHeight
         color: Theme.menuBackground
-        SystemSettingsPane { id: pane; anchors.fill: parent; anchors.margins: 12; systemManagementModel: model; capabilities: [] }
+        SystemSettingsPane { id: pane; objectName: "regionalOuterPane"; anchors.fill: parent; anchors.margins: 12; systemManagementModel: model; capabilities: [] }
+        Item { objectName: "externalRegionalFocus"; width: 1; height: 1 }
     }
     Timer { interval: 25; running: !root.done; repeat: true; onTriggered: root.advance() }
     Timer { interval: 20000; running: !root.manual; onTriggered: { console.error("Regional UI FAILED: timeout at " + root.stage); Qt.quit(); } }

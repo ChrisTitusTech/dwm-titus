@@ -13,6 +13,8 @@ ColumnLayout {
     property string preparedAction: ""
     property string preparedArgument: ""
     property var readOrigin: null
+    property var focusReturn: null
+    readonly property var focusedItem: root.Window.activeFocusItem
     signal revealRequested(var target)
     Layout.fillWidth: true
     spacing: Theme.spacingMd
@@ -21,12 +23,34 @@ ColumnLayout {
         root.readOrigin = control;
         control.forceActiveFocus();
     }
-    function hasFocusedControl() {
-        if (discardButton.activeFocus || confirmButton.activeFocus
-                || enableButton.activeFocus || disableButton.activeFocus) return true;
-        for (let index = 0; index < catalogRepeater.count; index++)
-            if (catalogRepeater.itemAt(index).hasFocusedControl()) return true;
+    function focusAvailable(origin) {
+        if (focusedItem === null || focusedItem === root.Window.contentItem || focusedItem === errorMessage) return true;
+        // Disabling/hiding an origin can return focus to an ancestor scope.
+        // A different control anywhere in Settings retains the user's focus.
+        for (let item = origin; item !== null; item = item.parent)
+            if (item === focusedItem) return item === origin || !item.activeFocusOnTab;
         return false;
+    }
+    function restoreFocus() {
+        if (focusReturn === null) return;
+        if (!model.settingsVisible || (!focusAvailable(confirmButton)
+                && !focusAvailable(discardButton) && !focusAvailable(focusReturn))) {
+            focusReturn = null;
+            return;
+        }
+        if (confirmation !== null || !focusReturn.enabled) return;
+        const target = focusReturn;
+        focusReturn = null;
+        target.forceActiveFocus();
+    }
+    onFocusedItemChanged: { if (focusReturn !== null) Qt.callLater(root.restoreFocus); }
+    Connections {
+        target: root.focusReturn
+        function onEnabledChanged() { Qt.callLater(root.restoreFocus); }
+    }
+    Connections {
+        target: root.model
+        function onSettingsVisibleChanged() { if (!root.model.settingsVisible) root.focusReturn = null; }
     }
     function revealFocusedControl() {
         if (errorMessage.visible && errorMessage.activeFocus) root.revealRequested(errorMessage);
@@ -44,25 +68,23 @@ ColumnLayout {
     onImplicitHeightChanged: Qt.callLater(root.revealFocusedControl)
     onConfirmationChanged: {
         if (confirmation !== null) {
+            focusReturn = null;
             preparedAction = confirmation.ticket.action;
             preparedArgument = confirmation.ticket.argument;
-            Qt.callLater(function() { if (root.confirmation !== null) discardButton.forceActiveFocus(); });
+            Qt.callLater(function() {
+                if (root.confirmation !== null && root.focusAvailable(root.readOrigin)) discardButton.forceActiveFocus();
+            });
         } else {
             const action = preparedAction;
             const argument = preparedArgument;
             preparedAction = "";
             preparedArgument = "";
-            Qt.callLater(function() {
-                if (root.confirmation !== null || !root.model.settingsVisible) return;
-                if (action === "ntp-set") {
-                    const button = argument === "disabled" ? disableButton : enableButton;
-                    if (button.enabled) button.forceActiveFocus();
-                }
-                else for (let index = 0; index < catalogRepeater.count; index++) {
-                    const card = catalogRepeater.itemAt(index);
-                    if (card.action === action) card.focusOrigin();
-                }
-            });
+            if (action === "ntp-set") focusReturn = argument === "disabled" ? disableButton : enableButton;
+            else for (let index = 0; index < catalogRepeater.count; index++) {
+                const card = catalogRepeater.itemAt(index);
+                if (card.action === action) focusReturn = card.originControl;
+            }
+            Qt.callLater(root.restoreFocus);
         }
     }
 
@@ -111,11 +133,7 @@ ColumnLayout {
             color: Theme.controlNormalFill
             border.color: Theme.controlNormalBorder
             onChoicesChanged: { selected = ""; search.clear(); }
-            function hasFocusedControl() {
-                return loadButton.activeFocus || previewButton.activeFocus
-                    || search.activeFocus || choiceList.activeFocus;
-            }
-            function focusOrigin() { if (loadButton.enabled) loadButton.forceActiveFocus(); }
+            readonly property var originControl: loadButton
             function revealFocus() {
                 if (loadButton.activeFocus) root.revealRequested(loadButton);
                 else if (previewButton.activeFocus) root.revealRequested(previewButton);
@@ -324,7 +342,7 @@ ColumnLayout {
             const message = errorMessage.text;
             Qt.callLater(function() {
                 if (errorMessage.visible && errorMessage.text === message && root.model.settingsVisible
-                        && (!root.hasFocusedControl() || (origin !== null && origin.activeFocus))) {
+                        && root.focusAvailable(origin)) {
                     errorMessage.forceActiveFocus();
                     root.revealRequested(errorMessage);
                 }

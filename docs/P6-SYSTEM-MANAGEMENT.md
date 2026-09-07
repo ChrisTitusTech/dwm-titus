@@ -641,8 +641,10 @@ restores keyboard focus; it never rolls back or retries a mutation. Closing the
 pane clears catalogs while the root retains any sent operation. Locale guidance
 explains new-session activation without triggering logout. NTP synchronization is
 explicitly labeled as last-read evidence, not a live sample.
-Read-error explanations receive focus and are revealed after layout, so a failed
-catalog or preview request cannot silently leave its only explanation off-screen.
+Read-error explanations receive focus and are revealed after layout unless the
+user has moved focus elsewhere in Settings. Apply retains its origin until the
+operation releases the workflow, then restores focus if the user has not moved
+elsewhere or closed Settings. Read button activation handles mouse and keyboard.
 If a confirmation is larger than the content viewport, keyboard reveal targets
 its focused button rather than oscillating between the card edges. The complete
 preview remains scrollable; neither current values nor override detail is elided.
