@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add internal confirmation guards for the four fixed administration tools,
+  with fresh provider evidence, update-workflow exclusion, and reentrant
+  dispatch checks. Visible delegated controls remain pending.
+
 - Install snapshot capture cleanup handlers before temporary-file allocation,
   and prevent helper launch when cancellation arrives during setup.
 

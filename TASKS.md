@@ -369,8 +369,15 @@ requests while active. It retains one Process through completion publication,
 close, timeout, and forced-stop cleanup; stale callbacks cannot own a replacement.
 Complete bytes remain provisional until the matching process exits. Private
 nested-X11 fixtures cover 18 success, error, cancellation, timeout, reentrant,
-and failed-start scenarios without host service calls. Root confirmation
+and failed-start scenarios without host service calls. Regional root confirmation
 integration and visible controls remain separate pending boundaries.
+
+The root now provides internal confirmation for the four fixed delegated tools.
+It requires fresh owning-provider and journal evidence, captures snapshot and
+cycle identity, rejects update-workflow overlap, and rechecks state after prompt
+callbacks before fixed dispatch. Private nested-X11 cases cover each tool's
+success, denial, unsupported result, and reentrant closure without opening real
+administration tools. Visible controls and combined qualification remain pending.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

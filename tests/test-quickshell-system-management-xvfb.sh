@@ -40,6 +40,11 @@ cleanup() {
 	cleanup_status=$?
 	set +e
 	stop_process "${quickshell_pid:-}"
+	if [ -n "${delegate_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$delegate_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	if [ -n "${checked_helper:-}" ]; then
 		for helper_pid in $(pgrep -f "$checked_helper " 2>/dev/null || true); do
 			stop_process "$helper_pid"
@@ -651,6 +656,44 @@ if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .
 	printf 'Parser-only fixture started a capture that outlived its process\n' >&2
 	exit 1
 fi
+
+mkdir -p "$work/delegate-confirmation" "$work/delegate-data/dwm-titus/scripts"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/delegate-confirmation/"
+cp "$repo/tests/qml/SystemDelegateConfirmation.qml" "$work/delegate-confirmation/shell.qml"
+delegate_helper=$work/delegate-data/dwm-titus/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-delegate-confirmation-provider.py" "$delegate_helper"
+cp "$repo/tests/fixtures/system-native-discovery-provider.py" "$repo/tests/fixtures/system-native-action-provider.py" "$(dirname "$delegate_helper")/"
+chmod +x "$delegate_helper"
+for delegate_action in accounts-open password-open printers-open sources-open; do
+	for delegate_scenario in success denied unsupported close-dispatch; do
+		delegate_state=$work/delegate-$delegate_action-$delegate_scenario
+		mkdir -p "$delegate_state"
+		delegate_status=0
+		timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+			XDG_DATA_HOME="$work/delegate-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+			DWM_NATIVE_DISCOVERY_FIXTURE="$delegate_state" DWM_NATIVE_ACTION_FIXTURE="$delegate_state" \
+			DWM_NATIVE_ACTION="$delegate_action" DWM_NATIVE_ACTION_SCENARIO="$delegate_scenario" \
+			quickshell --no-duplicate --path "$work/delegate-confirmation/shell.qml" >"$delegate_state/log" 2>&1 &
+		quickshell_pid=$!
+		wait "$quickshell_pid" || delegate_status=$?
+		quickshell_pid=
+		if [ "$delegate_status" -ne 0 ] || ! grep -F 'Delegate confirmation tests: PASS' "$delegate_state/log" ||
+			grep -Fq 'Delegate confirmation FAILED:' "$delegate_state/log" ||
+			[ -e "$delegate_state/invalid-arguments" ] || [ -e "$delegate_state/overlap" ] ||
+			[ -e "$delegate_state/unexpected-command" ] ||
+			[ -n "$(find "$delegate_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+			cat "$delegate_state/log" >&2
+			exit 1
+		fi
+		if [ "$delegate_scenario" = close-dispatch ]; then
+			[ ! -e "$delegate_state/$delegate_action" ]
+			[ ! -e "$delegate_state/ack-operation" ]
+		else
+			[ "$(sed -n '1p' "$delegate_state/$delegate_action")" = 1 ]
+			[ "$(sed -n '1p' "$delegate_state/ack-operation")" = 1 ]
+		fi
+	done
+done
 
 mkdir -p "$work/native-action" "$work/native-action-data/dwm-titus/scripts"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/native-action/"
