@@ -55,6 +55,8 @@ with (directory / "lock").open("a") as lock:
         code = 1
     elif scenario == "wrong-exit":
         code = 1
+    elif scenario == "protocol-exit-127":
+        code = 127
     elif scenario == "malformed":
         payload = "unexpected\tfixture\n"
     elif scenario == "truncated":

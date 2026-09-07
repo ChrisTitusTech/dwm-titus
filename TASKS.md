@@ -362,7 +362,7 @@ A separate optional preflight owner now admits only fixed catalog and preview
 requests while active. It retains one Process through completion publication,
 close, timeout, and forced-stop cleanup; stale callbacks cannot own a replacement.
 Complete bytes remain provisional until the matching process exits. Private
-nested-X11 fixtures cover 14 success, error, cancellation, timeout, reentrant,
+nested-X11 fixtures cover 16 success, error, cancellation, timeout, reentrant,
 and failed-start scenarios without host service calls. Root confirmation
 integration and visible controls remain separate pending boundaries.
 

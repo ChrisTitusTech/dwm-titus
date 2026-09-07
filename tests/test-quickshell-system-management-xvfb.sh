@@ -528,20 +528,27 @@ if [ "$parser_status" -ne 0 ] || ! grep -F 'Regional preflight parser tests: PAS
 fi
 
 mkdir -p "$work/regional-preflight-owner" "$work/preflight-data/dwm-titus/scripts" "$work/preflight-empty-path"
+mkdir -p "$work/preflight-shell-path" "$work/preflight-missing-data"
+ln -s "$(command -v sh)" "$work/preflight-shell-path/sh"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/regional-preflight-owner/"
 cp "$repo/tests/qml/SystemRegionalPreflightOwner.qml" "$work/regional-preflight-owner/shell.qml"
 preflight_helper="$work/preflight-data/dwm-titus/scripts/dwm-system-management"
 cp "$repo/tests/fixtures/system-regional-preflight-provider.py" "$preflight_helper"
 chmod +x "$preflight_helper"
 preflight_quickshell=$(command -v quickshell)
-for preflight_scenario in success typed-error wrong-exit malformed truncated stdout-overflow stderr-overflow \
-	close kill-close timeout cancel-queued cancel-claim close-result failed-start; do
+for preflight_scenario in success typed-error wrong-exit protocol-exit-127 malformed truncated stdout-overflow stderr-overflow \
+	close kill-close timeout cancel-queued cancel-claim close-result failed-start missing-helper; do
 	preflight_directory="$work/preflight-$preflight_scenario"
 	mkdir -p "$preflight_directory"
 	preflight_path=$PATH
+	preflight_data="$work/preflight-data"
 	[ "$preflight_scenario" != failed-start ] || preflight_path="$work/preflight-empty-path"
+	if [ "$preflight_scenario" = missing-helper ]; then
+		preflight_path="$work/preflight-shell-path"
+		preflight_data="$work/preflight-missing-data"
+	fi
 	timeout --foreground --kill-after=2s 45s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
-		XDG_DATA_HOME="$work/preflight-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= PATH="$preflight_path" \
+		XDG_DATA_HOME="$preflight_data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= PATH="$preflight_path" \
 		DWM_PREFLIGHT_DIRECTORY="$preflight_directory" DWM_PREFLIGHT_SCENARIO="$preflight_scenario" \
 		"$preflight_quickshell" --no-duplicate --path "$work/regional-preflight-owner/shell.qml" \
 		>"$preflight_directory/output.log" 2>&1 &
@@ -552,7 +559,7 @@ for preflight_scenario in success typed-error wrong-exit malformed truncated std
 	case "$preflight_scenario" in
 	success) preflight_calls=6 ;;
 	close | kill-close | timeout | close-result) preflight_calls=2 ;;
-	failed-start) preflight_calls=0 ;;
+	failed-start | missing-helper) preflight_calls=0 ;;
 	*) preflight_calls=1 ;;
 	esac
 	preflight_actual=$(sed -n '1p' "$preflight_directory/calls" 2>/dev/null || true)

@@ -594,7 +594,9 @@ The 25-second read deadline allows sequential bounded service/catalog reads.
 Timeout, malformed output, and closure request TERM, retain ownership through a
 three-second grace, then request KILL if needed. No replacement starts before
 the old process exits. Failed-to-start handling does not consume retained output.
-This component owns no authorization, journal, mutation, or idle polling. Fourteen
+An empty normal exit 127 reports a missing helper, separately from Qt launch
+failure; a stream emitted before exit 127 still fails protocol validation.
+This component owns no authorization, journal, mutation, or idle polling. Sixteen
 private nested-X11 scenarios exercise exact requests, provisional output, typed
 errors, bounds, deadlines, close/reopen, reentrant callbacks, and missing helpers.
 

@@ -78,7 +78,7 @@ ShellRoot {
             return;
         }
         check(completions === (scenario === "success" ? 6 : scenario === "timeout" ? 2 : 1), "No duplicate or missing completion");
-        if (["success", "typed-error", "wrong-exit"].indexOf(scenario) >= 0 || replaces)
+        if (["success", "typed-error", "wrong-exit", "protocol-exit-127"].indexOf(scenario) >= 0 || replaces)
             check(provisional, "Complete bytes were observed before process exit without a result");
         const retained = model.result;
         model.consume(new Uint8Array([0]).buffer);
@@ -130,7 +130,8 @@ ShellRoot {
                 else root.check(outcome.preview.detail === "Full fixture detail", "Complete preview retained");
             } else {
                 const expected = root.scenario === "typed-error" ? "permission-denied"
-                    : root.scenario === "timeout" ? "timeout" : root.scenario === "failed-start" ? "missing-provider" : "malformed";
+                    : root.scenario === "timeout" ? "timeout"
+                    : ["failed-start", "missing-helper"].indexOf(root.scenario) >= 0 ? "missing-provider" : "malformed";
                 root.check(outcome.error.code === expected && outcome.choices.length === 0 && outcome.preview === null,
                     "Failed result withholds provisional data and preserves error");
             }

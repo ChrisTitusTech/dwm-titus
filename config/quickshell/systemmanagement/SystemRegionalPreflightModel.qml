@@ -92,6 +92,10 @@ Scope {
         stopDeadline.stop();
         try {
             if (!run.retired) {
+                // The shell can start while the selected helper is absent.
+                // Do not relabel a helper's already-emitted protocol as missing.
+                if (run.failure === null && normalExit && exitCode === 127 && run.parser.offset === 0)
+                    run.failure = { code: "missing-provider", detail: "The regional helper is unavailable. Check the installed desktop helpers." };
                 if (run.failure === null && !Protocol.finish(run.parser, exitCode, normalExit))
                     run.failure = { code: "malformed", detail: run.parser.failure };
                 const error = run.failure || run.parser.error;
