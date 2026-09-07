@@ -333,8 +333,16 @@ domains never spawn a command. Domain replacement invalidates old read tokens
 and clears readiness before callbacks; a new handshake is mandatory even for
 a queued replacement. Private nested-X11 fixtures qualify each stream and
 exit-callback replacement with 91 assertions, repeated five times without host
-service calls. Settings activation and shared-snapshot coordination remain
-pending; native action origins and NTP sampling are still disabled.
+service calls. The root now connects those subscriptions to one cumulative
+snapshot owner. Batched open/refresh waits for every handshake or failed-monitor
+fallback; required recovery can bypass setup without certifying optional
+freshness. Per-domain read tokens retain independent dirty/settling state, so an
+unrelated or required snapshot cannot clear a blocked provider. Readable values
+remain intact, and time/locale freshness is projected independently. Closure
+retires every optional subscription without stopping required recovery. Private
+nested-X11 coverage passes 53 assertions for readiness, shared reads, blocked
+state, reentrant admission/publication, retry, and required-recovery races.
+Native action origins, native Settings controls, and NTP sampling remain pending.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

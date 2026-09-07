@@ -55,6 +55,11 @@ cleanup() {
 			stop_process "$helper_pid"
 		done
 	fi
+	if [ -n "${native_discovery_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$native_discovery_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	if [ -n "${update_action_helper:-}" ]; then
 		for helper_pid in $(pgrep -f "$update_action_helper " 2>/dev/null || true); do
 			stop_process "$helper_pid"
@@ -105,6 +110,15 @@ set -eu
 fixture=${DWM_SYSTEM_MANAGEMENT_TEST_FIXTURE:?}
 mode=$(sed -n '1p' "$fixture/mode")
 case ${1:-} in
+watch-regional | watch-accounts | watch-units)
+	case "$*" in
+	'watch-regional time' | 'watch-regional locale') prefix=regional-event ;;
+	watch-accounts) prefix=accounts-event ;;
+	'watch-units printers') prefix=units-event ;;
+	*) exit 2 ;;
+	esac
+	exec /usr/bin/python3 -c 'import signal, sys; print(sys.argv[1] + "\tready", flush=True); signal.pause()' "$prefix" "$0" "$@"
+	;;
 watch-updates)
 	[ "$mode" != monitor-failure ] || exit 1
 	printf '%s\n' "$$" >"$fixture/monitor-pid"
@@ -407,6 +421,33 @@ if [ "$provider_discovery_status" -ne 0 ] || ! grep -F 'Provider discovery tests
 	[ -e "$work/provider-discovery-state/overlap" ] || [ -e "$work/provider-discovery-state/unexpected-command" ] ||
 	[ -n "$(find "$work/provider-discovery-state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
 	cat "$work/provider-discovery.log" >&2
+	exit 1
+fi
+
+# Qualify all subscriptions sharing one cumulative snapshot owner.
+mkdir -p "$work/native-discovery" "$work/native-discovery-data/dwm-titus/scripts" "$work/native-discovery-state"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/native-discovery/"
+cp "$repo/tests/qml/SystemNativeDiscovery.qml" "$work/native-discovery/shell.qml"
+native_discovery_helper=$work/native-discovery-data/dwm-titus/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-native-discovery-provider.py" "$native_discovery_helper"
+chmod +x "$native_discovery_helper"
+timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/native-discovery-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_NATIVE_DISCOVERY_FIXTURE="$work/native-discovery-state" \
+	quickshell --no-duplicate --path "$work/native-discovery/shell.qml" >"$work/native-discovery.log" 2>&1 &
+quickshell_pid=$!
+native_discovery_status=0
+wait "$quickshell_pid" || native_discovery_status=$?
+quickshell_pid=
+if [ "$native_discovery_status" -ne 0 ] || ! grep -F 'Native discovery tests: PASS' "$work/native-discovery.log" ||
+	grep -Fq 'Native discovery FAILED:' "$work/native-discovery.log" ||
+	[ -e "$work/native-discovery-state/overlap" ] || [ -e "$work/native-discovery-state/unexpected-command" ] ||
+	[ -n "$(find "$work/native-discovery-state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+	cat "$work/native-discovery.log" >&2
+	exit 1
+fi
+if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .; then
+	printf 'Native discovery fixture leaked a checked-command capture\n' >&2
 	exit 1
 fi
 

@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Coordinate update, time, locale, account, and printer subscriptions through
+  one cumulative snapshot reader. Preserve per-provider freshness and readable
+  partial state, and stop optional monitoring when System Settings closes.
+
 - Share the bounded update-monitor lifecycle with fixed time, locale, account,
   and printer stream adapters. Preserve update behavior and reject stale
   replacement readiness; native Settings activation remains pending.

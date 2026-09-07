@@ -1915,9 +1915,11 @@ Its process and bounded-cycle lifetime is shared through
 `SystemProviderDiscovery`, with a closed mapping for updates, time, locale,
 accounts, and printers. Each mapping fixes the command, arguments, and accepted
 event prefix; callers cannot provide another executable or arbitrary arguments.
-The update component remains a thin compatibility wrapper. Native subscriptions
-are not yet activated by Settings; the shared snapshot coordinator is a separate
-integration boundary. No new idle polling or operation origins are introduced.
+The update component remains a thin compatibility wrapper. The root snapshot
+coordinator now starts all five fixed subscriptions while System Settings is
+open; software sources share the update subscription. No new idle polling or
+operation origins are introduced. Native controls and NTP sampling remain a
+separate integration boundary.
 Private nested-X11 tests exercise every fixed stream, event bursts, a dirty
 settling read, explicit retry, wrong-prefix fallback, close cleanup, and unknown
 domain rejection. Replacing a domain retires the old read token and readiness
@@ -1937,6 +1939,26 @@ changing correct process behavior.
 The test harness also includes the shared fixture helper in bounded failure
 cleanup. A live-pipe regression reproduced a leaked monitor before that fix;
 cleanup now removes it while preserving both successful and failing exit status.
+
+Opening or refreshing the section batches all five cycles before an optional
+snapshot can start. Every subscription must acknowledge readiness or reach its
+finite failed-monitor fallback. Required startup or operation recovery can bypass
+that barrier, but captures no optional tokens until every domain is ready. Thus
+neither a closed startup read nor opening during an existing read substitutes
+for a monitored baseline. The single snapshot process captures each participating
+domain's token, enters all completion handoffs before publication, and retains
+ownership through parsing, recovery callbacks, and per-domain completion.
+Uncaptured domains keep their pending or blocked cycle even when a cumulative
+read incidentally updates their displayed values. Available state is projected
+as partial when its own monitor fails or remains dirty; raw validated values
+are not overwritten, and locale-only monitoring failure does not degrade time
+state. Provider summaries retain explicit reload guidance. Closing the section
+retires all optional cycles and subscriptions, but required recovery and root
+operation observers survive. Reentrant close/reopen during token admission or
+loading publication cannot launch the canceled read or consume replacement
+tokens. Private nested-X11 tests cover these boundaries with 53 assertions,
+including required recovery while setup is held and a separate reopen baseline.
+
 It starts a discovery cycle only after readiness, with a 12-second frontend
 startup deadline covering the helper's ten-second setup and process startup.
 Failure falls back to a finite read with visible monitoring-unavailable guidance;
