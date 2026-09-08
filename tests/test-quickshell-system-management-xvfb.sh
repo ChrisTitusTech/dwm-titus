@@ -764,6 +764,38 @@ for time_scenario in owner owner-change owner-capability owner-fail owner-sync o
 	fi
 done
 
+mkdir -p "$work/ntp-sampling"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/ntp-sampling/"
+cp "$repo/tests/qml/SystemNtpSampling.qml" "$work/ntp-sampling/shell.qml"
+for sample_scenario in sample-success sample-error sample-capability sample-arrival sample-close sample-required sample-close-claim sample-close-publish sample-action sample-periodic; do
+	sample_state=$work/ntp-$sample_scenario
+	mkdir -p "$sample_state"
+	sample_status=0
+	timeout --foreground --kill-after=2s 45s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$work/regional-settings-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+		DWM_NATIVE_DISCOVERY_FIXTURE="$sample_state" DWM_NATIVE_ACTION_FIXTURE="$sample_state" \
+		DWM_NATIVE_ACTION=ntp-set DWM_NATIVE_ACTION_SCENARIO="$sample_scenario" \
+		quickshell --no-duplicate --path "$work/ntp-sampling/shell.qml" >"$sample_state/log" 2>&1 &
+	quickshell_pid=$!
+	wait "$quickshell_pid" || sample_status=$?
+	quickshell_pid=
+	if [ "$sample_status" -ne 0 ] || ! grep -F 'NTP sampling tests: PASS' "$sample_state/log" ||
+		grep -Fq 'NTP sampling FAILED:' "$sample_state/log" ||
+		[ -e "$sample_state/overlap" ] || [ -e "$sample_state/unexpected-command" ] ||
+		[ -e "$sample_state/invalid-arguments" ] ||
+		[ -n "$(find "$sample_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+		cat "$sample_state/log" >&2
+		exit 1
+	fi
+	if [ "$sample_scenario" = sample-action ]; then
+		[ "$(sed -n '1p' "$sample_state/ntp-set")" = 1 ]
+		[ "$(sed -n '1p' "$sample_state/ack-operation")" = 1 ]
+	else
+		[ ! -e "$sample_state/ntp-set" ]
+		[ ! -e "$sample_state/ack-operation" ]
+	fi
+done
+
 mkdir -p "$work/delegate-confirmation" "$work/delegate-data/dwm-titus/scripts"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/delegate-confirmation/"
 cp "$repo/tests/qml/SystemDelegateConfirmation.qml" "$work/delegate-confirmation/shell.qml"
@@ -808,7 +840,7 @@ cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" \
 cp "$repo/tests/qml/SystemRegionalUi.qml" "$work/regional-ui/shell.qml"
 for regional_size in 640x480 780x580 1000x740; do
 	for regional_action in timezone-set ntp-set locale-set; do
-		for regional_scenario in success denied unsupported uncertain large error-read malformed-read disable owner; do
+		for regional_scenario in success denied unsupported uncertain large error-read malformed-read disable owner sample-ui; do
 			[ "$regional_scenario" != disable ] || [ "$regional_action" = ntp-set ] || continue
 			regional_state=$work/regional-ui-$regional_size-$regional_action-$regional_scenario
 			mkdir -p "$regional_state"
@@ -831,7 +863,7 @@ for regional_size in 640x480 780x580 1000x740; do
 				exit 1
 			fi
 			case $regional_scenario in
-			error-read | malformed-read | owner)
+			error-read | malformed-read | owner | sample-ui)
 				[ ! -e "$regional_state/$regional_action" ]
 				[ ! -e "$regional_state/ack-operation" ]
 				;;

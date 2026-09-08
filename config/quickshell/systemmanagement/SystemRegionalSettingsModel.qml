@@ -195,6 +195,7 @@ Scope {
     function confirm() {
         const pending = confirmation;
         if (pending === null || ownsPreparation() || model.dispatchingUpdate || model.dispatchingNative) return false;
+        if (model.timeReconciliation.sampleClaim.ticket !== null || model.timeReconciliation.sampling) return false;
         if (matches(pending.ticket) && discovery(pending.ticket.action) === model.timeDiscovery
                 && model.timeReconciliation.blocksAdmission()) return false;
         if (actionReason(pending.ticket.action) !== "" || !matches(pending.ticket)) {

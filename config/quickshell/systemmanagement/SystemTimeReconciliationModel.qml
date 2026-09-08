@@ -9,6 +9,9 @@ Scope {
     required property var model
     property var cycle: Cycle.create()
     property var request: null
+    property var sampleClaim: ({ticket: null})
+    property bool sampleDue: false
+    property string sampledOperation: ""
     property var baseline: null
     property var expected: null
     property bool waitingSnapshot: false
@@ -17,20 +20,24 @@ Scope {
     property bool unresolved: false
     property string failure: ""
     readonly property alias reader: readerModel
+    readonly property bool sampling: (request !== null && request.command === "ntp-sample")
+        || (readerModel.current !== null && readerModel.current.command === "ntp-sample")
     readonly property bool blocked: waitingSnapshot || phase !== "idle" || unresolved
-        || failure.length > 0 || request !== null || readerModel.current !== null
+        || failure.length > 0 || ((request !== null || readerModel.current !== null) && !sampling)
     readonly property string detail: !model.settingsVisible ? "" : failure.length > 0 ? failure
         : unresolved ? "Time changed during reconciliation. Reload status to retry; automatic rereads are paused."
         : blocked ? "Reconciling time status before allowing another time change..." : ""
     signal aboutToBlock()
     signal released()
 
-    function ownsRead() { return request !== null || readerModel.current !== null; }
+    // Read notifying ownership first, even while a raw reentrant claim exists.
+    // Otherwise QML callers can lose the dependency that releases their gate.
+    function ownsRead() { return request !== null || readerModel.current !== null || sampleClaim.ticket !== null; }
     function blocksAdmission() {
         return waitingSnapshot || cycle.phase !== "idle" || cycle.unresolved || failure.length > 0 || ownsRead();
     }
     function publish() {
-        if (blocksAdmission() && !blocked) aboutToBlock();
+        if (!sampling && blocksAdmission() && !blocked) aboutToBlock();
         phase = cycle.phase;
         unresolved = cycle.unresolved;
     }
@@ -53,10 +60,13 @@ Scope {
     }
     function open() {
         mismatchRecoveryUsed = false;
+        sampleDue = false;
         beforeSnapshot();
     }
     function beforeSnapshot() {
         // The caller reserves snapshot priority before retiring optional work.
+        sampleDue = model.settingsVisible && (sampleDue || sampling || sampleClaim.ticket !== null);
+        sampleClaim.ticket = null;
         Cycle.close(cycle);
         cycle.unresolved = false;
         request = null;
@@ -102,8 +112,9 @@ Scope {
         Qt.callLater(root.requestPending);
     }
     function requestPending() {
-        if (waitingSnapshot || ownsRead() || !Cycle.pending(cycle) || !availableContext()) return;
-        const ticket = Object.assign(identity(), { token: Cycle.take(cycle), outcome: null,
+        if (waitingSnapshot || ownsRead() || !availableContext()) return;
+        if (!Cycle.pending(cycle)) { requestSample(); return; }
+        const ticket = Object.assign(identity(), { command: "time-status", token: Cycle.take(cycle), outcome: null,
             readerId: readerModel.serial + 1 });
         request = ticket;
         publish();
@@ -123,8 +134,81 @@ Scope {
         return left !== null && right !== null && left.timezone === right.timezone
             && left.canNtp === right.canNtp && left.ntpEnabled === right.ntpEnabled;
     }
+    function sampleNow() {
+        if (!model.settingsVisible || !model.nativeProviders.regional) return;
+        sampleDue = true;
+        Qt.callLater(root.requestPending);
+    }
+    function sampleAfterOperation(result) {
+        if (result === null || result.actionId !== "ntp-set" || result.id === sampledOperation) return;
+        sampledOperation = result.id;
+        sampleNow();
+    }
+    function canSample() {
+        return sampleDue && baseline !== null && cycle.enabled && cycle.phase === "idle"
+            && !cycle.unresolved && failure.length === 0 && availableContext() && !model.regional.ownsPreparation();
+    }
+    function requestSample() {
+        if (ownsRead() || !canSample()) return;
+        const ticket = Object.assign(identity(), { command: "ntp-sample", outcome: null,
+            readerId: readerModel.serial + 1 });
+        // Reserve without notifying bindings, so focus is captured before
+        // controls disable. Reentrant explicit requests still see ownership.
+        sampleClaim.ticket = ticket;
+        sampleDue = false;
+        if (sampleClaim.ticket !== ticket) return;
+        aboutToBlock();
+        if (sampleClaim.ticket !== ticket) return;
+        if (!matches(ticket) || !availableContext() || cycle.phase !== "idle" || cycle.unresolved
+                || failure.length > 0) {
+            sampleClaim.ticket = null;
+            sampleDue = model.settingsVisible;
+            released();
+            Qt.callLater(root.requestPending);
+            return;
+        }
+        request = ticket;
+        sampleClaim.ticket = null;
+        if (request !== ticket || !matches(ticket) || !availableContext()) {
+            if (request === ticket) beforeSnapshot();
+            return;
+        }
+        if (!readerModel.requestNtpSample() && request === ticket) {
+            ticket.outcome = { status: "unavailable", error: { code: "internal", detail: "Network time sample could not start" } };
+            finishSample(ticket);
+        }
+    }
+    function finishSample(ticket) {
+        if (request !== ticket || readerModel.current !== null || ticket.outcome === null) return;
+        try {
+            if (!matches(ticket) || !availableContext() || baseline === null) return;
+            // An arrival during sampling reserves a full configuration read.
+            // The sample cannot certify that uncertainty or a stale preview.
+            if (cycle.phase !== "idle" || cycle.unresolved || failure.length > 0) return;
+            const outcome = ticket.outcome;
+            if (outcome.status === "available" && outcome.observation.canNtp !== baseline.canNtp) {
+                model.timeDiscovery.invalidate();
+                return;
+            }
+            const states = Object.assign({}, model.nativeStates);
+            const old = states["ntp-synchronized"];
+            states["ntp-synchronized"] = outcome.status === "available"
+                ? { status: "available", value: outcome.observation.synchronized ? "yes" : "no",
+                    detail: "Verified network time sample; sampled every 30 seconds while System Settings is open" }
+                : { status: "partial", value: old ? old.value : "unknown",
+                    detail: outcome.error.code + ": " + outcome.error.detail + ". Last reported value retained; the next periodic sample will retry." };
+            model.nativeStates = states;
+        } finally {
+            if (request === ticket) request = null;
+            publish();
+            released();
+            Qt.callLater(root.requestPending);
+            Qt.callLater(model.regional.retryTimePublication);
+        }
+    }
     function finish(ticket) {
         if (request !== ticket || readerModel.current !== null || ticket.outcome === null) return;
+        if (ticket.command === "ntp-sample") { finishSample(ticket); return; }
         let successful = false;
         try {
             if (!matches(ticket) || !availableContext()) { beforeSnapshot(); return; }
@@ -170,6 +254,7 @@ Scope {
             Qt.callLater(model.regional.retryTimePublication);
         }
     }
+    Timer { interval: 30000; repeat: true; running: root.model.settingsVisible; onTriggered: root.sampleNow() }
     SystemRegionalPreflightModel {
         id: readerModel
         active: root.model.settingsVisible

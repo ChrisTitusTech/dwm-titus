@@ -123,10 +123,25 @@ def time_status():
         row("complete", "time-status")
         raise SystemExit(1)
     zone = "Etc/UTC" if scenario == "owner-change" and count > 1 else "America/Chicago"
-    can_ntp = "no" if scenario == "owner-capability" and count > 1 else "yes"
+    can_ntp = "no" if ((scenario == "owner-capability" and count > 1)
+                       or (scenario == "sample-capability" and (DIRECTORY / "sample-count").exists())) else "yes"
     synchronized = "yes" if scenario == "owner-sync" and count > 1 else "no"
     row("time", zone, can_ntp, "yes", synchronized)
     row("complete", "time-status")
+
+
+def ntp_sample():
+    count_path = DIRECTORY / "sample-count"
+    count_path.write_text(str(int(count_path.read_text()) + 1 if count_path.exists() else 1))
+    scenario = os.environ.get("DWM_NATIVE_ACTION_SCENARIO", "")
+    time.sleep(0.15)
+    row("ntp-sample-protocol", "1", "0")
+    if scenario == "sample-error":
+        row("error", "ntp-sample", "permission-denied", "Private sample denied")
+        row("complete", "ntp-sample")
+        raise SystemExit(1)
+    row("sample", "no" if scenario == "sample-capability" else "yes", "yes")
+    row("complete", "ntp-sample")
 
 
 def main():
@@ -139,6 +154,9 @@ def main():
         return
     if arguments == ("time-status",):
         time_status()
+        return
+    if arguments == ("ntp-sample",):
+        ntp_sample()
         return
     if len(arguments) == 4 and arguments[:1] == ("fixture-mode",):
         _, domain, action, value = arguments

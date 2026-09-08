@@ -44,7 +44,9 @@ def row(*fields):
         fields = (*fields[:2], "available", *fields[3:-1], "Fixed private action")
         count = int((directory / "count").read_text())
         if ((operation.SCENARIO == "owner-gain" and fields[1] == "ntp-set" and count <= 2)
-                or (operation.SCENARIO == "owner-blocked" and fields[1] in {"timezone-set", "ntp-set"})):
+                or (operation.SCENARIO == "owner-blocked" and fields[1] in {"timezone-set", "ntp-set"})
+                or (operation.SCENARIO == "sample-capability" and fields[1] == "ntp-set"
+                    and (directory / "sample-count").exists())):
             fields = (*fields[:2], "unavailable", *fields[3:])
     elif fields == ("complete", "snapshot"):
         if (directory / operation.ACTION).exists() and not (directory / "ack-operation").exists():
@@ -95,6 +97,8 @@ def preflight():
                     current = "America/Chicago"
                 if operation.SCENARIO == "owner" and operation.ACTION == "ntp-set":
                     current = "enabled"
+                if operation.SCENARIO.startswith("sample-") and operation.ACTION == "ntp-set":
+                    current = "enabled"
                 detail = "Full fixture detail"
                 if operation.SCENARIO == "large":
                     detail = (detail + " " + "LC_TIME=preserved " * 30)[:512]
@@ -118,6 +122,10 @@ if command in ("regional-choices", "regional-preview"):
 if command == "time-status":
     with exclusive("finite"):
         discovery.time_status()
+    raise SystemExit(0)
+if command == "ntp-sample":
+    with exclusive("finite"):
+        discovery.ntp_sample()
     raise SystemExit(0)
 if command in (operation.ACTION, "watch-operation", "ack-operation"):
     with exclusive("preflight"):

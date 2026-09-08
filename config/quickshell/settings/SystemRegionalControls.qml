@@ -75,6 +75,7 @@ ColumnLayout {
             }
         }
         function onBlockedChanged() { Qt.callLater(root.restoreReconciliationFocus); }
+        function onReleased() { Qt.callLater(root.restoreReconciliationFocus); }
     }
     Connections {
         target: root.reconciliationFocus
@@ -299,7 +300,7 @@ ColumnLayout {
             spacing: Theme.spacingSm
             PlainText { text: "Automatic network time"; font.bold: true }
             StateText { identifier: "ntp-enabled"; label: "Enabled" }
-            StateText { identifier: "ntp-synchronized"; label: "Synchronized at last read" }
+            StateText { identifier: "ntp-synchronized"; label: "Synchronization (30-second samples while open)" }
             RowLayout {
                 ActionButton {
                     id: enableButton
