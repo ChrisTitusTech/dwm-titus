@@ -659,6 +659,12 @@ if [ "${1:-}" = power-snapshot ] && [ -r "$fixture" ]; then
 		printf 'power-dpms\tavailable\tyes\t1e2\tuser-session\tExponent timeout\n'
 		printf 'power-lock\tavailable\tyes\t0x10\tno\tuser-session\tHex timeout\n'
 		;;
+	available | partial | restricted | unavailable | unsupported)
+		printf 'power-protocol\t1\t0\n'
+		printf 'provider\tpower\tavailable\tuser-session\tLock state fixture\n'
+		printf 'power-dpms\tavailable\tyes\t600\tuser-session\tReadable peer\n'
+		printf 'power-lock\t%s\tyes\t600\tyes\tuser-session\tUnverified fallback must not be displayed\n' "$(cat "$fixture")"
+		;;
 	battery)
 		printf 'power-protocol\t1\t0\n'
 		printf 'provider\tpower\tavailable\tuser-session\tExponent battery-rate fixture\n'
@@ -1292,6 +1298,35 @@ power_timeout=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DAT
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerDpmsTimeout)
 [ "$power_enabled" = false ]
 [ "$power_timeout" -eq 0 ]
+
+for lock_record_status in available partial unavailable restricted unsupported; do
+	printf '%s\n' "$lock_record_status" >"$malformed_power_snapshot"
+	expected_lock_status=$lock_record_status
+	# Unsupported is not a Power protocol state and must fail to unavailable.
+	[ "$lock_record_status" != unsupported ] || expected_lock_status=unavailable
+	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select power >/dev/null
+	i=0
+	while [ "$i" -lt 100 ]; do
+		power_lock_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerLockStatus 2>/dev/null || true)
+		[ "$power_lock_status" = "$expected_lock_status" ] && break
+		i=$((i + 1))
+		sleep 0.02
+	done
+	[ "$power_lock_status" = "$expected_lock_status" ]
+	power_lock_enabled=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerLockEnabled)
+	power_lock_timeout=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerLockTimeout)
+	if [ "$expected_lock_status" = available ]; then
+		[ "$power_lock_enabled" = true ] && [ "$power_lock_timeout" -eq 600 ]
+	else
+		[ "$power_lock_enabled" = false ] && [ "$power_lock_timeout" -eq 0 ]
+	fi
+done
 
 printf 'battery\n' >"$malformed_power_snapshot"
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \

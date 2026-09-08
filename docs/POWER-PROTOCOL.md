@@ -7,7 +7,9 @@ fallback evidence. Locker readiness matches both the user's effective UID and
 current `DISPLAY` through bounded procps environment matching; a locker on
 another display or missing display evidence cannot establish readiness. Startup,
 shutdown, and rollback use that same display scope so a failed local change
-cannot terminate another X session's locker.
+cannot terminate another X session's locker. Power Settings and Control Center
+show Unknown for non-available lock records and clear unverified boolean and
+timeout values while preserving their provider status.
 
 ## Purpose
 

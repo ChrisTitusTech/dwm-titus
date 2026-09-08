@@ -427,7 +427,7 @@ ClickAwayPopup {
                         Layout.fillWidth: true
                         implicitHeight: root.compactRowHeight
                         label: "Auto Lock"
-                        detail: root.powerModel.lockEnabled
+                        detail: !root.powerModel.lockAvailable ? "Unknown" : root.powerModel.lockEnabled
                             ? root.formatDuration(root.powerModel.lockTimeout) : "Off"
                         active: root.powerModel.lockEnabled
                         enabled: root.powerModel.lockAvailable && !root.powerModel.busy

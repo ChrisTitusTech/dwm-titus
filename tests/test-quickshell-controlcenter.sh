@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-DISPLAY=${DISPLAY-:fixture}
+DISPLAY=${DISPLAY:-:fixture}
 export DISPLAY
 
 repo=$(
