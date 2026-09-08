@@ -2369,6 +2369,20 @@ that consumer behavior or change existing confirmation invalidation. Private-bus
 fixtures exercise the new passive monitor lifecycle, fixed time-status reads,
 malformed/denied/timeout results, late replies, and all three handled signals.
 
+The shared `SystemRegionalPreflightModel` now also accepts these fixed
+no-argument `time-status` and `ntp-sample` reads. Its existing strict cumulative
+byte parser enforces the exact headers, one appropriate observation row or
+one command-owned error, the six closed error codes, and the 1024-byte stream
+limit. An observation is usable only after completion and a matching normal
+process exit; errors withhold all provisional values. The scoped commands use
+a 12-second outer deadline around the helper's ten-second budget, with the
+existing three-second TERM-to-KILL reaping grace. Catalogs and previews retain
+their 25-second outer deadline. Ownership remains claimed through publication
+callbacks, and close, overflow, timeout, or replacement cannot publish retired
+data. This reader addition does not schedule reads, change discovery ownership,
+or connect observations to Settings or journal recovery. Reconciliation and
+the visible 30-second sampler remain separate integration work.
+
 The fixed `dwm-system-management watch-accounts` command is also implemented.
 It accepts no arguments and emits only `accounts-event<TAB>ready` and
 `accounts-event<TAB>changed`. It shares the authenticated setup lifetime above:

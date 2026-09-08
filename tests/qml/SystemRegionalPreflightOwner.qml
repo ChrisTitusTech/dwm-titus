@@ -5,6 +5,7 @@ import qs.systemmanagement
 ShellRoot {
     id: root
     property string scenario: Quickshell.env("DWM_PREFLIGHT_SCENARIO")
+    property string mode: Quickshell.env("DWM_PREFLIGHT_MODE") || "regional"
     property int phase: 0
     property int assertions: 0
     property int completions: 0
@@ -21,7 +22,8 @@ ShellRoot {
     property var lastRun: null
     property var requests: [["regional-choices", "timezone", ""], ["regional-choices", "locale", ""],
         ["regional-preview", "timezone-set", "Etc/UTC"], ["regional-preview", "ntp-set", "enabled"],
-        ["regional-preview", "locale-set", "LANG=C"], ["regional-choices", "timezone", ""]]
+        ["regional-preview", "locale-set", "LANG=C"], ["time-status", "", ""],
+        ["ntp-sample", "", ""], ["regional-choices", "timezone", ""]]
     readonly property bool replaces: ["close", "kill-close", "close-stdout-overflow", "close-stderr-overflow",
         "timeout", "cancel-queued", "cancel-claim", "close-result"].indexOf(scenario) >= 0
 
@@ -41,7 +43,7 @@ ShellRoot {
         received = null;
         starting = true;
         model.active = true;
-        const request = scenario === "success" ? requests[phase]
+        const request = mode !== "regional" ? [mode, "", ""] : scenario === "success" ? requests[phase]
             : phase === 1 ? requests[1] : requests[3];
         const accepted = model.start(request[0], request[1], request[2]);
         check(accepted === !(scenario === "cancel-claim" && phase === 0), "Expected request admission");
@@ -62,7 +64,7 @@ ShellRoot {
         if (replaces && phase === 0) {
             if (scenario === "timeout") {
                 check(received !== null && received.error.code === "timeout", "Deadline reports typed failure");
-                check(Date.now() - startedAt >= 27500, "Real deadline retains kill grace");
+                check(Date.now() - startedAt >= (mode === "regional" ? 27500 : 14500), "Real deadline retains kill grace");
             } else {
                 check(received === null && model.result === null && completions === 0, "Retired read publishes no completion or result");
                 if (scenario === "kill-close") check(Date.now() - canceledAt >= 2800, "Close retains ownership through kill grace");
@@ -74,16 +76,17 @@ ShellRoot {
             begin();
             return;
         }
-        if (scenario === "success" && phase < requests.length - 1) {
+        if (scenario === "success" && phase < (mode === "regional" ? requests.length - 1 : 1)) {
             oldRun = lastRun;
             phase++;
             begin();
             return;
         }
-        check(completions === (scenario === "success" ? 6 : scenario === "timeout" ? 2 : 1), "No duplicate or missing completion");
+        check(completions === (scenario === "success" ? (mode === "regional" ? requests.length : 2)
+            : scenario === "timeout" ? 2 : 1), "No duplicate or missing completion");
         if (["stdout-overflow", "stderr-overflow"].indexOf(scenario) >= 0)
             check(Date.now() - startedAt < 2500, "Output flood is killed without a TERM grace period");
-        if (["success", "typed-error", "wrong-exit", "protocol-exit-127"].indexOf(scenario) >= 0 || replaces)
+        if (["success", "typed-error", "unsupported-error", "wrong-exit", "protocol-exit-127"].indexOf(scenario) >= 0 || replaces)
             check(provisional, "Complete bytes were observed before process exit without a result");
         const retained = model.result;
         model.consume(new Uint8Array([0]).buffer);
@@ -92,7 +95,7 @@ ShellRoot {
         model.active = false;
         check(model.result === null && !model.busy, "Close clears retained optional data");
         done = true;
-        console.info("Regional preflight owner tests: PASS (" + scenario + ", " + assertions + " assertions)");
+        console.info("Regional preflight owner tests: PASS (" + mode + ", " + scenario + ", " + assertions + " assertions)");
         Qt.quit();
     }
     function run() {
@@ -102,7 +105,8 @@ ShellRoot {
                 ["regional-choices", "timezone", "extra"], ["regional-preview", "unknown", "enabled"],
                 ["regional-preview", "timezone-set", "../etc"], ["regional-preview", "timezone-set", null],
                 ["regional-preview", "ntp-set", "yes"], ["regional-preview", "locale-set", "LANG="],
-                ["regional-preview", "locale-set", "LANG=C\n"]])
+                ["regional-preview", "locale-set", "LANG=C\n"], ["time-status", "time", ""],
+                ["time-status", "", "extra"], ["ntp-sample", "ntp", ""], ["ntp-sample", "", "extra"]])
             check(!model.start(...args), "Invalid fixed request rejected before helper");
         startedTest = true;
         startedAt = Date.now();
@@ -132,12 +136,18 @@ ShellRoot {
                 if (outcome.command === "regional-choices")
                     root.check(JSON.stringify(outcome.choices) === JSON.stringify(outcome.selection === "timezone"
                         ? ["America/Chicago", "Etc/UTC"] : ["C", "en_US.utf8"]), "Exact catalog retained across collector reuse");
-                else root.check(outcome.preview.detail === "Full fixture detail", "Complete preview retained");
+                else if (outcome.command === "regional-preview")
+                    root.check(outcome.preview.detail === "Full fixture detail", "Complete preview retained");
+                else root.check(JSON.stringify(outcome.observation) === JSON.stringify(outcome.command === "time-status"
+                    ? { timezone: "Etc/UTC", canNtp: true, ntpEnabled: false, synchronized: true }
+                    : { canNtp: true, synchronized: false }), "Exact observation retained across collector reuse");
             } else {
                 const expected = root.scenario === "typed-error" ? "permission-denied"
+                    : root.scenario === "unsupported-error" ? "unsupported"
                     : root.scenario === "timeout" ? "timeout"
                     : ["failed-start", "missing-helper"].indexOf(root.scenario) >= 0 ? "missing-provider" : "malformed";
-                root.check(outcome.error.code === expected && outcome.choices.length === 0 && outcome.preview === null,
+                root.check(outcome.error.code === expected && outcome.choices.length === 0 && outcome.preview === null
+                    && outcome.observation === null,
                     "Failed result withholds provisional data and preserves error");
             }
         }

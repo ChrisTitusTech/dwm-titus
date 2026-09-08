@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Extend the finite QML regional reader to validate scoped time observations,
+  with bounded output, deadlines, and cancellation cleanup. Settings scheduling
+  and confirmation behavior are unchanged at this preparatory boundary.
+
 - Add read-only time discovery interfaces for scoped reconciliation: a bounded
   time-status result and a passive monitor that distinguishes service arrivals
   from property changes. Existing Settings activation is unchanged.

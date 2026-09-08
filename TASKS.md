@@ -437,6 +437,13 @@ unchanged. These interfaces prepare the visible NTP sampler's scoped
 reconciliation; its UI integration and combined installed qualification remain
 pending.
 
+The existing finite QML reader now accepts the two fixed no-argument time
+commands. It validates their exact bounded streams and withholds observations
+until complete output and a matching normal exit. Scoped reads have a 12-second
+outer guard and retain the existing reaping, cancellation, and publication
+ownership. They are not yet scheduled or connected to Settings; owner-arrival
+reconciliation and visible sampling remain pending.
+
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
 confirmation warning that a sent change cannot be canceled. Local cancellation
