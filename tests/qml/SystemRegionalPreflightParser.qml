@@ -37,6 +37,62 @@ ShellRoot {
         root.check(JSON.stringify(parser.choices) === JSON.stringify(values), kind + " exact catalog identities and order");
     }
     function unitTests() {
+        for (const command of ["time-status", "ntp-sample"]) {
+            const time = command === "time-status";
+            const header = command + "-protocol\t1\t0\n";
+            const complete = "complete\t" + command + "\n";
+            const row = time ? "time\tEtc/UTC\tyes\tno\tyes\n" : "sample\tyes\tno\n";
+            const good = header + row + complete;
+            const all = root.bytes(good);
+            for (let split = 0; split <= all.byteLength; split++) {
+                const parser = Protocol.create(command, "", "");
+                root.check(Protocol.consume(parser, all.slice(0, split)) && Protocol.consume(parser, all)
+                    && Protocol.finish(parser, 0, true), "every observation split: " + command + " " + split);
+                root.check(JSON.stringify(parser.observation) === JSON.stringify(time
+                    ? { timezone: "Etc/UTC", canNtp: true, ntpEnabled: false, synchronized: true }
+                    : { canNtp: true, synchronized: false }), "exact observation");
+            }
+            for (let bits = 0; bits < (time ? 8 : 4); bits++) {
+                const values = Array.from({length: time ? 3 : 2}, (_, i) => bits & (1 << i) ? "yes" : "no");
+                root.check(root.parse(command, "", "", header + (time ? "time\tEtc/UTC\t" : "sample\t")
+                    + values.join("\t") + "\n" + complete, 0), "every boolean combination");
+            }
+            const error = "error\t" + command + "\tinternal\tNot available\n";
+            for (const bad of [good.slice(0, -1), good + "\n", good + complete,
+                    good.replace("\t1\t0", "\t1\t1"), good.replace("\t1\t0", "\t2\t0"),
+                    header + complete, header + row + row + complete,
+                    header + row + error + complete, header + error + row + complete,
+                    good.replace("yes", "true"), good.replace("no", "0"),
+                    good.replace(row, row.slice(0, -1) + "\textra\n"),
+                    good.replace(row, "choice\tEtc/UTC\n"),
+                    good.replace(row, "preview\tntp-set\tenabled\t" + root.generation + "\tdisabled\tenabled\tdetail\n"),
+                    good.replace(row, time ? "sample\tyes\tno\n" : "time\tEtc/UTC\tyes\tno\tyes\n"),
+                    good.replace(complete, "complete\tregional-preview\n")])
+                root.check(!root.parse(command, "", "", bad, 0), "invalid observation");
+            for (const code of [1, 2, -1])
+                root.check(!root.parse(command, "", "", good, code), "observation exit mismatch");
+            root.check(!root.parse(command, "", "", good, 0, false), "crashed observation");
+            for (const code of ["missing-provider", "permission-denied", "timeout", "malformed", "interrupted", "internal"]) {
+                const failed = header + error.replace("internal", code) + complete;
+                root.check(root.parse(command, "", "", failed, 1), "typed observation error");
+                root.check(!root.parse(command, "", "", failed, 0), "observation error cannot succeed");
+            }
+            for (const code of ["network", "unsupported", "canceled", "unknown"])
+                root.check(!root.parse(command, "", "", header + error.replace("internal", code) + complete, 1), "closed observation error codes");
+            root.check(!root.parse(command, "", "", header + error.replace(command, "regional") + complete, 1), "observation error owner");
+            root.check(!root.parse(command, "", "", header + error + error + complete, 1), "duplicate observation error");
+            for (const value of ["x".repeat(513), "\u20ac".repeat(171), "bad\u202e"])
+                root.check(!root.parse(command, "", "", header + error.replace("Not available", value) + complete, 1), "bounded canonical observation detail");
+            root.check(root.parse(command, "", "", header + error.replace("Not available", "\u20ac".repeat(170) + "ab") + complete, 1), "512-byte observation detail");
+            for (const request of [[command, "timezone", ""], [command, "", "extra"], [command, null, ""], [command, "", null]])
+                root.check(!!Protocol.create(...request).failure, "no observation arguments");
+            const bounded = Protocol.create(command, "", "");
+            root.check(bounded.limit === 1024 && !Protocol.consume(bounded, new ArrayBuffer(1025)), "observation stream limit");
+            if (time) {
+                for (const value of ["", "../UTC", "Etc//UTC", "x".repeat(256), "\u00e9"])
+                    root.check(!root.parse(command, "", "", good.replace("Etc/UTC", value), 0), "invalid observed timezone");
+            }
+        }
         for (const kind of ["timezone", "locale"]) {
             const values = kind === "timezone" ? ["America/Chicago", "Etc/UTC"] : ["C", "en_US.utf8"];
             const good = root.choices(kind, values);

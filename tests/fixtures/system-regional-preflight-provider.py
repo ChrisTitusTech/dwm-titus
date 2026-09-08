@@ -13,7 +13,7 @@ args = sys.argv[1:]
 allowed = [["regional-choices", "timezone"], ["regional-choices", "locale"],
            ["regional-preview", "timezone-set", "Etc/UTC"],
            ["regional-preview", "ntp-set", "enabled"],
-           ["regional-preview", "locale-set", "LANG=C"]]
+           ["regional-preview", "locale-set", "LANG=C"], ["time-status"], ["ntp-sample"]]
 if args not in allowed:
     (directory / "invalid-arguments").touch()
     raise SystemExit(2)
@@ -30,7 +30,11 @@ with (directory / "lock").open("a") as lock:
     choices = args[0] == "regional-choices"
     header = args[0] + "-protocol\t1\t0" + ("\t" + args[1] if choices else "") + "\n"
     completion = "complete\t" + args[0] + "\n"
-    if choices:
+    if args[0] == "time-status":
+        payload = "time\tEtc/UTC\tyes\tno\tyes\n"
+    elif args[0] == "ntp-sample":
+        payload = "sample\tyes\tno\n"
+    elif choices:
         values = ["America/Chicago", "Etc/UTC"] if args[1] == "timezone" else ["C", "en_US.utf8"]
         payload = "".join("choice\t" + value + "\n" for value in values)
     else:
@@ -59,7 +63,8 @@ with (directory / "lock").open("a") as lock:
         time.sleep(60)
     code = 0
     if scenario == "typed-error":
-        payload = "error\tregional\tpermission-denied\tFixture read denied\n"
+        owner = args[0] if args[0] in {"time-status", "ntp-sample"} else "regional"
+        payload = "error\t" + owner + "\tpermission-denied\tFixture read denied\n"
         code = 1
     elif scenario == "wrong-exit":
         code = 1

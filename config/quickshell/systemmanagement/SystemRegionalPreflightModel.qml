@@ -17,6 +17,8 @@ Scope {
     onActiveChanged: { if (!root.active) root.cancel(); }
 
     function argumentsFor(command, selection, argument) {
+        if (command === "time-status" || command === "ntp-sample")
+            return selection === "" && argument === "" ? [] : null;
         if (command === "regional-choices")
             return ["timezone", "locale"].indexOf(selection) >= 0 && argument === "" ? [selection] : null;
         if (command !== "regional-preview" || typeof argument !== "string") return null;
@@ -29,6 +31,8 @@ Scope {
 
     function requestChoices(kind) { return root.start("regional-choices", kind, ""); }
     function requestPreview(action, argument) { return root.start("regional-preview", action, argument); }
+    function requestTimeStatus() { return root.start("time-status", "", ""); }
+    function requestNtpSample() { return root.start("ntp-sample", "", ""); }
 
     function start(command, selection, argument) {
         const args = root.argumentsFor(command, selection, argument);
@@ -52,6 +56,9 @@ Scope {
         if (root.current !== run || run.retired || run.finished || run.started) return;
         if (!root.active) { root.cancel(); return; }
         run.started = true;
+        // The scoped helper has a ten-second service budget; retain a bounded
+        // outer guard without changing the existing catalog/preview deadline.
+        readDeadline.interval = run.command === "time-status" || run.command === "ntp-sample" ? 12000 : 25000;
         readDeadline.restart();
         reader.running = true;
     }
@@ -120,7 +127,8 @@ Scope {
                 const outcome = { id: run.id, command: run.command, selection: run.selection,
                     status: error === null ? "available" : "failure", error: error,
                     choices: error === null ? run.parser.choices.slice() : [],
-                    preview: error === null ? run.parser.preview : null };
+                    preview: error === null ? run.parser.preview : null,
+                    observation: error === null ? run.parser.observation : null };
                 root.result = outcome;
                 // Closing from resultChanged must not publish a stale completion.
                 if (root.current === run && !run.retired) root.completed(outcome);
