@@ -2236,9 +2236,55 @@ The internal `NtpRead` client separately issues exactly two fixed
 `Properties.Get` requests for `CanNTP` and `NTPSynchronized`, accepts only
 bounded boolean replies, and publishes a pair only after both succeed under
 one ten-second deadline. Partial, late, denied, and malformed replies do not
-publish a sample. This internal reader adds no sampling CLI or timer. Neither
-event commands nor this reader changes the cumulative snapshot minor. Settings
-activation uses the shared root subscriptions; visible NTP sampling remains pending.
+publish a sample. The finite `dwm-system-management ntp-sample` command now
+exposes that reader without arguments, PackageKit discovery, journal access,
+authorization, mutation, or a timer. It uses a separate version 1.0 stream and
+does not change the cumulative snapshot minor. Successful output is exactly:
+
+```text
+ntp-sample-protocol<TAB>1<TAB>0
+sample<TAB>CAN_NTP<TAB>SYNCHRONIZED
+complete<TAB>ntp-sample
+```
+
+Both values are exactly `yes` or `no`. A failure replaces the sample line with
+`error<TAB>ntp-sample<TAB>CODE<TAB>DETAIL`; codes are `missing-provider`,
+`permission-denied`, `unsupported`, `timeout`, `malformed`, or `internal`.
+Detail is printable UTF-8 capped at 512 bytes. The complete stream is at most
+1024 bytes. Success exits 0, a typed read failure exits 1, and invalid arguments
+exit 2 without a sample. Consumers must require the exact header, one sample or
+error, matching completion, and corresponding normal exit before publication.
+
+The command buffers the entire result before a single bounded stdout write.
+It does not initialize an unused stderr writer; closed, absent, or read-only
+stderr does not prevent a valid sample. Child-process regressions cover these
+descriptor states independently of the private-bus checks.
+Absent stdout, a closed descriptor or Python stream, and read-only, full, or
+short stdout fail with exit 1, without traceback, retry, or a partial-value
+success claim. Invalid output setup does not start a service read.
+Output setup and TERM/INT/HUP interruption release private
+descriptors and restore signal handlers. The inherited output file-status flags
+are never changed. Regular-file output preserves its original offset/append
+semantics; this does not impose a deadline on storage I/O. The existing private
+bus fixture also exercises the CLI through typed success, denial, malformed
+data, a real ten-second timeout, and discarded late replies.
+Actual child-process TERM, INT, and HUP checks interrupt stalled private-bus
+calls and require exit 1 with empty output and no traceback. The signal handler
+queues one high-priority main-context cancellation and quit; it does not raise
+inside a GLib callback, where the exception can be swallowed. A deterministic
+loop-start fixture also signals after the reader's done check but before
+`MainLoop.run()`, proving that an early quit cannot be lost. Pending cancellation
+sources are removed on return, repeated signals coalesce, and the command
+rejects publication explicitly even if the read has just completed.
+A read-only Fedora 44 command check returned `sample<TAB>yes<TAB>yes` with
+matching completion and exit 0, without changing NTP or the system clock.
+
+Settings activation uses the shared root subscriptions; visible NTP sampling
+remains pending. Spaced read-only Fedora samples can reactivate idle timedated
+and therefore emit owner-arrival notifications. The eventual 30-second sampler
+must avoid turning these arrivals into repeated cumulative PackageKit reads,
+without dropping genuine concurrent time changes. This CLI boundary does not
+enable that sampler or alter the passive monitor contract.
 
 The fixed `dwm-system-management watch-accounts` command is also implemented.
 It accepts no arguments and emits only `accounts-event<TAB>ready` and

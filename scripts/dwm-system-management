@@ -60,6 +60,9 @@ REGIONAL_LOCALE_OUTPUT_BYTES = 2 * 1024 * 1024
 REGIONAL_LOCALE_ARRAY_BYTES = 8192
 REGIONAL_CHOICE_STREAM_BYTES = {"timezone": 512 * 1024, "locale": 1024 * 1024}
 REGIONAL_PREVIEW_STREAM_BYTES = 8192
+NTP_SAMPLE_STREAM_BYTES = 1024
+NTP_SAMPLE_ERROR_CODES = frozenset(("missing-provider", "permission-denied", "unsupported",
+                                  "timeout", "malformed", "internal"))
 REGIONAL_LOCALE_KEYS = (
     "LANG", "LANGUAGE", "LC_CTYPE", "LC_NUMERIC", "LC_TIME", "LC_COLLATE",
     "LC_MONETARY", "LC_MESSAGES", "LC_PAPER", "LC_NAME", "LC_ADDRESS",
@@ -1148,6 +1151,62 @@ class NtpRead(ServiceRead):
         except SnapshotFailure as error:
             if self.pending():
                 self.fail(error)
+
+
+def read_ntp_sample() -> NtpSample:
+    """Cancel the asynchronous read instead of raising inside a GLib callback."""
+    read = NtpRead()
+    handlers = {}
+    interrupted = False
+    cancel_source = 0
+
+    def cancel_read():
+        nonlocal cancel_source
+        cancel_source = 0
+        read.fail(SnapshotFailure("internal", "Network time read was interrupted"))
+        return read.GLib.SOURCE_REMOVE
+
+    def cancel(_signum, _frame):
+        nonlocal interrupted, cancel_source
+        if interrupted:
+            return
+        interrupted = True
+        # A quit before MainLoop.run() is lost. Dispatch on the context so a
+        # signal in the startup gap cannot mark the reader done prematurely.
+        cancel_source = read.GLib.idle_add(cancel_read, priority=read.GLib.PRIORITY_HIGH)
+
+    try:
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            handlers[signum] = signal.signal(signum, cancel)
+        return read.run()
+    finally:
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
+        if cancel_source:
+            read.GLib.source_remove(cancel_source)
+        if interrupted:
+            raise InterruptedError("Network time read was interrupted")
+
+
+def ntp_sample_output() -> tuple[str, int]:
+    """Publish one complete pair or one scoped error, never a partial sample."""
+    try:
+        sample = read_ntp_sample()
+        if (not isinstance(sample, NtpSample) or type(sample.can_ntp) is not bool
+                or type(sample.synchronized) is not bool):
+            raise SnapshotFailure("malformed", "Invalid network time sample")
+        record = "sample\t" + ("yes" if sample.can_ntp else "no") + "\t" + ("yes" if sample.synchronized else "no")
+        code = 0
+    except SnapshotFailure as failure:
+        error_code = failure.code if failure.code in NTP_SAMPLE_ERROR_CODES else "internal"
+        detail = "".join(char if char.isprintable() else " " for char in failure.detail)
+        detail = clean_text(detail.encode("utf-8", "replace").decode("utf-8"))
+        record = f"error\tntp-sample\t{error_code}\t{detail or 'Network time read failed'}"
+        code = 1
+    output = "ntp-sample-protocol\t1\t0\n" + record + "\ncomplete\tntp-sample\n"
+    if len(output.encode("utf-8")) > NTP_SAMPLE_STREAM_BYTES:
+        raise OSError("Network time sample exceeds its output limit")
+    return output, code
 
 
 class RegionalMutation(ServiceRead):
@@ -7783,10 +7842,14 @@ def cancel_journal_operation(journal: JournalDescriptorSet, operation_id: str, *
 
 def control_output_writer(output, resources: contextlib.ExitStack) -> Callable[[bytes], int] | None:
     """Never set file-status flags on an inherited open-file description."""
+    if output is None:
+        raise OSError("Operation output is unavailable")
     try:
         descriptor = output.fileno()
     except io.UnsupportedOperation:
         return None  # In-memory test consumers have no kernel writer.
+    except ValueError as error:
+        raise OSError("Operation output is closed") from error
     original = os.fstat(descriptor)
     flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
     if (flags & os.O_ACCMODE) not in (os.O_WRONLY, os.O_RDWR):
@@ -7826,8 +7889,8 @@ def control_output_writer(output, resources: contextlib.ExitStack) -> Callable[[
 
 
 @contextlib.contextmanager
-def control_output_writers() -> Iterator[tuple[Callable[[bytes], int] | None, Callable[[bytes], int] | None]]:
-    """Retain isolated writers and close them even on handled interruption."""
+def control_output_writers(*, diagnostics: bool = True) -> Iterator[tuple[Callable[[bytes], int] | None, Callable[[bytes], int] | None]]:
+    """Retain required isolated writers and close them on handled interruption."""
     handlers = {}
 
     def interrupted(_signum, _frame):
@@ -7837,10 +7900,29 @@ def control_output_writers() -> Iterator[tuple[Callable[[bytes], int] | None, Ca
         for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
             handlers[signum] = signal.signal(signum, interrupted)
         with contextlib.ExitStack() as resources:
-            yield tuple(control_output_writer(output, resources) for output in (sys.stdout, sys.stderr))
+            writer = control_output_writer(sys.stdout, resources)
+            error_writer = control_output_writer(sys.stderr, resources) if diagnostics else None
+            yield writer, error_writer
     finally:
         for signum, handler in handlers.items():
             signal.signal(signum, handler)
+
+
+def ntp_sample_command() -> int:
+    """Keep finite read output nonblocking without altering inherited flags."""
+    try:
+        with control_output_writers(diagnostics=False) as (writer, _error_writer):
+            output, code = ntp_sample_output()
+            if writer is None:
+                sys.stdout.write(output)
+                sys.stdout.flush()
+            else:
+                payload = output.encode("utf-8")
+                if writer(payload) != len(payload):
+                    raise OSError("Incomplete network time sample output")
+            return code
+    except OSError:
+        return 1
 
 
 def operation_control(command: str, operation_id: str) -> int:
@@ -8863,11 +8945,13 @@ def watch_account_events() -> int:
 
 
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | watch-updates | watch-regional time|locale | watch-accounts | watch-units printers|security | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | ntp-sample | watch-updates | watch-regional time|locale | watch-accounts | watch-units printers|security | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if argv and argv[0] == "ntp-sample":
+        return ntp_sample_command() if len(argv) == 1 else usage()
     if argv and argv[0] == "watch-units":
         return watch_service_events(argv[1]) if len(argv) == 2 and argv[1] in WATCH_UNIT_SETS else usage()
     if argv and argv[0] == "watch-accounts":
