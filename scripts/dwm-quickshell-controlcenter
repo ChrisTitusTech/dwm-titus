@@ -26,12 +26,17 @@ power_config_file=$dwm_config_dir/power.conf
 power_profiles_service=org.freedesktop.UPower.PowerProfiles
 power_profiles_path=/org/freedesktop/UPower/PowerProfiles
 power_profiles_interface=org.freedesktop.UPower.PowerProfiles
+bounded_foreground=0
 
 run_bounded() {
 	duration=$1
 	shift
 	status=0
-	timeout --signal=TERM --kill-after=2 "$duration" "$@" || status=$?
+	if [ "$bounded_foreground" = 1 ]; then
+		timeout --foreground --signal=TERM --kill-after=2 "$duration" "$@" || status=$?
+	else
+		timeout --signal=TERM --kill-after=2 "$duration" "$@" || status=$?
+	fi
 	if [ "$status" -eq 124 ]; then
 		printf 'operation timed out after %s seconds\n' "$duration" >&2
 	fi
@@ -266,11 +271,18 @@ write_power_config() {
 	power_config_managed=1
 }
 
+configured_light_locker_running() {
+	# Commas separate procps environment alternatives; no DISPLAY is no evidence.
+	case ${DISPLAY:-} in '' | *,*) return 1 ;; esac
+	command -v pgrep >/dev/null 2>&1 || return 1
+	run_bounded 3 pgrep -u "$(id -u)" -x light-locker --env "DISPLAY=$DISPLAY" >/dev/null 2>&1
+}
+
 start_configured_light_locker() {
 	command -v light-locker >/dev/null 2>&1 || return 0
+	case ${DISPLAY:-} in '' | *,*) return 1 ;; esac
 
-	if command -v pgrep >/dev/null 2>&1 &&
-		pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
+	if configured_light_locker_running; then
 		return 0
 	fi
 
@@ -278,7 +290,7 @@ start_configured_light_locker() {
 	command -v pgrep >/dev/null 2>&1 || return 0
 	power_attempt=0
 	while [ "$power_attempt" -lt 20 ]; do
-		if pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
+		if configured_light_locker_running; then
 			return 0
 		fi
 		power_attempt=$((power_attempt + 1))
@@ -291,11 +303,11 @@ stop_configured_light_locker() {
 	command -v pgrep >/dev/null 2>&1 || return 0
 	command -v pkill >/dev/null 2>&1 || return 0
 
-	if pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
-		pkill -u "$(id -u)" -x light-locker || return 1
+	if configured_light_locker_running; then
+		run_bounded 3 pkill -u "$(id -u)" -x light-locker --env "DISPLAY=$DISPLAY" || return 1
 		power_attempt=0
 		while [ "$power_attempt" -lt 40 ]; do
-			if ! pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
+			if ! configured_light_locker_running; then
 				return 0
 			fi
 			power_attempt=$((power_attempt + 1))
@@ -371,6 +383,8 @@ power_status() {
 	power_live_dpms_enabled=$power_dpms_enabled
 	power_live_dpms_timeout=$power_dpms_timeout
 	power_live_lock_timeout=$power_lock_timeout
+	power_lock_timeout_valid=0
+	power_lock_malformed=0
 
 	if command -v xset >/dev/null 2>&1 && power_xset_out=$(LC_ALL=C run_bounded 3 xset q 2>/dev/null); then
 		power_xset_available=1
@@ -403,8 +417,11 @@ power_status() {
 
 		power_value=$(printf '%s\n' "$power_xset_out" |
 			awk '/timeout:/ { for (i = 1; i <= NF; i++) if ($i == "timeout:") { print $(i + 1); exit } }')
-		if is_uint "$power_value"; then
+		if is_uint "$power_value" && [ "${#power_value}" -le 5 ] && [ "$power_value" -le 86400 ]; then
 			power_live_lock_timeout=$power_value
+			power_lock_timeout_valid=1
+		else
+			power_lock_malformed=1
 		fi
 	fi
 
@@ -415,14 +432,20 @@ power_status() {
 		command -v gsettings >/dev/null 2>&1 &&
 		power_gsettings_value=$(run_bounded 3 gsettings get apps.light-locker lock-after-screensaver 2>/dev/null) &&
 		power_gsettings_suspend=$(run_bounded 3 gsettings get apps.light-locker lock-on-suspend 2>/dev/null); then
-		power_lock_available=1
-		power_value=$(printf '%s\n' "$power_gsettings_value" | awk '{ print $NF }')
-		if is_uint "$power_value"; then
+		power_value=$(printf '%s\n' "$power_gsettings_value" |
+			awk 'NR == 1 && NF == 2 && $1 == "uint32" { value = $2 } END { if (NR == 1) print value }')
+		if is_uint "$power_value" && [ "${#power_value}" -le 10 ] && [ "$power_value" -le 4294967295 ]; then
 			power_live_lock_after=$power_value
+		else
+			power_lock_malformed=1
 		fi
 		case $power_gsettings_suspend in
 		true | false) power_live_lock_on_suspend=$power_gsettings_suspend ;;
+		*) power_lock_malformed=1 ;;
 		esac
+		if [ "$power_lock_timeout_valid" = 1 ] && [ "$power_lock_malformed" = 0 ]; then
+			power_lock_available=1
+		fi
 	fi
 
 	power_live_lock_enabled=$power_lock_enabled
@@ -435,11 +458,11 @@ power_status() {
 	fi
 
 	power_lock_running=0
-	if command -v pgrep >/dev/null 2>&1 &&
-		pgrep -u "$(id -u)" -x light-locker >/dev/null 2>&1; then
+	if configured_light_locker_running; then
 		power_lock_running=1
 	fi
 
+	printf 'lock_malformed\t%s\n' "$power_lock_malformed"
 	printf 'xset_available\t%s\n' "$power_xset_available"
 	printf 'dpms_available\t%s\n' "$power_dpms_available"
 	printf 'dpms_enabled\t%s\n' "$power_live_dpms_enabled"
@@ -786,6 +809,23 @@ power_snapshot_suspend() {
 	esac
 }
 
+power_lock_record() {
+	printf 'power-lock\t%s\t%s\t%s\t%s\tuser-session\tlight-locker automatic locking\n' \
+		"$(if [ "$(power_row_value lock_malformed)" = 1 ]; then printf partial; elif [ "$(power_row_value lock_available)" = 1 ]; then printf available; else printf unavailable; fi)" \
+		"$([ "$(power_row_value lock_enabled)" = 1 ] && printf yes || printf no)" \
+		"$(power_row_value lock_timeout)" \
+		"$([ "$(power_row_value lock_running)" = 1 ] && printf yes || printf no)"
+}
+
+power_lock_snapshot() {
+	# The information reader owns the encompassing process group. Nested
+	# timeouts must not move X11/GSettings probes outside that cleanup boundary.
+	bounded_foreground=1
+	power_legacy_status=$(power_status)
+	printf 'power-protocol\t1\t0\n'
+	power_lock_record
+}
+
 power_snapshot() {
 	power_legacy_status=$(power_status)
 	printf 'power-protocol\t1\t0\n'
@@ -794,11 +834,7 @@ power_snapshot() {
 		"$([ "$(power_row_value dpms_available)" = 1 ] && printf available || printf unavailable)" \
 		"$([ "$(power_row_value dpms_enabled)" = 1 ] && printf yes || printf no)" \
 		"$(power_row_value dpms_timeout)"
-	printf 'power-lock\t%s\t%s\t%s\t%s\tuser-session\tlight-locker automatic locking\n' \
-		"$([ "$(power_row_value lock_available)" = 1 ] && printf available || printf unavailable)" \
-		"$([ "$(power_row_value lock_enabled)" = 1 ] && printf yes || printf no)" \
-		"$(power_row_value lock_timeout)" \
-		"$([ "$(power_row_value lock_running)" = 1 ] && printf yes || printf no)"
+	power_lock_record
 	power_snapshot_upower
 	power_snapshot_profiles
 	power_snapshot_suspend
@@ -1661,7 +1697,7 @@ action() {
 }
 
 usage() {
-	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|power-status|power-snapshot|power-watch|power-profile-set <profile>|power-apply|power-dpms on|off|power-dpms-timeout <seconds>|power-lock on|off|power-lock-timeout <seconds>|session-action lock|logout|suspend|reboot|shutdown|action <name>\n' "$0" >&2
+	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|power-status|power-snapshot|power-lock-snapshot|power-watch|power-profile-set <profile>|power-apply|power-dpms on|off|power-dpms-timeout <seconds>|power-lock on|off|power-lock-timeout <seconds>|session-action lock|logout|suspend|reboot|shutdown|action <name>\n' "$0" >&2
 }
 
 case ${1:-} in
@@ -1678,6 +1714,13 @@ theme-set)
 keybinds) keybinds ;;
 power-status) power_status ;;
 power-snapshot) power_snapshot ;;
+power-lock-snapshot)
+	if [ $# -ne 1 ]; then
+		usage
+		exit 2
+	fi
+	power_lock_snapshot
+	;;
 power-watch) power_watch ;;
 power-profile-set)
 	if [ $# -ne 2 ]; then

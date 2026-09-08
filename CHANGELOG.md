@@ -8,6 +8,14 @@ versions from `config.mk`.
 
 ### Changed
 
+- Show unknown automatic-lock status in Power Settings and Control Center when
+  live evidence is partial or unavailable, instead of displaying saved fallback
+  values as enabled or disabled.
+
+- Reuse the power helper's automatic screen-lock evidence through a bounded
+  internal information reader. Preserve unknown and unavailable states without
+  adding a locking policy change or a second locker probe.
+
 - Add internal root block-encryption reporting with capped topology validation,
   conservative unknown states, and bounded read-only process cleanup. Public
   protocol and Settings integration remain pending.

@@ -1,5 +1,16 @@
 # Power Provider Protocol
 
+The shared automatic-lock probe requires a valid live screen-saver timeout,
+`uint32` lock delay, and boolean suspend policy before reporting availability.
+Malformed successful replies produce `partial` status instead of configured
+fallback evidence. Locker readiness matches both the user's effective UID and
+current `DISPLAY` through bounded procps environment matching; a locker on
+another display or missing display evidence cannot establish readiness. Startup,
+shutdown, and rollback use that same display scope so a failed local change
+cannot terminate another X session's locker. Power Settings and Control Center
+show Unknown for non-available lock records and clear unverified boolean and
+timeout values while preserving their provider status.
+
 ## Purpose
 
 `dwm-quickshell-controlcenter power-snapshot` exposes the power state used by
@@ -84,6 +95,15 @@ battery, external-power, and docked actions. Each action is `default`,
 `ignore`, `poweroff`, `reboot`, `halt`, `kexec`, `suspend`, `hibernate`,
 `hybrid-sleep`, `suspend-then-hibernate`, `lock`, or `unknown`. Policy remains
 read-only in Settings; the user-writable helper is never elevated to edit it.
+
+## Lock-only Snapshot
+
+`dwm-quickshell-controlcenter power-lock-snapshot` accepts no arguments and
+emits the version header and the same `power-lock` record as the complete power
+snapshot. It reuses power status collection without querying UPower, profiles,
+suspend, or lid policy. System information can consume automatic-lock evidence
+without a separate locker or GSettings implementation. This describes automatic
+locking configuration and locker readiness, not whether the screen is locked now.
 
 ## Actions
 

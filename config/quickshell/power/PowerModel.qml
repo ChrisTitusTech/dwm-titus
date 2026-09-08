@@ -384,8 +384,9 @@ Scope {
         }
         if (lock !== null) {
             root.lockState = lock.state; root.lockAvailable = lock.state === "available";
-            root.lockEnabled = lock.enabled; root.lockTimeout = lock.timeout;
-            root.lockRunning = lock.running; root.lockDetail = lock.detail;
+            root.lockEnabled = root.lockAvailable && lock.enabled;
+            root.lockTimeout = root.lockAvailable ? lock.timeout : 0;
+            root.lockRunning = root.lockAvailable && lock.running; root.lockDetail = lock.detail;
         } else {
             root.clearLockState("Automatic lock provider returned malformed state");
         }

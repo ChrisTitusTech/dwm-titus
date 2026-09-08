@@ -192,9 +192,11 @@ Flickable {
         SectionLabel { label: "Automatic locking" }
 
         StatusCard {
-            label: root.powerModel.lockEnabled ? "Automatic lock enabled" : "Automatic lock disabled"
+            label: !root.powerModel.lockAvailable ? "Automatic lock status unavailable"
+                : root.powerModel.lockEnabled ? "Automatic lock enabled" : "Automatic lock disabled"
             statusState: root.powerModel.lockState
-            value: root.powerModel.lockEnabled ? root.formatDuration(root.powerModel.lockTimeout) : "Off"
+            value: !root.powerModel.lockAvailable ? "Unknown"
+                : root.powerModel.lockEnabled ? root.formatDuration(root.powerModel.lockTimeout) : "Off"
             detail: root.powerModel.lockDetail + (root.powerModel.lockRunning ? " / locker running" : "")
         }
 

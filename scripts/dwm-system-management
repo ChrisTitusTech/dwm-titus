@@ -2517,8 +2517,52 @@ def read_locale_choices() -> tuple[str, ...]:
                 raise SystemExit(128 + interrupted)
 
 
-def read_storage_information(kind: str) -> FilesystemInformation | InformationState:
-    """Collect one closed storage source with bounded owned-group cleanup."""
+def parse_screen_lock(data: bytes) -> InformationState:
+    """Map only the versioned power helper's automatic-lock evidence."""
+    failure = SnapshotFailure("malformed", "Automatic lock evidence is malformed")
+    if not isinstance(data, bytes) or len(data) > 8192 or not data.endswith(b"\n"):
+        raise failure
+    try:
+        lines = data.decode("utf-8").splitlines()
+    except UnicodeError as error:
+        raise failure from error
+    if not lines:
+        raise failure
+    header = lines[0].split("\t")
+    if (len(header) < 3 or header[:2] != ["power-protocol", "1"]
+            or not re.fullmatch(r"[0-9]{1,10}", header[2]) or int(header[2]) > 2147483647):
+        raise failure
+    lock = None
+    for line in lines[1:]:
+        fields = line.split("\t")
+        if fields[0] == "power-protocol":
+            raise failure
+        if fields[0] != "power-lock":
+            continue
+        if (lock is not None or len(fields) < 7
+                or fields[1] not in ("available", "partial", "restricted", "unavailable")
+                or fields[2] not in ("yes", "no") or fields[4] not in ("yes", "no")
+                or not re.fullmatch(r"[0-9]{1,5}", fields[3]) or int(fields[3]) > 86400
+                or fields[5] != "user-session"):
+            raise failure
+        information_text(fields[6], "Automatic lock evidence")
+        lock = fields
+    if lock is None:
+        raise failure
+    status, enabled, running = lock[1], lock[2], lock[4]
+    detail = "Automatic screen locking from the shared power helper; not the current locked state"
+    if status != "available":
+        return InformationState(status, "unknown", detail)
+    if enabled == "yes" and running == "no":
+        return InformationState("partial", "unknown", "Automatic locking is configured but the locker is not running")
+    return InformationState("available", "enabled" if enabled == "yes" else "disabled", detail)
+
+
+def read_information_process(kind: str) -> FilesystemInformation | InformationState:
+    """Collect one fixed information source with bounded owned-group cleanup."""
+    duration = 3
+    output_limit = FILESYSTEM_OUTPUT_BYTES
+    environment = {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"}
     if kind == "filesystem":
         label = "Filesystem"
         command = ["/usr/bin/findmnt", "--json", "--bytes", "--real", "--uniq", "--output",
@@ -2528,6 +2572,14 @@ def read_storage_information(kind: str) -> FilesystemInformation | InformationSt
         label = "Root encryption"
         command = ["/usr/bin/lsblk", "--json", "--output", "NAME,TYPE,FSTYPE,MOUNTPOINTS,PKNAME"]
         parse = parse_root_encryption
+    elif kind == "screen-lock":
+        label = "Automatic screen lock"
+        command = [os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                               "dwm-quickshell-controlcenter"), "power-lock-snapshot"]
+        parse = parse_screen_lock
+        duration = 10
+        output_limit = 8192
+        environment = dict(os.environ, PATH="/usr/bin:/bin", LANG="C", LC_ALL="C")
     else:
         raise SnapshotFailure("malformed", "Unknown storage information source")
 
@@ -2556,13 +2608,13 @@ def read_storage_information(kind: str) -> FilesystemInformation | InformationSt
         try:
             for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
                 handlers[number] = signal.signal(number, terminate)
-            deadline = time.monotonic() + 3
+            deadline = time.monotonic() + duration
             check_deadline()
             try:
-                process = subprocess.Popen(["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "3"] + command,
+                process = subprocess.Popen(["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", str(duration)] + command,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
-                    env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
+                    env=environment)
             except FileNotFoundError as error:
                 raise SnapshotFailure("missing-provider", f"{label} command is unavailable", "unavailable") from error
             output = bytearray()
@@ -2579,14 +2631,14 @@ def read_storage_information(kind: str) -> FilesystemInformation | InformationSt
                     for key, _events in selector.select(min(0.05, max(0, deadline - time.monotonic()))):
                         check_deadline()
                         try:
-                            chunk = os.read(key.fd, min(65536, FILESYSTEM_OUTPUT_BYTES - received + 1))
+                            chunk = os.read(key.fd, min(65536, output_limit - received + 1))
                         except BlockingIOError:
                             continue
                         if not chunk:
                             selector.unregister(key.fileobj)
                             continue
                         received += len(chunk)
-                        if received > FILESYSTEM_OUTPUT_BYTES:
+                        if received > output_limit:
                             raise SnapshotFailure("malformed", f"{label} output exceeds its byte limit")
                         if key.fileobj is process.stdout:
                             output.extend(chunk)
@@ -2619,6 +2671,17 @@ def read_storage_information(kind: str) -> FilesystemInformation | InformationSt
     except OSError as error:
         return unknown(error)
     return result
+
+
+def read_storage_information(kind: str) -> FilesystemInformation | InformationState:
+    if kind not in ("filesystem", "root-encryption"):
+        raise SnapshotFailure("malformed", "Unknown storage information source")
+    return read_information_process(kind)
+
+
+def read_screen_lock() -> InformationState:
+    """Reuse the power helper without querying another locker or GSettings source."""
+    return read_information_process("screen-lock")
 
 
 def read_filesystem_information() -> FilesystemInformation:
