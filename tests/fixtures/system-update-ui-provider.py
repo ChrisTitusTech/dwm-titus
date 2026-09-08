@@ -58,9 +58,9 @@ def snapshot():
 
 
 def main():
-    if tuple(sys.argv[1:]) in (("watch-regional", "time"), ("watch-regional", "locale"),
+    if tuple(sys.argv[1:]) in (("watch-time",), ("watch-regional", "locale"),
                               ("watch-accounts",), ("watch-units", "printers")):
-        prefix = "regional-event" if sys.argv[1] == "watch-regional" else (
+        prefix = "time-event" if sys.argv[1] == "watch-time" else "regional-event" if sys.argv[1] == "watch-regional" else (
             "accounts-event" if sys.argv[1] == "watch-accounts" else "units-event")
         row(prefix, "ready")
         signal.pause()

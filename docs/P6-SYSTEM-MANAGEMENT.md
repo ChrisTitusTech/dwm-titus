@@ -2361,11 +2361,21 @@ pinned sender. Untrusted, stale-owner, and unrelated signals cannot produce
 either notification. The monitor makes no platform read or activation call.
 
 An owner-arrival record is uncertainty, not certification that configuration
-is unchanged. The eventual consumer must temporarily gate admission, reconcile
-bounded time state, preserve genuine concurrent changes, and respect the
-existing two-read settling limit. It must not simply ignore arrivals while a
-sample or regional preview is running. The new interfaces do not yet implement
-that consumer behavior or change existing confirmation invalidation. Private-bus
+is unchanged. Settings temporarily gates time admission and uses a separate
+bounded time-only owner to reconcile timezone, CanNTP, and NTP enablement.
+Unchanged configuration retains catalog and matching preview identities;
+synchronization-only changes update readable state. Genuine configuration
+changes use normal discovery invalidation. Initial and settling reads retain
+the existing two-read limit, and a baseline mismatch permits only one automatic
+cumulative recovery before explicit retry is required. Required recovery
+preempts and reaps optional readers. Arrivals during regional preview reads
+are retained until the finite reader releases and reconciliation finishes.
+With readable time state, the helper's timezone and NTP offers share admission;
+only NTP adds a capability check. Initial reconciliation therefore detects both
+capability loss and gain when those offers establish the prior capability.
+When shared admission blocks both actions, capability remains unknown rather
+than inferred absent, and time-only reads never enable the blocked offer.
+Private-bus
 fixtures exercise the new passive monitor lifecycle, fixed time-status reads,
 malformed/denied/timeout results, late replies, and all three handled signals.
 
@@ -2379,9 +2389,8 @@ a 12-second outer deadline around the helper's ten-second budget, with the
 existing three-second TERM-to-KILL reaping grace. Catalogs and previews retain
 their 25-second outer deadline. Ownership remains claimed through publication
 callbacks, and close, overflow, timeout, or replacement cannot publish retired
-data. This reader addition does not schedule reads, change discovery ownership,
-or connect observations to Settings or journal recovery. Reconciliation and
-the visible 30-second sampler remain separate integration work.
+data. Time-only observations never supply journal recovery evidence. The visible
+30-second NTP sampler remains separate integration work.
 
 The fixed `dwm-system-management watch-accounts` command is also implemented.
 It accepts no arguments and emits only `accounts-event<TAB>ready` and

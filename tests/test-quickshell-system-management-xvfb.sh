@@ -135,9 +135,10 @@ set -eu
 fixture=${DWM_SYSTEM_MANAGEMENT_TEST_FIXTURE:?}
 mode=$(sed -n '1p' "$fixture/mode")
 case ${1:-} in
-watch-regional | watch-accounts | watch-units)
+watch-time | watch-regional | watch-accounts | watch-units)
 	case "$*" in
-	'watch-regional time' | 'watch-regional locale') prefix=regional-event ;;
+	'watch-time') prefix=time-event ;;
+	'watch-regional locale') prefix=regional-event ;;
 	watch-accounts) prefix=accounts-event ;;
 	'watch-units printers') prefix=units-event ;;
 	*) exit 2 ;;
@@ -495,7 +496,8 @@ for lock_domain in updates time locale accounts printers; do
 	mkfifo "$lock_fixture/$lock_domain.events"
 	case $lock_domain in
 	updates) set -- watch-updates ;;
-	time | locale) set -- watch-regional "$lock_domain" ;;
+	time) set -- watch-time ;;
+	locale) set -- watch-regional "$lock_domain" ;;
 	accounts) set -- watch-accounts ;;
 	printers) set -- watch-units printers ;;
 	esac
@@ -737,6 +739,31 @@ for regional_action in timezone-set ntp-set locale-set; do
 	done
 done
 
+mkdir -p "$work/time-reconciliation"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/time-reconciliation/"
+cp "$repo/tests/qml/SystemTimeReconciliation.qml" "$work/time-reconciliation/shell.qml"
+for time_scenario in owner owner-change owner-capability owner-fail owner-sync owner-preview owner-pending owner-required owner-gain owner-blocked; do
+	time_state=$work/time-reconciliation-$time_scenario
+	mkdir -p "$time_state"
+	time_status=0
+	timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$work/regional-settings-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+		DWM_NATIVE_DISCOVERY_FIXTURE="$time_state" DWM_NATIVE_ACTION_FIXTURE="$time_state" \
+		DWM_NATIVE_ACTION=timezone-set DWM_NATIVE_ACTION_SCENARIO="$time_scenario" \
+		quickshell --no-duplicate --path "$work/time-reconciliation/shell.qml" >"$time_state/log" 2>&1 &
+	quickshell_pid=$!
+	wait "$quickshell_pid" || time_status=$?
+	quickshell_pid=
+	if [ "$time_status" -ne 0 ] || ! grep -F 'Time reconciliation tests: PASS' "$time_state/log" ||
+		grep -Fq 'Time reconciliation FAILED:' "$time_state/log" ||
+		[ -e "$time_state/overlap" ] || [ -e "$time_state/unexpected-command" ] ||
+		[ -e "$time_state/timezone-set" ] ||
+		[ -n "$(find "$time_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+		cat "$time_state/log" >&2
+		exit 1
+	fi
+done
+
 mkdir -p "$work/delegate-confirmation" "$work/delegate-data/dwm-titus/scripts"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/delegate-confirmation/"
 cp "$repo/tests/qml/SystemDelegateConfirmation.qml" "$work/delegate-confirmation/shell.qml"
@@ -781,7 +808,7 @@ cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" \
 cp "$repo/tests/qml/SystemRegionalUi.qml" "$work/regional-ui/shell.qml"
 for regional_size in 640x480 780x580 1000x740; do
 	for regional_action in timezone-set ntp-set locale-set; do
-		for regional_scenario in success denied unsupported uncertain large error-read malformed-read disable; do
+		for regional_scenario in success denied unsupported uncertain large error-read malformed-read disable owner; do
 			[ "$regional_scenario" != disable ] || [ "$regional_action" = ntp-set ] || continue
 			regional_state=$work/regional-ui-$regional_size-$regional_action-$regional_scenario
 			mkdir -p "$regional_state"
@@ -804,7 +831,7 @@ for regional_size in 640x480 780x580 1000x740; do
 				exit 1
 			fi
 			case $regional_scenario in
-			error-read | malformed-read)
+			error-read | malformed-read | owner)
 				[ ! -e "$regional_state/$regional_action" ]
 				[ ! -e "$regional_state/ack-operation" ]
 				;;

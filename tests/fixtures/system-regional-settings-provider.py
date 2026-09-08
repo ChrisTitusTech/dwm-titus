@@ -42,6 +42,10 @@ def row(*fields):
         fields = (*fields[:2], "partial", *fields[3:])
     elif fields[0] == "action" and fields[1] != "updates-cancel":
         fields = (*fields[:2], "available", *fields[3:-1], "Fixed private action")
+        count = int((directory / "count").read_text())
+        if ((operation.SCENARIO == "owner-gain" and fields[1] == "ntp-set" and count <= 2)
+                or (operation.SCENARIO == "owner-blocked" and fields[1] in {"timezone-set", "ntp-set"})):
+            fields = (*fields[:2], "unavailable", *fields[3:])
     elif fields == ("complete", "snapshot"):
         if (directory / operation.ACTION).exists() and not (directory / "ack-operation").exists():
             original_row("terminal-handoff", operation.IDENTITY, operation.ACTION, operation.KINDS[operation.ACTION])
@@ -87,6 +91,10 @@ def preflight():
             else:
                 target = arguments[2][5:] if operation.ACTION == "locale-set" else arguments[2]
                 current = "disabled" if operation.ACTION == "ntp-set" else "Etc/UTC" if operation.ACTION == "timezone-set" else "C"
+                if operation.SCENARIO.startswith("owner") and operation.SCENARIO != "owner-preview" and operation.ACTION == "timezone-set":
+                    current = "America/Chicago"
+                if operation.SCENARIO == "owner" and operation.ACTION == "ntp-set":
+                    current = "enabled"
                 detail = "Full fixture detail"
                 if operation.SCENARIO == "large":
                     detail = (detail + " " + "LC_TIME=preserved " * 30)[:512]
@@ -107,6 +115,10 @@ for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
 command = sys.argv[1] if len(sys.argv) > 1 else ""
 if command in ("regional-choices", "regional-preview"):
     raise SystemExit(preflight())
+if command == "time-status":
+    with exclusive("finite"):
+        discovery.time_status()
+    raise SystemExit(0)
 if command in (operation.ACTION, "watch-operation", "ack-operation"):
     with exclusive("preflight"):
         raise SystemExit(operation.main())

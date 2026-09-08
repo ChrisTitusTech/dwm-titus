@@ -441,8 +441,18 @@ The existing finite QML reader now accepts the two fixed no-argument time
 commands. It validates their exact bounded streams and withholds observations
 until complete output and a matching normal exit. Scoped reads have a 12-second
 outer guard and retain the existing reaping, cancellation, and publication
-ownership. They are not yet scheduled or connected to Settings; owner-arrival
-reconciliation and visible sampling remain pending.
+ownership. Settings now uses a separate visible reconciliation owner after a
+cumulative baseline and authenticated time-owner arrival. Unchanged time
+configuration retains catalog and matching preview identity without PackageKit
+rediscovery; genuine changes invalidate existing discovery. Scoped reads retain
+the initial-plus-settling limit and yield to required snapshot recovery. Focused
+private fixtures cover unchanged, changed, capability, denial, synchronization,
+mismatched-preview, pending-preview, and required-recovery outcomes. Nine nested
+X11 cases preserve confirmation focus and deliberately moved external focus
+across reconciliation at three window sizes. Combined installed validation and
+visible NTP sampling remain pending.
+Initial capability-gain and shared-admission-blocker fixtures also distinguish
+stale capability offers from unrelated authorization/recovery restrictions.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
