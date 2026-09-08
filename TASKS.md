@@ -506,9 +506,13 @@ three-second monotonic deadline, bounded process-group cleanup, a shared 2 MiB
 stdout/stderr budget, and at most 256 mount-ID-keyed rows. Seventeen focused
 tests cover malformed and partial inventories, exact byte counts, truncation,
 timeouts, simulated wall-clock reversal, and interruption cleanup. A read-only
-Fedora 44 probe returned eight validated rows. Security sources, protocol
-integration, visible controls, and combined installed qualification remain
-pending.
+Fedora 44 probe returned eight validated rows. Internal SELinux, Secure Boot,
+and firewalld status readers now use only fixed capped files or a bounded
+read-only systemd query. Fifteen focused tests, including a real firewalld
+deadline and discarded late reply, passed; a read-only Fedora 44 probe returned
+available states for all three sources. Root encryption, shared screen-lock
+status, protocol integration, visible controls, and combined installed
+qualification remain pending.
 
 - [ ] Add event-driven or bounded system information and storage overview state
   without a new idle poller.
