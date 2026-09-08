@@ -80,6 +80,28 @@ class InformationSnapshotTests(unittest.TestCase):
         self.assertEqual(rows(result, "action")[0][2], "available")
         self.assertEqual(len([row for row in rows(result, "error") if row[1] == "information"]), 1)
 
+    def test_interruption_stops_all_following_sources(self):
+        for reader in ("local", "hardware", "security", "filesystems"):
+            with self.subTest(reader=reader):
+                source = self.sources()
+                getattr(source, reader).side_effect = InterruptedError("Canceled")
+                with self.assertRaises(InterruptedError):
+                    provider.build_information_snapshot(source)
+                if reader in ("local", "hardware", "security"):
+                    source.filesystems.assert_not_called()
+                if reader in ("local", "hardware"):
+                    source.security.assert_not_called()
+
+    def test_real_parser_overflow_discards_complete_inventory(self):
+        source = self.sources()
+        data = json.dumps({"filesystems": [{"id": index, "source": "/dev/test", "target": "/mnt/test",
+            "fstype": "ext4", "size": 10, "used": 2, "avail": 8} for index in range(257)]}).encode()
+        source.filesystems.side_effect = lambda: provider.parse_filesystem_information(data)
+        result = provider.build_information_snapshot(source)
+        self.assertEqual(rows(result, "filesystem"), [])
+        self.assertTrue(any(row[1:3] == ["storage", "malformed"] for row in rows(result, "error")))
+        self.assertEqual(len(rows(result, "state")), 19)
+
     def test_missing_state_is_explicit_and_owner_scoped(self):
         source = self.sources()
         del source.local.return_value["cpu-model"]
@@ -616,10 +638,8 @@ class FilesystemInformationTests(unittest.TestCase):
         self.assertEqual(result.summary.status, "partial")
         result = self.parse([self.row(index) for index in range(256)])
         self.assertEqual((result.summary.status, result.summary.value), ("available", "256"))
-        result = self.parse([self.row(index) for index in range(257)] + [self.row(0)])
-        self.assertEqual(result.summary.status, "partial")
-        self.assertEqual(len(result.rows), 255)
-        self.assertNotIn("0", [row.mount_id for row in result.rows])
+        with self.assertRaisesRegex(provider.SnapshotFailure, "record limit"):
+            self.parse([self.row(index) for index in range(257)] + [self.row(0)])
 
     def test_invalid_json_shape_duplicate_keys_numbers_and_utf8(self):
         for data in (b"", b"[]", b"{}", b'{"filesystems":null}', b'{"filesystems": [], "filesystems": []}',
