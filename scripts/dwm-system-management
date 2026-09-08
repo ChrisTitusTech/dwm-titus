@@ -37,6 +37,9 @@ INFORMATION_MEMORY_KEYS = {
     "MemTotal": "memory-total-bytes", "MemAvailable": "memory-available-bytes",
     "SwapTotal": "swap-total-bytes", "SwapFree": "swap-free-bytes",
 }
+HARDWARE_INFORMATION_FIELDS = {
+    "HardwareVendor": "hardware-vendor", "HardwareModel": "hardware-model",
+}
 MAX_LIST_RECORDS = 4096
 MAX_LIST_BYTES = 3 * 1024 * 1024
 READ_DEADLINE_SECONDS = 120
@@ -855,6 +858,83 @@ class ServiceRead:
         if self.failure:
             raise self.failure
         return self.value
+
+
+class HardwareRead(ServiceRead):
+    """Read two fixed hostname1 properties while preserving a validated peer."""
+
+    label = "Hardware information"
+
+    def __init__(self, Gio=None, GLib=None):
+        super().__init__(Gio, GLib)
+        self.values = {}
+        self.waiting = set(HARDWARE_INFORMATION_FIELDS)
+
+    def fail(self, failure):
+        if self.done:
+            return
+        for field in self.waiting:
+            self.values[HARDWARE_INFORMATION_FIELDS[field]] = information_unknown(failure)
+        self.waiting.clear()
+        self.finish(value=dict(self.values))
+
+    def record(self, field, state):
+        if not self.pending() or field not in self.waiting:
+            return
+        self.values[HARDWARE_INFORMATION_FIELDS[field]] = state
+        self.waiting.remove(field)
+        if not self.waiting:
+            self.finish(value=dict(self.values))
+
+    def property_failure(self, error):
+        if self.Gio.dbus_error_get_remote_error(error) == "org.freedesktop.DBus.Error.UnknownProperty":
+            return SnapshotFailure("unsupported", "Hardware information property is absent", "unsupported")
+        return self.bus_failure(error)
+
+    def connected(self, _source, result, _data):
+        if not self.pending():
+            return
+        try:
+            self.connection = self.Gio.bus_get_finish(result)
+            self.connection.set_exit_on_close(False)
+        except self.GLib.Error as error:
+            self.fail(self.bus_failure(error))
+            return
+        for field in HARDWARE_INFORMATION_FIELDS:
+            if not self.pending():
+                return
+            try:
+                self.connection.call("org.freedesktop.hostname1", "/org/freedesktop/hostname1",
+                    PROPERTIES_INTERFACE, "Get", self.GLib.Variant("(ss)", ("org.freedesktop.hostname1", field)),
+                    self.GLib.VariantType.new("(v)"), self.Gio.DBusCallFlags.NONE,
+                    max(1, int((self.deadline - time.monotonic()) * 1000)), self.cancellable, self.replied, field)
+            except self.GLib.Error as error:
+                self.record(field, information_unknown(self.property_failure(error)))
+
+    def replied(self, connection, result, field):
+        if not self.pending() or field not in self.waiting:
+            return
+        try:
+            reply = connection.call_finish(result)
+            if reply.get_type_string() != "(v)" or reply.get_size() > MAX_TEXT_BYTES + 32:
+                raise SnapshotFailure("malformed", "Invalid hardware information reply")
+            value = reply.get_child_value(0).get_variant()
+            if value.get_type_string() != "s" or value.get_size() > MAX_TEXT_BYTES + 1:
+                raise SnapshotFailure("malformed", "Invalid hardware information property")
+            state = information_text(value.unpack(), "Hardware identity reported by hostname1")
+        except self.GLib.Error as error:
+            state = information_unknown(self.property_failure(error))
+        except (SnapshotFailure, UnicodeError) as error:
+            state = information_unknown(error)
+        self.record(field, state)
+
+
+def read_hardware_information() -> dict[str, InformationState]:
+    """Keep missing service bindings scoped without swallowing interruption."""
+    try:
+        return run_interruptible_read(HardwareRead())
+    except SnapshotFailure as error:
+        return {identifier: information_unknown(error) for identifier in HARDWARE_INFORMATION_FIELDS.values()}
 
 
 @dataclass(frozen=True)

@@ -950,8 +950,19 @@ UTF-8 within 512 bytes; counters use exact unsigned 64-bit decimal values, and
 the first CPU model field is authoritative. Read denial is scoped `restricted`
 state, absent files are `unsupported`, other I/O failures are `unavailable`, and
 malformed data is `partial`; failed values are always `unknown`. It starts no
-service, subprocess, journal access, or polling loop. Hardware, filesystem,
-security, protocol, and Settings integration remain separate boundaries.
+service, subprocess, journal access, or polling loop.
+
+The internal hostname1 reader separately implements the two fixed hardware
+properties through the shared asynchronous service-reader lifetime. It accepts
+only bounded `(v)` replies containing printable UTF-8 strings of at most 512
+bytes, isolates missing, denied, or malformed properties, and preserves a
+validated peer when the aggregate deadline expires. Cancellation discards late
+replies without closing the shared bus. Private-bus tests exercise both property
+timeouts before and after the peer can be validated, including four real
+ten-second deadlines and successful reuse of the shared connection. These
+readers add no CLI command, protocol minor, Settings control, journal operation,
+or polling loop. Filesystem, security, protocol, and Settings integration remain
+separate boundaries.
 
 ### Security Status
 

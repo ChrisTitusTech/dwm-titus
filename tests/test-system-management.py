@@ -3345,6 +3345,198 @@ class UnitEventMonitorTests(unittest.TestCase):
         self.assertEqual(result.stdout, "Private-bus unit events: PASS\n")
 
 
+class HardwareReadTests(unittest.TestCase):
+    def reader(self):
+        _regional, connection, gio, glib, variant = RegionalReadTests().reader()
+        return provider.HardwareRead(gio, glib), connection, gio, glib, variant
+
+    def reply(self, read, connection, variant, field, value="Fixture"):
+        connection.call_finish.return_value = variant.Variant("(v)", (variant.Variant("s", value),))
+        read.replied(connection, object(), field)
+
+    def test_fixed_gets_reply_orders_cleanup_and_single_use(self):
+        for order in (("HardwareVendor", "HardwareModel"), ("HardwareModel", "HardwareVendor")):
+            read, connection, gio, glib, variant = self.reader()
+            def run():
+                read.connected(None, object(), None)
+                for field in order:
+                    self.reply(read, connection, variant, field, field)
+            read.loop.run.side_effect = run
+            result = read.run()
+            self.assertEqual({key: state.value for key, state in result.items()},
+                {"hardware-vendor": "HardwareVendor", "hardware-model": "HardwareModel"})
+            self.assertTrue(all(state.status == "available" for state in result.values()))
+            calls = connection.call.call_args_list
+            self.assertEqual(len(calls), 2)
+            for call, field in zip(calls, ("HardwareVendor", "HardwareModel")):
+                self.assertEqual(call.args[:4], ("org.freedesktop.hostname1", "/org/freedesktop/hostname1",
+                    provider.PROPERTIES_INTERFACE, "Get"))
+                self.assertEqual(call.args[4].unpack(), ("org.freedesktop.hostname1", field))
+                self.assertEqual(call.args[5].dup_string(), "(v)")
+                self.assertEqual(call.args[6], gio.DBusCallFlags.NONE)
+                self.assertTrue(0 < call.args[7] <= 10000)
+                self.assertIs(call.args[8], read.cancellable)
+            glib.timeout_add.assert_called_once_with(10000, read.expire)
+            glib.source_remove.assert_called_once_with(17)
+            self.assertTrue(read.cancellable.cancel.called)
+            connection.close_sync.assert_not_called()
+            with self.assertRaises(RuntimeError):
+                read.run()
+
+    def test_property_errors_preserve_the_peer(self):
+        for field in provider.HARDWARE_INFORMATION_FIELDS:
+            peer = next(key for key in provider.HARDWARE_INFORMATION_FIELDS if key != field)
+            for remote, status, code in (("UnknownProperty", "unsupported", "unsupported"),
+                    ("AccessDenied", "restricted", "permission-denied"),
+                    ("NoReply", "unavailable", "timeout")):
+                read, connection, gio, _glib, variant = self.reader()
+                def run():
+                    read.connected(None, object(), None)
+                    gio.dbus_error_get_remote_error.return_value = "org.freedesktop.DBus.Error." + remote
+                    connection.call_finish.side_effect = variant.Error("private service detail")
+                    read.replied(connection, object(), field)
+                    connection.call_finish.side_effect = None
+                    self.reply(read, connection, variant, peer)
+                read.loop.run.side_effect = run
+                result = read.run()
+                failed = result[provider.HARDWARE_INFORMATION_FIELDS[field]]
+                self.assertEqual((failed.status, failed.value, failed.error_code), (status, "unknown", code))
+                self.assertEqual(result[provider.HARDWARE_INFORMATION_FIELDS[peer]].status, "available")
+                self.assertNotIn("private service detail", repr(result))
+
+    def test_malformed_envelope_type_text_and_byte_bound_are_scoped(self):
+        from gi.repository import GLib
+        cases = [(GLib.Variant("(s)", ("wrong",)), False),
+            (GLib.Variant("(v)", (GLib.Variant("b", True),)), False)]
+        for text, valid in (("", False), ("\n", False), ("x" * 512, True), ("x" * 513, False),
+                            ("\u00e9" * 256, True), ("\u00e9" * 257, False), ("x" * 4096, False)):
+            cases.append((GLib.Variant("(v)", (GLib.Variant("s", text),)), valid))
+        for reply, valid in cases:
+            read, connection, _gio, _glib, variant = self.reader()
+            def run():
+                read.connected(None, object(), None)
+                connection.call_finish.return_value = reply
+                read.replied(connection, object(), "HardwareVendor")
+                self.reply(read, connection, variant, "HardwareModel")
+            read.loop.run.side_effect = run
+            result = read.run()
+            self.assertEqual(result["hardware-vendor"].status, "available" if valid else "partial")
+            self.assertEqual(result["hardware-model"].value, "Fixture")
+
+    def test_oversized_reply_is_rejected_before_child_extraction(self):
+        read, connection, _gio, _glib, variant = self.reader()
+        reply = mock.Mock()
+        reply.get_type_string.return_value = "(v)"
+        reply.get_size.return_value = 1000000
+        def run():
+            read.connected(None, object(), None)
+            connection.call_finish.return_value = reply
+            read.replied(connection, object(), "HardwareVendor")
+            self.reply(read, connection, variant, "HardwareModel")
+        read.loop.run.side_effect = run
+        self.assertEqual(read.run()["hardware-vendor"].error_code, "malformed")
+        reply.get_child_value.assert_not_called()
+
+    def test_aggregate_timeout_preserves_a_valid_peer_and_discards_late_replies(self):
+        for field in provider.HARDWARE_INFORMATION_FIELDS:
+            peer = next(key for key in provider.HARDWARE_INFORMATION_FIELDS if key != field)
+            read, connection, _gio, glib, variant = self.reader()
+            def run():
+                read.connected(None, object(), None)
+                self.reply(read, connection, variant, peer)
+                read.expire()
+            read.loop.run.side_effect = run
+            result = read.run()
+            self.assertEqual(result[provider.HARDWARE_INFORMATION_FIELDS[peer]].status, "available")
+            failed = result[provider.HARDWARE_INFORMATION_FIELDS[field]]
+            self.assertEqual((failed.status, failed.value, failed.error_code), ("unavailable", "unknown", "timeout"))
+            connection.call_finish.reset_mock()
+            read.replied(connection, object(), field)
+            read.replied(connection, object(), peer)
+            connection.call_finish.assert_not_called()
+            glib.source_remove.assert_not_called()
+
+    def test_deadline_crossed_during_decode_cannot_publish_late_success(self):
+        read, connection, _gio, _glib, variant = self.reader()
+        original = provider.information_text
+        def decode(value, detail):
+            read.deadline = time.monotonic() - 1
+            return original(value, detail)
+        def run():
+            read.connected(None, object(), None)
+            self.reply(read, connection, variant, "HardwareModel")
+            with mock.patch.object(provider, "information_text", side_effect=decode):
+                self.reply(read, connection, variant, "HardwareVendor")
+        read.loop.run.side_effect = run
+        result = read.run()
+        self.assertEqual(result["hardware-model"].status, "available")
+        self.assertEqual(result["hardware-vendor"].error_code, "timeout")
+
+    def test_expired_connection_never_dispatches(self):
+        read, connection, gio, _glib, _variant = self.reader()
+        def run():
+            read.deadline = time.monotonic() - 1
+            read.connected(None, object(), None)
+        read.loop.run.side_effect = run
+        self.assertTrue(all(state.error_code == "timeout" for state in read.run().values()))
+        gio.bus_get_finish.assert_not_called()
+        connection.call.assert_not_called()
+
+    def test_duplicate_callback_cannot_replace_an_already_validated_property(self):
+        read, connection, _gio, _glib, variant = self.reader()
+        def run():
+            read.connected(None, object(), None)
+            self.reply(read, connection, variant, "HardwareVendor", "First")
+            self.reply(read, connection, variant, "HardwareVendor", "Duplicate")
+            self.reply(read, connection, variant, "HardwareModel")
+        read.loop.run.side_effect = run
+        self.assertEqual(read.run()["hardware-vendor"].value, "First")
+        self.assertEqual(connection.call_finish.call_count, 2)
+
+    def test_dispatch_failure_does_not_prevent_peer_dispatch(self):
+        read, connection, gio, _glib, variant = self.reader()
+        connection.call.side_effect = [variant.Error("denied"), None]
+        gio.dbus_error_get_remote_error.return_value = "org.freedesktop.DBus.Error.AccessDenied"
+        def run():
+            read.connected(None, object(), None)
+            self.reply(read, connection, variant, "HardwareModel")
+        read.loop.run.side_effect = run
+        result = read.run()
+        self.assertEqual(connection.call.call_count, 2)
+        self.assertEqual(result["hardware-vendor"].status, "restricted")
+        self.assertEqual(result["hardware-model"].status, "available")
+
+    def test_bus_failure_and_missing_bindings_are_scoped(self):
+        read, connection, gio, _glib, variant = self.reader()
+        gio.bus_get_finish.side_effect = variant.Error("private bus failure")
+        read.loop.run.side_effect = lambda: read.connected(None, object(), None)
+        result = read.run()
+        self.assertTrue(all(state.status == "unavailable" for state in result.values()))
+        self.assertNotIn("private bus failure", repr(result))
+        connection.call.assert_not_called()
+        failure = provider.SnapshotFailure("missing-provider", "Bindings unavailable", "unavailable")
+        with mock.patch.object(provider, "HardwareRead", side_effect=failure), \
+                mock.patch.object(provider, "open_journal_directory") as journal:
+            result = provider.read_hardware_information()
+        self.assertEqual(len(result), 2)
+        self.assertTrue(all(state.error_code == "missing-provider" for state in result.values()))
+        journal.assert_not_called()
+
+    def test_wrapper_keeps_cooperative_interruption(self):
+        with mock.patch.object(provider, "HardwareRead") as reader, \
+                mock.patch.object(provider, "run_interruptible_read", side_effect=InterruptedError) as run:
+            with self.assertRaises(InterruptedError):
+                provider.read_hardware_information()
+            run.assert_called_once_with(reader.return_value)
+
+    def test_real_private_bus_property_isolation_and_aggregate_deadlines(self):
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-hardware-read-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=70)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "Private-bus hardware reads: PASS (fixed properties, isolation, four real deadlines, late replies, shared bus)\n")
+
+
 class NtpReadTests(unittest.TestCase):
     def reader(self):
         _regional, connection, gio, glib, variant = RegionalReadTests().reader()
