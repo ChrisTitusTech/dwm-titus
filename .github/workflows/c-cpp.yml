@@ -16,7 +16,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     container: fedora:44
     env:
       DWM_TEST_TMP_ROOT: /var/tmp/dwm-titus-tests
