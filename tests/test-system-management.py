@@ -42,6 +42,90 @@ sys.modules[SPEC.name] = provider
 SPEC.loader.exec_module(provider)
 
 
+class InformationSnapshotTests(unittest.TestCase):
+    def sources(self):
+        source = mock.Mock(spec=provider.InformationSnapshotSources)
+        source.local.return_value = {identifier: provider.InformationState("available", "1", "Local")
+            for identifier in provider.INFORMATION_LOCAL_IDS}
+        source.hardware.return_value = {identifier: provider.InformationState("available", "Hardware", "Host")
+            for identifier in provider.HARDWARE_INFORMATION_FIELDS.values()}
+        source.security.side_effect = lambda identifier: provider.InformationState("available",
+            {"selinux": "enforcing", "root-encryption": "encrypted"}.get(identifier, "enabled"), "Security")
+        source.filesystems.return_value = provider.FilesystemInformation(
+            provider.information_number(1, "Filesystems"), (provider.FilesystemRow(
+                "12", "available", "/dev/test", "/", "ext4", "18446744073709551615", "2", "3", "Bytes"),))
+        return source
+
+    def test_complete_records_and_exact_counters_without_admission(self):
+        with mock.patch.object(provider, "open_journal_directory", side_effect=AssertionError("Journal opened")):
+            result = provider.build_information_snapshot(self.sources())
+        self.assertEqual(len(rows(result, "provider")), 4)
+        self.assertEqual(len(rows(result, "state")), 19)
+        self.assertEqual([row[1] for row in rows(result, "action")], ["health-open"])
+        self.assertEqual(rows(result, "filesystem")[0][6], "18446744073709551615")
+        self.assertTrue(all(row[2] == "available" for row in rows(result, "provider")))
+        self.assertFalse(rows(result, "system-management-protocol"))
+
+    def test_source_failures_preserve_other_states_and_navigation(self):
+        source = self.sources()
+        source.hardware.side_effect = provider.SnapshotFailure("timeout", "Hardware timed out", "unavailable")
+        source.security.side_effect = lambda identifier: (provider.InformationState("restricted", "unknown", "Denied", "permission-denied")
+            if identifier == "selinux" else provider.InformationState("available", "enabled", "Security"))
+        result = provider.build_information_snapshot(source)
+        states = {row[1]: row for row in rows(result, "state")}
+        self.assertEqual(states["hardware-model"][2:4], ["unavailable", "unknown"])
+        self.assertEqual(states["os-name"][2], "available")
+        self.assertEqual(states["selinux"][2:4], ["restricted", "unknown"])
+        self.assertEqual(states["firewalld"][2], "available")
+        self.assertEqual(rows(result, "action")[0][2], "available")
+        self.assertEqual(len([row for row in rows(result, "error") if row[1] == "information"]), 1)
+
+    def test_missing_state_is_explicit_and_owner_scoped(self):
+        source = self.sources()
+        del source.local.return_value["cpu-model"]
+        result = provider.build_information_snapshot(source)
+        state = next(row for row in rows(result, "state") if row[1] == "cpu-model")
+        self.assertEqual(state[2:4], ["partial", "unknown"])
+        self.assertEqual(len(rows(result, "state")), 19)
+
+    def test_partial_filesystem_subset_retains_unknown_summary(self):
+        source = self.sources()
+        source.filesystems.return_value = replace(source.filesystems.return_value,
+            summary=provider.InformationState("partial", "unknown", "Incomplete", "malformed"))
+        result = provider.build_information_snapshot(source)
+        self.assertEqual(len(rows(result, "filesystem")), 1)
+        self.assertIn("state\tfilesystem-summary\tpartial\tunknown\tIncomplete", result)
+
+    def test_invalid_filesystem_list_is_discarded_atomically(self):
+        for kind in ("duplicate", "records", "bytes"):
+            with self.subTest(kind=kind):
+                source = self.sources()
+                row = source.filesystems.return_value.rows[0]
+                if kind == "duplicate":
+                    inventory = (row, row)
+                else:
+                    inventory = tuple(replace(row, mount_id=str(index),
+                        source="a" * 512, target="b" * 512, fstype="c" * 512, detail="d" * 512)
+                        for index in range(257 if kind == "records" else 256))
+                source.filesystems.return_value = replace(source.filesystems.return_value, rows=inventory)
+                result = provider.build_information_snapshot(source)
+                self.assertEqual(rows(result, "filesystem"), [])
+                self.assertTrue(any(row[1:4] == ["filesystem-summary", "partial", "unknown"] for row in rows(result, "state")))
+                self.assertTrue(any(row[1:3] == ["storage", "malformed"] for row in rows(result, "error")))
+                self.assertEqual(len(rows(result, "state")), 19)
+
+    def test_all_unavailable_statuses_aggregate_without_hiding_peers(self):
+        for status in ("restricted", "unsupported", "unavailable", "partial"):
+            with self.subTest(status=status):
+                source = self.sources()
+                source.security.side_effect = lambda _identifier: provider.InformationState(status, "unknown", "Absent", "missing-provider")
+                result = provider.build_information_snapshot(source)
+                providers = {row[1]: row for row in rows(result, "provider")}
+                self.assertEqual(providers["security"][2], status)
+                self.assertEqual(providers["information"][2], "available")
+                self.assertEqual(providers["diagnostics"][2], "available")
+
+
 class FixtureBackend:
     def __init__(
         self,
