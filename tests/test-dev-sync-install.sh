@@ -4,7 +4,16 @@ set -eu
 
 repo_dir=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT HUP INT TERM
+runtime_pid=
+cleanup() {
+	if [ -n "$runtime_pid" ]; then
+		kill "$runtime_pid" 2>/dev/null || true
+		wait "$runtime_pid" 2>/dev/null || true
+		runtime_pid=
+	fi
+	rm -rf "$work"
+}
+trap cleanup EXIT HUP INT TERM
 
 test_repo="$work/repo"
 test_home="$work/user home"
@@ -215,5 +224,66 @@ if "$test_repo/scripts/dev-sync-install.sh" --unknown >"$output" 2>&1; then
 	exit 1
 fi
 grep -Fq 'unknown option: --unknown' "$output"
+
+# An atomic reinstall unlinks the old executable even when its bytes match.
+# Exercise that kernel state with a private child, never the host window manager.
+runtime_bin="$work/runtime-bin"
+runtime_probe="$work/runtime-probe"
+mkdir "$runtime_bin"
+sed -n '/^runtime_verify() {$/,/^}$/p' "$test_repo/scripts/dev-sync-install.sh" >"$runtime_probe"
+cat >"$runtime_bin/pgrep" <<'EOF'
+#!/bin/sh
+case "$*" in
+'-xo dwm') printf '%s\n' "$DWM_TEST_DWM_PID" ;;
+'-xc quickshell') printf '1\n' ;;
+*) exit 2 ;;
+esac
+EOF
+printf '#!/bin/sh\nprintf "0\\n"\n' >"$runtime_bin/quickshell"
+printf '#!/bin/sh\nexit 0\n' >"$runtime_bin/systemctl"
+chmod +x "$runtime_bin/pgrep" "$runtime_bin/quickshell" "$runtime_bin/systemctl"
+cp /usr/bin/sleep "$work/runtime-dwm"
+cp "$work/runtime-dwm" "$prefix/bin/dwm"
+"$work/runtime-dwm" 60 &
+runtime_pid=$!
+runtime_try=0
+while [ "$(readlink "/proc/$runtime_pid/exe" 2>/dev/null || true)" != "$work/runtime-dwm" ]; do
+	runtime_try=$((runtime_try + 1))
+	[ "$runtime_try" -lt 50 ] || exit 1
+	sleep 0.02
+done
+rm "$work/runtime-dwm"
+case $(readlink "/proc/$runtime_pid/exe") in
+*" (deleted)") ;;
+*) exit 1 ;;
+esac
+runtime_check() {
+	DWM_TEST_DWM_PID="$runtime_pid" PATH="$runtime_bin:$PATH" DISPLAY=:fixture \
+		DWM_DEV_SYNC_SKIP_RUNTIME=0 sh -c '
+		set -eu
+		. "$1"
+		prefix=$2
+		binary_target=$prefix/bin/dwm
+		quickshell_dir=$3
+		runtime_verify 0
+	' sh "$runtime_probe" "$prefix" "$config_home/quickshell"
+}
+runtime_check >"$output" 2>&1
+grep -Fqx 'Running dwm matches the installed binary.' "$output"
+cp /usr/bin/true "$prefix/bin/dwm"
+if runtime_check >"$output" 2>&1; then
+	printf '%s\n' 'Different running executable unexpectedly passed.' >&2
+	exit 1
+fi
+grep -Fq 'running dwm does not match the installed binary' "$output"
+rm "$prefix/bin/dwm"
+if runtime_check >"$output" 2>&1; then
+	printf '%s\n' 'Missing installed executable unexpectedly passed.' >&2
+	exit 1
+fi
+grep -Fq 'running dwm does not match the installed binary' "$output"
+kill "$runtime_pid"
+wait "$runtime_pid" 2>/dev/null || true
+runtime_pid=
 
 printf '%s\n' 'Developer live-install synchronization: PASS'

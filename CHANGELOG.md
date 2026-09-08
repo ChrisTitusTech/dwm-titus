@@ -477,6 +477,12 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Avoid a false dwm restart requirement after reinstalling an identical binary.
+  Live parity compares the running executable bytes even when its old inode
+  has been unlinked; changed or unreadable executables still require a restart.
+  Package-profile validation also drains matched output to avoid false SIGPIPE
+  failures under pipefail.
+
 - Keep visible floating windows above the tiled stack when focus changes while
   retaining focus-based ordering within the floating layer and the existing
   fullscreen and shell-surface priorities.

@@ -70,16 +70,17 @@ printf '%s\n' "$installed_provider_packages" | grep -Fxq upower
 printf '%s\n' "$installed_provider_packages" | grep -Fxq dbus-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq inotify-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq xsettingsd
+# Drain each producer under pipefail; grep -q can close a successful match early.
 for package in PackageKit PackageKit-glib python3-gobject python3-rpm accountsservice cups system-config-printer; do
-	dwm_packages fedora system-management | grep -Fxq "$package"
-	dwm_packages fedora recommended | grep -Fxq "$package"
+	dwm_packages fedora system-management | grep -Fx "$package" >/dev/null
+	dwm_packages fedora recommended | grep -Fx "$package" >/dev/null
 done
 for package in lxqt-admin dnfdragora; do
-	dwm_packages fedora system-management-optional | grep -Fxq "$package"
-	dwm_packages fedora optional | grep -Fxq "$package"
+	dwm_packages fedora system-management-optional | grep -Fx "$package" >/dev/null
+	dwm_packages fedora optional | grep -Fx "$package" >/dev/null
 done
 for package in xsettingsd xkbset; do
-	dwm_packages fedora source-update | grep -Fxq "$package"
+	dwm_packages fedora source-update | grep -Fx "$package" >/dev/null
 done
 [[ $("$repo/scripts/dwm-packages.sh" fedora source-update) == $'xsettingsd\nxkbset' ]]
 grep -Fq 'dwm_install_package_profile system-management' "$repo/install.sh"
