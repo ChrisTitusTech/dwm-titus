@@ -47,6 +47,7 @@ ShellRoot {
             check(clock.panelText === "unchanged" && clock.settingsText === "unchanged", "Repeated snapshots do not repeat timezone refresh");
             clock.timezoneState = {status: "available", value: "Etc/UTC"};
             check(clock.observedTimezone === "Etc/UTC", "Returning to a previous timezone refreshes again");
+            check(clock.timestamp === oldEpoch, "Reverse timezone refresh does not replace the source epoch");
             checkText();
             clock.panelText = "stale";
             clock.settingsText = "stale";
