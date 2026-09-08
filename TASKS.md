@@ -432,10 +432,9 @@ Time discovery now has separate fixed `time-status` and `watch-time` commands.
 The former reads one complete bounded time tuple without PackageKit or journal
 access. The latter distinguishes authenticated owner arrival from property
 change after readiness, while preserving setup reconciliation and quiet idle
-departure. The existing `watch-regional` protocol and Settings subscriptions are
-unchanged. These interfaces prepare the visible NTP sampler's scoped
-reconciliation; its UI integration and combined installed qualification remain
-pending.
+departure. The existing `watch-regional` protocol is unchanged. Scoped Settings
+reconciliation is described below; visible NTP sampling and combined installed
+qualification remain pending.
 
 The existing finite QML reader now accepts the two fixed no-argument time
 commands. It validates their exact bounded streams and withholds observations

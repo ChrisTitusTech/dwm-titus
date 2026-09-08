@@ -2325,9 +2325,9 @@ must avoid turning these arrivals into repeated cumulative PackageKit reads,
 without dropping genuine concurrent time changes. This CLI boundary does not
 enable that sampler or alter the passive monitor contract.
 
-Two opt-in time discovery commands are now implemented for the upcoming scoped
-reconciliation. Neither is connected to Settings yet, and `watch-regional time`
-keeps its existing protocol. The fixed no-argument `time-status` command makes
+Two fixed time discovery commands support scoped Settings reconciliation.
+Settings uses `watch-time`, while `watch-regional time` keeps its existing
+protocol. The fixed no-argument `time-status` command makes
 one `Properties.GetAll` call to timedate1 through the existing strict regional
 reader, under its ten-second aggregate connection/reply/decoding deadline:
 
