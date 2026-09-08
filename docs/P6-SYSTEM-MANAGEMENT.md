@@ -899,6 +899,14 @@ This reader adds no command, mutation, Settings control, or protocol minor.
 
 ### System Information and Filesystems
 
+The internal record assembler combines the fixed readers into the complete
+information, storage, security, and diagnostics record set. It preserves exact
+decimal counters, emits missing observations explicitly, isolates source
+failures, and discards an entire filesystem list if its encoded reservation is
+exceeded. Health navigation requires no journal admission. This formatter is
+not called by startup recovery and does not yet activate snapshot minor 2;
+visible-pane monitor readiness remains the integrating caller's responsibility.
+
 The information snapshot uses only these fixed sources:
 
 - `/etc/os-release` is capped at 64 KiB and contributes only `PRETTY_NAME` and
