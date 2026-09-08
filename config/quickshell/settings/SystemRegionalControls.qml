@@ -14,6 +14,8 @@ ColumnLayout {
     property string preparedArgument: ""
     property var readOrigin: null
     property var focusReturn: null
+    property var reconciliationFocus: null
+    property var reconciliationPrompt: null
     readonly property var focusedItem: root.Window.activeFocusItem
     signal revealRequested(var target)
     Layout.fillWidth: true
@@ -43,14 +45,54 @@ ColumnLayout {
         focusReturn = null;
         target.forceActiveFocus();
     }
-    onFocusedItemChanged: { if (focusReturn !== null) Qt.callLater(root.restoreFocus); }
+    function restoreReconciliationFocus() {
+        const target = reconciliationFocus;
+        if (target === null) return;
+        if (!model.settingsVisible || confirmation !== reconciliationPrompt || !focusAvailable(target)) {
+            reconciliationFocus = null;
+            reconciliationPrompt = null;
+            return;
+        }
+        if (model.timeReconciliation.blocked || !target.enabled) return;
+        reconciliationFocus = null;
+        reconciliationPrompt = null;
+        target.forceActiveFocus();
+    }
+    onFocusedItemChanged: {
+        if (focusReturn !== null) Qt.callLater(root.restoreFocus);
+        if (reconciliationFocus !== null) Qt.callLater(root.restoreReconciliationFocus);
+    }
+    Connections {
+        target: root.model.timeReconciliation
+        function onAboutToBlock() {
+            const focused = root.focusedItem;
+            for (let item = focused; item !== null; item = item.parent) {
+                if (item === root) {
+                    root.reconciliationFocus = focused;
+                    root.reconciliationPrompt = root.confirmation;
+                    return;
+                }
+            }
+        }
+        function onBlockedChanged() { Qt.callLater(root.restoreReconciliationFocus); }
+    }
+    Connections {
+        target: root.reconciliationFocus
+        function onEnabledChanged() { Qt.callLater(root.restoreReconciliationFocus); }
+    }
     Connections {
         target: root.focusReturn
         function onEnabledChanged() { Qt.callLater(root.restoreFocus); }
     }
     Connections {
         target: root.model
-        function onSettingsVisibleChanged() { if (!root.model.settingsVisible) root.focusReturn = null; }
+        function onSettingsVisibleChanged() {
+            if (!root.model.settingsVisible) {
+                root.focusReturn = null;
+                root.reconciliationFocus = null;
+                root.reconciliationPrompt = null;
+            }
+        }
     }
     function revealFocusedControl() {
         if (errorMessage.visible && errorMessage.activeFocus) root.revealRequested(errorMessage);

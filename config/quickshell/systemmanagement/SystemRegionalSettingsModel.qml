@@ -20,11 +20,48 @@ Scope {
 
     function ownsPreparation() { return request !== null || reader.current !== null; }
 
+    function awaitingTimeReconciliation() {
+        return request !== null && reader.current === null && request.outcome !== null
+            && discovery(request.action) === model.timeDiscovery && matches(request);
+    }
+
+    function retryTimePublication() {
+        if (model.timeReconciliation.failure.length > 0 || model.timeReconciliation.unresolved) {
+            invalidate("time");
+            return;
+        }
+        if (awaitingTimeReconciliation() && !model.timeReconciliation.blocksAdmission()) publish(request);
+    }
+
+    function timePreviewMatches(preview, observed) {
+        if (preview.actionId === "timezone-set") return preview.current === observed.timezone;
+        if (preview.actionId === "ntp-set") return observed.canNtp
+            && preview.current === (observed.ntpEnabled ? "enabled" : "disabled");
+        return true;
+    }
+
+    function reconcileTimePreview(observed) {
+        if (confirmation !== null && !timePreviewMatches(confirmation.preview, observed)) {
+            confirmation = null;
+            message = "Time no longer matches this preview. Review a fresh preview and confirm again.";
+        }
+        const pending = request;
+        if (pending !== null && pending.command === "regional-preview" && pending.outcome !== null
+                && pending.outcome.status === "available" && !timePreviewMatches(pending.outcome.preview, observed)) {
+            request = null;
+            message = "Time no longer matches this preview. Retry the read explicitly.";
+            released();
+        }
+    }
+
     function contextReason(action, requireOffer) {
         const monitor = discovery(action);
         if (monitor === null) return "This regional action is not supported.";
         if (!model.settingsVisible) return "Open System Settings to prepare this action.";
         if (model.snapshotOwned || model.snapshotPending || model.requiredPending || model.discoveryBatch
+                || model.timeReconciliation.ownsRead()
+                || (monitor === model.timeDiscovery && model.timeReconciliation.blocksAdmission())
+                || !monitor.fresh
                 || !monitor.visible || !monitor.ready || monitor.failed || !monitor.cycle.enabled
                 || monitor.cycle.phase !== "idle" || monitor.cycle.unresolved)
             return "Wait for fresh regional status, or reload status to retry.";
@@ -101,6 +138,14 @@ Scope {
 
     function publish(ticket) {
         if (request !== ticket || reader.current !== null || ticket.outcome === null) return;
+        if (matches(ticket) && discovery(ticket.action) === model.timeDiscovery
+                && model.timeReconciliation.blocksAdmission()
+                && model.timeReconciliation.failure.length === 0 && !model.timeReconciliation.unresolved) {
+            // The finite reader is reaped, but the request identity remains
+            // reserved while a scoped read reconciles an owner arrival.
+            model.timeReconciliation.requestPending();
+            return;
+        }
         try {
             if (!matches(ticket) || contextReason(ticket.action, ticket.command === "regional-preview") !== "") {
                 invalidate("");
@@ -150,6 +195,8 @@ Scope {
     function confirm() {
         const pending = confirmation;
         if (pending === null || ownsPreparation() || model.dispatchingUpdate || model.dispatchingNative) return false;
+        if (matches(pending.ticket) && discovery(pending.ticket.action) === model.timeDiscovery
+                && model.timeReconciliation.blocksAdmission()) return false;
         if (actionReason(pending.ticket.action) !== "" || !matches(pending.ticket)) {
             invalidate("");
             return false;

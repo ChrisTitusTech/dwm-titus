@@ -47,6 +47,7 @@ Scope {
     readonly property alias accountDiscovery: accountDiscoveryModel
     readonly property alias printerDiscovery: printerDiscoveryModel
     readonly property alias regional: regionalModel
+    readonly property alias timeReconciliation: timeReconciliationModel
 
     readonly property bool busy: snapshotOwned
     readonly property string providerState: root.settingsVisible
@@ -85,7 +86,7 @@ Scope {
         const state = root.nativeStates[identifier] || root.stateFallback("This state is unavailable");
         const monitor = root.stateDiscovery(identifier);
         if (!root.settingsVisible || monitor === null) return state;
-        return { status: state.status === "available" && (monitor.failed || monitor.unresolved) ? "partial" : state.status,
+        return { status: state.status === "available" && (monitor.failed || monitor.unresolved || monitor.externalUnresolved) ? "partial" : state.status,
             value: state.value, detail: [state.detail, monitor.detail].filter(value => value.length > 0).join(" ") };
     }
 
@@ -95,7 +96,7 @@ Scope {
             : owner === "accounts" ? [accountDiscoveryModel] : owner === "printers" ? [printerDiscoveryModel]
             : owner === "sources" ? [discoveryModel] : [];
         if (!root.settingsVisible) return provider;
-        return { status: provider.status === "available" && monitors.some(model => model.failed || model.unresolved)
+        return { status: provider.status === "available" && monitors.some(model => model.failed || model.unresolved || model.externalUnresolved)
                 ? "partial" : provider.status,
             providerClass: provider.providerClass, owner: provider.owner,
             detail: [provider.detail].concat(monitors.map(model => model.detail)).filter(value => value.length > 0).join(" ") };
@@ -974,6 +975,7 @@ Scope {
     function openSettings() {
         root.settingsVisible = true;
         root.discoveryBatch = true;
+        timeReconciliationModel.open();
         for (const model of root.discoveryModels()) model.open();
         root.refreshRecovery();
         root.discoveryBatch = false;
@@ -982,6 +984,7 @@ Scope {
 
     function closeSettings() {
         root.settingsVisible = false;
+        timeReconciliationModel.close();
         root.confirmationInvalidated();
         for (const model of root.discoveryModels()) model.close();
         root.snapshotPending = false;
@@ -994,6 +997,7 @@ Scope {
     function refresh() {
         if (!root.settingsVisible) return;
         root.discoveryBatch = true;
+        timeReconciliationModel.open();
         for (const model of root.discoveryModels()) model.refresh();
         root.refreshRecovery();
         root.discoveryBatch = false;
@@ -1009,6 +1013,12 @@ Scope {
 
     function requestSnapshot(required) {
         if (!required && !root.settingsVisible) return;
+        if (timeReconciliationModel.ownsRead()) {
+            root.snapshotPending = root.snapshotPending || !required;
+            root.requiredPending = root.requiredPending || required;
+            timeReconciliationModel.beforeSnapshot();
+            if (timeReconciliationModel.ownsRead()) return;
+        }
         if (regionalModel.ownsPreparation()) {
             root.snapshotPending = root.snapshotPending || !required;
             root.requiredPending = root.requiredPending || required;
@@ -1029,6 +1039,7 @@ Scope {
         root.requiredPending = false;
         // Claim the owner before any QML signal from discovery.take/publication.
         root.snapshotOwned = true;
+        timeReconciliationModel.beforeSnapshot();
         root.requestGeneration++;
         snapshotProcess.generation = root.requestGeneration;
         root.snapshotRequired = required;
@@ -1077,6 +1088,7 @@ Scope {
         // Reentrant invalidations during parse/acceptSnapshot still belong to
         // this completion handoff. Reserve the settling read before idle.
         for (const item of tokens) item.model.complete(item.token, current && root.snapshotState !== "failure");
+        timeReconciliationModel.afterSnapshot();
         root.snapshotRequired = false;
         root.snapshotOwned = false;
         // The old process emits runningChanged after exited. Queue the next
@@ -1098,8 +1110,14 @@ Scope {
     SystemProviderDiscovery {
         id: timeDiscoveryModel
         domain: "time"
+        externalUnresolved: timeReconciliationModel.blocked
+        externalDetail: timeReconciliationModel.detail
         onSnapshotRequested: root.requestSnapshot(false)
-        onInvalidated: regionalModel.invalidate("time")
+        onInvalidated: {
+            timeReconciliationModel.beforeSnapshot();
+            regionalModel.invalidate("time");
+        }
+        onOwnerArrived: timeReconciliationModel.arrived()
     }
     SystemProviderDiscovery {
         id: localeDiscoveryModel
@@ -1122,6 +1140,16 @@ Scope {
 
     SystemRegionalSettingsModel {
         id: regionalModel
+        model: root
+        onReleased: Qt.callLater(function() {
+            if (root.requiredPending) root.requestSnapshot(true);
+            else if (root.snapshotPending && root.settingsVisible) root.requestSnapshot(false);
+            else timeReconciliationModel.requestPending();
+        })
+    }
+
+    SystemTimeReconciliationModel {
+        id: timeReconciliationModel
         model: root
         onReleased: Qt.callLater(function() {
             if (root.requiredPending) root.requestSnapshot(true);

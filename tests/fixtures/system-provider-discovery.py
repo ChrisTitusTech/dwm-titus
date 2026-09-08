@@ -16,7 +16,7 @@ import sys
 directory = Path(os.environ["DWM_PROVIDER_DISCOVERY_FIXTURE"])
 definitions = {
     ("watch-updates",): ("updates", "update-event"),
-    ("watch-regional", "time"): ("time", "regional-event"),
+    ("watch-time",): ("time", "time-event"),
     ("watch-regional", "locale"): ("locale", "regional-event"),
     ("watch-accounts",): ("accounts", "accounts-event"),
     ("watch-units", "printers"): ("printers", "units-event"),

@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Reconcile time-service arrivals through bounded time-only reads. Preserve
+  unchanged regional selections and matching previews, pause time actions until
+  reconciliation finishes, and retain explicit retry guidance after churn or
+  read failure without repeatedly rediscovering package state.
+
 - Extend the finite QML regional reader to validate scoped time observations,
   with bounded output, deadlines, and cancellation cleanup. Settings scheduling
   and confirmation behavior are unchanged at this preparatory boundary.

@@ -13,6 +13,9 @@ Scope {
 
     signal snapshotRequested()
     signal invalidated()
+    signal ownerArrived()
+    property bool externalUnresolved: false
+    property string externalDetail: ""
     property var cycle: Cycle.create()
     property bool visible: false
     property bool monitorOwned: false
@@ -22,16 +25,16 @@ Scope {
     property bool failed: false
     property bool unresolved: false
     property string phase: "idle"
-    readonly property bool fresh: root.definition !== null && root.visible && root.ready && !root.failed && !root.unresolved && root.phase === "idle"
+    readonly property bool fresh: root.definition !== null && root.visible && root.ready && !root.failed && !root.unresolved && !root.externalUnresolved && root.phase === "idle"
     readonly property string detail: !root.visible ? "" : root.failed
         ? "Live " + root.domainLabel() + " monitoring is unavailable. Reload status to retry; readable state is preserved."
         : root.unresolved
         ? "The " + root.domainLabel() + " state changed during the settling read. Reload status to reconcile it; automatic rereads are paused."
-        : !root.ready ? "Connecting to " + root.domainLabel() + " change notifications..." : ""
+        : !root.ready ? "Connecting to " + root.domainLabel() + " change notifications..." : root.externalDetail
 
     function domainDefinition(value) {
         if (value === "updates") return { action: "watch-updates", args: [], prefix: "update-event", label: "update" };
-        if (value === "time") return { action: "watch-regional", args: ["time"], prefix: "regional-event", label: "time" };
+        if (value === "time") return { action: "watch-time", args: [], prefix: "time-event", label: "time" };
         if (value === "locale") return { action: "watch-regional", args: ["locale"], prefix: "regional-event", label: "locale" };
         if (value === "accounts") return { action: "watch-accounts", args: [], prefix: "accounts-event", label: "account" };
         if (value === "printers") return { action: "watch-units", args: ["printers"], prefix: "units-event", label: "printer" };
@@ -167,6 +170,7 @@ Scope {
             root.ready = true;
             root.requestPending();
         } else if (line === monitor.eventPrefix + "\tchanged" && root.ready) root.invalidate();
+        else if (root.domain === "time" && line === monitor.eventPrefix + "\towner-arrived" && root.ready) root.ownerArrived();
         else root.failMonitor();
     }
 

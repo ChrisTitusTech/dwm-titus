@@ -7,12 +7,13 @@ from pathlib import Path
 import signal
 import stat
 import sys
+import time
 
 
 DIRECTORY = Path(os.environ["DWM_NATIVE_DISCOVERY_FIXTURE"])
 MONITORS = {
     ("watch-updates",): ("updates", "update-event"),
-    ("watch-regional", "time"): ("time", "regional-event"),
+    ("watch-time",): ("time", "time-event"),
     ("watch-regional", "locale"): ("locale", "regional-event"),
     ("watch-accounts",): ("accounts", "accounts-event"),
     ("watch-units", "printers"): ("printers", "units-event"),
@@ -60,9 +61,9 @@ def monitor(domain, prefix):
                         raise ValueError("Expected readiness release")
                 row("wrong-event" if read_mode(domain) == "fail" else prefix, "ready")
                 for event in stream:
-                    if event != "changed\n":
+                    if event != "changed\n" and not (domain == "time" and event == "owner-arrived\n"):
                         raise ValueError("Invalid fixture event")
-                    row(prefix, "changed")
+                    row(prefix, event.rstrip("\n"))
         finally:
             marker.unlink(missing_ok=True)
 
@@ -109,6 +110,25 @@ def snapshot():
             marker.unlink(missing_ok=True)
 
 
+def time_status():
+    count_path = DIRECTORY / "time-count"
+    count = int(count_path.read_text()) + 1 if count_path.exists() else 1
+    count_path.write_text(str(count))
+    scenario = os.environ.get("DWM_NATIVE_ACTION_SCENARIO", "")
+    if scenario == "owner-required" and count > 1:
+        time.sleep(0.3)
+    row("time-status-protocol", "1", "0")
+    if scenario == "owner-fail" and count > 1:
+        row("error", "time-status", "permission-denied", "Private read denied")
+        row("complete", "time-status")
+        raise SystemExit(1)
+    zone = "Etc/UTC" if scenario == "owner-change" and count > 1 else "America/Chicago"
+    can_ntp = "no" if scenario == "owner-capability" and count > 1 else "yes"
+    synchronized = "yes" if scenario == "owner-sync" and count > 1 else "no"
+    row("time", zone, can_ntp, "yes", synchronized)
+    row("complete", "time-status")
+
+
 def main():
     arguments = tuple(sys.argv[1:])
     if arguments in MONITORS:
@@ -116,6 +136,9 @@ def main():
         return
     if arguments == ("snapshot",):
         snapshot()
+        return
+    if arguments == ("time-status",):
+        time_status()
         return
     if len(arguments) == 4 and arguments[:1] == ("fixture-mode",):
         _, domain, action, value = arguments
@@ -125,6 +148,9 @@ def main():
             return
     if len(arguments) == 3 and arguments[0] == "fixture-event":
         _, domain, action = arguments
+        if domain == "time" and action == "owner-arrived":
+            send(domain, "owner-arrived\n")
+            return
         if domain in DOMAINS and action in {"emit", "ready"}:
             send(domain, "changed\n" * 100 if action == "emit" else "ready\n")
             return

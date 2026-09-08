@@ -19,6 +19,7 @@ ShellRoot {
     property int layoutTicks: 0
     property int errorLayoutTicks: 0
     property bool done: false
+    property var retainedPrompt: null
     readonly property int originalHeight: Number(Quickshell.env("DWM_DELEGATE_UI_HEIGHT") || "580")
 
     function check(value, detail) {
@@ -217,6 +218,14 @@ ShellRoot {
             stage = 62;
         } else if (stage === 62 && ++layoutTicks >= 8) {
             checkFocused("confirmRegional");
+            if (scenario === "owner") {
+                retainedPrompt = model.regional.confirmation;
+                model.timeReconciliation.arrived();
+                check(action === "locale-set" || !find("confirmRegional").enabled,
+                    "Time confirmation is gated during owner reconciliation");
+                stage = 63;
+                return;
+            }
             checkMessageFocus(["discardRegional", "confirmRegional"], 0, function() {
                 root.click("confirmRegional");
                 root.check(model.operation.streamOwned && !model.operation.canCancel && !root.find("cancelUpdate").visible,
@@ -232,6 +241,17 @@ ShellRoot {
                     root.stage = 7;
                 }
             });
+        } else if (stage === 63 && !model.timeReconciliation.blocked) {
+            check(model.regional.confirmation === retainedPrompt, "Owner arrival preserves matching visible prompt");
+            checkFocused("confirmRegional");
+            model.timeReconciliation.arrived();
+            find("externalRegionalFocus").forceActiveFocus();
+            stage = 64;
+        } else if (stage === 64 && !model.timeReconciliation.blocked) {
+            check(find("externalRegionalFocus").activeFocus, "Reconciliation does not steal deliberately moved focus");
+            check(model.operation.result === null, "Reconciliation sends no action");
+            model.closeSettings();
+            stage = 8;
         } else if ((stage === 70 || stage === 71) && settled() && !model.operation.busy
                 && model.operation.acknowledgedIds.length === 1) {
             const name = action === "ntp-set" ? origin : "load-" + kind;
