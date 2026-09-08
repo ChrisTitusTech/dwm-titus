@@ -1154,8 +1154,12 @@ class NtpRead(ServiceRead):
 
 
 def read_ntp_sample() -> NtpSample:
+    """Return the NTP pair through the shared cooperative read boundary."""
+    return run_interruptible_read(NtpRead())
+
+
+def run_interruptible_read(read: ServiceRead):
     """Cancel the asynchronous read instead of raising inside a GLib callback."""
-    read = NtpRead()
     handlers = {}
     interrupted = False
     cancel_source = 0
@@ -1163,7 +1167,7 @@ def read_ntp_sample() -> NtpSample:
     def cancel_read():
         nonlocal cancel_source
         cancel_source = 0
-        read.fail(SnapshotFailure("internal", "Network time read was interrupted"))
+        read.fail(SnapshotFailure("internal", f"{read.label} read was interrupted"))
         return read.GLib.SOURCE_REMOVE
 
     def cancel(_signum, _frame):
@@ -1185,7 +1189,7 @@ def read_ntp_sample() -> NtpSample:
         if cancel_source:
             read.GLib.source_remove(cancel_source)
         if interrupted:
-            raise InterruptedError("Network time read was interrupted")
+            raise InterruptedError(f"{read.label} read was interrupted")
 
 
 def ntp_sample_output() -> tuple[str, int]:
@@ -1236,6 +1240,7 @@ class RegionalMutation(ServiceRead):
         self.name, self.path = REGIONAL_READ_REQUESTS[self.kind][:2]
         self.owner = ""
         self.sent = self.acknowledged = False
+        self.local_interrupted = False
         self.dirty = False
         self.observed = self.expected = self.preview = None
         self.choices = ()
@@ -1245,6 +1250,14 @@ class RegionalMutation(ServiceRead):
         self.installed_rules = []
         self.closed_handler = 0
         super().__init__(Gio, GLib)
+
+    def pending(self) -> bool:
+        if not super().pending():
+            return False
+        if self.local_interrupted:
+            self.fail(regional_interruption_failure(self))
+            return False
+        return True
 
     def timeout_failure(self) -> SnapshotFailure:
         detail = ("Regional operation timed out after dispatch; the outcome is unknown. Refresh state before a new confirmation"
@@ -1286,9 +1299,12 @@ class RegionalMutation(ServiceRead):
         flags = (self.Gio.DBusCallFlags.ALLOW_INTERACTIVE_AUTHORIZATION
                  if interactive else self.Gio.DBusCallFlags.NONE)
         try:
+            expected_type = self.GLib.VariantType.new(reply_type)
+            remaining = max(1, int((self.deadline - time.monotonic()) * 1000))
+            if not self.pending():
+                return
             self.connection.call(name, path, interface, method, parameters,
-                self.GLib.VariantType.new(reply_type), flags,
-                max(1, int((self.deadline - time.monotonic()) * 1000)),
+                expected_type, flags, remaining,
                 self.cancellable, replied, None)
         except self.GLib.Error as error:
             self.fail(self.bus_failure(error))
@@ -1437,6 +1453,8 @@ class RegionalMutation(ServiceRead):
         self.GLib.source_remove(self.deadline_source)
         self.deadline = time.monotonic() + REGIONAL_MUTATION_SECONDS
         self.deadline_source = self.GLib.timeout_add(REGIONAL_MUTATION_SECONDS * 1000, self.expire)
+        if not self.pending():
+            return
         self.sent = True
         self.request(self.owner, self.path, self.name, method, arguments, "()",
             self.method_replied, interactive=True)
@@ -6169,6 +6187,65 @@ class NativeOperationOwner:
         return terminal
 
 
+class RegionalCommandInterrupted(SnapshotFailure):
+    """An explicit local stop, not cancellation of a dispatched system change."""
+
+
+def regional_interruption_failure(client) -> RegionalCommandInterrupted:
+    """Distinguish an unsent preflight stop from an unconfirmed dispatched change."""
+    return RegionalCommandInterrupted("interrupted",
+        "Regional observation was interrupted after dispatch; the change may still complete. Refresh state before a new confirmation"
+        if client.sent else "Regional preflight was interrupted; no change was sent")
+
+
+def run_interruptible_regional(client: RegionalMutation, retained: contextlib.ExitStack):
+    """Stop the GLib observer cooperatively and preserve durable caller cleanup."""
+    interrupted = False
+    observing = True
+    stop_source = 0
+    client.local_interrupted = False
+
+    def stop_observation():
+        nonlocal stop_source
+        stop_source = 0
+        client.fail(regional_interruption_failure(client))
+        return client.GLib.SOURCE_REMOVE
+
+    def stop(_signum, _frame):
+        nonlocal interrupted, stop_source
+        if interrupted:
+            return
+        interrupted = True
+        client.local_interrupted = True
+        # Exceptions raised inside GLib callbacks can be swallowed. A queued
+        # stop also avoids losing quit in the gap before MainLoop.run().
+        if observing:
+            stop_source = client.GLib.idle_add(stop_observation, priority=client.GLib.PRIORITY_HIGH)
+
+    try:
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            previous = signal.signal(signum, stop)
+            # The caller registers its native lease later, so LIFO cleanup
+            # releases that lease before restoring these handlers.
+            retained.callback(signal.signal, signum, previous)
+        if interrupted:
+            raise regional_interruption_failure(client)
+        return client.run()
+    except SystemExit as error:
+        # The fixed locale collector owns and reaps its subprocess before
+        # restoring our handlers and exiting with the received signal code.
+        if (client.action != "locale-set" or client.started
+                or error.code not in (128 + signal.SIGTERM, 128 + signal.SIGINT, 128 + signal.SIGHUP)):
+            raise
+        stop(error.code - 128, None)
+    finally:
+        observing = False
+        if stop_source:
+            client.GLib.source_remove(stop_source)
+        if interrupted:
+            raise regional_interruption_failure(client)
+
+
 def run_regional_mutation(
     journal: JournalDescriptorSet, action: str, argument: str, generation: str,
     write: Callable[[str], object], *, on_admission: Callable[[], None] | None = None,
@@ -6208,7 +6285,7 @@ def run_regional_mutation(
 
         client = RegionalMutation(action, argument, generation, before_send, after_reply)
         try:
-            client.run()
+            run_interruptible_regional(client, retained)
         except SnapshotFailure as error:
             if owner is None:
                 raise client.hook_error or error
@@ -6227,12 +6304,15 @@ def run_regional_mutation(
                  "permission-denied" if failure.code == "permission-denied" and owner.operation.state == "authorizing" else
                  "failed")
         terminal = owner.finish(state, failure)
-    if client.sent and failure is not None and failure.code in {"timeout", "interrupted"}:
+    if (client.sent and failure is not None and failure.code in {"timeout", "interrupted"}
+            and not client.local_interrupted):
         # The terminal/handoff is durable and the native lease is released
         # before this independent read. Its outcome cannot reclassify the call.
         # Settings will publish its own fresh snapshot on origin completion.
-        with contextlib.suppress(SnapshotFailure):
-            RegionalRead(client.kind).run()
+        # Explicit local stops must return after durable cleanup rather than
+        # entering another service wait. Their caller still needs fresh state.
+        with contextlib.suppress(SnapshotFailure, InterruptedError):
+            run_interruptible_read(RegionalRead(client.kind))
     if owner.output_error is not None:
         raise owner.output_error
     return terminal

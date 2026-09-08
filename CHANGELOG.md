@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Stop native regional observation cooperatively on TERM, INT, or HUP. Retain
+  durable interrupted recovery for sent changes without claiming cancellation
+  or waiting on another service read after an explicit local stop.
+
 - Add a finite, read-only `ntp-sample` helper command with versioned bounded
   output, scoped failures, and no journal, package discovery, or polling loop.
 

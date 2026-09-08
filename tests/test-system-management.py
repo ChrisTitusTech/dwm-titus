@@ -1399,10 +1399,13 @@ class RegionalMutationTests(unittest.TestCase):
         self.gio, self.glib = gio, glib
         return client
 
-    def run_client(self, client):
+    def run_client(self, client, *, interruptible=False):
         with mock.patch.object(provider, "read_fedora_identity", return_value={"ID": "fedora"}), \
                 mock.patch.object(provider, "read_locale_choices", return_value=("C", "en_US.utf8")), \
                 mock.patch.object(provider.time, "monotonic", side_effect=lambda: self.clock):
+            if interruptible:
+                with contextlib.ExitStack() as retained:
+                    return provider.run_interruptible_regional(client, retained)
             return client.run()
 
     def failure(self, client, code):
@@ -1501,6 +1504,40 @@ class RegionalMutationTests(unittest.TestCase):
             self.assertLessEqual(self.context.iteration.call_count, provider.REGIONAL_CALLBACK_LIMIT)
             if scenario == "checkpoint":
                 self.assertIsInstance(client.hook_error, OSError)
+
+    def test_stop_after_final_drain_prevents_mutating_request(self):
+        for action, argument in (("timezone-set", "Etc/UTC"), ("ntp-set", "enabled"),
+                                 ("locale-set", "LANG=en_US.utf8")):
+            for stage in ("arguments", "timer", "request"):
+                for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                    with self.subTest(action=action, stage=stage, signum=signum):
+                        client = self.client(action, argument)
+                        self.glib.idle_add = mock.Mock(return_value=1000)
+                        self.glib.PRIORITY_HIGH = -100
+                        variant, timer = self.glib.Variant, self.glib.timeout_add.side_effect
+                        variant_type = self.glib.VariantType
+                        def arguments(signature, values):
+                            if stage == "arguments" and signature in ("(sb)", "(bb)", "(asb)"):
+                                signal.raise_signal(signum)
+                            return variant(signature, values)
+                        def arm(milliseconds, callback):
+                            if stage == "timer" and milliseconds == 60000:
+                                signal.raise_signal(signum)
+                            return next(timer)
+                        def expected_type(signature):
+                            if stage == "request" and client.sent:
+                                signal.raise_signal(signum)
+                            return variant_type.new(signature)
+                        self.glib.Variant = arguments
+                        self.glib.VariantType = types.SimpleNamespace(new=expected_type)
+                        self.glib.timeout_add.side_effect = arm
+                        with self.assertRaises(provider.RegionalCommandInterrupted):
+                            self.run_client(client, interruptible=True)
+                        self.assertEqual(self.mutations(), [])
+                        # Once handoff has begun, a stopped request remains
+                        # conservatively unconfirmed even if the bus was not called.
+                        self.assertEqual(client.sent, stage == "request")
+                        self.assertEqual([event[0] for event in self.events], ["authorizing"])
 
     def test_matching_notifications_are_accepted_but_conflict_history_is_retained(self):
         for conflict in (False, True):
@@ -10345,6 +10382,100 @@ class OperationWatchTests(unittest.TestCase):
             self.assertEqual(provider.load_journal_state(journal.chain).handoff.operation_id, operation.operation_id)
 
 
+class RegionalInterruptionTests(unittest.TestCase):
+    catalog = LocaleEnumerationTests.catalog
+
+    def run_client(self, client):
+        with contextlib.ExitStack() as retained:
+            return provider.run_interruptible_regional(client, retained)
+
+    def test_locale_enumeration_stop_reaps_child_and_becomes_typed_rejection(self):
+        from gi.repository import GLib
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            gio = mock.Mock()
+            client = provider.RegionalMutation("locale-set", "LANG=C", "a" * 64,
+                mock.Mock(), mock.Mock(), gio, GLib)
+            with self.subTest(signum=signum), self.catalog("closed-pipes", signal_number=signum) as processes:
+                with mock.patch.object(provider, "read_fedora_identity"), \
+                        self.assertRaises(provider.RegionalCommandInterrupted) as raised:
+                    self.run_client(client)
+                self.assertIn("no change was sent", raised.exception.detail)
+                self.assertFalse(client.sent)
+                gio.bus_get.assert_not_called()
+                self.assertTrue(all(p.returncode is not None and p.stdout.closed and p.stderr.closed for p in processes))
+
+    def test_repeated_stop_coalesces_and_rejects_a_just_completed_read(self):
+        handlers = {number: signal.getsignal(number)
+                    for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        for signum in handlers:
+            for sent in (False, True):
+                with self.subTest(signum=signum, sent=sent):
+                    client = mock.Mock(sent=sent)
+                    def run():
+                        signal.raise_signal(signum)
+                        signal.raise_signal(signum)
+                        return "verified"
+                    client.run.side_effect = run
+                    with self.assertRaises(provider.RegionalCommandInterrupted) as raised:
+                        self.run_client(client)
+                    self.assertEqual(raised.exception.code, "interrupted")
+                    self.assertIn("may still complete" if sent else "no change was sent", raised.exception.detail)
+                    client.GLib.idle_add.assert_called_once()
+                    client.GLib.source_remove.assert_called_once_with(client.GLib.idle_add.return_value)
+                    client.fail.assert_not_called()
+                    for number, handler in handlers.items():
+                        self.assertIs(signal.getsignal(number), handler)
+
+    def test_unrelated_system_exit_is_not_reclassified_as_a_stop(self):
+        for action, started, code in (("timezone-set", False, 143),
+                                      ("locale-set", True, 143), ("locale-set", False, 2)):
+            client = mock.Mock(action=action, started=started, sent=False)
+            client.run.side_effect = SystemExit(code)
+            with self.subTest(action=action, started=started, code=code), self.assertRaises(SystemExit) as raised:
+                self.run_client(client)
+            self.assertEqual(raised.exception.code, code)
+            client.GLib.idle_add.assert_not_called()
+
+    def test_startup_gap_cannot_lose_the_queued_stop(self):
+        from gi.repository import GLib
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            gio = mock.Mock()
+            client = provider.RegionalMutation("timezone-set", "Etc/UTC", "a" * 64,
+                mock.Mock(), mock.Mock(), gio, GLib)
+            loop = client.loop
+            expired = []
+            def guard_stop():
+                expired.append(True)
+                loop.quit()
+                return GLib.SOURCE_REMOVE
+            def start():
+                signal.raise_signal(signum)
+                loop.run()
+            client.loop = types.SimpleNamespace(run=start, quit=loop.quit)
+            guard = GLib.timeout_add(200, guard_stop)
+            try:
+                with mock.patch.object(provider, "read_fedora_identity"), \
+                        contextlib.redirect_stderr(io.StringIO()) as diagnostic, \
+                        self.assertRaises(provider.RegionalCommandInterrupted):
+                    self.run_client(client)
+                self.assertEqual(expired, [], "Regional stop was lost before loop startup")
+                self.assertNotIn("Traceback", diagnostic.getvalue())
+                self.assertTrue(client.done)
+                self.assertFalse(client.sent)
+                gio.bus_get_finish.assert_not_called()
+            finally:
+                if not expired:
+                    GLib.source_remove(guard)
+
+    def test_actual_cli_signal_matrix_on_private_bus(self):
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-regional-interruption-bus.py"), str(PROVIDER_PATH)],
+            capture_output=True, text=True, timeout=90, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.count("Regional signal case: PASS"), 18)
+        self.assertIn("Private-bus regional interruption: PASS", result.stdout)
+
+
 class RegionalOwnerTests(unittest.TestCase):
     boot_id = JournalRetainedSessionTests.boot_id
     session = JournalRetainedSessionTests.session
@@ -10498,6 +10629,115 @@ class RegionalOwnerTests(unittest.TestCase):
             self.assertEqual(output, [])
             admitted.assert_not_called()
             self.assertEqual(provider.load_journal_state(journal.chain), before)
+
+    def test_local_stop_terminalizes_a_running_owner_without_another_service_wait(self):
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            with self.subTest(signum=signum), self.session() as (_path, _chain, journal):
+                def configure():
+                    self.before_admission = lambda: setattr(self.client, "GLib", mock.Mock())
+                    self.during = lambda: signal.raise_signal(signum)
+                terminal, output, fresh = self.invoke(journal, configure=configure)
+                self.assertEqual((terminal.state, terminal.error_code), ("interrupted", "interrupted"))
+                self.assertEqual([row[4] for row in rows(output.splitlines(), "operation")],
+                    ["pending", "authorizing", "running", "interrupted"])
+                fresh.assert_not_called()
+                durable = provider.load_journal_state(journal.chain)
+                self.assertIsNone(durable.active)
+                self.assertEqual(durable.terminals[durable.handoff.slot], terminal)
+                self.assertTrue(provider._try_native_owner_lock(journal.descriptor("active")))
+                provider._unlock_native_owner(journal.descriptor("active"))
+
+    def test_repeated_stop_during_terminal_commit_and_lease_release_is_coalesced(self):
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            with self.subTest(signum=signum), self.session() as (_path, _chain, journal):
+                def configure():
+                    self.before_admission = lambda: setattr(self.client, "GLib", mock.Mock())
+                    self.during = lambda: signal.raise_signal(signum)
+                advance, unlock = provider.advance_journal_operation, provider._unlock_native_owner
+                terminal_started = []
+                def commit(current_journal, current, following, **kwargs):
+                    if following.state == "interrupted":
+                        terminal_started.append(True)
+                        signal.raise_signal(signum)
+                    return advance(current_journal, current, following, **kwargs)
+                def release(descriptor):
+                    if terminal_started:
+                        signal.raise_signal(signum)
+                    return unlock(descriptor)
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
+                        provider.control_output_writers(), \
+                        mock.patch.object(provider, "advance_journal_operation", side_effect=commit), \
+                        mock.patch.object(provider, "_unlock_native_owner", side_effect=release):
+                    terminal, _output, fresh = self.invoke(journal, configure=configure)
+                self.assertEqual(terminal.state, "interrupted")
+                fresh.assert_not_called()
+                durable = provider.load_journal_state(journal.chain)
+                self.assertIsNone(durable.active)
+                self.assertEqual(durable.terminals[durable.handoff.slot], terminal)
+                self.assertTrue(provider._try_native_owner_lock(journal.descriptor("active")))
+                provider._unlock_native_owner(journal.descriptor("active"))
+
+    def test_first_stop_during_timeout_handoff_skips_the_optional_read(self):
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            with self.subTest(signum=signum), self.session() as (_path, _chain, journal):
+                complete = provider.complete_journal_terminal
+                def handoff(*args, **kwargs):
+                    signal.raise_signal(signum)
+                    return complete(*args, **kwargs)
+                with mock.patch.object(provider, "complete_journal_terminal", side_effect=handoff):
+                    terminal, _output, fresh = self.invoke(journal, mode="timeout")
+                self.assertEqual((terminal.state, terminal.error_code), ("interrupted", "timeout"))
+                self.assertTrue(self.client.local_interrupted)
+                fresh.assert_not_called()
+                durable = provider.load_journal_state(journal.chain)
+                self.assertIsNone(durable.active)
+                self.assertEqual(durable.terminals[durable.handoff.slot], terminal)
+
+    def test_stop_during_independent_read_preserves_the_durable_terminal(self):
+        from gi.repository import GLib
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            with self.subTest(signum=signum), self.session() as (_path, _chain, journal):
+                factory, generation = self.setup_client(journal, mode="transport")
+                gio = mock.Mock()
+                read = provider.RegionalRead("time-state", gio, GLib)
+                expired, output = [], []
+                trigger_source = 0
+                def trigger():
+                    nonlocal trigger_source
+                    trigger_source = 0
+                    durable = provider.load_journal_state(journal.chain)
+                    self.assertIsNone(durable.active)
+                    self.assertEqual(durable.terminals[durable.handoff.slot].state, "interrupted")
+                    self.assertTrue(provider._try_native_owner_lock(journal.descriptor("active")))
+                    provider._unlock_native_owner(journal.descriptor("active"))
+                    signal.raise_signal(signum)
+                    return GLib.SOURCE_REMOVE
+                def guard_stop():
+                    expired.append(True)
+                    read.loop.quit()
+                    return GLib.SOURCE_REMOVE
+                guard = GLib.timeout_add(1000, guard_stop)
+                trigger_source = GLib.idle_add(trigger)
+                try:
+                    with mock.patch.object(provider, "RegionalMutation", side_effect=factory), \
+                            mock.patch.object(provider, "RegionalRead", return_value=read), \
+                            contextlib.redirect_stdout(io.StringIO()), \
+                            contextlib.redirect_stderr(io.StringIO()) as diagnostic, \
+                            provider.control_output_writers():
+                        terminal = provider.run_regional_mutation(journal, "timezone-set", "Etc/UTC",
+                            generation, output.append)
+                    self.assertEqual(expired, [], "Independent read ignored the local stop")
+                    self.assertNotIn("Traceback", diagnostic.getvalue())
+                    self.assertTrue(read.done)
+                    self.assertEqual((terminal.state, terminal.error_code), ("interrupted", "interrupted"))
+                    durable = provider.load_journal_state(journal.chain)
+                    self.assertEqual(durable.terminals[durable.handoff.slot], terminal)
+                    self.assertTrue(output[-1].endswith("complete\toperation\n"))
+                finally:
+                    if not expired:
+                        GLib.source_remove(guard)
+                    if trigger_source:
+                        GLib.source_remove(trigger_source)
 
     def test_output_loss_before_dispatch_aborts_but_after_dispatch_keeps_verification(self):
         for phase in ("pending", "authorizing", "running", "succeeded"):
