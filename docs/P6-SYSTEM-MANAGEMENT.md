@@ -980,6 +980,19 @@ remain separate boundaries.
 
 ### Security Status
 
+The internal screen-lock reader invokes only its sibling
+`dwm-quickshell-controlcenter power-lock-snapshot`. That fixed no-argument
+command reuses the existing power status collection and `power-lock` formatter;
+it does not query UPower, profiles, suspend, or lid state. The Python reader
+adds no independent locker or GSettings probe. Lock-only nested timeouts use
+foreground mode so every probe remains in the encompassing owned process group
+on interruption. Its owned process group has a ten-second monotonic deadline, independent timeout supervisor, and 8 KiB
+combined stdout/stderr budget. It preserves the session environment for X11 and
+user settings while fixing the command search path and locale. Missing,
+duplicate, malformed, incomplete, or unsuccessful output cannot claim enabled
+or disabled state. Unknown records and appended fields remain forward-compatible.
+This reader is preparatory; it does not activate minor 2 or a Settings surface.
+
 Each probe has a fixed source and emits its own state instead of making the
 combined security summary fail. Status describes whether the probe can produce
 authoritative data: `available` for a known value, `partial` for accessible but
@@ -1052,7 +1065,7 @@ activation or interactive authorization. Call failures remain unavailable,
 malformed replies remain partial, and late replies cannot publish state or
 close the shared bus. Fifteen focused tests include a private-bus deadline and
 connection reuse; real read-only Fedora 44 probes reported all three sources
-available. Shared screen-lock integration remains pending.
+available. Shared screen-lock reader integration is described below.
 No new command, protocol record, Settings control, mutation, or polling loop is
 activated by this boundary.
 

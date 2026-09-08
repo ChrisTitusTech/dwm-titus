@@ -26,12 +26,17 @@ power_config_file=$dwm_config_dir/power.conf
 power_profiles_service=org.freedesktop.UPower.PowerProfiles
 power_profiles_path=/org/freedesktop/UPower/PowerProfiles
 power_profiles_interface=org.freedesktop.UPower.PowerProfiles
+bounded_foreground=0
 
 run_bounded() {
 	duration=$1
 	shift
 	status=0
-	timeout --signal=TERM --kill-after=2 "$duration" "$@" || status=$?
+	if [ "$bounded_foreground" = 1 ]; then
+		timeout --foreground --signal=TERM --kill-after=2 "$duration" "$@" || status=$?
+	else
+		timeout --signal=TERM --kill-after=2 "$duration" "$@" || status=$?
+	fi
 	if [ "$status" -eq 124 ]; then
 		printf 'operation timed out after %s seconds\n' "$duration" >&2
 	fi
@@ -786,6 +791,23 @@ power_snapshot_suspend() {
 	esac
 }
 
+power_lock_record() {
+	printf 'power-lock\t%s\t%s\t%s\t%s\tuser-session\tlight-locker automatic locking\n' \
+		"$([ "$(power_row_value lock_available)" = 1 ] && printf available || printf unavailable)" \
+		"$([ "$(power_row_value lock_enabled)" = 1 ] && printf yes || printf no)" \
+		"$(power_row_value lock_timeout)" \
+		"$([ "$(power_row_value lock_running)" = 1 ] && printf yes || printf no)"
+}
+
+power_lock_snapshot() {
+	# The information reader owns the encompassing process group. Nested
+	# timeouts must not move X11/GSettings probes outside that cleanup boundary.
+	bounded_foreground=1
+	power_legacy_status=$(power_status)
+	printf 'power-protocol\t1\t0\n'
+	power_lock_record
+}
+
 power_snapshot() {
 	power_legacy_status=$(power_status)
 	printf 'power-protocol\t1\t0\n'
@@ -794,11 +816,7 @@ power_snapshot() {
 		"$([ "$(power_row_value dpms_available)" = 1 ] && printf available || printf unavailable)" \
 		"$([ "$(power_row_value dpms_enabled)" = 1 ] && printf yes || printf no)" \
 		"$(power_row_value dpms_timeout)"
-	printf 'power-lock\t%s\t%s\t%s\t%s\tuser-session\tlight-locker automatic locking\n' \
-		"$([ "$(power_row_value lock_available)" = 1 ] && printf available || printf unavailable)" \
-		"$([ "$(power_row_value lock_enabled)" = 1 ] && printf yes || printf no)" \
-		"$(power_row_value lock_timeout)" \
-		"$([ "$(power_row_value lock_running)" = 1 ] && printf yes || printf no)"
+	power_lock_record
 	power_snapshot_upower
 	power_snapshot_profiles
 	power_snapshot_suspend
@@ -1661,7 +1679,7 @@ action() {
 }
 
 usage() {
-	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|power-status|power-snapshot|power-watch|power-profile-set <profile>|power-apply|power-dpms on|off|power-dpms-timeout <seconds>|power-lock on|off|power-lock-timeout <seconds>|session-action lock|logout|suspend|reboot|shutdown|action <name>\n' "$0" >&2
+	printf 'usage: %s health|info|themes|theme-set <name>|keybinds|power-status|power-snapshot|power-lock-snapshot|power-watch|power-profile-set <profile>|power-apply|power-dpms on|off|power-dpms-timeout <seconds>|power-lock on|off|power-lock-timeout <seconds>|session-action lock|logout|suspend|reboot|shutdown|action <name>\n' "$0" >&2
 }
 
 case ${1:-} in
@@ -1678,6 +1696,13 @@ theme-set)
 keybinds) keybinds ;;
 power-status) power_status ;;
 power-snapshot) power_snapshot ;;
+power-lock-snapshot)
+	if [ $# -ne 1 ]; then
+		usage
+		exit 2
+	fi
+	power_lock_snapshot
+	;;
 power-watch) power_watch ;;
 power-profile-set)
 	if [ $# -ne 2 ]; then

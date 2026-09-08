@@ -85,6 +85,15 @@ battery, external-power, and docked actions. Each action is `default`,
 `hybrid-sleep`, `suspend-then-hibernate`, `lock`, or `unknown`. Policy remains
 read-only in Settings; the user-writable helper is never elevated to edit it.
 
+## Lock-only Snapshot
+
+`dwm-quickshell-controlcenter power-lock-snapshot` accepts no arguments and
+emits the version header and the same `power-lock` record as the complete power
+snapshot. It reuses power status collection without querying UPower, profiles,
+suspend, or lid policy. System information can consume automatic-lock evidence
+without a separate locker or GSettings implementation. This describes automatic
+locking configuration and locker readiness, not whether the screen is locked now.
+
 ## Actions
 
 The fixed user-session actions are:

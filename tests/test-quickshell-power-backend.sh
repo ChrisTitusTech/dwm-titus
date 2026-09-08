@@ -341,6 +341,12 @@ export DWM_POWER_TEST_LID_CLOSED=true
 export DWM_POWER_TEST_ON_BATTERY=true
 export DWM_POWER_TEST_CAN_SUSPEND=challenge
 snapshot=$(run_helper power-snapshot)
+lock_snapshot=$(run_helper power-lock-snapshot)
+[ "$(printf '%s\n' "$lock_snapshot" | head -n 1)" = "$(printf '%s\n' "$snapshot" | head -n 1)" ]
+[ "$(printf '%s\n' "$lock_snapshot" | sed -n '/^power-lock/p')" = "$(printf '%s\n' "$snapshot" | sed -n '/^power-lock/p')" ]
+[ "$(printf '%s\n' "$lock_snapshot" | wc -l)" -eq 2 ]
+expect_status 2 run_helper power-lock-snapshot extra
+
 [ "$(printf '%s\n' "$snapshot" | sed -n '1p')" = "power-protocol	1	0" ]
 printf '%s\n' "$snapshot" | grep -Fqx 'power-external	off	System is running on battery power'
 printf '%s\n' "$snapshot" | grep -Fqx 'power-battery	available	discharging	73	4200	0	12.5	Composite UPower display battery'

@@ -491,6 +491,15 @@ Acceptance:
 
 ### INFO-RECOVERY-001: Information, Diagnostics, and Recovery
 
+The shared power helper now provides a fixed read-only `power-lock-snapshot`
+using the same formatter and existing power status owner as `power-snapshot`.
+The internal system-information reader validates its versioned lock record,
+keeps probe status distinct from automatic-lock semantics, and caps the child
+at ten seconds and 8 KiB combined output. It preserves the user-session
+environment, supervises the owned process group, and never opens a journal or
+launches an independent GSettings/locker probe. Cumulative protocol and visible
+security integration remain pending.
+
 The internal local-information reader now returns eleven independent OS, kernel,
 processor, memory, swap, and uptime observations. Fixed file reads are capped;
 allowlisted fields, UTF-8 text, exact kB conversion, and unsigned 64-bit counters
@@ -515,8 +524,9 @@ validates fixed capped lsblk topology, including mapper aliases and repeated
 multi-parent devices, and refuses incomplete or mixed root evidence. Twenty
 focused topology/process tests and all seventeen filesystem regressions passed;
 a read-only Fedora 44 probe returned available root-block evidence within its
-deadline. Shared screen-lock status, protocol integration, visible controls,
-and combined installed qualification remain pending.
+deadline. The shared screen-lock reader is implemented as described above.
+Protocol integration, visible controls, and combined installed qualification
+remain pending.
 
 - [ ] Add event-driven or bounded system information and storage overview state
   without a new idle poller.

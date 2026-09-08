@@ -553,6 +553,126 @@ class FilesystemInformationTests(unittest.TestCase):
             provider.parse_filesystem_information(exact + b" ")
 
 
+class ScreenLockTests(unittest.TestCase):
+    def record(self, status="available", enabled="yes", running="yes"):
+        return f"power-protocol\t1\t0\npower-lock\t{status}\t{enabled}\t600\t{running}\tuser-session\tAutomatic locking\n".encode()
+
+    def test_status_and_semantics_are_independent(self):
+        for status in ("available", "partial", "restricted", "unavailable"):
+            for enabled in ("yes", "no"):
+                for running in ("yes", "no"):
+                    result = provider.parse_screen_lock(self.record(status, enabled, running))
+                    expected_status = "partial" if status == "available" and enabled == "yes" and running == "no" else status
+                    expected_value = ("enabled" if enabled == "yes" else "disabled") if expected_status == "available" else "unknown"
+                    self.assertEqual((result.status, result.value), (expected_status, expected_value))
+
+    def test_version_missing_duplicate_and_malformed_records_fail_closed(self):
+        valid = self.record()
+        for data in (b"", b"power-protocol\t1\t0\n", valid[:-1], valid + valid,
+                valid.replace(b"\t1\t0", b"\t2\t0"), valid.replace(b"\t1\t0", b"\t1\t-1"),
+                valid.replace(b"\tyes\t", b"\ttrue\t"), valid.replace(b"\t600\t", b"\t86401\t"),
+                valid.replace(b"user-session", b"privileged"), valid.replace(b"available", b"idle"),
+                valid.replace(b"Automatic locking", b""), valid.replace(b"Automatic locking", b"\xff"),
+                valid.replace(b"Automatic locking", b"x" * 513), valid + b"x" * 8192):
+            with self.subTest(data=data[:80]), self.assertRaises(provider.SnapshotFailure):
+                provider.parse_screen_lock(data)
+
+    def test_additive_records_and_fields_are_forward_compatible(self):
+        data = self.record().replace(b"\t1\t0", b"\t1\t2\tfuture").replace(b"Automatic locking\n", b"Automatic locking\tfuture\n")
+        self.assertEqual(provider.parse_screen_lock(data + b"future-record\tvalue\n").value, "enabled")
+
+    @contextlib.contextmanager
+    def process(self, program):
+        popen = subprocess.Popen
+        children = []
+        def launch(command, **options):
+            self.assertEqual(command, ["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "10",
+                str(REPO / "scripts/dwm-quickshell-controlcenter"), "power-lock-snapshot"])
+            self.assertEqual(options["env"]["DISPLAY"], ":fixture")
+            self.assertEqual(options["env"]["LC_ALL"], "C")
+            self.assertEqual(options["stdin"], subprocess.DEVNULL)
+            self.assertTrue(options["start_new_session"])
+            child = popen(["/usr/bin/python3", "-c", program], **options)
+            children.append(child)
+            return child
+        try:
+            with mock.patch.dict(os.environ, {"DISPLAY": ":fixture"}), \
+                    mock.patch.object(provider.subprocess, "Popen", side_effect=launch):
+                yield
+            self.assertTrue(all(child.returncode is not None and child.stdout.closed and child.stderr.closed for child in children))
+        finally:
+            for child in children:
+                if child.returncode is None:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(child.pid, signal.SIGKILL)
+                    child.wait(timeout=2)
+
+    def test_fixed_power_helper_preserves_session_and_requires_complete_success(self):
+        for code, value, status in ((0, "enabled", "available"), (1, "unknown", "unavailable"), (124, "unknown", "unavailable")):
+            with self.process(f"import sys; sys.stdout.buffer.write({self.record()!r}); sys.exit({code})"), \
+                    mock.patch.object(provider, "open_journal_directory") as journal:
+                state = provider.read_screen_lock()
+            self.assertEqual((state.value, state.status), (value, status))
+            journal.assert_not_called()
+
+    def test_output_budget_and_missing_helper_are_scoped(self):
+        for stream in ("stdout", "stderr"):
+            with self.process(f"import sys; sys.{stream}.write('x' * 8193)"):
+                state = provider.read_screen_lock()
+            self.assertEqual((state.value, state.error_code), ("unknown", "malformed"))
+        with mock.patch.object(provider.subprocess, "Popen", side_effect=FileNotFoundError()):
+            self.assertEqual(provider.read_screen_lock().error_code, "missing-provider")
+
+    def test_deadline_is_bounded_and_cleans_owned_child(self):
+        started = time.monotonic()
+        with self.process("import os, time; os.close(1); os.close(2); time.sleep(30)"):
+            result = provider.read_screen_lock()
+        self.assertEqual((result.status, result.value, result.error_code), ("unavailable", "unknown", "timeout"))
+        self.assertLess(time.monotonic() - started, 13)
+
+    def test_actual_helper_keeps_interrupted_probes_in_owned_group(self):
+        popen = subprocess.Popen
+        for probe in ("xset", "gsettings"):
+            for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                with self.subTest(probe=probe, signal=number), tempfile.TemporaryDirectory() as directory:
+                    path = pathlib.Path(directory)
+                    pidfile = path / "probe.pid"
+                    sleeper = ("#!/usr/bin/python3\nimport os, pathlib, signal, time\n"
+                        + f"pathlib.Path({str(pidfile)!r}).write_text(str(os.getpid()))\n"
+                        + f"os.kill({os.getpid()}, {number})\ntime.sleep(30)\n")
+                    for name in ("xset", "gsettings", "light-locker"):
+                        script = path / name
+                        script.write_text(sleeper if name == probe else
+                            "#!/bin/sh\nprintf 'Screen Saver:\n  timeout: 600 cycle: 600\n'\n")
+                        script.chmod(0o700)
+                    def launch(command, **options):
+                        options["env"] = dict(options["env"], PATH=directory + ":/usr/bin:/bin",
+                            HOME=directory, XDG_CONFIG_HOME=directory, XDG_DATA_HOME=directory)
+                        return popen(command, **options)
+                    try:
+                        with mock.patch.object(provider.subprocess, "Popen", side_effect=launch):
+                            with self.assertRaises(SystemExit) as caught:
+                                provider.read_screen_lock()
+                        self.assertEqual(caught.exception.code, 128 + number)
+                        child = int(pidfile.read_text())
+                        record = pathlib.Path(f"/proc/{child}/stat")
+                        self.assertTrue(not record.exists() or record.read_text().rsplit(") ", 1)[1].split()[0] == "Z",
+                            "Nested power probe survived confirmed reader cleanup")
+                    finally:
+                        if pidfile.exists():
+                            with contextlib.suppress(ProcessLookupError):
+                                os.kill(int(pidfile.read_text()), signal.SIGKILL)
+
+    def test_interruption_retains_signal_and_restores_handlers(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            previous = signal.getsignal(number)
+            with self.process(f"import os, signal, time; os.kill(os.getppid(), {number}); time.sleep(30)"):
+                with self.assertRaises(SystemExit) as caught:
+                    provider.read_screen_lock()
+            self.assertEqual(caught.exception.code, 128 + number)
+            self.assertIs(signal.getsignal(number), previous)
+
+
 class RootEncryptionTests(unittest.TestCase):
     def node(self, name="disk", **changes):
         return dict({"name": name, "type": "disk", "fstype": None, "mountpoints": [None], "pkname": None}, **changes)
