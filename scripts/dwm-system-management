@@ -13,6 +13,7 @@ import io
 import json
 import os
 import re
+import select
 import selectors
 import shlex
 import shutil
@@ -9990,11 +9991,15 @@ def watch_mount_events() -> int:
                     selector.register(pidfd, selectors.EVENT_READ)
                     output_descriptor = sys.stdout.fileno()
                     output_mode = os.fstat(output_descriptor).st_mode
+                    output_events = None
                     if stat.S_ISFIFO(output_mode) or stat.S_ISSOCK(output_mode):
-                        # A write-end pipe reports EPOLLERR when its last reader
-                        # disappears, even when no write or mount event occurs.
-                        # Requesting read events avoids a writable idle spin.
-                        selector.register(output_descriptor, selectors.EVENT_READ)
+                        # HUP/ERR are reported even with no requested events.
+                        # A nested epoll descriptor lets the main selector watch
+                        # only closure, not writable readiness, incoming socket
+                        # data, or the peer shutting down its write direction.
+                        output_events = resources.enter_context(select.epoll())
+                        output_events.register(output_descriptor, 0)
+                        selector.register(output_events, selectors.EVENT_READ)
                     for stream in (process.stdout, process.stderr):
                         os.set_blocking(stream.fileno(), False)
                         selector.register(stream, selectors.EVENT_READ)
@@ -10019,7 +10024,7 @@ def watch_mount_events() -> int:
                                 continue
                             if key.fd == pidfd:
                                 raise OSError("Mount monitor exited unexpectedly")
-                            if key.fd == output_descriptor:
+                            if key.fileobj is output_events:
                                 raise OSError("Mount monitor consumer disappeared")
                             if not ready and key.fileobj is process.stdout:
                                 continue  # Retain early events until baseline acknowledgment.
