@@ -6232,6 +6232,118 @@ def read_recovery_snapshot(backend: PackageKitBackend) -> RecoverySnapshot:
         return RecoverySnapshot(prior_restart=prior_restart, failures=tuple(failures + [failure]))
 
 
+INFORMATION_LOCAL_IDS = (
+    "os-name", "os-version", "kernel-release", "architecture", "cpu-model",
+    "logical-cpus", "memory-total-bytes", "memory-available-bytes",
+    "swap-total-bytes", "swap-free-bytes", "uptime-seconds",
+)
+INFORMATION_SECURITY_IDS = ("selinux", "secure-boot", "firewalld", "root-encryption", "screen-lock")
+
+
+class InformationSnapshotSources:
+    """Fixed readers, invoked only when an information snapshot is requested."""
+
+    def local(self):
+        return read_local_information()
+
+    def hardware(self):
+        return read_hardware_information()
+
+    def filesystems(self):
+        return read_filesystem_information()
+
+    def security(self, identifier):
+        readers = {"selinux": read_selinux_status, "secure-boot": read_secure_boot_status,
+            "firewalld": read_firewalld_status, "root-encryption": read_root_encryption,
+            "screen-lock": read_screen_lock}
+        return readers[identifier]()
+
+
+def build_information_snapshot(sources: InformationSnapshotSources) -> list[str]:
+    """Assemble the closed information records without journal or action admission.
+
+    This internal formatter deliberately does not activate a snapshot minor or
+    initiate reads from startup recovery. The caller owns visible-pane readiness.
+    """
+    groups = {owner: {"states": [], "errors": [], "statuses": []}
+              for owner in ("information", "storage", "security")}
+
+    def state(owner, identifier, value):
+        group = groups[owner]
+        group["statuses"].append(value.status)
+        group["states"].append("\t".join(("state", identifier, value.status,
+            clean_text(value.value, truncate=False), clean_text(value.detail))))
+        if value.error_code:
+            group["errors"].append("\t".join(("error", owner, value.error_code, clean_text(value.detail))))
+
+    for read, identifiers in ((sources.local, INFORMATION_LOCAL_IDS),
+            (sources.hardware, tuple(HARDWARE_INFORMATION_FIELDS.values()))):
+        try:
+            values = read()
+        except (OSError, SnapshotFailure) as failure:
+            values = dict.fromkeys(identifiers, information_unknown(failure))
+        for identifier in identifiers:
+            state("information", identifier, values.get(identifier, information_unknown(
+                SnapshotFailure("malformed", "Information reader omitted a required state"))))
+
+    for identifier in INFORMATION_SECURITY_IDS:
+        try:
+            value = sources.security(identifier)
+        except (OSError, SnapshotFailure) as failure:
+            value = information_unknown(failure)
+        state("security", identifier, value)
+
+    filesystem_lines = []
+    try:
+        filesystems = sources.filesystems()
+        # Buffer the complete encoded list before publishing its summary. This
+        # budget includes record prefixes, separators, and terminating newlines.
+        if len(filesystems.rows) > FILESYSTEM_RECORDS:
+            raise SnapshotFailure("malformed", "Filesystem inventory exceeds its record limit")
+        seen, size = set(), 0
+        for row in filesystems.rows:
+            if row.mount_id in seen:
+                raise SnapshotFailure("malformed", "Filesystem inventory repeats a mount identity")
+            seen.add(row.mount_id)
+            fields = ("filesystem", row.mount_id, row.status, row.source, row.target,
+                row.fstype, row.size_bytes, row.used_bytes, row.available_bytes, row.detail)
+            line = "\t".join(clean_text(field, truncate=False) for field in fields)
+            size += len(line.encode("utf-8")) + 1
+            if size > 384 * 1024:
+                raise SnapshotFailure("malformed", "Filesystem inventory exceeds its byte limit")
+            filesystem_lines.append(line)
+    except (OSError, SnapshotFailure) as failure:
+        filesystems = FilesystemInformation(information_unknown(failure))
+        filesystem_lines = []
+    state("storage", "filesystem-summary", filesystems.summary)
+
+    lines = []
+    for owner, group in groups.items():
+        statuses = group["statuses"]
+        if all(value == "available" for value in statuses) and not group["errors"]:
+            status = "available"
+        elif any(value in {"available", "partial"} for value in statuses):
+            status = "partial"
+        elif all(value == "unsupported" for value in statuses):
+            status = "unsupported"
+        elif all(value == "restricted" for value in statuses):
+            status = "restricted"
+        else:
+            status = "unavailable"
+        lines.append("\t".join(("provider", owner, status, "read-only",
+            "dwm-system-management", "Bounded read-only observations; inspect individual state details")))
+        lines.extend(group["states"])
+        if owner == "storage":
+            lines.extend(filesystem_lines)
+        lines.extend(dict.fromkeys(group["errors"]))
+    lines.extend((
+        "provider\tdiagnostics\tavailable\tuser-session\tdwm-system-health\tExisting health scan, diagnostics, and fixed repair workflow",
+        "action\thealth-open\tavailable\tuser-session\tdiagnostics\tOpen system health\tOpen the existing health view and read-only scan; repairs require separate confirmation",
+    ))
+    validate_snapshot_size(lines)
+    return lines
+
+
 class NativeSnapshotSources:
     """Fixed read-only sources; construction neither reads state nor starts tools."""
 

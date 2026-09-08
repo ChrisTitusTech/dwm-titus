@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Assemble internal system information, filesystem, security, and diagnostics
+  records with isolated failures and complete filesystem-list bounds. Public
+  protocol activation and visible-pane integration remain pending.
+
 - Show unknown automatic-lock status in Power Settings and Control Center when
   live evidence is partial or unavailable, instead of displaying saved fallback
   values as enabled or disabled.

@@ -491,6 +491,12 @@ Acceptance:
 
 ### INFO-RECOVERY-001: Information, Diagnostics, and Recovery
 
+The internal information formatter now assembles all nineteen information,
+storage, and security states, four fixed providers, and in-process health
+navigation. Reader failures remain owner-scoped, filesystem lists are buffered
+against their complete encoded budget, and diagnostics do not depend on journal
+admission. Public minor 2 and visible-pane lifecycle integration remain pending.
+
 The shared power helper now provides a fixed read-only `power-lock-snapshot`
 using the same formatter and existing power status owner as `power-snapshot`.
 The internal system-information reader validates its versioned lock record,
