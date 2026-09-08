@@ -2259,8 +2259,10 @@ The command buffers the entire result before a single bounded stdout write.
 It does not initialize an unused stderr writer; closed, absent, or read-only
 stderr does not prevent a valid sample. Child-process regressions cover these
 descriptor states independently of the private-bus checks.
-Closed, full, or short output fails with exit 1, without retry or a partial-value
-success claim. Output setup and TERM/INT/HUP interruption release private
+Absent stdout, a closed descriptor or Python stream, and read-only, full, or
+short stdout fail with exit 1, without traceback, retry, or a partial-value
+success claim. Invalid output setup does not start a service read.
+Output setup and TERM/INT/HUP interruption release private
 descriptors and restore signal handlers. The inherited output file-status flags
 are never changed. Regular-file output preserves its original offset/append
 semantics; this does not impose a deadline on storage I/O. The existing private

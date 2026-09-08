@@ -7842,10 +7842,14 @@ def cancel_journal_operation(journal: JournalDescriptorSet, operation_id: str, *
 
 def control_output_writer(output, resources: contextlib.ExitStack) -> Callable[[bytes], int] | None:
     """Never set file-status flags on an inherited open-file description."""
+    if output is None:
+        raise OSError("Operation output is unavailable")
     try:
         descriptor = output.fileno()
     except io.UnsupportedOperation:
         return None  # In-memory test consumers have no kernel writer.
+    except ValueError as error:
+        raise OSError("Operation output is closed") from error
     original = os.fstat(descriptor)
     flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
     if (flags & os.O_ACCMODE) not in (os.O_WRONLY, os.O_RDWR):

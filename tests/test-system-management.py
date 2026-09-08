@@ -3245,6 +3245,35 @@ with mock.patch.dict(provider["ntp_sample_output"].__globals__,
                     (self.header + "sample\tyes\tno\n" + self.complete).encode())
                 self.assertEqual(result.stderr, b"")
 
+    def test_unavailable_stdout_is_a_controlled_failure(self):
+        code = """
+import os, runpy, sys
+from unittest import mock
+provider = runpy.run_path(sys.argv[1], run_name="ntp_output_fixture")
+mode = sys.argv[2]
+if mode == "readonly":
+    descriptor = os.open("/dev/null", os.O_RDONLY)
+    os.dup2(descriptor, 1)
+    if descriptor != 1:
+        os.close(descriptor)
+elif mode == "stream-closed":
+    sys.stdout.close()
+else:
+    os.close(1)
+    if mode == "none":
+        sys.stdout = None
+with mock.patch.dict(provider["ntp_sample_output"].__globals__,
+        read_ntp_sample=mock.Mock(side_effect=AssertionError("Read without output"))):
+    raise SystemExit(provider["main"](["ntp-sample"]))
+"""
+        for mode in ("closed", "readonly", "none", "stream-closed"):
+            with self.subTest(mode=mode):
+                result = subprocess.run([sys.executable, "-c", code, str(PROVIDER_PATH), mode],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, b"")
+                self.assertEqual(result.stderr, b"")
+
     def test_interruption_releases_output_context_and_restores_handlers(self):
         handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
         for signum in handlers:
