@@ -570,8 +570,7 @@ def parse_filesystem_information(data: bytes) -> FilesystemInformation:
             partial = True
             continue
         if len(seen) >= FILESYSTEM_RECORDS:
-            partial = True
-            continue
+            raise SnapshotFailure("malformed", "Filesystem inventory exceeds its record limit")
         seen.add(identifier)
         display = []
         try:
@@ -6287,6 +6286,8 @@ def build_information_snapshot(sources: InformationSnapshotSources) -> list[str]
             (sources.hardware, tuple(HARDWARE_INFORMATION_FIELDS.values()))):
         try:
             values = read()
+        except InterruptedError:
+            raise
         except (OSError, SnapshotFailure) as failure:
             values = dict.fromkeys(identifiers, information_unknown(failure))
         for identifier in identifiers:
@@ -6296,6 +6297,8 @@ def build_information_snapshot(sources: InformationSnapshotSources) -> list[str]
     for identifier in INFORMATION_SECURITY_IDS:
         try:
             value = sources.security(identifier)
+        except InterruptedError:
+            raise
         except (OSError, SnapshotFailure) as failure:
             value = information_unknown(failure)
         state("security", identifier, value)
@@ -6319,6 +6322,8 @@ def build_information_snapshot(sources: InformationSnapshotSources) -> list[str]
             if size > 384 * 1024:
                 raise SnapshotFailure("malformed", "Filesystem inventory exceeds its byte limit")
             filesystem_lines.append(line)
+    except InterruptedError:
+        raise
     except (OSError, SnapshotFailure) as failure:
         filesystems = FilesystemInformation(information_unknown(failure))
         filesystem_lines = []
