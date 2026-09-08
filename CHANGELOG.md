@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add internal root block-encryption reporting with capped topology validation,
+  conservative unknown states, and bounded read-only process cleanup. Public
+  protocol and Settings integration remain pending.
+
 - Add internal bounded SELinux, Secure Boot, and firewalld status readers with
   source-specific unknown and denied states. These read-only preparations do
   not add system configuration actions, public protocol records, or controls.
