@@ -394,6 +394,14 @@ preserved the exact instant across UTC/Chicago changes and qualified the next
 minute tick. See `docs/P6-CLOCK-EVIDENCE.md`. NTP sampling and combined installed
 qualification remain pending.
 
+The finite `ntp-sample` command now exposes the internal two-property reader
+through a separate version 1.0 stream. It emits a complete boolean pair or a
+scoped error only, with bounded isolated output and no PackageKit, journal,
+mutation, or timer. Visible sampling remains pending. A read-only Fedora probe
+confirmed that spaced samples can reactivate idle timedated and produce owner
+arrival events; integration must reconcile those events without repeatedly
+reading unrelated package state or suppressing genuine configuration changes.
+
 The root now provides internal confirmation for the four fixed delegated tools.
 It requires fresh owning-provider and journal evidence, captures snapshot and
 cycle identity, rejects update-workflow overlap, and rechecks state after prompt

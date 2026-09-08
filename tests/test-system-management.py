@@ -3124,6 +3124,155 @@ class NtpReadTests(unittest.TestCase):
             connection.call_finish.assert_not_called()
 
 
+class NtpSampleCommandTests(unittest.TestCase):
+    header = "ntp-sample-protocol\t1\t0\n"
+    complete = "complete\tntp-sample\n"
+
+    def test_all_boolean_pairs_have_one_exact_bounded_stream(self):
+        for can_ntp in (False, True):
+            for synchronized in (False, True):
+                with mock.patch.object(provider, "NtpRead") as reader:
+                    reader.return_value.run.return_value = provider.NtpSample(can_ntp, synchronized)
+                    output, code = provider.ntp_sample_output()
+                self.assertEqual(code, 0)
+                self.assertEqual(output, self.header + "sample\t"
+                    + ("yes" if can_ntp else "no") + "\t" + ("yes" if synchronized else "no") + "\n" + self.complete)
+                self.assertLessEqual(len(output.encode()), provider.NTP_SAMPLE_STREAM_BYTES)
+                reader.assert_called_once_with()
+                reader.return_value.run.assert_called_once_with()
+
+    def test_invalid_values_never_coerce_to_a_successful_sample(self):
+        for value in (None, (True, True), provider.NtpSample(1, True),
+                      provider.NtpSample(True, "yes")):
+            with mock.patch.object(provider, "NtpRead") as reader:
+                reader.return_value.run.return_value = value
+                output, code = provider.ntp_sample_output()
+            self.assertEqual(code, 1)
+            self.assertIn("\nerror\tntp-sample\tmalformed\t", output)
+            self.assertNotIn("\nsample\t", output)
+
+    def test_typed_errors_are_bounded_and_cannot_inject_records(self):
+        for error_code in (*sorted(provider.NTP_SAMPLE_ERROR_CODES), "unrecognized"):
+            failure = provider.SnapshotFailure(error_code, "denied\t\n\r\x00\ud800" + "é" * 600)
+            with mock.patch.object(provider, "NtpRead", side_effect=failure):
+                output, code = provider.ntp_sample_output()
+            self.assertEqual(code, 1)
+            self.assertEqual(len(output.splitlines()), 3)
+            expected_code = "internal" if error_code == "unrecognized" else error_code
+            self.assertTrue(output.startswith(self.header + "error\tntp-sample\t" + expected_code + "\t"))
+            self.assertTrue(output.endswith(self.complete))
+            self.assertNotIn("\nsample\t", output)
+            self.assertLessEqual(len(output.encode()), provider.NTP_SAMPLE_STREAM_BYTES)
+            self.assertTrue(output.splitlines()[1].split("\t")[3].isprintable())
+
+    def test_fixed_cli_never_enters_packagekit_journal_or_mutation_paths(self):
+        with mock.patch.object(provider, "NtpRead") as reader, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                mock.patch.object(provider, "open_journal_directory") as journal, \
+                mock.patch.object(provider, "native_command") as mutation, \
+                contextlib.redirect_stdout(io.StringIO()) as output, \
+                contextlib.redirect_stderr(io.StringIO()):
+            reader.return_value.run.return_value = provider.NtpSample(True, False)
+            self.assertEqual(provider.main(["ntp-sample"]), 0)
+            self.assertEqual(output.getvalue(), self.header + "sample\tyes\tno\n" + self.complete)
+            for arguments in (["time"], ["--system"], ["CanNTP"], ["enabled"], ["extra", "argument"]):
+                self.assertEqual(provider.main(["ntp-sample", *arguments]), 2)
+            reader.assert_called_once_with()
+            backend.assert_not_called()
+            journal.assert_not_called()
+            mutation.assert_not_called()
+
+    def test_short_or_failed_write_cannot_report_completion(self):
+        for result in (0, 1, BlockingIOError(), BrokenPipeError(), InterruptedError()):
+            writer = mock.Mock(side_effect=result) if isinstance(result, OSError) else mock.Mock(return_value=result)
+            with mock.patch.object(provider, "control_output_writers", return_value=contextlib.nullcontext((writer, None))), \
+                    mock.patch.object(provider, "NtpRead") as reader:
+                reader.return_value.run.return_value = provider.NtpSample(True, False)
+                self.assertEqual(provider.ntp_sample_command(), 1)
+            writer.assert_called_once_with((self.header + "sample\tyes\tno\n" + self.complete).encode())
+
+    def test_real_pipe_output_preserves_parent_flags_and_fails_when_full(self):
+        for blocking in (False, True):
+            for full in (False, True):
+                read_fd, write_fd = os.pipe()
+                try:
+                    os.set_blocking(write_fd, False)
+                    if full:
+                        with self.assertRaises(BlockingIOError):
+                            while True:
+                                os.write(write_fd, b"x" * 4096)
+                    os.set_blocking(write_fd, blocking)
+                    original = provider.fcntl.fcntl(write_fd, provider.fcntl.F_GETFL)
+                    with mock.patch.object(provider.sys, "stdout", types.SimpleNamespace(fileno=lambda: write_fd)), \
+                            contextlib.redirect_stderr(io.StringIO()), \
+                            mock.patch.object(provider, "NtpRead") as reader:
+                        reader.return_value.run.return_value = provider.NtpSample(False, False)
+                        started = time.monotonic()
+                        self.assertEqual(provider.ntp_sample_command(), 1 if full else 0)
+                        self.assertLess(time.monotonic() - started, 1)
+                    self.assertEqual(provider.fcntl.fcntl(write_fd, provider.fcntl.F_GETFL), original)
+                    if not full:
+                        self.assertTrue(select.select([read_fd], [], [], 1)[0])
+                        self.assertEqual(os.read(read_fd, 4096), (self.header + "sample\tno\tno\n" + self.complete).encode())
+                finally:
+                    os.close(read_fd)
+                    os.close(write_fd)
+
+    def test_interruption_releases_output_context_and_restores_handlers(self):
+        handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        for signum in handlers:
+            with contextlib.redirect_stdout(io.StringIO()) as output, \
+                    contextlib.redirect_stderr(io.StringIO()), mock.patch.object(provider, "NtpRead") as reader:
+                def signal_read():
+                    signal.raise_signal(signum)
+                    signal.raise_signal(signum)
+                    return provider.NtpSample(True, True)
+                reader.return_value.run.side_effect = signal_read
+                self.assertEqual(provider.ntp_sample_command(), 1)
+                self.assertEqual(output.getvalue(), "")
+                reader.return_value.fail.assert_not_called()
+                reader.return_value.GLib.idle_add.assert_called_once()
+                reader.return_value.GLib.source_remove.assert_called_once_with(
+                    reader.return_value.GLib.idle_add.return_value)
+            for selected, handler in handlers.items():
+                self.assertIs(signal.getsignal(selected), handler)
+
+    def test_signal_between_done_check_and_loop_start_cannot_lose_quit(self):
+        from gi.repository import GLib
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            gio = mock.Mock()
+            read = provider.NtpRead(gio, GLib)
+            loop = read.loop
+            expired = []
+
+            def guarded_stop():
+                expired.append(True)
+                loop.quit()
+                return GLib.SOURCE_REMOVE
+
+            def start():
+                # ServiceRead.run has already passed `if not self.done`.
+                signal.raise_signal(signum)
+                loop.run()
+
+            read.loop = types.SimpleNamespace(run=start, quit=loop.quit)
+            guard = GLib.timeout_add(200, guarded_stop)
+            try:
+                with mock.patch.object(provider, "NtpRead", return_value=read), \
+                        contextlib.redirect_stdout(io.StringIO()) as output, \
+                        contextlib.redirect_stderr(io.StringIO()) as diagnostic:
+                    self.assertEqual(provider.ntp_sample_command(), 1)
+                self.assertEqual(expired, [], "Cancellation quit before the main loop could observe it")
+                self.assertEqual(output.getvalue(), "")
+                # PyGObject's first loop may emit Python deprecation warnings.
+                self.assertNotIn("Traceback", diagnostic.getvalue())
+                self.assertTrue(read.done)
+                gio.bus_get_finish.assert_not_called()
+            finally:
+                if not expired:
+                    GLib.source_remove(guard)
+
+
 class OperationStreamTests(unittest.TestCase):
     operation_id = "op-" + "1" * 32
     started = "2026-09-05T01:00:00Z"

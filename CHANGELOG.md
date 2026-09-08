@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add a finite, read-only `ntp-sample` helper command with versioned bounded
+  output, scoped failures, and no journal, package discovery, or polling loop.
+
 - Share the panel's minute-level clock with System Settings and refresh both
   displays after verified timezone discovery, retaining the same instant across
   timezone changes without an extra poller or shell restart.
