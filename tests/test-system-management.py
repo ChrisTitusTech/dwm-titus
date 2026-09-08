@@ -3396,7 +3396,7 @@ class DelegatedToolTests(unittest.TestCase):
 
 
 class MountMonitorTests(unittest.TestCase):
-    def start(self, body, *, delay=0, baseline=True, pass_fds=()):
+    def start(self, body, *, delay=0, baseline=True, pass_fds=(), stdout=subprocess.PIPE):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         path = pathlib.Path(directory.name) / "child"
@@ -3410,7 +3410,7 @@ class MountMonitorTests(unittest.TestCase):
         runner = (f"import runpy,sys\np=runpy.run_path({str(PROVIDER_PATH)!r})\n"
                   f"p['watch_mount_events'].__globals__['MOUNT_MONITOR_EXEC']={code!r}\n"
                   "sys.exit(p['watch_mount_events']())\n")
-        process = subprocess.Popen([sys.executable, "-c", runner], stdout=subprocess.PIPE,
+        process = subprocess.Popen([sys.executable, "-c", runner], stdout=stdout,
                                    stderr=subprocess.PIPE, pass_fds=pass_fds, bufsize=0)
         self.addCleanup(self.stop, process)
         deadline = time.monotonic() + 2
@@ -3429,7 +3429,8 @@ class MountMonitorTests(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=2)
-        process.stdout.close()
+        if process.stdout is not None:
+            process.stdout.close()
         process.stderr.close()
 
     def row(self, process, timeout=2):
@@ -3560,6 +3561,28 @@ FILE *fopen64(const char *path, const char *mode) {
         process, child = self.start("time.sleep(0.15)\nos.write(1, b'mount\\n')")
         self.assertEqual(self.row(process), b"mount-monitor-ready\n")
         process.stdout.close()
+        self.assertEqual(process.wait(timeout=3), 1)
+        self.gone(child)
+
+    def test_socket_data_and_half_close_preserve_monitor_until_consumer_closes(self):
+        sender, reader = socket.socketpair()
+        self.addCleanup(sender.close)
+        self.addCleanup(reader.close)
+        reader.settimeout(3)
+        process, child = self.start("time.sleep(0.6)\nos.write(1, b'mount\\n')", stdout=sender)
+        self.assertTrue(os.get_blocking(sender.fileno()), "Inherited socket flags changed")
+        sender.close()
+        self.assertEqual(reader.recv(4096), b"mount-monitor-ready\n")
+        reader.sendall(b"inbound data is not reader closure")
+        reader.shutdown(socket.SHUT_WR)
+        fields = pathlib.Path(f"/proc/{process.pid}/stat").read_text().rsplit(") ", 1)[1].split()
+        before = int(fields[11]) + int(fields[12])
+        time.sleep(0.2)
+        self.assertIsNone(process.poll(), "Live output consumer was mistaken for closure")
+        fields = pathlib.Path(f"/proc/{process.pid}/stat").read_text().rsplit(") ", 1)[1].split()
+        self.assertLessEqual(int(fields[11]) + int(fields[12]) - before, 1, "Unread socket data caused an idle spin")
+        self.assertEqual(reader.recv(4096), b"mount-change\tmount\n")
+        reader.close()
         self.assertEqual(process.wait(timeout=3), 1)
         self.gone(child)
 
