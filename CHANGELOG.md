@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add an internal fixed-command filesystem inventory with capped JSON, stable
+  mount identities, exact byte counts, partial-result handling, and bounded
+  owned-process cleanup. Public protocol and Settings integration remain pending.
+
 - Add internal hostname1 hardware vendor/model reads with one bounded deadline,
   independent property failures, and late-reply suppression. This preparation
   does not activate a new protocol minor or Settings control.

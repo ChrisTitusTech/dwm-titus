@@ -961,8 +961,22 @@ replies without closing the shared bus. Private-bus tests exercise both property
 timeouts before and after the peer can be validated, including four real
 ten-second deadlines and successful reuse of the shared connection. These
 readers add no CLI command, protocol minor, Settings control, journal operation,
-or polling loop. Filesystem, security, protocol, and Settings integration remain
-separate boundaries.
+or polling loop.
+
+The internal filesystem reader implements the fixed `findmnt` inventory without
+activating cumulative minor 2. Its independent timeout supervisor and collector
+use a three-second monotonic deadline; stdout and discarded stderr share one
+2 MiB budget. Cleanup retains the process-group identity until TERM/KILL and
+bounded reaping complete. Failed cleanup or nonzero exit cannot publish rows,
+and interruption remains terminal after cleanup and signal-handler restoration.
+Strict JSON rejects duplicate object keys and non-finite numbers. Missing or
+malformed rows leave a partial usable subset; duplicate mount IDs are removed,
+including duplicates encountered beyond the 256-record limit. Display paths
+are sanitized and bounded without merging distinct mount identities. Missing
+or invalid byte counts remain `unknown`, never zero. Private-process fixtures
+cover overflow, EOF without exit, TERM-resistant descendants, simulated wall
+clock reversal, and cleanup failure. Security, protocol, and Settings integration
+remain separate boundaries.
 
 ### Security Status
 

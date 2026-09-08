@@ -501,8 +501,14 @@ The internal hostname1 reader also returns independent hardware vendor/model
 observations under one ten-second deadline, preserving a validated peer when
 the other property fails or times out. Twelve focused tests, including four
 real private-bus deadlines and late replies, and a read-only Fedora 44 probe
-passed. Filesystem/security sources, protocol integration, visible controls,
-and combined installed qualification remain pending.
+passed. The internal filesystem reader now uses fixed `findmnt` JSON with a
+three-second monotonic deadline, bounded process-group cleanup, a shared 2 MiB
+stdout/stderr budget, and at most 256 mount-ID-keyed rows. Seventeen focused
+tests cover malformed and partial inventories, exact byte counts, truncation,
+timeouts, simulated wall-clock reversal, and interruption cleanup. A read-only
+Fedora 44 probe returned eight validated rows. Security sources, protocol
+integration, visible controls, and combined installed qualification remain
+pending.
 
 - [ ] Add event-driven or bounded system information and storage overview state
   without a new idle poller.

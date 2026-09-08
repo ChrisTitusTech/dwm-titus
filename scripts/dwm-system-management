@@ -10,6 +10,7 @@ import errno
 import fcntl
 import hashlib
 import io
+import json
 import os
 import re
 import selectors
@@ -40,6 +41,8 @@ INFORMATION_MEMORY_KEYS = {
 HARDWARE_INFORMATION_FIELDS = {
     "HardwareVendor": "hardware-vendor", "HardwareModel": "hardware-model",
 }
+FILESYSTEM_OUTPUT_BYTES = 2 * 1024 * 1024
+FILESYSTEM_RECORDS = 256
 MAX_LIST_RECORDS = 4096
 MAX_LIST_BYTES = 3 * 1024 * 1024
 READ_DEADLINE_SECONDS = 120
@@ -420,6 +423,101 @@ def read_local_information() -> dict[str, InformationState]:
     except (OSError, SnapshotFailure) as error:
         result["uptime-seconds"] = information_unknown(error)
     return result
+
+
+@dataclass(frozen=True)
+class FilesystemRow:
+    """A mount-ID-keyed observation; paths are display text, never action input."""
+
+    mount_id: str
+    status: str
+    source: str
+    target: str
+    fstype: str
+    size_bytes: str
+    used_bytes: str
+    available_bytes: str
+    detail: str
+
+
+@dataclass(frozen=True)
+class FilesystemInformation:
+    summary: InformationState
+    rows: tuple[FilesystemRow, ...] = ()
+
+
+def parse_filesystem_information(data: bytes) -> FilesystemInformation:
+    """Validate the fixed findmnt JSON inventory and retain only unambiguous rows."""
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("Duplicate JSON key")
+            result[key] = value
+        return result
+
+    def invalid_constant(_value):
+        raise ValueError("Invalid JSON number")
+
+    if len(data) > FILESYSTEM_OUTPUT_BYTES:
+        raise SnapshotFailure("malformed", "Filesystem output exceeds its byte limit")
+    try:
+        document = json.loads(data.decode("utf-8"), object_pairs_hook=pairs, parse_constant=invalid_constant)
+    except (ValueError, UnicodeError, RecursionError) as error:
+        raise SnapshotFailure("malformed", "Filesystem output is not valid bounded JSON") from error
+    if not isinstance(document, dict) or not isinstance(document.get("filesystems"), list):
+        raise SnapshotFailure("malformed", "Filesystem inventory is missing")
+    pending = list(reversed(document["filesystems"]))
+    seen, rows = set(), {}
+    partial = False
+    while pending:
+        item = pending.pop()
+        if not isinstance(item, dict):
+            partial = True
+            continue
+        children = item.get("children", [])
+        if isinstance(children, list):
+            pending.extend(reversed(children))
+        else:
+            partial = True
+        try:
+            identifier = information_number(item.get("id"), "Mount identity").value
+        except SnapshotFailure:
+            partial = True
+            continue
+        if identifier in seen:
+            rows.pop(identifier, None)
+            partial = True
+            continue
+        if len(seen) >= FILESYSTEM_RECORDS:
+            partial = True
+            continue
+        seen.add(identifier)
+        display = []
+        try:
+            for key in ("source", "target", "fstype"):
+                value = item.get(key)
+                if not isinstance(value, str) or not value:
+                    raise ValueError("Missing display field")
+                value.encode("utf-8")  # Reject escaped surrogates before sanitization.
+                display.append(clean_text("".join(char if char.isprintable() else " " for char in value)))
+        except (ValueError, UnicodeError):
+            partial = True
+            continue
+        counters = []
+        for key in ("size", "used", "avail"):
+            try:
+                counters.append(information_number(item.get(key), "Filesystem bytes").value)
+            except SnapshotFailure:
+                counters.append("unknown")
+        complete = "unknown" not in counters
+        partial = partial or not complete
+        rows[identifier] = FilesystemRow(identifier, "available" if complete else "partial", *display, *counters,
+            "Filesystem bytes at this read" if complete else "Some filesystem byte counts could not be read")
+    ordered = tuple(rows[key] for key in sorted(rows, key=int))
+    summary = (InformationState("partial", "unknown", "Filesystem inventory is incomplete", "malformed") if partial
+        else information_number(len(ordered), "Mounted real filesystems"))
+    return FilesystemInformation(summary, ordered)
 
 
 def validate_timezone_name(value: object) -> str:
@@ -2168,6 +2266,96 @@ def read_locale_choices() -> tuple[str, ...]:
             # otherwise callers could catch a read failure and keep running.
             if interrupted:
                 raise SystemExit(128 + interrupted)
+
+
+def read_filesystem_information() -> FilesystemInformation:
+    """Collect only the fixed findmnt inventory with bounded owned-group cleanup."""
+    if (threading.current_thread() is not threading.main_thread()
+            or signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL):
+        return FilesystemInformation(information_unknown(
+            SnapshotFailure("internal", "Filesystem process ownership is unavailable", "unavailable")))
+    process = None
+    handlers = {}
+    interrupted = 0
+
+    def terminate(number, _frame):
+        nonlocal interrupted
+        interrupted = interrupted or number
+
+    def check_deadline():
+        if interrupted:
+            raise SystemExit(128 + interrupted)
+        if time.monotonic() >= deadline:
+            raise SnapshotFailure("timeout", "Filesystem enumeration timed out", "unavailable")
+
+    try:
+        try:
+            for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                handlers[number] = signal.signal(number, terminate)
+            deadline = time.monotonic() + 3
+            check_deadline()
+            try:
+                process = subprocess.Popen(["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "3",
+                    "/usr/bin/findmnt", "--json", "--bytes", "--real", "--uniq", "--output",
+                    "ID,SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL"], stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+                    env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
+            except FileNotFoundError as error:
+                raise SnapshotFailure("missing-provider", "Filesystem command is unavailable", "unavailable") from error
+            output = bytearray()
+            received = 0
+            with selectors.DefaultSelector() as selector:
+                for stream in (process.stdout, process.stderr):
+                    os.set_blocking(stream.fileno(), False)
+                    selector.register(stream, selectors.EVENT_READ)
+                while True:
+                    check_deadline()
+                    status = locale_process_status(process)
+                    if status is not None and not selector.get_map():
+                        break
+                    for key, _events in selector.select(min(0.05, max(0, deadline - time.monotonic()))):
+                        check_deadline()
+                        try:
+                            chunk = os.read(key.fd, min(65536, FILESYSTEM_OUTPUT_BYTES - received + 1))
+                        except BlockingIOError:
+                            continue
+                        if not chunk:
+                            selector.unregister(key.fileobj)
+                            continue
+                        received += len(chunk)
+                        if received > FILESYSTEM_OUTPUT_BYTES:
+                            raise SnapshotFailure("malformed", "Filesystem output exceeds its byte limit")
+                        if key.fileobj is process.stdout:
+                            output.extend(chunk)
+            exit_code = status.si_status if status.si_code == os.CLD_EXITED else -status.si_status
+            if exit_code in (124, 137, -signal.SIGKILL):
+                raise SnapshotFailure("timeout", "Filesystem enumeration timed out", "unavailable")
+            if exit_code == 127:
+                raise SnapshotFailure("missing-provider", "Filesystem command is unavailable", "unavailable")
+            if exit_code != 0:
+                raise SnapshotFailure("internal", "Filesystem enumeration failed", "unavailable")
+            try:
+                result = parse_filesystem_information(bytes(output))
+            finally:
+                check_deadline()
+        finally:
+            try:
+                if process is not None:
+                    try:
+                        close_locale_process(process)
+                    except SnapshotFailure as error:
+                        raise SnapshotFailure(error.code, "Filesystem process cleanup could not be confirmed",
+                                              error.status) from error
+            finally:
+                for number, handler in handlers.items():
+                    signal.signal(number, handler)
+                if interrupted:
+                    raise SystemExit(128 + interrupted)
+    except SnapshotFailure as error:
+        return FilesystemInformation(information_unknown(error))
+    except OSError as error:
+        return FilesystemInformation(information_unknown(error))
+    return result
 
 
 def trusted_delegated_executable(path: str, basename: str) -> str:
