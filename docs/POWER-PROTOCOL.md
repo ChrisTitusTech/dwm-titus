@@ -1,5 +1,14 @@
 # Power Provider Protocol
 
+The shared automatic-lock probe requires a valid live screen-saver timeout,
+`uint32` lock delay, and boolean suspend policy before reporting availability.
+Malformed successful replies produce `partial` status instead of configured
+fallback evidence. Locker readiness matches both the user's effective UID and
+current `DISPLAY` through bounded procps environment matching; a locker on
+another display or missing display evidence cannot establish readiness. Startup,
+shutdown, and rollback use that same display scope so a failed local change
+cannot terminate another X session's locker.
+
 ## Purpose
 
 `dwm-quickshell-controlcenter power-snapshot` exposes the power state used by

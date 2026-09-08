@@ -992,6 +992,9 @@ user settings while fixing the command search path and locale. Missing,
 duplicate, malformed, incomplete, or unsuccessful output cannot claim enabled
 or disabled state. Unknown records and appended fields remain forward-compatible.
 This reader is preparatory; it does not activate minor 2 or a Settings surface.
+The shared power probe now rejects malformed successful live values as partial,
+and locker readiness requires the same UID and exact current DISPLAY. A locker
+on another X display cannot certify automatic locking for this session.
 
 Each probe has a fixed source and emits its own state instead of making the
 combined security summary fail. Status describes whether the probe can produce

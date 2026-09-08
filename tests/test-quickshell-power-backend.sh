@@ -10,7 +10,7 @@ cleanup() {
 		"$work/settings-monitor.pid" "$work/owner.pid" \
 		"$work/hung-helper.pid" "$work/hung-monitor.pid" \
 		"$work/hung-probe-wrapper.pid" "$work/hung-settings-get.pid" \
-		"$work/hung-owner.pid"; do
+		"$work/hung-owner.pid" "$work/locker-fixture.pid"; do
 		[ -r "$pid_file" ] || continue
 		pid=$(cat "$pid_file")
 		case $pid in
@@ -101,6 +101,10 @@ monitor:apps.light-locker:)
 	while :; do sleep 1; done
 	;;
 get:apps.light-locker:lock-after-screensaver)
+	if [ "${DWM_POWER_TEST_GSETTINGS_RAW+x}" = x ]; then
+		printf '%s\n' "$DWM_POWER_TEST_GSETTINGS_RAW"
+		exit 0
+	fi
 	if [ "${DWM_POWER_TEST_GSETTINGS_GET_HANG:-0}" = 1 ]; then
 		printf '%s\n' "$$" >"$state/settings-get.pid"
 		printf '%s\n' "$PPID" >"$state/settings-get-parent.pid"
@@ -139,6 +143,7 @@ chmod +x "$work/bin/light-locker"
 
 cat >"$work/bin/pgrep" <<'SH'
 #!/bin/sh
+if [ "${DWM_POWER_TEST_REAL_PGREP:-0}" = 1 ]; then exec /usr/bin/pgrep --pid "${DWM_POWER_TEST_LOCKER_PID:?}" "$@"; fi
 case $* in
 *light-locker*) test -e "${DWM_POWER_TEST_STATE:?}/light-locker.running" ;;
 *) exit 1 ;;
@@ -148,6 +153,7 @@ chmod +x "$work/bin/pgrep"
 
 cat >"$work/bin/pkill" <<'SH'
 #!/bin/sh
+if [ "${DWM_POWER_TEST_REAL_PGREP:-0}" = 1 ]; then exec /usr/bin/pkill --pid "${DWM_POWER_TEST_LOCKER_PID:?}" "$@"; fi
 case $* in
 *light-locker*)
 	if [ "${DWM_POWER_TEST_LOCKER_EXIT_DELAY:-0}" = 1 ]; then
@@ -305,7 +311,7 @@ EOF
 }
 
 run_helper() {
-	HOME="$work/home" \
+	DISPLAY="${DISPLAY-:fixture}" HOME="$work/home" \
 		XDG_CONFIG_HOME="$work/config" \
 		DWM_POWER_TEST_STATE="$work/state" \
 		DWM_POWER_TEST_LOG="$work/actions.log" \
@@ -346,6 +352,57 @@ lock_snapshot=$(run_helper power-lock-snapshot)
 [ "$(printf '%s\n' "$lock_snapshot" | sed -n '/^power-lock/p')" = "$(printf '%s\n' "$snapshot" | sed -n '/^power-lock/p')" ]
 [ "$(printf '%s\n' "$lock_snapshot" | wc -l)" -eq 2 ]
 expect_status 2 run_helper power-lock-snapshot extra
+
+for malformed_field in saver_timeout lock_after lock_on_suspend; do
+	write_initial_config
+	printf 'malformed\n' >"$work/state/$malformed_field"
+	run_helper power-lock-snapshot >"$work/malformed-lock"
+	grep -q '^power-lock[[:space:]]partial[[:space:]]' "$work/malformed-lock"
+done
+for malformed_after in '5' 'bad 5' 'uint32 4294967296' 'uint32 -1'; do
+	write_initial_config
+	DWM_POWER_TEST_GSETTINGS_RAW="$malformed_after" run_helper power-lock-snapshot >"$work/malformed-lock"
+	grep -q '^power-lock[[:space:]]partial[[:space:]]' "$work/malformed-lock"
+done
+
+# A private process with the actual locker comm name tests procps environment
+# matching without starting a locker or connecting to an X server.
+write_initial_config
+printf '600\n' >"$work/state/saver_timeout"
+printf '5\n' >"$work/state/lock_after"
+DISPLAY=:43210 /usr/bin/python3 -c '
+import ctypes, pathlib, sys, time
+assert ctypes.CDLL(None).prctl(15, b"light-locker", 0, 0, 0) == 0
+pathlib.Path(sys.argv[1]).touch()
+time.sleep(60)
+' "$work/locker-ready" &
+locker_pid=$!
+DWM_POWER_TEST_LOCKER_PID=$locker_pid
+export DWM_POWER_TEST_LOCKER_PID
+printf '%s\n' "$locker_pid" >"$work/locker-fixture.pid"
+locker_try=0
+while [ ! -e "$work/locker-ready" ]; do
+	locker_try=$((locker_try + 1))
+	[ "$locker_try" -lt 50 ] || exit 1
+	sleep 0.02
+done
+for locker_display in :43210 :43211 ''; do
+	DISPLAY="$locker_display" DWM_POWER_TEST_REAL_PGREP=1 run_helper power-lock-snapshot >"$work/session-lock"
+	expected_running=no
+	[ "$locker_display" != :43210 ] || expected_running=yes
+	awk -F '\t' -v running="$expected_running" '$1 == "power-lock" { if ($2 != "available" || $3 != "yes" || $5 != running) exit 1; found = 1 } END { if (!found) exit 1 }' "$work/session-lock"
+done
+# Failed startup on another display must not kill the existing session locker
+# during rollback. The fake launcher records an attempt but starts no process.
+DISPLAY=:43211 DWM_POWER_TEST_REAL_PGREP=1 expect_status 1 run_helper power-lock on
+kill -0 "$locker_pid"
+DISPLAY=:43211 DWM_POWER_TEST_REAL_PGREP=1 run_helper power-lock off >/dev/null
+kill -0 "$locker_pid"
+kill "$locker_pid"
+wait "$locker_pid" 2>/dev/null || :
+rm "$work/locker-fixture.pid"
+unset DWM_POWER_TEST_LOCKER_PID
+write_initial_config
 
 [ "$(printf '%s\n' "$snapshot" | sed -n '1p')" = "power-protocol	1	0" ]
 printf '%s\n' "$snapshot" | grep -Fqx 'power-external	off	System is running on battery power'
