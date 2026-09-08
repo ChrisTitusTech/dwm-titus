@@ -31,7 +31,8 @@ from typing import Callable, Iterable, Iterator, Mapping, Protocol, Sequence
 
 PROTOCOL_MAJOR = 1
 PROTOCOL_MINOR = 0
-SNAPSHOT_MINOR = 1
+SNAPSHOT_MINOR = 2
+NATIVE_SNAPSHOT_MINOR = 1
 MAX_TEXT_BYTES = 512
 INFORMATION_UINT_MAX = (1 << 64) - 1
 INFORMATION_MEMORY_KEYS = {
@@ -6243,6 +6244,9 @@ INFORMATION_SECURITY_IDS = ("selinux", "secure-boot", "firewalld", "root-encrypt
 class InformationSnapshotSources:
     """Fixed readers, invoked only when an information snapshot is requested."""
 
+    def __init__(self, *, storage_ready: bool = True):
+        self.storage_ready = storage_ready
+
     def local(self):
         return read_local_information()
 
@@ -6250,6 +6254,9 @@ class InformationSnapshotSources:
         return read_hardware_information()
 
     def filesystems(self):
+        if not self.storage_ready:
+            return FilesystemInformation(InformationState("partial", "unknown",
+                "Mount monitoring is not ready; reload storage status to retry", "missing-provider"))
         return read_filesystem_information()
 
     def security(self, identifier):
@@ -6548,8 +6555,11 @@ def validate_snapshot_size(lines: Sequence[str]) -> None:
 
 
 def build_managed_snapshot(backend: PackageKitBackend, *,
-                           native_sources: NativeSnapshotSources | None = None) -> list[str]:
+                           native_sources: NativeSnapshotSources | None = None,
+                           information_sources: InformationSnapshotSources | None = None) -> list[str]:
     """Combine readable discovery with independently validated durable recovery."""
+    if information_sources is not None and native_sources is None:
+        raise ValueError("Information snapshots require cumulative native sources")
     recovery = read_recovery_snapshot(backend)
     state = recovery.state
     mutation_blocker = None
@@ -6615,6 +6625,9 @@ def build_managed_snapshot(backend: PackageKitBackend, *,
             except SnapshotFailure as failure:
                 native_blocker = failure
         lines.extend(build_native_snapshot(native_sources, native_blocker))
+        lines[0] = f"system-management-protocol\t{PROTOCOL_MAJOR}\t{NATIVE_SNAPSHOT_MINOR}"
+    if information_sources is not None:
+        lines.extend(build_information_snapshot(information_sources))
         lines[0] = f"system-management-protocol\t{PROTOCOL_MAJOR}\t{SNAPSHOT_MINOR}"
     lines.append("complete\tsnapshot")
     validate_snapshot_size(lines)
@@ -10098,7 +10111,7 @@ def watch_account_events() -> int:
 
 
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | ntp-sample | time-status | watch-mounts | watch-time | watch-updates | watch-regional time|locale | watch-accounts | watch-units printers|security | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | snapshot-core | snapshot-without-storage | ntp-sample | time-status | watch-mounts | watch-time | watch-updates | watch-regional time|locale | watch-accounts | watch-units printers|security | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
     return 2
 
 
@@ -10150,7 +10163,7 @@ def main(argv: Sequence[str]) -> int:
         return update_command("updates-install-all", argv[1])
     if len(argv) == 2 and argv[0] in {"watch-operation", "ack-operation", "updates-cancel"} and JOURNAL_OPERATION_ID_PATTERN.fullmatch(argv[1]):
         return operation_control(argv[0], argv[1])
-    if list(argv) != ["snapshot"]:
+    if len(argv) != 1 or argv[0] not in {"snapshot", "snapshot-core", "snapshot-without-storage"}:
         return usage()
     try:
         backend = PackageKitBackend()
@@ -10180,7 +10193,13 @@ def main(argv: Sequence[str]) -> int:
                 raise self.failure
 
         backend = FailedBackend(failure)
-    lines = build_managed_snapshot(backend, native_sources=NativeSnapshotSources())
+    # Required recovery never starts optional information probes. A failed or
+    # pending mount handshake leaves other information readable without opening
+    # the filesystem inventory's unmonitored initialization gap.
+    information_sources = None if argv[0] == "snapshot-core" else InformationSnapshotSources(
+        storage_ready=argv[0] == "snapshot")
+    lines = build_managed_snapshot(backend, native_sources=NativeSnapshotSources(),
+        information_sources=information_sources)
     print("\n".join(lines))
     return 0
 

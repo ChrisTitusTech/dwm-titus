@@ -904,8 +904,10 @@ information, storage, security, and diagnostics record set. It preserves exact
 decimal counters, emits missing observations explicitly, isolates source
 failures, and discards an entire filesystem list if its encoded reservation is
 exceeded. Health navigation requires no journal admission. This formatter is
-not called by startup recovery and does not yet activate snapshot minor 2;
-visible-pane monitor readiness remains the integrating caller's responsibility.
+called only for cumulative minor 2 information reads. Startup and mandatory
+recovery use the fixed `snapshot-core` command, which emits minor 1 without
+constructing information readers. Visible-pane monitor readiness gates storage
+reads as described below.
 
 The information snapshot uses only these fixed sources:
 
@@ -999,7 +1001,8 @@ combined stdout/stderr budget. It preserves the session environment for X11 and
 user settings while fixing the command search path and locale. Missing,
 duplicate, malformed, incomplete, or unsuccessful output cannot claim enabled
 or disabled state. Unknown records and appended fields remain forward-compatible.
-This reader is preparatory; it does not activate minor 2 or a Settings surface.
+The reader now contributes to cumulative minor 2. Visible information and
+security cards are a separate presentation boundary.
 The shared power probe now rejects malformed successful live values as partial,
 and locker readiness requires the same UID and exact current DISPLAY. A locker
 on another X display cannot certify automatic locking for this session.
@@ -1154,9 +1157,17 @@ active provider, state, and action is mandatory even when its platform source
 is absent. A consumer that supports a later minor accepts earlier cumulative
 sets; a producer bumps the minor only when the entire next row is implemented.
 
-The managed `snapshot` command now emits the complete minor 1 set. Time and
-locale are read independently, with all six new states and seven new action
-rows present even when their sources are absent. Missing administration tools
+The managed `snapshot` command now emits the complete minor 2 set. The fixed
+no-argument `snapshot-core` command retains the complete minor 1 set for required
+recovery without optional information probes. The fixed no-argument
+`snapshot-without-storage` command emits minor 2 with `filesystem-summary` as
+`partial`/`unknown` and no filesystem rows or filesystem subprocess; all other
+information sources remain independently readable. Settings selects that mode
+when the mount monitor fails, and selects ordinary `snapshot` only after mount
+readiness. Neither mode accepts a caller-selected source or command.
+
+Time and locale are read independently, with every cumulative state and action
+row present even when its source is absent. Missing administration tools
 disable only their own actions, without hiding readable account rows, CUPS
 status, or repository records. Partial account enumeration retains the validated
 subset and uses an unknown count; an available count exactly equals its emitted
@@ -1176,10 +1187,23 @@ the tool. Unsupported preserved locale overrides disable the language action
 without discarding readable locale state; choices and complete previews remain
 separate fresh reads.
 
-The Settings parser accepts complete minor 0 and minor 1 snapshots, isolates
+The Settings parser accepts complete minor 0, 1, and 2 snapshots, isolates
 known-owner failures, checks mandatory records and list identity/count/byte
-limits, and removes every action from an invalid native owner. A replacement
-minor 0 snapshot clears older native projections. The root operation owner now
+limits, and removes every action from an invalid owner. Information and
+filesystem uint64 counters stay exact canonical strings; security values use
+fixed per-state enums, and every non-available security state remains unknown.
+Ordinary older-minor snapshots clear newer projections. Explicit core recovery
+reads preserve the prior optional observations and health navigation without
+certifying their freshness. When storage monitoring is unavailable, a prior
+filesystem list can be retained only with an explicit stale-data marker and
+refresh guidance; the newly parsed summary remains unknown.
+
+The `health-open` offer never contributes to native journal admission and is
+available independently of blocked recovery. It invokes the existing fixed
+health model on the current screen; that model owns its read-only scan and
+separately confirmed repairs. It creates no system-management operation stream.
+Reload status invalidates pending confirmations before waiting for replacement
+subscriptions. The root operation owner now
 accepts three fixed regional and four fixed delegated origins internally, with
 strict action, value, and generation validation before command construction.
 Timezone and NTP values match the CLI identity grammar. Originating locale
@@ -2622,14 +2646,16 @@ the service; that method is not used by the monitor.
   delays the initial parsing open and verifies that no acknowledgment escapes
   before the persistent descriptor exists.
 
-  The fixed CLI helper is implemented as a preparatory boundary. It uses a pidfd
+  The fixed CLI helper and pane subscription are implemented. The helper uses a pidfd
   and signal-wakeup pipe alongside child output, so no idle timer remains after
   readiness. A read-interest watch on the output pipe catches reader closure
   even with no mount events, without subscribing to continuously writable
   events. Lost output or failed cleanup exits unsuccessfully. The bounded
   readiness probe retains early child output until the baseline is acknowledged.
-  Root-model and pane integration described below remain pending; this command
-  does not activate cumulative minor 2 or read a journal.
+  The root model now owns this subscription alongside firewalld notifications.
+  Captured monitor generations and read-cycle tokens reject retired callbacks,
+  including callbacks queued across closure and reopening. The helper itself
+  does not read a journal.
 
   The root model starts the initial bounded JSON filesystem snapshot only after
   receiving `mount-monitor-ready`. The first snapshot is authoritative for the

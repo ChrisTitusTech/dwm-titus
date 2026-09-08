@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Activate cumulative information, storage, security, and diagnostics records
+  with strict provider-scoped validation. Pane-scoped mount and firewalld
+  subscriptions use bounded reconciliation, while required recovery skips
+  optional probes and diagnostics remain available independently of admission.
+
 - Assemble internal system information, filesystem, security, and diagnostics
   records with isolated failures and complete filesystem-list bounds. Public
   protocol activation and visible-pane integration remain pending.

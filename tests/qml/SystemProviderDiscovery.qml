@@ -6,7 +6,7 @@ import qs.systemmanagement as System
 
 ShellRoot {
     id: root
-    property var domains: ["time", "locale", "accounts", "printers", "updates"]
+    property var domains: ["time", "locale", "accounts", "printers", "updates", "storage", "security"]
     property int domainIndex: 0
     property int stage: 0
     property int assertions: 0
@@ -82,6 +82,12 @@ ShellRoot {
     function advance() {
         if (root.done || controller.running) return;
         if (root.stage === 0 && observer.ready) {
+            const priorInvalidations = root.invalidations;
+            observer.event(observer.domain === "storage" ? "mount-change\tmount" : observer.definition.prefix + "\tchanged", observer.generation - 1);
+            root.check(root.invalidations === priorInvalidations, "Retired generation cannot invalidate current readiness");
+            observer.setupExpired(observer.generation - 1);
+            observer.stopExpired(observer.generation - 1);
+            root.check(observer.ready && !observer.failed && !observer.stopping, "Retired deadline callbacks cannot stop a new monitor");
             root.check(observer.monitorOwned && !observer.failed && observer.canTake(), "Fixed command reaches readiness before read");
             root.token = observer.take();
             root.check(root.token !== null && !observer.fresh, "Initial read owns its token");

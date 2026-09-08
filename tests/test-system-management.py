@@ -88,6 +88,19 @@ class InformationSnapshotTests(unittest.TestCase):
         self.assertEqual(state[2:4], ["partial", "unknown"])
         self.assertEqual(len(rows(result, "state")), 19)
 
+    def test_unmonitored_storage_mode_does_not_start_the_filesystem_reader(self):
+        source = provider.InformationSnapshotSources(storage_ready=False)
+        with mock.patch.object(provider, "read_filesystem_information", side_effect=AssertionError("Unmonitored read")) as read:
+            value = source.filesystems()
+        read.assert_not_called()
+        self.assertEqual((value.summary.status, value.summary.value, value.rows), ("partial", "unknown", ()))
+
+    def test_fixed_snapshot_modes_reject_extra_arguments_before_backend_reads(self):
+        with mock.patch.object(provider, "PackageKitBackend") as backend, contextlib.redirect_stderr(io.StringIO()):
+            for command in ("snapshot", "snapshot-core", "snapshot-without-storage"):
+                self.assertEqual(provider.main([command, "arbitrary"]), 2)
+        backend.assert_not_called()
+
     def test_partial_filesystem_subset_retains_unknown_summary(self):
         source = self.sources()
         source.filesystems.return_value = replace(source.filesystems.return_value,
@@ -13211,12 +13224,26 @@ class RecoverySnapshotTests(unittest.TestCase):
     def restart_row(self, output):
         return next(row for row in rows(output, "state") if row[1] == "update-restart")
 
+    def test_core_cli_never_constructs_optional_information_readers(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.dict(os.environ, {"XDG_STATE_HOME": directory}), \
+                mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                mock.patch.object(provider, "PackageKitBackend", return_value=self.backend()), \
+                mock.patch.object(provider, "NativeSnapshotSources", return_value=FixtureNativeSources()), \
+                mock.patch.object(provider, "InformationSnapshotSources", side_effect=AssertionError("Optional probe")) as information, \
+                contextlib.redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(provider.main(["snapshot-core"]), 0)
+        information.assert_not_called()
+        self.assertEqual(stdout.getvalue().splitlines()[0], "system-management-protocol\t1\t1")
+        self.assertEqual(len(rows(stdout.getvalue().splitlines(), "provider")), 6)
+
     def test_cli_initializes_only_its_fixed_journal_and_offers_safe_refresh(self):
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.dict(os.environ, {"XDG_STATE_HOME": directory}), \
                 mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
                 mock.patch.object(provider, "PackageKitBackend", return_value=self.backend()), \
                 mock.patch.object(provider, "NativeSnapshotSources", return_value=FixtureNativeSources()), \
+                mock.patch.object(provider, "InformationSnapshotSources", return_value=InformationSnapshotTests().sources()), \
                 contextlib.redirect_stdout(io.StringIO()) as stdout:
             self.assertEqual(provider.main(["snapshot"]), 0)
             output = stdout.getvalue().splitlines()
@@ -13224,8 +13251,8 @@ class RecoverySnapshotTests(unittest.TestCase):
             self.assertEqual(self.restart_row(output)[2:4], ["available", "none"])
             self.assertEqual([row[2] for row in rows(output, "action")[:3]],
                 ["available", "unavailable", "unavailable"])
-            self.assertEqual(output[0], "system-management-protocol\t1\t1")
-            self.assertEqual(len(rows(output, "action")), 10)
+            self.assertEqual(output[0], "system-management-protocol\t1\t2")
+            self.assertEqual(len(rows(output, "action")), 11)
             path = pathlib.Path(directory) / "dwm-titus" / "system-management"
             self.assertEqual({item.name for item in path.iterdir()}, set(provider.JOURNAL_NAMES))
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
@@ -13468,6 +13495,7 @@ class RecoverySnapshotTests(unittest.TestCase):
                     mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
                     mock.patch.object(provider, "PackageKitBackend", side_effect=provider.SnapshotFailure("missing-provider", "Bindings missing")), \
                     mock.patch.object(provider, "NativeSnapshotSources", return_value=FixtureNativeSources()), \
+                mock.patch.object(provider, "InformationSnapshotSources", return_value=InformationSnapshotTests().sources()), \
                     contextlib.redirect_stdout(io.StringIO()) as stdout:
                 self.assertEqual(provider.main(["snapshot"]), 0)
             self.assertEqual(rows(stdout.getvalue().splitlines(), "terminal-handoff")[0][1], operation.operation_id)
@@ -13489,7 +13517,7 @@ class FixtureNativeSources:
 
 
 class NativeSnapshotTests(unittest.TestCase):
-    def snapshot(self, sources=None, *, backend=None, active=False, recovery_failure=None, missing_state=False):
+    def snapshot(self, sources=None, *, backend=None, active=False, recovery_failure=None, missing_state=False, information=None):
         fixture = RecoverySnapshotTests()
         sources = sources or FixtureNativeSources()
         backend = backend or fixture.backend()
@@ -13500,12 +13528,33 @@ class NativeSnapshotTests(unittest.TestCase):
                 failures=(recovery_failure,) if recovery_failure else ())
             with mock.patch.object(provider, "read_recovery_snapshot", return_value=recovery), \
                     mock.patch.object(provider, "launch_delegated_tool") as launch:
-                output = provider.build_managed_snapshot(backend, native_sources=sources)
+                output = provider.build_managed_snapshot(backend, native_sources=sources, information_sources=information)
             launch.assert_not_called()
             return output
 
     def by_id(self, output, kind):
         return {row[1]: row for row in rows(output, kind)}
+
+    def test_minor_two_keeps_information_and_health_available_during_blocked_recovery(self):
+        source = FixtureNativeSources()
+        source.admission.side_effect = provider.SnapshotFailure("conflict", "Journal blocked")
+        output = self.snapshot(source, information=InformationSnapshotTests().sources())
+        self.assertEqual(output[0], "system-management-protocol\t1\t2")
+        self.assertEqual(len(rows(output, "provider")), 10)
+        self.assertEqual(len(rows(output, "state")), 28)
+        actions = self.by_id(output, "action")
+        self.assertEqual(actions["health-open"][2:5], ["available", "user-session", "diagnostics"])
+        self.assertEqual(actions["timezone-set"][2], "unavailable")
+        self.assertEqual(self.by_id(output, "state")["selinux"][2:4], ["available", "enforcing"])
+        self.assertEqual(len(rows(output, "filesystem")), 1)
+        self.assertEqual(rows(output, "snapshot-generation"), rows(self.snapshot(), "snapshot-generation"))
+        output = self.snapshot(active=True, information=InformationSnapshotTests().sources())
+        self.assertEqual(self.by_id(output, "action")["health-open"][2], "available")
+
+    def test_information_requires_the_complete_native_minor(self):
+        with self.assertRaises(ValueError), mock.patch.object(provider, "read_recovery_snapshot") as recovery:
+            provider.build_managed_snapshot(FixtureBackend(), information_sources=InformationSnapshotTests().sources())
+        recovery.assert_not_called()
 
     def test_complete_cumulative_set_and_no_dispatch(self):
         sources = FixtureNativeSources()

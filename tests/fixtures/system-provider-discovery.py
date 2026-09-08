@@ -20,6 +20,8 @@ definitions = {
     ("watch-regional", "locale"): ("locale", "regional-event"),
     ("watch-accounts",): ("accounts", "accounts-event"),
     ("watch-units", "printers"): ("printers", "units-event"),
+    ("watch-units", "security"): ("security", "units-event"),
+    ("watch-mounts",): ("storage", "mount-change"),
 }
 
 
@@ -80,13 +82,14 @@ def main():
             if not fifo.exists():
                 os.mkfifo(fifo, 0o600)
             with os.fdopen(os.open(fifo, os.O_RDWR | os.O_NOFOLLOW), "r") as stream:
-                print(("wrong-event" if mode == "wrong-prefix" else prefix) + "\tready", flush=True)
+                print("mount-monitor-ready" if domain == "storage" and mode != "wrong-prefix"
+                      else ("wrong-event" if mode == "wrong-prefix" else prefix) + "\tready", flush=True)
                 for line in stream:
                     if line == "exit\n":
                         return
                     if line != "changed\n":
                         raise ValueError("Invalid fixture event")
-                    print(prefix + "\tchanged", flush=True)
+                    print(prefix + ("\tmount" if domain == "storage" else "\tchanged"), flush=True)
         finally:
             marker.unlink(missing_ok=True)
 

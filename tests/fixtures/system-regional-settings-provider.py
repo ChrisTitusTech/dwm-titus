@@ -7,6 +7,10 @@ import importlib.util
 from pathlib import Path
 import signal
 import sys
+
+# These fixtures reuse one projection for the fixed bounded snapshot modes.
+if sys.argv[1:] in (["snapshot-core"], ["snapshot-without-storage"]):
+    sys.argv[1] = "snapshot"
 import time
 
 

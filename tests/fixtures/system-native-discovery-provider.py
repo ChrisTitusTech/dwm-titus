@@ -7,6 +7,12 @@ from pathlib import Path
 import signal
 import stat
 import sys
+
+SNAPSHOT_MODE = sys.argv[1] if len(sys.argv) > 1 else ""
+
+# These fixtures reuse one projection for the fixed bounded snapshot modes.
+if sys.argv[1:] in (["snapshot-core"], ["snapshot-without-storage"]):
+    sys.argv[1] = "snapshot"
 import time
 
 
@@ -17,6 +23,8 @@ MONITORS = {
     ("watch-regional", "locale"): ("locale", "regional-event"),
     ("watch-accounts",): ("accounts", "accounts-event"),
     ("watch-units", "printers"): ("printers", "units-event"),
+    ("watch-units", "security"): ("security", "units-event"),
+    ("watch-mounts",): ("storage", "mount-change"),
 }
 DOMAINS = {item[0] for item in MONITORS.values()}
 
@@ -59,11 +67,14 @@ def monitor(domain, prefix):
                 if read_mode(domain) == "hold":
                     if stream.readline() != "ready\n":
                         raise ValueError("Expected readiness release")
-                row("wrong-event" if read_mode(domain) == "fail" else prefix, "ready")
+                if domain == "storage" and read_mode(domain) != "fail":
+                    row("mount-monitor-ready")
+                else:
+                    row("wrong-event" if read_mode(domain) == "fail" else prefix, "ready")
                 for event in stream:
                     if event != "changed\n" and not (domain == "time" and event == "owner-arrived\n"):
                         raise ValueError("Invalid fixture event")
-                    row(prefix, event.rstrip("\n"))
+                    row(prefix, "mount" if domain == "storage" else event.rstrip("\n"))
         finally:
             marker.unlink(missing_ok=True)
 
@@ -85,7 +96,7 @@ def snapshot():
                 mode = read_mode("snapshot")
                 if mode == "hold" and stream.readline() != "finish\n":
                     raise ValueError("Expected snapshot release")
-                row("system-management-protocol", "1", "1")
+                row("system-management-protocol", "1", "1" if SNAPSHOT_MODE == "snapshot-core" else "2")
                 row("snapshot-generation", f"{count:064x}")
                 row("provider", "updates", "available", "delegated", "PackageKit", "Fixture updates")
                 row("provider", "recovery", "available", "user-session", "Journal", "Empty private journal")
@@ -105,6 +116,21 @@ def snapshot():
                 row("package-change", "alpha;1;x86_64;updates", "update", "alpha", "1", "Fixture")
                 row("account", "/opaque/current", "current", "Fixture User", "fixture")
                 row("repository", "fedora", "enabled", "Fixture repository")
+                if SNAPSHOT_MODE != "snapshot-core":
+                    for owner in ("information", "storage", "security", "diagnostics"):
+                        row("provider", owner, "partial" if owner == "storage" and SNAPSHOT_MODE == "snapshot-without-storage" else "available", "user-session" if owner == "diagnostics" else "read-only", "Fixture", "Read only")
+                    for identifier in ("os-name", "os-version", "kernel-release", "architecture", "hardware-vendor", "hardware-model", "cpu-model"):
+                        row("state", identifier, "available", "Fixture", "Text")
+                    for identifier in ("logical-cpus", "memory-total-bytes", "memory-available-bytes", "swap-total-bytes", "swap-free-bytes", "uptime-seconds"):
+                        row("state", identifier, "available", "1", "Counter")
+                    for identifier in ("selinux", "secure-boot", "firewalld", "root-encryption", "screen-lock"):
+                        row("state", identifier, "available", "enforcing" if identifier == "selinux" else "encrypted" if identifier == "root-encryption" else "enabled", "Security")
+                    if SNAPSHOT_MODE == "snapshot-without-storage":
+                        row("state", "filesystem-summary", "partial", "unknown", "Unmonitored storage")
+                    else:
+                        row("state", "filesystem-summary", "available", "1", "One fixture mount")
+                        row("filesystem", "42", "available", "/dev/test", "/", "ext4", "100", "20", "80", "Fixture bytes")
+                    row("action", "health-open", "available", "user-session", "diagnostics", "Health", "Navigation")
                 row("complete", "snapshot")
         finally:
             marker.unlink(missing_ok=True)

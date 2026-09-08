@@ -491,6 +491,14 @@ Acceptance:
 
 ### INFO-RECOVERY-001: Information, Diagnostics, and Recovery
 
+Cumulative minor 2 is now wired through the producer and strict QML consumer.
+Pane-scoped storage and firewalld subscriptions share bounded initial/settling
+cycles. Required recovery uses a minor 1 core snapshot without optional probes;
+storage reads wait for monitor readiness, and monitor failure retains other
+readable information. Read-only health navigation uses the existing health model
+and never admits a journal operation. Visible information/security/storage cards
+and final installed qualification remain pending.
+
 Mount readiness also distinguishes the temporary initial parsing descriptor
 from the persistent polling descriptor. A delayed-open regression against the
 real Fedora findmnt reproduces the old early acknowledgment and passes with
@@ -499,15 +507,16 @@ the corrected check.
 The fixed `watch-mounts` helper now waits for the live findmnt mountinfo
 baseline under a one-second deadline, then emits bounded allowlisted mount
 notifications. It uses descriptor isolation, owned-group cleanup, parent-death
-protection, and blocking event subscriptions after readiness. No journal,
-mutation, snapshot minor, or Settings surface is activated by this preparation;
-pane-generation ownership and storage refresh integration remain pending.
+protection, and blocking event subscriptions after readiness. It owns neither
+mutations nor journal state. Pane-generation ownership and
+storage refresh integration now use its acknowledged stream.
 
 The internal information formatter now assembles all nineteen information,
 storage, and security states, four fixed providers, and in-process health
 navigation. Reader failures remain owner-scoped, filesystem lists are buffered
 against their complete encoded budget, and diagnostics do not depend on journal
-admission. Public minor 2 and visible-pane lifecycle integration remain pending.
+admission. Public minor 2 and visible-pane lifecycle integration are implemented;
+visible information cards remain pending.
 
 The shared power helper now provides a fixed read-only `power-lock-snapshot`
 using the same formatter and existing power status owner as `power-snapshot`.
@@ -515,8 +524,8 @@ The internal system-information reader validates its versioned lock record,
 keeps probe status distinct from automatic-lock semantics, and caps the child
 at ten seconds and 8 KiB combined output. It preserves the user-session
 environment, supervises the owned process group, and never opens a journal or
-launches an independent GSettings/locker probe. Cumulative protocol and visible
-security integration remain pending.
+launches an independent GSettings/locker probe. Cumulative protocol integration is implemented; visible security cards remain
+pending.
 
 The internal local-information reader now returns eleven independent OS, kernel,
 processor, memory, swap, and uptime observations. Fixed file reads are capped;

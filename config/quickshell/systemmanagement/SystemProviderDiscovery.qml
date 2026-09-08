@@ -18,6 +18,7 @@ Scope {
     property string externalDetail: ""
     property var cycle: Cycle.create()
     property bool visible: false
+    property int generation: 0
     property bool monitorOwned: false
     property bool stopping: false
     property bool restartPending: false
@@ -38,6 +39,8 @@ Scope {
         if (value === "locale") return { action: "watch-regional", args: ["locale"], prefix: "regional-event", label: "locale" };
         if (value === "accounts") return { action: "watch-accounts", args: [], prefix: "accounts-event", label: "account" };
         if (value === "printers") return { action: "watch-units", args: ["printers"], prefix: "units-event", label: "printer" };
+        if (value === "security") return { action: "watch-units", args: ["security"], prefix: "units-event", label: "firewalld" };
+        if (value === "storage") return { action: "watch-mounts", args: [], prefix: "mount-change", label: "storage" };
         return null;
     }
 
@@ -47,6 +50,7 @@ Scope {
         // Neither an old read token nor a failed-monitor fallback can certify
         // a replacement domain before its own subscription handshake.
         if (!root.visible) return;
+        root.generation++;
         root.ready = false;
         root.failed = false;
         Cycle.begin(root.cycle);
@@ -67,6 +71,8 @@ Scope {
     }
 
     function open() {
+        if (root.visible) { root.refresh(); return; }
+        root.generation++;
         root.visible = true;
         Cycle.begin(root.cycle);
         root.publish();
@@ -74,6 +80,7 @@ Scope {
     }
 
     function close() {
+        root.generation++;
         root.visible = false;
         root.restartPending = false;
         Cycle.close(root.cycle);
@@ -110,10 +117,14 @@ Scope {
     function beforePublish(token) { Cycle.beforePublish(root.cycle, token); }
 
     function complete(token, successful) {
+        if (!Cycle.owns(root.cycle, token)) return;
         Cycle.complete(root.cycle, token, successful);
         root.publish();
         // Process.runningChanged for the old snapshot follows its exit signal.
-        Qt.callLater(root.requestPending);
+        const generation = root.generation;
+        Qt.callLater(function() {
+            if (root.visible && root.generation === generation) root.requestPending();
+        });
     }
 
     function startMonitor() {
@@ -141,7 +152,10 @@ Scope {
         }
         monitor.command = Commands.systemManagementCommand(selected.action, selected.args);
         monitor.eventPrefix = selected.prefix;
+        monitor.generation = root.generation;
+        monitor.storage = root.domain === "storage";
         root.monitorOwned = true;
+        setupDeadline.generation = monitor.generation;
         setupDeadline.restart();
         monitor.running = true;
     }
@@ -152,7 +166,17 @@ Scope {
         if (!root.monitorOwned || root.stopping) return;
         root.stopping = true;
         monitor.signal(15);
+        stopDeadline.generation = monitor.generation;
         stopDeadline.restart();
+    }
+
+    function setupExpired(generation) {
+        if (root.visible && generation === root.generation && generation === monitor.generation)
+            root.failMonitor();
+    }
+
+    function stopExpired(generation) {
+        if (root.monitorOwned && root.stopping && generation === monitor.generation) monitor.signal(9);
     }
 
     function failMonitor() {
@@ -163,13 +187,16 @@ Scope {
         root.requestPending();
     }
 
-    function event(line) {
-        if (!root.monitorOwned || root.stopping || !root.visible) return;
-        if (line === monitor.eventPrefix + "\tready" && !root.ready) {
+    function event(line, generation) {
+        if (generation === undefined) generation = monitor.generation;
+        if (!root.monitorOwned || root.stopping || !root.visible || generation !== root.generation) return;
+        const readyLine = monitor.storage ? "mount-monitor-ready" : monitor.eventPrefix + "\tready";
+        if (line === readyLine && !root.ready) {
             setupDeadline.stop();
             root.ready = true;
             root.requestPending();
-        } else if (line === monitor.eventPrefix + "\tchanged" && root.ready) root.invalidate();
+        } else if (monitor.storage && root.ready && /^mount-change\t(mount|umount|move|remount)$/.test(line)) root.invalidate();
+        else if (!monitor.storage && line === monitor.eventPrefix + "\tchanged" && root.ready) root.invalidate();
         else if (root.domain === "time" && line === monitor.eventPrefix + "\towner-arrived" && root.ready) root.ownerArrived();
         else root.failMonitor();
     }
@@ -182,7 +209,10 @@ Scope {
         setupDeadline.stop();
         stopDeadline.stop();
         if (!root.visible) return;
-        if (restart) Qt.callLater(root.startMonitor);
+        if (restart) {
+            const generation = root.generation;
+            Qt.callLater(function() { if (root.visible && root.generation === generation) root.startMonitor(); });
+        }
         else {
             root.failed = true;
             root.invalidated();
@@ -190,12 +220,26 @@ Scope {
         }
     }
 
-    Timer { id: setupDeadline; interval: 12000; repeat: false; onTriggered: root.failMonitor() }
-    Timer { id: stopDeadline; interval: 1500; repeat: false; onTriggered: monitor.signal(9) }
+    Timer {
+        id: setupDeadline
+        property int generation: -1
+        interval: monitor.storage ? 3000 : 12000
+        repeat: false
+        onTriggered: root.setupExpired(generation)
+    }
+    Timer {
+        id: stopDeadline
+        property int generation: -1
+        interval: monitor.storage ? 2000 : 1500
+        repeat: false
+        onTriggered: root.stopExpired(generation)
+    }
     Process {
         id: monitor
         property string eventPrefix: ""
-        stdout: SplitParser { onRead: line => root.event(line) }
+        property int generation: -1
+        property bool storage: false
+        stdout: SplitParser { onRead: line => root.event(line, monitor.generation) }
         onExited: root.finished()
         onRunningChanged: { if (!running && root.monitorOwned) root.finished(); }
     }

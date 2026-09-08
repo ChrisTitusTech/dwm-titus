@@ -75,6 +75,78 @@ ShellRoot {
         root.check(model.nativeProviders[unaffected].status === "available", detail + " must preserve unrelated native state");
     }
 
+    function informationRows() {
+        const lines = [];
+        for (const owner of ["information", "storage", "security", "diagnostics"])
+            lines.push("provider\t" + owner + "\tavailable\t" + (owner === "diagnostics" ? "user-session" : "read-only") + "\tFixture\tRead only");
+        for (const identifier of ["os-name", "os-version", "kernel-release", "architecture", "hardware-vendor", "hardware-model", "cpu-model"])
+            lines.push("state\t" + identifier + "\tavailable\tFixture\tDisplay text");
+        for (const identifier of ["logical-cpus", "memory-total-bytes", "memory-available-bytes", "swap-total-bytes", "swap-free-bytes", "uptime-seconds"])
+            lines.push("state\t" + identifier + "\tavailable\t18446744073709551615\tExact counter");
+        for (const identifier of ["selinux", "secure-boot", "firewalld", "root-encryption", "screen-lock"])
+            lines.push("state\t" + identifier + "\tavailable\t" + (identifier === "selinux" ? "enforcing" : identifier === "root-encryption" ? "encrypted" : "enabled") + "\tSecurity");
+        return lines.concat(["state\tfilesystem-summary\tavailable\t1\tMounts",
+            "filesystem\t42\tavailable\t/dev/test\t/\text4\t18446744073709551615\t2\t3\tBytes",
+            "action\thealth-open\tavailable\tuser-session\tdiagnostics\tHealth\tNavigation only"]);
+    }
+
+    function informationSnapshot() {
+        const lines = root.snapshot().concat(root.informationRows());
+        lines[0] = "system-management-protocol\t1\t2";
+        return lines;
+    }
+
+    function informationTests() {
+        root.check(root.parse(root.informationSnapshot()), "Minor two retains journal evidence");
+        root.check(model.snapshotState === "ready" && model.actions.length === 11, "All cumulative providers and actions accepted");
+        root.check(model.filesystems.length === 1 && model.filesystems[0].sizeBytes === "18446744073709551615", "Filesystem integers remain exact strings");
+        root.check(model.nativeStates["memory-total-bytes"].value === "18446744073709551615", "Memory integer stays exact");
+        for (const row of root.informationRows()) {
+            const fields = row.split("\t");
+            root.parse(root.informationSnapshot().concat([row]));
+            root.check(model.snapshotState === "failure", "Duplicate information identity is fatal: " + fields[1]);
+            root.parse(root.snapshot().concat([row]));
+            root.check(model.snapshotState === "failure", "Minor one rejects inactive information owner: " + fields[1]);
+            if (fields[0] !== "filesystem") {
+                root.parse(root.informationSnapshot().filter(line => line !== row));
+                root.check(model.snapshotState === "partial", "Missing required information record is partial: " + fields[1]);
+                root.check(model.updates.length === 1 && model.nativeProviders.regional.status === "available", "Missing information cannot hide other providers");
+            }
+        }
+        for (const value of ["18446744073709551616", "99999999999999999999", "01", "-1", "1.5", "1e3", "unknown"])
+            root.malformedOwner(root.replaceRow(root.informationSnapshot(), "state\tmemory-total-bytes\t",
+                "state\tmemory-total-bytes\tavailable\t" + value + "\tBad integer"), "information", "Invalid uint64 " + value);
+        for (const status of ["partial", "restricted", "unavailable", "unsupported"]) {
+            root.parse(root.replaceRow(root.informationSnapshot(), "state\tselinux\t", "state\tselinux\t" + status + "\tunknown\tNot known"));
+            root.check(model.nativeStates.selinux.status === status, "Unknown security status stays distinct");
+            root.malformedOwner(root.replaceRow(root.informationSnapshot(), "state\tselinux\t", "state\tselinux\t" + status + "\tdisabled\tUnproven"), "security", "Unavailable cannot mean disabled");
+        }
+        root.malformedOwner(root.replaceRow(root.informationSnapshot(), "provider\tsecurity\t",
+            "provider\tsecurity\tavailable\tprivileged\tFixture\tWrong class"), "security", "Security class is fixed");
+        for (const row of ["filesystem\t42\tavailable\t/dev/test\t/\text4\tunknown\t2\t3\tMissing bytes",
+                "filesystem\t42\tavailable\t/dev/test\t/\text4\t18446744073709551616\t2\t3\tOverflow",
+                "filesystem\t42\tunsupported\t/dev/test\t/\text4\tunknown\tunknown\tunknown\tWrong status"])
+            root.malformedOwner(root.replaceRow(root.informationSnapshot(), "filesystem\t", row), "storage", "Malformed filesystem");
+        let lines = root.replaceRow(root.informationSnapshot(), "filesystem\t", "filesystem\t42\tpartial\t/dev/test\t/\text4\tunknown\t2\t3\tPartial bytes");
+        lines = root.replaceRow(lines, "state\tfilesystem-summary\t", "state\tfilesystem-summary\tpartial\tunknown\tSubset");
+        root.parse(lines);
+        root.check(model.filesystems.length === 1 && model.filesystems[0].sizeBytes === "unknown", "Usable partial mount subset retained");
+        lines = root.replaceRow(root.informationSnapshot(), "provider\trecovery\t", "provider\trecovery\tpartial\tuser-session\tJournal\tBlocked");
+        lines = lines.map(line => line.startsWith("action\t") && !line.startsWith("action\thealth-open\t")
+            ? line.replace("\tavailable\t", "\tunavailable\t") : line);
+        root.check(!root.parse(lines), "Health navigation cannot admit journal recovery");
+        root.check(model.actions.some(action => action.id === "health-open" && action.availability === "available"), "Health stays accessible with blocked recovery");
+        root.check(model.operationActionKind("health-open") === "", "Health is never a journaled operation");
+        root.check(!model.openHealth(), "Closed pane cannot navigate to health");
+        model.settingsVisible = true;
+        root.check(model.openHealth(), "Blocked recovery does not block health navigation");
+        root.check(health.opens === 1 && health.screen === model.targetScreen, "Health uses the fixed model and current screen");
+        root.check(!model.operation.streamOwned, "Health never originates an operation");
+        model.settingsVisible = false;
+        root.parse(root.snapshot());
+        root.check(model.filesystems.length === 0 && !model.nativeStates.selinux, "Older minor clears information projections");
+    }
+
     function run() {
         root.check(root.parse(root.snapshot()), "Complete recovery remains known");
         root.check(model.snapshotState === "ready" && model.actions.length === 10, "Complete cumulative snapshot accepted");
@@ -250,12 +322,21 @@ ShellRoot {
                 root.check(monitors[index].phase === (index === entry[1] ? "initial-pending" : "idle"),
                     entry[0] + " invalidates only its fixed provider");
         }
+        root.informationTests();
         console.info("Native snapshot tests: PASS (" + root.assertions + " assertions)");
         Qt.quit();
     }
 
+    QtObject {
+        id: health
+        property int opens: 0
+        property var screen: null
+        function openOnScreen(value) { opens++; screen = value; }
+    }
     SystemManagementModel {
         id: model
+        healthModel: health
+        targetScreen: "fixed-test-screen"
         // This fixture exercises only parsing. Reserve the finite-read slot
         // so automatic startup recovery queues instead of launching a helper
         // that Qt.quit would kill before its capture-file cleanup can finish.

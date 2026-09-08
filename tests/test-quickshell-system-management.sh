@@ -37,7 +37,7 @@ grep -Fq "2>\"\$error_file\" &" "$commands"
 grep -Fq "head -c 512 \"\$error_file\" >&2" "$commands"
 grep -Fq 'command: Commands.terminatingCheckedCommand(' "$model"
 [ "$(grep -Fc 'Process {' "$model")" -eq 1 ]
-[ "$(grep -Fc 'SystemProviderDiscovery {' "$model")" -eq 4 ]
+[ "$(grep -Fc 'SystemProviderDiscovery {' "$model")" -eq 6 ]
 regional=$repo/config/quickshell/systemmanagement/SystemRegionalSettingsModel.qml
 regional_ui=$repo/config/quickshell/settings/SystemRegionalControls.qml
 grep -Fq 'SystemRegionalControls {' "$pane"
@@ -79,7 +79,7 @@ if grep -Fq 'repeat: true' "$model"; then
 fi
 
 grep -Fq 'recordIndex === 0 && type !== "system-management-protocol"' "$model"
-grep -Fq 'fields[1] !== "1" || (fields[2] !== "0" && fields[2] !== "1")' "$model"
+grep -Fq 'fields[1] !== "1" || (fields[2] !== "0" && fields[2] !== "1" && fields[2] !== "2")' "$model"
 grep -Fq 'System management provider emitted records after completion' "$model"
 grep -Fq '!headerSeen || !completeSeen || parsedGeneration.length === 0' "$model"
 grep -Fq 'return /^[0-9a-f]{64}$/.test(value);' "$model"
@@ -120,7 +120,7 @@ grep -Fq 'parsedActive !== null || parsedHandoff !== null' "$model"
 [ "$(grep -Fc 'root.operationActionKind(fields[2]).length === 0' "$model")" -eq 2 ]
 grep -Fq 'root.updateActionKind(fields[2]).length === 0' "$model"
 grep -Fq '(fields[6] !== "no" || fields[4] === "cancel-requested")' "$model"
-grep -Fq 'if (journalAdmitted && !nativeInvalid[root.nativeActionOwner(identifier)])' "$model"
+grep -Fq 'if ((identifier === "health-open" || journalAdmitted) && !nativeInvalid[root.nativeActionOwner(identifier)])' "$model"
 grep -Fq 'responseGeneration !== root.requestGeneration' "$model"
 grep -Fq 'if (root.snapshotOwned)' "$model"
 grep -Fq 'root.requiredPending = root.requiredPending || required;' "$model"

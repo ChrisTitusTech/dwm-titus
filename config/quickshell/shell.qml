@@ -208,6 +208,9 @@ ShellRoot {
 
     SystemManagementModel {
         id: systemManagementModel
+        healthModel: systemHealthModel
+        targetScreen: root.activePanelScreen
+        onHealthOpened: settingsModel.close()
     }
 
     SettingsModel {

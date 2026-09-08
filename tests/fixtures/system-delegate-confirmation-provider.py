@@ -6,6 +6,10 @@ from pathlib import Path
 import signal
 import sys
 
+# These fixtures reuse one projection for the fixed bounded snapshot modes.
+if sys.argv[1:] in (["snapshot-core"], ["snapshot-without-storage"]):
+    sys.argv[1] = "snapshot"
+
 
 def load(name):
     spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(name + ".py"))

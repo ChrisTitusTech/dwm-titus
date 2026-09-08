@@ -140,11 +140,14 @@ watch-time | watch-regional | watch-accounts | watch-units)
 	'watch-time') prefix=time-event ;;
 	'watch-regional locale') prefix=regional-event ;;
 	watch-accounts) prefix=accounts-event ;;
-	'watch-units printers') prefix=units-event ;;
+	'watch-units printers' | 'watch-units security') prefix=units-event ;;
 	*) exit 2 ;;
 	esac
 	exec /usr/bin/python3 -c 'import signal, sys; print(sys.argv[1] + "\tready", flush=True); signal.pause()' "$prefix" "$0" "$@"
 	;;
+watch-mounts)
+    exec /usr/bin/python3 -c 'import signal; print("mount-monitor-ready", flush=True); signal.pause()' "$0" watch-mounts
+    ;;
 watch-updates)
 	[ "$mode" != monitor-failure ] || exit 1
 	printf '%s\n' "$$" >"$fixture/monitor-pid"
@@ -172,7 +175,7 @@ watch-operation | ack-operation)
 	printf 'complete\toperation\n'
 	exit 0
 	;;
-snapshot) ;;
+snapshot | snapshot-core | snapshot-without-storage) ;;
 *) exit 2 ;;
 esac
 
@@ -515,26 +518,32 @@ for lock_domain in updates time locale accounts printers; do
 	fi
 done
 printf 'Native discovery fixture duplicate-monitor cases: PASS\n'
-timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
-	XDG_DATA_HOME="$work/native-discovery-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
-	DWM_NATIVE_DISCOVERY_FIXTURE="$work/native-discovery-state" \
-	quickshell --no-duplicate --path "$work/native-discovery/shell.qml" >"$work/native-discovery.log" 2>&1 &
-quickshell_pid=$!
-native_discovery_status=0
-wait "$quickshell_pid" || native_discovery_status=$?
-quickshell_pid=
-if [ "$native_discovery_status" -ne 0 ] || ! grep -F 'Native discovery tests: PASS' "$work/native-discovery.log" ||
-	grep -Fq 'Native discovery FAILED:' "$work/native-discovery.log" ||
-	[ -e "$work/native-discovery-state/overlap" ] || [ -e "$work/native-discovery-state/unexpected-command" ] ||
-	[ -n "$(find "$work/native-discovery-state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
-	cat "$work/native-discovery.log" >&2
-	exit 1
-fi
-if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .; then
-	printf 'Native discovery fixture leaked a checked-command capture\n' >&2
-	find "$runtime" -type f -name 'dwm-checked-command*' -printf '%f (%s bytes)\n' >&2
-	exit 1
-fi
+for discovery_domain in time storage security; do
+	# Every run owns a fresh private fixture journal and event namespace.
+	native_fixture="$work/native-discovery-$discovery_domain"
+	mkdir -p "$native_fixture"
+	timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$work/native-discovery-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+		DWM_NATIVE_DISCOVERY_FIXTURE="$native_fixture" DWM_DISCOVERY_DOMAIN="$discovery_domain" \
+		quickshell --no-duplicate --path "$work/native-discovery/shell.qml" >"$work/native-discovery.log" 2>&1 &
+	quickshell_pid=$!
+	native_discovery_status=0
+	wait "$quickshell_pid" || native_discovery_status=$?
+	quickshell_pid=
+	if [ "$native_discovery_status" -ne 0 ] || ! grep -F 'Native discovery tests: PASS' "$work/native-discovery.log" ||
+		grep -Fq 'Native discovery FAILED:' "$work/native-discovery.log" ||
+		[ -e "$native_fixture/overlap" ] || [ -e "$native_fixture/unexpected-command" ] ||
+		[ -n "$(find "$native_fixture" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+		cat "$work/native-discovery.log" >&2
+		exit 1
+	fi
+	if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .; then
+		printf 'Native discovery fixture leaked a checked-command capture\n' >&2
+		find "$runtime" -type f -name 'dwm-checked-command*' -printf '%f (%s bytes)\n' >&2
+		exit 1
+	fi
+
+done
 
 # Run the isolated operation parser on the same nested display before loading
 # the managed shell. This fixture never connects to host PackageKit.
