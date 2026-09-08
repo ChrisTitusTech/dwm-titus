@@ -2462,6 +2462,14 @@ the service; that method is not used by the monitor.
   fallback and subscriptions stop on section close. If subscription setup is
   unavailable, the finite bounded snapshot remains readable but live regional
   monitoring is explicitly unavailable.
+  Settings shares one finite reader between time reconciliation and the
+  two-property sample. Recovery has priority and reaps an optional sample before
+  taking its snapshot. Routine synchronization results do not invalidate
+  catalogs or previews; capability changes do require fresh discovery. Sample
+  failures retain the last synchronization value with `partial` status and
+  retry guidance, without turning otherwise fresh time configuration into a
+  failure. A service arrival during sampling reserves full time reconciliation
+  after the sample is reaped. The sample is never journal or mutation evidence.
 - AccountsService manager `UserAdded` and `UserDeleted` signals and the `Changed`
   signal on every valid de-duplicated candidate object selected within the
   256-object bound trigger one bounded, coalesced account-summary refresh while

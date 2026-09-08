@@ -1159,6 +1159,7 @@ Scope {
 
     SystemOperationModel {
         id: operationModel
+        onResultChanged: timeReconciliationModel.sampleAfterOperation(result)
         onDiscoveryInvalidated: actionId => root.invalidateActionDiscovery(actionId)
         onSnapshotRequested: root.requestSnapshot(true)
         onAcknowledged: operationId => {

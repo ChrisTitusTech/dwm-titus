@@ -433,8 +433,8 @@ The former reads one complete bounded time tuple without PackageKit or journal
 access. The latter distinguishes authenticated owner arrival from property
 change after readiness, while preserving setup reconciliation and quiet idle
 departure. The existing `watch-regional` protocol is unchanged. Scoped Settings
-reconciliation is described below; visible NTP sampling and combined installed
-qualification remain pending.
+reconciliation and visible NTP sampling are described below; combined installed
+qualification remains pending.
 
 The existing finite QML reader now accepts the two fixed no-argument time
 commands. It validates their exact bounded streams and withholds observations
@@ -448,10 +448,22 @@ the initial-plus-settling limit and yield to required snapshot recovery. Focused
 private fixtures cover unchanged, changed, capability, denial, synchronization,
 mismatched-preview, pending-preview, and required-recovery outcomes. Nine nested
 X11 cases preserve confirmation focus and deliberately moved external focus
-across reconciliation at three window sizes. Combined installed validation and
-visible NTP sampling remain pending.
+across reconciliation at three window sizes. Combined installed validation
+remains pending.
 Initial capability-gain and shared-admission-blocker fixtures also distinguish
 stale capability offers from unrelated authorization/recovery restrictions.
+
+Visible NTP sampling is now implemented through the same finite time reader.
+The 30-second timer stops on closure, verified NTP results request an immediate
+sample, and required snapshot recovery preempts optional reads. Synchronization
+alone preserves configuration and prompt identity; capability changes request
+fresh discovery. Failed samples retain the last value with partial-state retry
+guidance without disabling fresh regional configuration. Ten focused sampling
+cases passed, including the actual timer interval, and nine nested-X11 cases
+passed across three regional actions and window sizes. The clean build and full
+managed suite passed, including 569 backend tests and 84 regional UI cases.
+Read-only Fedora probes and checked captures are recorded in
+`docs/P6-REGIONAL-UI-EVIDENCE.md`. Combined installed qualification remains pending.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

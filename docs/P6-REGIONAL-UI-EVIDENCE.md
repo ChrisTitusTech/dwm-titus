@@ -8,8 +8,9 @@ This qualifies the regional-control boundary, not completion of Phase 6.
 - Fedora 44 x86_64, Qt 6.11.2, supported Fedora Quickshell 0.2.1 snapshot.
 - Private Xvfb displays and copied managed QML with fixed fixture providers.
 - No host timezone, locale, NTP, authorization, or installed configuration change.
-- Clock refresh, visible NTP sampling, graphical polkit, and combined installed
-  qualification remain pending.
+- At this initial boundary, clock refresh, visible NTP sampling, graphical
+  polkit, and combined installed qualification were pending. Clock evidence is
+  recorded in `P6-CLOCK-EVIDENCE.md`; sampling evidence follows below.
 
 ## Automated fixture matrix
 
@@ -73,3 +74,37 @@ NTP Disable. Closing Settings or moving focus elsewhere retires that restoration
 ![Timezone search at 640x480](evidence/p6-regional/timezone-set-choices-640.png)
 
 ![Locale confirmation at 640x480](evidence/p6-regional/locale-set-confirmation-640.png)
+
+## Visible NTP sampling, 2026-09-08
+
+The same Fedora/Qt/Quickshell environment passed the clean build and full managed
+suite. It now includes 84 regional UI cases: the original 66 plus nine owner-
+reconciliation and nine routine-sampling cases. Sampling preserves the verified
+prompt, restores Apply focus when appropriate, and does not steal focus moved
+outside the controls. All three actions also reject reentrant confirmation while
+the raw sample claim is held. This caught a QML dependency-order defect: checking
+the raw claim before notifying ownership could leave controls disabled after a
+read. The notifying ownership is now read first, and the full X11 matrix passes.
+
+Ten sampling cases cover success, read denial, capability loss, owner arrival,
+closure during a read/claim/publication, required snapshot recovery, a verified
+fixture NTP result, and the actual 30-second timer. Reads do not overlap, and only
+the explicit fixture-action case sends a mutation. The 57 finite-reader, ten
+time-reconciliation, 42 regional-coordinator, and 48 delegated-UI cases also pass.
+Closed Settings measured 0.067% CPU; closed large surfaces measured 0.00%.
+
+Two actual read-only Fedora `ntp-sample` calls, 31 seconds apart, returned complete
+validated two-property observations. The passive `watch-time` reader reported
+two authenticated owner arrivals and no property-change events, then exited
+cleanly on TERM. This tests idle daemon reactivation, not graphical authorization
+or a real NTP mutation. The application timer and action trigger were exercised
+with private providers; combined installed qualification remains pending.
+
+Window-only captures at 640x480 and 1000x740 were visually checked for the sampling
+label, full warning, and visible Cancel/Apply controls. The smaller viewport
+scrolls earlier content while keeping the confirmation visible. These use copied
+QML and fixed private providers; no installed shell or host setting was changed.
+
+![NTP sampling label and confirmation at 640x480](evidence/p6-regional/sampling-640.png)
+
+![NTP sampling label and confirmation at 1000x740](evidence/p6-regional/sampling-1000.png)

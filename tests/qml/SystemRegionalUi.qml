@@ -218,6 +218,12 @@ ShellRoot {
             stage = 62;
         } else if (stage === 62 && ++layoutTicks >= 8) {
             checkFocused("confirmRegional");
+            if (scenario === "sample-ui") {
+                retainedPrompt = model.regional.confirmation;
+                model.timeReconciliation.sampleNow();
+                stage = 65;
+                return;
+            }
             if (scenario === "owner") {
                 retainedPrompt = model.regional.confirmation;
                 model.timeReconciliation.arrived();
@@ -250,6 +256,25 @@ ShellRoot {
         } else if (stage === 64 && !model.timeReconciliation.blocked) {
             check(find("externalRegionalFocus").activeFocus, "Reconciliation does not steal deliberately moved focus");
             check(model.operation.result === null, "Reconciliation sends no action");
+            model.closeSettings();
+            stage = 8;
+        } else if (stage === 65 && model.timeReconciliation.sampling) {
+            check(!model.timeReconciliation.blocked && model.timeDiscovery.fresh,
+                "Routine sampling preserves fresh configuration");
+            check(!find("confirmRegional").enabled, "Sample serializes confirmation");
+            stage = 66;
+        } else if (stage === 66 && !model.timeReconciliation.ownsRead()) {
+            if (!find("confirmRegional").activeFocus) return;
+            check(model.regional.confirmation === retainedPrompt, "Sample preserves visible prompt identity");
+            checkFocused("confirmRegional");
+            model.timeReconciliation.sampleNow();
+            stage = 67;
+        } else if (stage === 67 && model.timeReconciliation.sampling) {
+            find("externalRegionalFocus").forceActiveFocus();
+            stage = 68;
+        } else if (stage === 68 && !model.timeReconciliation.ownsRead()) {
+            check(find("externalRegionalFocus").activeFocus, "Sample does not steal deliberately moved focus");
+            check(model.operation.result === null, "Sampling sends no action");
             model.closeSettings();
             stage = 8;
         } else if ((stage === 70 || stage === 71) && settled() && !model.operation.busy
@@ -293,6 +318,15 @@ ShellRoot {
         Qt.quit();
     }
     SystemManagementModel { id: model }
+    Connections {
+        target: model.timeReconciliation
+        function onAboutToBlock() {
+            if (root.scenario !== "sample-ui" || model.timeReconciliation.sampleClaim.ticket === null) return;
+            const prompt = model.regional.confirmation;
+            root.check(!model.regional.confirm() && model.regional.confirmation === prompt,
+                "Raw sample claim preserves every regional prompt during reentrant confirmation");
+        }
+    }
     Window {
         id: window
         visible: true
