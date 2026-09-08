@@ -6,6 +6,7 @@ import qs.systemmanagement
 
 ShellRoot {
     id: root
+    ClockModel { id: clock; timezoneState: model.nativeStates.timezone || null }
     property string action: Quickshell.env("DWM_NATIVE_ACTION")
     property string scenario: Quickshell.env("DWM_NATIVE_ACTION_SCENARIO")
     readonly property string kind: action === "locale-set" ? "locale" : "timezone"
@@ -119,6 +120,8 @@ ShellRoot {
         if (done) return;
         if (stage === 0 && !model.busy && model.operation.canStart) { model.openSettings(); stage = 1; }
         else if (stage === 1 && settled() && model.regional.actionReason(action) === "") {
+            check(clock.settingsText.length > 0 && find("systemLocalTime").text.indexOf(clock.settingsText) >= 0,
+                "Settings renders the shared local clock");
             check(find("regional-card-" + kind).visible, "Readable regional state is present");
             if (action === "ntp-set") {
                 checkUnavailableOffer();
@@ -277,7 +280,7 @@ ShellRoot {
         width: Number(Quickshell.env("DWM_DELEGATE_UI_WIDTH") || "780")
         height: root.originalHeight
         color: Theme.menuBackground
-        SystemSettingsPane { id: pane; objectName: "regionalOuterPane"; anchors.fill: parent; anchors.margins: 12; systemManagementModel: model; capabilities: [] }
+        SystemSettingsPane { id: pane; objectName: "regionalOuterPane"; anchors.fill: parent; anchors.margins: 12; systemManagementModel: model; capabilities: []; clockText: clock.settingsText }
         Item { objectName: "externalRegionalFocus"; width: 1; height: 1 }
     }
     Timer { interval: 25; running: !root.done; repeat: true; onTriggered: root.advance() }

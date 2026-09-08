@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Share the panel's minute-level clock with System Settings and refresh both
+  displays after verified timezone discovery, retaining the same instant across
+  timezone changes without an extra poller or shell restart.
+
 - Expose searchable timezone and system-locale choices plus fixed network-time
   controls in System Settings. Require fresh full previews and explicit
   confirmation, explain the sent-action cancellation limit, and preserve

@@ -559,6 +559,22 @@ if [ "$ui_status" -ne 0 ] || ! grep -F 'Update UI native tests: PASS' "$work/upd
 	exit 1
 fi
 
+mkdir -p "$work/shared-clock"
+cp -a "$repo/config/quickshell/core" "$work/shared-clock/"
+cp "$repo/tests/qml/SharedClock.qml" "$work/shared-clock/shell.qml"
+timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	quickshell --no-duplicate --path "$work/shared-clock/shell.qml" >"$work/shared-clock.log" 2>&1 &
+quickshell_pid=$!
+clock_status=0
+wait "$quickshell_pid" || clock_status=$?
+quickshell_pid=
+if [ "$clock_status" -ne 0 ] || ! grep -F 'Shared clock tests: PASS' "$work/shared-clock.log" ||
+	grep -Fq 'Shared clock FAILED:' "$work/shared-clock.log"; then
+	cat "$work/shared-clock.log" >&2
+	exit 1
+fi
+
 mkdir -p "$work/regional-preflight-parser"
 cp "$repo/tests/qml/SystemRegionalPreflightParser.qml" "$work/regional-preflight-parser/shell.qml"
 cp "$repo/config/quickshell/systemmanagement/SystemRegionalPreflightProtocol.js" "$work/regional-preflight-parser/"
