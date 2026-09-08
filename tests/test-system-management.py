@@ -260,6 +260,224 @@ class LocalInformationTests(unittest.TestCase):
         self.assertEqual(self.read(uptime=OSError(errno.EIO, "clock unavailable"))["uptime-seconds"].status, "unavailable")
 
 
+class FilesystemInformationTests(unittest.TestCase):
+    def row(self, identifier=7, **changes):
+        return dict({"id": identifier, "source": "/dev/fixture", "target": "/", "fstype": "ext4",
+            "size": 1048576, "used": 1024, "avail": 1047552}, **changes)
+
+    def parse(self, rows):
+        return provider.parse_filesystem_information(provider.json.dumps({"filesystems": rows}).encode())
+
+    def test_complete_nested_inventory_is_keyed_and_sorted_by_mount_id(self):
+        result = self.parse([self.row(10, children=[self.row(2)])])
+        self.assertEqual((result.summary.status, result.summary.value), ("available", "2"))
+        self.assertEqual([row.mount_id for row in result.rows], ["2", "10"])
+        self.assertTrue(all(row.status == "available" and row.size_bytes == "1048576" for row in result.rows))
+        self.assertEqual(self.parse([]).summary.value, "0")
+
+    def test_display_sanitization_does_not_merge_distinct_mounts(self):
+        result = self.parse([self.row(1, target="/a\nb", source="/dev/\tfixture"),
+            self.row(2, target="/a b", fstype="x" * 600)])
+        self.assertEqual(result.summary.value, "2")
+        self.assertEqual([row.target for row in result.rows], ["/a b", "/a b"])
+        self.assertEqual(result.rows[0].source, "/dev/ fixture")
+        self.assertEqual(len(result.rows[1].fstype), 512)
+        result = self.parse([self.row(source="\u00e9" * 300)])
+        self.assertEqual(len(result.rows[0].source.encode()), 512)
+
+    def test_bad_rows_and_nested_shape_preserve_valid_peers(self):
+        for bad in (None, [], self.row(id="7"), self.row(id=True), self.row(id=-1),
+                    self.row(source=None), self.row(target=""), self.row(fstype="\ud800")):
+            result = self.parse([bad, self.row(8)])
+            self.assertEqual((result.summary.status, result.summary.value), ("partial", "unknown"))
+            self.assertEqual([row.mount_id for row in result.rows], ["8"])
+        result = self.parse([self.row(children="wrong")])
+        self.assertEqual(result.summary.status, "partial")
+        self.assertEqual(len(result.rows), 1)
+
+    def test_counters_remain_exact_and_failed_values_are_unknown(self):
+        for value in (None, True, False, -1, 1.0, "1", 1 << 64):
+            result = self.parse([self.row(size=value)])
+            self.assertEqual(result.summary.status, "partial")
+            row = result.rows[0]
+            self.assertEqual((row.status, row.size_bytes, row.used_bytes), ("partial", "unknown", "1024"))
+        result = self.parse([self.row(size=(1 << 64) - 1, used=0, avail=0)])
+        self.assertEqual(result.rows[0].size_bytes, str((1 << 64) - 1))
+        self.assertEqual(result.summary.status, "available")
+        result = self.parse([self.row(size=None, used=None, avail=None)])
+        self.assertEqual((result.rows[0].size_bytes, result.rows[0].used_bytes, result.rows[0].available_bytes),
+                         ("unknown", "unknown", "unknown"))
+
+    def test_duplicate_mount_ids_are_removed_even_after_record_limit(self):
+        result = self.parse([self.row(1), self.row(1), self.row(1), self.row(2)])
+        self.assertEqual([row.mount_id for row in result.rows], ["2"])
+        self.assertEqual(result.summary.status, "partial")
+        result = self.parse([self.row(index) for index in range(256)])
+        self.assertEqual((result.summary.status, result.summary.value), ("available", "256"))
+        result = self.parse([self.row(index) for index in range(257)] + [self.row(0)])
+        self.assertEqual(result.summary.status, "partial")
+        self.assertEqual(len(result.rows), 255)
+        self.assertNotIn("0", [row.mount_id for row in result.rows])
+
+    def test_invalid_json_shape_duplicate_keys_numbers_and_utf8(self):
+        for data in (b"", b"[]", b"{}", b'{"filesystems":null}', b'{"filesystems": [], "filesystems": []}',
+                     b'{"filesystems":[{"id":1,"id":2}]}', b'{"filesystems":[],"extra":NaN}',
+                     b'{"filesystems":[],"extra":Infinity}', b'\xff', b"[" * 2000 + b"]" * 2000):
+            with self.subTest(data=data[:50]), self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.parse_filesystem_information(data)
+            self.assertEqual(caught.exception.code, "malformed")
+
+    def test_parser_byte_limit_is_checked_before_decoding(self):
+        data = b'{"filesystems":[]}'
+        exact = data + b" " * (provider.FILESYSTEM_OUTPUT_BYTES - len(data))
+        self.assertEqual(provider.parse_filesystem_information(exact).summary.value, "0")
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.parse_filesystem_information(exact + b" ")
+
+
+class FilesystemProcessTests(unittest.TestCase):
+    @contextlib.contextmanager
+    def source(self, mode="success", *arguments, signal_number=None, expect_cleanup=True):
+        popen, processes = subprocess.Popen, []
+        def launch(command, **options):
+            self.assertEqual(command, ["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "3",
+                "/usr/bin/findmnt", "--json", "--bytes", "--real", "--uniq", "--output",
+                "ID,SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL"])
+            self.assertEqual(options["env"], {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
+            self.assertEqual(options["stdin"], subprocess.DEVNULL)
+            self.assertTrue(options["start_new_session"])
+            self.assertNotIn("preexec_fn", options)
+            process = popen(command[:4] + ["/usr/bin/python3",
+                str(REPO / "tests/fixtures/system-filesystem-process.py"), mode, *arguments], **options)
+            processes.append(process)
+            if signal_number is not None:
+                signal.raise_signal(signal_number)
+            return process
+        try:
+            with mock.patch.object(provider.subprocess, "Popen", side_effect=launch):
+                yield processes
+            if expect_cleanup:
+                self.assertTrue(all(p.returncode is not None and p.stdout.closed and p.stderr.closed for p in processes))
+        finally:
+            for process in processes:
+                if process.returncode is None:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=2)
+                for stream in (process.stdout, process.stderr):
+                    if stream:
+                        stream.close()
+
+    def test_fixed_fresh_command_and_exact_combined_budget(self):
+        with self.source() as processes, mock.patch.dict(os.environ, {"LC_ALL": "invalid"}), \
+                mock.patch.object(provider, "open_journal_directory") as journal:
+            for _ in range(2):
+                result = provider.read_filesystem_information()
+                self.assertEqual((result.summary.status, result.summary.value), ("available", "1"))
+            self.assertEqual(len(processes), 2)
+            journal.assert_not_called()
+        with self.source("exact-budget"):
+            self.assertEqual(provider.read_filesystem_information().summary.status, "available")
+        with self.source("empty-json"):
+            self.assertEqual(provider.read_filesystem_information().summary.value, "0")
+
+    def test_bad_output_is_scoped_and_never_publishes_rows(self):
+        for mode in ("bad-json", "invalid-utf8", "stdout-overflow", "stderr-overflow", "combined-overflow"):
+            with self.subTest(mode=mode), self.source(mode):
+                result = provider.read_filesystem_information()
+                self.assertEqual((result.summary.status, result.summary.value, result.summary.error_code),
+                                 ("partial", "unknown", "malformed"))
+                self.assertEqual(result.rows, ())
+
+    def test_exit_status_is_required_and_stderr_is_not_disclosed(self):
+        for status, code in ((1, "internal"), (125, "internal"), (126, "internal"),
+                             (127, "missing-provider"), (124, "timeout"), (137, "timeout")):
+            with self.subTest(status=status), self.source("exit", str(status)):
+                result = provider.read_filesystem_information()
+                self.assertEqual((result.summary.status, result.summary.error_code), ("unavailable", code))
+                self.assertEqual(result.rows, ())
+                self.assertNotIn("private diagnostic", repr(result))
+
+    def test_missing_command_and_permission_denial_restore_handlers(self):
+        handlers = {n: signal.getsignal(n) for n in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        for error, status, code in ((FileNotFoundError(), "unavailable", "missing-provider"),
+                (PermissionError(errno.EACCES, "private"), "restricted", "permission-denied")):
+            with mock.patch.object(provider.subprocess, "Popen", side_effect=error):
+                result = provider.read_filesystem_information()
+            self.assertEqual((result.summary.status, result.summary.error_code), (status, code))
+            self.assertEqual(result.rows, ())
+        self.assertEqual(handlers, {n: signal.getsignal(n) for n in handlers})
+
+    def test_wall_clock_changes_do_not_extend_timeout_or_preserve_descendants(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pid_file = str(pathlib.Path(directory) / "child-pid")
+            started = time.monotonic()
+            with self.source("descendant", pid_file), mock.patch.object(provider.time, "time", side_effect=[9999, -9999]):
+                result = provider.read_filesystem_information()
+            self.assertEqual((result.summary.status, result.summary.error_code), ("unavailable", "timeout"))
+            self.assertLess(time.monotonic() - started, 5.5)
+            LocaleEnumerationTests().assert_process_stopped(int(pathlib.Path(pid_file).read_text()))
+
+    def test_eof_without_exit_still_times_out(self):
+        with self.source("closed-pipes"):
+            self.assertEqual(provider.read_filesystem_information().summary.error_code, "timeout")
+
+    def test_decoding_after_deadline_never_publishes_success_or_malformed(self):
+        monotonic = time.monotonic
+        for malformed in (False, True):
+            offset = [0]
+            def decode(_data):
+                offset[0] = 4
+                if malformed:
+                    raise provider.SnapshotFailure("malformed", "Late failure")
+                return provider.FilesystemInformation(provider.InformationState("available", "0", "Fixture"))
+            with self.source(), mock.patch.object(provider.time, "monotonic", side_effect=lambda: monotonic() + offset[0]), \
+                    mock.patch.object(provider, "parse_filesystem_information", side_effect=decode):
+                result = provider.read_filesystem_information()
+            self.assertEqual(result.summary.error_code, "timeout")
+            self.assertEqual(result.rows, ())
+
+    def test_interruption_cleans_owned_children_before_exit(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            previous = signal.getsignal(number)
+            with self.source("closed-pipes", signal_number=number):
+                with self.assertRaises(SystemExit) as caught:
+                    provider.read_filesystem_information()
+                self.assertEqual(caught.exception.code, 128 + number)
+            self.assertIs(signal.getsignal(number), previous)
+
+    def test_cleanup_failure_never_publishes_success_or_hides_interruption(self):
+        for number in (None, signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            def cleanup(_process):
+                if number is not None:
+                    signal.raise_signal(number)
+                raise provider.SnapshotFailure("timeout", "Private cleanup detail", "unavailable")
+            with self.source(expect_cleanup=False), mock.patch.object(provider, "close_locale_process", side_effect=cleanup):
+                if number is not None:
+                    with self.assertRaises(SystemExit) as caught:
+                        provider.read_filesystem_information()
+                    self.assertEqual(caught.exception.code, 128 + number)
+                else:
+                    result = provider.read_filesystem_information()
+                    self.assertEqual(result.summary.error_code, "timeout")
+                    self.assertEqual(result.rows, ())
+                    self.assertNotIn("Private cleanup detail", repr(result))
+
+    def test_unavailable_child_ownership_prevents_launch(self):
+        with mock.patch.object(provider.signal, "getsignal", return_value=signal.SIG_IGN), \
+                mock.patch.object(provider.subprocess, "Popen") as launch:
+            self.assertEqual(provider.read_filesystem_information().summary.status, "unavailable")
+            launch.assert_not_called()
+        results = []
+        with mock.patch.object(provider.subprocess, "Popen") as launch:
+            thread = threading.Thread(target=lambda: results.append(provider.read_filesystem_information()))
+            thread.start()
+            thread.join(timeout=2)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(results[0].summary.status, "unavailable")
+            launch.assert_not_called()
+
+
 class RegionalPreflightTests(unittest.TestCase):
     def time_state(self, **changes):
         return replace(provider.RegionalTimeState("UTC", True, False, True), **changes)
