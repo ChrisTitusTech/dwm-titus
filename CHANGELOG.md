@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add internal hostname1 hardware vendor/model reads with one bounded deadline,
+  independent property failures, and late-reply suppression. This preparation
+  does not activate a new protocol minor or Settings control.
+
 - Add internal bounded OS, kernel, CPU, memory, swap, and uptime readers with
   per-field failure isolation and checked byte counters. This preparatory
   boundary does not activate a new protocol minor, Settings UI, or polling loop.

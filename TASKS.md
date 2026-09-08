@@ -497,7 +497,11 @@ allowlisted fields, UTF-8 text, exact kB conversion, and unsigned 64-bit counter
 are validated without subprocesses, services, journals, or mutations. Twelve
 focused tests and a read-only Fedora 44 probe passed. This preparatory boundary
 adds no CLI command, protocol minor, Settings surface, or polling loop.
-Hostname1, filesystem/security sources, protocol integration, visible controls,
+The internal hostname1 reader also returns independent hardware vendor/model
+observations under one ten-second deadline, preserving a validated peer when
+the other property fails or times out. Twelve focused tests, including four
+real private-bus deadlines and late replies, and a read-only Fedora 44 probe
+passed. Filesystem/security sources, protocol integration, visible controls,
 and combined installed qualification remain pending.
 
 - [ ] Add event-driven or bounded system information and storage overview state
