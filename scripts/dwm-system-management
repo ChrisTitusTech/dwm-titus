@@ -9858,6 +9858,13 @@ def watch_mount_events() -> int:
                 with selectors.DefaultSelector() as selector:
                     selector.register(wake_read, selectors.EVENT_READ)
                     selector.register(pidfd, selectors.EVENT_READ)
+                    output_descriptor = sys.stdout.fileno()
+                    output_mode = os.fstat(output_descriptor).st_mode
+                    if stat.S_ISFIFO(output_mode) or stat.S_ISSOCK(output_mode):
+                        # A write-end pipe reports EPOLLERR when its last reader
+                        # disappears, even when no write or mount event occurs.
+                        # Requesting read events avoids a writable idle spin.
+                        selector.register(output_descriptor, selectors.EVENT_READ)
                     for stream in (process.stdout, process.stderr):
                         os.set_blocking(stream.fileno(), False)
                         selector.register(stream, selectors.EVENT_READ)
@@ -9882,6 +9889,8 @@ def watch_mount_events() -> int:
                                 continue
                             if key.fd == pidfd:
                                 raise OSError("Mount monitor exited unexpectedly")
+                            if key.fd == output_descriptor:
+                                raise OSError("Mount monitor consumer disappeared")
                             if not ready and key.fileobj is process.stdout:
                                 continue  # Retain early events until baseline acknowledgment.
                             chunk = os.read(key.fd, 4096)

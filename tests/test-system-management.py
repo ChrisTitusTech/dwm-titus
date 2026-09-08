@@ -3563,6 +3563,25 @@ FILE *fopen64(const char *path, const char *mode) {
         self.assertEqual(process.wait(timeout=3), 1)
         self.gone(child)
 
+    def test_idle_output_liveness_watch_does_not_spin(self):
+        process, child = self.start("")
+        self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+        def ticks():
+            fields = pathlib.Path(f"/proc/{process.pid}/stat").read_text().rsplit(") ", 1)[1].split()
+            return int(fields[11]) + int(fields[12])
+        before = ticks()
+        time.sleep(0.3)
+        self.assertLessEqual(ticks() - before, 1, "Idle mount supervisor consumed CPU ticks")
+        self.stop(process)
+        self.gone(child)
+
+    def test_idle_lost_output_consumer_stops_child_without_mount_events(self):
+        process, child = self.start("")
+        self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+        process.stdout.close()
+        self.assertEqual(process.wait(timeout=3), 1)
+        self.gone(child)
+
     def test_proc_identity_change_and_exited_child_are_rejected(self):
         process = types.SimpleNamespace(pid=123)
         with mock.patch.object(provider, "locale_process_status", return_value=None), \
