@@ -601,7 +601,7 @@ cp "$repo/tests/fixtures/system-regional-preflight-provider.py" "$preflight_help
 chmod +x "$preflight_helper"
 preflight_quickshell=$(command -v quickshell)
 for preflight_mode in regional time-status ntp-sample; do
-	for preflight_scenario in success typed-error wrong-exit protocol-exit-127 malformed truncated stdout-overflow stderr-overflow \
+	for preflight_scenario in success typed-error unsupported-error wrong-exit protocol-exit-127 malformed truncated stdout-overflow stderr-overflow \
 		close kill-close close-stdout-overflow close-stderr-overflow timeout cancel-queued cancel-claim close-result failed-start missing-helper; do
 		preflight_directory="$work/preflight-$preflight_mode-$preflight_scenario"
 		mkdir -p "$preflight_directory"

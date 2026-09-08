@@ -62,9 +62,10 @@ with (directory / "lock").open("a") as lock:
             time.sleep(0.001)
         time.sleep(60)
     code = 0
-    if scenario == "typed-error":
+    if scenario in {"typed-error", "unsupported-error"}:
         owner = args[0] if args[0] in {"time-status", "ntp-sample"} else "regional"
-        payload = "error\t" + owner + "\tpermission-denied\tFixture read denied\n"
+        error_code = "permission-denied" if scenario == "typed-error" else "unsupported"
+        payload = "error\t" + owner + "\t" + error_code + "\tFixture read unavailable\n"
         code = 1
     elif scenario == "wrong-exit":
         code = 1

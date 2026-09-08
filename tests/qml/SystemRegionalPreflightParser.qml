@@ -72,12 +72,12 @@ ShellRoot {
             for (const code of [1, 2, -1])
                 root.check(!root.parse(command, "", "", good, code), "observation exit mismatch");
             root.check(!root.parse(command, "", "", good, 0, false), "crashed observation");
-            for (const code of ["missing-provider", "permission-denied", "timeout", "malformed", "interrupted", "internal"]) {
+            for (const code of ["missing-provider", "permission-denied", "unsupported", "timeout", "malformed", "internal"]) {
                 const failed = header + error.replace("internal", code) + complete;
                 root.check(root.parse(command, "", "", failed, 1), "typed observation error");
                 root.check(!root.parse(command, "", "", failed, 0), "observation error cannot succeed");
             }
-            for (const code of ["network", "unsupported", "canceled", "unknown"])
+            for (const code of ["network", "interrupted", "canceled", "unknown"])
                 root.check(!root.parse(command, "", "", header + error.replace("internal", code) + complete, 1), "closed observation error codes");
             root.check(!root.parse(command, "", "", header + error.replace(command, "regional") + complete, 1), "observation error owner");
             root.check(!root.parse(command, "", "", header + error + error + complete, 1), "duplicate observation error");

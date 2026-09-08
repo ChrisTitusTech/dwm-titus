@@ -90,7 +90,7 @@ function acceptLine(parser, line) {
         parser.preview = { actionId: fields[1], argument: fields[2], generation: fields[3],
             current: fields[4], target: fields[5], detail: fields[6] };
     } else if (fields[0] === "error") {
-        const codes = observation ? ["missing-provider", "permission-denied", "timeout", "malformed", "interrupted", "internal"]
+        const codes = observation ? ["missing-provider", "permission-denied", "unsupported", "timeout", "malformed", "internal"]
             : ["network", "repository", "conflict", "signature", "package",
                     "unsupported", "malformed", "missing-provider", "permission-denied", "canceled",
                     "timeout", "interrupted", "internal"];

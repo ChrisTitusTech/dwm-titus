@@ -86,7 +86,7 @@ ShellRoot {
             : scenario === "timeout" ? 2 : 1), "No duplicate or missing completion");
         if (["stdout-overflow", "stderr-overflow"].indexOf(scenario) >= 0)
             check(Date.now() - startedAt < 2500, "Output flood is killed without a TERM grace period");
-        if (["success", "typed-error", "wrong-exit", "protocol-exit-127"].indexOf(scenario) >= 0 || replaces)
+        if (["success", "typed-error", "unsupported-error", "wrong-exit", "protocol-exit-127"].indexOf(scenario) >= 0 || replaces)
             check(provisional, "Complete bytes were observed before process exit without a result");
         const retained = model.result;
         model.consume(new Uint8Array([0]).buffer);
@@ -143,6 +143,7 @@ ShellRoot {
                     : { canNtp: true, synchronized: false }), "Exact observation retained across collector reuse");
             } else {
                 const expected = root.scenario === "typed-error" ? "permission-denied"
+                    : root.scenario === "unsupported-error" ? "unsupported"
                     : root.scenario === "timeout" ? "timeout"
                     : ["failed-start", "missing-helper"].indexOf(root.scenario) >= 0 ? "missing-provider" : "malformed";
                 root.check(outcome.error.code === expected && outcome.choices.length === 0 && outcome.preview === null
