@@ -553,20 +553,155 @@ class FilesystemInformationTests(unittest.TestCase):
             provider.parse_filesystem_information(exact + b" ")
 
 
+class RootEncryptionTests(unittest.TestCase):
+    def node(self, name="disk", **changes):
+        return dict({"name": name, "type": "disk", "fstype": None, "mountpoints": [None], "pkname": None}, **changes)
+
+    def topology(self, encrypted=False):
+        root = self.node("root", type="crypt" if encrypted else "part", fstype="ext4", mountpoints=["/"], pkname="disk")
+        return [self.node(children=[root])]
+
+    def parse(self, rows):
+        return provider.parse_root_encryption(provider.json.dumps({"blockdevices": rows}).encode())
+
+    def assert_unknown(self, rows):
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            self.parse(rows)
+        self.assertEqual((caught.exception.code, caught.exception.status), ("malformed", "partial"))
+
+    def test_plain_and_crypt_root_ancestry(self):
+        for encrypted, value in ((False, "unencrypted"), (True, "encrypted")):
+            result = self.parse(self.topology(encrypted))
+            self.assertEqual((result.status, result.value), ("available", value))
+            self.assertIn("hardware encryption are not assessed", result.detail)
+        rows = self.topology()
+        rows[0]["fstype"] = "crypto_LUKS"
+        self.assertEqual(self.parse(rows).value, "encrypted")
+
+    def test_mapper_parent_kernel_alias_and_lvm_root(self):
+        root = self.node("fedora-root", type="lvm", fstype="btrfs", mountpoints=["/", "/home"], pkname="dm-0")
+        crypt = self.node("luks-volume", type="crypt", pkname="disk", children=[root])
+        self.assertEqual(self.parse([self.node(children=[crypt])]).value, "encrypted")
+        # kpartx mapper partitions also have a PART-prefixed UUID and alias.
+        crypt["type"] = "part"
+        self.assertEqual(self.parse([self.node(fstype="crypto_LUKS", children=[crypt])]).value, "encrypted")
+        # A second child must observe the same kernel identity for this mapper.
+        crypt["children"].append(self.node("fedora-swap", type="lvm", fstype="swap", pkname="dm-1"))
+        self.assert_unknown([self.node(children=[crypt])])
+
+    def test_multiple_backing_paths_all_encrypted_or_mixed(self):
+        def branch(name, encrypted):
+            root = self.node("root", type="raid1", fstype="ext4", mountpoints=["/"], pkname=name)
+            return self.node(name, fstype="crypto_LUKS" if encrypted else None, children=[root])
+        self.assertEqual(self.parse([branch("a", True), branch("b", True)]).value, "encrypted")
+        self.assertEqual(self.parse([branch("a", False), branch("b", False)]).value, "unencrypted")
+        self.assert_unknown([branch("a", True), branch("b", False)])
+
+    def test_encryption_above_mixed_backing_paths_covers_every_path(self):
+        root = self.node("crypt-root", type="crypt", fstype="ext4", mountpoints=["/"], pkname="md0")
+        rows = [self.node(name, fstype=fs, children=[self.node("md0", type="raid1", pkname=name, children=[root])])
+                for name, fs in (("a", None), ("b", "crypto_LUKS"))]
+        self.assertEqual(self.parse(rows).value, "encrypted")
+
+    def test_multiple_root_mounts_must_agree(self):
+        rows = [self.node("a", fstype="ext4", mountpoints=["/"]), self.node("b", fstype="btrfs", mountpoints=["/"])]
+        self.assertEqual(self.parse(rows).value, "unencrypted")
+        rows += self.topology(True)
+        self.assert_unknown(rows)
+
+    def test_missing_root_or_incomplete_root_backing_is_unknown(self):
+        for rows in ([], [self.node()], [self.node(mountpoints=["/"])],
+                     [self.node(fstype="crypto_LUKS", mountpoints=["/"])],
+                     [self.node(fstype="ext4", mountpoints=["/root", "//"])],
+                     [self.node(type="loop", fstype="ext4", mountpoints=["/"])],
+                     [self.node(type="crypt", fstype="ext4", mountpoints=["/"])],
+                     [self.node(type="part", fstype="ext4", mountpoints=["/"], pkname="absent")]):
+            self.assert_unknown(rows)
+        rows = self.topology(True)
+        rows[0]["type"] = "loop"
+        self.assert_unknown(rows)
+        # An unrelated unmounted loop does not invalidate resolved root paths.
+        self.assertEqual(self.parse(self.topology() + [self.node("loop0", type="loop")]).value, "unencrypted")
+
+    def test_bad_parent_identity_and_conflicting_duplicate_metadata(self):
+        rows = self.topology()
+        rows[0]["children"][0]["pkname"] = "wrong"
+        self.assert_unknown(rows)
+        rows[0]["children"][0]["pkname"] = "dm-0"
+        self.assert_unknown(rows)  # Physical disks do not have mapper aliases.
+        for field, value in (("type", "crypt"), ("fstype", "btrfs"), ("mountpoints", ["/home"])):
+            rows = self.topology()
+            rows[0]["children"].append(dict(rows[0]["children"][0], **{field: value}))
+            self.assert_unknown(rows)
+        rows = self.topology()
+        rows[0]["children"].append(dict(rows[0]["children"][0]))
+        self.assertEqual(self.parse(rows).value, "unencrypted")
+
+    def test_cycles_and_ambiguous_kernel_aliases_are_unknown(self):
+        a = self.node("a", type="lvm", pkname="disk")
+        b = self.node("b", type="lvm", pkname="dm-0")
+        a["children"] = [b]
+        b["children"] = [dict(a, pkname="dm-1", children=[])]
+        self.assert_unknown(self.topology() + [self.node(children=[a])])
+        rows = []
+        for name in ("a", "b"):
+            rows.append(self.node(name, type="lvm", children=[self.node(name + "-child", pkname="dm-0")]))
+        self.assert_unknown(self.topology() + rows)
+
+    def test_selected_fields_and_children_are_strict(self):
+        for field, value in (("name", ""), ("name", "bad\nname"), ("name", "\ud800"),
+                ("name", "x" * 513), ("name", "\u00e9" * 257), ("type", None), ("fstype", []),
+                ("mountpoints", None), ("mountpoints", [False]), ("children", None), ("children", [None])):
+            rows = self.topology()
+            rows[0][field] = value
+            self.assert_unknown(rows)
+        for field in ("name", "type", "fstype", "mountpoints", "pkname"):
+            rows = self.topology()
+            del rows[0][field]
+            self.assert_unknown(rows)
+
+    def test_unique_record_cap_includes_repeated_rows_without_dropping_evidence(self):
+        rows = [self.node(str(index)) for index in range(1024)]
+        rows[0].update(fstype="ext4", mountpoints=["/"])
+        self.assertEqual(self.parse(rows + [dict(rows[0])]).value, "unencrypted")
+        self.assert_unknown(rows + [self.node("extra")])
+
+    def test_nested_topology_is_resolved_without_recursive_graph_walk(self):
+        child = self.node("root", type="part", fstype="ext4", mountpoints=["/"], pkname="p0")
+        for index in range(150):
+            child = self.node("p" + str(index), type="part", pkname="p" + str(index + 1), children=[child])
+        child["pkname"] = "disk"
+        self.assertEqual(self.parse([self.node(children=[child])]).value, "unencrypted")
+
+    def test_json_byte_limit_keys_numbers_and_decoding_fail_closed(self):
+        for data in (b"", b"[]", b"{}", b'{"blockdevices":null}', b'{"blockdevices":[],"blockdevices":[]}',
+                b'{"blockdevices":[{"name":"a","name":"b"}]}', b'{"blockdevices":[],"extra":NaN}',
+                b"\xff", b"[" * 2000 + b"]" * 2000):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.parse_root_encryption(data)
+        data = provider.json.dumps({"blockdevices": self.topology()}).encode()
+        exact = data + b" " * (provider.FILESYSTEM_OUTPUT_BYTES - len(data))
+        self.assertEqual(provider.parse_root_encryption(exact).value, "unencrypted")
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.parse_root_encryption(exact + b" ")
+
+
 class FilesystemProcessTests(unittest.TestCase):
+    source_command = ["/usr/bin/findmnt", "--json", "--bytes", "--real", "--uniq", "--output",
+                      "ID,SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL"]
+    source_fixture = "system-filesystem-process.py"
+
     @contextlib.contextmanager
     def source(self, mode="success", *arguments, signal_number=None, expect_cleanup=True):
         popen, processes = subprocess.Popen, []
         def launch(command, **options):
-            self.assertEqual(command, ["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "3",
-                "/usr/bin/findmnt", "--json", "--bytes", "--real", "--uniq", "--output",
-                "ID,SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL"])
+            self.assertEqual(command, ["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "3"] + self.source_command)
             self.assertEqual(options["env"], {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
             self.assertEqual(options["stdin"], subprocess.DEVNULL)
             self.assertTrue(options["start_new_session"])
             self.assertNotIn("preexec_fn", options)
             process = popen(command[:4] + ["/usr/bin/python3",
-                str(REPO / "tests/fixtures/system-filesystem-process.py"), mode, *arguments], **options)
+                str(REPO / "tests/fixtures" / self.source_fixture), mode, *arguments], **options)
             processes.append(process)
             if signal_number is not None:
                 signal.raise_signal(signal_number)
@@ -693,6 +828,112 @@ class FilesystemProcessTests(unittest.TestCase):
             thread.join(timeout=2)
             self.assertFalse(thread.is_alive())
             self.assertEqual(results[0].summary.status, "unavailable")
+            launch.assert_not_called()
+
+
+class RootEncryptionProcessTests(unittest.TestCase):
+    source_command = ["/usr/bin/lsblk", "--json", "--output", "NAME,TYPE,FSTYPE,MOUNTPOINTS,PKNAME"]
+    source_fixture = "system-encryption-process.py"
+    source = FilesystemProcessTests.source
+
+    def test_fixed_fresh_command_and_exact_shared_output_budget(self):
+        with self.source() as processes, mock.patch.dict(os.environ, {"LC_ALL": "invalid"}), \
+                mock.patch.object(provider, "open_journal_directory") as journal:
+            for _ in range(2):
+                state = provider.read_root_encryption()
+                self.assertEqual((state.status, state.value), ("available", "unencrypted"))
+            self.assertEqual(len(processes), 2)
+            journal.assert_not_called()
+        with self.source("exact-budget"):
+            self.assertEqual(provider.read_root_encryption().value, "unencrypted")
+
+    def test_bad_missing_and_excess_evidence_never_claims_encryption(self):
+        for mode in ("bad-json", "empty-json", "invalid-utf8", "stdout-overflow", "stderr-overflow", "combined-overflow"):
+            with self.subTest(mode=mode), self.source(mode):
+                state = provider.read_root_encryption()
+                self.assertEqual((state.status, state.value, state.error_code), ("partial", "unknown", "malformed"))
+
+    def test_exit_status_is_required_and_stderr_is_not_disclosed(self):
+        for status, code in ((1, "internal"), (125, "internal"), (126, "internal"),
+                             (127, "missing-provider"), (124, "timeout"), (137, "timeout")):
+            with self.source("exit", str(status)):
+                state = provider.read_root_encryption()
+                self.assertEqual((state.status, state.value, state.error_code), ("unavailable", "unknown", code))
+                self.assertNotIn("private diagnostic", repr(state))
+
+    def test_missing_command_and_read_denial_restore_handlers(self):
+        handlers = {n: signal.getsignal(n) for n in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        for error, status in ((FileNotFoundError(), "unavailable"), (PermissionError(errno.EACCES, "private"), "restricted")):
+            with mock.patch.object(provider.subprocess, "Popen", side_effect=error):
+                state = provider.read_root_encryption()
+            self.assertEqual((state.status, state.value), (status, "unknown"))
+            self.assertNotIn("private", repr(state))
+        self.assertEqual(handlers, {n: signal.getsignal(n) for n in handlers})
+
+    def test_monotonic_deadline_cleans_descendants_and_closed_pipes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pid_file = str(pathlib.Path(directory) / "child-pid")
+            started = time.monotonic()
+            with self.source("descendant", pid_file), mock.patch.object(provider.time, "time", side_effect=[9999, -9999]):
+                self.assertEqual(provider.read_root_encryption().error_code, "timeout")
+            self.assertLess(time.monotonic() - started, 5.5)
+            LocaleEnumerationTests().assert_process_stopped(int(pathlib.Path(pid_file).read_text()))
+        with self.source("closed-pipes"):
+            self.assertEqual(provider.read_root_encryption().error_code, "timeout")
+
+    def test_decoding_after_deadline_cannot_publish_a_result(self):
+        monotonic = time.monotonic
+        for malformed in (False, True):
+            offset = [0]
+            def decode(_data):
+                offset[0] = 4
+                if malformed:
+                    raise provider.SnapshotFailure("malformed", "Late failure")
+                return provider.InformationState("available", "encrypted", "Fixture")
+            with self.source(), mock.patch.object(provider.time, "monotonic", side_effect=lambda: monotonic() + offset[0]), \
+                    mock.patch.object(provider, "parse_root_encryption", side_effect=decode):
+                state = provider.read_root_encryption()
+            self.assertEqual((state.value, state.error_code), ("unknown", "timeout"))
+
+    def test_interruption_and_cleanup_failure_never_hide_termination(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            previous = signal.getsignal(number)
+            with self.source("closed-pipes", signal_number=number):
+                with self.assertRaises(SystemExit) as caught:
+                    provider.read_root_encryption()
+                self.assertEqual(caught.exception.code, 128 + number)
+            self.assertIs(signal.getsignal(number), previous)
+        for number in (None, signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            def cleanup(_process):
+                if number is not None:
+                    signal.raise_signal(number)
+                raise provider.SnapshotFailure("timeout", "Private cleanup detail", "unavailable")
+            with self.source(expect_cleanup=False), mock.patch.object(provider, "close_locale_process", side_effect=cleanup):
+                if number is not None:
+                    with self.assertRaises(SystemExit) as caught:
+                        provider.read_root_encryption()
+                    self.assertEqual(caught.exception.code, 128 + number)
+                else:
+                    state = provider.read_root_encryption()
+                    self.assertEqual((state.value, state.error_code), ("unknown", "timeout"))
+                    self.assertNotIn("Private cleanup detail", repr(state))
+
+    def test_closed_source_selector_and_unavailable_ownership_prevent_launch(self):
+        for kind in ("other", "/usr/bin/lsblk", [], None):
+            with mock.patch.object(provider.subprocess, "Popen") as launch, self.assertRaises(provider.SnapshotFailure):
+                provider.read_storage_information(kind)
+            launch.assert_not_called()
+        with mock.patch.object(provider.signal, "getsignal", return_value=signal.SIG_IGN), \
+                mock.patch.object(provider.subprocess, "Popen") as launch:
+            self.assertEqual(provider.read_root_encryption().status, "unavailable")
+            launch.assert_not_called()
+        result = []
+        with mock.patch.object(provider.subprocess, "Popen") as launch:
+            thread = threading.Thread(target=lambda: result.append(provider.read_root_encryption()))
+            thread.start()
+            thread.join(timeout=2)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(result[0].status, "unavailable")
             launch.assert_not_called()
 
 

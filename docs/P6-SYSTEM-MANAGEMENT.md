@@ -1052,9 +1052,29 @@ activation or interactive authorization. Call failures remain unavailable,
 malformed replies remain partial, and late replies cannot publish state or
 close the shared bus. Fifteen focused tests include a private-bus deadline and
 connection reuse; real read-only Fedora 44 probes reported all three sources
-available. Root encryption and shared screen-lock integration remain pending.
+available. Shared screen-lock integration remains pending.
 No new command, protocol record, Settings control, mutation, or polling loop is
 activated by this boundary.
+
+The internal root-encryption reader now uses the fixed lsblk columns above and
+shares the filesystem reader's closed command selector, three-second monotonic
+deadline, two-second cleanup bound, and combined stdout/stderr byte cap. Both
+parsers reject duplicate JSON keys and invalid JSON numbers before accepting
+evidence. Topology validation retains at most 1024 unique names, checks repeated
+device metadata, and walks parent relationships without recursive graph calls or
+exponential path enumeration. The nested tree establishes parent edges because
+lsblk reports mapper aliases in `NAME` but kernel names in `PKNAME`; observed
+kernel aliases must remain consistent and unambiguous, including kpartx mapper
+partitions. Every resolved root backing path must agree about encryption.
+Missing root filesystem metadata, unresolved backing dependencies, cycles,
+conflicting identities, and mixed paths remain `partial`/`unknown`. An unrelated
+unmounted loop device does not invalidate otherwise resolved root evidence.
+This reports block-device ancestry only, not file-level or hardware encryption.
+Twenty focused tests cover topology, byte/record caps, process failures,
+monotonic timeouts, interruption, and cleanup; seventeen filesystem regressions
+also passed. A read-only Fedora 44 probe returned available evidence within the
+deadline. No command, cumulative minor, UI, journal, mutation, or poller is
+activated by this preparation.
 
 No status probe accepts a path, unit, property, command, device, or service name
 from QML.
@@ -2788,6 +2808,7 @@ together without changing existing health or session-action contracts.
 
 ## Authoritative Interface References
 
+- util-linux lsblk name, parent-name, and device-type implementation: <https://github.com/util-linux/util-linux/blob/v2.42.2/misc-utils/lsblk.c>
 - PackageKit D-Bus API: <https://packagekit.freedesktop.org/gtk-doc/api-reference.html>
 - PackageKit transaction API: <https://packagekit.freedesktop.org/gtk-doc/Transaction.html>
 - systemd timedate1 API: <https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.timedate1.html>

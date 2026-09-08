@@ -510,9 +510,13 @@ Fedora 44 probe returned eight validated rows. Internal SELinux, Secure Boot,
 and firewalld status readers now use only fixed capped files or a bounded
 read-only systemd query. Fifteen focused tests, including a real firewalld
 deadline and discarded late reply, passed; a read-only Fedora 44 probe returned
-available states for all three sources. Root encryption, shared screen-lock
-status, protocol integration, visible controls, and combined installed
-qualification remain pending.
+available states for all three sources. The internal root-encryption reader now
+validates fixed capped lsblk topology, including mapper aliases and repeated
+multi-parent devices, and refuses incomplete or mixed root evidence. Twenty
+focused topology/process tests and all seventeen filesystem regressions passed;
+a read-only Fedora 44 probe returned available root-block evidence within its
+deadline. Shared screen-lock status, protocol integration, visible controls,
+and combined installed qualification remain pending.
 
 - [ ] Add event-driven or bounded system information and storage overview state
   without a new idle poller.

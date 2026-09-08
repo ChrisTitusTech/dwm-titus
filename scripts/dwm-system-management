@@ -43,6 +43,7 @@ HARDWARE_INFORMATION_FIELDS = {
 }
 FILESYSTEM_OUTPUT_BYTES = 2 * 1024 * 1024
 FILESYSTEM_RECORDS = 256
+ENCRYPTION_RECORDS = 1024
 SECURITY_FILES = {
     "selinux-runtime": ("/sys/fs/selinux/enforce", 1),
     "selinux-config": ("/etc/selinux/config", 64 * 1024),
@@ -516,8 +517,8 @@ class FilesystemInformation:
     rows: tuple[FilesystemRow, ...] = ()
 
 
-def parse_filesystem_information(data: bytes) -> FilesystemInformation:
-    """Validate the fixed findmnt JSON inventory and retain only unambiguous rows."""
+def parse_storage_json(data: bytes, label: str) -> dict:
+    """Decode capped storage JSON without ambiguous keys or non-JSON numbers."""
     def pairs(items):
         result = {}
         for key, value in items:
@@ -530,11 +531,19 @@ def parse_filesystem_information(data: bytes) -> FilesystemInformation:
         raise ValueError("Invalid JSON number")
 
     if len(data) > FILESYSTEM_OUTPUT_BYTES:
-        raise SnapshotFailure("malformed", "Filesystem output exceeds its byte limit")
+        raise SnapshotFailure("malformed", f"{label} output exceeds its byte limit")
     try:
         document = json.loads(data.decode("utf-8"), object_pairs_hook=pairs, parse_constant=invalid_constant)
     except (ValueError, UnicodeError, RecursionError) as error:
-        raise SnapshotFailure("malformed", "Filesystem output is not valid bounded JSON") from error
+        raise SnapshotFailure("malformed", f"{label} output is not valid bounded JSON") from error
+    if not isinstance(document, dict):
+        raise SnapshotFailure("malformed", f"{label} inventory is malformed")
+    return document
+
+
+def parse_filesystem_information(data: bytes) -> FilesystemInformation:
+    """Validate the fixed findmnt JSON inventory and retain only unambiguous rows."""
+    document = parse_storage_json(data, "Filesystem")
     if not isinstance(document, dict) or not isinstance(document.get("filesystems"), list):
         raise SnapshotFailure("malformed", "Filesystem inventory is missing")
     pending = list(reversed(document["filesystems"]))
@@ -588,6 +597,121 @@ def parse_filesystem_information(data: bytes) -> FilesystemInformation:
     summary = (InformationState("partial", "unknown", "Filesystem inventory is incomplete", "malformed") if partial
         else information_number(len(ordered), "Mounted real filesystems"))
     return FilesystemInformation(summary, ordered)
+
+
+def parse_root_encryption(data: bytes) -> InformationState:
+    """Require a complete root-device ancestry; ambiguous evidence stays unknown."""
+    def malformed():
+        return SnapshotFailure("malformed", "Root block-device topology is incomplete or inconsistent")
+
+    def token(value):
+        if (not isinstance(value, str) or not value or len(value) > MAX_TEXT_BYTES
+                or not value.isprintable()):
+            raise malformed()
+        try:
+            if len(value.encode("utf-8")) > MAX_TEXT_BYTES:
+                raise malformed()
+        except UnicodeError as error:
+            raise malformed() from error
+        return value
+
+    document = parse_storage_json(data, "Root encryption")
+    if not isinstance(document.get("blockdevices"), list):
+        raise malformed()
+    pending = [(item, None) for item in document["blockdevices"]]
+    nodes, parents, aliases, alias_owners = {}, {}, {}, {}
+    roots, top_level = set(), set()
+    while pending:
+        item, parent = pending.pop()
+        if not isinstance(item, dict) or not all(key in item for key in ("name", "type", "fstype", "mountpoints", "pkname")):
+            raise malformed()
+        name, device_type = token(item["name"]), token(item["type"])
+        fstype = None if item["fstype"] is None else token(item["fstype"])
+        mounts = item["mountpoints"]
+        children = item.get("children", [])
+        if not isinstance(mounts, list) or not isinstance(children, list):
+            raise malformed()
+        mounts = frozenset(token(mount) for mount in mounts if mount is not None)
+        metadata = (device_type, fstype, mounts)
+        if name in nodes:
+            if nodes[name] != metadata:
+                raise malformed()
+        else:
+            if len(nodes) >= ENCRYPTION_RECORDS:
+                raise malformed()
+            nodes[name] = metadata
+            parents[name] = set()
+        if "/" in mounts:
+            roots.add(name)
+        # lsblk NAME uses a mapper alias, but PKNAME uses the parent's kernel
+        # name. The nested tree supplies the edge; each observed kernel alias
+        # must identify exactly one consistent parent, including repeated rows.
+        if parent is None:
+            if item["pkname"] is not None:
+                raise malformed()
+            top_level.add(name)
+        else:
+            kernel_parent = token(item["pkname"])
+            if (parent in aliases and aliases[parent] != kernel_parent
+                    or kernel_parent in alias_owners and alias_owners[kernel_parent] != parent):
+                raise malformed()
+            aliases[parent] = kernel_parent
+            alias_owners[kernel_parent] = parent
+            parents[name].add(parent)
+        pending.extend((child, name) for child in children)
+    if not roots:
+        raise malformed()
+    for name, (device_type, _fstype, _mounts) in nodes.items():
+        if name in top_level and parents[name]:
+            raise malformed()
+        if name in aliases and aliases[name] != name:
+            # Only device-mapper nodes have a distinct NAME and dm-N KNAME.
+            if (re.fullmatch(r"dm-[0-9]+", aliases[name]) is None
+                    or device_type in ("disk", "rom", "loop")
+                    or aliases[name] in nodes):
+                raise malformed()
+    # Resolve the entire graph iteratively. Each node is visited once, so
+    # repeated multi-parent devices do not cause exponential path enumeration.
+    visiting, resolved = set(), {}
+    for start in nodes:
+        stack = [(start, False)]
+        while stack:
+            name, finishing = stack.pop()
+            if name in resolved:
+                continue
+            if not finishing:
+                if name in visiting:
+                    raise malformed()
+                visiting.add(name)
+                stack.append((name, True))
+                stack.extend((parent, False) for parent in parents[name])
+                continue
+            visiting.remove(name)
+            device_type, fstype, _mounts = nodes[name]
+            if not parents[name]:
+                # lsblk cannot establish a loop device's backing-file ancestry
+                # or the missing dependencies of a top-level mapper/partition.
+                paths = 1 if device_type in ("disk", "rom") else 0
+            else:
+                paths = 0
+                for parent in parents[name]:
+                    if resolved[parent] == 0:
+                        paths = 0
+                        break
+                    paths |= resolved[parent]
+            if paths and (device_type == "crypt" or fstype == "crypto_LUKS"):
+                # Every resolved backing path crosses this encryption layer.
+                paths = 2
+            resolved[name] = paths
+    evidence = 0
+    for name in roots:
+        if resolved[name] == 0 or nodes[name][1] in (None, "crypto_LUKS"):
+            raise malformed()
+        evidence |= resolved[name]
+    if evidence not in (1, 2):
+        raise malformed()
+    return InformationState("available", "encrypted" if evidence == 2 else "unencrypted",
+        "Resolved root block-device ancestry only; file-level and hardware encryption are not assessed")
 
 
 def validate_timezone_name(value: object) -> str:
@@ -2393,12 +2517,27 @@ def read_locale_choices() -> tuple[str, ...]:
                 raise SystemExit(128 + interrupted)
 
 
-def read_filesystem_information() -> FilesystemInformation:
-    """Collect only the fixed findmnt inventory with bounded owned-group cleanup."""
+def read_storage_information(kind: str) -> FilesystemInformation | InformationState:
+    """Collect one closed storage source with bounded owned-group cleanup."""
+    if kind == "filesystem":
+        label = "Filesystem"
+        command = ["/usr/bin/findmnt", "--json", "--bytes", "--real", "--uniq", "--output",
+                   "ID,SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL"]
+        parse = parse_filesystem_information
+    elif kind == "root-encryption":
+        label = "Root encryption"
+        command = ["/usr/bin/lsblk", "--json", "--output", "NAME,TYPE,FSTYPE,MOUNTPOINTS,PKNAME"]
+        parse = parse_root_encryption
+    else:
+        raise SnapshotFailure("malformed", "Unknown storage information source")
+
+    def unknown(error):
+        state = information_unknown(error)
+        return FilesystemInformation(state) if kind == "filesystem" else state
+
     if (threading.current_thread() is not threading.main_thread()
             or signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL):
-        return FilesystemInformation(information_unknown(
-            SnapshotFailure("internal", "Filesystem process ownership is unavailable", "unavailable")))
+        return unknown(SnapshotFailure("internal", f"{label} process ownership is unavailable", "unavailable"))
     process = None
     handlers = {}
     interrupted = 0
@@ -2411,7 +2550,7 @@ def read_filesystem_information() -> FilesystemInformation:
         if interrupted:
             raise SystemExit(128 + interrupted)
         if time.monotonic() >= deadline:
-            raise SnapshotFailure("timeout", "Filesystem enumeration timed out", "unavailable")
+            raise SnapshotFailure("timeout", f"{label} enumeration timed out", "unavailable")
 
     try:
         try:
@@ -2420,13 +2559,12 @@ def read_filesystem_information() -> FilesystemInformation:
             deadline = time.monotonic() + 3
             check_deadline()
             try:
-                process = subprocess.Popen(["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "3",
-                    "/usr/bin/findmnt", "--json", "--bytes", "--real", "--uniq", "--output",
-                    "ID,SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL"], stdin=subprocess.DEVNULL,
+                process = subprocess.Popen(["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "3"] + command,
+                    stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
                     env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
             except FileNotFoundError as error:
-                raise SnapshotFailure("missing-provider", "Filesystem command is unavailable", "unavailable") from error
+                raise SnapshotFailure("missing-provider", f"{label} command is unavailable", "unavailable") from error
             output = bytearray()
             received = 0
             with selectors.DefaultSelector() as selector:
@@ -2449,18 +2587,18 @@ def read_filesystem_information() -> FilesystemInformation:
                             continue
                         received += len(chunk)
                         if received > FILESYSTEM_OUTPUT_BYTES:
-                            raise SnapshotFailure("malformed", "Filesystem output exceeds its byte limit")
+                            raise SnapshotFailure("malformed", f"{label} output exceeds its byte limit")
                         if key.fileobj is process.stdout:
                             output.extend(chunk)
             exit_code = status.si_status if status.si_code == os.CLD_EXITED else -status.si_status
             if exit_code in (124, 137, -signal.SIGKILL):
-                raise SnapshotFailure("timeout", "Filesystem enumeration timed out", "unavailable")
+                raise SnapshotFailure("timeout", f"{label} enumeration timed out", "unavailable")
             if exit_code == 127:
-                raise SnapshotFailure("missing-provider", "Filesystem command is unavailable", "unavailable")
+                raise SnapshotFailure("missing-provider", f"{label} command is unavailable", "unavailable")
             if exit_code != 0:
-                raise SnapshotFailure("internal", "Filesystem enumeration failed", "unavailable")
+                raise SnapshotFailure("internal", f"{label} enumeration failed", "unavailable")
             try:
-                result = parse_filesystem_information(bytes(output))
+                result = parse(bytes(output))
             finally:
                 check_deadline()
         finally:
@@ -2469,7 +2607,7 @@ def read_filesystem_information() -> FilesystemInformation:
                     try:
                         close_locale_process(process)
                     except SnapshotFailure as error:
-                        raise SnapshotFailure(error.code, "Filesystem process cleanup could not be confirmed",
+                        raise SnapshotFailure(error.code, f"{label} process cleanup could not be confirmed",
                                               error.status) from error
             finally:
                 for number, handler in handlers.items():
@@ -2477,10 +2615,20 @@ def read_filesystem_information() -> FilesystemInformation:
                 if interrupted:
                     raise SystemExit(128 + interrupted)
     except SnapshotFailure as error:
-        return FilesystemInformation(information_unknown(error))
+        return unknown(error)
     except OSError as error:
-        return FilesystemInformation(information_unknown(error))
+        return unknown(error)
     return result
+
+
+def read_filesystem_information() -> FilesystemInformation:
+    """Read the fixed filesystem inventory, never a caller-selected command."""
+    return read_storage_information("filesystem")
+
+
+def read_root_encryption() -> InformationState:
+    """Read root block-encryption evidence without requesting writes or elevation."""
+    return read_storage_information("root-encryption")
 
 
 def trusted_delegated_executable(path: str, basename: str) -> str:
