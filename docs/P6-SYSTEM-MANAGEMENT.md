@@ -2325,6 +2325,50 @@ must avoid turning these arrivals into repeated cumulative PackageKit reads,
 without dropping genuine concurrent time changes. This CLI boundary does not
 enable that sampler or alter the passive monitor contract.
 
+Two opt-in time discovery commands are now implemented for the upcoming scoped
+reconciliation. Neither is connected to Settings yet, and `watch-regional time`
+keeps its existing protocol. The fixed no-argument `time-status` command makes
+one `Properties.GetAll` call to timedate1 through the existing strict regional
+reader, under its ten-second aggregate connection/reply/decoding deadline:
+
+```text
+time-status-protocol<TAB>1<TAB>0
+time<TAB>TIMEZONE<TAB>CAN_NTP<TAB>NTP_ENABLED<TAB>SYNCHRONIZED
+complete<TAB>time-status
+```
+
+The timezone uses the existing validated identity grammar; each boolean is
+exactly `yes` or `no`. A failure replaces the complete `time` row with
+`error<TAB>time-status<TAB>CODE<TAB>DETAIL`, using the same six fixed error codes
+and printable 512-byte detail limit as `ntp-sample`. The whole stream is at most
+1024 bytes. Success returns 0, a typed failure returns 1, and extra arguments
+return 2. It shares the finite nonblocking output and cooperative signal
+boundary: missing stdout, a short/full/closed write, or an explicit stop cannot
+report success. Unused stderr need not be writable. No journal, PackageKit,
+mutation, clock change, or timer-driven discovery is added. This full-state
+command is for event-driven reconciliation, not the 30-second sampler; that
+sampler must still read only `CanNTP` and `NTPSynchronized`.
+
+The fixed no-argument `watch-time` command uses the same passive, authenticated
+two-match setup, initial/final owner barriers, bounded output, and shutdown as
+`watch-regional time`. Its records are `time-event<TAB>ready`,
+`time-event<TAB>changed`, and `time-event<TAB>owner-arrived`. Before readiness,
+matching properties and owner arrivals coalesce into the existing single
+`changed` after `ready`, preserving initialization reconciliation. Once ready,
+an authenticated nonempty owner arrival or replacement emits `owner-arrived`;
+relevant properties still emit `changed`. Departure stays quiet and clears the
+pinned sender. Untrusted, stale-owner, and unrelated signals cannot produce
+either notification. The monitor makes no platform read or activation call.
+
+An owner-arrival record is uncertainty, not certification that configuration
+is unchanged. The eventual consumer must temporarily gate admission, reconcile
+bounded time state, preserve genuine concurrent changes, and respect the
+existing two-read settling limit. It must not simply ignore arrivals while a
+sample or regional preview is running. The new interfaces do not yet implement
+that consumer behavior or change existing confirmation invalidation. Private-bus
+fixtures exercise the new passive monitor lifecycle, fixed time-status reads,
+malformed/denied/timeout results, late replies, and all three handled signals.
+
 The fixed `dwm-system-management watch-accounts` command is also implemented.
 It accepts no arguments and emits only `accounts-event<TAB>ready` and
 `accounts-event<TAB>changed`. It shares the authenticated setup lifetime above:

@@ -19,6 +19,7 @@ calls = []
 held = []
 registrations = []
 after_stalled = None
+stalled_count = 2
 properties = Gio.DBusNodeInfo.new_for_xml("""
 <node><interface name="org.freedesktop.DBus.Properties">
 <method name="GetAll"><arg type="s" direction="in"/><arg type="a{sv}" direction="out"/></method>
@@ -45,7 +46,7 @@ def called(_bus, _sender, path, interface, method, args, invocation):
         invocation.return_dbus_error("org.freedesktop.DBus.Error.AccessDenied", "fixture denial")
     elif mode == "stall":
         held.append(invocation)
-        if len(held) == 2 and after_stalled is not None:
+        if len(held) == stalled_count and after_stalled is not None:
             after_stalled()
     elif method == "GetAll":
         invocation.return_value(GLib.Variant("(a{sv})", ({
@@ -64,14 +65,15 @@ def called(_bus, _sender, path, interface, method, args, invocation):
         invocation.return_value(GLib.Variant("(as)", (["UTC", "Etc/UTC"],)))
 
 
-def interrupted_command(signum):
+def interrupted_command(signum, command="ntp-sample"):
     """Stop the actual CLI while Gio is waiting, with a private forced-stop bound."""
-    global after_stalled
+    global after_stalled, stalled_count
+    stalled_count = 1 if command == "time-status" else 2
     assert not held
     loop = GLib.MainLoop()
     result = {}
     timers = {"stop": 0, "deadline": 0}
-    child = Gio.Subprocess.new(["/usr/bin/python3", sys.argv[1], "ntp-sample"],
+    child = Gio.Subprocess.new(["/usr/bin/python3", sys.argv[1], command],
         Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
 
     def terminate():
@@ -103,7 +105,7 @@ def interrupted_command(signum):
         assert not result.get("expired", False), result
         assert child.get_if_exited() and child.get_exit_status() == 1, result
         assert result["output"][1:] == ("", ""), result
-        assert len(held) == 2
+        assert len(held) == stalled_count
     finally:
         after_stalled = None
         for timer in timers.values():
@@ -113,7 +115,7 @@ def interrupted_command(signum):
             child.force_exit()
             child.wait(None)
         for invocation in held:
-            invocation.return_value(GLib.Variant("(v)", (GLib.Variant("b", False),)))
+            invocation.return_dbus_error("org.freedesktop.DBus.Error.NoReply", "Late fixture reply")
         held.clear()
 
 
@@ -144,7 +146,7 @@ try:
     assert [call[2:] for call in calls[-2:]] == [
         ("Get", ("org.freedesktop.timedate1", "CanNTP")),
         ("Get", ("org.freedesktop.timedate1", "NTPSynchronized"))]
-    for arguments in (["ntp-sample"], ["regional-choices", "timezone"],
+    for arguments in (["ntp-sample"], ["time-status"], ["regional-choices", "timezone"],
                       ["regional-preview", "timezone-set", "Etc/UTC"],
                       ["regional-preview", "ntp-set", "enabled"],
                       ["regional-preview", "locale-set", "LANG=C"]):
@@ -160,6 +162,10 @@ try:
     assert "error\tntp-sample\tmalformed\t" in output.getvalue()
     assert "\nsample\t" not in output.getvalue()
     with contextlib.redirect_stdout(io.StringIO()) as output:
+        assert provider["main"](["time-status"]) == 1
+    assert "error\ttime-status\tmalformed\t" in output.getvalue()
+    assert "\ntime\t" not in output.getvalue()
+    with contextlib.redirect_stdout(io.StringIO()) as output:
         assert provider["main"](["regional-preview", "ntp-set", "enabled"]) == 1
     assert "error\tregional\tmalformed\t" in output.getvalue()
     assert "\npreview\t" not in output.getvalue()
@@ -169,6 +175,9 @@ try:
     with contextlib.redirect_stdout(io.StringIO()) as output:
         assert provider["main"](["ntp-sample"]) == 1
     assert "error\tntp-sample\tpermission-denied\t" in output.getvalue()
+    with contextlib.redirect_stdout(io.StringIO()) as output:
+        assert provider["main"](["time-status"]) == 1
+    assert "error\ttime-status\tpermission-denied\t" in output.getvalue()
     mode = "normal"
     assert name_call("ReleaseName", "org.freedesktop.locale1") == 1
     failure("locale-state", "missing-provider")
@@ -196,8 +205,22 @@ try:
     mode = "normal"
     assert provider["NtpRead"]().run() == provider["NtpSample"](True, True)
     mode = "stall"
+    started = time.monotonic()
+    with contextlib.redirect_stdout(io.StringIO()) as output:
+        assert provider["main"](["time-status"]) == 1
+    assert "error\ttime-status\ttimeout\t" in output.getvalue()
+    assert "\ntime\t" not in output.getvalue()
+    assert 9.5 <= time.monotonic() - started < 15
+    assert len(held) == 1
+    held.pop().return_dbus_error("org.freedesktop.DBus.Error.NoReply", "Late fixture reply")
+    mode = "normal"
+    with contextlib.redirect_stdout(io.StringIO()) as output:
+        assert provider["main"](["time-status"]) == 0
+    assert output.getvalue() == "time-status-protocol\t1\t0\ntime\tUTC\tyes\tno\tyes\ncomplete\ttime-status\n"
+    mode = "stall"
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         interrupted_command(signum)
+        interrupted_command(signum, "time-status")
     assert all(call[2] in {"Get", "GetAll", "ListTimezones"} for call in calls)
     print("Private-bus regional reads: PASS (typed replies, readonly preflight, denial, absence, deadline, late reply, interruption)")
 finally:

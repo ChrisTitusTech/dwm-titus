@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add read-only time discovery interfaces for scoped reconciliation: a bounded
+  time-status result and a passive monitor that distinguishes service arrivals
+  from property changes. Existing Settings activation is unchanged.
+
 - Stop native regional observation cooperatively on TERM, INT, or HUP. Retain
   durable interrupted recovery for sent changes without claiming cancellation
   or waiting on another service read after an explicit local stop.

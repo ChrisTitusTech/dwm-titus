@@ -2794,6 +2794,72 @@ class RegionalEventMonitorTests(unittest.TestCase):
             self.assertEqual(result.stdout, kind + " private-bus event monitor: PASS\n")
 
 
+class TimeEventMonitorTests(unittest.TestCase):
+    owner = RegionalEventMonitorTests.owner
+    properties = RegionalEventMonitorTests.properties
+
+    def monitor(self):
+        _regional, emitted, gio, glib, unix = RegionalEventMonitorTests().monitor()
+        monitor = provider.TimeEventMonitor(gio, glib, unix, emitted.append)
+        monitor.deadline = time.monotonic() + 10
+        monitor.deadline_source = 7
+        monitor.connection = gio.bus_get_finish.return_value
+        return monitor, emitted, gio, glib
+
+    def test_arrivals_are_distinct_but_departure_and_untrusted_signals_are_quiet(self):
+        monitor, emitted, _gio, glib = self.monitor()
+        monitor.ready, monitor.owner = True, ":1.2"
+        self.owner(monitor, glib, ":1.2", "")
+        self.properties(monitor, glib, ["NTP"])
+        self.owner(monitor, glib, "", ":1.8", sender=":1.8")
+        self.assertEqual(emitted, [])
+        self.owner(monitor, glib, "", ":1.3")
+        self.owner(monitor, glib, ":1.3", ":1.4")
+        self.assertEqual(emitted, ["time-event\towner-arrived"] * 2)
+        self.properties(monitor, glib, ["NTP"], sender=":1.3")
+        self.properties(monitor, glib, ["Timezone"], sender=":1.4")
+        self.properties(monitor, glib, invalidated=["NTPSynchronized"], sender=":1.4")
+        self.assertEqual(emitted[2:], ["time-event\tchanged"] * 2)
+        monitor.stop(0)
+        self.owner(monitor, glib, ":1.4", ":1.5")
+        self.assertEqual(len(emitted), 4)
+
+    def test_setup_arrivals_and_properties_coalesce_without_losing_owner_epoch(self):
+        monitor, emitted, _gio, glib = self.monitor()
+        self.owner(monitor, glib, "", ":1.2")
+        self.properties(monitor, glib, ["NTP"])
+        self.owner(monitor, glib, ":1.2", ":1.3")
+        self.assertEqual(emitted, [])
+        monitor.connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        monitor.owner_resolved(monitor.connection, object(), 0)
+        self.assertEqual(monitor.owner, ":1.3")
+        self.assertEqual(emitted, ["time-event\tready", "time-event\tchanged"])
+        self.assertFalse(monitor.dirty)
+
+    def test_failed_arrival_output_stops_monitor(self):
+        monitor, _emitted, _gio, glib = self.monitor()
+        monitor.ready = True
+        monitor.emit = mock.Mock(side_effect=BlockingIOError())
+        self.owner(monitor, glib, "", ":1.2")
+        self.assertTrue(monitor.stopped)
+        self.assertEqual(monitor.exit_code, 1)
+
+    def test_fixed_cli_and_real_private_bus_lifecycle(self):
+        with mock.patch.object(provider, "watch_service_events", return_value=0) as watch, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(provider.main(["watch-time"]), 0)
+            for args in (["time"], ["locale"], ["--system"], ["extra", "argument"]):
+                self.assertEqual(provider.main(["watch-time", *args]), 2)
+            watch.assert_called_once_with("time-discovery")
+            backend.assert_not_called()
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-update-events-bus.py"), str(PROVIDER_PATH), "time-discovery"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "time-discovery private-bus event monitor: PASS\n")
+
+
 class AccountEventMonitorTests(unittest.TestCase):
     def monitor(self):
         _regional, emitted, gio, glib, unix = RegionalEventMonitorTests().monitor()
@@ -3159,6 +3225,123 @@ class NtpReadTests(unittest.TestCase):
             connection.call_finish.reset_mock(side_effect=True)
             read.replied(connection, object(), "NTPSynchronized")
             connection.call_finish.assert_not_called()
+
+
+class TimeStatusCommandTests(unittest.TestCase):
+    header = "time-status-protocol\t1\t0\n"
+    complete = "complete\ttime-status\n"
+
+    def test_exact_tuple_and_strict_validation(self):
+        for can_ntp in (False, True):
+            for enabled in (False, True):
+                for synchronized in (False, True):
+                    state = provider.RegionalTimeState("Etc/UTC", can_ntp, enabled, synchronized)
+                    with mock.patch.object(provider, "RegionalRead") as reader:
+                        reader.return_value.run.return_value = state
+                        output, code = provider.time_status_output()
+                    reader.assert_called_once_with("time-state")
+                    self.assertEqual(code, 0)
+                    self.assertEqual(output, self.header + "time\tEtc/UTC\t"
+                        + "\t".join("yes" if value else "no" for value in (can_ntp, enabled, synchronized))
+                        + "\n" + self.complete)
+        for state in (None, ("UTC", True, True, True),
+                      provider.RegionalTimeState("UTC", 1, True, True),
+                      provider.RegionalTimeState("UTC", True, "yes", True),
+                      provider.RegionalTimeState("UTC", True, True, 0),
+                      provider.RegionalTimeState("UTC\nrecord", True, True, True)):
+            with mock.patch.object(provider, "RegionalRead") as reader:
+                reader.return_value.run.return_value = state
+                output, code = provider.time_status_output()
+            self.assertEqual(code, 1)
+            self.assertIn("\nerror\ttime-status\tmalformed\t", output)
+            self.assertNotIn("\ntime\t", output)
+
+    def test_scoped_error_bounds_and_fixed_cli(self):
+        for error_code in (*sorted(provider.NTP_SAMPLE_ERROR_CODES), "other"):
+            with mock.patch.object(provider, "RegionalRead", side_effect=provider.SnapshotFailure(
+                    error_code, "failure\n\t\x00\ud800" + "é" * 600)):
+                output, code = provider.time_status_output()
+            self.assertEqual(code, 1)
+            self.assertEqual(len(output.splitlines()), 3)
+            self.assertTrue(output.startswith(self.header + "error\ttime-status\t"
+                + ("internal" if error_code == "other" else error_code) + "\t"))
+            self.assertTrue(output.endswith(self.complete))
+            self.assertLessEqual(len(output.encode()), provider.TIME_STATUS_STREAM_BYTES)
+        with mock.patch.object(provider, "RegionalRead") as reader, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                mock.patch.object(provider, "open_journal_directory") as journal, \
+                mock.patch.object(provider, "native_command") as mutation, \
+                contextlib.redirect_stdout(io.StringIO()) as output, \
+                contextlib.redirect_stderr(io.StringIO()):
+            reader.return_value.run.return_value = provider.RegionalTimeState("UTC", True, False, True)
+            self.assertEqual(provider.main(["time-status"]), 0)
+            self.assertEqual(output.getvalue(), self.header + "time\tUTC\tyes\tno\tyes\n" + self.complete)
+            for args in (["time"], ["--system"], ["Timezone"], ["extra", "argument"]):
+                self.assertEqual(provider.main(["time-status", *args]), 2)
+            reader.assert_called_once_with("time-state")
+            backend.assert_not_called()
+            journal.assert_not_called()
+            mutation.assert_not_called()
+
+    def test_output_failure_and_interruption_never_report_success(self):
+        for failure in (0, 1, BlockingIOError(), BrokenPipeError(), InterruptedError()):
+            writer = mock.Mock(side_effect=failure) if isinstance(failure, OSError) else mock.Mock(return_value=failure)
+            with mock.patch.object(provider, "control_output_writers", return_value=contextlib.nullcontext((writer, None))), \
+                    mock.patch.object(provider, "RegionalRead") as reader:
+                reader.return_value.run.return_value = provider.RegionalTimeState("UTC", True, False, True)
+                self.assertEqual(provider.main(["time-status"]), 1)
+            writer.assert_called_once_with((self.header + "time\tUTC\tyes\tno\tyes\n" + self.complete).encode())
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            previous = signal.getsignal(signum)
+            with mock.patch.object(provider, "RegionalRead") as reader, \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                def stop():
+                    signal.raise_signal(signum)
+                    signal.raise_signal(signum)
+                    return provider.RegionalTimeState("UTC", True, False, True)
+                reader.return_value.run.side_effect = stop
+                self.assertEqual(provider.main(["time-status"]), 1)
+                self.assertEqual(output.getvalue(), "")
+                reader.return_value.GLib.idle_add.assert_called_once()
+                reader.return_value.GLib.source_remove.assert_called_once()
+            self.assertIs(signal.getsignal(signum), previous)
+
+    def test_actual_command_handles_missing_output_and_unused_diagnostics(self):
+        code = """
+import os, runpy, sys
+from unittest import mock
+provider = runpy.run_path(sys.argv[1], run_name="time_output_fixture")
+mode = sys.argv[2]
+descriptor = 2 if mode.startswith("stderr") else 1
+if mode.endswith("readonly"):
+    source = os.open("/dev/null", os.O_RDONLY)
+    os.dup2(source, descriptor)
+    if source != descriptor:
+        os.close(source)
+elif mode.endswith("stream-closed"):
+    sys.stdout.close()
+else:
+    os.close(descriptor)
+    if mode.endswith("none"):
+        if descriptor == 1:
+            sys.stdout = None
+        else:
+            sys.stderr = None
+output = "time-status-protocol\\t1\\t0\\ntime\\tUTC\\tyes\\tno\\tyes\\ncomplete\\ttime-status\\n"
+reader = (lambda: (output, 0)) if descriptor == 2 else mock.Mock(side_effect=AssertionError("Read without output"))
+with mock.patch.dict(provider["main"].__globals__, time_status_output=reader):
+    raise SystemExit(provider["main"](["time-status"]))
+"""
+        for mode in ("stdout-closed", "stdout-readonly", "stdout-none", "stdout-stream-closed",
+                     "stderr-closed", "stderr-readonly", "stderr-none"):
+            with self.subTest(mode=mode):
+                result = subprocess.run([sys.executable, "-c", code, str(PROVIDER_PATH), mode],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+                available = mode.startswith("stderr")
+                self.assertEqual(result.returncode, 0 if available else 1)
+                self.assertEqual(result.stdout,
+                    (self.header + "time\tUTC\tyes\tno\tyes\n" + self.complete).encode() if available else b"")
+                self.assertEqual(result.stderr, b"")
 
 
 class NtpSampleCommandTests(unittest.TestCase):

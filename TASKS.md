@@ -428,6 +428,15 @@ private-bus child cases cover all three actions and TERM/INT/HUP
 before and after dispatch, without changing host regional settings. Combined
 installed graphical qualification remains pending.
 
+Time discovery now has separate fixed `time-status` and `watch-time` commands.
+The former reads one complete bounded time tuple without PackageKit or journal
+access. The latter distinguishes authenticated owner arrival from property
+change after readiness, while preserving setup reconciliation and quiet idle
+departure. The existing `watch-regional` protocol and Settings subscriptions are
+unchanged. These interfaces prepare the visible NTP sampler's scoped
+reconciliation; its UI integration and combined installed qualification remain
+pending.
+
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
 confirmation warning that a sent change cannot be canceled. Local cancellation
