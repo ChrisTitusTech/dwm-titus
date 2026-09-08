@@ -148,7 +148,7 @@ PanelWindow {
                     id: clockLabel
 
                     anchors.centerIn: parent
-                    text: Qt.formatDateTime(root.clock.date, "ddd dd MMM - HH:mm")
+                    text: root.clock.panelText
                     color: Theme.textStrong
                     font.bold: true
                 }

@@ -9,6 +9,7 @@ Flickable {
 
     required property var systemManagementModel
     required property var capabilities
+    property string clockText: ""
     contentWidth: width
     contentHeight: content.implicitHeight
     clip: true
@@ -399,6 +400,14 @@ Flickable {
                     }
                 }
             }
+        }
+
+        PlainText {
+            objectName: "systemLocalTime"
+            Layout.fillWidth: true
+            text: root.clockText.length > 0 ? "Local date and time: " + root.clockText
+                : "Local date and time unavailable"
+            wrapMode: Text.WordWrap
         }
 
         SystemRegionalControls {

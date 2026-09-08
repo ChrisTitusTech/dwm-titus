@@ -386,7 +386,13 @@ explicit sent-action cancellation warnings, and passive Cancel focus restoration
 The private UI matrix covers three sizes, maximum catalogs, denied/unsupported
 outcomes, uncertain output recovery, and malformed/denied reads. Actual keyboard
 and screenshot evidence is recorded in `docs/P6-REGIONAL-UI-EVIDENCE.md`.
-Clock refresh, NTP sampling, and combined installed qualification remain pending.
+The panel and Settings now share one minute-level clock. Available published
+timezone changes refresh Qt's timezone handling and both formatted displays,
+using a numeric timestamp retained at native clock ticks rather than rereading
+cached local wall-clock fields. Private Fedora X11 timezone-namespace checks
+preserved the exact instant across UTC/Chicago changes and qualified the next
+minute tick. See `docs/P6-CLOCK-EVIDENCE.md`. NTP sampling and combined installed
+qualification remain pending.
 
 The root now provides internal confirmation for the four fixed delegated tools.
 It requires fresh owning-provider and journal evidence, captures snapshot and
@@ -399,7 +405,7 @@ focus reveal and Cancel focus restoration preserve keyboard access at small
 window sizes. The private UI matrix covers all four tools at three sizes with
 success, denial, unsupported, and maximum-inventory scenarios. Keyboard and
 screenshot evidence is recorded in `docs/P6-DELEGATE-UI-EVIDENCE.md`.
-Clock/NTP refresh and combined installed qualification remain pending.
+Visible NTP sampling and combined installed qualification remain pending.
 
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit

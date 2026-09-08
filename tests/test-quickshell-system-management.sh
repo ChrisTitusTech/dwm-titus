@@ -13,6 +13,19 @@ shell=$repo/config/quickshell/shell.qml
 
 test -f "$model"
 test -f "$pane"
+clock=$repo/config/quickshell/core/ClockModel.qml
+test -f "$clock"
+[ "$(grep -Fc 'SystemClock {' "$clock")" -eq 1 ]
+grep -Fq 'precision: SystemClock.Minutes' "$clock"
+grep -Fq 'Date.timeZoneUpdated()' "$clock"
+grep -Fq 'ClockModel {' "$shell"
+grep -Fq 'timezoneState: systemManagementModel.nativeStates.timezone || null' "$shell"
+grep -Fq 'text: root.clock.panelText' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'clockText: root.clock.settingsText' "$settings_window"
+if grep -Eq 'Process \{|IpcHandler|Timer \{' "$clock" || grep -Fq 'SystemClock {' "$shell"; then
+	printf 'The shared clock must reuse one minute source without helper polling or IPC.\n' >&2
+	exit 1
+fi
 grep -Fq 'function systemManagementCommand(action, args)' "$commands"
 grep -Fq 'function terminatingCheckedCommand(command)' "$commands"
 grep -Fq 'trap terminate HUP INT TERM' "$commands"

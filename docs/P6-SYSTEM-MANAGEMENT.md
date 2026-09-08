@@ -653,8 +653,20 @@ Sixty-six private UI cases cover three actions at three window sizes with
 success, denial, unsupported results, uncertain output/replay, maximum catalogs,
 denied reads, and malformed reads, plus the NTP disable choice at all sizes.
 `docs/P6-REGIONAL-UI-EVIDENCE.md` records real
-X11 keyboard and screenshot checks. Clock invalidation, NTP synchronization
-sampling, and real graphical authorization remain separate pending work.
+X11 keyboard and screenshot checks. NTP synchronization sampling and real
+graphical authorization remain separate pending work.
+
+The panel and System Settings share one `ClockModel` with one native minute-level
+`SystemClock`. Its only timezone input is the provider's published available
+timezone identity, never a selected choice or provisional action target. A new
+identity calls Qt's `Date.timeZoneUpdated()` and explicitly refreshes both display
+strings. A numeric timestamp is captured at native clock ticks: rereading the
+source's cached local wall-clock fields after a timezone change can reinterpret
+them in the new zone and shift the instant. Ordinary ticks refresh the displays;
+unavailable, partial, unknown, or unchanged identities do not trigger timezone
+refresh. No helper, IPC entry, extra timer, or closed-pane discovery is added.
+Private Fedora X11 evidence is recorded in `P6-CLOCK-EVIDENCE.md`; combined
+installed qualification remains pending.
 
 Each preview makes fresh fixed reads: timezone state and timezone choices, NTP
 state, or locale state and installed locale choices. Service reads retain their
@@ -676,8 +688,8 @@ A mismatch requires new confirmation and sends no mutation. Visible confirmation
 and monitored invalidation remain mandatory; the token is a freshness guard,
 not an atomic service transaction or proof of human approval. The three fixed
 regional CLI forms now enforce this preflight and their durable lifecycle.
-Visible Settings origins use the confirmed coordinator described above. Clock
-refresh, NTP sampling, and combined installed qualification remain pending.
+Visible Settings origins use the confirmed coordinator and shared clock described
+above. NTP sampling and combined installed qualification remain pending.
 
 `health-open` is the sole action with no provider command: the root-scoped QML
 model invokes the fixed in-process `SystemHealthModel.openOnScreen` method with

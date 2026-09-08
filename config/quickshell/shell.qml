@@ -8,6 +8,7 @@ import qs.accessibility
 import qs.appearance
 import qs.controlcenter
 import qs.controls
+import qs.core
 import qs.defaults
 import qs.health
 import qs.launcher
@@ -107,10 +108,9 @@ ShellRoot {
         id: dwmState
     }
 
-    SystemClock {
+    ClockModel {
         id: clock
-
-        precision: SystemClock.Minutes
+        timezoneState: systemManagementModel.nativeStates.timezone || null
     }
 
     LauncherModel {
@@ -1184,6 +1184,7 @@ ShellRoot {
     }
 
     SettingsWindow {
+        clock: clock
         settingsModel: settingsModel
         networkModel: networkModel
         bluetoothModel: bluetoothModel

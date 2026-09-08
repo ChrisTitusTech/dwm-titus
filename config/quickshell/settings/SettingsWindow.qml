@@ -21,6 +21,7 @@ FloatingWindow {
     required property var notificationModel
     required property var panelSettingsModel
     required property var systemManagementModel
+    required property var clock
 
     title: "dwm settings"
     visible: settingsModel.visible
@@ -397,6 +398,7 @@ FloatingWindow {
                             }
 
                             SystemSettingsPane {
+                                clockText: root.clock.settingsText
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 visible: root.settingsModel.selectedSectionId === "system"
