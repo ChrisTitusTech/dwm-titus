@@ -941,6 +941,18 @@ Each failed or malformed source degrades only the states or filesystem records
 it owns. A missing hostname1 property does not invalidate OS, kernel, processor,
 memory, or filesystem state.
 
+The internal local-reader boundary implements the eleven OS, kernel, CPU,
+memory, swap, and uptime states without activating cumulative minor 2. It reads
+each fixed file once with its byte limit plus one overflow-detection byte, closes
+the source before parsing, and retains valid peer fields when an allowlisted
+field is missing, duplicated, or malformed. Display fields must be printable
+UTF-8 within 512 bytes; counters use exact unsigned 64-bit decimal values, and
+the first CPU model field is authoritative. Read denial is scoped `restricted`
+state, absent files are `unsupported`, other I/O failures are `unavailable`, and
+malformed data is `partial`; failed values are always `unknown`. It starts no
+service, subprocess, journal access, or polling loop. Hardware, filesystem,
+security, protocol, and Settings integration remain separate boundaries.
+
 ### Security Status
 
 Each probe has a fixed source and emits its own state instead of making the

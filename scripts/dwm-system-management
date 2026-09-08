@@ -32,6 +32,11 @@ PROTOCOL_MAJOR = 1
 PROTOCOL_MINOR = 0
 SNAPSHOT_MINOR = 1
 MAX_TEXT_BYTES = 512
+INFORMATION_UINT_MAX = (1 << 64) - 1
+INFORMATION_MEMORY_KEYS = {
+    "MemTotal": "memory-total-bytes", "MemAvailable": "memory-available-bytes",
+    "SwapTotal": "swap-total-bytes", "SwapFree": "swap-free-bytes",
+}
 MAX_LIST_RECORDS = 4096
 MAX_LIST_BYTES = 3 * 1024 * 1024
 READ_DEADLINE_SECONDS = 120
@@ -266,6 +271,152 @@ class SnapshotFailure(Exception):
         self.code = code
         self.detail = clean_text(detail)
         self.status = status
+
+
+@dataclass(frozen=True)
+class InformationState:
+    """One independently readable information value, not yet a protocol row."""
+
+    status: str
+    value: str
+    detail: str
+    error_code: str = ""
+
+
+def information_unknown(error: Exception) -> InformationState:
+    """Normalize source failures without exposing source contents or exception text."""
+    if isinstance(error, SnapshotFailure):
+        return InformationState(error.status, "unknown", error.detail, error.code)
+    if isinstance(error, OSError):
+        if error.errno in (errno.EACCES, errno.EPERM):
+            return InformationState("restricted", "unknown", "Information source access denied", "permission-denied")
+        if error.errno in (errno.ENOENT, errno.ENOTDIR):
+            return InformationState("unsupported", "unknown", "Information source is absent", "missing-provider")
+        return InformationState("unavailable", "unknown", "Information source could not be read", "internal")
+    return InformationState("partial", "unknown", "Information source is malformed", "malformed")
+
+
+def information_text(value: object, detail: str) -> InformationState:
+    """Validate bounded printable display text without truncating a malformed field."""
+    if not isinstance(value, str) or not value.strip():
+        raise SnapshotFailure("malformed", "Information text is missing or invalid")
+    if len(value) > MAX_TEXT_BYTES or not value.isprintable() or len(value.encode("utf-8")) > MAX_TEXT_BYTES:
+        raise SnapshotFailure("malformed", "Information text is oversized or undisplayable")
+    return InformationState("available", value, detail)
+
+
+def information_number(value: object, detail: str) -> InformationState:
+    """Keep counters exact as canonical unsigned 64-bit decimal text."""
+    if type(value) is not int or not 0 <= value <= INFORMATION_UINT_MAX:
+        raise SnapshotFailure("malformed", "Information counter is invalid or overflowing")
+    return InformationState("available", str(value), detail)
+
+
+def information_fields(data: bytes, keys: Mapping[str, str], separator: str,
+                       decode: Callable[[str, str], InformationState]) -> dict[str, InformationState]:
+    """Isolate duplicate, missing, and malformed allowlisted fields from their peers."""
+    result = {}
+    seen = set()
+    encoded_keys = {key.encode("ascii"): key for key in keys}
+    for line in data.splitlines():
+        raw_key, found, value = line.partition(separator.encode("ascii"))
+        key = encoded_keys.get(raw_key)
+        if key is None:
+            continue
+        identifier = keys[key]
+        try:
+            if not found or key in seen:
+                raise SnapshotFailure("malformed", "Duplicate or malformed information field")
+            result[identifier] = decode(key, value.decode("utf-8"))
+        except (SnapshotFailure, UnicodeError, ValueError) as error:
+            result[identifier] = information_unknown(error)
+        seen.add(key)
+    for identifier in keys.values():
+        if identifier not in result:
+            result[identifier] = InformationState("partial", "unknown", "Information field was not reported", "missing-provider")
+    return result
+
+
+def parse_os_information(data: bytes) -> dict[str, InformationState]:
+    """Read only the two display keys; shell-like quoting never executes anything."""
+    def decode(key, value):
+        fields = shlex.split(key + "=" + value, comments=False)
+        if len(fields) != 1 or not fields[0].startswith(key + "="):
+            raise SnapshotFailure("malformed", "Malformed OS information field")
+        return information_text(fields[0][len(key) + 1:], "Operating system identity")
+
+    return information_fields(data, {"PRETTY_NAME": "os-name", "VERSION_ID": "os-version"}, "=", decode)
+
+
+def parse_memory_information(data: bytes) -> dict[str, InformationState]:
+    """Accept only decimal kernel kB values and check the exact 1024-byte conversion."""
+    def decode(_key, value):
+        match = re.fullmatch(r"[ \t]*([0-9]{1,20})[ \t]+kB[ \t]*", value)
+        if match is None:
+            raise SnapshotFailure("malformed", "Malformed memory information field")
+        return information_number(int(match[1]) * 1024, "Memory bytes at this read")
+
+    return information_fields(data, INFORMATION_MEMORY_KEYS, ":", decode)
+
+
+def parse_cpu_information(data: bytes) -> dict[str, InformationState]:
+    """Use the first x86_64 model-name field, never a later processor's fallback."""
+    for line in data.splitlines():
+        key, found, value = line.partition(b":")
+        if key.strip() == b"model name":
+            if not found:
+                raise SnapshotFailure("malformed", "Malformed processor model field")
+            return {"cpu-model": information_text(value.decode("utf-8").strip(), "Processor model")}
+    return {"cpu-model": InformationState("partial", "unknown", "Processor model was not reported", "missing-provider")}
+
+
+def read_local_information() -> dict[str, InformationState]:
+    """Read fixed local sources once; no service, subprocess, journal, or mutation."""
+    result = {}
+    sources = (
+        ("/etc/os-release", 64 * 1024, parse_os_information, ("os-name", "os-version")),
+        ("/proc/cpuinfo", 4 * 1024 * 1024, parse_cpu_information, ("cpu-model",)),
+        ("/proc/meminfo", 1024 * 1024, parse_memory_information, tuple(INFORMATION_MEMORY_KEYS.values())),
+    )
+    for path, limit, parse, identifiers in sources:
+        try:
+            with open(path, "rb") as source:
+                data = source.read(limit + 1)
+            if len(data) > limit:
+                raise SnapshotFailure("malformed", "Information source exceeds its byte limit")
+            result.update(parse(data))
+        except (OSError, UnicodeError, SnapshotFailure) as error:
+            result.update((identifier, information_unknown(error)) for identifier in identifiers)
+    try:
+        identity = os.uname()
+    except OSError as error:
+        result.update((identifier, information_unknown(error)) for identifier in ("kernel-release", "architecture"))
+    else:
+        for attribute, identifier in (("release", "kernel-release"), ("machine", "architecture")):
+            try:
+                result[identifier] = information_text(getattr(identity, attribute, None), "Kernel identity")
+            except (SnapshotFailure, UnicodeError) as error:
+                result[identifier] = information_unknown(error)
+    try:
+        count = os.cpu_count()
+        if count is None:
+            raise SnapshotFailure("missing-provider", "Logical processor count was not reported")
+        if type(count) is not int or count <= 0:
+            raise SnapshotFailure("malformed", "Logical processor count is invalid")
+        result["logical-cpus"] = information_number(count, "Logical processors")
+    except (OSError, SnapshotFailure) as error:
+        result["logical-cpus"] = information_unknown(error)
+    try:
+        clock = getattr(time, "CLOCK_BOOTTIME", None)
+        if clock is None:
+            raise SnapshotFailure("unsupported", "Boot-time clock is unavailable", "unsupported")
+        uptime = time.clock_gettime(clock)
+        if type(uptime) not in (int, float) or not 0 <= uptime < (1 << 64):
+            raise SnapshotFailure("malformed", "Boot-time clock returned an invalid counter")
+        result["uptime-seconds"] = information_number(int(uptime), "Whole seconds since boot, including suspend")
+    except (OSError, SnapshotFailure) as error:
+        result["uptime-seconds"] = information_unknown(error)
+    return result
 
 
 def validate_timezone_name(value: object) -> str:

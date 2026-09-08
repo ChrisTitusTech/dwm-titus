@@ -88,6 +88,178 @@ def rows(lines, kind):
     return [line.split("\t") for line in lines if line.startswith(f"{kind}\t")]
 
 
+class LocalInformationTests(unittest.TestCase):
+    FILES = {
+        "/etc/os-release": b'NAME=ignored\nPRETTY_NAME="Fedora Linux 44 (Fixture)"\nVERSION_ID=44\n',
+        "/proc/cpuinfo": b"processor: 0\nmodel name\t: Fixture CPU\nmodel name: Later CPU\n",
+        "/proc/meminfo": b"MemTotal: 1024 kB\nMemAvailable: 768 kB\nSwapTotal: 256 kB\nSwapFree: 128 kB\n",
+    }
+
+    def read(self, files=None, *, identity=None, count=4, uptime=10.99):
+        """Exercise the fixed reader without files, services, subprocesses, or journals."""
+        contents = dict(self.FILES)
+        contents.update(files or {})
+        streams, reads, opened = [], [], []
+
+        class Source(io.BytesIO):
+            def read(self, size=-1):
+                reads.append(size)
+                return super().read(size)
+
+        def open_source(path, mode):
+            self.assertEqual(mode, "rb")
+            self.assertIn(path, self.FILES)
+            opened.append(path)
+            value = contents[path]
+            if isinstance(value, Exception):
+                raise value
+            stream = Source(value)
+            streams.append(stream)
+            return stream
+
+        identity = identity if identity is not None else types.SimpleNamespace(release="6.fixture", machine="x86_64")
+        def response(value):
+            return {"side_effect": value} if isinstance(value, Exception) else {"return_value": value}
+
+        output = io.StringIO()
+        with mock.patch.object(provider, "open", open_source, create=True), \
+                mock.patch.object(provider.os, "uname", **response(identity)), \
+                mock.patch.object(provider.os, "cpu_count", **response(count)), \
+                mock.patch.object(provider.time, "clock_gettime", **response(uptime)) as clock, \
+                mock.patch.object(provider.subprocess, "Popen", side_effect=AssertionError("Unexpected subprocess")), \
+                mock.patch.object(provider.os, "system", side_effect=AssertionError("Unexpected shell")), \
+                mock.patch.object(provider.ServiceRead, "run", side_effect=AssertionError("Unexpected service read")), \
+                mock.patch.object(provider, "open_journal_directory", side_effect=AssertionError("Unexpected journal")), \
+                contextlib.redirect_stdout(output):
+            result = provider.read_local_information()
+            if getattr(provider.time, "CLOCK_BOOTTIME", None) is not None:
+                clock.assert_called_once_with(provider.time.CLOCK_BOOTTIME)
+            else:
+                clock.assert_not_called()
+        self.assertEqual(output.getvalue(), "")
+        self.assertCountEqual(opened, self.FILES)
+        self.assertEqual(len(reads), len(streams))
+        self.assertTrue(all(stream.closed for stream in streams))
+        self.assertTrue(all(size in (65537, 4194305, 1048577) for size in reads))
+        self.assertEqual(len(result), 11)
+        for state in result.values():
+            if state.status != "available":
+                self.assertEqual(state.value, "unknown")
+                self.assertNotEqual(state.error_code, "")
+        return result
+
+    def test_complete_fixed_local_snapshot(self):
+        result = self.read()
+        self.assertTrue(all(state.status == "available" and state.error_code == "" for state in result.values()))
+        expected = {"os-name": "Fedora Linux 44 (Fixture)", "os-version": "44",
+            "kernel-release": "6.fixture", "architecture": "x86_64", "cpu-model": "Fixture CPU",
+            "logical-cpus": "4", "memory-total-bytes": "1048576", "memory-available-bytes": "786432",
+            "swap-total-bytes": "262144", "swap-free-bytes": "131072", "uptime-seconds": "10"}
+        self.assertEqual({key: state.value for key, state in result.items()}, expected)
+
+    def test_file_failures_remain_source_scoped_and_do_not_expose_exception_text(self):
+        for path, identifier in (("/etc/os-release", "os-name"), ("/proc/cpuinfo", "cpu-model"),
+                                 ("/proc/meminfo", "memory-total-bytes")):
+            for number, status, code in ((errno.ENOENT, "unsupported", "missing-provider"),
+                    (errno.ENOTDIR, "unsupported", "missing-provider"),
+                    (errno.EACCES, "restricted", "permission-denied"),
+                    (errno.EPERM, "restricted", "permission-denied"), (errno.EIO, "unavailable", "internal")):
+                with self.subTest(path=path, errno=number):
+                    result = self.read({path: OSError(number, "private source details")})
+                    self.assertEqual((result[identifier].status, result[identifier].error_code), (status, code))
+                    self.assertEqual(result["logical-cpus"].status, "available")
+                    self.assertEqual(result["kernel-release"].status, "available")
+                    self.assertNotIn("private source details", repr(result))
+
+    def test_each_file_is_capped_before_parsing_and_exact_limit_is_accepted(self):
+        for path, limit, identifier in (("/etc/os-release", 65536, "os-name"),
+                ("/proc/cpuinfo", 4194304, "cpu-model"), ("/proc/meminfo", 1048576, "memory-total-bytes")):
+            with self.subTest(path=path):
+                data = self.FILES[path] + b"#" * (limit - len(self.FILES[path]))
+                self.assertEqual(self.read({path: data})[identifier].status, "available")
+                result = self.read({path: data + b"x"})
+                self.assertEqual(result[identifier].error_code, "malformed")
+                self.assertEqual(result["uptime-seconds"].status, "available")
+
+    def test_os_keys_are_allowlisted_and_quoted_values_are_never_evaluated(self):
+        result = self.read({"/etc/os-release": b"PRETTY_NAME='$(false) literal'\nVERSION_ID=44\nTOKEN=do-not-disclose\nOTHER='unclosed\nUNRELATED=\xff\n"})
+        self.assertEqual(result["os-name"].value, "$(false) literal")
+        self.assertEqual(result["os-version"].value, "44")
+        self.assertNotIn("do-not-disclose", repr(result))
+
+    def test_malformed_os_field_does_not_hide_the_other_key(self):
+        for field in (b'PRETTY_NAME="unclosed', b"PRETTY_NAME=two words", b"PRETTY_NAME=",
+                      b"PRETTY_NAME", b"PRETTY_NAME=one\nPRETTY_NAME=two\nPRETTY_NAME=three"):
+            with self.subTest(field=field):
+                result = self.read({"/etc/os-release": field + b"\nVERSION_ID=44\n"})
+                self.assertEqual(result["os-name"].status, "partial")
+                self.assertEqual(result["os-version"].value, "44")
+
+    def test_missing_fields_and_invalid_utf8_are_scoped(self):
+        result = self.read({"/etc/os-release": b"", "/proc/cpuinfo": b"", "/proc/meminfo": b""})
+        self.assertEqual(sum(state.status == "available" for state in result.values()), 4)
+        for path, identifier, target in (("/etc/os-release", "os-name", b"Fedora Linux 44 (Fixture)"),
+                ("/proc/cpuinfo", "cpu-model", b"Fixture CPU"), ("/proc/meminfo", "memory-total-bytes", b"1024 kB")):
+            result = self.read({path: self.FILES[path].replace(target, b"\xff")})
+            self.assertEqual(result[identifier].error_code, "malformed")
+            self.assertEqual(result["architecture"].status, "available")
+            self.assertEqual(result["os-version"].value, "44")
+            self.assertEqual(result["memory-available-bytes"].value, "786432")
+
+    def test_first_cpu_model_and_utf8_field_bound(self):
+        for name, status in (("", "partial"), ("\x00CPU", "partial"), ("e" * 512, "available"),
+                             ("e" * 513, "partial"), ("\u00e9" * 256, "available"), ("\u00e9" * 257, "partial")):
+            with self.subTest(length=len(name), status=status):
+                result = self.read({"/proc/cpuinfo": ("model name: " + name + "\nmodel name: valid later\n").encode()})
+                self.assertEqual(result["cpu-model"].status, status)
+        result = self.read({"/proc/cpuinfo": b"model name: First\nmodel name: \xff\n"})
+        self.assertEqual(result["cpu-model"].value, "First")
+
+    def test_memory_units_numbers_duplicates_and_unknown_keys(self):
+        for value in ("1 KB", "1 MB", "-1 kB", "+1 kB", "1.5 kB", "1e3 kB", "\u0661 kB", "1 kB extra", "9" * 1000 + " kB"):
+            with self.subTest(value=value[:30]):
+                data = self.FILES["/proc/meminfo"].replace(b"768 kB", value.encode())
+                result = self.read({"/proc/meminfo": data})
+                self.assertEqual(result["memory-available-bytes"].status, "partial")
+                self.assertEqual(result["memory-total-bytes"].value, "1048576")
+        data = self.FILES["/proc/meminfo"] + b"MemAvailable: 1 kB\nMemAvailable: 2 kB\nUnknown: invalid\n"
+        self.assertEqual(self.read({"/proc/meminfo": data})["memory-available-bytes"].error_code, "malformed")
+
+    def test_memory_conversion_overflow_boundary_and_canonical_zeroes(self):
+        maximum = provider.INFORMATION_UINT_MAX // 1024
+        for value, expected in ((str(maximum), str(maximum * 1024)), (str(maximum + 1), "unknown"),
+                                ("00000000000000000001", "1024"), ("0", "0")):
+            result = self.read({"/proc/meminfo": self.FILES["/proc/meminfo"].replace(b"768 kB", (value + " kB").encode())})
+            self.assertEqual(result["memory-available-bytes"].value, expected)
+
+    def test_uname_failure_and_fields_are_independent(self):
+        result = self.read(identity=OSError(errno.EIO, "private uname detail"))
+        self.assertEqual(result["kernel-release"].status, "unavailable")
+        self.assertEqual(result["architecture"].status, "unavailable")
+        self.assertEqual(result["os-name"].status, "available")
+        result = self.read(identity=types.SimpleNamespace(release="bad\nrelease", machine="x86_64"))
+        self.assertEqual(result["kernel-release"].status, "partial")
+        self.assertEqual(result["architecture"].value, "x86_64")
+
+    def test_logical_processor_count_is_checked_without_hiding_other_cpu_data(self):
+        for value in (None, True, False, 0, -1, 1.5, "4", 1 << 64):
+            with self.subTest(value=value):
+                result = self.read(count=value)
+                self.assertEqual(result["logical-cpus"].status, "partial")
+                self.assertEqual(result["cpu-model"].status, "available")
+
+    def test_uptime_is_checked_floored_and_uses_only_boottime(self):
+        for value in (float("nan"), float("inf"), -float("inf"), -0.1, True, "10", 1 << 64, 1 << 10000):
+            result = self.read(uptime=value)
+            self.assertEqual(result["uptime-seconds"].status, "partial")
+            self.assertEqual(result["memory-total-bytes"].status, "available")
+        for value, expected in ((0, "0"), (0.99, "0"), (12.99, "12")):
+            self.assertEqual(self.read(uptime=value)["uptime-seconds"].value, expected)
+        with mock.patch.object(provider.time, "CLOCK_BOOTTIME", None):
+            self.assertEqual(self.read()["uptime-seconds"].status, "unsupported")
+        self.assertEqual(self.read(uptime=OSError(errno.EIO, "clock unavailable"))["uptime-seconds"].status, "unavailable")
+
+
 class RegionalPreflightTests(unittest.TestCase):
     def time_state(self, **changes):
         return replace(provider.RegionalTimeState("UTC", True, False, True), **changes)
