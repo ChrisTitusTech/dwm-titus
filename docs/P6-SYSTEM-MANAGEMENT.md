@@ -2255,7 +2255,10 @@ Detail is printable UTF-8 capped at 512 bytes. The complete stream is at most
 exit 2 without a sample. Consumers must require the exact header, one sample or
 error, matching completion, and corresponding normal exit before publication.
 
-The command buffers the entire result before a single bounded output write.
+The command buffers the entire result before a single bounded stdout write.
+It does not initialize an unused stderr writer; closed, absent, or read-only
+stderr does not prevent a valid sample. Child-process regressions cover these
+descriptor states independently of the private-bus checks.
 Closed, full, or short output fails with exit 1, without retry or a partial-value
 success claim. Output setup and TERM/INT/HUP interruption release private
 descriptors and restore signal handlers. The inherited output file-status flags

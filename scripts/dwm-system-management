@@ -7885,8 +7885,8 @@ def control_output_writer(output, resources: contextlib.ExitStack) -> Callable[[
 
 
 @contextlib.contextmanager
-def control_output_writers() -> Iterator[tuple[Callable[[bytes], int] | None, Callable[[bytes], int] | None]]:
-    """Retain isolated writers and close them even on handled interruption."""
+def control_output_writers(*, diagnostics: bool = True) -> Iterator[tuple[Callable[[bytes], int] | None, Callable[[bytes], int] | None]]:
+    """Retain required isolated writers and close them on handled interruption."""
     handlers = {}
 
     def interrupted(_signum, _frame):
@@ -7896,7 +7896,9 @@ def control_output_writers() -> Iterator[tuple[Callable[[bytes], int] | None, Ca
         for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
             handlers[signum] = signal.signal(signum, interrupted)
         with contextlib.ExitStack() as resources:
-            yield tuple(control_output_writer(output, resources) for output in (sys.stdout, sys.stderr))
+            writer = control_output_writer(sys.stdout, resources)
+            error_writer = control_output_writer(sys.stderr, resources) if diagnostics else None
+            yield writer, error_writer
     finally:
         for signum, handler in handlers.items():
             signal.signal(signum, handler)
@@ -7905,7 +7907,7 @@ def control_output_writers() -> Iterator[tuple[Callable[[bytes], int] | None, Ca
 def ntp_sample_command() -> int:
     """Keep finite read output nonblocking without altering inherited flags."""
     try:
-        with control_output_writers() as (writer, _error_writer):
+        with control_output_writers(diagnostics=False) as (writer, _error_writer):
             output, code = ntp_sample_output()
             if writer is None:
                 sys.stdout.write(output)

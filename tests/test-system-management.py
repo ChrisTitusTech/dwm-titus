@@ -3218,6 +3218,33 @@ class NtpSampleCommandTests(unittest.TestCase):
                     os.close(read_fd)
                     os.close(write_fd)
 
+    def test_unused_stderr_does_not_prevent_stdout_sampling(self):
+        code = """
+import os, runpy, sys
+from unittest import mock
+provider = runpy.run_path(sys.argv[1], run_name="ntp_output_fixture")
+if sys.argv[2] == "readonly":
+    descriptor = os.open("/dev/null", os.O_RDONLY)
+    os.dup2(descriptor, 2)
+    if descriptor != 2:
+        os.close(descriptor)
+else:
+    os.close(2)
+    if sys.argv[2] == "none":
+        sys.stderr = None
+with mock.patch.dict(provider["ntp_sample_output"].__globals__,
+        read_ntp_sample=lambda: provider["NtpSample"](True, False)):
+    raise SystemExit(provider["main"](["ntp-sample"]))
+"""
+        for mode in ("closed", "readonly", "none"):
+            with self.subTest(mode=mode):
+                result = subprocess.run([sys.executable, "-c", code, str(PROVIDER_PATH), mode],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(result.stdout,
+                    (self.header + "sample\tyes\tno\n" + self.complete).encode())
+                self.assertEqual(result.stderr, b"")
+
     def test_interruption_releases_output_context_and_restores_handlers(self):
         handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
         for signum in handlers:
