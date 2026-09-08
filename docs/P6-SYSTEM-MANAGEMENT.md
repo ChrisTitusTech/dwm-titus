@@ -479,11 +479,50 @@ deadline.
 Actual CLI/private-bus fixtures cover all three fixed calls, live leases,
 durable handoffs, denial, stale generation, ambiguous replies, output loss after
 dispatch, retained replay, and acknowledgment without repeating the action.
-For an ambiguous sent result, a new independent read begins only after durable
+For an ambiguous sent result other than an explicit local stop, a new
+independent read begins only after durable
 interruption and lease release; it cannot reclassify the terminal result.
+That read uses the same cooperative read boundary as the finite NTP sample;
+a signal during it stops observation without changing the retained terminal.
 Settings still needs its own display refresh and confirmation/origin controls.
 Cumulative minor 1 discovery is described below. These fixtures do not change
 host settings or qualify graphical polkit authorization.
+
+The native CLI handles TERM, INT, and HUP during regional service observation
+without raising through GLib callbacks, where Python exceptions can be swallowed.
+The first signal sets a synchronous stop flag and queues one high-priority
+main-context stop; repeated signals coalesce. Pending work and final dispatch
+checks consult that flag, including after argument and timeout preparation, so
+the current callback cannot ignore a stop while the queued callback waits.
+Queuing prevents a quit just before `MainLoop.run()` from being lost.
+Pending stop sources are removed when observation ends. Cooperative handlers
+remain installed through durable terminalization and native-lease release, then
+are restored; repeated stops cannot interrupt that cleanup. A first stop during
+cleanup also suppresses any optional follow-up read without queuing an unused
+main-loop source. The caller rejects success explicitly if interruption races
+with observer completion. Locale enumeration retains its own subprocess-group
+cleanup and signal coalescing; its handled signal exit is converted into the
+typed regional preflight rejection only after that cleanup returns.
+A pre-admission stop emits the normal typed rejection without creating an
+operation or sending a mutation. After dispatch, the existing durable owner
+records `interrupted`, retains the terminal/handoff, and releases its lease;
+the platform change may still complete. No service-side cancellation or rollback
+is claimed. An explicit local stop does not enter the optional post-terminal
+service read, allowing the command to return after cleanup. Settings must still
+refresh state before another confirmation. Existing journal persistence failures
+remain uncertain recovery, not fabricated terminal completion.
+
+Eighteen private-bus cases run actual CLI children for all three fixed actions,
+with each handled signal before and after dispatch. They require normal exit 1
+within a four-second fixture guard, no traceback, no pre-dispatch mutation,
+durable interrupted post-dispatch handoff, released lease, no automatic retry or
+post-stop read, and no terminal change after a late service reply. Separate
+tests inject the startup gap, locale enumeration stops, repeated signals at
+just-completed reads, and signals during terminal commit and lease release.
+Twenty-seven argument-construction, timer-arming, and final request-preparation
+injections also prove stops after the last preflight event drain prevent all
+three mutating bus calls. Once dispatch handoff has begun, a stop still retains
+the conservative unconfirmed result rather than claiming the platform did nothing.
 
 Each regional mutation uses a 60-second monotonic aggregate deadline beginning
 immediately before the fixed mutating D-Bus method is sent and covering its

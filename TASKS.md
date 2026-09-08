@@ -415,6 +415,19 @@ success, denial, unsupported, and maximum-inventory scenarios. Keyboard and
 screenshot evidence is recorded in `docs/P6-DELEGATE-UI-EVIDENCE.md`.
 Visible NTP sampling and combined installed qualification remain pending.
 
+Native regional CLI interruption now queues one high-priority GLib stop instead
+of raising an exception inside a callback. Repeated signals coalesce, startup
+cannot lose an early quit, and a stop racing with observer completion cannot
+become a successful result. Cooperative handlers remain through terminal/lease
+cleanup, and locale enumeration stops retain subprocess cleanup before typed
+rejection. Sent changes retain an interrupted terminal and handoff before
+the native lease is released; explicit local stops skip the optional subsequent
+service read. Ordinary ambiguous transport failures retain a fresh read, now
+cooperatively interruptible without changing the recorded terminal. Eighteen
+private-bus child cases cover all three actions and TERM/INT/HUP
+before and after dispatch, without changing host regional settings. Combined
+installed graphical qualification remains pending.
+
 The user approved the narrow regional cancellation exception on 2026-09-06.
 Keep native timezone, NTP enablement, and system locale actions, with an explicit
 confirmation warning that a sent change cannot be canceled. Local cancellation
