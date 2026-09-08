@@ -260,6 +260,224 @@ class LocalInformationTests(unittest.TestCase):
         self.assertEqual(self.read(uptime=OSError(errno.EIO, "clock unavailable"))["uptime-seconds"].status, "unavailable")
 
 
+class LocalSecurityTests(unittest.TestCase):
+    runtime_path = "/sys/fs/selinux/enforce"
+    config_path = "/etc/selinux/config"
+    variable_path = "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+
+    def read(self, kind, *, runtime=b"1", config=b"SELINUX=disabled\n", variable=b"\x07\x00\x00\x00\x01", efi=None):
+        contents = {self.runtime_path: runtime, self.config_path: config, self.variable_path: variable}
+        limits = {self.runtime_path: 2, self.config_path: 65537, self.variable_path: 6}
+        opened, streams = [], []
+        class Source(io.BytesIO):
+            def read(inner, size=-1):
+                self.assertEqual(size, limits[inner.path])
+                return super().read(size)
+        def source(path, mode):
+            self.assertEqual(mode, "rb")
+            self.assertIn(path, contents)
+            opened.append(path)
+            value = contents[path]
+            if isinstance(value, Exception):
+                raise value
+            stream = Source(value)
+            stream.path = path
+            streams.append(stream)
+            return stream
+        efi = types.SimpleNamespace(st_mode=stat.S_IFDIR | 0o755) if efi is None else efi
+        stat_options = {"side_effect": efi} if isinstance(efi, Exception) else {"return_value": efi}
+        with mock.patch.object(provider, "open", source, create=True), \
+                mock.patch.object(provider.os, "stat", **stat_options) as source_stat, \
+                mock.patch.object(provider.os, "listdir", side_effect=AssertionError("Unexpected enumeration")), \
+                mock.patch.object(provider.os, "scandir", side_effect=AssertionError("Unexpected enumeration")), \
+                mock.patch.object(provider.subprocess, "Popen", side_effect=AssertionError("Unexpected subprocess")), \
+                mock.patch.object(provider, "open_journal_directory", side_effect=AssertionError("Unexpected journal")):
+            result = provider.read_selinux_status() if kind == "selinux" else provider.read_secure_boot_status()
+        self.assertTrue(all(stream.closed for stream in streams))
+        self.assertEqual(len(opened), len(set(opened)))
+        if kind == "selinux":
+            source_stat.assert_not_called()
+        else:
+            source_stat.assert_called_once_with("/sys/firmware/efi/efivars")
+        if result.status != "available":
+            self.assertEqual(result.value, "unknown")
+            self.assertNotEqual(result.error_code, "")
+        self.assertNotIn("private detail", repr(result))
+        return result, opened
+
+    def absent(self):
+        return OSError(errno.ENOENT, "private detail")
+
+    def test_selinux_runtime_is_authoritative_and_config_is_not_read(self):
+        for data, value in ((b"1", "enforcing"), (b"0", "permissive")):
+            result, opened = self.read("selinux", runtime=data, config=AssertionError("Unused config"))
+            self.assertEqual((result.status, result.value), ("available", value))
+            self.assertEqual(opened, [self.runtime_path])
+
+    def test_malformed_or_denied_runtime_never_falls_back_to_disabled(self):
+        for data in (b"", b"1\n", b"2", b"\x01", b"1" * 100):
+            result, opened = self.read("selinux", runtime=data)
+            self.assertEqual(result.status, "partial")
+            self.assertEqual(opened, [self.runtime_path])
+        for number, status in ((errno.EACCES, "restricted"), (errno.EPERM, "restricted"), (errno.EIO, "unavailable")):
+            result, opened = self.read("selinux", runtime=OSError(number, "private detail"))
+            self.assertEqual(result.status, status)
+            self.assertEqual(opened, [self.runtime_path])
+
+    def test_only_disabled_config_can_establish_state_without_runtime(self):
+        for text in (b"SELINUX=disabled", b' SELINUX = "disabled" # comment\nOTHER=\xff\n'):
+            result, opened = self.read("selinux", runtime=self.absent(), config=text)
+            self.assertEqual((result.status, result.value), ("available", "disabled"))
+            self.assertEqual(opened, [self.runtime_path, self.config_path])
+        for text in (b"SELINUX=enforcing", b"SELINUX=permissive", b"SELINUX=DISABLED", b"SELINUX=",
+                     b"SELINUX='unclosed", b"SELINUX=$(false)", b"SELINUX=\xff", b"SELINUX",
+                     b"SELINUX=disabled\nSELINUX=disabled\nSELINUX=disabled"):
+            result, _opened = self.read("selinux", runtime=self.absent(), config=text)
+            self.assertEqual(result.status, "partial")
+
+    def test_missing_config_or_key_is_unsupported_but_denial_is_restricted(self):
+        for config in (self.absent(), b"", b"# SELINUX=disabled\nUNRELATED=value"):
+            result, _opened = self.read("selinux", runtime=self.absent(), config=config)
+            self.assertEqual(result.status, "unsupported")
+        result, _opened = self.read("selinux", runtime=self.absent(), config=PermissionError(errno.EACCES, "private detail"))
+        self.assertEqual(result.status, "restricted")
+
+    def test_selinux_config_byte_limit_precedes_parsing(self):
+        base = b"SELINUX=disabled\n"
+        exact = base + b"#" * (65536 - len(base))
+        self.assertEqual(self.read("selinux", runtime=self.absent(), config=exact)[0].value, "disabled")
+        self.assertEqual(self.read("selinux", runtime=self.absent(), config=exact + b"x")[0].status, "partial")
+
+    def test_secure_boot_exact_binary_payload_and_attributes_prefix(self):
+        for value, state in ((0, "disabled"), (1, "enabled")):
+            result, opened = self.read("secure-boot", variable=b"\xff" * 4 + bytes([value]))
+            self.assertEqual((result.status, result.value), ("available", state))
+            self.assertEqual(opened, [self.variable_path])
+        for data in (b"", b"\x00" * 4, b"\x00" * 6, b"\x00" * 4 + b"1", b"\x00" * 4 + b"\x02"):
+            self.assertEqual(self.read("secure-boot", variable=data)[0].status, "partial")
+
+    def test_secure_boot_platform_absence_and_variable_absence_are_distinct(self):
+        result, opened = self.read("secure-boot", efi=self.absent())
+        self.assertEqual(result.status, "unsupported")
+        self.assertEqual(opened, [])
+        result, opened = self.read("secure-boot", variable=self.absent())
+        self.assertEqual(result.status, "partial")
+        self.assertEqual(opened, [self.variable_path])
+        result, opened = self.read("secure-boot", efi=types.SimpleNamespace(st_mode=stat.S_IFREG))
+        self.assertEqual(result.status, "partial")
+        self.assertEqual(opened, [])
+
+    def test_secure_boot_denial_and_io_failure_never_mean_disabled(self):
+        for source in ("efi", "variable"):
+            for number, status in ((errno.EACCES, "restricted"), (errno.EPERM, "restricted"), (errno.EIO, "unavailable")):
+                result, _opened = self.read("secure-boot", **{source: OSError(number, "private detail")})
+                self.assertEqual(result.status, status)
+
+    def test_source_selector_is_closed_before_open(self):
+        for kind in ("other", "/etc/passwd", [], None):
+            with mock.patch.object(provider, "open", create=True) as source, \
+                    self.assertRaises(provider.SnapshotFailure):
+                provider.read_security_bytes(kind)
+            source.assert_not_called()
+
+
+class FirewalldReadTests(unittest.TestCase):
+    def collect(self, state=None, *, remote=None, mode="normal"):
+        _unused, connection, gio, glib, variant = RegionalReadTests().reader()
+        read = provider.FirewalldRead(gio, glib)
+        gio.dbus_error_get_remote_error.return_value = remote
+        def run():
+            if mode == "connect-timeout":
+                read.expire()
+            read.connected(None, object(), None)
+            if mode == "timeout":
+                read.expire()
+            if remote:
+                connection.call_finish.side_effect = variant.Error("private detail")
+            else:
+                connection.call_finish.return_value = (variant.Variant("(s)", ("bad",)) if mode == "malformed"
+                    else CupsReadTests().reply(variant, state, **{"0": "firewalld.service"}))
+            if mode == "decode-timeout":
+                decode = provider.decode_unit_state
+                def delayed(reply):
+                    read.deadline = time.monotonic() - 1
+                    return decode(reply)
+                with mock.patch.object(provider, "decode_unit_state", side_effect=delayed):
+                    read.replied(connection, object(), None)
+            else:
+                read.replied(connection, object(), None)
+        read.loop.run.side_effect = run
+        with mock.patch.object(provider, "FirewalldRead", return_value=read), \
+                mock.patch.object(provider, "open_journal_directory") as journal:
+            result = provider.read_firewalld_status()
+        journal.assert_not_called()
+        connection.close_sync.assert_not_called()
+        self.assertTrue(read.cancellable.cancel.called)
+        self.assertNotIn("private detail", repr(result))
+        return result, read, connection, gio, glib
+
+    def test_fixed_unit_query_and_known_states(self):
+        for active, value in (("active", "enabled"), ("inactive", "disabled")):
+            result, _read, connection, gio, glib = self.collect(CupsReadTests().state(active=active))
+            self.assertEqual((result.status, result.value), ("available", value))
+            self.assertIn("other firewall", result.detail)
+            connection.call.assert_called_once()
+            args = connection.call.call_args.args
+            self.assertEqual(args[:4], (provider.SYSTEMD_NAME, provider.SYSTEMD_PATH, provider.SYSTEMD_MANAGER, "ListUnitsByNames"))
+            self.assertEqual(args[4].unpack(), (["firewalld.service"],))
+            self.assertEqual(args[6], gio.DBusCallFlags.NO_AUTO_START)
+            self.assertTrue(0 < args[7] <= 10000)
+            glib.source_remove.assert_called_once_with(17)
+
+    def test_absent_failed_transitional_and_malformed_states(self):
+        for active in ("failed", "activating", "deactivating", "reloading", "unknown"):
+            result, *_rest = self.collect(CupsReadTests().state(active=active))
+            self.assertEqual((result.status, result.value), ("partial", "unknown"))
+        result, *_rest = self.collect(CupsReadTests().state(load="not-found"))
+        self.assertEqual((result.status, result.value), ("unsupported", "unknown"))
+        for state in (CupsReadTests().state(load="not-found", active="active"), CupsReadTests().state(active="bad\nstate")):
+            self.assertEqual(self.collect(state)[0].error_code, "malformed")
+        self.assertEqual(self.collect(mode="malformed")[0].status, "partial")
+
+    def test_service_failures_and_late_replies_are_scoped(self):
+        for remote, status, code in (("org.freedesktop.systemd1.NoSuchUnit", "unsupported", "missing-provider"),
+                ("org.freedesktop.DBus.Error.AccessDenied", "unavailable", "permission-denied"),
+                ("org.freedesktop.DBus.Error.ServiceUnknown", "unavailable", "missing-provider")):
+            result, *_rest = self.collect(remote=remote)
+            self.assertEqual((result.status, result.value, result.error_code), (status, "unknown", code))
+        for mode in ("timeout", "connect-timeout"):
+            result, read, connection, _gio, _glib = self.collect(mode=mode)
+            self.assertEqual((result.status, result.error_code), ("unavailable", "timeout"))
+            connection.call_finish.reset_mock()
+            read.replied(connection, object(), None)
+            connection.call_finish.assert_not_called()
+            if mode == "connect-timeout":
+                connection.call.assert_not_called()
+
+    def test_missing_bindings_and_interruption(self):
+        with mock.patch.object(provider, "FirewalldRead", side_effect=provider.SnapshotFailure(
+                "missing-provider", "Bindings unavailable", "unavailable")):
+            self.assertEqual(provider.read_firewalld_status().status, "unavailable")
+        with mock.patch.object(provider, "FirewalldRead"), \
+                mock.patch.object(provider, "run_interruptible_read", side_effect=InterruptedError):
+            with self.assertRaises(InterruptedError):
+                provider.read_firewalld_status()
+
+    def test_decode_deadline_and_completed_callback_cannot_publish_late_state(self):
+        self.assertEqual(self.collect(mode="decode-timeout")[0].error_code, "timeout")
+        _result, read, connection, _gio, _glib = self.collect()
+        connection.call_finish.reset_mock()
+        read.replied(connection, object(), None)
+        connection.call_finish.assert_not_called()
+
+    def test_actual_private_bus_state_deadline_and_shared_connection(self):
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-firewalld-read-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "Private-bus firewalld reads: PASS (fixed query, states, failures, deadline, late reply, shared bus)\n")
+
+
 class FilesystemInformationTests(unittest.TestCase):
     def row(self, identifier=7, **changes):
         return dict({"id": identifier, "source": "/dev/fixture", "target": "/", "fstype": "ext4",

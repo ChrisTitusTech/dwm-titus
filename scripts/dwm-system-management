@@ -43,6 +43,11 @@ HARDWARE_INFORMATION_FIELDS = {
 }
 FILESYSTEM_OUTPUT_BYTES = 2 * 1024 * 1024
 FILESYSTEM_RECORDS = 256
+SECURITY_FILES = {
+    "selinux-runtime": ("/sys/fs/selinux/enforce", 1),
+    "selinux-config": ("/etc/selinux/config", 64 * 1024),
+    "secure-boot": ("/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c", 5),
+}
 MAX_LIST_RECORDS = 4096
 MAX_LIST_BYTES = 3 * 1024 * 1024
 READ_DEADLINE_SECONDS = 120
@@ -423,6 +428,71 @@ def read_local_information() -> dict[str, InformationState]:
     except (OSError, SnapshotFailure) as error:
         result["uptime-seconds"] = information_unknown(error)
     return result
+
+
+def read_security_bytes(kind: str) -> bytes:
+    """Read one allowlisted source once, including an overflow-detection byte."""
+    if not isinstance(kind, str) or kind not in SECURITY_FILES:
+        raise SnapshotFailure("malformed", "Unknown security information source")
+    path, limit = SECURITY_FILES[kind]
+    with open(path, "rb") as source:
+        data = source.read(limit + 1)
+    if len(data) > limit:
+        raise SnapshotFailure("malformed", "Security information source exceeds its byte limit")
+    return data
+
+
+def read_selinux_status() -> InformationState:
+    """Use runtime enforcement; only an absent interface permits config fallback."""
+    try:
+        try:
+            runtime = read_security_bytes("selinux-runtime")
+        except OSError as error:
+            if error.errno not in (errno.ENOENT, errno.ENOTDIR):
+                raise
+        else:
+            if runtime not in (b"0", b"1"):
+                raise SnapshotFailure("malformed", "SELinux runtime state is malformed")
+            return InformationState("available", "enforcing" if runtime == b"1" else "permissive",
+                                    "SELinux kernel enforcement state")
+        data = read_security_bytes("selinux-config")
+        lines = []
+        for line in data.splitlines():
+            key, separator, value = line.partition(b"=")
+            lines.append(key.strip() + separator + value)
+
+        def decode(key, value):
+            fields = shlex.split(key + "=" + value.lstrip(), comments=True)
+            if len(fields) != 1 or not fields[0].startswith(key + "="):
+                raise SnapshotFailure("malformed", "SELinux configuration is malformed")
+            mode = fields[0][len(key) + 1:]
+            if mode != "disabled":
+                raise SnapshotFailure("malformed", "SELinux configuration does not establish disabled runtime state")
+            return InformationState("available", "disabled", "SELinux is configured disabled and its runtime interface is absent")
+
+        state = information_fields(b"\n".join(lines), {"SELINUX": "selinux"}, "=", decode)["selinux"]
+        return replace(state, status="unsupported") if state.error_code == "missing-provider" else state
+    except (OSError, SnapshotFailure) as error:
+        return information_unknown(error)
+
+
+def read_secure_boot_status() -> InformationState:
+    """Read only the fixed EFI variable; absence or denial never means disabled."""
+    try:
+        directory = os.stat("/sys/firmware/efi/efivars")
+        if not stat.S_ISDIR(directory.st_mode):
+            raise SnapshotFailure("malformed", "EFI variables source is not a directory")
+        try:
+            data = read_security_bytes("secure-boot")
+        except OSError as error:
+            if error.errno in (errno.ENOENT, errno.ENOTDIR):
+                raise SnapshotFailure("missing-provider", "Secure Boot variable is absent on EFI", "partial") from error
+            raise
+        if len(data) != 5 or data[4] not in (0, 1):
+            raise SnapshotFailure("malformed", "Secure Boot variable is malformed")
+        return InformationState("available", "enabled" if data[4] else "disabled", "EFI Secure Boot variable")
+    except (OSError, SnapshotFailure) as error:
+        return information_unknown(error)
 
 
 @dataclass(frozen=True)
@@ -1383,6 +1453,61 @@ class CupsRead(ServiceRead):
             self.unit_failed(unit, error)
         except SnapshotFailure as error:
             self.completed_unit(unit, failure=error)
+
+
+class FirewalldRead(ServiceRead):
+    """Read the ActiveState field of one fixed unit without activating it."""
+
+    label = "Firewalld status"
+
+    def connected(self, _source, result, _data):
+        if not self.pending():
+            return
+        try:
+            self.connection = self.Gio.bus_get_finish(result)
+            self.connection.set_exit_on_close(False)
+            if self.pending():
+                self.connection.call(SYSTEMD_NAME, SYSTEMD_PATH, SYSTEMD_MANAGER, "ListUnitsByNames",
+                    self.GLib.Variant("(as)", (["firewalld.service"],)), self.GLib.VariantType.new(UNIT_REPLY_TYPE),
+                    self.Gio.DBusCallFlags.NO_AUTO_START, max(1, int((self.deadline - time.monotonic()) * 1000)),
+                    self.cancellable, self.replied, None)
+        except self.GLib.Error as error:
+            self.fail(self.bus_failure(error))
+
+    def replied(self, connection, result, _data):
+        if not self.pending():
+            return
+        try:
+            unit = decode_unit_state(connection.call_finish(result))
+            if unit.load == "not-found":
+                if (unit.active, unit.sub) != ("inactive", "dead"):
+                    raise SnapshotFailure("malformed", "Firewalld absence state is inconsistent")
+                state = InformationState("unsupported", "unknown", "Firewalld unit is absent", "missing-provider")
+            elif unit.active in ("active", "inactive"):
+                state = InformationState("available", "enabled" if unit.active == "active" else "disabled",
+                    "Firewalld service only; other firewall rules and managers are not assessed")
+            else:
+                state = InformationState("partial", "unknown", "Firewalld service is failed or transitioning", "internal")
+            if self.pending():
+                self.finish(value=state)
+        except self.GLib.Error as error:
+            if self.pending():
+                if self.Gio.dbus_error_get_remote_error(error) == "org.freedesktop.systemd1.NoSuchUnit":
+                    self.fail(SnapshotFailure("missing-provider", "Firewalld unit is absent", "unsupported"))
+                else:
+                    self.fail(self.bus_failure(error))
+        except SnapshotFailure as error:
+            if self.pending():
+                self.fail(error)
+
+
+def read_firewalld_status() -> InformationState:
+    """Keep fixed service-call failures scoped while preserving interruption."""
+    try:
+        return run_interruptible_read(FirewalldRead())
+    except SnapshotFailure as error:
+        state = information_unknown(error)
+        return replace(state, status="unavailable") if state.status == "restricted" else state
 
 
 class RegionalRead(ServiceRead):

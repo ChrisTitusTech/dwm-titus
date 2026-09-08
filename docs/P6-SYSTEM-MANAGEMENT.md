@@ -1041,6 +1041,21 @@ The individual mappings are:
 - Update state reuses the PackageKit snapshot from this provider. It never
   starts a refresh merely to populate the security summary.
 
+The internal security-reader boundary implements SELinux, Secure Boot, and
+firewalld status without activating cumulative minor 2. File reads use their
+fixed byte limit plus one detection byte, close before parsing, and never
+enumerate EFI variables. SELinux fallback accepts only the allowlisted key and
+never treats denied or malformed runtime evidence as disabled. The fixed
+systemd `ListUnitsByNames(["firewalld.service"])` query supplies its `ActiveState`
+field under one ten-second connection-to-decoding deadline, with no service
+activation or interactive authorization. Call failures remain unavailable,
+malformed replies remain partial, and late replies cannot publish state or
+close the shared bus. Fifteen focused tests include a private-bus deadline and
+connection reuse; real read-only Fedora 44 probes reported all three sources
+available. Root encryption and shared screen-lock integration remain pending.
+No new command, protocol record, Settings control, mutation, or polling loop is
+activated by this boundary.
+
 No status probe accepts a path, unit, property, command, device, or service name
 from QML.
 

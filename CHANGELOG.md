@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add internal bounded SELinux, Secure Boot, and firewalld status readers with
+  source-specific unknown and denied states. These read-only preparations do
+  not add system configuration actions, public protocol records, or controls.
+
 - Add an internal fixed-command filesystem inventory with capped JSON, stable
   mount identities, exact byte counts, partial-result handling, and bounded
   owned-process cleanup. Public protocol and Settings integration remain pending.

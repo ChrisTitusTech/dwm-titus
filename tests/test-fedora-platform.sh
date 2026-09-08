@@ -125,8 +125,46 @@ if [[ -e $work/mutations.log ]] ||
 	exit 1
 fi
 
-if grep -ERq 'setenforce|/etc/selinux/config|(^|[[:space:]])(sudo[[:space:]]+)?chcon([[:space:]]|$)|semanage[[:space:]]+fcontext' \
-	"$repo/install.sh" "$repo/scripts"; then
+selinux_pattern='setenforce|/etc/selinux/config|(^|[[:space:]])(sudo[[:space:]]+)?chcon([[:space:]]|$)|semanage[[:space:]]+fcontext'
+# Allow only the fixed read-only source-map declaration, not the whole reader.
+# Every other path reference and all policy/context mutation commands still fail.
+selinux_read_source="$repo/scripts/dwm-system-management:    \"selinux-config\": (\"/etc/selinux/config\", 64 * 1024),"
+selinux_forbidden_matches() {
+	local line
+	while IFS= read -r line; do
+		if [[ $line != "$selinux_read_source" ]]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+# Keep the exception exact, including its file and complete source line.
+if selinux_forbidden_matches <<<"$selinux_read_source"; then
+	printf 'SELinux read-only declaration was not recognized.\n' >&2
+	exit 1
+fi
+for statement in \
+	'open("/etc/selinux/config", "w")' \
+	'setenforce 0' \
+	'sudo chcon -t bin_t helper' \
+	'semanage fcontext -a -t bin_t helper'; do
+	grep -Eq "$selinux_pattern" <<<"$statement"
+	selinux_forbidden_matches <<<"$repo/scripts/dwm-system-management:$statement"
+done
+selinux_forbidden_matches <<<"$repo/install.sh:${selinux_read_source#*:}"
+selinux_forbidden_matches <<<"$selinux_read_source # changed"
+
+if grep -ERH "$selinux_pattern" "$repo/install.sh" "$repo/scripts" >"$work/selinux-matches"; then
+	:
+else
+	scan_status=$?
+	if [[ $scan_status -ne 1 ]]; then
+		printf 'SELinux policy scan failed with status %s.\n' "$scan_status" >&2
+		exit "$scan_status"
+	fi
+fi
+if selinux_forbidden_matches <"$work/selinux-matches"; then
 	printf 'Existing-system tools must not change host SELinux policy or assign file contexts.\n' >&2
 	exit 1
 fi
