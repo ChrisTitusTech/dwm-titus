@@ -19,11 +19,17 @@ from gi.repository import Gio, GLib
 NAME = "org.freedesktop.PackageKit"
 PATH = "/org/freedesktop/PackageKit"
 kind = sys.argv[2] if len(sys.argv) == 3 else "updates"
+separate_time = kind == "time-discovery"
+if separate_time:
+    kind = "time"
 assert kind in ("updates", "time", "locale", "accounts")
 command = ["watch-updates"] if kind == "updates" else ["watch-accounts"] if kind == "accounts" else ["watch-regional", kind]
 prefix = b"update-event" if kind == "updates" else b"accounts-event" if kind == "accounts" else b"regional-event"
+if separate_time:
+    command, prefix = ["watch-time"], b"time-event"
 ready = prefix + b"\tready\n"
 changed = prefix + b"\tchanged\n"
+arrived = prefix + b"\towner-arrived\n" if separate_time else changed
 if kind != "updates":
     NAME = "org.freedesktop." + {"time": "timedate1", "locale": "locale1", "accounts": "Accounts"}[kind]
     PATH = "/" + NAME.replace(".", "/")
@@ -118,7 +124,7 @@ try:
     assert name_call("ReleaseName") == 1
     assert line(process, 3 if kind == "updates" else 0.2) == (changed if kind == "updates" else b"")
     assert name_call("RequestName") == 1
-    assert line(process) == changed
+    assert line(process) == arrived
     emit("InstalledChanged")
     assert line(process) == changed, "Replacement owner not monitored"
     for _ in range(100):
@@ -222,7 +228,8 @@ try:
         assert b"reload status explicitly" in denied.stderr.read()
     finally:
         denied_connection.close_sync(None)
-    print(("PackageKit" if kind == "updates" else kind) + " private-bus event monitor: PASS")
+    print(("time-discovery" if separate_time else "PackageKit" if kind == "updates" else kind)
+          + " private-bus event monitor: PASS")
 finally:
     for process in processes:
         if process.poll() is None:

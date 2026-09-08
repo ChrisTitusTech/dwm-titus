@@ -61,6 +61,7 @@ REGIONAL_LOCALE_ARRAY_BYTES = 8192
 REGIONAL_CHOICE_STREAM_BYTES = {"timezone": 512 * 1024, "locale": 1024 * 1024}
 REGIONAL_PREVIEW_STREAM_BYTES = 8192
 NTP_SAMPLE_STREAM_BYTES = 1024
+TIME_STATUS_STREAM_BYTES = 1024
 NTP_SAMPLE_ERROR_CODES = frozenset(("missing-provider", "permission-denied", "unsupported",
                                   "timeout", "malformed", "internal"))
 REGIONAL_LOCALE_KEYS = (
@@ -1210,6 +1211,30 @@ def ntp_sample_output() -> tuple[str, int]:
     output = "ntp-sample-protocol\t1\t0\n" + record + "\ncomplete\tntp-sample\n"
     if len(output.encode("utf-8")) > NTP_SAMPLE_STREAM_BYTES:
         raise OSError("Network time sample exceeds its output limit")
+    return output, code
+
+
+def time_status_output() -> tuple[str, int]:
+    """Read one complete time configuration for event-driven reconciliation."""
+    try:
+        state = run_interruptible_read(RegionalRead("time-state"))
+        if (not isinstance(state, RegionalTimeState)
+                or any(type(value) is not bool for value in
+                       (state.can_ntp, state.ntp_enabled, state.ntp_synchronized))):
+            raise SnapshotFailure("malformed", "Invalid time status")
+        zone = validate_timezone_name(state.timezone)
+        record = "time\t" + zone + "\t" + "\t".join("yes" if value else "no" for value in
+            (state.can_ntp, state.ntp_enabled, state.ntp_synchronized))
+        code = 0
+    except SnapshotFailure as failure:
+        error_code = failure.code if failure.code in NTP_SAMPLE_ERROR_CODES else "internal"
+        detail = "".join(char if char.isprintable() else " " for char in failure.detail)
+        detail = clean_text(detail.encode("utf-8", "replace").decode("utf-8"))
+        record = f"error\ttime-status\t{error_code}\t{detail or 'Time status read failed'}"
+        code = 1
+    output = "time-status-protocol\t1\t0\n" + record + "\ncomplete\ttime-status\n"
+    if len(output.encode("utf-8")) > TIME_STATUS_STREAM_BYTES:
+        raise OSError("Time status exceeds its output limit")
     return output, code
 
 
@@ -7989,17 +8014,21 @@ def control_output_writers(*, diagnostics: bool = True) -> Iterator[tuple[Callab
 
 
 def ntp_sample_command() -> int:
+    return finite_status_command(ntp_sample_output)
+
+
+def finite_status_command(read_output: Callable[[], tuple[str, int]]) -> int:
     """Keep finite read output nonblocking without altering inherited flags."""
     try:
         with control_output_writers(diagnostics=False) as (writer, _error_writer):
-            output, code = ntp_sample_output()
+            output, code = read_output()
             if writer is None:
                 sys.stdout.write(output)
                 sys.stdout.flush()
             else:
                 payload = output.encode("utf-8")
                 if writer(payload) != len(payload):
-                    raise OSError("Incomplete network time sample output")
+                    raise OSError("Incomplete finite status output")
             return code
     except OSError:
         return 1
@@ -8484,7 +8513,11 @@ class AuthenticatedEventMonitor(UpdateEventMonitor):
         # not a configuration change: rereading here would reactivate forever.
         # Arrival or replacement reconciles state; mutations still fresh-read.
         if new:
-            self.changed()
+            self.owner_arrived()
+
+    def owner_arrived(self):
+        """Existing monitors conservatively invalidate on arrival or replacement."""
+        self.changed()
 
     def service_specs(self):
         raise NotImplementedError
@@ -8564,6 +8597,23 @@ class RegionalEventMonitor(AuthenticatedEventMonitor):
                 self.changed()
         except SnapshotFailure:
             self.stop(1)
+
+
+class TimeEventMonitor(RegionalEventMonitor):
+    """Separate authenticated owner arrival from actual time property changes."""
+
+    record_prefix = "time-event"
+
+    def __init__(self, Gio, GLib, GLibUnix, emit):
+        super().__init__("time", Gio, GLib, GLibUnix, emit)
+
+    def owner_arrived(self):
+        # Setup races still require the initial bounded reconciliation cycle.
+        # After readiness, arrival is uncertainty, not proof of changed state.
+        if self.ready:
+            self.write(self.record_prefix + "\towner-arrived")
+        else:
+            self.changed()
 
 
 class AccountEventMonitor(AuthenticatedEventMonitor):
@@ -8991,6 +9041,8 @@ def watch_service_events(service_kind=None) -> int:
                 monitor = UpdateEventMonitor(Gio, GLib, GLibUnix, emit)
             elif service_kind == "accounts":
                 monitor = AccountEventMonitor(Gio, GLib, GLibUnix, emit)
+            elif service_kind == "time-discovery":
+                monitor = TimeEventMonitor(Gio, GLib, GLibUnix, emit)
             elif service_kind in WATCH_UNIT_SETS:
                 monitor = UnitEventMonitor(service_kind, Gio, GLib, GLibUnix, emit)
             else:
@@ -9025,11 +9077,15 @@ def watch_account_events() -> int:
 
 
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | ntp-sample | watch-updates | watch-regional time|locale | watch-accounts | watch-units printers|security | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | ntp-sample | time-status | watch-time | watch-updates | watch-regional time|locale | watch-accounts | watch-units printers|security | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if argv and argv[0] == "time-status":
+        return finite_status_command(time_status_output) if len(argv) == 1 else usage()
+    if argv and argv[0] == "watch-time":
+        return watch_service_events("time-discovery") if len(argv) == 1 else usage()
     if argv and argv[0] == "ntp-sample":
         return ntp_sample_command() if len(argv) == 1 else usage()
     if argv and argv[0] == "watch-units":
