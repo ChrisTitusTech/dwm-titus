@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add internal bounded OS, kernel, CPU, memory, swap, and uptime readers with
+  per-field failure isolation and checked byte counters. This preparatory
+  boundary does not activate a new protocol minor, Settings UI, or polling loop.
+
 - Sample network-time synchronization every 30 seconds while System Settings
   is open and after a verified NTP result. Serialize reads with recovery,
   preserve matching prompts and keyboard focus, and retain the last reported

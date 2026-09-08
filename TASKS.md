@@ -491,6 +491,15 @@ Acceptance:
 
 ### INFO-RECOVERY-001: Information, Diagnostics, and Recovery
 
+The internal local-information reader now returns eleven independent OS, kernel,
+processor, memory, swap, and uptime observations. Fixed file reads are capped;
+allowlisted fields, UTF-8 text, exact kB conversion, and unsigned 64-bit counters
+are validated without subprocesses, services, journals, or mutations. Twelve
+focused tests and a read-only Fedora 44 probe passed. This preparatory boundary
+adds no CLI command, protocol minor, Settings surface, or polling loop.
+Hostname1, filesystem/security sources, protocol integration, visible controls,
+and combined installed qualification remain pending.
+
 - [ ] Add event-driven or bounded system information and storage overview state
   without a new idle poller.
 - [ ] Add privacy and security status, diagnostics, recovery actions, and reset
