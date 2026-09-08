@@ -12,6 +12,10 @@ versions from `config.mk`.
   live evidence is partial or unavailable, instead of displaying saved fallback
   values as enabled or disabled.
 
+- Add a fixed read-only mount-event helper with acknowledged baseline readiness,
+  bounded event records, and owned-child cleanup. Settings storage monitoring
+  and cumulative protocol integration remain pending.
+
 - Reuse the power helper's automatic screen-lock evidence through a bounded
   internal information reader. Preserve unknown and unavailable states without
   adding a locking policy change or a second locker probe.

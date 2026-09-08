@@ -9770,6 +9770,151 @@ class UnitEventMonitor(AuthenticatedEventMonitor):
         return self.exit_code
 
 
+
+# This fresh, single-threaded child arms parent-death cleanup before replacing
+# itself with findmnt. Recheck the original parent to close the startup race.
+# Popen closes inherited nonstandard descriptors before the isolated interpreter.
+MOUNT_MONITOR_EXEC = """
+import ctypes, os, signal, sys
+libc = ctypes.CDLL(None, use_errno=True)
+if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:
+    sys.exit(1)
+if os.getppid() != int(sys.argv[1]):
+    sys.exit(1)
+os.execv('/usr/bin/findmnt', ['findmnt', '--poll', '--raw', '--noheadings', '--output', 'ACTION'])
+"""
+MOUNT_ACTIONS = frozenset((b"mount", b"umount", b"move", b"remount"))
+
+
+def mount_baseline_ready(process, identity) -> bool:
+    """Observe only the live, unreaped child's exact mountinfo descriptor."""
+    if locale_process_status(process) is not None:
+        raise OSError("Mount monitor exited before readiness")
+    directory = f"/proc/{process.pid}"
+    current = os.stat(directory)
+    if (current.st_dev, current.st_ino) != identity:
+        raise OSError("Mount monitor identity changed")
+    with os.scandir(directory + "/fd") as entries:
+        for entry in entries:
+            if not entry.name.isdecimal():
+                continue
+            try:
+                if os.readlink(entry.path) == directory + "/mountinfo":
+                    # Fedora util-linux opens its temporary parsing descriptor
+                    # with CLOEXEC, but poll_table's persistent fopen("r") does
+                    # not. Merely seeing mountinfo can race the first parse.
+                    with open(directory + "/fdinfo/" + entry.name, "r", encoding="ascii") as info:
+                        fields = info.read(4096).splitlines()
+                    flags = [line.split(":", 1)[1].strip() for line in fields if line.startswith("flags:")]
+                    if len(flags) == 1 and re.fullmatch(r"[0-7]+", flags[0]):
+                        if not int(flags[0], 8) & os.O_CLOEXEC:
+                            return True
+            except FileNotFoundError:
+                pass  # An unrelated startup descriptor may have just closed.
+    return False
+
+
+def watch_mount_events() -> int:
+    """Supervise one pane-owned fixed mount event stream without idle polling."""
+    if (threading.current_thread() is not threading.main_thread()
+            or signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL):
+        return 1
+    process = None
+    handlers = {}
+    interrupted = 0
+    code = 1
+
+    def terminate(number, _frame):
+        nonlocal interrupted
+        interrupted = interrupted or number
+
+    try:
+        with contextlib.ExitStack() as resources:
+            writer = control_output_writer(sys.stdout, resources)
+            if writer is None:
+                raise OSError("Mount monitor requires a descriptor")
+
+            def emit(payload):
+                if writer(payload) != len(payload):
+                    raise OSError("Incomplete mount event output")
+
+            wake_read, wake_write = os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
+            resources.callback(os.close, wake_read)
+            resources.callback(os.close, wake_write)
+            previous_wake = signal.set_wakeup_fd(wake_write)
+            resources.callback(signal.set_wakeup_fd, previous_wake)
+            for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                handlers[number] = signal.signal(number, terminate)
+            try:
+                deadline = time.monotonic() + 1
+                process = subprocess.Popen(["/usr/bin/python3", "-I", "-c", MOUNT_MONITOR_EXEC,
+                    str(os.getpid())], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, start_new_session=True, close_fds=True,
+                    env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
+                identity = os.stat(f"/proc/{process.pid}")
+                identity = (identity.st_dev, identity.st_ino)
+                pidfd = os.pidfd_open(process.pid)
+                resources.callback(os.close, pidfd)
+                with selectors.DefaultSelector() as selector:
+                    selector.register(wake_read, selectors.EVENT_READ)
+                    selector.register(pidfd, selectors.EVENT_READ)
+                    for stream in (process.stdout, process.stderr):
+                        os.set_blocking(stream.fileno(), False)
+                        selector.register(stream, selectors.EVENT_READ)
+                    ready = False
+                    pending = bytearray()
+                    while not interrupted:
+                        if not ready:
+                            observed = mount_baseline_ready(process, identity)
+                            if time.monotonic() >= deadline:
+                                raise OSError("Mount monitor readiness timed out")
+                            if observed:
+                                emit(b"mount-monitor-ready\n")
+                                ready = True
+                        # Readiness has one bounded startup probe. Once ready,
+                        # pipes, pidfd, and the signal wakeup are the only events.
+                        events = selector.select(None if ready else min(0.01, max(0, deadline - time.monotonic())))
+                        for key, _events in events:
+                            if interrupted:
+                                break
+                            if key.fd == wake_read:
+                                os.read(wake_read, 4096)
+                                continue
+                            if key.fd == pidfd:
+                                raise OSError("Mount monitor exited unexpectedly")
+                            if not ready and key.fileobj is process.stdout:
+                                continue  # Retain early events until baseline acknowledgment.
+                            chunk = os.read(key.fd, 4096)
+                            if not chunk or key.fileobj is process.stderr:
+                                raise OSError("Mount monitor output failed")
+                            pending.extend(chunk)
+                            while b"\n" in pending:
+                                line, _, pending = pending.partition(b"\n")
+                                if len(line) > 256 or bytes(line) not in MOUNT_ACTIONS:
+                                    raise OSError("Malformed mount event")
+                                emit(b"mount-change\t" + line + b"\n")
+                            if len(pending) > 256:
+                                raise OSError("Oversized mount event")
+            finally:
+                if process is not None:
+                    close_locale_process(process)
+    except (OSError, ValueError, SnapshotFailure):
+        pass
+    finally:
+        for number, handler in handlers.items():
+            signal.signal(number, handler)
+    if interrupted:
+        return 128 + interrupted
+    try:
+        with contextlib.ExitStack() as resources:
+            writer = control_output_writer(sys.stderr, resources)
+            if writer is not None:
+                writer(b"Mount monitoring is unavailable; reload storage status explicitly\n")
+    except (OSError, ValueError):
+        pass
+    return code
+
+
 def watch_service_events(service_kind=None) -> int:
     output_writer = None
 
@@ -9832,11 +9977,13 @@ def watch_account_events() -> int:
 
 
 def usage() -> int:
-    print(f"usage: {sys.argv[0]} snapshot | ntp-sample | time-status | watch-time | watch-updates | watch-regional time|locale | watch-accounts | watch-units printers|security | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
+    print(f"usage: {sys.argv[0]} snapshot | ntp-sample | time-status | watch-mounts | watch-time | watch-updates | watch-regional time|locale | watch-accounts | watch-units printers|security | updates-refresh | updates-install-all GENERATION | watch-operation OPERATION_ID | ack-operation OPERATION_ID | updates-cancel OPERATION_ID | regional-choices timezone|locale | regional-preview ACTION VALUE | timezone-set ZONE GENERATION | ntp-set enabled|disabled GENERATION | locale-set LANG=LOCALE GENERATION | accounts-open | password-open | printers-open | sources-open", file=sys.stderr)
     return 2
 
 
 def main(argv: Sequence[str]) -> int:
+    if argv and argv[0] == "watch-mounts":
+        return watch_mount_events() if len(argv) == 1 else usage()
     if argv and argv[0] == "time-status":
         return finite_status_command(time_status_output) if len(argv) == 1 else usage()
     if argv and argv[0] == "watch-time":

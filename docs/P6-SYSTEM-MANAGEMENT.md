@@ -2590,18 +2590,36 @@ the service; that method is not used by the monitor.
   minor-2 command accepts no arguments and is not an action or operation
   stream. Its supervisor starts exactly
   `findmnt --poll --raw --noheadings --output ACTION` in a dedicated process
-  group. The child marks every inherited nonstandard descriptor close-on-exec
-  before executing the fixed program. Before emitting anything, the supervisor
+  group. The child closes every inherited nonstandard descriptor before its
+  isolated Python startup, arms Linux parent-death SIGKILL, rechecks the original
+  parent identity, and replaces itself with the fixed program. Before emitting
+  anything, the supervisor
   waits under a one-second monotonic deadline until the live child's descriptor
   table contains the open `/proc/CHILD_PID/mountinfo` baseline. The readiness
   probe walks every numeric entry beneath that exact `/proc/CHILD_PID/fd`
   directory until it finds a symlink target equal to
-  `/proc/CHILD_PID/mountinfo`, the child exits, its proc identity changes, or
+  `/proc/CHILD_PID/mountinfo` with the persistent polling descriptor flags, the
+  child exits, its proc identity changes, or
   the deadline expires. It then emits the exact line
   `mount-monitor-ready`; subsequent bounded nonempty findmnt lines are emitted
   as `mount-change<TAB>ACTION`. Any other standard-output line, a line over 256
   bytes, a missed readiness deadline, or an unexpected supervisor or child exit
   marks storage `partial` with explicit-refresh guidance.
+
+  Fedora util-linux opens its initial parsing descriptor with `O_CLOEXEC` and
+  its persistent `poll_table` descriptor without that flag. The readiness probe
+  checks the exact descriptor's bounded `fdinfo` flags and rejects the initial
+  parsing open, which otherwise precedes the actual subscription. Unrecognized
+  descriptor behavior cannot certify readiness. A real Fedora findmnt regression
+  delays the initial parsing open and verifies that no acknowledgment escapes
+  before the persistent descriptor exists.
+
+  The fixed CLI helper is implemented as a preparatory boundary. It uses a pidfd
+  and signal-wakeup pipe alongside child output, so no idle timer remains after
+  readiness. Lost output or failed cleanup exits unsuccessfully. The bounded
+  readiness probe retains early child output until the baseline is acknowledged.
+  Root-model and pane integration described below remain pending; this command
+  does not activate cumulative minor 2 or read a journal.
 
   The root model starts the initial bounded JSON filesystem snapshot only after
   receiving `mount-monitor-ready`. The first snapshot is authoritative for the

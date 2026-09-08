@@ -491,6 +491,18 @@ Acceptance:
 
 ### INFO-RECOVERY-001: Information, Diagnostics, and Recovery
 
+Mount readiness also distinguishes the temporary initial parsing descriptor
+from the persistent polling descriptor. A delayed-open regression against the
+real Fedora findmnt reproduces the old early acknowledgment and passes with
+the corrected check.
+
+The fixed `watch-mounts` helper now waits for the live findmnt mountinfo
+baseline under a one-second deadline, then emits bounded allowlisted mount
+notifications. It uses descriptor isolation, owned-group cleanup, parent-death
+protection, and blocking event subscriptions after readiness. No journal,
+mutation, snapshot minor, or Settings surface is activated by this preparation;
+pane-generation ownership and storage refresh integration remain pending.
+
 The shared power helper now provides a fixed read-only `power-lock-snapshot`
 using the same formatter and existing power status owner as `power-snapshot`.
 The internal system-information reader validates its versioned lock record,
