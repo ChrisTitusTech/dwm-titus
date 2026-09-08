@@ -388,12 +388,9 @@ runtime_verify() {
 	dwm_pid=$(pgrep -xo dwm 2>/dev/null || true)
 	dwm_restart_required=0
 	if [ -n "$dwm_pid" ]; then
-		running_executable=$(readlink "/proc/$dwm_pid/exe" 2>/dev/null || true)
-		case $running_executable in
-		*" (deleted)") dwm_restart_required=1 ;;
-		esac
-		if [ "$dwm_restart_required" -eq 0 ] &&
-			! cmp -s "/proc/$dwm_pid/exe" "$binary_target"; then
+		# Reinstallation can unlink the running executable without changing its
+		# bytes. Proc still exposes that inode; compare it even when deleted.
+		if ! cmp -s "/proc/$dwm_pid/exe" "$binary_target"; then
 			dwm_restart_required=1
 		fi
 	fi
