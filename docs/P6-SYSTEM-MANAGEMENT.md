@@ -2889,3 +2889,38 @@ together without changing existing health or session-action contracts.
 - AccountsService manager D-Bus XML: <https://gitlab.freedesktop.org/accountsservice/accountsservice/-/raw/main/data/org.freedesktop.Accounts.xml>
 - AccountsService user D-Bus XML: <https://gitlab.freedesktop.org/accountsservice/accountsservice/-/raw/main/data/org.freedesktop.Accounts.User.xml>
 - CUPS administration guidance: <https://openprinting.github.io/cups/doc/admin.html>
+
+
+### Information and recovery view qualification
+
+System Settings displays the thirteen system-information values, bounded mounted
+filesystem usage, and five security indicators supplied by minor 2. Byte
+counters retain their original decimal strings alongside approximate human
+units. The filesystem list uses a virtualized 240-pixel viewport; retained rows
+are explicitly labeled as last known and potentially stale after mount-monitor
+failure, with Reload status as the retry path. Missing probes remain Unknown.
+
+The fixed System Health button navigates to the existing read-only scan and
+closes Settings through the root owner. Health retains ownership of its named,
+separately confirmed repairs and diagnostic export. The view explains that
+exported paths or device names may identify the system. Reset guidance directs
+users to the relevant preference's scoped reset/revert or a backed-up recovery
+procedure; no factory reset, disk, firewall, encryption, or general service
+mutation is introduced.
+
+The isolated information-view fixture passes at 640x480, 780x580, and 1000x740:
+exact uint64 display, the 256-row virtualized inventory, unavailable security
+state with readable peers, explicit stale data, keyboard-focus reveal, one
+fixed health callback, and disabled navigation when its capability is absent.
+These are synthetic UI checks, not host security measurements or repairs.
+Visually inspected 780x580 captures show [information](evidence/p6-information-view.png),
+[storage](evidence/p6-storage-view.png), [security](evidence/p6-security-view.png),
+and [recovery guidance](evidence/p6-recovery-view.png).
+
+The combined implementation passed the complete managed repository gate with
+679 backend tests, all QML/nested-X11 workflows, build, shell/format, staged and
+repeated installation, preservation and release archive checks. The subsequent
+closure-only socket fix passed 59 affected backend/monitor checks. Source
+comparison confirmed every other tested source file was unchanged. Closed
+Settings used 0.200% CPU in the nested-X11 sample; the large-surface closed
+sample was 0.50%. Final installed-session qualification remains separate.

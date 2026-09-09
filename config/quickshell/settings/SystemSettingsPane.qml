@@ -21,6 +21,7 @@ Flickable {
     function revealFocusedControl() {
         delegateControls.revealFocusedControl();
         regionalControls.revealFocusedControl();
+        informationControls.revealFocusedControl();
     }
 
     function scrollTo(position) {
@@ -419,6 +420,12 @@ Flickable {
 
         SystemDelegateControls {
             id: delegateControls
+            model: root.systemManagementModel
+            onRevealRequested: target => root.reveal(target)
+        }
+
+        SystemInformationControls {
+            id: informationControls
             model: root.systemManagementModel
             onRevealRequested: target => root.reveal(target)
         }

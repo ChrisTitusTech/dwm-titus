@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Show system information, mounted filesystem usage, security status, and
+  diagnostics in System Settings. Preserve unknown and stale states, navigate
+  to the existing Health scan, and explain scoped recovery and reset ownership.
+
 - Activate cumulative information, storage, security, and diagnostics records
   with strict provider-scoped validation. Pane-scoped mount and firewalld
   subscriptions use bounded reconciliation, while required recovery skips

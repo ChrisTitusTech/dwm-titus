@@ -496,8 +496,12 @@ Pane-scoped storage and firewalld subscriptions share bounded initial/settling
 cycles. Required recovery uses a minor 1 core snapshot without optional probes;
 storage reads wait for monitor readiness, and monitor failure retains other
 readable information. Read-only health navigation uses the existing health model
-and never admits a journal operation. Visible information/security/storage cards
-and final installed qualification remain pending.
+and never admits a journal operation. System Settings now displays the information,
+storage and security cards, exact byte counts, explicit unknown/stale states,
+Health navigation, and scoped recovery/reset guidance. Combined installed
+qualification remains pending. The full combined repository gate passed,
+including 679 backend tests, all QML/X11 workflows, install preservation and
+release archive checks. The subsequent socket fix passes 59 affected checks.
 
 Mount readiness also distinguishes the temporary initial parsing descriptor
 from the persistent polling descriptor. A delayed-open regression against the
@@ -516,7 +520,7 @@ storage, and security states, four fixed providers, and in-process health
 navigation. Reader failures remain owner-scoped, filesystem lists are buffered
 against their complete encoded budget, and diagnostics do not depend on journal
 admission. Public minor 2 and visible-pane lifecycle integration are implemented;
-visible information cards remain pending.
+visible information cards are implemented.
 
 The shared power helper now provides a fixed read-only `power-lock-snapshot`
 using the same formatter and existing power status owner as `power-snapshot`.
@@ -524,8 +528,8 @@ The internal system-information reader validates its versioned lock record,
 keeps probe status distinct from automatic-lock semantics, and caps the child
 at ten seconds and 8 KiB combined output. It preserves the user-session
 environment, supervises the owned process group, and never opens a journal or
-launches an independent GSettings/locker probe. Cumulative protocol integration is implemented; visible security cards remain
-pending.
+launches an independent GSettings/locker probe. Cumulative protocol integration
+and visible security cards are implemented.
 
 The internal local-information reader now returns eleven independent OS, kernel,
 processor, memory, swap, and uptime observations. Fixed file reads are capped;
@@ -552,17 +556,17 @@ multi-parent devices, and refuses incomplete or mixed root evidence. Twenty
 focused topology/process tests and all seventeen filesystem regressions passed;
 a read-only Fedora 44 probe returned available root-block evidence within its
 deadline. The shared screen-lock reader is implemented as described above.
-Protocol integration, visible controls, and combined installed qualification
-remain pending.
+Protocol integration and visible controls are implemented. Combined installed
+qualification remains pending.
 
-- [ ] Add event-driven or bounded system information and storage overview state
+- [x] Add event-driven or bounded system information and storage overview state
   without a new idle poller.
-- [ ] Add privacy and security status, diagnostics, recovery actions, and reset
+- [x] Add privacy and security status, diagnostics, recovery actions, and reset
   guidance with clear ownership and limitations.
-- [ ] Keep advanced storage mutation, firewall policy, service administration,
+- [x] Keep advanced storage mutation, firewall policy, service administration,
   and other broad or destructive operations delegated unless `SPEC.md` first
   defines a safe narrow contract.
-- [ ] Add actionable unavailable, denied, failed, canceled, interrupted, and
+- [x] Add actionable unavailable, denied, failed, canceled, interrupted, and
   recovery states for every surface.
 
 Acceptance:

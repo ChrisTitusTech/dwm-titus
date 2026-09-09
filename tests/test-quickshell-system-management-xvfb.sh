@@ -359,6 +359,28 @@ while [ "$i" -lt 100 ]; do
 done
 DISPLAY=$display xprop -root >/dev/null
 
+# Pure information view: bounded inventories, unknown values, and keyboard navigation.
+mkdir -p "$work/information-ui"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" "$work/information-ui/"
+cp "$repo/tests/qml/SystemInformationUi.qml" "$work/information-ui/shell.qml"
+for size in 640x480 780x580 1000x740; do
+	width=${size%x*}
+	height=${size#*x}
+	timeout --foreground --kill-after=2s 15s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+		DWM_INFORMATION_UI_WIDTH="$width" DWM_INFORMATION_UI_HEIGHT="$height" \
+		quickshell --no-duplicate --path "$work/information-ui/shell.qml" >"$work/information-ui-$size.log" 2>&1 &
+	quickshell_pid=$!
+	status=0
+	wait "$quickshell_pid" || status=$?
+	quickshell_pid=
+	if [ "$status" -ne 0 ] || ! grep -F 'Information UI tests: PASS' "$work/information-ui-$size.log" ||
+		grep -Eq 'Information UI FAILED:|ReferenceError:|TypeError:|Binding loop' "$work/information-ui-$size.log"; then
+		cat "$work/information-ui-$size.log" >&2
+		exit 1
+	fi
+done
+
 # Signals during either capture allocation must not leak files or start work.
 mkdir -p "$work/checked-command" "$work/checked-bin"
 cp -a "$repo/config/quickshell/core" "$work/checked-command/"
