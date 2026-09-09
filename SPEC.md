@@ -484,6 +484,13 @@ The planned Settings surface covers:
   monitor. Placement accounts for resolution and rotation, aligns the top or
   left edges, and retains the timed preview/rollback and coordinate-based
   profile formats. Choosing a placement edits the pending layout only.
+- Automatic display layouts expose separate Docked and Undocked profiles,
+  their saved geometry and modes, detected hardware, current applied matches,
+  and default fallback. Optional autorandr integration remains unprivileged;
+  edits do not apply live, saves require confirmation and backups, and the
+  Undocked layout enables only the built-in screen. Profiles must not pin
+  session-specific CRTC assignments. Existing system-wide Xorg persistence
+  remains a separate advanced operation.
 - Keyboard, pointer, touchpad, and other supported input devices.
 - NetworkManager connections, VPN entry points, and Bluetooth devices.
 - PipeWire/WirePlumber-compatible audio devices and application streams.

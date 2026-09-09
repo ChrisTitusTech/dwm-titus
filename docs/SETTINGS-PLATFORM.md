@@ -247,7 +247,38 @@ Disabled monitors keep their numbered cards but do not appear in the preview
 or reference selector. The highlighted button reflects the current geometry.
 Apply changes starts the existing 15-second confirmation; the diagram itself
 does not change the live layout. Existing saved coordinate profiles still load.
-These profile controls do not update separately managed autorandr profiles.
+The separate **Automatic layouts** cards manage autorandr's `mobile` (Undocked)
+and `docked` profiles. They show saved monitor geometry and modes, detected
+hardware matches, currently applied matches, and the default fallback. A
+custom live layout may match the hardware without matching the saved settings.
+**Edit saved** copies a profile into the pending editor, without applying it;
+**Create draft** seeds built-in-only Undocked or the current Docked draft.
+**Save draft as ...** requires confirmation and does not apply the draft.
+Use **Apply changes** and **Keep changes** to test it first. Saved enabled
+monitors must be connected to edit, and all selected modes must be available
+on the currently connected hardware before saving.
+
+The optional Fedora `autorandr` package supplies login and DRM hotplug hooks.
+Without it, automatic-profile controls explain that dependency while normal
+display controls remain usable. Saving Undocked sets `default -> mobile` and
+stores only the built-in monitor identity; Docked stores the connected monitor
+identity set. Unrecognized hardware uses the default fallback. Existing XDG
+autostart disablement is respected; Settings does not enable system services.
+Profile replacements preserve hooks and create backups under
+`~/.config/dwm-titus/display-profile-backups/` (respecting `XDG_CONFIG_HOME`).
+An existing `~/.autorandr` directory takes precedence, matching autorandr;
+its backups are stored in `~/dwm-titus/display-profile-backups/`.
+Confirmed saves merge `set,crtc` into autorandr's `skip-options`, preserving
+other settings and backing up the original settings file. This prevents
+session-specific assignments and properties from invalidating layout matches.
+Saved configs omit CRTC numbers and output properties because those are not
+portable between X sessions. Unsupported existing profile options are reported
+instead of silently removed. The one Docked slot matches one connected monitor
+set; advanced multi-dock and transformed profiles remain managed in autorandr.
+Named dwm-titus layouts and privileged **Use at next login** remain separate
+from these automatic, per-user layouts.
+
+![Separate saved dock and built-in layouts with a live draft](evidence/display-dock-profiles.png)
 
 ![Numbered display placement preview](evidence/display-relative-layout.png)
 

@@ -51,6 +51,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-screenshot \
 	scripts/dwm-settings \
 	scripts/dwm-settings-display \
+	scripts/dwm-settings-display-profiles \
 	scripts/dwm-settings-input \
 	scripts/dwm-settings-appearance \
 	scripts/dwm-settings-font \
@@ -473,6 +474,7 @@ check-quickshell-system-management: all
 check-settings:
 	tests/test-settings.sh
 	tests/test-settings-input.sh
+	python3 tests/test-display-profiles.py
 
 check-appearance:
 	tests/test-dwm-settings-appearance.sh

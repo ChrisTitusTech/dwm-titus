@@ -12,6 +12,7 @@ Flickable {
     property string profileName: ""
     property string confirmation: ""
     property var placementAnchors: ({})
+    property string saveAutomaticRole: ""
 
     function selectPlacementAnchor(output, anchor) {
         const anchors = Object.assign({}, root.placementAnchors);
@@ -53,6 +54,7 @@ Flickable {
 
 		onVisibleChanged: {
 			if (!visible) root.confirmation = "";
+            if (!visible) root.saveAutomaticRole = "";
 		}
 
     contentWidth: width
@@ -63,6 +65,166 @@ Flickable {
         id: contentColumn
         width: root.width
         spacing: Theme.spacingLg
+
+        Text {
+            Layout.fillWidth: true
+            text: "Automatic layouts - login and dock connection"
+            color: Theme.textStrong
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.bodyFontSize
+            font.bold: true
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: root.settingsModel.automaticDisplayState.error || ("Matching hardware: "
+                + (root.settingsModel.automaticDisplayState.detected.join(", ") || "no saved match")
+                + " | Currently applied: " + (root.settingsModel.automaticDisplayState.current.join(", ") || "custom / differs from saved")
+                + " | Default fallback: " + (root.settingsModel.automaticDisplayState.default || "not set"))
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallFontSize
+            wrapMode: Text.WordWrap
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingLg
+            Repeater {
+                model: ["undocked", "docked"]
+                delegate: Rectangle {
+                    id: automaticCard
+                    required property string modelData
+                    readonly property var profile: root.settingsModel.automaticDisplayProfile(modelData)
+                    readonly property var savedLayout: root.settingsModel.automaticDisplayArrangement(modelData)
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
+                    Layout.preferredHeight: automaticContent.implicitHeight + 16
+                    color: Theme.controlNormalFill
+                    border.color: root.settingsModel.displayEditingRole === modelData ? Theme.accent : Theme.controlNormalBorder
+                    radius: Theme.largeSurfaceCardRadius
+                    ColumnLayout {
+                        id: automaticContent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 8
+                        spacing: Theme.tightSpacing
+                        Text {
+                            Layout.fillWidth: true
+                            text: automaticCard.modelData === "undocked" ? "Undocked - built-in only" : "Docked - saved monitors"
+                            color: Theme.textStrong
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.bodyFontSize
+                            font.bold: true
+                        }
+                        Item {
+                            id: savedMap
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: automaticCard.profile.saved ? 80 : 0
+                            readonly property real factor: Math.min(width / automaticCard.savedLayout.width, height / automaticCard.savedLayout.height)
+                            Repeater {
+                                model: automaticCard.savedLayout.tiles
+                                delegate: Rectangle {
+                                    id: savedTile
+                                    required property var modelData
+                                    x: (savedMap.width - automaticCard.savedLayout.width * savedMap.factor) / 2
+                                        + (modelData.x - automaticCard.savedLayout.x) * savedMap.factor
+                                    y: (modelData.y - automaticCard.savedLayout.y) * savedMap.factor
+                                    width: modelData.width * savedMap.factor
+                                    height: modelData.height * savedMap.factor
+                                    color: modelData.primary ? Theme.controlSelectedFill : Theme.controlHoverFill
+                                    border.color: Theme.accent
+                                    radius: Theme.controlRadius
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: savedTile.modelData.number
+                                        color: Theme.textStrong
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.bodyFontSize
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.settingsModel.automaticDisplaySummary(automaticCard.modelData)
+                            color: automaticCard.profile.error ? Theme.warning : Theme.textMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.smallFontSize
+                            wrapMode: Text.WordWrap
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            spacing: Theme.tightSpacing
+                            enabled: root.settingsModel.automaticDisplayState.available
+                                && !root.settingsModel.previewOperationLocked && !root.settingsModel.automaticDisplayBusy
+                            ShellButton {
+                                label: automaticCard.profile.saved ? "Edit saved" : "Create draft"
+                                enabled: !automaticCard.profile.error
+                                onActivated: root.settingsModel.editAutomaticDisplay(automaticCard.modelData)
+                            }
+                            ShellButton {
+                                label: "Save draft as " + automaticCard.modelData
+                                onActivated: root.saveAutomaticRole = automaticCard.modelData
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: root.settingsModel.automaticDisplayMessage || "Edit a saved layout below, or save the current draft. Docked matches monitor identities; Undocked enables only the built-in screen. No administrator approval is needed."
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallFontSize
+            wrapMode: Text.WordWrap
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: automaticConfirmation.implicitHeight + 16
+            visible: root.saveAutomaticRole !== ""
+            color: Theme.controlHoverFill
+            border.color: Theme.warning
+            radius: Theme.largeSurfaceCardRadius
+            ColumnLayout {
+                id: automaticConfirmation
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 8
+                Text {
+                    Layout.fillWidth: true
+                    text: "Save the draft below as " + root.saveAutomaticRole
+                        + " for autorandr at login and connection changes? This replaces that saved layout with a backup, without applying it now. Autorandr will ignore session-specific CRTC assignments and output properties. Test with Apply changes first."
+                        + (root.saveAutomaticRole === "undocked" ? " It also becomes the default fallback." : " Save with this dock connected so its monitors can be identified.")
+                    color: Theme.textStrong
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.bodyFontSize
+                    wrapMode: Text.WordWrap
+                }
+                RowLayout {
+                    ShellButton {
+                        label: "Confirm save"
+                        enabled: !root.settingsModel.previewOperationLocked && !root.settingsModel.automaticDisplayBusy
+                        onActivated: { root.settingsModel.saveAutomaticDisplay(root.saveAutomaticRole); root.saveAutomaticRole = ""; }
+                    }
+                    ShellButton { label: "Cancel"; onActivated: root.saveAutomaticRole = "" }
+                }
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: "Editing: " + root.settingsModel.displayEditingRole + " draft - not applied until you choose Apply changes"
+            color: Theme.textStrong
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.bodyFontSize
+        }
 
         RowLayout {
             Layout.fillWidth: true
