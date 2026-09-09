@@ -17,15 +17,17 @@ that is Phase 7. The implementation and protocol reference is
 | Event-driven, bounded storage and security state | Real findmnt descriptor/readiness and owned-child tests, mount namespace event checks, and QML generation/readiness/closure fixtures cover initialization races, bounded settling, immutable per-launch callbacks, consumer loss and explicit stale-data retention. Blocked storage cannot be reread by unrelated provider events; failed core recovery reads preserve optional information through successful retries. No periodic information poller is added. |
 | Diagnostics, recovery and reset guidance | The fixed Health navigation opens the existing scan owner. Repairs retain their existing confirmation and trusted-helper checks. Visible guidance names scope and owner, explains diagnostic sharing, and excludes broad disk, firewall, encryption, service and factory-reset operations. |
 | Allowlisted and auditable privilege boundaries | Backend tests reject repository/user-writable elevated helpers, invalid arguments and unsafe executable identities. Authorization denial preserves readable state. Graphical polkit evidence below is authorization-only and does not substitute for a real service mutation. |
-| Build and installation | The complete combined managed suite passed with 679 backend tests, build, lint, nested-X11, staged/repeated installation, preservation and release-archive checks. Later backend fixes pass 60 focused checks; later subscription/recovery fixes pass the complete affected QML, ShellCheck and formatting gate, with 544 parser, 119 retained-callback and 66/69/66 root lifecycle assertions. The final diagnostic-retention follow-up passes 544 parser and 67/70/67 root lifecycle assertions. The information view passes 25 assertions at each of three sizes. The final Health screen-routing fix passes 15 assertions against the production binding; the old binding fails. The composed snapshot fixture regression passes nine wrapper/mode combinations; the old wrappers fail four. After a desktop restart interrupted the last QML scenarios, those scenarios and all remaining cases passed in a continuation with unchanged source. Independent review and documentation builds pass. |
+| Build and installation | The complete final managed suite passed with 682 backend tests, build, lint, nested-X11, staged/repeated installation, preservation and release-archive checks. Backend fixes also pass 60 focused checks; subscription/recovery fixes pass the complete affected QML, ShellCheck and formatting gate, with 544 parser, 119 retained-callback and 66/69/66 root lifecycle assertions. The final diagnostic-retention follow-up passes 544 parser and 67/70/67 root lifecycle assertions. The information view passes 25 assertions at each of three sizes. The final Health screen-routing fix passes 15 assertions against the production binding; the old binding fails. The composed snapshot fixture regression passes nine wrapper/mode combinations; the old wrappers fail four. After a desktop restart interrupted the last QML scenarios, those scenarios and all remaining cases passed in a continuation with unchanged source. Independent review and documentation builds pass. |
 | Installed X11 runtime | Final installed revision `85b11a815d3a5e7a4df855297cbf4b87642f0c8d` passed file/binary parity, System lifecycle, actual Settings-to-Health navigation and restoration on Fedora 44 X11. Quickshell ran in logind session 2 with five tray items. Closed Settings/Health left no System helpers; Quickshell used 0.200% CPU over five seconds. |
 
-Final revision qualification also includes a fresh complete `scripts/run-tests`
-on implementation commit `47484b4262e5d0b0379516196d511a679cfeae7a`, containing
-all implementation review fixes. Its terminal result is recorded in
-[the completion PR](https://github.com/ChrisTitusTech/dwm-titus/pull/288); this
-gate must pass before the completion PR merges. Documentation-only follow-ups
-do not change that tested implementation. The preceding full attempt passed all
+The fresh complete `scripts/run-tests` passed on implementation commit
+`47484b4262e5d0b0379516196d511a679cfeae7a`, containing all implementation review
+fixes: 682 backend tests, the complete System Management Xvfb lifecycle,
+84 regional and 48 delegated UI cases, build/lint, staged and repeated
+installation, preservation, and release-archive validation. The run exited zero;
+its terminal result is also recorded in
+[the completion PR](https://github.com/ChrisTitusTech/dwm-titus/pull/288).
+Documentation-only follow-ups do not change that tested implementation. The preceding full attempt passed all
 682 backend tests but exposed a regional UI fixture race: it treated the UI as
 settled while a routine NTP sample still owned the shared read slot. The control
 correctly remained disabled. The corrected fixture waits for that owner; its

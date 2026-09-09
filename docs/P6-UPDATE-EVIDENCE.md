@@ -118,5 +118,7 @@ requirements, or the installed host Settings workflow. Cancellation, interrupted
 ownership, network/malformed responses, and UI closure/reopening remain covered
 by the existing private-bus and nested-X11 fixtures, not by this guest run.
 The tiny local transactions never supplied an observable cancelable interval.
-Combined Phase 6 installed-file parity, real X11 acceptance, and the remaining
-regional/information surfaces are still required before phase completion.
+At this update-only boundary, combined installed-file parity, real X11 acceptance,
+and the regional/information surfaces still remained. Their subsequent
+qualification and explicit limits are recorded in
+[P6-QUALIFICATION.md](P6-QUALIFICATION.md).
