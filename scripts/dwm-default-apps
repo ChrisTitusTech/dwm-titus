@@ -339,6 +339,7 @@ parsed_desktop_matches_role() {
 
 terminal_command_for_id() {
 	case $1 in
+	dwmterm.desktop) printf '%s\n' dwmterm ;;
 	Alacritty.desktop | org.alacritty.Alacritty.desktop) printf '%s\n' alacritty ;;
 	kitty.desktop) printf '%s\n' kitty ;;
 	st.desktop) printf '%s\n' st ;;
@@ -351,7 +352,7 @@ terminal_command_for_id() {
 terminal_id_for_command() {
 	local command_name=$1
 	local id command_candidate file
-	for id in Alacritty.desktop org.alacritty.Alacritty.desktop kitty.desktop st.desktop \
+	for id in dwmterm.desktop Alacritty.desktop org.alacritty.Alacritty.desktop kitty.desktop st.desktop \
 		dev.warp.Warp.desktop warp-terminal.desktop xterm.desktop; do
 		command_candidate=$(terminal_command_for_id "$id") || continue
 		[[ $command_candidate == "$command_name" ]] || continue

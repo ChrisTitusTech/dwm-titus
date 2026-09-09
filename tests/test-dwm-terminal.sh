@@ -44,8 +44,21 @@ sed -i 's/terminal = "alacritty"/terminal = "kitty"/' \
 DWM_TERMINAL_TEST_OUT="$work/configured-out" \
 	PATH="$work/bin" \
 	"$BASH_BIN" "$HELPER" --print-command >"$work/configured-command"
-grep -Fqx kitty "$work/configured-command"
-sed -i 's/terminal = "kitty"/terminal = "alacritty"/' \
+sed -i 's/terminal = "kitty"/terminal = "dwmterm"/' \
+	"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml"
+cat >"$work/bin/dwmterm" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' "$0" >"$DWM_TERMINAL_TEST_OUT"
+printf '%s\n' "$@" >>"$DWM_TERMINAL_TEST_OUT"
+SCRIPT
+chmod +x "$work/bin/dwmterm"
+
+DWM_TERMINAL_TEST_OUT="$work/dwmterm-configured-out" \
+	PATH="$work/bin" \
+	"$BASH_BIN" "$HELPER" --print-command >"$work/dwmterm-configured-command"
+grep -Fqx dwmterm "$work/dwmterm-configured-command"
+rm -f "$work/bin/dwmterm"
+sed -i 's/terminal = "dwmterm"/terminal = "alacritty"/' \
 	"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml"
 
 cat >>"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml" <<'EOF'
