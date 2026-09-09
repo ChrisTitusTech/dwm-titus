@@ -7613,10 +7613,11 @@ class PackageKitBackend:
         )
 
     def session_started(self) -> int:
-        """Read this process's logind session timestamp under one fixed deadline."""
+        """Read session evidence, including user-service launches, within one deadline."""
         deadline = time.monotonic() + 10
 
-        def call(path: str, interface: str, method: str, parameters: object, signature: str) -> object:
+        def call(path: str, interface: str, method: str, parameters: object, signature: str,
+                 allow_no_session: bool = False) -> object:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise SnapshotFailure("timeout", "Current logind session read timed out; restart guidance is retained", "unavailable")
@@ -7627,6 +7628,8 @@ class PackageKitBackend:
                     max(1, min(int(remaining * 1000), 10000)), None)
             except self.GLib.Error as error:
                 name = self.Gio.dbus_error_get_remote_error(error)
+                if allow_no_session and name == "org.freedesktop.login1.NoSessionForPID" and time.monotonic() < deadline:
+                    return None
                 if time.monotonic() >= deadline or name in {"org.freedesktop.DBus.Error.Timeout", "org.freedesktop.DBus.Error.TimedOut", "org.freedesktop.DBus.Error.NoReply"}:
                     raise SnapshotFailure("timeout", "Current logind session read timed out; restart guidance is retained", "unavailable") from error
                 if name == "org.freedesktop.DBus.Error.AccessDenied":
@@ -7645,11 +7648,47 @@ class PackageKitBackend:
                 raise SnapshotFailure("malformed", "Current logind session reply is malformed")
             return reply
 
+        def display_session(user_path: str) -> tuple[str, str]:
+            reply = call(user_path, PROPERTIES_INTERFACE, "Get",
+                         self.GLib.Variant("(ss)", ("org.freedesktop.login1.User", "Display")), "(v)")
+            value = reply.get_child_value(0).get_variant()
+            if value.get_type_string() != "(so)":
+                raise SnapshotFailure("malformed", "Logind display session reply is malformed")
+            identity = value.unpack()
+            if (not isinstance(identity, (tuple, list)) or len(identity) != 2
+                    or not isinstance(identity[0], str) or not identity[0] or len(identity[0]) > 256):
+                raise SnapshotFailure("missing-provider", "No primary graphical session is available; restart guidance is retained", "unavailable")
+            return tuple(identity)
+
         reply = call("/org/freedesktop/login1", "org.freedesktop.login1.Manager", "GetSessionByPID",
-                     self.GLib.Variant("(u)", (os.getpid(),)), "(o)")
-        path = reply.unpack()[0]
+                     self.GLib.Variant("(u)", (os.getpid(),)), "(o)", allow_no_session=True)
+        user_path = None
+        display_identity = None
+        if reply is None:
+            # A managed shell launched by systemd --user is outside session scopes.
+            # Use logind's primary display, never an environment-supplied session ID.
+            reply = call("/org/freedesktop/login1", "org.freedesktop.login1.Manager", "GetUser",
+                         self.GLib.Variant("(u)", (os.getuid(),)), "(o)")
+            user_path = reply.unpack()[0]
+            if not isinstance(user_path, str) or re.fullmatch(r"/org/freedesktop/login1/user/[A-Za-z0-9_]{1,128}", user_path) is None:
+                raise SnapshotFailure("malformed", "Current logind user path is malformed")
+            display_identity = display_session(user_path)
+            path = display_identity[1]
+        else:
+            path = reply.unpack()[0]
         if not isinstance(path, str) or len(path) > 256 or re.fullmatch(r"/org/freedesktop/login1/session/[A-Za-z0-9_]+", path) is None:
             raise SnapshotFailure("malformed", "Current logind session path is malformed")
+        if user_path is not None:
+            reply = call(path, PROPERTIES_INTERFACE, "GetAll",
+                         self.GLib.Variant("(s)", ("org.freedesktop.login1.Session",)), "(a{sv})")
+            state = reply.unpack()[0]
+            owner = state.get("User") if isinstance(state, dict) else None
+            if (not isinstance(owner, (tuple, list)) or len(owner) != 2
+                    or type(owner[0]) is not int or owner[0] != os.getuid() or owner[1] != user_path
+                    or state.get("Id") != display_identity[0] or state.get("Type") != "x11"
+                    or state.get("Class") != "user" or state.get("State") != "active"
+                    or state.get("Active") is not True or state.get("Remote") is not False):
+                raise SnapshotFailure("missing-provider", "Primary display is not an active local X11 session for this user; restart guidance is retained", "unavailable")
         reply = call(path, PROPERTIES_INTERFACE, "Get",
                      self.GLib.Variant("(ss)", ("org.freedesktop.login1.Session", "TimestampMonotonic")), "(v)")
         value = reply.get_child_value(0).get_variant()
@@ -7658,6 +7697,8 @@ class PackageKitBackend:
         timestamp = value.unpack()
         if type(timestamp) is not int or not 0 <= timestamp <= JOURNAL_SEQUENCE_MAX:
             raise SnapshotFailure("malformed", "Current logind session timestamp is malformed")
+        if user_path is not None and display_session(user_path) != display_identity:
+            raise SnapshotFailure("missing-provider", "Primary display session changed during discovery; restart guidance is retained", "unavailable")
         return timestamp
 
     def last_refresh_age(self) -> int:

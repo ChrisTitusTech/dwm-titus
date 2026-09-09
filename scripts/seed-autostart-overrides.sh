@@ -36,6 +36,14 @@ find_vendor_entry() {
 
 add_dwm_exclusion() {
 	awk '
+		function without_dwm(value, count, parts, i, result) {
+			count = split(value, parts, ";")
+			result = ""
+			for (i = 1; i <= count; i++)
+				if (parts[i] != "" && parts[i] != "X-DWM" && parts[i] != "dwm")
+					result = result parts[i] ";"
+			return result
+		}
 		function with_dwm_exclusion(value) {
 			if (value ~ /(^|;)X-DWM(;|$)/)
 				return value
@@ -57,8 +65,16 @@ add_dwm_exclusion() {
 			in_desktop = 0
 		}
 
+		in_desktop && /^OnlyShowIn=/ {
+			print "OnlyShowIn=" without_dwm(substr($0, 12))
+			seen_only = 1
+			updated = 1
+			next
+		}
+
 		in_desktop && /^NotShowIn=/ {
 			print "NotShowIn=" with_dwm_exclusion(substr($0, 11))
+			seen_not = 1
 			updated = 1
 			next
 		}
@@ -68,7 +84,7 @@ add_dwm_exclusion() {
 		END {
 			if (in_desktop && !updated)
 				print "NotShowIn=X-DWM;"
-			if (!seen_desktop)
+			if (!seen_desktop || (seen_only && seen_not))
 				exit 1
 		}
 	' "$1"

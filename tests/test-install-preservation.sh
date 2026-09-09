@@ -236,7 +236,7 @@ cat >"$XDG_CONFIG_DIRS/autostart/light-locker.desktop" <<'EOF'
 Type=Application
 Name=Vendor screen locker
 Exec=light-locker --lock-after-screensaver=5
-OnlyShowIn=MATE;XFCE;
+OnlyShowIn=MATE;X-DWM;XFCE;dwm;
 AutostartCondition=GSettings org.mate.lockdown disable-lock-screen
 EOF
 cat >"$XDG_CONFIG_DIRS/autostart/polkit-mate-authentication-agent-1.desktop" <<'EOF'
@@ -244,7 +244,6 @@ cat >"$XDG_CONFIG_DIRS/autostart/polkit-mate-authentication-agent-1.desktop" <<'
 Type=Application
 Name=Vendor PolicyKit agent
 Exec=/usr/libexec/polkit-mate-authentication-agent-1
-OnlyShowIn=MATE;
 NotShowIn=GNOME;KDE;
 X-MATE-Autostart-Phase=Initialization
 EOF
@@ -354,11 +353,17 @@ grep -Fqx 'Exec=light-locker --lock-after-screensaver=5' "$LOCKER_OVERRIDE"
 grep -Fqx 'OnlyShowIn=MATE;XFCE;' "$LOCKER_OVERRIDE"
 grep -Fqx 'AutostartCondition=GSettings org.mate.lockdown disable-lock-screen' \
 	"$LOCKER_OVERRIDE"
-grep -Fqx 'NotShowIn=X-DWM;' "$LOCKER_OVERRIDE"
+if grep -q '^NotShowIn=' "$LOCKER_OVERRIDE"; then
+	printf 'OnlyShowIn override must not also contain NotShowIn.\n' >&2
+	exit 1
+fi
 
 POLKIT_OVERRIDE="$XDG_CONFIG_HOME/autostart/polkit-mate-authentication-agent-1.desktop"
 grep -Fqx 'Exec=/usr/libexec/polkit-mate-authentication-agent-1' "$POLKIT_OVERRIDE"
-grep -Fqx 'OnlyShowIn=MATE;' "$POLKIT_OVERRIDE"
+if grep -q '^OnlyShowIn=' "$POLKIT_OVERRIDE"; then
+	printf 'NotShowIn override must not also contain OnlyShowIn.\n' >&2
+	exit 1
+fi
 grep -Fqx 'X-MATE-Autostart-Phase=Initialization' "$POLKIT_OVERRIDE"
 grep -Fqx 'NotShowIn=GNOME;KDE;X-DWM;' "$POLKIT_OVERRIDE"
 test "$(grep -o 'X-DWM;' "$POLKIT_OVERRIDE" | wc -l)" -eq 1
@@ -410,5 +415,26 @@ if find "$EMPTY_CONFIG_HOME/autostart" -type f -print -quit | grep -q .; then
 	exit 1
 fi
 test "$(stat -c %U "$EMPTY_CONFIG_HOME/autostart")" = "$OWNER"
+
+cat >"$EMPTY_CONFIG_DIRS/autostart/light-locker.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=DWM-only fixture
+Exec=light-locker
+OnlyShowIn=X-DWM;dwm;
+EOF
+cat >"$EMPTY_CONFIG_DIRS/autostart/polkit-mate-authentication-agent-1.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Invalid fixture
+Exec=polkit-mate-authentication-agent-1
+OnlyShowIn=MATE;
+NotShowIn=GNOME;
+EOF
+HOME="$TEST_HOME" XDG_CONFIG_HOME="$EMPTY_CONFIG_HOME" \
+	XDG_CONFIG_DIRS="$EMPTY_CONFIG_DIRS" DWM_INSTALL_OWNER="$OWNER" \
+	"$TEST_REPO/scripts/seed-autostart-overrides.sh"
+grep -Fqx 'OnlyShowIn=' "$EMPTY_CONFIG_HOME/autostart/light-locker.desktop"
+test ! -e "$EMPTY_CONFIG_HOME/autostart/polkit-mate-authentication-agent-1.desktop"
 
 printf 'Repeated install preservation: PASS\n'

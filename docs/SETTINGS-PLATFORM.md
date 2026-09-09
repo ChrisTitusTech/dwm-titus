@@ -38,6 +38,18 @@ class, provider, state, and recovery detail. Unsupported and restricted cards
 stay visible when their explanation helps the user; a missing provider never
 prevents another section from opening.
 
+Autostart overrides keep `OnlyShowIn` and `NotShowIn` mutually exclusive.
+When a vendor entry has `OnlyShowIn`, installation removes only the `X-DWM`
+and `dwm` tokens instead of adding `NotShowIn`; other desktop choices remain
+intact. Existing user overrides are preserved and require an explicit repair
+if an older installation produced conflicting keys.
+
+Update recovery normally reads the calling process's logind session. A helper
+launched by the managed user service may have no session scope; in that case
+it uses logind's primary display only after verifying the session belongs to
+the current user and is active, local, and X11. Missing, changing, or invalid
+session evidence retains restart guidance and blocks update actions.
+
 ## Helper Protocol
 
 The Phase 1 capability snapshot invokes only `dwm-settings-provider discover`

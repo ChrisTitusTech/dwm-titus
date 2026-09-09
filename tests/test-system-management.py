@@ -10182,6 +10182,45 @@ class SessionEvidenceTests(unittest.TestCase):
         self.assertEqual((first.args[5], second.args[5]), (None, None))
         self.assertEqual((first.args[7], second.args[7]), (9000, 7000))
 
+    def service_backend(self, changes=None, final_identity=None):
+        backend = self.backend()
+        backend.Gio.dbus_error_get_remote_error = lambda error: str(error)
+        user_path = "/org/freedesktop/login1/user/_1000"
+        identity = ("7", "/org/freedesktop/login1/session/_37")
+        state = dict(User=(provider.os.getuid(), user_path), Id="7", Type="x11",
+                     Class="user", State="active", Active=True, Remote=False)
+        state.update(changes or {})
+        def boxed(signature, value):
+            return self.Variant("(v)", (self.Variant("v", self.Variant(signature, value)),))
+        backend.connection.call_sync.side_effect = [
+            RuntimeError("org.freedesktop.login1.NoSessionForPID"),
+            self.Variant("(o)", (user_path,)), boxed("(so)", identity),
+            self.Variant("(a{sv})", (state,)), boxed("t", 456),
+            boxed("(so)", final_identity or identity)]
+        return backend
+
+    def test_user_service_uses_verified_primary_display(self):
+        backend = self.service_backend()
+        with mock.patch.dict(provider.os.environ, {"XDG_SESSION_ID": "untrusted-other-session"}):
+            self.assertEqual(backend.session_started(), 456)
+        calls = backend.connection.call_sync.call_args_list
+        self.assertEqual(calls[1].args[3:5][0], "GetUser")
+        self.assertEqual(calls[1].args[4].unpack(), (provider.os.getuid(),))
+        self.assertEqual(calls[3].args[3], "GetAll")
+        self.assertEqual(calls[-1].args[4].unpack(), ("org.freedesktop.login1.User", "Display"))
+
+    def test_user_service_rejects_unverified_display(self):
+        for changes in ({"User": (provider.os.getuid() + 1, "/other")},
+                        {"Id": "other"}, {"Type": "tty"}, {"Class": "manager"},
+                        {"State": "closing"}, {"Active": False}, {"Remote": True}):
+            with self.subTest(changes=changes), self.assertRaises(provider.SnapshotFailure):
+                self.service_backend(changes).session_started()
+
+    def test_user_service_retains_guidance_when_display_changes(self):
+        with self.assertRaises(provider.SnapshotFailure) as raised:
+            self.service_backend(final_identity=("8", "/org/freedesktop/login1/session/_38")).session_started()
+        self.assertEqual(raised.exception.code, "missing-provider")
+
     def test_malformed_session_path_never_reads_property(self):
         for path in ("/other", "/org/freedesktop/login1/session/", "/org/freedesktop/login1/session/" + "x" * 257):
             with self.subTest(path=path):

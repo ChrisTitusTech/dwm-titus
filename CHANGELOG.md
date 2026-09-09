@@ -8,6 +8,12 @@ versions from `config.mk`.
 
 ### Changed
 
+- Keep seeded autostart exclusions valid for desktop entries with OnlyShowIn,
+  preserving other desktop sessions without adding conflicting NotShowIn keys.
+- Resolve update recovery session evidence for managed user-service launches
+  through logind's verified active local X11 display session.
+- Wrap long Input setting labels and improve Settings search-prompt contrast.
+
 - Add explicit Docked and Undocked automatic display layouts to Settings,
   including saved previews, detected/applied status, draft editing, confirmed
   saves and backups. Use optional autorandr login/hotplug integration without
