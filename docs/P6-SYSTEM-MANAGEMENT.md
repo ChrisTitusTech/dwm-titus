@@ -2624,10 +2624,13 @@ the service; that method is not used by the monitor.
 
   The fixed CLI helper is implemented as a preparatory boundary. It uses a pidfd
   and signal-wakeup pipe alongside child output, so no idle timer remains after
-  readiness. A closure-only epoll watch catches pipe/socket consumer loss
-  even with no mount events. Incoming socket data and a peer write-half-close
-  are not mistaken for loss, and neither readable nor writable readiness
-  creates an idle spin. Lost output or failed cleanup exits unsuccessfully. The bounded
+  readiness. The helper requires write-only pipe output, as supplied by
+  Quickshell. Its read-interest watch catches consumer loss even with no mount
+  events, without a writable idle spin. Other output types are rejected before
+  starting a child: sockets can half-close without an event, and read/write
+  FIFOs retain their own reader. For command-line inspection, use
+  `dwm-system-management watch-mounts | cat`. Shared operation writers retain
+  their separate output-type support. Lost output or failed cleanup exits unsuccessfully. The bounded
   readiness probe retains early child output until the baseline is acknowledged.
   Root-model and pane integration described below remain pending; this command
   does not activate cumulative minor 2 or read a journal.

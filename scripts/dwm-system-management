@@ -13,7 +13,6 @@ import io
 import json
 import os
 import re
-import select
 import selectors
 import shlex
 import shutil
@@ -9941,6 +9940,7 @@ def watch_mount_events() -> int:
     handlers = {}
     interrupted = 0
     code = 1
+    failure_detail = b"Mount monitoring is unavailable; reload storage status explicitly\n"
 
     def terminate(number, _frame):
         nonlocal interrupted
@@ -9948,6 +9948,15 @@ def watch_mount_events() -> int:
 
     try:
         with contextlib.ExitStack() as resources:
+            output_descriptor = sys.stdout.fileno()
+            output_mode = os.fstat(output_descriptor).st_mode
+            if (not stat.S_ISFIFO(output_mode)
+                    or fcntl.fcntl(output_descriptor, fcntl.F_GETFL) & os.O_ACCMODE != os.O_WRONLY):
+                # Only a write-only pipe gives this owner an idle reader-loss
+                # event. Sockets can half-close silently; O_RDWR FIFOs retain a
+                # reader themselves. Quickshell supplies the supported pipe.
+                failure_detail = b"Mount monitoring requires write-only pipe output; use a pipe consumer\n"
+                raise OSError("Unsupported mount monitor output")
             writer = control_output_writer(sys.stdout, resources)
             if writer is None:
                 raise OSError("Mount monitor requires a descriptor")
@@ -9976,17 +9985,10 @@ def watch_mount_events() -> int:
                 with selectors.DefaultSelector() as selector:
                     selector.register(wake_read, selectors.EVENT_READ)
                     selector.register(pidfd, selectors.EVENT_READ)
-                    output_descriptor = sys.stdout.fileno()
-                    output_mode = os.fstat(output_descriptor).st_mode
-                    output_events = None
-                    if stat.S_ISFIFO(output_mode) or stat.S_ISSOCK(output_mode):
-                        # HUP/ERR are reported even with no requested events.
-                        # A nested epoll descriptor lets the main selector watch
-                        # only closure, not writable readiness, incoming socket
-                        # data, or the peer shutting down its write direction.
-                        output_events = resources.enter_context(select.epoll())
-                        output_events.register(output_descriptor, 0)
-                        selector.register(output_events, selectors.EVENT_READ)
+                    if stat.S_ISFIFO(output_mode):
+                        # A write-end pipe reports EPOLLERR when its last reader
+                        # disappears. Read interest avoids a writable idle spin.
+                        selector.register(output_descriptor, selectors.EVENT_READ)
                     for stream in (process.stdout, process.stderr):
                         os.set_blocking(stream.fileno(), False)
                         selector.register(stream, selectors.EVENT_READ)
@@ -10011,7 +10013,7 @@ def watch_mount_events() -> int:
                                 continue
                             if key.fd == pidfd:
                                 raise OSError("Mount monitor exited unexpectedly")
-                            if key.fileobj is output_events:
+                            if key.fd == output_descriptor:
                                 raise OSError("Mount monitor consumer disappeared")
                             if not ready and key.fileobj is process.stdout:
                                 continue  # Retain early events until baseline acknowledgment.
@@ -10040,7 +10042,7 @@ def watch_mount_events() -> int:
         with contextlib.ExitStack() as resources:
             writer = control_output_writer(sys.stderr, resources)
             if writer is not None:
-                writer(b"Mount monitoring is unavailable; reload storage status explicitly\n")
+                writer(failure_detail)
     except (OSError, ValueError):
         pass
     return code

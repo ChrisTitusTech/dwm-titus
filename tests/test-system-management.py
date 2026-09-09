@@ -3500,7 +3500,7 @@ class DelegatedToolTests(unittest.TestCase):
 
 
 class MountMonitorTests(unittest.TestCase):
-    def start(self, body, *, delay=0, baseline=True, pass_fds=(), stdout=subprocess.PIPE):
+    def start(self, body, *, delay=0, baseline=True, pass_fds=()):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         path = pathlib.Path(directory.name) / "child"
@@ -3514,7 +3514,7 @@ class MountMonitorTests(unittest.TestCase):
         runner = (f"import runpy,sys\np=runpy.run_path({str(PROVIDER_PATH)!r})\n"
                   f"p['watch_mount_events'].__globals__['MOUNT_MONITOR_EXEC']={code!r}\n"
                   "sys.exit(p['watch_mount_events']())\n")
-        process = subprocess.Popen([sys.executable, "-c", runner], stdout=stdout,
+        process = subprocess.Popen([sys.executable, "-c", runner], stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, pass_fds=pass_fds, bufsize=0)
         self.addCleanup(self.stop, process)
         deadline = time.monotonic() + 2
@@ -3533,8 +3533,7 @@ class MountMonitorTests(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=2)
-        if process.stdout is not None:
-            process.stdout.close()
+        process.stdout.close()
         process.stderr.close()
 
     def row(self, process, timeout=2):
@@ -3668,27 +3667,49 @@ FILE *fopen64(const char *path, const char *mode) {
         self.assertEqual(process.wait(timeout=3), 1)
         self.gone(child)
 
-    def test_socket_data_and_half_close_preserve_monitor_until_consumer_closes(self):
-        sender, reader = socket.socketpair()
-        self.addCleanup(sender.close)
-        self.addCleanup(reader.close)
-        reader.settimeout(3)
-        process, child = self.start("time.sleep(0.6)\nos.write(1, b'mount\\n')", stdout=sender)
-        self.assertTrue(os.get_blocking(sender.fileno()), "Inherited socket flags changed")
-        sender.close()
-        self.assertEqual(reader.recv(4096), b"mount-monitor-ready\n")
-        reader.sendall(b"inbound data is not reader closure")
-        reader.shutdown(socket.SHUT_WR)
-        fields = pathlib.Path(f"/proc/{process.pid}/stat").read_text().rsplit(") ", 1)[1].split()
-        before = int(fields[11]) + int(fields[12])
-        time.sleep(0.2)
-        self.assertIsNone(process.poll(), "Live output consumer was mistaken for closure")
-        fields = pathlib.Path(f"/proc/{process.pid}/stat").read_text().rsplit(") ", 1)[1].split()
-        self.assertLessEqual(int(fields[11]) + int(fields[12]) - before, 1, "Unread socket data caused an idle spin")
-        self.assertEqual(reader.recv(4096), b"mount-change\tmount\n")
-        reader.close()
-        self.assertEqual(process.wait(timeout=3), 1)
-        self.gone(child)
+    def test_socket_outputs_are_rejected_before_starting_a_child(self):
+        for mode in ("plain", "input", "read-half", "write-half", "full-buffer"):
+            with self.subTest(mode=mode):
+                sender, reader = socket.socketpair()
+                with sender, reader, tempfile.TemporaryFile() as diagnostics, \
+                        os.fdopen(os.dup(sender.fileno()), "wb", buffering=0) as output:
+                    if mode == "input":
+                        reader.sendall(b"not a closure")
+                    elif mode == "read-half":
+                        reader.shutdown(socket.SHUT_RD)
+                    elif mode == "write-half":
+                        reader.shutdown(socket.SHUT_WR)
+                    elif mode == "full-buffer":
+                        sender.setblocking(False)
+                        try:
+                            while True:
+                                sender.send(b"x" * 4096)
+                        except BlockingIOError:
+                            pass
+                    blocking = os.get_blocking(sender.fileno())
+                    with mock.patch.object(provider.sys, "stdout", output), \
+                            mock.patch.object(provider.sys, "stderr", diagnostics), \
+                            mock.patch.object(provider.subprocess, "Popen", side_effect=AssertionError("Child started")) as spawn:
+                        self.assertEqual(provider.watch_mount_events(), 1)
+                    spawn.assert_not_called()
+                    self.assertEqual(os.get_blocking(sender.fileno()), blocking)
+                    diagnostics.seek(0)
+                    self.assertIn(b"requires write-only pipe output", diagnostics.read())
+
+    def test_regular_and_read_write_fifo_outputs_are_rejected_before_child(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryFile() as regular:
+            fifo = pathlib.Path(directory) / "output"
+            os.mkfifo(fifo, 0o600)
+            with os.fdopen(os.open(fifo, os.O_RDWR | os.O_NONBLOCK), "wb", buffering=0) as retained_reader:
+                for output in (regular, retained_reader):
+                    with self.subTest(mode=os.fstat(output.fileno()).st_mode), tempfile.TemporaryFile() as diagnostics, \
+                            mock.patch.object(provider.sys, "stdout", output), \
+                            mock.patch.object(provider.sys, "stderr", diagnostics), \
+                            mock.patch.object(provider.subprocess, "Popen", side_effect=AssertionError("Child started")) as spawn:
+                        self.assertEqual(provider.watch_mount_events(), 1)
+                        spawn.assert_not_called()
+                        diagnostics.seek(0)
+                        self.assertIn(b"requires write-only pipe output", diagnostics.read())
 
     def test_idle_output_liveness_watch_does_not_spin(self):
         process, child = self.start("")
