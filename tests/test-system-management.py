@@ -42,6 +42,37 @@ sys.modules[SPEC.name] = provider
 SPEC.loader.exec_module(provider)
 
 
+class ComposedFixtureSnapshotTests(unittest.TestCase):
+    def test_original_snapshot_modes_survive_each_fixture_wrapper(self):
+        for name in ("system-native-discovery-provider.py", "system-regional-settings-provider.py",
+                     "system-delegate-confirmation-provider.py"):
+            for mode in ("snapshot-core", "snapshot-without-storage", "snapshot"):
+                with self.subTest(fixture=name, mode=mode), tempfile.TemporaryDirectory() as directory:
+                    environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1",
+                        DWM_NATIVE_DISCOVERY_FIXTURE=directory, DWM_NATIVE_ACTION_FIXTURE=directory,
+                        DWM_NATIVE_ACTION="timezone-set", DWM_NATIVE_ACTION_SCENARIO="success")
+                    result = subprocess.run([sys.executable, str(REPO / "tests" / "fixtures" / name), mode],
+                        env=environment, capture_output=True, text=True, timeout=3, check=True)
+                    records = [line.split("\t") for line in result.stdout.splitlines()]
+                    self.assertEqual(records[0], ["system-management-protocol", "1",
+                        "1" if mode == "snapshot-core" else "2"])
+                    self.assertEqual(records[-1], ["complete", "snapshot"])
+                    storage = [row for row in records if row[:2] == ["provider", "storage"]]
+                    filesystems = [row for row in records if row[0] == "filesystem"]
+                    if mode == "snapshot-core":
+                        self.assertEqual(storage, [])
+                        self.assertEqual(filesystems, [])
+                        self.assertFalse(any(row[:2] == ["action", "health-open"] for row in records))
+                    elif mode == "snapshot-without-storage":
+                        self.assertEqual(storage[0][2], "partial")
+                        self.assertEqual(filesystems, [])
+                        summary = next(row for row in records if row[:2] == ["state", "filesystem-summary"])
+                        self.assertEqual(summary[2:4], ["partial", "unknown"])
+                    else:
+                        self.assertEqual(storage[0][2], "available")
+                        self.assertEqual(len(filesystems), 1)
+
+
 class InformationSnapshotTests(unittest.TestCase):
     def sources(self):
         source = mock.Mock(spec=provider.InformationSnapshotSources)

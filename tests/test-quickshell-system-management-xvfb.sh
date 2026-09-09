@@ -737,6 +737,37 @@ if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .
 	exit 1
 fi
 
+# Exercise the actual shell screen binding, including a window moved from its requested screen.
+mkdir -p "$work/health-navigation"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/health-navigation/"
+cp "$repo/tests/qml/SystemHealthNavigation.qml" "$work/health-navigation/shell.qml"
+python3 - "$repo/config/quickshell/shell.qml" "$work/health-navigation/shell.qml" <<'PY'
+from pathlib import Path
+import re
+import sys
+source = Path(sys.argv[1]).read_text()
+block = source.split("    SystemManagementModel {", 1)[1].split("\n    }", 1)[0]
+match = re.search(r"^        targetScreen: (.+)$", block, re.MULTILINE)
+assert match is not None, "Missing production Health screen binding"
+fixture = Path(sys.argv[2])
+marker = "targetScreen: null // Inject the production shell binding before loading."
+assert fixture.read_text().count(marker) == 1
+fixture.write_text(fixture.read_text().replace(marker, "targetScreen: " + match.group(1)))
+PY
+timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_SYSTEM_MANAGEMENT_TEST_FIXTURE="$fixture" \
+	quickshell --no-duplicate --path "$work/health-navigation/shell.qml" >"$work/health-navigation.log" 2>&1 &
+quickshell_pid=$!
+health_navigation_status=0
+wait "$quickshell_pid" || health_navigation_status=$?
+quickshell_pid=
+if [ "$health_navigation_status" -ne 0 ] || ! grep -F 'Health navigation tests: PASS' "$work/health-navigation.log" ||
+	grep -Eq 'Health navigation FAILED:|ReferenceError:|TypeError:|Binding loop' "$work/health-navigation.log"; then
+	cat "$work/health-navigation.log" >&2
+	exit 1
+fi
+
 mkdir -p "$work/regional-settings" "$work/regional-settings-data/dwm-titus/scripts"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/regional-settings/"
 cp "$repo/tests/qml/SystemRegionalSettings.qml" "$work/regional-settings/shell.qml"
