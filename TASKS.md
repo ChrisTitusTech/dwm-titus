@@ -493,8 +493,9 @@ Acceptance:
 
 Cumulative minor 2 is now wired through the producer and strict QML consumer.
 Pane-scoped storage and firewalld subscriptions share bounded initial/settling
-cycles. Required recovery uses a minor 1 core snapshot without optional probes;
-storage reads wait for monitor readiness, and monitor failure retains other
+cycles. Required recovery uses a minor 1 core snapshot without optional probes and
+preserves prior information through failed and successful core retries;
+storage reads wait for monitor readiness and remain suppressed while blocked, and monitor failure retains other
 readable information. Read-only health navigation uses the existing health model
 and never admits a journal operation. System Settings now displays the information,
 storage and security cards, exact byte counts, explicit unknown/stale states,
@@ -513,7 +514,9 @@ The fixed `watch-mounts` helper now waits for the live findmnt mountinfo
 baseline under a one-second deadline, then emits bounded allowlisted mount
 notifications. It uses descriptor isolation, owned-group cleanup, parent-death
 protection, and blocking event subscriptions after readiness. It owns neither
-mutations nor journal state. Pane-generation ownership and
+mutations nor journal state. Per-launch Process/deadline owners capture immutable callback identities; 119
+nested assertions replay retired parser, setup, stop, and exit callbacks across
+close/reopen and same-generation retries for all seven domains. Pane-generation ownership and
 storage refresh integration now use its acknowledged stream.
 
 The internal information formatter now assembles all nineteen information,

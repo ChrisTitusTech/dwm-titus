@@ -19,6 +19,8 @@ Scope {
     property var cycle: Cycle.create()
     property bool visible: false
     property int generation: 0
+    property var monitor: null
+    property int launchSequence: 0
     property bool monitorOwned: false
     property bool stopping: false
     property bool restartPending: false
@@ -150,33 +152,56 @@ Scope {
             root.requestPending();
             return;
         }
-        monitor.command = Commands.systemManagementCommand(selected.action, selected.args);
-        monitor.eventPrefix = selected.prefix;
-        monitor.generation = root.generation;
-        monitor.storage = root.domain === "storage";
+        const identity = Object.freeze({ generation: root.generation, serial: ++root.launchSequence,
+            storage: root.domain === "storage", prefix: selected.prefix });
+        const owner = monitorComponent.createObject(root, { identity: identity,
+            callbacks: root.monitorCallbacks(identity),
+            command: Commands.systemManagementCommand(selected.action, selected.args) });
+        if (owner === null) {
+            root.failed = true;
+            root.invalidated();
+            root.requestPending();
+            return;
+        }
+        root.monitor = owner;
         root.monitorOwned = true;
-        setupDeadline.generation = monitor.generation;
-        setupDeadline.restart();
-        monitor.running = true;
+        owner.start();
+    }
+
+    // Capture primitives once per launch. Old parser, timer and exit deliveries
+    // must not acquire the identity of a replacement Process, even in one pane cycle.
+    function monitorCallbacks(identity) {
+        const generation = identity.generation;
+        const serial = identity.serial;
+        return Object.freeze({
+            line: line => root.event(line, generation, serial),
+            setup: () => root.setupExpired(generation, serial),
+            stop: () => root.stopExpired(generation, serial),
+            finish: () => root.finished(serial)
+        });
+    }
+
+    function ownsMonitor(serial) {
+        return root.monitorOwned && root.monitor !== null
+            && (serial === undefined || serial === root.monitor.identity.serial);
     }
 
     function stopMonitor() {
         root.ready = false;
-        setupDeadline.stop();
+        if (root.monitor !== null) root.monitor.stopSetup();
         if (!root.monitorOwned || root.stopping) return;
         root.stopping = true;
-        monitor.signal(15);
-        stopDeadline.generation = monitor.generation;
-        stopDeadline.restart();
+        root.monitor.stop();
     }
 
-    function setupExpired(generation) {
-        if (root.visible && generation === root.generation && generation === monitor.generation)
-            root.failMonitor();
+    function setupExpired(generation, serial) {
+        if (root.ownsMonitor(serial) && root.visible && generation === root.generation
+            && generation === root.monitor.identity.generation) root.failMonitor();
     }
 
-    function stopExpired(generation) {
-        if (root.monitorOwned && root.stopping && generation === monitor.generation) monitor.signal(9);
+    function stopExpired(generation, serial) {
+        if (root.ownsMonitor(serial) && root.stopping && generation === root.monitor.identity.generation)
+            root.monitor.signal(9);
     }
 
     function failMonitor() {
@@ -187,60 +212,76 @@ Scope {
         root.requestPending();
     }
 
-    function event(line, generation) {
-        if (generation === undefined) generation = monitor.generation;
-        if (!root.monitorOwned || root.stopping || !root.visible || generation !== root.generation) return;
-        const readyLine = monitor.storage ? "mount-monitor-ready" : monitor.eventPrefix + "\tready";
+    function event(line, generation, serial) {
+        if (!root.ownsMonitor(serial) || root.stopping || !root.visible) return;
+        if (generation === undefined) generation = root.monitor.identity.generation;
+        if (generation !== root.generation) return;
+        const readyLine = root.monitor.identity.storage ? "mount-monitor-ready" : root.monitor.identity.prefix + "\tready";
         if (line === readyLine && !root.ready) {
-            setupDeadline.stop();
+            root.monitor.stopSetup();
             root.ready = true;
             root.requestPending();
-        } else if (monitor.storage && root.ready && /^mount-change\t(mount|umount|move|remount)$/.test(line)) root.invalidate();
-        else if (!monitor.storage && line === monitor.eventPrefix + "\tchanged" && root.ready) root.invalidate();
-        else if (root.domain === "time" && line === monitor.eventPrefix + "\towner-arrived" && root.ready) root.ownerArrived();
+        } else if (root.monitor.identity.storage && root.ready && /^mount-change\t(mount|umount|move|remount)$/.test(line)) root.invalidate();
+        else if (!root.monitor.identity.storage && line === root.monitor.identity.prefix + "\tchanged" && root.ready) root.invalidate();
+        else if (root.domain === "time" && line === root.monitor.identity.prefix + "\towner-arrived" && root.ready) root.ownerArrived();
         else root.failMonitor();
     }
 
-    function finished() {
-        if (!root.monitorOwned) return;
+    function finished(serial) {
+        if (!root.ownsMonitor(serial)) return;
+        const retired = root.monitor;
+        const retiredSerial = retired.identity.serial;
         const restart = root.restartPending;
+        root.monitor = null;
         root.monitorOwned = false;
+        root.restartPending = false;
         root.ready = false;
-        setupDeadline.stop();
-        stopDeadline.stop();
+        retired.clearDeadlines();
+        retired.destroy();
         if (!root.visible) return;
         if (restart) {
             const generation = root.generation;
-            Qt.callLater(function() { if (root.visible && root.generation === generation) root.startMonitor(); });
-        }
-        else {
+            Qt.callLater(function() {
+                if (root.visible && root.generation === generation
+                    && root.launchSequence === retiredSerial && !root.monitorOwned) root.startMonitor();
+            });
+        } else {
             root.failed = true;
             root.invalidated();
             root.requestPending();
         }
     }
 
-    Timer {
-        id: setupDeadline
-        property int generation: -1
-        interval: monitor.storage ? 3000 : 12000
-        repeat: false
-        onTriggered: root.setupExpired(generation)
-    }
-    Timer {
-        id: stopDeadline
-        property int generation: -1
-        interval: monitor.storage ? 2000 : 1500
-        repeat: false
-        onTriggered: root.stopExpired(generation)
-    }
-    Process {
-        id: monitor
-        property string eventPrefix: ""
-        property int generation: -1
-        property bool storage: false
-        stdout: SplitParser { onRead: line => root.event(line, monitor.generation) }
-        onExited: root.finished()
-        onRunningChanged: { if (!running && root.monitorOwned) root.finished(); }
+    Component {
+        id: monitorComponent
+        Scope {
+            id: owner
+            required property var identity
+            required property var callbacks
+            property alias command: process.command
+            function start() { setupDeadline.restart(); process.running = true; }
+            function stopSetup() { setupDeadline.stop(); }
+            function stop() { setupDeadline.stop(); stopDeadline.restart(); process.signal(15); }
+            function signal(number) { process.signal(number); }
+            function clearDeadlines() { setupDeadline.stop(); stopDeadline.stop(); }
+            Timer {
+                id: setupDeadline
+                interval: owner.identity.storage ? 3000 : 12000
+                repeat: false
+                onTriggered: owner.callbacks.setup()
+            }
+            Timer {
+                id: stopDeadline
+                interval: owner.identity.storage ? 2000 : 1500
+                repeat: false
+                onTriggered: owner.callbacks.stop()
+            }
+            Process {
+                id: process
+                stdout: SplitParser { onRead: line => owner.callbacks.line(line) }
+                onExited: owner.callbacks.finish()
+                onRunningChanged: { if (!running) owner.callbacks.finish(); }
+            }
+        }
     }
 }

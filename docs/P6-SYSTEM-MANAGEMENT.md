@@ -730,6 +730,11 @@ regional CLI forms now enforce this preflight and their durable lifecycle.
 Visible Settings origins use the confirmed coordinator and shared clock described
 above. NTP sampling and combined installed qualification remain pending.
 
+Required `snapshot-core` failures, including malformed output, invalidate
+mutation offers and configuration generations while preserving prior optional
+information, filesystem rows and read-only Health navigation. A successful core
+retry keeps that projection until a monitored information read replaces it.
+
 `health-open` is the sole action with no provider command: the root-scoped QML
 model invokes the fixed in-process `SystemHealthModel.openOnScreen` method with
 the current screen and accepts no caller-selected target or argument. It is UI
@@ -2678,9 +2683,14 @@ the service; that method is not used by the monitor.
   completion handoff sets unresolved-dirty, publishes storage `partial` with
   explicit-refresh guidance, and suppresses more automatic filesystem
   snapshots until explicit refresh or section close/reopen starts a new bounded
-  cycle. Continuous mount churn therefore cannot create an unbounded process
+  cycle. Other provider events use `snapshot-without-storage` while the
+  storage cycle is blocked, preserving its retained rows. Continuous mount churn therefore cannot create an unbounded process
   loop or be falsely published as clean.
 
+  Each monitor launch creates a separate Process and deadline owner. Its frozen
+  callback bundle captures both pane generation and a unique launch serial, so
+  queued parser, deadline, and exit callbacks cannot acquire a replacement
+  monitor's identity, including retries within the same pane generation.
   Each open allocates a monotonically increasing monitor generation; ready,
   line, exit, and queued-rerun callbacks verify both that the section is still
   open and that their captured generation is current before changing state or
