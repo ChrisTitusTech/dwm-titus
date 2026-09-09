@@ -112,6 +112,14 @@ class ProfilesTest(unittest.TestCase):
         self.assertEqual((Path(result["backup"]) / "profile/config").read_text(), before)
         self.assertEqual((self.root / "docked/postswitch").read_text(), "custom hook")
 
+    def test_profile_without_config_preserves_hook(self):
+        destination = self.root / "docked"
+        destination.mkdir(parents=True)
+        (destination / "postswitch").write_text("custom hook")
+        profiles.save("docked", self.docked)
+        self.assertEqual((destination / "postswitch").read_text(), "custom hook")
+        self.assertTrue(profiles.status()["profiles"][1]["saved"])
+
     def test_reject_invalid_and_unsafe_layouts(self):
         for role, specs in [("other", self.docked), ("undocked", self.docked),
                             ("docked", self.mobile), ("docked", self.docked[1:]),

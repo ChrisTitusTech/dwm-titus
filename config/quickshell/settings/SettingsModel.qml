@@ -879,7 +879,10 @@ Scope {
                     if (state.version !== 1 || !Array.isArray(state.profiles)
                             || !Array.isArray(state.detected) || !Array.isArray(state.current)) throw new Error("Invalid profile response");
                     root.automaticDisplayState = state;
-                } catch (error) { root.automaticDisplayMessage = "Could not read automatic layouts: " + error; }
+                } catch (error) {
+                    if (this.text.trim())
+                        root.automaticDisplayMessage = "Could not read automatic layouts: " + error;
+                }
             }
         }
         stderr: StdioCollector { onStreamFinished: { if (this.text.trim()) root.automaticDisplayMessage = this.text.trim(); } }

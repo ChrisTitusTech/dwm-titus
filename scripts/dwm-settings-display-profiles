@@ -184,7 +184,7 @@ def publish_locked(role, outputs, fingerprint, dimensions):
         raise ValueError("Existing default is not a symlink; preserve it and choose a default outside Settings")
     # Preserve hooks and unrelated files, but refuse profiles whose extra layout
     # options this editor cannot represent. Backups stay outside autorandr's scan.
-    if destination.exists():
+    if (destination / "config").exists() or (destination / "config").is_symlink():
         profile(destination / "config")
     settings = ROOT / "settings.ini"
     previous_settings = read(settings) if settings.exists() or settings.is_symlink() else None
