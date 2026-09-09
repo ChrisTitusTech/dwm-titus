@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Replace display X/Y inputs with Left of, Right of, Above, and Below
+  placement controls and a numbered layout preview. Preserve timed rollback
+  and existing saved profiles; ignore dock RandR timing rows during discovery.
+
 - Complete Phase 6 system-management qualification with Fedora 44, nested-X11,
   signed-package guest, graphical authorization and installed-runtime evidence.
   Record recovery and hardware limitations and queue Phase 7 image/release work.

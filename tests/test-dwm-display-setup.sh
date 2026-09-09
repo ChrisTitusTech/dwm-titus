@@ -548,6 +548,43 @@ env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" discover >"$work/setting
 grep -Fqx 'display-protocol	1' "$work/settings-discover"
 grep -Fqx 'output	HDMI-1	1	1	1920x1080	0	0	normal	available	unsupported' "$work/settings-discover"
 grep -Fqx 'output	DP-2	0	0		0	0	normal	available	unsupported' "$work/settings-discover"
+cat >"$work/query-dock" <<'EOF'
+Screen 0: minimum 320 x 200, current 2560 x 1600, maximum 16384 x 16384
+eDP-1 connected primary 2560x1600+0+0 (normal left inverted right x axis y axis)
+   2560x1600_90.00 90.00*+
+DVI-I-2-2 connected (normal left inverted right x axis y axis)
+   2560x1440 60.00+ 144.00
+DVI-I-1-1 connected (normal left inverted right x axis y axis)
+   2560x1440 60.00+ 144.00
+  2560x1440 (0x7c) 241.700MHz +HSync -VSync
+        h: width 2560 start 2608 end 2640 total 2720 skew 0 clock 88.86KHz
+        v: height 1440 start 1443 end 1448 total 1481 clock 60.00Hz
+EOF
+env "${settings_env[@]}" TEST_QUERY="$work/query-dock" \
+	"$BASH_BIN" "$SETTINGS_HELPER" discover >"$work/settings-dock"
+[[ $(awk -F '\t' '$1 == "mode" {count++} END {print count + 0}' "$work/settings-dock") == 5 ]]
+grep -Fqx $'mode\tDVI-I-1-1\t2560x1440\t144.00\t0\t0' "$work/settings-dock"
+cat >"$work/query-custom" <<'EOF'
+Screen 0: minimum 320 x 200, current 2560 x 1600, maximum 16384 x 16384
+eDP-1 connected primary 2560x1600+0+0 (normal left inverted right x axis y axis)
+   native 90.00*+
+DVI-I-2-2 connected (normal left inverted right x axis y axis)
+   native 60.00+
+EOF
+cat >"$work/verbose-custom" <<'EOF'
+eDP-1 connected primary 2560x1600+0+0 (normal left inverted right x axis y axis)
+  native (0x49) 414.840MHz -HSync -VSync *current +preferred
+        h: width 2560 start 2608 end 2640 total 2720 skew 0 clock 148.50KHz
+        v: height 1600 start 1603 end 1608 total 1650 clock 90.00Hz
+DVI-I-2-2 connected (normal left inverted right x axis y axis)
+  native (0x7c) 241.700MHz +HSync -VSync +preferred
+        h: width 2560 start 2608 end 2640 total 2720 skew 0 clock 88.86KHz
+        v: height 1440 start 1443 end 1448 total 1481 clock 60.00Hz
+EOF
+env "${settings_env[@]}" TEST_QUERY="$work/query-custom" TEST_VERBOSE="$work/verbose-custom" \
+	"$BASH_BIN" "$SETTINGS_HELPER" discover >"$work/settings-custom"
+grep -Fqx $'mode-size\teDP-1\tnative\t90.00\t2560\t1600' "$work/settings-custom"
+grep -Fqx $'mode-size\tDVI-I-2-2\tnative\t60.00\t2560\t1440' "$work/settings-custom"
 grep -Fq $'profile-unsupported\tlegacy.conf\tLegacy profile omits complete' "$work/settings-discover"
 env "${settings_env[@]}" TEST_PROPERTIES_UNAVAILABLE=1 \
 	"$BASH_BIN" "$SETTINGS_HELPER" discover >"$work/settings-properties-unavailable"

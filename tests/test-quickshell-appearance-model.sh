@@ -392,12 +392,12 @@ grep -Fq 'readonly property int panelIconFontSize: 13' "$theme"
 grep -Fq 'font.pixelSize: Theme.panelIconFontSize + 1' "$icon_text"
 test "$(grep -Fc 'Theme.panelIconFontSize' "$panel")" -eq 5
 grep -Fq 'Math.round(13 * fontScale)' "$theme"
-test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$display_pane")" -eq 13
+test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$display_pane")" -eq 9
 test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$input_pane")" -eq 5
 grep -Fq 'font.pixelSize: Theme.inputFontSize' "$network_pane"
 grep -Fq 'passwordInput.implicitHeight + 2 * Theme.spacingSm' "$network_pane"
-grep -Fq 'xPositionInput.implicitHeight + 10' "$display_pane"
-grep -Fq 'yPositionInput.implicitHeight + 10' "$display_pane"
+grep -Fq 'readonly property real scaleFactor:' "$display_pane"
+grep -Fq 'font.pixelSize: Math.max(10, Math.min(32, monitorTile.height / 3))' "$display_pane"
 grep -Fq 'Math.max(88, outputContent.implicitHeight + 12)' "$display_pane"
 grep -Fq 'profileNameInput.implicitHeight + 12' "$display_pane"
 grep -Fq 'confirmationRow.implicitHeight + 16' "$display_pane"
