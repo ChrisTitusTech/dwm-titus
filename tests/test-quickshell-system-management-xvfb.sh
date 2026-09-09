@@ -485,6 +485,27 @@ if [ "$provider_discovery_status" -ne 0 ] || ! grep -F 'Provider discovery tests
 	exit 1
 fi
 
+# Replay actual retained callback bundles after both pane and same-pane replacements.
+mkdir -p "$work/provider-generation"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/provider-generation/"
+cp "$repo/tests/qml/SystemProviderGeneration.qml" "$work/provider-generation/shell.qml"
+printf 'hold' >"$work/provider-discovery-state/mode"
+timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/provider-discovery-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_PROVIDER_DISCOVERY_FIXTURE="$work/provider-discovery-state" \
+	quickshell --no-duplicate --path "$work/provider-generation/shell.qml" >"$work/provider-generation.log" 2>&1 &
+quickshell_pid=$!
+provider_generation_status=0
+wait "$quickshell_pid" || provider_generation_status=$?
+quickshell_pid=
+if [ "$provider_generation_status" -ne 0 ] || ! grep -F 'Provider generation tests: PASS' "$work/provider-generation.log" ||
+	grep -Fq 'Provider generation FAILED:' "$work/provider-generation.log" ||
+	[ -e "$work/provider-discovery-state/overlap" ] || [ -e "$work/provider-discovery-state/unexpected-command" ] ||
+	[ -n "$(find "$work/provider-discovery-state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+	cat "$work/provider-generation.log" >&2
+	exit 1
+fi
+
 # Qualify all subscriptions sharing one cumulative snapshot owner.
 mkdir -p "$work/native-discovery" "$work/native-discovery-data/dwm-titus/scripts" "$work/native-discovery-state"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/native-discovery/"

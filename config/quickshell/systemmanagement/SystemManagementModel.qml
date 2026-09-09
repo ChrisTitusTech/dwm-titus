@@ -414,6 +414,19 @@ Scope {
     }
 
     function clearState(detail) {
+        // A failed recovery-only read provides no new evidence about optional
+        // information. Invalidate mutation offers without erasing that projection.
+        const preserveInformation = root.snapshotOwned && snapshotProcess.core;
+        const providers = {};
+        const states = {};
+        if (preserveInformation) {
+            for (const owner of Information.owners()) {
+                if (root.nativeProviders[owner]) providers[owner] = root.nativeProviders[owner];
+            }
+            for (const identifier of Information.stateIds()) {
+                if (root.nativeStates[identifier]) states[identifier] = root.nativeStates[identifier];
+            }
+        }
         root.snapshotState = "failure";
         root.message = detail;
         root.generation = "";
@@ -422,16 +435,19 @@ Scope {
         root.updateSummary = root.stateFallback(detail);
         root.updateLastRefresh = root.stateFallback(detail);
         root.updateRestart = root.stateFallback(detail);
-        root.actions = [];
+        root.actions = preserveInformation ? root.actions.filter(item => item.id === "health-open") : [];
         root.updates = [];
         root.packageChanges = [];
-        root.nativeProviders = {};
-        root.nativeStates = {};
+        root.nativeProviders = providers;
+        root.nativeStates = states;
         root.accounts = [];
         root.repositories = [];
-        root.filesystems = [];
-        root.filesystemsRetained = false;
-        root.errors = [];
+        if (!preserveInformation) {
+            root.filesystems = [];
+            root.filesystemsRetained = false;
+        }
+        root.errors = preserveInformation
+            ? root.errors.filter(item => Information.owners().indexOf(item.provider) >= 0) : [];
         root.activeOperation = null;
         root.terminalHandoff = null;
     }
@@ -1106,9 +1122,9 @@ Scope {
         snapshotProcess.generation = root.requestGeneration;
         root.snapshotRequired = required;
         snapshotProcess.core = required;
-        snapshotProcess.storageOmitted = !required && !storageDiscoveryModel.ready;
+        snapshotProcess.storageOmitted = !required && (!storageDiscoveryModel.ready || storageDiscoveryModel.phase === "blocked");
         snapshotProcess.command = Commands.terminatingCheckedCommand(Commands.systemManagementCommand(
-            required ? "snapshot-core" : storageDiscoveryModel.ready ? "snapshot" : "snapshot-without-storage", []));
+            required ? "snapshot-core" : snapshotProcess.storageOmitted ? "snapshot-without-storage" : "snapshot", []));
         root.snapshotHasOutput = false;
         root.snapshotErrorDetail = "";
         snapshotProcess.cycleTokens = [];

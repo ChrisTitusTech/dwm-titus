@@ -11,6 +11,7 @@ from pathlib import Path
 import signal
 import stat
 import sys
+import time
 
 
 directory = Path(os.environ["DWM_PROVIDER_DISCOVERY_FIXTURE"])
@@ -35,7 +36,7 @@ def main():
         domain, action = arguments[1:]
         if domain not in {item[0] for item in definitions.values()}:
             raise ValueError("Unknown fixture domain")
-        if action in {"quiet", "wrong-prefix"}:
+        if action in {"quiet", "wrong-prefix", "hold"}:
             (directory / "mode").write_text(action)
             return
         if action == "assert-active":
@@ -43,19 +44,25 @@ def main():
                     or len(tuple(directory.glob("*.active"))) != 1):
                 raise RuntimeError("Wrong or overlapping fixed monitor command")
             return
-        if action not in {"emit", "exit"}:
+        if action not in {"emit", "exit", "ready"}:
             raise ValueError("Unknown fixture control")
         fifo = directory / (domain + ".events")
-        try:
-            descriptor = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-        except OSError as error:
-            if error.errno not in {errno.ENOENT, errno.ENXIO}:
-                raise
-            raise FixtureEventFailure("missing-pipe" if error.errno == errno.ENOENT else "missing-reader") from error
+        deadline = time.monotonic() + (2 if action == "ready" else 0)
+        while True:
+            try:
+                descriptor = os.open(fifo, os.O_WRONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+                break
+            except OSError as error:
+                if error.errno not in {errno.ENOENT, errno.ENXIO}:
+                    raise
+                if time.monotonic() < deadline:
+                    time.sleep(0.01)
+                    continue
+                raise FixtureEventFailure("missing-pipe" if error.errno == errno.ENOENT else "missing-reader") from error
         with os.fdopen(descriptor, "w") as stream:
             if not stat.S_ISFIFO(os.fstat(stream.fileno()).st_mode):
                 raise FixtureEventFailure("not-pipe")
-            stream.write("changed\n" * 100 if action == "emit" else "exit\n")
+            stream.write("changed\n" * 100 if action == "emit" else action + "\n")
         return
     if arguments not in definitions:
         (directory / "unexpected-command").touch()
@@ -82,11 +89,15 @@ def main():
             if not fifo.exists():
                 os.mkfifo(fifo, 0o600)
             with os.fdopen(os.open(fifo, os.O_RDWR | os.O_NOFOLLOW), "r") as stream:
-                print("mount-monitor-ready" if domain == "storage" and mode != "wrong-prefix"
-                      else ("wrong-event" if mode == "wrong-prefix" else prefix) + "\tready", flush=True)
+                if mode != "hold":
+                    print("mount-monitor-ready" if domain == "storage" and mode != "wrong-prefix"
+                          else ("wrong-event" if mode == "wrong-prefix" else prefix) + "\tready", flush=True)
                 for line in stream:
                     if line == "exit\n":
                         return
+                    if line == "ready\n":
+                        print("mount-monitor-ready" if domain == "storage" else prefix + "\tready", flush=True)
+                        continue
                     if line != "changed\n":
                         raise ValueError("Invalid fixture event")
                     print(prefix + ("\tmount" if domain == "storage" else "\tchanged"), flush=True)

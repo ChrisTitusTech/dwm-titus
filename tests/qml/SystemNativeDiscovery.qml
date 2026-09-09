@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.core
 import qs.systemmanagement
+import "systemmanagement/SystemInformationProtocol.js" as Information
 
 ShellRoot {
     id: root
@@ -23,6 +24,9 @@ ShellRoot {
     property int boundaryEvents: 0
     property int expectedCount: 0
     property string continuation: ""
+    property string retainedRows: ""
+    property string retainedInformation: ""
+    property int failureCase: 0
     property bool done: false
     property bool closeDuringTake: false
     property bool closeDuringLoading: false
@@ -52,6 +56,13 @@ ShellRoot {
         root.command("fixture-event", [domain, value], next);
     }
 
+    function informationProjection() {
+        return JSON.stringify({ providers: Information.owners().map(id => model.nativeProviders[id]),
+            states: Information.stateIds().map(id => model.nativeStates[id]),
+            rows: model.filesystems, retained: model.filesystemsRetained,
+            health: model.actions.find(item => item.id === "health-open") });
+    }
+
     function controlled() {
         const next = root.continuation;
         if (next === "open") { root.stage = 1; model.openSettings(); }
@@ -71,6 +82,12 @@ ShellRoot {
         else if (next === "required-start") { root.stage = 24; model.operation.requestSnapshot(); }
         else if (next === "required-quiet") { root.stage = -1; root.event("snapshot", "finish", "required-finished"); }
         else if (next === "required-finished") root.stage = 26;
+        else if (next === "core-failure") { root.stage = 29; model.operation.requestSnapshot(); }
+        else if (next === "core-restored") {
+            root.stage = 30;
+            model.operation.resetRecovery();
+            model.operation.requestSnapshot();
+        }
     }
 
     function advance() {
@@ -120,10 +137,17 @@ ShellRoot {
                 && model.nativeStateView(root.stateId).value === (root.eventDomain === "time" ? "America/Chicago" : root.eventDomain === "storage" ? "1" : "enabled"), "Unresolved provider preserves readable values");
             root.check(model.nativeStateView(root.stateId).detail.indexOf("Reload status") >= 0, "Unresolved state explains explicit retry");
             root.stage = -1;
+            root.retainedRows = JSON.stringify(model.filesystems);
             root.mode("snapshot", "quiet", "quiet");
         } else if (root.stage === 9 && idle && root.count() === 6) {
             root.check(model.accountDiscovery.fresh && root.eventMonitor().unresolved && !root.eventMonitor().fresh,
                 "Account-triggered full read cannot clear blocked time freshness");
+            if (root.eventDomain === "storage") {
+                root.check(model.filesystemsRetained && JSON.stringify(model.filesystems) === root.retainedRows,
+                    "Unrelated account event cannot reread blocked storage");
+                root.check(model.nativeStates["filesystem-summary"].value === "unknown",
+                    "Blocked storage omits current inventory while preserving stale rows");
+            }
             root.stage = 10;
             model.operation.requestSnapshot();
         } else if (root.stage === 10 && idle && root.count() === 7) {
@@ -213,9 +237,27 @@ ShellRoot {
             model.closeSettings();
             root.stage = 28;
         } else if (root.stage === 28 && root.allStopped()) {
-            root.done = true;
-            console.info("Native discovery tests: PASS (" + root.assertions + " assertions)");
-            Qt.quit();
+            root.retainedInformation = root.informationProjection();
+            root.stage = -1;
+            root.mode("snapshot", "fail-core", "core-failure");
+        } else if (root.stage === 29 && !model.snapshotOwned && model.snapshotState === "failure") {
+            root.check(root.informationProjection() === root.retainedInformation,
+                "Failed core read preserves every optional provider, state, row and Health offer");
+            root.check(model.actions.every(item => item.id === "health-open") && model.generation === "",
+                "Failed core read clears mutation offers and configuration generation");
+            root.stage = -1;
+            root.mode("snapshot", "quiet", "core-restored");
+        } else if (root.stage === 30 && idle && model.snapshotState === "ready") {
+            root.check(root.informationProjection() === root.retainedInformation,
+                "Successful core retry retains optional projection without a pane refresh");
+            if (root.failureCase++ === 0) {
+                root.stage = -1;
+                root.mode("snapshot", "malformed-core", "core-failure");
+            } else {
+                root.done = true;
+                console.info("Native discovery tests: PASS (" + root.assertions + " assertions)");
+                Qt.quit();
+            }
         }
     }
 

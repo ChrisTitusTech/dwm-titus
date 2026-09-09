@@ -96,6 +96,11 @@ def snapshot():
                 mode = read_mode("snapshot")
                 if mode == "hold" and stream.readline() != "finish\n":
                     raise ValueError("Expected snapshot release")
+                if SNAPSHOT_MODE == "snapshot-core" and mode == "fail-core":
+                    raise SystemExit(1)
+                if SNAPSHOT_MODE == "snapshot-core" and mode == "malformed-core":
+                    row("malformed")
+                    return
                 row("system-management-protocol", "1", "1" if SNAPSHOT_MODE == "snapshot-core" else "2")
                 row("snapshot-generation", f"{count:064x}")
                 row("provider", "updates", "available", "delegated", "PackageKit", "Fixture updates")
@@ -129,7 +134,7 @@ def snapshot():
                         row("state", "filesystem-summary", "partial", "unknown", "Unmonitored storage")
                     else:
                         row("state", "filesystem-summary", "available", "1", "One fixture mount")
-                        row("filesystem", "42", "available", "/dev/test", "/", "ext4", "100", "20", "80", "Fixture bytes")
+                        row("filesystem", "42", "available", "/dev/test", "/", "ext4", "100", str(count), str(100 - count), "Fixture bytes")
                     row("action", "health-open", "available", "user-session", "diagnostics", "Health", "Navigation")
                 row("complete", "snapshot")
         finally:
@@ -186,7 +191,7 @@ def main():
         return
     if len(arguments) == 4 and arguments[:1] == ("fixture-mode",):
         _, domain, action, value = arguments
-        modes = {"quiet", "hold"} if domain == "snapshot" else {"quiet", "hold", "fail"}
+        modes = {"quiet", "hold", "fail-core", "malformed-core"} if domain == "snapshot" else {"quiet", "hold", "fail"}
         if domain in DOMAINS | {"snapshot"} and action == "set" and value in modes:
             (DIRECTORY / (domain + ".mode")).write_text(value)
             return
