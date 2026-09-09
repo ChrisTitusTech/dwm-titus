@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Complete Phase 6 system-management qualification with Fedora 44, nested-X11,
+  signed-package guest, graphical authorization and installed-runtime evidence.
+  Record recovery and hardware limitations and queue Phase 7 image/release work.
+
 - Show system information, mounted filesystem usage, security status, and
   diagnostics in System Settings. Preserve unknown and stale states, navigate
   to the existing Health scan, and explain scoped recovery and reset ownership.
@@ -18,24 +22,21 @@ versions from `config.mk`.
   optional probes and diagnostics remain available independently of admission.
 
 - Assemble internal system information, filesystem, security, and diagnostics
-  records with isolated failures and complete filesystem-list bounds. Public
-  protocol activation and visible-pane integration remain pending.
+  records with isolated failures and complete filesystem-list bounds.
 
 - Show unknown automatic-lock status in Power Settings and Control Center when
   live evidence is partial or unavailable, instead of displaying saved fallback
   values as enabled or disabled.
 
 - Add a fixed read-only mount-event helper with acknowledged baseline readiness,
-  bounded event records, and owned-child cleanup. Settings storage monitoring
-  and cumulative protocol integration remain pending.
+  bounded event records, and owned-child cleanup for Settings storage monitoring.
 
 - Reuse the power helper's automatic screen-lock evidence through a bounded
   internal information reader. Preserve unknown and unavailable states without
   adding a locking policy change or a second locker probe.
 
 - Add internal root block-encryption reporting with capped topology validation,
-  conservative unknown states, and bounded read-only process cleanup. Public
-  protocol and Settings integration remain pending.
+  conservative unknown states, and bounded read-only process cleanup.
 
 - Add internal bounded SELinux, Secure Boot, and firewalld status readers with
   source-specific unknown and denied states. These read-only preparations do
@@ -43,7 +44,7 @@ versions from `config.mk`.
 
 - Add an internal fixed-command filesystem inventory with capped JSON, stable
   mount identities, exact byte counts, partial-result handling, and bounded
-  owned-process cleanup. Public protocol and Settings integration remain pending.
+  owned-process cleanup.
 
 - Add internal hostname1 hardware vendor/model reads with one bounded deadline,
   independent property failures, and late-reply suppression. This preparation

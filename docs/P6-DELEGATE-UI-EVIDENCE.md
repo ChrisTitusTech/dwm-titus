@@ -9,7 +9,8 @@ This records the delegated-control boundary, not completion of Phase 6.
 - Private Xvfb displays with copied managed QML and fixed fixture providers.
 - No real administration tool, password prompt, authorization request, or host
   mutation. No installed configuration synchronization or shell activation.
-- Real graphical authorization and installed-session acceptance remain pending.
+- Real graphical authorization and installed-session acceptance were outside this
+  boundary; later combined evidence is in [P6-QUALIFICATION.md](P6-QUALIFICATION.md).
 
 ## Automated fixture matrix
 

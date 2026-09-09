@@ -98,7 +98,8 @@ validated two-property observations. The passive `watch-time` reader reported
 two authenticated owner arrivals and no property-change events, then exited
 cleanly on TERM. This tests idle daemon reactivation, not graphical authorization
 or a real NTP mutation. The application timer and action trigger were exercised
-with private providers; combined installed qualification remains pending.
+with private providers. Later combined installed qualification is recorded in
+[P6-QUALIFICATION.md](P6-QUALIFICATION.md).
 
 Window-only captures at 640x480 and 1000x740 were visually checked for the sampling
 label, full warning, and visible Cancel/Apply controls. The smaller viewport

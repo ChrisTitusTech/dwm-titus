@@ -692,8 +692,9 @@ Sixty-six private UI cases cover three actions at three window sizes with
 success, denial, unsupported results, uncertain output/replay, maximum catalogs,
 denied reads, and malformed reads, plus the NTP disable choice at all sizes.
 `docs/P6-REGIONAL-UI-EVIDENCE.md` records real
-X11 keyboard and screenshot checks. NTP synchronization sampling and real
-graphical authorization remain separate pending work.
+X11 keyboard and screenshot checks. NTP synchronization sampling is qualified
+in `P6-REGIONAL-UI-EVIDENCE.md`; graphical authorization-only and combined
+installed evidence is recorded in `P6-QUALIFICATION.md`.
 
 The panel and System Settings share one `ClockModel` with one native minute-level
 `SystemClock`. Its only timezone input is the provider's published available
@@ -705,7 +706,7 @@ them in the new zone and shift the instant. Ordinary ticks refresh the displays;
 unavailable, partial, unknown, or unchanged identities do not trigger timezone
 refresh. No helper, IPC entry, extra timer, or closed-pane discovery is added.
 Private Fedora X11 evidence is recorded in `P6-CLOCK-EVIDENCE.md`; combined
-installed qualification remains pending.
+installed qualification is recorded in `P6-QUALIFICATION.md`.
 
 Each preview makes fresh fixed reads: timezone state and timezone choices, NTP
 state, or locale state and installed locale choices. Service reads retain their
@@ -728,7 +729,8 @@ and monitored invalidation remain mandatory; the token is a freshness guard,
 not an atomic service transaction or proof of human approval. The three fixed
 regional CLI forms now enforce this preflight and their durable lifecycle.
 Visible Settings origins use the confirmed coordinator and shared clock described
-above. NTP sampling and combined installed qualification remain pending.
+above. NTP sampling is recorded in `P6-REGIONAL-UI-EVIDENCE.md`; combined installed
+qualification is recorded in `P6-QUALIFICATION.md`.
 
 Required `snapshot-core` failures, including malformed output, invalidate
 mutation offers and configuration generations while preserving prior optional
@@ -884,7 +886,7 @@ selection, launch errors, lost output, descriptor/session isolation, handoff
 replay, and a tool exiting unsuccessfully after its launch was accepted.
 Originating Settings controls now require the delegated confirmation described
 below. The cumulative snapshot implements minor 1; discovery alone does not
-dispatch those actions. Combined installed qualification remains pending.
+dispatch those actions. Combined installed qualification is recorded in `P6-QUALIFICATION.md`.
 
 The internal repository reader now bounds connection setup, optional activation
 of an absent PackageKit daemon, transaction setup, signals, and decoding under
@@ -1224,7 +1226,8 @@ Native streams and active snapshots cannot advertise cancellation or a
 Native action rows are published only after journal admission is established;
 rejected recovery still preserves read-only native state. These entry points are
 not exposed by IPC. Visible native controls now require fresh confirmation as
-described above; NTP sampling and combined installed qualification remain pending.
+described above; NTP sampling is recorded in `P6-REGIONAL-UI-EVIDENCE.md`; combined installed
+qualification is recorded in `P6-QUALIFICATION.md`.
 The update-only compatibility formatter and operation streams retain minor 0;
 the snapshot minor selects capability advertisement, not a new operation format.
 Provider tests and 334 native Quickshell assertions qualify cumulative sets,
@@ -2207,7 +2210,7 @@ The update component remains a thin compatibility wrapper. The root snapshot
 coordinator now starts all five fixed subscriptions while System Settings is
 open; software sources share the update subscription. No new idle polling or
 operation origins are introduced by this subscriber. Native controls use the
-confirmed coordinator described above; NTP sampling remains pending.
+confirmed coordinator described above; NTP sampling is qualified in `P6-REGIONAL-UI-EVIDENCE.md`.
 Private nested-X11 tests exercise every fixed stream, event bursts, a dirty
 settling read, explicit retry, wrong-prefix fallback, close cleanup, and unknown
 domain rejection. Replacing a domain retires the old read token and readiness
@@ -2443,12 +2446,12 @@ rejects publication explicitly even if the read has just completed.
 A read-only Fedora 44 command check returned `sample<TAB>yes<TAB>yes` with
 matching completion and exit 0, without changing NTP or the system clock.
 
-Settings activation uses the shared root subscriptions; visible NTP sampling
-remains pending. Spaced read-only Fedora samples can reactivate idle timedated
-and therefore emit owner-arrival notifications. The eventual 30-second sampler
-must avoid turning these arrivals into repeated cumulative PackageKit reads,
-without dropping genuine concurrent time changes. This CLI boundary does not
-enable that sampler or alter the passive monitor contract.
+Settings activation uses the shared root subscriptions and the qualified
+30-second visible NTP sampler. Spaced read-only Fedora samples can reactivate
+idle timedated and therefore emit owner-arrival notifications. Time-only
+reconciliation avoids turning these arrivals into repeated cumulative PackageKit
+reads without dropping genuine concurrent time changes. Sampling evidence is
+recorded in `P6-REGIONAL-UI-EVIDENCE.md`.
 
 Two fixed time discovery commands support scoped Settings reconciliation.
 Settings uses `watch-time`, while `watch-regional time` keeps its existing

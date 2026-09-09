@@ -79,7 +79,7 @@ UI-1 is the merged foundation. UI-2 and UI-3 were parallel children and are
 now unified on `main`. `P3-UI4` established the shared large-surface language
 used by the completed Phase 3 provider work and the later power, defaults,
 personalization, accessibility, and system-management phases. Phases 3 through
-5 are complete and product Phase 6 is active. The UI-5 review adopted no
+6 are complete and product Phase 7 is queued. The UI-5 review adopted no
 runtime experience; any future reopening requires a new roadmap decision and
 an independent review boundary. UI-6 closes the desktop during Phase 7 release
 qualification.
@@ -342,7 +342,7 @@ Make the desktop appearance and interaction model configurable as one system.
 
 ## Phase 6: System Management
 
-Status: Active (2026-09-02)
+Status: Complete (2026-09-08)
 
 ### Objective
 
@@ -373,7 +373,23 @@ without turning Quickshell into an unrestricted administration console.
 - Interrupted updates and failed delegated tools produce actionable recovery
   guidance rather than ambiguous success.
 
+### Completion Evidence
+
+- Fixed Fedora update, regional and delegated administration workflows preserve
+  confirmation, audit, safe cancellation limits, and typed recovery outcomes.
+- Cumulative information, filesystem and security status use bounded readers
+  and pane-scoped subscriptions. Unknown and stale evidence stays explicit;
+  diagnostics navigate to the existing Health owner.
+- Full repository, nested-X11, real Fedora session and installed-runtime evidence
+  is recorded in [P6-QUALIFICATION.md](docs/P6-QUALIFICATION.md). The record
+  distinguishes real signed-package guest updates, graphical authorization-only
+  cancellation, fixture-qualified recovery and untested hardware/service paths.
+- Advanced disk, encryption, firewall, service and broad reset changes remain
+  outside the native control contract. Phase 7 image work has not started.
+
 ## Phase 7: Fedora Image and Release Qualification
+
+Status: Queued
 
 ### Objective
 

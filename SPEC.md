@@ -709,9 +709,11 @@ and generic image pickers are rejected. Reopening a UI-5 candidate requires an
 explicit product requirement and a separately qualified X11-native boundary.
 Combined Fedora 44, nested-X11, live-session, install-parity, restoration, and
 idle-resource qualification is recorded in `docs/P5-EVIDENCE.md` with explicit
-limitations. The next product gap is Phase 6 system management: safe Fedora
-updates, regional and delegated administration entry points, and bounded
-system information, diagnostics, and recovery workflows.
+limitations. Completed Phase 6 adds safe Fedora updates, regional and delegated
+administration entry points, and bounded system information, diagnostics, and
+recovery workflows. Its combined evidence and explicit hardware/service limits
+are recorded in `docs/P6-QUALIFICATION.md`. The next gap is Phase 7 Fedora image
+and release qualification; its implementation has not started.
 
 The installer contains a Fedora-only package map and rejects other systems.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and
