@@ -60,6 +60,7 @@ ShellRoot {
         return JSON.stringify({ providers: Information.owners().map(id => model.nativeProviders[id]),
             states: Information.stateIds().map(id => model.nativeStates[id]),
             rows: model.filesystems, retained: model.filesystemsRetained,
+            errors: model.errors.filter(item => Information.owners().indexOf(item.provider) >= 0),
             health: model.actions.find(item => item.id === "health-open") });
     }
 
@@ -154,6 +155,8 @@ ShellRoot {
             root.check(root.eventMonitor().phase === "blocked", "Required recovery read cannot clear blocked time freshness");
             root.check(model.actions.some(action => action.id === "health-open"), "Required core recovery retains read-only health navigation");
             root.check(model.nativeStates.firewalld.value === "enabled", "Core recovery retains optional readable observations");
+            root.check(model.errors.filter(item => item.provider === "information").length === 1,
+                "Core recovery retains the prior optional diagnostic exactly once");
             root.stage = -1;
             root.command("fixture-count", ["7"], "blocked-count");
         } else if (root.stage === 11 && idle && root.eventMonitor().phase === "blocked") {

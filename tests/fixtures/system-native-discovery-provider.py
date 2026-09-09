@@ -123,7 +123,7 @@ def snapshot():
                 row("repository", "fedora", "enabled", "Fixture repository")
                 if SNAPSHOT_MODE != "snapshot-core":
                     for owner in ("information", "storage", "security", "diagnostics"):
-                        row("provider", owner, "partial" if owner == "storage" and SNAPSHOT_MODE == "snapshot-without-storage" else "available", "user-session" if owner == "diagnostics" else "read-only", "Fixture", "Read only")
+                        row("provider", owner, "partial" if owner == "information" or (owner == "storage" and SNAPSHOT_MODE == "snapshot-without-storage") else "available", "user-session" if owner == "diagnostics" else "read-only", "Fixture", "Read only")
                     for identifier in ("os-name", "os-version", "kernel-release", "architecture", "hardware-vendor", "hardware-model", "cpu-model"):
                         row("state", identifier, "available", "Fixture", "Text")
                     for identifier in ("logical-cpus", "memory-total-bytes", "memory-available-bytes", "swap-total-bytes", "swap-free-bytes", "uptime-seconds"):
@@ -135,6 +135,7 @@ def snapshot():
                     else:
                         row("state", "filesystem-summary", "available", "1", "One fixture mount")
                         row("filesystem", "42", "available", "/dev/test", "/", "ext4", "100", str(count), str(100 - count), "Fixture bytes")
+                    row("error", "information", "missing-provider", "Retained optional fixture diagnostic")
                     row("action", "health-open", "available", "user-session", "diagnostics", "Health", "Navigation")
                 row("complete", "snapshot")
         finally:

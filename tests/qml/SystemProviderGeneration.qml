@@ -9,6 +9,7 @@ ShellRoot {
     property var domains: ["storage", "security", "time", "locale", "accounts", "printers", "updates"]
     property int domainIndex: 0
     property int stage: 0
+    property bool done: false
     property int assertions: 0
     property int requests: 0
     property int invalidations: 0
@@ -56,7 +57,7 @@ ShellRoot {
         root.check(observer.fresh, "Current baseline makes replacement fresh");
     }
     function advance() {
-        if (controller.running) return;
+        if (root.done || controller.running) return;
         if (root.stage === 0 && observer.monitorOwned) {
             root.capture();
             observer.close();
@@ -86,6 +87,7 @@ ShellRoot {
         } else if (root.stage === 5 && !observer.monitorOwned) {
             root.domainIndex++;
             if (root.domainIndex === root.domains.length) {
+                root.done = true;
                 console.info("Provider generation tests: PASS (" + root.assertions + " assertions)");
                 Qt.quit();
                 return;
@@ -105,7 +107,7 @@ ShellRoot {
         id: controller
         onExited: (code, status) => root.check(code === 0, "Fixture control succeeded")
     }
-    Timer { interval: 15; running: true; repeat: true; onTriggered: root.advance() }
-    Timer { interval: 30000; running: true; onTriggered: { root.check(false, "Lifecycle deadline"); Qt.quit(); } }
+    Timer { interval: 15; running: !root.done; repeat: true; onTriggered: root.advance() }
+    Timer { interval: 30000; running: !root.done; onTriggered: { root.check(false, "Lifecycle deadline"); Qt.quit(); } }
     Component.onCompleted: observer.open()
 }

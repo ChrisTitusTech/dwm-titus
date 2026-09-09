@@ -146,8 +146,8 @@ watch-time | watch-regional | watch-accounts | watch-units)
 	exec /usr/bin/python3 -c 'import signal, sys; print(sys.argv[1] + "\tready", flush=True); signal.pause()' "$prefix" "$0" "$@"
 	;;
 watch-mounts)
-    exec /usr/bin/python3 -c 'import signal; print("mount-monitor-ready", flush=True); signal.pause()' "$0" watch-mounts
-    ;;
+	exec /usr/bin/python3 -c 'import signal; print("mount-monitor-ready", flush=True); signal.pause()' "$0" watch-mounts
+	;;
 watch-updates)
 	[ "$mode" != monitor-failure ] || exit 1
 	printf '%s\n' "$$" >"$fixture/monitor-pid"
