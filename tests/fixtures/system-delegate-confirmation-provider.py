@@ -6,9 +6,6 @@ from pathlib import Path
 import signal
 import sys
 
-# These fixtures reuse one projection for the fixed bounded snapshot modes.
-if sys.argv[1:] in (["snapshot-core"], ["snapshot-without-storage"]):
-    sys.argv[1] = "snapshot"
 
 
 def load(name):
@@ -18,6 +15,8 @@ def load(name):
     return module
 
 
+# Discovery captures the original snapshot mode before normalizing argv for
+# command routing. Load it before the operation fixture can normalize argv.
 discovery = load("system-native-discovery-provider")
 operation = load("system-native-action-provider")
 original_row = discovery.row
