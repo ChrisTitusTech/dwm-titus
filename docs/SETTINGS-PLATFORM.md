@@ -50,6 +50,14 @@ it uses logind's primary display only after verifying the session belongs to
 the current user and is active, local, and X11. Missing, changing, or invalid
 session evidence retains restart guidance and blocks update actions.
 
+System updates show the current package (or repository during metadata refresh),
+its reported progress, and a separate overall transaction percentage. Missing
+item percentages use an activity indicator, never the overall percentage as a
+package estimate. Raw operation logs and audit hashes remain internal; the page
+shows concise verified completion, errors, cancellation, and recovery guidance.
+After a helper restart, recovery may have only overall progress until new item
+evidence is available. Opening Settings does not install updates.
+
 ## Helper Protocol
 
 The Phase 1 capability snapshot invokes only `dwm-settings-provider discover`

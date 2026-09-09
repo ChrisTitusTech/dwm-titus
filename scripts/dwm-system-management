@@ -5908,6 +5908,8 @@ class OperationStream:
         self.started_at = started_at
         self.state = "pending"
         self.progress_records = 0
+        self.item_records = 0
+        self._last_item = None
         self.closed = False
         self.faulted = False
         self._write = write
@@ -5916,6 +5918,25 @@ class OperationStream:
             f"system-management-protocol\t{PROTOCOL_MAJOR}\t{PROTOCOL_MINOR}",
             self._operation_line("pending", "unknown", False, detail),
         ])
+
+    def item_progress(self, name: str, phase: str, percent: int | None) -> None:
+        """Bounded, ephemeral UI evidence; never part of the durable audit."""
+        if self.closed or self.faulted:
+            raise OperationProtocolError("operation stream is no longer writable")
+        _validate_journal_detail(name)
+        if (self.kind not in {"update", "refresh"} or self.state not in {"running", "cancel-requested"}
+                or phase not in {"working", "downloading", "installing", "updating", "removing", "cleaning"}
+                or (percent is not None and (type(percent) is not int or not 0 <= percent <= 100))):
+            raise OperationProtocolError("invalid package progress")
+        item = (name, phase, "unknown" if percent is None else str(percent))
+        if item == self._last_item or self.item_records > 4096:
+            return
+        # At the display budget, clear stale package data rather than freezing it.
+        if self.item_records == 4096:
+            item = ("", "working", "unknown")
+        self._send(["\t".join(("package-progress", self.operation_id, *item))])
+        self._last_item = item
+        self.item_records += 1
 
     def _send(self, lines: Sequence[str]) -> None:
         if self.closed or self.faulted:
@@ -6005,7 +6026,7 @@ class OperationStream:
                 else {"accounts-open": "accounts", "password-open": "accounts",
                       "printers-open": "printers", "sources-open": "sources"}[self.action_id]
             )
-            lines.append(f"error\t{owner}\t{operation.error_code}\t{terminal_detail}")
+            lines.append(f"error\t{owner}\t{operation.error_code}\t{operation.detail}")
         lines.extend([
             self._operation_line(operation.state, "unknown", False, terminal_detail),
             "\t".join(("audit", self.operation_id, self.action_id, self.kind,
@@ -7406,6 +7427,25 @@ class PackageKitMutation:
             self._checkpoint("running")
         if previous != (self.observed.comparison(), len(self.observed.samples)):
             self._progress()
+        phase = {10: "downloading", 11: "updating", 12: "installing", 13: "removing",
+                 14: "cleaning", 15: "removing"}.get(info)
+        if phase is not None:
+            self.on_item_progress(package_id, phase, None)
+
+    def on_item_progress(self, identity: str, phase: str, percent: int | None) -> None:
+        if self.persistence_error is not None:
+            return
+        try:
+            identity = canonical_identity(identity)
+            name = package_display_fields(identity)[0] if self.operation.kind == "update" else clean_text(identity)
+        except SnapshotFailure:
+            # Optional display evidence must not change the transaction outcome.
+            name, phase, percent = "", "working", None
+        if self.operation.state not in {"running", "cancel-requested"}:
+            self._checkpoint("running")
+        if self.persistence_error is not None:
+            return
+        self._output(lambda: self.stream.item_progress(name, phase, percent))
 
     def on_restart(self, value: int) -> None:
         if self.operation.kind != "update" or self.persistence_error is not None:
@@ -8336,6 +8376,12 @@ class PackageKitBackend:
                         if len(item) != 3:
                             raise ValueError
                         owner.on_package(item[0], item[1])
+                elif signal == "ItemProgress":
+                    if len(unpacked) == 3 and isinstance(unpacked[0], str):
+                        phase = {8: "downloading", 9: "installing", 10: "updating", 6: "removing",
+                                 11: "cleaning", 12: "removing"}.get(unpacked[1], "working") if type(unpacked[1]) is int else "working"
+                        percent = unpacked[2] if type(unpacked[2]) is int and 0 <= unpacked[2] <= 100 else None
+                        owner.on_item_progress(unpacked[0], phase, percent)
                 elif signal == "RequireRestart":
                     if len(unpacked) != 2 or type(unpacked[0]) is not int:
                         raise ValueError

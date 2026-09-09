@@ -135,23 +135,42 @@ ShellRoot {
         } else if (root.stage === 13 && model.operation.result !== null && root.fresh()) {
             root.check(model.operation.result.state === "permission-denied" && model.updates.length === 1
                 && model.operation.audit !== null && !root.dispatchProbe, "Denial preserves inventory and a verified audit");
+            root.check(root.button("systemOperationGuidance", window.contentItem).visible,
+                "Non-success without a separate error retains operation guidance");
             root.control("quiet", 14);
         } else if (root.stage === 14 && root.fresh()) {
             root.click("prepareInstall");
             root.click("confirmUpdate");
             root.stage = 15;
         } else if (root.stage === 15 && model.operation.canCancel) {
+            const progress = root.button("currentPackageProgress", window.contentItem);
+            root.check(progress !== null && progress.visible && progress.value === 42 && !progress.indeterminate,
+                "Current package bar uses item percentage, not overall 30 percent");
+            root.check(root.button("currentPackageLabel", window.contentItem).text === "Downloading: example-package",
+                "Current package is named");
+            root.check(root.button("updateOperationLog", window.contentItem) === null, "Raw log is not rendered");
             model.closeSettings();
             root.check(model.operation.streamOwned, "Closing Settings retains the root-owned origin");
             model.openSettings();
             root.control("revoke", 16);
         } else if (root.stage === 16 && model.operation.progress !== null && !model.operation.progress.cancelable) {
+            root.check(root.button("currentPackageProgress", window.contentItem).indeterminate
+                && root.button("currentPackageLabel", window.contentItem).text === "Installing: next-package",
+                "Next package with unknown percent shows activity, not an invented percentage");
+            Theme.reducedMotion = true;
+            root.check(!root.button("currentPackageProgress", window.contentItem).indeterminate,
+                "Reduced motion disables the activity animation");
+            Theme.reducedMotion = false;
             root.check(!model.operation.canCancel && !model.operation.requestCancel(), "Revoked cancellation cannot dispatch through a stale UI");
             root.control("finish", 17);
         } else if (root.stage === 17 && model.operation.result !== null && root.fresh()) {
             root.check(model.operation.result.state === "succeeded" && model.operation.audit.actionId === "updates-install-all",
                 "Confirmed generation-bound install verifies its result after close/reopen");
-            root.check(model.operation.log[model.operation.log.length - 1].state === "succeeded", "Visible log includes only a verified terminal result");
+            root.check(model.operation.log[model.operation.log.length - 1].state === "succeeded", "Retained diagnostics include only a verified terminal result");
+            root.check(!root.button("updateProgress", window.contentItem).visible && model.operation.currentItem === null,
+                "Verified completion stops package progress");
+            root.check(!root.button("systemOperationGuidance", window.contentItem).visible,
+                "Successful audit detail is not rendered as duplicate guidance");
             root.click("prepareRefresh");
             root.click("confirmUpdate");
             root.stage = 18;

@@ -128,6 +128,7 @@ def main():
         result = "permission-denied"
     else:
         row("operation", *current, "running", "30", "yes", "Private update running")
+        row("package-progress", current[0], "example-package", "downloading", "42")
         deadline = time.monotonic() + (120 if os.environ.get("DWM_UPDATE_UI_MANUAL") == "1" else 15)
         revoked = False
         while not (DIRECTORY / "finish").exists() and not (DIRECTORY / "cancel").exists():
@@ -135,6 +136,7 @@ def main():
                 return 1
             if not revoked and (DIRECTORY / "revoke").exists():
                 row("operation", *current, "running", "80", "no", "Private cancellation revoked")
+                row("package-progress", current[0], "next-package", "installing", "unknown")
                 revoked = True
             time.sleep(0.02)
         result = "canceled" if (DIRECTORY / "cancel").exists() else "succeeded"

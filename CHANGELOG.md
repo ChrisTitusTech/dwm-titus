@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Changed
 
+- Replace raw System update logs and audit hashes with current-package progress,
+  separate overall progress, and concise verified completion messages.
+
 - Keep seeded autostart exclusions valid for desktop entries with OnlyShowIn,
   preserving other desktop sessions without adding conflicting NotShowIn keys.
 - Resolve update recovery session evidence for managed user-service launches

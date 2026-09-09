@@ -5126,6 +5126,33 @@ class OperationStreamTests(unittest.TestCase):
     def stream(self, output, action="updates-refresh"):
         return provider.OperationStream(self.operation_id, action, self.started, "Starting", output.append)
 
+    def test_user_error_stays_separate_from_audit_detail(self):
+        output = []
+        stream = self.stream(output, "updates-install-all")
+        stream.transition("running", "Working")
+        stream.finish(self.terminal("updates-install-all", "failed", "network"), detail="Internal audit comparison")
+        records = "".join(output).splitlines()
+        self.assertEqual(rows(records, "error")[0][3], "Durable result")
+        self.assertEqual(rows(records, "audit")[0][7], "Internal audit comparison")
+
+    def test_item_progress_is_coalesced_bounded_and_separate_from_lifecycle(self):
+        output = []
+        stream = self.stream(output, "updates-install-all")
+        stream.transition("running", "Working")
+        stream.item_progress("example", "downloading", 42)
+        stream.item_progress("example", "downloading", 42)
+        self.assertEqual(len(rows("".join(output).splitlines(), "package-progress")), 1)
+        self.assertEqual(stream.progress_records, 0)
+        for index in range(4200):
+            stream.item_progress("example", "installing", index % 101)
+        items = rows("".join(output).splitlines(), "package-progress")
+        self.assertEqual(len(items), 4097)
+        self.assertEqual(items[-1][2:], ["", "working", "unknown"])
+        stream.finish(self.terminal("updates-install-all"))
+        self.assertIn("complete\toperation\n", "".join(output))
+        with self.assertRaises(provider.OperationProtocolError):
+            stream.item_progress("example", "installing", 50)
+
     def test_progress_cap_reserves_every_lifecycle_and_terminal_record(self):
         output = []
         stream = self.stream(output)
@@ -9857,6 +9884,24 @@ class PackageKitExecutionTests(unittest.TestCase):
             self.assertIsNone(backend.connection.closed_callback)
             self.assertIn("\t42\tyes\t", "".join(chunks))
 
+    def test_package_item_progress_does_not_replace_overall_percentage_or_audit(self):
+        with self.journal() as journal:
+            chunks = []
+            backend = self.backend(journal, [lambda bus: bus.progress(Status=8, Percentage=20),
+                lambda bus: bus.emit("Package", (10, self.package_id, "Example")),
+                lambda bus: bus.emit("ItemProgress", (self.package_id, 8, 67)),
+                lambda bus: bus.emit("ItemProgress", (self.package_id, 9, 101)),
+                lambda bus: bus.emit("ItemProgress", ("unsafe\tidentity", 9, 5)),
+                lambda bus: bus.emit("Finished", (1, 10))])
+            terminal = self.run_operation(journal, backend, chunks, update=True)
+            self.assertEqual(terminal.state, "succeeded")
+            items = rows("".join(chunks).splitlines(), "package-progress")
+            name = provider.package_display_fields(self.package_id)[0]
+            self.assertEqual([item[2:] for item in items], [[name, "downloading", "unknown"],
+                [name, "downloading", "67"], [name, "installing", "unknown"], ["", "working", "unknown"]])
+            self.assertIn("\t20\t", "".join(chunks))
+            self.assertNotIn("unsafe", "".join(chunks))
+
     def test_update_uses_exact_ids_and_accumulates_restart_contributions(self):
         with self.journal() as journal:
             chunks = []
@@ -9977,6 +10022,26 @@ class PackageKitExecutionTests(unittest.TestCase):
             self.assertNotIn("complete\toperation", "".join(chunks))
             self.assertIn("Cancel", [call[3] for call in backend.connection.calls])
             os.fchmod(journal.descriptor("terminal-31"), 0o600)
+
+    def test_item_checkpoint_failure_skips_output_and_keeps_safety_cancellation(self):
+        with self.journal() as journal:
+            chunks = []
+
+            def damage(bus):
+                bus.progress(AllowCancel=True)
+                os.fchmod(journal.descriptor("terminal-31"), 0o644)
+                bus.emit("ItemProgress", (self.package_id, 8, 42))
+
+            backend = self.backend(journal, [damage, lambda bus: bus.emit("Finished", (1, 0))])
+            try:
+                with mock.patch.object(provider.OperationStream, "item_progress") as item_output:
+                    with self.assertRaises(provider.JournalFileError):
+                        self.run_operation(journal, backend, chunks, update=True)
+                    item_output.assert_not_called()
+                self.assertIn("Cancel", [call[3] for call in backend.connection.calls])
+                self.assertNotIn("complete\toperation", "".join(chunks))
+            finally:
+                os.fchmod(journal.descriptor("terminal-31"), 0o600)
 
     def test_output_failure_after_send_does_not_abandon_durable_result(self):
         with self.journal() as journal:
