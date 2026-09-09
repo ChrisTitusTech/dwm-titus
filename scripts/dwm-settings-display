@@ -137,25 +137,49 @@ profile_is_complete() {
 }
 
 discover() {
-	local query properties capabilities profile
+	local query properties capabilities verbose profile
 	command -v xrandr >/dev/null 2>&1 || die "xrandr is unavailable"
 	[[ -n ${DISPLAY:-} ]] || die "DISPLAY is not set"
 	query=$(mktemp)
 	properties=$(mktemp)
 	capabilities=$(mktemp)
-	trap 'rm -f "$query" "$properties" "$capabilities"' RETURN
+	verbose=$(mktemp)
+	trap 'rm -f "$query" "$properties" "$capabilities" "$verbose"' RETURN
 	xrandr --query >"$query"
 	grep -q '^Screen [0-9][0-9]*:' "$query" || die "xrandr returned malformed display state"
 	grep -Eq '^[A-Za-z0-9_.:+-]+ connected([[:space:]]|$)' "$query" || die "xrandr reported no connected outputs"
 	xrandr --prop >"$properties" 2>/dev/null || : >"$properties"
+	xrandr --verbose >"$verbose" 2>/dev/null || : >"$verbose"
 	if ! "$setup_helper" capabilities >"$capabilities" 2>/dev/null; then
 		printf 'display-capability-protocol\t1\n' >"$capabilities"
 	fi
 	grep -Fqx $'display-capability-protocol\t1' "$capabilities" ||
 		die "display setup returned an unsupported capability protocol"
 	printf 'display-protocol\t1\n'
-	awk -v props="$properties" -v capabilities="$capabilities" '
+	awk -v props="$properties" -v capabilities="$capabilities" -v verbose="$verbose" '
 		function yes(value) { return value ? "1" : "0" }
+		BEGIN {
+			# Mode labels are arbitrary. Read pixel sizes from RandR timings,
+			# keyed by connector, label, and rate rather than guessing the label.
+			while ((getline line < verbose) > 0) {
+				sub(/[[:space:]]+$/, "", line)
+				count = split(line, values, /[[:space:]]+/)
+				if (line ~ /^[^[:space:]]/) {
+					connector = values[2] == "connected" ? values[1] : ""
+					mode_name = ""
+				} else if (values[3] ~ /^\(0x[0-9a-fA-F]+\)$/) {
+					mode_name = values[2]; pixel_width = 0
+				} else if (values[2] == "h:" && values[3] == "width") {
+					pixel_width = values[4] + 0
+				} else if (values[2] == "v:" && values[3] == "height" && connector != "" && mode_name != "") {
+					pixel_height = values[4] + 0; mode_rate = values[count]; sub(/Hz$/, "", mode_rate)
+					key = connector SUBSEP mode_name SUBSEP mode_rate
+					if (pixel_width > 0 && pixel_height > 0 && mode_rate ~ /^[0-9]+([.][0-9]+)?$/ && !seen_size[key]++)
+						printf "mode-size\t%s\t%s\t%s\t%d\t%d\n", connector, mode_name, mode_rate, pixel_width, pixel_height
+				}
+			}
+			close(verbose)
+		}
 		$2 == "connected" {
 			output = $1; primary = 0; enabled = 0; mode = ""; x = 0; y = 0; rotation = "normal"; geometry_index = 0
 			for (i = 3; i <= NF; i++) {
@@ -191,6 +215,8 @@ discover() {
 			next
 		}
 		/^[^[:space:]]/ && $2 != "connected" { current_output = ""; next }
+		# Global modelines from additional RandR providers are not output modes.
+		/^[[:space:]]+[^[:space:]]+[[:space:]]+\(0x[0-9a-fA-F]+\)/ { current_output = ""; next }
 		/^[[:space:]]/ && $1 ~ /^[A-Za-z0-9_.:+-]+$/ && current_output != "" {
 			mode = $1
 			for (i = 2; i <= NF; i++) {

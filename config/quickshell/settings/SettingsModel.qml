@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.core
+import "DisplayLayout.js" as DisplayLayout
 
 Scope {
     id: root
@@ -31,6 +32,7 @@ Scope {
     property var capabilities: []
     property int selectedIndex: 0
     property var displayOutputs: []
+    readonly property var displayArrangement: DisplayLayout.preview(root.displayOutputs)
     property var displayModes: []
     property var displayProfiles: []
     property var displayUnsupportedProfiles: []
@@ -181,6 +183,7 @@ Scope {
     function parseDisplays(text) {
         const outputs = [];
         const modes = [];
+        const modeSizes = [];
         const profiles = [];
         const unsupportedProfiles = [];
         let valid = false;
@@ -189,13 +192,19 @@ Scope {
             if (fields[0] === "display-protocol" && fields[1] === "1") {
                 valid = true;
             } else if (fields[0] === "output" && fields.length >= 9) {
+                const geometry = DisplayLayout.size({ mode: fields[4], rotation: fields[7] });
                 outputs.push({
                     "name": fields[1], "enabled": fields[2] === "1",
                     "primary": fields[3] === "1", "mode": fields[4],
                     "rate": "", "x": Number(fields[5]), "y": Number(fields[6]),
+                    "pixelWidth": geometry ? geometry.width : 0,
+                    "pixelHeight": geometry ? geometry.height : 0,
                     "rotation": fields[7], "tearfree": fields[8],
                     "fullCompositionPipeline": fields.length >= 10 ? fields[9] : "unsupported"
                 });
+            } else if (fields[0] === "mode-size" && fields.length >= 6) {
+                modeSizes.push({ output: fields[1], mode: fields[2], rate: fields[3],
+                    pixelWidth: Number(fields[4]), pixelHeight: Number(fields[5]) });
             } else if (fields[0] === "mode" && fields.length >= 6) {
                 modes.push({
                     "output": fields[1], "mode": fields[2], "rate": fields[3],
@@ -207,6 +216,14 @@ Scope {
                 unsupportedProfiles.push({ "name": fields[1], "detail": fields.slice(2).join("\t") });
             }
         }
+        for (const mode of modes) {
+            const dimensions = modeSizes.find(function(item) {
+                return item.output === mode.output && item.mode === mode.mode && item.rate === mode.rate;
+            });
+            const size = DisplayLayout.size(dimensions || mode);
+            mode.pixelWidth = size ? size.width : 0;
+            mode.pixelHeight = size ? size.height : 0;
+        }
         for (let index = 0; index < outputs.length; index++) {
             const current = modes.find(function(mode) {
                 return mode.output === outputs[index].name && mode.current;
@@ -214,6 +231,10 @@ Scope {
             if (current) {
                 outputs[index].mode = current.mode;
                 outputs[index].rate = current.rate;
+                if (current.pixelWidth && current.pixelHeight) {
+                    outputs[index].pixelWidth = current.pixelWidth;
+                    outputs[index].pixelHeight = current.pixelHeight;
+                }
             } else {
                 const preferred = modes.find(function(mode) {
                     return mode.output === outputs[index].name && mode.preferred;
@@ -221,6 +242,8 @@ Scope {
                 if (preferred) {
                     outputs[index].mode = preferred.mode;
                     outputs[index].rate = preferred.rate;
+                    outputs[index].pixelWidth = preferred.pixelWidth;
+                    outputs[index].pixelHeight = preferred.pixelHeight;
                 }
             }
         }
@@ -271,6 +294,23 @@ Scope {
                 if (other !== index) outputs[other] = Object.assign({}, outputs[other], { "primary": false });
             }
         }
+        root.displayOutputs = outputs;
+        root.displayMessage = root.displayLayoutKey(outputs) !== root.displayBaseline
+            ? "Display changes are ready to apply" : outputs.length + " connected outputs";
+    }
+
+    function displayPlacementTargets(index) {
+        return DisplayLayout.targets(root.displayOutputs, index);
+    }
+
+    function displayRelation(index, anchorIndex) {
+        return DisplayLayout.relation(root.displayOutputs, index, anchorIndex);
+    }
+
+    function placeDisplay(index, anchorIndex, direction) {
+        if (root.previewOperationLocked) return;
+        const outputs = DisplayLayout.place(root.displayOutputs, index, anchorIndex, direction);
+        if (!outputs) return;
         root.displayOutputs = outputs;
         root.displayMessage = root.displayLayoutKey(outputs) !== root.displayBaseline
             ? "Display changes are ready to apply" : outputs.length + " connected outputs";
@@ -333,6 +373,8 @@ Scope {
         const changed = Object.assign({}, outputs[index]);
         changed.mode = mode.mode;
         changed.rate = mode.rate;
+        changed.pixelWidth = mode.pixelWidth;
+        changed.pixelHeight = mode.pixelHeight;
         outputs[index] = changed;
         root.displayOutputs = outputs;
         root.displayMessage = root.displayLayoutKey(outputs) !== root.displayBaseline

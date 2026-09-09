@@ -479,6 +479,11 @@ the cancellation requirements of other privileged actions.
 The planned Settings surface covers:
 
 - Displays and monitor profiles.
+- Display placement uses numbered monitor cards and a proportional preview,
+  with Left of, Right of, Above, and Below actions relative to another enabled
+  monitor. Placement accounts for resolution and rotation, aligns the top or
+  left edges, and retains the timed preview/rollback and coordinate-based
+  profile formats. Choosing a placement edits the pending layout only.
 - Keyboard, pointer, touchpad, and other supported input devices.
 - NetworkManager connections, VPN entry points, and Bluetooth devices.
 - PipeWire/WirePlumber-compatible audio devices and application streams.

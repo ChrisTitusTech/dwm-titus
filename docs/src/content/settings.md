@@ -25,6 +25,15 @@ the complete layout for 15 seconds, then **Keep changes** to accept it or
 restores the prior layout. Saved layouts can be reused later; **Use at next
 login** installs the selected layout for future X11 sessions after a separate
 confirmation and administrator authorization.
+
+Monitor cards and the layout preview share the same numbers. To arrange an
+enabled monitor, choose another monitor in its reference selector and click
+**Left of**, **Right of**, **Above**, or **Below**. The preview updates before
+anything changes on your desktop. Horizontal placements align top edges;
+vertical placements align left edges. After changing resolution or rotation,
+choose a placement again to realign the edges. Disabled monitors keep their
+cards but do not appear in the preview or reference choices.
+
 The machine-oriented `dwm-settings-display` helper exposes `discover` and
 `watch`, complete-layout `save` and `preview`, named `preview-profile`, timed
 `keep`, `revert`, and `preview-status`, plus authorized `install-profile` and

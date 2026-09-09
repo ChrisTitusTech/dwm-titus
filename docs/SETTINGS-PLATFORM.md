@@ -232,6 +232,29 @@ sysfs identity. A device without one remains configurable for the current
 session, but Settings reports persistence as unsupported and does not save an
 event-node-based identity.
 
+The Displays page numbers every connected monitor card and shows enabled
+monitors in a proportional layout preview. Select a reference monitor in a
+card, then choose **Left of**, **Right of**, **Above**, or **Below**. Horizontal
+placements align top edges; vertical placements align left edges. Each action
+moves that monitor and normalizes the active layout origin. Other monitors
+retain their relative positions. Resolution and rotation determine tile size;
+after changing either, use a placement button again to align the edges.
+Discovery appends `mode-size` records (output, mode name, rate, pixel width,
+pixel height) so custom RandR names such as `native` remain positionable.
+Older discovery responses fall back to conventional mode names or the active
+output geometry where available.
+Disabled monitors keep their numbered cards but do not appear in the preview
+or reference selector. The highlighted button reflects the current geometry.
+Apply changes starts the existing 15-second confirmation; the diagram itself
+does not change the live layout. Existing saved coordinate profiles still load.
+These profile controls do not update separately managed autorandr profiles.
+
+![Numbered display placement preview](evidence/display-relative-layout.png)
+
+The screenshot uses a nested X11 fixture with the built-in monitor disabled
+and two dock monitors enabled. All four buttons were exercised in that
+fixture and their resulting coordinates checked through the Settings model.
+
 Persistent display installation requires a second UI confirmation and
 `pkexec`. The helper must be exactly under an installed project libexec path,
 root-owned, non-symlinked, and not writable by group or others. Its installed
