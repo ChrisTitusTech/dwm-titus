@@ -58,7 +58,9 @@ ShellRoot {
             find(action === "ntp-set" ? "regionalOuterPane" : "externalRegionalFocus").forceActiveFocus();
         }
     }
-    function settled() { return !model.busy && !model.regional.ownsPreparation(); }
+    function settled() {
+        return !model.busy && !model.regional.ownsPreparation() && !model.timeReconciliation.ownsRead();
+    }
     function checkUnavailableOffer() {
         check(find(origin).enabled, "Valid selection enables the mutation before availability changes");
         const actions = model.actions;
@@ -262,6 +264,7 @@ ShellRoot {
             check(!model.timeReconciliation.blocked && model.timeDiscovery.fresh,
                 "Routine sampling preserves fresh configuration");
             check(!find("confirmRegional").enabled, "Sample serializes confirmation");
+            check(!settled(), "Sampling keeps the UI fixture unsettled until read ownership is released");
             stage = 66;
         } else if (stage === 66 && !model.timeReconciliation.ownsRead()) {
             if (!find("confirmRegional").activeFocus) return;
