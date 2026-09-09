@@ -204,6 +204,11 @@ PACKAGEKIT_PATH = "/org/freedesktop/PackageKit"
 PACKAGEKIT_INTERFACE = "org.freedesktop.PackageKit"
 TRANSACTION_INTERFACE = "org.freedesktop.PackageKit.Transaction"
 PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
+# PkInfoEnum (Package) and PkStatusEnum (ItemProgress) are distinct enums.
+PACKAGEKIT_INFO_PHASE = {10: "downloading", 11: "updating", 12: "installing",
+                        13: "removing", 14: "cleaning", 15: "removing"}
+PACKAGEKIT_STATUS_PHASE = {8: "downloading", 9: "installing", 10: "updating",
+                          6: "removing", 11: "cleaning", 12: "removing"}
 
 REGIONAL_READ_SECONDS = 10
 REGIONAL_MUTATION_SECONDS = 60
@@ -7427,8 +7432,7 @@ class PackageKitMutation:
             self._checkpoint("running")
         if previous != (self.observed.comparison(), len(self.observed.samples)):
             self._progress()
-        phase = {10: "downloading", 11: "updating", 12: "installing", 13: "removing",
-                 14: "cleaning", 15: "removing"}.get(info)
+        phase = PACKAGEKIT_INFO_PHASE.get(info)
         if phase is not None:
             self.on_item_progress(package_id, phase, None)
 
@@ -8378,8 +8382,7 @@ class PackageKitBackend:
                         owner.on_package(item[0], item[1])
                 elif signal == "ItemProgress":
                     if len(unpacked) == 3 and isinstance(unpacked[0], str):
-                        phase = {8: "downloading", 9: "installing", 10: "updating", 6: "removing",
-                                 11: "cleaning", 12: "removing"}.get(unpacked[1], "working") if type(unpacked[1]) is int else "working"
+                        phase = PACKAGEKIT_STATUS_PHASE.get(unpacked[1], "working") if type(unpacked[1]) is int else "working"
                         percent = unpacked[2] if type(unpacked[2]) is int and 0 <= unpacked[2] <= 100 else None
                         owner.on_item_progress(unpacked[0], phase, percent)
                 elif signal == "RequireRestart":

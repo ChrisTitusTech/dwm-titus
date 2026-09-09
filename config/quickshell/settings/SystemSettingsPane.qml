@@ -189,6 +189,7 @@ Flickable {
         SectionLabel { label: "Fedora updates" }
 
         SystemUpdateControls {
+            id: updateControls
             model: root.systemManagementModel
             onRevealRequested: target => root.reveal(target)
         }
@@ -221,14 +222,18 @@ Flickable {
         }
 
         StatusCard {
+            objectName: "systemOperationFallback"
             readonly property var operation: root.systemManagementModel.operation.progress
                 || root.systemManagementModel.activeOperation
-            visible: operation !== null && operation.kind !== "update" && operation.kind !== "refresh"
-            label: operation === null ? "Active operation" : operation.actionId
+            readonly property bool packageOperation: operation !== null
+                && (operation.kind === "update" || operation.kind === "refresh")
+            visible: operation !== null && updateControls.active === null
+            label: packageOperation ? "Update recovery" : operation === null ? "Active operation" : operation.actionId
             status: "partial"
             value: operation === null ? "" : operation.percent === "unknown"
                 ? operation.state : operation.state + " / " + operation.percent + "%"
-            detail: operation === null ? "" : operation.detail
+            detail: packageOperation ? "Live package progress is unavailable. Reload status to recover this operation."
+                : operation === null ? "" : operation.detail
         }
 
         StatusCard {

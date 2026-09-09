@@ -149,6 +149,19 @@ ShellRoot {
             root.check(root.button("currentPackageLabel", window.contentItem).text === "Downloading: example-package",
                 "Current package is named");
             root.check(root.button("updateOperationLog", window.contentItem) === null, "Raw log is not rendered");
+            const fallback = root.button("systemOperationFallback", window.contentItem);
+            root.check(!fallback.visible, "Live package progress replaces the fallback card");
+            model.operation.streamFailed = true;
+            root.check(fallback.visible && !root.button("updateProgress", window.contentItem).visible
+                && fallback.detail.indexOf("Reload status") >= 0, "Failed stream retains recovery guidance without raw logs");
+            model.operation.streamFailed = false;
+            const savedProgress = model.operation.progress;
+            const savedActive = model.activeOperation;
+            model.activeOperation = savedProgress;
+            model.operation.progress = null;
+            root.check(fallback.visible, "Snapshot-only operation remains visible before live progress arrives");
+            model.operation.progress = savedProgress;
+            model.activeOperation = savedActive;
             model.closeSettings();
             root.check(model.operation.streamOwned, "Closing Settings retains the root-owned origin");
             model.openSettings();

@@ -2005,7 +2005,15 @@ path, or elevation mechanism.
   validates the returned session object path, and then reads the
   `org.freedesktop.login1.Session.TimestampMonotonic` property from that exact
   object through `org.freedesktop.DBus.Properties.Get`. It accepts only the
-  expected unsigned 64-bit D-Bus value. A session that began while an update was
+  expected unsigned 64-bit D-Bus value. Only a `NoSessionForPID` error permits
+  the managed-user-service fallback: resolve the invoking UID through `GetUser`,
+  read its typed `User.Display` session identity, and validate the session's
+  matching user UID/object path and ID, X11 type, user class, active state,
+  `Active=true`, and `Remote=false`. Read the same typed timestamp from that
+  session, then re-read `User.Display` and require an unchanged identity. Every
+  call shares the original ten-second deadline. Permission denial, timeout,
+  malformed data, and other lookup errors never enable the fallback. A session
+  that began while an update was
   still running cannot clear its later requirement.
   Missing logind state, timeout, or malformed data retains the guidance with
   `partial` status until a later session or boot boundary proves satisfaction;
