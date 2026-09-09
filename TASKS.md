@@ -503,7 +503,8 @@ Health navigation, and scoped recovery/reset guidance. Combined installed
 qualification remains pending. The full combined repository gate passed,
 including 679 backend tests, all QML/X11 workflows, install preservation and
 release archive checks. The subsequent pipe-output contract fix passes 60
-affected checks.
+affected checks. The later subscription/recovery fixes pass the full affected
+QML gate, including 119 retired-callback and 66/69/66 root lifecycle assertions.
 
 Mount readiness also distinguishes the temporary initial parsing descriptor
 from the persistent polling descriptor. A delayed-open regression against the

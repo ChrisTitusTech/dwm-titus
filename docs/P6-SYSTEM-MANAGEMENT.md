@@ -2934,6 +2934,9 @@ The combined implementation passed the complete managed repository gate with
 679 backend tests, all QML/nested-X11 workflows, build, shell/format, staged and
 repeated installation, preservation and release archive checks. The subsequent
 write-only pipe-output contract fix passed 60 affected backend/monitor checks.
+The later subscription/recovery fixes pass the full affected QML gate, including
+119 retired-callback assertions and 66/69/66 time/storage/security lifecycle
+assertions. Blocked storage and failed core recovery retain readable information.
 Source comparison confirmed every other tested source file was unchanged. Closed
 Settings used 0.200% CPU in the nested-X11 sample; the large-surface closed
 sample was 0.50%. Final installed-session qualification remains separate.
