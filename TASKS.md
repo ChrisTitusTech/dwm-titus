@@ -501,7 +501,8 @@ storage and security cards, exact byte counts, explicit unknown/stale states,
 Health navigation, and scoped recovery/reset guidance. Combined installed
 qualification remains pending. The full combined repository gate passed,
 including 679 backend tests, all QML/X11 workflows, install preservation and
-release archive checks. The subsequent socket fix passes 59 affected checks.
+release archive checks. The subsequent pipe-output contract fix passes 60
+affected checks.
 
 Mount readiness also distinguishes the temporary initial parsing descriptor
 from the persistent polling descriptor. A delayed-open regression against the

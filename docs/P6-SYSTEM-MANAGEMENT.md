@@ -2923,7 +2923,7 @@ and [recovery guidance](evidence/p6-recovery-view.png).
 The combined implementation passed the complete managed repository gate with
 679 backend tests, all QML/nested-X11 workflows, build, shell/format, staged and
 repeated installation, preservation and release archive checks. The subsequent
-closure-only socket fix passed 59 affected backend/monitor checks. Source
-comparison confirmed every other tested source file was unchanged. Closed
+write-only pipe-output contract fix passed 60 affected backend/monitor checks.
+Source comparison confirmed every other tested source file was unchanged. Closed
 Settings used 0.200% CPU in the nested-X11 sample; the large-surface closed
 sample was 0.50%. Final installed-session qualification remains separate.
