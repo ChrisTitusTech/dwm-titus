@@ -551,7 +551,7 @@ grep -Fqx 'output	DP-2	0	0		0	0	normal	available	unsupported' "$work/settings-di
 cat >"$work/query-dock" <<'EOF'
 Screen 0: minimum 320 x 200, current 2560 x 1600, maximum 16384 x 16384
 eDP-1 connected primary 2560x1600+0+0 (normal left inverted right x axis y axis)
-   2560x1600_90.00 90.00*+
+   2560x1600_90.00 90.00 *+
 DVI-I-2-2 connected (normal left inverted right x axis y axis)
    2560x1440 60.00+ 144.00
 DVI-I-1-1 connected (normal left inverted right x axis y axis)
@@ -564,6 +564,7 @@ env "${settings_env[@]}" TEST_QUERY="$work/query-dock" \
 	"$BASH_BIN" "$SETTINGS_HELPER" discover >"$work/settings-dock"
 [[ $(awk -F '\t' '$1 == "mode" {count++} END {print count + 0}' "$work/settings-dock") == 5 ]]
 grep -Fqx $'mode\tDVI-I-1-1\t2560x1440\t144.00\t0\t0' "$work/settings-dock"
+grep -Fqx $'mode\teDP-1\t2560x1600_90.00\t90.00\t1\t1' "$work/settings-dock"
 cat >"$work/query-custom" <<'EOF'
 Screen 0: minimum 320 x 200, current 2560 x 1600, maximum 16384 x 16384
 eDP-1 connected primary 2560x1600+0+0 (normal left inverted right x axis y axis)

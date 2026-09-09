@@ -34,6 +34,23 @@ vertical placements align left edges. After changing resolution or rotation,
 choose a placement again to realign the edges. Disabled monitors keep their
 cards but do not appear in the preview or reference choices.
 
+**Automatic layouts** provides separate **Undocked** (built-in only) and
+**Docked** profiles, with saved monitor previews and refresh rates. The status
+line distinguishes matching hardware from the layout actually applied.
+Choose **Edit saved**, adjust the draft below, then **Save draft as undocked**
+or **Save draft as docked** and confirm. Saving does not change live screens;
+use **Apply changes** and **Keep changes** to test first. You can prepare the
+Undocked layout while the dock remains connected. Connect the saved monitors
+before editing a Docked layout.
+
+This optional feature uses Fedora's `autorandr` login and hotplug integration,
+without administrator approval. Saving Undocked makes it the default fallback.
+Docked matches the connected monitor identities, not just the connector type.
+Replaced profiles are backed up in the dwm-titus `display-profile-backups`
+configuration directory. Only one Docked slot is managed here; advanced
+multi-dock profiles remain available through autorandr. These user profiles
+are separate from the administrator-controlled **Use at next login** action.
+
 The machine-oriented `dwm-settings-display` helper exposes `discover` and
 `watch`, complete-layout `save` and `preview`, named `preview-profile`, timed
 `keep`, `revert`, and `preview-status`, plus authorized `install-profile` and

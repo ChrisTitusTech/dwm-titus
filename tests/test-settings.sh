@@ -845,3 +845,11 @@ if [ -n "$qml_runner" ]; then
 else
 	printf 'SKIP: Qt 6 qml runner unavailable; display geometry assertions not run.\n'
 fi
+
+if command -v quickshell >/dev/null 2>&1; then
+	cp -a "$repo/config/quickshell" "$work/profile-model"
+	cp "$repo/tests/quickshell-display-profiles.qml" "$work/profile-model/shell.qml"
+	QT_QPA_PLATFORM=offscreen timeout 20 quickshell --no-duplicate --path "$work/profile-model/shell.qml"
+else
+	printf 'SKIP: Quickshell unavailable; automatic display model assertions not run.\n'
+fi

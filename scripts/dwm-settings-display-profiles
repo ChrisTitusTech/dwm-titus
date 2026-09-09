@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""Unprivileged Docked/Undocked autorandr profile editor. Never applies a layout."""
+
+import json
+import configparser
+import fcntl
+import io
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+
+ROLES = {"undocked": "mobile", "docked": "docked"}
+
+
+def profile_root():
+    legacy = Path.home() / ".autorandr"
+    return legacy if legacy.is_dir() else Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "autorandr"
+
+
+ROOT = profile_root()
+INTERNAL = re.compile(r"^(eDP|LVDS|DSI)[-0-9]")
+NAME = re.compile(r"[A-Za-z0-9_.:+-]+")
+
+
+def run(*args):
+    return subprocess.run(args, check=True, capture_output=True, text=True, timeout=15).stdout
+
+
+def read(path):
+    if path.is_symlink():
+        raise ValueError(f"Refusing symlink: {path}")
+    if path.stat().st_size > 1024 * 1024:
+        raise ValueError(f"Profile is too large: {path}")
+    return path.read_text()
+
+
+def profile(path):
+    outputs = []
+    current = None
+    for line in read(path).splitlines():
+        fields = line.strip().split()
+        if len(fields) == 6 and fields[:2] == ["#", "dwm-pixels"] and current is not None:
+            current["_dimensions"] = fields[2:]
+            continue
+        if not fields or fields[0].startswith("#"):
+            continue
+        key, *values = fields
+        if key == "output" and len(values) == 1 and NAME.fullmatch(values[0]):
+            current = dict(name=values[0], enabled=True, primary=False, mode="", rate="",
+                           x=0, y=0, rotation="normal")
+            outputs.append(current)
+        elif current is None:
+            raise ValueError("Missing output record")
+        elif key in ("off", "primary") and not values:
+            current["enabled" if key == "off" else "primary"] = key == "primary"
+        elif key in ("mode", "rate", "rotate") and len(values) == 1:
+            current["rotation" if key == "rotate" else key] = values[0]
+        elif key == "pos" and len(values) == 1 and re.fullmatch(r"\d+x\d+", values[0]):
+            current["x"], current["y"] = map(int, values[0].split("x"))
+        elif key == "crtc" or key.startswith("x-prop-"):
+            pass  # Hardware assignments/properties are not layout policy.
+        else:
+            raise ValueError(f"Unsupported saved option: {key}; preserve this profile outside Settings")
+    if not outputs or not any(item["enabled"] for item in outputs):
+        raise ValueError("Saved profile has no enabled outputs")
+    for item in outputs:
+        validate(item)
+        dimensions = item.pop("_dimensions", [])
+        if (len(dimensions) == 4 and dimensions[:2] == [item["mode"], item["rate"]]
+                and all(value.isdigit() and 0 < int(value) <= 16384 for value in dimensions[2:])):
+            item["pixelWidth"], item["pixelHeight"] = map(int, dimensions[2:])
+    return outputs
+
+
+def validate(item):
+    if not NAME.fullmatch(item["name"]):
+        raise ValueError("Invalid connector")
+    if not item["enabled"]:
+        return
+    if not NAME.fullmatch(item["mode"]) or not re.fullmatch(r"\d+(\.\d+)?", item["rate"]):
+        raise ValueError("Choose a resolution and refresh rate for every enabled monitor")
+    if item["rotation"] not in ("normal", "left", "right", "inverted"):
+        raise ValueError("Invalid rotation")
+    if not 0 <= item["x"] <= 16384 or not 0 <= item["y"] <= 16384:
+        raise ValueError("Invalid monitor position")
+
+
+def status():
+    result = dict(version=1, available=bool(shutil.which("autorandr")), profiles=[],
+                  detected=[], current=[], default="", error="")
+    if not result["available"]:
+        result["error"] = "Install the optional Fedora autorandr package for automatic dock layouts."
+        return result
+    for role, name in ROLES.items():
+        entry = dict(role=role, name=name, saved=False, outputs=[], error="")
+        try:
+            path = ROOT / name
+            if path.is_symlink():
+                raise ValueError("Profile directory is a symlink; not editable in Settings")
+            if (path / "config").exists():
+                entry["outputs"] = profile(path / "config")
+                entry["saved"] = True
+        except (OSError, ValueError) as error:
+            entry["error"] = str(error)
+        result["profiles"].append(entry)
+    try:
+        result["detected"] = run("autorandr", "--detected").splitlines()
+        result["current"] = run("autorandr", "--current").splitlines()
+        if (ROOT / "default").is_symlink():
+            result["default"] = Path(os.readlink(ROOT / "default")).name
+    except (OSError, subprocess.SubprocessError) as error:
+        result["error"] = str(error)
+    return result
+
+
+def save(role, specs):
+    if role not in ROLES or not shutil.which("autorandr"):
+        raise ValueError("Automatic layouts require autorandr and a Docked or Undocked role")
+    outputs = []
+    for spec in specs:
+        fields = spec.split("|")
+        if len(fields) != 8 or fields[1] not in ("0", "1") or fields[7] not in ("0", "1"):
+            raise ValueError("Invalid display specification")
+        name, enabled, mode, rate, x, y, rotation, primary = fields
+        item = dict(name=name, enabled=enabled == "1", mode=mode, rate=rate,
+                    x=int(x), y=int(y), rotation=rotation, primary=primary == "1")
+        validate(item)
+        outputs.append(item)
+    if len({item["name"] for item in outputs}) != len(outputs):
+        raise ValueError("Duplicate connector")
+    active = [item for item in outputs if item["enabled"]]
+    if not active or sum(item["primary"] for item in active) != 1:
+        raise ValueError("Enable at least one monitor and select exactly one primary")
+    if role == "undocked" and (len(active) != 1 or not INTERNAL.match(active[0]["name"])):
+        raise ValueError("Undocked must enable only the built-in monitor")
+    if role == "docked" and not any(not INTERNAL.match(item["name"]) for item in active):
+        raise ValueError("Docked must enable an external monitor")
+
+    # Verify identities and modes without xrandr --dryrun (which can change primary).
+    fingerprint = dict(line.split(None, 1) for line in run("autorandr", "--fingerprint").splitlines() if line.strip())
+    helper = Path(__file__).resolve().with_name("dwm-settings-display")
+    records = [line.split("\t") for line in run(str(helper), "discover").splitlines()]
+    modes = {(row[1], row[2], row[3]) for row in records if row[0] == "mode" and len(row) >= 6}
+    dimensions = {(row[1], row[2], row[3]): row[4:6] for row in records
+                  if row[0] == "mode-size" and len(row) >= 6
+                  and all(value.isdigit() and 0 < int(value) <= 16384 for value in row[4:6])}
+    connected = {row[1] for row in records if row[0] == "output" and len(row) >= 9}
+    if set(item["name"] for item in outputs) != connected or set(fingerprint) != connected:
+        raise ValueError("Monitors changed or lack identities; refresh before saving")
+    for item in active:
+        if (item["name"], item["mode"], item["rate"]) not in modes:
+            raise ValueError(f"Unsupported mode/rate for {item['name']}; refresh before saving")
+    if role == "undocked":
+        outputs = active
+        fingerprint = {active[0]["name"]: fingerprint[active[0]["name"]]}
+    return publish(role, outputs, fingerprint, dimensions)
+
+
+def publish(role, outputs, fingerprint, dimensions):
+    ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return publish_locked(role, outputs, fingerprint, dimensions)
+    finally:
+        os.close(fd)
+
+
+def publish_locked(role, outputs, fingerprint, dimensions):
+    ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if ROOT.is_symlink():
+        raise ValueError("Refusing symlinked autorandr directory")
+    destination = ROOT / ROLES[role]
+    if destination.is_symlink():
+        raise ValueError("Refusing symlinked profile directory")
+    default = ROOT / "default"
+    if role == "undocked" and default.exists() and not default.is_symlink():
+        raise ValueError("Existing default is not a symlink; preserve it and choose a default outside Settings")
+    # Preserve hooks and unrelated files, but refuse profiles whose extra layout
+    # options this editor cannot represent. Backups stay outside autorandr's scan.
+    if destination.exists():
+        profile(destination / "config")
+    settings = ROOT / "settings.ini"
+    previous_settings = read(settings) if settings.exists() or settings.is_symlink() else None
+    parser = configparser.ConfigParser()
+    try:
+        parser.read_string(previous_settings or "")
+        skipped = [value.strip() for value in parser.get("config", "skip-options", fallback="").split(",") if value.strip()]
+    except configparser.Error as error:
+        raise ValueError(f"Cannot preserve autorandr settings: {error}") from error
+    missing = [value for value in ("set", "crtc") if value not in [item.removeprefix("--") for item in skipped]]
+    settings_content = None
+    if missing:
+        if not parser.has_section("config"):
+            parser.add_section("config")
+        parser.set("config", "skip-options", ",".join(skipped + missing))
+        stream = io.StringIO()
+        parser.write(stream)
+        settings_content = stream.getvalue()
+    backup_root = ROOT.parent / "dwm-titus" / "display-profile-backups"
+    backup_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    backup = Path(tempfile.mkdtemp(prefix=f"{ROLES[role]}-{time.time_ns()}-", dir=backup_root))
+    if previous_settings is not None:
+        (backup / "settings.ini").write_text(previous_settings)
+    if destination.exists():
+        shutil.copytree(destination, backup / "profile", symlinks=True)
+    if default.is_symlink():
+        (backup / "default-target").write_text(os.readlink(default))
+    lines = []
+    for item in outputs:
+        lines.append("output " + item["name"])
+        if not item["enabled"]:
+            lines.append("off")
+            continue
+        lines.extend(["mode " + item["mode"], "rate " + item["rate"],
+                      f"pos {item['x']}x{item['y']}", "rotate " + item["rotation"]])
+        if item["primary"]:
+            lines.append("primary")
+        pixels = dimensions.get((item["name"], item["mode"], item["rate"]))
+        if pixels:
+            lines.append(f"# dwm-pixels {item['mode']} {item['rate']} {' '.join(pixels)}")
+    stage = backup / "staged"
+    if destination.exists():
+        shutil.copytree(destination, stage, symlinks=True)
+    else:
+        stage.mkdir(mode=0o700)
+    for filename, content in (("config", "\n".join(lines) + "\n"),
+                              ("setup", "".join(f"{key} {value}\n" for key, value in sorted(fingerprint.items())))):
+        fd, temporary = tempfile.mkstemp(prefix="." + filename, dir=stage)
+        try:
+            with os.fdopen(fd, "w") as stream:
+                stream.write(content)
+            os.replace(temporary, stage / filename)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+    replaced = backup / "replaced"
+    installed = False
+    settings_installed = False
+    try:
+        if destination.exists():
+            os.replace(destination, replaced)
+        os.replace(stage, destination)
+        installed = True
+        if settings_content is not None:
+            fd, temporary = tempfile.mkstemp(prefix=".settings-", dir=ROOT)
+            try:
+                with os.fdopen(fd, "w") as stream:
+                    stream.write(settings_content)
+                os.replace(temporary, settings)
+                settings_installed = True
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+        if role == "undocked":
+            fd, temporary = tempfile.mkstemp(prefix=".default-", dir=ROOT)
+            os.close(fd)
+            os.unlink(temporary)
+            try:
+                os.symlink("mobile", temporary)
+                os.replace(temporary, default)
+            finally:
+                if os.path.lexists(temporary):
+                    os.unlink(temporary)
+    except OSError as error:
+        if settings_installed:
+            if previous_settings is None:
+                settings.unlink()
+            else:
+                os.replace(backup / "settings.ini", settings)
+        if installed:
+            os.replace(destination, backup / "failed")
+        if replaced.exists():
+            os.replace(replaced, destination)
+        raise ValueError(f"Could not save profile; previous state restored. Backup: {backup}: {error}") from error
+    return dict(version=1, saved=role, backup=str(backup),
+                message=f"Saved {role}; used by autorandr at login/hotplug. Live screens unchanged.")
+
+
+def main():
+    if sys.argv[1:] == ["status"]:
+        result = status()
+    elif len(sys.argv) >= 4 and sys.argv[1] == "save":
+        result = save(sys.argv[2], sys.argv[3:])
+    else:
+        raise ValueError("usage: dwm-settings-display-profiles status | save undocked|docked SPEC...")
+    print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

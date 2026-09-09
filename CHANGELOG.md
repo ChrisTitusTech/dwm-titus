@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add explicit Docked and Undocked automatic display layouts to Settings,
+  including saved previews, detected/applied status, draft editing, confirmed
+  saves and backups. Use optional autorandr login/hotplug integration without
+  persisting session-specific display controller assignments.
+
 - Replace display X/Y inputs with Left of, Right of, Above, and Below
   placement controls and a numbered layout preview. Preserve timed rollback
   and existing saved profiles; ignore dock RandR timing rows during discovery.

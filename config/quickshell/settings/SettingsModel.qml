@@ -36,6 +36,11 @@ Scope {
     property var displayModes: []
     property var displayProfiles: []
     property var displayUnsupportedProfiles: []
+    property var automaticDisplayState: ({ available: false, profiles: [], detected: [], current: [], default: "", error: "Loading automatic layouts" })
+    property string automaticDisplayMessage: ""
+    property string displayEditingRole: "live"
+    property bool automaticDisplayRefreshPending: false
+    readonly property bool automaticDisplayBusy: automaticDisplaySaveProcess.running || automaticDisplayStatusProcess.running
     property string displayState: "idle"
     property string displayMessage: ""
     property string displayBaseline: ""
@@ -248,6 +253,7 @@ Scope {
             }
         }
         root.displayOutputs = outputs;
+        root.displayEditingRole = "live";
         root.displayBaseline = valid ? root.displayLayoutKey(outputs) : "";
         root.displayModes = modes;
         root.displayProfiles = profiles;
@@ -285,6 +291,7 @@ Scope {
     }
 
     function updateDisplay(index, field, value) {
+        if (root.previewOperationLocked) return;
         const outputs = root.displayOutputs.slice();
         const changed = Object.assign({}, outputs[index]);
         changed[field] = value;
@@ -471,6 +478,94 @@ Scope {
             root.runDisplay("save", [name.trim()].concat(specs));
     }
 
+    function automaticDisplayProfile(role) {
+        return root.automaticDisplayState.profiles.find(function(profile) { return profile.role === role; })
+            || { role: role, name: role === "undocked" ? "mobile" : "docked", saved: false, outputs: [], error: "" };
+    }
+
+    function automaticDisplaySummary(role) {
+        const profile = root.automaticDisplayProfile(role);
+        if (profile.error) return profile.error;
+        if (!profile.saved) return "Not saved";
+        return profile.outputs.filter(function(output) { return output.enabled; }).map(function(output) {
+            const index = root.displayOutputs.findIndex(function(item) { return item.name === output.name; });
+            return (index >= 0 ? "Monitor " + (index + 1) + " - " : "") + output.name + ": "
+                + output.mode + " @ " + output.rate + " Hz" + (output.primary ? " (primary)" : "");
+        }).join("\n");
+    }
+
+    function automaticDisplayArrangement(role) {
+        const profile = root.automaticDisplayProfile(role);
+        const ordered = root.displayOutputs.map(function(output) {
+            const saved = profile.outputs.find(function(item) { return item.name === output.name; });
+            if (!saved) return { name: output.name, enabled: false };
+            const mode = root.displayModes.find(function(candidate) {
+                return candidate.output === saved.name && candidate.mode === saved.mode && candidate.rate === saved.rate;
+            });
+            return Object.assign({}, mode || {}, saved);
+        });
+        for (const saved of profile.outputs) {
+            if (!ordered.some(function(item) { return item.name === saved.name; })) ordered.push(saved);
+        }
+        return DisplayLayout.preview(ordered);
+    }
+
+    function editAutomaticDisplay(role) {
+        if (root.previewOperationLocked || root.automaticDisplayBusy) return;
+        const profile = root.automaticDisplayProfile(role);
+        if (profile.error) { root.automaticDisplayMessage = profile.error; return; }
+        if (profile.saved && profile.outputs.some(function(saved) {
+            return saved.enabled && !root.displayOutputs.some(function(live) { return live.name === saved.name; });
+        })) {
+            root.automaticDisplayMessage = "Connect the saved monitors before editing this layout.";
+            return;
+        }
+        if (!profile.saved && role === "undocked"
+                && !root.displayOutputs.some(function(output) { return /^(eDP|LVDS|DSI)[-0-9]/.test(output.name); })) {
+            root.automaticDisplayMessage = "No built-in monitor is connected.";
+            return;
+        }
+        root.displayOutputs = root.displayOutputs.map(function(output) {
+            const saved = profile.outputs.find(function(item) { return item.name === output.name; });
+            const item = Object.assign({}, output);
+            if (profile.saved) {
+                item.enabled = !!saved && saved.enabled;
+                item.primary = item.enabled && saved.primary;
+                if (item.enabled) {
+                    Object.assign(item, saved);
+                    item.pixelWidth = saved.pixelWidth || 0;
+                    item.pixelHeight = saved.pixelHeight || 0;
+                }
+            } else if (role === "undocked") {
+                item.enabled = /^(eDP|LVDS|DSI)[-0-9]/.test(item.name);
+                item.primary = item.enabled;
+                item.x = 0; item.y = 0;
+            }
+            const mode = root.displayModes.find(function(candidate) {
+                return candidate.output === item.name && candidate.mode === item.mode && candidate.rate === item.rate;
+            });
+            if (mode) { item.pixelWidth = mode.pixelWidth; item.pixelHeight = mode.pixelHeight; }
+            return item;
+        });
+        root.displayEditingRole = role;
+        root.automaticDisplayMessage = "Editing " + role + " draft below. Live monitors have not changed.";
+    }
+
+    function saveAutomaticDisplay(role) {
+        if (root.previewOperationLocked || root.automaticDisplayBusy) return;
+        const specs = root.displaySpecs();
+        if (!specs) return;
+        automaticDisplaySaveProcess.command = Commands.settingsDisplayProfilesCommand("save", [role].concat(specs));
+        automaticDisplaySaveProcess.running = true;
+    }
+
+    function refreshAutomaticDisplays() {
+        if (!root.visible) return;
+        if (automaticDisplayStatusProcess.running) { root.automaticDisplayRefreshPending = true; return; }
+        root.automaticDisplayRefreshPending = false;
+        automaticDisplayStatusProcess.running = true;
+    }
+
     function installDisplayProfile(name) {
         if (name.trim().length > 0) root.runDisplay("install-profile", [name.trim()]);
     }
@@ -544,6 +639,7 @@ Scope {
 
     function refreshDisplays() {
         if (!root.visible) return;
+        root.refreshAutomaticDisplays();
         if (displayDiscoverProcess.running) {
             root.displayRefreshPending = true;
             return;
@@ -702,6 +798,8 @@ Scope {
         root.capabilityRefreshPending = false;
         root.displayRefreshPending = false;
         displayDiscoverProcess.running = false;
+        automaticDisplayStatusProcess.running = false;
+        root.automaticDisplayRefreshPending = false;
         root.inputRefreshPending = false;
         inputDiscoverProcess.running = false;
         displayWatchProcess.running = false;
@@ -769,6 +867,38 @@ Scope {
         path: "/proc/" + Quickshell.processId.toString() + "/stat"
         blockLoading: true
         printErrors: false
+    }
+
+    Process {
+        id: automaticDisplayStatusProcess
+        command: Commands.settingsDisplayProfilesCommand("status")
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const state = JSON.parse(this.text);
+                    if (state.version !== 1 || !Array.isArray(state.profiles)
+                            || !Array.isArray(state.detected) || !Array.isArray(state.current)) throw new Error("Invalid profile response");
+                    root.automaticDisplayState = state;
+                } catch (error) { root.automaticDisplayMessage = "Could not read automatic layouts: " + error; }
+            }
+        }
+        stderr: StdioCollector { onStreamFinished: { if (this.text.trim()) root.automaticDisplayMessage = this.text.trim(); } }
+        onRunningChanged: {
+            if (!running && root.automaticDisplayRefreshPending && root.visible)
+                Qt.callLater(function() { root.refreshAutomaticDisplays(); });
+        }
+    }
+
+    Process {
+        id: automaticDisplaySaveProcess
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.automaticDisplayMessage = JSON.parse(this.text).message; }
+                catch (error) { if (this.text.trim()) root.automaticDisplayMessage = "Invalid save response"; }
+            }
+        }
+        stderr: StdioCollector { onStreamFinished: { if (this.text.trim()) root.automaticDisplayMessage = this.text.trim(); } }
+        onRunningChanged: { if (!running) root.refreshAutomaticDisplays(); }
     }
 
     Process {
