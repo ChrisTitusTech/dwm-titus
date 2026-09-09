@@ -1024,6 +1024,7 @@ Scope {
                 if (root.nativeStates[identifier]) publishedStates[identifier] = root.nativeStates[identifier];
             }
             if (priorHealthAction) root.actions = root.actions.concat([priorHealthAction]);
+            parsedErrors.push(...root.errors.filter(item => Information.owners().indexOf(item.provider) >= 0));
         }
         root.nativeProviders = publishedProviders;
         root.nativeStates = publishedStates;
