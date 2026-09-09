@@ -1459,7 +1459,9 @@ name, phase (`working`, `downloading`, `installing`, `updating`, `removing`, or
 accepted only for running or cancel-requested update/refresh operations with
 the same identity. It updates only the latest UI item, not the operation log,
 overall percentage, durable journal, or audit comparison. Older consumers ignore
-this extension. Names retain the 512-byte canonical text bound. Identical rows
+this extension. `ItemProgress` never advances the durable lifecycle: early item
+signals are ignored until existing status/package evidence establishes running.
+Names retain the 512-byte canonical text bound. Identical rows
 are coalesced; after 4096 item rows the helper emits one empty-name/unknown row
 and stops item output so the UI cannot retain a misleading frozen package.
 The parser accepts at most 4097 such rows within its existing stream byte bound.

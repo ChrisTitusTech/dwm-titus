@@ -10023,25 +10023,17 @@ class PackageKitExecutionTests(unittest.TestCase):
             self.assertIn("Cancel", [call[3] for call in backend.connection.calls])
             os.fchmod(journal.descriptor("terminal-31"), 0o600)
 
-    def test_item_checkpoint_failure_skips_output_and_keeps_safety_cancellation(self):
+    def test_early_item_progress_does_not_change_denial_or_restart_evidence(self):
         with self.journal() as journal:
             chunks = []
-
-            def damage(bus):
-                bus.progress(AllowCancel=True)
-                os.fchmod(journal.descriptor("terminal-31"), 0o644)
-                bus.emit("ItemProgress", (self.package_id, 8, 42))
-
-            backend = self.backend(journal, [damage, lambda bus: bus.emit("Finished", (1, 0))])
-            try:
-                with mock.patch.object(provider.OperationStream, "item_progress") as item_output:
-                    with self.assertRaises(provider.JournalFileError):
-                        self.run_operation(journal, backend, chunks, update=True)
-                    item_output.assert_not_called()
-                self.assertIn("Cancel", [call[3] for call in backend.connection.calls])
-                self.assertNotIn("complete\toperation", "".join(chunks))
-            finally:
-                os.fchmod(journal.descriptor("terminal-31"), 0o600)
+            backend = self.backend(journal, [lambda bus: bus.emit("ItemProgress", (self.package_id, 8, 42)),
+                lambda bus: bus.reply_error("AccessDenied")])
+            terminal = self.run_operation(journal, backend, chunks, update=True)
+            self.assertEqual((terminal.state, terminal.system_restart, terminal.session_restart),
+                             ("permission-denied", "none", "none"))
+            records = "".join(chunks).splitlines()
+            self.assertEqual(rows(records, "package-progress"), [])
+            self.assertNotIn("running", [record[4] for record in rows(records, "operation")])
 
     def test_output_failure_after_send_does_not_abandon_durable_result(self):
         with self.journal() as journal:

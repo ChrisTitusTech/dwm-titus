@@ -7437,7 +7437,8 @@ class PackageKitMutation:
             self.on_item_progress(package_id, phase, None)
 
     def on_item_progress(self, identity: str, phase: str, percent: int | None) -> None:
-        if self.persistence_error is not None:
+        # ItemProgress is optional display evidence, not proof of execution.
+        if self.persistence_error is not None or self.operation.state not in {"running", "cancel-requested"}:
             return
         try:
             identity = canonical_identity(identity)
@@ -7445,10 +7446,6 @@ class PackageKitMutation:
         except SnapshotFailure:
             # Optional display evidence must not change the transaction outcome.
             name, phase, percent = "", "working", None
-        if self.operation.state not in {"running", "cancel-requested"}:
-            self._checkpoint("running")
-        if self.persistence_error is not None:
-            return
         self._output(lambda: self.stream.item_progress(name, phase, percent))
 
     def on_restart(self, value: int) -> None:
