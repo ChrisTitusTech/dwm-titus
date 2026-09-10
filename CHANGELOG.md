@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Changed
 
+- Wait for acknowledged notification-policy persistence in the native restart
+  test, with delayed-write coverage to prevent timing-dependent CI failures.
+
 - Create Settings panes on first visit and retain them for subsequent navigation;
   avoid repeating section discovery while typing a search for the same section.
 - Pass local validation evidence into review and add a focused native Settings

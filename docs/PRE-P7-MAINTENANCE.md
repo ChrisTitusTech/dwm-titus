@@ -73,3 +73,52 @@ exited without identifying its assertion; both a command-traced rerun and the
 normal complete target passed without a backend change. No claim is made about
 unavailable physical hardware, real PackageKit operations, or a newly deployed
 live desktop. Exact reviewed content and local log paths are recorded in the PR.
+
+## Phase 7 entry handoff (2026-09-10)
+
+The merged Settings changes were synchronized to the developer's live Fedora
+44 desktop. Managed-file and running-dwm parity passed, one managed Quickshell
+instance answered IPC, and six tray items returned. Settings completed fresh
+discovery with no system-management error codes. This supplements the earlier
+nested-session evidence; it is not image, reboot, or hardware qualification.
+
+Workstation maintenance completed three disabled autostart overrides using
+vendor Exec metadata while preserving Hidden=true, restarted the failed document
+portal, and installed the optional account and software-source tools. A scoped
+DaVinci udev override corrected the missing-group error while preserving the
+original rule for rollback. All 103 installed udev rules validated, and no user
+or system services remained failed. The separate workstation self-healing script
+passed seven regression tests and an independent review; a repeated apply made
+no further content repairs and reported all remaining findings. It is a local
+maintenance tool, not a new installer feature.
+
+Remaining health findings are explicit qualification context:
+
+- Boot journal and kernel messages are retained evidence. A later check found
+  the document portal had exited with status 21 after its FUSE mount disappeared.
+  Restart restored the mount and its D-Bus API; the cause of that recurrence
+  remains unproven. One later generic virtqemud error had no accompanying failed
+  service, and libvirt still listed the running VM. These workstation observations
+  remain visible; no claim of permanently error-free host operation is made.
+- The running kernel's taint includes the out-of-tree, unsigned kvmfr module.
+  No module was unloaded, taint flag hidden, or reboot claimed.
+- Picom theme mutation remains unsupported, and high-risk administration remains
+  delegated as specified. Neither is an incomplete Phase 6 implementation task.
+
+The post-merge CI safety net for #294 exposed a notification-persistence test
+race: it restarted Quickshell after seeing an optimistic timeout value, before
+FileView acknowledged the atomic disk write. The test now waits for the saved
+state and verifies the exact JSON before restarting. Its copied model delays
+writes by 250 ms so the old race reproduces deterministically. The focused
+native regression reproduced the original 6000-ms result and passed with the
+expected 4000-ms result after the correction. Production notification behavior
+is unchanged. The complete Settings lifecycle suite and focused
+responsiveness gate then passed locally in a Fedora 44 container with the same
+Quickshell snapshot release (`dacfa9d-5.fc44`) and Qt 6.11.2 as the failed CI run.
+The notification contract check, clean build, ShellCheck, shfmt and diff checks
+also passed. This resolves the known post-merge failure through local evidence.
+
+Phase 7 remains queued. Beginning qualification does not mean the images,
+reboot paths, physical hardware, or release artifacts are already qualified.
+The next authorized phase begins with P7-BASE; the implementation and publication
+steps in TASKS.md remain unchecked until their own evidence exists.
