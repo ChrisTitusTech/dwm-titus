@@ -661,11 +661,15 @@ Scope {
     }
 
     function setSearch(value) {
+        if (root.searchQuery === value) return;
         root.searchQuery = value;
         root.selectedIndex = 0;
         if (root.filteredSections.length > 0) {
-            root.selectedSectionId = root.filteredSections[0].id;
-            root.activateSection(root.selectedSectionId);
+            const id = root.filteredSections[0].id;
+            if (root.selectedSectionId !== id) {
+                root.selectedSectionId = id;
+                root.activateSection(id);
+            }
         }
     }
 
@@ -682,8 +686,10 @@ Scope {
         for (let index = 0; index < root.filteredSections.length; index++) {
             if (root.filteredSections[index].id === id) {
                 root.selectedIndex = index;
-                root.selectedSectionId = id;
-                root.activateSection(id);
+                if (root.selectedSectionId !== id) {
+                    root.selectedSectionId = id;
+                    root.activateSection(id);
+                }
                 return;
             }
         }
@@ -693,8 +699,11 @@ Scope {
         const sections = root.filteredSections;
         if (sections.length === 0) return;
         root.selectedIndex = (root.selectedIndex + delta + sections.length) % sections.length;
-        root.selectedSectionId = sections[root.selectedIndex].id;
-        root.activateSection(root.selectedSectionId);
+        const id = sections[root.selectedIndex].id;
+        if (root.selectedSectionId !== id) {
+            root.selectedSectionId = id;
+            root.activateSection(id);
+        }
     }
 
     function parseDiscovery(text) {
@@ -737,6 +746,8 @@ Scope {
     }
 
     function refresh() {
+        if (root.selectedSectionId === "displays") root.refreshDisplays();
+        if (root.selectedSectionId === "input") root.refreshInput();
         if (root.visible && root.selectedSectionId === "appearance" && root.accessibilityModel)
             root.accessibilityModel.refresh();
         if (root.visible && root.selectedSectionId === "appearance" && root.panelSettingsModel)
@@ -764,7 +775,7 @@ Scope {
         root.searchQuery = "";
         root.selectedIndex = 0;
         root.selectedSectionId = root.sections[0].id;
-        root.refresh();
+        root.refreshCapabilities();
         root.activateSection(root.selectedSectionId);
 		root.recoverDisplayPreview();
 		root.recoverInputPreview();

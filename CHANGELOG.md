@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Create Settings panes on first visit and retain them for subsequent navigation;
+  avoid repeating section discovery while typing a search for the same section.
+- Pass local validation evidence into review and add a focused native Settings
+  responsiveness gate to shorten fix/review iterations before Phase 7.
+
 - Replace raw System update logs and audit hashes with current-package progress,
   separate overall progress, and concise verified completion messages.
 

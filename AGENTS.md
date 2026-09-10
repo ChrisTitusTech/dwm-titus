@@ -108,6 +108,10 @@ package or installation path.
   until clean before pushing. Reuse passing checks for unchanged code; rerun
   the full relevant gate after base integration or changes that invalidate it.
   Record the reviewed commit, commands, results, and manual evidence in the PR.
+- Give each review invocation a local evidence file with the base, reviewed
+  tree/commit, command results, log paths, and explicitly reused coverage. Use
+  the custom prompt in `CONTRIBUTING.md` when supplying this context. Reviewers
+  should repeat long tests only for invalidated evidence or a concrete concern.
 - After publishing, verify the remote head matches the locally validated
   content and inspect unresolved review threads. Resolve actionable feedback
   before merging. Hosted CI runs on `main` as a post-merge safety net, with

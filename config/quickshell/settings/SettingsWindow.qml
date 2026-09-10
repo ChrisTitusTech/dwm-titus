@@ -328,82 +328,109 @@ FloatingWindow {
                                 color: Theme.popupBorder
                             }
 
-                            DisplaySettingsPane {
+                            DeferredSettingsPane {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                visible: root.settingsModel.selectedSectionId === "displays"
-                                settingsModel: root.settingsModel
+                                selected: root.settingsModel.selectedSectionId === "displays"
+                                windowVisible: root.visible
+                                sourceComponent: DisplaySettingsPane {
+                                    settingsModel: root.settingsModel
+                                }
                             }
 
-                            InputSettingsPane {
+                            DeferredSettingsPane {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                visible: root.settingsModel.selectedSectionId === "input"
-                                settingsModel: root.settingsModel
+                                selected: root.settingsModel.selectedSectionId === "input"
+                                windowVisible: root.visible
+                                sourceComponent: InputSettingsPane {
+                                    settingsModel: root.settingsModel
+                                }
                             }
 
-                            NetworkSettingsPane {
+                            DeferredSettingsPane {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                visible: root.settingsModel.selectedSectionId === "network"
-                                networkModel: root.networkModel
+                                selected: root.settingsModel.selectedSectionId === "network"
+                                windowVisible: root.visible
+                                sourceComponent: NetworkSettingsPane {
+                                    networkModel: root.networkModel
+                                }
                             }
 
-                            BluetoothSettingsPane {
+                            DeferredSettingsPane {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                visible: root.settingsModel.selectedSectionId === "bluetooth"
-                                bluetoothModel: root.bluetoothModel
+                                selected: root.settingsModel.selectedSectionId === "bluetooth"
+                                windowVisible: root.visible
+                                sourceComponent: BluetoothSettingsPane {
+                                    bluetoothModel: root.bluetoothModel
+                                }
                             }
 
-                            AudioSettingsPane {
+                            DeferredSettingsPane {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                visible: root.settingsModel.selectedSectionId === "audio"
-                                controlsModel: root.controlsModel
+                                selected: root.settingsModel.selectedSectionId === "audio"
+                                windowVisible: root.visible
+                                sourceComponent: AudioSettingsPane {
+                                    controlsModel: root.controlsModel
+                                }
                             }
 
-                            PowerSettingsPane {
+                            DeferredSettingsPane {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                visible: root.settingsModel.selectedSectionId === "power"
-                                powerModel: root.powerModel
-                                powerMenuModel: root.powerMenuModel
+                                selected: root.settingsModel.selectedSectionId === "power"
+                                windowVisible: root.visible
+                                sourceComponent: PowerSettingsPane {
+                                    powerModel: root.powerModel
+                                    powerMenuModel: root.powerMenuModel
+                                }
                             }
 
-                            DefaultsSettingsPane {
+                            DeferredSettingsPane {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                visible: root.settingsModel.selectedSectionId === "defaults"
-                                defaultsModel: root.defaultsModel
-                                autostartModel: root.autostartModel
+                                selected: root.settingsModel.selectedSectionId === "defaults"
+                                windowVisible: root.visible
+                                sourceComponent: DefaultsSettingsPane {
+                                    defaultsModel: root.defaultsModel
+                                    autostartModel: root.autostartModel
+                                }
                             }
 
-                            AppearanceSettingsPane {
+                            DeferredSettingsPane {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                visible: root.settingsModel.selectedSectionId === "appearance"
-                                appearanceModel: root.appearanceModel
-                                accessibilityModel: root.accessibilityModel
-                                notificationModel: root.notificationModel
-                                panelSettingsModel: root.panelSettingsModel
-                                textScaleCapability: root.settingsModel.capabilityById(
-                                    "accessibility-text-scale")
-                                notificationCapability: root.settingsModel.capabilityById(
-                                    "accessibility-notifications")
-                                capabilities: root.settingsModel.capabilitiesForSection("appearance")
-                                    .filter(function(capability) {
-                                        return capability.id !== "themes" && capability.id !== "wallpaper";
-                                    })
+                                selected: root.settingsModel.selectedSectionId === "appearance"
+                                windowVisible: root.visible
+                                sourceComponent: AppearanceSettingsPane {
+                                    appearanceModel: root.appearanceModel
+                                    accessibilityModel: root.accessibilityModel
+                                    notificationModel: root.notificationModel
+                                    panelSettingsModel: root.panelSettingsModel
+                                    textScaleCapability: root.settingsModel.capabilityById(
+                                        "accessibility-text-scale")
+                                    notificationCapability: root.settingsModel.capabilityById(
+                                        "accessibility-notifications")
+                                    capabilities: root.settingsModel.capabilitiesForSection("appearance")
+                                        .filter(function(capability) {
+                                            return capability.id !== "themes" && capability.id !== "wallpaper";
+                                        })
+                                }
                             }
 
-                            SystemSettingsPane {
-                                clockText: root.clock.settingsText
+                            DeferredSettingsPane {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                visible: root.settingsModel.selectedSectionId === "system"
-                                systemManagementModel: root.systemManagementModel
-                                capabilities: root.settingsModel.capabilitiesForSection("system")
+                                selected: root.settingsModel.selectedSectionId === "system"
+                                windowVisible: root.visible
+                                sourceComponent: SystemSettingsPane {
+                                    clockText: root.clock.settingsText
+                                    systemManagementModel: root.systemManagementModel
+                                    capabilities: root.settingsModel.capabilitiesForSection("system")
+                                }
                             }
 
                             ListView {
