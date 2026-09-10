@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/build-dwm-fedora-installer-iso.sh --input ISO --output ISO [--variant standard|nvidia]
+Usage: scripts/build-dwm-fedora-installer-iso.sh --input ISO --output ISO [--variant standard|nvidia] [--version X.Y.Z]
 
 Embed this checkout and a dwm-titus Kickstart into a Fedora installer ISO.
 The resulting ISO exposes the checkout at /run/install/repo/dwm-titus.
@@ -17,6 +17,7 @@ err() {
 input_iso=
 output_iso=
 variant=standard
+version=
 
 while (($# > 0)); do
 	case "$1" in
@@ -54,6 +55,22 @@ while (($# > 0)); do
 		;;
 	--variant=*)
 		variant=${1#*=}
+		shift
+		;;
+	--version)
+		if (($# < 2)) || [[ -z ${2:-} ]]; then
+			err "--version requires a value."
+			exit 1
+		fi
+		version=$2
+		shift 2
+		;;
+	--version=*)
+		version=${1#*=}
+		if [[ -z $version ]]; then
+			err "--version requires a value."
+			exit 1
+		fi
 		shift
 		;;
 	-h | --help)
@@ -156,11 +173,36 @@ awk -v extra_linux_args="$extra_linux_args" '
 	{ print }
 ' "$grub_cfg" >"$patched_grub_cfg"
 
+branding_dir="$repo_dir/branding/anaconda"
+product_img="$work_dir/product.img"
+extra_xorriso_args=()
+
+if [[ -d $branding_dir ]]; then
+	staged_branding_dir="$work_dir/anaconda-branding"
+	cp -a "$branding_dir" "$staged_branding_dir"
+
+	if ! command -v gensquashfs >/dev/null 2>&1; then
+		err "missing required command: gensquashfs (install squashfs-tools-ng)"
+		exit 1
+	fi
+	if [[ -n "$version" ]]; then
+		clean_ver="${version#v}"
+		if [[ -f "$repo_dir/scripts/generate-sidebar-logo.py" ]]; then
+			python3 "$repo_dir/scripts/generate-sidebar-logo.py" --version "$clean_ver" --output "$staged_branding_dir/usr/share/anaconda/pixmaps/sidebar-logo.png"
+			cp -f "$staged_branding_dir/usr/share/anaconda/pixmaps/sidebar-logo.png" "$staged_branding_dir/usr/share/anaconda/pixmaps/server/sidebar-logo.png"
+		fi
+	fi
+	rm -f "$product_img"
+	gensquashfs --all-root --pack-dir "$staged_branding_dir" "$product_img" >/dev/null
+	extra_xorriso_args+=(-map "$product_img" /images/product.img)
+fi
+
 xorriso -indev "$input_iso" -outdev "$tmp_output" \
 	-boot_image any replay \
 	-map "$ks_file" /dwm-fedora.ks \
 	-map "$patched_grub_cfg" /EFI/BOOT/grub.cfg \
-	-map "$payload_dir" /dwm-titus
+	-map "$payload_dir" /dwm-titus \
+	"${extra_xorriso_args[@]}"
 
 mv -f "$tmp_output" "$output_iso"
 printf 'Created %s (%s)\n' "$output_iso" "$variant"

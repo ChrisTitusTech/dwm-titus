@@ -1,0 +1,407 @@
+/* Anaconda GTK Dark Theme Overrides - DWM-Titus Branding */
+
+/* Theme color definitions */
+@define-color theme_bg_color #161616;
+@define-color theme_fg_color #ABABAB;
+@define-color theme_base_color #161616;
+@define-color theme_text_color #ABABAB;
+@define-color theme_selected_bg_color #1d4ed8;
+@define-color theme_selected_fg_color #ffffff;
+@define-color insensitive_bg_color #1c1c1c;
+@define-color insensitive_fg_color #666666;
+@define-color insensitive_base_color #161616;
+@define-color borders #2e2e2e;
+
+@define-color anaconda_bg_color #161616;
+@define-color anaconda_fg_color #ABABAB;
+@define-color anaconda_border_color #282828;
+@define-color anaconda_active_blue #2b7fff;
+@define-color fedora #161616;
+
+/* Base window and containers across all phases */
+.background,
+.background:backdrop,
+.gtkstyle-fallback,
+.gtkstyle-fallback:hover,
+.gtkstyle-fallback:active,
+.gtkstyle-fallback:disabled,
+window,
+window.background,
+dialog,
+dialog.background,
+viewport,
+scrolledwindow,
+headerbar,
+actionbar,
+GtkViewport,
+GtkScrolledWindow,
+AnacondaBaseWindow,
+AnacondaStandaloneWindow,
+AnacondaBaseStandalone,
+AnacondaSpokeWindow,
+AnacondaHubWindow,
+#AnacondaStandaloneWindow-main_box1,
+#AnacondaStandaloneWindow-alignment1,
+#AnacondaHubWindow-main_box1,
+#AnacondaHubWindow-alignment1,
+#welcomeWindowContentBox,
+#summaryWindow-actionArea,
+#summaryWindow-scroll,
+#progressWindow-actionArea,
+#action-area,
+#progressBox,
+#box1,
+#emptyBox {
+    background-color: #161616;
+    background-image: none;
+    color: #ABABAB;
+}
+
+/* Generic layout containers must remain transparent to prevent nested dark boxes */
+box,
+grid,
+alignment,
+eventbox,
+GtkBox,
+GtkGrid,
+GtkAlignment,
+GtkEventBox {
+    background-color: transparent;
+    background-image: none;
+}
+
+/* Global Text & Labels */
+label,
+GtkLabel,
+#welcomeLabel,
+#pickLanguageLabel,
+#rebootLabel,
+.category-title,
+.category-name {
+    color: #ABABAB;
+}
+
+#welcomeLabel {
+    color: #ffffff;
+}
+
+/* Header and Navigation Box */
+#nav-box,
+.nav-box,
+#AnacondaStandaloneWindow-nav_box1,
+#AnacondaHubWindow-nav_box1,
+AnacondaSpokeWindow #nav-box,
+AnacondaHubWindow #nav-box,
+AnacondaStandaloneWindow #nav-box {
+    background-color: #161616;
+    background-image: none;
+    border-bottom: none;
+    color: #ABABAB;
+}
+
+#nav-box label,
+.nav-box label {
+    color: #ABABAB;
+}
+
+AnacondaSpokeWindow #nav-box GtkButton,
+AnacondaHubWindow #nav-box GtkButton,
+#nav-box GtkButton,
+#nav-box button {
+    box-shadow: none;
+    background-color: #242424;
+    background-image: none;
+    color: #ABABAB;
+    border: 1px solid #383838;
+}
+
+/* Sidebar Branding (Welcome Spoke & Standalone Hubs) */
+.logo-sidebar {
+    background-image: url('/usr/share/anaconda/pixmaps/server/sidebar-bg.png');
+    background-color: #006eb4;
+    background-repeat: no-repeat;
+}
+
+.logo {
+    background-image: url('/usr/share/anaconda/pixmaps/server/sidebar-logo.png');
+    background-position: 50% 90%;
+    background-repeat: no-repeat;
+    background-color: transparent;
+}
+
+.product-logo {
+    background-image: none;
+    background-color: transparent;
+}
+
+/* Keyboard Layout Indicator */
+AnacondaLayoutIndicator {
+    background-color: #161616;
+    background-image: none;
+    color: #ABABAB;
+    border: 1px solid #282828;
+}
+
+/* Bottom action area and buttons */
+buttonbox,
+.dialog-action-area,
+.action-area,
+#action-area,
+GtkButtonBox {
+    background-color: #161616;
+    background-image: none;
+    border-top: 1px solid #242424;
+}
+
+button,
+GtkButton {
+    background-color: #242424;
+    background-image: none;
+    color: #ABABAB;
+    border: 1px solid #383838;
+    border-radius: 4px;
+    padding: 6px 16px;
+    box-shadow: none;
+    text-shadow: none;
+}
+
+button *,
+button box,
+button grid,
+button label,
+button image,
+GtkButton *,
+GtkButton box,
+GtkButton grid,
+GtkButton label,
+GtkButton image {
+    background-color: transparent;
+    background-image: none;
+}
+
+button:hover,
+GtkButton:hover {
+    background-color: #303030;
+    background-image: none;
+    color: #ffffff;
+    border-color: #4a4a4a;
+}
+
+button:active,
+GtkButton:active {
+    background-color: #1e1e1e;
+    background-image: none;
+}
+
+button:disabled,
+GtkButton:disabled {
+    background-color: #1c1c1c;
+    background-image: none;
+    color: #555555;
+    border-color: #282828;
+}
+
+button.suggested-action,
+button.primary,
+#continue-button,
+#continueButton {
+    background-color: #1d4ed8;
+    background-image: none;
+    color: #ffffff;
+    border: 1px solid #2563eb;
+}
+
+button.suggested-action:hover,
+button.primary:hover,
+#continue-button:hover,
+#continueButton:hover {
+    background-color: #2563eb;
+    background-image: none;
+    color: #ffffff;
+}
+
+button.suggested-action:disabled,
+button.primary:disabled {
+    background-color: #1c1c1c;
+    background-image: none;
+    color: #555555;
+    border-color: #282828;
+}
+
+/* Disk Overview Tiles (Storage spoke) */
+AnacondaDiskOverview,
+AnacondaDiskOverview.gtkstyle-fallback,
+AnacondaDiskOverview button,
+AnacondaDiskOverview togglebutton {
+    background-color: #242424;
+    background-image: none;
+    border: 1px solid #383838;
+    border-radius: 4px;
+    color: #ABABAB;
+}
+
+AnacondaDiskOverview *,
+AnacondaDiskOverview box,
+AnacondaDiskOverview grid,
+AnacondaDiskOverview eventbox,
+AnacondaDiskOverview label,
+AnacondaDiskOverview image {
+    background-color: transparent;
+    background-image: none;
+}
+
+AnacondaDiskOverview:hover {
+    background-color: #303030;
+    border-color: #4a4a4a;
+}
+
+AnacondaDiskOverview:checked,
+AnacondaDiskOverview:active {
+    background-color: #242424;
+    background-image: none;
+    border: 2px solid @anaconda_active_blue;
+}
+
+AnacondaDiskOverview label,
+AnacondaDiskOverview #anaconda-disk-name,
+AnacondaDiskOverview #anaconda-disk-capacity,
+AnacondaDiskOverview #anaconda-disk-free,
+AnacondaDiskOverview #anaconda-disk-description {
+    color: #ABABAB;
+}
+
+/* Spoke Selectors / Hub Tiles */
+AnacondaSpokeSelector,
+AnacondaSpokeSelector.gtkstyle-fallback,
+.spoke-selector {
+    background-color: #242424;
+    background-image: none;
+    border: 1px solid #383838;
+    border-radius: 4px;
+    color: #ABABAB;
+}
+
+AnacondaSpokeSelector *,
+.spoke-selector * {
+    background-color: transparent;
+    background-image: none;
+}
+
+AnacondaSpokeSelector:hover,
+.spoke-selector:hover {
+    background-color: #303030;
+    border-color: #4a4a4a;
+}
+
+AnacondaSpokeSelector label,
+.spoke-selector label {
+    color: #ABABAB;
+}
+
+/* InfoBar / Warning Banner */
+infobar,
+infobar box,
+infobar.warning,
+infobar.warning box,
+infobar.info,
+infobar.info box,
+GtkInfoBar {
+    background-color: #161616;
+    background-image: none;
+    border-top: 1px solid #282828;
+    color: #ABABAB;
+    text-shadow: none;
+}
+
+infobar label,
+infobar.warning label,
+infobar.info label {
+    color: #ABABAB;
+    text-shadow: none;
+}
+
+/* Text Input Entries, Dropdowns & Spinners */
+entry,
+GtkEntry,
+combobox,
+combobox entry,
+combobox button,
+combobox.linked button,
+spinbutton,
+spinbutton entry,
+spinbutton button {
+    background-color: #242424;
+    background-image: none;
+    color: #ffffff;
+    border: 1px solid #383838;
+    border-radius: 4px;
+    box-shadow: none;
+    text-shadow: none;
+}
+
+combobox *,
+combobox box,
+combobox grid,
+combobox image,
+combobox cellview,
+spinbutton *,
+spinbutton box,
+spinbutton grid,
+spinbutton image {
+    background-color: transparent;
+    background-image: none;
+}
+
+entry:focus,
+GtkEntry:focus,
+combobox:focus,
+spinbutton:focus {
+    border-color: @anaconda_active_blue;
+}
+
+/* Lists and TreeViews (disks, networks, timezones, languages) */
+treeview,
+GtkTreeView,
+list,
+GtkListBox,
+row,
+GtkListBoxRow {
+    background-color: #1a1a1a;
+    color: #ABABAB;
+}
+
+treeview:selected,
+GtkTreeView:selected,
+row:selected,
+GtkListBoxRow:selected {
+    background-color: #1d4ed8;
+    color: #ffffff;
+}
+
+/* Progress Area */
+#progressBox,
+#box1 {
+    background-color: transparent;
+}
+
+progressbar {
+    background-color: transparent;
+}
+
+progressbar trough {
+    background-color: #242424;
+    border: 1px solid #383838;
+    border-radius: 4px;
+    min-height: 8px;
+}
+
+progressbar progress {
+    background-color: @anaconda_active_blue;
+    border-radius: 4px;
+}
+
+/* Spinner */
+spinner {
+    animation-timing-function: steps(24);
+    color: @anaconda_active_blue;
+}
