@@ -8,12 +8,28 @@ Creates 160x64 PNG badges with:
 
 import argparse
 import os
+import re
+import subprocess
 from PIL import Image, ImageDraw, ImageFont
 
-FONT_BOLD = '/usr/share/fonts/noto/NotoSans-Bold.ttf'
-FONT_REGULAR = '/usr/share/fonts/noto/NotoSans-Regular.ttf'
 DEFAULT_FILL = (235, 235, 240, 240)
 WIDTH, HEIGHT = 160, 64
+
+
+def load_font(style: str, size: int):
+    """Resolve Fedora's static or variable Noto font through Fontconfig."""
+    match = subprocess.run(
+        ['fc-match', '-f', '%{file}\n%{index}\n', f'Noto Sans:style={style}'],
+        check=True, capture_output=True, text=True,
+    ).stdout.splitlines()
+    return ImageFont.truetype(match[0], size, index=int(match[1]))
+
+
+def parse_version(value: str) -> str:
+    """Validate the release label and remove its optional v prefix."""
+    if not re.fullmatch(r'v?[0-9]+\.[0-9]+\.[0-9]+', value):
+        raise argparse.ArgumentTypeError('version must be X.Y.Z or vX.Y.Z')
+    return value.removeprefix('v')
 
 
 def render_logo(version: str, fill=DEFAULT_FILL) -> Image.Image:
@@ -30,8 +46,8 @@ def render_logo(version: str, fill=DEFAULT_FILL) -> Image.Image:
     img = Image.new('RGBA', (WIDTH, HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    font_main = ImageFont.truetype(FONT_BOLD, 20)
-    font_sub = ImageFont.truetype(FONT_REGULAR, 16)
+    font_main = load_font('Bold', 20)
+    font_sub = load_font('Regular', 16)
 
     text_main = 'DWM-Titus'
     text_sub = f'v{version}'
@@ -71,14 +87,20 @@ def generate_series(out_dir: str):
 def main():
     """Parse command-line arguments and execute sidebar logo badge generation."""
     parser = argparse.ArgumentParser(description='Generate DWM-Titus sidebar version badges')
-    parser.add_argument('--version', help='Generate logo for specific version (e.g. 0.7.0)')
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--version', type=parse_version, help='Generate logo for specific version (e.g. 0.7.0)')
     parser.add_argument('--output', help='Output PNG path')
-    parser.add_argument('--series', action='store_true', help='Generate full series from 0.7.0 to 0.10.0')
-    parser.add_argument('--out-dir', default='branding/sidebar-logos', help='Output directory for series')
+    mode.add_argument('--series', action='store_true', help='Generate full series from 0.7.0 to 0.10.0')
+    parser.add_argument('--out-dir', help='Output directory for series (default: branding/sidebar-logos)')
     args = parser.parse_args()
 
+    if args.series and args.output is not None:
+        parser.error('--output requires --version; use --out-dir with --series')
+    if args.version and args.out_dir is not None:
+        parser.error('--out-dir requires --series; use --output with --version')
+
     if args.series:
-        generate_series(args.out_dir)
+        generate_series(args.out_dir if args.out_dir is not None else 'branding/sidebar-logos')
     elif args.version:
         img = render_logo(args.version)
         out = args.output or f'sidebar-logo-v{args.version.lstrip("v")}.png'

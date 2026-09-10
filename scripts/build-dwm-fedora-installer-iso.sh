@@ -85,6 +85,11 @@ while (($# > 0)); do
 	esac
 done
 
+if [[ -n $version && ! $version =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+	err "--version must be X.Y.Z or vX.Y.Z."
+	exit 1
+fi
+
 if [[ -z $input_iso || -z $output_iso ]]; then
 	usage >&2
 	exit 1
@@ -187,10 +192,8 @@ if [[ -d $branding_dir ]]; then
 	fi
 	if [[ -n "$version" ]]; then
 		clean_ver="${version#v}"
-		if [[ -f "$repo_dir/scripts/generate-sidebar-logo.py" ]]; then
-			python3 "$repo_dir/scripts/generate-sidebar-logo.py" --version "$clean_ver" --output "$staged_branding_dir/usr/share/anaconda/pixmaps/sidebar-logo.png"
-			cp -f "$staged_branding_dir/usr/share/anaconda/pixmaps/sidebar-logo.png" "$staged_branding_dir/usr/share/anaconda/pixmaps/server/sidebar-logo.png"
-		fi
+		python3 "$repo_dir/scripts/generate-sidebar-logo.py" --version "$clean_ver" --output "$staged_branding_dir/usr/share/anaconda/pixmaps/sidebar-logo.png"
+		cp -f "$staged_branding_dir/usr/share/anaconda/pixmaps/sidebar-logo.png" "$staged_branding_dir/usr/share/anaconda/pixmaps/server/sidebar-logo.png"
 	fi
 	rm -f "$product_img"
 	gensquashfs --all-root --pack-dir "$staged_branding_dir" "$product_img" >/dev/null

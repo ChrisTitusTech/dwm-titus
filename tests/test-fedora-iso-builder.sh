@@ -21,6 +21,20 @@ printf 'payload\n' >"$dest/payload-marker"
 SH
 chmod +x "$work/bin/rsync"
 
+cat >"$work/bin/gensquashfs" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $1 == --all-root && $2 == --pack-dir ]]
+staging=$3
+[[ $staging != "$DWM_TEST_BRANDING" ]]
+cmp "$staging/usr/share/anaconda/pixmaps/sidebar-logo.png" \
+	"$staging/usr/share/anaconda/pixmaps/server/sidebar-logo.png"
+cp "$staging/usr/share/anaconda/pixmaps/sidebar-logo.png" "$DWM_TEST_PACKED_LOGO"
+[[ -s $staging/usr/share/anaconda/ui/spokes/installation_progress.glade ]]
+printf 'mock product image\n' >"$4"
+SH
+chmod +x "$work/bin/gensquashfs"
+
 cat >"$work/bin/xorriso" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -30,6 +44,7 @@ outdev=
 ks_map=
 grub_map=
 payload_map=
+product_map=
 
 while (($# > 0)); do
 	case "$1" in
@@ -48,6 +63,7 @@ while (($# > 0)); do
 		/dwm-fedora.ks) ks_map=${2:-} ;;
 		/EFI/BOOT/grub.cfg) grub_map=${2:-} ;;
 		/dwm-titus) payload_map=${2:-} ;;
+		/images/product.img) product_map=${2:-} ;;
 		esac
 		shift 3
 		;;
@@ -71,6 +87,7 @@ OUT
 fi
 
 if [[ -n $outdev ]]; then
+	[[ -s $product_map ]]
 	{
 		printf 'ks=%s\n' "$ks_map"
 		printf 'grub=%s\n' "$grub_map"
@@ -93,6 +110,7 @@ touch "$input_iso"
 run_builder() {
 	local variant=$1
 	local output=$2
+	shift 2
 	: >"$DWM_TEST_XORRISO_LOG"
 	: >"$DWM_TEST_RSYNC_LOG"
 
@@ -100,7 +118,7 @@ run_builder() {
 		"$repo/scripts/build-dwm-fedora-installer-iso.sh" \
 		--input "$input_iso" \
 		--output "$output" \
-		--variant "$variant" >"$work/$variant.out"
+		--variant "$variant" "$@" >"$work/$variant.out"
 
 	grep -Fqx "Created $output ($variant)" "$work/$variant.out"
 	grep -Fqx 'mock iso' "$output"
@@ -111,6 +129,9 @@ run_builder() {
 
 export DWM_TEST_XORRISO_LOG="$work/xorriso.log"
 export DWM_TEST_RSYNC_LOG="$work/rsync.log"
+export DWM_TEST_BRANDING="$repo/branding/anaconda"
+export DWM_TEST_PACKED_LOGO="$work/packed-logo.png"
+cp "$DWM_TEST_BRANDING/usr/share/anaconda/pixmaps/sidebar-logo.png" "$work/original-logo.png"
 
 run_builder standard "$standard_iso"
 grep -Fqx "ks=$repo/dwm-fedora.ks" "$DWM_TEST_XORRISO_LOG"
@@ -131,5 +152,42 @@ if PATH="$work/bin:$PATH" "$repo/scripts/build-dwm-fedora-installer-iso.sh" --in
 	exit 1
 fi
 grep -Fq 'unknown variant: bad' "$work/bad.err"
+
+for version in '' v ../bad 0.7; do
+	for form in separate equals; do
+		args=(--version "$version")
+		[[ $form != equals ]] || args=("--version=$version")
+		if "$repo/scripts/build-dwm-fedora-installer-iso.sh" "${args[@]}" >"$work/bad.out" 2>"$work/bad.err"; then
+			printf 'builder accepted invalid version: %s\n' "$version" >&2
+			exit 1
+		fi
+		grep -Fq -- '--version' "$work/bad.err"
+	done
+done
+
+# Exercise the real Pillow/Fontconfig generator, then ensure another build
+# without --version uses the original badge, not the previous build's output.
+run_builder standard "$standard_iso" --version v0.7.1
+if cmp -s "$DWM_TEST_PACKED_LOGO" "$work/original-logo.png"; then
+	printf 'versioned build did not generate a new logo\n' >&2
+	exit 1
+fi
+cmp "$DWM_TEST_BRANDING/usr/share/anaconda/pixmaps/sidebar-logo.png" "$work/original-logo.png"
+cmp "$DWM_TEST_BRANDING/usr/share/anaconda/pixmaps/server/sidebar-logo.png" "$work/original-logo.png"
+run_builder standard "$standard_iso"
+cmp "$DWM_TEST_PACKED_LOGO" "$work/original-logo.png"
+
+# Invalid destination/mode combinations must not silently write elsewhere.
+if (cd "$work" && python3 "$repo/scripts/generate-sidebar-logo.py" --series --output ignored.png) >"$work/bad.out" 2>"$work/bad.err"; then
+	printf 'series generation accepted a single-file destination\n' >&2
+	exit 1
+fi
+grep -Fq -- '--output requires --version' "$work/bad.err"
+if (cd "$work" && python3 "$repo/scripts/generate-sidebar-logo.py" --version 0.7.1 --out-dir ignored) >"$work/bad.out" 2>"$work/bad.err"; then
+	printf 'single-version generation accepted a series destination\n' >&2
+	exit 1
+fi
+grep -Fq -- '--out-dir requires --series' "$work/bad.err"
+[[ ! -e $work/ignored.png && ! -e $work/ignored && ! -e $work/branding && ! -e $work/sidebar-logo-v0.7.1.png ]]
 
 printf 'Fedora ISO builder: PASS\n'
