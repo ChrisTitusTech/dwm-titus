@@ -17,6 +17,10 @@ versions from `config.mk`.
   through logind's verified active local X11 display session.
 - Wrap long Input setting labels and improve Settings search-prompt contrast.
 
+- Brand the Fedora Anaconda installer with a dark theme and centered CTT logo.
+  ISO builds accept `--version X.Y.Z` to generate a sidebar badge in staging
+  without modifying the checkout; build dependencies include Pillow and Noto.
+
 - Add explicit Docked and Undocked automatic display layouts to Settings,
   including saved previews, detected/applied status, draft editing, confirmed
   saves and backups. Use optional autorandr login/hotplug integration without

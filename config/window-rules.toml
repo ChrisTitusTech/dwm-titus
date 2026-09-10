@@ -21,6 +21,7 @@
 
 rules = [
   # ── terminals (isterminal=1 enables window swallowing) ───────────────────
+  { class="Dwmterm",        isterminal=1 },
   { class="St",             isterminal=1 },
   { class="kitty",          isterminal=1 },
   { class="Alacritty",      isterminal=1 },

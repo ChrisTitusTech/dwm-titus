@@ -76,9 +76,10 @@ package or installation path.
   ready-for-review pull request after the available applicable local gates
   pass. If a required local gate cannot run because the environment or tooling
   is unavailable, document the exact gap and limitation in the pull request
-  and use hosted CI to supply the missing coverage; do not claim that coverage
-  passed until it does. Do not pause for repeated Git-action approval unless
-  the user requests local-only work or sets an explicit stop point.
+  and complete the missing coverage locally or with an explicitly dispatched
+  hosted run before merging; do not claim unrun coverage passed. Do not pause
+  for repeated Git-action approval unless the user requests local-only work
+  or sets an explicit stop point.
 - Run `git status --short` before editing, preserve all pre-existing worktree
   changes, and inspect the exact staged files before every commit. When
   unrelated changes cannot be isolated safely, use a separate worktree or ask
@@ -98,10 +99,22 @@ package or installation path.
   gates, the built-in Codex review loop, and an independent review when the
   review tooling is available. Address valid findings and repeat affected
   checks until the local review loop is clean.
-- After publishing, wait for exact-head hosted checks and reviews. Inspect
-  unresolved review threads, apply valid fixes in follow-up commits, push, and
-  repeat the review loop until the pull request is merge-ready or a concrete
-  blocker requires user input.
+- Use local validation and a completed independent built-in Codex review as
+  the merge gate. For an existing PR, review the complete diff with
+  `codex review --base origin/main` (or its verified stacked base); use
+  `codex review --uncommitted` for unpublished edits. Review instances must
+  report findings directly and never launch nested reviews.
+- Fix actionable findings locally, rerun affected checks, and repeat review
+  until clean before pushing. Reuse passing checks for unchanged code; rerun
+  the full relevant gate after base integration or changes that invalidate it.
+  Record the reviewed commit, commands, results, and manual evidence in the PR.
+- After publishing, verify the remote head matches the locally validated
+  content and inspect unresolved review threads. Resolve actionable feedback
+  before merging. Hosted CI runs on `main` as a post-merge safety net, with
+  manual dispatch for additional coverage; do not wait for optional hosted
+  checks or hosted review bots when the local gate is complete. Existing
+  branch-protection requirements still apply, and known failures must be
+  investigated rather than ignored.
 - Open ready pull requests by default, not drafts. Never merge, release,
   deploy, or send external announcements without explicit user authorization.
 

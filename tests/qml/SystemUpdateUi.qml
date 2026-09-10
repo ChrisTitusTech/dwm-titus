@@ -184,6 +184,16 @@ ShellRoot {
                 "Verified completion stops package progress");
             root.check(!root.button("systemOperationGuidance", window.contentItem).visible,
                 "Successful audit detail is not rendered as duplicate guidance");
+            const successfulDetail = model.operation.detail;
+            model.operation.completeControl(1, true);
+            root.check(model.operation.blocked && !model.prepareUpdate("updates-refresh"),
+                "Failed acknowledgment keeps further updates blocked");
+            const guidance = root.button("systemOperationGuidance", window.contentItem);
+            root.check(guidance.visible && guidance.text.indexOf("could not be acknowledged") >= 0
+                && guidance.text.indexOf("Reload status") >= 0,
+                "Successful operation with failed acknowledgment retains recovery guidance");
+            model.operation.blocked = false;
+            model.operation.detail = successfulDetail;
             root.click("prepareRefresh");
             root.click("confirmUpdate");
             root.stage = 18;

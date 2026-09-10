@@ -254,6 +254,7 @@ Flickable {
             Layout.fillWidth: true
             visible: root.systemManagementModel.operation.detail.length > 0
                 && (root.systemManagementModel.operation.result === null
+                    || root.systemManagementModel.operation.blocked
                     || root.systemManagementModel.operation.state !== "result"
                     || (root.systemManagementModel.operation.result.state !== "succeeded"
                         && root.systemManagementModel.operation.operationError === null))

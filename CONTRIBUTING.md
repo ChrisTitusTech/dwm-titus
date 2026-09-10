@@ -39,6 +39,7 @@ submitting a pull request.
 | Shell or installer | `scripts/run-tests make check-shell check-format` and focused tests |
 | X11 behavior | `scripts/run-tests make check-xvfb-runtime check-monitor-tags` |
 | Quickshell QML | `scripts/run-tests make check-quickshell-qml` plus real or nested X11 runtime validation |
+| System update UI | `scripts/run-tests tests/test-quickshell-update-ui-xvfb.sh` for the focused native fixture, plus configured QML lint |
 | Documentation | `npm --prefix docs ci`, then `npm --prefix docs run build` |
 | Installer or package mapping | `scripts/run-tests make check-fedora-packages` on Fedora 44 |
 | Fedora Kickstart or ISO | `scripts/run-tests make check-kickstart` plus all evidence required by [SPEC.md Section 9.4](SPEC.md#94-fedora-image-validation) |
@@ -66,3 +67,36 @@ pull request instead of claiming universal validation.
 Use a focused branch and describe the problem, root cause, behavior change,
 validation, Fedora coverage, and remaining risk. Screenshots are useful for
 visible UI changes, but do not replace runtime validation.
+
+## Local Review Loop
+
+Use the supported Fedora host or a disposable Fedora 44 container. Complete
+validation before pushing so fixes do not require another hosted CI run:
+
+1. Fetch the intended base and integrate it before the final full gate. Run
+   the smallest affected checks while editing, then `scripts/run-tests` and
+   the applicable extra checks in the table above. The aggregate gate includes
+   the clean build, configured QML lint, nested Settings tests, package map,
+   installer preservation, and release validation. Run
+   `scripts/run-tests make check-xvfb-runtime` for the native dwm smoke test.
+   Privileged display-helper changes additionally require
+   `DWM_SECURITY_CONTAINER=1 scripts/run-tests tests/test-settings-display-security.sh`
+   as root inside a disposable container, never on the host.
+2. Run `git diff --check` and an independent `codex review --base origin/main`
+   for the complete PR diff (substitute the verified base for stacked work).
+   For unpublished edits, use `codex review --uncommitted`. Let the review
+   finish; review instances report findings without starting nested reviews.
+3. Verify findings, fix actionable defects, rerun affected checks, and repeat
+   review until clean. Reuse passing evidence for unchanged code. Base
+   integration or broad changes require a fresh full relevant gate.
+4. Record the final commit, exact passing commands, reused evidence, runtime
+   environment, and any gaps in the PR. Push once the loop is clean, verify
+   the remote head, and inspect unresolved review threads before merging.
+
+Local validation and independent Codex review are the normal merge gate.
+Automatic build/test and documentation workflows run after merges to `main`;
+CodeQL also runs weekly. Hosted workflows remain available through manual
+dispatch when extra coverage is needed. Optional hosted checks and review bots
+do not block a locally verified change. Required branch-protection rules still
+apply; investigate known failures and fill required validation gaps before
+merging. A post-merge failure needs prompt investigation and a fix or rollback.

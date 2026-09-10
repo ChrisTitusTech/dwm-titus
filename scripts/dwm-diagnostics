@@ -141,14 +141,14 @@ check_terminal() {
 		return
 	fi
 
-	for cmd in alacritty kitty st warp-terminal xterm; do
+	for cmd in dwmterm alacritty kitty st warp-terminal xterm; do
 		if have_cmd "$cmd"; then
 			ok terminal "terminal ($cmd)" "$cmd is available"
 			return
 		fi
 	done
 
-	required_missing terminal "terminal (alacritty kitty st warp-terminal xterm)" "No supported terminal is available"
+	required_missing terminal "terminal (dwmterm alacritty kitty st warp-terminal xterm)" "No supported terminal is available"
 }
 
 check_herdr() {
