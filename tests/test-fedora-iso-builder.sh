@@ -154,14 +154,18 @@ fi
 grep -Fq 'unknown variant: bad' "$work/bad.err"
 
 for version in '' v ../bad 0.7; do
+	expected_error='--version must be X.Y.Z or vX.Y.Z.'
+	[[ -n $version ]] || expected_error='--version requires a value.'
 	for form in separate equals; do
 		args=(--version "$version")
 		[[ $form != equals ]] || args=("--version=$version")
-		if "$repo/scripts/build-dwm-fedora-installer-iso.sh" "${args[@]}" >"$work/bad.out" 2>"$work/bad.err"; then
+		if PATH="$work/bin:$PATH" "$repo/scripts/build-dwm-fedora-installer-iso.sh" \
+			--input "$input_iso" --output "$work/bad.iso" --variant standard \
+			"${args[@]}" >"$work/bad.out" 2>"$work/bad.err"; then
 			printf 'builder accepted invalid version: %s\n' "$version" >&2
 			exit 1
 		fi
-		grep -Fq -- '--version' "$work/bad.err"
+		grep -Fxq -- "build-dwm-fedora-installer-iso: $expected_error" "$work/bad.err"
 	done
 done
 
