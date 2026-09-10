@@ -47,6 +47,26 @@ of `config.h` and object files.
 
 ## Fedora installer ISOs
 
+Install the Fedora image-build tools from the shared capability map:
+
+```bash
+source scripts/dwm-packages.sh
+mapfile -t image_packages < <(dwm_packages fedora image-build)
+sudo dnf install "${image_packages[@]}"
+```
+
+The builder embeds the dark Anaconda branding as `/images/product.img`.
+Pass `--version 0.7.1` (or `--version v0.7.1`) to either build command below
+to render that sidebar badge in a temporary staging tree. Omitting the option
+uses the checked-in v0.7.0 badge. Versioned builds do not modify the checkout.
+The generator uses Pillow and Fontconfig to locate the installed Noto fonts.
+
+For a standalone badge, run:
+
+```sh
+scripts/generate-sidebar-logo.py --version 0.7.1 --output sidebar-logo-v0.7.1.png
+```
+
 Build the regular Fedora installer ISO from a Fedora netinst ISO:
 
 ```sh

@@ -12,6 +12,9 @@ dwm_packages() {
 			libXinerama-devel libXrender-devel imlib2-devel libxcb-devel \
 			xcb-util-devel freetype-devel fontconfig-devel
 		;;
+	fedora:image-build)
+		printf '%s\n' xorriso rsync squashfs-tools-ng python3-pillow fontconfig google-noto-sans-fonts
+		;;
 	fedora:x11)
 		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot xinput setxkbmap xkbset
 		;;
