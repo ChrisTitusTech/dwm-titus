@@ -1050,7 +1050,7 @@ done
 # Hold a pre-change discovery result across Keep. The model must queue the
 # resulting refresh instead of letting this stale snapshot win permanently.
 : >"$input_discovery_fixture.hold"
-settings_ipc_retry select input >/dev/null
+settings_ipc_retry refresh >/dev/null
 i=0
 while [ ! -f "$input_discovery_fixture.captured" ] && [ "$i" -lt 100 ]; do
 	i=$((i + 1))

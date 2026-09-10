@@ -2,6 +2,9 @@
 
 ## Phase 7: Fedora Image and Release Qualification
 
+Pre-Phase 7 responsiveness and local-review maintenance is recorded in
+`docs/PRE-P7-MAINTENANCE.md`. Phase 7 remains on hold until explicitly started.
+
 Phase 6 is complete. Its acceptance evidence and remaining hardware/service
 limitations are recorded in `docs/P6-QUALIFICATION.md`. Phase 7 is queued;
 implementation has not started. Keep each boundary independently reviewable and
@@ -71,7 +74,8 @@ limitation; unavailable hardware is not reported as tested.
   required for the selected release candidates.
 - [ ] Review release notes, upgrade commands, recovery documentation and the
   completed evidence matrix.
-- [ ] Complete independent review and exact-head hosted checks for each PR.
+- [ ] Complete independent local review and applicable local validation for each PR;
+  verify the published head matches the reviewed content.
 - [ ] Request release/publication authorization if it has not already been given.
 
 Acceptance: release artifacts and procedures are reproducible and review-ready,

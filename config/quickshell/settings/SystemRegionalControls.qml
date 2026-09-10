@@ -102,8 +102,11 @@ ColumnLayout {
         else if (enableButton.activeFocus) root.revealRequested(focusTarget(ntpCard, enableButton));
         else if (disableButton.activeFocus) root.revealRequested(focusTarget(ntpCard, disableButton));
         else {
-            for (let index = 0; index < catalogRepeater.count; index++)
-                catalogRepeater.itemAt(index).revealFocus();
+            for (let index = 0; index < catalogRepeater.count; index++) {
+                const item = catalogRepeater.itemAt(index);
+                // An asynchronous pane can have a count before its delegates exist.
+                if (item !== null) item.revealFocus();
+            }
         }
     }
     function focusTarget(card, button) { return card.height > viewportHeight ? button : card; }

@@ -38,6 +38,7 @@ submitting a pull request.
 | C or build configuration | `scripts/run-tests make clean all`, then `scripts/run-tests` |
 | Shell or installer | `scripts/run-tests make check-shell check-format` and focused tests |
 | X11 behavior | `scripts/run-tests make check-xvfb-runtime check-monitor-tags` |
+| Settings loading, search, and section navigation | `scripts/run-tests make check-quickshell-settings-responsiveness-xvfb` plus the full Settings runtime gate |
 | Quickshell QML | `scripts/run-tests make check-quickshell-qml` plus real or nested X11 runtime validation |
 | System update UI | `scripts/run-tests tests/test-quickshell-update-ui-xvfb.sh` for the focused native fixture, plus configured QML lint |
 | Documentation | `npm --prefix docs ci`, then `npm --prefix docs run build` |
@@ -92,6 +93,27 @@ validation before pushing so fixes do not require another hosted CI run:
 4. Record the final commit, exact passing commands, reused evidence, runtime
    environment, and any gaps in the PR. Push once the loop is clean, verify
    the remote head, and inspect unresolved review threads before merging.
+
+Give the reviewer the evidence before starting it. A short local evidence file
+should name the base and reviewed tree/commit, changed paths, exact commands,
+exit results, log paths, runtime environment, and any coverage reused from an
+unchanged base. Keep logs outside the checkout. Use a custom review prompt when
+passing evidence (the CLI does not combine a custom prompt with `--base` or
+`--uncommitted`):
+
+```sh
+codex review 'Review the complete diff against origin/main, including uncommitted
+and untracked changes. Read /absolute/path/to/local-evidence.md first. Reuse its
+passing evidence where the code and assumptions are unchanged. Run additional
+checks when a finding, changed behavior, or coverage gap requires them. Report
+findings directly; do not launch nested reviews.'
+```
+
+After a fix, update the evidence and review the affected diff and its integration
+with the original change. A repeated long native suite is necessary only when
+the fix invalidates its evidence. Do not substitute a focused test for unrun
+required coverage; the new responsiveness target accelerates iteration while
+the existing Settings suite still validates real providers and interactions.
 
 Local validation and independent Codex review are the normal merge gate.
 Automatic build/test and documentation workflows run after merges to `main`;
