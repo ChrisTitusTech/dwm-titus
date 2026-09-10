@@ -93,7 +93,15 @@ Flickable {
                             property string editValue: modelData.value
                             onModelDataChanged: editValue = modelData.value
 
-                            Text { Layout.preferredWidth: 150; text: settingRow.modelData.label; color: Theme.text; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
+                            Text {
+                                Layout.preferredWidth: 150
+                                Layout.maximumWidth: 150
+                                text: settingRow.modelData.label
+                                color: Theme.text
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.bodyFontSize
+                                wrapMode: Text.WordWrap
+                            }
                             ShellButton {
                                 visible: settingRow.modelData.type === "boolean"
                                 label: settingRow.modelData.value === "1" ? "On" : "Off"

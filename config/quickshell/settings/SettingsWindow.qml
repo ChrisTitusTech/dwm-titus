@@ -148,7 +148,7 @@ FloatingWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: settingsSearch.text.length === 0
                         text: "Search settings sections"
-                        color: Theme.placeholder
+                        color: Theme.menuMutedText
                         font.pixelSize: Theme.inputFontSize
                     }
 

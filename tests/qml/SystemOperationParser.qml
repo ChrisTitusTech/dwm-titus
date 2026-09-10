@@ -58,6 +58,20 @@ ShellRoot {
             }
         }
         const good = root.fixture("succeeded");
+        const itemPrefix = root.header + root.operation("pending", "updates-install-all")
+            + root.operation("running", "updates-install-all");
+        const itemRecord = "package-progress\t" + root.operationId + "\texample\tdownloading\t42\n";
+        const itemParser = Protocol.create(root.operationId, "updates-install-all");
+        root.check(Protocol.consume(itemParser, root.bytes(itemPrefix + itemRecord)), "Accept item progress");
+        root.check(itemParser.item.name === "example" && itemParser.item.percent === "42"
+            && itemParser.operation.percent === "unknown" && itemParser.records.length === 2,
+            "Item progress is distinct from overall progress and log");
+        for (const invalidItem of [itemRecord.replace("42", "101"), itemRecord.replace("downloading", "invented"),
+                itemRecord.replace(root.operationId, "op-" + "2".repeat(32))]) {
+            root.check(!Protocol.consume(Protocol.create(), root.bytes(itemPrefix + invalidItem)), "Reject invalid item");
+        }
+        root.check(!Protocol.consume(Protocol.create(), root.bytes(root.header
+            + root.operation("pending", "updates-install-all") + itemRecord)), "Reject item before running");
         for (const action of ["timezone-set", "ntp-set", "locale-set", "accounts-open",
                 "password-open", "printers-open", "sources-open"]) {
             const canceled = root.fixture("succeeded", action).replace(root.operation("succeeded", action),

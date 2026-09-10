@@ -189,6 +189,7 @@ Flickable {
         SectionLabel { label: "Fedora updates" }
 
         SystemUpdateControls {
+            id: updateControls
             model: root.systemManagementModel
             onRevealRequested: target => root.reveal(target)
         }
@@ -221,28 +222,42 @@ Flickable {
         }
 
         StatusCard {
+            objectName: "systemOperationFallback"
             readonly property var operation: root.systemManagementModel.operation.progress
                 || root.systemManagementModel.activeOperation
-            visible: operation !== null
-            label: operation === null ? "Active operation" : operation.actionId
+            readonly property bool packageOperation: operation !== null
+                && (operation.kind === "update" || operation.kind === "refresh")
+            visible: operation !== null && updateControls.active === null
+            label: packageOperation ? "Update recovery" : operation === null ? "Active operation" : operation.actionId
             status: "partial"
             value: operation === null ? "" : operation.percent === "unknown"
                 ? operation.state : operation.state + " / " + operation.percent + "%"
-            detail: operation === null ? "" : operation.detail
+            detail: packageOperation ? "Live package progress is unavailable. Reload status to recover this operation."
+                : operation === null ? "" : operation.detail
         }
 
         StatusCard {
             readonly property var result: root.systemManagementModel.operation.result
             visible: result !== null
-            label: result === null ? "Verified operation result" : result.actionId
+            label: result === null ? "Verified operation result" : result.kind === "update" ? "Package updates"
+                : result.kind === "refresh" ? "Metadata refresh" : result.actionId
             status: result !== null && result.state === "succeeded" ? "available" : "partial"
             value: result === null ? "" : result.state
-            detail: result === null ? "" : result.detail
+            detail: result === null ? "" : (result.kind === "update" || result.kind === "refresh")
+                ? (result.state === "succeeded"
+                    ? (result.kind === "update" ? "Package updates completed." : "Repository metadata refreshed.")
+                    : "The operation " + result.state + ". Review any error or recovery guidance before retrying.") : result.detail
         }
 
         PlainText {
+            objectName: "systemOperationGuidance"
             Layout.fillWidth: true
             visible: root.systemManagementModel.operation.detail.length > 0
+                && (root.systemManagementModel.operation.result === null
+                    || root.systemManagementModel.operation.blocked
+                    || root.systemManagementModel.operation.state !== "result"
+                    || (root.systemManagementModel.operation.result.state !== "succeeded"
+                        && root.systemManagementModel.operation.operationError === null))
             text: root.systemManagementModel.operation.detail
             color: root.systemManagementModel.operation.blocked ? Theme.danger : Theme.menuMutedText
             wrapMode: Text.WordWrap

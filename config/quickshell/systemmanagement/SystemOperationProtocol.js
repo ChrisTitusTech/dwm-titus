@@ -8,7 +8,7 @@ function create(expectedId, expectedAction) {
         expectedId: expectedId || "", expectedAction: expectedAction || "",
         offset: 0, line: "", remaining: 0, codepoint: 0, minimum: 0,
         header: false, complete: false, ended: false, failure: "",
-        operation: null, audit: null, error: null, records: []
+        operation: null, audit: null, error: null, records: [], item: null, itemRecords: 0
     };
     if ((parser.expectedId && !/^op-[0-9a-f]{32}$/.test(parser.expectedId))
             || (parser.expectedAction && !actionKind(parser.expectedAction)))
@@ -122,6 +122,14 @@ function acceptLine(parser, line) {
         parser.operation = { id: fields[1], actionId: fields[2], kind: fields[3],
             state: fields[4], percent: fields[5], cancelable: fields[6] === "yes", detail: fields[7] };
         parser.records.push(parser.operation);
+    } else if (type === "package-progress") {
+        if (!fieldsFit(fields, 5) || !parser.operation || fields[1] !== parser.operation.id
+                || ["update", "refresh"].indexOf(parser.operation.kind) < 0
+                || ["running", "cancel-requested"].indexOf(parser.operation.state) < 0
+                || ["working", "downloading", "installing", "updating", "removing", "cleaning"].indexOf(fields[3]) < 0
+                || !/^(unknown|0|[1-9][0-9]?|100)$/.test(fields[4]) || ++parser.itemRecords > 4097)
+            return fail(parser, "Invalid package progress");
+        parser.item = { name: fields[2], phase: fields[3], percent: fields[4] };
     } else if (type === "error") {
         if (!fieldsFit(fields, 4) || parser.error || !parser.operation
                 || terminal(parser.operation.state) || fields[1] !== owner(parser.operation.actionId)

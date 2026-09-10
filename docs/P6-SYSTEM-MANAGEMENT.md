@@ -1452,6 +1452,20 @@ exactly one audit row after the terminal operation record, and then one
 `complete<TAB>operation`. The action must have the fixed kind defined above.
 The audit ID, action ID, and kind must match the operation, its result must
 match the terminal state, and no duplicate audit row is accepted.
+
+The append-only optional `package-progress` row carries operation ID, display
+name, phase (`working`, `downloading`, `installing`, `updating`, `removing`, or
+`cleaning`), and item percent (`unknown` or an integer from 0 to 100). It is
+accepted only for running or cancel-requested update/refresh operations with
+the same identity. It updates only the latest UI item, not the operation log,
+overall percentage, durable journal, or audit comparison. Older consumers ignore
+this extension. `ItemProgress` never advances the durable lifecycle: early item
+signals are ignored until existing status/package evidence establishes running.
+Names retain the 512-byte canonical text bound. Identical rows
+are coalesced; after 4096 item rows the helper emits one empty-name/unknown row
+and stops item output so the UI cannot retain a misleading frozen package.
+The parser accepts at most 4097 such rows within its existing stream byte bound.
+
 An operation stream accepts at most one error row. A `failed` terminal operation
 requires exactly one preceding error row whose capability is the provider that
 owns the operation: `updates` for `refresh` and `update`, `regional` for
@@ -1993,7 +2007,15 @@ path, or elevation mechanism.
   validates the returned session object path, and then reads the
   `org.freedesktop.login1.Session.TimestampMonotonic` property from that exact
   object through `org.freedesktop.DBus.Properties.Get`. It accepts only the
-  expected unsigned 64-bit D-Bus value. A session that began while an update was
+  expected unsigned 64-bit D-Bus value. Only a `NoSessionForPID` error permits
+  the managed-user-service fallback: resolve the invoking UID through `GetUser`,
+  read its typed `User.Display` session identity, and validate the session's
+  matching user UID/object path and ID, X11 type, user class, active state,
+  `Active=true`, and `Remote=false`. Read the same typed timestamp from that
+  session, then re-read `User.Display` and require an unchanged identity. Every
+  call shares the original ten-second deadline. Permission denial, timeout,
+  malformed data, and other lookup errors never enable the fallback. A session
+  that began while an update was
   still running cannot clear its later requirement.
   Missing logind state, timeout, or malformed data retains the guidance with
   `partial` status until a later session or boot boundary proves satisfaction;

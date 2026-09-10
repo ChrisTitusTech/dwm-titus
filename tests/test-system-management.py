@@ -3548,7 +3548,8 @@ class MountMonitorTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         path = pathlib.Path(directory.name) / "child"
-        fixture = (f"import time\nopen({str(path)!r}, 'w').write(str(os.getpid()))\n"
+        fixture = (f"import time\nwith open({str(path) + '.tmp'!r}, 'w') as marker: marker.write(str(os.getpid()))\n"
+                   f"os.replace({str(path) + '.tmp'!r}, {str(path)!r})\n"
                    f"time.sleep({delay!r})\n"
                    + ("baseline = open('/proc/self/mountinfo')\nos.set_inheritable(baseline.fileno(), True)\n" if baseline else "")
                    + body + "\ntime.sleep(60)\n")
@@ -5125,6 +5126,33 @@ class OperationStreamTests(unittest.TestCase):
 
     def stream(self, output, action="updates-refresh"):
         return provider.OperationStream(self.operation_id, action, self.started, "Starting", output.append)
+
+    def test_user_error_stays_separate_from_audit_detail(self):
+        output = []
+        stream = self.stream(output, "updates-install-all")
+        stream.transition("running", "Working")
+        stream.finish(self.terminal("updates-install-all", "failed", "network"), detail="Internal audit comparison")
+        records = "".join(output).splitlines()
+        self.assertEqual(rows(records, "error")[0][3], "Durable result")
+        self.assertEqual(rows(records, "audit")[0][7], "Internal audit comparison")
+
+    def test_item_progress_is_coalesced_bounded_and_separate_from_lifecycle(self):
+        output = []
+        stream = self.stream(output, "updates-install-all")
+        stream.transition("running", "Working")
+        stream.item_progress("example", "downloading", 42)
+        stream.item_progress("example", "downloading", 42)
+        self.assertEqual(len(rows("".join(output).splitlines(), "package-progress")), 1)
+        self.assertEqual(stream.progress_records, 0)
+        for index in range(4200):
+            stream.item_progress("example", "installing", index % 101)
+        items = rows("".join(output).splitlines(), "package-progress")
+        self.assertEqual(len(items), 4097)
+        self.assertEqual(items[-1][2:], ["", "working", "unknown"])
+        stream.finish(self.terminal("updates-install-all"))
+        self.assertIn("complete\toperation\n", "".join(output))
+        with self.assertRaises(provider.OperationProtocolError):
+            stream.item_progress("example", "installing", 50)
 
     def test_progress_cap_reserves_every_lifecycle_and_terminal_record(self):
         output = []
@@ -9857,6 +9885,24 @@ class PackageKitExecutionTests(unittest.TestCase):
             self.assertIsNone(backend.connection.closed_callback)
             self.assertIn("\t42\tyes\t", "".join(chunks))
 
+    def test_package_item_progress_does_not_replace_overall_percentage_or_audit(self):
+        with self.journal() as journal:
+            chunks = []
+            backend = self.backend(journal, [lambda bus: bus.progress(Status=8, Percentage=20),
+                lambda bus: bus.emit("Package", (10, self.package_id, "Example")),
+                lambda bus: bus.emit("ItemProgress", (self.package_id, 8, 67)),
+                lambda bus: bus.emit("ItemProgress", (self.package_id, 9, 101)),
+                lambda bus: bus.emit("ItemProgress", ("unsafe\tidentity", 9, 5)),
+                lambda bus: bus.emit("Finished", (1, 10))])
+            terminal = self.run_operation(journal, backend, chunks, update=True)
+            self.assertEqual(terminal.state, "succeeded")
+            items = rows("".join(chunks).splitlines(), "package-progress")
+            name = provider.package_display_fields(self.package_id)[0]
+            self.assertEqual([item[2:] for item in items], [[name, "downloading", "unknown"],
+                [name, "downloading", "67"], [name, "installing", "unknown"], ["", "working", "unknown"]])
+            self.assertIn("\t20\t", "".join(chunks))
+            self.assertNotIn("unsafe", "".join(chunks))
+
     def test_update_uses_exact_ids_and_accumulates_restart_contributions(self):
         with self.journal() as journal:
             chunks = []
@@ -9977,6 +10023,18 @@ class PackageKitExecutionTests(unittest.TestCase):
             self.assertNotIn("complete\toperation", "".join(chunks))
             self.assertIn("Cancel", [call[3] for call in backend.connection.calls])
             os.fchmod(journal.descriptor("terminal-31"), 0o600)
+
+    def test_early_item_progress_does_not_change_denial_or_restart_evidence(self):
+        with self.journal() as journal:
+            chunks = []
+            backend = self.backend(journal, [lambda bus: bus.emit("ItemProgress", (self.package_id, 8, 42)),
+                lambda bus: bus.reply_error("AccessDenied")])
+            terminal = self.run_operation(journal, backend, chunks, update=True)
+            self.assertEqual((terminal.state, terminal.system_restart, terminal.session_restart),
+                             ("permission-denied", "none", "none"))
+            records = "".join(chunks).splitlines()
+            self.assertEqual(rows(records, "package-progress"), [])
+            self.assertNotIn("running", [record[4] for record in rows(records, "operation")])
 
     def test_output_failure_after_send_does_not_abandon_durable_result(self):
         with self.journal() as journal:
@@ -10181,6 +10239,45 @@ class SessionEvidenceTests(unittest.TestCase):
         self.assertEqual(second.args[4].unpack(), ("org.freedesktop.login1.Session", "TimestampMonotonic"))
         self.assertEqual((first.args[5], second.args[5]), (None, None))
         self.assertEqual((first.args[7], second.args[7]), (9000, 7000))
+
+    def service_backend(self, changes=None, final_identity=None):
+        backend = self.backend()
+        backend.Gio.dbus_error_get_remote_error = lambda error: str(error)
+        user_path = "/org/freedesktop/login1/user/_1000"
+        identity = ("7", "/org/freedesktop/login1/session/_37")
+        state = dict(User=(provider.os.getuid(), user_path), Id="7", Type="x11",
+                     Class="user", State="active", Active=True, Remote=False)
+        state.update(changes or {})
+        def boxed(signature, value):
+            return self.Variant("(v)", (self.Variant("v", self.Variant(signature, value)),))
+        backend.connection.call_sync.side_effect = [
+            RuntimeError("org.freedesktop.login1.NoSessionForPID"),
+            self.Variant("(o)", (user_path,)), boxed("(so)", identity),
+            self.Variant("(a{sv})", (state,)), boxed("t", 456),
+            boxed("(so)", final_identity or identity)]
+        return backend
+
+    def test_user_service_uses_verified_primary_display(self):
+        backend = self.service_backend()
+        with mock.patch.dict(provider.os.environ, {"XDG_SESSION_ID": "untrusted-other-session"}):
+            self.assertEqual(backend.session_started(), 456)
+        calls = backend.connection.call_sync.call_args_list
+        self.assertEqual(calls[1].args[3:5][0], "GetUser")
+        self.assertEqual(calls[1].args[4].unpack(), (provider.os.getuid(),))
+        self.assertEqual(calls[3].args[3], "GetAll")
+        self.assertEqual(calls[-1].args[4].unpack(), ("org.freedesktop.login1.User", "Display"))
+
+    def test_user_service_rejects_unverified_display(self):
+        for changes in ({"User": (provider.os.getuid() + 1, "/other")},
+                        {"Id": "other"}, {"Type": "tty"}, {"Class": "manager"},
+                        {"State": "closing"}, {"Active": False}, {"Remote": True}):
+            with self.subTest(changes=changes), self.assertRaises(provider.SnapshotFailure):
+                self.service_backend(changes).session_started()
+
+    def test_user_service_retains_guidance_when_display_changes(self):
+        with self.assertRaises(provider.SnapshotFailure) as raised:
+            self.service_backend(final_identity=("8", "/org/freedesktop/login1/session/_38")).session_started()
+        self.assertEqual(raised.exception.code, "missing-provider")
 
     def test_malformed_session_path_never_reads_property(self):
         for path in ("/other", "/org/freedesktop/login1/session/", "/org/freedesktop/login1/session/" + "x" * 257):

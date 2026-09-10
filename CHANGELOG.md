@@ -8,6 +8,15 @@ versions from `config.mk`.
 
 ### Changed
 
+- Replace raw System update logs and audit hashes with current-package progress,
+  separate overall progress, and concise verified completion messages.
+
+- Keep seeded autostart exclusions valid for desktop entries with OnlyShowIn,
+  preserving other desktop sessions without adding conflicting NotShowIn keys.
+- Resolve update recovery session evidence for managed user-service launches
+  through logind's verified active local X11 display session.
+- Wrap long Input setting labels and improve Settings search-prompt contrast.
+
 - Brand the Fedora Anaconda installer with a dark theme and centered CTT logo.
   ISO builds accept `--version X.Y.Z` to generate a sidebar badge in staging
   without modifying the checkout; build dependencies include Pillow and Noto.
