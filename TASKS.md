@@ -2,7 +2,8 @@
 
 ## Phase 7: Fedora Image and Release Qualification
 
-Pre-Phase 7 responsiveness and local-review maintenance is recorded in
+Pre-Phase 7 responsiveness, live maintenance and local validation are complete.
+Entry evidence and remaining qualification limits are recorded in
 `docs/PRE-P7-MAINTENANCE.md`. Phase 7 remains on hold until explicitly started.
 
 Phase 6 is complete. Its acceptance evidence and remaining hardware/service

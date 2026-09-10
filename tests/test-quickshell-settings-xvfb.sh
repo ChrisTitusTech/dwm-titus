@@ -7,7 +7,7 @@ expected_window_width=${DWM_SETTINGS_EXPECTED_WINDOW_WIDTH:-1180}
 expected_window_height=${DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT:-760}
 
 for command_name in Xvfb dbus-monitor dbus-run-session glib-compile-schemas \
-	gsettings inotifywait quickshell xdotool xinput xkbset xprop pgrep getconf; do
+	gsettings inotifywait python3 quickshell xdotool xinput xkbset xprop pgrep getconf; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -330,6 +330,9 @@ glib-compile-schemas "$schema_dir"
 export GSETTINGS_SCHEMA_DIR="$schema_dir"
 export GSETTINGS_BACKEND=keyfile
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
+# Make an acknowledged disk write necessary before the persistence restart.
+python3 "$repo/tests/fixtures/delay-notification-policy.py" \
+	"$config_home/quickshell/notifications/NotificationModel.qml"
 cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-titus/scripts/dwm-system-management"
 chmod +x "$data_home/dwm-titus/scripts/dwm-system-management"
 cp "$repo/config/quickshell/assets/ctt_logo.png" "$home/Pictures/backgrounds/test-wallpaper.png"
@@ -1879,6 +1882,15 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$(notification_ipc_retry policyState)" = available ]
 notification_ipc_retry setPopupTimeout 4000 >/dev/null
+# IPC exposes the optimistic value before FileView finishes its atomic write.
+notification_wait_available
+python3 - "$config_home/dwm-titus/notification-settings.json" <<'PYTHON'
+import json
+import sys
+with open(sys.argv[1]) as stream:
+    policy = json.load(stream)
+assert policy == {"version": 1, "doNotDisturb": True, "popupTimeoutMs": 4000}, policy
+PYTHON
 [ "$(notification_ipc_retry doNotDisturb)" = true ]
 [ "$(notification_ipc_retry popupTimeout)" = 4000 ]
 test_stage='validating notification policy after restart'
