@@ -1,0 +1,866 @@
+==> Test workspace: /home/titus/tmp/dwm-titus-tests.u91KVX
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Build configuration generation and preservation: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Fedora-only platform contract: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Developer live-install synchronization: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+dwm-default-apps versioned backend: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+dwm XDG autostart helper tests passed
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+dwm-status power polling: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Display detection, Xorg generation, anti-tearing policy, preview, install, and rollback: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Monitor tag-switch source guard: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell launcher helper: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell controls helper: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell audio provider and Settings contract: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell control center helper: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell power backend: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell shared power model and Settings contract: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell session action model, backend, and graceful logout: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell Defaults and autostart model contract: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Warning: /home/titus/github/dwm-titus/config/quickshell/core/PanelTooltip.qml:24:12: No type found for property "edges". This may be due to a missing import statement or incomplete qmltypes files. [missing-type]
+    anchor.edges: Edges.Left | Edges.Top
+           ^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/core/PanelTooltip.qml:25:12: No type found for property "gravity". This may be due to a missing import statement or incomplete qmltypes files. [missing-type]
+    anchor.gravity: Edges.Right | Edges.Bottom
+           ^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/core/PanelTooltip.qml:32:9: Type "PopupAnchor" of property "anchor" not found. This is likely due to a missing dependency entry or a type not being exposed declaratively. [unresolved-type]
+        anchor.rect.x = Math.round(Math.max(0, Math.min(root.anchorWindow.width - root.width,
+        ^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/panel/RunningAppsArea.qml:8:27: Property "state" already exists in base type "QQuickItem", use a different name. [property-override]
+    required property var state
+                          ^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/panel/RunningAppsArea.qml:17:44: Unqualified access [unqualified]
+            active: modelData.appClass === root.state.activeWindowClass
+                                           ^^^^
+Info: Set "pragma ComponentBehavior: Bound" in order to use IDs from outer components in nested components.
+pragma ComponentBehavior: Bound
+import QtQuick
+Warning: /home/titus/github/dwm-titus/config/quickshell/panel/RunningAppsArea.qml:18:43: Unqualified access [unqualified]
+            onFocusRequested: windowId => root.state.focusWindow(windowId)
+                                          ^^^^
+Info: Set "pragma ComponentBehavior: Bound" in order to use IDs from outer components in nested components.
+pragma ComponentBehavior: Bound
+import QtQuick
+Warning: /home/titus/github/dwm-titus/config/quickshell/settings/SystemRegionalControls.qml:108:41: Member "revealFocus" not found on type "QQuickItem" [missing-property]
+                if (item !== null) item.revealFocus();
+                                        ^^^^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/settings/SystemRegionalControls.qml:131:26: Member "action" not found on type "QQuickItem" [missing-property]
+                if (card.action === action) focusReturn = card.originControl;
+                         ^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/settings/SystemRegionalControls.qml:131:64: Member "originControl" not found on type "QQuickItem" [missing-property]
+                if (card.action === action) focusReturn = card.originControl;
+                                                               ^^^^^^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemManagementModel.qml:1291:9: Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies? [signal-handler-parameters]
+        onExited: (exitCode, exitStatus) => root.finishSnapshot(exitCode, exitStatus === 0)
+        ^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemOperationModel.qml:401:9: Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies? [signal-handler-parameters]
+        onExited: (exitCode, exitStatus) => root.finishWatch(exitCode, exitStatus === 0)
+        ^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemOperationModel.qml:426:9: Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies? [signal-handler-parameters]
+        onExited: (exitCode, exitStatus) => root.finishAcknowledgment(exitCode, exitStatus === 0)
+        ^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemProviderDiscovery.qml:282:17: Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies? [signal-handler-parameters]
+                onExited: owner.callbacks.finish()
+                ^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemProviderDiscovery.qml:168:15: Member "start" not found on type "QObject" [missing-property]
+        owner.start();
+              ^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemRegionalPreflightModel.qml:167:9: Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies? [signal-handler-parameters]
+        onExited: (exitCode, exitStatus) => {
+        ^^^^^^^^
+Quickshell shared appearance model contract: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Warning: Schema “apps.light-locker” has path “/apps/light-locker/”.  Paths starting with “/apps/”, “/desktop/” or “/system/” are deprecated.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=2482948 comm="gsettings set apps.light-locker lock-after-screens")
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.3' (uid=1000 pid=2482965 comm="quickshell --no-duplicate")
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.4' (uid=1000 pid=2482999 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.4' (uid=1000 pid=2482999 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.4' (uid=1000 pid=2482999 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Activating service name='org.xfce.Xfconf' requested by ':1.12' (uid=1000 pid=2483161 comm="xfconf-query -c xsettings -p /Net/ThemeName -n -t")
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Successfully activated service 'org.xfce.Xfconf'
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.293 (uid=1000 pid=2522551 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.293 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.534 (uid=1000 pid=2554377 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.534 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.546 (uid=1000 pid=2560628 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.546 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.670 (uid=1000 pid=2577627 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.670 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.730 (uid=1000 pid=2587142 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+theme-apply: applied theme 'nord'
+theme-apply: applied theme 'nord'
+theme-apply: applied theme 'nord'
+theme-apply: applied theme 'nord'
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.730 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1069 (uid=1000 pid=2634538 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1069 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1190 (uid=1000 pid=2648124 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1190 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1194 (uid=1000 pid=2649799 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1194 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1198 (uid=1000 pid=2653175 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1198 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1202 (uid=1000 pid=2654446 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1202 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1227 (uid=1000 pid=2656325 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1227 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1256 (uid=1000 pid=2659708 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1256 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1334 (uid=1000 pid=2666597 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1334 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1561 (uid=1000 pid=2697642 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1561 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1644 (uid=1000 pid=2709198 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1644 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1754 (uid=1000 pid=2721294 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1754 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1888 (uid=1000 pid=2737621 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1888 closed.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Connection :1.1900 (uid=1000 pid=2739619 comm="busctl --user --no-pager monitor --match=type='sig") became a monitor.
+dbus-daemon[2482868]: [session uid=1000 pid=2482868 pidfd=5] Monitoring connection :1.1900 closed.
+Power lifecycle CPU baseline 0.300%, after 0.133%, delta 0.167 points
+Quickshell Settings Xvfb and closed-idle sample: PASS (0.133% CPU)
+A connection to the bus can't be made
+
+(xfconfd:2483166): xfconfd-WARNING **: 20:47:17.821: Name org.xfce.Xfconf lost on the message dbus, exiting.
+Warning: Schema “apps.light-locker” has path “/apps/light-locker/”.  Paths starting with “/apps/”, “/desktop/” or “/system/” are deprecated.
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=2762547 comm="gsettings set apps.light-locker lock-after-screens")
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.3' (uid=1000 pid=2762575 comm="quickshell --no-duplicate")
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.4' (uid=1000 pid=2762611 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.4' (uid=1000 pid=2762611 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.4' (uid=1000 pid=2762611 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Activating service name='org.xfce.Xfconf' requested by ':1.12' (uid=1000 pid=2762759 comm="xfconf-query -c xsettings -p /Net/ThemeName -n -t")
+dbus-daemon[2762479]: [session uid=1000 pid=2762479 pidfd=5] Successfully activated service 'org.xfce.Xfconf'
+Settings small-screen IPC geometry: PASS
+A connection to the bus can't be made
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+
+(xfconfd:2762764): xfconfd-WARNING **: 20:47:19.662: Name org.xfce.Xfconf lost on the message dbus, exiting.
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+dbus-daemon[2766457]: [session uid=1000 pid=2766457 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=2766486 comm="quickshell --no-duplicate --path /home/titus/tmp/d")
+dbus-daemon[2766457]: [session uid=1000 pid=2766457 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.1' (uid=1000 pid=2766491 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2766457]: [session uid=1000 pid=2766457 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2766457]: [session uid=1000 pid=2766457 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.1' (uid=1000 pid=2766491 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2766457]: [session uid=1000 pid=2766457 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2766457]: [session uid=1000 pid=2766457 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.1' (uid=1000 pid=2766491 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2766457]: [session uid=1000 pid=2766457 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.4' (uid=1000 pid=2766516 comm="/usr/libexec/xdg-desktop-portal-gtk")
+dbus-daemon[2766457]: [session uid=1000 pid=2766457 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[2766457]: [session uid=1000 pid=2766457 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[2766457]: [session uid=1000 pid=2766457 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+  INFO qml: Settings responsiveness: PASS
+  INFO qml: Settings measurement: closed panes=0 items=63 startup_ms=115
+  INFO qml: Settings measurement: first pane ready_ms=44
+  INFO qml: Settings measurement: redundant activations=0
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+A connection to the bus can't be made
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell design system: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell large-surface source contract: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+dbus-daemon[2767613]: [session uid=1000 pid=2767613 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=2767651 comm="quickshell --no-duplicate")
+dbus-daemon[2767613]: [session uid=1000 pid=2767613 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.1' (uid=1000 pid=2767661 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2767613]: [session uid=1000 pid=2767613 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2767613]: [session uid=1000 pid=2767613 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.1' (uid=1000 pid=2767661 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2767613]: [session uid=1000 pid=2767613 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2767613]: [session uid=1000 pid=2767613 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.1' (uid=1000 pid=2767661 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2767613]: [session uid=1000 pid=2767613 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.4' (uid=1000 pid=2767686 comm="/usr/libexec/xdg-desktop-portal-gtk")
+dbus-daemon[2767613]: [session uid=1000 pid=2767613 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[2767613]: [session uid=1000 pid=2767613 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[2767613]: [session uid=1000 pid=2767613 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+Quickshell large surfaces Xvfb: PASS (0.00% closed CPU)
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+A connection to the bus can't be made
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell panel menus: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell panel settings persistence: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+dwm accessibility settings helper: PASS
+Quickshell accessibility policy model: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell command menu: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Warning: /home/titus/github/dwm-titus/config/quickshell/core/PanelTooltip.qml:24:12: No type found for property "edges". This may be due to a missing import statement or incomplete qmltypes files. [missing-type]
+    anchor.edges: Edges.Left | Edges.Top
+           ^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/core/PanelTooltip.qml:25:12: No type found for property "gravity". This may be due to a missing import statement or incomplete qmltypes files. [missing-type]
+    anchor.gravity: Edges.Right | Edges.Bottom
+           ^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/core/PanelTooltip.qml:32:9: Type "PopupAnchor" of property "anchor" not found. This is likely due to a missing dependency entry or a type not being exposed declaratively. [unresolved-type]
+        anchor.rect.x = Math.round(Math.max(0, Math.min(root.anchorWindow.width - root.width,
+        ^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/panel/RunningAppsArea.qml:8:27: Property "state" already exists in base type "QQuickItem", use a different name. [property-override]
+    required property var state
+                          ^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/panel/RunningAppsArea.qml:17:44: Unqualified access [unqualified]
+            active: modelData.appClass === root.state.activeWindowClass
+                                           ^^^^
+Info: Set "pragma ComponentBehavior: Bound" in order to use IDs from outer components in nested components.
+pragma ComponentBehavior: Bound
+import QtQuick
+Warning: /home/titus/github/dwm-titus/config/quickshell/panel/RunningAppsArea.qml:18:43: Unqualified access [unqualified]
+            onFocusRequested: windowId => root.state.focusWindow(windowId)
+                                          ^^^^
+Info: Set "pragma ComponentBehavior: Bound" in order to use IDs from outer components in nested components.
+pragma ComponentBehavior: Bound
+import QtQuick
+Warning: /home/titus/github/dwm-titus/config/quickshell/settings/SystemRegionalControls.qml:108:41: Member "revealFocus" not found on type "QQuickItem" [missing-property]
+                if (item !== null) item.revealFocus();
+                                        ^^^^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/settings/SystemRegionalControls.qml:131:26: Member "action" not found on type "QQuickItem" [missing-property]
+                if (card.action === action) focusReturn = card.originControl;
+                         ^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/settings/SystemRegionalControls.qml:131:64: Member "originControl" not found on type "QQuickItem" [missing-property]
+                if (card.action === action) focusReturn = card.originControl;
+                                                               ^^^^^^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemManagementModel.qml:1291:9: Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies? [signal-handler-parameters]
+        onExited: (exitCode, exitStatus) => root.finishSnapshot(exitCode, exitStatus === 0)
+        ^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemOperationModel.qml:401:9: Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies? [signal-handler-parameters]
+        onExited: (exitCode, exitStatus) => root.finishWatch(exitCode, exitStatus === 0)
+        ^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemOperationModel.qml:426:9: Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies? [signal-handler-parameters]
+        onExited: (exitCode, exitStatus) => root.finishAcknowledgment(exitCode, exitStatus === 0)
+        ^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemProviderDiscovery.qml:282:17: Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies? [signal-handler-parameters]
+                onExited: owner.callbacks.finish()
+                ^^^^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemProviderDiscovery.qml:168:15: Member "start" not found on type "QObject" [missing-property]
+        owner.start();
+              ^^^^^
+Warning: /home/titus/github/dwm-titus/config/quickshell/systemmanagement/SystemRegionalPreflightModel.qml:167:9: Type QProcess::ExitStatus of parameter exitStatus in signal called exited was not found, but is required to compile onExited. Did you add all imports and dependencies? [signal-handler-parameters]
+        onExited: (exitCode, exitStatus) => {
+        ^^^^^^^^
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell notification lifecycle and policy: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell system tray: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+System health helper: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+./usr/lib64/python3.14/site-packages/gi/overrides/__init__.py:159: PyGIDeprecationWarning: GLib.unix_signal_add_full is deprecated; use GLibUnix.signal_add_full instead
+  value = getattr(proxy, attr)
+................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+----------------------------------------------------------------------
+Ran 689 tests in 389.996s
+
+OK
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell system-management snapshot model contract: PASS
+dbus-daemon[2878618]: [session uid=1000 pid=2878618 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=2878654 comm="quickshell --no-duplicate --path /home/titus/tmp/d")
+dbus-daemon[2878618]: [session uid=1000 pid=2878618 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.1' (uid=1000 pid=2878658 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2878618]: [session uid=1000 pid=2878618 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2878618]: [session uid=1000 pid=2878618 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.1' (uid=1000 pid=2878658 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2878618]: [session uid=1000 pid=2878618 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2878618]: [session uid=1000 pid=2878618 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.1' (uid=1000 pid=2878658 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2878618]: [session uid=1000 pid=2878618 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.4' (uid=1000 pid=2878684 comm="/usr/libexec/xdg-desktop-portal-gtk")
+dbus-daemon[2878618]: [session uid=1000 pid=2878618 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[2878618]: [session uid=1000 pid=2878618 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[2878618]: [session uid=1000 pid=2878618 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+  INFO qml: Information UI tests: PASS (25 assertions)
+  INFO qml: Information UI tests: PASS (25 assertions)
+  INFO qml: Information UI tests: PASS (25 assertions)
+  INFO qml: Checked command tests: PASS (success, 3 assertions)
+  INFO qml: Checked command tests: PASS (helper-fail, 3 assertions)
+  INFO qml: Checked command tests: PASS (first-fail, 3 assertions)
+  INFO qml: Checked command tests: PASS (second-fail, 3 assertions)
+  INFO qml: Checked command tests: PASS (first-term, 3 assertions)
+  INFO qml: Checked command tests: PASS (second-term, 3 assertions)
+  INFO qml: Checked command tests: PASS (stop-child, 3 assertions)
+Discovery fixture event-writer failure cases: PASS
+  INFO qml: Discovery native tests: PASS (43 assertions)
+  INFO qml: Provider discovery tests: PASS (135 assertions)
+  INFO qml: Provider generation tests: PASS (119 assertions)
+Native discovery fixture duplicate-monitor cases: PASS
+  INFO qml: Native discovery tests: PASS (67 assertions)
+  INFO qml: Native discovery tests: PASS (70 assertions)
+  INFO qml: Native discovery tests: PASS (67 assertions)
+  INFO qml: Update UI native tests: PASS (59 assertions)
+  INFO qml: Shared clock tests: PASS (34 assertions)
+  INFO qml: Regional preflight parser tests: PASS (1755 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, success, 252 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, typed-error, 45 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, unsupported-error, 45 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, wrong-exit, 45 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, protocol-exit-127, 45 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, malformed, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, truncated, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, stdout-overflow, 25 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, stderr-overflow, 25 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, close, 53 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, kill-close, 55 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, close-stdout-overflow, 55 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, close-stderr-overflow, 55 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, timeout, 56 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, cancel-queued, 51 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, cancel-claim, 51 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, close-result, 73 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, failed-start, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (regional, missing-helper, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, success, 76 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, typed-error, 46 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, unsupported-error, 45 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, wrong-exit, 46 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, protocol-exit-127, 45 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, malformed, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, truncated, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, stdout-overflow, 25 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, stderr-overflow, 25 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, close, 53 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, kill-close, 55 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, close-stdout-overflow, 54 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, close-stderr-overflow, 55 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, timeout, 56 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, cancel-queued, 51 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, cancel-claim, 51 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, close-result, 74 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, failed-start, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (time-status, missing-helper, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, success, 76 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, typed-error, 45 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, unsupported-error, 45 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, wrong-exit, 45 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, protocol-exit-127, 46 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, malformed, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, truncated, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, stdout-overflow, 25 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, stderr-overflow, 25 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, close, 53 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, kill-close, 54 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, close-stdout-overflow, 54 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, close-stderr-overflow, 55 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, timeout, 56 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, cancel-queued, 51 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, cancel-claim, 51 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, close-result, 73 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, failed-start, 24 assertions)
+  INFO qml: Regional preflight owner tests: PASS (ntp-sample, missing-helper, 24 assertions)
+  INFO qml: Operation parser native tests: PASS (701 assertions)
+  INFO qml: Native snapshot tests: PASS (544 assertions)
+  INFO qml: Health navigation tests: PASS (15 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/success, 32 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/denied, 32 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/unsupported, 32 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/uncertain, 32 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/close-dispatch, 30 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/close-read, 13 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/required-read, 15 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/stale-read, 14 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/error-read, 14 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/malformed-read, 14 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/close-claim, 11 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/close-publish, 14 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/close-preview, 18 assertions)
+  INFO qml: Regional settings tests: PASS (timezone-set/required-publish, 15 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/success, 31 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/denied, 31 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/unsupported, 31 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/uncertain, 31 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/close-dispatch, 29 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/close-read, 12 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/required-read, 14 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/stale-read, 13 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/error-read, 13 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/malformed-read, 13 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/close-claim, 10 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/close-publish, 13 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/close-preview, 17 assertions)
+  INFO qml: Regional settings tests: PASS (ntp-set/required-publish, 14 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/success, 32 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/denied, 32 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/unsupported, 32 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/uncertain, 32 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/close-dispatch, 30 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/close-read, 13 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/required-read, 15 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/stale-read, 14 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/error-read, 14 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/malformed-read, 14 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/close-claim, 11 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/close-publish, 14 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/close-preview, 18 assertions)
+  INFO qml: Regional settings tests: PASS (locale-set/required-publish, 15 assertions)
+  INFO qml: Time reconciliation tests: PASS (owner, 17 assertions)
+  INFO qml: Time reconciliation tests: PASS (owner-change, 11 assertions)
+  INFO qml: Time reconciliation tests: PASS (owner-capability, 11 assertions)
+  INFO qml: Time reconciliation tests: PASS (owner-fail, 11 assertions)
+  INFO qml: Time reconciliation tests: PASS (owner-sync, 18 assertions)
+  INFO qml: Time reconciliation tests: PASS (owner-preview, 17 assertions)
+  INFO qml: Time reconciliation tests: PASS (owner-pending, 18 assertions)
+  INFO qml: Time reconciliation tests: PASS (owner-required, 11 assertions)
+  INFO qml: Time reconciliation tests: PASS (owner-gain, 18 assertions)
+  INFO qml: Time reconciliation tests: PASS (owner-blocked, 4 assertions)
+  INFO qml: NTP sampling tests: PASS (sample-success, 13 assertions)
+  INFO qml: NTP sampling tests: PASS (sample-error, 14 assertions)
+  INFO qml: NTP sampling tests: PASS (sample-capability, 14 assertions)
+  INFO qml: NTP sampling tests: PASS (sample-arrival, 14 assertions)
+  INFO qml: NTP sampling tests: PASS (sample-close, 9 assertions)
+  INFO qml: NTP sampling tests: PASS (sample-required, 14 assertions)
+  INFO qml: NTP sampling tests: PASS (sample-close-claim, 7 assertions)
+  INFO qml: NTP sampling tests: PASS (sample-close-publish, 9 assertions)
+  INFO qml: NTP sampling tests: PASS (sample-action, 10 assertions)
+  INFO qml: NTP sampling tests: PASS (sample-periodic, 14 assertions)
+  INFO qml: Delegate confirmation tests: PASS (accounts-open/success, 44 assertions)
+  INFO qml: Delegate confirmation tests: PASS (accounts-open/denied, 43 assertions)
+  INFO qml: Delegate confirmation tests: PASS (accounts-open/unsupported, 43 assertions)
+  INFO qml: Delegate confirmation tests: PASS (accounts-open/close-dispatch, 41 assertions)
+  INFO qml: Delegate confirmation tests: PASS (password-open/success, 44 assertions)
+  INFO qml: Delegate confirmation tests: PASS (password-open/denied, 43 assertions)
+  INFO qml: Delegate confirmation tests: PASS (password-open/unsupported, 43 assertions)
+  INFO qml: Delegate confirmation tests: PASS (password-open/close-dispatch, 41 assertions)
+  INFO qml: Delegate confirmation tests: PASS (printers-open/success, 44 assertions)
+  INFO qml: Delegate confirmation tests: PASS (printers-open/denied, 43 assertions)
+  INFO qml: Delegate confirmation tests: PASS (printers-open/unsupported, 43 assertions)
+  INFO qml: Delegate confirmation tests: PASS (printers-open/close-dispatch, 41 assertions)
+  INFO qml: Delegate confirmation tests: PASS (sources-open/success, 44 assertions)
+  INFO qml: Delegate confirmation tests: PASS (sources-open/denied, 43 assertions)
+  INFO qml: Delegate confirmation tests: PASS (sources-open/unsupported, 43 assertions)
+  INFO qml: Delegate confirmation tests: PASS (sources-open/close-dispatch, 41 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/success, 103 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/denied, 100 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/unsupported, 98 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/uncertain, 98 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/large, 115 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/error-read, 17 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/malformed-read, 20 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/owner, 98 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/sample-ui, 103 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/success, 81 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/denied, 78 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/unsupported, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/uncertain, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/large, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/error-read, 33 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/malformed-read, 36 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/disable, 81 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/owner, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/sample-ui, 81 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/success, 104 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/denied, 100 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/unsupported, 98 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/uncertain, 98 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/large, 115 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/error-read, 17 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/malformed-read, 20 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/owner, 97 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/sample-ui, 103 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/success, 103 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/denied, 100 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/unsupported, 98 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/uncertain, 98 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/large, 115 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/error-read, 17 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/malformed-read, 20 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/owner, 98 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/sample-ui, 103 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/success, 81 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/denied, 78 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/unsupported, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/uncertain, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/large, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/error-read, 33 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/malformed-read, 36 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/disable, 81 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/owner, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/sample-ui, 81 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/success, 103 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/denied, 100 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/unsupported, 98 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/uncertain, 98 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/large, 115 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/error-read, 17 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/malformed-read, 20 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/owner, 97 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/sample-ui, 103 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/success, 103 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/denied, 100 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/unsupported, 98 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/uncertain, 98 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/large, 115 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/error-read, 17 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/malformed-read, 20 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/owner, 98 assertions)
+  INFO qml: Regional UI tests: PASS (timezone-set/sample-ui, 103 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/success, 81 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/denied, 78 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/unsupported, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/uncertain, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/large, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/error-read, 33 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/malformed-read, 36 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/disable, 81 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/owner, 76 assertions)
+  INFO qml: Regional UI tests: PASS (ntp-set/sample-ui, 81 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/success, 103 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/denied, 100 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/unsupported, 98 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/uncertain, 98 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/large, 115 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/error-read, 17 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/malformed-read, 20 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/owner, 97 assertions)
+  INFO qml: Regional UI tests: PASS (locale-set/sample-ui, 103 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (accounts-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (password-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (printers-open/large, 45 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/success, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/denied, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/unsupported, 39 assertions)
+  INFO qml: Delegate UI tests: PASS (sources-open/large, 45 assertions)
+  INFO qml: Native action owner tests: PASS (timezone-set/success, 71 assertions)
+  INFO qml: Native action owner tests: PASS (timezone-set/denied, 71 assertions)
+  INFO qml: Native action owner tests: PASS (timezone-set/rejected, 70 assertions)
+  INFO qml: Native action owner tests: PASS (timezone-set/unsupported, 70 assertions)
+  INFO qml: Native action owner tests: PASS (timezone-set/uncertain, 79 assertions)
+  INFO qml: Native action owner tests: PASS (timezone-set/wrong-exit, 78 assertions)
+  INFO qml: Native action owner tests: PASS (ntp-set/success, 71 assertions)
+  INFO qml: Native action owner tests: PASS (ntp-set/denied, 71 assertions)
+  INFO qml: Native action owner tests: PASS (ntp-set/rejected, 70 assertions)
+  INFO qml: Native action owner tests: PASS (ntp-set/unsupported, 70 assertions)
+  INFO qml: Native action owner tests: PASS (ntp-set/uncertain, 79 assertions)
+  INFO qml: Native action owner tests: PASS (ntp-set/wrong-exit, 78 assertions)
+  INFO qml: Native action owner tests: PASS (locale-set/success, 71 assertions)
+  INFO qml: Native action owner tests: PASS (locale-set/denied, 71 assertions)
+  INFO qml: Native action owner tests: PASS (locale-set/rejected, 70 assertions)
+  INFO qml: Native action owner tests: PASS (locale-set/unsupported, 70 assertions)
+  INFO qml: Native action owner tests: PASS (locale-set/uncertain, 79 assertions)
+  INFO qml: Native action owner tests: PASS (locale-set/wrong-exit, 78 assertions)
+  INFO qml: Native action owner tests: PASS (accounts-open/success, 72 assertions)
+  INFO qml: Native action owner tests: PASS (accounts-open/denied, 71 assertions)
+  INFO qml: Native action owner tests: PASS (accounts-open/rejected, 70 assertions)
+  INFO qml: Native action owner tests: PASS (accounts-open/unsupported, 70 assertions)
+  INFO qml: Native action owner tests: PASS (accounts-open/uncertain, 80 assertions)
+  INFO qml: Native action owner tests: PASS (accounts-open/wrong-exit, 78 assertions)
+  INFO qml: Native action owner tests: PASS (password-open/success, 72 assertions)
+  INFO qml: Native action owner tests: PASS (password-open/denied, 71 assertions)
+  INFO qml: Native action owner tests: PASS (password-open/rejected, 70 assertions)
+  INFO qml: Native action owner tests: PASS (password-open/unsupported, 70 assertions)
+  INFO qml: Native action owner tests: PASS (password-open/uncertain, 80 assertions)
+  INFO qml: Native action owner tests: PASS (password-open/wrong-exit, 78 assertions)
+  INFO qml: Native action owner tests: PASS (printers-open/success, 72 assertions)
+  INFO qml: Native action owner tests: PASS (printers-open/denied, 71 assertions)
+  INFO qml: Native action owner tests: PASS (printers-open/rejected, 70 assertions)
+  INFO qml: Native action owner tests: PASS (printers-open/unsupported, 70 assertions)
+  INFO qml: Native action owner tests: PASS (printers-open/uncertain, 80 assertions)
+  INFO qml: Native action owner tests: PASS (printers-open/wrong-exit, 78 assertions)
+  INFO qml: Native action owner tests: PASS (sources-open/success, 72 assertions)
+  INFO qml: Native action owner tests: PASS (sources-open/denied, 71 assertions)
+  INFO qml: Native action owner tests: PASS (sources-open/rejected, 70 assertions)
+  INFO qml: Native action owner tests: PASS (sources-open/unsupported, 70 assertions)
+  INFO qml: Native action owner tests: PASS (sources-open/uncertain, 80 assertions)
+  INFO qml: Native action owner tests: PASS (sources-open/wrong-exit, 78 assertions)
+Update action counter diagnostics: PASS
+  INFO qml: Update action owner native tests: PASS (refresh, 23 assertions)
+  INFO qml: Update action owner native tests: PASS (install, 23 assertions)
+  INFO qml: Update action owner native tests: PASS (rejected, 22 assertions)
+  INFO qml: Update action owner native tests: PASS (denied, 23 assertions)
+  INFO qml: Update action owner native tests: PASS (uncertain, 29 assertions)
+  INFO qml: Update action owner native tests: PASS (wrong-exit, 33 assertions)
+  INFO qml: Update action owner native tests: PASS (revoked, 25 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-accepted, 32 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-race, 32 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-denied, 32 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-conflict, 33 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-output, 32 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-error-overflow, 32 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-timeout, 32 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-recovery, 34 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-recovery-denied, 34 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-recovery-failure, 28 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-uncertain-recover, 38 assertions)
+  INFO qml: Update action owner native tests: PASS (cancel-pending-snapshot, 34 assertions)
+  INFO qml: Update action owner native tests: PASS (failed-start, 22 assertions)
+  INFO qml: Operation owner native tests: PASS (107 assertions)
+  INFO qml: Operation owner native tests: PASS (9 assertions)
+  INFO qml: Operation owner native tests: PASS (4 assertions)
+  INFO qml: Operation owner native tests: PASS (4 assertions)
+  INFO qml: Operation owner native tests: PASS (4 assertions)
+  INFO qml: Operation handoff native tests: PASS (16 assertions)
+Quickshell system-management Xvfb lifecycle: PASS
+A connection to the bus can't be made
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Settings capability provider and shell contract: PASS
+No running instances for "/home/titus/tmp/dwm-titus-tests.u91KVX/tmp.YIuyV21HTT/profile-model/shell.qml"
+  INFO: Launching config: "/home/titus/tmp/dwm-titus-tests.u91KVX/tmp.YIuyV21HTT/profile-model/shell.qml"
+  INFO: Shell ID: "35a4a8c149410eb6c94e8efa80a4e395" Path ID "35a4a8c149410eb6c94e8efa80a4e395"
+  INFO: Saving logs to "/run/user/1000/quickshell/by-id/nbsr1weg6lt/log.qslog"
+  INFO: Configuration Loaded
+dwm-settings-input: device is disconnected or unavailable: 0000000000000000
+dwm-settings-input: skipped unavailable 0000000000000000/pointer-speed
+dwm-settings-input: device is disconnected or unavailable: 0000000000000000
+dwm-settings-input: skipped unavailable 0000000000000000/pointer-speed
+Settings input discovery, stable IDs, preview, rollback, and persistence: PASS
+.............
+----------------------------------------------------------------------
+Ran 13 tests in 0.021s
+
+OK
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Appearance provider contract: PASS
+Appearance inventory contract: PASS
+font configuration is too large: /home/titus/tmp/dwm-titus-tests.u91KVX/fixture/config/dwm-titus/font.conf
+dwm-settings-font tests passed
+dwm-settings-personalization tests: PASS
+Wallpaper settings helper: PASS
+theme-apply: applied theme 'dracula'
+dwm settings theme tests passed
+xsettingsd: Loaded fixture from /home/titus/tmp/dwm-titus-tests.u91KVX/tmp.OZyKYe7jpT/home/.config/dwm-titus/xsettingsd.conf
+xsettingsd: Loaded fixture from /home/titus/tmp/dwm-titus-tests.u91KVX/tmp.OZyKYe7jpT/external.conf
+dwm XSETTINGS lifecycle tests: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell network helper: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Quickshell connectivity contract: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Gear Lever setup: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+install-herdr tests: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+dwm-lock fallback behavior: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+dwm-titus: managed X11 text scaling is unavailable
+dwm-titus: managed X11 text scaling is unavailable
+Autostart duplicate and missing-optional command guards: PASS
+Autostop graphical target and login session cleanup: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+dwm-titus: removed legacy graphical-session early-start link
+dwm-titus: removed legacy graphical-session early-start link
+dwm-titus: removed legacy graphical-session unit
+dwm-titus: removed legacy graphical-session early-start link
+dwm-titus: warning: preserving customized /home/titus/tmp/dwm-titus-tests.u91KVX/tmp.jSsUOJ9K0I/home/.config/systemd/user/dwm-graphical-session.service after disabling early startup
+Graphical-session migration: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Legacy ChatGPT web-app compatibility: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+maim JPEG files, active monitor, and PNG clipboard capture: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Release helper preflight and remote-write ordering: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+
+Checking kickstart file dwm-fedora.ks
+
+
+Checking kickstart file dwm-fedora-nvidia.ks
+
+Kickstart variants: PASS
+make[2]: Entering directory '/home/titus/github/dwm-titus'
+Fedora ISO builder: PASS
+make[2]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Retaining installed Power Profiles provider (ppd-service); skipping power-profiles-daemon.
+Fedora required, desktop, and image package map: PASS (73 packages)
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+make[2]: Entering directory '/home/titus/github/dwm-titus'
+make[3]: Entering directory '/home/titus/github/dwm-titus'
+==> Installing Capitaine cursor themes...
+make[3]: Leaving directory '/home/titus/github/dwm-titus'
+
+==> Installing system files...
+==> Installing scripts to PATH...
+==> Installing privileged helpers...
+make[2]: Leaving directory '/home/titus/github/dwm-titus'
+make[2]: Entering directory '/home/titus/github/dwm-titus'
+make[2]: Leaving directory '/home/titus/github/dwm-titus'
+==> Install manifest and uninstall symmetry validated.
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+make[2]: Entering directory '/home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/repo'
+==> Installing user files for titus...
+  Preserving existing /home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/home/.xinitrc
+==> Syncing local repo to data dir...
+==> Seeding application config without overwriting user files...
+==> Seeding dwm-scoped XDG autostart overrides...
+  Seeded dwm-scoped autostart override: light-locker.desktop
+  Preserving existing /home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/home/.config/autostart/picom.desktop
+  Seeded dwm-scoped autostart override: polkit-mate-authentication-agent-1.desktop
+==> Replacing managed Quickshell config...
+==> Seeding user config (skipping existing files)...
+==> Migrating legacy graphical-session startup...
+dwm-titus: removed legacy graphical-session early-start link
+dwm-titus: removed legacy graphical-session early-start link
+dwm-titus: removed legacy graphical-session unit
+==> Installing Meslo font aliases...
+==> Fixing executable permissions...
+
+  dwm installed successfully.
+  Log out and select 'dwm', or start with: startx
+
+make[2]: Leaving directory '/home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/repo'
+make[2]: Entering directory '/home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/repo'
+==> Installing user files for titus...
+  Preserving existing /home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/home/.xinitrc
+==> Syncing local repo to data dir...
+==> Seeding application config without overwriting user files...
+==> Seeding dwm-scoped XDG autostart overrides...
+  Preserving existing /home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/home/.config/autostart/light-locker.desktop
+  Preserving existing /home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/home/.config/autostart/picom.desktop
+  Preserving existing /home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/home/.config/autostart/polkit-mate-authentication-agent-1.desktop
+==> Replacing managed Quickshell config...
+==> Seeding user config (skipping existing files)...
+==> Migrating legacy graphical-session startup...
+==> Installing Meslo font aliases...
+  Preserving existing Meslo font alias file.
+==> Fixing executable permissions...
+
+  dwm installed successfully.
+  Log out and select 'dwm', or start with: startx
+
+make[2]: Leaving directory '/home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/repo'
+make[2]: Entering directory '/home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/repo'
+==> Installing user files for titus...
+==> Syncing local repo to data dir...
+==> Seeding application config without overwriting user files...
+==> Seeding dwm-scoped XDG autostart overrides...
+==> Replacing managed Quickshell config...
+==> Seeding user config (skipping existing files)...
+==> Migrating legacy graphical-session startup...
+==> Installing Meslo font aliases...
+==> Fixing executable permissions...
+
+  dwm installed successfully.
+  Log out and select 'dwm', or start with: startx
+
+make[2]: Leaving directory '/home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/repo'
+  Seeded dwm-scoped autostart override: light-locker.desktop
+Warning: could not scope invalid autostart entry: /home/titus/tmp/dwm-titus-tests.u91KVX/tmp.0iTKjCWrsV/empty-etc-xdg/autostart/polkit-mate-authentication-agent-1.desktop
+Repeated install preservation: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+Managed test workspace: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+LightDM config rendering: PASS
+make[1]: Leaving directory '/home/titus/github/dwm-titus'
+make[1]: Entering directory '/home/titus/github/dwm-titus'
+make[2]: Entering directory '/home/titus/github/dwm-titus'
+==> Created release/dwm-titus-0.7.0.tar.gz
+make[2]: Leaving directory '/home/titus/github/dwm-titus'
+make[2]: Entering directory '/home/titus/github/dwm-titus'
+==> Created release/dwm-titus-0.7.0.tar.gz
+make[2]: Leaving directory '/home/titus/github/dwm-titus'
+==> Release archive validated.
+make[1]: Leaving directory '/home/titus/github/dwm-titus'

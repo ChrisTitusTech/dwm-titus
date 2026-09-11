@@ -1,0 +1,17 @@
+[sudo] password for p7tester: Existing text default preserved; new AppImage association is additive and expected
+interrupted_status=143
+/usr/local/bin/dwm: OK
+.xinitrc: OK
+.config/dwm-titus/hotkeys.toml: OK
+.config/dwm-titus/themes.toml: OK
+.config/dwm-titus/window-rules.toml: OK
+.config/autostart/p7-user.desktop: OK
+.local/share/applications/p7-user.desktop: OK
+config.h: OK
+.xinitrc: OK
+.config/dwm-titus/hotkeys.toml: OK
+.config/dwm-titus/themes.toml: OK
+.config/dwm-titus/window-rules.toml: OK
+.config/autostart/p7-user.desktop: OK
+.local/share/applications/p7-user.desktop: OK
+INSTALL REPEAT MIGRATION INTERRUPTION RESTORE PASS

@@ -1,0 +1,12 @@
+==> Test workspace: /home/titus/tmp/dwm-titus-tests.l57hsl
+dwm-titus: managed X11 text scaling is unavailable
+dwm-titus: managed X11 text scaling is unavailable
+Autostart duplicate and missing-optional command guards: PASS
+Autostop graphical target and login session cleanup: PASS
+dwm-titus: removed legacy graphical-session early-start link
+dwm-titus: removed legacy graphical-session early-start link
+dwm-titus: removed legacy graphical-session unit
+dwm-titus: removed legacy graphical-session early-start link
+dwm-titus: warning: preserving customized /home/titus/tmp/dwm-titus-tests.l57hsl/tmp.yhi4hhjSoF/home/.config/systemd/user/dwm-graphical-session.service after disabling early startup
+Graphical-session migration: PASS
+dwm XDG autostart helper tests passed

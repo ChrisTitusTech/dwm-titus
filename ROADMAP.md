@@ -57,7 +57,7 @@ product roadmap.
   PR #163.
 - UI-5, optional X11-native experiences: candidate review complete in Phase 5
   with no adopted runtime experience.
-- UI-6, whole-shell integration hardening: planned for Phase 7 image and
+- UI-6, whole-shell integration hardening: completed with Phase 7 image and
   release qualification, with no major features.
 
 ### Integrated Boundaries
@@ -79,9 +79,9 @@ UI-1 is the merged foundation. UI-2 and UI-3 were parallel children and are
 now unified on `main`. `P3-UI4` established the shared large-surface language
 used by the completed Phase 3 provider work and the later power, defaults,
 personalization, accessibility, and system-management phases. Phases 3 through
-6 are complete and product Phase 7 is queued. The UI-5 review adopted no
+7 are complete with the qualification limits recorded below. The UI-5 review adopted no
 runtime experience; any future reopening requires a new roadmap decision and
-an independent review boundary. UI-6 closes the desktop during Phase 7 release
+an independent review boundary. UI-6 closed the desktop during Phase 7 release
 qualification.
 
 ### UI Overhaul Exit Criteria
@@ -385,11 +385,14 @@ without turning Quickshell into an unrestricted administration console.
   distinguishes real signed-package guest updates, graphical authorization-only
   cancellation, fixture-qualified recovery and untested hardware/service paths.
 - Advanced disk, encryption, firewall, service and broad reset changes remain
-  outside the native control contract. Phase 7 image work has not started.
+  outside the native control contract. Phase 7 results are recorded below.
 
 ## Phase 7: Fedora Image and Release Qualification
 
-Status: Queued
+Status: Complete with explicit qualification limits, 2026-09-11. See
+`docs/P7-QUALIFICATION.md` for the passing software/image matrix, failed QEMU
+S3 resume and untested physical hardware. Merge, tag and release publication
+remain separate actions.
 
 ### Objective
 

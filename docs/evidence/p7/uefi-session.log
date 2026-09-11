@@ -1,0 +1,47 @@
+1343 /usr/local/bin/dwm
+1791 /bin/sh /home/p7tester/.local/share/dwm-titus/scripts/dwm-quickshell-controls bluetooth-status
+1797 /bin/sh /home/p7tester/.local/share/dwm-titus/scripts/dwm-quickshell-controls bluetooth-status
+1826 /bin/sh /usr/local/bin/dwm-quickshell-state watch
+2128 /bin/sh /usr/local/bin/dwm-quickshell-state watch
+2129 /bin/sh /usr/local/bin/dwm-quickshell-state watch
+7028 /bin/sh /usr/local/bin/dwm-lock-watch
+7038 /bin/sh /usr/local/bin/dwm-lock-watch
+7060 /bin/sh /usr/local/bin/dwm-quickshell-network monitor
+7071 /bin/sh /usr/local/bin/dwm-quickshell-network monitor
+7217 /bin/sh /home/p7tester/.local/share/dwm-titus/scripts/dwm-quickshell-controls media-watch
+7224 /bin/sh /home/p7tester/.local/share/dwm-titus/scripts/dwm-quickshell-controls media-watch
+1712 quickshell --path /home/p7tester/.config/quickshell/shell.qml --no-duplicate
+1791 /bin/sh /home/p7tester/.local/share/dwm-titus/scripts/dwm-quickshell-controls bluetooth-status
+1797 /bin/sh /home/p7tester/.local/share/dwm-titus/scripts/dwm-quickshell-controls bluetooth-status
+1826 /bin/sh /usr/local/bin/dwm-quickshell-state watch
+2128 /bin/sh /usr/local/bin/dwm-quickshell-state watch
+2129 /bin/sh /usr/local/bin/dwm-quickshell-state watch
+7060 /bin/sh /usr/local/bin/dwm-quickshell-network monitor
+7071 /bin/sh /usr/local/bin/dwm-quickshell-network monitor
+7217 /bin/sh /home/p7tester/.local/share/dwm-titus/scripts/dwm-quickshell-controls media-watch
+7224 /bin/sh /home/p7tester/.local/share/dwm-titus/scripts/dwm-quickshell-controls media-watch
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+temporary-sudoers-absent
+MesloLGSNerdFontMono-Regular.ttf: "MesloLGS Nerd Font Mono" "Regular"
+
+Gear Lever - Manage AppImages
+
+            ID: it.mijorus.gearlever
+           Ref: app/it.mijorus.gearlever/x86_64/stable
+          Arch: x86_64
+        Branch: stable
+       Version: 4.6.2
+       License: GPL-3.0-or-later
+        Origin: flathub
+    Collection: org.flathub.Stable
+  Installation: user
+Installed Size: 26.5 MB
+       Runtime: org.gnome.Platform/x86_64/50
+           Sdk: org.gnome.Sdk/x86_64/50
+
+        Commit: 3cb51600bc734bd87fb498663b57bfb02530610aeeffe13804a8bbb6c805d3cc
+        Parent: 976b901e369666a63a6e73967cc33cc0b998d709b216103cb940629958edd555
+       Subject: Merge pull request #159 from flathub/mijorus-patch-1 (dbf0765004fe)
+          Date: 2026-07-22 19:31:24 +0000

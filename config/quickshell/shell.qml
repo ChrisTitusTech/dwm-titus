@@ -1050,7 +1050,7 @@ ShellRoot {
         }
 
         function open(): void {
-            settingsModel.open();
+            settingsModel.openOnScreen(dwmState.focusedScreen());
         }
 
         function refresh(): void {
@@ -1066,7 +1066,8 @@ ShellRoot {
         }
 
         function toggle(): void {
-            settingsModel.toggle();
+            if (settingsModel.visible) settingsModel.close();
+            else settingsModel.openOnScreen(dwmState.focusedScreen());
         }
     }
 

@@ -1,0 +1,11 @@
+akmod-nvidia-610.57.04-1.fc44.x86_64
+xorg-x11-drv-nvidia-610.57.04-1.fc44.x86_64
+kernel-devel-6.19.10-300.fc44.x86_64
+610.57.04
+BOOT_IMAGE=(hd0,gpt2)/vmlinuz-6.19.10-300.fc44.x86_64 root=/dev/mapper/fedora-root ro rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1 rd.lvm.lv=fedora/root rhgb quiet selinux=0
+00:00.0 Host bridge [0600]: Intel Corporation 82G33/G31/P35/P31 Express DRAM Controller [8086:29c0]
+00:01.0 VGA compatible controller [0300]: Red Hat, Inc. Virtio 1.0 GPU [1af4:1050] (rev 01)
+00:02.0 Ethernet controller [0200]: Red Hat, Inc. Virtio network device [1af4:1000]
+00:03.0 USB controller [0c03]: Red Hat, Inc. QEMU XHCI Host Controller [1b36:000d] (rev 01)
+00:04.0 SCSI storage controller [0100]: Red Hat, Inc. Virtio block device [1af4:1001]
+00:1f.0 ISA bridge [0601]: Intel Corporation 82801IB (ICH9) LPC Interface Controller [8086:2918] (rev 02)

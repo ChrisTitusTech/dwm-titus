@@ -196,6 +196,104 @@ its `terminal` variable to `dwm-terminal`, set it to `alacritty` to adopt the
 current direct-terminal default. The installer does not overwrite that
 user-owned choice.
 
+## Source Updates and Recovery
+
+Before a source update, save the current checkout and user configuration. Run
+this from the checkout as your regular user in Bash, with desktop settings
+closed so they cannot change during the backup:
+
+```bash
+repo_dir=$(pwd -P)
+backup_dir=$(mktemp -d "$HOME/dwm-titus-backup.XXXXXX") || exit 1
+chmod 700 "$backup_dir" || exit 1
+tar -C "$repo_dir" -cpf "$backup_dir/source.tar" . || exit 1
+printf 'export XDG_CONFIG_HOME=%q\nexport XDG_DATA_HOME=%q\n' \
+    "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" \
+    >"$backup_dir/xdg.env"
+python3 - "$repo_dir/config.h" "${XDG_CONFIG_HOME:-$HOME/.config}" \
+    "$HOME/.xinitrc" "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
+    >"$backup_dir/user-paths.nul" <<'PYTHON' || exit 1
+import os
+import sys
+
+pending = [os.path.abspath(p) for p in sys.argv[1:] if os.path.lexists(p)]
+seen = set()
+while pending:
+    original = pending.pop()
+    # Canonicalize parents, retaining a final symlink as its own archive entry.
+    path = os.path.join(os.path.realpath(os.path.dirname(original)), os.path.basename(original))
+    if path in seen:
+        continue
+    seen.add(path)
+    if os.path.islink(path):
+        target = os.path.realpath(path)
+        if not os.path.exists(target) or not os.access(target, os.W_OK):
+            sys.exit("Back up this missing or read-only link target separately: " + path)
+        pending.append(target)
+    elif os.path.isdir(path):
+        pending.extend(entry.path for entry in os.scandir(path))
+for path in sorted(seen):
+    sys.stdout.buffer.write(os.fsencode(path.lstrip("/")) + b"\0")
+PYTHON
+tar -C / --null --no-recursion -cpf "$backup_dir/user.tar" \
+    -T "$backup_dir/user-paths.nul" || exit 1
+printf 'Recovery backup: %s\n' "$backup_dir"
+```
+
+The source archive includes your `config.h` and Git state. Keep the backup
+private: application configuration can contain credentials. This backs up
+source and configuration, not Fedora packages or all personal data. The user
+archive records the effective XDG paths, symlink layout, and the contents of
+referenced writable targets, including dotfiles outside the checkout. A missing
+or read-only link target stops the recipe; resolve it or back it up separately
+before updating. Keep the XDG parent-directory layout unchanged during recovery.
+
+For a clean tracked checkout, update and synchronize the installed files:
+
+```bash
+git status --short
+git pull --ff-only || exit 1
+./install.sh --non-interactive --yes --profile recommended || exit 1
+./scripts/dev-sync-install.sh
+```
+
+Resolve local source changes before pulling. The installer preserves existing
+user TOML files, `config.h`, `.xinitrc`, and application configuration. It
+replaces the managed Quickshell directory to match the installed helpers.
+Log out and select dwm again, then run:
+
+```bash
+./scripts/dev-sync-install.sh --check
+dwm-diagnostics
+```
+
+If an update is interrupted, retain its log and rerun the same installer and
+synchronization commands after fixing the reported cause. Do not interrupt an
+active RPM transaction as a recovery technique. If the desktop is unusable,
+switch to a TTY with Ctrl+Alt+F3 and log in as the same user.
+
+To restore a backup, set `backup_dir` to the exact path printed above. Close the
+desktop session first. The following restores the saved configuration and link targets over their
+recorded paths and builds the saved source in a separate directory, leaving the
+failed checkout available for inspection:
+
+```bash
+test -f "$backup_dir/source.tar" && test -f "$backup_dir/user.tar" || exit 1
+restore_dir=$(mktemp -d "$HOME/dwm-titus-restored.XXXXXX") || exit 1
+tar -C "$restore_dir" -xpf "$backup_dir/source.tar" || exit 1
+tar -C / --keep-directory-symlink -xpf "$backup_dir/user.tar" || exit 1
+source "$backup_dir/xdg.env"
+cd "$restore_dir" || exit 1
+./install.sh --non-interactive --yes --profile recommended || exit 1
+./scripts/dev-sync-install.sh
+```
+
+Log in again and run `./scripts/dev-sync-install.sh --check` from the restored
+checkout. Keep both directories until runtime verification passes. This
+procedure does not downgrade RPMs, remove files created after the backup, or
+undo external service and firmware changes. Package update recovery is a
+separate operation in Settings; follow its recorded transaction guidance.
+
 ## Starting dwm
 
 **Display manager** (SDDM, GDM, LightDM): log out and select **dwm** from the session list.

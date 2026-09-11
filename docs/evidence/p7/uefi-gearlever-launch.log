@@ -1,0 +1,8 @@
+installer-sudoers-absent
+1
+8953 bash -c test ! -e /etc/sudoers.d/90-dwm-titus-install && echo installer-sudoers-absent; pgrep -x quickshell | wc -l; DISPLAY=:0 flatpak run it.mijorus.gearlever > /tmp/p7-gearlever.log 2>&1 & sleep 3; pgrep -af "gearlever|Gearlever"; cat /tmp/p7-gearlever.log
+8997 /usr/bin/bwrap --args 72 -- gearlever
+9028 /usr/bin/bwrap --args 72 -- gearlever
+9030 /usr/bin/python3 /app/bin/gearlever
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering

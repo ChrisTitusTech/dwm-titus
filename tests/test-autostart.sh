@@ -493,8 +493,9 @@ run_duplicate_case() {
 	test ! -e "$state/dex-autostart.count"
 	awk '
 		/--user import-environment/ && !imported { imported = NR }
+		/--user daemon-reload/ && !reloaded { reloaded = NR }
 		/--user start wm-graphical-session.service/ && !started { started = NR }
-		END { exit !(imported && started && imported < started) }
+		END { exit !(imported && reloaded && started && imported < reloaded && reloaded < started) }
 	' "$state/systemctl.log"
 	awk -F '\t' '
 		index(":" $1 ":", ":X-DWM:") && index(":" $1 ":", ":dwm:") { found = 1 }

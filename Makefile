@@ -498,6 +498,10 @@ check-phase5-optional-components:
 
 check-quickshell-settings-xvfb: all
 	tests/test-quickshell-settings-xvfb.sh
+	DWM_SETTINGS_TEST_SCREEN_GEOMETRY=1024x768x24 \
+		DWM_SETTINGS_EXPECTED_WINDOW_WIDTH=992 DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT=736 \
+		DWM_SETTINGS_GEOMETRY_ONLY=1 DWM_SETTINGS_POWER_CPU_SECONDS=0 \
+		tests/test-quickshell-settings-xvfb.sh
 
 check-lightdm-config:
 	tests/test-lightdm-config.sh

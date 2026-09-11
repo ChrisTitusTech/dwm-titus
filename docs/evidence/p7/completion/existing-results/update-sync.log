@@ -1,0 +1,8 @@
+==> Building current checkout
+make: Entering directory '/home/p7tester/baseline'
+make: Leaving directory '/home/p7tester/baseline'
+make: Entering directory '/home/p7tester/baseline'
+make: Leaving directory '/home/p7tester/baseline'
+All managed files match the checkout.
+==> Live installation is already current
+Runtime validation deferred: DISPLAY is unavailable.

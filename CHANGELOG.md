@@ -6,7 +6,26 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-10
+
 ### Changed
+
+- Keep Settings within the focused screen when opened through IPC, including
+  smaller displays. Refresh generated user autostart entries before starting
+  the graphical session so newly installed exclusions take effect.
+- Document source/configuration backup, interrupted-update retry and restoration,
+  including custom XDG locations and symlink targets.
+
+- Complete Phase 7 software/image qualification with signed Fedora 44 source verification
+  and an explicit VM/hardware evidence matrix, existing-system recovery and
+  integrated desktop validation. Record failed QEMU S3 resume and untested
+  physical hardware without claiming driver or device qualification. Restore the rebuilt installer
+  media checksum so the default media-test boot entry can continue, and patch
+  both BIOS and UEFI menus so either firmware path loads the desktop Kickstart.
+- Provision images with the recommended desktop profile so Meslo icons and
+  Gear Lever are installed. Isolate provisioning D-Bus from the installer's
+  AccountsService, and clean temporary sudoers authorization on post failure
+  or interruption.
 
 - Wait for acknowledged notification-policy persistence in the native restart
   test, with delayed-write coverage to prevent timing-dependent CI failures.
@@ -695,5 +714,6 @@ versions from `config.mk`.
 - Prevent nested dwm/Xvfb instances from terminating the active graphical login
   by verifying the logind display and isolating `XDG_DATA_HOME` in runtime tests.
 
-[Unreleased]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.5.2...v0.6.1

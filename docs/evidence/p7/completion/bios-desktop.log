@@ -1,0 +1,154 @@
+6.19.10-300.fc44.x86_64
+firmware=BIOS
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+active
+active
+Disabled
+quickshell-process-count=1
+1681 quickshell --path /home/p7tester/.config/quickshell/shell.qml --no-duplicate
+MesloLGSNerdFontMono-Regular.ttf: "MesloLGS Nerd Font Mono" "Regular"
+
+Gear Lever - Manage AppImages
+
+            ID: it.mijorus.gearlever
+           Ref: app/it.mijorus.gearlever/x86_64/stable
+          Arch: x86_64
+        Branch: stable
+       Version: 4.6.2
+       License: GPL-3.0-or-later
+        Origin: flathub
+    Collection: org.flathub.Stable
+  Installation: user
+Installed Size: 26.5 MB
+       Runtime: org.gnome.Platform/x86_64/50
+           Sdk: org.gnome.Sdk/x86_64/50
+
+        Commit: 3cb51600bc734bd87fb498663b57bfb02530610aeeffe13804a8bbb6c805d3cc
+        Parent: 976b901e369666a63a6e73967cc33cc0b998d709b216103cb940629958edd555
+       Subject: Merge pull request #159 from flathub/mijorus-patch-1 (dbf0765004fe)
+          Date: 2026-07-22 19:31:24 +0000
+_NET_SUPPORTING_WM_CHECK(WINDOW): window id # 0x40001f
+_NET_CURRENT_DESKTOP(CARDINAL) = 0
+Screen 0: minimum 320 x 200, current 1280 x 800, maximum 8192 x 8192
+Virtual-1 connected primary 1280x800+0+0 (normal left inverted right x axis y axis) 325mm x 203mm
+   1280x800      74.99*+
+   5120x2160     50.00
+   4096x2160     50.00
+   3840x2160     60.00    50.00    59.94
+   1920x1440     60.00
+   2560x1080     50.00
+   1856x1392     60.00
+   1792x1344     60.00
+   2048x1152     60.00
+   1920x1200     59.88
+   1920x1080     60.00    50.00
+   1600x1200     60.00
+   1680x1050     59.95
+   1400x1050     59.98
+   1280x1024     60.02
+   1440x900      59.89
+   1280x960      60.00
+   1360x768      60.02
+   1280x768      59.87
+   1024x768      60.00
+   800x600       60.32
+   640x480       60.00    59.94
+enp0s2:ethernet:connected
+lo:loopback:connected (externally)
+PipeWire 'pipewire-0' [1.6.2, p7tester@fedora, cookie:2962006437]
+ └─ Clients:
+        32. quickshell                          [1.6.2, p7tester@fedora, pid:1681]
+        33. WirePlumber                         [1.6.2, p7tester@fedora, pid:1711]
+        41. WirePlumber [export]                [1.6.2, p7tester@fedora, pid:1711]
+        48. pipewire                            [1.6.2, p7tester@fedora, pid:1830]
+        50. Blueman                             [1.6.2, p7tester@fedora, pid:2670]
+        51. xdg-desktop-portal                  [1.6.2, p7tester@fedora, pid:3710]
+        56. pactl                               [1.6.2, p7tester@fedora, pid:5357]
+        57. wpctl                               [1.6.2, p7tester@fedora, pid:8228]
+
+Audio
+ ├─ Devices:
+ │
+ ├─ Sinks:
+ │  *   49. Dummy Output                        [vol: 1.00]
+ │
+ ├─ Sources:
+ │
+ ├─ Filters:
+ │
+ └─ Streams:
+
+Video
+ ├─ Devices:
+ │
+ ├─ Sinks:
+ │
+ ├─ Sources:
+ │
+ ├─ Filters:
+ │
+ └─ Streams:
+
+Settings
+ └─ Default Configured Devices:
+ready
+1
+0
+closed-launcher-consumers=0
+closed-launcher-index=0
+Phase 7 qualification
+0
+closed-surfaces CPU over 30s: 0.033%
+dwm-titus diagnostics
+
+Required
+  ok      cc
+  ok      make
+  ok      pkg-config
+  ok      pkg-config:x11
+  ok      pkg-config:xft
+  ok      pkg-config:xinerama
+  ok      pkg-config:xrender
+  ok      pkg-config:imlib2
+  ok      pkg-config:x11-xcb
+  ok      pkg-config:xcb
+  ok      pkg-config:xcb-res
+  ok      X11 server (Xorg)
+  ok      startx
+  ok      xrandr
+  ok      xset
+  ok      xsetroot
+  ok      xclip
+  ok      xdotool
+  ok      terminal (alacritty)
+
+Optional desktop
+  ok      quickshell
+  ok      picom
+  ok      feh
+  ok      maim
+  ok      xdg-open
+  ok      notify-send
+  ok      amixer
+  ok      brightnessctl
+  ok      light-locker
+  ok      gsettings
+  ok      xprop
+  degraded Herdr workspace
+  ok      blueman-applet
+  ok      XDG autostart runner (dex-autostart)
+  ok      audio control (pactl)
+  ok      /home/p7tester/.xinitrc
+  ok      /home/p7tester/.config/quickshell/shell.qml
+
+Summary
+  required_failures=0
+  optional_degraded=1
+
+Optional desktop features are degraded, but core dwm should remain usable.
+DESKTOP CHECK PASS

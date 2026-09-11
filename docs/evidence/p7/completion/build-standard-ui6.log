@@ -1,0 +1,53 @@
+xorriso 1.5.8.pl02 : RockRidge filesystem manipulator, libburnia project.
+
+xorriso : NOTE : ISO image bears MBR with  -boot_image any partition_offset=16
+xorriso : NOTE : Loading ISO image tree from LBA 0
+xorriso : UPDATE :     329 nodes read in 1 seconds
+libisofs: NOTE : Found hidden El-Torito image for EFI.
+libisofs: NOTE : EFI image start and load size: 593011 * 2048 , 26480 * 512
+libisofs: NOTE : Roughly estimated EFI image size: 13557760 bytes
+xorriso : NOTE : Detected El-Torito boot information which currently is set to be discarded
+Drive current: -indev '/home/titus/tmp/dwm-p7-20260910/media/Fedora-Server-netinst-x86_64-44-1.7.iso'
+Media current: stdio file, overwriteable
+Media status : is written , is appendable
+Boot record  : El Torito , MBR protective-msdos-label grub2-mbr cyl-align-off GPT
+Media summary: 1 session, 599797 data blocks, 1171m data,  566g free
+Volume id    : 'Fedora-S-dvd-x86_64-44'
+Drive current: -outdev '/home/titus/tmp/dwm-p7-finish/.dwm-titus-standard-ui6.iso.tmp.YGIomL'
+Media current: stdio file, overwriteable
+Media status : is blank
+Media summary: 0 sessions, 0 data blocks, 0 data,  566g free
+xorriso : WARNING : -volid text does not comply to ISO 9660 / ECMA 119 rules
+xorriso : NOTE : Replayed 20 boot related commands
+xorriso : UPDATE :       1 files added in 1 seconds
+Added to ISO image: file '/dwm-fedora.ks'='/home/titus/tmp/dwm-p7-finish/staging/source/dwm-fedora.ks'
+xorriso : UPDATE :       1 files added in 1 seconds
+Added to ISO image: file '/EFI/BOOT/grub.cfg'='/home/titus/tmp/dwm-p7-finish/staging/tmp.iEJ6jW2A3S/_EFI_BOOT_grub.cfg.patched'
+xorriso : UPDATE :       1 files added in 1 seconds
+Added to ISO image: file '/boot/grub2/grub.cfg'='/home/titus/tmp/dwm-p7-finish/staging/tmp.iEJ6jW2A3S/_boot_grub2_grub.cfg.patched'
+xorriso : UPDATE :     799 files added in 1 seconds
+Added to ISO image: directory '/dwm-titus'='/home/titus/tmp/dwm-p7-finish/staging/tmp.iEJ6jW2A3S/dwm-titus'
+xorriso : UPDATE :       1 files added in 1 seconds
+Added to ISO image: file '/images/product.img'='/home/titus/tmp/dwm-p7-finish/staging/tmp.iEJ6jW2A3S/product.img'
+xorriso : NOTE : Copying to System Area: 32768 bytes from file '--interval:imported_iso:0s-15s:zero_mbrpt,zero_gpt:/home/titus/tmp/dwm-p7-20260910/media/Fedora-Server-netinst-x86_64-44-1.7.iso'
+xorriso : UPDATE : Writing:      20495s    3.3%   fifo   0%  buf  50%
+xorriso : UPDATE : Writing:      85743s   14.0%   fifo   0%  buf  50%  321.3xD
+xorriso : UPDATE : Writing:     269359s   44.0%   fifo   0%  buf  50%  271.3xD
+xorriso : UPDATE : Writing:     415535s   67.9%   fifo   0%  buf  50%  216.0xD
+xorriso : UPDATE : Writing:     581632s   95.1%   fifo  21%  buf  50%  245.4xD
+ISO image produced: 611675 sectors
+Written to medium : 611856 sectors at LBA 48
+Writing to '/home/titus/tmp/dwm-p7-finish/.dwm-titus-standard-ui6.iso.tmp.YGIomL' completed successfully.
+
+Inserting md5sum into iso image...
+md5 = 5ae82a7f3fa85416d49a3404b47c1a68
+Inserting fragment md5sums into iso image...
+fragmd5 = 8f8e5ddb7233dd915db2fd6546cacaebb8be91425c9bf430a53458cf157b
+frags = 20
+Setting supported flag to 1
+
+The media check is complete, the result is: PASS.
+
+It is OK to use this media.
+Press [Esc] to abort check.
+Created /home/titus/tmp/dwm-p7-finish/dwm-titus-standard-ui6.iso (standard)

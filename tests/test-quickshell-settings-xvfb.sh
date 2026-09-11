@@ -954,6 +954,28 @@ y=$(printf '%s\n' "$geometry" | awk -F= '$1 == "Y" { print $2 }')
 [ "$width" = "$expected_window_width" ]
 [ "$height" = "$expected_window_height" ]
 
+if [ "${DWM_SETTINGS_GEOMETRY_ONLY:-0}" = 1 ]; then
+	# Exercise both IPC entry points on a screen smaller than the preferred size.
+	settings_ipc_retry close >/dev/null
+	settings_ipc_retry toggle >/dev/null
+	i=0
+	while [ "$i" -lt 100 ]; do
+		window=$(DISPLAY=$display xdotool search --onlyvisible --name '^dwm settings$' 2>/dev/null | head -1 || true)
+		[ -n "$window" ] && break
+		i=$((i + 1))
+		sleep 0.05
+	done
+	[ -n "$window" ]
+	geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$window")
+	width=$(printf '%s\n' "$geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
+	height=$(printf '%s\n' "$geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+	[ "$width" = "$expected_window_width" ]
+	[ "$height" = "$expected_window_height" ]
+	settings_ipc_retry close >/dev/null
+	printf 'Settings small-screen IPC geometry: PASS\n'
+	exit 0
+fi
+
 i=0
 while [ "$i" -lt 100 ]; do
 	status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \

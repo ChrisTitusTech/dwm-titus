@@ -1,0 +1,21 @@
+2026-09-10 Phase 7 development qualification
+Base: 8df119c5d995026d9982b44fef281844c0630fc3
+Branch: codex/phase7-qualification (unpublished)
+
+PASS: signed Fedora 44 source manifest and source SHA-256
+PASS: scripts/run-tests (full repository gate)
+PASS: scripts/run-tests make check-xvfb-runtime
+PASS: npm --prefix docs ci; npm --prefix docs run build
+PASS: final affected check-kickstart, check-gearlever-install, check-install-preservation
+PASS: focused ShellCheck and shfmt on all four changed shell files
+PASS: independent Codex review of complete unpublished diff; no actionable findings
+PASS: git diff --check
+PASS: standard and NVIDIA final ISO construction and embedded media checksum
+
+Real standard BIOS/UEFI Anaconda installations completed on earlier -rc media.
+BIOS first-reboot fixture hang required reset; later normal reboot passed.
+UEFI corrected post rerun in installer chroot passed before normal reboot.
+UEFI dwm, one managed Quickshell, Meslo glyphs and Gear Lever launch confirmed.
+Final media clean installations and remaining matrix entries are pending.
+See ../../P7-QUALIFICATION.md for precise coverage and limitations.
+Complete local logs: /home/titus/tmp/dwm-p7-20260910/evidence/

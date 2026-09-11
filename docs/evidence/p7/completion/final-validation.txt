@@ -1,0 +1,11 @@
+Base: origin/main 8df119c5d995026d9982b44fef281844c0630fc3
+Branch: codex/phase7-qualification
+scripts/run-tests: exit 0. Full aggregate log full-gate.log.
+Focused session guards/migration/XDG autostart after correction: exit 0, session-fix-gates.log. Aggregate also completed these final session targets.
+Normal Settings lifecycle and new 1024x768 geometry fixture: PASS in full-gate.log.
+Full Settings tiny-screen exploratory run invalidated by script edit while running; not used as acceptance.
+npm --prefix docs ci and npm --prefix docs run build: exit 0 (prior ci evidence; docs-build-final.log).
+Both latest ISO builds: exit 0, embedded checksum PASS, ui6-images.sha256.
+Review loop 1: two P2 recovery-documentation findings. Fixed custom XDG and symlink content backup; exact recipe probe exit 0.
+Review loop 2: exit 0, no actionable findings. Reviewed full unpublished diff, reused passing evidence, no nested review.
+No PR exists for this work: hosted checks, PR reviews and unresolved threads not applicable. User authorized commit and push; no merge, tag or release.
