@@ -48,13 +48,18 @@ also available from the default installer boot entry.
 
 Follow the [Fedora installation guide](https://github.com/ChrisTitusTech/dwm-titus/blob/v0.7.0/docs/src/content/install.md).
 Before updating an existing source checkout, follow its source backup and
-recovery procedure and resolve local changes. Run the recommended installer to
-add the required desktop packages, then synchronize the installed source:
+recovery procedure and resolve local changes. Fetch and select this exact
+release, then run the recommended installer and synchronize the installed source:
 
 ```sh
+git fetch origin tag v0.7.0
+git switch --detach v0.7.0
 ./install.sh --non-interactive --yes --profile recommended
 ./scripts/dev-sync-install.sh
 ```
+
+Selecting the tag leaves the checkout in detached-HEAD mode. For a later
+release, fetch and select that release tag after backing up again.
 
 Log out, select dwm again, and verify from the updated checkout:
 
