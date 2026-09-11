@@ -48,17 +48,39 @@ For complete requirements and installation details, see the
 
 ### Fedora ISO
 
-Download the latest image:
+Download the **v0.7.0 offline images (2026-09-11)** for Fedora 44 x86_64:
 
-| Image | Download |
-| --- | --- |
-| Standard | [`dwm-titus.iso`](https://github.com/ChrisTitusTech/dwm-titus/releases/latest/download/dwm-titus.iso) |
-| NVIDIA | [`dwm-titus-nvidia.iso`](https://github.com/ChrisTitusTech/dwm-titus/releases/latest/download/dwm-titus-nvidia.iso) |
-| Checksums and release notes | [Latest release](https://github.com/ChrisTitusTech/dwm-titus/releases/latest) |
+| Image | Size | Download |
+| --- | --- | --- |
+| Standard | 3.39 GiB | [Standard ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911.iso) |
+| NVIDIA | 3.96 GiB | [NVIDIA ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911-nvidia.iso) |
+| Verification | | [SHA256SUMS](https://downloads.christitus.com/iso/2026-09-11/SHA256SUMS) and [release notes](https://github.com/ChrisTitusTech/dwm-titus/releases/tag/v0.7.0) |
 
-Use the NVIDIA image only for systems that need the dedicated NVIDIA
-installation path. Write the selected ISO to a USB drive, boot it, complete the
-Fedora installer, and reboot into the `dwm` session.
+Download the checksum file into the same directory as your selected ISO, then run:
+
+```sh
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
+Confirm your ISO reports `OK`. Write it as a disk image to an 8 GB or larger USB
+drive, boot it, choose your disk, locale and administrator account in Anaconda,
+then install and reboot into the `dwm` session. Writing the USB erases its contents;
+review Anaconda's disk changes before starting installation.
+
+Packages are already included in the compressed system image. Installation needs
+no Internet connection or software selection. The images include Quickshell,
+Gear Lever, `maim`, region capture and clipboard tools. Internet access is needed
+later for updates and additional software.
+
+Standard offline installation passed UEFI and BIOS VM tests. The NVIDIA image
+passed UEFI installation and desktop tests with virtual graphics; **physical
+NVIDIA acceleration remains untested**. Secure Boot was off during qualification.
+See the [installation guide](https://dwm.christitus.com/install.html#fedora-iso-recommended-for-a-new-installation)
+and [build qualification](https://downloads.christitus.com/iso/2026-09-11/BUILD-NOTES.md).
+
+The older GitHub-hosted `dwm-titus.iso` and `dwm-titus-nvidia.iso` assets are
+network installers. Use the Cloudflare links above for offline installation.
+For building images, see [compressed-image builds](docs/COMPRESSED-IMAGES.md).
 
 ### Existing System
 

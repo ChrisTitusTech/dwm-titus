@@ -6,6 +6,22 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Changed
+
+- Use verified Cloudflare-hosted compressed ISOs for the primary download and
+  installation guides, with checksums, offline setup steps and hardware limits.
+
+### Fixed
+
+- Exclude `.env`, `.env.*` and `.envrc` at every depth from the ISO source
+  payload, independently of Git ignore rules.
+
+### Added
+
+- Add a compressed filesystem image build path with local Anaconda installation,
+  separate standard/NVIDIA manifests, offline user setup and build-time checks
+  for the desktop package contract, including maim and clipboard dependencies.
+
 ## [0.7.0] - 2026-09-10
 
 ### Changed

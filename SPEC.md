@@ -8,13 +8,15 @@ window rules, a managed Quickshell shell and Settings layer, and supporting
 desktop services and helpers.
 
 The product is a cohesive Fedora desktop installed from the official Fedora
-Server Network Install ISO or onto an existing Fedora installation. Other
+Server installer environment with a prebuilt compressed system image, or onto an
+existing Fedora installation. Factory image builds resolve packages online;
+end-user compressed-image installation must work without network access. Other
 distributions are outside the supported product and validation contract.
 
 ## 2. Goals
 
 - Install a complete, daily-usable Fedora desktop from a minimal network
-  installer base.
+  installer base, with packages and desktop assets prepared at image-build time.
 - Provide one cohesive Settings experience for common display, input,
   connectivity, audio, power, appearance, default-application, update, and
   system-information workflows.
@@ -47,7 +49,8 @@ The primary release target is the Fedora desktop image:
 
 | Target | Current contract |
 | --- | --- |
-| Base media | Fedora 44 Server Network Install ISO |
+| Base media | Fedora 44 Server Network Install ISO as the Anaconda runtime |
+| Installation payload | Prebuilt compressed Fedora root filesystem, installed offline |
 | Session | Xorg with dwm and the managed Quickshell shell |
 | Variants | Standard and explicitly selected NVIDIA image |
 | Initial release architecture | x86_64 |
@@ -693,6 +696,11 @@ In a real or nested X11 session:
 - The ISO builder embeds the checkout and selected Kickstart without dropping
   the upstream boot behavior.
 - The documented Fedora Server Network Install source checksum is verified.
+- Compressed-image installation completes without Internet access or package
+  selection. Required desktop packages, screenshot/clipboard tools, fonts,
+  themes and Gear Lever runtimes are present in the captured filesystem.
+- Capture removes factory accounts, temporary authorization, machine identity
+  and storage state, and retains the boot files needed by both firmware paths.
 - At least the standard image completes Anaconda installation in a VM, reboots,
   reaches LightDM and a usable dwm session, and starts the managed Quickshell
   shell.

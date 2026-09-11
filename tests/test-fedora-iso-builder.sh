@@ -9,15 +9,27 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/bin"
+export DWM_TEST_REAL_RSYNC
+DWM_TEST_REAL_RSYNC=$(command -v rsync)
+export DWM_TEST_PAYLOAD_FIXTURE="$work/payload fixture"
+mkdir -p "$DWM_TEST_PAYLOAD_FIXTURE/nested/deeper"
+printf 'payload\n' >"$DWM_TEST_PAYLOAD_FIXTURE/payload-marker"
+printf 'retained\n' >"$DWM_TEST_PAYLOAD_FIXTURE/nested/deeper/keep.txt"
+for directory in "$DWM_TEST_PAYLOAD_FIXTURE" "$DWM_TEST_PAYLOAD_FIXTURE/nested/deeper"; do
+	for name in .env .env.local .env.production .envrc; do
+		printf 'DUMMY_TOKEN=test-only\n' >"$directory/$name"
+	done
+done
 
 cat >"$work/bin/rsync" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
 printf '%s\n' "$*" >>"$DWM_TEST_RSYNC_LOG"
-dest=${@: -1}
-mkdir -p "$dest"
-printf 'payload\n' >"$dest/payload-marker"
+# Exercise the production filters with real rsync, using only dummy files.
+args=("$@")
+args[$#-2]="$DWM_TEST_PAYLOAD_FIXTURE/"
+"$DWM_TEST_REAL_RSYNC" "${args[@]}"
 SH
 chmod +x "$work/bin/rsync"
 
@@ -47,6 +59,7 @@ grub_map=
 bios_grub_map=
 payload_map=
 product_map=
+rootfs_map=
 
 while (($# > 0)); do
 	case "$1" in
@@ -68,6 +81,7 @@ while (($# > 0)); do
 		/boot/grub2/grub.cfg) bios_grub_map=${2:-} ;;
 		/dwm-titus) payload_map=${2:-} ;;
 		/images/product.img) product_map=${2:-} ;;
+		/images/dwm-rootfs.tar.xz) rootfs_map=${2:-} ;;
 		esac
 		shift 3
 		;;
@@ -93,7 +107,16 @@ fi
 
 if [[ -n $outdev ]]; then
 	[[ -s $product_map ]]
+	[[ -s $payload_map/payload-marker && -s $payload_map/nested/deeper/keep.txt ]]
+	if [[ -n $(find "$payload_map" \( -name '.env' -o -name '.env.*' -o -name '.envrc' \) -print -quit) ]]; then
+		printf 'dotenv file reached ISO payload\n' >&2
+		exit 1
+	fi
 	{
+		if [[ -n $rootfs_map ]]; then
+			[[ -s $rootfs_map ]]
+			cat "$ks_map" >"$DWM_TEST_IMAGE_KS"
+		fi
 		printf 'ks=%s\n' "$ks_map"
 		printf 'grub=%s\n' "$grub_map"
 		printf 'payload=%s\n' "$payload_map"
@@ -174,6 +197,7 @@ run_builder() {
 	grep -F -- "--exclude=*.iso" "$DWM_TEST_RSYNC_LOG" >/dev/null
 }
 
+export DWM_TEST_IMAGE_KS="$work/image.ks"
 export DWM_TEST_XORRISO_LOG="$work/xorriso.log"
 export DWM_TEST_RSYNC_LOG="$work/rsync.log"
 export DWM_TEST_BRANDING="$repo/branding/anaconda"
@@ -259,5 +283,53 @@ if (cd "$work" && python3 "$repo/scripts/generate-sidebar-logo.py" --version 0.7
 fi
 grep -Fq -- '--out-dir requires --series' "$work/bad.err"
 [[ ! -e $work/ignored.png && ! -e $work/ignored && ! -e $work/branding && ! -e $work/sidebar-logo-v0.7.1.png ]]
+
+# Offline payloads must match the variant and verified bytes before ISO creation.
+image="$work/root filesystem.tar.xz"
+printf 'compressed fixture\n' >"$image"
+python3 - "$image" <<'PYTHON'
+import hashlib, json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+m = dict(protocol=1, variant='standard', fedora='44', architecture='x86_64',
+         size=p.stat().st_size, sha256=hashlib.sha256(p.read_bytes()).hexdigest())
+pathlib.Path(str(p) + '.json').write_text(json.dumps(m))
+PYTHON
+run_builder standard "$standard_iso" --system-image "$image"
+grep -Fq 'liveimg --url="file:///run/install/repo/images/dwm-rootfs.tar.xz" --checksum=' "$DWM_TEST_IMAGE_KS"
+if grep -Eq '^(url |repo |%packages)' "$DWM_TEST_IMAGE_KS"; then
+	echo 'Offline installer requests online package selection' >&2
+	exit 1
+fi
+python3 - "$image.json" <<'PYTHON'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1]); m = json.loads(p.read_text())
+m['variant'] = 'nvidia'; p.write_text(json.dumps(m))
+PYTHON
+run_builder nvidia "$nvidia_iso" --system-image "$image"
+grep -Fq 'bootloader --location=mbr --append="rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1"' "$DWM_TEST_IMAGE_KS"
+python3 - "$image.json" <<'PYTHON'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1]); m = json.loads(p.read_text())
+m['variant'] = 'standard'; p.write_text(json.dumps(m))
+PYTHON
+mkdir "$work/invalid-temp"
+for failure in variant checksum manifest; do
+	selected=standard
+	case $failure in
+	variant) selected=nvidia ;;
+	checksum) printf 'tampered\n' >>"$image" ;;
+	manifest) rm "$image.json" ;;
+	esac
+	printf 'previous image\n' >"$standard_iso"
+	if TMPDIR="$work/invalid-temp" PATH="$work/bin:$PATH" \
+		"$repo/scripts/build-dwm-fedora-installer-iso.sh" --input "$input_iso" \
+		--output "$standard_iso" --variant "$selected" --system-image "$image" \
+		>"$work/failed.out" 2>"$work/failed.err"; then
+		echo "Accepted invalid system image: $failure" >&2
+		exit 1
+	fi
+	[[ $(cat "$standard_iso") == 'previous image' ]]
+	[[ -z $(find "$work/invalid-temp" -mindepth 1 -print -quit) ]]
+done
 
 printf 'Fedora ISO builder: PASS\n'

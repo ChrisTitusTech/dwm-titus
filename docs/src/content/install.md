@@ -10,7 +10,76 @@ eyebrow: Start here
 > **dwm-titus is Fedora-only.** Fedora Linux with Xorg is required for every
 > supported installation, package, test, and release path.
 
-## Quick Install (Recommended)
+## Fedora ISO (Recommended for a New Installation)
+
+The v0.7.0 offline images dated 2026-09-11 install a complete Fedora 44 x86_64
+desktop from a compressed system image. Packages are included, so installation
+works without an Internet connection or software selection.
+
+| Image | Size | Download |
+| --- | --- | --- |
+| Standard | 3.39 GiB | [Download standard ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911.iso) |
+| NVIDIA | 3.96 GiB | [Download NVIDIA ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911-nvidia.iso) |
+| Checksums | | [Download SHA256SUMS](https://downloads.christitus.com/iso/2026-09-11/SHA256SUMS) |
+
+Use the standard image unless you need the proprietary NVIDIA driver packages.
+Both include LightDM, dwm, Quickshell, fonts, Gear Lever, and `maim` with region
+capture and clipboard dependencies. Internet access is needed for later updates
+and additional software.
+
+### Verify the Download
+
+Save your selected ISO and `SHA256SUMS` in the same directory. On Linux, run:
+
+```sh
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
+Your selected ISO must report `OK`; do not continue with a mismatch. For a
+resumable standard-image download from the command line:
+
+```sh
+curl --fail --location --continue-at - --remote-name \
+  https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911.iso
+curl --fail --location --remote-name \
+  https://downloads.christitus.com/iso/2026-09-11/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
+For NVIDIA, use the NVIDIA ISO link from the table with the same checksum file.
+
+### Install from USB
+
+1. Write the ISO as a disk image to an **8 GB or larger USB drive** using a USB
+   image writer. This erases the USB drive; copying the ISO file onto it is not
+   the same as writing the image.
+2. Boot the USB and use the default media-test/install entry. Qualification used
+   Secure Boot disabled; Secure Boot support is not verified.
+3. Select your language and keyboard, time zone, installation disk and partition
+   layout. Create your user account and select administrator access.
+4. Review the proposed disk changes and choose **Begin Installation**. The
+   compressed image provides the package set; there is no installation-source
+   or software-selection step and no network connection is required.
+5. Once installation finishes, reboot and remove the USB. Log in through LightDM
+   using the **dwm** session. The desktop is already installed; you do not need to
+   run the existing-system installer below.
+
+`Super` is usually the Windows key. Open a terminal with `Super+X`, take a full
+screenshot with `Super+P`, select a region with `Super+Shift+P`, or copy a region
+to the clipboard with `Super+Ctrl+P`.
+
+Standard installation and first desktop login passed offline UEFI and BIOS VM
+checks. The NVIDIA image passed offline UEFI and desktop checks using virtual
+graphics. **Physical NVIDIA acceleration remains untested**; its persistence
+service cannot run in a VM without an NVIDIA device. See the
+[build notes and qualification limits](https://downloads.christitus.com/iso/2026-09-11/BUILD-NOTES.md),
+[package/build manifest](https://downloads.christitus.com/iso/2026-09-11/BUILD-MANIFEST.json), and
+[v0.7.0 release notes](https://github.com/ChrisTitusTech/dwm-titus/releases/tag/v0.7.0).
+The older ISO files attached directly to that GitHub release still require
+network package installation; use the Cloudflare downloads above for offline
+installation.
+
+## Existing Fedora System: Quick Install
 
 The easiest way is via [Linutil](https://christitus.com/linux):
 

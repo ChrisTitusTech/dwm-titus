@@ -47,6 +47,11 @@ of `config.h` and object files.
 
 ## Fedora installer ISOs
 
+For the compressed filesystem build and offline qualification workflow, see
+[COMPRESSED-IMAGES.md](COMPRESSED-IMAGES.md). The v0.7.0 release now links the verified Cloudflare-hosted offline images.
+The original GitHub-attached ISO assets use the network package installation
+path described below.
+
 Track Phase 7 procedures, evidence and qualification limits in
 [P7-QUALIFICATION.md](P7-QUALIFICATION.md). Build success alone does not qualify
 installation or first boot.

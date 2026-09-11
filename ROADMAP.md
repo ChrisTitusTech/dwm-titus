@@ -417,6 +417,17 @@ Deliver a repeatable Fedora-only desktop installation and upgrade experience.
 - Unsupported or untested Fedora hardware paths are stated precisely in
   release notes.
 
+## Compressed System Image Installation
+
+Status: VM qualification completed 2026-09-11; physical NVIDIA validation remains outstanding. See [compressed-image qualification](docs/COMPRESSED-QUALIFICATION.md).
+
+Replace end-user package downloads with a sanitized, prebuilt Fedora filesystem
+while retaining Anaconda disk and account choices. Standard and NVIDIA images
+remain separate. The factory must contain all shipped feature dependencies,
+including maim and clipboard capture tools. Acceptance requires a networkless
+installation and first-boot desktop validation, clean per-machine identities,
+recorded artifact size, and a repeatable build procedure.
+
 ## Future Evaluation
 
 After the Fedora phases are stable, evaluate additional accessibility work,
