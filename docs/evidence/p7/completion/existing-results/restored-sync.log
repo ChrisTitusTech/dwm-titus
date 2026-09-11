@@ -1,0 +1,8 @@
+==> Building current checkout
+make: Entering directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make: Leaving directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make: Entering directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make: Leaving directory '/home/p7tester/dwm-titus-restored.NECaxi'
+All managed files match the checkout.
+==> Live installation is already current
+Runtime validation deferred: DISPLAY is unavailable.

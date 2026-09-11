@@ -8,6 +8,23 @@ versions from `config.mk`.
 
 ### Changed
 
+- Keep Settings within the focused screen when opened through IPC, including
+  smaller displays. Refresh generated user autostart entries before starting
+  the graphical session so newly installed exclusions take effect.
+- Document source/configuration backup, interrupted-update retry and restoration,
+  including custom XDG locations and symlink targets.
+
+- Complete Phase 7 software/image qualification with signed Fedora 44 source verification
+  and an explicit VM/hardware evidence matrix, existing-system recovery and
+  integrated desktop validation. Record failed QEMU S3 resume and untested
+  physical hardware without claiming driver or device qualification. Restore the rebuilt installer
+  media checksum so the default media-test boot entry can continue, and patch
+  both BIOS and UEFI menus so either firmware path loads the desktop Kickstart.
+- Provision images with the recommended desktop profile so Meslo icons and
+  Gear Lever are installed. Isolate provisioning D-Bus from the installer's
+  AccountsService, and clean temporary sudoers authorization on post failure
+  or interruption.
+
 - Wait for acknowledged notification-policy persistence in the native restart
   test, with delayed-write coverage to prevent timing-dependent CI failures.
 

@@ -6,6 +6,9 @@ repo=$(
 	cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd
 )
 
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
 standard_ks="$repo/dwm-fedora.ks"
 nvidia_ks="$repo/dwm-fedora-nvidia.ks"
 builder="$repo/scripts/build-dwm-fedora-installer-iso.sh"
@@ -118,14 +121,41 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 		exit 1
 	fi
 	grep -Fq "url --metalink=\"https://mirrors.fedoraproject.org/metalink?repo=fedora-\$releasever&arch=\$basearch\"" "$ks"
+	# Execute the actual post-script cleanup prefix in a disposable directory.
+	# Replace its sudoers path before execution; never touch host authorization.
+	awk '
+		/^%post --erroronfail/ { active=1; next }
+		active && /^target_user=/ { exit }
+		active && /^install_sudoers=/ { print "install_sudoers=$DWM_TEST_SUDOERS"; next }
+		active { print }
+	' "$ks" >"$work/post-prefix"
+	for failure in exit signal; do
+		cp "$work/post-prefix" "$work/post-failure"
+		cat >>"$work/post-failure" <<'SH'
+printf 'fixture authorization\n' >"$install_sudoers"
+if [ "$DWM_TEST_FAILURE" = signal ]; then
+	kill -TERM "$$"
+else
+	exit 73
+fi
+SH
+		status=0
+		DWM_TEST_SUDOERS="$work/sudoers" DWM_TEST_FAILURE=$failure \
+			sh "$work/post-failure" || status=$?
+		expected_status=73
+		[[ $failure != signal ]] || expected_status=1
+		[[ $status == "$expected_status" && ! -e $work/sudoers ]]
+	done
+
 	grep -Fq 'firstboot --disable' "$ks"
 	grep -Fq 'selinux --disabled' "$ks"
-	grep -Fq './install.sh --non-interactive --profile core' "$ks"
+	grep -Fq './install.sh --non-interactive --profile recommended' "$ks"
 	if grep -Fq -- '--install-herdr' "$ks"; then
 		printf 'Herdr must not be installed by default in %s\n' "$ks" >&2
 		exit 1
 	fi
-	grep -Fq 'scripts/install-gearlever' "$ks"
+	# shellcheck disable=SC2016 # Match the literal deferred expansion in Kickstart.
+	grep -Fq 'export DBUS_SYSTEM_BUS_ADDRESS=\$DBUS_SESSION_BUS_ADDRESS; exec ./install.sh' "$ks"
 	grep -Fq '%include /tmp/dwm-titus-gaming-repo' "$ks"
 	grep -Fq '%include /tmp/dwm-titus-gaming-packages' "$ks"
 	# shellcheck disable=SC2016

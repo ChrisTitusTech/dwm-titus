@@ -1,0 +1,18 @@
+==> Test workspace: /home/titus/tmp/dwm-titus-tests.ncMnCX
+Warning: Schema “apps.light-locker” has path “/apps/light-locker/”.  Paths starting with “/apps/”, “/desktop/” or “/system/” are deprecated.
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=2465721 comm="gsettings set apps.light-locker lock-after-screens")
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.3' (uid=1000 pid=2466286 comm="quickshell --no-duplicate")
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.4' (uid=1000 pid=2466483 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.4' (uid=1000 pid=2466483 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.4' (uid=1000 pid=2466483 comm="/usr/libexec/xdg-desktop-portal")
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Activating service name='org.xfce.Xfconf' requested by ':1.12' (uid=1000 pid=2467136 comm="xfconf-query -c xsettings -p /Net/ThemeName -n -t")
+dbus-daemon[2465096]: [session uid=1000 pid=2465096 pidfd=5] Successfully activated service 'org.xfce.Xfconf'
+Settings small-screen IPC geometry: PASS
+A connection to the bus can't be made
+
+(xfconfd:2467149): xfconfd-WARNING **: 20:44:45.739: Name org.xfce.Xfconf lost on the message dbus, exiting.

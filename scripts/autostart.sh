@@ -475,12 +475,11 @@ xdg_autostart_started=0
 
 # Activate user graphical-session.target through the wm shim so portal services
 # and XDG autostart entries start only after the display environment is ready.
+# Refresh generated entries first: an installer may have seeded user exclusions
+# after this user manager started, even when the wm shim already exists.
 if command -v systemctl >/dev/null 2>&1; then
-	if systemctl --user start "$WM_GRAPHICAL_SESSION" 2>/dev/null ||
-		{
-			systemctl --user daemon-reload 2>/dev/null &&
-				systemctl --user start "$WM_GRAPHICAL_SESSION" 2>/dev/null
-		}; then
+	if systemctl --user daemon-reload 2>/dev/null &&
+		systemctl --user start "$WM_GRAPHICAL_SESSION" 2>/dev/null; then
 		xdg_autostart_started=1
 	fi
 fi

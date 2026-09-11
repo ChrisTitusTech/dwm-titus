@@ -1,0 +1,39 @@
+
+> dwm-titus-docs@1.0.0 build
+> astro check && astro build
+
+20:55:25 [types] Generated 40ms
+20:55:25 [check] Getting diagnostics for Astro files in /home/titus/github/dwm-titus/docs...
+Result (15 files):
+- 0 errors
+- 0 warnings
+- 0 hints
+
+20:55:27 [types] Generated 31ms
+20:55:27 [build] output: "static"
+20:55:27 [build] mode: "static"
+20:55:27 [build] directory: /home/titus/github/dwm-titus/docs/dist/
+20:55:27 [build] Collecting build info...
+20:55:27 [build] ✓ Completed in 67ms.
+20:55:27 [build] Building static entrypoints...
+20:55:28 [vite] ✓ built in 404ms
+20:55:28 [vite] ✓ built in 15ms
+20:55:28 [build] Rearranging server assets...
+
+ generating static routes
+20:55:28   ├─ /configuration.html (+8ms)
+20:55:28   ├─ /control-center.html (+2ms)
+20:55:28   ├─ /development-progress.html (+2ms)
+20:55:28   ├─ /getting-started.html (+2ms)
+20:55:28   ├─ /install.html (+3ms)
+20:55:28   ├─ /keybinds.html (+2ms)
+20:55:28   ├─ /patches.html (+1ms)
+20:55:28   ├─ /settings.html (+2ms)
+20:55:28   ├─ /theming.html (+2ms)
+20:55:28   ├─ /troubleshooting.html (+2ms)
+20:55:28   ├─ /index.html (+1ms)
+20:55:28 ✓ Completed in 35ms.
+
+20:55:28 [build] ✓ Completed in 481ms.
+20:55:28 [build] 11 page(s) built in 550ms
+20:55:28 [build] Complete!

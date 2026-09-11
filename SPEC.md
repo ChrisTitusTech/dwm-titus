@@ -724,8 +724,11 @@ idle-resource qualification is recorded in `docs/P5-EVIDENCE.md` with explicit
 limitations. Completed Phase 6 adds safe Fedora updates, regional and delegated
 administration entry points, and bounded system information, diagnostics, and
 recovery workflows. Its combined evidence and explicit hardware/service limits
-are recorded in `docs/P6-QUALIFICATION.md`. The next gap is Phase 7 Fedora image
-and release qualification; its implementation has not started.
+are recorded in `docs/P6-QUALIFICATION.md`. Phase 7 Fedora image
+and source release qualification is complete with explicit limits recorded in
+`docs/P7-QUALIFICATION.md`. QEMU S3 resume failed; physical NVIDIA, display,
+audio and suspend paths remain unqualified. No release has been published by
+this qualification work.
 
 The installer contains a Fedora-only package map and rejects other systems.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and

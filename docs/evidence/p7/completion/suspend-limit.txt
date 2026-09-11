@@ -1,0 +1,2 @@
+QEMU Q35/OVMF, virtio graphics, no physical device passthrough.
+Image UEFI guest (kernel 6.19.10) and existing-system stock Fedora guest (kernel 7.2.4) entered S3 after systemctl suspend. QMP reported suspended, then running after system_wakeup. Display did not recover; bounded SSH probes failed. Reset recovered boot. Previous-boot persistent journals were unavailable; root cause is not established. Suspend/resume is FAILED in this fixture and unqualified on physical hardware, not a successful acceptance test.

@@ -1,0 +1,35 @@
+Sep 10 22:11:20 fedora systemd[1361]: Starting app-nvidia\x2dsettings\x2duser@autostart.service - nvidia-settings...
+Sep 10 22:11:20 fedora systemd[1361]: Started app-nvidia\x2dsettings\x2duser@autostart.service - nvidia-settings.
+Sep 10 22:11:20 fedora nvidia-settings[2977]: ERROR: NVIDIA driver is not loaded
+Sep 10 22:11:20 fedora systemd[1361]: app-nvidia\x2dsettings\x2duser@autostart.service: Main process exited, code=exited, status=1/FAILURE
+Sep 10 22:11:20 fedora systemd[1361]: app-nvidia\x2dsettings\x2duser@autostart.service: Failed with result 'exit-code'.
+[Desktop Entry]
+Type=Application
+Exec=nvidia-settings -l
+Icon=nvidia-settings
+Hidden=false
+NoDisplay=false
+Name[en_GB]=nvidia-settings
+Name=nvidia-settings
+Comment[en_GB]=Load user settings
+Comment=Load user settings
+X-GNOME-Autostart-Delay=30
+X-GNOME-Autostart-enabled=true
+610.57.04
+BOOT_IMAGE=(hd0,gpt2)/vmlinuz-6.19.10-300.fc44.x86_64 root=/dev/mapper/fedora-root ro rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1 rd.lvm.lv=fedora/root rhgb quiet selinux=0
+  UNIT                        LOAD   ACTIVE SUB    DESCRIPTION
+● nvidia-persistenced.service loaded failed failed NVIDIA Persistence Daemon
+
+Legend: LOAD   → Reflects whether the unit definition was properly loaded.
+        ACTIVE → The high-level unit activation state, i.e. generalization of SUB.
+        SUB    → The low-level unit activation state, values depend on unit type.
+
+1 loaded units listed.
+Sep 11 02:10:52 fedora systemd[1]: Starting nvidia-persistenced.service - NVIDIA Persistence Daemon...
+Sep 11 02:10:52 fedora nvidia-persistenced[952]: Started (952)
+Sep 11 02:10:52 fedora nvidia-persistenced[952]: Failed to query NVIDIA devices. Please ensure that the NVIDIA device files (/dev/nvidia*) exist, and that user 0 has read and write permissions for those files.
+Sep 11 02:10:52 fedora nvidia-persistenced[952]: Shutdown (952)
+Sep 11 02:10:52 fedora nvidia-persistenced[942]: nvidia-persistenced failed to initialize. Check syslog for more details.
+Sep 11 02:10:52 fedora systemd[1]: nvidia-persistenced.service: Control process exited, code=exited, status=1/FAILURE
+Sep 11 02:10:52 fedora systemd[1]: nvidia-persistenced.service: Failed with result 'exit-code'.
+Sep 11 02:10:52 fedora systemd[1]: Failed to start nvidia-persistenced.service - NVIDIA Persistence Daemon.

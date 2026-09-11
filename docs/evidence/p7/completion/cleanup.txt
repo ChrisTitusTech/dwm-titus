@@ -1,0 +1,1 @@
+Six task VMs stopped; their qcow2 disks, OVMF variable copies, SSH masters, test credentials and task staging removed. No host disks or unrelated VMs changed. Selected sanitized evidence and final development images retained.

@@ -1,0 +1,51 @@
+[sudo] password for p7tester: ==> Building current checkout
+make: Entering directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make: Leaving directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make: Entering directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make: Leaving directory '/home/p7tester/dwm-titus-restored.NECaxi'
+MISMATCH TREE: managed data config (/home/p7tester/.local/share/dwm-titus/config)
+  Files /home/p7tester/dwm-titus-restored.NECaxi/config/quickshell/shell.qml and /home/p7tester/.local/share/dwm-titus/config/quickshell/shell.qml differ
+MISMATCH TREE: managed data scripts (/home/p7tester/.local/share/dwm-titus/scripts)
+  Files /home/p7tester/dwm-titus-restored.NECaxi/scripts/autostart.sh and /home/p7tester/.local/share/dwm-titus/scripts/autostart.sh differ
+MISMATCH TREE: managed Quickshell (/home/p7tester/.config/quickshell)
+  Files /home/p7tester/dwm-titus-restored.NECaxi/config/quickshell/shell.qml and /home/p7tester/.config/quickshell/shell.qml differ
+==> Backing up current live installation
+Backup created: /home/p7tester/.local/state/dwm-titus/live-update-backups/20260911T015209Z-34473
+==> Installing complete system and user state
+make: Entering directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make[1]: Entering directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make[1]: Leaving directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make[1]: Entering directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make[2]: Entering directory '/home/p7tester/dwm-titus-restored.NECaxi'
+==> Installing Capitaine cursor themes...
+make[2]: Leaving directory '/home/p7tester/dwm-titus-restored.NECaxi'
+
+==> Installing system files...
+==> Installing scripts to PATH...
+==> Installing privileged helpers...
+make[1]: Leaving directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make[1]: Entering directory '/home/p7tester/dwm-titus-restored.NECaxi'
+==> Installing user files for p7tester...
+  Preserving existing /home/p7tester/.xinitrc
+==> Syncing local repo to data dir...
+==> Seeding application config without overwriting user files...
+==> Seeding dwm-scoped XDG autostart overrides...
+  Preserving existing /home/p7tester/.config/autostart/light-locker.desktop
+  Preserving existing /home/p7tester/.config/autostart/picom.desktop
+  Preserving existing /home/p7tester/.config/autostart/polkit-mate-authentication-agent-1.desktop
+==> Replacing managed Quickshell config...
+==> Seeding user config (skipping existing files)...
+==> Migrating legacy graphical-session startup...
+==> Installing Meslo font aliases...
+  Preserving existing Meslo font alias file.
+==> Fixing executable permissions...
+
+  dwm installed successfully.
+  Log out and select 'dwm', or start with: startx
+
+make[1]: Leaving directory '/home/p7tester/dwm-titus-restored.NECaxi'
+make: Leaving directory '/home/p7tester/dwm-titus-restored.NECaxi'
+==> Verifying installed state
+All managed files match the checkout.
+Runtime validation deferred: DISPLAY is unavailable.
+Failed to connect to user scope bus via local transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined (consider using --machine=<user>@.host --user to connect to bus of other user)

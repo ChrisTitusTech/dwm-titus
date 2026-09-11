@@ -109,7 +109,7 @@ if [[ ! -f $input_iso ]]; then
 	exit 1
 fi
 
-for command in xorriso rsync; do
+for command in xorriso rsync implantisomd5 checkisomd5; do
 	if ! command -v "$command" >/dev/null 2>&1; then
 		err "missing required command: $command"
 		exit 1
@@ -135,8 +135,6 @@ fi
 
 work_dir="$(mktemp -d)"
 payload_dir="$work_dir/dwm-titus"
-grub_cfg="$work_dir/grub.cfg"
-patched_grub_cfg="$work_dir/grub.cfg.patched"
 output_dir="$(dirname "$output_iso")"
 output_base="$(basename "$output_iso")"
 tmp_output="$(mktemp "$output_dir/.$output_base.tmp.XXXXXX")"
@@ -155,8 +153,14 @@ rsync -a --delete \
 	--exclude='*.iso' \
 	"$repo_dir/" "$payload_dir/"
 
-xorriso -osirrox on -indev "$input_iso" -extract /EFI/BOOT/grub.cfg "$grub_cfg" >/dev/null 2>&1
-awk -v extra_linux_args="$extra_linux_args" '
+# Fedora x86_64 has separate UEFI and BIOS menus. Patch each in place so
+# both firmware paths select the requested Kickstart and variant arguments.
+grub_xorriso_args=()
+for grub_path in /EFI/BOOT/grub.cfg /boot/grub2/grub.cfg; do
+	grub_cfg="$work_dir/${grub_path//\//_}"
+	patched_grub_cfg="$grub_cfg.patched"
+	xorriso -osirrox on -indev "$input_iso" -extract "$grub_path" "$grub_cfg" >/dev/null 2>&1
+	awk -v extra_linux_args="$extra_linux_args" '
 	function append_arg(arg) {
 		if (arg != "" && index($0, arg) == 0) {
 			$0 = $0 " " arg
@@ -177,6 +181,9 @@ awk -v extra_linux_args="$extra_linux_args" '
 	}
 	{ print }
 ' "$grub_cfg" >"$patched_grub_cfg"
+
+	grub_xorriso_args+=(-map "$patched_grub_cfg" "$grub_path")
+done
 
 branding_dir="$repo_dir/branding/anaconda"
 product_img="$work_dir/product.img"
@@ -203,9 +210,15 @@ fi
 xorriso -indev "$input_iso" -outdev "$tmp_output" \
 	-boot_image any replay \
 	-map "$ks_file" /dwm-fedora.ks \
-	-map "$patched_grub_cfg" /EFI/BOOT/grub.cfg \
+	"${grub_xorriso_args[@]}" \
 	-map "$payload_dir" /dwm-titus \
 	"${extra_xorriso_args[@]}"
+
+# Rewriting the ISO drops the upstream media checksum. The default Fedora
+# boot entry uses rd.live.check, so verify a fresh checksum before publishing
+# the output path. This is a media-integrity check, not source authentication.
+implantisomd5 --force --supported-iso "$tmp_output"
+checkisomd5 "$tmp_output"
 
 mv -f "$tmp_output" "$output_iso"
 printf 'Created %s (%s)\n' "$output_iso" "$variant"

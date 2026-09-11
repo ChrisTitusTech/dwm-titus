@@ -1,0 +1,7 @@
+755 1000 1000 .xinitrc
+755 1000 1000 .config/dwm-titus/hotkeys.toml
+755 1000 1000 .config/dwm-titus/themes.toml
+755 1000 1000 .config/dwm-titus/window-rules.toml
+644 1000 1000 .config/mimeapps.list
+644 1000 1000 .config/autostart/p7-user.desktop
+644 1000 1000 .local/share/applications/p7-user.desktop

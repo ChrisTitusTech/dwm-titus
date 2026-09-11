@@ -1,0 +1,884 @@
+
+╔═══════════════════════════════════════════╗
+║             dwm-titus Installer           ║
+╚═══════════════════════════════════════════╝
+
+[0;36m[INFO][0m Distribution: Fedora Linux 44 (Server Edition)
+[0;36m[INFO][0m Family: fedora
+[0;36m[INFO][0m Package manager: sudo dnf install -y
+[0;36m[INFO][0m Install profile: core
+
+Installation summary:
+  Distribution: Fedora Linux 44 (Server Edition)
+  Family: fedora
+  Package manager: sudo dnf install -y
+  Profile: core
+  Mode: non-interactive
+  Required packages: gcc make pkgconf-pkg-config libX11-devel libXft-devel libXinerama-devel libXrender-devel imlib2-devel libxcb-devel xcb-util-devel freetype-devel fontconfig-devel xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot xinput setxkbmap xkbset dbus-x11 curl git procps-ng psmisc unzip util-linux xclip xdotool xprop xdg-utils
+  Recommended packages: skipped
+  Optional extras: skipped
+  Terminal candidates: alacritty kitty
+  Herdr workspace: skipped (optional; use --install-herdr to enable)
+
+Preserving existing /home/p7tester/baseline/config.h
+[0;36m[INFO][0m Installing required build and runtime dependencies...
+Updating and loading repositories:
+ Fedora 44 openh264 (From Cisco) - x86_ 100% |   5.3 KiB/s |   5.3 KiB |  00m01s
+ Fedora 44 - x86_64 - Updates           100% |   7.7 MiB/s |  11.4 MiB |  00m01s
+ Fedora 44 - x86_64                     100% |  15.8 MiB/s |  36.8 MiB |  00m02s
+Repositories loaded.
+Package "pkgconf-pkg-config-2.5.1-1.fc44.x86_64" is already installed.
+
+Package                               Arch   Version                      Repository                 Size
+Installing:
+ fontconfig-devel                     x86_64 0:2.17.0-4.fc44              fedora                123.6 KiB
+ freetype-devel                       x86_64 0:2.14.3-1.fc44              updates                 8.6 MiB
+ gcc                                  x86_64 0:16.2.1-2.fc44              updates               121.8 MiB
+ imlib2-devel                         x86_64 0:1.12.5-2.fc44              fedora                  1.1 MiB
+ libX11-devel                         x86_64 0:1.8.13-1.fc44              fedora                  1.0 MiB
+ libXft-devel                         x86_64 0:2.3.8-10.fc44              fedora                 29.1 KiB
+ libXinerama-devel                    x86_64 0:1.1.5-10.fc44              fedora                  6.9 KiB
+ libXrender-devel                     x86_64 0:0.9.12-4.fc44              fedora                 50.1 KiB
+ libxcb-devel                         x86_64 0:1.17.0-7.fc44              fedora                  2.6 MiB
+ make                                 x86_64 1:4.4.1-12.fc44              fedora                  1.8 MiB
+ xcb-util-devel                       x86_64 0:0.4.1-9.fc44               fedora                 12.1 KiB
+Installing dependencies:
+ adobe-mappings-cmap                  noarch 0:20231115-5.fc44            fedora                 15.2 MiB
+ adobe-mappings-cmap-deprecated       noarch 0:20231115-5.fc44            fedora                582.1 KiB
+ adobe-mappings-pdf                   noarch 0:20190401-12.fc44           fedora                  4.4 MiB
+ brotli                               x86_64 0:1.2.0-3.fc44               fedora                 33.4 KiB
+ brotli-devel                         x86_64 0:1.2.0-3.fc44               fedora                 65.9 KiB
+ bubblewrap                           x86_64 0:0.12.0-1.fc44              updates               139.8 KiB
+ bzip2-devel                          x86_64 0:1.0.8-23.fc44              fedora                309.8 KiB
+ cairo                                x86_64 0:1.18.4-6.fc44              fedora                  1.8 MiB
+ cairo-devel                          x86_64 0:1.18.4-6.fc44              fedora                  2.3 MiB
+ cairo-gobject                        x86_64 0:1.18.4-6.fc44              fedora                 31.0 KiB
+ cmake-filesystem                     x86_64 0:4.3.0-1.fc44               fedora                  0.0   B
+ cpp                                  x86_64 0:16.2.1-2.fc44              updates                42.6 MiB
+ cups-filesystem                      noarch 1:2.4.19-3.fc44              updates                 0.0   B
+ cups-libs                            x86_64 1:2.4.19-3.fc44              updates               634.6 KiB
+ fontconfig                           x86_64 0:2.17.0-4.fc44              fedora                776.4 KiB
+ fribidi                              x86_64 0:1.0.16-4.fc44              fedora                190.0 KiB
+ gdk-pixbuf2                          x86_64 0:2.44.6^really2.44.4-3.fc44 updates                 2.5 MiB
+ gettext                              x86_64 0:0.26-5.fc44                updates                12.9 MiB
+ giflib                               x86_64 0:6.1.3-2.fc44               updates               122.1 KiB
+ glfw                                 x86_64 1:3.4-6.fc44                 fedora                386.1 KiB
+ glib2-devel                          x86_64 0:2.88.3-1.fc44              updates                15.8 MiB
+ glibc-devel                          x86_64 0:2.43-8.fc44                updates                 2.3 MiB
+ glycin-libs                          x86_64 0:2.1.5-1.fc44               updates                 4.3 MiB
+ glycin-loaders                       x86_64 0:2.1.5-1.fc44               updates                13.8 MiB
+ google-droid-sans-fonts              noarch 0:20200215-24.fc44           fedora                  6.3 MiB
+ graphite2-devel                      x86_64 0:1.3.14-20.fc44             fedora                 49.3 KiB
+ harfbuzz-cairo                       x86_64 0:14.1.0-2.fc44              updates                52.1 KiB
+ harfbuzz-devel                       x86_64 0:14.1.0-2.fc44              updates                 6.1 MiB
+ harfbuzz-gpu                         x86_64 0:14.1.0-2.fc44              updates                87.7 KiB
+ harfbuzz-icu                         x86_64 0:14.1.0-2.fc44              updates                15.2 KiB
+ harfbuzz-raster                      x86_64 0:14.1.0-2.fc44              updates               209.8 KiB
+ harfbuzz-vector                      x86_64 0:14.1.0-2.fc44              updates               100.9 KiB
+ highway                              x86_64 0:1.3.0-2.fc44               fedora                  5.5 MiB
+ imlib2                               x86_64 0:1.12.5-2.fc44              fedora                770.2 KiB
+ jbig2dec-libs                        x86_64 0:0.20-8.fc44                fedora                168.8 KiB
+ jbigkit-libs                         x86_64 0:2.1-33.fc44                fedora                117.2 KiB
+ kernel-headers                       x86_64 0:7.2.4-200.fc44             updates                 7.0 MiB
+ lcms2                                x86_64 0:2.16-7.fc44                fedora                445.7 KiB
+ libGLEW                              x86_64 0:2.2.0-12.fc44              fedora                760.2 KiB
+ libICE                               x86_64 0:1.1.2-4.fc44               fedora                198.3 KiB
+ libSM                                x86_64 0:1.2.5-4.fc44               fedora                100.9 KiB
+ libX11                               x86_64 0:1.8.13-1.fc44              fedora                  1.3 MiB
+ libX11-common                        noarch 0:1.8.13-1.fc44              fedora                  1.1 MiB
+ libX11-xcb                           x86_64 0:1.8.13-1.fc44              fedora                 10.8 KiB
+ libXau                               x86_64 0:1.0.12-4.fc44              fedora                 72.8 KiB
+ libXau-devel                         x86_64 0:1.0.12-4.fc44              fedora                  7.3 KiB
+ libXext                              x86_64 0:1.3.6-5.fc44               fedora                 89.8 KiB
+ libXext-devel                        x86_64 0:1.3.6-5.fc44               fedora                 97.7 KiB
+ libXft                               x86_64 0:2.3.8-10.fc44              fedora                168.3 KiB
+ libXinerama                          x86_64 0:1.1.5-10.fc44              fedora                 14.8 KiB
+ libXrender                           x86_64 0:0.9.12-4.fc44              fedora                 49.9 KiB
+ libXt                                x86_64 0:1.3.1-4.fc44               fedora                437.6 KiB
+ libXxf86vm                           x86_64 0:1.1.6-4.fc44               fedora                 25.1 KiB
+ libaom                               x86_64 0:3.13.3-1.fc44              updates                 5.1 MiB
+ libatomic                            x86_64 0:16.2.1-2.fc44              updates                45.6 KiB
+ libblkid-devel                       x86_64 0:2.41.5-1.fc44              updates                44.9 KiB
+ libdatrie                            x86_64 0:0.2.14-2.fc44              fedora                 61.7 KiB
+ libdav1d                             x86_64 0:1.5.3-1.fc44               fedora                  1.7 MiB
+ libffi-devel                         x86_64 0:3.5.2-2.fc44               fedora                 33.9 KiB
+ libglvnd                             x86_64 1:1.7.0-9.fc44               fedora                526.5 KiB
+ libglvnd-glx                         x86_64 1:1.7.0-9.fc44               fedora                601.0 KiB
+ libgs                                x86_64 0:10.06.0-2.fc44             fedora                 24.6 MiB
+ libheif                              x86_64 0:1.21.2-1.fc44              fedora                  1.8 MiB
+ libicu-devel                         x86_64 0:77.1-3.fc44                updates                 5.0 MiB
+ libijs                               x86_64 0:0.35-26.fc44               fedora                 61.4 KiB
+ libjpeg-turbo                        x86_64 0:3.1.3-1.fc44               fedora                818.2 KiB
+ libjxl                               x86_64 1:0.11.2-1.fc44              updates                 4.1 MiB
+ liblerc                              x86_64 0:4.0.0-10.fc44              fedora                647.9 KiB
+ libmount-devel                       x86_64 0:2.41.5-1.fc44              updates                65.5 KiB
+ libmpc                               x86_64 0:1.4.1-1.fc44               updates               168.7 KiB
+ libopenjph                           x86_64 0:0.25.3-3.fc44              fedora                482.1 KiB
+ libpaper                             x86_64 1:2.1.1-10.fc44              fedora                 48.6 KiB
+ libpng-devel                         x86_64 2:1.6.58-1.fc44              updates               905.9 KiB
+ librsvg2                             x86_64 0:2.62.3-1.fc44              updates                 5.0 MiB
+ libselinux-devel                     x86_64 0:3.11-2.fc44                updates               121.9 KiB
+ libsepol-devel                       x86_64 0:3.11-1.fc44                updates               120.7 KiB
+ libspectre                           x86_64 0:0.2.12-11.fc44             fedora                 89.4 KiB
+ libthai                              x86_64 0:0.1.30-2.fc44              fedora                800.9 KiB
+ libtiff                              x86_64 0:4.7.2-1.fc44               updates               640.4 KiB
+ libvmaf                              x86_64 0:3.0.0-5.fc44               fedora                846.8 KiB
+ libwebp                              x86_64 0:1.6.0-3.fc44               fedora                968.0 KiB
+ libxcb                               x86_64 0:1.17.0-7.fc44              fedora                  1.1 MiB
+ libxcrypt-devel                      x86_64 0:4.5.2-3.fc44               fedora                 31.0 KiB
+ libxml2-devel                        x86_64 0:2.12.10-6.fc44             fedora                  3.4 MiB
+ libxshmfence                         x86_64 0:1.3.2-8.fc44               fedora                 12.3 KiB
+ llvm-filesystem                      x86_64 0:22.1.8-4.fc44              updates                 0.0   B
+ llvm-libs                            x86_64 0:22.1.8-4.fc44              updates               140.5 MiB
+ lm_sensors-libs                      x86_64 0:3.6.0-24.fc44              fedora                 85.7 KiB
+ lzo-devel                            x86_64 0:2.10-16.fc44               fedora                212.2 KiB
+ lzo-minilzo                          x86_64 0:2.10-16.fc44               fedora                 36.6 KiB
+ mesa-dri-drivers                     x86_64 0:26.1.8-1.fc44              updates                52.3 MiB
+ mesa-filesystem                      x86_64 0:26.1.8-1.fc44              updates                 3.6 KiB
+ mesa-libGL                           x86_64 0:26.1.8-1.fc44              updates               374.0 KiB
+ mesa-libgbm                          x86_64 0:26.1.8-1.fc44              updates                19.5 KiB
+ openh264                             x86_64 0:2.6.0-3.fc44               fedora-cisco-openh264   1.1 MiB
+ openjpeg                             x86_64 0:2.5.4-3.fc44               fedora                464.2 KiB
+ pango                                x86_64 0:1.57.1-1.fc44              fedora                  1.0 MiB
+ pcre2-devel                          x86_64 0:10.47-1.fc44.1             fedora                  2.1 MiB
+ pcre2-utf16                          x86_64 0:10.47-1.fc44.1             fedora                655.2 KiB
+ pcre2-utf32                          x86_64 0:10.47-1.fc44.1             fedora                623.1 KiB
+ pixman-devel                         x86_64 0:0.46.2-3.fc44              fedora                 56.1 KiB
+ rav1e-libs                           x86_64 0:0.8.1-3.fc44               fedora                  3.1 MiB
+ spirv-tools-libs                     x86_64 0:2026.1-1.fc44              fedora                  6.1 MiB
+ svt-av1-libs                         x86_64 0:3.1.2-2.fc44               fedora                  5.6 MiB
+ sysprof-capture-devel                x86_64 0:50.0-1.fc44                fedora                813.8 KiB
+ urw-base35-bookman-fonts             noarch 0:20200910-27.fc44           fedora                  1.4 MiB
+ urw-base35-c059-fonts                noarch 0:20200910-27.fc44           fedora                  1.4 MiB
+ urw-base35-d050000l-fonts            noarch 0:20200910-27.fc44           fedora                 84.3 KiB
+ urw-base35-fonts                     noarch 0:20200910-27.fc44           fedora                  5.3 KiB
+ urw-base35-fonts-common              noarch 0:20200910-27.fc44           fedora                 37.4 KiB
+ urw-base35-gothic-fonts              noarch 0:20200910-27.fc44           fedora                  1.2 MiB
+ urw-base35-nimbus-mono-ps-fonts      noarch 0:20200910-27.fc44           fedora                  1.0 MiB
+ urw-base35-nimbus-roman-fonts        noarch 0:20200910-27.fc44           fedora                  1.4 MiB
+ urw-base35-nimbus-sans-fonts         noarch 0:20200910-27.fc44           fedora                  2.4 MiB
+ urw-base35-p052-fonts                noarch 0:20200910-27.fc44           fedora                  1.5 MiB
+ urw-base35-standard-symbols-ps-fonts noarch 0:20200910-27.fc44           fedora                 64.9 KiB
+ urw-base35-z003-fonts                noarch 0:20200910-27.fc44           fedora                390.8 KiB
+ xcb-util                             x86_64 0:0.4.1-9.fc44               fedora                 26.1 KiB
+ xml-common                           noarch 0:0.6.3-68.fc44              fedora                 78.4 KiB
+ xorg-x11-proto-devel                 noarch 0:2025.1-2.fc44              fedora                  1.8 MiB
+ xz-devel                             x86_64 1:5.8.2-2.fc44               fedora                258.8 KiB
+ zlib-ng-compat-devel                 x86_64 0:2.3.3-3.fc44               fedora                107.0 KiB
+
+Transaction Summary:
+ Installing:       133 packages
+
+Total size of inbound packages is 161 MiB. Need to download 161 MiB.
+After this operation, 577 MiB extra will be used (install 577 MiB, remove 0 B).
+[  1/133] make-1:4.4.1-12.fc44.x86_64   100% |   1.4 MiB/s | 588.7 KiB |  00m00s
+[  2/133] libX11-devel-0:1.8.13-1.fc44. 100% |   7.3 MiB/s |   1.0 MiB |  00m00s
+[  3/133] libX11-0:1.8.13-1.fc44.x86_64 100% |   7.2 MiB/s | 676.2 KiB |  00m00s
+[  4/133] libX11-xcb-0:1.8.13-1.fc44.x8 100% | 207.7 KiB/s |  11.0 KiB |  00m00s
+[  5/133] xorg-x11-proto-devel-0:2025.1 100% |   4.1 MiB/s | 302.3 KiB |  00m00s
+[  6/133] libX11-common-0:1.8.13-1.fc44 100% |   1.6 MiB/s | 175.5 KiB |  00m00s
+[  7/133] libxcb-0:1.17.0-7.fc44.x86_64 100% |   3.6 MiB/s | 238.0 KiB |  00m00s
+[  8/133] libXau-0:1.0.12-4.fc44.x86_64 100% | 636.2 KiB/s |  33.7 KiB |  00m00s
+[  9/133] cpp-0:16.2.1-2.fc44.x86_64    100% |  14.4 MiB/s |  14.6 MiB |  00m01s
+[ 10/133] libXft-devel-0:2.3.8-10.fc44. 100% | 896.5 KiB/s |  49.3 KiB |  00m00s
+[ 11/133] libXft-0:2.3.8-10.fc44.x86_64 100% |   1.3 MiB/s |  74.3 KiB |  00m00s
+[ 12/133] fontconfig-0:2.17.0-4.fc44.x8 100% |   4.5 MiB/s | 278.2 KiB |  00m00s
+[ 13/133] libXrender-0:0.9.12-4.fc44.x8 100% | 516.4 KiB/s |  27.9 KiB |  00m00s
+[ 14/133] xml-common-0:0.6.3-68.fc44.no 100% | 587.4 KiB/s |  31.1 KiB |  00m00s
+[ 15/133] libXinerama-devel-0:1.1.5-10. 100% | 247.6 KiB/s |  13.1 KiB |  00m00s
+[ 16/133] libXinerama-0:1.1.5-10.fc44.x 100% | 260.1 KiB/s |  14.3 KiB |  00m00s
+[ 17/133] libXext-0:1.3.6-5.fc44.x86_64 100% | 783.1 KiB/s |  40.7 KiB |  00m00s
+[ 18/133] libXrender-devel-0:0.9.12-4.f 100% | 380.5 KiB/s |  19.0 KiB |  00m00s
+[ 19/133] imlib2-0:1.12.5-2.fc44.x86_64 100% |   4.2 MiB/s | 267.5 KiB |  00m00s
+[ 20/133] imlib2-devel-0:1.12.5-2.fc44. 100% |   1.5 MiB/s | 153.3 KiB |  00m00s
+[ 21/133] cairo-0:1.18.4-6.fc44.x86_64  100% |   6.1 MiB/s | 756.8 KiB |  00m00s
+[ 22/133] libheif-0:1.21.2-1.fc44.x86_6 100% |   5.5 MiB/s | 668.3 KiB |  00m00s
+[ 23/133] libspectre-0:0.2.12-11.fc44.x 100% | 851.8 KiB/s |  45.1 KiB |  00m00s
+[ 24/133] libjpeg-turbo-0:3.1.3-1.fc44. 100% |   4.0 MiB/s | 243.4 KiB |  00m00s
+[ 25/133] gcc-0:16.2.1-2.fc44.x86_64    100% |  27.2 MiB/s |  43.3 MiB |  00m02s
+[ 26/133] libwebp-0:1.6.0-3.fc44.x86_64 100% |   3.8 MiB/s | 329.9 KiB |  00m00s
+[ 27/133] openjpeg-0:2.5.4-3.fc44.x86_6 100% |   1.9 MiB/s | 198.1 KiB |  00m00s
+[ 28/133] libopenjph-0:0.25.3-3.fc44.x8 100% |   2.8 MiB/s | 161.9 KiB |  00m00s
+[ 29/133] libdav1d-0:1.5.3-1.fc44.x86_6 100% |   5.1 MiB/s | 641.3 KiB |  00m00s
+[ 30/133] rav1e-libs-0:0.8.1-3.fc44.x86 100% |   7.0 MiB/s |   1.1 MiB |  00m00s
+[ 31/133] svt-av1-libs-0:3.1.2-2.fc44.x 100% |  15.2 MiB/s |   2.0 MiB |  00m00s
+[ 32/133] adobe-mappings-cmap-deprecate 100% |   1.9 MiB/s | 102.7 KiB |  00m00s
+[ 33/133] adobe-mappings-pdf-0:20190401 100% |   8.5 MiB/s | 619.9 KiB |  00m00s
+[ 34/133] libgs-0:10.06.0-2.fc44.x86_64 100% |  19.0 MiB/s |   3.9 MiB |  00m00s
+[ 35/133] jbig2dec-libs-0:0.20-8.fc44.x 100% |   1.4 MiB/s |  75.8 KiB |  00m00s
+[ 36/133] lcms2-0:2.16-7.fc44.x86_64    100% |   3.5 MiB/s | 191.4 KiB |  00m00s
+[ 37/133] adobe-mappings-cmap-0:2023111 100% |   7.7 MiB/s |   2.2 MiB |  00m00s
+[ 38/133] libXt-0:1.3.1-4.fc44.x86_64   100% |   3.3 MiB/s | 184.9 KiB |  00m00s
+[ 39/133] google-droid-sans-fonts-0:202 100% |  14.9 MiB/s |   2.7 MiB |  00m00s
+[ 40/133] libijs-0:0.35-26.fc44.x86_64  100% | 571.1 KiB/s |  29.7 KiB |  00m00s
+[ 41/133] libpaper-1:2.1.1-10.fc44.x86_ 100% | 514.7 KiB/s |  26.8 KiB |  00m00s
+[ 42/133] urw-base35-fonts-0:20200910-2 100% | 206.0 KiB/s |  10.1 KiB |  00m00s
+[ 43/133] libICE-0:1.1.2-4.fc44.x86_64  100% |   1.4 MiB/s |  80.2 KiB |  00m00s
+[ 44/133] libSM-0:1.2.5-4.fc44.x86_64   100% | 857.2 KiB/s |  44.6 KiB |  00m00s
+[ 45/133] urw-base35-bookman-fonts-0:20 100% |  11.3 MiB/s | 845.4 KiB |  00m00s
+[ 46/133] urw-base35-d050000l-fonts-0:2 100% |   1.5 MiB/s |  75.4 KiB |  00m00s
+[ 47/133] urw-base35-fonts-common-0:202 100% | 408.8 KiB/s |  20.8 KiB |  00m00s
+[ 48/133] urw-base35-c059-fonts-0:20200 100% |   7.3 MiB/s | 873.0 KiB |  00m00s
+[ 49/133] urw-base35-gothic-fonts-0:202 100% |  10.1 MiB/s | 641.0 KiB |  00m00s
+[ 50/133] urw-base35-nimbus-mono-ps-fon 100% |   5.8 MiB/s | 794.0 KiB |  00m00s
+[ 51/133] urw-base35-nimbus-roman-fonts 100% |   6.8 MiB/s | 853.3 KiB |  00m00s
+[ 52/133] urw-base35-nimbus-sans-fonts- 100% |   9.8 MiB/s |   1.3 MiB |  00m00s
+[ 53/133] urw-base35-standard-symbols-p 100% | 815.6 KiB/s |  57.9 KiB |  00m00s
+[ 54/133] urw-base35-p052-fonts-0:20200 100% |  11.9 MiB/s | 972.4 KiB |  00m00s
+[ 55/133] urw-base35-z003-fonts-0:20200 100% |   4.9 MiB/s | 275.1 KiB |  00m00s
+[ 56/133] xcb-util-devel-0:0.4.1-9.fc44 100% | 265.0 KiB/s |  12.7 KiB |  00m00s
+[ 57/133] xcb-util-0:0.4.1-9.fc44.x86_6 100% | 351.4 KiB/s |  17.9 KiB |  00m00s
+[ 58/133] fontconfig-devel-0:2.17.0-4.f 100% |   2.7 MiB/s | 169.0 KiB |  00m00s
+[ 59/133] libXau-devel-0:1.0.12-4.fc44. 100% | 284.8 KiB/s |  14.0 KiB |  00m00s
+[ 60/133] freetype-devel-0:2.14.3-1.fc4 100% |   7.6 MiB/s |   1.0 MiB |  00m00s
+[ 61/133] libxcb-devel-0:1.17.0-7.fc44. 100% |   7.3 MiB/s |   1.4 MiB |  00m00s
+[ 62/133] libvmaf-0:3.0.0-5.fc44.x86_64 100% |   3.6 MiB/s | 202.9 KiB |  00m00s
+[ 63/133] cups-libs-1:2.4.19-3.fc44.x86 100% |   4.3 MiB/s | 270.2 KiB |  00m00s
+[ 64/133] libaom-0:3.13.3-1.fc44.x86_64 100% |  12.7 MiB/s |   1.9 MiB |  00m00s
+[ 65/133] cups-filesystem-1:2.4.19-3.fc 100% | 256.6 KiB/s |  12.3 KiB |  00m00s
+[ 66/133] libtiff-0:4.7.2-1.fc44.x86_64 100% |   4.0 MiB/s | 231.4 KiB |  00m00s
+[ 67/133] jbigkit-libs-0:2.1-33.fc44.x8 100% |   1.0 MiB/s |  54.3 KiB |  00m00s
+[ 68/133] liblerc-0:4.0.0-10.fc44.x86_6 100% |   4.0 MiB/s | 225.9 KiB |  00m00s
+[ 69/133] libXext-devel-0:1.3.6-5.fc44. 100% |   1.6 MiB/s |  85.2 KiB |  00m00s
+[ 70/133] gdk-pixbuf2-0:2.44.6^really2. 100% |   7.4 MiB/s | 490.4 KiB |  00m00s
+[ 71/133] giflib-0:6.1.3-2.fc44.x86_64  100% |   1.1 MiB/s |  55.7 KiB |  00m00s
+[ 72/133] openh264-0:2.6.0-3.fc44.x86_6 100% |   1.0 MiB/s | 435.0 KiB |  00m00s
+[ 73/133] libjxl-1:0.11.2-1.fc44.x86_64 100% |   9.0 MiB/s |   1.2 MiB |  00m00s
+[ 74/133] highway-0:1.3.0-2.fc44.x86_64 100% |   5.0 MiB/s | 694.6 KiB |  00m00s
+[ 75/133] cairo-gobject-0:1.18.4-6.fc44 100% | 347.0 KiB/s |  17.0 KiB |  00m00s
+[ 76/133] fribidi-0:1.0.16-4.fc44.x86_6 100% |   1.0 MiB/s |  53.8 KiB |  00m00s
+[ 77/133] libthai-0:0.1.30-2.fc44.x86_6 100% |   3.8 MiB/s | 216.1 KiB |  00m00s
+[ 78/133] librsvg2-0:2.62.3-1.fc44.x86_ 100% |   9.2 MiB/s |   1.9 MiB |  00m00s
+[ 79/133] libdatrie-0:0.2.14-2.fc44.x86 100% | 661.1 KiB/s |  33.1 KiB |  00m00s
+[ 80/133] gettext-0:0.26-5.fc44.x86_64  100% |  11.3 MiB/s |   1.7 MiB |  00m00s
+[ 81/133] libxml2-devel-0:2.12.10-6.fc4 100% |   4.2 MiB/s | 523.6 KiB |  00m00s
+[ 82/133] cmake-filesystem-0:4.3.0-1.fc 100% | 299.8 KiB/s |  15.0 KiB |  00m00s
+[ 83/133] xz-devel-1:5.8.2-2.fc44.x86_6 100% |   1.0 MiB/s |  67.0 KiB |  00m00s
+[ 84/133] zlib-ng-compat-devel-0:2.3.3- 100% | 762.9 KiB/s |  38.1 KiB |  00m00s
+[ 85/133] glycin-loaders-0:2.1.5-1.fc44 100% |  11.5 MiB/s |   3.2 MiB |  00m00s
+[ 86/133] glycin-libs-0:2.1.5-1.fc44.x8 100% |   4.6 MiB/s |   1.5 MiB |  00m00s
+[ 87/133] glibc-devel-0:2.43-8.fc44.x86 100% |   7.5 MiB/s | 617.4 KiB |  00m00s
+[ 88/133] libxcrypt-devel-0:4.5.2-3.fc4 100% | 577.3 KiB/s |  30.0 KiB |  00m00s
+[ 89/133] libatomic-0:16.2.1-2.fc44.x86 100% |   1.0 MiB/s |  55.3 KiB |  00m00s
+[ 90/133] libmpc-0:1.4.1-1.fc44.x86_64  100% |   1.2 MiB/s |  75.5 KiB |  00m00s
+[ 91/133] harfbuzz-cairo-0:14.1.0-2.fc4 100% | 588.1 KiB/s |  31.8 KiB |  00m00s
+[ 92/133] harfbuzz-gpu-0:14.1.0-2.fc44. 100% | 621.8 KiB/s |  33.0 KiB |  00m00s
+[ 93/133] harfbuzz-devel-0:14.1.0-2.fc4 100% |   4.4 MiB/s | 600.8 KiB |  00m00s
+[ 94/133] harfbuzz-icu-0:14.1.0-2.fc44. 100% | 325.4 KiB/s |  16.6 KiB |  00m00s
+[ 95/133] harfbuzz-raster-0:14.1.0-2.fc 100% |   1.9 MiB/s | 107.2 KiB |  00m00s
+[ 96/133] harfbuzz-vector-0:14.1.0-2.fc 100% |   1.0 MiB/s |  57.4 KiB |  00m00s
+[ 97/133] glfw-1:3.4-6.fc44.x86_64      100% |   1.1 MiB/s | 131.6 KiB |  00m00s
+[ 98/133] libGLEW-0:2.2.0-12.fc44.x86_6 100% |   2.1 MiB/s | 170.8 KiB |  00m00s
+[ 99/133] libglvnd-glx-1:1.7.0-9.fc44.x 100% |   2.4 MiB/s | 132.5 KiB |  00m00s
+[100/133] libglvnd-1:1.7.0-9.fc44.x86_6 100% |   1.6 MiB/s | 114.7 KiB |  00m00s
+[101/133] libpng-devel-2:1.6.58-1.fc44. 100% |   4.8 MiB/s | 303.1 KiB |  00m00s
+[102/133] brotli-devel-0:1.2.0-3.fc44.x 100% | 629.3 KiB/s |  34.6 KiB |  00m00s
+[103/133] brotli-0:1.2.0-3.fc44.x86_64  100% | 473.1 KiB/s |  24.1 KiB |  00m00s
+[104/133] bzip2-devel-0:1.0.8-23.fc44.x 100% |   2.5 MiB/s | 213.7 KiB |  00m00s
+[105/133] mesa-libGL-0:26.1.8-1.fc44.x8 100% |   2.4 MiB/s | 136.4 KiB |  00m00s
+[106/133] libXxf86vm-0:1.1.6-4.fc44.x86 100% | 370.6 KiB/s |  18.2 KiB |  00m00s
+[107/133] pango-0:1.57.1-1.fc44.x86_64  100% | 253.5 KiB/s | 366.1 KiB |  00m01s
+[108/133] mesa-filesystem-0:26.1.8-1.fc 100% | 186.4 KiB/s |   9.1 KiB |  00m00s
+[109/133] mesa-libgbm-0:26.1.8-1.fc44.x 100% | 232.9 KiB/s |  15.1 KiB |  00m00s
+[110/133] libxshmfence-0:1.3.2-8.fc44.x 100% | 264.3 KiB/s |  13.2 KiB |  00m00s
+[111/133] lm_sensors-libs-0:3.6.0-24.fc 100% | 436.8 KiB/s |  41.9 KiB |  00m00s
+[112/133] spirv-tools-libs-0:2026.1-1.f 100% |  12.9 MiB/s |   1.7 MiB |  00m00s
+[113/133] llvm-filesystem-0:22.1.8-4.fc 100% | 192.6 KiB/s |  10.0 KiB |  00m00s
+[114/133] glib2-devel-0:2.88.3-1.fc44.x 100% |   8.7 MiB/s |   1.5 MiB |  00m00s
+[115/133] libicu-devel-0:77.1-3.fc44.x8 100% |   5.6 MiB/s | 794.0 KiB |  00m00s
+[116/133] cairo-devel-0:1.18.4-6.fc44.x 100% |   3.2 MiB/s | 191.8 KiB |  00m00s
+[117/133] graphite2-devel-0:1.3.14-20.f 100% | 420.3 KiB/s |  20.6 KiB |  00m00s
+[118/133] bubblewrap-0:0.12.0-1.fc44.x8 100% |   1.2 MiB/s |  66.9 KiB |  00m00s
+[119/133] kernel-headers-0:7.2.4-200.fc 100% |  13.9 MiB/s |   1.7 MiB |  00m00s
+[120/133] libmount-devel-0:2.41.5-1.fc4 100% | 469.7 KiB/s |  24.9 KiB |  00m00s
+[121/133] libselinux-devel-0:3.11-2.fc4 100% |   2.6 MiB/s | 151.4 KiB |  00m00s
+[122/133] libsepol-devel-0:3.11-1.fc44. 100% | 426.4 KiB/s |  48.2 KiB |  00m00s
+[123/133] libffi-devel-0:3.5.2-2.fc44.x 100% | 560.5 KiB/s |  29.7 KiB |  00m00s
+[124/133] pcre2-devel-0:10.47-1.fc44.1. 100% |   7.4 MiB/s | 550.9 KiB |  00m00s
+[125/133] pcre2-utf16-0:10.47-1.fc44.1. 100% |   2.1 MiB/s | 256.3 KiB |  00m00s
+[126/133] mesa-dri-drivers-0:26.1.8-1.f 100% |   9.0 MiB/s |  13.5 MiB |  00m02s
+[127/133] pcre2-utf32-0:10.47-1.fc44.1. 100% |   2.9 MiB/s | 242.2 KiB |  00m00s
+[128/133] lzo-devel-0:2.10-16.fc44.x86_ 100% | 781.5 KiB/s |  39.1 KiB |  00m00s
+[129/133] sysprof-capture-devel-0:50.0- 100% |   2.7 MiB/s | 174.1 KiB |  00m00s
+[130/133] lzo-minilzo-0:2.10-16.fc44.x8 100% | 477.1 KiB/s |  24.3 KiB |  00m00s
+[131/133] pixman-devel-0:0.46.2-3.fc44. 100% | 373.6 KiB/s |  17.9 KiB |  00m00s
+[132/133] libblkid-devel-0:2.41.5-1.fc4 100% | 455.6 KiB/s |  23.7 KiB |  00m00s
+[133/133] llvm-libs-0:22.1.8-4.fc44.x86 100% |   8.6 MiB/s |  34.1 MiB |  00m04s
+--------------------------------------------------------------------------------
+[133/133] Total                         100% |  18.5 MiB/s | 160.8 MiB |  00m09s
+Running transaction
+[  1/135] Verify package files          100% | 246.0   B/s | 133.0   B |  00m01s
+[  2/135] Prepare transaction           100% |   1.1 KiB/s | 133.0   B |  00m00s
+[  3/135] Installing urw-base35-fonts-c 100% |   7.5 MiB/s |  38.4 KiB |  00m00s
+[  4/135] Installing xorg-x11-proto-dev 100% | 112.2 MiB/s |   1.8 MiB |  00m00s
+[  5/135] Installing libjpeg-turbo-0:3. 100% | 133.4 MiB/s | 819.9 KiB |  00m00s
+[  6/135] Installing libX11-xcb-0:1.8.1 100% |   5.7 MiB/s |  11.6 KiB |  00m00s
+[  7/135] Installing cmake-filesystem-0 100% |   1.8 MiB/s |   9.4 KiB |  00m00s
+[  8/135] Installing zlib-ng-compat-dev 100% |  35.3 MiB/s | 108.6 KiB |  00m00s
+[  9/135] Installing libpng-devel-2:1.6 100% |  40.4 MiB/s | 911.0 KiB |  00m00s
+[ 10/135] Installing openjpeg-0:2.5.4-3 100% |  91.0 MiB/s | 466.1 KiB |  00m00s
+[ 11/135] Installing libwebp-0:1.6.0-3. 100% | 118.7 MiB/s | 972.1 KiB |  00m00s
+[ 12/135] Installing libmpc-0:1.4.1-1.f 100% |  41.6 MiB/s | 170.4 KiB |  00m00s
+[ 13/135] Installing libICE-0:1.1.2-4.f 100% |  65.0 MiB/s | 199.7 KiB |  00m00s
+[ 14/135] Installing lcms2-0:2.16-7.fc4 100% |  87.4 MiB/s | 447.3 KiB |  00m00s
+[ 15/135] Installing adobe-mappings-cma 100% | 271.3 MiB/s |  15.2 MiB |  00m00s
+[ 16/135] Installing libdav1d-0:1.5.3-1 100% | 212.2 MiB/s |   1.7 MiB |  00m00s
+[ 17/135] Installing libXau-0:1.0.12-4. 100% |  36.3 MiB/s |  74.3 KiB |  00m00s
+[ 18/135] Installing libxcb-0:1.17.0-7. 100% |  82.9 MiB/s |   1.1 MiB |  00m00s
+[ 19/135] Installing xcb-util-0:0.4.1-9 100% |  13.4 MiB/s |  27.5 KiB |  00m00s
+[ 20/135] Installing libXau-devel-0:1.0 100% |   1.1 MiB/s |   9.1 KiB |  00m00s
+[ 21/135] Installing libxcb-devel-0:1.1 100% |  18.1 MiB/s |   3.0 MiB |  00m00s
+[ 22/135] Installing adobe-mappings-cma 100% | 142.9 MiB/s | 585.2 KiB |  00m00s
+[ 23/135] Installing libSM-0:1.2.5-4.fc 100% |  25.0 MiB/s | 102.2 KiB |  00m00s
+[ 24/135] Installing cpp-0:16.2.1-2.fc4 100% | 310.9 MiB/s |  42.6 MiB |  00m00s
+[ 25/135] Installing urw-base35-bookman 100% | 227.5 MiB/s |   1.4 MiB |  00m00s
+[ 26/135] Installing urw-base35-c059-fo 100% | 279.0 MiB/s |   1.4 MiB |  00m00s
+[ 27/135] Installing urw-base35-d050000 100% |  41.7 MiB/s |  85.4 KiB |  00m00s
+[ 28/135] Installing urw-base35-gothic- 100% | 232.6 MiB/s |   1.2 MiB |  00m00s
+[ 29/135] Installing urw-base35-nimbus- 100% | 263.0 MiB/s |   1.1 MiB |  00m00s
+[ 30/135] Installing urw-base35-nimbus- 100% | 227.7 MiB/s |   1.4 MiB |  00m00s
+[ 31/135] Installing urw-base35-nimbus- 100% | 299.3 MiB/s |   2.4 MiB |  00m00s
+[ 32/135] Installing urw-base35-p052-fo 100% | 247.9 MiB/s |   1.5 MiB |  00m00s
+[ 33/135] Installing urw-base35-standar 100% |  32.2 MiB/s |  66.0 KiB |  00m00s
+[ 34/135] Installing urw-base35-z003-fo 100% | 127.5 MiB/s | 391.8 KiB |  00m00s
+[ 35/135] Installing urw-base35-fonts-0 100% |   5.5 MiB/s |   5.6 KiB |  00m00s
+[ 36/135] Installing libblkid-devel-0:2 100% |  15.0 MiB/s |  46.0 KiB |  00m00s
+[ 37/135] Installing pixman-devel-0:0.4 100% |  27.8 MiB/s |  56.9 KiB |  00m00s
+[ 38/135] Installing lzo-minilzo-0:2.10 100% |  18.5 MiB/s |  37.8 KiB |  00m00s
+[ 39/135] Installing lzo-devel-0:2.10-1 100% |  70.1 MiB/s | 215.3 KiB |  00m00s
+[ 40/135] Installing sysprof-capture-de 100% | 159.5 MiB/s | 816.6 KiB |  00m00s
+[ 41/135] Installing pcre2-utf32-0:10.4 100% | 152.3 MiB/s | 623.9 KiB |  00m00s
+[ 42/135] Installing pcre2-utf16-0:10.4 100% | 160.2 MiB/s | 656.1 KiB |  00m00s
+[ 43/135] Installing pcre2-devel-0:10.4 100% |  68.4 MiB/s |   2.1 MiB |  00m00s
+[ 44/135] Installing libffi-devel-0:3.5 100% |  11.6 MiB/s |  35.6 KiB |  00m00s
+[ 45/135] Installing libsepol-devel-0:3 100% |  25.0 MiB/s | 128.2 KiB |  00m00s
+[ 46/135] Installing libselinux-devel-0 100% |  15.3 MiB/s | 156.6 KiB |  00m00s
+[ 47/135] Installing libmount-devel-0:2 100% |  16.2 MiB/s |  66.5 KiB |  00m00s
+[ 48/135] Installing glib2-devel-0:2.88 100% | 239.9 MiB/s |  15.8 MiB |  00m00s
+[ 49/135] Installing kernel-headers-0:7 100% | 115.3 MiB/s |   7.1 MiB |  00m00s
+[ 50/135] Installing glibc-devel-0:2.43 100% |  85.1 MiB/s |   2.4 MiB |  00m00s
+[ 51/135] Installing libxcrypt-devel-0: 100% |  10.8 MiB/s |  33.3 KiB |  00m00s
+[ 52/135] Installing bubblewrap-0:0.12. 100% |   8.7 MiB/s | 142.1 KiB |  00m00s
+[ 53/135] Installing graphite2-devel-0: 100% |  16.5 MiB/s |  50.8 KiB |  00m00s
+[ 54/135] Installing libicu-devel-0:77. 100% | 133.8 MiB/s |   5.1 MiB |  00m00s
+[ 55/135] Installing llvm-filesystem-0: 100% | 531.2 KiB/s |   1.1 KiB |  00m00s
+[ 56/135] Installing llvm-libs-0:22.1.8 100% | 235.3 MiB/s | 140.5 MiB |  00m01s
+[ 57/135] Installing spirv-tools-libs-0 100% | 277.1 MiB/s |   6.1 MiB |  00m00s
+[ 58/135] Installing lm_sensors-libs-0: 100% |  28.3 MiB/s |  86.8 KiB |  00m00s
+[ 59/135] Installing libxshmfence-0:1.3 100% |   4.4 MiB/s |  13.4 KiB |  00m00s
+[ 60/135] Installing mesa-filesystem-0: 100% |   2.1 MiB/s |   4.3 KiB |  00m00s
+[ 61/135] Installing mesa-dri-drivers-0 100% | 379.3 MiB/s |  52.3 MiB |  00m00s
+[ 62/135] Installing mesa-libgbm-0:26.1 100% |   6.6 MiB/s |  20.4 KiB |  00m00s
+[ 63/135] Installing bzip2-devel-0:1.0. 100% | 101.2 MiB/s | 310.7 KiB |  00m00s
+[ 64/135] Installing brotli-0:1.2.0-3.f 100% |   2.4 MiB/s |  34.3 KiB |  00m00s
+[ 65/135] Installing brotli-devel-0:1.2 100% |  22.3 MiB/s |  68.4 KiB |  00m00s
+[ 66/135] Installing libglvnd-1:1.7.0-9 100% | 128.9 MiB/s | 527.8 KiB |  00m00s
+[ 67/135] Installing glfw-1:3.4-6.fc44. 100% |  94.6 MiB/s | 387.4 KiB |  00m00s
+[ 68/135] Installing harfbuzz-vector-0: 100% |  49.7 MiB/s | 101.8 KiB |  00m00s
+[ 69/135] Installing harfbuzz-raster-0: 100% |  68.6 MiB/s | 210.6 KiB |  00m00s
+[ 70/135] Installing harfbuzz-icu-0:14. 100% |   7.9 MiB/s |  16.1 KiB |  00m00s
+[ 71/135] Installing harfbuzz-gpu-0:14. 100% |  43.2 MiB/s |  88.5 KiB |  00m00s
+[ 72/135] Installing libatomic-0:16.2.1 100% |  15.2 MiB/s |  46.6 KiB |  00m00s
+[ 73/135] Installing xz-devel-1:5.8.2-2 100% |  64.1 MiB/s | 262.6 KiB |  00m00s
+[ 74/135] Installing libxml2-devel-0:2. 100% | 113.9 MiB/s |   3.4 MiB |  00m00s
+[ 75/135] Installing gettext-0:0.26-5.f 100% | 131.6 MiB/s |  12.9 MiB |  00m00s
+[ 76/135] Installing libdatrie-0:0.2.14 100% |   2.6 MiB/s |  62.8 KiB |  00m00s
+[ 77/135] Installing libthai-0:0.1.30-2 100% | 112.0 MiB/s | 802.7 KiB |  00m00s
+[ 78/135] Installing fribidi-0:1.0.16-4 100% |  11.8 MiB/s | 192.5 KiB |  00m00s
+[ 79/135] Installing highway-0:1.3.0-2. 100% | 425.7 MiB/s |   5.5 MiB |  00m00s
+[ 80/135] Installing libjxl-1:0.11.2-1. 100% | 316.8 MiB/s |   4.1 MiB |  00m00s
+[ 81/135] Installing giflib-0:6.1.3-2.f 100% |  40.3 MiB/s | 123.8 KiB |  00m00s
+[ 82/135] Installing liblerc-0:4.0.0-10 100% | 158.5 MiB/s | 649.4 KiB |  00m00s
+[ 83/135] Installing jbigkit-libs-0:2.1 100% |  38.8 MiB/s | 119.2 KiB |  00m00s
+[ 84/135] Installing libtiff-0:4.7.2-1. 100% | 125.5 MiB/s | 642.6 KiB |  00m00s
+[ 85/135] Installing cups-filesystem-1: 100% | 890.6 KiB/s |   1.8 KiB |  00m00s
+[ 86/135] Installing cups-libs-1:2.4.19 100% | 124.3 MiB/s | 636.2 KiB |  00m00s
+[ 87/135] Installing libvmaf-0:3.0.0-5. 100% | 165.7 MiB/s | 848.2 KiB |  00m00s
+[ 88/135] Installing libaom-0:3.13.3-1. 100% | 318.1 MiB/s |   5.1 MiB |  00m00s
+[ 89/135] Installing openh264-0:2.6.0-3 100% | 186.0 MiB/s |   1.1 MiB |  00m00s
+[ 90/135] Installing libpaper-1:2.1.1-1 100% |  12.3 MiB/s |  50.3 KiB |  00m00s
+[ 91/135] Installing libijs-0:0.35-26.f 100% |  20.3 MiB/s |  62.4 KiB |  00m00s
+[ 92/135] Installing jbig2dec-libs-0:0. 100% |  55.5 MiB/s | 170.4 KiB |  00m00s
+[ 93/135] Installing google-droid-sans- 100% | 260.8 MiB/s |   6.3 MiB |  00m00s
+[ 94/135] Installing adobe-mappings-pdf 100% | 274.8 MiB/s |   4.4 MiB |  00m00s
+[ 95/135] Installing svt-av1-libs-0:3.1 100% | 330.1 MiB/s |   5.6 MiB |  00m00s
+[ 96/135] Installing rav1e-libs-0:0.8.1 100% | 308.3 MiB/s |   3.1 MiB |  00m00s
+[ 97/135] Installing libopenjph-0:0.25. 100% | 118.0 MiB/s | 483.3 KiB |  00m00s
+[ 98/135] Installing libheif-0:1.21.2-1 100% | 113.6 MiB/s |   1.8 MiB |  00m00s
+[ 99/135] Installing xml-common-0:0.6.3 100% |  15.8 MiB/s |  81.1 KiB |  00m00s
+[100/135] Installing fontconfig-0:2.17. 100% | 656.6 KiB/s | 795.8 KiB |  00m01s
+[101/135] Installing libX11-common-0:1. 100% |  65.9 MiB/s |   1.2 MiB |  00m00s
+[102/135] Installing libX11-0:1.8.13-1. 100% | 224.7 MiB/s |   1.3 MiB |  00m00s
+[103/135] Installing libXext-0:1.3.6-5. 100% |  17.8 MiB/s |  91.1 KiB |  00m00s
+[104/135] Installing libX11-devel-0:1.8 100% |  30.7 MiB/s |   1.1 MiB |  00m00s
+[105/135] Installing libXrender-0:0.9.1 100% |  16.7 MiB/s |  51.2 KiB |  00m00s
+[106/135] Installing cairo-0:1.18.4-6.f 100% | 203.0 MiB/s |   1.8 MiB |  00m00s
+[107/135] Installing libXext-devel-0:1. 100% |  21.4 MiB/s | 109.8 KiB |  00m00s
+[108/135] Installing libXft-0:2.3.8-10. 100% |  55.3 MiB/s | 169.8 KiB |  00m00s
+[109/135] Installing libXrender-devel-0 100% |  24.9 MiB/s |  51.0 KiB |  00m00s
+[110/135] Installing pango-0:1.57.1-1.f 100% |  48.4 MiB/s |   1.0 MiB |  00m00s
+[111/135] Installing cairo-gobject-0:1. 100% |  10.4 MiB/s |  31.8 KiB |  00m00s
+[112/135] Installing librsvg2-0:2.62.3- 100% | 279.4 MiB/s |   5.0 MiB |  00m00s
+[113/135] Installing glycin-loaders-0:2 100% | 142.8 MiB/s |  13.8 MiB |  00m00s
+[114/135] Installing glycin-libs-0:2.1. 100% | 284.4 MiB/s |   4.3 MiB |  00m00s
+[115/135] Installing gdk-pixbuf2-0:2.44 100% |  72.3 MiB/s |   2.5 MiB |  00m00s
+[116/135] Installing harfbuzz-cairo-0:1 100% |  25.8 MiB/s |  52.9 KiB |  00m00s
+[117/135] Installing libXinerama-0:1.1. 100% |   7.8 MiB/s |  15.9 KiB |  00m00s
+[118/135] Installing libXxf86vm-0:1.1.6 100% |  12.9 MiB/s |  26.4 KiB |  00m00s
+[119/135] Installing mesa-libGL-0:26.1. 100% | 122.0 MiB/s | 374.9 KiB |  00m00s
+[120/135] Installing libglvnd-glx-1:1.7 100% | 147.1 MiB/s | 602.4 KiB |  00m00s
+[121/135] Installing libGLEW-0:2.2.0-12 100% | 148.7 MiB/s | 761.3 KiB |  00m00s
+[122/135] Installing cairo-devel-0:1.18 100% | 190.9 MiB/s |   2.3 MiB |  00m00s
+[123/135] Installing harfbuzz-devel-0:1 100% | 145.5 MiB/s |   6.1 MiB |  00m00s
+[124/135] Installing freetype-devel-0:2 100% | 209.6 MiB/s |   8.6 MiB |  00m00s
+[125/135] Installing fontconfig-devel-0 100% |  14.1 MiB/s | 159.4 KiB |  00m00s
+[126/135] Installing libXt-0:1.3.1-4.fc 100% |  85.7 MiB/s | 438.9 KiB |  00m00s
+[127/135] Installing libgs-0:10.06.0-2. 100% | 373.3 MiB/s |  24.6 MiB |  00m00s
+[128/135] Installing libspectre-0:0.2.1 100% |  22.3 MiB/s |  91.2 KiB |  00m00s
+[129/135] Installing imlib2-0:1.12.5-2. 100% |  69.6 MiB/s | 784.2 KiB |  00m00s
+[130/135] Installing make-1:4.4.1-12.fc 100% |  81.8 MiB/s |   1.8 MiB |  00m00s
+[131/135] Installing gcc-0:16.2.1-2.fc4 100% | 233.1 MiB/s | 121.9 MiB |  00m01s
+[132/135] Installing imlib2-devel-0:1.1 100% | 180.5 MiB/s |   1.1 MiB |  00m00s
+[133/135] Installing libXft-devel-0:2.3 100% |  13.5 MiB/s |  41.6 KiB |  00m00s
+[134/135] Installing libXinerama-devel- 100% |   8.2 MiB/s |   8.4 KiB |  00m00s
+[135/135] Installing xcb-util-devel-0:0 100% |   8.7 KiB/s |  13.7 KiB |  00m02s
+Complete!
+Updating and loading repositories:
+Repositories loaded.
+Package                 Arch   Version             Repository      Size
+Installing:
+ setxkbmap              x86_64 0:1.3.4-7.fc44      fedora      31.0 KiB
+ xinput                 x86_64 0:1.6.4-6.fc44      fedora      65.9 KiB
+ xkbset                 x86_64 0:0.5-31.fc44       fedora      54.9 KiB
+ xorg-x11-server-Xorg   x86_64 0:21.1.24-1.fc44    updates      3.5 MiB
+ xorg-x11-xinit         x86_64 0:1.4.3-4.fc44      fedora     142.0 KiB
+ xrandr                 x86_64 0:1.5.3-4.fc44      fedora      79.4 KiB
+ xset                   x86_64 0:1.2.5-9.fc44      fedora      41.5 KiB
+ xsetroot               x86_64 0:1.1.3-4.fc44      fedora      22.7 KiB
+Installing dependencies:
+ libXcursor             x86_64 0:1.2.3-4.fc44      fedora      53.3 KiB
+ libXdmcp               x86_64 0:1.1.5-5.fc44      fedora      82.1 KiB
+ libXfixes              x86_64 0:6.0.1-7.fc44      fedora      34.0 KiB
+ libXfont2              x86_64 0:2.0.9-1.fc44      updates    317.8 KiB
+ libXi                  x86_64 0:1.8.3-1.fc44      updates     80.6 KiB
+ libXmu                 x86_64 0:1.2.1-5.fc44      fedora     191.1 KiB
+ libXrandr              x86_64 0:1.5.4-7.fc44      fedora      55.6 KiB
+ libepoxy               x86_64 0:1.5.10-12.fc44    fedora       1.1 MiB
+ libfontenc             x86_64 0:1.1.8-5.fc44      fedora      66.8 KiB
+ libglvnd-egl           x86_64 1:1.7.0-9.fc44      fedora      68.6 KiB
+ libinput               x86_64 0:1.31.3-1.fc44     updates    701.6 KiB
+ libunwind              x86_64 0:1.8.3-1.fc44      fedora     194.1 KiB
+ libwacom               x86_64 0:2.19.0-1.fc44     updates    114.0 KiB
+ libwacom-data          noarch 0:2.19.0-1.fc44     updates      1.4 MiB
+ libwayland-client      x86_64 0:1.25.0-1.fc44     updates     66.0 KiB
+ libxcvt                x86_64 0:0.1.2-11.fc44     fedora      14.4 KiB
+ libxkbfile             x86_64 0:1.1.3-5.fc44      fedora     201.7 KiB
+ mesa-libEGL            x86_64 0:26.1.8-1.fc44     updates    394.4 KiB
+ mtdev                  x86_64 0:1.1.6-12.fc44     fedora      29.1 KiB
+ perl-AutoLoader        noarch 0:5.74-525.fc44     updates     20.6 KiB
+ perl-B                 x86_64 0:1.89-525.fc44     updates    501.2 KiB
+ perl-Carp              noarch 0:1.54-521.fc44     fedora      46.6 KiB
+ perl-Class-Struct      noarch 0:0.68-525.fc44     updates     25.4 KiB
+ perl-Data-Dumper       x86_64 0:2.192-523.fc44    updates    115.5 KiB
+ perl-Digest            noarch 0:1.20-521.fc44     fedora      35.3 KiB
+ perl-Digest-MD5        x86_64 0:2.59-521.fc44     fedora      59.6 KiB
+ perl-DirHandle         noarch 0:1.05-525.fc44     updates      3.4 KiB
+ perl-DynaLoader        x86_64 0:1.57-525.fc44     updates     32.1 KiB
+ perl-Encode            x86_64 4:3.21-521.fc44     fedora       4.7 MiB
+ perl-Errno             x86_64 0:1.38-525.fc44     updates      8.4 KiB
+ perl-Exporter          noarch 0:5.79-521.fc44     fedora      54.3 KiB
+ perl-Fcntl             x86_64 0:1.20-525.fc44     updates     48.7 KiB
+ perl-File-Basename     noarch 0:2.86-525.fc44     updates     14.0 KiB
+ perl-File-Path         noarch 0:2.18-522.fc44     fedora      63.5 KiB
+ perl-File-Temp         noarch 1:0.231.200-2.fc44  fedora     163.7 KiB
+ perl-File-stat         noarch 0:1.14-525.fc44     updates     12.5 KiB
+ perl-FileHandle        noarch 0:2.05-525.fc44     updates      9.4 KiB
+ perl-Filter            x86_64 2:1.65-2.fc44       fedora     156.3 KiB
+ perl-Getopt-Long       noarch 1:2.58-521.fc44     fedora     144.5 KiB
+ perl-Getopt-Std        noarch 0:1.14-525.fc44     updates     11.2 KiB
+ perl-HTTP-Tiny         noarch 0:0.096-1.fc44      updates    162.4 KiB
+ perl-IO                x86_64 0:1.55-525.fc44     updates    147.3 KiB
+ perl-IO-Socket-IP      noarch 0:0.43-522.fc44     fedora     100.3 KiB
+ perl-IO-Socket-SSL     noarch 0:2.098-2.fc44      fedora     723.5 KiB
+ perl-IPC-Open3         noarch 0:1.24-525.fc44     updates     27.7 KiB
+ perl-MIME-Base32       noarch 0:1.303-25.fc44     fedora      30.7 KiB
+ perl-MIME-Base64       x86_64 0:3.16-521.fc44     fedora      41.9 KiB
+ perl-Net-SSLeay        x86_64 0:1.94-12.fc44      fedora       1.3 MiB
+ perl-POSIX             x86_64 0:2.23-525.fc44     updates    229.4 KiB
+ perl-PathTools         x86_64 0:3.94-521.fc44     fedora     179.9 KiB
+ perl-Pod-Escapes       noarch 1:1.07-521.fc44     fedora      24.9 KiB
+ perl-Pod-Perldoc       noarch 0:3.28.01-522.fc44  fedora     163.7 KiB
+ perl-Pod-Simple        noarch 1:3.47-4.fc44       fedora     565.3 KiB
+ perl-Pod-Usage         noarch 4:2.05-521.fc44     fedora      86.3 KiB
+ perl-Scalar-List-Utils x86_64 5:1.70-2.fc44       fedora     144.8 KiB
+ perl-SelectSaver       noarch 0:1.02-525.fc44     updates      2.2 KiB
+ perl-Socket            x86_64 4:2.043-1.fc44      updates    121.8 KiB
+ perl-Storable          x86_64 1:3.37-522.fc44     fedora     235.1 KiB
+ perl-Symbol            noarch 0:1.09-525.fc44     updates      6.8 KiB
+ perl-Term-ANSIColor    noarch 0:5.01-522.fc44     fedora      97.5 KiB
+ perl-Term-Cap          noarch 0:1.18-521.fc44     fedora      29.3 KiB
+ perl-Text-ParseWords   noarch 0:3.31-521.fc44     fedora      13.6 KiB
+ perl-Text-Tabs+Wrap    noarch 0:2024.001-521.fc44 fedora      22.6 KiB
+ perl-Time-HiRes        x86_64 4:1.9778-521.fc44   fedora     115.6 KiB
+ perl-Time-Local        noarch 2:1.350-521.fc44    fedora      69.0 KiB
+ perl-Tk                x86_64 0:804.036-24.fc44   fedora       6.6 MiB
+ perl-URI               noarch 0:5.36-1.fc44       updates    275.7 KiB
+ perl-Unicode-Normalize x86_64 0:1.32-521.fc44     fedora     486.0 KiB
+ perl-base              noarch 0:2.27-525.fc44     updates     12.6 KiB
+ perl-constant          noarch 0:1.33-522.fc44     fedora      26.2 KiB
+ perl-encoding          x86_64 4:3.00-521.fc44     fedora     149.5 KiB
+ perl-if                noarch 0:0.61.000-525.fc44 updates      5.8 KiB
+ perl-interpreter       x86_64 4:5.42.3-525.fc44   updates    118.8 KiB
+ perl-libnet            noarch 0:3.15-522.fc44     fedora     289.4 KiB
+ perl-libs              x86_64 4:5.42.3-525.fc44   updates     11.6 MiB
+ perl-locale            noarch 0:1.13-525.fc44     updates      6.1 KiB
+ perl-mro               x86_64 0:1.29-525.fc44     updates     41.4 KiB
+ perl-open              noarch 0:1.13-525.fc44     updates     11.3 KiB
+ perl-overload          noarch 0:1.40-525.fc44     updates     71.6 KiB
+ perl-overloading       noarch 0:0.02-525.fc44     updates      4.9 KiB
+ perl-parent            noarch 1:0.244-521.fc44    fedora      10.3 KiB
+ perl-podlators         noarch 1:6.0.2-521.fc44    fedora     317.5 KiB
+ perl-subs              noarch 0:1.04-525.fc44     updates      2.1 KiB
+ perl-vars              noarch 0:1.05-525.fc44     updates      3.9 KiB
+ xhost                  x86_64 0:1.0.9-11.fc44     fedora      25.2 KiB
+ xkbcomp                x86_64 0:1.5.0-2.fc44      fedora     225.0 KiB
+ xmodmap                x86_64 0:1.0.11-10.fc44    fedora      47.1 KiB
+ xorg-x11-drv-libinput  x86_64 0:1.5.0-4.fc44      fedora     105.6 KiB
+ xorg-x11-server-common x86_64 0:21.1.24-1.fc44    updates    127.3 KiB
+ xorg-x11-xauth         x86_64 1:1.1.5-1.fc44      fedora      52.1 KiB
+ xrdb                   x86_64 0:1.2.2-7.fc44      fedora      42.4 KiB
+Installing weak dependencies:
+ perl-NDBM_File         x86_64 0:1.18-525.fc44     updates     28.4 KiB
+
+Transaction Summary:
+ Installing:       100 packages
+
+Total size of inbound packages is 13 MiB. Need to download 13 MiB.
+After this operation, 40 MiB extra will be used (install 40 MiB, remove 0 B).
+[  1/100] xset-0:1.2.5-9.fc44.x86_64    100% | 143.4 KiB/s |  27.7 KiB |  00m00s
+[  2/100] xorg-x11-xinit-0:1.4.3-4.fc44 100% | 272.9 KiB/s |  59.5 KiB |  00m00s
+[  3/100] xsetroot-0:1.1.3-4.fc44.x86_6 100% | 311.1 KiB/s |  19.6 KiB |  00m00s
+[  4/100] xrandr-0:1.5.3-4.fc44.x86_64  100% | 173.3 KiB/s |  46.6 KiB |  00m00s
+[  5/100] setxkbmap-0:1.3.4-7.fc44.x86_ 100% | 375.8 KiB/s |  22.2 KiB |  00m00s
+[  6/100] xinput-0:1.6.4-6.fc44.x86_64  100% | 286.3 KiB/s |  37.5 KiB |  00m00s
+[  7/100] xhost-0:1.0.9-11.fc44.x86_64  100% | 378.3 KiB/s |  20.4 KiB |  00m00s
+[  8/100] xmodmap-0:1.0.11-10.fc44.x86_ 100% | 678.9 KiB/s |  31.9 KiB |  00m00s
+[  9/100] xkbset-0:0.5-31.fc44.x86_64   100% | 205.3 KiB/s |  28.7 KiB |  00m00s
+[ 10/100] xorg-x11-xauth-1:1.1.5-1.fc44 100% | 528.3 KiB/s |  34.3 KiB |  00m00s
+[ 11/100] xrdb-0:1.2.2-7.fc44.x86_64    100% | 618.8 KiB/s |  29.1 KiB |  00m00s
+[ 12/100] libXcursor-0:1.2.3-4.fc44.x86 100% | 676.8 KiB/s |  32.5 KiB |  00m00s
+[ 13/100] libXrandr-0:1.5.4-7.fc44.x86_ 100% | 292.7 KiB/s |  27.8 KiB |  00m00s
+[ 14/100] libXmu-0:1.2.1-5.fc44.x86_64  100% | 904.3 KiB/s |  79.6 KiB |  00m00s
+[ 15/100] libxkbfile-0:1.1.3-5.fc44.x86 100% |   1.3 MiB/s |  93.7 KiB |  00m00s
+[ 16/100] libXfixes-0:6.0.1-7.fc44.x86_ 100% | 459.6 KiB/s |  19.3 KiB |  00m00s
+[ 17/100] perl-Carp-0:1.54-521.fc44.noa 100% | 654.1 KiB/s |  28.8 KiB |  00m00s
+[ 18/100] perl-Exporter-0:5.79-521.fc44 100% | 655.7 KiB/s |  30.8 KiB |  00m00s
+[ 19/100] perl-Getopt-Long-1:2.58-521.f 100% |   1.2 MiB/s |  63.6 KiB |  00m00s
+[ 20/100] perl-PathTools-0:3.94-521.fc4 100% |   1.5 MiB/s |  87.3 KiB |  00m00s
+[ 21/100] perl-Text-Tabs+Wrap-0:2024.00 100% | 530.5 KiB/s |  21.8 KiB |  00m00s
+[ 22/100] perl-Pod-Usage-4:2.05-521.fc4 100% | 865.1 KiB/s |  40.7 KiB |  00m00s
+[ 23/100] perl-constant-0:1.33-522.fc44 100% | 545.2 KiB/s |  22.9 KiB |  00m00s
+[ 24/100] perl-Text-ParseWords-0:3.31-5 100% | 213.9 KiB/s |  16.5 KiB |  00m00s
+[ 25/100] perl-Scalar-List-Utils-5:1.70 100% |   1.3 MiB/s |  75.4 KiB |  00m00s
+[ 26/100] perl-Pod-Perldoc-0:3.28.01-52 100% |   1.4 MiB/s |  86.1 KiB |  00m00s
+[ 27/100] perl-Tk-0:804.036-24.fc44.x86 100% |   6.5 MiB/s |   2.2 MiB |  00m00s
+[ 28/100] perl-podlators-1:6.0.2-521.fc 100% |   1.9 MiB/s | 128.5 KiB |  00m00s
+[ 29/100] perl-File-Temp-1:0.231.200-2. 100% |   1.1 MiB/s |  59.6 KiB |  00m00s
+[ 30/100] perl-Pod-Simple-1:3.47-4.fc44 100% |   4.5 MiB/s | 220.0 KiB |  00m00s
+[ 31/100] perl-parent-1:0.244-521.fc44. 100% | 391.6 KiB/s |  14.9 KiB |  00m00s
+[ 32/100] perl-Term-Cap-0:1.18-521.fc44 100% | 578.9 KiB/s |  22.0 KiB |  00m00s
+[ 33/100] perl-Term-ANSIColor-0:5.01-52 100% | 953.5 KiB/s |  47.7 KiB |  00m00s
+[ 34/100] perl-File-Path-0:2.18-522.fc4 100% | 819.9 KiB/s |  35.3 KiB |  00m00s
+[ 35/100] perl-Pod-Escapes-1:1.07-521.f 100% | 482.7 KiB/s |  19.8 KiB |  00m00s
+[ 36/100] libXdmcp-0:1.1.5-5.fc44.x86_6 100% | 883.8 KiB/s |  37.1 KiB |  00m00s
+[ 37/100] libepoxy-0:1.5.10-12.fc44.x86 100% |   5.0 MiB/s | 230.4 KiB |  00m00s
+[ 38/100] libxcvt-0:0.1.2-11.fc44.x86_6 100% | 358.0 KiB/s |  13.6 KiB |  00m00s
+[ 39/100] libunwind-0:1.8.3-1.fc44.x86_ 100% |   1.4 MiB/s |  76.8 KiB |  00m00s
+[ 40/100] xorg-x11-drv-libinput-0:1.5.0 100% |   1.3 MiB/s |  52.5 KiB |  00m00s
+[ 41/100] xkbcomp-0:1.5.0-2.fc44.x86_64 100% |   1.7 MiB/s | 103.9 KiB |  00m00s
+[ 42/100] xorg-x11-server-common-0:21.1 100% | 195.8 KiB/s |  36.0 KiB |  00m00s
+[ 43/100] libfontenc-0:1.1.8-5.fc44.x86 100% | 425.6 KiB/s |  32.3 KiB |  00m00s
+[ 44/100] xorg-x11-server-Xorg-0:21.1.2 100% |   3.7 MiB/s |   1.5 MiB |  00m00s
+[ 45/100] libglvnd-egl-1:1.7.0-9.fc44.x 100% | 885.7 KiB/s |  37.2 KiB |  00m00s
+[ 46/100] libXfont2-0:2.0.9-1.fc44.x86_ 100% | 590.3 KiB/s | 135.2 KiB |  00m00s
+[ 47/100] libinput-0:1.31.3-1.fc44.x86_ 100% |   6.8 MiB/s | 277.8 KiB |  00m00s
+[ 48/100] mtdev-0:1.1.6-12.fc44.x86_64  100% | 261.5 KiB/s |  21.2 KiB |  00m00s
+[ 49/100] perl-interpreter-4:5.42.3-525 100% | 823.9 KiB/s |  71.7 KiB |  00m00s
+[ 50/100] perl-Errno-0:1.38-525.fc44.x8 100% | 395.9 KiB/s |  14.3 KiB |  00m00s
+[ 51/100] perl-libs-4:5.42.3-525.fc44.x 100% |  20.1 MiB/s |   2.6 MiB |  00m00s
+[ 52/100] libXi-0:1.8.3-1.fc44.x86_64   100% | 809.0 KiB/s |  41.3 KiB |  00m00s
+[ 53/100] perl-MIME-Base64-0:3.16-521.f 100% | 726.1 KiB/s |  29.8 KiB |  00m00s
+[ 54/100] perl-Storable-1:3.37-522.fc44 100% |   1.8 MiB/s | 100.9 KiB |  00m00s
+[ 55/100] perl-File-Basename-0:2.86-525 100% | 471.0 KiB/s |  16.5 KiB |  00m00s
+[ 56/100] perl-AutoLoader-0:5.74-525.fc 100% | 555.3 KiB/s |  20.5 KiB |  00m00s
+[ 57/100] perl-POSIX-0:2.23-525.fc44.x8 100% |   1.5 MiB/s |  96.3 KiB |  00m00s
+[ 58/100] perl-Encode-4:3.21-521.fc44.x 100% |   6.3 MiB/s |   1.1 MiB |  00m00s
+[ 59/100] perl-DirHandle-0:1.05-525.fc4 100% | 309.6 KiB/s |  11.8 KiB |  00m00s
+[ 60/100] perl-Getopt-Std-0:1.14-525.fc 100% | 428.6 KiB/s |  15.0 KiB |  00m00s
+[ 61/100] perl-DynaLoader-0:1.57-525.fc 100% | 588.5 KiB/s |  25.3 KiB |  00m00s
+[ 62/100] perl-IO-0:1.55-525.fc44.x86_6 100% |   2.1 MiB/s |  81.5 KiB |  00m00s
+[ 63/100] perl-Symbol-0:1.09-525.fc44.n 100% | 355.6 KiB/s |  13.5 KiB |  00m00s
+[ 64/100] perl-Socket-4:2.043-1.fc44.x8 100% |   1.2 MiB/s |  55.4 KiB |  00m00s
+[ 65/100] perl-base-0:2.27-525.fc44.noa 100% | 456.7 KiB/s |  15.5 KiB |  00m00s
+[ 66/100] perl-locale-0:1.13-525.fc44.n 100% | 355.8 KiB/s |  12.8 KiB |  00m00s
+[ 67/100] perl-if-0:0.61.000-525.fc44.n 100% | 324.5 KiB/s |  13.3 KiB |  00m00s
+[ 68/100] perl-open-0:1.13-525.fc44.noa 100% | 405.8 KiB/s |  15.8 KiB |  00m00s
+[ 69/100] perl-encoding-4:3.00-521.fc44 100% |   1.5 MiB/s |  62.9 KiB |  00m00s
+[ 70/100] perl-Filter-2:1.65-2.fc44.x86 100% |   2.1 MiB/s |  86.0 KiB |  00m00s
+[ 71/100] perl-overload-0:1.40-525.fc44 100% |   1.1 MiB/s |  44.9 KiB |  00m00s
+[ 72/100] perl-subs-0:1.04-525.fc44.noa 100% | 306.0 KiB/s |  11.0 KiB |  00m00s
+[ 73/100] perl-vars-0:1.05-525.fc44.noa 100% | 175.6 KiB/s |  12.3 KiB |  00m00s
+[ 74/100] perl-Fcntl-0:1.20-525.fc44.x8 100% | 581.2 KiB/s |  29.1 KiB |  00m00s
+[ 75/100] perl-HTTP-Tiny-0:0.096-1.fc44 100% |   1.1 MiB/s |  57.8 KiB |  00m00s
+[ 76/100] perl-IO-Socket-SSL-0:2.098-2. 100% |   4.5 MiB/s | 234.7 KiB |  00m00s
+[ 77/100] perl-Time-HiRes-4:1.9778-521. 100% |   1.2 MiB/s |  57.2 KiB |  00m00s
+[ 78/100] perl-Net-SSLeay-0:1.94-12.fc4 100% |   4.2 MiB/s | 373.4 KiB |  00m00s
+[ 79/100] perl-Time-Local-2:1.350-521.f 100% | 908.1 KiB/s |  34.5 KiB |  00m00s
+[ 80/100] perl-IO-Socket-IP-0:0.43-522. 100% | 958.3 KiB/s |  42.2 KiB |  00m00s
+[ 81/100] perl-IPC-Open3-0:1.24-525.fc4 100% | 595.6 KiB/s |  23.2 KiB |  00m00s
+[ 82/100] perl-MIME-Base32-0:1.303-25.f 100% | 540.0 KiB/s |  20.5 KiB |  00m00s
+[ 83/100] perl-URI-0:5.36-1.fc44.noarch 100% |   2.1 MiB/s | 149.3 KiB |  00m00s
+[ 84/100] perl-Unicode-Normalize-0:1.32 100% |   1.7 MiB/s |  74.4 KiB |  00m00s
+[ 85/100] perl-libnet-0:3.15-522.fc44.n 100% |   3.1 MiB/s | 128.4 KiB |  00m00s
+[ 86/100] perl-Digest-MD5-0:2.59-521.fc 100% | 857.5 KiB/s |  36.0 KiB |  00m00s
+[ 87/100] perl-Digest-0:1.20-521.fc44.n 100% | 591.8 KiB/s |  24.9 KiB |  00m00s
+[ 88/100] mesa-libEGL-0:26.1.8-1.fc44.x 100% |   3.5 MiB/s | 139.9 KiB |  00m00s
+[ 89/100] perl-mro-0:1.29-525.fc44.x86_ 100% | 693.4 KiB/s |  29.1 KiB |  00m00s
+[ 90/100] perl-overloading-0:0.02-525.f 100% | 339.2 KiB/s |  12.2 KiB |  00m00s
+[ 91/100] perl-Data-Dumper-0:2.192-523. 100% |   1.4 MiB/s |  56.3 KiB |  00m00s
+[ 92/100] perl-File-stat-0:1.14-525.fc4 100% | 419.5 KiB/s |  16.4 KiB |  00m00s
+[ 93/100] perl-SelectSaver-0:1.02-525.f 100% | 306.5 KiB/s |  11.0 KiB |  00m00s
+[ 94/100] perl-Class-Struct-0:0.68-525. 100% | 578.1 KiB/s |  21.4 KiB |  00m00s
+[ 95/100] libwayland-client-0:1.25.0-1. 100% | 841.9 KiB/s |  35.4 KiB |  00m00s
+[ 96/100] libwacom-0:2.19.0-1.fc44.x86_ 100% |   1.3 MiB/s |  52.4 KiB |  00m00s
+[ 97/100] perl-B-0:1.89-525.fc44.x86_64 100% |   2.7 MiB/s | 177.1 KiB |  00m00s
+[ 98/100] perl-FileHandle-0:2.05-525.fc 100% | 400.2 KiB/s |  14.8 KiB |  00m00s
+[ 99/100] perl-NDBM_File-0:1.18-525.fc4 100% | 589.9 KiB/s |  21.8 KiB |  00m00s
+[100/100] libwacom-data-0:2.19.0-1.fc44 100% |   3.4 MiB/s | 346.9 KiB |  00m00s
+--------------------------------------------------------------------------------
+[100/100] Total                         100% |   4.6 MiB/s |  13.0 MiB |  00m03s
+Running transaction
+[  1/102] Verify package files          100% |   2.0 KiB/s | 100.0   B |  00m00s
+[  2/102] Prepare transaction           100% | 990.0   B/s | 100.0   B |  00m00s
+[  3/102] Installing perl-Digest-0:1.20 100% |   7.2 MiB/s |  37.1 KiB |  00m00s
+[  4/102] Installing perl-B-0:1.89-525. 100% |  98.5 MiB/s | 504.4 KiB |  00m00s
+[  5/102] Installing perl-FileHandle-0: 100% |   4.8 MiB/s |   9.8 KiB |  00m00s
+[  6/102] Installing perl-Digest-MD5-0: 100% |  20.0 MiB/s |  61.5 KiB |  00m00s
+[  7/102] Installing perl-Data-Dumper-0 100% |  38.2 MiB/s | 117.4 KiB |  00m00s
+[  8/102] Installing perl-libnet-0:3.15 100% |  71.9 MiB/s | 294.7 KiB |  00m00s
+[  9/102] Installing perl-Unicode-Norma 100% | 119.2 MiB/s | 488.3 KiB |  00m00s
+[ 10/102] Installing perl-MIME-Base32-0 100% |  10.5 MiB/s |  32.2 KiB |  00m00s
+[ 11/102] Installing perl-URI-0:5.36-1. 100% |  40.4 MiB/s | 289.5 KiB |  00m00s
+[ 12/102] Installing perl-IO-Socket-IP- 100% |  33.3 MiB/s | 102.2 KiB |  00m00s
+[ 13/102] Installing perl-AutoLoader-0: 100% |  20.5 MiB/s |  21.0 KiB |  00m00s
+[ 14/102] Installing perl-IO-Socket-SSL 100% | 142.1 MiB/s | 727.6 KiB |  00m00s
+[ 15/102] Installing perl-Time-Local-2: 100% |  23.0 MiB/s |  70.6 KiB |  00m00s
+[ 16/102] Installing perl-Time-HiRes-4: 100% |  38.3 MiB/s | 117.7 KiB |  00m00s
+[ 17/102] Installing perl-Net-SSLeay-0: 100% | 122.4 MiB/s |   1.3 MiB |  00m00s
+[ 18/102] Installing perl-locale-0:1.13 100% |   6.4 MiB/s |   6.5 KiB |  00m00s
+[ 19/102] Installing perl-Pod-Escapes-1 100% |  12.7 MiB/s |  25.9 KiB |  00m00s
+[ 20/102] Installing perl-File-Path-0:2 100% |  31.5 MiB/s |  64.5 KiB |  00m00s
+[ 21/102] Installing perl-if-0:0.61.000 100% |   6.1 MiB/s |   6.2 KiB |  00m00s
+[ 22/102] Installing perl-Text-Tabs+Wra 100% |  11.7 MiB/s |  23.9 KiB |  00m00s
+[ 23/102] Installing perl-HTTP-Tiny-0:0 100% |  53.5 MiB/s | 164.5 KiB |  00m00s
+[ 24/102] Installing perl-Class-Struct- 100% |  12.7 MiB/s |  25.9 KiB |  00m00s
+[ 25/102] Installing perl-IPC-Open3-0:1 100% |  13.9 MiB/s |  28.5 KiB |  00m00s
+[ 26/102] Installing perl-File-Temp-1:0 100% |  53.9 MiB/s | 165.5 KiB |  00m00s
+[ 27/102] Installing perl-Pod-Simple-1: 100% |  93.6 MiB/s | 574.9 KiB |  00m00s
+[ 28/102] Installing perl-POSIX-0:2.23- 100% |  75.1 MiB/s | 230.6 KiB |  00m00s
+[ 29/102] Installing perl-Term-Cap-0:1. 100% |  10.0 MiB/s |  30.6 KiB |  00m00s
+[ 30/102] Installing perl-Term-ANSIColo 100% |  32.3 MiB/s |  99.2 KiB |  00m00s
+[ 31/102] Installing perl-Pod-Perldoc-0 100% |   9.2 MiB/s | 169.2 KiB |  00m00s
+[ 32/102] Installing perl-podlators-1:6 100% |  16.5 MiB/s | 321.4 KiB |  00m00s
+[ 33/102] Installing perl-File-stat-0:1 100% |   6.4 MiB/s |  13.1 KiB |  00m00s
+[ 34/102] Installing perl-SelectSaver-0 100% |   1.3 MiB/s |   2.6 KiB |  00m00s
+[ 35/102] Installing perl-Symbol-0:1.09 100% |   3.5 MiB/s |   7.3 KiB |  00m00s
+[ 36/102] Installing perl-Socket-4:2.04 100% |  30.2 MiB/s | 123.8 KiB |  00m00s
+[ 37/102] Installing perl-Pod-Usage-4:2 100% |   5.0 MiB/s |  87.9 KiB |  00m00s
+[ 38/102] Installing perl-IO-0:1.55-525 100% |   4.2 MiB/s | 151.5 KiB |  00m00s
+[ 39/102] Installing perl-overloading-0 100% | 265.3 KiB/s |   5.6 KiB |  00m00s
+[ 40/102] Installing perl-mro-0:1.29-52 100% | 967.0 KiB/s |  42.5 KiB |  00m00s
+[ 41/102] Installing perl-Fcntl-0:1.20- 100% |   6.1 MiB/s |  49.8 KiB |  00m00s
+[ 42/102] Installing perl-base-0:2.27-5 100% |   1.2 MiB/s |  13.0 KiB |  00m00s
+[ 43/102] Installing perl-Text-ParseWor 100% |   4.7 MiB/s |  14.6 KiB |  00m00s
+[ 44/102] Installing perl-Getopt-Long-1 100% |  35.9 MiB/s | 147.2 KiB |  00m00s
+[ 45/102] Installing perl-Storable-1:3. 100% |  77.1 MiB/s | 236.7 KiB |  00m00s
+[ 46/102] Installing perl-overload-0:1. 100% |  35.2 MiB/s |  72.0 KiB |  00m00s
+[ 47/102] Installing perl-vars-0:1.05-5 100% |   2.1 MiB/s |   4.3 KiB |  00m00s
+[ 48/102] Installing perl-Getopt-Std-0: 100% |   5.7 MiB/s |  11.8 KiB |  00m00s
+[ 49/102] Installing perl-File-Basename 100% |   7.1 MiB/s |  14.6 KiB |  00m00s
+[ 50/102] Installing perl-MIME-Base64-0 100% |  14.4 MiB/s |  44.2 KiB |  00m00s
+[ 51/102] Installing perl-Errno-0:1.38- 100% |   4.3 MiB/s |   8.8 KiB |  00m00s
+[ 52/102] Installing perl-parent-1:0.24 100% |   3.6 MiB/s |  11.0 KiB |  00m00s
+[ 53/102] Installing perl-Scalar-List-U 100% |  11.2 MiB/s | 148.5 KiB |  00m00s
+[ 54/102] Installing perl-constant-0:1. 100% |  13.4 MiB/s |  27.4 KiB |  00m00s
+[ 55/102] Installing perl-Carp-0:1.54-5 100% |  15.5 MiB/s |  47.7 KiB |  00m00s
+[ 56/102] Installing perl-Encode-4:3.21 100% | 146.7 MiB/s |   4.7 MiB |  00m00s
+[ 57/102] Installing perl-DynaLoader-0: 100% |  15.9 MiB/s |  32.5 KiB |  00m00s
+[ 58/102] Installing perl-PathTools-0:3 100% |  36.0 MiB/s | 184.4 KiB |  00m00s
+[ 59/102] Installing perl-Exporter-0:5. 100% |  13.6 MiB/s |  55.6 KiB |  00m00s
+[ 60/102] Installing perl-libs-4:5.42.3 100% | 174.3 MiB/s |  11.7 MiB |  00m00s
+[ 61/102] Installing perl-interpreter-4 100% |   7.8 MiB/s | 120.5 KiB |  00m00s
+[ 62/102] Installing libXmu-0:1.2.1-5.f 100% |  47.1 MiB/s | 193.0 KiB |  00m00s
+[ 63/102] Installing libXrandr-0:1.5.4- 100% |  18.5 MiB/s |  56.9 KiB |  00m00s
+[ 64/102] Installing libxkbfile-0:1.1.3 100% |  66.1 MiB/s | 203.0 KiB |  00m00s
+[ 65/102] Installing setxkbmap-0:1.3.4- 100% |   2.2 MiB/s |  32.1 KiB |  00m00s
+[ 66/102] Installing xkbcomp-0:1.5.0-2. 100% |  15.8 MiB/s | 226.1 KiB |  00m00s
+[ 67/102] Installing xorg-x11-server-co 100% |  41.7 MiB/s | 128.2 KiB |  00m00s
+[ 68/102] Installing xhost-0:1.0.9-11.f 100% |   1.8 MiB/s |  26.3 KiB |  00m00s
+[ 69/102] Installing xorg-x11-xauth-1:1 100% |   3.5 MiB/s |  53.3 KiB |  00m00s
+[ 70/102] Installing xrdb-0:1.2.2-7.fc4 100% |   3.0 MiB/s |  43.5 KiB |  00m00s
+[ 71/102] Installing perl-DirHandle-0:1 100% |   1.9 MiB/s |   3.8 KiB |  00m00s
+[ 72/102] Installing perl-Filter-2:1.65 100% |  27.0 MiB/s | 165.7 KiB |  00m00s
+[ 73/102] Installing perl-encoding-4:3. 100% |  49.0 MiB/s | 150.4 KiB |  00m00s
+[ 74/102] Installing perl-open-0:1.13-5 100% |   5.7 MiB/s |  11.7 KiB |  00m00s
+[ 75/102] Installing perl-subs-0:1.04-5 100% | 842.4 KiB/s |   2.5 KiB |  00m00s
+[ 76/102] Installing perl-Tk-0:804.036- 100% |  94.9 MiB/s |   6.7 MiB |  00m00s
+[ 77/102] Installing libwacom-data-0:2. 100% |  36.3 MiB/s |   1.6 MiB |  00m00s
+[ 78/102] Installing libwacom-0:2.19.0- 100% |   6.7 MiB/s | 116.2 KiB |  00m00s
+[ 79/102] Installing libwayland-client- 100% |  21.9 MiB/s |  67.2 KiB |  00m00s
+[ 80/102] Installing libglvnd-egl-1:1.7 100% |  17.1 MiB/s |  70.2 KiB |  00m00s
+[ 81/102] Installing mesa-libEGL-0:26.1 100% |  96.5 MiB/s | 395.4 KiB |  00m00s
+[ 82/102] Installing libXi-0:1.8.3-1.fc 100% |  39.9 MiB/s |  81.6 KiB |  00m00s
+[ 83/102] Installing mtdev-0:1.1.6-12.f 100% |   9.9 MiB/s |  30.3 KiB |  00m00s
+[ 84/102] Installing libinput-0:1.31.3- 100% |  24.1 MiB/s | 714.9 KiB |  00m00s
+[ 85/102] Installing libfontenc-0:1.1.8 100% |  16.7 MiB/s |  68.2 KiB |  00m00s
+[ 86/102] Installing libXfont2-0:2.0.9- 100% |  78.0 MiB/s | 319.5 KiB |  00m00s
+[ 87/102] Installing libxcvt-0:0.1.2-11 100% |   7.6 MiB/s |  15.5 KiB |  00m00s
+[ 88/102] Installing libunwind-0:1.8.3- 100% |  48.2 MiB/s | 197.4 KiB |  00m00s
+[ 89/102] Installing libepoxy-0:1.5.10- 100% | 217.2 MiB/s |   1.1 MiB |  00m00s
+[ 90/102] Installing libXdmcp-0:1.1.5-5 100% |  27.2 MiB/s |  83.6 KiB |  00m00s
+[ 91/102] Installing xorg-x11-server-Xo 100% | 118.0 MiB/s |   3.5 MiB |  00m00s
+[ 92/102] Installing xorg-x11-drv-libin 100% |  34.8 MiB/s | 107.0 KiB |  00m00s
+[ 93/102] Installing libXfixes-0:6.0.1- 100% |  17.3 MiB/s |  35.4 KiB |  00m00s
+[ 94/102] Installing libXcursor-0:1.2.3 100% |  17.9 MiB/s |  55.0 KiB |  00m00s
+[ 95/102] Installing xmodmap-0:1.0.11-1 100% |   2.9 MiB/s |  48.2 KiB |  00m00s
+[ 96/102] Installing xorg-x11-xinit-0:1 100% |   8.8 MiB/s | 145.0 KiB |  00m00s
+[ 97/102] Installing xsetroot-0:1.1.3-4 100% |   1.7 MiB/s |  23.8 KiB |  00m00s
+[ 98/102] Installing xinput-0:1.6.4-6.f 100% |   4.4 MiB/s |  67.0 KiB |  00m00s
+[ 99/102] Installing xkbset-0:0.5-31.fc 100% |   4.0 MiB/s |  56.7 KiB |  00m00s
+[100/102] Installing xrandr-0:1.5.3-4.f 100% |   5.2 MiB/s |  80.5 KiB |  00m00s
+[101/102] Installing xset-0:1.2.5-9.fc4 100% |   3.0 MiB/s |  42.6 KiB |  00m00s
+[102/102] Installing perl-NDBM_File-0:1 100% |  46.5 KiB/s |  29.5 KiB |  00m01s
+Complete!
+Updating and loading repositories:
+Repositories loaded.
+Package "curl-8.18.0-9.fc44.x86_64" is already installed.
+Package "procps-ng-4.0.6-1.fc44.x86_64" is already installed.
+Package "psmisc-23.7-7.fc44.x86_64" is already installed.
+Package "unzip-6.0-69.fc44.x86_64" is already installed.
+Package "util-linux-2.41.5-1.fc44.x86_64" is already installed.
+Package "xdg-utils-1.2.1-5.fc44.noarch" is already installed.
+
+Package           Arch   Version                   Repository      Size
+Installing:
+ dbus-x11         x86_64 1:1.16.2-1.fc44           fedora      35.7 KiB
+ git              x86_64 0:2.55.0-1.fc44           updates     57.7 KiB
+ xclip            x86_64 0:0.13-26.git11cba61.fc44 fedora      58.0 KiB
+ xdotool          x86_64 1:3.20211022.1-10.fc44    fedora     105.3 KiB
+ xprop            x86_64 0:1.2.8-5.fc44            fedora      54.5 KiB
+Installing dependencies:
+ dbus-daemon      x86_64 1:1.16.2-1.fc44           fedora     445.2 KiB
+ git-core         x86_64 0:2.55.0-1.fc44           updates     25.6 MiB
+ git-core-doc     noarch 0:2.55.0-1.fc44           updates     18.9 MiB
+ libXtst          x86_64 0:1.2.5-4.fc44            fedora      33.4 KiB
+ libxdo           x86_64 1:3.20211022.1-10.fc44    fedora      87.4 KiB
+ perl-Error       noarch 1:0.17030-3.fc44          fedora      76.8 KiB
+ perl-Git         noarch 0:2.55.0-1.fc44           updates     64.4 KiB
+ perl-TermReadKey x86_64 0:2.38-27.fc44            fedora      63.9 KiB
+ perl-lib         x86_64 0:0.65-525.fc44           updates      8.5 KiB
+
+Transaction Summary:
+ Installing:        14 packages
+
+Total size of inbound packages is 9 MiB. Need to download 9 MiB.
+After this operation, 46 MiB extra will be used (install 46 MiB, remove 0 B).
+[ 1/14] xclip-0:0.13-26.git11cba61.fc44 100% | 215.7 KiB/s |  36.7 KiB |  00m00s
+[ 2/14] dbus-x11-1:1.16.2-1.fc44.x86_64 100% | 128.0 KiB/s |  25.0 KiB |  00m00s
+[ 3/14] xdotool-1:3.20211022.1-10.fc44. 100% | 273.7 KiB/s |  54.5 KiB |  00m00s
+[ 4/14] xprop-0:1.2.8-5.fc44.x86_64     100% | 653.7 KiB/s |  35.3 KiB |  00m00s
+[ 5/14] libxdo-1:3.20211022.1-10.fc44.x 100% | 577.5 KiB/s |  42.2 KiB |  00m00s
+[ 6/14] libXtst-0:1.2.5-4.fc44.x86_64   100% | 404.2 KiB/s |  21.0 KiB |  00m00s
+[ 7/14] perl-TermReadKey-0:2.38-27.fc44 100% | 340.9 KiB/s |  35.5 KiB |  00m00s
+[ 8/14] git-0:2.55.0-1.fc44.x86_64      100% | 146.4 KiB/s |  41.1 KiB |  00m00s
+[ 9/14] dbus-daemon-1:1.16.2-1.fc44.x86 100% | 445.1 KiB/s | 182.0 KiB |  00m00s
+[10/14] perl-Git-0:2.55.0-1.fc44.noarch 100% | 177.8 KiB/s |  37.7 KiB |  00m00s
+[11/14] perl-Error-1:0.17030-3.fc44.noa 100% | 287.9 KiB/s |  40.3 KiB |  00m00s
+[12/14] perl-lib-0:0.65-525.fc44.x86_64 100% | 187.3 KiB/s |  14.2 KiB |  00m00s
+[13/14] git-core-doc-0:2.55.0-1.fc44.no 100% |   5.2 MiB/s |   3.2 MiB |  00m01s
+[14/14] git-core-0:2.55.0-1.fc44.x86_64 100% |   6.2 MiB/s |   5.4 MiB |  00m01s
+--------------------------------------------------------------------------------
+[14/14] Total                           100% |   5.2 MiB/s |   9.2 MiB |  00m02s
+Running transaction
+[ 1/16] Verify package files            100% | 437.0   B/s |  14.0   B |  00m00s
+[ 2/16] Prepare transaction             100% | 170.0   B/s |  14.0   B |  00m00s
+[ 3/16] Installing git-core-0:2.55.0-1. 100% | 272.4 MiB/s |  25.6 MiB |  00m00s
+[ 4/16] Installing git-core-doc-0:2.55. 100% | 187.1 MiB/s |  19.1 MiB |  00m00s
+[ 5/16] Installing perl-lib-0:0.65-525. 100% |   4.4 MiB/s |   8.9 KiB |  00m00s
+[ 6/16] Installing perl-Error-1:0.17030 100% |  19.5 MiB/s |  80.0 KiB |  00m00s
+[ 7/16] Installing perl-TermReadKey-0:2 100% |  21.5 MiB/s |  66.1 KiB |  00m00s
+[ 8/16] Installing git-0:2.55.0-1.fc44. 100% |  28.8 MiB/s |  59.0 KiB |  00m00s
+[ 9/16] Installing perl-Git-0:2.55.0-1. 100% |  31.9 MiB/s |  65.4 KiB |  00m00s
+[10/16] Installing libXtst-0:1.2.5-4.fc 100% |  16.8 MiB/s |  34.5 KiB |  00m00s
+[11/16] Installing libxdo-1:3.20211022. 100% |   9.6 MiB/s |  88.7 KiB |  00m00s
+[12/16] Installing dbus-daemon-1:1.16.2 100% |  10.7 MiB/s | 449.9 KiB |  00m00s
+[13/16] Installing dbus-x11-1:1.16.2-1. 100% |   2.4 MiB/s |  36.7 KiB |  00m00s
+[14/16] Installing xdotool-1:3.20211022 100% |   7.5 MiB/s | 107.4 KiB |  00m00s
+[15/16] Installing xprop-0:1.2.8-5.fc44 100% |   3.9 MiB/s |  55.9 KiB |  00m00s
+[16/16] Installing xclip-0:0.13-26.git1 100% |  79.2 KiB/s |  60.0 KiB |  00m01s
+Complete!
+[0;32m[OK][0m Required build and runtime dependencies installed.
+[1;33m[WARN][0m Skipping recommended desktop dependencies for core profile.
+[1;33m[WARN][0m Skipping optional desktop extras for core profile.
+[0;36m[INFO][0m Installing the preferred Alacritty terminal from enabled repositories...
+Package           Arch   Version         Repository      Size
+Installing:
+ alacritty        x86_64 0:0.17.0-1.fc44 updates      7.5 MiB
+Installing dependencies:
+ libwayland-egl   x86_64 0:1.25.0-1.fc44 updates     12.3 KiB
+ libxkbcommon-x11 x86_64 0:1.13.1-2.fc44 fedora      35.4 KiB
+
+Transaction Summary:
+ Installing:         3 packages
+
+[0;32m[OK][0m Preferred terminal installed: alacritty
+[1;33m[WARN][0m No display manager found; skipping display-manager installation for core profile.
+make[1]: Entering directory '/home/p7tester/baseline'
+==> Installing Capitaine cursor themes...
+make[1]: Leaving directory '/home/p7tester/baseline'
+
+==> Installing system files...
+==> Installing scripts to PATH...
+==> Installing privileged helpers...
+==> Installing user files for p7tester...
+  Preserving existing /home/p7tester/.xinitrc
+==> Syncing local repo to data dir...
+==> Seeding application config without overwriting user files...
+==> Seeding dwm-scoped XDG autostart overrides...
+==> Replacing managed Quickshell config...
+==> Seeding user config (skipping existing files)...
+==> Migrating legacy graphical-session startup...
+==> Installing Meslo font aliases...
+==> Fixing executable permissions...
+
+  dwm installed successfully.
+  Log out and select 'dwm', or start with: startx
+
+[1;33m[WARN][0m Display setup deferred for non-interactive installation.
+[1;33m[WARN][0m Run dwm-display-setup from an X11 session after login.
+
+╔═══════════════════════════════════════════╗
+║          Installation Complete!           ║
+╚═══════════════════════════════════════════╝
+
+[0;36m[INFO][0m Detected: Fedora Linux 44 (Server Edition)
+  • Build configuration: /home/p7tester/baseline/config.h
+  • Reconfigure by removing config.h and running the installer again
+  • Display setup: dwm-display-setup
+  • Log out and select 'dwm', or start with: startx
+
+  SUPER+/   keybind viewer     SUPER+X  terminal
+  SUPER+F1  control center     SUPER+R  app launcher
+  SUPER+Q   close window
+
+  Full reference: https://dwm.christitus.com/keybinds.html or SUPER+/ in dwm
