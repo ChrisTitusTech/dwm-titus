@@ -27,7 +27,8 @@ fi
 mapfile -t packages < <(
 	{
 		dwm_packages fedora required
-		dwm_packages fedora image-build
+		dwm_packages fedora image-factory
+		dwm_packages fedora image-boot
 		dwm_packages fedora desktop
 		dwm_packages fedora system-management
 		dwm_packages fedora system-management-optional

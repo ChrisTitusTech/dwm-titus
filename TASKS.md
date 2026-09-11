@@ -1,23 +1,38 @@
 # Active Tasks
 
-No implementation phase is active. Phase 7 software and image qualification is
-complete with explicit limitations; no later phase was started.
+## Compressed system image installer
 
-## Phase 7 closeout
+Authorized 2026-09-11. Replace install-time repository resolution with a
+prebuilt Fedora root filesystem while retaining Anaconda disk, locale and
+account selection. Preserve standard/NVIDIA separation and existing-system
+installation. Phase 7 historical evidence remains in docs/P7-QUALIFICATION.md.
 
-Detailed procedures and evidence are in [docs/P7-QUALIFICATION.md](docs/P7-QUALIFICATION.md).
+- [x] Build a disposable factory system from the existing package contract.
+- [x] Exclude dotenv files recursively from the ISO payload and verify the
+      actual rsync filters against root and nested dummy credential files.
+- [x] Move required desktop assets into system-wide image storage; remove
+      factory accounts, credentials, identifiers, logs and machine-specific state.
+- [x] Capture and checksum a compressed filesystem and embed it in the Fedora
+      Server installer with a local liveimg Kickstart and offline user setup.
+- [x] Verify standard/NVIDIA identity, failure handling and output preservation.
+- [x] Require maim, clipboard/region-capture dependencies and all shipped-feature
+      commands; exercise screenshots and clipboard ownership after offline install.
+- [x] Install with networking disconnected; verify first boot, new user,
+      LightDM/dwm/Quickshell, fonts, Gear Lever and template identity cleanup.
+- [x] Measure artifact sizes, document the supported build/update workflow and
+      limitations, and complete applicable tests and independent local review.
 
-- P7-BASE: Fedora 44 signed source, architecture, firmware and hardware matrix recorded.
-- P7-IMAGE: standard/NVIDIA Kickstarts, 73-entry package map, builds and media checks passed.
-- P7-INSTALL: clean BIOS/UEFI image installation, normal reboot and managed desktop passed; existing Fedora core/recommended and repeat installs passed.
-- P7-UPGRADE: user configuration/ownership preservation, controlled interrupted-build retry and backup restoration passed with SELinux Enforcing.
-- P7-DESKTOP/UI-6: real and nested X11 focus, IPC, lifecycle, small displays and idle-resource checks passed. QEMU S3 resume failed and is unqualified; physical NVIDIA, displays, radios, audio and suspend were not tested.
-- P7-RELEASE: full repository gates, recovery documentation and independent local review passed. Source commit/push is authorized; final published-head verification is recorded in the task result.
+- [x] Upload verified ISOs and checksums to the configured Cloudflare R2 bucket;
+      verify uploaded objects by reading them back and comparing SHA-256.
 
-## Publication boundary
+R2 upload authorized 2026-09-11 only after offline installation and desktop
+verification. The user subsequently authorized updating the v0.7.0 release,
+then publishing the download/install guidance and merging this work into main.
 
-Merge, version selection, tagged artifacts and release publication remain
-separate actions requiring explicit authorization. They are not unfinished
-Phase 7 implementation tasks. Any release notes must retain the exact failed
-and untested paths in the qualification record. Do not claim universal hardware
-support from these VM results.
+- [x] Verify all public Cloudflare downloads and update the v0.7.0 release links.
+- [x] Update README and the installation guide for the offline Cloudflare ISOs.
+- [x] Build and inspect the documentation and complete independent review of
+      the compressed-image implementation and Cloudflare download guidance.
+
+The user authorized publication and merge into main; GitHub records the merge
+state and post-merge documentation deployment.
