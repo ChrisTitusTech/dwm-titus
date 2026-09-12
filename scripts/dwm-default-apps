@@ -53,6 +53,9 @@ supported_mimes=(
 	application/pdf
 	image/png
 	image/jpeg
+	image/gif
+	image/bmp
+	image/tiff
 	audio/mpeg
 	video/mp4
 )

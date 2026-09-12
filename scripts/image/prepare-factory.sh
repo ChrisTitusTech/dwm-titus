@@ -11,6 +11,18 @@ variant=$(cat /etc/dwm-titus-factory-target)
 source_dir=/home/imagebuilder/.local/share/dwm-titus
 install -d /usr/share/dwm-titus-image /usr/local/share/fonts/dwm-titus
 cp -a "$source_dir"/. /usr/share/dwm-titus-image/
+# Refresh only the official Fedora PackageKit packages. A release-only backport
+# cannot be identified by an unprivileged client on the default procfs policy.
+dnf --repo=fedora --repo=updates upgrade -y PackageKit PackageKit-glib libdnf5
+python3 /usr/share/dwm-titus-image/scripts/image/check-packagekit.py
+bash /usr/share/dwm-titus-image/scripts/image/install-tools.sh
+# Fedora intentionally hides sxiv. Override that desktop ID system-wide so
+# it is discoverable without modifying the RPM-owned entry or its MIME list.
+install -d /usr/local/share/applications
+sed 's/^NoDisplay=true$/NoDisplay=false/' /usr/share/applications/sxiv.desktop \
+	>/usr/local/share/applications/sxiv.desktop
+desktop-file-validate /usr/local/share/applications/sxiv.desktop
+update-desktop-database /usr/local/share/applications
 cp -a /home/imagebuilder/.local/share/fonts/. /usr/local/share/fonts/dwm-titus/
 # User configuration is generated offline for the real account at installation.
 # Install the Flatpak system-wide so it is not tied to the factory account.

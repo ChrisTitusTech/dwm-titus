@@ -33,6 +33,10 @@ for user in "${users[@]}"; do
 export DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS
 cd "$HOME/.local/share/dwm-titus"
 make install-user
+# Legacy xz captures predate these tools and seeders. Keep their installation
+# path usable; package/default upgrades require rebuilding the factory image.
+if [[ -f scripts/image/seed-terminal.sh ]]; then bash scripts/image/seed-terminal.sh; fi
+if [[ -f scripts/image/seed-apps.sh ]]; then bash scripts/image/seed-apps.sh; fi
 xdg-user-dirs-update
 mkdir -p "$HOME/Pictures/backgrounds"
 wallpaper="$HOME/Pictures/backgrounds/dwm-titus.jpg"

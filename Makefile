@@ -356,6 +356,7 @@ check-dev-sync-install:
 	tests/test-dev-sync-install.sh
 
 check-terminal:
+	tests/test-image-user-defaults.sh
 	tests/test-dwm-terminal.sh
 
 check-gearlever-install:
@@ -522,6 +523,7 @@ check-kickstart:
 	$(MAKE) check-fedora-iso-builder
 
 check-fedora-iso-builder:
+	/usr/bin/python3 tests/test-image-packagekit.py
 	tests/test-fedora-iso-builder.sh
 
 check-fedora-platform:

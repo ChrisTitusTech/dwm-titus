@@ -3,12 +3,12 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/build-dwm-fedora-installer-iso.sh --input ISO --output ISO [--variant standard|nvidia] [--version X.Y.Z] [--system-image ROOTFS.tar.xz]
+Usage: scripts/build-dwm-fedora-installer-iso.sh --input ISO --output ISO [--variant standard|nvidia] [--version X.Y.Z] [--system-image ROOTFS.tar.zst|ROOTFS.tar.xz]
 
 Embed this checkout and a dwm-titus Kickstart into a Fedora installer ISO.
 The resulting ISO exposes the checkout at /run/install/repo/dwm-titus.
 --system-image selects offline installation from a factory-built root filesystem
-and its required .tar.xz.json manifest. The manifest must match --variant.
+and its required adjacent .json manifest. The manifest must match --variant.
 EOF
 }
 
@@ -157,18 +157,28 @@ import json
 from pathlib import Path
 import sys
 path = Path(sys.argv[1])
-if not path.name.endswith('.tar.xz'):
-    sys.exit('System image must be a .tar.xz file')
+formats = {'.tar.xz': ('xz', b'\xfd7zXZ\x00'), '.tar.zst': ('zstd', b'\x28\xb5\x2f\xfd')}
+selected = next((value for suffix, value in formats.items() if path.name.endswith(suffix)), None)
+if selected is None:
+    sys.exit('System image must be a .tar.zst or .tar.xz file')
 metadata = json.loads(Path(str(path) + '.json').read_text())
-if (metadata.get('protocol'), metadata.get('variant'), metadata.get('fedora'), metadata.get('architecture')) != (1, sys.argv[2], '44', 'x86_64'):
+if metadata.get('protocol') not in (1, 2) or (metadata.get('variant'), metadata.get('fedora'), metadata.get('architecture')) != (sys.argv[2], '44', 'x86_64'):
     sys.exit('System-image manifest does not match Fedora 44, x86_64 and selected variant')
+if metadata['protocol'] == 2 and metadata.get('compression') != selected[0]:
+    sys.exit('System-image compression does not match its manifest')
 with path.open('rb') as stream:
+    if stream.read(len(selected[1])) != selected[1]:
+        sys.exit('System-image compression does not match its filename')
+    stream.seek(0)
     digest = hashlib.file_digest(stream, 'sha256').hexdigest()
 if digest != metadata.get('sha256') or path.stat().st_size != metadata.get('size'):
     sys.exit('System-image checksum or size mismatch')
 print(digest)
 PYTHON
 	)
+	# Read the entire archive, including compression trailers, before publishing.
+	# GNU tar detects xz/zstd by magic; --ignore-zeros drains past tar end markers.
+	tar --ignore-zeros -tf "$system_image" >/dev/null
 	ks_file="$work_dir/image.ks"
 	boot_arguments=
 	if [[ -n $extra_linux_args ]]; then
@@ -177,7 +187,14 @@ PYTHON
 	sed -e "s/@IMAGE_SHA256@/$image_sha/" \
 		-e "s/@BOOT_ARGUMENTS@/$boot_arguments/" "$repo_dir/dwm-fedora-image.ks" >"$ks_file"
 	ksvalidator "$ks_file"
-	system_image_args=(-map "$system_image" /images/dwm-rootfs.tar.xz)
+	# Anaconda 44.30 recognizes .tar but not .tar.zst. Its GNU tar detects the
+	# compression by content, so both supported formats use this neutral name.
+	system_image_args=(-map "$system_image" /images/dwm-rootfs.tar)
+	# Supported by the pinned nm-initrd-generator. Apply only to installer
+	# kernels, after rendering the installed system's bootloader arguments.
+	# No-NIC installs can still wait in nm-online after disabling IP setup.
+	# Mask this boot's initrd/runtime wait services, not NetworkManager itself.
+	extra_linux_args="${extra_linux_args:+$extra_linux_args }ip=none systemd.mask=NetworkManager-wait-online.service rd.systemd.mask=nm-wait-online-initrd.service"
 fi
 output_dir="$(dirname "$output_iso")"
 output_base="$(basename "$output_iso")"
@@ -214,13 +231,16 @@ for grub_path in /EFI/BOOT/grub.cfg /boot/grub2/grub.cfg; do
 	grub_cfg="$work_dir/${grub_path//\//_}"
 	patched_grub_cfg="$grub_cfg.patched"
 	xorriso -osirrox on -indev "$input_iso" -extract "$grub_path" "$grub_cfg" >/dev/null 2>&1
-	awk -v extra_linux_args="$extra_linux_args" '
+	awk -v extra_linux_args="$extra_linux_args" -v offline="$system_image" '
 	function append_arg(arg) {
 		if (arg != "" && index($0, arg) == 0) {
 			$0 = $0 " " arg
 		}
 	}
 
+	/^[[:space:]]*set[[:space:]]+default=/ {
+		if (offline != "") $0 = "set default=\"0\""
+	}
 	/^[[:space:]]*linux[[:space:]]/ {
 		if (match($0, /inst\.stage2=[^[:space:]]+/)) {
 			stage2 = substr($0, RSTART + length("inst.stage2="), RLENGTH - length("inst.stage2="))

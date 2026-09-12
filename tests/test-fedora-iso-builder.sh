@@ -81,7 +81,7 @@ while (($# > 0)); do
 		/boot/grub2/grub.cfg) bios_grub_map=${2:-} ;;
 		/dwm-titus) payload_map=${2:-} ;;
 		/images/product.img) product_map=${2:-} ;;
-		/images/dwm-rootfs.tar.xz) rootfs_map=${2:-} ;;
+		/images/dwm-rootfs.tar) rootfs_map=${2:-} ;;
 		esac
 		shift 3
 		;;
@@ -94,6 +94,7 @@ done
 if [[ -n $extract_to ]]; then
 	mkdir -p "$(dirname -- "$extract_to")"
 	cat >"$extract_to" <<'OUT'
+set default="1"
 menuentry 'Install Fedora' {
 	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 quiet
 }
@@ -205,6 +206,7 @@ export DWM_TEST_PACKED_LOGO="$work/packed-logo.png"
 cp "$DWM_TEST_BRANDING/usr/share/anaconda/pixmaps/sidebar-logo.png" "$work/original-logo.png"
 
 run_builder standard "$standard_iso"
+[[ $(grep -c '^set default="1"$' "$DWM_TEST_XORRISO_LOG") == 2 ]]
 grep -Fqx "ks=$repo/dwm-fedora.ks" "$DWM_TEST_XORRISO_LOG"
 grep -Fqx '	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 quiet inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-44:/dwm-fedora.ks' "$DWM_TEST_XORRISO_LOG"
 grep -Fqx '	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 rd.live.check quiet inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-44:/dwm-fedora.ks' "$DWM_TEST_XORRISO_LOG"
@@ -286,7 +288,9 @@ grep -Fq -- '--out-dir requires --series' "$work/bad.err"
 
 # Offline payloads must match the variant and verified bytes before ISO creation.
 image="$work/root filesystem.tar.xz"
-printf 'compressed fixture\n' >"$image"
+mkdir "$work/rootfs"
+printf 'root filesystem fixture\n' >"$work/rootfs/marker"
+tar -cJf "$image" -C "$work/rootfs" .
 python3 - "$image" <<'PYTHON'
 import hashlib, json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
@@ -295,7 +299,16 @@ m = dict(protocol=1, variant='standard', fedora='44', architecture='x86_64',
 pathlib.Path(str(p) + '.json').write_text(json.dumps(m))
 PYTHON
 run_builder standard "$standard_iso" --system-image "$image"
-grep -Fq 'liveimg --url="file:///run/install/repo/images/dwm-rootfs.tar.xz" --checksum=' "$DWM_TEST_IMAGE_KS"
+grep -Fq 'liveimg --url="file:///run/install/repo/images/dwm-rootfs.tar" --checksum=' "$DWM_TEST_IMAGE_KS"
+[[ $(grep -c '^set default="0"$' "$DWM_TEST_XORRISO_LOG") == 2 ]]
+[[ $(grep -c 'rd.live.check' "$DWM_TEST_XORRISO_LOG") == 2 ]]
+[[ $(grep -c 'ip=none' "$DWM_TEST_XORRISO_LOG") == 4 ]]
+[[ $(grep -c 'systemd.mask=NetworkManager-wait-online.service' "$DWM_TEST_XORRISO_LOG") == 4 ]]
+[[ $(grep -c 'rd.systemd.mask=nm-wait-online-initrd.service' "$DWM_TEST_XORRISO_LOG") == 4 ]]
+if grep -Eq 'ip=none|systemd.mask=' "$DWM_TEST_IMAGE_KS"; then
+	echo 'Installer-only networking option leaked into target configuration' >&2
+	exit 1
+fi
 if grep -Eq '^(url |repo |%packages)' "$DWM_TEST_IMAGE_KS"; then
 	echo 'Offline installer requests online package selection' >&2
 	exit 1
@@ -326,6 +339,43 @@ for failure in variant checksum manifest; do
 		--output "$standard_iso" --variant "$selected" --system-image "$image" \
 		>"$work/failed.out" 2>"$work/failed.err"; then
 		echo "Accepted invalid system image: $failure" >&2
+		exit 1
+	fi
+	[[ $(cat "$standard_iso") == 'previous image' ]]
+	[[ -z $(find "$work/invalid-temp" -mindepth 1 -print -quit) ]]
+done
+
+# Zstd uses the same Anaconda-compatible neutral archive path. Verify both
+# firmware defaults, then reject a correctly hashed but damaged stream.
+image="$work/root filesystem.tar.zst"
+tar --zstd -cf "$image" -C "$work/rootfs" .
+write_manifest() {
+	python3 - "$image" <<'PYTHON'
+import hashlib, json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+m = dict(protocol=2, variant='standard', fedora='44', architecture='x86_64',
+         compression='zstd', size=p.stat().st_size,
+         sha256=hashlib.sha256(p.read_bytes()).hexdigest())
+pathlib.Path(str(p) + '.json').write_text(json.dumps(m))
+PYTHON
+}
+write_manifest
+run_builder standard "$standard_iso" --system-image "$image"
+[[ $(grep -c '^set default="0"$' "$DWM_TEST_XORRISO_LOG") == 2 ]]
+grep -Fq 'file:///run/install/repo/images/dwm-rootfs.tar"' "$DWM_TEST_IMAGE_KS"
+for failure in compression damaged; do
+	if [[ $failure == compression ]]; then
+		sed -i 's/"zstd"/"xz"/' "$image.json"
+	else
+		truncate -s 12 "$image"
+		write_manifest
+	fi
+	printf 'previous image\n' >"$standard_iso"
+	if TMPDIR="$work/invalid-temp" PATH="$work/bin:$PATH" \
+		"$repo/scripts/build-dwm-fedora-installer-iso.sh" --input "$input_iso" \
+		--output "$standard_iso" --system-image "$image" \
+		>"$work/failed.out" 2>"$work/failed.err"; then
+		echo "Accepted invalid zstd image: $failure" >&2
 		exit 1
 	fi
 	[[ $(cat "$standard_iso") == 'previous image' ]]

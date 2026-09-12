@@ -1,0 +1,18 @@
+# Use terminal palette colors so the prompt follows the dwm-titus theme.
+add_newline = true
+format = "$directory$git_branch$git_status$character"
+
+[directory]
+style = "bold blue"
+truncation_length = 3
+
+[git_branch]
+symbol = "git:"
+style = "bold purple"
+
+[git_status]
+style = "yellow"
+
+[character]
+success_symbol = "[>](bold green)"
+error_symbol = "[>](bold red)"

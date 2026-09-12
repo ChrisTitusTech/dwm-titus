@@ -17,7 +17,7 @@ def run(*args, **kwargs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--input', type=Path, required=True, help='Verified Fedora 44 Server netinst ISO')
-    parser.add_argument('--output', type=Path, required=True, help='New root filesystem .tar.xz')
+    parser.add_argument('--output', type=Path, required=True, help='New root filesystem .tar.zst (or legacy .tar.xz)')
     parser.add_argument('--variant', choices=['standard', 'nvidia'], default='standard')
     parser.add_argument('--timeout', type=int, default=7200)
     args = parser.parse_args()
@@ -28,9 +28,12 @@ def main():
         source_sha256 = hashlib.file_digest(stream, 'sha256').hexdigest()
     if source_sha256 != 'ae20c06bea746913cadea7d80463e13f4bf55bee4df2918111c921c674b70283':
         parser.error('input checksum does not match Fedora 44 Server 1.7 x86_64')
-    if not args.output.name.endswith('.tar.xz') or args.output.exists():
-        parser.error('output must be a new .tar.xz file')
-    for tool in ['qemu-system-x86_64', 'qemu-img', 'xorriso', 'guestfish', 'xz', 'ksvalidator']:
+    if (not args.output.name.endswith(('.tar.zst', '.tar.xz')) or args.output.exists()
+            or args.output.with_name(args.output.name + '.json').exists()):
+        parser.error('output and its manifest must be new .tar.zst or .tar.xz files')
+    compression = 'zstd' if args.output.name.endswith('.tar.zst') else 'xz'
+    compression_args = ['-T0', '-19'] if compression == 'zstd' else ['-T4', '-6']
+    for tool in ['qemu-system-x86_64', 'qemu-img', 'xorriso', 'guestfish', compression, 'time', 'ksvalidator']:
         if not shutil.which(tool):
             parser.error(f'missing tool: {tool}')
     repo = Path(__file__).resolve().parent.parent
@@ -56,6 +59,8 @@ def main():
             ks = ks.replace('set -eu\n', 'set -eu\nexec > /dev/ttyS0 2>&1\n')
             boot_packages = run('bash', repo / 'scripts/dwm-packages.sh', 'fedora',
                                 'image-boot', capture_output=True, text=True).stdout
+            boot_packages += run('bash', repo / 'scripts/dwm-packages.sh', 'fedora',
+                                 'image-desktop', capture_output=True, text=True).stdout
             ks = ks.replace('%packages\n', '%packages\n' + boot_packages, 1)
             ks += ('\n%post --interpreter=/bin/bash --erroronfail\nset -euo pipefail\nexec > /dev/ttyS0 2>&1\n'
                    f"printf '%s\\n' '{args.variant}' > /etc/dwm-titus-factory-target\n"
@@ -72,6 +77,7 @@ def main():
             shutil.copy2('/usr/share/edk2/ovmf/OVMF_VARS.fd', work / 'vars.fd')
             command = ['qemu-system-x86_64', '-enable-kvm', '-machine', 'q35', '-cpu', 'host',
                        '-smp', '4', '-m', '6144', '-display', 'none', '-serial', 'stdio', '-monitor', 'none',
+                       '-qmp', f'unix:{work}/qmp.sock,server=on,wait=off',
                        '-drive', 'if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd',
                        '-drive', f'if=pflash,format=raw,file={work}/vars.fd',
                        '-drive', f'file={work}/factory.qcow2,if=virtio,format=qcow2',
@@ -91,19 +97,27 @@ def main():
                 'tar-out', '/',
                 work / 'rootfs.tar', 'numericowner:true', 'xattrs:true', 'selinux:true', 'acls:true',
                 env=env, stdout=log, stderr=subprocess.STDOUT)
-            run('xz', '-T4', '-6', work / 'rootfs.tar', stdout=log, stderr=subprocess.STDOUT)
+            tar_size = (work / 'rootfs.tar').stat().st_size
+            with (work / 'rootfs.tar').open('rb') as stream:
+                tar_digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+            run('/usr/bin/time', '--verbose', '--output', evidence / 'compression.txt',
+                compression, *compression_args, work / 'rootfs.tar',
+                stdout=log, stderr=subprocess.STDOUT)
             # Copy into an adjacent temporary file; publish only a completed capture.
             with tempfile.NamedTemporaryFile(dir=args.output.parent, delete=False) as out:
                 staged = Path(out.name)
             try:
-                shutil.copyfile(work / 'rootfs.tar.xz', staged)
+                suffix = '.zst' if compression == 'zstd' else '.xz'
+                shutil.copyfile(work / ('rootfs.tar' + suffix), staged)
                 with staged.open('rb') as stream:
                     digest = hashlib.file_digest(stream, 'sha256').hexdigest()
                 staged.replace(args.output)
             finally:
                 staged.unlink(missing_ok=True)
-            manifest = {'protocol': 1, 'variant': args.variant, 'fedora': '44', 'architecture': 'x86_64',
-                        'source_sha256': source_sha256, 'sha256': digest, 'size': args.output.stat().st_size}
+            manifest = {'protocol': 2, 'variant': args.variant, 'fedora': '44', 'architecture': 'x86_64',
+                        'source_sha256': source_sha256, 'sha256': digest, 'size': args.output.stat().st_size,
+                        'compression': compression, 'compression_args': compression_args,
+                        'tar_sha256': tar_digest, 'tar_size': tar_size}
             args.output.with_name(args.output.name + '.json').write_text(json.dumps(manifest, indent=2) + '\n')
             print(json.dumps(manifest))
 
