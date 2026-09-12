@@ -102,7 +102,6 @@ ClickAwayPopup {
 
                         Layout.fillWidth: true
                         label: modelData.label
-                        detail: modelData.detail
                         navigates: modelData.confirm
                         enabled: !root.powerMenuModel.busy && modelData.available
                             && !root.foreignConfirmation

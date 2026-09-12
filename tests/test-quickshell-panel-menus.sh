@@ -55,7 +55,6 @@ grep -Fq 'activeFocusOnTab: presetButton.enabled' "$controlcenter/ControlCenterW
 grep -Fq 'event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space' \
 	"$controlcenter/ControlCenterWindow.qml"
 grep -Fq 'PanelSeparator {}' "$power/PowerMenuWindow.qml"
-grep -Fq 'detail: modelData.detail' "$power/PowerMenuWindow.qml"
 grep -Fq 'onDismissed: powerMenuModel.close(root.actionOrigin)' "$power/PowerMenuWindow.qml"
 grep -Fq 'enabled: !root.powerMenuModel.busy' "$power/PowerMenuWindow.qml"
 grep -Fq 'root.powerMenuModel.requestAction(modelData, root.actionOrigin)' \

@@ -8,6 +8,8 @@ versions from `config.mk`.
 
 ### Changed
 
+- Simplify the Power dropdown to Reboot, Logout, Lock, Suspend, and Shutdown
+  without explanatory row text.
 - Build zstd compressed filesystem candidates with recorded compression costs,
   keep xz input compatibility, and default offline media to normal installation.
 - Seed fresh image accounts with a themed Starship prompt, Brave Origin and
