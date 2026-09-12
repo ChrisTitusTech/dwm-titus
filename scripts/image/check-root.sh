@@ -41,12 +41,14 @@ mapfile -t packages < <({
 	dwm_packages fedora terminal
 	dwm_packages fedora lightdm
 	dwm_packages fedora image-boot
+	dwm_packages fedora image-desktop
 } | sort -u)
 rpm -q "${packages[@]}" >/dev/null
+python3 /usr/share/dwm-titus-image/scripts/image/check-packagekit.py
 [[ -z $(find /usr/share/dwm-titus-image \( -name '.env' -o -name '.env.*' -o -name '.envrc' \) -print -quit) ]]
 missing=0
 # maim uses libslop for region selection; RPM resolves its shared dependencies.
-for command in dwm quickshell alacritty maim xclip xdotool xrandr xset xinput \
+for command in dwm quickshell alacritty starship herdr brave-origin sxiv maim xclip xdotool xrandr xset xinput \
 	setxkbmap xkbset notify-send xdg-open xdg-mime xdg-user-dir \
 	picom feh dex-autostart xsettingsd light-locker light-locker-command \
 	nmcli bluetoothctl wpctl pactl playerctl brightnessctl amixer protonrestart \
@@ -60,6 +62,7 @@ for command in dwm quickshell alacritty maim xclip xdotool xrandr xset xinput \
 	fi
 done
 ((missing == 0))
+sha256sum --check /usr/share/dwm-titus-image/tool-sha256.txt
 for command in maim dwm; do
 	libraries=$(ldd "$(command -v "$command")")
 	if [[ $libraries == *'not found'* ]]; then

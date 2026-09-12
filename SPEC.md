@@ -381,6 +381,12 @@ Runtime dependencies are classified as:
   user-scoped Flathub remote. Existing installations add that runtime by
   rerunning the installer with the `recommended` or `full` profile; source-sync
   does not infer an install profile from independently installed programs.
+- Dedicated image defaults (Phase 8 target): Starship with a theme matching the
+  desktop, stable Brave Origin as the fresh account browser, checksum-verified
+  Herdr available offline, and sxiv as the supported image-format default with
+  Settings discovery. Feh remains available for wallpapers. Factory capture
+  must fail if required image defaults are missing. Existing user preferences
+  are preserved; Herdr activation and existing-system installation remain opt-in.
 - Optional: the Herdr terminal workspace, file manager, network tray, theme
   utilities, display-manager greeter customization, wallpapers, and
   hardware-specific helpers.
@@ -708,43 +714,33 @@ In a real or nested X11 session:
   representative NVIDIA hardware.
 - The validation record states firmware mode, architecture, image variant,
   Fedora release, and any untested paths.
+- Phase 8 targets: select the regular install boot entry by default, retaining
+  the optional media check and all published/payload checksums. Remove network
+  startup waits only in the offline installer path with supported configuration;
+  do not disable networking in the installed system.
+- Adopt tar.zst only after the pinned Anaconda runtime is proven to extract it;
+  preserve tar.xz input compatibility, metadata and manifest/checksum validation.
+  Report measured installation stages, archive size, RAM and hardware rather
+  than equating decompression throughput with end-to-end installation time.
+- Fresh-account qualification must exercise the actual themed prompt, Brave
+  Origin, Herdr, sxiv MIME/default discovery and a confirmed signed PackageKit
+  update, not only command presence or update discovery. The PackageKit security
+  floor and unprivileged Settings boundary remain mandatory.
 
 ## 10. Current Gap
 
-The existing desktop provides dwm, a managed Quickshell panel and launcher,
-notifications, quick controls, power actions, network and Bluetooth surfaces,
-display helpers, a system-health dashboard, and the unified Settings platform.
-Settings includes the completed Phase 2 display and input mutation surface,
-Phase 3 NetworkManager, BlueZ, PipeWire, and media workflows, and Phase 4 power,
-session-action, default-application, MIME, and XDG autostart workflows.
-Completed Phase 5 includes theme transactions, wallpaper persistence,
-managed-shell typography, desktop font, cursor, icon, GTK, and Qt controls,
-panel-widget persistence, plus persistent managed-shell contrast and motion
-policy with dedicated Settings controls, practical XKB input accessibility,
-and persistent notification Do Not Disturb and popup-duration controls.
-Cross-capability optional-component isolation and the accessibility capability
-contract are also qualified. The optional UI-5 inventory adopts no runtime
-experience: clipboard history and reminders are deferred, while emoji/symbol
-and generic image pickers are rejected. Reopening a UI-5 candidate requires an
-explicit product requirement and a separately qualified X11-native boundary.
-Combined Fedora 44, nested-X11, live-session, install-parity, restoration, and
-idle-resource qualification is recorded in `docs/P5-EVIDENCE.md` with explicit
-limitations. Completed Phase 6 adds safe Fedora updates, regional and delegated
-administration entry points, and bounded system information, diagnostics, and
-recovery workflows. Its combined evidence and explicit hardware/service limits
-are recorded in `docs/P6-QUALIFICATION.md`. Phase 7 Fedora image
-and source release qualification is complete with explicit limits recorded in
-`docs/P7-QUALIFICATION.md`. QEMU S3 resume failed; physical NVIDIA, display,
-audio and suspend paths remain unqualified. No release has been published by
-this qualification work.
+Phases 1-7 and compressed-image delivery through PR #299 are complete, with
+qualification evidence in `docs/P7-QUALIFICATION.md` and
+`docs/COMPRESSED-QUALIFICATION.md`. Previous roadmap detail is archived in
+`docs/COMPLETED-ROADMAP-20260911.md`. Physical NVIDIA, Secure Boot and suspend
+limitations remain explicit; completion does not establish untested hardware.
 
-The installer contains a Fedora-only package map and rejects other systems.
-The build uses `pkg-config`, supports staged installation with `DESTDIR`, and
-avoids writing user configuration during package builds. Fedora 44 Server
-Network Install is the current documented image base, while real image and
-hardware validation must continue to be recorded per release.
-
-Fedora is the only supported and tested distribution.
+Phase 8 addresses observed fresh-install gaps: missing shell prompt/theming,
+Brave Origin and Herdr provisioning, image-viewer defaults, and the PackageKit
+backport identity error that blocks update actions despite readable discovery.
+It also measures and reduces offline installer media-check/startup/extraction
+cost. Requirements marked Phase 8 are planned acceptance targets, not claims
+about the already published ISO. Fedora 44 and X11 remain the supported scope.
 
 ## 11. Definition of Done
 

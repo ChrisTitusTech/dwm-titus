@@ -91,11 +91,13 @@ generated site files: the builder embeds the checkout payload. It patches both
 UEFI and BIOS GRUB menus with the selected Kickstart and variant arguments.
 
 The builder uses `implantisomd5` and `checkisomd5` from `isomd5sum` after
-rewriting the ISO so Fedora's default "Test this media & install" entry can
+rewriting the ISO so Fedora's "Test this media & install" entry can
 verify it. It replaces the output path only after verification passes. This
 embedded checksum detects media corruption; it does not authenticate an image.
 Record a separate SHA-256 of each finished artifact and test the default
-media-check entry in the VM.
+media-check entry in the VM. Compressed images default to the normal entry 0;
+qualify both that path and the optional media check. Network factory images
+retain Fedora's original menu default.
 
 Install the Fedora image-build tools from the shared capability map:
 

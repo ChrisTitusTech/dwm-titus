@@ -8,11 +8,18 @@ versions from `config.mk`.
 
 ### Changed
 
+- Build zstd compressed filesystem candidates with recorded compression costs,
+  keep xz input compatibility, and default offline media to normal installation.
+- Seed fresh image accounts with a themed Starship prompt, Brave Origin and
+  sxiv image associations; include verified Herdr for offline use.
 - Use verified Cloudflare-hosted compressed ISOs for the primary download and
   installation guides, with checksums, offline setup steps and hardware limits.
 
 ### Fixed
 
+- Require a modern fixed PackageKit in captured images while preserving the
+  existing unprivileged update security gate and explaining backport recovery.
+- Make the image's sxiv desktop entry discoverable in application Defaults.
 - Exclude `.env`, `.env.*` and `.envrc` at every depth from the ISO source
   payload, independently of Git ignore rules.
 

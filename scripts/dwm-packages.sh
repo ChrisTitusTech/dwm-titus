@@ -17,11 +17,15 @@ dwm_packages() {
 		;;
 	fedora:image-factory)
 		dwm_packages "$family" image-build
-		printf '%s\n' qemu-system-x86 qemu-img edk2-ovmf libguestfs pykickstart xz
+		printf '%s\n' qemu-system-x86 qemu-img edk2-ovmf libguestfs pykickstart xz zstd time
 		;;
 	fedora:image-boot)
 		printf '%s\n' tar dracut-network grub2-pc grub2-pc-modules grub2-efi-x64 shim-x64 \
 			lvm2 cryptsetup btrfs-progs xfsprogs e2fsprogs mdadm dosfstools
+		;;
+	fedora:image-desktop)
+		# Dedicated image defaults; existing-system installs retain user choices.
+		printf '%s\n' brave-origin sxiv desktop-file-utils
 		;;
 	fedora:x11)
 		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot xinput setxkbmap xkbset
