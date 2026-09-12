@@ -44,6 +44,7 @@ if [[ ! -e $wallpaper && ! -L $wallpaper ]]; then
 	install -m 0644 lightdm/wallpaper.jpg "$wallpaper"
 fi
 scripts/install-gearlever
+bash scripts/theme-apply.sh
 '
 	if getent group gamemode >/dev/null; then usermod -aG gamemode "$user"; fi
 done

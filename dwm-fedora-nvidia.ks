@@ -127,6 +127,8 @@ libnotify
 light-locker
 xorg-x11-drv-libinput
 dconf
+adwaita-icon-theme
+papirus-icon-theme
 arc-theme
 adw-gtk3-theme
 numix-gtk-theme

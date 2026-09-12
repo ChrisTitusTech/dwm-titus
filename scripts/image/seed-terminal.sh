@@ -3,18 +3,19 @@
 set -euo pipefail
 [[ $(id -u) != 0 ]]
 config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+skel_dir=${SKEL_DIR:-/etc/skel}
 bashrc=$HOME/.bashrc
 if [[ -L $bashrc ]]; then
 	exit 0
 fi
-if [[ -e $bashrc ]] && ! cmp -s "$bashrc" /etc/skel/.bashrc; then
+if [[ -e $bashrc ]] && ! cmp -s "$bashrc" "$skel_dir/.bashrc"; then
 	printf 'Preserving existing Bash configuration: %s\n' "$bashrc"
 	exit 0
 fi
 # Fedora's stock .bashrc also sources user-owned .bashrc.d fragments. A stock
 # .bashrc alone does not establish that this account has an untouched prompt.
 for startup in .bash_profile .bash_login .profile; do
-	if [[ -L $HOME/$startup ]] || { [[ -e $HOME/$startup ]] && ! cmp -s "$HOME/$startup" "/etc/skel/$startup"; }; then
+	if [[ -L $HOME/$startup ]] || { [[ -e $HOME/$startup ]] && ! cmp -s "$HOME/$startup" "$skel_dir/$startup"; }; then
 		printf 'Preserving existing shell startup: %s\n' "$HOME/$startup"
 		exit 0
 	fi

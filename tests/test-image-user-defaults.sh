@@ -14,10 +14,28 @@ if [[ $(id -u) == 0 ]]; then
 	exit
 fi
 export HOME=$work/home XDG_CONFIG_HOME=$work/home/.config XDG_DATA_HOME=$work/home/.local/share
-mkdir -p "$XDG_CONFIG_HOME/starship" "$work/bin"
+export SKEL_DIR=$work/skel
+mkdir -p "$XDG_CONFIG_HOME/starship" "$work/bin" "$SKEL_DIR"
+cat >"$SKEL_DIR/.bashrc" <<'RC'
+# Stock Fedora .bashrc
+export PATH=$PATH:$HOME/.local/bin:$HOME/bin
+if [ -d ~/.bashrc.d ]; then
+	for rc in ~/.bashrc.d/*; do
+		if [ -f "$rc" ]; then
+			. "$rc"
+		fi
+	done
+fi
+unset rc
+RC
+cat >"$SKEL_DIR/.bash_profile" <<'RC'
+# Stock Fedora .bash_profile
+[ -f ~/.bashrc ] && . ~/.bashrc
+export PATH=$PATH:$HOME/.local/bin:$HOME/bin
+RC
 cp "$repo/config/starship/starship.toml" "$XDG_CONFIG_HOME/starship/"
-cp /etc/skel/.bashrc "$HOME/.bashrc"
-cp /etc/skel/.bash_profile "$HOME/.bash_profile"
+cp "$SKEL_DIR/.bashrc" "$HOME/.bashrc"
+cp "$SKEL_DIR/.bash_profile" "$HOME/.bash_profile"
 cat >"$work/bin/starship" <<'SH'
 #!/bin/sh
 printf 'init\n' >>"$HOME/invocations"
@@ -46,7 +64,7 @@ bash "$repo/scripts/image/seed-terminal.sh"
 cmp "$work/custom" "$HOME/.bashrc"
 # A stock .bashrc can still source a customized prompt from .bashrc.d.
 rm "$HOME/.bashrc"
-cp /etc/skel/.bashrc "$HOME/.bashrc"
+cp "$SKEL_DIR/.bashrc" "$HOME/.bashrc"
 cp "$HOME/.bashrc" "$work/stock"
 mkdir "$HOME/.bashrc.d"
 printf 'PS1="fragment> "\n' >"$HOME/.bashrc.d/prompt.sh"
