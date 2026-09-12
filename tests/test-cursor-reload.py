@@ -4,10 +4,10 @@
 import ctypes as c
 import importlib.machinery
 import os
-from pathlib import Path
 import subprocess
-import tempfile
 import sys
+import tempfile
+from pathlib import Path
 
 sys.dont_write_bytecode = True
 
@@ -161,11 +161,13 @@ try:
 finally:
     bind(x11, "XCloseDisplay", c.c_int, c.c_void_p)(display)
 
-with tempfile.TemporaryDirectory(
-    dir=os.environ.get(
-        "TMPDIR", os.environ.get("DWM_TEST_TMP_ROOT", str(Path.home() / "tmp"))
-    )
-) as work:
+test_root = Path(
+    os.environ.get("TMPDIR")
+    or os.environ.get("DWM_TEST_TMP_ROOT")
+    or Path.home() / "tmp"
+)
+test_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(dir=test_root) as work:
     config = Path(work) / "config/dwm-titus"
     config.mkdir(parents=True)
     runtime = Path(work) / "runtime"
