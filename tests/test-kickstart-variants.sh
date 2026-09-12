@@ -53,6 +53,8 @@ required_packages=(
 	gnome-keyring-pam
 	qt6ct
 	qt5ct
+	adwaita-icon-theme
+	papirus-icon-theme
 	arc-theme
 	adw-gtk3-theme
 	numix-gtk-theme

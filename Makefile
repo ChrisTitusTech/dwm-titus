@@ -289,6 +289,8 @@ install-user:
 			find "${CFG_DIR}/$$b" \( -name '*.sh' -o -name '*.py' \) -print0 2>/dev/null | xargs -0 -r chmod +x; \
 		fi; \
 	done
+	@echo "==> Applying initial theme convergence..."
+	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/theme-apply.sh
 	@echo ""
 	@echo "  dwm installed successfully."
 	@echo "  Log out and select 'dwm', or start with: startx"

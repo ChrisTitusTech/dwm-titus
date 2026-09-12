@@ -70,7 +70,7 @@ dwm_packages() {
 		fi
 		;;
 	fedora:theme)
-		printf '%s\n' dconf
+		printf '%s\n' dconf adwaita-icon-theme papirus-icon-theme
 		;;
 	fedora:theme-gtk)
 		printf '%s\n' \
