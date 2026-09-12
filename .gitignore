@@ -10,7 +10,7 @@ config.h
 
 # Object Files
 *.o
-
+.env
 nohup.out
 .DS_STORE
 livemedia.log
