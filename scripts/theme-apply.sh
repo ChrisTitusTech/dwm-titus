@@ -1137,11 +1137,20 @@ if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]]; then
 				echo 'theme-apply: personalization X11 text-scale convergence failed' >&2
 				exit 1
 			fi
+			if [[ $STRICT_PERSONALIZATION == 1 &&
+				$PERSONALIZATION_CAPABILITY == cursor ]]; then
+				echo 'theme-apply: personalization XSETTINGS cursor convergence failed' >&2
+				exit 1
+			fi
 			echo 'theme-apply: managed X11 text scaling is unavailable' >&2
 		fi
 	elif [[ $STRICT_PERSONALIZATION == 1 &&
 		$PERSONALIZATION_CAPABILITY == text-size ]]; then
 		echo 'theme-apply: managed X11 text-scale helper is unavailable' >&2
+		exit 1
+	elif [[ $STRICT_PERSONALIZATION == 1 &&
+		$PERSONALIZATION_CAPABILITY == cursor ]]; then
+		echo 'theme-apply: managed XSETTINGS cursor helper is unavailable' >&2
 		exit 1
 	fi
 fi

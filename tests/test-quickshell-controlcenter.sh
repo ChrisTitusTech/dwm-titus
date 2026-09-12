@@ -478,6 +478,9 @@ chmod +x "$self_heal_script"
 cp "$work/bin/dwm-terminal" "$work/bin/dwm-terminal.saved"
 cat >"$work/bin/dwm-terminal" <<'SH'
 #!/bin/sh
+if [ "$1" = --print-command ]; then
+	exit "${DWM_TEST_TERMINAL_STATUS:-0}"
+fi
 [ "$1" = -e ] || exit 2
 shift
 exec "$@"
@@ -494,6 +497,13 @@ if DWM_SELF_HEAL_SCRIPT="$work/missing" run_helper action self-heal 2>"$work/sel
 	exit 1
 fi
 grep -Fq 'Self-Heal script is not executable' "$work/self-heal-missing.err"
+if DWM_TEST_TERMINAL_STATUS=127 run_helper action self-heal \
+	>"$work/self-heal-no-terminal.out" 2>"$work/self-heal-no-terminal.err"; then
+	printf 'Self-Heal accepted an unavailable terminal backend\n' >&2
+	exit 1
+fi
+[ ! -s "$work/self-heal-no-terminal.out" ]
+grep -Fq 'Self-Heal requires an available terminal' "$work/self-heal-no-terminal.err"
 rm "$work/config/dwm-titus/self-heal.path"
 mv "$work/bin/dwm-terminal.saved" "$work/bin/dwm-terminal"
 

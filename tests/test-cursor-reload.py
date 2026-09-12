@@ -161,6 +161,8 @@ try:
 finally:
     bind(x11, "XCloseDisplay", c.c_int, c.c_void_p)(display)
 
+# Follow scripts/run-tests: keep the shared ~/tmp parent and remove only the
+# per-run directory below it, as required by AGENTS.md.
 test_root = Path(
     os.environ.get("TMPDIR")
     or os.environ.get("DWM_TEST_TMP_ROOT")
