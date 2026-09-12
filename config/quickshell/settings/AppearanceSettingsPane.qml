@@ -7,6 +7,7 @@ pragma ComponentBehavior: Bound
 
 Flickable {
     id: root
+    objectName: "appearanceSettingsPane"
 
     required property var appearanceModel
     required property var accessibilityModel
@@ -51,6 +52,9 @@ Flickable {
     })
     contentWidth: width
     contentHeight: content.implicitHeight
+    flickableDirection: Flickable.VerticalFlick
+    boundsBehavior: Flickable.StopAtBounds
+    Controls.ScrollBar.vertical: Controls.ScrollBar {}
     clip: true
 
     function statusColor(state) {

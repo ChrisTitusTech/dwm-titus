@@ -6,11 +6,14 @@ import qs.core
 RowLayout {
     id: root
 
-    visible: SystemTray.items.values.length > 0
+    readonly property var visibleItems: SystemTray.items.values.filter(function(item) {
+        return item.id !== "blueman" && item.id !== "blueman-applet";
+    })
+    visible: visibleItems.length > 0
     spacing: Theme.compactSpacing
 
     Repeater {
-        model: SystemTray.items.values
+        model: root.visibleItems
 
         delegate: TrayItem {
             required property var modelData

@@ -56,6 +56,8 @@ ensure_runtime() {
 load_config() {
 	local line first=true seen_dpi=false
 	xsettings_dpi=
+	xsettings_cursor=
+	xsettings_cursor_size=
 	[[ ! -e $config_file && ! -L $config_file ]] && return 0
 	[[ -f $config_file && ! -L $config_file && -r $config_file &&
 		$(stat -c %u -- "$config_file") == "$UID" &&
@@ -77,6 +79,15 @@ load_config() {
 			[[ $xsettings_dpi =~ ^[1-9][0-9]{4,6}$ ]] ||
 				die "invalid Xft/DPI setting: $config_file"
 			seen_dpi=true
+			;;
+		Gtk/CursorThemeName\ *)
+			[[ -z $xsettings_cursor && ${#line} -le 1024 ]] || die 'invalid cursor theme setting'
+			xsettings_cursor=$line
+			;;
+		Gtk/CursorThemeSize\ *)
+			[[ -z $xsettings_cursor_size && $line =~ ^Gtk/CursorThemeSize\ [0-9]{1,3}$ ]] ||
+				die 'invalid cursor size setting'
+			xsettings_cursor_size=$line
 			;;
 		*)
 			[[ ${#line} -le 4095 && $line != *$'\t'* && $line != *$'\r'* ]] ||
@@ -199,7 +210,7 @@ xsettings_owner_present() {
 }
 
 wait_for_active() {
-	local expected=$1 identities=${2:-} published deadline
+	local expected=$1 identities=${2:-} published deadline settings
 	deadline=$((SECONDS + activation_timeout_seconds))
 	while ((SECONDS < deadline)); do
 		[[ -n $identities ]] || identities=$(matching_identities)
@@ -209,7 +220,16 @@ wait_for_active() {
 					continue
 				fi
 				published=$(published_dpi 2>/dev/null || true)
-				[[ $published == "$expected" ]] && return 0
+				if [[ $published == "$expected" ]]; then
+					if [[ -z $xsettings_cursor ]]; then
+						return 0
+					fi
+					settings=$(timeout --signal=TERM --kill-after=1 0.2 dump_xsettings 2>/dev/null) || continue
+					if grep -Fqx -- "$xsettings_cursor" <<<"$settings" &&
+						grep -Fqx -- "$xsettings_cursor_size" <<<"$settings"; then
+						return 0
+					fi
+				fi
 			done <<<"$identities"
 		fi
 		sleep 0.05
@@ -316,7 +336,11 @@ apply_session_state() {
 		printf 'xsettings-protocol\t1\t0\nresult\tactive\t%s\n' "$xsettings_dpi"
 	else
 		[[ -n ${DISPLAY:-} ]] || die 'DISPLAY is required to restore system X11 text scaling'
-		stop_managed
+		if [[ -n $xsettings_cursor ]]; then
+			start_or_reload
+		else
+			stop_managed
+		fi
 		printf 'xsettings-protocol\t1\t0\nresult\tsystem-follow\n'
 	fi
 }
@@ -338,7 +362,7 @@ status() {
 		fi
 	else
 		identities=$(matching_identities)
-		if [[ -n $identities ]]; then
+		if [[ -n $identities && (-z $xsettings_cursor || -n $(published_dpi 2>/dev/null || true)) ]]; then
 			published=$(published_dpi 2>/dev/null || printf unknown)
 			printf 'state\tstale\t%s\n' "$published"
 		else

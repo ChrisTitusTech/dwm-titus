@@ -916,6 +916,12 @@ fi
 # GTK applications consume the same fixed-point DPI as the persisted choice.
 XSETTINGSD_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/xsettingsd.conf"
 if [[ $RUNTIME_ONLY == 0 && $LIVE_ONLY == 0 ]]; then
+	XSETTINGS_CURSOR_THEME=${CURSOR_THEME//\\/\\\\}
+	XSETTINGS_CURSOR_THEME=${XSETTINGS_CURSOR_THEME//\"/\\\"}
+	xsettingsd_config_write "$XSETTINGSD_CONFIG" Gtk/CursorThemeName \
+		"Gtk/CursorThemeName \"$XSETTINGS_CURSOR_THEME\""
+	xsettingsd_config_write "$XSETTINGSD_CONFIG" Gtk/CursorThemeSize \
+		"Gtk/CursorThemeSize $CURSOR_SIZE"
 	if [[ -z $TEXT_SCALE_CHOICE || $TEXT_SCALE_CHOICE == follow-system ]]; then
 		xsettingsd_config_write "$XSETTINGSD_CONFIG" Xft/DPI
 	else
@@ -1121,8 +1127,8 @@ if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 &&
 fi
 
 # Refresh only the project-owned xsettingsd instance after the transaction has
-# published its staged configuration. A follow-system reset stops that instance
-# and releases the XSETTINGS selection instead of pinning a generated scale.
+# published its staged configuration. Follow-system removes the DPI override;
+# the instance can keep publishing cursor settings without pinning text scaling.
 if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]]; then
 	if [[ -x $XSETTINGS_HELPER ]]; then
 		if ! "$XSETTINGS_HELPER" reload >/dev/null; then
@@ -1181,6 +1187,18 @@ if [[ $RUNTIME_ONLY == 0 && $LIVE_ONLY == 0 &&
 			sed -i "s|^color_scheme_path=.*|color_scheme_path=$QT_CT_SCHEME|" "$QT_CT_CONF"
 		else
 			sed -i "/^\[Appearance\]/a color_scheme_path=${QT_CT_SCHEME}" "$QT_CT_CONF"
+		fi
+	fi
+fi
+
+# Refresh cached named cursors in existing clients as well as the root window.
+if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 && -n ${DISPLAY:-} ]]; then
+	CURSOR_RELOAD_HELPER=${DWM_APPEARANCE_CURSOR_HELPER:-$script_dir/dwm-cursor-reload}
+	if [[ ! -x $CURSOR_RELOAD_HELPER ]] ||
+		! "$CURSOR_RELOAD_HELPER" "$CURSOR_THEME" "$CURSOR_SIZE"; then
+		echo 'theme-apply: live X11 cursor refresh failed' >&2
+		if [[ $STRICT_PERSONALIZATION == 1 && $PERSONALIZATION_CAPABILITY == cursor ]]; then
+			exit 1
 		fi
 	fi
 fi

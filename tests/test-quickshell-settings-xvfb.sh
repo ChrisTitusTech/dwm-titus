@@ -3,8 +3,9 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 screen_geometry=${DWM_SETTINGS_TEST_SCREEN_GEOMETRY:-1280x800x24}
-expected_window_width=${DWM_SETTINGS_EXPECTED_WINDOW_WIDTH:-1180}
-expected_window_height=${DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT:-760}
+expected_window_width=${DWM_SETTINGS_EXPECTED_WINDOW_WIDTH:-${screen_geometry%%x*}}
+screen_dimensions=${screen_geometry#*x}
+expected_window_height=${DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT:-${screen_dimensions%%x*}}
 
 for command_name in Xvfb dbus-monitor dbus-run-session glib-compile-schemas \
 	gsettings inotifywait python3 quickshell xdotool xinput xkbset xprop pgrep getconf; do
@@ -383,7 +384,7 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-default-apps" "$repo/scripts/dwm-xdg-autostart" \
 	"$repo/scripts/dwm-settings-appearance" "$repo/scripts/dwm-settings-wallpaper" \
 	"$repo/scripts/dwm-settings-font" "$repo/scripts/dwm-settings-personalization" \
-	"$repo/scripts/dwm-settings-theme" "$repo/scripts/dwm-xsettings" \
+	"$repo/scripts/dwm-settings-theme" "$repo/scripts/dwm-xsettings" "$repo/scripts/dwm-cursor-reload" \
 	"$repo/scripts/dwm-panel-settings" "$repo/scripts/dwm-accessibility-settings" \
 	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"

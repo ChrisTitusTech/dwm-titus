@@ -134,6 +134,7 @@ printf '%s\n' "${1:?}" >>"${DWM_TEST_XSETTINGS_LOG:?}"
 SH
 chmod +x "$xsettings_stub"
 export DWM_APPEARANCE_XSETTINGS_HELPER=$xsettings_stub
+export DWM_APPEARANCE_CURSOR_HELPER=/usr/bin/true
 export DWM_TEST_XSETTINGS_LOG=$work/xsettings.log
 
 run_theme() {

@@ -32,6 +32,7 @@ Scope {
     property string message: ""
     property string pendingAction: ""
     property bool actionSucceeded: false
+    property string actionError: ""
     property var powerModel: null
     property var infoRows: []
     property var themeRows: []
@@ -44,6 +45,7 @@ Scope {
             { "id": "reload-wallpaper", "label": "Reload Wallpaper" },
             { "id": "restart-networkmanager", "label": "Restart NetworkManager" },
             { "id": "dependency-check", "label": "Dependency Check" },
+            { "id": "self-heal", "label": "Self-Heal" },
             { "id": "install-missing-deps", "label": "Install Missing Deps" },
             { "id": "open-wallpapers", "label": "Wallpaper Folder" }
         ];
@@ -195,6 +197,7 @@ Scope {
         root.busy = true;
         root.pendingAction = action;
         root.actionSucceeded = false;
+        root.actionError = "";
         root.message = "Running " + action + "...";
         actionProcess.command = Commands.controlCenterHelperCommand("action", [action]);
         actionProcess.running = true;
@@ -274,12 +277,17 @@ Scope {
             onStreamFinished: root.actionSucceeded = this.text.indexOf("action\t") === 0
         }
 
+        stderr: StdioCollector {
+            onStreamFinished: root.actionError = this.text.trim().slice(0, 1024)
+        }
+
         onRunningChanged: {
             if (!running && root.busy) {
                 root.busy = false;
                 root.message = root.actionSucceeded
                     ? "Action dispatched"
-                    : "Action failed: " + root.pendingAction;
+                    : (root.actionError.length > 0 ? root.actionError
+                        : "Action failed: " + root.pendingAction);
                 root.pendingAction = "";
                 root.refreshCurrentPage();
             }

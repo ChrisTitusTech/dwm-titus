@@ -8,6 +8,8 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add Self-Heal to Quick Actions for launching a configured workstation repair
+  script in a terminal with visible progress and authorization prompts (#306).
 - Simplify the Power dropdown to Reboot, Logout, Lock, Suspend, and Shutdown
   without explanatory row text.
 - Build zstd compressed filesystem candidates with recorded compression costs,
@@ -19,6 +21,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Make Settings fullscreen like System Health (#302), stop Appearance overscroll
+  bounce (#303), refresh running X11 clients when changing cursor themes (#304),
+  and hide the redundant Blueman tray icon (#305).
 - Require a modern fixed PackageKit in captured images while preserving the
   existing unprivileged update security gate and explaining backport recovery.
 - Make the image's sxiv desktop entry discoverable in application Defaults.
