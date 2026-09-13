@@ -44,7 +44,13 @@ or `~/.config/picom/picom.conf`, and observe external edits. With no configurati
 they show 100% and create a minimal file on the first edit. A system configuration
 can be copied with **Create user configuration**. The same action imports read-only
 includes referenced by an existing writable user configuration, backing up the
-root before updating its include paths. Comments, unrelated settings,
+root before updating its include paths, including when that standard user root
+is explicitly selected with `--config` or `DWM_PICOM_CONFIG`. If an import fails,
+new include copies remain available for recovery so concurrent root edits cannot
+retain broken references. Recovery import storage is limited to 320 files
+and 320 MiB. If full, imports stop before publication and identify the directory
+to review. Copies are never automatically deleted because external configurations
+or recovery backups may still reference them. Comments, unrelated settings,
 and included files are preserved; the ten most recent edits retain recovery backups. Invalid
 or read-only configurations show an explanation rather than disappearing controls.
 Edits made while Picom is stopped take effect the next time it starts.

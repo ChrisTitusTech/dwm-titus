@@ -27,6 +27,8 @@ from pathlib import Path
 
 PROTOCOL = 1
 MAX_SIZE = 1024 * 1024
+MAX_IMPORT_FILES = 320
+MAX_IMPORT_BYTES = MAX_IMPORT_FILES * MAX_SIZE
 BACKENDS = ("auto", "xrender", "glx", "egl")
 BEGIN = "# dwm-titus opacity defaults begin"
 END = "# dwm-titus opacity defaults end"
@@ -623,8 +625,14 @@ def session_configuration():
 
 
 def launch(config, original=None, previous=None):
-    if owner():
-        raise Error("Another compositor owns this display; it was not stopped")
+    # Xorg can release a dead client's selection after its process disappears.
+    # A brief startup grace avoids a transient refusal; stopping stays entirely
+    # process-based, including when X authorization is unavailable.
+    deadline = time.monotonic() + 0.5
+    while owner():
+        if time.monotonic() >= deadline:
+            raise Error("Another compositor owns this display; it was not stopped")
+        time.sleep(0.05)
     previous = previous or []
     if isinstance(config, NativeConfiguration):
         override = os.environ.get("PICOM_BACKEND", "")
@@ -828,12 +836,6 @@ def status(detect=True):
 
 def copy_destination(config, running):
     """Import vendor files, or relocate unsafe includes of a writable user root."""
-    if os.environ.get("DWM_PICOM_CONFIG") or option(
-        running[0]["args"] if running else [], ("--config",)
-    ):
-        raise Error(
-            "An explicit --config path is active; edit that configuration instead"
-        )
     destination = config_home() / "picom.conf"
     if config.path in (destination, config_home() / "picom/picom.conf"):
         safe_target(config.path)
@@ -845,6 +847,12 @@ def copy_destination(config, running):
             except Error:
                 return config.path
         raise Error("A user Picom configuration already exists and needs no import")
+    if os.environ.get("DWM_PICOM_CONFIG") or option(
+        running[0]["args"] if running else [], ("--config",)
+    ):
+        raise Error(
+            "An explicit --config path is active; edit that configuration instead"
+        )
     if destination.exists() or destination.is_symlink():
         raise Error("A user Picom configuration already exists")
     safe_target(destination)
@@ -866,6 +874,24 @@ def publish(path, text):
     finally:
         if os.path.exists(name):
             os.unlink(name)
+
+
+def check_import_capacity(changes):
+    """Bound recovery storage without deleting externally referenced copies."""
+    directory = config_home() / "picom/include/dwm-titus-import"
+    additions = {
+        path: text for path, text in changes.items() if path.parent == directory
+    }
+    if not additions:
+        return
+    sizes = {path: path.stat().st_size for path in directory.glob("*.conf")}
+    sizes.update({path: len(text.encode("utf-8")) for path, text in additions.items()})
+    if len(sizes) > MAX_IMPORT_FILES or sum(sizes.values()) > MAX_IMPORT_BYTES:
+        raise Error(
+            f"Picom import recovery storage is full (limit {MAX_IMPORT_FILES} files, "
+            f"{MAX_IMPORT_BYTES // (1024 * 1024)} MiB). Review {directory} and remove "
+            "only copies no longer needed by your configuration or backups before retrying"
+        )
 
 
 def validate_candidate(config, changes, candidate_path):
@@ -979,6 +1005,7 @@ def mutate(action, args, revision):
             safe_target(path)
         candidate_path = destination if action == "copy-config" else config.path
         validate_candidate(config, changes, candidate_path)
+        check_import_capacity(changes)
         if not changes:
             return "Configuration already matches"
         previous = {p: read_config(p) if p.exists() else None for p in changes}
@@ -1030,7 +1057,18 @@ def mutate(action, args, revision):
             return message + f". Backup: {backup}"
         except (Error, OSError) as exc:
             conflicts = []
+            retained_imports = []
             for path in reversed(published):
+                if (
+                    action == "copy-config"
+                    and previous[path] is None
+                    and path != candidate_path
+                ):
+                    # A concurrent document can retain references to these files,
+                    # including edits that arrive after rollback checks. Keep the
+                    # new import copies even if the root can be restored.
+                    retained_imports.append(str(path))
+                    continue
                 try:
                     if read_config(path) != changes[path]:
                         conflicts.append(str(path))
@@ -1053,6 +1091,8 @@ def mutate(action, args, revision):
                 if conflicts
                 else "previous configuration restored"
             )
+            if retained_imports:
+                restoration += "; imported includes retained for recovery"
             raise Error(
                 f"{exc}; {restoration}{recovery_detail}; backup: {backup}"
             ) from exc
