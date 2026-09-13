@@ -33,10 +33,17 @@ class CommandFailure(RuntimeError):
 
 
 def run(args, cwd=None, timeout=60, capture=True):
+    environment = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
+    if str(args[0]) == "git":
+        environment = {key: value for key, value in environment.items()
+                       if not key.startswith("GIT_") or key == "GIT_SSL_CAINFO"}
+        environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_SYSTEM="/dev/null", GIT_CONFIG_GLOBAL="/dev/null",
+                           GIT_TERMINAL_PROMPT="0", GIT_ALLOW_PROTOCOL="file:https")
+        args = ["/usr/bin/git", "-c", "core.hooksPath=/dev/null", "-c", "init.templateDir=/dev/null",
+                "-c", "core.fsmonitor=false", "-c", "credential.helper=", *args[1:]]
     result = subprocess.run([str(arg) for arg in args], cwd=cwd, timeout=timeout,
                             stdout=subprocess.PIPE if capture else None,
-                            stderr=subprocess.PIPE if capture else None, text=True,
-                            env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"})
+                            stderr=subprocess.PIPE if capture else None, text=True, env=environment)
     if result.returncode:
         detail = (result.stderr or result.stdout or "See the update log").strip()[-2000:]
         raise CommandFailure(str(args[0]) + " failed: " + detail, result.returncode)

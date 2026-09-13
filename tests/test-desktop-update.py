@@ -394,6 +394,43 @@ class DesktopUpdate(unittest.TestCase):
         self.command.side_effect = ["main", " M scripts/helper"]
         self.assertIn("has changes", update.checkout_reason(self.data))
 
+    def test_git_checkout_ignores_hostile_hooks_templates_and_config(self):
+        home = self.base / "git-home"
+        hooks = home / "hooks"
+        hooks.mkdir(parents=True)
+        marker = home / "hook-ran"
+        hook = hooks / "post-checkout"
+        hook.write_text("#!/bin/sh\nprintf executed > '" + str(marker) + "'\n")
+        hook.chmod(0o755)
+        template = home / "template"
+        template.mkdir()
+        (template / "injected-template").write_text("untrusted")
+        (home / ".gitconfig").write_text("[core]\n hooksPath = " + str(hooks) + "\n[init]\n templateDir = " + str(template) + "\n")
+        source = self.base / "upstream"
+        source.mkdir()
+        clean = {**os.environ, "HOME": str(home), "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+        def git(*args, env=clean):
+            return subprocess.run(["/usr/bin/git", "-C", str(source), *args], env=env,
+                                  capture_output=True, text=True, check=True)
+        git("init", "-b", "main")
+        (source / "file").write_text("official")
+        git("add", "file")
+        git("-c", "user.name=Desktop Test", "-c", "user.email=desktop@example.invalid", "commit", "-m", "source")
+        poisoned = {**clean, "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"), "GIT_TEMPLATE_DIR": str(template),
+                    "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.hooksPath", "GIT_CONFIG_VALUE_0": str(hooks)}
+        git("checkout", "--detach", "HEAD", env=poisoned)
+        self.assertTrue(marker.exists(), "Harmless hostile-hook fixture did not execute")
+        marker.unlink()
+        target = self.base / "isolated-checkout"
+        with patch.dict(os.environ, poisoned, clear=True):
+            REAL_RUN(["git", "init", target])
+            REAL_RUN(["git", "-C", target, "fetch", source, "HEAD"])
+            REAL_RUN(["git", "-C", target, "checkout", "--detach", "FETCH_HEAD"])
+            self.assertEqual(REAL_RUN(["git", "-C", target, "rev-parse", "HEAD"]), git("rev-parse", "HEAD").stdout.strip())
+        self.assertFalse(marker.exists(), "Updater executed a user-configured checkout hook")
+        self.assertFalse((target / ".git/injected-template").exists())
+        self.assertEqual((target / "file").read_text(), "official")
+
     def test_git_checkout_is_staged_as_a_clean_fast_forward(self):
         def git(path, *args):
             return subprocess.check_output(["git", "-C", path, "-c", "user.name=Desktop Test",

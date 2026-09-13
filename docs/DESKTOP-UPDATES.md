@@ -155,3 +155,8 @@ so a source installation or another user's update cannot supersede its preview.
 A failed preparation releases the reservation; an interrupted preparation uses
 the same recovery command without replacing system files. Candidate manifests
 accept only the fixed schema and stay within the installed receipt size limit.
+
+Updater Git commands ignore system/global Git configuration and inherited Git
+configuration variables, disable hooks, templates, filesystem monitors, and
+credential helpers, and allow only local-file and HTTPS transports. Use the
+forwarded proxy and certificate environment settings for network customization.
