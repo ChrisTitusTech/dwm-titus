@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="103" height="109" alt="image" src="https://github.com/user-attachments/assets/902d66d5-b4e4-4faf-84a7-a862a710e9b7" />
+  <img alt="dwm-titus logo" src="./branding/anaconda/usr/share/anaconda/pixmaps/ctt-logo.png" />
   <p><strong>A fast, focused Fedora X11 desktop built for keyboard-driven work.</strong></p>
   <p>
     <a href="https://dwm.christitus.com">Documentation</a> |
@@ -27,7 +27,7 @@ existing-system installer on Fedora Linux.
 | --- | --- |
 | **A focused desktop** | Automatic window tiling, nine workspaces, fast keyboard navigation, multi-monitor support, and flexible fullscreen modes. |
 | **Everyday essentials** | A polished panel, application launcher, system tray, Control Center, Settings, notifications, screenshots, audio, brightness, and power controls. |
-| **Easy discovery** | An interactive keybind viewer, guided display setup, built-in diagnostics, and clear unsupported-feature reporting. |
+| **Easy discovery** | An interactive keybind viewer, guided display setup, built-in diagnostics, workstation self-heal, and clear unsupported-feature reporting. |
 | **Personal configuration** | Live-reloading hotkeys, themes, and window rules, with local configuration preserved across upgrades. |
 | **Two installation paths** | A ready-to-install Fedora image or an installer for an existing Fedora system. |
 
@@ -159,6 +159,17 @@ for stable device identity and hotplug events. Kept values are stored in
 `input-settings.conf` in the same XDG directory; `DWM_INPUT_SETTINGS_FILE` can
 select another file.
 
+The compositor settings in **Settings -> Appearance -> Compositor** and the CLI
+helper `dwm-settings-picom` manage window opacity and rendering backends. Sliders
+adjust active and inactive window opacity with live persistence in the active configuration
+(resolved from `DWM_PICOM_CONFIG`, a running Picom `--config` argument, or standard
+fallback paths `~/.config/picom.conf` and `~/.config/picom/picom.conf`). The automatic
+backend policy selects GLX for accelerated Intel/AMD graphics and falls back to XRender
+on NVIDIA or software rendering, with manual GLX, XRender, and EGL overrides available.
+Edits preserve custom comments and includes with up to ten automatic recovery backups.
+Cursor theme changes in Settings take effect immediately across running X11
+applications via `dwm-cursor-reload`.
+
 See the [Configuration Guide](https://dwm.christitus.com/configuration.html)
 and [Theming Guide](https://dwm.christitus.com/theming.html) for examples and
 safe customization paths.
@@ -208,6 +219,11 @@ Start with the built-in diagnostic report:
 ```bash
 dwm-diagnostics
 ```
+
+You can also run **Control Center -> Quick Actions -> Self-Heal** to execute a
+configured workstation repair script (`dwm-self-heal` on `$PATH` or referenced in
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/self-heal.path`) inside an interactive
+terminal with visible output and authorization prompts.
 
 You can also open **Control Center -> System Health** for a graphical overview.
 If the session does not start, run `startx` from a TTY to see its error output.
