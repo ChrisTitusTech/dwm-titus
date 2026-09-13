@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     journal.parent.mkdir(parents=True, mode=0o700)
     os.umask(previous_umask)
     try:
-        for pending in ("applying", "applied", "rolling-back", "rolled-back-pending"):
+        for pending in ("preparing", "applying", "applied", "rolling-back", "rolled-back-pending"):
             journal.write_text(json.dumps({"state": pending, "uid": uid}))
             rejected = subprocess.run(["make", "install-system", "PREFIX=" + str(prefix)], cwd=source,
                                       capture_output=True, text=True)

@@ -521,7 +521,7 @@ class DesktopUpdate(unittest.TestCase):
 
     def test_worker_success_failure_denial_and_interruption(self):
         for scenario, expected, code in (("success", "restart-required", 0), ("build-failure", "failed", 1),
-                                         ("denied", "failed", 1), ("apply-failure", "interrupted", 1),
+                                         ("denied", "failed", 1), ("begin-denied", "failed", 1), ("cleanup-completion-denied", "interrupted", 1), ("apply-failure", "interrupted", 1),
                                          ("killed", "installing", 9), ("activation-success", "current", 0),
                                          ("activation-stale", "restart-required", 0),
                                          ("activation-failure", "restart-required", 0)):
@@ -533,6 +533,10 @@ class DesktopUpdate(unittest.TestCase):
                                              "CPPFLAGS": "-DTEST=1", "LDFLAGS": "-Wl,--as-needed"})
                 self.assertEqual(result.returncode, code, result.stderr)
                 value = update.read_json(directory / "state/status.json")
+                if scenario in ("build-failure", "denied", "cleanup-completion-denied"):
+                    self.assertTrue((directory / "state/reservation-released").exists())
+                if scenario == "begin-denied":
+                    self.assertFalse((directory / "state/reserved").exists())
                 self.assertEqual(value["state"], expected, value)
                 self.assertEqual((directory / "config/dwm-titus/themes.toml").read_text(), "personal theme")
                 if scenario == "success" or scenario.startswith("activation-"):

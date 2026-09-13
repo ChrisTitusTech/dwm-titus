@@ -149,3 +149,9 @@ recovery transaction is unfinished. Complete recovery as the user who started
 the update before running the source installer. Managed data, Quickshell, and
 recovery directories must be separate, including after resolving symlinks.
 Incomplete or invalid user receipts never count as an up-to-date installation.
+
+After confirmation, authorization reserves the update before downloads and builds
+so a source installation or another user's update cannot supersede its preview.
+A failed preparation releases the reservation; an interrupted preparation uses
+the same recovery command without replacing system files. Candidate manifests
+accept only the fixed schema and stay within the installed receipt size limit.

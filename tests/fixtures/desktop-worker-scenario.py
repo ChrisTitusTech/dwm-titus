@@ -86,7 +86,7 @@ def boundary(args, cwd=None, timeout=60, capture=True):
         for key in ("CC", "CFLAGS", "CPPFLAGS", "LDFLAGS"):
             if key in os.environ:
                 assert key + "=" + os.environ[key] in args
-        if scenario == "build-failure":
+        if scenario in ("build-failure", "cleanup-completion-denied"):
             raise update.CommandFailure("build failed", 2)
         assert (source / "config.h").read_text() == "personal build config"
     elif args[:2] == ["make", "install-system"]:
@@ -98,7 +98,17 @@ def boundary(args, cwd=None, timeout=60, capture=True):
                      "files": {str(binary): update.fingerprint(staged_binary)}}
         update.write_json(stage / str(manifest_path).lstrip("/"), candidate)
     elif args[0] == "/usr/bin/pkexec":
+        if args[2] == "begin":
+            if scenario == "begin-denied":
+                raise update.CommandFailure("authorization denied", 126)
+            (state / "reserved").write_text("reserved")
+            return ""
+        if args[2] == "rollback":
+            (state / "reservation-released").write_text("released")
+            return ""
         if args[2] == "complete":
+            if scenario == "cleanup-completion-denied":
+                raise update.CommandFailure("completion authorization denied", 126)
             (state / "complete-called").write_text("complete")
             return ""
         if scenario == "denied":

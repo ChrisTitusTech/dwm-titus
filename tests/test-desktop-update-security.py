@@ -89,6 +89,49 @@ raise SystemExit(1)
                 guard("", ["/usr/bin/true"])
             self.assertEqual(guard(str(self.prefix / "stage"), ["/usr/bin/true"]), 0)
 
+    def test_preparation_reservation_blocks_source_install_and_other_users(self):
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        result = self.command("begin", generation, self.operation)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.binary.read_bytes(), b"original")
+        guard = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))["guard_system_install"]
+        with self.assertRaisesRegex(RuntimeError, "before source installation"):
+            guard("", ["/usr/bin/true"])
+        self.assertNotEqual(self.command("begin", generation, uuid.uuid4().hex, uid=1001).returncode, 0)
+        self.assertNotEqual(self.command("rollback", self.operation, uid=1001).returncode, 0)
+        self.archive()
+        self.assertNotEqual(self.apply(uid=1001).returncode, 0)
+        self.assertEqual(self.apply().returncode, 0)
+        self.assertEqual(self.command("complete", self.operation).returncode, 0)
+        self.assertEqual(guard("", ["/usr/bin/true"]), 0)
+
+    def test_preparation_can_be_canceled_without_replacing_files(self):
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        self.assertEqual(self.command("begin", generation, self.operation).returncode, 0)
+        self.assertEqual(self.command("rollback", self.operation).returncode, 0)
+        # Retry after cancellation before complete, including when a later operation starts.
+        self.assertEqual(self.command("rollback", self.operation).returncode, 0)
+        later = uuid.uuid4().hex
+        self.addCleanup(shutil.rmtree, Path("/var/lib/dwm-titus/desktop-updates") / later, True)
+        self.assertEqual(self.command("begin", generation, later).returncode, 0)
+        self.assertEqual(self.command("rollback", self.operation).returncode, 0)
+        self.assertEqual(self.command("complete", self.operation).returncode, 0)
+        self.assertEqual(self.command("rollback", later).returncode, 0)
+        self.assertEqual(self.command("complete", later).returncode, 0)
+        self.assertEqual(self.binary.read_bytes(), b"original")
+        guard = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))["guard_system_install"]
+        self.assertEqual(guard("", ["/usr/bin/true"]), 0)
+
+    def test_extra_and_oversized_candidate_fields_never_replace_trust_anchor(self):
+        original = self.manifest_path.read_bytes()
+        for padding in ("extra", "x" * (4 * 1024 * 1024)):
+            self.operation = uuid.uuid4().hex
+            self.addCleanup(shutil.rmtree, Path("/var/lib/dwm-titus/desktop-updates") / self.operation, True)
+            self.archive(lambda value: value.update(padding=padding))
+            self.assertNotEqual(self.apply().returncode, 0)
+            self.assertEqual(self.manifest_path.read_bytes(), original)
+            self.assertEqual(self.binary.read_bytes(), b"original")
+
     def test_apply_and_rollback_restore_verified_original(self):
         self.archive()
         result = self.apply()

@@ -702,6 +702,8 @@ def worker(operation):
             privileged = prefix / "libexec/dwm-titus/dwm-desktop-update-root"
             prepared = []
             system_started = False
+            reservation_started = False
+            reservation_confirmed = False
             system_applied = False
             source = directory / "source"
             stage = directory / "stage"
@@ -716,6 +718,10 @@ def worker(operation):
                     reason = reason or checkout_reason(path) or checkout_ancestry_reason(path, preview["available"])
                 if reason:
                     raise RuntimeError(reason)
+                save_status(state, value, detail="Authorizing desktop update preparation...", percent=-1)
+                reservation_started = True
+                run(["/usr/bin/pkexec", privileged, "begin", preview["generation"], operation], timeout=60, capture=False)
+                reservation_confirmed = True
                 save_status(state, value, state="downloading", detail="Downloading the confirmed desktop revision...", percent=-1)
                 run(["git", "init", source])
                 run(["git", "-C", source, "fetch", SOURCE, preview["available"]], timeout=180, capture=False)
@@ -845,6 +851,15 @@ def worker(operation):
                 denied = isinstance(error, CommandFailure) and error.returncode in (126, 127)
                 if denied and not system_applied:
                     system_started = False
+                if reservation_started and not system_started:
+                    try:
+                        # A denied begin did not dispatch; later denial still leaves our reservation.
+                        if not denied or reservation_confirmed:
+                            run(["/usr/bin/pkexec", privileged, "rollback", operation], timeout=60, capture=False)
+                            run(["/usr/bin/pkexec", privileged, "complete", operation], timeout=60, capture=False)
+                    except (OSError, RuntimeError, subprocess.SubprocessError) as cleanup_error:
+                        system_started = True
+                        error = RuntimeError(str(error) + "; preparation recovery failed: " + str(cleanup_error))
                 # Never infer rollback from a nonzero polkit result: dispatch may have completed.
                 save_status(state, value, state="interrupted" if system_started else "failed", percent=-1,
                             detail=str(error) + (" Review recovery before retrying." if system_started else ""),

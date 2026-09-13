@@ -135,7 +135,10 @@ def restore(backup, journal):
 
 
 def validate_candidate(candidate, installed):
-    if (not isinstance(candidate, dict) or not isinstance(candidate.get("files"), dict)
+    if (not isinstance(candidate, dict)
+            or set(candidate) != {"schema", "source", "revision", "layout", "packages", "files"}
+            or len((json.dumps(candidate, sort_keys=True) + "\n").encode()) > 4 * 1024 * 1024
+            or not isinstance(candidate.get("files"), dict)
             or not isinstance(candidate.get("revision"), str)
             or candidate.get("schema") != 1 or candidate.get("source") != installed["source"]
             or candidate.get("layout") != installed["layout"]
@@ -164,7 +167,13 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
     if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != expected:
         fail("Installed desktop changed after preview; check again")
     backup = STATE / operation
-    backup.mkdir(mode=0o700)
+    if backup.exists():
+        reservation = read_json(backup / "journal.json")
+        if (reservation.get("state") != "preparing" or reservation.get("uid") != uid
+                or reservation.get("generation") != expected):
+            fail("Desktop operation is not reserved by this user")
+    else:
+        backup.mkdir(mode=0o700)
     descriptor = os.open(archive, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(descriptor)
@@ -207,7 +216,7 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
                 output.flush()
                 os.fsync(output.fileno())
     sync_directory(payload)
-    candidate = json.loads((payload / "manifest.json").read_text())
+    candidate = read_json(payload / "manifest.json")
     validate_candidate(candidate, installed)
     if candidate["revision"] != revision:
         fail("Update bundle does not match the confirmed revision")
@@ -264,8 +273,8 @@ def main():
     if uid == 0:
         fail("A desktop user must request this operation")
     args = sys.argv[1:]
-    if len(args) not in (2, 6):
-        fail("Expected apply BUNDLE GENERATION OPERATION DIGEST REVISION, dependencies GENERATION, rollback OPERATION, or complete OPERATION")
+    if len(args) not in (2, 3, 6):
+        fail("Expected begin GENERATION OPERATION, apply BUNDLE GENERATION OPERATION DIGEST REVISION, dependencies GENERATION, rollback OPERATION, or complete OPERATION")
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
     trusted(STATE, True)
     for directory in (STATE, *STATE.parents):
@@ -274,12 +283,29 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
             signal.signal(signum, lambda *_: fail("Desktop installation interrupted"))
-        if args[0] == "apply" and len(args) == 6:
+        if (args[0] == "begin" and len(args) == 3 and re.fullmatch(r"[0-9a-f]{64}", args[1])
+                and re.fullmatch(r"[0-9a-f]{32}", args[2])):
+            manifest_path = PREFIX / "share/dwm-titus/desktop-install.json"
+            if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != args[1]:
+                fail("Installed desktop changed after preview; check again")
+            for journal_path in STATE.glob("*/journal.json"):
+                if read_json(journal_path).get("state") not in ("complete", "rolled-back"):
+                    fail("Another desktop transaction must finish or recover first")
+            backup = STATE / args[2]
+            backup.mkdir(mode=0o700)
+            write_json(backup / "journal.json", {"state": "preparing", "uid": uid,
+                       "operation": args[2], "generation": args[1], "preparationOnly": True})
+            sync_directory(STATE)
+        elif args[0] == "apply" and len(args) == 6:
             if (not re.fullmatch(r"[0-9a-f]{64}", args[2]) or not re.fullmatch(r"[0-9a-f]{32}", args[3])
                     or not re.fullmatch(r"[0-9a-f]{64}", args[4]) or not re.fullmatch(r"[0-9a-f]{40}", args[5])):
                 fail("Invalid update identity")
             for journal_path in STATE.glob("*/journal.json"):
-                if read_json(journal_path)["state"] in ("applying", "applied", "rolling-back", "rolled-back-pending"):
+                journal = read_json(journal_path)
+                if (journal_path.parent.name == args[3] and journal.get("state") == "preparing"
+                        and journal.get("uid") == uid and journal.get("generation") == args[2]):
+                    continue
+                if journal.get("state") not in ("complete", "rolled-back"):
                     fail("Interrupted system installation requires rollback: " + journal_path.parent.name)
             apply_archive(args[1], args[2], args[3], uid, args[4], args[5])
         elif args[0] == "rollback" and len(args) == 2 and re.fullmatch(r"[0-9a-f]{32}", args[1]):
@@ -288,6 +314,14 @@ def main():
                 print("This operation did not replace system files", flush=True)
                 return
             journal = read_json(backup / "journal.json")
+            if (journal.get("preparationOnly") is True
+                    and journal.get("state") in ("preparing", "rolled-back")):
+                if journal.get("uid") != uid:
+                    fail("This operation cannot be rolled back")
+                journal["state"] = "rolled-back"
+                write_json(backup / "journal.json", journal)
+                print("Preparation canceled; no system files were replaced", flush=True)
+                return
             latest = read_json(STATE / "latest.json")["operation"] if (STATE / "latest.json").exists() else None
             if journal["uid"] != uid:
                 fail("This operation cannot be rolled back")
