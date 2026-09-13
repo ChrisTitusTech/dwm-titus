@@ -6,6 +6,13 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve pending Picom edit revisions, import read-only includes from existing
+  user configurations, and recover include watches after invalid edits. Limit
+  failed-launch cleanup to its own processes and attempt compositor recovery
+  before reporting rollback conflicts, preserving relative configuration paths.
+
 ### Changed
 
 - Replace unstable Picom Appearance checks with global opacity sliders,

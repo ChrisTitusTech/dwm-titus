@@ -44,19 +44,19 @@ Scope {
         statusProcess.running = true;
     }
 
-    function mutate(action, args) {
+    function mutate(action, args, revision) {
         if (!root.editable && action !== "copy-config") return;
         if (root.busy) return;
         root.action = action;
-        root.actionArguments = args.concat([root.snapshot.revision]);
+        root.actionArguments = args.concat([revision === undefined ? root.snapshot.revision : revision]);
         root.busy = true;
         root.message = "";
         root.actionFailure = "";
         actionProcess.running = true;
     }
 
-    function setOpacity(active, inactive) {
-        root.mutate("set-opacity", [String(active), String(inactive)]);
+    function setOpacity(active, inactive, revision) {
+        root.mutate("set-opacity", [String(active), String(inactive)], revision);
     }
 
     onActiveChanged: {
