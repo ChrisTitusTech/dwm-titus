@@ -11,6 +11,7 @@ ColumnLayout {
     property real activeOpacity: 100
     property real inactiveOpacity: 100
     property bool changed: false
+    property string editRevision: ""
     Layout.fillWidth: true
     spacing: 10
 
@@ -32,7 +33,7 @@ ColumnLayout {
         }
         if (root.model.busy) return;
         root.changed = false;
-        root.model.setOpacity(root.activeOpacity, root.inactiveOpacity);
+        root.model.setOpacity(root.activeOpacity, root.inactiveOpacity, root.editRevision);
     }
 
     Component.onCompleted: root.synchronize()
@@ -75,6 +76,7 @@ ColumnLayout {
         value: root.activeOpacity
         enabled: root.model.editable
         onMoved: {
+            if (!root.changed) root.editRevision = root.model.snapshot.revision;
             root.activeOpacity = value;
             root.changed = true;
             if (!pressed) keyboardDelay.restart();
@@ -96,6 +98,7 @@ ColumnLayout {
         value: root.inactiveOpacity
         enabled: root.model.editable
         onMoved: {
+            if (!root.changed) root.editRevision = root.model.snapshot.revision;
             root.inactiveOpacity = value;
             root.changed = true;
             if (!pressed) keyboardDelay.restart();

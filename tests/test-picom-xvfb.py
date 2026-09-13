@@ -372,6 +372,13 @@ ShellRoot {
         }
         function statusError(): string { return provider.statusFailure; }
         function clearActionError(): void { provider.actionFailure = ""; }
+        function staleEdit(newRevision: string): void {
+            pane.editRevision = provider.snapshot.revision;
+            pane.activeOpacity = 42;
+            pane.changed = true;
+            provider.snapshot = Object.assign({}, provider.snapshot, {revision: newRevision});
+            pane.applyOpacity();
+        }
         function pendingReadonly(): string {
             pane.activeOpacity = 42;
             pane.changed = true;
@@ -441,6 +448,23 @@ ShellRoot {
                 "PASS: QML status recovery preserves mutation failures; readonly state cancels pending edits",
                 flush=True,
             )
+            # The helper revision is changed on disk while the pane still has
+            # the old snapshot. A newer accepted snapshot must not rebase its edit.
+            assert ipc("enabled", "false").returncode == 0
+            conf.write_text(conf.read_text() + "\n# concurrent edit\n")
+            assert ipc("staleEdit", helper("status")["revision"]).returncode == 0
+            wait_until(
+                lambda: "changed" in ipc("error").stdout,
+                "Staged opacity failed to retain its original revision",
+            )
+            assert helper("status")["active"] == 85
+            assert ipc("clearActionError").returncode == 0
+            assert ipc("refresh").returncode == 0
+            assert ipc("enabled", "true").returncode == 0
+            wait_until(
+                lambda: ui_matches("revision", helper("status")["revision"]),
+                "Revision did not refresh after conflict",
+            )
             assert ipc("opacity", "80", "60").returncode == 0
             wait_until(
                 lambda: ui_matches("active", 80), "QML mutation did not converge"
@@ -473,6 +497,24 @@ ShellRoot {
                 ImageGrab.grab(xdisplay=display).save(
                     os.environ["DWM_TEST_PICOM_CAPTURE"]
                 )
+            watched = config / "picom/include/deep/opacity.conf"
+            watched.parent.mkdir(parents=True)
+            watched.write_text("active-opacity=.7;")
+            conf.write_text('@include "' + str(watched) + '"')
+            wait_until(lambda: ui_matches("active", 70), "Include did not load")
+            watched.write_text("malformed included configuration")
+            wait_until(
+                lambda: ui_matches("editable", False),
+                "Malformed include was not observed",
+            )
+            # Allow the watcher to rearm while parsing is broken.
+            time.sleep(0.3)
+            watched.write_text("active-opacity=.65;")
+            wait_until(
+                lambda: ui_matches("active", 65),
+                "Fixed nested include was not observed",
+            )
+            print("PASS: nested include watch recovers after parse failure", flush=True)
             conf.write_text(
                 'backend="xrender"; daemon=true; active-opacity=.8; inactive-opacity=.6;'
             )

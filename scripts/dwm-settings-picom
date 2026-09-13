@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
 PROTOCOL = 1
@@ -92,7 +93,19 @@ def processes():
                 continue
             identity = (directory / "stat").read_text().rsplit(")", 1)[1].split()[19]
             result.append(
-                {"pid": int(directory.name), "args": args, "identity": identity}
+                {
+                    "pid": int(directory.name),
+                    "args": args,
+                    "identity": identity,
+                    "launch_id": next(
+                        (
+                            os.fsdecode(v.split(b"=", 1)[1])
+                            for v in env
+                            if v.startswith(b"DWM_PICOM_LAUNCH_ID=")
+                        ),
+                        "",
+                    ),
+                }
             )
         except (OSError, UnicodeError, IndexError):
             continue
@@ -637,6 +650,20 @@ def launch(config, original=None, previous=None):
     config_args = ["--config", str(config.path)] if explicit else []
     backend_args = ["--backend", effective] if effective else []
     args = original or ["picom", *config_args, *extras, *backend_args]
+    if original and option(original, ("--config",)):
+        # source_path resolved the previous relative path before it was stopped.
+        args = []
+        index = 0
+        while index < len(original):
+            arg = original[index]
+            if arg == "--config":
+                args += [arg, str(config.path)]
+                index += 2
+                continue
+            args.append(
+                "--config=" + str(config.path) if arg.startswith("--config=") else arg
+            )
+            index += 1
     if (
         not original
         and gpu == "nvidia"
@@ -652,6 +679,7 @@ def launch(config, original=None, previous=None):
     log_path = private_dir() / "session.log"
     safe_target(log_path)
     for index, command in enumerate(attempts):
+        launch_id = uuid.uuid4().hex
         with open(log_path, "w" if index == 0 else "a") as log:
             child = subprocess.Popen(
                 command,
@@ -659,6 +687,7 @@ def launch(config, original=None, previous=None):
                 stdout=log,
                 stderr=log,
                 start_new_session=True,
+                env={**os.environ, "DWM_PICOM_LAUNCH_ID": launch_id},
             )
         deadline = time.monotonic() + 2
         ready_since = None
@@ -668,7 +697,7 @@ def launch(config, original=None, previous=None):
                 break
             # --daemon and daemon=true fork; the successful parent may already
             # have exited. Verify an owned process and X selection, not its parent.
-            if owner() and processes():
+            if owner() and any(p.get("launch_id") == launch_id for p in processes()):
                 ready_since = ready_since or time.monotonic()
                 if time.monotonic() - ready_since >= 0.3:
                     return "XRender fallback active" if index else "Picom active"
@@ -679,7 +708,7 @@ def launch(config, original=None, previous=None):
                 child.wait(timeout=3)
             except subprocess.TimeoutExpired as exc:
                 raise Error("Picom startup timed out and did not stop") from exc
-        remaining = processes()
+        remaining = [p for p in processes() if p.get("launch_id") == launch_id]
         if remaining:
             stop(remaining)
     raise Error(f"Picom failed to start; see {log_path}")
@@ -719,7 +748,7 @@ def activate(config, action):
     except Error as exc:
         if running:
             try:
-                launch(config, running[0]["args"])
+                launch(NativeConfiguration(config.path), running[0]["args"])
             except Error as recovery:
                 raise Error(
                     f"{exc}; previous compositor recovery failed: {recovery}"
@@ -786,18 +815,40 @@ def status(detect=True):
                 )
         except Error as exc:
             result["detail"] += " " + str(exc)
-            result["copyable"] = (
-                config.path
-                not in (
-                    config_home() / "picom.conf",
-                    config_home() / "picom/picom.conf",
-                )
-                and not os.environ.get("DWM_PICOM_CONFIG")
-                and not option(running[0]["args"] if running else [], ("--config",))
-            )
+            try:
+                copy_destination(config, running)
+                result["copyable"] = result["installed"]
+            except Error:
+                pass
+
     except (Error, OSError, ValueError) as exc:
         result["detail"] = str(exc)
     return result
+
+
+def copy_destination(config, running):
+    """Import vendor files, or relocate unsafe includes of a writable user root."""
+    if os.environ.get("DWM_PICOM_CONFIG") or option(
+        running[0]["args"] if running else [], ("--config",)
+    ):
+        raise Error(
+            "An explicit --config path is active; edit that configuration instead"
+        )
+    destination = config_home() / "picom.conf"
+    if config.path in (destination, config_home() / "picom/picom.conf"):
+        safe_target(config.path)
+        for path in config.docs:
+            if path == config.path:
+                continue
+            try:
+                safe_target(path)
+            except Error:
+                return config.path
+        raise Error("A user Picom configuration already exists and needs no import")
+    if destination.exists() or destination.is_symlink():
+        raise Error("A user Picom configuration already exists")
+    safe_target(destination)
+    return destination
 
 
 def publish(path, text):
@@ -870,19 +921,7 @@ def mutate(action, args, revision):
                 {"backend": None if args[0] == "auto" else args[0]}
             )
         else:
-            destination = config_home() / "picom.conf"
-            if (
-                destination.exists()
-                or destination.is_symlink()
-                or config.path == destination
-            ):
-                raise Error("A user Picom configuration already exists")
-            if os.environ.get("DWM_PICOM_CONFIG") or option(
-                processes()[0]["args"] if processes() else [], ("--config",)
-            ):
-                raise Error(
-                    "An explicit --config path is active; edit that configuration instead"
-                )
+            destination = copy_destination(config, processes())
             mapping = {
                 p: (
                     destination
@@ -896,6 +935,15 @@ def mutate(action, args, revision):
                 )
                 for p, doc in config.docs.items()
             }
+            if destination == config.path:
+                # Import unsafe documents without disconnecting writable files
+                # that the user still edits in place.
+                for path in config.docs:
+                    try:
+                        safe_target(path)
+                        mapping[path] = path
+                    except Error:
+                        pass
             changes = {}
             for path, doc in config.docs.items():
                 replacements = []
@@ -929,9 +977,7 @@ def mutate(action, args, revision):
         }
         for path in changes:
             safe_target(path)
-        candidate_path = (
-            config_home() / "picom.conf" if action == "copy-config" else config.path
-        )
+        candidate_path = destination if action == "copy-config" else config.path
         validate_candidate(config, changes, candidate_path)
         if not changes:
             return "Configuration already matches"
@@ -996,19 +1042,19 @@ def mutate(action, args, revision):
                 except (OSError, Error):
                     # Preserve concurrent removals and keep restoring other files.
                     conflicts.append(str(path))
-            if conflicts:
-                raise Error(
-                    f"{exc}; newer edits preserved in {', '.join(conflicts)}; backup: {backup}"
-                ) from exc
+            recovery_detail = ""
             if running and not processes():
                 try:
-                    launch(Configuration(config.path), running[0]["args"])
-                except Error as recovery:
-                    raise Error(
-                        f"{exc}; recovery failed: {recovery}; backup: {backup}"
-                    ) from exc
+                    launch(NativeConfiguration(config.path), running[0]["args"])
+                except (Error, OSError) as recovery:
+                    recovery_detail = f"; recovery failed: {recovery}"
+            restoration = (
+                f"newer edits preserved in {', '.join(conflicts)}"
+                if conflicts
+                else "previous configuration restored"
+            )
             raise Error(
-                f"{exc}; previous configuration restored. Backup: {backup}"
+                f"{exc}; {restoration}{recovery_detail}; backup: {backup}"
             ) from exc
 
 
@@ -1030,13 +1076,15 @@ def watch():
     signal.signal(signal.SIGINT, finish)
     if os.getppid() != parent:
         return
+    known_paths = []
     while True:
         paths = candidates()
         try:
             config = Configuration()
-            paths += list(config.docs)
+            known_paths = list(config.docs)
         except (Error, OSError, ValueError):
             pass
+        paths += known_paths
         parents = set()
         for path in paths:
             parent = path.parent

@@ -42,7 +42,9 @@ Picom rules can override these defaults for individual windows.
 The controls read the active Picom configuration, normally `~/.config/picom.conf`
 or `~/.config/picom/picom.conf`, and observe external edits. With no configuration,
 they show 100% and create a minimal file on the first edit. A system configuration
-can be copied with **Create user configuration**. Comments, unrelated settings,
+can be copied with **Create user configuration**. The same action imports read-only
+includes referenced by an existing writable user configuration, backing up the
+root before updating its include paths. Comments, unrelated settings,
 and included files are preserved; the ten most recent edits retain recovery backups. Invalid
 or read-only configurations show an explanation rather than disappearing controls.
 Edits made while Picom is stopped take effect the next time it starts.

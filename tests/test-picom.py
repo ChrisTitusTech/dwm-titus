@@ -373,7 +373,10 @@ class PicomTests(unittest.TestCase):
         child.poll.return_value = 0
         with (
             patch.object(picom, "owner", side_effect=[0, *([1] * 50)]),
-            patch.object(picom, "processes", return_value=[{"pid": 123}]),
+            patch.object(picom.uuid, "uuid4", return_value=Mock(hex="attempt")),
+            patch.object(
+                picom, "processes", return_value=[{"pid": 123, "launch_id": "attempt"}]
+            ),
             patch.object(picom.subprocess, "Popen", return_value=child) as popen,
         ):
             picom.launch(
@@ -385,6 +388,96 @@ class PicomTests(unittest.TestCase):
         self.assertNotIn("/dev/null", command)
         self.assertIn("--daemon", command)
         self.assertIn("--vsync", command)
+
+    def test_failed_launch_only_stops_its_daemon(self):
+        own = {"pid": 123, "launch_id": "attempt"}
+        foreign = {"pid": 456, "launch_id": "other"}
+        child = Mock()
+        child.poll.return_value = 1
+        with (
+            patch.object(picom.uuid, "uuid4", return_value=Mock(hex="attempt")),
+            patch.object(picom, "owner", return_value=0),
+            patch.object(picom, "processes", return_value=[own, foreign]),
+            patch.object(picom.subprocess, "Popen", return_value=child),
+            patch.object(picom, "stop") as stop,
+            self.assertRaises(picom.Error),
+        ):
+            picom.launch(picom.Configuration(self.path))
+        stop.assert_called_once_with([own])
+
+    def test_recovery_rewrites_relative_config_argument(self):
+        child = Mock()
+        child.poll.return_value = 1
+        for args in (["--config", "relative.conf"], ["--config=relative.conf"]):
+            with (
+                patch.object(picom, "owner", return_value=0),
+                patch.object(picom.subprocess, "Popen", return_value=child) as popen,
+                self.assertRaises(picom.Error),
+            ):
+                picom.launch(
+                    picom.NativeConfiguration(self.path), ["picom", *args, "--vsync"]
+                )
+            command = popen.call_args.args[0]
+            self.assertEqual(picom.option(command, ("--config",)), str(self.path))
+            self.assertIn("--vsync", command)
+
+    def test_rollback_conflict_attempts_recovery_and_reports_both_errors(self):
+        config = self.write("active-opacity=.8;")
+        running = [{"pid": 123, "args": ["picom"]}]
+
+        def fail_launch(*args, **kwargs):
+            if running:
+                running.clear()
+                self.path.write_text("external edit")
+                raise picom.Error("replacement failed")
+            raise picom.Error("original failed")
+
+        with (
+            patch.object(picom, "processes", side_effect=lambda: list(running)),
+            patch.object(picom, "stop"),
+            patch.object(picom, "launch", side_effect=fail_launch) as launch,
+            self.assertRaisesRegex(
+                picom.Error, "newer edits preserved.*recovery failed: original failed"
+            ),
+        ):
+            self.apply(config)
+        self.assertEqual(launch.call_count, 2)
+        self.assertEqual(self.path.read_text(), "external edit")
+
+    def test_import_readonly_includes_of_existing_user_roots(self):
+        for relative in ("picom.conf", "picom/picom.conf"):
+            with self.subTest(relative=relative):
+                root = self.config / relative
+                root.parent.mkdir(exist_ok=True)
+                included = self.home / "readonly.conf"
+                included.write_text("active-opacity=.7;")
+                included.chmod(0o444)
+                original = '@include "' + str(included) + '"\n# preserved root'
+                root.write_text(original)
+                state = picom.status(False)
+                self.assertTrue(state["copyable"])
+                picom.mutate("copy-config", [], state["revision"])
+                self.assertTrue(picom.status(False)["editable"])
+                self.assertIn("# preserved root", root.read_text())
+                self.apply(picom.Configuration())
+                self.assertEqual(included.read_text(), "active-opacity=.7;")
+                root.unlink()
+                included.chmod(0o600)
+
+    def test_import_keeps_writable_includes_effective(self):
+        readonly = self.home / "vendor.conf"
+        readonly.write_text("active-opacity=.7;")
+        readonly.chmod(0o444)
+        writable = self.config / "mine.conf"
+        writable.write_text("inactive-opacity=.6;")
+        self.write('@include "' + str(readonly) + '"\n@include "mine.conf"')
+        picom.mutate("copy-config", [], picom.Configuration().revision())
+        self.assertIn(writable, picom.Configuration().docs)
+        self.apply(picom.Configuration())
+        self.assertEqual(writable.read_text(), "inactive-opacity=0.75;")
+        writable.write_text("inactive-opacity=.55;")
+        self.assertEqual(picom.Configuration().opacity(), (0.9, 0.55))
+        self.assertEqual(readonly.read_text(), "active-opacity=.7;")
 
     def test_marker_outside_rules_is_rejected(self):
         config = self.write(
