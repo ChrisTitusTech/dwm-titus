@@ -41,7 +41,7 @@ class Security(unittest.TestCase):
         self.manifest_path.parent.mkdir(parents=True)
         self.manifest = {"schema": 1, "source": "https://github.com/ChrisTitusTech/dwm-titus.git",
                          "revision": "a" * 40, "layout": {"prefix": str(self.prefix)}, "packages": ["gcc"],
-                         "files": {str(self.binary): {"mode": 0o755, "sha256": hashlib.sha256(b"original").hexdigest()}}}
+                         "files": {str(self.binary): {"mode": 0o755, "sha256": hashlib.sha256(b"updated").hexdigest()}}}
         self.manifest_path.write_text(json.dumps(self.manifest, sort_keys=True) + "\n")
         self.operation = uuid.uuid4().hex
         self.bundle = self.prefix / "candidate.tar"
@@ -115,6 +115,7 @@ class Security(unittest.TestCase):
         self.assertIn("source installer", check(self.manifest))
 
     def test_root_can_run_read_only_installation_audits(self):
+        self.binary.write_bytes(b"updated")
         script = str(REPO / "scripts/dwm-desktop-update")
         result = subprocess.run([sys.executable, script, "verify-trust", str(self.manifest_path)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -127,8 +128,9 @@ class Security(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_matching_user_owned_system_file_is_reinstalled_as_root(self):
+        self.binary.write_bytes(b"updated")
         os.chown(self.binary, 1000, 1000)
-        self.archive(payload=b"original")
+        self.archive()
         result = self.apply()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.binary.stat().st_uid, 0)
@@ -160,11 +162,27 @@ class Security(unittest.TestCase):
         self.archive(payload=b"arbitrary privileged code")
         result = self.apply()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Privileged helpers changed", result.stderr)
+        self.assertIn("System file contents changed", result.stderr)
         self.assertEqual(target.read_bytes(), original)
 
     def test_self_replacement_with_matching_payload_hash_is_rejected(self):
         self.assert_helper_payload_rejected(self.helper)
+
+    def test_session_binary_with_matching_payload_hash_is_rejected(self):
+        self.archive(payload=b"malicious session binary")
+        result = self.apply()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("System file contents changed", result.stderr)
+        self.assertEqual(self.binary.read_bytes(), b"original")
+
+    def test_later_administrator_edit_blocks_rollback(self):
+        self.archive()
+        self.assertEqual(self.apply().returncode, 0)
+        self.binary.write_bytes(b"administrator edit after update")
+        result = self.command("rollback", self.operation)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("changed after this update", result.stderr)
+        self.assertEqual(self.binary.read_bytes(), b"administrator edit after update")
 
     def test_other_privileged_helper_payload_is_rejected(self):
         target = self.helper.parent / "dwm-settings-display-root"
@@ -218,7 +236,8 @@ class Security(unittest.TestCase):
         self.assertEqual(self.binary.stat().st_mode & 0o7777, 0o755)
 
     def test_hash_tampering_is_rejected(self):
-        self.archive(lambda value: value["files"][str(self.binary)].update(sha256="0" * 64))
+        self.archive(lambda value: value["files"][str(self.binary)].update(sha256=hashlib.sha256(b"updated").hexdigest()),
+                     payload=b"tampered")
         result = self.apply()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("checksum", result.stderr)

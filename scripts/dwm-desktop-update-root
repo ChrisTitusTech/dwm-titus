@@ -98,7 +98,16 @@ def replace(path, source, record):
 
 def restore(backup, journal):
     # The journal is written before each replacement, including newly created files.
+    candidate = read_json(backup / "payload/manifest.json")
     for entry in journal["replaced"]:
+        path = Path(entry["path"])
+        current = fingerprint(path) if os.path.lexists(path) else None
+        current_uid = path.lstat().st_uid if current is not None else None
+        matches_new = current == candidate["files"][entry["path"]] and current_uid == 0
+        matches_old = (journal["state"] in ("applying", "rolling-back") and current == entry["old"]
+                       and (current is None or current_uid in (0, entry.get("oldUid", 0))))
+        if not matches_new and not matches_old:
+            fail("Managed system files changed after this update; preserve those changes before recovery")
         if entry["old"] is not None and "sha256" in entry["old"]:
             if entry["old"].get("mode") not in (0o644, 0o755):
                 fail("Unsafe managed recovery mode; use the source installer")
@@ -130,10 +139,8 @@ def validate_candidate(candidate, installed):
         fail("Desktop install layout changed; use the documented source installer")
     for name, record in candidate["files"].items():
         old = installed["files"][name]
-        if (Path(name).is_relative_to(PREFIX / "libexec") or Path(name) in
-                (PREFIX / "bin/dwm-display-setup", PREFIX / "bin/dwm-system-health",
-                 PREFIX / "bin/power-management.sh")) and record != old:
-            fail("Privileged helpers changed; use the documented source installer")
+        if record != old:
+            fail("System file contents changed; use the documented source installer")
         if not isinstance(record, dict):
             fail("Invalid managed file metadata")
         if "link" in old:
@@ -218,7 +225,8 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
             blob = "old-" + str(index)
             if old is not None and "link" not in old:
                 copy_saved(path, backup / blob)
-            journal["replaced"].append({"path": name, "old": old, "blob": blob})
+            journal["replaced"].append({"path": name, "old": old, "blob": blob,
+                                        "oldUid": path.lstat().st_uid if old is not None else None})
             write_json(backup / "journal.json", journal)
             replace(path, payload / str(index), candidate["files"][name])
         for name, record in candidate["files"].items():

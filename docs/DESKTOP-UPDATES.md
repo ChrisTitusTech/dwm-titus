@@ -42,9 +42,11 @@ The installed manifest fixes the authorized system-file destinations, file
 types and modes, cursor link targets, and package capability list. An update
 that changes that contract stops before installation and asks for the source
 installer. This avoids turning Settings into a general-purpose root installer.
-Privileged helpers and the root-executed `dwm-display-setup`,
-`dwm-system-health`, and `power-management.sh` commands must stay byte-identical; changes to them require
-the source installer. Authorization carries the prepared archive's digest and
+Every system file must match its existing root-trusted hash, including the dwm
+session binary, commands, helpers, and shared assets. The button updates managed
+user files and repairs system-file drift. New system-file contents require the
+source installer; a user-built bundle cannot establish new trusted hashes.
+Authorization carries the prepared archive's digest and
 confirmed revision; the root-owned copy must match both before installation,
 preventing archive substitution while the authorization prompt is open.
 Missing system directories also require that installer

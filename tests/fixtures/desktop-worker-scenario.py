@@ -26,7 +26,7 @@ personal.write_text("personal theme")
 prefix = base / "prefix"
 binary = prefix / "bin/dwm"
 binary.parent.mkdir(parents=True)
-binary.write_text("old binary")
+binary.write_text("new binary")
 binary.chmod(0o755)
 manifest_path = prefix / "share/dwm-titus/desktop-install.json"
 manifest = {"schema": 1, "source": update.SOURCE, "revision": "a" * 40, "packages": [],
@@ -34,6 +34,7 @@ manifest = {"schema": 1, "source": update.SOURCE, "revision": "a" * 40, "package
                        "xsessions": str(prefix / "xsessions"), "datadir": str(prefix / "share")},
             "files": {str(binary): update.fingerprint(binary)}}
 update.write_json(manifest_path, manifest)
+binary.write_text("old binary")
 operation = "c" * 32
 directory = state / "operations" / operation
 directory.mkdir(parents=True)
@@ -64,6 +65,7 @@ update.start_activation = activation
 update.time.sleep = lambda delay: None
 update.trusted_installation = lambda path: None
 update.trusted_directory = lambda path: None
+update.root_owned = lambda path: True
 source, stage = directory / "source", directory / "stage"
 
 

@@ -13,6 +13,8 @@ versions from `config.mk`.
   Build source updates without elevation and restrict authorized system-file
   replacement to the installed manifest. Preserve personal configuration and
   distinguish installed updates from changes requiring a new desktop session.
+  Require the source installer for new system-file contents; button updates
+  manage user files and restore only root-trusted system hashes.
 
 ### Fixed
 

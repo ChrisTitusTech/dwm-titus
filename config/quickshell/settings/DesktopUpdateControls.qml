@@ -95,7 +95,8 @@ Rectangle {
             }
             Label {
                 text: "This builds and installs the selected revision, replaces managed Quickshell files, and keeps recovery copies. "
-                    + "Your personal settings are preserved. Administrator authorization is required for system files. "
+                    + "Your personal settings are preserved. Administrator authorization is required for system-file repairs. "
+                    + "Changes to system files require the source installer. "
                     + "You may need to log out afterward. Installation cannot be canceled safely once it starts."
                 color: Theme.menuText
             }

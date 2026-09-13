@@ -558,8 +558,10 @@ linked worktrees require the documented source update procedure.
 
 A root-owned installed helper accepts only the destinations, file types, modes,
 link targets, and dependency capabilities recorded by the installed manifest.
-Privileged helpers and their root-executed display setup command remain byte-identical until the source installer
-updates them. Each authorized apply is bound to its prepared archive digest
+All system-file contents must match the hashes in that root-trusted manifest.
+The button updates managed user files and repairs system-file drift; changes
+to system executables or other system-file contents require the source installer.
+Caller-built files cannot establish new trusted hashes. Each authorized apply is bound to its prepared archive digest
 and confirmed revision; substitutions during authorization are rejected.
 It never executes a staged Makefile or repository helper as root. Changes to
 that installation layout or dependency allowlist require the source installer
