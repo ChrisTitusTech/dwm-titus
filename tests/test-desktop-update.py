@@ -280,6 +280,20 @@ class DesktopUpdate(unittest.TestCase):
         self.assertEqual(git(self.data, "rev-parse", "HEAD"), original)
         self.assertEqual(git(Path(entries[0]["backup"]), "rev-parse", "HEAD"), git(source, "rev-parse", "HEAD"))
         self.assertEqual(git(Path(entries[0]["backup"]), "status", "--porcelain"), "")
+        for name in ("config/local-work", "scripts/local-work"):
+            local = self.data / name
+            local.write_text("untracked work")
+            with patch.object(update, "run", REAL_RUN), self.assertRaisesRegex(RuntimeError, "has changes"):
+                update.prepare_user(source, "f" * 32)
+            self.assertEqual(local.read_text(), "untracked work")
+            local.unlink()
+        (self.data / ".git/info/exclude").write_text("config/ignored-work\n")
+        ignored = self.data / "config/ignored-work"
+        ignored.write_text("ignored personal work")
+        with patch.object(update, "run", REAL_RUN), self.assertRaisesRegex(RuntimeError, "has changes"):
+            update.prepare_user(source, "f" * 32)
+        self.assertEqual(ignored.read_text(), "ignored personal work")
+        ignored.unlink()
         (self.data / "local-file").write_text("local")
         git(self.data, "add", ".")
         git(self.data, "commit", "-m", "divergent local work")

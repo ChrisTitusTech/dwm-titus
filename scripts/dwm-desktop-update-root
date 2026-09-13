@@ -72,12 +72,14 @@ def fingerprint(path):
 def copy_saved(source, target):
     with source.open("rb") as original, target.open("xb") as stream:
         shutil.copyfileobj(original, stream)
-        os.fchmod(stream.fileno(), stat.S_IMODE(os.fstat(original.fileno()).st_mode))
+        os.fchmod(stream.fileno(), 0o644)
         stream.flush()
         os.fsync(stream.fileno())
 
 
 def replace(path, source, record):
+    if "link" not in record and record.get("mode") not in (0o644, 0o755):
+        fail("Unsafe managed recovery mode; use the source installer")
     trusted(path.parent, True)
     temporary = path.parent / (".dwm-update-" + os.urandom(12).hex())
     try:
@@ -98,6 +100,8 @@ def restore(backup, journal):
     # The journal is written before each replacement, including newly created files.
     for entry in journal["replaced"]:
         if entry["old"] is not None and "sha256" in entry["old"]:
+            if entry["old"].get("mode") not in (0o644, 0o755):
+                fail("Unsafe managed recovery mode; use the source installer")
             if hashlib.sha256((backup / entry["blob"]).read_bytes()).hexdigest() != entry["old"]["sha256"]:
                 fail("Recovery copy checksum mismatch")
     journal["state"] = "rolling-back"
@@ -126,7 +130,8 @@ def validate_candidate(candidate, installed):
         fail("Desktop install layout changed; use the documented source installer")
     for name, record in candidate["files"].items():
         old = installed["files"][name]
-        if (Path(name).is_relative_to(PREFIX / "libexec") or Path(name) == PREFIX / "bin/dwm-display-setup") and record != old:
+        if (Path(name).is_relative_to(PREFIX / "libexec") or Path(name) in
+                (PREFIX / "bin/dwm-display-setup", PREFIX / "bin/dwm-system-health")) and record != old:
             fail("Privileged helpers changed; use the documented source installer")
         if not isinstance(record, dict):
             fail("Invalid managed file metadata")
@@ -203,6 +208,10 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
         for index, name in enumerate(sorted(candidate["files"])):
             path = Path(name)
             old = fingerprint(path) if os.path.lexists(path) else None
+            if old is not None and "sha256" in old:
+                if (old["mode"] not in (0o644, 0o755)
+                        or (path.lstat().st_uid != 0 and old != installed["files"][name])):
+                    fail("Unsafe installed file cannot be saved for recovery; use the source installer")
             if old == candidate["files"][name] and path.lstat().st_uid == 0:
                 continue
             blob = "old-" + str(index)

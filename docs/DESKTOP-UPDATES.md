@@ -34,15 +34,16 @@ and compile-time `config.h`. It replaces the project-managed Quickshell tree and
 the managed `config` and `scripts` data trees. If the data directory is also a
 Git checkout, the updater prepares and validates a fast-forwarded copy before
 replacing it. Unrelated files in that directory are retained. Development
-branches, tracked changes, linked worktrees, and divergent history are blocked
+branches, tracked or untracked changes, ignored files inside `config` or
+`scripts`, linked worktrees, and divergent history are blocked
 with instructions to use the source workflow.
 
 The installed manifest fixes the authorized system-file destinations, file
 types and modes, cursor link targets, and package capability list. An update
 that changes that contract stops before installation and asks for the source
 installer. This avoids turning Settings into a general-purpose root installer.
-Privileged helpers and their root-executed `dwm-display-setup` command must stay
-byte-identical; changes to them require
+Privileged helpers and the root-executed `dwm-display-setup` and
+`dwm-system-health` commands must stay byte-identical; changes to them require
 the source installer. Authorization carries the prepared archive's digest and
 confirmed revision; the root-owned copy must match both before installation,
 preventing archive substitution while the authorization prompt is open.
@@ -50,6 +51,8 @@ Missing system directories also require that installer
 and are not offered as automatic file repairs. Compiler overrides (`CC`,
 `CFLAGS`, `CPPFLAGS`, and `LDFLAGS`) supplied to the updater are carried into its
 worker and passed to the build.
+Unsafe installed file modes or modified user-owned system files require the
+source installer; recovery never restores special or writable mode bits.
 Missing known build/source-update packages can be installed after confirmation;
 the package manager owns its transaction and package locks.
 

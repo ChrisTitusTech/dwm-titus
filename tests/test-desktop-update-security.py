@@ -131,6 +131,39 @@ class Security(unittest.TestCase):
         target.chmod(0o755)
         self.assert_helper_payload_rejected(target)
 
+    def test_root_executed_system_health_payload_is_rejected(self):
+        target = self.prefix / "bin/dwm-system-health"
+        target.write_bytes(b"original root-executed system health")
+        target.chmod(0o755)
+        self.assert_helper_payload_rejected(target)
+
+    def test_unsafe_original_cannot_be_promoted_through_recovery(self):
+        for mode in (0o4755, 0o2755, 0o775, 0o755):
+            with self.subTest(mode=oct(mode)):
+                self.operation = uuid.uuid4().hex
+                self.addCleanup(shutil.rmtree, Path("/var/lib/dwm-titus/desktop-updates") / self.operation, True)
+                self.binary.write_bytes(b"untrusted original")
+                os.chown(self.binary, 1000, 1000)
+                self.binary.chmod(mode)
+                self.archive()
+                result = self.apply()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Unsafe installed file", result.stderr)
+                self.assertEqual(self.binary.stat().st_uid, 1000)
+
+    def test_old_recovery_record_with_special_mode_is_rejected(self):
+        self.archive()
+        self.assertEqual(self.apply().returncode, 0)
+        backup = Path("/var/lib/dwm-titus/desktop-updates") / self.operation
+        journal = json.loads((backup / "journal.json").read_text())
+        journal["replaced"][0]["old"]["mode"] = 0o4755
+        (backup / "journal.json").write_text(json.dumps(journal))
+        result = self.command("rollback", self.operation)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Unsafe managed recovery mode", result.stderr)
+        self.assertEqual(self.binary.read_bytes(), b"updated")
+        self.assertEqual(self.binary.stat().st_mode & 0o7777, 0o755)
+
     def test_hash_tampering_is_rejected(self):
         self.archive(lambda value: value["files"][str(self.binary)].update(sha256="0" * 64))
         result = self.apply()
