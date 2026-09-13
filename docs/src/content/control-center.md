@@ -152,6 +152,10 @@ Settings -> Defaults manages browser, terminal, file-manager, and selected MIME
 handlers through versioned XDG records. Restore Previous is offered only while
 the recovery image still matches the state written by the last action.
 
+File-type choices include installed handlers such as sxiv and Feh even when
+their desktop entries use `NoDisplay=true` to stay out of launcher menus.
+Disabled entries and handlers whose executables are missing remain excluded.
+
 The same page lists effective XDG autostart entries and their vendor or user
 origin. Enable, disable, and reset create or update user overrides for the next
 login; vendor desktop files are never edited. Changes to the locker,
