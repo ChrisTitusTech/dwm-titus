@@ -148,11 +148,19 @@ Alacritty. The default `Super`+`X` binding remains plain Alacritty.
 
 Restart picom via the Control Center (**Quick Actions → Restart Picom**) or:
 ```bash
-pkill picom; setsid -f picom --backend xrender
+dwm-settings-picom restart
 ```
 
-If artifacts persist, set a different backend in `~/.config/picom.conf` or run with
-`PICOM_BACKEND=glx` or `PICOM_BACKEND=egl`.
+If artifacts persist, choose XRender or GLX in **Settings > Appearance >
+Compositor**. EGL is experimental. Automatic selection uses the active renderer
+and retries XRender if automatic GLX startup fails. Existing configuration choices
+and `PICOM_BACKEND=glx` or `PICOM_BACKEND=egl` session overrides remain respected.
+
+Run `dwm-settings-picom status` to see the configuration path and effective
+backend. The controls remain available while Picom is stopped. Configuration
+errors and concurrent edits are reported without silently replacing your choices;
+activation errors identify a recovery backup and session log.
+
 
 ---
 

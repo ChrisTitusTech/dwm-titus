@@ -539,6 +539,38 @@ Advanced partitioning, unrestricted service control, firewall policy editing,
 and similarly high-risk administration remain delegated unless a later
 specification defines a narrow safe interface.
 
+### 5.10.1 Picom Appearance
+
+Appearance provides a stable Compositor section backed by Picom configuration,
+independent of process polling. Active and inactive window opacity are global
+0-100 percent settings, saved on slider release (keyboard edits debounce for
+250 ms). Theme application reapplies current values without storing them in
+individual themes or overwriting them during theme rollback. Custom window
+rules retain precedence over managed defaults.
+
+The unprivileged `dwm-settings-picom` JSON protocol version 1 supplies `status`,
+`watch`, `set-opacity ACTIVE INACTIVE REVISION`, `set-backend BACKEND REVISION`,
+and `copy-config REVISION`. Mutations require the displayed source revision,
+validate before publication, preserve unrelated libconfig source and include
+files, back up changed files, and roll back failed activation. Missing Picom
+remains optional. Missing configuration shows 100 percent defaults and is
+created only on edit. Read-only system configurations require an explicit user
+copy, including referenced configuration files.
+
+`start`, `restart`, `reload`, `stop`, and `toggle` share user-and-display-scoped
+session handling. Valid syntax outside the editor's supported subset remains
+usable for session actions, with configuration parsing and backend policy
+delegated to Picom while explicit session overrides remain respected.
+Explicit `DWM_PICOM_CONFIG` and existing session `--config`
+paths precede standard Picom XDG discovery. `PICOM_BACKEND` overrides an
+explicit config backend; absent both, Automatic uses active-renderer diagnostics
+(GLX for accelerated Intel/AMD, XRender for NVIDIA, software, or unknown), with
+one XRender retry if automatic GLX startup fails. EGL is an explicit experimental
+choice. PCI passthrough devices do not determine the active renderer. NVIDIA
+synchronization defaults respect explicit configuration. Stopped Picom stays
+stopped during opacity edits or theme application. File watches end when
+Settings closes; no recurring compositor-state poll is required.
+
 ### 5.11 Fedora Image Contract
 
 Released Fedora images must be based on the Fedora Server Network Install ISO,

@@ -90,6 +90,7 @@ flatpak
 quickshell
 PackageKit
 PackageKit-glib
+python3
 python3-gobject
 python3-rpm
 accountsservice

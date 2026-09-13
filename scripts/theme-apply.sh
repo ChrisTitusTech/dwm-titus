@@ -1229,4 +1229,14 @@ if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]] &&
 		XCURSOR_SIZE="$CURSOR_SIZE" 2>/dev/null || true
 fi
 
+# Opacity is global. Reapply the current configuration without writing it into
+# theme transactions or their rollback archives. A stopped compositor stays stopped.
+if [[ $TRANSACTIONAL_APPLY == 0 && -n ${DISPLAY:-} ]] && command -v picom &>/dev/null; then
+	PICOM_HELPER=${DWM_APPEARANCE_PICOM_HELPER:-$script_dir/dwm-settings-picom}
+	if [[ -x $PICOM_HELPER ]]; then
+		"$PICOM_HELPER" reload >/dev/null ||
+			echo 'theme-apply: Picom reload failed; see Appearance > Compositor' >&2
+	fi
+fi
+
 echo "theme-apply: applied theme '$THEME_NAME'"

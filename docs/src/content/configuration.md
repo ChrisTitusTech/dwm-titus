@@ -32,6 +32,43 @@ there so the tray host starts before tray clients. Use
 
 ---
 
+## Picom opacity and backend
+
+Open **Settings > Appearance > Compositor** to change foreground (active) and
+background (inactive) window opacity. Sliders save when released; keyboard edits
+save after a short pause. Values stay the same when switching themes. Custom
+Picom rules can override these defaults for individual windows.
+
+The controls read the active Picom configuration, normally `~/.config/picom.conf`
+or `~/.config/picom/picom.conf`, and observe external edits. With no configuration,
+they show 100% and create a minimal file on the first edit. A system configuration
+can be copied with **Create user configuration**. Comments, unrelated settings,
+and included files are preserved; the ten most recent edits retain recovery backups. Invalid
+or read-only configurations show an explanation rather than disappearing controls.
+Edits made while Picom is stopped take effect the next time it starts.
+Valid configurations using syntax the editor cannot rewrite, such as nested
+includes, still support startup, restart, and reload through Picom itself.
+
+**Automatic** chooses GLX for an accelerated Intel/AMD renderer and XRender for
+NVIDIA, software rendering, or unknown hardware. Failed automatic GLX startup
+retries XRender once. An existing explicit backend is preserved; choose Automatic
+to remove it. XRender, GLX, and experimental EGL remain selectable. The active
+renderer matters, not an unused or passthrough GPU installed in the machine.
+
+`PICOM_BACKEND` remains a session override. Unset it before selecting a different
+backend in Settings. `DWM_PICOM_CONFIG=/absolute/path/picom.conf` can select a
+custom configuration; an existing Picom `--config` argument is also respected.
+Command-line opacity overrides must be removed before editing opacity in Settings.
+
+```bash
+dwm-settings-picom status
+dwm-settings-picom restart
+```
+
+Restart and toggle affect only your compositor on the current display. Failed
+configuration activation restores the prior files and attempts to recover the
+previous compositor; the error identifies the backup and session log.
+
 ## config.h Essentials
 
 `config.h` is your personal copy of `config.def.h`. It is created automatically by `make` if it doesn't exist.

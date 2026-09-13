@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Replace unstable Picom Appearance checks with global opacity sliders,
+  configuration watching, and automatic GPU-aware backend selection with manual
+  overrides. Startup and restart now share the same display-scoped policy (#309).
+
 - Add Self-Heal to Quick Actions for launching a configured workstation repair
   script in a terminal with visible progress and authorization prompts (#306).
 - Simplify the Power dropdown to Reboot, Logout, Lock, Suspend, and Shutdown
@@ -20,6 +24,11 @@ versions from `config.mk`.
   installation guides, with checksums, offline setup steps and hardware limits.
 
 ### Fixed
+
+- Preserve per-screen Picom isolation, apply modern opacity defaults to dialogs,
+  retain ten recovery backups, and recover cleanly from concurrent config removal
+  and transient Appearance errors. Keep native relative shader and nested include
+  lookup behavior during edits.
 
 - Make Settings fullscreen like System Health (#302), stop Appearance overscroll
   bounce (#303), refresh running X11 clients when changing cursor themes (#304),

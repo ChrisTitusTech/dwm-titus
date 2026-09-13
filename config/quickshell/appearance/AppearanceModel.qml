@@ -38,7 +38,8 @@ Scope {
     property bool inventoryWatchSawEvent: false
     property bool inventoryWatchFailed: false
     property bool inventoryWatchRestartPending: false
-    property bool compositorWatchReady: false
+    readonly property alias picom: picomModel
+    PicomModel { id: picomModel; active: root.settingsVisible }
     property string wallpaperState: "idle"
     property string wallpaperPath: ""
     property string wallpaperFit: "fill"
@@ -462,12 +463,9 @@ Scope {
         root.inventoryWatchSawEvent = false;
         root.inventoryWatchFailed = true;
         root.inventoryWatchRestartPending = false;
-        root.compositorWatchReady = false;
         inventoryWatchExitSettleTimer.stop();
         inventoryWatchRestartTimer.stop();
         inventoryWatchProcess.running = false;
-        compositorWatchRestartTimer.stop();
-        compositorWatchProcess.running = false;
     }
 
     function parseInventory(text) {
@@ -532,19 +530,13 @@ Scope {
         }
         root.inventorySelections = selections;
         root.inventoryCandidates = candidates;
-        root.compositorWatchReady = selections.compositor.value === "picom";
         if (root.settingsVisible && !root.inventoryWatchFailed && watch.state === "available")
             root.startInventoryWatcher();
         if (watch.state !== "available") {
             inventoryWatchRestartTimer.stop();
             inventoryWatchProcess.running = false;
         }
-        if (root.settingsVisible && root.compositorWatchReady && !compositorWatchProcess.running)
-            compositorWatchProcess.running = true;
-        if (!root.compositorWatchReady) {
-            compositorWatchRestartTimer.stop();
-            compositorWatchProcess.running = false;
-        }
+
     }
 
     function parseSnapshot(text) {
@@ -855,6 +847,7 @@ Scope {
     }
 
     function refreshAll(forcePreviewStatus) {
+        picomModel.refresh();
         root.refreshSnapshot();
         root.refreshInventory();
         root.refreshPreviewStatus(forcePreviewStatus === true);
@@ -922,9 +915,6 @@ Scope {
         inventoryWatchProcess.running = false;
         root.inventoryWatchReady = false;
         root.inventoryWatchSawEvent = false;
-        compositorWatchSettleTimer.stop();
-        compositorWatchRestartTimer.stop();
-        compositorWatchProcess.running = false;
         xsettingsWatchProcess.running = false;
         root.xsettingsWatchReady = false;
         root.xsettingsWatchProtocolSeen = false;
@@ -1930,17 +1920,6 @@ Scope {
     }
 
     Process {
-        id: compositorWatchProcess
-        command: Commands.settingsAppearanceCommand("watch-compositor", [])
-        running: false
-        stdout: SplitParser { onRead: compositorWatchSettleTimer.restart() }
-        onRunningChanged: {
-            if (!running && root.settingsVisible && root.compositorWatchReady)
-                compositorWatchRestartTimer.restart();
-        }
-    }
-
-    Process {
         id: xsettingsWatchProcess
         command: Commands.settingsXsettingsCommand("watch", [])
         running: false
@@ -2196,23 +2175,6 @@ Scope {
             if (root.settingsVisible && (root.inventoryWatchState === "available"
                     || root.inventoryWatchState === "idle")
                     && !root.inventoryWatchFailed) root.startInventoryWatcher();
-        }
-    }
-
-    Timer {
-        id: compositorWatchSettleTimer
-        interval: 100
-        repeat: false
-        onTriggered: root.refreshInventory(true)
-    }
-
-    Timer {
-        id: compositorWatchRestartTimer
-        interval: 3000
-        repeat: false
-        onTriggered: {
-            if (root.settingsVisible && root.compositorWatchReady
-                    && !compositorWatchProcess.running) compositorWatchProcess.running = true;
         }
     }
 

@@ -31,7 +31,7 @@ SH
 	chmod +x "$work/bin/$name"
 }
 
-for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh maim notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps dwm-settings-wallpaper xdg-open nwg-look pkill pgrep dnf; do
+for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom dwm-settings-picom feh maim notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps dwm-settings-wallpaper xdg-open nwg-look pkill pgrep dnf; do
 	stub_command "$name"
 done
 
@@ -419,8 +419,7 @@ grep -Fq 'quickshell --no-duplicate' "$work/actions.log"
 : >"$work/actions.log"
 run_helper action restart-picom >"$work/picom.out"
 grep -Fqx 'action	restart-picom' "$work/picom.out"
-grep -Fq 'pkill -x picom' "$work/actions.log"
-grep -Fqx 'picom ' "$work/actions.log"
+grep -Fqx 'dwm-settings-picom restart' "$work/actions.log"
 
 : >"$work/actions.log"
 run_helper action open-wallpapers >"$work/wallpapers.out"

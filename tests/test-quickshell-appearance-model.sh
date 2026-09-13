@@ -105,7 +105,7 @@ if grep -Fq 'Commands.checkedCommand(Commands.settingsAppearanceCommand("invento
 	exit 1
 fi
 grep -Fq 'Commands.settingsAppearanceCommand("watch-inventory", [])' "$model"
-grep -Fq 'Commands.settingsAppearanceCommand("watch-compositor", [])' "$model"
+grep -Fq 'PicomModel { id: picomModel; active: root.settingsVisible }' "$model"
 grep -Fq 'function startInventoryWatcher(restartIfRunning)' "$model"
 grep -Fq 'function finishInventoryWatcherExit()' "$model"
 sed -n '/function startInventoryWatcher(restartIfRunning)/,/^    }/p' "$model" |
@@ -132,10 +132,9 @@ grep -Fq 'root.refreshInventory(true)' "$model"
 grep -Fq 'root.inventoryWatchFailed = true' "$model"
 grep -Fq 'root.inventoryWatchState = "unavailable"' "$model"
 grep -Fq '&& !root.inventoryWatchFailed' "$model"
-grep -Fq 'onTriggered: root.refreshInventory(true)' "$model"
 grep -Fq 'if (!root.settingsVisible) return;' "$model"
 grep -Fq 'inventoryWatchProcess.running = false' "$model"
-grep -Fq 'compositorWatchProcess.running = false' "$model"
+if grep -Fq 'compositorWatchProcess' "$model"; then exit 1; fi
 grep -Fq 'root.inventoryCandidates = candidates' "$model"
 grep -Fq 'candidate.id === "wallpaper"' "$model"
 grep -Fq 'candidate.id === "font"' "$model"
