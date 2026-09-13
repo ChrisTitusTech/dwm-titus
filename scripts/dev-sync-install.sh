@@ -283,6 +283,10 @@ verify_install() {
 		verify_privileged_helper_trust=0
 	fi
 	if [ "$verify_privileged_helper_trust" -eq 1 ]; then
+		if ! python3 "$repo_dir/scripts/dwm-desktop-update" verify-trust \
+			"$prefix/share/dwm-titus/desktop-install.json"; then
+			verification_failed=1
+		fi
 		for privileged_target in "$display_root_helper_target" "$desktop_root_helper_target"; do
 			[ -e "$privileged_target" ] || continue
 			if [ "$(stat -c %u "$privileged_target")" -ne 0 ] ||

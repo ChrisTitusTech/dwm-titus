@@ -30,6 +30,7 @@ def module(name, path):
 update = module("desktop_update", REPO / "scripts/dwm-desktop-update")
 privileged = module("desktop_root", REPO / "scripts/dwm-desktop-update-root")
 REAL_RUN = update.run
+REAL_ROOT_OWNED = update.root_owned
 
 
 class DesktopUpdate(unittest.TestCase):
@@ -59,6 +60,7 @@ class DesktopUpdate(unittest.TestCase):
         patch.object(update, "installation", return_value=(self.manifest_path, self.manifest)).start()
         patch.object(update, "missing_packages", return_value=[]).start()
         patch.object(update, "service_active", return_value=False).start()
+        patch.object(update, "root_owned", return_value=True).start()
         self.command = patch.object(update, "run", return_value="a" * 40 + "\trefs/heads/main").start()
 
     def test_current_and_content_drift_are_distinct(self):
@@ -101,6 +103,28 @@ class DesktopUpdate(unittest.TestCase):
         self.assertEqual(value["state"], "blocked")
         self.assertFalse(value["canUpdate"])
         self.assertIn("source installer", value["detail"])
+
+    def test_ownership_only_drift_is_repairable(self):
+        if os.geteuid() == 0:
+            os.chown(self.binary, 65534, 65534)
+        with patch.object(update, "root_owned", REAL_ROOT_OWNED):
+            value = update.check(True)
+        self.assertEqual(value["state"], "drift")
+        self.assertTrue(value["canUpdate"])
+        self.assertIn(str(self.binary), value["changes"])
+
+    def test_unsafe_system_drift_blocks_before_network_or_authorization(self):
+        for mode in (0o4755, 0o2755, 0o775):
+            self.binary.chmod(mode)
+            value = update.check(True)
+            self.assertEqual(value["state"], "blocked")
+            self.assertFalse(value["canUpdate"])
+            self.assertIn("source installer", value["detail"])
+        self.binary.chmod(0o755)
+        self.binary.write_text("modified by its user owner")
+        with patch.object(update, "root_owned", return_value=False):
+            self.assertEqual(update.check(True)["state"], "blocked")
+        self.command.assert_not_called()
 
     def test_manifest_directory_uses_trusted_mode_under_group_umask(self):
         stage = self.base / "stage"
@@ -300,6 +324,21 @@ class DesktopUpdate(unittest.TestCase):
         with patch.object(update, "run", REAL_RUN), self.assertRaises(RuntimeError):
             update.prepare_user(source, "f" * 32)
         self.assertFalse((self.data.parent / (".dwm-update-" + "f" * 32 + "-0")).exists())
+        with patch.object(update, "run", REAL_RUN), patch.object(update, "SOURCE", str(source)):
+            self.assertIn("divergent", update.checkout_ancestry_reason(self.data, git(source, "rev-parse", "HEAD")))
+            self.assertEqual(update.checkout_ancestry_reason(source, git(source, "rev-parse", "HEAD")), "")
+
+    def test_external_checkout_ancestry_blocks_preview(self):
+        external = self.base / "external"
+        external.mkdir()
+        receipt = update.read_json(self.state / "installed.json")
+        receipt["checkout"] = str(external)
+        update.write_json(self.state / "installed.json", receipt)
+        with patch.object(update, "checkout_ancestry_reason", side_effect=["", "Local source has divergent history."]) as ancestry:
+            value = update.check(True)
+        self.assertEqual(value["state"], "blocked")
+        self.assertFalse(value["canUpdate"])
+        ancestry.assert_any_call(external, "a" * 40)
 
     def test_root_candidate_rejects_changed_destinations_modes_and_links(self):
         privileged.validate_candidate(self.manifest, self.manifest)

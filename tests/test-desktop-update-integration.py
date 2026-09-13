@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     source.mkdir()
     subprocess.run(["useradd", "-m", "desktop-test"], check=True)
     uid = int(subprocess.check_output(["id", "-u", "desktop-test"], text=True))
-    for name in ("Makefile", "config.mk", "config.def.h", "dwm.c", "drw.c", "util.c", "tomlparser.c",
+    for name in (".gitignore", "Makefile", "config.mk", "config.def.h", "dwm.c", "drw.c", "util.c", "tomlparser.c",
                  "drw.h", "util.h", "tomlparser.h", "dwm.1", "dwm.desktop", "scripts", "config", "assets"):
         if (repo / name).is_dir():
             shutil.copytree(repo / name, source / name, symlinks=True)

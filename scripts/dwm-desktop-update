@@ -169,7 +169,7 @@ def verify_receipts(source, manifest_path):
     manifest = read_json(Path(manifest_path))
     user = read_json(paths()[2] / "installed.json")
     revision = source_revision(Path(source).resolve())
-    if manifest["revision"] != revision or user["revision"] != revision or drift(manifest, user):
+    if manifest["revision"] != revision or user["revision"] != revision or drift(manifest, user, check_ownership=False):
         raise RuntimeError("Installed desktop receipts do not match the checkout")
     print("Managed installation receipts match the checkout.")
 
@@ -233,11 +233,44 @@ def checkout_reason(path):
     return ""
 
 
-def drift(manifest, user):
+def checkout_ancestry_reason(path, revision):
+    if not (path / ".git").exists():
+        return ""
+    with tempfile.TemporaryDirectory(prefix="desktop-ancestry-") as temporary:
+        repository = Path(temporary)
+        run(["git", "init", "--bare", repository])
+        run(["git", "-C", repository, "fetch", "--no-tags", path, "HEAD:refs/heads/local"])
+        run(["git", "-C", repository, "fetch", "--no-tags", SOURCE, revision + ":refs/heads/upstream"], timeout=30)
+        try:
+            run(["git", "-C", repository, "merge-base", "--is-ancestor", "refs/heads/local", "refs/heads/upstream"])
+        except CommandFailure as error:
+            if error.returncode != 1:
+                raise
+            return "Local source has divergent history. Use the source installer."
+    return ""
+
+
+def root_owned(path):
+    return path.lstat().st_uid == 0
+
+
+def unsupported_system_drift(manifest):
+    for name, expected in manifest["files"].items():
+        path = Path(name)
+        if not os.path.lexists(path):
+            continue
+        record = fingerprint(path)
+        if "sha256" in record and (record["mode"] not in (0o644, 0o755)
+                                  or (not root_owned(path) and record != expected)):
+            return "Unsafe managed system file requires the source installer: " + name
+    return ""
+
+
+def drift(manifest, user, check_ownership=True):
     changes = []
     for name, expected in manifest["files"].items():
         try:
-            matches = fingerprint(Path(name)) == expected
+            matches = fingerprint(Path(name)) == expected and (not check_ownership or root_owned(Path(name)))
         except OSError:
             matches = False
         if not matches:
@@ -284,6 +317,9 @@ def check(force=False):
                 return save_status(state, value, state="blocked", canUpdate=False, checkedAt=int(time.time()),
                                    detail="Managed system directories are missing. Run the source installer to restore: "
                                    + ", ".join(missing_parents))
+            reason = unsupported_system_drift(manifest)
+            if reason:
+                return save_status(state, value, state="blocked", canUpdate=False, checkedAt=int(time.time()), detail=reason)
             upstream = run(["git", "ls-remote", "--exit-code", SOURCE, "refs/heads/main"], timeout=30).split()
             if len(upstream) != 2 or not re.fullmatch(r"[0-9a-f]{40}", upstream[0]):
                 raise RuntimeError("Upstream returned an invalid desktop revision")
@@ -292,6 +328,11 @@ def check(force=False):
             checkout = Path(user.get("checkout") or str(data))
             if not reason and checkout != data and checkout.exists():
                 reason = checkout_reason(checkout)
+            if not reason:
+                for path in dict.fromkeys((data, checkout)):
+                    reason = checkout_ancestry_reason(path, value["available"])
+                    if reason:
+                        break
             if reason:
                 return save_status(state, value, state="blocked", detail=reason, checkedAt=int(time.time()))
             available = upstream[0] != value["installed"]
@@ -487,7 +528,10 @@ def worker(operation):
                 trusted_installation(Path(preview["manifest"]))
                 if digest(Path(preview["manifest"])) != preview["generation"]:
                     raise RuntimeError("Installed files changed since preview; check again")
-                reason = checkout_reason(data)
+                reason = unsupported_system_drift(installed)
+                user_receipt = read_json(state / "installed.json") if (state / "installed.json").exists() else {}
+                for path in dict.fromkeys((data, Path(user_receipt.get("checkout") or str(data)))):
+                    reason = reason or checkout_reason(path) or checkout_ancestry_reason(path, preview["available"])
                 if reason:
                     raise RuntimeError(reason)
                 save_status(state, value, state="downloading", detail="Downloading the confirmed desktop revision...", percent=-1)
@@ -505,7 +549,6 @@ def worker(operation):
                     save_status(state, value, state="dependencies", detail="Authorizing required build and desktop packages...", percent=-1)
                     run(["/usr/bin/pkexec", privileged, "dependencies", preview["generation"]], timeout=1800, capture=False)
                 save_status(state, value, state="building", detail="Building the desktop update...", percent=-1)
-                user_receipt = read_json(state / "installed.json") if (state / "installed.json").exists() else {}
                 config_source = Path(user_receipt.get("checkout") or str(data)) / "config.h"
                 if not config_source.is_file():
                     config_source = state / "build-config.h"
@@ -704,6 +747,8 @@ def main():
     receipts = commands.add_parser("verify-receipts")
     receipts.add_argument("source_dir")
     receipts.add_argument("manifest")
+    trust = commands.add_parser("verify-trust")
+    trust.add_argument("manifest")
     args = parser.parse_args()
     if args.command == "record-system":
         record_system(args)
@@ -715,6 +760,9 @@ def main():
         return 0
     if args.command == "verify-receipts":
         verify_receipts(args.source_dir, args.manifest)
+        return 0
+    if args.command == "verify-trust":
+        trusted_installation(Path(args.manifest))
         return 0
     if args.command == "worker":
         return worker(args.operation)

@@ -26,7 +26,7 @@ plan and qualification documents.
       logout/login because the running dwm differs. Live activation is unverified.
 - [x] Complete independent local Codex review with no remaining actionable
       findings; address CodeRabbit feedback and repeat affected checks.
-      Final coverage includes 29 backend tests, 22 privileged-helper tests,
+      Final coverage includes 32 backend tests, 23 privileged-helper tests,
       real service lifetime/readiness checks, and the full repository gate.
 - [x] Publish implementation commit `c4ba100` and verify its remote head; open
       ready-for-review [PR #318](https://github.com/ChrisTitusTech/dwm-titus/pull/318)

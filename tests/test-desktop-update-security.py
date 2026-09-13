@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import runpy
 from pathlib import Path
 import shutil
 import subprocess
@@ -78,6 +79,21 @@ class Security(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.binary.read_bytes(), b"original")
         self.assertEqual(self.command("rollback", self.operation).returncode, 0)
+
+    def test_source_sync_manifest_trust_rejects_ownership_mode_and_parent_drift(self):
+        validate = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))["trusted_installation"]
+        validate(self.manifest_path)
+        os.chown(self.manifest_path, 1000, 1000)
+        with self.assertRaisesRegex(RuntimeError, "root-owned"):
+            validate(self.manifest_path)
+        os.chown(self.manifest_path, 0, 0)
+        self.manifest_path.chmod(0o664)
+        with self.assertRaisesRegex(RuntimeError, "non-writable"):
+            validate(self.manifest_path)
+        self.manifest_path.chmod(0o644)
+        self.manifest_path.parent.chmod(0o775)
+        with self.assertRaisesRegex(RuntimeError, "untrusted parent"):
+            validate(self.manifest_path)
 
     def test_matching_user_owned_system_file_is_reinstalled_as_root(self):
         os.chown(self.binary, 1000, 1000)
