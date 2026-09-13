@@ -28,5 +28,8 @@ plan and qualification documents.
       findings; address CodeRabbit feedback and repeat affected checks.
       Final coverage includes 24 backend tests, 14 privileged-helper tests,
       real service lifetime/readiness checks, and the full repository gate.
-- [ ] Commit, push, verify the remote head, and open a ready-for-review PR with
-      exact evidence and limitations.
+- [x] Publish implementation commit `c4ba100` and verify its remote head; open
+      ready-for-review [PR #318](https://github.com/ChrisTitusTech/dwm-titus/pull/318)
+      with exact evidence and limitations. No unresolved review threads were
+      present at publication; optional hosted CodeRabbit review was pending.
+      No merge was performed.
