@@ -15,14 +15,22 @@ ColumnLayout {
     spacing: 10
 
     function synchronize() {
-        if (foreground.pressed || background.pressed || root.changed) return;
+        if (!root.model.snapshot.editable) {
+            keyboardDelay.stop();
+            root.changed = false;
+        } else if (foreground.pressed || background.pressed || root.changed) return;
         root.activeOpacity = root.model.snapshot.active;
         root.inactiveOpacity = root.model.snapshot.inactive;
     }
 
     function applyOpacity() {
         keyboardDelay.stop();
-        if (!root.changed || !root.model.editable) return;
+        if (!root.changed) return;
+        if (!root.model.snapshot.editable) {
+            root.synchronize();
+            return;
+        }
+        if (root.model.busy) return;
         root.changed = false;
         root.model.setOpacity(root.activeOpacity, root.inactiveOpacity);
     }

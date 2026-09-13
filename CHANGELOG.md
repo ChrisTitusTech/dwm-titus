@@ -25,6 +25,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Preserve per-screen Picom isolation, apply modern opacity defaults to dialogs,
+  retain ten recovery backups, and recover cleanly from concurrent config removal
+  and transient Appearance errors. Keep native relative shader and nested include
+  lookup behavior during edits.
+
 - Make Settings fullscreen like System Health (#302), stop Appearance overscroll
   bounce (#303), refresh running X11 clients when changing cursor themes (#304),
   and hide the redundant Blueman tray icon (#305).

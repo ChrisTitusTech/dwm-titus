@@ -56,6 +56,60 @@ class PicomTests(unittest.TestCase):
     def apply(self, config, active=90, inactive=75):
         return picom.mutate("set-opacity", [active, inactive], config.revision())
 
+    def test_display_screen_identity(self):
+        self.assertEqual(picom.display_name(":0.0"), picom.display_name("unix:0"))
+        self.assertNotEqual(picom.display_name(":0.1"), picom.display_name(":0"))
+        self.assertEqual(picom.display_name("host:2.1"), "host:2.1")
+
+    def test_backup_history_is_bounded(self):
+        self.write("active-opacity=.8;")
+        for value in range(70, 84):
+            self.apply(picom.Configuration(), value)
+        backups = list(picom.private_dir().glob("backup-*"))
+        self.assertEqual(len(backups), 10)
+        self.assertTrue(all((p / "manifest.json").exists() for p in backups))
+
+    def test_rollback_continues_after_concurrent_removal(self):
+        child = self.config / "inactive.conf"
+        child.write_text("inactive-opacity=.6;")
+        original = '@include "inactive.conf"\nactive-opacity=.8;'
+        config = self.write(original)
+        process = {"pid": 123, "identity": "1", "args": ["picom"]}
+
+        def fail_launch(*args, **kwargs):
+            child.unlink()
+            raise picom.Error("failed")
+
+        with (
+            patch.object(picom, "processes", return_value=[process]),
+            patch.object(picom, "stop"),
+            patch.object(picom, "launch", side_effect=fail_launch),
+            self.assertRaisesRegex(picom.Error, "newer edits preserved"),
+        ):
+            self.apply(config)
+        self.assertFalse(child.exists())
+        self.assertEqual(self.path.read_text(), original)
+
+    def test_failed_backend_retry_preserves_both_logs(self):
+        child = Mock()
+        child.poll.return_value = 1
+
+        def launch(command, **kwargs):
+            kwargs["stdout"].write(command[-1] + " failed\n")
+            return child
+
+        with (
+            patch.object(picom, "owner", return_value=0),
+            patch.object(picom, "renderer", return_value="intel"),
+            patch.object(picom.subprocess, "Popen", side_effect=launch),
+            self.assertRaises(picom.Error),
+        ):
+            picom.launch(picom.Configuration())
+        self.assertEqual(
+            (picom.private_dir() / "session.log").read_text(),
+            "glx failed\nxrender failed\n",
+        )
+
     def test_missing_creates_only_on_edit(self):
         state = picom.status(False)
         self.assertFalse(self.path.exists())
@@ -84,6 +138,20 @@ class PicomTests(unittest.TestCase):
             self.path.read_text(), '@include "opacity.conf"\nbackend = "glx";\n'
         )
         self.assertEqual(picom.Configuration().opacity(), (0.9, 0.75))
+
+    def test_nested_includes_use_root_directory(self):
+        sub = self.config / "sub"
+        sub.mkdir()
+        (sub / "child.conf").write_text('@include "values.conf"')
+        values = self.config / "values.conf"
+        values.write_text("active-opacity=.7; inactive-opacity=.6;")
+        decoy = sub / "values.conf"
+        decoy.write_text("active-opacity=.1;")
+        config = self.write('@include "sub/child.conf"')
+        self.assertEqual(config.opacity(), (0.7, 0.6))
+        self.apply(config)
+        self.assertEqual(picom.Configuration().opacity(), (0.9, 0.75))
+        self.assertEqual(decoy.read_text(), "active-opacity=.1;")
 
     def test_include_cycle_and_duplicates(self):
         self.path.write_text('@include "picom.conf"')
@@ -264,6 +332,23 @@ class PicomTests(unittest.TestCase):
         self.assertEqual(self.path.read_text(), source.read_text())
         with self.assertRaises(picom.Error):
             picom.mutate("copy-config", [], picom.Configuration().revision())
+
+    def test_copy_vendor_shader_references(self):
+        vendor = self.home / "vendor"
+        vendor.mkdir()
+        (vendor / "custom.frag").write_text("shader")
+        source = vendor / "picom.conf"
+        source.write_text(
+            'window-shader-fg="custom.frag"; root-pixmap-shader="custom.frag";'
+            "window-shader-fg-rule=[\"custom.frag:name = 'x'\", \"default:name = 'y'\"];"
+            'rules=({shader="custom.frag";}, {shader={path="custom.frag"; defines={COLOR="red";};};});'
+        )
+        picom.mutate("copy-config", [], picom.Configuration().revision())
+        copied = self.path.read_text()
+        self.assertEqual(copied.count(str(vendor / "custom.frag")), 5)
+        self.assertIn('COLOR="red"', copied)
+        self.assertIn("default:name = 'y'", copied)
+        self.assertIn('window-shader-fg="custom.frag"', source.read_text())
 
     def test_copy_vendor_include_graph_is_editable(self):
         vendor = self.home / "vendor"

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise real Picom, configuration watching and Appearance on an isolated X server."""
 
+import contextlib
 import ctypes
 import ctypes.util
 import importlib.machinery
@@ -252,6 +253,31 @@ def main():
             assert helper("status")["active"] == 85
             assert "window_type = 'dock'" in conf.read_text()
             helper("restart")
+            dialog_type = ctypes.c_ulong(
+                lib.XInternAtom(connection, b"_NET_WM_WINDOW_TYPE_DIALOG", 0)
+            )
+            for window in (first, second):
+                lib.XChangeProperty(
+                    connection,
+                    window,
+                    type_atom,
+                    4,
+                    32,
+                    0,
+                    ctypes.byref(dialog_type),
+                    1,
+                )
+            lib.XSync(connection, 0)
+
+            def dialog_opacity_visible():
+                image = ImageGrab.grab(xdisplay=display)
+                a, b = image.getpixel((80, 80))[0], image.getpixel((280, 80))[0]
+                return abs(a - 217) < 12 and abs(b - 166) < 12
+
+            wait_until(
+                dialog_opacity_visible, "Modern rules must apply opacity to dialogs"
+            )
+            print("PASS: modern rules apply opacity to dialogs", flush=True)
             helper("set-backend", "auto", helper("status")["revision"])
             assert helper("status")["policy"] == "auto"
             assert (
@@ -259,6 +285,55 @@ def main():
             )  # Xvfb is software-rendered.
             print(
                 "PASS: modern rules, restart, and software-renderer selection",
+                flush=True,
+            )
+
+            # Native Picom resolves resources and nested includes at the root.
+            modern_text = conf.read_text()
+            shader = config / "custom.frag"
+            shader.write_text(
+                "vec4 window_shader() { return default_post_processing(window_color()); }\n"
+            )
+            sub = config / "sub"
+            sub.mkdir()
+            (sub / "child.conf").write_text('@include "values.conf"')
+            (config / "values.conf").write_text(
+                "active-opacity=.9; inactive-opacity=.7;"
+            )
+            (sub / "values.conf").write_text("active-opacity=.1;")
+            conf.write_text(
+                'backend="xrender"; window-shader-fg="custom.frag";\n@include "sub/child.conf"'
+            )
+            helper("set-opacity", "82", "62", helper("status")["revision"])
+            assert helper("status")["active"] == 82
+            assert (sub / "values.conf").read_text() == "active-opacity=.1;"
+            assert 'window-shader-fg="custom.frag"' in conf.read_text()
+            assert not list(config.glob(".dwm-picom-validate-*"))
+            conf.write_text(modern_text)
+            helper("restart")
+            print(
+                "PASS: native relative shader and root-relative nested include edits",
+                flush=True,
+            )
+            helper("stop")
+            vendor = work / "vendor"
+            vendor.mkdir()
+            vendor_shader = vendor / "vendor.frag"
+            vendor_shader.write_text(shader.read_text())
+            vendor_config = vendor / "picom.conf"
+            vendor_config.write_text(
+                'backend="xrender"; window-shader-fg="vendor.frag";'
+            )
+            conf.unlink()
+            helper("copy-config", helper("status")["revision"])
+            assert str(vendor_shader) in conf.read_text()
+            helper("start")
+            assert helper("status")["running"]
+            helper("stop")
+            conf.write_text(modern_text)
+            helper("start")
+            print(
+                "PASS: vendor shader references survive user configuration copy and startup",
                 flush=True,
             )
 
@@ -282,7 +357,7 @@ ShellRoot {
         color: Theme.bg
         implicitWidth: 700
         implicitHeight: 600
-        ColumnLayout { anchors.fill: parent; anchors.margins: 20; PicomSettingsPane { model: provider } }
+        ColumnLayout { anchors.fill: parent; anchors.margins: 20; PicomSettingsPane { id: pane; model: provider } }
     }
     IpcHandler {
         target: "picomTest"
@@ -290,6 +365,19 @@ ShellRoot {
         function error(): string { return provider.failure; }
         function opacity(a: int, b: int): void { provider.setOpacity(a, b); }
         function enabled(value: bool): void { provider.active = value; }
+        function refresh(): void { provider.refresh(); }
+        function injectFailures(): void {
+            provider.statusFailure = "status failed";
+            provider.actionFailure = "mutation failed";
+        }
+        function statusError(): string { return provider.statusFailure; }
+        function clearActionError(): void { provider.actionFailure = ""; }
+        function pendingReadonly(): string {
+            pane.activeOpacity = 42;
+            pane.changed = true;
+            provider.snapshot = Object.assign({}, provider.snapshot, {editable: false, active: 81});
+            return JSON.stringify({changed: pane.changed, active: pane.activeOpacity});
+        }
     }
 }
 """)
@@ -335,10 +423,24 @@ ShellRoot {
                 return json.loads(result.stdout).get(key) == expected
 
             wait_until(lambda: ui_matches("active", 85), "QML did not load Picom state")
-            if os.environ.get("DWM_TEST_PICOM_CAPTURE"):
-                ImageGrab.grab(xdisplay=display).save(
-                    os.environ["DWM_TEST_PICOM_CAPTURE"]
-                )
+            assert ipc("injectFailures").returncode == 0
+            assert ipc("refresh").returncode == 0
+            wait_until(
+                lambda: ipc("statusError").stdout.strip() == "",
+                "Recovered status error remains",
+            )
+            assert ipc("error").stdout.strip() == "mutation failed"
+            assert ipc("clearActionError").returncode == 0
+            pending = json.loads(ipc("pendingReadonly").stdout)
+            assert pending == {"changed": False, "active": 81}
+            assert ipc("refresh").returncode == 0
+            wait_until(
+                lambda: ui_matches("active", 85), "QML did not restore refreshed state"
+            )
+            print(
+                "PASS: QML status recovery preserves mutation failures; readonly state cancels pending edits",
+                flush=True,
+            )
             assert ipc("opacity", "80", "60").returncode == 0
             wait_until(
                 lambda: ui_matches("active", 80), "QML mutation did not converge"
@@ -367,6 +469,10 @@ ShellRoot {
             )
             assert ui_matches("editable", True)
             assert ipc("error").stdout.strip() == ""
+            if os.environ.get("DWM_TEST_PICOM_CAPTURE"):
+                ImageGrab.grab(xdisplay=display).save(
+                    os.environ["DWM_TEST_PICOM_CAPTURE"]
+                )
             conf.write_text(
                 'backend="xrender"; daemon=true; active-opacity=.8; inactive-opacity=.6;'
             )
@@ -417,17 +523,25 @@ ShellRoot {
             raise
         finally:
             if shell:
-                os.killpg(shell.pid, 15)
-                shell.wait(timeout=8)
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(shell.pid, 15)
+                try:
+                    shell.wait(timeout=8)
+                except subprocess.TimeoutExpired:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(shell.pid, 9)
+                    with contextlib.suppress(subprocess.TimeoutExpired):
+                        shell.wait(timeout=8)
             if "display" in locals():
-                subprocess.run(
-                    [str(repo / "scripts/dwm-settings-picom"), "stop"],
-                    env=env,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=10,
-                    check=False,
-                )
+                with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                    subprocess.run(
+                        [str(repo / "scripts/dwm-settings-picom"), "stop"],
+                        env=env,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=10,
+                        check=False,
+                    )
             if connection:
                 lib.XCloseDisplay(connection)
             if xvfb:

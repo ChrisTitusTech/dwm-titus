@@ -11,7 +11,10 @@ Scope {
     property bool pending: false
     property bool busy: false
     property string message: ""
-    property string failure: ""
+    property string statusFailure: ""
+    property string watchFailure: ""
+    property string actionFailure: ""
+    readonly property string failure: actionFailure || statusFailure || watchFailure
     property var snapshot: ({ protocol: 1, editable: false, installed: false,
         active: 100, inactive: 100, policy: "auto", effective: "", override: "",
         revision: "", path: "", detail: "Loading Picom configuration", copyable: false })
@@ -48,7 +51,7 @@ Scope {
         root.actionArguments = args.concat([root.snapshot.revision]);
         root.busy = true;
         root.message = "";
-        root.failure = "";
+        root.actionFailure = "";
         actionProcess.running = true;
     }
 
@@ -76,7 +79,8 @@ Scope {
                 try {
                     if (exitCode !== 0 || exitStatus !== 0) throw new Error(statusError.text || "Picom status failed");
                     root.accept(statusOutput.text);
-                } catch (error) { root.failure = String(error); }
+                    root.statusFailure = "";
+                } catch (error) { root.statusFailure = String(error); }
             } else root.pending = true;
             if (root.pending && !root.busy) settle.restart();
         }
@@ -92,7 +96,7 @@ Scope {
                 if (exitCode !== 0 || exitStatus !== 0) throw new Error(actionError.text || "Picom change failed");
                 root.accept(actionOutput.text);
                 root.message = root.snapshot.message || "Picom configuration saved";
-            } catch (error) { root.failure = String(error); }
+            } catch (error) { root.actionFailure = String(error); }
             root.busy = false;
             root.refresh();
         }
@@ -103,12 +107,15 @@ Scope {
         command: Commands.helperCommand("dwm-settings-picom", "watch", [], true)
         running: root.active
         stdout: SplitParser {
-            onRead: data => { if (data === "changed" || data === "ready") settle.restart(); }
+            onRead: data => {
+                if (data === "ready") root.watchFailure = "";
+                if (data === "changed" || data === "ready") settle.restart();
+            }
         }
         stderr: StdioCollector { id: watchError }
         onExited: (exitCode, exitStatus) => {
             if (root.active && (exitCode !== 0 || exitStatus !== 0))
-                root.failure = watchError.text || "Live Picom updates unavailable; use Refresh";
+                root.watchFailure = watchError.text || "Live Picom updates unavailable; use Refresh";
         }
     }
 

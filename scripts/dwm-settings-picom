@@ -60,7 +60,7 @@ def run(argv, timeout=8):
 
 
 def display_name(value):
-    return re.sub(r"\.\d+$", "", value).replace("unix:", ":")
+    return re.sub(r"\.0$", "", value).replace("unix:", ":")
 
 
 def processes():
@@ -133,6 +133,7 @@ def resolve_include(path, name):
     include = Path(name)
     if include.is_absolute():
         return include
+    # Picom keeps the root configuration directory throughout nested includes.
     roots = [path.resolve().parent, config_home() / "picom/include"]
     roots += [
         Path(p) / "picom/include"
@@ -200,6 +201,7 @@ class Document:
         self.index = 0
         self.entries = {}
         self.includes = []
+        self.shaders = []
         self.group(None, True)
 
     def peek(self):
@@ -214,7 +216,7 @@ class Document:
         self.index += 1
         return value
 
-    def group(self, closing, top=False):
+    def group(self, closing, top=False, shader=False):
         names = set()
         while self.peek() and self.peek() != closing:
             if self.peek() == "@include":
@@ -238,7 +240,12 @@ class Document:
                     raise Error(f"Missing assignment for {key[0]}")
                 self.take()
                 start = self.index
-                self.value()
+                self.value(
+                    shader=key[0]
+                    in ("shader", "window-shader-fg", "root-pixmap-shader")
+                    or (shader and key[0] == "path"),
+                    shader_rules=key[0] == "window-shader-fg-rule",
+                )
                 last = self.tokens[self.index - 1][2]
                 if self.peek() in (";", ","):
                     last = self.take()[2]
@@ -265,22 +272,28 @@ class Document:
         if closing:
             self.take(closing)
 
-    def value(self):
+    def value(self, shader=False, shader_rules=False):
         value = self.peek()
         if value == "{":
             self.take()
-            self.group("}")
+            self.group("}", shader=shader)
         elif value in ("(", "["):
             self.take()
             end = ")" if value == "(" else "]"
             while self.peek() and self.peek() != end:
-                self.value()
+                self.value(shader=shader, shader_rules=shader_rules)
                 if self.peek() != end:
                     self.take(",")
             self.take(end)
         elif value.startswith('"'):
+            start = self.tokens[self.index][1]
+            parts = []
             while self.peek().startswith('"'):
-                self.take()
+                token = self.take()
+                if shader or shader_rules:
+                    parts.append(json.loads(token[0]))
+            if shader or shader_rules:
+                self.shaders.append(("".join(parts), start, token[2], shader_rules))
         elif value in ("true", "false") or re.fullmatch(
             r"[+-]?(?:0[xX][0-9a-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)[Ll]{0,2}",
             value,
@@ -363,7 +376,7 @@ class Configuration:
         for name, _ in doc.includes:
             if any(c in name for c in "*?["):
                 raise Error("Wildcard Picom includes require manual editing")
-            include = resolve_include(path, name)
+            include = resolve_include(self.path, name)
             self.load(include, [*ancestors, path.resolve()])
 
     def revision(self):
@@ -442,9 +455,9 @@ class Configuration:
         comma = "," if tokens(tail) else ""
         text = (
             f"\n{BEGIN}\n"
-            "{ match = \"window_type = 'normal' && (focused || group_focused)\"; "
+            '{ match = "focused || group_focused"; '
             f"opacity = {active}; }},\n"
-            "{ match = \"window_type = 'normal' && !(focused || group_focused)\"; "
+            '{ match = "!(focused || group_focused)"; '
             f"opacity = {inactive}; }}{comma}\n{END}\n"
         )
         return {doc.path: doc.text[:start] + text + doc.text[end:]}
@@ -639,7 +652,7 @@ def launch(config, original=None, previous=None):
     log_path = private_dir() / "session.log"
     safe_target(log_path)
     for index, command in enumerate(attempts):
-        with open(log_path, "w") as log:
+        with open(log_path, "w" if index == 0 else "a") as log:
             child = subprocess.Popen(
                 command,
                 stdin=subprocess.DEVNULL,
@@ -813,13 +826,23 @@ def validate_candidate(config, changes, candidate_path):
         prefix="validate-", dir=private_dir()
     ) as directory:
         mapping = {p: Path(directory) / str(i) for i, p in enumerate(candidate.docs)}
-        for path, doc in candidate.docs.items():
-            edits = []
-            for name, token in doc.includes:
-                include = resolve_include(path, name)
-                edits.append((token[1], token[2], json.dumps(str(mapping[include]))))
-            mapping[path].write_text(splice(doc.text, edits))
-        diagnostics(mapping[candidate_path])
+        # Picom also resolves shaders relative to the root configuration. Stage
+        # that file beside its final target, while includes remain private.
+        parent = candidate_path.resolve().parent
+        staging_parent = parent if parent.is_dir() else Path(directory)
+        with tempfile.NamedTemporaryFile(
+            prefix=".dwm-picom-validate-", dir=staging_parent
+        ) as root_file:
+            mapping[candidate_path] = Path(root_file.name)
+            for path, doc in candidate.docs.items():
+                edits = []
+                for name, token in doc.includes:
+                    include = resolve_include(candidate.path, name)
+                    edits.append(
+                        (token[1], token[2], json.dumps(str(mapping[include])))
+                    )
+                mapping[path].write_text(splice(doc.text, edits))
+            diagnostics(mapping[candidate_path])
 
 
 def mutate(action, args, revision):
@@ -877,10 +900,28 @@ def mutate(action, args, revision):
             for path, doc in config.docs.items():
                 replacements = []
                 for name, token in doc.includes:
-                    p = resolve_include(path, name)
+                    p = resolve_include(config.path, name)
                     replacements.append(
                         (token[1], token[2], json.dumps(str(mapping[p])))
                     )
+                for value, start, end, legacy_rule in doc.shaders:
+                    name, separator, condition = (
+                        value.partition(":") if legacy_rule else (value, "", "")
+                    )
+                    name = name.strip()
+                    if not name or name == "default" or Path(name).is_absolute():
+                        continue
+                    resource = config.path.resolve().parent / name
+                    if resource.is_file():
+                        # Keep vendor resources at their original absolute paths;
+                        # only the configuration graph becomes user-owned.
+                        replacements.append(
+                            (
+                                start,
+                                end,
+                                json.dumps(str(resource) + separator + condition),
+                            )
+                        )
                 changes[mapping[path]] = splice(doc.text, replacements)
 
         changes = {
@@ -895,6 +936,18 @@ def mutate(action, args, revision):
         if not changes:
             return "Configuration already matches"
         previous = {p: read_config(p) if p.exists() else None for p in changes}
+        # Bound recovery history under the mutation lock, including failed edits.
+        backups = sorted(
+            (
+                p
+                for p in private_dir().glob("backup-*")
+                if p.is_dir() and not p.is_symlink()
+            ),
+            key=lambda p: p.stat().st_mtime_ns,
+            reverse=True,
+        )
+        for stale in backups[9:]:
+            shutil.rmtree(stale)
         backup = Path(tempfile.mkdtemp(prefix="backup-", dir=private_dir()))
         for index, (path, text) in enumerate(previous.items()):
             if text is not None:
@@ -932,13 +985,17 @@ def mutate(action, args, revision):
         except (Error, OSError) as exc:
             conflicts = []
             for path in reversed(published):
-                if read_config(path) != changes[path]:
+                try:
+                    if read_config(path) != changes[path]:
+                        conflicts.append(str(path))
+                        continue
+                    if previous[path] is None:
+                        safe_target(path).unlink()
+                    else:
+                        publish(path, previous[path])
+                except (OSError, Error):
+                    # Preserve concurrent removals and keep restoring other files.
                     conflicts.append(str(path))
-                    continue
-                if previous[path] is None:
-                    safe_target(path).unlink()
-                else:
-                    publish(path, previous[path])
             if conflicts:
                 raise Error(
                     f"{exc}; newer edits preserved in {', '.join(conflicts)}; backup: {backup}"
