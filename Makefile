@@ -613,6 +613,7 @@ check-install-preservation:
 	tests/test-install-preservation.sh
 
 check-desktop-update:
+	@python3 tests/test-desktop-update-sandbox.py
 	python3 tests/test-desktop-update.py
 	tests/test-desktop-update-ui.sh
 

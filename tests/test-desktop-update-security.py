@@ -207,9 +207,24 @@ raise SystemExit(1)
         worker.write_text("installed worker")
         worker.chmod(0o755)
         self.assertEqual(resolve(self.manifest_path), worker)
+        def audit():
+            return subprocess.run([sys.executable, str(REPO / "scripts/dwm-desktop-update"), "verify-trust",
+                                   str(self.manifest_path)], capture_output=True, text=True)
+        self.assertEqual(audit().returncode, 0)
+        before = worker.read_bytes()
         os.chown(worker, 1000, 1000)
+        self.assertEqual(worker.read_bytes(), before)
+        self.assertNotEqual(audit().returncode, 0)
         with self.assertRaisesRegex(RuntimeError, "root-owned"):
             resolve(self.manifest_path)
+        os.chown(worker, 0, 0)
+        worker.chmod(0o775)
+        self.assertNotEqual(audit().returncode, 0)
+        worker.chmod(0o755)
+        worker.parent.chmod(0o775)
+        self.assertNotEqual(audit().returncode, 0)
+        worker.parent.chmod(0o755)
+        self.assertEqual(audit().returncode, 0)
 
     def test_discovery_rejects_untrusted_complete_parent_chains(self):
         check = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))["unsupported_system_drift"]
@@ -233,6 +248,9 @@ raise SystemExit(1)
     def test_root_can_run_read_only_installation_audits(self):
         self.binary.write_bytes(b"updated")
         script = str(REPO / "scripts/dwm-desktop-update")
+        installed_worker = self.prefix / "bin/dwm-desktop-update"
+        shutil.copyfile(script, installed_worker)
+        installed_worker.chmod(0o755)
         result = subprocess.run([sys.executable, script, "verify-trust", str(self.manifest_path)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         (self.prefix / ".desktop-source.json").write_text(json.dumps({"revision": "a" * 40}))

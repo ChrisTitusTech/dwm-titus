@@ -160,3 +160,16 @@ Updater Git commands ignore system/global Git configuration and inherited Git
 configuration variables, disable hooks, templates, filesystem monitors, and
 credential helpers, and allow only local-file and HTTPS transports. Use the
 forwarded proxy and certificate environment settings for network customization.
+
+Desktop builds require Fedora's `bubblewrap` and `libseccomp` packages. The
+source installer and source-sync dependency profile install them. Mutable
+checkout, source scripts, staged Git merges, and builds run in private user,
+process, mount, and network namespaces with no capabilities, host session bus,
+or host home directory. A sealed seccomp filter denies socket creation, connections, and io_uring,
+including Unix sockets placed inside the build tree. Only the
+required source/staging directories are exposed; system tools are read-only.
+The installed worker performs polkit requests outside this sandbox. If the host
+disables user namespaces or sandbox setup fails, the update stops and requires
+the source installer; there is no unsandboxed build fallback. Custom build
+overrides remain literal, but tools/files outside the exposed system and source
+paths are unavailable to automatic builds.

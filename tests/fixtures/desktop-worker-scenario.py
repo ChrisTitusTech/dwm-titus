@@ -124,5 +124,12 @@ def boundary(args, cwd=None, timeout=60, capture=True):
     return ""
 
 
+def sandbox_boundary(args, **kwargs):
+    if scenario == "sandbox-failure":
+        raise RuntimeError("Build sandbox setup is unavailable")
+    return boundary(args, cwd=kwargs.get("cwd"), timeout=kwargs.get("timeout", 60), capture=kwargs.get("capture", True))
+
+
+update.sandbox_run = sandbox_boundary
 update.run = boundary
 sys.exit(update.worker(operation))

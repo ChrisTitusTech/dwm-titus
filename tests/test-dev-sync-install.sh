@@ -82,7 +82,7 @@ done <"$install_sources"
 python3 "$test_repo/scripts/dwm-desktop-update" record-system --source-dir "$test_repo" \
 	--prefix "$prefix" --manprefix "$manprefix" --xsessions "$xsessions_dir" \
 	--datadir "$data_root" --commands "$@" \
-	--helpers dwm-settings-display-root dwm-desktop-update-root --packages gcc xsettingsd xkbset
+	--helpers dwm-settings-display-root dwm-desktop-update-root --packages gcc xsettingsd xkbset bubblewrap libseccomp
 HOME="$test_home" XDG_CONFIG_HOME="$config_home" XDG_DATA_HOME="$xdg_data_home" \
 	XDG_STATE_HOME="$state_home" python3 "$test_repo/scripts/dwm-desktop-update" record-user "$test_repo"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/xsettingsd"
@@ -92,7 +92,7 @@ chmod +x "$test_bin/xsettingsd" "$test_bin/dump_xsettings" "$test_bin/xkbset"
 
 sed -n '/^source_update_dependencies_ready() {$/,/^}$/p' \
 	"$test_repo/scripts/dev-sync-install.sh" >"$source_update_probe"
-for required_command in xsettingsd dump_xsettings xkbset; do
+for required_command in xsettingsd dump_xsettings xkbset bwrap; do
 	grep -Fq "command -v $required_command" "$source_update_probe" || {
 		printf 'Source-update readiness omits required command: %s\n' \
 			"$required_command" >&2

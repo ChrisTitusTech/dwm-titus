@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import ctypes
+import errno
 import fcntl
 import hashlib
 import io
@@ -32,22 +33,89 @@ class CommandFailure(RuntimeError):
         self.returncode = returncode
 
 
-def run(args, cwd=None, timeout=60, capture=True):
+def git_arguments(args):
+    return ["/usr/bin/git", "-c", "core.hooksPath=/dev/null", "-c", "init.templateDir=/dev/null",
+            "-c", "core.fsmonitor=false", "-c", "credential.helper=", "-c", "gc.auto=0",
+            "-c", "maintenance.auto=false", *args[1:]]
+
+
+def run(args, cwd=None, timeout=60, capture=True, pass_fds=()):
     environment = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
     if str(args[0]) == "git":
         environment = {key: value for key, value in environment.items()
                        if not key.startswith("GIT_") or key == "GIT_SSL_CAINFO"}
         environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_SYSTEM="/dev/null", GIT_CONFIG_GLOBAL="/dev/null",
                            GIT_TERMINAL_PROMPT="0", GIT_ALLOW_PROTOCOL="file:https")
-        args = ["/usr/bin/git", "-c", "core.hooksPath=/dev/null", "-c", "init.templateDir=/dev/null",
-                "-c", "core.fsmonitor=false", "-c", "credential.helper=", *args[1:]]
+        args = git_arguments(args)
     result = subprocess.run([str(arg) for arg in args], cwd=cwd, timeout=timeout,
                             stdout=subprocess.PIPE if capture else None,
-                            stderr=subprocess.PIPE if capture else None, text=True, env=environment)
+                            stderr=subprocess.PIPE if capture else None, text=True, env=environment, pass_fds=pass_fds)
     if result.returncode:
         detail = (result.stderr or result.stdout or "See the update log").strip()[-2000:]
         raise CommandFailure(str(args[0]) + " failed: " + detail, result.returncode)
     return result.stdout.strip() if capture else ""
+
+
+@contextlib.contextmanager
+def sandbox_filter():
+    library = ctypes.CDLL("libseccomp.so.2")
+    library.seccomp_init.argtypes = [ctypes.c_uint32]
+    library.seccomp_init.restype = ctypes.c_void_p
+    library.seccomp_release.argtypes = [ctypes.c_void_p]
+    library.seccomp_syscall_resolve_name.argtypes = [ctypes.c_char_p]
+    library.seccomp_rule_add.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int, ctypes.c_uint]
+    library.seccomp_export_bpf.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    context = library.seccomp_init(0x7fff0000)  # SCMP_ACT_ALLOW; unsupported architectures are killed.
+    if not context:
+        raise RuntimeError("Cannot initialize the desktop build sandbox filter")
+    descriptor = -1
+    try:
+        descriptor = os.memfd_create("desktop-build-filter", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+        for name in (b"socket", b"connect", b"io_uring_setup", b"io_uring_enter", b"io_uring_register"):
+            number = library.seccomp_syscall_resolve_name(name)
+            if number < 0 or library.seccomp_rule_add(context, 0x00050000 | errno.EPERM, number, 0) != 0:
+                raise RuntimeError("Cannot isolate desktop build sockets")
+        if library.seccomp_export_bpf(context, descriptor) != 0:
+            raise RuntimeError("Cannot export the desktop build sandbox filter")
+        fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS,
+                    fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        yield descriptor
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        library.seccomp_release(context)
+
+
+def sandbox_run(args, writable=(), readonly=(), cwd=None, timeout=60, capture=True):
+    command = ["/usr/bin/bwrap", "--unshare-all", "--unshare-user", "--disable-userns", "--die-with-parent",
+               "--new-session", "--cap-drop", "ALL", "--ro-bind", "/usr", "/usr", "--ro-bind", "/etc", "/etc",
+               "--symlink", "usr/bin", "/bin", "--symlink", "usr/sbin", "/sbin",
+               "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
+               "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--dir", "/run", "--clearenv"]
+    environment = {"PATH": "/usr/bin:/bin", "HOME": "/tmp", "LANG": "C.UTF-8", "LC_ALL": "C"}
+    environment.update({key: os.environ[key] for key in ("CC", "CFLAGS", "CPPFLAGS", "LDFLAGS") if key in os.environ})
+    if str(args[0]) == "git":
+        args = git_arguments(args)
+        environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null",
+                           GIT_TERMINAL_PROMPT="0", GIT_ALLOW_PROTOCOL="file", GIT_OPTIONAL_LOCKS="0")
+    for key, value in environment.items():
+        command.extend(("--setenv", key, value))
+    with contextlib.ExitStack() as cleanup:
+        filter_fd = cleanup.enter_context(sandbox_filter())
+        descriptors = [filter_fd]
+        command.extend(("--seccomp", str(filter_fd)))
+        for paths_to_bind, option in ((readonly, "--ro-bind-fd"), (writable, "--bind-fd")):
+            for path in dict.fromkeys(Path(path).absolute() for path in paths_to_bind):
+                descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                cleanup.callback(os.close, descriptor)
+                if os.fstat(descriptor).st_uid != os.getuid():
+                    raise RuntimeError("Build sandbox input is not owned by the desktop user")
+                descriptors.append(descriptor)
+                command.extend((option, str(descriptor), str(path)))
+        if cwd is not None:
+            command.extend(("--chdir", str(cwd)))
+        return run([*command, "--", *args], timeout=timeout, capture=capture, pass_fds=tuple(descriptors))
 
 
 def digest(path):
@@ -326,15 +394,16 @@ def recover_status(state):
     return value
 
 
-def checkout_reason(path):
+def checkout_reason(path, runner=None):
+    runner = runner or run
     if not os.path.lexists(path / ".git"):
         return ""
     if not (path / ".git").is_dir() or (path / ".git").is_symlink():
         return "This installation uses a Git worktree. Update it with the source installer."
-    if run(["git", "-C", path, "branch", "--show-current"]) != "main":
+    if runner(["git", "-C", path, "branch", "--show-current"]) != "main":
         return "Local source is on a development branch. Switch to a clean main checkout before updating."
-    if (run(["git", "-C", path, "status", "--porcelain", "--untracked-files=all"])
-            or run(["git", "-C", path, "ls-files", "--others", "--ignored", "--exclude-standard", "--", "config", "scripts"])):
+    if (runner(["git", "-C", path, "status", "--porcelain", "--untracked-files=all"])
+            or runner(["git", "-C", path, "ls-files", "--others", "--ignored", "--exclude-standard", "--", "config", "scripts"])):
         return "Local source has changes. Save or resolve them before updating."
     return ""
 
@@ -640,13 +709,14 @@ def prepare_user(source, operation):
             else:
                 staged.mkdir(mode=0o700)
             if index == 0:
-                reason = checkout_reason(target)
+                reason = checkout_reason(target, runner=lambda args: sandbox_run(args, readonly=(target,), cwd=target))
                 if reason:
                     raise RuntimeError(reason)
                 if (staged / ".git").exists():
-                    run(["git", "-C", staged, "-c", "core.hooksPath=/dev/null", "fetch", "--no-tags", source, "HEAD"])
-                    run(["git", "-C", staged, "merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD"])
-                    run(["git", "-C", staged, "-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "FETCH_HEAD"])
+                    for arguments in (("fetch", "--no-tags", source, "HEAD"),
+                                      ("merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD"),
+                                      ("merge", "--ff-only", "FETCH_HEAD")):
+                        sandbox_run(["git", "-C", staged, *arguments], writable=(staged,), readonly=(source,), cwd=staged)
                 for name in ("config", "scripts"):
                     old = staged / name
                     if old.is_symlink():
@@ -725,6 +795,12 @@ def worker(operation):
                     reason = reason or checkout_reason(path) or checkout_ancestry_reason(path, preview["available"])
                 if reason:
                     raise RuntimeError(reason)
+                if missing_packages(installed["packages"]):
+                    save_status(state, value, state="dependencies", detail="Authorizing required build and desktop packages...", percent=-1)
+                    run(["/usr/bin/pkexec", privileged, "dependencies", preview["generation"]], timeout=1800, capture=False)
+                source.mkdir(mode=0o700)
+                stage.mkdir(mode=0o700)
+                sandbox_run(["/usr/bin/true"], writable=(source, stage), cwd=source)
                 save_status(state, value, detail="Authorizing desktop update preparation...", percent=-1)
                 reservation_started = True
                 run(["/usr/bin/pkexec", privileged, "begin", preview["generation"], operation], timeout=60, capture=False)
@@ -732,17 +808,14 @@ def worker(operation):
                 save_status(state, value, state="downloading", detail="Downloading the confirmed desktop revision...", percent=-1)
                 run(["git", "init", source])
                 run(["git", "-C", source, "fetch", SOURCE, preview["available"]], timeout=180, capture=False)
-                run(["git", "-C", source, "checkout", "--detach", "FETCH_HEAD"], capture=False)
+                sandbox_run(["git", "-C", source, "checkout", "--detach", "FETCH_HEAD"], writable=(source,), cwd=source, capture=False)
                 if source_revision(source) != preview["available"]:
                     raise RuntimeError("Downloaded revision differs from the confirmed update")
                 required = []
                 for profile in ("build", "source-update"):
-                    required.extend(run([source / "scripts/dwm-packages.sh", "fedora", profile]).splitlines())
+                    required.extend(sandbox_run([source / "scripts/dwm-packages.sh", "fedora", profile], readonly=(source,), cwd=source).splitlines())
                 if sorted(set(required)) != installed["packages"]:
                     raise RuntimeError("Desktop dependencies changed; use the documented source installer for this update")
-                if missing_packages(installed["packages"]):
-                    save_status(state, value, state="dependencies", detail="Authorizing required build and desktop packages...", percent=-1)
-                    run(["/usr/bin/pkexec", privileged, "dependencies", preview["generation"]], timeout=1800, capture=False)
                 save_status(state, value, state="building", detail="Building the desktop update...", percent=-1)
                 config_source = Path(user_receipt.get("checkout") or str(data)) / "config.h"
                 if not config_source.is_file():
@@ -750,11 +823,11 @@ def worker(operation):
                 if config_source.is_file():
                     shutil.copyfile(config_source, source / "config.h")
                 build_overrides = [key + "=" + os.environ[key] for key in ("CC", "CFLAGS", "CPPFLAGS", "LDFLAGS") if key in os.environ]
-                run(["make", "clean", "all", *build_overrides], cwd=source, timeout=300, capture=False)
+                sandbox_run(["make", "clean", "all", *build_overrides], writable=(source, stage), cwd=source, timeout=300, capture=False)
                 layout = installed["layout"]
-                run(["make", "install-system", "DESTDIR=" + str(stage), "PREFIX=" + layout["prefix"],
+                sandbox_run(["make", "install-system", "DESTDIR=" + str(stage), "PREFIX=" + layout["prefix"],
                      "MANPREFIX=" + layout["manprefix"], "XSESSIONSDIR=" + layout["xsessions"], "DATADIR=" + layout["datadir"]],
-                    cwd=source, timeout=180, capture=False)
+                    writable=(source, stage), cwd=source, timeout=180, capture=False)
                 candidate = read_json(stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/"))
                 if (set(candidate["files"]) != set(installed["files"]) or candidate["layout"] != installed["layout"]):
                     raise RuntimeError("Desktop file layout changed; use the documented source installer for this update")
@@ -1003,7 +1076,7 @@ def main():
         verify_receipts(args.source_dir, args.manifest)
         return 0
     if args.command == "verify-trust":
-        trusted_installation(Path(args.manifest))
+        installed_worker(Path(args.manifest))
         return 0
     if os.getuid() == 0:
         raise RuntimeError("Run the desktop updater as the desktop user")

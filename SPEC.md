@@ -553,7 +553,10 @@ Confirmed desktop updates download a fixed revision, build as the desktop user,
 stage the complete system installation through the Makefile, back up managed
 files, install and verify them, and activate Quickshell through the managed
 control path. Personal TOML, application settings, `.xinitrc`, and `config.h`
-remain preserved. Git checkouts must be clean, on `main`, and fast-forwardable;
+remain preserved. Mutable source commands run in a Bubblewrap/libseccomp build
+sandbox without host authorization services or socket access; sandbox setup
+failure stops the update instead of running an unconfined build. Git checkouts
+must be clean, on `main`, and fast-forwardable;
 linked worktrees require the documented source update procedure.
 
 A root-owned installed helper accepts only the destinations, file types, modes,

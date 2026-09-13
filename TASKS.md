@@ -22,12 +22,13 @@ plan and qualification documents.
       validation; reconcile failures before claiming success.
 - [x] Verify the new complete shell in nested X11 and save visual evidence
       (`docs/evidence/desktop-updates.png`); closed CPU was 0.000% over 10 seconds.
-      Live files and receipts are synchronized, but activation is deferred until
-      logout/login because the running dwm differs. Live activation is unverified.
+      After logout/login and managed sync, live receipts/files match, Quickshell
+      IPC responds with four tray items, and running dwm matches the installation.
 - [x] Complete independent local Codex review with no remaining actionable
       findings; address CodeRabbit feedback and repeat affected checks.
       Final coverage includes 43 backend tests, 36 privileged-helper tests,
-      real service lifetime/readiness checks, and the full repository gate.
+      real service lifetime/readiness and hostile-build sandbox checks, plus the
+      full repository gate. Hosted review fixes are being revalidated on PR #318.
 - [x] Publish implementation commit `c4ba100` and verify its remote head; open
       ready-for-review [PR #318](https://github.com/ChrisTitusTech/dwm-titus/pull/318)
       with exact evidence and limitations. No unresolved review threads were
