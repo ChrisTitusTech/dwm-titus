@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep imported Picom includes available after failed activation, allow imports
+  into explicitly selected standard user roots, and wait for the previous X11
+  compositor selection to be released before restarting Picom.
+
 - Preserve pending Picom edit revisions, import read-only includes from existing
   user configurations, and recover include watches after invalid edits. Limit
   failed-launch cleanup to its own processes and attempt compositor recovery

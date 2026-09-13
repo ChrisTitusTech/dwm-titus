@@ -568,6 +568,7 @@ def owner():
 
 
 def stop(running):
+    previous_owner = owner() if running else 0
     for proc in running:
         current = next(
             (
@@ -580,7 +581,11 @@ def stop(running):
         if current:
             os.kill(proc["pid"], signal.SIGTERM)
     deadline = time.monotonic() + 4
-    while any(p["pid"] in {r["pid"] for r in running} for p in processes()):
+    # Process exit can precede Xorg releasing its selection. Wait only for the
+    # old owner; a different compositor remains protected by launch().
+    while any(p["pid"] in {r["pid"] for r in running} for p in processes()) or (
+        previous_owner and owner() == previous_owner
+    ):
         if time.monotonic() >= deadline:
             raise Error("Picom did not stop; no replacement was started")
         time.sleep(0.05)
@@ -828,12 +833,6 @@ def status(detect=True):
 
 def copy_destination(config, running):
     """Import vendor files, or relocate unsafe includes of a writable user root."""
-    if os.environ.get("DWM_PICOM_CONFIG") or option(
-        running[0]["args"] if running else [], ("--config",)
-    ):
-        raise Error(
-            "An explicit --config path is active; edit that configuration instead"
-        )
     destination = config_home() / "picom.conf"
     if config.path in (destination, config_home() / "picom/picom.conf"):
         safe_target(config.path)
@@ -845,6 +844,12 @@ def copy_destination(config, running):
             except Error:
                 return config.path
         raise Error("A user Picom configuration already exists and needs no import")
+    if os.environ.get("DWM_PICOM_CONFIG") or option(
+        running[0]["args"] if running else [], ("--config",)
+    ):
+        raise Error(
+            "An explicit --config path is active; edit that configuration instead"
+        )
     if destination.exists() or destination.is_symlink():
         raise Error("A user Picom configuration already exists")
     safe_target(destination)
@@ -1030,7 +1035,18 @@ def mutate(action, args, revision):
             return message + f". Backup: {backup}"
         except (Error, OSError) as exc:
             conflicts = []
+            retained_imports = []
             for path in reversed(published):
+                if (
+                    action == "copy-config"
+                    and previous[path] is None
+                    and path != candidate_path
+                ):
+                    # A concurrent document can retain references to these files,
+                    # including edits that arrive after rollback checks. Keep the
+                    # new import copies even if the root can be restored.
+                    retained_imports.append(str(path))
+                    continue
                 try:
                     if read_config(path) != changes[path]:
                         conflicts.append(str(path))
@@ -1053,6 +1069,8 @@ def mutate(action, args, revision):
                 if conflicts
                 else "previous configuration restored"
             )
+            if retained_imports:
+                restoration += "; imported includes retained for recovery"
             raise Error(
                 f"{exc}; {restoration}{recovery_detail}; backup: {backup}"
             ) from exc

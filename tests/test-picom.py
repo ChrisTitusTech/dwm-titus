@@ -479,6 +479,104 @@ class PicomTests(unittest.TestCase):
         self.assertEqual(picom.Configuration().opacity(), (0.9, 0.55))
         self.assertEqual(readonly.read_text(), "active-opacity=.7;")
 
+    def test_explicit_standard_user_roots_allow_import(self):
+        included = self.home / "vendor.conf"
+        included.write_text("active-opacity=.7;")
+        included.chmod(0o444)
+        for relative in ("picom.conf", "picom/picom.conf"):
+            for selection in ("environment", "argument"):
+                with self.subTest(relative=relative, selection=selection):
+                    root = self.config / relative
+                    root.parent.mkdir(exist_ok=True)
+                    root.write_text('@include "' + str(included) + '"')
+                    running = (
+                        [{"args": ["picom", "--config", str(root)]}]
+                        if selection == "argument"
+                        else []
+                    )
+                    with (
+                        patch.dict(
+                            os.environ,
+                            DWM_PICOM_CONFIG=str(root)
+                            if selection == "environment"
+                            else "",
+                        ),
+                        patch.object(picom, "processes", return_value=running),
+                        patch.object(picom, "stop"),
+                        patch.object(picom, "launch"),
+                    ):
+                        state = picom.status(False)
+                        self.assertTrue(state["copyable"])
+                        picom.mutate("copy-config", [], state["revision"])
+                        self.assertTrue(picom.status(False)["editable"])
+                        self.assertEqual(picom.source_path(), root)
+                    root.unlink()
+        custom = self.home / "custom.conf"
+        custom.write_text('@include "' + str(included) + '"')
+        with patch.dict(os.environ, DWM_PICOM_CONFIG=str(custom)):
+            self.assertFalse(picom.status(False)["copyable"])
+            with self.assertRaisesRegex(picom.Error, "explicit --config"):
+                picom.mutate("copy-config", [], picom.Configuration().revision())
+
+    def test_failed_import_preserves_descendants_of_conflicted_root(self):
+        vendor = self.home / "vendor"
+        vendor.mkdir()
+        leaf = vendor / "leaf.conf"
+        leaf.write_text("active-opacity=.7;")
+        branch = vendor / "branch.conf"
+        branch.write_text('@include "' + str(leaf) + '"')
+        for path in (leaf, branch):
+            path.chmod(0o444)
+        self.write('@include "' + str(branch) + '"')
+        running = [{"pid": 123, "args": ["picom"]}]
+        imported = []
+
+        def launch(config, *args, **kwargs):
+            if running:
+                imported.extend(p for p in config.docs if p != self.path)
+                self.path.write_text(self.path.read_text() + "\n# concurrent root edit")
+                running.clear()
+                raise picom.Error("activation failed")
+            self.assertEqual(picom.Configuration(config.path).opacity(), (0.7, 1))
+
+        with (
+            patch.object(picom, "processes", side_effect=lambda: list(running)),
+            patch.object(picom, "stop"),
+            patch.object(picom, "launch", side_effect=launch) as recover,
+            self.assertRaisesRegex(
+                picom.Error, "newer edits preserved.*imported includes retained"
+            ),
+        ):
+            picom.mutate("copy-config", [], picom.Configuration().revision())
+        self.assertEqual(recover.call_count, 2)
+        self.assertEqual(len(imported), 2)
+        self.assertTrue(all(p.exists() for p in imported))
+        self.assertIn("# concurrent root edit", self.path.read_text())
+        self.assertEqual(picom.Configuration().opacity(), (0.7, 1))
+
+    def test_stop_waits_for_original_selection_release(self):
+        running = [{"pid": 123, "identity": "1"}]
+        with (
+            patch.object(picom, "processes", side_effect=[running, [], [], []]),
+            patch.object(picom, "owner", side_effect=[77, 77, 77, 0]),
+            patch.object(picom.os, "kill"),
+            patch.object(picom.time, "sleep") as sleep,
+        ):
+            picom.stop(running)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_stop_does_not_wait_for_different_selection_owner(self):
+        running = [{"pid": 123, "identity": "1"}]
+        with (
+            patch.object(picom, "processes", side_effect=[running, []]),
+            patch.object(picom, "owner", side_effect=[77, 88]),
+            patch.object(picom.os, "kill") as kill,
+            patch.object(picom.time, "sleep") as sleep,
+        ):
+            picom.stop(running)
+        kill.assert_called_once_with(123, picom.signal.SIGTERM)
+        sleep.assert_not_called()
+
     def test_marker_outside_rules_is_rejected(self):
         config = self.write(
             "# dwm-titus opacity defaults begin\n# opacity = .1; opacity = .2;\n# dwm-titus opacity defaults end\nrules=();"
