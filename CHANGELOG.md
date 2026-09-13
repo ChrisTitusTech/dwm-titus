@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Show menu-hidden image viewers such as sxiv and Feh in Settings MIME defaults,
+  and allow selecting them while continuing to exclude disabled or unavailable
+  handlers. Preserve application launcher and default-role visibility filtering.
+
 - Keep imported Picom includes available after failed activation, allow imports
   into explicitly selected standard user roots, and bound unused import recovery
   files. Allow a brief X11 selection-release grace before starting Picom while

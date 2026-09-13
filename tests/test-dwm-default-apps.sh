@@ -130,6 +130,22 @@ MimeType=text/plain;
 Exec=editor %F
 DESKTOP
 
+cat >"$work/data/applications/sxiv.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=sxiv
+Exec=sxiv %F
+MimeType=image/png;image/jpeg;image/gif;image/bmp;image/tiff;
+NoDisplay=true
+DESKTOP
+
+cp "$work/data/applications/sxiv.desktop" "$work/data/applications/hidden-image.desktop"
+printf 'Hidden=true\n' >>"$work/data/applications/hidden-image.desktop"
+sed 's/^Exec=.*/Exec=\/missing-dwm-test-image-viewer %F/' \
+	"$work/data/applications/sxiv.desktop" >"$work/data/applications/stale-image.desktop"
+cp "$work/data/applications/firefox.desktop" "$work/data/applications/nodisplay-browser.desktop"
+printf 'NoDisplay=true\n' >>"$work/data/applications/nodisplay-browser.desktop"
+
 cat >"$work/data/applications/Alacritty.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -314,7 +330,7 @@ cat >"$work/bin/xdg-open" <<'SCRIPT'
 printf '%s\n' "$1" >"${DWM_TEST_STATE:?}/opened"
 SCRIPT
 
-for command_name in alacritty kitty firefox brave files editor; do
+for command_name in alacritty kitty firefox brave files editor sxiv; do
 	cat >"$work/bin/$command_name" <<'SCRIPT'
 #!/bin/sh
 exit 0
@@ -442,14 +458,44 @@ grep -Fqx $'role\tfile-manager\tavailable\torg.example.Files.desktop\tFiles\txdg
 grep -Fqx $'candidate\tbrowser\tfirefox.desktop\tFirefox\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
 grep -Fqx $'candidate\tterminal\tkitty.desktop\tkitty\tavailable\tkitty\tInstalled desktop entry' <<<"$snapshot"
 grep -Fqx $'mime-candidate\ttext/plain\torg.example.Editor.desktop\tEditor\tavailable\tInstalled desktop entry' <<<"$snapshot"
+for mime in image/png image/jpeg image/gif image/bmp image/tiff; do
+	grep -Fqx "$(printf 'mime-candidate\t%s\tsxiv.desktop\tsxiv\tavailable\tInstalled desktop entry' "$mime")" <<<"$snapshot"
+done
+grep -Fqx $'mime-candidate\ttext/html\tnodisplay-browser.desktop\tFirefox\tavailable\tInstalled desktop entry' <<<"$snapshot"
+if grep -Fq $'candidate\tbrowser\tnodisplay-browser.desktop\t' <<<"$snapshot"; then
+	printf 'Menu-hidden browser was emitted as a role candidate\n' >&2
+	exit 1
+fi
 for rejected_id in hidden.desktop not-an-app.desktop chromium.desktop tryexec-stale.desktop duplicate.desktop \
-	oversized.desktop control.desktop linked-escaped.desktop linked-leaf.desktop st.desktop; do
+	oversized.desktop control.desktop linked-escaped.desktop linked-leaf.desktop st.desktop \
+	hidden-image.desktop stale-image.desktop; do
 	if grep -Fq "$rejected_id" <<<"$snapshot"; then
 		printf 'Rejected desktop entry was emitted as a candidate: %s\n' "$rejected_id" >&2
 		exit 1
 	fi
 done
 grep -Fqx $'candidate\tbrowser\tvendor-nested.desktop\tNested Browser\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
+
+# NoDisplay image handlers can be selected and restored without changing other defaults.
+image_defaults_before=$(sha256sum "$work/home/.config/mimeapps.list")
+: >"$work/log"
+result=$(run_helper set-mime image/png sxiv.desktop)
+[[ $result == $'defaults-result\t1\t0\tset-mime\timage/png\tsxiv.desktop\tok' ]]
+[[ $(wc -l <"$work/log") -eq 1 ]]
+grep -Fqx 'xdg-mime default sxiv.desktop image/png' "$work/log"
+snapshot=$(run_helper snapshot)
+grep -Fqx $'mime\timage/png\tavailable\tsxiv.desktop\tsxiv\tXDG MIME default is readable' <<<"$snapshot"
+result=$(run_helper reset-mime image/png)
+[[ $result == $'defaults-result\t1\t0\treset-mime\timage/png\t\tok' ]]
+[[ $(sha256sum "$work/home/.config/mimeapps.list") == "$image_defaults_before" ]]
+
+: >"$work/log"
+expect_status 1 run_helper set-mime image/png hidden-image.desktop
+expect_status 1 run_helper set-mime image/png stale-image.desktop
+expect_status 1 run_helper set-mime application/pdf sxiv.desktop
+expect_status 1 run_helper set-role browser nodisplay-browser.desktop
+[[ ! -s $work/log ]]
+[[ $(sha256sum "$work/home/.config/mimeapps.list") == "$image_defaults_before" ]]
 
 cp -p "$work/home/.config/mimeapps.list" "$work/mimeapps.before-invalid-snapshot"
 sed 's/^inode\/directory=.*/inode\/directory=oversized.desktop/' \

@@ -281,13 +281,13 @@ desktop_token_present() {
 
 desktop_usable() {
 	local file=$1
-	local type hidden nodisplay try_exec exec_value exec_command
+	local type hidden try_exec exec_value exec_command
 	parse_desktop_file "$file" || return 1
 	type=$desktop_parsed_type
 	hidden=$desktop_parsed_hidden
-	nodisplay=$desktop_parsed_nodisplay
 	try_exec=$desktop_parsed_try_exec
-	[[ $type == Application && $hidden != true && $nodisplay != true ]] || return 1
+	# NoDisplay hides menu entries, but still permits MIME associations.
+	[[ $type == Application && $hidden != true ]] || return 1
 	if [[ -n $try_exec ]]; then
 		if [[ $try_exec == */* ]]; then
 			[[ -x $try_exec ]] || return 1
@@ -324,6 +324,8 @@ desktop_matches_role() {
 
 parsed_desktop_matches_role() {
 	local role=$1
+	# Preserve menu visibility filtering for the browser, file-manager and terminal roles.
+	[[ $desktop_parsed_nodisplay != true ]] || return 1
 	case $role in
 	browser)
 		desktop_token_present "$desktop_parsed_categories" WebBrowser ||
