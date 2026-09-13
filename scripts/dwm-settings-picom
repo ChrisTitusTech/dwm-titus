@@ -27,6 +27,8 @@ from pathlib import Path
 
 PROTOCOL = 1
 MAX_SIZE = 1024 * 1024
+MAX_IMPORT_FILES = 320
+MAX_IMPORT_BYTES = MAX_IMPORT_FILES * MAX_SIZE
 BACKENDS = ("auto", "xrender", "glx", "egl")
 BEGIN = "# dwm-titus opacity defaults begin"
 END = "# dwm-titus opacity defaults end"
@@ -568,7 +570,6 @@ def owner():
 
 
 def stop(running):
-    previous_owner = owner() if running else 0
     for proc in running:
         current = next(
             (
@@ -581,11 +582,7 @@ def stop(running):
         if current:
             os.kill(proc["pid"], signal.SIGTERM)
     deadline = time.monotonic() + 4
-    # Process exit can precede Xorg releasing its selection. Wait only for the
-    # old owner; a different compositor remains protected by launch().
-    while any(p["pid"] in {r["pid"] for r in running} for p in processes()) or (
-        previous_owner and owner() == previous_owner
-    ):
+    while any(p["pid"] in {r["pid"] for r in running} for p in processes()):
         if time.monotonic() >= deadline:
             raise Error("Picom did not stop; no replacement was started")
         time.sleep(0.05)
@@ -628,8 +625,14 @@ def session_configuration():
 
 
 def launch(config, original=None, previous=None):
-    if owner():
-        raise Error("Another compositor owns this display; it was not stopped")
+    # Xorg can release a dead client's selection after its process disappears.
+    # A brief startup grace avoids a transient refusal; stopping stays entirely
+    # process-based, including when X authorization is unavailable.
+    deadline = time.monotonic() + 0.5
+    while owner():
+        if time.monotonic() >= deadline:
+            raise Error("Another compositor owns this display; it was not stopped")
+        time.sleep(0.05)
     previous = previous or []
     if isinstance(config, NativeConfiguration):
         override = os.environ.get("PICOM_BACKEND", "")
@@ -873,6 +876,24 @@ def publish(path, text):
             os.unlink(name)
 
 
+def check_import_capacity(changes):
+    """Bound recovery storage without deleting externally referenced copies."""
+    directory = config_home() / "picom/include/dwm-titus-import"
+    additions = {
+        path: text for path, text in changes.items() if path.parent == directory
+    }
+    if not additions:
+        return
+    sizes = {path: path.stat().st_size for path in directory.glob("*.conf")}
+    sizes.update({path: len(text.encode("utf-8")) for path, text in additions.items()})
+    if len(sizes) > MAX_IMPORT_FILES or sum(sizes.values()) > MAX_IMPORT_BYTES:
+        raise Error(
+            f"Picom import recovery storage is full (limit {MAX_IMPORT_FILES} files, "
+            f"{MAX_IMPORT_BYTES // (1024 * 1024)} MiB). Review {directory} and remove "
+            "only copies no longer needed by your configuration or backups before retrying"
+        )
+
+
 def validate_candidate(config, changes, candidate_path):
     candidate = Configuration(candidate_path, changes)
     candidate.opacity()
@@ -984,6 +1005,7 @@ def mutate(action, args, revision):
             safe_target(path)
         candidate_path = destination if action == "copy-config" else config.path
         validate_candidate(config, changes, candidate_path)
+        check_import_capacity(changes)
         if not changes:
             return "Configuration already matches"
         previous = {p: read_config(p) if p.exists() else None for p in changes}

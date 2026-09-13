@@ -88,7 +88,7 @@ dwm_packages() {
 		printf '%s\n' qt6-qtdeclarative-devel
 		;;
 	fedora:qml-validation)
-		printf '%s\n' quickshell
+		printf '%s\n' quickshell xsettingsd
 		dwm_packages "$family" qml-development
 		;;
 	fedora:lightdm)

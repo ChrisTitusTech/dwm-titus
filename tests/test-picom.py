@@ -554,28 +554,122 @@ class PicomTests(unittest.TestCase):
         self.assertIn("# concurrent root edit", self.path.read_text())
         self.assertEqual(picom.Configuration().opacity(), (0.7, 1))
 
-    def test_stop_waits_for_original_selection_release(self):
-        running = [{"pid": 123, "identity": "1"}]
+    def test_stop_does_not_depend_on_selection_queries(self):
+        for result in (88, picom.Error("Cannot open the current X display")):
+            with self.subTest(result=str(result)):
+                running = [{"pid": 123, "identity": "1"}]
+                with (
+                    patch.object(picom, "processes", side_effect=[running, []]),
+                    patch.object(
+                        picom,
+                        "owner",
+                        side_effect=result if isinstance(result, Exception) else None,
+                        return_value=result,
+                    ) as owner,
+                    patch.object(picom.os, "kill") as kill,
+                    patch.object(picom.time, "sleep") as sleep,
+                ):
+                    picom.stop(running)
+                owner.assert_not_called()
+                kill.assert_called_once_with(123, picom.signal.SIGTERM)
+                sleep.assert_not_called()
+
+    def test_launch_grace_allows_selection_release(self):
+        child = Mock()
+        child.poll.return_value = 1
         with (
-            patch.object(picom, "processes", side_effect=[running, [], [], []]),
-            patch.object(picom, "owner", side_effect=[77, 77, 77, 0]),
-            patch.object(picom.os, "kill"),
+            patch.object(picom, "owner", side_effect=[77, 77, 0]),
             patch.object(picom.time, "sleep") as sleep,
+            patch.object(picom.subprocess, "Popen", return_value=child),
+            self.assertRaisesRegex(picom.Error, "Picom failed to start"),
         ):
-            picom.stop(running)
+            picom.launch(picom.Configuration())
         self.assertEqual(sleep.call_count, 2)
 
-    def test_stop_does_not_wait_for_different_selection_owner(self):
-        running = [{"pid": 123, "identity": "1"}]
+    def test_launch_grace_does_not_stop_existing_compositor(self):
         with (
-            patch.object(picom, "processes", side_effect=[running, []]),
-            patch.object(picom, "owner", side_effect=[77, 88]),
-            patch.object(picom.os, "kill") as kill,
-            patch.object(picom.time, "sleep") as sleep,
+            patch.object(picom, "owner", return_value=88),
+            patch.object(picom.time, "monotonic", side_effect=[0, 0, 1]),
+            patch.object(picom.time, "sleep"),
+            patch.object(picom, "stop") as stop,
+            patch.object(picom.subprocess, "Popen") as spawn,
+            self.assertRaisesRegex(picom.Error, "Another compositor"),
         ):
-            picom.stop(running)
-        kill.assert_called_once_with(123, picom.signal.SIGTERM)
-        sleep.assert_not_called()
+            picom.launch(picom.Configuration())
+        stop.assert_not_called()
+        spawn.assert_not_called()
+
+    def test_failed_import_storage_limit_preserves_existing_copies(self):
+        vendor = self.home / "vendor.conf"
+        original = '@include "' + str(vendor) + '"'
+        self.path.write_text(original)
+        process = {"pid": 123, "args": ["picom"]}
+        directory = self.config / "picom/include/dwm-titus-import"
+        with patch.object(picom, "MAX_IMPORT_FILES", 3):
+            for value in range(4):
+                if vendor.exists():
+                    vendor.chmod(0o600)
+                vendor.write_text(f"active-opacity={value / 100};")
+                vendor.chmod(0o444)
+                with (
+                    patch.object(picom, "processes", return_value=[process]),
+                    patch.object(picom, "stop") as stop,
+                    patch.object(picom, "launch", side_effect=picom.Error("failed")),
+                    self.assertRaisesRegex(
+                        picom.Error, "storage is full" if value == 3 else "failed"
+                    ),
+                ):
+                    picom.mutate("copy-config", [], picom.Configuration().revision())
+                if value == 3:
+                    stop.assert_not_called()
+                self.assertEqual(self.path.read_text(), original)
+                self.assertEqual(len(list(directory.glob("*.conf"))), min(value + 1, 3))
+        self.assertEqual(
+            sorted(
+                picom.Configuration(path).opacity()[0]
+                for path in directory.glob("*.conf")
+            ),
+            [0, 0.01, 0.02],
+        )
+
+    def test_import_storage_byte_limit_precedes_publication(self):
+        vendor = self.home / "vendor.conf"
+        vendor.write_text("active-opacity=.7;")
+        vendor.chmod(0o444)
+        original = '@include "' + str(vendor) + '"'
+        self.write(original)
+        with (
+            patch.object(picom, "MAX_IMPORT_BYTES", 1),
+            patch.object(picom, "publish") as publish,
+            self.assertRaisesRegex(picom.Error, "storage is full"),
+        ):
+            picom.mutate("copy-config", [], picom.Configuration().revision())
+        publish.assert_not_called()
+        self.assertEqual(self.path.read_text(), original)
+
+    def test_unchanged_import_retry_keeps_reused_candidate_files(self):
+        vendor = self.home / "vendor.conf"
+        vendor.write_text("active-opacity=.7;")
+        vendor.chmod(0o444)
+        self.write('@include "' + str(vendor) + '"')
+        process = {"pid": 123, "args": ["picom"]}
+        for _ in range(14):
+            with (
+                patch.object(picom, "processes", return_value=[process]),
+                patch.object(picom, "stop"),
+                patch.object(
+                    picom, "launch", side_effect=picom.Error("activation failed")
+                ),
+                self.assertRaisesRegex(picom.Error, "activation failed"),
+            ):
+                picom.mutate("copy-config", [], picom.Configuration().revision())
+        picom.mutate("copy-config", [], picom.Configuration().revision())
+        self.assertEqual(picom.Configuration().opacity(), (0.7, 1))
+        self.assertTrue(picom.status(False)["editable"])
+        self.assertEqual(
+            len(list((self.config / "picom/include/dwm-titus-import").glob("*.conf"))),
+            1,
+        )
 
     def test_marker_outside_rules_is_rejected(self):
         config = self.write(
