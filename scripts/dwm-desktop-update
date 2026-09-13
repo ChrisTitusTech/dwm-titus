@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -22,6 +23,7 @@ import uuid
 SOURCE = "https://github.com/ChrisTitusTech/dwm-titus.git"
 UNIT = "dwm-desktop-update.service"
 ACTIVE = {"starting", "downloading", "dependencies", "building", "backing-up", "installing", "verifying", "activating"}
+CHECK_SECONDS = 60
 
 
 class CommandFailure(RuntimeError):
@@ -46,14 +48,51 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def sync_directory(path):
+    descriptor = os.open(path, os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def sync_file(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def sync_tree(path):
+    for directory, _, files in os.walk(path, topdown=False, followlinks=False):
+        for name in files:
+            child = Path(directory) / name
+            if not child.is_symlink():
+                sync_file(child)
+        sync_directory(Path(directory))
+
+
+def ensure_directory(path):
+    missing = []
+    parent = path
+    while not parent.exists():
+        missing.append(parent)
+        parent = parent.parent
+    for directory in reversed(missing):
+        directory.mkdir(mode=0o700, exist_ok=True)
+        sync_directory(directory.parent)
+
+
 def write_json(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_directory(path.parent)
     with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
         temporary = Path(stream.name)
         stream.write((json.dumps(value, sort_keys=True) + "\n").encode())
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, path)
+    sync_directory(path.parent)
 
 
 def read_json(path, limit=8 * 1024 * 1024):
@@ -155,13 +194,14 @@ def record_system(args):
 def record_user(source):
     config, data, state = paths()
     source = Path(source).resolve()
-    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    ensure_directory(state)
     manifest = {"schema": 1, "revision": source_revision(source), "checkout": str(source),
                 "trees": {str(config / "quickshell"): tree_manifest(config / "quickshell"),
                           str(data / "config"): tree_manifest(data / "config"),
                           str(data / "scripts"): tree_manifest(data / "scripts")}}
     if (source / "config.h").is_file():
         shutil.copyfile(source / "config.h", state / "build-config.h")
+        sync_file(state / "build-config.h")
     write_json(state / "installed.json", manifest)
 
 
@@ -176,7 +216,7 @@ def verify_receipts(source, manifest_path):
 
 @contextlib.contextmanager
 def locked(state, wait=False):
-    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    ensure_directory(state)
     with (state / "lock").open("a") as stream:
         fcntl.flock(stream, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
         yield
@@ -303,6 +343,18 @@ def missing_packages(packages):
 
 
 def check(force=False):
+    def expired(*_):
+        raise TimeoutError("Desktop check exceeded its time limit. Check again when the system and network are responsive.")
+    previous = signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, CHECK_SECONDS)
+    try:
+        return check_bounded(force)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def check_bounded(force=False):
     config, data, state = paths()
     with locked(state):
         value = recover_status(state)
@@ -412,6 +464,13 @@ def quickshell_processes():
     return processes
 
 
+def installed_worker(manifest_path):
+    trusted_installation(Path(manifest_path))
+    worker = Path(read_json(Path(manifest_path))["layout"]["prefix"]) / "bin/dwm-desktop-update"
+    trusted_file(worker, executable=True)
+    return worker
+
+
 def launch(expected):
     if not re.fullmatch(r"[0-9a-f]{40}", expected):
         raise RuntimeError("Invalid desktop revision")
@@ -420,17 +479,18 @@ def launch(expected):
         value = recover_status(state)
         if not value["canUpdate"] or value["available"] != expected or service_active():
             raise RuntimeError("The desktop preview changed or an update is active; check again")
+        worker = installed_worker(value["manifest"])
         operation = uuid.uuid4().hex
         directory = state / "operations" / operation
-        directory.mkdir(parents=True, mode=0o700)
-        worker = directory / "worker.py"
-        shutil.copyfile(__file__, worker)
+        ensure_directory(directory.parent)
+        directory.mkdir(mode=0o700)
+        sync_directory(directory.parent)
         write_json(directory / "preview.json", value)
         save_status(state, value, operation=operation, state="starting", detail="Starting desktop update...",
                     canUpdate=False, log=str(directory / "update.log"), percent=-1, backup="",
                     systemStarted=False, systemApplied=False, activationShells=[])
         try:
-            run(service_command(UNIT, [sys.executable, "-I", worker, "worker", operation]))
+            run(service_command(UNIT, ["/usr/bin/python3", "-I", worker, "worker", operation]))
         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
             save_status(state, value, state="failed", detail=str(error))
             raise
@@ -447,6 +507,18 @@ def exchange(left, right):
         raise OSError(ctypes.get_errno(), "Cannot exchange managed directories")
 
 
+def copy_private_tree(source, destination, symlinks=True):
+    destination.mkdir(mode=0o700)
+    for child in source.iterdir():
+        target = destination / child.name
+        if child.is_symlink() and symlinks:
+            shutil.copy2(child, target, follow_symlinks=False)
+        elif child.is_dir():
+            shutil.copytree(child, target, symlinks=symlinks)
+        else:
+            shutil.copy2(child, target, follow_symlinks=not symlinks)
+
+
 def prepare_user(source, operation):
     config, data, _ = paths()
     targets = [data, config / "quickshell"]
@@ -455,14 +527,15 @@ def prepare_user(source, operation):
         for index, target in enumerate(targets):
             if target.is_symlink():
                 raise RuntimeError("Managed update directories cannot be symlinks: " + str(target))
-            target.parent.mkdir(parents=True, exist_ok=True)
+            ensure_directory(target.parent)
             staged = target.parent / (".dwm-update-" + operation + "-" + str(index))
             if staged.exists() or staged.is_symlink():
                 raise RuntimeError("Update staging path already exists")
             cleanup.callback(shutil.rmtree, staged, True)
             original = tree_manifest(target) if target.exists() else None
+            original_mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o755
             if target.exists():
-                shutil.copytree(target, staged, symlinks=True)
+                copy_private_tree(target, staged)
             else:
                 staged.mkdir(mode=0o700)
             if index == 0:
@@ -482,9 +555,12 @@ def prepare_user(source, operation):
                     shutil.copytree(source / name, old, symlinks=True)
             else:
                 shutil.rmtree(staged)
-                shutil.copytree(source / "config/quickshell", staged, symlinks=False)
+                copy_private_tree(source / "config/quickshell", staged, symlinks=False)
+            staged.chmod(0o700)
+            sync_tree(staged)
+            sync_directory(staged.parent)
             prepared.append({"target": str(target), "backup": str(staged), "existed": target.exists(), "swapped": False,
-                             "original": original, "replacement": tree_manifest(staged)})
+                             "original": original, "originalMode": original_mode, "replacement": tree_manifest(staged)})
         cleanup.pop_all()
     return prepared
 
@@ -585,8 +661,10 @@ def worker(operation):
                     raise RuntimeError("Managed data is too large for automatic recovery; use the source installer")
                 if (state / "installed.json").exists():
                     shutil.copyfile(state / "installed.json", directory / "installed-before.json")
+                    sync_file(directory / "installed-before.json")
                 if (state / "build-config.h").exists():
                     shutil.copyfile(state / "build-config.h", directory / "build-config-before.h")
+                    sync_file(directory / "build-config-before.h")
                 write_json(directory / "receipt-backup.json", {
                     name: (state / name).exists() for name in ("installed.json", "build-config.h")})
                 save_status(state, value, backup=str(directory / "user-backup.json"), state="installing",
@@ -599,15 +677,22 @@ def worker(operation):
                 for entry in prepared:
                     target, backup = Path(entry["target"]), Path(entry["backup"])
                     current = tree_manifest(target) if target.exists() else None
-                    if current != entry["original"]:
+                    if current != entry["original"] or (entry["existed"] and stat.S_IMODE(target.stat().st_mode) != entry["originalMode"]):
                         raise RuntimeError("Managed files changed during the update; preserving those changes for recovery")
                     # Record intent before the atomic swap. Recovery compares the receipts.
                     entry["swapped"] = True
                     write_json(directory / "user-backup.json", prepared)
                     if entry["existed"]:
+                        sync_tree(target)
+                        target.chmod(0o700)
                         exchange(target, backup)
                     else:
                         os.rename(backup, target)
+                    target.chmod(entry["originalMode"])
+                    sync_directory(target)
+                    if backup.exists():
+                        sync_directory(backup)
+                    sync_directory(target.parent)
                 save_status(state, value, state="verifying", detail="Verifying all installed desktop files...", percent=-1)
                 total = len(candidate["files"])
                 for index, (name, record) in enumerate(candidate["files"].items()):
@@ -633,8 +718,8 @@ def worker(operation):
                 save_status(state, value, state="activating", detail="Checking desktop activation...", percent=-1,
                             activationShells=sorted(previous_shells))
                 if running_dwm_matches(prefix / "bin/dwm") is not True:
-                    save_status(state, value, state="restart-required", restart="session", percent=100,
-                                detail="Installed and verified. Log out and back in to activate the updated desktop.")
+                    completion = dict(state="restart-required", restart="session", percent=100,
+                                      detail="Installed and verified. Log out and back in to activate the updated desktop.")
                 else:
                     ready = False
                     try:
@@ -652,11 +737,14 @@ def worker(operation):
                     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
                         print("Activation requires a new session: " + str(error), flush=True)
                     if not ready:
-                        save_status(state, value, state="restart-required", restart="session", percent=100,
-                                    detail="Files installed and verified, but Quickshell did not respond. Log out and back in.")
-                        return 0
-                    save_status(state, value, state="current", restart="none", percent=100,
-                                detail="Desktop update installed, verified, and active.", checkedAt=int(time.time()))
+                        completion = dict(state="restart-required", restart="session", percent=100,
+                                          detail="Files installed and verified, but Quickshell did not respond. Log out and back in.")
+                    else:
+                        completion = dict(state="current", restart="none", percent=100,
+                                          detail="Desktop update installed, verified, and active.", checkedAt=int(time.time()))
+                write_json(directory / "completion.json", {"verified": True})
+                run(["/usr/bin/pkexec", privileged, "complete", operation], timeout=60, capture=False)
+                save_status(state, value, **completion)
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
                 print(str(error), flush=True)
                 denied = isinstance(error, CommandFailure) and error.returncode in (126, 127)
@@ -688,6 +776,13 @@ def recover(operation):
         if value["operation"] != operation or value["state"] != "interrupted" or service_active():
             raise RuntimeError("Only the interrupted current operation can be recovered")
         directory = state / "operations" / operation
+        if (directory / "completion.json").exists():
+            preview = read_json(directory / "preview.json")
+            trusted_installation(Path(preview["manifest"]))
+            prefix = Path(preview["manifest"]).parents[2]
+            run(["/usr/bin/pkexec", prefix / "libexec/dwm-titus/dwm-desktop-update-root", "complete", operation], timeout=60, capture=False)
+            return save_status(state, value, state="restart-required", restart="session", percent=100,
+                               detail="Desktop files are ready. Log out and back in, then check again.")
         receipts = read_json(directory / "receipt-backup.json") if (directory / "receipt-backup.json").exists() else {}
         for name, saved in (("installed.json", "installed-before.json"), ("build-config.h", "build-config-before.h")):
             if receipts.get(name) is True and not (directory / saved).is_file():
@@ -699,6 +794,8 @@ def recover(operation):
                 continue
             target = Path(entry["target"])
             current = tree_manifest(target) if target.exists() else None
+            if target.exists() and "originalMode" in entry and stat.S_IMODE(target.stat().st_mode) not in (0o700, entry["originalMode"]):
+                raise RuntimeError("Managed directory permissions changed after the interruption: " + str(target))
             if current not in (entry["original"], entry["replacement"]):
                 raise RuntimeError("Managed files changed after the interruption. Save those changes before recovery: " + str(target))
             if current == entry["replacement"] and entry["existed"]:
@@ -720,14 +817,27 @@ def recover(operation):
                 if entry["existed"]:
                     if tree_manifest(backup) != entry["original"]:
                         raise RuntimeError("Recovery copy changed: " + str(backup))
+                    sync_tree(backup)
+                    target.chmod(0o700)
                     exchange(target, backup)
                 else:
+                    target.chmod(0o700)
                     os.rename(target, backup)
+            if entry["swapped"] and entry["existed"] and target.exists():
+                target.chmod(entry.get("originalMode", 0o700))
+                sync_directory(target)
+            if backup.exists():
+                sync_directory(backup)
+            sync_directory(target.parent)
         for name, saved in (("installed.json", "installed-before.json"), ("build-config.h", "build-config-before.h")):
             if (directory / saved).exists():
                 shutil.copyfile(directory / saved, state / name)
+                sync_file(state / name)
             elif receipts.get(name) is False:
                 (state / name).unlink(missing_ok=True)
+        sync_directory(state)
+        write_json(directory / "completion.json", {"recovered": True})
+        run(["/usr/bin/pkexec", prefix / "libexec/dwm-titus/dwm-desktop-update-root", "complete", operation], timeout=60, capture=False)
         return save_status(state, value, state="failed", canUpdate=False, restart="session", percent=-1,
                            detail="Previous desktop files restored. Log out and back in, then check again.")
 

@@ -66,6 +66,12 @@ update.time.sleep = lambda delay: None
 update.trusted_installation = lambda path: None
 update.trusted_directory = lambda path: None
 update.root_owned = lambda path: True
+real_sync = update.sync_directory
+def sync_directory(path):
+    if scenario == "durability-failure" and path == data.parent and (data / "scripts/file").read_text() == "new helper":
+        raise OSError("injected directory sync failure")
+    real_sync(path)
+update.sync_directory = sync_directory
 source, stage = directory / "source", directory / "stage"
 
 
@@ -92,6 +98,9 @@ def boundary(args, cwd=None, timeout=60, capture=True):
                      "files": {str(binary): update.fingerprint(staged_binary)}}
         update.write_json(stage / str(manifest_path).lstrip("/"), candidate)
     elif args[0] == "/usr/bin/pkexec":
+        if args[2] == "complete":
+            (state / "complete-called").write_text("complete")
+            return ""
         if scenario == "denied":
             raise update.CommandFailure("authorization denied", 126)
         if scenario == "apply-failure":

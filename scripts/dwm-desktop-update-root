@@ -37,19 +37,23 @@ def trusted(path, directory=False):
         trusted(path.parent, True)
 
 
-def write_json(path, value):
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        stream.write((json.dumps(value, sort_keys=True) + "\n").encode())
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.chmod(temporary, 0o644)
-    os.replace(temporary, path)
-    descriptor = os.open(path.parent, os.O_DIRECTORY)
+def sync_directory(path):
+    descriptor = os.open(path, os.O_DIRECTORY)
     try:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def write_json(path, value):
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        stream.write((json.dumps(value, sort_keys=True) + "\n").encode())
+        os.fchmod(stream.fileno(), 0o644)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+    sync_directory(path.parent)
 
 
 def read_json(path):
@@ -92,6 +96,7 @@ def replace(path, source, record):
                 stream.flush()
                 os.fsync(stream.fileno())
         os.replace(temporary, path)
+        sync_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -120,11 +125,12 @@ def restore(backup, journal):
         trusted(path.parent, True)
         if entry["old"] is None:
             path.unlink(missing_ok=True)
+            sync_directory(path.parent)
         else:
             replace(path, backup / entry["blob"], entry["old"])
     replace(PREFIX / "share/dwm-titus/desktop-install.json", backup / "manifest.json",
             fingerprint(backup / "manifest.json"))
-    journal["state"] = "rolled-back"
+    journal["state"] = "rolled-back-pending"
     write_json(backup / "journal.json", journal)
 
 
@@ -198,6 +204,9 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
                 fail("Unsafe bundle member")
             with bundle.extractfile(member) as source, (payload / member.name).open("xb") as output:
                 shutil.copyfileobj(source, output)
+                output.flush()
+                os.fsync(output.fileno())
+    sync_directory(payload)
     candidate = json.loads((payload / "manifest.json").read_text())
     validate_candidate(candidate, installed)
     if candidate["revision"] != revision:
@@ -256,9 +265,11 @@ def main():
         fail("A desktop user must request this operation")
     args = sys.argv[1:]
     if len(args) not in (2, 6):
-        fail("Expected apply BUNDLE GENERATION OPERATION DIGEST REVISION, dependencies GENERATION, or rollback OPERATION")
+        fail("Expected apply BUNDLE GENERATION OPERATION DIGEST REVISION, dependencies GENERATION, rollback OPERATION, or complete OPERATION")
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
     trusted(STATE, True)
+    for directory in (STATE, *STATE.parents):
+        sync_directory(directory)
     with (STATE / "lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -268,7 +279,7 @@ def main():
                     or not re.fullmatch(r"[0-9a-f]{64}", args[4]) or not re.fullmatch(r"[0-9a-f]{40}", args[5])):
                 fail("Invalid update identity")
             for journal_path in STATE.glob("*/journal.json"):
-                if read_json(journal_path)["state"] in ("applying", "rolling-back"):
+                if read_json(journal_path)["state"] in ("applying", "applied", "rolling-back", "rolled-back-pending"):
                     fail("Interrupted system installation requires rollback: " + journal_path.parent.name)
             apply_archive(args[1], args[2], args[3], uid, args[4], args[5])
         elif args[0] == "rollback" and len(args) == 2 and re.fullmatch(r"[0-9a-f]{32}", args[1]):
@@ -277,9 +288,18 @@ def main():
                 print("This operation did not replace system files", flush=True)
                 return
             journal = read_json(backup / "journal.json")
-            if journal["uid"] != uid or read_json(STATE / "latest.json")["operation"] != args[1]:
+            latest = read_json(STATE / "latest.json")["operation"] if (STATE / "latest.json").exists() else None
+            if journal["uid"] != uid:
                 fail("This operation cannot be rolled back")
-            if journal["state"] == "rolled-back":
+            if latest != args[1] and journal["state"] == "applying" and not journal["replaced"]:
+                # Initial journal publication preceded latest.json; no file intent exists.
+                journal["state"] = "rolled-back"
+                write_json(backup / "journal.json", journal)
+                print("No system files were replaced", flush=True)
+                return
+            if latest != args[1]:
+                fail("This operation cannot be rolled back")
+            if journal["state"] in ("rolled-back", "rolled-back-pending"):
                 print("System files already restored", flush=True)
                 return
             expected = {journal["afterManifest"]}
@@ -288,6 +308,21 @@ def main():
             if hashlib.sha256((PREFIX / "share/dwm-titus/desktop-install.json").read_bytes()).hexdigest() not in expected:
                 fail("A newer installation superseded this recovery copy")
             restore(backup, journal)
+        elif args[0] == "complete" and len(args) == 2 and re.fullmatch(r"[0-9a-f]{32}", args[1]):
+            backup = STATE / args[1]
+            if not (backup / "journal.json").exists():
+                return
+            journal = read_json(backup / "journal.json")
+            if journal["uid"] != uid:
+                fail("This operation cannot be completed")
+            if journal["state"] in ("complete", "rolled-back"):
+                return
+            if read_json(STATE / "latest.json")["operation"] != args[1]:
+                fail("This operation cannot be completed")
+            if journal["state"] not in ("applied", "complete", "rolled-back-pending", "rolled-back"):
+                fail("System installation or rollback must finish before completion")
+            journal["state"] = "rolled-back" if journal["state"].startswith("rolled-back") else "complete"
+            write_json(backup / "journal.json", journal)
         elif args[0] == "dependencies" and len(args) == 2:
             manifest_path = PREFIX / "share/dwm-titus/desktop-install.json"
             manifest = read_json(manifest_path)

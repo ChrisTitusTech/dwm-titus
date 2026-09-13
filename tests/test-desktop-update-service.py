@@ -34,9 +34,9 @@ spec = importlib.util.spec_from_loader("desktop", loader)
 update = importlib.util.module_from_spec(spec)
 loader.exec_module(update)
 update.UNIT = sys.argv[3]
-update.__file__ = sys.argv[2]
+update.installed_worker = lambda manifest: Path(sys.argv[2])
 state = update.paths()[2]
-update.write_json(state / "status.json", dict(update.status_default(), canUpdate=True, available="b" * 40))
+update.write_json(state / "status.json", dict(update.status_default(), canUpdate=True, available="b" * 40, manifest="fixture"))
 update.launch("b" * 40)
 ''')
     env = {**os.environ, "XDG_STATE_HOME": str(base), "XDG_DATA_HOME": str(base / "data"),

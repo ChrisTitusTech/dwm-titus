@@ -5,6 +5,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -62,6 +63,7 @@ class DesktopUpdate(unittest.TestCase):
         patch.object(update, "service_active", return_value=False).start()
         patch.object(update, "root_owned", return_value=True).start()
         patch.object(update, "trusted_directory", return_value=None).start()
+        patch.object(update, "installed_worker", return_value=self.base / "bin/dwm-desktop-update").start()
         self.command = patch.object(update, "run", return_value="a" * 40 + "\trefs/heads/main").start()
 
     def test_current_and_content_drift_are_distinct(self):
@@ -92,6 +94,15 @@ class DesktopUpdate(unittest.TestCase):
         self.command.reset_mock()
         update.check(False)
         self.command.assert_not_called()
+
+    def test_overall_check_deadline_bounds_slow_package_queries(self):
+        with patch.object(update, "CHECK_SECONDS", 0.05), \
+                patch.object(update, "missing_packages", side_effect=lambda _: time.sleep(1)):
+            started = time.monotonic()
+            value = update.check(True)
+        self.assertLess(time.monotonic() - started, 0.5)
+        self.assertEqual(value["state"], "failed")
+        self.assertIn("exceeded its time limit", value["detail"])
 
     def test_missing_user_receipt_requires_repair(self):
         (self.state / "installed.json").unlink()
@@ -218,11 +229,11 @@ class DesktopUpdate(unittest.TestCase):
             self.assertEqual(update.check(True)["state"], "current")
 
     def test_recovery_restores_receipt_absence_only_after_backup_completion(self):
-        operation = "c" * 32
-        directory = self.state / "operations" / operation
-        update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path)})
         original = (self.state / "installed.json").read_bytes()
         for completed in (False, True):
+            operation = ("d" if completed else "c") * 32
+            directory = self.state / "operations" / operation
+            update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path)})
             update.write_json(self.state / "status.json", {**update.status_default(), "operation": operation,
                               "state": "interrupted"})
             if completed:
@@ -246,6 +257,18 @@ class DesktopUpdate(unittest.TestCase):
             update.recover(operation)
         self.command.assert_not_called()
 
+    def test_verified_completion_recovery_finishes_without_rollback(self):
+        operation = "d" * 32
+        directory = self.state / "operations" / operation
+        update.write_json(directory / "completion.json", {"verified": True})
+        update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path)})
+        update.write_json(self.state / "status.json", {**update.status_default(), "operation": operation, "state": "interrupted"})
+        with patch.object(update, "trusted_installation"):
+            value = update.recover(operation)
+        self.assertEqual(value["state"], "restart-required")
+        self.assertEqual(self.command.call_args.args[0][-2:], ["complete", operation])
+        self.assertEqual((self.config / "quickshell/file").read_text(), "original")
+
     def test_changed_confirmation_does_not_launch(self):
         self.command.return_value = "b" * 40 + "\trefs/heads/main"
         update.check(True)
@@ -261,6 +284,15 @@ class DesktopUpdate(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "service unavailable"):
             update.launch("b" * 40)
         self.assertEqual(update.status_read(self.state)["state"], "failed")
+
+    def test_service_executes_installed_worker_without_user_owned_copy(self):
+        self.command.return_value = "b" * 40 + "\trefs/heads/main"
+        update.check(True)
+        self.command.reset_mock()
+        value = update.launch("b" * 40)
+        command = self.command.call_args.args[0]
+        self.assertEqual(command[-5:], ["/usr/bin/python3", "-I", self.base / "bin/dwm-desktop-update", "worker", value["operation"]])
+        self.assertFalse((self.state / "operations" / value["operation"] / "worker.py").exists())
 
     def test_update_lock_prevents_overlap(self):
         with update.locked(self.state):
@@ -436,12 +468,45 @@ class DesktopUpdate(unittest.TestCase):
                 if scenario == "success" or scenario.startswith("activation-"):
                     self.assertEqual((directory / "config/quickshell/file").read_text(), "new shell")
                     self.assertEqual((directory / "prefix/bin/dwm").read_text(), "new binary")
+                    entries = update.read_json(directory / "state/operations" / ("c" * 32) / "user-backup.json")
+                    for entry in entries:
+                        self.assertEqual(Path(entry["backup"]).stat().st_mode & 0o777, 0o700)
+                        self.assertEqual(Path(entry["target"]).stat().st_mode & 0o777, entry["originalMode"])
                     self.assertFalse((directory / "state/operations" / ("c" * 32) / "source").exists())
                     if scenario.startswith("activation-"):
                         self.assertEqual(value["activationShells"], [["1", "old"]])
                 elif scenario != "killed":
                     self.assertEqual((directory / "config/quickshell/file").read_text(), "old")
                     self.assertEqual((directory / "prefix/bin/dwm").read_text(), "old binary")
+
+    def test_directory_sync_failure_keeps_transaction_unfinished(self):
+        directory = self.base / "durability-failure"
+        result = subprocess.run([sys.executable, REPO / "tests/fixtures/desktop-worker-scenario.py",
+                                 REPO, directory, "durability-failure"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        value = update.read_json(directory / "state/status.json")
+        self.assertEqual(value["state"], "interrupted")
+        self.assertIn("directory sync failure", value["detail"])
+        self.assertFalse((directory / "state/complete-called").exists())
+        self.assertFalse((directory / "state/operations" / ("c" * 32) / "completion.json").exists())
+
+    def test_abrupt_private_copy_never_exposes_staging_root(self):
+        source, destination = self.base / "private", self.base / "staging"
+        source.mkdir(mode=0o700)
+        (source / "readable-secret").write_text("private data")
+        (source / "readable-secret").chmod(0o644)
+        copy = shutil.copy2
+        def interrupted(*args, **kwargs):
+            copy(*args, **kwargs)
+            self.assertEqual(destination.stat().st_mode & 0o777, 0o700)
+            raise RuntimeError("abrupt copy interruption")
+        previous = os.umask(0o022)
+        try:
+            with patch.object(update.shutil, "copy2", side_effect=interrupted), self.assertRaisesRegex(RuntimeError, "abrupt copy"):
+                update.copy_private_tree(source, destination)
+        finally:
+            os.umask(previous)
+        self.assertEqual(destination.stat().st_mode & 0o777, 0o700)
 
 
 if __name__ == "__main__":

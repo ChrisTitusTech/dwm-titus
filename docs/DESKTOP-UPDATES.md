@@ -74,12 +74,21 @@ Quickshell IPC before clearing restart guidance. The updater never logs you out.
 - `/var/lib/dwm-titus/desktop-updates/<id>/`: private root-owned system backup
   and write-ahead installation journal.
 - `.dwm-update-<id>-*` beside each managed user directory: retained recovery
-  copies. They can contain Git history and private local files; keep them private.
+  copies, restricted to mode `0700`. They can contain Git history and private
+  local files. Original live-directory modes are recorded for restoration.
 
 Backups are retained for explicit recovery. Do not remove them while an update
 is active or interrupted. After verifying the new session, they may be removed
 as part of deliberate backup maintenance; no automatic retention policy deletes
 them.
+
+Checks have one 60-second backend deadline. The update service executes the
+root-owned installed worker directly. An unfinished system/user transaction
+blocks other users from superseding its recovery record until the initiating
+worker or recovery flow confirms completion through the installed helper.
+If all file work finished before completion was interrupted, recovery finishes
+that transaction without undoing the verified files. Completion can be retried
+safely even if another user's later update has already started.
 
 ## Recovery
 

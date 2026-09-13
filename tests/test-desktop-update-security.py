@@ -60,14 +60,14 @@ class Security(unittest.TestCase):
                 archive.addfile(item, io.BytesIO(content))
         os.chown(self.bundle, 1000, 1000)
 
-    def command(self, *args, helper=None):
+    def command(self, *args, helper=None, uid=1000):
         return subprocess.run([str(helper or self.helper), *args], capture_output=True, text=True,
-                              env={**os.environ, "PKEXEC_UID": "1000", "PYTHONPATH": str(self.prefix)})
+                              env={**os.environ, "PKEXEC_UID": str(uid), "PYTHONPATH": str(self.prefix)})
 
-    def apply(self):
+    def apply(self, uid=1000):
         generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
         return self.command("apply", str(self.bundle), generation, self.operation,
-                            hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40)
+                            hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40, uid=uid)
 
     def test_apply_and_rollback_restore_verified_original(self):
         self.archive()
@@ -75,11 +75,54 @@ class Security(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.binary.read_bytes(), b"updated")
         self.assertEqual(self.binary.stat().st_uid, 0)
+        self.assertEqual(self.command("complete", self.operation).returncode, 0)
         result = self.command("rollback", self.operation)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.binary.read_bytes(), b"original")
         self.assertEqual(self.command("rollback", self.operation).returncode, 0)
 
+    def test_another_user_cannot_supersede_unfinished_user_phase(self):
+        self.archive()
+        self.assertEqual(self.apply().returncode, 0)
+        first = self.operation
+        self.operation = uuid.uuid4().hex
+        self.addCleanup(shutil.rmtree, Path("/var/lib/dwm-titus/desktop-updates") / self.operation, True)
+        os.chown(self.bundle, 1001, 1001)
+        self.assertIn("requires rollback", self.apply(uid=1001).stderr)
+        self.assertNotEqual(self.command("complete", first, uid=1001).returncode, 0)
+        self.assertEqual(self.command("rollback", first).returncode, 0)
+        self.assertIn("requires rollback", self.apply(uid=1001).stderr)
+        self.assertEqual(self.command("complete", first).returncode, 0)
+        result = self.apply(uid=1001)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.command("complete", first).returncode, 0)
+
+    def test_interrupted_initial_journal_can_be_recovered(self):
+        module = runpy.run_path(str(self.helper))
+        state = module["STATE"]
+        state.mkdir(parents=True, exist_ok=True, mode=0o700)
+        apply = module["apply_archive"]
+        original_write = apply.__globals__["write_json"]
+        for latest in (None, "e" * 32):
+            with self.subTest(latest=latest):
+                self.operation = uuid.uuid4().hex
+                self.addCleanup(shutil.rmtree, state / self.operation, True)
+                (state / "latest.json").unlink(missing_ok=True)
+                if latest:
+                    original_write(state / "latest.json", {"operation": latest})
+                self.archive()
+                def interrupted(path, value):
+                    if path == state / "latest.json":
+                        raise RuntimeError("interrupted initial publication")
+                    original_write(path, value)
+                with patch.dict(apply.__globals__, {"write_json": interrupted}):
+                    with self.assertRaisesRegex(RuntimeError, "initial publication"):
+                        apply(self.bundle, hashlib.sha256(self.manifest_path.read_bytes()).hexdigest(), self.operation,
+                              1000, hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40)
+                result = self.command("rollback", self.operation)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.binary.read_bytes(), b"original")
+                self.assertEqual(self.command("complete", self.operation).returncode, 0)
     def test_source_sync_manifest_trust_rejects_ownership_mode_and_parent_drift(self):
         validate = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))["trusted_installation"]
         validate(self.manifest_path)
@@ -94,6 +137,16 @@ class Security(unittest.TestCase):
         self.manifest_path.parent.chmod(0o775)
         with self.assertRaisesRegex(RuntimeError, "untrusted parent"):
             validate(self.manifest_path)
+
+    def test_worker_execution_requires_root_owned_installed_path(self):
+        resolve = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))["installed_worker"]
+        worker = self.prefix / "bin/dwm-desktop-update"
+        worker.write_text("installed worker")
+        worker.chmod(0o755)
+        self.assertEqual(resolve(self.manifest_path), worker)
+        os.chown(worker, 1000, 1000)
+        with self.assertRaisesRegex(RuntimeError, "root-owned"):
+            resolve(self.manifest_path)
 
     def test_discovery_rejects_untrusted_complete_parent_chains(self):
         check = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))["unsupported_system_drift"]
@@ -221,6 +274,7 @@ class Security(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("Unsafe installed file", result.stderr)
                 self.assertEqual(self.binary.stat().st_uid, 1000)
+                self.assertEqual(self.command("complete", self.operation).returncode, 0)
 
     def test_old_recovery_record_with_special_mode_is_rejected(self):
         self.archive()
@@ -321,7 +375,7 @@ class Security(unittest.TestCase):
         original_write = module.write_json
 
         def fail_completion(path, value):
-            if path == backup / "journal.json" and value["state"] == "rolled-back":
+            if path == backup / "journal.json" and value["state"] == "rolled-back-pending":
                 raise RuntimeError("interrupted rollback completion")
             original_write(path, value)
 
@@ -333,7 +387,7 @@ class Security(unittest.TestCase):
         self.assertNotEqual(self.apply().returncode, 0, "An incomplete rollback must block new updates")
         result = self.command("rollback", self.operation)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads((backup / "journal.json").read_text())["state"], "rolled-back")
+        self.assertEqual(json.loads((backup / "journal.json").read_text())["state"], "rolled-back-pending")
 
     def test_interrupted_rollback_accepts_unpublished_manifest(self):
         self.archive()
@@ -368,7 +422,27 @@ class Security(unittest.TestCase):
         self.assertEqual(self.binary.read_bytes(), b"original")
         self.assertEqual(json.loads(self.manifest_path.read_text())["revision"], "a" * 40)
         journal = json.loads((module.STATE / self.operation / "journal.json").read_text())
-        self.assertEqual(journal["state"], "rolled-back")
+        self.assertEqual(journal["state"], "rolled-back-pending")
+
+    def test_failed_system_directory_sync_restores_original(self):
+        self.archive()
+        module = runpy.run_path(str(self.helper))
+        module["STATE"].mkdir(parents=True, exist_ok=True, mode=0o700)
+        apply = module["apply_archive"]
+        original_sync = apply.__globals__["sync_directory"]
+        failed = False
+        def sync(path):
+            nonlocal failed
+            if path == self.binary.parent and not failed:
+                failed = True
+                raise OSError("injected system directory sync failure")
+            original_sync(path)
+        with patch.dict(apply.__globals__, {"sync_directory": sync}):
+            with self.assertRaisesRegex(OSError, "directory sync failure"):
+                apply(self.bundle, hashlib.sha256(self.manifest_path.read_bytes()).hexdigest(), self.operation,
+                      1000, hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40)
+        self.assertEqual(self.binary.read_bytes(), b"original")
+        self.assertEqual(json.loads(self.manifest_path.read_text())["revision"], "a" * 40)
 
 
 if __name__ == "__main__":
