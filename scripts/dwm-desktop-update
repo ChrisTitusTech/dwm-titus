@@ -426,13 +426,35 @@ def check_bounded(force=False):
             return save_status(state, value, state="failed", detail=str(error), canUpdate=False, percent=-1)
 
 
-def service_command(unit, command, properties=()):
-    args = ["systemd-run", "--user", "--quiet", "--collect", "--unit=" + unit, "--property=Type=exec"]
+def service_command(unit, command, properties=(), prefix=None, clean_environment=False):
+    unsafe = ("LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_ORIGIN_PATH GLIBC_TUNABLES GCONV_PATH LOCPATH NLSPATH "
+              "PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONINSPECT BASH_ENV ENV SHELLOPTS BASHOPTS "
+              "GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT GIT_EXEC_PATH GIT_SSH GIT_SSH_COMMAND GIT_ASKPASS SSH_ASKPASS "
+              "MAKEFLAGS MFLAGS GNUMAKEFLAGS MAKEFILES")
+    args = ["/usr/bin/systemd-run", "--user", "--quiet", "--collect", "--unit=" + unit, "--property=Type=exec", "--expand-environment=no",
+            "--property=UnsetEnvironment=" + unsafe]
     args.extend("--property=" + value for value in properties)
-    for key in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS",
-                "CC", "CFLAGS", "CPPFLAGS", "LDFLAGS"):
+    search = []
+    for directory in dict.fromkeys(([prefix / "bin"] if prefix else []) + [Path("/usr/bin"), Path("/usr/local/bin")]):
+        if ":" in str(directory):
+            continue
+        try:
+            trusted_directory(directory)
+        except (OSError, RuntimeError):
+            continue
+        search.append(str(directory))
+    if not search:
+        raise RuntimeError("No trusted system command directory is available")
+    environment = ["PATH=" + ":".join(search)]
+    for key in ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "XDG_RUNTIME_DIR",
+                "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS",
+                "CC", "CFLAGS", "CPPFLAGS", "LDFLAGS", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+                "http_proxy", "https_proxy", "all_proxy", "no_proxy", "GIT_SSL_CAINFO", "SSL_CERT_FILE", "SSL_CERT_DIR"):
         if key in os.environ:
-            args.append("--setenv=" + key + "=" + os.environ[key])
+            environment.append(key + "=" + os.environ[key])
+    args.extend("--setenv=" + value for value in environment)
+    if clean_environment:
+        command = ["/usr/bin/env", "-i", *environment, *command]
     return [*args, *command]
 
 
@@ -441,7 +463,7 @@ def start_activation(prefix, operation):
     unit = "dwm-desktop-activation-" + operation + ".service"
     run(service_command(unit,
                         [prefix / "bin/dwm-quickshell-controlcenter", "action", "restart-quickshell"],
-                        ("ExitType=cgroup",)), timeout=60, capture=False)
+                        ("ExitType=cgroup",), prefix=prefix), timeout=60, capture=False)
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         properties = dict(line.split("=", 1) for line in run([
@@ -495,7 +517,8 @@ def launch(expected):
                     canUpdate=False, log=str(directory / "update.log"), percent=-1, backup="",
                     systemStarted=False, systemApplied=False, activationShells=[])
         try:
-            run(service_command(UNIT, ["/usr/bin/python3", "-I", worker, "worker", operation]))
+            run(service_command(UNIT, ["/usr/bin/python3", "-I", worker, "worker", operation],
+                                prefix=worker.parent.parent, clean_environment=True))
         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
             save_status(state, value, state="failed", detail=str(error))
             raise

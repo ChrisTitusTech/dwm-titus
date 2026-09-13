@@ -16,12 +16,25 @@ with tempfile.TemporaryDirectory(prefix="desktop-service-") as temporary:
     operation = uuid.uuid4().hex
     activation_unit = "dwm-desktop-activation-" + operation + ".service"
     driver_unit = "dwm-desktop-driver-test-" + operation + ".service"
+    library = base / "loader.so"
+    (base / "loader.c").write_text('''#include <stdio.h>
+#include <stdlib.h>
+__attribute__((constructor)) static void mark(void) {
+    const char *path = getenv("DWM_LOADER_MARKER");
+    if (path) { FILE *f = fopen(path, "a"); if (f) { fputs("loaded", f); fclose(f); } }
+}
+''')
+    subprocess.run(["/usr/bin/cc", "-shared", "-fPIC", base / "loader.c", "-o", library], check=True)
+    baseline = base / "loader-baseline"
+    subprocess.run(["/usr/bin/true"], env={**os.environ, "LD_PRELOAD": str(library), "DWM_LOADER_MARKER": str(baseline)}, check=True)
+    assert baseline.exists(), "Loader regression fixture did not execute"
     fixture = base / "worker.py"
     fixture.write_text('''import os, time, json
 from pathlib import Path
 state = Path(os.environ["XDG_STATE_HOME"])
 (state / "started").write_text("started")
 (state / "build-env").write_text(json.dumps({key: os.environ.get(key) for key in ("CC", "CFLAGS", "CPPFLAGS", "LDFLAGS")}))
+(state / "unsafe-env").write_text(json.dumps({key: os.environ.get(key) for key in ("LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "GCONV_PATH", "PYTHONPATH", "BASH_ENV", "UNEXPECTED_INHERITED")}))
 time.sleep(2)
 (state / "finished").write_text("finished")
 ''')
@@ -35,16 +48,25 @@ update = importlib.util.module_from_spec(spec)
 loader.exec_module(update)
 update.UNIT = sys.argv[3]
 update.installed_worker = lambda manifest: Path(sys.argv[2])
+original_command = update.service_command
+def poisoned_service(*args, **kwargs):
+    command = original_command(*args, **kwargs)
+    command[1:1] = ["--setenv=" + key + "=" + sys.argv[4] for key in
+                    ("LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "GCONV_PATH", "PYTHONPATH", "BASH_ENV", "UNEXPECTED_INHERITED")]
+    command.insert(1, "--setenv=DWM_LOADER_MARKER=" + sys.argv[5])
+    return command
+update.service_command = poisoned_service
 state = update.paths()[2]
 update.write_json(state / "status.json", dict(update.status_default(), canUpdate=True, available="b" * 40, manifest="fixture"))
 update.launch("b" * 40)
 ''')
     env = {**os.environ, "XDG_STATE_HOME": str(base), "XDG_DATA_HOME": str(base / "data"),
            "XDG_CONFIG_HOME": str(base / "config")}
-    build_env = {"CC": "test-cc", "CFLAGS": "-O1 -g", "CPPFLAGS": "-DTEST=1", "LDFLAGS": "-Wl,--as-needed"}
+    build_env = {"CC": "test-cc", "CFLAGS": "-O1 -g", "CPPFLAGS": "-DTEST=${LITERAL} -DPRICE=$$5", "LDFLAGS": "-Wl,--as-needed"}
     env.update(build_env)
     try:
-        subprocess.run([sys.executable, launcher, repo / "scripts/dwm-desktop-update", fixture, unit], env=env, check=True)
+        subprocess.run([sys.executable, launcher, repo / "scripts/dwm-desktop-update", fixture, unit,
+                        library, base / "worker-preloaded"], env=env, check=True)
         # The initiating process has exited. The worker must still be running.
         for _ in range(40):
             if (base / "started").exists():
@@ -59,6 +81,9 @@ update.launch("b" * 40)
             time.sleep(0.05)
         assert (base / "finished").exists(), "Worker did not survive its initiating process"
         assert json.loads((base / "build-env").read_text()) == build_env, "Build overrides were lost in the service handoff"
+        assert not (base / "worker-preloaded").exists(), "Loader code executed before the worker"
+        assert all(value is None for value in json.loads((base / "unsafe-env").read_text()).values()), "Startup variables survived sanitization"
+        print("Worker service rejects loader and interpreter environment injection: PASS")
         print("Real user service survives updater caller exit: PASS")
 
         prefix = base / "prefix"

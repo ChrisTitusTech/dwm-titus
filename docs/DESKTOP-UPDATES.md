@@ -83,7 +83,10 @@ as part of deliberate backup maintenance; no automatic retention policy deletes
 them.
 
 Checks have one 60-second backend deadline. The update service executes the
-root-owned installed worker directly. An unfinished system/user transaction
+root-owned installed worker directly. Its service removes loader/interpreter
+startup variables before execution, then gives the worker only explicitly
+allowed session, build, and proxy settings with trusted system command paths.
+An unfinished system/user transaction
 blocks other users from superseding its recovery record until the initiating
 worker or recovery flow confirms completion through the installed helper.
 If all file work finished before completion was interrupted, recovery finishes
