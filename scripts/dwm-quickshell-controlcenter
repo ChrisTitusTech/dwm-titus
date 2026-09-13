@@ -1657,6 +1657,43 @@ install_missing_deps() {
 	terminal_run "cd '$repo_dir' && ./install.sh; printf '\\nPress enter to close...'; read -r _"
 }
 
+self_heal() {
+	self_heal_script=${DWM_SELF_HEAL_SCRIPT:-}
+	self_heal_path_file=$dwm_config_dir/self-heal.path
+	if [ -z "$self_heal_script" ] && [ -f "$self_heal_path_file" ]; then
+		self_heal_script=$(cat -- "$self_heal_path_file")
+	fi
+	if [ -z "$self_heal_script" ]; then
+		self_heal_script=$(command -v dwm-self-heal 2>/dev/null || true)
+	fi
+	case $self_heal_script in
+	/*) ;;
+	*)
+		printf 'Self-Heal is not configured. Set an absolute script path in %s.\n' "$self_heal_path_file" >&2
+		return 1
+		;;
+	esac
+	if [ ! -f "$self_heal_script" ] || [ ! -x "$self_heal_script" ]; then
+		printf 'Self-Heal script is not executable: %s\n' "$self_heal_script" >&2
+		return 1
+	fi
+	if ! command -v dwm-terminal >/dev/null 2>&1 ||
+		! dwm-terminal --print-command >/dev/null 2>&1; then
+		printf 'Self-Heal requires an available terminal to show progress and authorization prompts.\n' >&2
+		return 1
+	fi
+	# The script is an argv value, never shell source. It owns any confirmation
+	# and privilege prompts; the Quickshell frontend stays unprivileged.
+	# shellcheck disable=SC2016 # Expand positional arguments in the terminal shell.
+	launch_background dwm-terminal -e sh -c '
+		"$1"
+		status=$?
+		printf "\nSelf-Heal exited with status %s. Press Enter to close..." "$status"
+		read -r _
+		exit "$status"
+	' sh "$self_heal_script"
+}
+
 open_wallpapers() {
 	if command -v xdg-open >/dev/null 2>&1; then
 		launch_background xdg-open "${HOME:-}/Pictures/backgrounds"
@@ -1684,6 +1721,7 @@ action() {
 	restart-networkmanager) restart_networkmanager ;;
 	dependency-check) dependency_check ;;
 	install-missing-deps) install_missing_deps ;;
+	self-heal) self_heal ;;
 	open-wallpapers) open_wallpapers ;;
 	gtk-settings) gtk_settings ;;
 	terminal) launch_background dwm-terminal ;;

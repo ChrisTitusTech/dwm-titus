@@ -131,9 +131,13 @@ cat >"$xsettings_stub" <<'SH'
 #!/bin/sh
 set -eu
 printf '%s\n' "${1:?}" >>"${DWM_TEST_XSETTINGS_LOG:?}"
+if [ "$1" = reload ] && [ "${DWM_TEST_XSETTINGS_FAIL_RELOAD:-0}" = 1 ]; then
+	exit 1
+fi
 SH
 chmod +x "$xsettings_stub"
 export DWM_APPEARANCE_XSETTINGS_HELPER=$xsettings_stub
+export DWM_APPEARANCE_CURSOR_HELPER=/usr/bin/true
 export DWM_TEST_XSETTINGS_LOG=$work/xsettings.log
 
 run_theme() {
@@ -2072,6 +2076,26 @@ grep -Fq 'personalization font was committed but live convergence failed' \
 	"$work/personalize-font-failure.err"
 [[ ! -e $config_home/dwm-titus/personalization.conf ]]
 grep -Fqx $'recovery\tnone' < <(run_theme recovery-status)
+
+reset_fixture
+if DWM_TEST_XSETTINGS_FAIL_RELOAD=1 run_theme_real_apply personalize cursor Capitaine-Cursors \
+	>"$work/personalize-cursor-xsettings-failure.out" 2>"$work/personalize-cursor-xsettings-failure.err"; then
+	printf 'cursor personalization accepted failed XSETTINGS publication\n' >&2
+	exit 1
+fi
+grep -Fq 'personalization cursor was committed but live convergence failed' \
+	"$work/personalize-cursor-xsettings-failure.err"
+grep -Fq 'personalization XSETTINGS cursor convergence failed' \
+	"$work/personalize-cursor-xsettings-failure.err"
+
+reset_fixture
+if DWM_APPEARANCE_XSETTINGS_HELPER=$work/missing-xsettings \
+	run_theme_real_apply personalize cursor Capitaine-Cursors \
+	>"$work/cursor-xsettings-missing.out" 2>"$work/cursor-xsettings-missing.err"; then
+	printf 'strict cursor apply accepted a missing XSETTINGS helper\n' >&2
+	exit 1
+fi
+grep -Fq 'managed XSETTINGS cursor helper is unavailable' "$work/cursor-xsettings-missing.err"
 
 reset_fixture
 personalization_finish_ready=$work/personalization-finish.ready

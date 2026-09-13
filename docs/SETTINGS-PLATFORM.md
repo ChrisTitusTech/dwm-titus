@@ -16,7 +16,23 @@ contract does not widen the project-owned privileged helper allowlist.
 The Settings application is one Quickshell `FloatingWindow` titled
 `dwm settings`. It is part of the managed Quickshell process and is opened from
 Control Center -> Settings, through the `settings` IPC target, or
-with `dwm-settings`.
+with `dwm-settings`. It fills the selected monitor like System Health. Appearance
+scrolls vertically without overscroll bounce. Cursor choices are published through
+XSETTINGS and replace named cursors held by existing X11 clients immediately;
+applications drawing their own custom pointer images retain those images.
+
+The managed panel hides Blueman's redundant tray item while keeping the Bluetooth
+widget and other tray applications available. Installation preserves user-owned
+dwm configuration files and replaces the managed Quickshell directory.
+
+Control Center -> Quick Actions -> Self-Heal runs the workstation's self-heal
+script in a terminal, where its progress, results, and any authorization prompts
+remain visible. Install an executable `dwm-self-heal` on PATH, or put the absolute
+path of the existing script in
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/self-heal.path` (one path, no shell
+arguments). `DWM_SELF_HEAL_SCRIPT` can override that path for the shell session.
+The action reports an unavailable script without changing the system; it does
+not download a script or elevate the Quickshell process.
 
 ### Navigation and Search
 

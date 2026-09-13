@@ -1,0 +1,214 @@
+#!/usr/bin/python3
+"""Replace named cursors held by existing X11 clients after a theme change."""
+
+import ctypes as c
+import os
+import sys
+from pathlib import Path
+
+
+def binding(lib, name, result, *args):
+    fn = getattr(lib, name)
+    fn.restype, fn.argtypes = result, args
+    return fn
+
+
+def reload_cursors(theme, size):
+    x11 = c.CDLL("libX11.so.6")
+    cursor = c.CDLL("libXcursor.so.1")
+    fixes = c.CDLL("libXfixes.so.3")
+    display = binding(x11, "XOpenDisplay", c.c_void_p, c.c_char_p)(None)
+    if not display:
+        raise RuntimeError("cannot open DISPLAY")
+    close = binding(x11, "XCloseDisplay", c.c_int, c.c_void_p)
+    retained = False
+    try:
+        major, minor = c.c_int(2), c.c_int(0)
+        query = binding(
+            fixes,
+            "XFixesQueryVersion",
+            c.c_int,
+            c.c_void_p,
+            c.POINTER(c.c_int),
+            c.POINTER(c.c_int),
+        )
+        if not query(display, c.byref(major), c.byref(minor)) or major.value < 2:
+            raise RuntimeError("XFixes 2 is required for live cursor updates")
+        binding(cursor, "XcursorSetTheme", c.c_int, c.c_void_p, c.c_char_p)(
+            display, theme.encode()
+        )
+        binding(cursor, "XcursorSetDefaultSize", c.c_int, c.c_void_p, c.c_int)(
+            display, size
+        )
+        load = binding(
+            cursor, "XcursorLibraryLoadCursor", c.c_ulong, c.c_void_p, c.c_char_p
+        )
+        change = binding(
+            fixes, "XFixesChangeCursorByName", None, c.c_void_p, c.c_ulong, c.c_char_p
+        )
+        free = binding(x11, "XFreeCursor", c.c_int, c.c_void_p, c.c_ulong)
+        paths = binding(cursor, "XcursorLibraryPath", c.c_char_p)().decode().split(":")
+        # Include aliases used by the previous theme, not only the new theme.
+        names = {"left_ptr", "default", "arrow", "xterm", "text", "hand2", "pointer"}
+        for directory in paths:
+            root = Path(os.path.expanduser(directory))
+            try:
+                for index, candidate in enumerate(root.iterdir()):
+                    if index >= 512:
+                        break
+                    try:
+                        for entry in (candidate / "cursors").iterdir():
+                            if len(names) >= 4096:
+                                break
+                            names.add(entry.name)
+                    except OSError:
+                        continue
+            except OSError:
+                continue
+        loaded = [(name, load(display, os.fsencode(name))) for name in sorted(names)]
+        loaded = [(name, handle) for name, handle in loaded if handle]
+        if not loaded:
+            raise RuntimeError("no cursors could be loaded")
+        root_cursor = load(display, b"left_ptr")
+        root = binding(x11, "XDefaultRootWindow", c.c_ulong, c.c_void_p)(display)
+        atom = binding(x11, "XInternAtom", c.c_ulong, c.c_void_p, c.c_char_p, c.c_int)(
+            display, b"_DWM_CURSOR_RELOAD_OWNER", 0
+        )
+        # Like xsetroot, retain one tiny owner resource so cursor images remain
+        # valid after disconnect, and retire the previous owner on every update.
+        binding(x11, "XGrabServer", c.c_int, c.c_void_p)(display)
+        previous = 0
+        actual_type, actual_format = c.c_ulong(), c.c_int()
+        count, remaining, data = c.c_ulong(), c.c_ulong(), c.POINTER(c.c_ubyte)()
+        get = binding(
+            x11,
+            "XGetWindowProperty",
+            c.c_int,
+            c.c_void_p,
+            c.c_ulong,
+            c.c_ulong,
+            c.c_long,
+            c.c_long,
+            c.c_int,
+            c.c_ulong,
+            c.POINTER(c.c_ulong),
+            c.POINTER(c.c_int),
+            c.POINTER(c.c_ulong),
+            c.POINTER(c.c_ulong),
+            c.POINTER(c.POINTER(c.c_ubyte)),
+        )
+        get(
+            display,
+            root,
+            atom,
+            0,
+            1,
+            0,
+            20,
+            c.byref(actual_type),
+            c.byref(actual_format),
+            c.byref(count),
+            c.byref(remaining),
+            c.byref(data),
+        )
+        if data:
+            if (
+                actual_type.value == 20
+                and actual_format.value == 32
+                and count.value == 1
+            ):
+                previous = c.cast(data, c.POINTER(c.c_ulong))[0]
+            binding(x11, "XFree", c.c_int, c.c_void_p)(data)
+        changed = 0
+        for name, handle in loaded:
+            if handle:
+                binding(
+                    fixes,
+                    "XFixesSetCursorName",
+                    None,
+                    c.c_void_p,
+                    c.c_ulong,
+                    c.c_char_p,
+                )(display, handle, os.fsencode(name))
+                change(display, handle, os.fsencode(name))
+                free(display, handle)
+                changed += 1
+        if not changed:
+            raise RuntimeError("no cursors could be loaded")
+        if root_cursor:
+            window = binding(x11, "XDefaultRootWindow", c.c_ulong, c.c_void_p)(display)
+            binding(x11, "XDefineCursor", c.c_int, c.c_void_p, c.c_ulong, c.c_ulong)(
+                display, window, root_cursor
+            )
+            free(display, root_cursor)
+        owner = c.c_ulong(
+            binding(
+                x11,
+                "XCreatePixmap",
+                c.c_ulong,
+                c.c_void_p,
+                c.c_ulong,
+                c.c_uint,
+                c.c_uint,
+                c.c_uint,
+            )(display, root, 1, 1, 1)
+        )
+        binding(
+            x11,
+            "XChangeProperty",
+            c.c_int,
+            c.c_void_p,
+            c.c_ulong,
+            c.c_ulong,
+            c.c_ulong,
+            c.c_int,
+            c.c_int,
+            c.c_void_p,
+            c.c_int,
+        )(display, root, atom, 20, 32, 0, c.byref(owner), 1)
+        if previous and previous != owner.value:
+            # The old owner may already have been removed by session cleanup.
+            # Drain our update first, then ignore only errors retiring that ID.
+            binding(x11, "XSync", c.c_int, c.c_void_p, c.c_int)(display, 0)
+            handler_type = c.CFUNCTYPE(c.c_int, c.c_void_p, c.c_void_p)
+            ignore_missing_owner = handler_type(lambda _display, _error: 0)
+            set_handler = binding(x11, "XSetErrorHandler", c.c_void_p, c.c_void_p)
+            old_handler = set_handler(c.cast(ignore_missing_owner, c.c_void_p))
+            try:
+                binding(x11, "XKillClient", c.c_int, c.c_void_p, c.c_ulong)(
+                    display, previous
+                )
+                binding(x11, "XSync", c.c_int, c.c_void_p, c.c_int)(display, 0)
+            finally:
+                set_handler(old_handler)
+        binding(x11, "XUngrabServer", c.c_int, c.c_void_p)(display)
+        binding(x11, "XSync", c.c_int, c.c_void_p, c.c_int)(display, 0)
+        retained = True
+        print(f"Updated {changed} named X11 cursors")
+    finally:
+        if retained:
+            binding(x11, "XSetCloseDownMode", c.c_int, c.c_void_p, c.c_int)(display, 1)
+        close(display)
+
+
+def main():
+    if (
+        len(sys.argv) != 3
+        or not sys.argv[1]
+        or "/" in sys.argv[1]
+        or len(sys.argv[1]) > 255
+        or sys.argv[1] in (".", "..")
+    ):
+        raise ValueError("usage: dwm-cursor-reload THEME SIZE")
+    size = int(sys.argv[2])
+    if not 1 <= size <= 256:
+        raise ValueError("cursor size must be between 1 and 256")
+    reload_cursors(sys.argv[1], size)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"dwm-cursor-reload: {error}", file=sys.stderr)
+        sys.exit(1)

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# This fixture verifies files, never the developer's live desktop services.
+export DISPLAY='' DBUS_SESSION_BUS_ADDRESS=''
+export DWM_APPEARANCE_TRANSACTIONAL=1
+
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -219,7 +223,8 @@ mkdir -p \
 printf '%s\n' '/* local config marker */' >"$TEST_REPO/config.h"
 printf '%s\n' '# existing xinitrc marker' >"$TEST_HOME/.xinitrc"
 printf '%s\n' '# existing hotkeys marker' >"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml"
-printf '%s\n' '# existing themes marker' >"$XDG_CONFIG_HOME/dwm-titus/themes.toml"
+cp "$TEST_REPO/config/themes.toml" "$XDG_CONFIG_HOME/dwm-titus/themes.toml"
+printf '%s\n' '# existing themes marker' >>"$XDG_CONFIG_HOME/dwm-titus/themes.toml"
 printf '%s\n' '# existing rules marker' >"$XDG_CONFIG_HOME/dwm-titus/window-rules.toml"
 printf '%s\n' '# existing picom marker' >"$XDG_CONFIG_HOME/picom/picom.conf"
 printf '%s\n' '<!-- existing Thunar actions marker -->' >"$XDG_CONFIG_HOME/Thunar/uca.xml"

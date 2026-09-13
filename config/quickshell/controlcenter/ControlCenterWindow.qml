@@ -226,7 +226,7 @@ ClickAwayPopup {
                     visible: root.pageMessage().length > 0
                     text: root.pageMessage()
                     color: Theme.textMuted
-                    elide: Text.ElideRight
+                    wrapMode: Text.Wrap
                 }
 
                 PanelSeparator {}

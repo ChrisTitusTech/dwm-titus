@@ -441,7 +441,10 @@ needed for a bounded scan or confirmed repair.
 ### 5.10 Desktop Settings Platform
 
 The managed Quickshell layer must grow into one discoverable Settings
-application. The application must use a hybrid integration model:
+application. Settings opens fullscreen on the selected monitor, matching
+System Health. Appearance scrolling stays within vertical content bounds;
+cursor changes update existing named X11 cursors and toolkit settings without
+requiring a reboot. The application must use a hybrid integration model:
 
 - Common desktop state and controls are presented through consistent
   Quickshell sections.

@@ -1,5 +1,8 @@
     // Runs inside an isolated copy of the production ShellRoot.
     property int responseStage: 0
+    property int scrollFrames: 0
+    property real scrollStartY: 0
+    property var scrollPane: null
     property var responsePanes: []
     property double responseStarted: Date.now()
     property var responseFirstPane: null
@@ -74,14 +77,48 @@
                 root.responseCheck(root.responsePaneItems().length === 9, "Closing retains visited panes");
                 settingsModel.openWindow();
                 root.responseStage++;
-            } else {
+            } else if (root.responseStage === 12) {
                 root.responseCheck(root.responsePaneItems().length === 9, "Reopening does not duplicate panes");
                 root.responseCheck(root.responsePaneItems().indexOf(root.responseFirstPane) >= 0, "First pane identity survives navigation and close");
                 root.responseCheck(root.responseFirstPane.profileName === "Unsaved display profile", "Unsaved profile name survives navigation and close");
                 root.responseCheck(root.responsePanes.every(item => root.responsePaneItems().indexOf(item) >= 0), "Every visited pane survives");
-                settingsModel.close();
-                console.info("Settings responsiveness: PASS");
-                Qt.quit();
+                root.responseCheck(settingsWindow.fullscreen, "Settings requests fullscreen like System Health");
+                settingsModel.selectSection("appearance");
+                root.scrollPane = root.responsePaneItems().find(item => item.objectName === "appearanceSettingsPane");
+                root.responseCheck(root.scrollPane !== undefined, "Appearance scroll surface is available");
+                root.responseStage = 13;
+            } else if (root.responseStage === 13) {
+                root.responseCheck(root.scrollPane.contentHeight > root.scrollPane.height, "Appearance has scrollable content");
+                root.scrollPane.contentY = 0;
+                root.scrollPane.flick(1200, 1600);
+                root.responseStage = 14;
+            } else if (root.responseStage >= 14 && root.responseStage <= 17) {
+                const pane = root.scrollPane;
+                root.responseCheck(Math.abs(pane.contentX) < 0.1, "Diagonal input must not shift Appearance horizontally");
+                root.responseCheck(pane.contentY >= -0.1 && pane.contentY <= Math.max(0, pane.contentHeight - pane.height) + 0.1,
+                    "Appearance must not overscroll and bounce back");
+                if (++root.scrollFrames < 20) return;
+                if (root.responseStage === 14) {
+                    pane.cancelFlick();
+                    root.scrollStartY = pane.contentY;
+                    pane.flick(-1200, -1600);
+                } else if (root.responseStage === 15) {
+                    root.responseCheck(pane.contentY > root.scrollStartY + 1, "An inward flick from the top must scroll down");
+                    pane.cancelFlick();
+                    pane.contentY = Math.max(0, pane.contentHeight - pane.height);
+                    pane.flick(-1200, -1600);
+                } else if (root.responseStage === 16) {
+                    pane.cancelFlick();
+                    root.scrollStartY = pane.contentY;
+                    pane.flick(1200, 1600);
+                } else {
+                    root.responseCheck(pane.contentY < root.scrollStartY - 1, "An inward flick from the bottom must scroll up");
+                    settingsModel.close();
+                    console.info("Settings responsiveness: PASS");
+                    Qt.quit();
+                }
+                root.scrollFrames = 0;
+                root.responseStage++;
             }
         }
     }

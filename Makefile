@@ -73,6 +73,7 @@ INSTALL_COMMANDS = \
 	scripts/power-management.sh \
 	scripts/protonrestart \
 	scripts/theme-apply.sh \
+	scripts/dwm-cursor-reload \
 	scripts/webapp-create \
 	scripts/webapp-launch \
 	scripts/xdg-enable-autostart.sh \
@@ -456,6 +457,9 @@ check-quickshell-notifications:
 check-quickshell-tray:
 	tests/test-quickshell-tray.sh
 
+check-cursor-reload:
+	xvfb-run -a /usr/bin/python3 tests/test-cursor-reload.py
+
 check-quickshell-health-xvfb:
 	tests/test-quickshell-health-xvfb.sh
 
@@ -502,7 +506,7 @@ check-phase5-optional-components:
 check-quickshell-settings-xvfb: all
 	tests/test-quickshell-settings-xvfb.sh
 	DWM_SETTINGS_TEST_SCREEN_GEOMETRY=1024x768x24 \
-		DWM_SETTINGS_EXPECTED_WINDOW_WIDTH=992 DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT=736 \
+		DWM_SETTINGS_EXPECTED_WINDOW_WIDTH=1024 DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT=768 \
 		DWM_SETTINGS_GEOMETRY_ONLY=1 DWM_SETTINGS_POWER_CPU_SECONDS=0 \
 		tests/test-quickshell-settings-xvfb.sh
 
@@ -650,6 +654,7 @@ check:
 	$(MAKE) check-quickshell-qml
 	$(MAKE) check-quickshell-notifications
 	$(MAKE) check-quickshell-tray
+	$(MAKE) check-cursor-reload
 	$(MAKE) check-system-health
 	$(MAKE) check-system-management
 	$(MAKE) check-quickshell-system-management
@@ -675,6 +680,7 @@ check:
 	$(MAKE) release-check
 
 .PHONY: clean all check check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
+	check-cursor-reload \
 	check-test-runner \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \

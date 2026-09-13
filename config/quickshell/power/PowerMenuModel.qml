@@ -32,7 +32,7 @@ Scope {
         },
         {
             "id": "logout",
-            "label": "Log Out",
+            "label": "Logout",
             "detail": "End the current session",
             "confirm": true,
             "available": true
