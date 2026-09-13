@@ -218,8 +218,8 @@ grep -Fqx $'integration\tqt\tavailable\tqt6ct\tQt applications use the supported
 grep -Fqx $'integration\tcursor\tavailable\tCapitaine-Cursors-White\tManaged cursor theme is installed and applied' <<<"$output"
 grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
 grep -Fqx $'integration\tkitty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
-grep -Fqx $'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract' <<<"$output"
-grep -Fqx $'error\tcompositor\tunsupported\tPicom theme mutation is not implemented' <<<"$output"
+grep -Fqx $'integration\tcompositor\tavailable\tpicom\tGlobal opacity is configured in the Compositor section' <<<"$output"
+if grep -Fq 'Picom theme mutation is not implemented' <<<"$output"; then exit 1; fi
 
 no_picom_bin=$work/no-picom-bin
 cp -a "$bin_dir" "$no_picom_bin"

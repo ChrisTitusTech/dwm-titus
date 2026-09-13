@@ -71,7 +71,7 @@ readonly -a required_colors=(
 )
 
 usage() {
-	printf 'usage: %s {snapshot|inventory|watch-inventory|watch-compositor}\n' "$0" >&2
+	printf 'usage: %s {snapshot|inventory|watch-inventory}\n' "$0" >&2
 }
 
 clean_field() {
@@ -1155,34 +1155,11 @@ normalize_x11_display() {
 	printf '%s\n' "$display"
 }
 
-picom_running_for_display() {
-	local current_display=${DISPLAY:-} proc_root=${DWM_APPEARANCE_PROC_ROOT:-/proc}
-	local pid environment_entry process_display
-	[[ -n $current_display ]] || return 1
-	current_display=$(normalize_x11_display "$current_display")
-	command -v pgrep >/dev/null 2>&1 || return 1
-	command -v id >/dev/null 2>&1 || return 1
-	command -v tr >/dev/null 2>&1 || return 1
-	while IFS= read -r pid; do
-		[[ $pid =~ ^[1-9][0-9]*$ && -r $proc_root/$pid/environ ]] || continue
-		while IFS= read -r environment_entry; do
-			[[ $environment_entry == DISPLAY=* ]] || continue
-			process_display=$(normalize_x11_display "${environment_entry#DISPLAY=}")
-			[[ $process_display == "$current_display" ]] && return 0
-		done < <(tr '\0' '\n' <"$proc_root/$pid/environ" 2>/dev/null)
-	done < <(pgrep -u "$(id -u)" -x picom 2>/dev/null || true)
-	return 1
-}
-
 emit_compositor_inventory() {
-	if ! command -v picom >/dev/null 2>&1; then
-		emit_inventory_selection compositor unavailable '' missing \
-			'Picom is optional and not installed'
-	elif picom_running_for_display; then
-		emit_inventory_selection compositor available picom running 'Picom is running'
+	if command -v picom >/dev/null 2>&1; then
+		emit_inventory_selection compositor available picom configuration 'Picom controls use its configuration file'
 	else
-		emit_inventory_selection compositor partial picom stopped \
-			'Picom is installed but not running on this display'
+		emit_inventory_selection compositor unavailable '' missing 'Picom is optional and not installed'
 	fi
 }
 
@@ -1491,41 +1468,6 @@ watch_inventory() {
 			((status != 0)) || status=1
 			return "$status"
 		fi
-	done
-}
-
-compositor_watch_cleanup() {
-	trap - EXIT HUP INT TERM
-	stop_parent_exit_watch
-	if [[ -n ${compositor_watch_work:-} ]]; then
-		rm -f -- "$compositor_watch_work/wait"
-		rmdir -- "$compositor_watch_work" 2>/dev/null || true
-	fi
-}
-
-watch_compositor() {
-	local state previous='' wait_fd
-	command -v pgrep >/dev/null 2>&1 || {
-		printf 'dwm-settings-appearance: pgrep is required for compositor watching\n' >&2
-		return 1
-	}
-	arm_parent_exit_watch
-	compositor_watch_work=$(mktemp -d "${TMPDIR:-/tmp}/dwm-appearance-compositor.XXXXXX")
-	mkfifo -- "$compositor_watch_work/wait"
-	exec {wait_fd}<>"$compositor_watch_work/wait"
-	trap compositor_watch_cleanup EXIT
-	trap 'exit 143' HUP INT TERM
-	while :; do
-		if picom_running_for_display; then
-			state=running
-		else
-			state=stopped
-		fi
-		if [[ $state != "$previous" ]]; then
-			printf 'compositor\t%s\n' "$state"
-			previous=$state
-		fi
-		read -r -t 1 -u "$wait_fd" _ || true
 	done
 }
 
@@ -2102,8 +2044,7 @@ emit_integrations() {
 	done
 
 	if command -v picom >/dev/null 2>&1; then
-		printf 'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract\n'
-		add_error compositor unsupported 'Picom theme mutation is not implemented'
+		printf 'integration\tcompositor\tavailable\tpicom\tGlobal opacity is configured in the Compositor section\n'
 	else
 		printf 'integration\tcompositor\tunavailable\tmissing\tPicom is optional and not installed\n'
 	fi
@@ -2172,13 +2113,7 @@ watch-inventory)
 	}
 	watch_inventory
 	;;
-watch-compositor)
-	[[ $# -eq 1 ]] || {
-		usage
-		exit 2
-	}
-	watch_compositor
-	;;
+
 -h | --help | help)
 	usage
 	;;

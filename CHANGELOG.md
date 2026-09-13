@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Replace unstable Picom Appearance checks with global opacity sliders,
+  configuration watching, and automatic GPU-aware backend selection with manual
+  overrides. Startup and restart now share the same display-scoped policy (#309).
+
 - Add Self-Heal to Quick Actions for launching a configured workstation repair
   script in a terminal with visible progress and authorization prompts (#306).
 - Simplify the Power dropdown to Reboot, Logout, Lock, Suspend, and Shutdown

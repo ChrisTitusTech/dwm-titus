@@ -431,14 +431,14 @@ grep -Fqx $'candidate\tgtk\tavailable\tAdwaita-dark\tAdwaita-dark\tBuilt-in GTK 
 grep -Fqx $'candidate\tgtk\tpartial\tLegacy\tLegacy\tTheme is missing GTK 3 or GTK 4 assets' \
 	<<<"$inventory"
 grep -Fqx $'selection\tqt\tavailable\tqt6ct\t\tCurrent Qt platform theme backend' <<<"$inventory"
-grep -Fqx $'selection\tcompositor\tavailable\tpicom\trunning\tPicom is running' <<<"$inventory"
+grep -Fqx $'selection\tcompositor\tavailable\tpicom\tconfiguration\tPicom controls use its configuration file' <<<"$inventory"
 
 printf 'DISPLAY=:99\0' >"$proc_root/4242/environ"
 other_display=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
 	"$helper" inventory)
-grep -Fqx $'selection\tcompositor\tpartial\tpicom\tstopped\tPicom is installed but not running on this display' \
+grep -Fqx $'selection\tcompositor\tavailable\tpicom\tconfiguration\tPicom controls use its configuration file' \
 	<<<"$other_display"
 printf 'DISPLAY=:55\0' >"$proc_root/4242/environ"
 
@@ -447,7 +447,7 @@ equivalent_display=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
 	"$helper" inventory)
-grep -Fqx $'selection\tcompositor\tavailable\tpicom\trunning\tPicom is running' \
+grep -Fqx $'selection\tcompositor\tavailable\tpicom\tconfiguration\tPicom controls use its configuration file' \
 	<<<"$equivalent_display"
 export DISPLAY=:55
 
@@ -870,52 +870,8 @@ bounded_inventory=$(HOME=$home PATH=$bounded_inventory_bin XDG_CONFIG_HOME=$conf
 grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tWallpaper candidate discovery did not complete' \
 	<<<"$bounded_inventory"
 
-compositor_owner_helper_pid_file=$work/compositor-owner-helper.pid
-HOME=$home PATH=$bin_dir TMPDIR=$work XDG_CONFIG_HOME=$config_home \
-	XDG_DATA_HOME=$data_root \
-	bash -c '"$1" watch-compositor >"$2" & helper_pid=$!; printf "%s\n" "$helper_pid" >"$3"; wait "$helper_pid"' \
-	bash "$helper" "$work/compositor-owner.out" "$compositor_owner_helper_pid_file" &
-compositor_owner_pid=$!
-for _ in $(seq 1 300); do
-	[[ -s $compositor_owner_helper_pid_file && -s $work/compositor-owner.out ]] && break
-	sleep 0.02
-done
-compositor_owner_helper_pid=$(<"$compositor_owner_helper_pid_file")
-compositor_owner_helper_parent_pid=$(awk '/^PPid:/ { print $2 }' \
-	"/proc/$compositor_owner_helper_pid/status")
-[[ $compositor_owner_helper_parent_pid == "$compositor_owner_pid" ]]
-kill -KILL "$compositor_owner_pid"
-wait "$compositor_owner_pid" 2>/dev/null || true
-for _ in $(seq 1 300); do
-	process_running "$compositor_owner_helper_pid" || break
-	sleep 0.02
-done
-if process_running "$compositor_owner_helper_pid"; then
-	printf 'Compositor watcher survived its owner process (helper %s)\n' \
-		"$compositor_owner_helper_pid" >&2
-	exit 1
-fi
-
-picom_state=$work/picom.state
-printf 'running\n' >"$picom_state"
-coproc COMPOSITOR_WATCH {
-	exec env HOME="$home" PATH="$bin_dir" TMPDIR="$work" XDG_CONFIG_HOME="$config_home" \
-		XDG_DATA_HOME="$data_root" DWM_TEST_PICOM_STATE="$picom_state" \
-		"$helper" watch-compositor
-}
-# shellcheck disable=SC2153 # Named coprocesses expose NAME_PID dynamically.
-compositor_watch_pid=$COMPOSITOR_WATCH_PID
-read -r -t 3 compositor_running <&"${COMPOSITOR_WATCH[0]}"
-[[ $compositor_running == $'compositor\trunning' ]]
-printf 'stopped\n' >"$picom_state"
-read -r -t 3 compositor_stopped <&"${COMPOSITOR_WATCH[0]}"
-[[ $compositor_stopped == $'compositor\tstopped' ]]
-kill "$compositor_watch_pid"
-wait "$compositor_watch_pid" 2>/dev/null || true
-if find "$work" -maxdepth 1 -type d -name 'dwm-appearance-compositor.*' -print -quit | grep -q .; then
-	printf 'Compositor watcher left its wait directory behind\n' >&2
-	exit 1
-fi
+# Picom process state no longer gates Appearance inventory. File watching is
+# covered by test-picom.py and the dedicated nested Picom runtime test.
 
 blocking_scan_bin=$work/blocking-scan-bin
 blocking_scan_pid_file=$work/blocking-scan-child.pid

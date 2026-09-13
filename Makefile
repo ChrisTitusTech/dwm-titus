@@ -55,6 +55,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-settings-input \
 	scripts/dwm-settings-appearance \
 	scripts/dwm-settings-font \
+	scripts/dwm-settings-picom \
 	scripts/dwm-settings-personalization \
 	scripts/dwm-settings-wallpaper \
 	scripts/dwm-settings-theme \
@@ -618,7 +619,13 @@ release-check: all
 		grep -Fqx 'Exec=${PREFIX}/bin/dwm'; \
 	echo "==> Release archive validated."
 
-check:
+check-picom:
+	$(call run_managed_test,python3 tests/test-picom.py)
+
+check-picom-xvfb:
+	$(call run_managed_test,python3 tests/test-picom-xvfb.py)
+
+check: check-picom check-picom-xvfb
 	$(MAKE) clean
 	$(MAKE) all
 	$(MAKE) check-shell
@@ -679,7 +686,7 @@ check:
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: clean all check check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
+.PHONY: clean all check check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-cursor-reload \
 	check-test-runner \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \

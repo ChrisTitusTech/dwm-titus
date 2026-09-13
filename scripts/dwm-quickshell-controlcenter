@@ -1549,15 +1549,14 @@ keybinds() {
 	' "$(config_file hotkeys.toml)"
 }
 
+picom_action() {
+	picom_helper=$(command -v dwm-settings-picom 2>/dev/null || printf '%s' "$repo_dir/scripts/dwm-settings-picom")
+	"$picom_helper" "$1" >/dev/null
+}
+
 restart_picom() {
-	pkill -x picom 2>/dev/null || true
-	if command -v picom >/dev/null 2>&1; then
-		launch_background picom
-		notify "Picom restarted"
-	else
-		printf 'picom is not installed\n' >&2
-		return 1
-	fi
+	picom_action restart || return 1
+	notify "Picom restarted"
 }
 
 restart_quickshell() {
@@ -1632,12 +1631,7 @@ reload_wallpaper() {
 }
 
 toggle_compositor() {
-	if pgrep -x picom >/dev/null 2>&1; then
-		pkill -x picom
-		notify "Compositor stopped"
-	else
-		restart_picom
-	fi
+	picom_action toggle
 }
 
 restart_networkmanager() {

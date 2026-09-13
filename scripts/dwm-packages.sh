@@ -38,7 +38,7 @@ dwm_packages() {
 		# fedora/updates repositories. It is required and belongs in the strict
 		# desktop transaction; the Fedora package-map check proves availability.
 		printf '%s\n' \
-			quickshell picom feh dex-autostart mate-polkit xsettingsd \
+			quickshell picom python3 feh dex-autostart mate-polkit xsettingsd \
 			alsa-utils brightnessctl dbus-tools inotify-tools jq pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
 			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk

@@ -330,7 +330,6 @@ resume_theme_preview() {
 	fi
 }
 
-PICOM_BACKEND=${PICOM_BACKEND:-xrender}
 WM_GRAPHICAL_SESSION=wm-graphical-session.service
 
 # ── Phase 1: Blocking ──────────────────────────────────────────────────────────
@@ -508,7 +507,10 @@ if command -v feh >/dev/null 2>&1; then
 fi
 
 # Compositor
-start_detached_once picom picom --backend "$PICOM_BACKEND"
+if command -v picom >/dev/null 2>&1; then
+	picom_helper=$(command -v dwm-settings-picom 2>/dev/null || printf '%s' "${0%/*}/dwm-settings-picom")
+	"$picom_helper" start >/dev/null 2>&1 &
+fi
 
 # dwm root-window status publisher for Quickshell's event-driven panel.
 start_detached_display_command_once dwm-status

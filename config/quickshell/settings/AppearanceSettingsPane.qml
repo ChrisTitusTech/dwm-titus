@@ -1388,6 +1388,8 @@ Flickable {
             }
         }
 
+        PicomSettingsPane { model: root.appearanceModel.picom }
+
         SectionLabel { label: "Application status" }
 
         Repeater {

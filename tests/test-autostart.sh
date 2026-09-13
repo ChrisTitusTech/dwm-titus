@@ -224,6 +224,13 @@ for name in feh picom dwm-status dwm-lock-watch light-locker dex dex-autostart; 
 	make_mock_command "$name"
 done
 
+cat >"$work/bin/dwm-settings-picom" <<'EOF'
+#!/bin/sh
+[ "$1" = start ] || exit 1
+[ -f "${TEST_STATE:?}/picom.running" ] || picom
+EOF
+chmod +x "$work/bin/dwm-settings-picom"
+
 # The production status publisher is a Bash script, so its comm is "bash"
 # rather than "dwm-status". Keep a real shebang process alive to exercise the
 # /proc command-path and DISPLAY guard instead of the old pgrep-name mock.
