@@ -56,16 +56,25 @@ jobs:
       - name: Validate Fedora package map
         run: scripts/run-tests make check-fedora-packages
 
+      - name: Prepare unprivileged desktop validation
+        run: |
+          install -d -m 0755 /home/dwm-ci
+          chown nobody:nobody /home/dwm-ci
+          chown -R nobody:nobody "$GITHUB_WORKSPACE" "$DWM_TEST_TMP_ROOT"
+
       - name: Validate
-        run: scripts/run-tests
+        run: runuser -u nobody -- env HOME=/home/dwm-ci scripts/run-tests
 
       - name: Validate privileged display helper security
         env:
           DWM_SECURITY_CONTAINER: "1"
         run: scripts/run-tests tests/test-settings-display-security.sh
 
+      - name: Validate privileged desktop helper security
+        run: scripts/run-tests /usr/bin/python3 tests/test-desktop-update-security.py
+
       - name: Validate nested X11 runtime
-        run: scripts/run-tests make check-xvfb-runtime
+        run: runuser -u nobody -- env HOME=/home/dwm-ci scripts/run-tests make check-xvfb-runtime
 
   clang-build:
     if: github.event_name == 'workflow_dispatch'
