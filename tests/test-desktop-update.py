@@ -133,6 +133,19 @@ class DesktopUpdate(unittest.TestCase):
         self.assertIn("source installer", value["detail"])
         self.command.assert_not_called()
 
+    def test_untrusted_installed_worker_blocks_before_offering_repair(self):
+        worker = self.base / "bin/dwm-desktop-update"
+        worker.write_text("worker")
+        worker.chmod(0o755)
+        self.manifest["files"][str(worker)] = update.fingerprint(worker)
+        if os.geteuid() == 0:
+            os.chown(worker, 65534, 65534)
+        value = update.check(True)
+        self.assertEqual(value["state"], "blocked")
+        self.assertFalse(value["canUpdate"])
+        self.assertIn("updater requires the source installer", value["detail"])
+        self.command.assert_not_called()
+
     def test_unsafe_system_drift_blocks_before_network_or_authorization(self):
         for mode in (0o4755, 0o2755, 0o775):
             self.binary.chmod(mode)
@@ -268,6 +281,13 @@ class DesktopUpdate(unittest.TestCase):
         self.assertEqual(value["state"], "restart-required")
         self.assertEqual(self.command.call_args.args[0][-2:], ["complete", operation])
         self.assertEqual((self.config / "quickshell/file").read_text(), "original")
+        update.write_json(directory / "completion.json", {"recovered": True})
+        update.write_json(self.state / "status.json", {**value, "state": "interrupted"})
+        with patch.object(update, "trusted_installation"):
+            value = update.recover(operation)
+        self.assertEqual(value["state"], "failed")
+        self.assertIn("Previous desktop files restored", value["detail"])
+        self.assertFalse(value["canUpdate"])
 
     def test_changed_confirmation_does_not_launch(self):
         self.command.return_value = "b" * 40 + "\trefs/heads/main"

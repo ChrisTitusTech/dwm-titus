@@ -308,6 +308,11 @@ def unsupported_system_drift(manifest):
             trusted_directory(path.parent)
         except (OSError, RuntimeError):
             return "Managed system directories require the source installer: " + str(path.parent)
+        if path == Path(manifest["layout"]["prefix"]) / "bin/dwm-desktop-update":
+            try:
+                trusted_file(path, executable=True)
+            except (OSError, RuntimeError):
+                return "The installed desktop updater requires the source installer: " + name
         if not os.path.lexists(path):
             continue
         record = fingerprint(path)
@@ -777,10 +782,14 @@ def recover(operation):
             raise RuntimeError("Only the interrupted current operation can be recovered")
         directory = state / "operations" / operation
         if (directory / "completion.json").exists():
+            completion = read_json(directory / "completion.json")
             preview = read_json(directory / "preview.json")
             trusted_installation(Path(preview["manifest"]))
             prefix = Path(preview["manifest"]).parents[2]
             run(["/usr/bin/pkexec", prefix / "libexec/dwm-titus/dwm-desktop-update-root", "complete", operation], timeout=60, capture=False)
+            if completion.get("recovered") is True:
+                return save_status(state, value, state="failed", canUpdate=False, restart="session", percent=-1,
+                                   detail="Previous desktop files restored. Log out and back in, then check again.")
             return save_status(state, value, state="restart-required", restart="session", percent=100,
                                detail="Desktop files are ready. Log out and back in, then check again.")
         receipts = read_json(directory / "receipt-backup.json") if (directory / "receipt-backup.json").exists() else {}
