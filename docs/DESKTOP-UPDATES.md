@@ -143,3 +143,9 @@ and verifies the resulting installation and preserved personal configuration.
 It does not contact upstream or modify the host. A separate
 `scripts/run-tests python3 tests/test-desktop-update-service.py` checks the real
 user-service handoff on a host with an available user systemd manager.
+
+Source installation refuses to replace system files while a desktop update or
+recovery transaction is unfinished. Complete recovery as the user who started
+the update before running the source installer. Managed data, Quickshell, and
+recovery directories must be separate, including after resolving symlinks.
+Incomplete or invalid user receipts never count as an up-to-date installation.

@@ -69,6 +69,26 @@ class Security(unittest.TestCase):
         return self.command("apply", str(self.bundle), generation, self.operation,
                             hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40, uid=uid)
 
+    def test_source_install_guard_holds_shared_root_lock(self):
+        functions = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))
+        guard = functions["guard_system_install"]
+        probe = self.prefix / "lock-probe.py"
+        probe.write_text("""import fcntl
+with open('/var/lib/dwm-titus/desktop-updates/lock', 'a') as lock:
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise SystemExit(17)
+raise SystemExit(1)
+""")
+        self.assertEqual(guard("", ["/usr/bin/python3", str(probe)]), 17)
+        with Path("/var/lib/dwm-titus/desktop-updates/lock").open("a") as lock:
+            import fcntl
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(RuntimeError, "active"):
+                guard("", ["/usr/bin/true"])
+            self.assertEqual(guard(str(self.prefix / "stage"), ["/usr/bin/true"]), 0)
+
     def test_apply_and_rollback_restore_verified_original(self):
         self.archive()
         result = self.apply()
@@ -175,9 +195,17 @@ class Security(unittest.TestCase):
         (self.prefix / ".desktop-source.json").write_text(json.dumps({"revision": "a" * 40}))
         state = self.prefix / "state/dwm-titus/desktop-update"
         state.mkdir(parents=True)
-        (state / "installed.json").write_text(json.dumps({"revision": "a" * 40, "trees": {}}))
+        roots = [self.prefix / "config/quickshell", self.prefix / "data/dwm-titus/config", self.prefix / "data/dwm-titus/scripts"]
+        fingerprints = runpy.run_path(script)["tree_manifest"]
+        for root in roots:
+            root.mkdir(parents=True)
+            (root / "file").write_text("managed")
+        (state / "installed.json").write_text(json.dumps({"schema": 1, "revision": "a" * 40,
+            "checkout": str(self.prefix), "trees": {str(root): fingerprints(root) for root in roots}}))
         result = subprocess.run([sys.executable, script, "verify-receipts", str(self.prefix), str(self.manifest_path)],
-                                env={**os.environ, "XDG_STATE_HOME": str(self.prefix / "state")}, capture_output=True, text=True)
+                                env={**os.environ, "XDG_STATE_HOME": str(self.prefix / "state"),
+                                     "XDG_CONFIG_HOME": str(self.prefix / "config"), "XDG_DATA_HOME": str(self.prefix / "data")},
+                                capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_matching_user_owned_system_file_is_reinstalled_as_root(self):

@@ -41,6 +41,21 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     user("git", "add", ".")
     user("git", "commit", "-m", "Baseline desktop")
     user("make", "clean", "all")
+    journal = Path("/var/lib/dwm-titus/desktop-updates") / ("e" * 32) / "journal.json"
+    previous_umask = os.umask(0o022)
+    journal.parent.mkdir(parents=True, mode=0o700)
+    os.umask(previous_umask)
+    try:
+        for pending in ("applying", "applied", "rolling-back", "rolled-back-pending"):
+            journal.write_text(json.dumps({"state": pending, "uid": uid}))
+            rejected = subprocess.run(["make", "install-system", "PREFIX=" + str(prefix)], cwd=source,
+                                      capture_output=True, text=True)
+            assert rejected.returncode != 0 and "before source installation" in rejected.stderr, rejected.stderr
+            assert not prefix.exists(), "Blocked source installation replaced system files"
+        print("Source installation refuses unfinished update journals before writing files: PASS", flush=True)
+    finally:
+        journal.unlink()
+        journal.parent.rmdir()
     subprocess.run(["make", "install-system", "PREFIX=" + str(prefix)], cwd=source, check=True)
     config = Path("/home/desktop-test/.config")
     data = Path("/home/desktop-test/.local/share/dwm-titus")

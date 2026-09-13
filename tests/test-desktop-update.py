@@ -52,7 +52,7 @@ class DesktopUpdate(unittest.TestCase):
                          "files": {str(self.binary): update.fingerprint(self.binary)}}
         self.manifest_path = self.base / "manifest.json"
         update.write_json(self.manifest_path, self.manifest)
-        update.write_json(self.state / "installed.json", {"revision": "a" * 40, "checkout": str(self.data),
+        update.write_json(self.state / "installed.json", {"schema": 1, "revision": "a" * 40, "checkout": str(self.data),
             "trees": {str(self.config / "quickshell"): update.tree_manifest(self.config / "quickshell"),
                       str(self.data / "config"): update.tree_manifest(self.data / "config"),
                       str(self.data / "scripts"): update.tree_manifest(self.data / "scripts")}})
@@ -107,6 +107,56 @@ class DesktopUpdate(unittest.TestCase):
     def test_missing_user_receipt_requires_repair(self):
         (self.state / "installed.json").unlink()
         self.assertEqual(update.check(True)["state"], "drift")
+
+    def test_incomplete_receipts_never_verify_or_report_current(self):
+        original = update.read_json(self.state / "installed.json")
+        without_checkout = copy.deepcopy(original)
+        without_checkout["checkout"] = ""
+        update.write_json(self.state / "installed.json", without_checkout)
+        self.assertEqual(update.check(True)["state"], "current")
+        variants = []
+        for root in original["trees"]:
+            value = copy.deepcopy(original)
+            del value["trees"][root]
+            variants.append(value)
+        for key, value in (("schema", 99), ("trees", {}), ("trees", [])):
+            variant = copy.deepcopy(original)
+            variant[key] = value
+            variants.append(variant)
+        for receipt in variants:
+            with self.subTest(receipt=receipt):
+                update.write_json(self.state / "installed.json", receipt)
+                self.assertNotEqual(update.check(True)["state"], "current")
+                with patch.object(update, "source_revision", return_value="a" * 40):
+                    with self.assertRaises(RuntimeError):
+                        update.verify_receipts(self.data, self.manifest_path)
+
+    def test_unknown_source_revision_remains_bootstrappable(self):
+        receipt = update.read_json(self.state / "installed.json")
+        receipt["revision"] = "unknown"
+        self.manifest["revision"] = "unknown"
+        update.write_json(self.state / "installed.json", receipt)
+        update.write_json(self.manifest_path, self.manifest)
+        value = update.check(True)
+        self.assertEqual(value["state"], "available")
+        self.assertTrue(value["canUpdate"])
+        with patch.object(update, "source_revision", return_value="unknown"):
+            update.verify_receipts(self.data, self.manifest_path)
+
+    def test_overlapping_targets_rejected_before_launch_or_staging(self):
+        for config, data, state in ((self.data, self.data, self.state),
+                                    (self.config, self.config / "quickshell/data", self.state),
+                                    (self.config, self.data, self.data / "state")):
+            with self.subTest(config=config, data=data, state=state), \
+                    patch.object(update, "paths", return_value=(config, data, state)):
+                self.command.reset_mock()
+                with self.assertRaisesRegex(RuntimeError, "must not overlap"):
+                    update.launch("a" * 40)
+                with self.assertRaisesRegex(RuntimeError, "must not overlap"):
+                    update.prepare_user(self.base, "e" * 32)
+                self.command.assert_not_called()
+        with patch.object(update, "paths", return_value=(self.data, self.data, self.state)):
+            self.assertEqual(update.check(True)["state"], "failed")
 
     def test_missing_system_directory_blocks_automatic_repair(self):
         self.binary.unlink()

@@ -136,6 +136,65 @@ def paths():
     return config, data, state
 
 
+def validate_update_paths():
+    config, data, state = paths()
+    targets = [data.resolve(), (config / "quickshell").resolve(), state.resolve()]
+    for index, left in enumerate(targets):
+        for right in targets[index + 1:]:
+            if left == right or left in right.parents or right in left.parents:
+                raise RuntimeError("Managed update and recovery directories must not overlap: " + str(left) + " and " + str(right))
+
+
+def user_receipt_valid(user):
+    config, data, _ = paths()
+    roots = {str(config / "quickshell"), str(data / "config"), str(data / "scripts")}
+    if (not isinstance(user, dict) or user.get("schema") != 1
+            or not isinstance(user.get("revision"), str)
+            or (user["revision"] != "unknown" and not re.fullmatch(r"[0-9a-f]{40}", user["revision"]))
+            or not isinstance(user.get("checkout"), str)
+            or (user["checkout"] and not Path(user["checkout"]).is_absolute())
+            or not isinstance(user.get("trees"), dict) or set(user["trees"]) != roots):
+        return False
+    for files in user["trees"].values():
+        if not isinstance(files, dict) or not files:
+            return False
+        for name, record in files.items():
+            if (not isinstance(name, str) or not name or Path(name).is_absolute() or ".." in Path(name).parts
+                    or not isinstance(record, dict)):
+                return False
+            if set(record) == {"link"} and isinstance(record["link"], str):
+                continue
+            if (set(record) != {"sha256", "mode"} or not isinstance(record["sha256"], str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", record["sha256"])
+                    or type(record["mode"]) is not int or not 0 <= record["mode"] <= 0o7777):
+                return False
+    return True
+
+
+def guard_system_install(destdir, command):
+    if not command:
+        raise RuntimeError("Missing source installation command")
+    if destdir and Path(destdir).resolve() != Path("/"):
+        return subprocess.run(command).returncode
+    state = Path("/var/lib/dwm-titus/desktop-updates")
+    previous_umask = os.umask(0o022)
+    try:
+        state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    finally:
+        os.umask(previous_umask)
+    trusted_directory(state)
+    with (state / "lock").open("a") as stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError("Desktop update is active; finish or recover it before source installation") from error
+        for path in state.glob("*/journal.json"):
+            journal = read_json(path)
+            if not isinstance(journal, dict) or journal.get("state") not in ("complete", "rolled-back"):
+                raise RuntimeError("Recover desktop update " + path.parent.name + " as its initiating user before source installation")
+        return subprocess.run(command, pass_fds=(stream.fileno(),)).returncode
+
+
 def installation():
     candidates = [Path(__file__).absolute().parent.parent, Path("/usr/local"), Path("/usr")]
     for prefix in candidates:
@@ -324,6 +383,8 @@ def unsupported_system_drift(manifest):
 
 def drift(manifest, user, check_ownership=True):
     changes = []
+    if not user_receipt_valid(user):
+        return ["User installation receipt is incomplete or invalid; managed files require syncing"]
     for name, expected in manifest["files"].items():
         try:
             matches = fingerprint(Path(name)) == expected and (not check_ownership or root_owned(Path(name)))
@@ -369,10 +430,13 @@ def check_bounded(force=False):
             return value
         save_status(state, value, state="checking", detail="Checking desktop files and upstream main...", canUpdate=False, percent=-1)
         try:
+            validate_update_paths()
             if not re.search(r'^ID=["\']?fedora["\']?$', Path("/etc/os-release").read_text(), re.M):
                 raise RuntimeError("Desktop updates support Fedora only")
             manifest_path, manifest = installation()
             user = read_json(state / "installed.json") if (state / "installed.json").exists() else {}
+            if not isinstance(user, dict) or (user and not user_receipt_valid(user)):
+                raise RuntimeError("Invalid or incomplete user installation receipt; run the source installer")
             value["installed"] = manifest["revision"]
             value["manifest"] = str(manifest_path)
             value["generation"] = digest(manifest_path)
@@ -499,6 +563,7 @@ def installed_worker(manifest_path):
 
 
 def launch(expected):
+    validate_update_paths()
     if not re.fullmatch(r"[0-9a-f]{40}", expected):
         raise RuntimeError("Invalid desktop revision")
     _, _, state = paths()
@@ -548,6 +613,7 @@ def copy_private_tree(source, destination, symlinks=True):
 
 
 def prepare_user(source, operation):
+    validate_update_paths()
     config, data, _ = paths()
     targets = [data, config / "quickshell"]
     prepared = []
@@ -640,6 +706,7 @@ def worker(operation):
             source = directory / "source"
             stage = directory / "stage"
             try:
+                validate_update_paths()
                 trusted_installation(Path(preview["manifest"]))
                 if digest(Path(preview["manifest"])) != preview["generation"]:
                     raise RuntimeError("Installed files changed since preview; check again")
@@ -877,6 +944,9 @@ def recover(operation):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    guard = commands.add_parser("guard-system-install")
+    guard.add_argument("--destdir", default="")
+    guard.add_argument("install_command", nargs=argparse.REMAINDER)
     system = commands.add_parser("record-system")
     system.add_argument("--source-dir", required=True)
     system.add_argument("--destdir", default="")
@@ -901,6 +971,9 @@ def main():
     trust = commands.add_parser("verify-trust")
     trust.add_argument("manifest")
     args = parser.parse_args()
+    if args.command == "guard-system-install":
+        command = args.install_command
+        return guard_system_install(args.destdir, command[1:] if command and command[0] == "--" else command)
     if args.command == "record-system":
         record_system(args)
         return 0
