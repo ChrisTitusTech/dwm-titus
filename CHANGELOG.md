@@ -6,6 +6,14 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Added
+
+- Add Desktop updates at the top of System Settings, with upstream and installed
+  file checks, confirmed installation, persistent progress, and recovery copies.
+  Build source updates without elevation and restrict authorized system-file
+  replacement to the installed manifest. Preserve personal configuration and
+  distinguish installed updates from changes requiring a new desktop session.
+
 ### Fixed
 
 - Keep imported Picom includes available after failed activation, allow imports

@@ -208,9 +208,17 @@ ShellRoot {
 
     SystemManagementModel {
         id: systemManagementModel
+        desktopUpdateBusy: desktopUpdateModel.updateOwned
         healthModel: systemHealthModel
         targetScreen: settingsWindow.screen || settingsModel.targetScreen || root.activePanelScreen
         onHealthOpened: settingsModel.close()
+    }
+
+    DesktopUpdateModel {
+        id: desktopUpdateModel
+        settingsVisible: settingsModel.visible && settingsModel.selectedSectionId === "system"
+        systemBusy: systemManagementModel.operation.busy || systemManagementModel.activeOperation !== null
+            || systemManagementModel.updateConfirmation !== null
     }
 
     SettingsModel {
@@ -1203,5 +1211,6 @@ ShellRoot {
         notificationModel: notificationModel
         panelSettingsModel: panelSettingsModel
         systemManagementModel: systemManagementModel
+        desktopUpdateModel: desktopUpdateModel
     }
 }

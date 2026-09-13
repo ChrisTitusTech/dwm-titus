@@ -1,0 +1,713 @@
+#!/usr/bin/python3
+"""Desktop source updates, installation receipts, and durable GUI operations."""
+import argparse
+import contextlib
+import ctypes
+import fcntl
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import uuid
+
+SOURCE = "https://github.com/ChrisTitusTech/dwm-titus.git"
+UNIT = "dwm-desktop-update.service"
+ACTIVE = {"starting", "downloading", "dependencies", "building", "backing-up", "installing", "verifying", "activating"}
+
+
+class CommandFailure(RuntimeError):
+    def __init__(self, message, returncode):
+        super().__init__(message)
+        self.returncode = returncode
+
+
+def run(args, cwd=None, timeout=60, capture=True):
+    result = subprocess.run([str(arg) for arg in args], cwd=cwd, timeout=timeout,
+                            stdout=subprocess.PIPE if capture else None,
+                            stderr=subprocess.PIPE if capture else None, text=True,
+                            env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"})
+    if result.returncode:
+        detail = (result.stderr or result.stdout or "See the update log").strip()[-2000:]
+        raise CommandFailure(str(args[0]) + " failed: " + detail, result.returncode)
+    return result.stdout.strip() if capture else ""
+
+
+def digest(path):
+    with Path(path).open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def write_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        stream.write((json.dumps(value, sort_keys=True) + "\n").encode())
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def read_json(path, limit=8 * 1024 * 1024):
+    if path.stat().st_size > limit:
+        raise RuntimeError("Oversized desktop update record")
+    return json.loads(path.read_text())
+
+
+def fingerprint(path):
+    info = path.lstat()
+    if stat.S_ISLNK(info.st_mode):
+        return {"link": os.readlink(path)}
+    if not stat.S_ISREG(info.st_mode):
+        raise RuntimeError("Unsupported managed file: " + str(path))
+    return {"sha256": digest(path), "mode": stat.S_IMODE(info.st_mode)}
+
+
+def tree_manifest(path):
+    return {str(item.relative_to(path)): fingerprint(item)
+            for item in sorted(path.rglob("*")) if item.is_symlink() or item.is_file()}
+
+
+def source_revision(source):
+    marker = source / ".desktop-source.json"
+    if marker.is_file():
+        return read_json(marker)["revision"]
+    try:
+        return run(["git", "-c", "safe.directory=" + str(source), "-C", source, "rev-parse", "HEAD"])
+    except RuntimeError:
+        return "unknown"
+
+
+def paths():
+    home = Path.home()
+    config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config")))
+    data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))) / "dwm-titus"
+    state = Path(os.environ.get("XDG_STATE_HOME", str(home / ".local/state"))) / "dwm-titus/desktop-update"
+    for path in (config, data, state):
+        if not path.is_absolute() or path == Path("/"):
+            raise RuntimeError("Desktop update paths must be absolute and non-root")
+    return config, data, state
+
+
+def installation():
+    candidates = [Path(__file__).absolute().parent.parent, Path("/usr/local"), Path("/usr")]
+    for prefix in candidates:
+        path = prefix / "share/dwm-titus/desktop-install.json"
+        if path.is_file():
+            trusted_installation(path)
+            return path, read_json(path)
+    raise RuntimeError("Desktop update support is not installed. Run the documented source installer once, then reopen Settings.")
+
+
+def trusted_file(path, executable=False):
+    path = Path(path)
+    if not path.is_absolute() or path.resolve() != path:
+        raise RuntimeError("Desktop installation uses an unsafe path")
+    info = path.lstat()
+    if info.st_uid != 0 or info.st_mode & 0o022 or not stat.S_ISREG(info.st_mode) or (executable and not info.st_mode & 0o111):
+        raise RuntimeError("Desktop update support must be root-owned and non-writable")
+    for parent in path.parents:
+        info = parent.lstat()
+        if info.st_uid != 0 or info.st_mode & 0o022 or not stat.S_ISDIR(info.st_mode):
+            raise RuntimeError("Desktop installation has an untrusted parent directory")
+
+
+def trusted_installation(manifest_path):
+    manifest_path = Path(manifest_path)
+    trusted_file(manifest_path)
+    manifest = read_json(manifest_path)
+    prefix = Path(manifest["layout"]["prefix"])
+    if manifest_path != prefix / "share/dwm-titus/desktop-install.json" or manifest["source"] != SOURCE:
+        raise RuntimeError("Desktop installation identity does not match its trusted manifest")
+    trusted_file(prefix / "libexec/dwm-titus/dwm-desktop-update-root", executable=True)
+
+
+def record_system(args):
+    source = Path(args.source_dir).resolve()
+    stage = Path(args.destdir) if args.destdir else Path("/")
+    layout = {key: str(Path(getattr(args, key)).absolute()) for key in ("prefix", "manprefix", "xsessions", "datadir")}
+    prefix = Path(layout["prefix"])
+    files = [prefix / "bin" / name for name in ["dwm", *args.commands]]
+    files += [prefix / "libexec/dwm-titus" / name for name in args.helpers]
+    files += [Path(layout["manprefix"]) / "man1/dwm.1", Path(layout["xsessions"]) / "dwm.desktop",
+              Path(layout["datadir"]) / "licenses/dwm-titus/capitaine-cursors/COPYING"]
+    for theme in sorted((source / "assets/cursors").glob("Capitaine-Cursors*")):
+        files += [Path(layout["datadir"]) / "icons" / theme.name / path.relative_to(theme)
+                  for path in theme.rglob("*") if path.is_file() or path.is_symlink()]
+    manifest = {"schema": 1, "source": SOURCE, "revision": source_revision(source),
+                "layout": layout, "packages": sorted(set(args.packages)),
+                "files": {str(path): fingerprint(stage / str(path).lstrip("/")) for path in sorted(files)}}
+    target = stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/")
+    write_json(target, manifest)
+    os.chmod(target, 0o644)
+
+
+def record_user(source):
+    config, data, state = paths()
+    source = Path(source).resolve()
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    manifest = {"schema": 1, "revision": source_revision(source), "checkout": str(source),
+                "trees": {str(config / "quickshell"): tree_manifest(config / "quickshell"),
+                          str(data / "config"): tree_manifest(data / "config"),
+                          str(data / "scripts"): tree_manifest(data / "scripts")}}
+    if (source / "config.h").is_file():
+        shutil.copyfile(source / "config.h", state / "build-config.h")
+    write_json(state / "installed.json", manifest)
+
+
+def verify_receipts(source, manifest_path):
+    manifest = read_json(Path(manifest_path))
+    user = read_json(paths()[2] / "installed.json")
+    revision = source_revision(Path(source).resolve())
+    if manifest["revision"] != revision or user["revision"] != revision or drift(manifest, user):
+        raise RuntimeError("Installed desktop receipts do not match the checkout")
+    print("Managed installation receipts match the checkout.")
+
+
+@contextlib.contextmanager
+def locked(state, wait=False):
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (state / "lock").open("a") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+        yield
+
+
+def status_default():
+    return {"schema": 1, "state": "unknown", "detail": "Check for desktop updates", "canUpdate": False,
+            "installed": "unknown", "available": "unknown", "checkedAt": 0, "percent": -1,
+            "packages": [], "operation": "", "log": "", "backup": "", "restart": "none"}
+
+
+def status_read(state):
+    try:
+        value = read_json(state / "status.json")
+        if value.get("schema") != 1:
+            raise ValueError("Unknown status schema")
+        return {**status_default(), **value}
+    except FileNotFoundError:
+        return status_default()
+
+
+def save_status(state_dir, value, **changes):
+    value.update(changes)
+    write_json(state_dir / "status.json", value)
+    return value
+
+
+def service_active():
+    result = subprocess.run(["systemctl", "--user", "show", UNIT, "--property=ActiveState", "--value"],
+                            capture_output=True, text=True, timeout=10)
+    return result.returncode == 0 and result.stdout.strip() in ("active", "activating", "deactivating", "reloading")
+
+
+def recover_status(state):
+    value = status_read(state)
+    if value["state"] == "checking":
+        save_status(state, value, state="failed", detail="The previous check was interrupted. Check again.", canUpdate=False)
+    if value["state"] in ACTIVE and not service_active():
+        save_status(state, value, state="interrupted", percent=-1, canUpdate=False,
+                    detail="The desktop update was interrupted. Review the saved log and recovery instructions before retrying.")
+    return value
+
+
+def checkout_reason(path):
+    if not os.path.lexists(path / ".git"):
+        return ""
+    if not (path / ".git").is_dir() or (path / ".git").is_symlink():
+        return "This installation uses a Git worktree. Update it with the source installer."
+    if run(["git", "-C", path, "branch", "--show-current"]) != "main":
+        return "Local source is on a development branch. Switch to a clean main checkout before updating."
+    if run(["git", "-C", path, "status", "--porcelain", "--untracked-files=no"]):
+        return "Local source has changes. Save or resolve them before updating."
+    return ""
+
+
+def drift(manifest, user):
+    changes = []
+    for name, expected in manifest["files"].items():
+        try:
+            matches = fingerprint(Path(name)) == expected
+        except OSError:
+            matches = False
+        if not matches:
+            changes.append(name)
+    for name, expected in user.get("trees", {}).items():
+        try:
+            matches = tree_manifest(Path(name)) == expected and Path(name).is_dir()
+        except OSError:
+            matches = False
+        if not matches:
+            changes.append(name)
+    return changes
+
+
+def missing_packages(packages):
+    return [package for package in packages if subprocess.run(
+        ["rpm", "-q", "--quiet", "--", package], stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, timeout=10).returncode != 0]
+
+
+def check(force=False):
+    config, data, state = paths()
+    with locked(state):
+        value = recover_status(state)
+        if value["state"] in ACTIVE or value["state"] == "interrupted":
+            return value
+        if not force and time.time() - value["checkedAt"] < 300:
+            return value
+        save_status(state, value, state="checking", detail="Checking desktop files and upstream main...", canUpdate=False, percent=-1)
+        try:
+            if not re.search(r'^ID=["\']?fedora["\']?$', Path("/etc/os-release").read_text(), re.M):
+                raise RuntimeError("Desktop updates support Fedora only")
+            manifest_path, manifest = installation()
+            user = read_json(state / "installed.json") if (state / "installed.json").exists() else {}
+            value["installed"] = manifest["revision"]
+            value["manifest"] = str(manifest_path)
+            value["generation"] = digest(manifest_path)
+            value["packages"] = missing_packages(manifest["packages"])
+            value["changes"] = drift(manifest, user)
+            if user.get("revision") != manifest["revision"]:
+                value["changes"].append("User installation receipt is missing or belongs to another revision")
+            upstream = run(["git", "ls-remote", "--exit-code", SOURCE, "refs/heads/main"], timeout=30).split()
+            if len(upstream) != 2 or not re.fullmatch(r"[0-9a-f]{40}", upstream[0]):
+                raise RuntimeError("Upstream returned an invalid desktop revision")
+            value["available"] = upstream[0]
+            reason = checkout_reason(data)
+            checkout = Path(user.get("checkout") or str(data))
+            if not reason and checkout != data and checkout.exists():
+                reason = checkout_reason(checkout)
+            if reason:
+                return save_status(state, value, state="blocked", detail=reason, checkedAt=int(time.time()))
+            available = upstream[0] != value["installed"]
+            repair = bool(value["changes"] or value["packages"])
+            if not available and not repair and value["restart"] == "session":
+                if running_dwm_matches(Path(manifest["layout"]["prefix"]) / "bin/dwm") is not True:
+                    return save_status(state, value, state="restart-required", percent=100, checkedAt=int(time.time()),
+                                       detail="Installed and verified. Log out and back in to activate the updated desktop.")
+                try:
+                    current_shells = quickshell_processes()
+                    previous_shells = {tuple(identity) for identity in value.get("activationShells", [])}
+                    if not current_shells or current_shells & previous_shells:
+                        raise RuntimeError("The previous Quickshell instance is still active")
+                    run(["quickshell", "ipc", "--path", config / "quickshell/shell.qml", "call", "tray", "count"], timeout=5)
+                except (OSError, RuntimeError, subprocess.SubprocessError):
+                    return save_status(state, value, state="restart-required", percent=100, checkedAt=int(time.time()),
+                                       detail="Installed and verified. Log out and back in to activate the updated desktop.")
+                value["restart"] = "none"
+            return save_status(state, value, state="available" if available else "drift" if repair else "current",
+                               detail="A desktop update is available" if available else "Managed desktop files need syncing" if repair else "Your desktop is up to date",
+                               canUpdate=available or repair, checkedAt=int(time.time()))
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            return save_status(state, value, state="failed", detail=str(error), canUpdate=False, percent=-1)
+
+
+def service_command(unit, command, properties=()):
+    args = ["systemd-run", "--user", "--quiet", "--collect", "--unit=" + unit, "--property=Type=exec"]
+    args.extend("--property=" + value for value in properties)
+    for key in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS"):
+        if key in os.environ:
+            args.append("--setenv=" + key + "=" + os.environ[key])
+    return [*args, *command]
+
+
+def start_activation(prefix, operation):
+    # Detached Quickshell children must outlive the updater's service cgroup.
+    unit = "dwm-desktop-activation-" + operation + ".service"
+    run(service_command(unit,
+                        [prefix / "bin/dwm-quickshell-controlcenter", "action", "restart-quickshell"],
+                        ("ExitType=cgroup",)), timeout=60, capture=False)
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        properties = dict(line.split("=", 1) for line in run([
+            "systemctl", "--user", "show", unit,
+            "--property=ExecMainCode,ExecMainStatus,ExecMainExitTimestampMonotonic,ActiveState"]).splitlines() if "=" in line)
+        if properties.get("ExecMainExitTimestampMonotonic", "0") != "0":
+            if properties.get("ExecMainCode") == "1" and properties.get("ExecMainStatus") == "0":
+                return
+            raise RuntimeError("Managed Quickshell restart failed")
+        if properties.get("ActiveState") in ("failed", "inactive"):
+            raise RuntimeError("Managed Quickshell restart ended without a running shell")
+        time.sleep(0.1)
+    raise RuntimeError("Managed Quickshell restart timed out")
+
+
+def quickshell_processes():
+    result = subprocess.run(["pgrep", "-u", str(os.getuid()), "-x", "quickshell"], capture_output=True, text=True)
+    processes = set()
+    for pid in result.stdout.split():
+        try:
+            started = (Path("/proc") / pid / "stat").read_text().rsplit(") ", 1)[1].split()[19]
+            processes.add((pid, started))
+        except FileNotFoundError:
+            pass
+    return processes
+
+
+def launch(expected):
+    if not re.fullmatch(r"[0-9a-f]{40}", expected):
+        raise RuntimeError("Invalid desktop revision")
+    _, _, state = paths()
+    with locked(state):
+        value = recover_status(state)
+        if not value["canUpdate"] or value["available"] != expected or service_active():
+            raise RuntimeError("The desktop preview changed or an update is active; check again")
+        operation = uuid.uuid4().hex
+        directory = state / "operations" / operation
+        directory.mkdir(parents=True, mode=0o700)
+        worker = directory / "worker.py"
+        shutil.copyfile(__file__, worker)
+        write_json(directory / "preview.json", value)
+        save_status(state, value, operation=operation, state="starting", detail="Starting desktop update...",
+                    canUpdate=False, log=str(directory / "update.log"), percent=-1, backup="",
+                    systemStarted=False, systemApplied=False, activationShells=[])
+        try:
+            run(service_command(UNIT, [sys.executable, "-I", worker, "worker", operation]))
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            save_status(state, value, state="failed", detail=str(error))
+            raise
+    return value
+
+
+def exchange(left, right):
+    # Both directories already exist on the same filesystem. No missing-QML gap.
+    library = ctypes.CDLL(None, use_errno=True)
+    function = library.renameat2
+    function.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    function.restype = ctypes.c_int
+    if function(-100, os.fsencode(left), -100, os.fsencode(right), 2):
+        raise OSError(ctypes.get_errno(), "Cannot exchange managed directories")
+
+
+def prepare_user(source, operation):
+    config, data, _ = paths()
+    targets = [data, config / "quickshell"]
+    prepared = []
+    with contextlib.ExitStack() as cleanup:
+        for index, target in enumerate(targets):
+            if target.is_symlink():
+                raise RuntimeError("Managed update directories cannot be symlinks: " + str(target))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staged = target.parent / (".dwm-update-" + operation + "-" + str(index))
+            if staged.exists() or staged.is_symlink():
+                raise RuntimeError("Update staging path already exists")
+            cleanup.callback(shutil.rmtree, staged, True)
+            original = tree_manifest(target) if target.exists() else None
+            if target.exists():
+                shutil.copytree(target, staged, symlinks=True)
+            else:
+                staged.mkdir(mode=0o700)
+            if index == 0:
+                reason = checkout_reason(target)
+                if reason:
+                    raise RuntimeError(reason)
+                if (staged / ".git").exists():
+                    run(["git", "-C", staged, "-c", "core.hooksPath=/dev/null", "fetch", "--no-tags", source, "HEAD"])
+                    run(["git", "-C", staged, "merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD"])
+                    run(["git", "-C", staged, "-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "FETCH_HEAD"])
+                for name in ("config", "scripts"):
+                    old = staged / name
+                    if old.is_symlink():
+                        old.unlink()
+                    elif old.exists():
+                        shutil.rmtree(old)
+                    shutil.copytree(source / name, old, symlinks=True)
+            else:
+                shutil.rmtree(staged)
+                shutil.copytree(source / "config/quickshell", staged, symlinks=False)
+            prepared.append({"target": str(target), "backup": str(staged), "existed": target.exists(), "swapped": False,
+                             "original": original, "replacement": tree_manifest(staged)})
+        cleanup.pop_all()
+    return prepared
+
+
+def make_bundle(stage, candidate, destination):
+    with tarfile.open(destination, "w:") as bundle:
+        content = (json.dumps(candidate, sort_keys=True) + "\n").encode()
+        header = tarfile.TarInfo("manifest.json")
+        header.size = len(content)
+        bundle.addfile(header, io.BytesIO(content))
+        for index, name in enumerate(sorted(candidate["files"])):
+            record = candidate["files"][name]
+            content = b"" if "link" in record else (stage / name.lstrip("/")).read_bytes()
+            header = tarfile.TarInfo(str(index))
+            header.size = len(content)
+            bundle.addfile(header, io.BytesIO(content))
+
+
+def running_dwm_matches(binary):
+    try:
+        result = subprocess.run(["pgrep", "-u", str(os.getuid()), "-x", "dwm"], capture_output=True, text=True)
+        if result.returncode or not result.stdout.strip():
+            return None
+        expected = digest(binary)
+        return all(digest(Path("/proc") / pid / "exe") == expected for pid in result.stdout.split())
+    except OSError:
+        return None
+
+
+def worker(operation):
+    if not re.fullmatch(r"[0-9a-f]{32}", operation):
+        raise RuntimeError("Invalid desktop operation")
+    config, data, state = paths()
+    directory = state / "operations" / operation
+    with (directory / "update.log").open("a", buffering=1) as log:
+        os.dup2(log.fileno(), 1)
+        os.dup2(log.fileno(), 2)
+        with locked(state, wait=True):
+            value = status_read(state)
+            if value["operation"] != operation:
+                raise RuntimeError("Desktop operation ownership changed")
+            preview = read_json(directory / "preview.json")
+            installed = read_json(Path(preview["manifest"]))
+            prefix = Path(installed["layout"]["prefix"])
+            privileged = prefix / "libexec/dwm-titus/dwm-desktop-update-root"
+            prepared = []
+            system_started = False
+            system_applied = False
+            source = directory / "source"
+            stage = directory / "stage"
+            try:
+                trusted_installation(Path(preview["manifest"]))
+                if digest(Path(preview["manifest"])) != preview["generation"]:
+                    raise RuntimeError("Installed files changed since preview; check again")
+                reason = checkout_reason(data)
+                if reason:
+                    raise RuntimeError(reason)
+                save_status(state, value, state="downloading", detail="Downloading the confirmed desktop revision...", percent=-1)
+                run(["git", "init", source])
+                run(["git", "-C", source, "fetch", SOURCE, preview["available"]], timeout=180, capture=False)
+                run(["git", "-C", source, "checkout", "--detach", "FETCH_HEAD"], capture=False)
+                if source_revision(source) != preview["available"]:
+                    raise RuntimeError("Downloaded revision differs from the confirmed update")
+                required = []
+                for profile in ("build", "source-update"):
+                    required.extend(run([source / "scripts/dwm-packages.sh", "fedora", profile]).splitlines())
+                if sorted(set(required)) != installed["packages"]:
+                    raise RuntimeError("Desktop dependencies changed; use the documented source installer for this update")
+                if missing_packages(installed["packages"]):
+                    save_status(state, value, state="dependencies", detail="Authorizing required build and desktop packages...", percent=-1)
+                    run(["/usr/bin/pkexec", privileged, "dependencies", preview["generation"]], timeout=1800, capture=False)
+                save_status(state, value, state="building", detail="Building the desktop update...", percent=-1)
+                user_receipt = read_json(state / "installed.json") if (state / "installed.json").exists() else {}
+                config_source = Path(user_receipt.get("checkout") or str(data)) / "config.h"
+                if not config_source.is_file():
+                    config_source = state / "build-config.h"
+                if config_source.is_file():
+                    shutil.copyfile(config_source, source / "config.h")
+                run(["make", "clean", "all"], cwd=source, timeout=300, capture=False)
+                layout = installed["layout"]
+                run(["make", "install-system", "DESTDIR=" + str(stage), "PREFIX=" + layout["prefix"],
+                     "MANPREFIX=" + layout["manprefix"], "XSESSIONSDIR=" + layout["xsessions"], "DATADIR=" + layout["datadir"]],
+                    cwd=source, timeout=180, capture=False)
+                candidate = read_json(stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/"))
+                if (set(candidate["files"]) != set(installed["files"]) or candidate["layout"] != installed["layout"]):
+                    raise RuntimeError("Desktop file layout changed; use the documented source installer for this update")
+                make_bundle(stage, candidate, directory / "bundle.tar")
+                save_status(state, value, state="backing-up", detail="Preparing managed files and recovery copies...", percent=-1)
+                prepared = prepare_user(source, operation)
+                write_json(directory / "user-backup.json", prepared)
+                if (directory / "user-backup.json").stat().st_size > 64 * 1024 * 1024:
+                    raise RuntimeError("Managed data is too large for automatic recovery; use the source installer")
+                if (state / "installed.json").exists():
+                    shutil.copyfile(state / "installed.json", directory / "installed-before.json")
+                if (state / "build-config.h").exists():
+                    shutil.copyfile(state / "build-config.h", directory / "build-config-before.h")
+                save_status(state, value, backup=str(directory / "user-backup.json"), state="installing",
+                            detail="Authorizing and installing system files...", percent=-1)
+                system_started = True
+                save_status(state, value, systemStarted=True)
+                run(["/usr/bin/pkexec", privileged, "apply", directory / "bundle.tar", preview["generation"], operation], timeout=600, capture=False)
+                system_applied = True
+                for entry in prepared:
+                    target, backup = Path(entry["target"]), Path(entry["backup"])
+                    current = tree_manifest(target) if target.exists() else None
+                    if current != entry["original"]:
+                        raise RuntimeError("Managed files changed during the update; preserving those changes for recovery")
+                    # Record intent before the atomic swap. Recovery compares the receipts.
+                    entry["swapped"] = True
+                    write_json(directory / "user-backup.json", prepared)
+                    if entry["existed"]:
+                        exchange(target, backup)
+                    else:
+                        os.rename(backup, target)
+                save_status(state, value, state="verifying", detail="Verifying all installed desktop files...", percent=-1)
+                total = len(candidate["files"])
+                for index, (name, record) in enumerate(candidate["files"].items()):
+                    if fingerprint(Path(name)) != record:
+                        raise RuntimeError("System file verification failed: " + name)
+                    if index % 20 == 0 or index + 1 == total:
+                        save_status(state, value, percent=int((index + 1) * 100 / total),
+                                    detail="Verifying system files: " + str(index + 1) + " / " + str(total))
+                for name in ("config", "scripts"):
+                    if tree_manifest(data / name) != tree_manifest(source / name):
+                        raise RuntimeError("Managed data verification failed: " + name)
+                if tree_manifest(config / "quickshell") != tree_manifest(source / "config/quickshell"):
+                    raise RuntimeError("Managed Quickshell verification failed")
+                record_user(source)
+                receipt = read_json(state / "installed.json")
+                receipt["checkout"] = str(data) if (data / ".git").exists() else ""
+                write_json(state / "installed.json", receipt)
+                value["installed"] = candidate["revision"]
+                try:
+                    previous_shells = quickshell_processes()
+                except OSError:
+                    previous_shells = set()
+                save_status(state, value, state="activating", detail="Checking desktop activation...", percent=-1,
+                            activationShells=sorted(previous_shells))
+                if running_dwm_matches(prefix / "bin/dwm") is not True:
+                    save_status(state, value, state="restart-required", restart="session", percent=100,
+                                detail="Installed and verified. Log out and back in to activate the updated desktop.")
+                else:
+                    ready = False
+                    try:
+                        start_activation(prefix, operation)
+                        for _ in range(30):
+                            try:
+                                current_shells = quickshell_processes()
+                                if not current_shells or current_shells & previous_shells:
+                                    raise RuntimeError("Waiting for the replacement Quickshell instance")
+                                run(["quickshell", "ipc", "--path", config / "quickshell/shell.qml", "call", "tray", "count"], timeout=3)
+                                ready = True
+                                break
+                            except (RuntimeError, subprocess.TimeoutExpired):
+                                time.sleep(0.2)
+                    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+                        print("Activation requires a new session: " + str(error), flush=True)
+                    if not ready:
+                        save_status(state, value, state="restart-required", restart="session", percent=100,
+                                    detail="Files installed and verified, but Quickshell did not respond. Log out and back in.")
+                        return 0
+                    save_status(state, value, state="current", restart="none", percent=100,
+                                detail="Desktop update installed, verified, and active.", checkedAt=int(time.time()))
+            except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+                print(str(error), flush=True)
+                denied = isinstance(error, CommandFailure) and error.returncode in (126, 127)
+                if denied and not system_applied:
+                    system_started = False
+                # Never infer rollback from a nonzero polkit result: dispatch may have completed.
+                save_status(state, value, state="interrupted" if system_started else "failed", percent=-1,
+                            detail=str(error) + (" Review recovery before retrying." if system_started else ""),
+                            systemStarted=system_started, systemApplied=system_applied, canUpdate=False)
+                return 1
+            finally:
+                if not system_started:
+                    for entry in prepared:
+                        if not entry["swapped"]:
+                            shutil.rmtree(entry["backup"])
+                for temporary in (source, stage):
+                    if temporary.exists():
+                        shutil.rmtree(temporary)
+                (directory / "bundle.tar").unlink(missing_ok=True)
+    return 0
+
+
+def recover(operation):
+    if not re.fullmatch(r"[0-9a-f]{32}", operation):
+        raise RuntimeError("Invalid desktop recovery identity")
+    _, _, state = paths()
+    with locked(state):
+        value = recover_status(state)
+        if value["operation"] != operation or value["state"] != "interrupted" or service_active():
+            raise RuntimeError("Only the interrupted current operation can be recovered")
+        directory = state / "operations" / operation
+        prepared = read_json(directory / "user-backup.json", limit=64 * 1024 * 1024) if (directory / "user-backup.json").exists() else []
+        # Validate every target before changing either system or user files.
+        for entry in prepared:
+            if not entry["swapped"]:
+                continue
+            target = Path(entry["target"])
+            current = tree_manifest(target) if target.exists() else None
+            if current not in (entry["original"], entry["replacement"]):
+                raise RuntimeError("Managed files changed after the interruption. Save those changes before recovery: " + str(target))
+            if current == entry["replacement"] and entry["existed"]:
+                if tree_manifest(Path(entry["backup"])) != entry["original"]:
+                    raise RuntimeError("Recovery copy changed: " + entry["backup"])
+        preview = read_json(directory / "preview.json")
+        trusted_installation(Path(preview["manifest"]))
+        prefix = Path(preview["manifest"]).parents[2]
+        # Rollback creates another activation boundary, including a shell started
+        # by an interrupted forward update. Save it before replacing any files.
+        save_status(state, value, activationShells=sorted(quickshell_processes()))
+        run(["/usr/bin/pkexec", prefix / "libexec/dwm-titus/dwm-desktop-update-root", "rollback", operation], timeout=600, capture=False)
+        for entry in reversed(prepared):
+            target, backup = Path(entry["target"]), Path(entry["backup"])
+            current = tree_manifest(target) if target.exists() else None
+            if entry["swapped"] and current not in (entry["original"], entry["replacement"]):
+                raise RuntimeError("Managed files changed during recovery; save those changes before retrying")
+            if entry["swapped"] and current == entry["replacement"]:
+                if entry["existed"]:
+                    if tree_manifest(backup) != entry["original"]:
+                        raise RuntimeError("Recovery copy changed: " + str(backup))
+                    exchange(target, backup)
+                else:
+                    os.rename(target, backup)
+        for name, saved in (("installed.json", "installed-before.json"), ("build-config.h", "build-config-before.h")):
+            if (directory / saved).exists():
+                shutil.copyfile(directory / saved, state / name)
+        return save_status(state, value, state="failed", canUpdate=False, restart="session", percent=-1,
+                           detail="Previous desktop files restored. Log out and back in, then check again.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    system = commands.add_parser("record-system")
+    system.add_argument("--source-dir", required=True)
+    system.add_argument("--destdir", default="")
+    for name in ("prefix", "manprefix", "xsessions", "datadir"):
+        system.add_argument("--" + name, required=True)
+    for name in ("commands", "helpers", "packages"):
+        system.add_argument("--" + name, nargs="+", required=True)
+    user = commands.add_parser("record-user")
+    user.add_argument("source_dir")
+    checking = commands.add_parser("check")
+    checking.add_argument("--force", action="store_true")
+    commands.add_parser("status")
+    start = commands.add_parser("start")
+    start.add_argument("revision")
+    work = commands.add_parser("worker")
+    work.add_argument("operation")
+    recovery = commands.add_parser("recover")
+    recovery.add_argument("operation")
+    receipts = commands.add_parser("verify-receipts")
+    receipts.add_argument("source_dir")
+    receipts.add_argument("manifest")
+    args = parser.parse_args()
+    if args.command == "record-system":
+        record_system(args)
+        return 0
+    if os.getuid() == 0:
+        raise RuntimeError("Run the desktop updater as the desktop user")
+    if args.command == "record-user":
+        record_user(args.source_dir)
+        return 0
+    if args.command == "verify-receipts":
+        verify_receipts(args.source_dir, args.manifest)
+        return 0
+    if args.command == "worker":
+        return worker(args.operation)
+    if args.command == "status":
+        with locked(paths()[2]):
+            value = recover_status(paths()[2])
+    else:
+        value = check(args.force) if args.command == "check" else launch(args.revision) if args.command == "start" else recover(args.operation)
+    print(json.dumps(value), flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except BlockingIOError:
+        print(json.dumps(status_read(paths()[2])), flush=True)
+    except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+        print("Desktop update: " + str(error), file=sys.stderr)
+        sys.exit(1)

@@ -267,6 +267,13 @@ user-owned choice.
 
 ## Source Updates and Recovery
 
+Settings > System now offers **Desktop updates** above Fedora updates. It checks
+official `main`, detects stale managed files, and installs a confirmed update
+with progress and recovery records. Existing installations use the source
+procedure below once to install that support. See
+[Desktop updates and recovery](https://github.com/ChrisTitusTech/dwm-titus/blob/main/docs/DESKTOP-UPDATES.md) for the update
+contract, restart behavior, and interrupted-operation recovery.
+
 Before a source update, save the current checkout and user configuration. Run
 this from the checkout as your regular user in Bash, with desktop settings
 closed so they cannot change during the backup:

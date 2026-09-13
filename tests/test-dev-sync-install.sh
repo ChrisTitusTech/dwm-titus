@@ -54,6 +54,8 @@ make -s -C "$test_repo" --no-print-directory \
 install -Dm755 "$test_repo/dwm" "$prefix/bin/dwm"
 sed "s|@PREFIX@|$prefix|g" "$test_repo/scripts/dwm-settings-display-root" |
 	install -Dm755 /dev/stdin "$prefix/libexec/dwm-titus/dwm-settings-display-root"
+sed "s|@PREFIX@|$prefix|g" "$test_repo/scripts/dwm-desktop-update-root" |
+	install -Dm755 /dev/stdin "$prefix/libexec/dwm-titus/dwm-desktop-update-root"
 while IFS= read -r install_source; do
 	[ -n "$install_source" ] || continue
 	install -Dm755 "$test_repo/$install_source" \
@@ -73,6 +75,16 @@ for cursor_source in "$test_repo"/assets/cursors/Capitaine-Cursors*; do
 done
 install -Dm644 "$test_repo/assets/cursors/COPYING" \
 	"$data_root/licenses/dwm-titus/capitaine-cursors/COPYING"
+set --
+while IFS= read -r install_source; do
+	set -- "$@" "${install_source##*/}"
+done <"$install_sources"
+python3 "$test_repo/scripts/dwm-desktop-update" record-system --source-dir "$test_repo" \
+	--prefix "$prefix" --manprefix "$manprefix" --xsessions "$xsessions_dir" \
+	--datadir "$data_root" --commands "$@" \
+	--helpers dwm-settings-display-root dwm-desktop-update-root --packages gcc xsettingsd xkbset
+HOME="$test_home" XDG_CONFIG_HOME="$config_home" XDG_DATA_HOME="$xdg_data_home" \
+	XDG_STATE_HOME="$state_home" python3 "$test_repo/scripts/dwm-desktop-update" record-user "$test_repo"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/xsettingsd"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/dump_xsettings"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/xkbset"

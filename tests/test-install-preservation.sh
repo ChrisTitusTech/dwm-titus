@@ -313,6 +313,10 @@ for _ in 1 2; do
 		XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
 		XDG_CONFIG_DIRS="$XDG_CONFIG_DIRS" \
 		XDG_DATA_HOME="$XDG_DATA_HOME"
+	[[ $(stat -c %a "$XDG_DATA_HOME/dwm-titus/scripts/image/check-packagekit.py") == "$(stat -c %a "$TEST_REPO/scripts/image/check-packagekit.py")" ]] || {
+		printf 'Managed source file modes changed during installation.\n' >&2
+		exit 1
+	}
 done
 
 assert_preserved config-h "$TEST_REPO/config.h" "$WORK_DIR/config-h.before"

@@ -9,6 +9,7 @@ OWNER ?= $(or $(SUDO_USER),$(USER))
 USER_HOME ?= $(shell getent passwd "${OWNER}" 2>/dev/null | cut -d: -f6)
 XDG_CONFIG_HOME ?= ${USER_HOME}/.config
 XDG_DATA_HOME ?= ${USER_HOME}/.local/share
+XDG_STATE_HOME ?= ${USER_HOME}/.local/state
 DATA_DIR  := ${XDG_DATA_HOME}/dwm-titus
 CFG_DIR   := ${XDG_CONFIG_HOME}
 DATADIR   ?= ${PREFIX}/share
@@ -28,6 +29,7 @@ INSTALL_COMMANDS = \
 	scripts/disable-powersaving \
 	scripts/dwm-controlcenter \
 	scripts/dwm-default-apps \
+	scripts/dwm-desktop-update \
 	scripts/dwm-diagnostics \
 	scripts/dwm-display-profile \
 	scripts/dwm-display-setup \
@@ -80,7 +82,7 @@ INSTALL_COMMANDS = \
 	scripts/xdg-enable-autostart.sh \
 	scripts/xscreensaver-setup.sh
 INSTALL_COMMAND_NAMES = $(notdir ${INSTALL_COMMANDS})
-PRIVILEGED_HELPERS = scripts/dwm-settings-display-root
+PRIVILEGED_HELPERS = scripts/dwm-settings-display-root scripts/dwm-desktop-update-root
 PRIVILEGED_HELPER_DIR = ${PREFIX}/libexec/dwm-titus
 
 RELEASE_NAME = dwm-titus-${VERSION}
@@ -159,7 +161,7 @@ install:
 				$(MAKE) install-user \
 				USER_HOME="${USER_HOME}" OWNER="$$target_user" \
 				XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
-				XDG_DATA_HOME="${XDG_DATA_HOME}"; \
+				XDG_DATA_HOME="${XDG_DATA_HOME}" XDG_STATE_HOME="${XDG_STATE_HOME}"; \
 		else \
 			$(MAKE) install-user; \
 		fi; \
@@ -176,19 +178,24 @@ install-system:
 	$(MAKE) install-cursors
 	@echo ""
 	@echo "==> Installing system files..."
-	install -Dm755 dwm ${DESTDIR}${PREFIX}/bin/dwm
-	sed "s/VERSION/${VERSION}/g" dwm.1 | install -Dm644 /dev/stdin ${DESTDIR}${MANPREFIX}/man1/dwm.1
+	install -Dm755 dwm "${DESTDIR}${PREFIX}/bin/dwm"
+	sed "s/VERSION/${VERSION}/g" dwm.1 | install -Dm644 /dev/stdin "${DESTDIR}${MANPREFIX}/man1/dwm.1"
 	sed "s|@PREFIX@|${PREFIX}|g" dwm.desktop | \
-		install -Dm644 /dev/stdin ${DESTDIR}${XSESSIONSDIR}/dwm.desktop
+		install -Dm644 /dev/stdin "${DESTDIR}${XSESSIONSDIR}/dwm.desktop"
 	@echo "==> Installing scripts to PATH..."
 	for f in ${INSTALL_COMMANDS}; do \
-		install -Dm755 "$$f" ${DESTDIR}${PREFIX}/bin/$$(basename "$$f"); \
+		install -Dm755 "$$f" "${DESTDIR}${PREFIX}/bin/$$(basename "$$f")"; \
 	done
 	@echo "==> Installing privileged helpers..."
 	for f in ${PRIVILEGED_HELPERS}; do \
 		sed "s|@PREFIX@|${PREFIX}|g" "$$f" | \
-			install -Dm755 /dev/stdin ${DESTDIR}${PRIVILEGED_HELPER_DIR}/$$(basename "$$f"); \
+			install -Dm755 /dev/stdin "${DESTDIR}${PRIVILEGED_HELPER_DIR}/$$(basename "$$f")"; \
 	done
+	/usr/bin/python3 -I "${DESTDIR}${PREFIX}/bin/dwm-desktop-update" record-system --source-dir . \
+		--destdir "${DESTDIR}" --prefix "${PREFIX}" --manprefix "${MANPREFIX}" \
+		--xsessions "${XSESSIONSDIR}" --datadir "${DATADIR}" \
+		--commands ${INSTALL_COMMAND_NAMES} --helpers $(notdir ${PRIVILEGED_HELPERS}) \
+		--packages $$("${DESTDIR}${PREFIX}/bin/dwm-packages.sh" fedora build) $$("${DESTDIR}${PREFIX}/bin/dwm-packages.sh" fedora source-update)
 
 install-cursors:
 	@echo "==> Installing Capitaine cursor themes..."
@@ -196,9 +203,9 @@ install-cursors:
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_DARK_THEME}" \
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_LIGHT_THEME}"
 	mkdir -p "${DESTDIR}${DATADIR}/icons"
-	cp -a "assets/cursors/${CAPITAINE_DARK_THEME}" \
+	cp -a --no-preserve=ownership "assets/cursors/${CAPITAINE_DARK_THEME}" \
 		"${DESTDIR}${DATADIR}/icons/"
-	cp -a "assets/cursors/${CAPITAINE_LIGHT_THEME}" \
+	cp -a --no-preserve=ownership "assets/cursors/${CAPITAINE_LIGHT_THEME}" \
 		"${DESTDIR}${DATADIR}/icons/"
 	install -Dm644 assets/cursors/COPYING \
 		"${DESTDIR}${CAPITAINE_LICENSE_DIR}/COPYING"
@@ -283,8 +290,8 @@ install-user:
 		echo "  Preserving existing Meslo font alias file."; \
 	fi
 	fc-cache -f >/dev/null 2>&1 || true
-	@echo "==> Fixing executable permissions..."
-	find ${DATA_DIR} \( -name '*.sh' -o -name '*.py' \) -print0 | xargs -0 -r chmod +x
+	@echo "==> Fixing user application executable permissions..."
+	# Managed data keeps source modes; it may also be the user's Git checkout.
 	for dir in config/*/; do \
 		b=$$(basename $$dir); \
 		if [ ! -L "${CFG_DIR}/$$b" ]; then \
@@ -293,23 +300,27 @@ install-user:
 	done
 	@echo "==> Applying initial theme convergence..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/theme-apply.sh
+	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" XDG_DATA_HOME="${XDG_DATA_HOME}" XDG_STATE_HOME="${XDG_STATE_HOME}" \
+		python3 scripts/dwm-desktop-update record-user .
 	@echo ""
 	@echo "  dwm installed successfully."
 	@echo "  Log out and select 'dwm', or start with: startx"
 	@echo ""
 
 uninstall:
-	rm -f ${DESTDIR}${PREFIX}/bin/dwm \
-		${DESTDIR}${MANPREFIX}/man1/dwm.1 \
-		${DESTDIR}${XSESSIONSDIR}/dwm.desktop
+	rm -f "${DESTDIR}${PREFIX}/bin/dwm" \
+		"${DESTDIR}${MANPREFIX}/man1/dwm.1" \
+		"${DESTDIR}${XSESSIONSDIR}/dwm.desktop"
 	rm -rf \
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_DARK_THEME}" \
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_LIGHT_THEME}" \
 		"${DESTDIR}${CAPITAINE_LICENSE_DIR}"
 	for name in ${INSTALL_COMMAND_NAMES}; do \
-		rm -f ${DESTDIR}${PREFIX}/bin/$$name; \
+		rm -f "${DESTDIR}${PREFIX}/bin/$$name"; \
 	done
-	rm -f ${DESTDIR}${PRIVILEGED_HELPER_DIR}/dwm-settings-display-root
+	rm -f "${DESTDIR}${PRIVILEGED_HELPER_DIR}/dwm-settings-display-root"
+	rm -f "${DESTDIR}${PRIVILEGED_HELPER_DIR}/dwm-desktop-update-root"
+	rm -f "${DESTDIR}${PREFIX}/share/dwm-titus/desktop-install.json"
 
 release: dwm
 	@work="$$(mktemp -d)"; \
@@ -558,6 +569,8 @@ check-install-manifest: all
 			pre-existing \
 			usr/bin/dwm \
 			usr/libexec/dwm-titus/dwm-settings-display-root \
+			usr/libexec/dwm-titus/dwm-desktop-update-root \
+			usr/share/dwm-titus/desktop-install.json \
 			usr/share/man/man1/dwm.1 \
 			usr/share/xsessions/dwm.desktop; \
 		for name in ${INSTALL_COMMAND_NAMES}; do \
@@ -590,6 +603,10 @@ check-install-manifest: all
 
 check-install-preservation:
 	tests/test-install-preservation.sh
+
+check-desktop-update:
+	python3 tests/test-desktop-update.py
+	tests/test-desktop-update-ui.sh
 
 check-test-runner:
 	@$(call run_managed_test,tests/test-run-tests.sh)
@@ -626,6 +643,7 @@ check-picom-xvfb:
 	$(call run_managed_test,python3 tests/test-picom-xvfb.py)
 
 check: check-picom check-picom-xvfb
+	$(MAKE) check-desktop-update
 	$(MAKE) clean
 	$(MAKE) all
 	$(MAKE) check-shell
@@ -686,7 +704,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: clean all check check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
+.PHONY: clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-cursor-reload \
 	check-test-runner \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
