@@ -11,6 +11,7 @@ import sys
 import tarfile
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -93,6 +94,34 @@ class DesktopUpdate(unittest.TestCase):
         (self.state / "installed.json").unlink()
         self.assertEqual(update.check(True)["state"], "drift")
 
+    def test_missing_system_directory_blocks_automatic_repair(self):
+        self.binary.unlink()
+        self.binary.parent.rmdir()
+        value = update.check(True)
+        self.assertEqual(value["state"], "blocked")
+        self.assertFalse(value["canUpdate"])
+        self.assertIn("source installer", value["detail"])
+
+    def test_manifest_directory_uses_trusted_mode_under_group_umask(self):
+        stage = self.base / "stage"
+        args = SimpleNamespace(source_dir=str(self.base), destdir=str(stage), prefix="/usr",
+                               manprefix="/usr/share/man", xsessions="/usr/share/xsessions", datadir="/usr/share",
+                               commands=[], helpers=[], packages=[])
+        previous = os.umask(0o002)
+        try:
+            with patch.object(update, "fingerprint", return_value={"mode": 0o755, "sha256": "a" * 64}):
+                update.record_system(args)
+        finally:
+            os.umask(previous)
+        self.assertEqual((stage / "usr/share/dwm-titus").stat().st_mode & 0o777, 0o755)
+
+    def test_service_forwards_build_overrides_without_shell_splitting(self):
+        overrides = {"CC": "clang", "CFLAGS": "-O1 -g", "CPPFLAGS": "-DTEST=1", "LDFLAGS": "-Wl,--as-needed"}
+        with patch.dict(os.environ, overrides):
+            command = update.service_command("test.service", ["worker"])
+        for key, value in overrides.items():
+            self.assertIn("--setenv=" + key + "=" + value, command)
+
     def test_permission_or_corrupt_receipt_not_current(self):
         (self.state / "installed.json").write_text("{")
         self.assertEqual(update.check(True)["state"], "failed")
@@ -154,6 +183,35 @@ class DesktopUpdate(unittest.TestCase):
         with patch.object(update, "running_dwm_matches", return_value=True), \
                 patch.object(update, "quickshell_processes", return_value={("3", "after-rollback")}):
             self.assertEqual(update.check(True)["state"], "current")
+
+    def test_recovery_restores_receipt_absence_only_after_backup_completion(self):
+        operation = "c" * 32
+        directory = self.state / "operations" / operation
+        update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path)})
+        original = (self.state / "installed.json").read_bytes()
+        for completed in (False, True):
+            update.write_json(self.state / "status.json", {**update.status_default(), "operation": operation,
+                              "state": "interrupted"})
+            if completed:
+                update.write_json(directory / "receipt-backup.json", {"installed.json": False, "build-config.h": False})
+                (self.state / "build-config.h").write_text("created by failed update")
+            with patch.object(update, "trusted_installation"), patch.object(update, "quickshell_processes", return_value=set()):
+                update.recover(operation)
+            if completed:
+                self.assertFalse((self.state / "installed.json").exists())
+                self.assertFalse((self.state / "build-config.h").exists())
+            else:
+                self.assertEqual((self.state / "installed.json").read_bytes(), original)
+
+    def test_missing_recorded_receipt_backup_stops_recovery(self):
+        operation = "c" * 32
+        directory = self.state / "operations" / operation
+        update.write_json(directory / "receipt-backup.json", {"installed.json": True})
+        update.write_json(self.state / "status.json", {**update.status_default(), "operation": operation,
+                          "state": "interrupted"})
+        with self.assertRaisesRegex(RuntimeError, "recovery copy is missing"):
+            update.recover(operation)
+        self.command.assert_not_called()
 
     def test_changed_confirmation_does_not_launch(self):
         self.command.return_value = "b" * 40 + "\trefs/heads/main"
@@ -306,7 +364,9 @@ class DesktopUpdate(unittest.TestCase):
             with self.subTest(scenario=scenario):
                 directory = self.base / scenario
                 result = subprocess.run([sys.executable, REPO / "tests/fixtures/desktop-worker-scenario.py",
-                                         REPO, directory, scenario], capture_output=True, text=True)
+                                         REPO, directory, scenario], capture_output=True, text=True,
+                                        env={**os.environ, "CC": "test-cc", "CFLAGS": "-O1 -g",
+                                             "CPPFLAGS": "-DTEST=1", "LDFLAGS": "-Wl,--as-needed"})
                 self.assertEqual(result.returncode, code, result.stderr)
                 value = update.read_json(directory / "state/status.json")
                 self.assertEqual(value["state"], expected, value)

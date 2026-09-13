@@ -74,6 +74,9 @@ def boundary(args, cwd=None, timeout=60, capture=True):
         (source / "config/quickshell/file").write_text("new shell")
         (source / "scripts/file").write_text("new helper")
     elif args[:3] == ["make", "clean", "all"]:
+        for key in ("CC", "CFLAGS", "CPPFLAGS", "LDFLAGS"):
+            if key in os.environ:
+                assert key + "=" + os.environ[key] in args
         if scenario == "build-failure":
             raise update.CommandFailure("build failed", 2)
         assert (source / "config.h").read_text() == "personal build config"

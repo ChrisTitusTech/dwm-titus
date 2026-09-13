@@ -17,10 +17,11 @@ with tempfile.TemporaryDirectory(prefix="desktop-service-") as temporary:
     activation_unit = "dwm-desktop-activation-" + operation + ".service"
     driver_unit = "dwm-desktop-driver-test-" + operation + ".service"
     fixture = base / "worker.py"
-    fixture.write_text('''import os, time
+    fixture.write_text('''import os, time, json
 from pathlib import Path
 state = Path(os.environ["XDG_STATE_HOME"])
 (state / "started").write_text("started")
+(state / "build-env").write_text(json.dumps({key: os.environ.get(key) for key in ("CC", "CFLAGS", "CPPFLAGS", "LDFLAGS")}))
 time.sleep(2)
 (state / "finished").write_text("finished")
 ''')
@@ -40,6 +41,8 @@ update.launch("b" * 40)
 ''')
     env = {**os.environ, "XDG_STATE_HOME": str(base), "XDG_DATA_HOME": str(base / "data"),
            "XDG_CONFIG_HOME": str(base / "config")}
+    build_env = {"CC": "test-cc", "CFLAGS": "-O1 -g", "CPPFLAGS": "-DTEST=1", "LDFLAGS": "-Wl,--as-needed"}
+    env.update(build_env)
     try:
         subprocess.run([sys.executable, launcher, repo / "scripts/dwm-desktop-update", fixture, unit], env=env, check=True)
         # The initiating process has exited. The worker must still be running.
@@ -55,6 +58,7 @@ update.launch("b" * 40)
                 break
             time.sleep(0.05)
         assert (base / "finished").exists(), "Worker did not survive its initiating process"
+        assert json.loads((base / "build-env").read_text()) == build_env, "Build overrides were lost in the service handoff"
         print("Real user service survives updater caller exit: PASS")
 
         prefix = base / "prefix"

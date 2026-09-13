@@ -11,6 +11,7 @@ import time
 
 if os.geteuid() != 0 or not Path("/run/.containerenv").exists():
     sys.exit("Run only as root in a disposable Fedora container")
+os.umask(0o002)
 repo = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as temporary:
     base = Path(temporary)

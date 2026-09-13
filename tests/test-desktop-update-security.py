@@ -65,7 +65,8 @@ class Security(unittest.TestCase):
 
     def apply(self):
         generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
-        return self.command("apply", str(self.bundle), generation, self.operation)
+        return self.command("apply", str(self.bundle), generation, self.operation,
+                            hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40)
 
     def test_apply_and_rollback_restore_verified_original(self):
         self.archive()
@@ -104,6 +105,32 @@ class Security(unittest.TestCase):
         self.assertIn("layout changed", result.stderr)
         self.assertEqual(self.binary.read_bytes(), b"original")
 
+    def assert_helper_payload_rejected(self, target):
+        original = target.read_bytes()
+        self.binary = target
+        self.manifest["files"] = {str(target): {"mode": 0o755, "sha256": hashlib.sha256(original).hexdigest()}}
+        self.manifest_path.write_text(json.dumps(self.manifest))
+        self.archive(payload=b"arbitrary privileged code")
+        result = self.apply()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Privileged helpers changed", result.stderr)
+        self.assertEqual(target.read_bytes(), original)
+
+    def test_self_replacement_with_matching_payload_hash_is_rejected(self):
+        self.assert_helper_payload_rejected(self.helper)
+
+    def test_other_privileged_helper_payload_is_rejected(self):
+        target = self.helper.parent / "dwm-settings-display-root"
+        target.write_bytes(b"original display helper")
+        target.chmod(0o755)
+        self.assert_helper_payload_rejected(target)
+
+    def test_root_executed_display_setup_payload_is_rejected(self):
+        target = self.prefix / "bin/dwm-display-setup"
+        target.write_bytes(b"original root-executed display setup")
+        target.chmod(0o755)
+        self.assert_helper_payload_rejected(target)
+
     def test_hash_tampering_is_rejected(self):
         self.archive(lambda value: value["files"][str(self.binary)].update(sha256="0" * 64))
         result = self.apply()
@@ -116,9 +143,26 @@ class Security(unittest.TestCase):
 
     def test_stale_preview_is_rejected(self):
         self.archive()
-        result = self.command("apply", str(self.bundle), "0" * 64, self.operation)
+        result = self.command("apply", str(self.bundle), "0" * 64, self.operation,
+                              hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("changed after preview", result.stderr)
+
+    def test_bundle_substitution_during_authorization_is_rejected(self):
+        self.archive()
+        digest = hashlib.sha256(self.bundle.read_bytes()).hexdigest()
+        self.archive(payload=b"substituted after authorization request")
+        result = self.command("apply", str(self.bundle), hashlib.sha256(self.manifest_path.read_bytes()).hexdigest(),
+                              self.operation, digest, "b" * 40)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("changed after authorization", result.stderr)
+        self.assertEqual(self.binary.read_bytes(), b"original")
+
+    def test_bundle_revision_must_match_confirmation(self):
+        self.archive(lambda value: value.update(revision="c" * 40))
+        result = self.apply()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("confirmed revision", result.stderr)
 
     def test_untrusted_helper_and_bundle_symlinks_are_rejected(self):
         self.archive()
@@ -215,7 +259,7 @@ class Security(unittest.TestCase):
         with patch.object(module, "write_json", side_effect=fail_manifest):
             with self.assertRaisesRegex(RuntimeError, "publication failure"):
                 module.apply_archive(self.bundle, hashlib.sha256(self.manifest_path.read_bytes()).hexdigest(),
-                                     self.operation, 1000)
+                                     self.operation, 1000, hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40)
         self.assertEqual(self.binary.read_bytes(), b"original")
         self.assertEqual(json.loads(self.manifest_path.read_text())["revision"], "a" * 40)
         journal = json.loads((module.STATE / self.operation / "journal.json").read_text())

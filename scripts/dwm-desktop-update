@@ -146,6 +146,8 @@ def record_system(args):
                 "layout": layout, "packages": sorted(set(args.packages)),
                 "files": {str(path): fingerprint(stage / str(path).lstrip("/")) for path in sorted(files)}}
     target = stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/")
+    target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+    os.chmod(target.parent, 0o755)
     write_json(target, manifest)
     os.chmod(target, 0o644)
 
@@ -276,6 +278,11 @@ def check(force=False):
             value["changes"] = drift(manifest, user)
             if user.get("revision") != manifest["revision"]:
                 value["changes"].append("User installation receipt is missing or belongs to another revision")
+            missing_parents = sorted({str(Path(name).parent) for name in manifest["files"] if not Path(name).parent.is_dir()})
+            if missing_parents:
+                return save_status(state, value, state="blocked", canUpdate=False, checkedAt=int(time.time()),
+                                   detail="Managed system directories are missing. Run the source installer to restore: "
+                                   + ", ".join(missing_parents))
             upstream = run(["git", "ls-remote", "--exit-code", SOURCE, "refs/heads/main"], timeout=30).split()
             if len(upstream) != 2 or not re.fullmatch(r"[0-9a-f]{40}", upstream[0]):
                 raise RuntimeError("Upstream returned an invalid desktop revision")
@@ -312,7 +319,8 @@ def check(force=False):
 def service_command(unit, command, properties=()):
     args = ["systemd-run", "--user", "--quiet", "--collect", "--unit=" + unit, "--property=Type=exec"]
     args.extend("--property=" + value for value in properties)
-    for key in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS"):
+    for key in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS",
+                "CC", "CFLAGS", "CPPFLAGS", "LDFLAGS"):
         if key in os.environ:
             args.append("--setenv=" + key + "=" + os.environ[key])
     return [*args, *command]
@@ -502,7 +510,8 @@ def worker(operation):
                     config_source = state / "build-config.h"
                 if config_source.is_file():
                     shutil.copyfile(config_source, source / "config.h")
-                run(["make", "clean", "all"], cwd=source, timeout=300, capture=False)
+                build_overrides = [key + "=" + os.environ[key] for key in ("CC", "CFLAGS", "CPPFLAGS", "LDFLAGS") if key in os.environ]
+                run(["make", "clean", "all", *build_overrides], cwd=source, timeout=300, capture=False)
                 layout = installed["layout"]
                 run(["make", "install-system", "DESTDIR=" + str(stage), "PREFIX=" + layout["prefix"],
                      "MANPREFIX=" + layout["manprefix"], "XSESSIONSDIR=" + layout["xsessions"], "DATADIR=" + layout["datadir"]],
@@ -510,7 +519,11 @@ def worker(operation):
                 candidate = read_json(stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/"))
                 if (set(candidate["files"]) != set(installed["files"]) or candidate["layout"] != installed["layout"]):
                     raise RuntimeError("Desktop file layout changed; use the documented source installer for this update")
+                if any(record != installed["files"][name] for name, record in candidate["files"].items()
+                       if Path(name).is_relative_to(prefix / "libexec") or Path(name) == prefix / "bin/dwm-display-setup"):
+                    raise RuntimeError("Privileged helpers changed; use the documented source installer for this update")
                 make_bundle(stage, candidate, directory / "bundle.tar")
+                bundle_digest = digest(directory / "bundle.tar")
                 save_status(state, value, state="backing-up", detail="Preparing managed files and recovery copies...", percent=-1)
                 prepared = prepare_user(source, operation)
                 write_json(directory / "user-backup.json", prepared)
@@ -520,11 +533,14 @@ def worker(operation):
                     shutil.copyfile(state / "installed.json", directory / "installed-before.json")
                 if (state / "build-config.h").exists():
                     shutil.copyfile(state / "build-config.h", directory / "build-config-before.h")
+                write_json(directory / "receipt-backup.json", {
+                    name: (state / name).exists() for name in ("installed.json", "build-config.h")})
                 save_status(state, value, backup=str(directory / "user-backup.json"), state="installing",
                             detail="Authorizing and installing system files...", percent=-1)
                 system_started = True
                 save_status(state, value, systemStarted=True)
-                run(["/usr/bin/pkexec", privileged, "apply", directory / "bundle.tar", preview["generation"], operation], timeout=600, capture=False)
+                run(["/usr/bin/pkexec", privileged, "apply", directory / "bundle.tar", preview["generation"], operation,
+                     bundle_digest, preview["available"]], timeout=600, capture=False)
                 system_applied = True
                 for entry in prepared:
                     target, backup = Path(entry["target"]), Path(entry["backup"])
@@ -618,6 +634,10 @@ def recover(operation):
         if value["operation"] != operation or value["state"] != "interrupted" or service_active():
             raise RuntimeError("Only the interrupted current operation can be recovered")
         directory = state / "operations" / operation
+        receipts = read_json(directory / "receipt-backup.json") if (directory / "receipt-backup.json").exists() else {}
+        for name, saved in (("installed.json", "installed-before.json"), ("build-config.h", "build-config-before.h")):
+            if receipts.get(name) is True and not (directory / saved).is_file():
+                raise RuntimeError("Receipt recovery copy is missing: " + saved)
         prepared = read_json(directory / "user-backup.json", limit=64 * 1024 * 1024) if (directory / "user-backup.json").exists() else []
         # Validate every target before changing either system or user files.
         for entry in prepared:
@@ -652,6 +672,8 @@ def recover(operation):
         for name, saved in (("installed.json", "installed-before.json"), ("build-config.h", "build-config-before.h")):
             if (directory / saved).exists():
                 shutil.copyfile(directory / saved, state / name)
+            elif receipts.get(name) is False:
+                (state / name).unlink(missing_ok=True)
         return save_status(state, value, state="failed", canUpdate=False, restart="session", percent=-1,
                            detail="Previous desktop files restored. Log out and back in, then check again.")
 

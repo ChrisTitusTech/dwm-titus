@@ -26,6 +26,8 @@ if sys.argv[1:] == ["status"]:
     if path.exists():
         value = json.loads(path.read_text())
 elif sys.argv[1:] in (["check"], ["check", "--force"]):
+    if "--force" in sys.argv:
+        time.sleep(3)
     write(state="available", detail="A desktop update is available", canUpdate=True)
 elif sys.argv[1:] == ["start", "b" * 40]:
     write(state="building", detail="Building the desktop update...", canUpdate=False)

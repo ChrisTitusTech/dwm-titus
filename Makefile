@@ -191,6 +191,7 @@ install-system:
 		sed "s|@PREFIX@|${PREFIX}|g" "$$f" | \
 			install -Dm755 /dev/stdin "${DESTDIR}${PRIVILEGED_HELPER_DIR}/$$(basename "$$f")"; \
 	done
+	install -d -m755 "${DESTDIR}${PREFIX}/share/dwm-titus"
 	/usr/bin/python3 -I "${DESTDIR}${PREFIX}/bin/dwm-desktop-update" record-system --source-dir . \
 		--destdir "${DESTDIR}" --prefix "${PREFIX}" --manprefix "${MANPREFIX}" \
 		--xsessions "${XSESSIONSDIR}" --datadir "${DATADIR}" \
@@ -202,11 +203,15 @@ install-cursors:
 	rm -rf \
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_DARK_THEME}" \
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_LIGHT_THEME}"
-	mkdir -p "${DESTDIR}${DATADIR}/icons"
+	install -d -m755 "${DESTDIR}${DATADIR}/icons"
 	cp -a --no-preserve=ownership "assets/cursors/${CAPITAINE_DARK_THEME}" \
 		"${DESTDIR}${DATADIR}/icons/"
 	cp -a --no-preserve=ownership "assets/cursors/${CAPITAINE_LIGHT_THEME}" \
 		"${DESTDIR}${DATADIR}/icons/"
+	find "${DESTDIR}${DATADIR}/icons/${CAPITAINE_DARK_THEME}" \
+		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_LIGHT_THEME}" -type d -exec chmod 755 {} +
+	find "${DESTDIR}${DATADIR}/icons/${CAPITAINE_DARK_THEME}" \
+		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_LIGHT_THEME}" -type f -exec chmod 644 {} +
 	install -Dm644 assets/cursors/COPYING \
 		"${DESTDIR}${CAPITAINE_LICENSE_DIR}/COPYING"
 

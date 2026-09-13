@@ -7,6 +7,7 @@ ShellRoot {
     property int stage: 0
     property int ticks: 0
     property bool sawProgress: false
+    property int expireAt: 0
 
     function check(condition, detail) {
         if (!condition) {
@@ -73,6 +74,15 @@ ShellRoot {
                 root.stage = 4;
             } else if (root.stage === 4 && !model.busy) {
                 root.check(model.commandError === "", "No command or parser errors");
+                model.check(true);
+                root.expireAt = root.ticks + 4;
+                root.stage = 5;
+            } else if (root.stage === 5 && root.ticks >= root.expireAt) {
+                model.expireCommand();
+                root.check(model.busy, "Terminating command still blocks another launch");
+                root.stage = 6;
+            } else if (root.stage === 6 && !model.busy) {
+                root.check(model.commandError.indexOf("timed out") >= 0, "Process exit preserves timeout guidance");
                 console.info("Desktop update UI: PASS");
                 Qt.quit();
             }

@@ -209,6 +209,7 @@ ShellRoot {
     SystemManagementModel {
         id: systemManagementModel
         desktopUpdateBusy: desktopUpdateModel.updateOwned
+        desktopUpdateInterrupted: desktopUpdateModel.status.state === "interrupted"
         healthModel: systemHealthModel
         targetScreen: settingsWindow.screen || settingsModel.targetScreen || root.activePanelScreen
         onHealthOpened: settingsModel.close()

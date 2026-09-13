@@ -41,6 +41,15 @@ The installed manifest fixes the authorized system-file destinations, file
 types and modes, cursor link targets, and package capability list. An update
 that changes that contract stops before installation and asks for the source
 installer. This avoids turning Settings into a general-purpose root installer.
+Privileged helpers and their root-executed `dwm-display-setup` command must stay
+byte-identical; changes to them require
+the source installer. Authorization carries the prepared archive's digest and
+confirmed revision; the root-owned copy must match both before installation,
+preventing archive substitution while the authorization prompt is open.
+Missing system directories also require that installer
+and are not offered as automatic file repairs. Compiler overrides (`CC`,
+`CFLAGS`, `CPPFLAGS`, and `LDFLAGS`) supplied to the updater are carried into its
+worker and passed to the build.
 Missing known build/source-update packages can be installed after confirmation;
 the package manager owns its transaction and package locks.
 
