@@ -61,6 +61,7 @@ class DesktopUpdate(unittest.TestCase):
         patch.object(update, "missing_packages", return_value=[]).start()
         patch.object(update, "service_active", return_value=False).start()
         patch.object(update, "root_owned", return_value=True).start()
+        patch.object(update, "trusted_directory", return_value=None).start()
         self.command = patch.object(update, "run", return_value="a" * 40 + "\trefs/heads/main").start()
 
     def test_current_and_content_drift_are_distinct(self):
@@ -112,6 +113,14 @@ class DesktopUpdate(unittest.TestCase):
         self.assertEqual(value["state"], "drift")
         self.assertTrue(value["canUpdate"])
         self.assertIn(str(self.binary), value["changes"])
+
+    def test_untrusted_system_parent_blocks_before_network(self):
+        with patch.object(update, "trusted_directory", side_effect=RuntimeError("untrusted parent")):
+            value = update.check(True)
+        self.assertEqual(value["state"], "blocked")
+        self.assertFalse(value["canUpdate"])
+        self.assertIn("source installer", value["detail"])
+        self.command.assert_not_called()
 
     def test_unsafe_system_drift_blocks_before_network_or_authorization(self):
         for mode in (0o4755, 0o2755, 0o775):

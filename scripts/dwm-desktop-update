@@ -254,9 +254,20 @@ def root_owned(path):
     return path.lstat().st_uid == 0
 
 
+def trusted_directory(path):
+    for directory in (path, *path.parents):
+        info = directory.lstat()
+        if info.st_uid != 0 or info.st_mode & 0o022 or not stat.S_ISDIR(info.st_mode):
+            raise RuntimeError("Untrusted managed parent directory: " + str(directory))
+
+
 def unsupported_system_drift(manifest):
     for name, expected in manifest["files"].items():
         path = Path(name)
+        try:
+            trusted_directory(path.parent)
+        except (OSError, RuntimeError):
+            return "Managed system directories require the source installer: " + str(path.parent)
         if not os.path.lexists(path):
             continue
         record = fingerprint(path)
@@ -565,7 +576,8 @@ def worker(operation):
                     raise RuntimeError("Desktop file layout changed; use the documented source installer for this update")
                 if any(record != installed["files"][name] for name, record in candidate["files"].items()
                        if Path(name).is_relative_to(prefix / "libexec") or Path(name) in
-                       (prefix / "bin/dwm-display-setup", prefix / "bin/dwm-system-health")):
+                       (prefix / "bin/dwm-display-setup", prefix / "bin/dwm-system-health",
+                        prefix / "bin/power-management.sh")):
                     raise RuntimeError("Privileged helpers changed; use the documented source installer for this update")
                 make_bundle(stage, candidate, directory / "bundle.tar")
                 bundle_digest = digest(directory / "bundle.tar")
@@ -753,16 +765,16 @@ def main():
     if args.command == "record-system":
         record_system(args)
         return 0
-    if os.getuid() == 0:
-        raise RuntimeError("Run the desktop updater as the desktop user")
-    if args.command == "record-user":
-        record_user(args.source_dir)
-        return 0
     if args.command == "verify-receipts":
         verify_receipts(args.source_dir, args.manifest)
         return 0
     if args.command == "verify-trust":
         trusted_installation(Path(args.manifest))
+        return 0
+    if os.getuid() == 0:
+        raise RuntimeError("Run the desktop updater as the desktop user")
+    if args.command == "record-user":
+        record_user(args.source_dir)
         return 0
     if args.command == "worker":
         return worker(args.operation)

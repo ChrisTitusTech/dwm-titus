@@ -95,6 +95,37 @@ class Security(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "untrusted parent"):
             validate(self.manifest_path)
 
+    def test_discovery_rejects_untrusted_complete_parent_chains(self):
+        check = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))["unsupported_system_drift"]
+        self.assertEqual(check(self.manifest), "")
+        parent = self.binary.parent
+        parent.chmod(0o775)
+        self.assertIn("source installer", check(self.manifest))
+        parent.chmod(0o755)
+        os.chown(parent, 1000, 1000)
+        self.assertIn("source installer", check(self.manifest))
+        os.chown(parent, 0, 0)
+        target = self.prefix / "real-bin"
+        parent.rename(target)
+        parent.symlink_to(target, target_is_directory=True)
+        self.assertIn("source installer", check(self.manifest))
+        parent.unlink()
+        target.rename(parent)
+        self.prefix.chmod(0o775)
+        self.assertIn("source installer", check(self.manifest))
+
+    def test_root_can_run_read_only_installation_audits(self):
+        script = str(REPO / "scripts/dwm-desktop-update")
+        result = subprocess.run([sys.executable, script, "verify-trust", str(self.manifest_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (self.prefix / ".desktop-source.json").write_text(json.dumps({"revision": "a" * 40}))
+        state = self.prefix / "state/dwm-titus/desktop-update"
+        state.mkdir(parents=True)
+        (state / "installed.json").write_text(json.dumps({"revision": "a" * 40, "trees": {}}))
+        result = subprocess.run([sys.executable, script, "verify-receipts", str(self.prefix), str(self.manifest_path)],
+                                env={**os.environ, "XDG_STATE_HOME": str(self.prefix / "state")}, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_matching_user_owned_system_file_is_reinstalled_as_root(self):
         os.chown(self.binary, 1000, 1000)
         self.archive(payload=b"original")
@@ -150,6 +181,12 @@ class Security(unittest.TestCase):
     def test_root_executed_system_health_payload_is_rejected(self):
         target = self.prefix / "bin/dwm-system-health"
         target.write_bytes(b"original root-executed system health")
+        target.chmod(0o755)
+        self.assert_helper_payload_rejected(target)
+
+    def test_root_executed_power_management_payload_is_rejected(self):
+        target = self.prefix / "bin/power-management.sh"
+        target.write_bytes(b"original root-executed power management")
         target.chmod(0o755)
         self.assert_helper_payload_rejected(target)
 

@@ -63,6 +63,7 @@ update.quickshell_processes = shell_processes
 update.start_activation = activation
 update.time.sleep = lambda delay: None
 update.trusted_installation = lambda path: None
+update.trusted_directory = lambda path: None
 source, stage = directory / "source", directory / "stage"
 
 

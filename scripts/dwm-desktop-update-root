@@ -131,7 +131,8 @@ def validate_candidate(candidate, installed):
     for name, record in candidate["files"].items():
         old = installed["files"][name]
         if (Path(name).is_relative_to(PREFIX / "libexec") or Path(name) in
-                (PREFIX / "bin/dwm-display-setup", PREFIX / "bin/dwm-system-health")) and record != old:
+                (PREFIX / "bin/dwm-display-setup", PREFIX / "bin/dwm-system-health",
+                 PREFIX / "bin/power-management.sh")) and record != old:
             fail("Privileged helpers changed; use the documented source installer")
         if not isinstance(record, dict):
             fail("Invalid managed file metadata")
