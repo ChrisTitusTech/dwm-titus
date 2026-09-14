@@ -10,14 +10,21 @@ continue to manage the Quickshell application and other RPM packages.
 Opening System checks once, with a five-minute cache. **Check again** bypasses
 that cache. **Update desktop** previews the operation and missing required
 packages; **Confirm update** starts it. System-file installation asks for
-administrator authorization through polkit. No installation happens just by
-opening Settings.
+administrator authorization through polkit. Settings closes when an
+administrator request starts so its always-on-top window cannot hide the
+password dialog. Reopen Settings to follow progress; **Hide Settings to show
+authorization** reveals the desktop again if needed. No installation happens
+just by opening Settings.
 
 The progress bar is indeterminate during downloading, building, authorization,
 and installation because those stages do not provide a reliable percentage.
 Verification shows the actual number of system files checked. Closing Settings
 does not stop the update. Reopening it reads the saved operation, including
-interrupted or completed work. No background polling runs while idle.
+interrupted or completed work. **Check status** reads the current operation
+without starting another update check or install, even while the worker is
+busy. The card shows when that status request completed and the update log
+location during active and failed operations. No background polling runs while
+idle.
 
 ## Installation and compatibility
 
@@ -103,7 +110,11 @@ safely even if another user's later update has already started.
 
 A failed download or build leaves the installation unchanged. Read the displayed
 log, fix the reported cause, and use **Check again**. Canceled or denied polkit
-authorization does not count as successful installation.
+authorization does not count as successful installation. An authorization or
+privileged-operation timeout stops automatic password requests immediately.
+When dispatch may have occurred, the updater retains an interrupted operation
+for explicit recovery rather than assuming nothing changed. Recovery progress
+is reported separately from the original preparation or build step.
 
 An interrupted installation blocks further updates. Close Settings and use a
 terminal, or switch to a TTY with Ctrl+Alt+F3 if the shell is unavailable. Use the

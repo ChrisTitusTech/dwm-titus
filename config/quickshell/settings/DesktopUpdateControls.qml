@@ -62,7 +62,26 @@ Rectangle {
                 enabled: root.model !== null && root.model.canUpdate && !root.model.confirming
                 onActivated: root.model.prepare()
             }
+            Button {
+                objectName: "refreshDesktopUpdateStatus"
+                label: "Check status"
+                enabled: root.model !== null && !root.model.commandPending && !root.model.terminating
+                    && !root.model.dispatching && !root.model.confirming
+                onActivated: root.model.refreshStatus(false)
+            }
             Item { Layout.fillWidth: true }
+        }
+        Label {
+            objectName: "desktopUpdateStatusChecked"
+            visible: root.model !== null && root.model.statusCheckedAt > 0
+            text: root.model ? "Status checked: " + new Date(root.model.statusCheckedAt).toLocaleTimeString() : ""
+            color: Theme.menuMutedText
+        }
+        Button {
+            objectName: "revealDesktopUpdateAuthorization"
+            visible: root.model !== null && root.model.authorization.length > 0
+            label: "Hide Settings to show authorization"
+            onActivated: root.model.authorizationRequested()
         }
         Label {
             visible: root.model !== null && root.model.systemBusy
@@ -95,7 +114,8 @@ Rectangle {
             }
             Label {
                 text: "This builds and installs the selected revision, replaces managed Quickshell files, and keeps recovery copies. "
-                    + "Your personal settings are preserved. Administrator authorization is required for system-file repairs. "
+                    + "Your personal settings are preserved. Settings closes when administrator authorization is requested so the password dialog is visible. "
+                    + "Reopen Settings to check progress. Administrator authorization is required for system-file repairs. "
                     + "Changes to system files require the source installer. "
                     + "You may need to log out afterward. Installation cannot be canceled safely once it starts."
                 color: Theme.menuText
@@ -122,7 +142,7 @@ Rectangle {
         }
         Label {
             visible: root.model !== null && root.model.status.log.length > 0
-                && (root.model.status.state === "failed" || root.model.status.state === "interrupted")
+                && (root.model.active || root.model.status.state === "failed" || root.model.status.state === "interrupted")
             text: root.model ? "Update log: " + root.model.status.log : ""
             color: Theme.menuMutedText
             font.pixelSize: Theme.fontCaptionSize

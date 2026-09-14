@@ -8,6 +8,7 @@ ShellRoot {
     property int ticks: 0
     property bool sawProgress: false
     property int expireAt: 0
+    property int authorizationRequests: 0
 
     function check(condition, detail) {
         if (!condition) {
@@ -25,7 +26,15 @@ ShellRoot {
         return null;
     }
 
-    DesktopUpdateModel { id: model; settingsVisible: true }
+    DesktopUpdateModel {
+        id: model
+        settingsVisible: true
+        onAuthorizationRequested: {
+            root.authorizationRequests++;
+            window.visible = false;
+            model.settingsVisible = false;
+        }
+    }
     FloatingWindow {
         id: window
         visible: true
@@ -59,6 +68,23 @@ ShellRoot {
                 root.check(!model.canUpdate, "Duplicate update is disabled");
                 root.check(root.find("desktopUpdateProgress", controls).visible, "Progress bar is visible");
                 root.check(root.find("desktopUpdateProgress", controls).indeterminate, "Build has unknown progress");
+                root.check(root.authorizationRequests === 1, "Authorization hides Settings before waiting");
+                root.check(!window.visible, "Settings is hidden to reveal the authentication dialog");
+                window.visible = true;
+                model.settingsVisible = true;
+                root.stage = 7;
+            } else if (root.stage === 7 && !model.commandPending) {
+                root.check(root.authorizationRequests === 1 && window.visible, "Reading the same status does not hide reopened Settings");
+                root.check(root.find("revealDesktopUpdateAuthorization", controls).visible, "Prompt reveal is available during authorization");
+                const refresh = root.find("refreshDesktopUpdateStatus", controls);
+                root.check(refresh.enabled, "Read-only status is available during an active update");
+                model.statusCheckedAt = 0;
+                refresh.requestActivation();
+                root.stage = 8;
+            } else if (root.stage === 8 && !model.commandPending) {
+                root.check(model.statusCheckedAt > 0, "Check status completed while the worker is active");
+                root.check(model.active && !model.canUpdate, "Status refresh preserves the active update");
+                root.check(root.authorizationRequests === 1, "Status refresh does not repeat authorization");
                 root.stage = 2;
             } else if (root.stage === 2 && model.status.state === "verifying") {
                 root.check(root.find("desktopUpdateProgress", controls).value === 50, "Measured progress is displayed");

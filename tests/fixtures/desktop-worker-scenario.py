@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tarfile
 
@@ -98,12 +99,19 @@ def boundary(args, cwd=None, timeout=60, capture=True):
                      "files": {str(binary): update.fingerprint(staged_binary)}}
         update.write_json(stage / str(manifest_path).lstrip("/"), candidate)
     elif args[0] == "/usr/bin/pkexec":
+        status = update.read_json(state / "status.json")
+        assert status["authorization"] == args[2], status
+        with (state / "authorization-calls").open("a") as calls:
+            calls.write(args[2] + "\n")
         if args[2] == "begin":
+            if scenario == "begin-timeout":
+                raise subprocess.TimeoutExpired(args, timeout)
             if scenario == "begin-denied":
                 raise update.CommandFailure("authorization denied", 126)
             (state / "reserved").write_text("reserved")
             return ""
         if args[2] == "rollback":
+            assert status["state"] == "recovering", status
             (state / "reservation-released").write_text("released")
             return ""
         if args[2] == "complete":
@@ -113,6 +121,8 @@ def boundary(args, cwd=None, timeout=60, capture=True):
             return ""
         if scenario == "denied":
             raise update.CommandFailure("authorization denied", 126)
+        if scenario == "apply-timeout":
+            raise subprocess.TimeoutExpired(args, timeout)
         if scenario == "apply-failure":
             raise update.CommandFailure("application interrupted", 1)
         with tarfile.open(directory / "bundle.tar") as bundle:
