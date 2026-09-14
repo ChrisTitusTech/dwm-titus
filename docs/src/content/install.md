@@ -12,20 +12,29 @@ eyebrow: Start here
 
 ## Fedora ISO (Recommended for a New Installation)
 
-The v0.7.0 offline images dated 2026-09-11 install a complete Fedora 44 x86_64
+The v0.7.0 offline images updated 2026-09-14 install a complete Fedora 44 x86_64
 desktop from a compressed system image. Packages are included, so installation
 works without an Internet connection or software selection.
 
 | Image | Size | Download |
 | --- | --- | --- |
-| Standard | 3.39 GiB | [Download standard ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911.iso) |
-| NVIDIA | 3.96 GiB | [Download NVIDIA ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911-nvidia.iso) |
+| Standard | 3.69 GiB | [Download standard ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911.iso) |
+| NVIDIA | 4.29 GiB | [Download NVIDIA ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911-nvidia.iso) |
 | Checksums | | [Download SHA256SUMS](https://downloads.christitus.com/iso/2026-09-11/SHA256SUMS) |
 
+The download URLs and filenames retain their original September 11 date; their
+contents and checksums now identify the September 14 builds. Download a fresh
+checksum file with the replacement ISO. If you have a partial download of the
+older build, start a new download instead of resuming it.
+
 Use the standard image unless you need the proprietary NVIDIA driver packages.
-Both include LightDM, dwm, Quickshell, fonts, Gear Lever, and `maim` with region
-capture and clipboard dependencies. Internet access is needed for later updates
-and additional software.
+Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Thunar,
+Alacritty, Starship, Herdr, fonts, Gear Lever, and `maim` with region capture and
+clipboard dependencies. Fresh accounts use Brave Origin for web browsing,
+Celluloid for its supported audio/video formats, sxiv for its supported image
+formats, Thunar for folders, and Alacritty for the terminal. Existing application
+preferences are preserved; use Settings > Defaults to change them. Internet
+access is needed for later updates and additional software.
 
 ### Verify the Download
 
@@ -64,20 +73,26 @@ For NVIDIA, use the NVIDIA ISO link from the table with the same checksum file.
    using the **dwm** session. The desktop is already installed; you do not need to
    run the existing-system installer below.
 
-`Super` is usually the Windows key. Open a terminal with `Super+X`, take a full
+`Super` is usually the Windows key. Open Thunar with `Super+E`, open a terminal
+with `Super+X`, take a full
 screenshot with `Super+P`, select a region with `Super+Shift+P`, or copy a region
 to the clipboard with `Super+Ctrl+P`.
 
-Standard installation and first desktop login passed offline UEFI and BIOS VM
-checks. The NVIDIA image passed offline UEFI and desktop checks using virtual
-graphics. **Physical NVIDIA acceleration remains untested**; its persistence
-service cannot run in a VM without an NVIDIA device. See the
+Both September 14 images passed fresh offline UEFI installation, first desktop
+login, and reboot checks in VMs. Application defaults for 130 audio/video/image
+MIME types, browser/file-manager/terminal defaults, `Super+E` opening Thunar, and
+file activation in sxiv, Celluloid, and Brave Origin were verified. Defaults
+remained unchanged after reboot. Complete public downloads matched the tested
+ISOs by SHA-256, and resumable downloads were verified.
+
+For VM video playback, enable virtual 3D acceleration. Celluloid rendered video
+correctly with accelerated virtio graphics; the non-3D headless virtio setup
+showed black video. **Physical NVIDIA acceleration remains untested**; the NVIDIA
+image was tested with virtual graphics. Physical audio, Secure Boot, and a new
+BIOS installation were not qualified for these replacement images. See the
 [build notes and qualification limits](https://downloads.christitus.com/iso/2026-09-11/BUILD-NOTES.md),
 [package/build manifest](https://downloads.christitus.com/iso/2026-09-11/BUILD-MANIFEST.json), and
 [v0.7.0 release notes](https://github.com/ChrisTitusTech/dwm-titus/releases/tag/v0.7.0).
-The older ISO files attached directly to that GitHub release still require
-network package installation; use the Cloudflare downloads above for offline
-installation.
 
 ## Existing Fedora System: Quick Install
 
