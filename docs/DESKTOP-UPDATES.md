@@ -15,9 +15,17 @@ installed helper retains that operation's approval through preparation,
 installation, completion, and any immediate cleanup. It does not save your
 password. A later update or explicit recovery starts with a new approval.
 Settings closes when the administrator request starts so its always-on-top window cannot hide the
-password dialog. Reopen Settings to follow progress; **Hide Settings to show
+password dialog. The separate **Desktop update** window appears after the initial
+authorization dialog finishes, so it cannot cover the password prompt. It remains open through shell
+restarts, showing the current stage and elapsed time. **Hide** keeps the update
+running; click the panel update indicator or **Show progress** in Settings to
+reopen it. **View log** opens a bounded log viewer with a refresh button. A
+desktop notification announces completion or a failure requiring attention.
+**Hide Settings to show
 authorization** reveals the desktop again if needed. No installation happens
 just by opening Settings.
+
+![Independent desktop update progress window](evidence/desktop-update-progress-window.png)
 
 The progress bar is indeterminate during downloading, building, authorization,
 and installation because those stages do not provide a reliable percentage.
@@ -218,3 +226,9 @@ if the session ends or expires, the update stops for explicit recovery instead
 of silently elevating again. Installing this helper change requires the source
 update procedure once; the older installed worker cannot replace its own
 root-trusted executable through the update button.
+
+The progress window is a normal GTK window in its own unprivileged user service,
+using the existing GTK portal and Python GObject dependencies. It never requests
+administrator access or starts an installation. Its **Close** and **Hide** actions
+only affect the window. New installed helpers require the documented source
+update procedure once before the button can use them.

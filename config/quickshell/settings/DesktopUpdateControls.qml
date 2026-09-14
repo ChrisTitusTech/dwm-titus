@@ -69,6 +69,12 @@ Rectangle {
                     && !root.model.dispatching && !root.model.confirming
                 onActivated: root.model.refreshStatus(false)
             }
+            Button {
+                objectName: "showDesktopUpdateProgress"
+                label: "Show progress"
+                enabled: root.model !== null && !root.model.progressPending
+                onActivated: root.model.showProgress()
+            }
             Item { Layout.fillWidth: true }
         }
         Label {
@@ -100,7 +106,7 @@ Rectangle {
         }
         Label {
             visible: root.model !== null && root.model.active
-            text: "The update continues if you close Settings. Quickshell may restart when it finishes."
+            text: "Follow the separate progress window or reopen it from the panel. The update continues if you hide it."
             color: Theme.menuMutedText
         }
         ColumnLayout {
@@ -115,7 +121,7 @@ Rectangle {
             Label {
                 text: "This builds and installs the selected revision, replaces managed Quickshell files, and keeps recovery copies. "
                     + "Your personal settings are preserved. Settings closes when administrator authorization is requested so the password dialog is visible. "
-                    + "Reopen Settings to check progress. Administrator authorization is required for system-file repairs. "
+                    + "A separate progress window stays open through the update and shell restart. Administrator authorization is required for system-file repairs. "
                     + "Changes to system files require the source installer. "
                     + "You may need to log out afterward. Installation cannot be canceled safely once it starts."
                 color: Theme.menuText
@@ -134,6 +140,11 @@ Rectangle {
                     onActivated: root.model.confirm()
                 }
             }
+        }
+        Label {
+            visible: root.model !== null && root.model.progressError.length > 0
+            text: root.model ? root.model.progressError : ""
+            color: Theme.danger
         }
         Label {
             visible: root.model !== null && root.model.commandError.length > 0

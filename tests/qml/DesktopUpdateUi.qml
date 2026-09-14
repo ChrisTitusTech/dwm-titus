@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.settings
 
 ShellRoot {
@@ -7,6 +8,7 @@ ShellRoot {
     property int stage: 0
     property int ticks: 0
     property bool sawProgress: false
+    property bool progressOpened: false
     property int expireAt: 0
     property int authorizationRequests: 0
 
@@ -26,6 +28,13 @@ ShellRoot {
         return null;
     }
 
+    FileView {
+        path: root.stage > 0 ? Quickshell.env("XDG_STATE_HOME") + "/dwm-titus/desktop-update/progress-opened" : ""
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.progressOpened = text().trim() === "opened"
+        onFileChanged: reload()
+    }
     DesktopUpdateModel {
         id: model
         settingsVisible: true
@@ -33,6 +42,15 @@ ShellRoot {
             root.authorizationRequests++;
             window.visible = false;
             model.settingsVisible = false;
+        }
+    }
+    DesktopUpdateModel {
+        id: background
+        backgroundMonitor: true
+        Component.onCompleted: {
+            refreshStatus(false);
+            refreshStatus(true);
+            root.check(discoverAfterStatus, "Opening Settings preserves discovery during startup status read");
         }
     }
     FloatingWindow {
@@ -88,12 +106,14 @@ ShellRoot {
                 root.stage = 2;
             } else if (root.stage === 2 && model.status.state === "verifying") {
                 root.check(root.find("desktopUpdateProgress", controls).value === 50, "Measured progress is displayed");
+                root.check(background.active, "Background model follows updates with Settings closed");
                 root.sawProgress = true;
                 model.settingsVisible = false;
                 window.visible = false;
                 root.stage = 3;
             } else if (root.stage === 3 && model.status.state === "restart-required") {
                 root.check(root.sawProgress, "Progress stream was observed while visible");
+                root.check(root.progressOpened, "Confirmed update opened the independent progress window");
                 model.commandError = "old connection error";
                 window.visible = true;
                 model.settingsVisible = true;

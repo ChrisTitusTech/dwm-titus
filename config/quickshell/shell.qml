@@ -217,6 +217,7 @@ ShellRoot {
 
     DesktopUpdateModel {
         id: desktopUpdateModel
+        backgroundMonitor: true
         onAuthorizationRequested: settingsModel.close()
         settingsVisible: settingsModel.visible && settingsModel.selectedSectionId === "system"
         systemBusy: systemManagementModel.operation.busy || systemManagementModel.activeOperation !== null
@@ -1149,6 +1150,7 @@ ShellRoot {
             panelSettingsModel: panelSettingsModel
             powerModel: powerModel
             powerMenuModel: powerMenuModel
+            desktopUpdateModel: desktopUpdateModel
             primaryPanel: modelData === Quickshell.screens[0]
             onPopupRequested: (panel, popupId) => root.selectPanelPopup(panel, popupId)
         }

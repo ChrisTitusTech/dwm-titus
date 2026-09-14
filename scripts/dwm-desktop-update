@@ -896,7 +896,7 @@ def launch(expected):
         sync_directory(directory.parent)
         write_json(directory / "preview.json", value)
         save_status(state, value, operation=operation, state="starting", detail="Starting desktop update...",
-                    canUpdate=False, log=str(directory / "update.log"), percent=-1, backup="",
+                    canUpdate=False, log=str(directory / "update.log"), percent=-1, backup="", startedAt=time.time(),
                     systemStarted=False, systemApplied=False, activationShells=[])
         try:
             run(service_command(UNIT, ["/usr/bin/python3", "-I", worker, "worker", operation],
@@ -1339,6 +1339,7 @@ def main():
     checking = commands.add_parser("check")
     checking.add_argument("--force", action="store_true")
     commands.add_parser("status")
+    commands.add_parser("progress")
     start = commands.add_parser("start")
     start.add_argument("revision")
     work = commands.add_parser("worker")
@@ -1376,6 +1377,12 @@ def main():
         if args.environment_file:
             load_worker_environment(Path(args.environment_file))
         return worker(args.operation)
+    if args.command == "progress":
+        helper = Path(__file__).resolve().with_name("dwm-desktop-update-progress")
+        trusted_file(helper, executable=True)
+        run(service_command("dwm-desktop-progress-" + uuid.uuid4().hex + ".service",
+                            ["/usr/bin/python3", "-I", helper], prefix=helper.parent.parent))
+        return 0
     if args.command == "status":
         with locked(paths()[2]):
             value = recover_status(paths()[2])

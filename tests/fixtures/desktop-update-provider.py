@@ -22,7 +22,10 @@ def write(**changes):
     temporary.replace(path)
 
 
-if sys.argv[1:] == ["status"]:
+if sys.argv[1:] == ["progress"]:
+    (directory / "progress-opened").write_text("opened")
+    sys.exit(0)
+elif sys.argv[1:] == ["status"]:
     if path.exists():
         value = json.loads(path.read_text())
 elif sys.argv[1:] in (["check"], ["check", "--force"]):

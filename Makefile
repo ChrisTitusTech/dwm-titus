@@ -30,6 +30,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-controlcenter \
 	scripts/dwm-default-apps \
 	scripts/dwm-desktop-update \
+	scripts/dwm-desktop-update-progress \
 	scripts/dwm-diagnostics \
 	scripts/dwm-display-profile \
 	scripts/dwm-display-setup \
@@ -630,10 +631,12 @@ check-install-manifest: all
 check-install-preservation:
 	tests/test-install-preservation.sh
 
-check-desktop-update:
+check-desktop-update: dwm
 	@python3 tests/test-desktop-update-sandbox.py
 	python3 tests/test-desktop-update.py
 	tests/test-desktop-update-ui.sh
+	dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-desktop-update-progress.py
+	dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-desktop-update-focus.py
 
 check-test-runner:
 	@$(call run_managed_test,tests/test-run-tests.sh)

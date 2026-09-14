@@ -21,6 +21,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep desktop update progress in a separate window that survives shell restarts,
+  with elapsed time, a log viewer, completion notifications, and a panel shortcut
+  for reopening hidden progress.
+
 - Use one administrator approval for each desktop update or explicit recovery.
   Retain a private, transaction-bound helper through all privileged phases,
   without saving passwords or granting authorization to unrelated commands.

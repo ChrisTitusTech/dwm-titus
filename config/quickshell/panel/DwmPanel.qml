@@ -28,6 +28,7 @@ PanelWindow {
         return "󰂎";
     }
 
+    property var desktopUpdateModel: null
     required property var state
     required property var clock
     required property var networkModel
@@ -181,6 +182,18 @@ PanelWindow {
                                 color: Theme.text
                             }
                         }
+                    }
+
+                    ShellButton {
+                        objectName: "desktopUpdateIndicator"
+                        visible: root.desktopUpdateModel !== null && (root.desktopUpdateModel.active
+                            || ["failed", "interrupted", "restart-required"].indexOf(root.desktopUpdateModel.status.state) >= 0
+                            || (root.desktopUpdateModel.status.state === "current" && !!root.desktopUpdateModel.status.operation))
+                        label: !root.desktopUpdateModel ? "" : root.desktopUpdateModel.active ? "Updating..."
+                            : root.desktopUpdateModel.status.state === "current" ? "Updated"
+                            : root.desktopUpdateModel.status.state === "restart-required" ? "Logout required" : "Update needs attention"
+                        enabled: root.desktopUpdateModel !== null && !root.desktopUpdateModel.progressPending
+                        onActivated: root.desktopUpdateModel.showProgress()
                     }
 
                     RunningAppsArea { state: root.state }
