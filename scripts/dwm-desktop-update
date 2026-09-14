@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import pwd
 import re
+import select
 import shutil
 import signal
 import stat
@@ -493,14 +494,112 @@ def save_status(state_dir, value, **changes):
     return value
 
 
+class PrivilegedSession:
+    """One elevated helper, never a stored password or reusable global grant."""
+    def __init__(self, helper, operation, generation, revision, mode="update"):
+        self.command = ["/usr/bin/pkexec", str(helper), "session", mode, operation, generation, revision]
+        self.process = None
+        self.buffer = b""
+        self.started = False
+        self.broken = False
+
+    def reply(self, timeout):
+        deadline = time.monotonic() + timeout
+        while b"\n" not in self.buffer:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
+                self.broken = True
+                raise AuthorizationTimeout("Desktop authorization or its operation timed out. "
+                                           "No further authorization will be requested automatically.")
+            chunk = os.read(self.process.stdout.fileno(), 8193)
+            if not chunk:
+                self.broken = True
+                code = self.process.wait(timeout=5)
+                raise CommandFailure("Desktop authorization session ended. See the update log.", code or 1)
+            self.buffer += chunk
+            if len(self.buffer) > 8192:
+                self.broken = True
+                raise RuntimeError("Oversized desktop authorization response")
+        line, self.buffer = self.buffer.split(b"\n", 1)
+        try:
+            result = json.loads(line)
+        except ValueError:
+            self.broken = True
+            raise
+        if not isinstance(result, dict) or type(result.get("ok")) is not bool:
+            self.broken = True
+            raise RuntimeError("Invalid desktop authorization response")
+        if not result["ok"]:
+            raise CommandFailure(str(result.get("error", "Desktop operation failed")), 1)
+        return result
+
+    def start(self):
+        if self.broken:
+            raise RuntimeError("Desktop authorization session is unavailable; review recovery before retrying")
+        if not self.started:
+            self.started = True
+            try:
+                self.process = subprocess.Popen(self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                                bufsize=0, close_fds=True,
+                                                env={**os.environ, "LC_ALL": "C"})
+                if self.reply(60) != {"ok": True, "ready": True}:
+                    raise RuntimeError("Desktop authorization handshake failed")
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                self.broken = True
+                raise
+
+    def request(self, action, *arguments, timeout=60):
+        self.start()
+        request = (json.dumps([action, *(str(arg) for arg in arguments)]) + "\n").encode()
+        if len(request) > 8192:
+            raise RuntimeError("Oversized desktop authorization request")
+        try:
+            offset = 0
+            while offset < len(request):
+                written = self.process.stdin.write(request[offset:])
+                if not written:
+                    raise RuntimeError("Desktop authorization pipe closed")
+                offset += written
+            self.reply(timeout)
+        except (OSError, ValueError):
+            self.broken = True
+            raise
+
+    def close(self):
+        self.broken = True
+        if self.process is None:
+            return
+        # EOF releases the helper's approval. Never restart it during cleanup.
+        self.process.stdin.close()
+        self.process.stdout.close()
+        try:
+            self.process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            # An in-flight root operation retains its journal and its own bounded
+            # session deadline. The unprivileged worker cannot signal root.
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+
 def authorize(state, value, privileged, action, *arguments, timeout=60):
     labels = {"begin": "prepare the desktop update", "dependencies": "install required packages",
               "apply": "install desktop files", "rollback": "recover the desktop update",
               "complete": "finish the desktop transaction"}
-    save_status(state, value, authorization=action,
-                detail="Administrator authorization: " + labels[action] + ". Settings closes to reveal the password dialog.")
+    first = not privileged.started
+    save_status(state, value, authorization=action if first else "",
+                detail=("Administrator authorization: " + labels[action] + ". Settings closes to reveal the password dialog."
+                        if first else "Using this update's authorization to " + labels[action] + "."))
     try:
-        return run(["/usr/bin/pkexec", privileged, action, *arguments], timeout=timeout, capture=False)
+        privileged.start()
+        if first:
+            save_status(state, value, authorization="",
+                        detail="Using this update's authorization to " + labels[action] + ".")
+        return privileged.request(action, *arguments, timeout=timeout)
     except subprocess.TimeoutExpired as error:
         raise AuthorizationTimeout("Administrator authorization or its operation timed out while attempting to "
                                    + labels[action] + ". No further authorization will be requested automatically.") from error
@@ -920,7 +1019,8 @@ def worker(operation):
             preview = read_json(directory / "preview.json")
             installed = read_json(Path(preview["manifest"]))
             prefix = Path(installed["layout"]["prefix"])
-            privileged = prefix / "libexec/dwm-titus/dwm-desktop-update-root"
+            privileged = PrivilegedSession(prefix / "libexec/dwm-titus/dwm-desktop-update-root", operation,
+                                           preview["generation"], preview["available"])
             prepared = []
             system_started = False
             reservation_started = False
@@ -1100,6 +1200,7 @@ def worker(operation):
                             systemStarted=system_started, systemApplied=system_applied, canUpdate=False)
                 return 1
             finally:
+                privileged.close()
                 if not system_started:
                     for entry in prepared:
                         if not entry["swapped"]:
@@ -1121,74 +1222,79 @@ def recover(operation):
             raise RuntimeError("Only the interrupted current operation can be recovered")
         directory = state / "operations" / operation
         value.pop("statusInvalid", None)
-        if (directory / "completion.json").exists():
-            completion = read_json(directory / "completion.json")
-            preview = read_json(directory / "preview.json")
-            trusted_installation(Path(preview["manifest"]))
-            prefix = Path(preview["manifest"]).parents[2]
-            run(["/usr/bin/pkexec", prefix / "libexec/dwm-titus/dwm-desktop-update-root", "complete", operation], timeout=60, capture=False)
-            if completion.get("recovered") is True:
-                return save_status(state, value, state="failed", canUpdate=False, restart="session", percent=-1,
-                                   detail="Previous desktop files restored. Log out and back in, then check again.")
-            return save_status(state, value, state="restart-required", restart="session", percent=100,
-                               detail="Desktop files are ready. Log out and back in, then check again.")
-        receipts = read_json(directory / "receipt-backup.json") if (directory / "receipt-backup.json").exists() else {}
-        for name, saved in (("installed.json", "installed-before.json"), ("build-config.h", "build-config-before.h")):
-            if receipts.get(name) is True and not (directory / saved).is_file():
-                raise RuntimeError("Receipt recovery copy is missing: " + saved)
-        prepared = read_json(directory / "user-backup.json", limit=64 * 1024 * 1024) if (directory / "user-backup.json").exists() else []
-        # Validate every target before changing either system or user files.
-        for entry in prepared:
-            if not entry["swapped"]:
-                continue
-            target = Path(entry["target"])
-            current = tree_manifest(target) if target.exists() else None
-            if target.exists() and "originalMode" in entry and stat.S_IMODE(target.stat().st_mode) not in (0o700, entry["originalMode"]):
-                raise RuntimeError("Managed directory permissions changed after the interruption: " + str(target))
-            if current not in (entry["original"], entry["replacement"]):
-                raise RuntimeError("Managed files changed after the interruption. Save those changes before recovery: " + str(target))
-            if current == entry["replacement"] and entry["existed"]:
-                if tree_manifest(Path(entry["backup"])) != entry["original"]:
-                    raise RuntimeError("Recovery copy changed: " + entry["backup"])
         preview = read_json(directory / "preview.json")
         trusted_installation(Path(preview["manifest"]))
         prefix = Path(preview["manifest"]).parents[2]
-        # Rollback creates another activation boundary, including a shell started
-        # by an interrupted forward update. Save it before replacing any files.
-        save_status(state, value, activationShells=sorted(quickshell_processes()))
-        run(["/usr/bin/pkexec", prefix / "libexec/dwm-titus/dwm-desktop-update-root", "rollback", operation], timeout=600, capture=False)
-        for entry in reversed(prepared):
-            target, backup = Path(entry["target"]), Path(entry["backup"])
-            current = tree_manifest(target) if target.exists() else None
-            if entry["swapped"] and current not in (entry["original"], entry["replacement"]):
-                raise RuntimeError("Managed files changed during recovery; save those changes before retrying")
-            if entry["swapped"] and current == entry["replacement"]:
-                if entry["existed"]:
-                    if tree_manifest(backup) != entry["original"]:
-                        raise RuntimeError("Recovery copy changed: " + str(backup))
-                    sync_tree(backup)
-                    target.chmod(0o700)
-                    exchange(target, backup)
-                else:
-                    target.chmod(0o700)
-                    os.rename(target, backup)
-            if entry["swapped"] and entry["existed"] and target.exists():
-                target.chmod(entry.get("originalMode", 0o700))
-                sync_directory(target)
-            if backup.exists():
-                sync_directory(backup)
-            sync_directory(target.parent)
-        for name, saved in (("installed.json", "installed-before.json"), ("build-config.h", "build-config-before.h")):
-            if (directory / saved).exists():
-                shutil.copyfile(directory / saved, state / name)
-                sync_file(state / name)
-            elif receipts.get(name) is False:
-                (state / name).unlink(missing_ok=True)
-        sync_directory(state)
-        write_json(directory / "completion.json", {"recovered": True})
-        run(["/usr/bin/pkexec", prefix / "libexec/dwm-titus/dwm-desktop-update-root", "complete", operation], timeout=60, capture=False)
-        return save_status(state, value, state="failed", canUpdate=False, restart="session", percent=-1,
-                           detail="Previous desktop files restored. Log out and back in, then check again.")
+        with PrivilegedSession(prefix / "libexec/dwm-titus/dwm-desktop-update-root", operation,
+                               "0" * 64, "0" * 40, mode="recover") as privileged:
+            if (directory / "completion.json").exists():
+                completion = read_json(directory / "completion.json")
+                preview = read_json(directory / "preview.json")
+                trusted_installation(Path(preview["manifest"]))
+                prefix = Path(preview["manifest"]).parents[2]
+                privileged.request("complete", operation)
+                if completion.get("recovered") is True:
+                    return save_status(state, value, state="failed", canUpdate=False, restart="session", percent=-1,
+                                       detail="Previous desktop files restored. Log out and back in, then check again.")
+                return save_status(state, value, state="restart-required", restart="session", percent=100,
+                                   detail="Desktop files are ready. Log out and back in, then check again.")
+            receipts = read_json(directory / "receipt-backup.json") if (directory / "receipt-backup.json").exists() else {}
+            for name, saved in (("installed.json", "installed-before.json"), ("build-config.h", "build-config-before.h")):
+                if receipts.get(name) is True and not (directory / saved).is_file():
+                    raise RuntimeError("Receipt recovery copy is missing: " + saved)
+            prepared = read_json(directory / "user-backup.json", limit=64 * 1024 * 1024) if (directory / "user-backup.json").exists() else []
+            # Validate every target before changing either system or user files.
+            for entry in prepared:
+                if not entry["swapped"]:
+                    continue
+                target = Path(entry["target"])
+                current = tree_manifest(target) if target.exists() else None
+                if target.exists() and "originalMode" in entry and stat.S_IMODE(target.stat().st_mode) not in (0o700, entry["originalMode"]):
+                    raise RuntimeError("Managed directory permissions changed after the interruption: " + str(target))
+                if current not in (entry["original"], entry["replacement"]):
+                    raise RuntimeError("Managed files changed after the interruption. Save those changes before recovery: " + str(target))
+                if current == entry["replacement"] and entry["existed"]:
+                    if tree_manifest(Path(entry["backup"])) != entry["original"]:
+                        raise RuntimeError("Recovery copy changed: " + entry["backup"])
+            preview = read_json(directory / "preview.json")
+            trusted_installation(Path(preview["manifest"]))
+            prefix = Path(preview["manifest"]).parents[2]
+            # Rollback creates another activation boundary, including a shell started
+            # by an interrupted forward update. Save it before replacing any files.
+            save_status(state, value, activationShells=sorted(quickshell_processes()))
+            privileged.request("rollback", operation, timeout=600)
+            for entry in reversed(prepared):
+                target, backup = Path(entry["target"]), Path(entry["backup"])
+                current = tree_manifest(target) if target.exists() else None
+                if entry["swapped"] and current not in (entry["original"], entry["replacement"]):
+                    raise RuntimeError("Managed files changed during recovery; save those changes before retrying")
+                if entry["swapped"] and current == entry["replacement"]:
+                    if entry["existed"]:
+                        if tree_manifest(backup) != entry["original"]:
+                            raise RuntimeError("Recovery copy changed: " + str(backup))
+                        sync_tree(backup)
+                        target.chmod(0o700)
+                        exchange(target, backup)
+                    else:
+                        target.chmod(0o700)
+                        os.rename(target, backup)
+                if entry["swapped"] and entry["existed"] and target.exists():
+                    target.chmod(entry.get("originalMode", 0o700))
+                    sync_directory(target)
+                if backup.exists():
+                    sync_directory(backup)
+                sync_directory(target.parent)
+            for name, saved in (("installed.json", "installed-before.json"), ("build-config.h", "build-config-before.h")):
+                if (directory / saved).exists():
+                    shutil.copyfile(directory / saved, state / name)
+                    sync_file(state / name)
+                elif receipts.get(name) is False:
+                    (state / name).unlink(missing_ok=True)
+            sync_directory(state)
+            write_json(directory / "completion.json", {"recovered": True})
+            privileged.request("complete", operation)
+            return save_status(state, value, state="failed", canUpdate=False, restart="session", percent=-1,
+                               detail="Previous desktop files restored. Log out and back in, then check again.")
 
 
 def load_worker_environment(path):

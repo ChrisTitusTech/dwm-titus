@@ -10,8 +10,11 @@ continue to manage the Quickshell application and other RPM packages.
 Opening System checks once, with a five-minute cache. **Check again** bypasses
 that cache. **Update desktop** previews the operation and missing required
 packages; **Confirm update** starts it. System-file installation asks for
-administrator authorization through polkit. Settings closes when an
-administrator request starts so its always-on-top window cannot hide the
+administrator authorization through polkit once for the whole update. The
+installed helper retains that operation's approval through preparation,
+installation, completion, and any immediate cleanup. It does not save your
+password. A later update or explicit recovery starts with a new approval.
+Settings closes when the administrator request starts so its always-on-top window cannot hide the
 password dialog. Reopen Settings to follow progress; **Hide Settings to show
 authorization** reveals the desktop again if needed. No installation happens
 just by opening Settings.
@@ -125,7 +128,7 @@ dwm-desktop-update status
 dwm-desktop-update recover OPERATION_ID
 ```
 
-Recovery requests administrator authorization to restore the system files and
+Recovery requests administrator authorization once to restore the system files and
 restores the managed user directories from the recorded copies. It refuses to
 replace a newer installation or user files changed after the interruption.
 Save conflicting changes separately before recovery; do not reset or delete a
@@ -204,3 +207,14 @@ disables user namespaces or sandbox setup fails, the update stops and requires
 the source installer; there is no unsandboxed build fallback. Custom build
 overrides remain literal, but tools/files outside the exposed system and source
 paths are unavailable to automatic builds.
+
+
+The elevated helper is kept only for the active transaction on private pipes.
+Requests cannot change the authorized operation, installed generation, or
+selected revision, and all existing root-owned manifest checks still apply.
+The helper exits on completion or when the worker closes its pipe, with a
+one-hour maximum lifetime. Slow builds do not cause repeated password prompts;
+if the session ends or expires, the update stops for explicit recovery instead
+of silently elevating again. Installing this helper change requires the source
+update procedure once; the older installed worker cannot replace its own
+root-trusted executable through the update button.

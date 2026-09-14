@@ -568,8 +568,14 @@ Caller-built files cannot establish new trusted hashes. Each authorized apply is
 and confirmed revision; substitutions during authorization are rejected.
 It never executes a staged Makefile or repository helper as root. Changes to
 that installation layout or dependency allowlist require the source installer
-to establish the new contract. Authorization uses polkit and requires a visible
-confirmation. Existing installations bootstrap this support through the source
+to establish the new contract. Authorization uses polkit and requires one visible approval per update or
+explicit recovery operation. A root-owned helper retains that approval only
+for the transaction. Updates bind the operation, generation, and selected
+revision; recovery remains limited to the original operation and its owner.
+A private pipe carries at most eight allowlisted phase requests; EOF, completion,
+or the one-hour session deadline ends the grant. Passwords are never saved, and
+there is no blanket authorization cache for other programs or updates.
+Existing installations bootstrap this support through the source
 installer; the GUI does not elevate a repository copy.
 
 The update worker runs independently in a transient user service and retains

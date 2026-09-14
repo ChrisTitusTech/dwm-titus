@@ -21,6 +21,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Use one administrator approval for each desktop update or explicit recovery.
+  Retain a private, transaction-bound helper through all privileged phases,
+  without saving passwords or granting authorization to unrelated commands.
+
 - Reveal desktop update authorization by closing Settings when a password
   request starts. Keep Check status and the log location available during an
   update, show recovery progress, and stop repeated authorization requests

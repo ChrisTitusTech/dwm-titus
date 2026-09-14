@@ -665,5 +665,89 @@ raise SystemExit(17)
         self.assertEqual(json.loads(self.manifest_path.read_text())["revision"], "a" * 40)
 
 
+    def session_command(self, requests, mode="update", uid=1000, raw=None):
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        return subprocess.run([str(self.helper), "session", mode, self.operation, generation, "b" * 40],
+                              input=raw if raw is not None else "".join(json.dumps(item) + "\n" for item in requests),
+                              capture_output=True, text=True, timeout=10,
+                              env={**os.environ, "PKEXEC_UID": str(uid)})
+
+    def test_one_session_installs_and_completes_with_protocol_output_only(self):
+        self.archive()
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        result = self.session_command([["begin", generation, self.operation],
+                                      ["apply", str(self.bundle), generation, self.operation,
+                                       hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40],
+                                      ["complete", self.operation]])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        replies = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(replies, [{"ok": True, "ready": True}, *[{"ok": True}] * 3])
+        self.assertIn("System files installed and verified", result.stderr)
+        self.assertEqual(self.binary.read_bytes(), b"updated")
+        journal = json.loads((Path("/var/lib/dwm-titus/desktop-updates") / self.operation / "journal.json").read_text())
+        self.assertEqual(journal["state"], "complete")
+
+    def test_session_rejects_other_operations_generations_and_revisions(self):
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        for request in (["begin", generation, "e" * 32], ["begin", "0" * 64, self.operation],
+                        ["dependencies", "0" * 64], ["complete", self.operation],
+                        ["session", "recover", self.operation], ["/usr/bin/sh", "-c", "true"]):
+            with self.subTest(request=request):
+                result = self.session_command([request])
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("outside the authorized", result.stderr)
+        result = self.session_command([["begin", generation, self.operation],
+                                      ["apply", str(self.bundle), generation, self.operation, "0" * 64, "c" * 40]])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("outside the authorized", result.stderr)
+        self.assertEqual(self.binary.read_bytes(), b"original")
+
+    def test_session_eof_keeps_recovery_and_recovery_cannot_start_an_update(self):
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        result = self.session_command([["begin", generation, self.operation]])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        journal_path = Path("/var/lib/dwm-titus/desktop-updates") / self.operation / "journal.json"
+        self.assertEqual(json.loads(journal_path.read_text())["state"], "preparing")
+        rejected = self.session_command([["begin", generation, self.operation]], mode="recover")
+        self.assertNotEqual(rejected.returncode, 0)
+        result = self.session_command([["rollback", self.operation], ["complete", self.operation]], mode="recover")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([json.loads(line)["ok"] for line in result.stdout.splitlines()], [True, True, True])
+        self.assertEqual(json.loads(journal_path.read_text())["state"], "rolled-back")
+
+    def test_recovery_session_cannot_reuse_another_users_operation(self):
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        self.assertEqual(self.session_command([["begin", generation, self.operation]]).returncode, 0)
+        result = self.session_command([["rollback", self.operation], ["complete", self.operation]], mode="recover", uid=1001)
+        replies = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual([item["ok"] for item in replies], [True, False, False])
+        journal = json.loads((Path("/var/lib/dwm-titus/desktop-updates") / self.operation / "journal.json").read_text())
+        self.assertEqual((journal["uid"], journal["state"]), (1000, "preparing"))
+
+    def test_session_rejects_unbounded_and_malformed_requests(self):
+        for raw in ("x" * 8193, "{broken}\n", "[1]\n", "[]\n", "{}\n", '["complete"]'):
+            with self.subTest(raw=raw[:20]):
+                result = self.session_command([], raw=raw)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.binary.read_bytes(), b"original")
+
+    def test_session_has_a_deadline_even_when_client_keeps_pipe_open(self):
+        self.helper.write_text(self.helper.read_text().replace("SESSION_SECONDS = 3600", "SESSION_SECONDS = 0.1"))
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        process = subprocess.Popen([str(self.helper), "session", "update", self.operation, generation, "b" * 40],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   env={**os.environ, "PKEXEC_UID": "1000"})
+        try:
+            self.assertEqual(process.wait(timeout=5), 1)
+            self.assertIn(b"session expired", process.stderr.read())
+        finally:
+            process.stdin.close()
+            process.stdout.close()
+            process.stderr.close()
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+
 if __name__ == "__main__":
     unittest.main()

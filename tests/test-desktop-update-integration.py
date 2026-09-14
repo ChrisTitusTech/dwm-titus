@@ -127,6 +127,13 @@ def trust(path):
     try: official_trust(path)
     finally: update.SOURCE = local_source
 update.trusted_installation = trust
+original_popen = update.subprocess.Popen
+elevations = []
+def counted_popen(args, *positional, **kwargs):
+    if str(args[0]) == "/usr/bin/pkexec":
+        elevations.append(args)
+    return original_popen(args, *positional, **kwargs)
+update.subprocess.Popen = counted_popen
 state = update.paths()[2]
 operation = "d" * 32
 directory = state / "operations" / operation
@@ -135,7 +142,10 @@ manifest = Path(sys.argv[2]) / "share/dwm-titus/desktop-install.json"
 preview = dict(update.status_default(), available=sys.argv[3], generation=update.digest(manifest), manifest=str(manifest))
 update.write_json(directory / "preview.json", preview)
 update.write_json(state / "status.json", dict(preview, operation=operation, state="starting"))
-sys.exit(update.worker(operation))
+result = update.worker(operation)
+assert len(elevations) == 1, elevations
+assert elevations[0][2:5] == ["session", "update", operation], elevations
+sys.exit(result)
 ''')
         try:
             user("python3", runner, source, prefix, revision)

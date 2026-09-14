@@ -30,8 +30,23 @@ def module(name, path):
 
 update = module("desktop_update", REPO / "scripts/dwm-desktop-update")
 privileged = module("desktop_root", REPO / "scripts/dwm-desktop-update-root")
+REAL_SESSION = update.PrivilegedSession
 REAL_RUN = update.run
 REAL_ROOT_OWNED = update.root_owned
+
+
+class RecoverySession:
+    def __init__(self, helper, *args, **kwargs):
+        self.helper = helper
+
+    def request(self, action, *args, timeout=60):
+        return update.run(["/usr/bin/pkexec", self.helper, action, *args], timeout=timeout, capture=False)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        pass
 
 
 class DesktopUpdate(unittest.TestCase):
@@ -65,6 +80,7 @@ class DesktopUpdate(unittest.TestCase):
         patch.object(update, "trusted_directory", return_value=None).start()
         patch.object(update, "installed_worker", return_value=self.base / "bin/dwm-desktop-update").start()
         self.command = patch.object(update, "run", return_value="a" * 40 + "\trefs/heads/main").start()
+        patch.object(update, "PrivilegedSession", RecoverySession).start()
 
     def test_current_and_content_drift_are_distinct(self):
         self.assertEqual(update.check(True)["state"], "current")
@@ -389,9 +405,10 @@ class DesktopUpdate(unittest.TestCase):
         operation = "c" * 32
         directory = self.state / "operations" / operation
         update.write_json(directory / "receipt-backup.json", {"installed.json": True})
+        update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path)})
         update.write_json(self.state / "status.json", {**update.status_default(), "operation": operation,
                           "state": "interrupted"})
-        with self.assertRaisesRegex(RuntimeError, "recovery copy is missing"):
+        with patch.object(update, "trusted_installation"), self.assertRaisesRegex(RuntimeError, "recovery copy is missing"):
             update.recover(operation)
         self.command.assert_not_called()
 
@@ -698,6 +715,7 @@ class DesktopUpdate(unittest.TestCase):
                 self.assertEqual(value["state"], expected, value)
                 self.assertEqual((directory / "config/dwm-titus/themes.toml").read_text(), "personal theme")
                 if scenario == "success" or scenario.startswith("activation-"):
+                    self.assertEqual((directory / "state/elevations").read_text().splitlines(), ["one approval"])
                     self.assertEqual((directory / "config/quickshell/file").read_text(), "new shell")
                     self.assertEqual((directory / "prefix/bin/dwm").read_text(), "new binary")
                     entries = update.read_json(directory / "state/operations" / ("c" * 32) / "user-backup.json")
@@ -758,6 +776,59 @@ class DesktopUpdate(unittest.TestCase):
         finally:
             os.umask(previous)
         self.assertEqual(destination.stat().st_mode & 0o777, 0o700)
+
+
+class PrivilegedTransport(unittest.TestCase):
+    def session(self, body):
+        client = REAL_SESSION("unused", "a" * 32, "b" * 64, "c" * 40)
+        client.command = [sys.executable, "-u", "-c", body]
+        self.addCleanup(client.close)
+        return client
+
+    def test_multiple_phases_share_one_process_and_close_on_eof(self):
+        client = self.session("import json,sys; print(json.dumps({'ok':True,'ready':True})); "
+                              "[(print(json.dumps({'ok':True}))) for line in sys.stdin]")
+        client.request("begin")
+        pid = client.process.pid
+        client.request("apply")
+        client.request("complete")
+        self.assertEqual(client.process.pid, pid)
+        client.close()
+        self.assertEqual(client.process.returncode, 0)
+
+    def test_timeout_never_restarts_authorization(self):
+        client = self.session("import json,sys,time; print(json.dumps({'ok':True,'ready':True})); "
+                              "sys.stdin.readline(); time.sleep(0.2)")
+        with self.assertRaises(update.AuthorizationTimeout):
+            client.request("begin", timeout=0.01)
+        pid = client.process.pid
+        with self.assertRaisesRegex(RuntimeError, "session is unavailable"):
+            client.request("rollback")
+        self.assertEqual(client.process.pid, pid)
+
+    def test_denial_is_reported_without_another_prompt(self):
+        client = self.session("import sys; sys.exit(126)")
+        with self.assertRaises(update.CommandFailure) as error:
+            client.request("begin")
+        self.assertEqual(error.exception.returncode, 126)
+        with self.assertRaisesRegex(RuntimeError, "session is unavailable"):
+            client.request("begin")
+
+    def test_invalid_or_oversized_reply_stops_session(self):
+        for body in ("print('not json')", "print('x'*8193)"):
+            with self.subTest(body=body):
+                client = self.session(body)
+                with self.assertRaises((ValueError, RuntimeError)):
+                    client.request("begin")
+                self.assertTrue(client.broken)
+
+    def test_failed_process_start_is_not_retried(self):
+        client = self.session("")
+        client.command = ["/nonexistent/desktop-authorization-test"]
+        with self.assertRaises(OSError):
+            client.request("begin")
+        with self.assertRaisesRegex(RuntimeError, "session is unavailable"):
+            client.request("rollback")
 
 
 if __name__ == "__main__":

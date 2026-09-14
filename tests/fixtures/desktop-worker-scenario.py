@@ -100,7 +100,7 @@ def boundary(args, cwd=None, timeout=60, capture=True):
         update.write_json(stage / str(manifest_path).lstrip("/"), candidate)
     elif args[0] == "/usr/bin/pkexec":
         status = update.read_json(state / "status.json")
-        assert status["authorization"] == args[2], status
+        assert status["authorization"] == "", status
         with (state / "authorization-calls").open("a") as calls:
             calls.write(args[2] + "\n")
         if args[2] == "begin":
@@ -140,6 +140,27 @@ def sandbox_boundary(args, **kwargs):
     return boundary(args, cwd=kwargs.get("cwd"), timeout=kwargs.get("timeout", 60), capture=kwargs.get("capture", True))
 
 
+class FixtureSession:
+    def __init__(self, helper, *args, **kwargs):
+        self.helper = helper
+        self.started = False
+
+    def start(self):
+        if not self.started:
+            assert update.read_json(state / "status.json")["authorization"], "First approval must be visible"
+            self.started = True
+            with (state / "elevations").open("a") as stream:
+                stream.write("one approval\n")
+
+    def request(self, action, *args, timeout=60):
+        self.start()
+        return boundary(["/usr/bin/pkexec", self.helper, action, *args], timeout=timeout, capture=False)
+
+    def close(self):
+        pass
+
+
+update.PrivilegedSession = FixtureSession
 update.sandbox_run = sandbox_boundary
 update.run = boundary
 sys.exit(update.worker(operation))

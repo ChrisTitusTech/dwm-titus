@@ -21,6 +21,12 @@ import tempfile
 PREFIX = Path("@PREFIX@")
 STATE = Path("/var/lib/dwm-titus/desktop-updates")
 LIMIT = 256 * 1024 * 1024
+SESSION_SECONDS = 3600
+SESSION_REQUEST_LIMIT = 8192
+
+
+class SessionExpired(RuntimeError):
+    pass
 
 
 def fail(message):
@@ -273,6 +279,13 @@ def main():
     if uid == 0:
         fail("A desktop user must request this operation")
     args = sys.argv[1:]
+    if len(args) == 5 and args[0] == "session":
+        session(*args[1:], uid)
+    else:
+        perform(args, uid)
+
+
+def perform(args, uid):
     if len(args) not in (2, 3, 6):
         fail("Expected begin GENERATION OPERATION, apply BUNDLE GENERATION OPERATION DIGEST REVISION, dependencies GENERATION, rollback OPERATION, or complete OPERATION")
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -371,12 +384,68 @@ def main():
                 fail("Invalid installed dependency allowlist")
             missing = [package for package in packages if subprocess.run(
                 ["/usr/bin/rpm", "-q", "--quiet", "--", package], stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL, timeout=10).returncode != 0]
+                stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, timeout=10).returncode != 0]
             if missing:
                 subprocess.run(["/usr/bin/dnf", "install", "-y", "--", *missing], check=True,
-                               env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"})
+                               env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
+                               stdin=subprocess.DEVNULL, timeout=1800)
         else:
             fail("Unsupported desktop update action")
+
+
+def session(mode, operation, generation, revision, uid):
+    """Keep one polkit approval on private pipes, bound to one transaction."""
+    if (mode not in ("update", "recover") or not re.fullmatch(r"[0-9a-f]{32}", operation)
+            or not re.fullmatch(r"[0-9a-f]{64}", generation)
+            or not re.fullmatch(r"[0-9a-f]{40}", revision)):
+        fail("Invalid authorized desktop session")
+    # Only this duplicate carries protocol replies. Native helper/child output
+    # goes to the update log; the protocol descriptor is never inherited.
+    with os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1) as replies:
+        os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
+        def expired(*_):
+            raise SessionExpired("Authorized desktop session expired")
+        signal.signal(signal.SIGALRM, expired)
+        signal.setitimer(signal.ITIMER_REAL, SESSION_SECONDS)
+        try:
+            replies.write(json.dumps({"ok": True, "ready": True}) + "\n")
+            phase = mode
+            for _ in range(8):
+                line = sys.stdin.buffer.readline(SESSION_REQUEST_LIMIT + 1)
+                if not line:
+                    return
+                if len(line) > SESSION_REQUEST_LIMIT or not line.endswith(b"\n"):
+                    fail("Invalid desktop session request size")
+                args = json.loads(line)
+                if not isinstance(args, list) or not args or any(not isinstance(arg, str) for arg in args):
+                    fail("Invalid desktop session request")
+                action = args[0]
+                if args == ["dependencies", generation] and phase == "update":
+                    phase = "dependencies"
+                elif args == ["begin", generation, operation] and phase in ("update", "dependencies"):
+                    phase = "preparing"
+                elif (action == "apply" and len(args) == 6 and args[2:4] == [generation, operation]
+                      and args[5] == revision and phase == "preparing"):
+                    phase = "applied"
+                elif args == ["rollback", operation] and phase in ("preparing", "applied", "recover"):
+                    phase = "rolled-back"
+                elif args == ["complete", operation] and phase in ("applied", "rolled-back", "recover"):
+                    phase = "complete"
+                else:
+                    fail("Action is outside the authorized desktop transaction")
+                try:
+                    perform(args, uid)
+                except SessionExpired:
+                    raise
+                except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError, tarfile.TarError) as error:
+                    replies.write(json.dumps({"ok": False, "error": str(error)[:2000]}) + "\n")
+                else:
+                    replies.write(json.dumps({"ok": True}) + "\n")
+                if phase == "complete":
+                    return
+            fail("Too many desktop session requests")
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
 
 
 if __name__ == "__main__":
