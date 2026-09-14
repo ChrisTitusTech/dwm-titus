@@ -131,9 +131,6 @@ class ProgressApp(Gtk.Application):
         box.pack_start(self.guidance, False, False, 0)
         actions = Gtk.ButtonBox(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         actions.set_layout(Gtk.ButtonBoxStyle.END)
-        self.check_button = Gtk.Button(label="Check status")
-        self.check_button.connect("clicked", self.check_status)
-        actions.add(self.check_button)
         self.log_button = Gtk.Button(label="View log")
         self.log_button.connect("clicked", self.show_log)
         actions.add(self.log_button)
@@ -151,7 +148,7 @@ class ProgressApp(Gtk.Application):
             value = read_status(self.state / "status.json")
         except (OSError, ValueError):
             self.heading.set_text("Status unavailable")
-            self.detail.set_text("The saved update status could not be read. Check status in Settings before starting another update.")
+            self.detail.set_text("The saved update status could not be read. Open Settings > System to check the saved operation before starting another update.")
             return
         was_active = self.value.get("state") in ACTIVE
         self.value = value
@@ -224,28 +221,6 @@ class ProgressApp(Gtk.Application):
             self.quit()
         return True
 
-    def check_status(self, *_args):
-        self.check_button.set_sensitive(False)
-        try:
-            command = Gio.Subprocess.new(
-                ["/usr/bin/timeout", "--kill-after=2", "15", "/usr/bin/python3", "-I",
-                 str(Path(__file__).with_name("dwm-desktop-update")), "status"],
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
-            command.communicate_utf8_async(None, None, self.status_checked)
-        except GLib.Error:
-            self.check_button.set_sensitive(True)
-            self.guidance.set_text("Status check could not start. Use Settings > System to check the saved operation.")
-
-    def status_checked(self, command, result):
-        self.check_button.set_sensitive(True)
-        try:
-            command.communicate_utf8_finish(result)
-            if not command.get_successful():
-                raise ValueError("Status check failed")
-            self.reload()
-        except (GLib.Error, ValueError):
-            self.guidance.set_text("Status check failed or timed out. Your update is still independent of this window; check its log.")
-
     def show_log(self, *_args):
         if self.log_window is None:
             self.log_window = Gtk.Window(title="Desktop update log", transient_for=self.window)
@@ -259,7 +234,13 @@ class ProgressApp(Gtk.Application):
             box.pack_start(scroll, True, True, 0)
             refresh = Gtk.Button(label="Refresh log")
             refresh.connect("clicked", self.refresh_log)
-            box.pack_end(refresh, False, False, 0)
+            actions = Gtk.ButtonBox(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            actions.set_layout(Gtk.ButtonBoxStyle.END)
+            actions.add(refresh)
+            self.log_close_button = Gtk.Button(label="Close")
+            self.log_close_button.connect("clicked", lambda _button: self.log_window.hide())
+            actions.add(self.log_close_button)
+            box.pack_end(actions, False, False, 0)
         self.refresh_log()
         self.log_window.show_all()
         self.log_window.present()

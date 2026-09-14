@@ -18,7 +18,7 @@ Settings closes when the administrator request starts so its always-on-top windo
 password dialog. The separate **Desktop update** window appears after the initial
 authorization dialog finishes, so it cannot cover the password prompt. It remains open through shell
 restarts, showing the current stage and elapsed time. **Hide** keeps the update
-running; click the panel update indicator to reopen it. **View log** opens a bounded log viewer with a refresh button. A
+running; click the panel update indicator to reopen it. **View log** opens a bounded log viewer with Refresh log and Close buttons. Closing the log leaves progress open. A
 desktop notification announces completion or a failure requiring attention.
 **Hide Settings to show
 authorization** reveals the desktop again if needed. No installation happens
@@ -30,10 +30,8 @@ The progress bar is indeterminate during downloading, building, authorization,
 and installation because those stages do not provide a reliable percentage.
 Verification shows the actual number of system files checked. Closing Settings
 does not stop the update. Reopening it reads the saved operation, including
-interrupted or completed work. **Check status** in the separate progress window reads the current operation
-without starting another update check or install, even while the worker is
-busy. The card shows when that status request completed and the update log
-location during active and failed operations. No background polling runs while
+interrupted or completed work. Progress updates automatically as the saved operation changes. The Settings card shows
+the update log location during active and failed operations. No background polling runs while
 idle.
 
 ## Installation and compatibility

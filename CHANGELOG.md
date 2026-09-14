@@ -21,6 +21,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Add Close to the update log window and remove the redundant Check status
+  action from automatically refreshed update progress.
+
 - Simplify the desktop update card to Check again and Update desktop. Open
   progress automatically after starting an update and reopen it from the panel.
 
