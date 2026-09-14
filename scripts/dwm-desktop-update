@@ -204,6 +204,8 @@ def validate_user_trees():
         if target.is_symlink() or (target.exists() and not target.is_dir()):
             raise RuntimeError("Managed update directories must be real directories: " + str(target))
         if target.exists():
+            if target.stat().st_uid != os.geteuid():
+                raise RuntimeError("Managed directory must be owned by the desktop user: " + str(target))
             tree_manifest(target)
 
 
@@ -619,7 +621,7 @@ def check_bounded(force=False):
         value = recover_status(state)
         if value["state"] in ACTIVE or value["state"] == "interrupted":
             return value
-        if not force and time.time() - value["checkedAt"] < 300:
+        if not force and 0 <= time.time() - value["checkedAt"] < 300:
             return value
         value.pop("statusInvalid", None)
         save_status(state, value, state="checking", detail="Checking desktop files and upstream main...", canUpdate=False, percent=-1)

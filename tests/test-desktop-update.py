@@ -104,6 +104,25 @@ class DesktopUpdate(unittest.TestCase):
         update.check(False)
         self.command.assert_not_called()
 
+    def test_future_cached_check_is_refreshed(self):
+        value = update.check(True)
+        update.save_status(self.state, value, checkedAt=int(time.time()) + 3600)
+        self.command.reset_mock()
+        self.command.return_value = "b" * 40 + "\trefs/heads/main"
+        refreshed = update.check(False)
+        self.assertEqual(refreshed["state"], "available")
+        self.assertEqual(refreshed["available"], "b" * 40)
+        self.command.assert_called()
+
+    def test_foreign_owned_managed_root_is_rejected_before_commands(self):
+        self.command.reset_mock()
+        with patch.object(update.os, "geteuid", return_value=os.geteuid() + 1):
+            value = update.check(True)
+        self.assertEqual(value["state"], "failed")
+        self.assertFalse(value["canUpdate"])
+        self.assertIn("owned by the desktop user", value["detail"])
+        self.command.assert_not_called()
+
     def test_overall_check_deadline_bounds_slow_package_queries(self):
         with patch.object(update, "CHECK_SECONDS", 0.05), \
                 patch.object(update, "missing_packages", side_effect=lambda _: time.sleep(1)):

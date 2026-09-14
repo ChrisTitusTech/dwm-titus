@@ -74,6 +74,21 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     state = Path(env["XDG_STATE_HOME"]) / "dwm-titus/desktop-update"
     (config / "dwm-titus/themes.toml").write_text("personal-theme-marker")
     subprocess.run(["chown", "-R", "desktop-test:desktop-test", "/home/desktop-test"], check=True)
+    # An unprivileged check must reject readable but root-owned managed roots
+    # before package, network, or privileged transaction work can begin.
+    for target in (data, config / "quickshell"):
+        os.chown(target, 0, 0)
+        try:
+            result = subprocess.run(["runuser", "-u", "desktop-test", "--", "env",
+                                     *(key + "=" + val for key, val in env.items()),
+                                     "/usr/bin/python3", "-I", str(prefix / "bin/dwm-desktop-update"),
+                                     "check", "--force"], capture_output=True, text=True, timeout=15)
+            assert result.returncode == 0, result.stderr
+            rejected = json.loads(result.stdout)
+            assert rejected["state"] == "failed" and not rejected["canUpdate"], rejected
+            assert "owned by the desktop user" in rejected["detail"], rejected
+        finally:
+            os.chown(target, uid, uid)
     user("python3", source / "scripts/dwm-desktop-update", "record-user", source)
     # A real new commit changes managed QML without changing the privileged layout.
     marker = source / "config/quickshell/update-integration-marker"
