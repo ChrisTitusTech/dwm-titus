@@ -21,6 +21,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Simplify the desktop update card to Check again and Update desktop. Open
+  progress automatically after starting an update and reopen it from the panel.
+
 - Keep desktop update progress in a separate window that survives shell restarts,
   with elapsed time, a log viewer, completion notifications, and a panel shortcut
   for reopening hidden progress.

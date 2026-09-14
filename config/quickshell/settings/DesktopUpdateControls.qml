@@ -62,19 +62,6 @@ Rectangle {
                 enabled: root.model !== null && root.model.canUpdate && !root.model.confirming
                 onActivated: root.model.prepare()
             }
-            Button {
-                objectName: "refreshDesktopUpdateStatus"
-                label: "Check status"
-                enabled: root.model !== null && !root.model.commandPending && !root.model.terminating
-                    && !root.model.dispatching && !root.model.confirming
-                onActivated: root.model.refreshStatus(false)
-            }
-            Button {
-                objectName: "showDesktopUpdateProgress"
-                label: "Show progress"
-                enabled: root.model !== null && !root.model.progressPending
-                onActivated: root.model.showProgress()
-            }
             Item { Layout.fillWidth: true }
         }
         Label {

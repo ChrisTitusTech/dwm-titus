@@ -94,10 +94,8 @@ ShellRoot {
             } else if (root.stage === 7 && !model.commandPending) {
                 root.check(root.authorizationRequests === 1 && window.visible, "Reading the same status does not hide reopened Settings");
                 root.check(root.find("revealDesktopUpdateAuthorization", controls).visible, "Prompt reveal is available during authorization");
-                const refresh = root.find("refreshDesktopUpdateStatus", controls);
-                root.check(refresh.enabled, "Read-only status is available during an active update");
                 model.statusCheckedAt = 0;
-                refresh.requestActivation();
+                model.refreshStatus(false);
                 root.stage = 8;
             } else if (root.stage === 8 && !model.commandPending) {
                 root.check(model.statusCheckedAt > 0, "Check status completed while the worker is active");
