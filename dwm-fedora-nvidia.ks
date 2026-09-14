@@ -89,6 +89,8 @@ xdg-utils
 flatpak
 %include /tmp/dwm-titus-gaming-packages
 quickshell
+bubblewrap
+libseccomp
 PackageKit
 PackageKit-glib
 python3

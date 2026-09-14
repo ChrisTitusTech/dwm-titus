@@ -9,6 +9,7 @@ Flickable {
 
     required property var systemManagementModel
     required property var capabilities
+    property var desktopUpdateModel: null
     property string clockText: ""
     contentWidth: width
     contentHeight: content.implicitHeight
@@ -142,6 +143,12 @@ Flickable {
         id: content
         width: root.width
         spacing: Theme.spacingLg
+
+        DesktopUpdateControls {
+            objectName: "desktopUpdatesCard"
+            model: root.desktopUpdateModel
+            onRevealRequested: target => root.reveal(target)
+        }
 
         RowLayout {
             Layout.fillWidth: true

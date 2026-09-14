@@ -539,6 +539,47 @@ Advanced partitioning, unrestricted service control, firewall policy editing,
 and similarly high-risk administration remain delegated unless a later
 specification defines a narrow safe interface.
 
+#### Desktop source updates
+
+Desktop source updates appear first in Settings > System, above Fedora package
+updates. Opening System performs a bounded check against the official repository's
+`main` branch, cached for five minutes; Check again bypasses the cache. Checking
+does not install files. Installation receipts record the source revision and
+managed file hashes so both newer source and installed-file drift are detected,
+including image installs without Git metadata. Unknown or unreadable state must
+never be reported as current.
+
+Confirmed desktop updates download a fixed revision, build as the desktop user,
+stage the complete system installation through the Makefile, back up managed
+files, install and verify them, and activate Quickshell through the managed
+control path. Personal TOML, application settings, `.xinitrc`, and `config.h`
+remain preserved. Mutable source commands run in a Bubblewrap/libseccomp build
+sandbox without host authorization services or socket access; sandbox setup
+failure stops the update instead of running an unconfined build. Git checkouts
+must be clean, on `main`, and fast-forwardable;
+linked worktrees require the documented source update procedure.
+
+A root-owned installed helper accepts only the destinations, file types, modes,
+link targets, and dependency capabilities recorded by the installed manifest.
+All system-file contents must match the hashes in that root-trusted manifest.
+The button updates managed user files and repairs system-file drift; changes
+to system executables or other system-file contents require the source installer.
+Caller-built files cannot establish new trusted hashes. Each authorized apply is bound to its prepared archive digest
+and confirmed revision; substitutions during authorization are rejected.
+It never executes a staged Makefile or repository helper as root. Changes to
+that installation layout or dependency allowlist require the source installer
+to establish the new contract. Authorization uses polkit and requires a visible
+confirmation. Existing installations bootstrap this support through the source
+installer; the GUI does not elevate a repository copy.
+
+The update worker runs independently in a transient user service and retains
+progress, result, and recovery records. The UI watches those records rather than
+polling. Unknown-duration stages use an indeterminate progress bar; file
+verification reports measured progress. Closing Settings does not cancel an
+update. Interrupted installation blocks another update until recovery is
+resolved. If dwm changed, installation success remains distinct from activation:
+show logout guidance and defer Quickshell activation to the new session.
+
 ### 5.10.1 Picom Appearance
 
 Appearance provides a stable Compositor section backed by Picom configuration,

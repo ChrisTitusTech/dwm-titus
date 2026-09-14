@@ -1,0 +1,387 @@
+#!/usr/bin/python3 -I
+"""Polkit entry point: replace only files in the installed desktop manifest.
+
+Never execute a staged installer, Makefile, hook, or caller-selected command.
+The archive is copied to root-owned storage before it is validated or applied.
+"""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+
+PREFIX = Path("@PREFIX@")
+STATE = Path("/var/lib/dwm-titus/desktop-updates")
+LIMIT = 256 * 1024 * 1024
+
+
+def fail(message):
+    raise RuntimeError(message)
+
+
+def trusted(path, directory=False):
+    path = Path(path)
+    info = path.lstat()
+    if info.st_uid != 0 or info.st_mode & 0o022 or not (
+            stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)):
+        fail("Untrusted installed path: " + str(path))
+    if path != Path("/"):
+        trusted(path.parent, True)
+
+
+def sync_directory(path):
+    descriptor = os.open(path, os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def write_json(path, value):
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        stream.write((json.dumps(value, sort_keys=True) + "\n").encode())
+        os.fchmod(stream.fileno(), 0o644)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+    sync_directory(path.parent)
+
+
+def read_json(path):
+    trusted(path)
+    if path.stat().st_size > 4 * 1024 * 1024:
+        fail("Oversized installed record")
+    return json.loads(path.read_text())
+
+
+def fingerprint(path):
+    info = path.lstat()
+    if stat.S_ISLNK(info.st_mode):
+        return {"link": os.readlink(path)}
+    if not stat.S_ISREG(info.st_mode):
+        fail("Unsupported managed file: " + str(path))
+    return {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "mode": stat.S_IMODE(info.st_mode)}
+
+
+def copy_saved(source, target):
+    with source.open("rb") as original, target.open("xb") as stream:
+        shutil.copyfileobj(original, stream)
+        os.fchmod(stream.fileno(), 0o644)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def replace(path, source, record):
+    if "link" not in record and record.get("mode") not in (0o644, 0o755):
+        fail("Unsafe managed recovery mode; use the source installer")
+    trusted(path.parent, True)
+    temporary = path.parent / (".dwm-update-" + os.urandom(12).hex())
+    try:
+        if "link" in record:
+            os.symlink(record["link"], temporary)
+        else:
+            with temporary.open("xb") as stream, source.open("rb") as original:
+                shutil.copyfileobj(original, stream)
+                os.fchmod(stream.fileno(), record["mode"])
+                stream.flush()
+                os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        sync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def restore(backup, journal):
+    # The journal is written before each replacement, including newly created files.
+    candidate = read_json(backup / "payload/manifest.json")
+    for entry in journal["replaced"]:
+        path = Path(entry["path"])
+        current = fingerprint(path) if os.path.lexists(path) else None
+        current_uid = path.lstat().st_uid if current is not None else None
+        matches_new = current == candidate["files"][entry["path"]] and current_uid == 0
+        matches_old = (journal["state"] in ("applying", "rolling-back") and current == entry["old"]
+                       and (current is None or current_uid in (0, entry.get("oldUid", 0))))
+        if not matches_new and not matches_old:
+            fail("Managed system files changed after this update; preserve those changes before recovery")
+        if entry["old"] is not None and "sha256" in entry["old"]:
+            if entry["old"].get("mode") not in (0o644, 0o755):
+                fail("Unsafe managed recovery mode; use the source installer")
+            if hashlib.sha256((backup / entry["blob"]).read_bytes()).hexdigest() != entry["old"]["sha256"]:
+                fail("Recovery copy checksum mismatch")
+    journal["state"] = "rolling-back"
+    write_json(backup / "journal.json", journal)
+    for entry in reversed(journal["replaced"]):
+        path = Path(entry["path"])
+        trusted(path.parent, True)
+        if entry["old"] is None:
+            path.unlink(missing_ok=True)
+            sync_directory(path.parent)
+        else:
+            replace(path, backup / entry["blob"], entry["old"])
+    replace(PREFIX / "share/dwm-titus/desktop-install.json", backup / "manifest.json",
+            fingerprint(backup / "manifest.json"))
+    journal["state"] = "rolled-back-pending"
+    write_json(backup / "journal.json", journal)
+
+
+def validate_candidate(candidate, installed):
+    if (not isinstance(candidate, dict)
+            or set(candidate) != {"schema", "source", "revision", "layout", "packages", "files"}
+            or len((json.dumps(candidate, sort_keys=True) + "\n").encode()) > 4 * 1024 * 1024
+            or not isinstance(candidate.get("files"), dict)
+            or not isinstance(candidate.get("revision"), str)
+            or candidate.get("schema") != 1 or candidate.get("source") != installed["source"]
+            or candidate.get("layout") != installed["layout"]
+            or candidate.get("packages") != installed["packages"]
+            or set(candidate.get("files", {})) != set(installed["files"])
+            or not re.fullmatch(r"[0-9a-f]{40}", candidate.get("revision", ""))):
+        fail("Desktop install layout changed; use the documented source installer")
+    for name, record in candidate["files"].items():
+        old = installed["files"][name]
+        if record != old:
+            fail("System file contents changed; use the documented source installer")
+        if not isinstance(record, dict):
+            fail("Invalid managed file metadata")
+        if "link" in old:
+            if record != old:
+                fail("Managed link layout changed; use the source installer")
+        elif (set(record) != {"sha256", "mode"} or not isinstance(record.get("sha256"), str)
+              or not re.fullmatch(r"[0-9a-f]{64}", record.get("sha256", ""))
+              or record.get("mode") != old["mode"] or record["mode"] not in (0o644, 0o755)):
+            fail("Invalid managed file metadata")
+
+
+def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
+    manifest_path = PREFIX / "share/dwm-titus/desktop-install.json"
+    installed = read_json(manifest_path)
+    if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != expected:
+        fail("Installed desktop changed after preview; check again")
+    backup = STATE / operation
+    if backup.exists():
+        reservation = read_json(backup / "journal.json")
+        if (reservation.get("state") != "preparing" or reservation.get("uid") != uid
+                or reservation.get("generation") != expected):
+            fail("Desktop operation is not reserved by this user")
+    else:
+        backup.mkdir(mode=0o700)
+    descriptor = os.open(archive, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != uid or info.st_size > LIMIT:
+            fail("Invalid update bundle")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream, (backup / "bundle.tar").open("xb") as output:
+            remaining = LIMIT + 1
+            while remaining:
+                chunk = stream.read(min(remaining, 1024 * 1024))
+                if not chunk:
+                    break
+                output.write(chunk)
+                remaining -= len(chunk)
+            if remaining == 0:
+                fail("Update bundle exceeds size limit")
+    finally:
+        os.close(descriptor)
+    if hashlib.sha256((backup / "bundle.tar").read_bytes()).hexdigest() != bundle_digest:
+        fail("Update bundle changed after authorization was requested")
+    payload = backup / "payload"
+    payload.mkdir(mode=0o700)
+    with tarfile.open(backup / "bundle.tar", "r:") as bundle:
+        members = []
+        for member in bundle:
+            members.append(member)
+            if len(members) > len(installed["files"]) + 1:
+                fail("Too many update bundle members")
+        if len(members) != len(installed["files"]) + 1:
+            fail("Incomplete update bundle")
+        names = [member.name for member in members]
+        if len(set(names)) != len(names) or set(names) != {"manifest.json", *(str(i) for i in range(len(installed["files"])))}:
+            fail("Unexpected bundle members")
+        total = 0
+        for member in members:
+            total += member.size
+            if not member.isfile() or member.size < 0 or total > LIMIT:
+                fail("Unsafe bundle member")
+            with bundle.extractfile(member) as source, (payload / member.name).open("xb") as output:
+                shutil.copyfileobj(source, output)
+                output.flush()
+                os.fsync(output.fileno())
+    sync_directory(payload)
+    candidate = read_json(payload / "manifest.json")
+    validate_candidate(candidate, installed)
+    if candidate["revision"] != revision:
+        fail("Update bundle does not match the confirmed revision")
+    for index, name in enumerate(sorted(candidate["files"])):
+        record = candidate["files"][name]
+        if "sha256" in record and hashlib.sha256((payload / str(index)).read_bytes()).hexdigest() != record["sha256"]:
+            fail("Update bundle checksum mismatch")
+        trusted(Path(name).parent, True)
+    copy_saved(manifest_path, backup / "manifest.json")
+    journal = {"state": "applying", "replaced": [], "uid": uid, "operation": operation,
+               "afterManifest": hashlib.sha256((json.dumps(candidate, sort_keys=True) + "\n").encode()).hexdigest()}
+    write_json(backup / "journal.json", journal)
+    write_json(STATE / "latest.json", {"operation": operation})
+    try:
+        for index, name in enumerate(sorted(candidate["files"])):
+            path = Path(name)
+            old = fingerprint(path) if os.path.lexists(path) else None
+            if old is not None and "sha256" in old:
+                if (old["mode"] not in (0o644, 0o755)
+                        or (path.lstat().st_uid != 0 and old != installed["files"][name])):
+                    fail("Unsafe installed file cannot be saved for recovery; use the source installer")
+            if old == candidate["files"][name] and path.lstat().st_uid == 0:
+                continue
+            blob = "old-" + str(index)
+            if old is not None and "link" not in old:
+                copy_saved(path, backup / blob)
+            journal["replaced"].append({"path": name, "old": old, "blob": blob,
+                                        "oldUid": path.lstat().st_uid if old is not None else None})
+            write_json(backup / "journal.json", journal)
+            replace(path, payload / str(index), candidate["files"][name])
+        for name, record in candidate["files"].items():
+            if fingerprint(Path(name)) != record or Path(name).lstat().st_uid != 0:
+                fail("Installed file verification failed")
+        write_json(manifest_path, candidate)
+        journal["state"] = "applied"
+        write_json(backup / "journal.json", journal)
+    except BaseException:
+        restore(backup, journal)
+        raise
+    print("System files installed and verified", flush=True)
+
+
+def main():
+    os.umask(0o022)
+    if (os.geteuid() != 0 or not os.environ.get("PKEXEC_UID", "").isdigit()
+            or Path(__file__).absolute() != PREFIX / "libexec/dwm-titus/dwm-desktop-update-root"):
+        fail("Use the installed desktop updater through polkit")
+    trusted(Path(__file__).absolute())
+    if not os.access(__file__, os.X_OK):
+        fail("Installed helper is not executable")
+    if not re.search(r'^ID=["\']?fedora["\']?$', Path("/etc/os-release").read_text(), re.M):
+        fail("Desktop updates support Fedora only")
+    uid = int(os.environ["PKEXEC_UID"])
+    if uid == 0:
+        fail("A desktop user must request this operation")
+    args = sys.argv[1:]
+    if len(args) not in (2, 3, 6):
+        fail("Expected begin GENERATION OPERATION, apply BUNDLE GENERATION OPERATION DIGEST REVISION, dependencies GENERATION, rollback OPERATION, or complete OPERATION")
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    trusted(STATE, True)
+    for directory in (STATE, *STATE.parents):
+        sync_directory(directory)
+    with (STATE / "lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            signal.signal(signum, lambda *_: fail("Desktop installation interrupted"))
+        if (args[0] == "begin" and len(args) == 3 and re.fullmatch(r"[0-9a-f]{64}", args[1])
+                and re.fullmatch(r"[0-9a-f]{32}", args[2])):
+            manifest_path = PREFIX / "share/dwm-titus/desktop-install.json"
+            if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != args[1]:
+                fail("Installed desktop changed after preview; check again")
+            for journal_path in STATE.glob("*/journal.json"):
+                if read_json(journal_path).get("state") not in ("complete", "rolled-back"):
+                    fail("Another desktop transaction must finish or recover first")
+            backup = STATE / args[2]
+            backup.mkdir(mode=0o700)
+            write_json(backup / "journal.json", {"state": "preparing", "uid": uid,
+                       "operation": args[2], "generation": args[1], "preparationOnly": True})
+            sync_directory(STATE)
+        elif args[0] == "apply" and len(args) == 6:
+            if (not re.fullmatch(r"[0-9a-f]{64}", args[2]) or not re.fullmatch(r"[0-9a-f]{32}", args[3])
+                    or not re.fullmatch(r"[0-9a-f]{64}", args[4]) or not re.fullmatch(r"[0-9a-f]{40}", args[5])):
+                fail("Invalid update identity")
+            for journal_path in STATE.glob("*/journal.json"):
+                journal = read_json(journal_path)
+                if (journal_path.parent.name == args[3] and journal.get("state") == "preparing"
+                        and journal.get("uid") == uid and journal.get("generation") == args[2]):
+                    continue
+                if journal.get("state") not in ("complete", "rolled-back"):
+                    fail("Interrupted system installation requires rollback: " + journal_path.parent.name)
+            apply_archive(args[1], args[2], args[3], uid, args[4], args[5])
+        elif args[0] == "rollback" and len(args) == 2 and re.fullmatch(r"[0-9a-f]{32}", args[1]):
+            backup = STATE / args[1]
+            if not (backup / "journal.json").exists():
+                print("This operation did not replace system files", flush=True)
+                return
+            journal = read_json(backup / "journal.json")
+            if (journal.get("preparationOnly") is True
+                    and journal.get("state") in ("preparing", "rolled-back")):
+                if journal.get("uid") != uid:
+                    fail("This operation cannot be rolled back")
+                journal["state"] = "rolled-back"
+                write_json(backup / "journal.json", journal)
+                print("Preparation canceled; no system files were replaced", flush=True)
+                return
+            latest = read_json(STATE / "latest.json")["operation"] if (STATE / "latest.json").exists() else None
+            if journal["uid"] != uid:
+                fail("This operation cannot be rolled back")
+            if latest != args[1] and journal["state"] == "applying" and not journal["replaced"]:
+                # Initial journal publication preceded latest.json; no file intent exists.
+                journal["state"] = "rolled-back"
+                write_json(backup / "journal.json", journal)
+                print("No system files were replaced", flush=True)
+                return
+            if latest != args[1]:
+                fail("This operation cannot be rolled back")
+            if journal["state"] in ("rolled-back", "rolled-back-pending"):
+                print("System files already restored", flush=True)
+                return
+            expected = {journal["afterManifest"]}
+            if journal["state"] in ("applying", "rolling-back"):
+                expected.add(hashlib.sha256((backup / "manifest.json").read_bytes()).hexdigest())
+            if hashlib.sha256((PREFIX / "share/dwm-titus/desktop-install.json").read_bytes()).hexdigest() not in expected:
+                fail("A newer installation superseded this recovery copy")
+            restore(backup, journal)
+        elif args[0] == "complete" and len(args) == 2 and re.fullmatch(r"[0-9a-f]{32}", args[1]):
+            backup = STATE / args[1]
+            if not (backup / "journal.json").exists():
+                return
+            journal = read_json(backup / "journal.json")
+            if journal["uid"] != uid:
+                fail("This operation cannot be completed")
+            if journal["state"] in ("complete", "rolled-back"):
+                return
+            if read_json(STATE / "latest.json")["operation"] != args[1]:
+                fail("This operation cannot be completed")
+            if journal["state"] not in ("applied", "complete", "rolled-back-pending", "rolled-back"):
+                fail("System installation or rollback must finish before completion")
+            journal["state"] = "rolled-back" if journal["state"].startswith("rolled-back") else "complete"
+            write_json(backup / "journal.json", journal)
+        elif args[0] == "dependencies" and len(args) == 2:
+            for journal_path in STATE.glob("*/journal.json"):
+                journal = read_json(journal_path)
+                if not isinstance(journal, dict) or journal.get("state") not in ("complete", "rolled-back"):
+                    fail("Another desktop transaction must finish or recover first")
+            manifest_path = PREFIX / "share/dwm-titus/desktop-install.json"
+            manifest = read_json(manifest_path)
+            if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != args[1]:
+                fail("Dependency preview changed; check again")
+            packages = manifest["packages"]
+            if not packages or any(not re.fullmatch(r"[A-Za-z0-9+_.-]+", item) for item in packages):
+                fail("Invalid installed dependency allowlist")
+            missing = [package for package in packages if subprocess.run(
+                ["/usr/bin/rpm", "-q", "--quiet", "--", package], stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, timeout=10).returncode != 0]
+            if missing:
+                subprocess.run(["/usr/bin/dnf", "install", "-y", "--", *missing], check=True,
+                               env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"})
+        else:
+            fail("Unsupported desktop update action")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError, tarfile.TarError) as error:
+        print("Desktop update: " + str(error), file=sys.stderr)
+        sys.exit(1)

@@ -82,7 +82,7 @@ Scope {
         { "id": "power", "label": "Power", "description": "DPMS, locking, and session policy" },
         { "id": "defaults", "label": "Defaults", "description": "Applications and autostart" },
         { "id": "appearance", "label": "Appearance", "description": "Themes and accessibility" },
-        { "id": "system", "label": "System", "description": "Health and administration" }
+        { "id": "system", "label": "System", "description": "Desktop updates, Quickshell, health and administration" }
     ]
 
     readonly property var filteredSections: {

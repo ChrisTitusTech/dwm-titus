@@ -53,17 +53,12 @@ run_as_owner() {
 
 grep -Fq 'Start LightDM now (optional): sudo systemctl start lightdm.service' \
 	"$REPO_DIR/install.sh"
-grep -Fq "sudo make install-system \\" "$REPO_DIR/install.sh"
-grep -Fq "make install-user \\" "$REPO_DIR/install.sh"
-if grep -Fq "sudo make install \\" "$REPO_DIR/install.sh"; then
-	printf 'Installer still runs the user installation stage as root.\n' >&2
-	exit 1
-fi
-grep -Fq "runuser -u \"\$\$target_user\" -- env -u DBUS_SESSION_BUS_ADDRESS \\" \
-	"$REPO_DIR/Makefile"
-grep -Fq "HOME=\"\${USER_HOME}\" XDG_RUNTIME_DIR=\"/run/user/\$\$target_uid\" \\" \
-	"$REPO_DIR/Makefile"
-grep -Fq "\$(MAKE) install-user " "$REPO_DIR/Makefile"
+grep -Fq 'sudo make install ' "$REPO_DIR/install.sh"
+# shellcheck disable=SC2016
+grep -Fq 'runuser -u "$$target_user" -- env -u DBUS_SESSION_BUS_ADDRESS -u XDG_RUNTIME_DIR' "$REPO_DIR/Makefile"
+# shellcheck disable=SC2016
+grep -Fq 'set -- "XDG_RUNTIME_DIR=$$runtime_dir"' "$REPO_DIR/Makefile"
+grep -Fq "\$(MAKE) install-user-files " "$REPO_DIR/Makefile"
 grep -Fq 'dwm.desktop not found (run '\''./install.sh'\'')' \
 	"$REPO_DIR/scripts/check-deps.sh"
 grep -Fq 'Run: make && sudo make install-system && make install-user' \
@@ -313,6 +308,10 @@ for _ in 1 2; do
 		XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
 		XDG_CONFIG_DIRS="$XDG_CONFIG_DIRS" \
 		XDG_DATA_HOME="$XDG_DATA_HOME"
+	[[ $(stat -c %a "$XDG_DATA_HOME/dwm-titus/scripts/image/check-packagekit.py") == "$(stat -c %a "$TEST_REPO/scripts/image/check-packagekit.py")" ]] || {
+		printf 'Managed source file modes changed during installation.\n' >&2
+		exit 1
+	}
 done
 
 assert_preserved config-h "$TEST_REPO/config.h" "$WORK_DIR/config-h.before"

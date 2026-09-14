@@ -41,6 +41,8 @@ Scope {
     property string snapshotErrorDetail: ""
     property int requestGeneration: 0
     property var updateConfirmation: null
+    property bool desktopUpdateBusy: false
+    property bool desktopUpdateInterrupted: false
     property string confirmationMessage: ""
     property bool dispatchingUpdate: false
     property var nativeConfirmation: null
@@ -122,6 +124,8 @@ Scope {
     }
 
     function updateActionReason(actionId) {
+        if (root.desktopUpdateInterrupted) return "An interrupted desktop update blocks updates. Complete desktop update recovery first.";
+        if (root.desktopUpdateBusy) return "A desktop update is active. Wait for it to finish.";
         if (actionId !== "updates-refresh" && actionId !== "updates-install-all")
             return "This update action is not supported.";
         if (!root.settingsVisible)
