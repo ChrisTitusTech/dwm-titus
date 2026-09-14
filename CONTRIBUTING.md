@@ -116,12 +116,14 @@ required coverage; the new responsiveness target accelerates iteration while
 the existing Settings suite still validates real providers and interactions.
 
 Local validation and independent Codex review are the normal merge gate.
-Automatic build/test and documentation workflows run after merges to `main`;
-CodeQL also runs weekly. Hosted workflows remain available through manual
-dispatch when extra coverage is needed. Manual CI defaults to a shorter build,
-installation, desktop-updater, helper, and nested-X11 check; QML lint and Clang
-build remain separate jobs. Select `full_validation` when dispatching to repeat
-the complete desktop suite on GitHub. Pushes to `main` always run the full suite.
+Hosted CI runs one Fedora desktop smoke job after code changes reach `main`:
+a clean dwm build, managed Quickshell startup, panel visibility, launcher hotkey,
+and a test application launch. Documentation-only changes skip this job and use
+the documentation workflow. Manual CI dispatch runs the same smoke check.
+The job has a ten-minute ceiling; the runtime step has a two-minute ceiling.
+The full desktop, installer, security, QML lint, and alternate-compiler checks
+remain local checks rather than additional hosted CI jobs. CodeQL remains a
+separate workflow.
 Run `scripts/run-tests make clean all` and `scripts/run-tests` locally before
 publication, and record passing or explicitly reused evidence in the PR.
 Optional hosted checks and review bots
