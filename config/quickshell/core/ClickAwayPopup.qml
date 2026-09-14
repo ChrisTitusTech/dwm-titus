@@ -17,12 +17,15 @@ PopupWindow {
     color: Theme.transparent
     grabFocus: true
     implicitWidth: targetWindow ? targetWindow.width : 0
-    implicitHeight: targetWindow && targetWindow.screen ? targetWindow.screen.height : 0
+    // Keep the transparent click-away surface below the panel so compositors
+    // cannot blur the bar through this popup. Content coordinates stay panel-relative.
+    readonly property int panelOffset: targetWindow ? targetWindow.height : 0
+    implicitHeight: targetWindow && targetWindow.screen ? Math.max(0, targetWindow.screen.height - panelOffset) : 0
 
     anchor {
         window: targetWindow
         rect.x: 0
-        rect.y: 0
+        rect.y: root.panelOffset
     }
 
     MouseArea {
@@ -34,7 +37,7 @@ PopupWindow {
         id: popupHost
 
         x: root.popupX
-        y: root.popupY
+        y: root.popupY - root.panelOffset
         width: root.popupWidth
         height: root.popupHeight
         opacity: 1.0

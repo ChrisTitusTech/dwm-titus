@@ -21,6 +21,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep the top bar sharp when panel menus open by placing their transparent
+  click-away surface below the bar.
+
 - Add Close to the update log window and remove the redundant Check status
   action from automatically refreshed update progress.
 

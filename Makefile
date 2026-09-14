@@ -477,8 +477,9 @@ check-quickshell-large-surfaces-xvfb: all
 		if [ "$$status" -eq 77 ]; then exit 0; fi; \
 		exit "$$status"
 
-check-quickshell-panel-menus:
+check-quickshell-panel-menus: dwm
 	tests/test-quickshell-panel-menus.sh
+	dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-panel-popup.py
 
 check-quickshell-panel-settings:
 	tests/test-quickshell-panel-settings.sh
