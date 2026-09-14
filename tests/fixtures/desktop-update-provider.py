@@ -30,10 +30,13 @@ elif sys.argv[1:] in (["check"], ["check", "--force"]):
         time.sleep(3)
     write(state="available", detail="A desktop update is available", canUpdate=True)
 elif sys.argv[1:] == ["start", "b" * 40]:
-    write(state="building", detail="Building the desktop update...", canUpdate=False)
+    write(state="starting", authorization="begin", detail="Administrator authorization: prepare the desktop update.", canUpdate=False)
     subprocess.Popen([sys.executable, __file__, "fixture-worker"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 elif sys.argv[1:] == ["fixture-worker"]:
+    value = json.loads(path.read_text())
+    time.sleep(1)
+    write(state="building", authorization="", detail="Building the desktop update...")
     time.sleep(0.5)
     write(state="verifying", detail="Verifying system files: 50 / 100", percent=50)
     time.sleep(0.5)

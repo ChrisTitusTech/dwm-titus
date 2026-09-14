@@ -21,6 +21,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Reveal desktop update authorization by closing Settings when a password
+  request starts. Keep Check status and the log location available during an
+  update, show recovery progress, and stop repeated authorization requests
+  after a timeout while retaining recovery records.
+
 - Show menu-hidden image viewers such as sxiv and Feh in Settings MIME defaults,
   and allow selecting them while continuing to exclude disabled or unavailable
   handlers. Preserve application launcher and default-role visibility filtering.

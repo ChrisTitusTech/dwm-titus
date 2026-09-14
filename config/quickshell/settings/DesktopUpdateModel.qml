@@ -12,11 +12,15 @@ Scope {
     property bool terminating: false
     property string confirmedRevision: ""
     property string commandError: ""
+    property double statusCheckedAt: 0
+    property bool discoverAfterStatus: false
+    signal authorizationRequested()
     property var status: ({ schema: 1, state: "unknown", detail: "Check for desktop updates",
         canUpdate: false, installed: "unknown", available: "unknown", checkedAt: 0,
         percent: -1, packages: [], log: "", backup: "", restart: "none" })
     readonly property bool active: ["starting", "downloading", "dependencies", "building", "backing-up",
-        "installing", "verifying", "activating"].indexOf(status.state) >= 0
+        "installing", "verifying", "activating", "recovering"].indexOf(status.state) >= 0
+    readonly property string authorization: active && typeof status.authorization === "string" ? status.authorization : ""
     readonly property bool busy: commandPending || command.running || terminating || dispatching || active || status.state === "checking"
     readonly property bool updateOwned: active || confirming || dispatching || status.state === "interrupted"
     readonly property bool canUpdate: status.canUpdate && !busy && !systemBusy
@@ -75,7 +79,10 @@ Scope {
                 || typeof value.percent !== "number" || value.percent < -1 || value.percent > 100
                 || !Array.isArray(value.packages) || typeof value.log !== "string"
                 || typeof value.backup !== "string") throw new Error("Malformed desktop update status");
+            const previousAuthorization = root.authorization;
             root.status = value;
+            if (root.authorization.length > 0 && root.authorization !== previousAuthorization)
+                root.authorizationRequested();
             if (root.confirming && (!value.canUpdate || value.available !== root.confirmedRevision))
                 root.confirming = false;
         } catch (error) {
@@ -90,6 +97,15 @@ Scope {
         root.commandError = "";
         root.commandPending = true;
         command.command = root.updaterCommand.concat(["check"], force ? ["--force"] : []);
+        command.running = true;
+    }
+
+    function refreshStatus(discover) {
+        if (command.running || root.commandPending || root.terminating || root.dispatching || root.confirming) return;
+        root.commandError = "";
+        root.discoverAfterStatus = discover === true;
+        root.commandPending = true;
+        command.command = root.updaterCommand.concat(["status"]);
         command.running = true;
     }
 
@@ -122,11 +138,7 @@ Scope {
         if (settingsVisible) {
             stateFile.reload();
             // status reconciles a worker interrupted while the shell was closed.
-            if (!command.running && !root.commandPending && !root.terminating) {
-                root.commandPending = true;
-                command.command = root.updaterCommand.concat(["status"]);
-                command.running = true;
-            }
+            root.refreshStatus(true);
         } else root.confirming = false;
     }
 
@@ -164,11 +176,13 @@ Scope {
             else {
                 root.commandError = "";
                 root.accept(command.output);
+                if (command.command[root.updaterCommand.length] === "status") root.statusCheckedAt = Date.now();
             }
             root.dispatching = false;
             root.commandPending = false;
             stateFile.reload();
-            if (command.command[root.updaterCommand.length] === "status" && exitCode === 0 && root.settingsVisible
+            if (command.command[root.updaterCommand.length] === "status" && root.discoverAfterStatus
+                && exitCode === 0 && root.settingsVisible
                 && !root.active && root.status.state !== "interrupted") Qt.callLater(() => root.check(false));
         }
     }

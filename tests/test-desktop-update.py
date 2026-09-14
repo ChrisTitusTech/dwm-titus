@@ -711,6 +711,25 @@ class DesktopUpdate(unittest.TestCase):
                     self.assertEqual((directory / "config/quickshell/file").read_text(), "old")
                     self.assertEqual((directory / "prefix/bin/dwm").read_text(), "old binary")
 
+    def test_authorization_timeout_stops_without_another_hidden_prompt(self):
+        for scenario, calls in (("begin-timeout", ["begin"]), ("apply-timeout", ["begin", "apply"])):
+            with self.subTest(scenario=scenario):
+                directory = self.base / scenario
+                result = subprocess.run([sys.executable, REPO / "tests/fixtures/desktop-worker-scenario.py",
+                                         REPO, directory, scenario], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                value = update.read_json(directory / "state/status.json")
+                self.assertEqual(value["state"], "interrupted")
+                self.assertTrue(value["systemStarted"])
+                self.assertFalse(value["systemApplied"])
+                self.assertEqual(value["authorization"], "")
+                self.assertIn("timed out", value["detail"])
+                self.assertIn("No further authorization", value["detail"])
+                self.assertEqual((directory / "state/authorization-calls").read_text().splitlines(), calls)
+                self.assertEqual((directory / "prefix/bin/dwm").read_text(), "old binary")
+                log = directory / "state/operations" / ("c" * 32) / "update.log"
+                self.assertIn(value["detail"].split(" Review recovery")[0], log.read_text())
+
     def test_directory_sync_failure_keeps_transaction_unfinished(self):
         directory = self.base / "durability-failure"
         result = subprocess.run([sys.executable, REPO / "tests/fixtures/desktop-worker-scenario.py",

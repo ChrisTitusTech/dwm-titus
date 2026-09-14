@@ -24,12 +24,16 @@ import uuid
 
 SOURCE = "https://github.com/ChrisTitusTech/dwm-titus.git"
 UNIT = "dwm-desktop-update.service"
-ACTIVE = {"starting", "downloading", "dependencies", "building", "backing-up", "installing", "verifying", "activating"}
+ACTIVE = {"starting", "downloading", "dependencies", "building", "backing-up", "installing", "verifying", "activating", "recovering"}
 CHECK_SECONDS = 60
 WORKER_ENV_KEYS = ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "XDG_RUNTIME_DIR",
                 "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS",
                 "CC", "CFLAGS", "CPPFLAGS", "LDFLAGS", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
                 "http_proxy", "https_proxy", "all_proxy", "no_proxy", "GIT_SSL_CAINFO", "SSL_CERT_FILE", "SSL_CERT_DIR")
+
+
+class AuthorizationTimeout(RuntimeError):
+    pass
 
 
 class CommandFailure(RuntimeError):
@@ -433,7 +437,7 @@ def status_read(state, recovery_copy=False):
         if not status_default().keys() <= value.keys():
             raise ValueError("Incomplete status record")
         expected = {**status_default(), "manifest": "", "generation": "", "systemStarted": False,
-                    "systemApplied": False, "activationShells": [], "changes": []}
+                    "systemApplied": False, "activationShells": [], "changes": [], "authorization": ""}
         for key, default in expected.items():
             if key not in value:
                 continue
@@ -487,6 +491,21 @@ def save_status(state_dir, value, **changes):
         write_json(state_dir / "status-backup.json", value)
     write_json(state_dir / "status.json", value)
     return value
+
+
+def authorize(state, value, privileged, action, *arguments, timeout=60):
+    labels = {"begin": "prepare the desktop update", "dependencies": "install required packages",
+              "apply": "install desktop files", "rollback": "recover the desktop update",
+              "complete": "finish the desktop transaction"}
+    save_status(state, value, authorization=action,
+                detail="Administrator authorization: " + labels[action] + ". Settings closes to reveal the password dialog.")
+    try:
+        return run(["/usr/bin/pkexec", privileged, action, *arguments], timeout=timeout, capture=False)
+    except subprocess.TimeoutExpired as error:
+        raise AuthorizationTimeout("Administrator authorization or its operation timed out while attempting to "
+                                   + labels[action] + ". No further authorization will be requested automatically.") from error
+    finally:
+        save_status(state, value, authorization="")
 
 
 def service_active():
@@ -923,13 +942,13 @@ def worker(operation):
                     raise RuntimeError(reason)
                 if missing_packages(installed["packages"]):
                     save_status(state, value, state="dependencies", detail="Authorizing required build and desktop packages...", percent=-1)
-                    run(["/usr/bin/pkexec", privileged, "dependencies", preview["generation"]], timeout=1800, capture=False)
+                    authorize(state, value, privileged, "dependencies", preview["generation"], timeout=1800)
                 source.mkdir(mode=0o700)
                 stage.mkdir(mode=0o700)
                 sandbox_run(["/usr/bin/true"], writable=(source, stage), cwd=source)
                 save_status(state, value, detail="Authorizing desktop update preparation...", percent=-1)
                 reservation_started = True
-                run(["/usr/bin/pkexec", privileged, "begin", preview["generation"], operation], timeout=60, capture=False)
+                authorize(state, value, privileged, "begin", preview["generation"], operation)
                 reservation_confirmed = True
                 save_status(state, value, state="downloading", detail="Downloading the confirmed desktop revision...", percent=-1)
                 run(["git", "init", source])
@@ -978,8 +997,8 @@ def worker(operation):
                             detail="Authorizing and installing system files...", percent=-1)
                 system_started = True
                 save_status(state, value, systemStarted=True)
-                run(["/usr/bin/pkexec", privileged, "apply", directory / "bundle.tar", preview["generation"], operation,
-                     bundle_digest, preview["available"]], timeout=600, capture=False)
+                authorize(state, value, privileged, "apply", directory / "bundle.tar", preview["generation"], operation,
+                          bundle_digest, preview["available"], timeout=600)
                 system_applied = True
                 for entry in prepared:
                     target, backup = Path(entry["target"]), Path(entry["backup"])
@@ -1052,24 +1071,31 @@ def worker(operation):
                         completion = dict(state="current", restart="none", percent=100,
                                           detail="Desktop update installed, verified, and active.", checkedAt=int(time.time()))
                 write_json(directory / "completion.json", {"verified": True})
-                run(["/usr/bin/pkexec", privileged, "complete", operation], timeout=60, capture=False)
+                authorize(state, value, privileged, "complete", operation)
                 save_status(state, value, **completion)
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
                 print(str(error), flush=True)
                 denied = isinstance(error, CommandFailure) and error.returncode in (126, 127)
                 if denied and not system_applied:
                     system_started = False
+                if isinstance(error, AuthorizationTimeout) and reservation_started:
+                    # pkexec may already have dispatched. Retain recovery ownership,
+                    # but do not hide another password request behind the timeout.
+                    system_started = True
                 if reservation_started and not system_started:
+                    save_status(state, value, state="recovering", percent=-1,
+                                detail="Update failed: " + str(error) + ". Releasing the preparation reservation...")
                     try:
                         # A denied begin did not dispatch; later denial still leaves our reservation.
                         if not denied or reservation_confirmed:
-                            run(["/usr/bin/pkexec", privileged, "rollback", operation], timeout=60, capture=False)
-                            run(["/usr/bin/pkexec", privileged, "complete", operation], timeout=60, capture=False)
+                            authorize(state, value, privileged, "rollback", operation)
+                            authorize(state, value, privileged, "complete", operation)
                     except (OSError, RuntimeError, subprocess.SubprocessError) as cleanup_error:
                         system_started = True
                         error = RuntimeError(str(error) + "; preparation recovery failed: " + str(cleanup_error))
                 # Never infer rollback from a nonzero polkit result: dispatch may have completed.
-                save_status(state, value, state="interrupted" if system_started else "failed", percent=-1,
+                print("Desktop update stopped: " + str(error), flush=True)
+                save_status(state, value, state="interrupted" if system_started else "failed", percent=-1, authorization="",
                             detail=str(error) + (" Review recovery before retrying." if system_started else ""),
                             systemStarted=system_started, systemApplied=system_applied, canUpdate=False)
                 return 1

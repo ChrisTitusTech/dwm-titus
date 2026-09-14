@@ -217,6 +217,7 @@ ShellRoot {
 
     DesktopUpdateModel {
         id: desktopUpdateModel
+        onAuthorizationRequested: settingsModel.close()
         settingsVisible: settingsModel.visible && settingsModel.selectedSectionId === "system"
         systemBusy: systemManagementModel.operation.busy || systemManagementModel.activeOperation !== null
             || systemManagementModel.updateConfirmation !== null
