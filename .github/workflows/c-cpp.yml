@@ -62,10 +62,11 @@ jobs:
         run: |
           install -d -m 0755 /home/dwm-ci
           chown nobody:nobody /home/dwm-ci
+          install -d -m 0700 -o nobody -g nobody /run/dwm-ci
           chown -R nobody:nobody "$GITHUB_WORKSPACE" "$DWM_TEST_TMP_ROOT"
 
       - name: Validate
-        run: runuser -u nobody -- env HOME=/home/dwm-ci scripts/run-tests
+        run: runuser -u nobody -- env HOME=/home/dwm-ci XDG_RUNTIME_DIR=/run/dwm-ci scripts/run-tests
 
       - name: Validate privileged display helper security
         env:
@@ -76,7 +77,7 @@ jobs:
         run: scripts/run-tests /usr/bin/python3 tests/test-desktop-update-security.py
 
       - name: Validate nested X11 runtime
-        run: runuser -u nobody -- env HOME=/home/dwm-ci scripts/run-tests make check-xvfb-runtime
+        run: runuser -u nobody -- env HOME=/home/dwm-ci XDG_RUNTIME_DIR=/run/dwm-ci scripts/run-tests make check-xvfb-runtime
 
   clang-build:
     if: github.event_name == 'workflow_dispatch'
