@@ -107,6 +107,10 @@ with tempfile.TemporaryDirectory(prefix="desktop-progress-") as temporary, patch
     app.show_log()
     buffer = app.log_text.get_buffer()
     assert "<literal untrusted markup>" in buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True)
+    app.log_close_button.clicked()
+    assert not app.log_window.get_visible() and window.get_visible(), "Closing the log must leave progress visible"
+    app.show_log()
+    assert app.log_window.get_visible(), "Closed log must reopen"
     (log_dir / "update.log").write_bytes(b"x" * (256 * 1024))
     assert len(ui.log_tail(state, value)) == 128 * 1024
     fifo = base / "fifo"
