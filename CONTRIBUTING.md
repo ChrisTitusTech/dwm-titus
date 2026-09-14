@@ -118,7 +118,13 @@ the existing Settings suite still validates real providers and interactions.
 Local validation and independent Codex review are the normal merge gate.
 Automatic build/test and documentation workflows run after merges to `main`;
 CodeQL also runs weekly. Hosted workflows remain available through manual
-dispatch when extra coverage is needed. Optional hosted checks and review bots
+dispatch when extra coverage is needed. Manual CI defaults to a shorter build,
+installation, desktop-updater, helper, and nested-X11 check; QML lint and Clang
+build remain separate jobs. Select `full_validation` when dispatching to repeat
+the complete desktop suite on GitHub. Pushes to `main` always run the full suite.
+Run `scripts/run-tests make clean all` and `scripts/run-tests` locally before
+publication, and record passing or explicitly reused evidence in the PR.
+Optional hosted checks and review bots
 do not block a locally verified change. Required branch-protection rules still
 apply; investigate known failures and fill required validation gaps before
 merging. A post-merge failure needs prompt investigation and a fix or rollback.

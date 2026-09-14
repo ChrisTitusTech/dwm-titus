@@ -56,6 +56,14 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     finally:
         journal.unlink()
         journal.parent.rmdir()
+    # Both direct targets support an unprivileged, entirely user-local prefix.
+    local_prefix = Path("/home/desktop-test/local-prefix")
+    for target in ("install-system", "install"):
+        user("make", target, "PREFIX=" + str(local_prefix),
+             "XSESSIONSDIR=" + str(local_prefix / "share/xsessions"),
+             "OWNER=desktop-test", "USER_HOME=/home/desktop-test")
+        assert (local_prefix / "bin/dwm").stat().st_uid == uid
+    print("Unprivileged local-prefix install-system and complete install: PASS", flush=True)
     # Image/bootstrap installations have no logind-created runtime directory.
     assert not (Path("/run/user") / str(uid)).exists()
     subprocess.run(["make", "install", "PREFIX=" + str(prefix), "OWNER=desktop-test",
@@ -71,7 +79,11 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     marker = source / "config/quickshell/update-integration-marker"
     marker.write_text("updated desktop\n")
     os.chown(marker, uid, uid)
-    user("git", "add", "config/quickshell/update-integration-marker")
+    file_link = marker.parent / "update-integration-file-link"
+    directory_link = marker.parent / "update-integration-dir-link"
+    file_link.symlink_to(marker.name)
+    directory_link.symlink_to("settings")
+    user("git", "add", "config/quickshell")
     user("git", "commit", "-m", "Update managed shell")
     revision = subprocess.check_output(["git", "-c", "safe.directory=" + str(source), "-C", source, "rev-parse", "HEAD"], text=True).strip()
     rule = Path("/etc/polkit-1/rules.d/00-desktop-update-test.rules")
@@ -121,6 +133,10 @@ sys.exit(update.worker(operation))
         assert json.loads((prefix / "share/dwm-titus/desktop-install.json").read_text())["revision"] == revision
         assert (config / "quickshell/update-integration-marker").read_text() == "updated desktop\n"
         assert (config / "dwm-titus/themes.toml").read_text() == "personal-theme-marker"
+        assert (config / "quickshell" / file_link.name).read_text() == marker.read_text()
+        assert not (config / "quickshell" / file_link.name).is_symlink()
+        assert (config / "quickshell" / directory_link.name / "DesktopUpdateModel.qml").is_file()
+        assert not (config / "quickshell" / directory_link.name).is_symlink()
         assert (prefix / "bin/dwm").stat().st_uid == 0
         assert (prefix / "share/icons/Capitaine-Cursors-White/cursors").stat().st_uid == 0
         user("python3", prefix / "bin/dwm-desktop-update", "verify-receipts", source,

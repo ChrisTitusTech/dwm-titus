@@ -303,6 +303,10 @@ def guard_system_install(destdir, command, owner=None, user_state=None):
         if owner and user_state:
             stream = cleanup.enter_context(source_user_lock(user_state, owner))
             descriptors = (stream.fileno(),)
+        if os.geteuid() != 0:
+            # An unprivileged install can only write user-writable destinations.
+            # Keep its user-state lock without requiring the root-only journal.
+            return subprocess.run(command, pass_fds=descriptors).returncode
         return guarded_system_command(command, descriptors)
 
 
@@ -1004,7 +1008,9 @@ def worker(operation):
                 for name in ("config", "scripts"):
                     if tree_manifest(data / name) != tree_manifest(source / name):
                         raise RuntimeError("Managed data verification failed: " + name)
-                if tree_manifest(config / "quickshell") != tree_manifest(source / "config/quickshell"):
+                shell_replacement = next(entry["replacement"] for entry in prepared
+                                         if entry["target"] == str(config / "quickshell"))
+                if tree_manifest(config / "quickshell") != shell_replacement:
                     raise RuntimeError("Managed Quickshell verification failed")
                 record_user(source)
                 receipt = read_json(state / "installed.json")

@@ -26,6 +26,9 @@ REPO = Path(__file__).resolve().parents[1]
 
 class Security(unittest.TestCase):
     def setUp(self):
+        # Model a normal root-owned installation even under run-tests' umask 077.
+        previous_umask = os.umask(0o022)
+        self.addCleanup(os.umask, previous_umask)
         self.temporary = tempfile.TemporaryDirectory(prefix="desktop-security-", dir="/opt")
         self.addCleanup(self.temporary.cleanup)
         self.prefix = Path(self.temporary.name)
@@ -100,7 +103,8 @@ class Security(unittest.TestCase):
         home = self.prefix / "desktop-home"
         status = home / "state/dwm-titus/desktop-update/status.json"
         status.parent.mkdir(parents=True)
-        status.write_text(json.dumps({"schema": 1, "state": "starting"}))
+        initial = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))["status_default"]()
+        status.write_text(json.dumps({**initial, "state": "starting", "operation": "f" * 32}))
         subprocess.run(["chown", "-R", "nobody:nobody", home], check=True)
         marker = home / "intercepted"
         for name in ("rpm", "systemctl"):
@@ -118,7 +122,7 @@ class Security(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["state"], "interrupted")
         self.assertFalse(marker.exists(), "Status executed PATH-shadowed systemctl")
-        status.write_text(json.dumps({"schema": 1, "state": "unknown"}))
+        status.write_text(json.dumps(initial))
         result = subprocess.run(user_args[:-1] + ["check", "--force"], text=True, capture_output=True, timeout=65)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["installed"], "a" * 40)

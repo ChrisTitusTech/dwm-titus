@@ -4,6 +4,11 @@ on:
   push:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      full_validation:
+        description: Run the full desktop suite (local pre-merge validation is required either way)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -65,8 +70,17 @@ jobs:
           install -d -m 0700 -o nobody -g nobody /run/dwm-ci
           chown -R nobody:nobody "$GITHUB_WORKSPACE" "$DWM_TEST_TMP_ROOT"
 
-      - name: Validate
+      - name: Validate full desktop suite
+        if: github.event_name == 'push' || inputs.full_validation
         run: runuser -u nobody -- env HOME=/home/dwm-ci XDG_RUNTIME_DIR=/run/dwm-ci scripts/run-tests
+
+      - name: Validate build, installation, and desktop updater
+        if: github.event_name == 'workflow_dispatch' && !inputs.full_validation
+        run: >-
+          runuser -u nobody -- env HOME=/home/dwm-ci XDG_RUNTIME_DIR=/run/dwm-ci
+          scripts/run-tests make clean all check-shell check-format
+          check-desktop-update check-install check-install-preservation
+          check-dev-sync-install check-kickstart check-test-runner
 
       - name: Validate privileged display helper security
         env:
