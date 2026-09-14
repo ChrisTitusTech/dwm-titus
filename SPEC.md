@@ -582,7 +582,15 @@ The update worker runs independently in a transient user service and retains
 progress, result, and recovery records. The UI watches those records rather than
 polling. Unknown-duration stages use an indeterminate progress bar; file
 verification reports measured progress. Closing Settings does not cancel an
-update. Interrupted installation blocks another update until recovery is
+update. A normal, unprivileged GTK progress window runs in a separate user
+service and survives managed Quickshell restarts. Its first appearance waits
+for pending polkit authorization, so it cannot cover the password dialog. It yields focus to polkit,
+shows elapsed time, stage, measured or indeterminate progress, a bounded log
+viewer, and completion or recovery guidance. Hiding it leaves installation
+running; a panel indicator reopens it. Both surfaces watch durable status
+changes without polling. Completion produces a desktop notification.
+GTK 3 is provided by the required desktop GTK portal; Python GObject is already
+required by system management. Interrupted installation blocks another update until recovery is
 resolved. If dwm changed, installation success remains distinct from activation:
 show logout guidance and defer Quickshell activation to the new session.
 

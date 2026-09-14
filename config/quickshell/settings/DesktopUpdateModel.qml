@@ -5,6 +5,9 @@ import Quickshell.Io
 Scope {
     id: root
     property bool settingsVisible: false
+    property bool backgroundMonitor: false
+    property bool progressPending: false
+    property string progressError: ""
     property bool systemBusy: false
     property bool confirming: false
     property bool dispatching: false
@@ -101,6 +104,10 @@ Scope {
     }
 
     function refreshStatus(discover) {
+        // Opening Settings during the background startup read must still discover
+        // updates when that same read completes.
+        if (discover === true && root.commandPending
+            && command.command[root.updaterCommand.length] === "status") root.discoverAfterStatus = true;
         if (command.running || root.commandPending || root.terminating || root.dispatching || root.confirming) return;
         root.commandError = "";
         root.discoverAfterStatus = discover === true;
@@ -124,6 +131,13 @@ Scope {
         root.confirming = true;
     }
 
+    function showProgress() {
+        if (progressCommand.running || root.progressPending) return;
+        root.progressError = "";
+        root.progressPending = true;
+        progressCommand.running = true;
+    }
+
     function confirm() {
         if (!root.confirming || !root.canUpdate || root.confirmedRevision !== root.status.available) return;
         root.confirming = false;
@@ -133,6 +147,8 @@ Scope {
         command.command = root.updaterCommand.concat(["start", root.confirmedRevision]);
         command.running = true;
     }
+
+    Component.onCompleted: { if (root.backgroundMonitor) root.refreshStatus(false); }
 
     onSettingsVisibleChanged: {
         if (settingsVisible) {
@@ -145,10 +161,31 @@ Scope {
     FileView {
         id: stateFile
         path: root.statusPath
-        watchChanges: root.settingsVisible || root.active
+        watchChanges: root.backgroundMonitor || root.settingsVisible || root.active
         printErrors: false
         onLoaded: root.accept(text())
         onFileChanged: reload()
+    }
+
+    Process {
+        id: progressCommand
+        command: root.updaterCommand.concat(["progress"])
+        stderr: StdioCollector { onStreamFinished: { if (text.trim()) root.progressError = text.trim(); } }
+        onExited: (exitCode, exitStatus) => {
+            root.progressPending = false;
+            if ((exitCode !== 0 || exitStatus !== 0) && !root.progressError)
+                root.progressError = "Progress window unavailable. Follow the update here.";
+        }
+    }
+
+    Timer {
+        interval: 10000
+        running: root.progressPending
+        onTriggered: {
+            progressCommand.running = false;
+            root.progressPending = false;
+            root.progressError = "Progress window did not open. Follow the update here.";
+        }
     }
 
     Timer {
@@ -178,6 +215,7 @@ Scope {
                 root.accept(command.output);
                 if (command.command[root.updaterCommand.length] === "status") root.statusCheckedAt = Date.now();
             }
+            if (root.dispatching && exitCode === 0 && exitStatus === 0) root.showProgress();
             root.dispatching = false;
             root.commandPending = false;
             stateFile.reload();

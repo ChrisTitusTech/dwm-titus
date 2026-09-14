@@ -1,0 +1,276 @@
+#!/usr/bin/python3
+"""Unprivileged, shell-independent desktop update progress window."""
+import json
+import math
+import os
+from pathlib import Path
+import stat
+import sys
+import time
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango
+
+ACTIVE = {"starting", "dependencies", "downloading", "building", "backing-up", "installing", "verifying", "activating", "recovering"}
+TITLES = {"unknown": "Check update status", "checking": "Checking desktop",
+          "available": "Update available", "drift": "Desktop repair available", "blocked": "Update unavailable", "starting": "Preparing update", "dependencies": "Installing required packages",
+          "downloading": "Downloading desktop", "building": "Building desktop", "backing-up": "Saving recovery copies",
+          "installing": "Installing desktop", "verifying": "Verifying installation", "activating": "Restarting desktop",
+          "recovering": "Recovering desktop", "current": "Update complete", "restart-required": "Logout required",
+          "failed": "Update failed", "interrupted": "Recovery required"}
+
+
+def read_status(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("Update status is not a regular file")
+        data = stream.read(1024 * 1024 + 1)
+    if len(data) > 1024 * 1024:
+        raise ValueError("Update status is too large")
+    value = json.loads(data)
+    if (not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1
+            or not isinstance(value.get("state"), str) or value["state"] not in TITLES
+            or not isinstance(value.get("detail"), str)
+            or type(value.get("percent")) not in (int, float) or not -1 <= value["percent"] <= 100):
+        raise ValueError("Invalid update status")
+    started = value.get("startedAt", 0)
+    operation = value.get("operation", "")
+    if (type(started) not in (int, float) or not math.isfinite(started)
+            or not isinstance(operation, str) or (operation and (len(operation) != 32
+                or any(c not in "0123456789abcdef" for c in operation)))
+            or not isinstance(value.get("authorization", ""), str)
+            or (value["state"] in ACTIVE and not operation)):
+        raise ValueError("Invalid update operation metadata")
+    return value
+
+
+def log_tail(state, value):
+    # Read only the current operation's bounded regular log, never launch a
+    # shell/editor or follow a path supplied by the status record.
+    operation = value.get("operation", "")
+    if not isinstance(operation, str) or len(operation) != 32 or any(c not in "0123456789abcdef" for c in operation):
+        return "No update log is available yet."
+    path = state / "operations" / operation / "update.log"
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("Update log is not a regular file")
+        stream.seek(max(0, os.fstat(stream.fileno()).st_size - 128 * 1024))
+        return stream.read(128 * 1024).decode("utf-8", errors="replace")
+
+
+class ProgressApp(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="io.github.christitustech.DwmDesktopUpdate", flags=Gio.ApplicationFlags.FLAGS_NONE)
+        self.state = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "dwm-titus/desktop-update"
+        self.value = {}
+        self.window = None
+        self.operation = ""
+        self.started = time.monotonic()
+        self.notified = set()
+        self.notifications_pending = 0
+        self.monitors = []
+        self.log_window = None
+        self.pending_presentation = False
+
+    def do_activate(self):
+        if self.window is None:
+            self.build_window()
+            self.state.mkdir(parents=True, exist_ok=True, mode=0o700)
+            monitor = Gio.File.new_for_path(str(self.state)).monitor_directory(Gio.FileMonitorFlags.NONE, None)
+            monitor.connect("changed", self.changed)
+            self.monitors.append(monitor)
+            self.hold()
+            GLib.timeout_add_seconds(1, self.tick)  # Elapsed display only; status is event-driven.
+            self.reload()
+        awaiting = self.value.get("state") in ACTIVE and bool(self.value.get("authorization"))
+        # dwm raises newly mapped floating windows even when focus-on-map is
+        # false. Wait before the first map so we cannot cover an existing prompt.
+        if awaiting and not self.window.get_visible():
+            self.pending_presentation = True
+            return
+        self.pending_presentation = False
+        self.window.set_focus_on_map(not awaiting)
+        self.window.set_accept_focus(not awaiting)
+        self.window.show_all()
+        if not awaiting:
+            self.window.present()  # Only explicit launch/reopen takes focus.
+
+    def label(self, text=""):
+        widget = Gtk.Label(label=text, xalign=0)
+        widget.set_line_wrap(True)
+        widget.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        widget.set_max_width_chars(68)
+        return widget
+
+    def build_window(self):
+        self.window = Gtk.ApplicationWindow(application=self, title="Desktop update")
+        self.window.set_default_size(520, 300)
+        self.window.set_type_hint(Gdk.WindowTypeHint.DIALOG)
+        self.window.connect("delete-event", self.hide)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16, margin=24)
+        self.window.add(box)
+        self.heading = self.label("Desktop update")
+        attributes = Pango.AttrList()
+        attributes.insert(Pango.attr_weight_new(Pango.Weight.BOLD))
+        attributes.insert(Pango.attr_scale_new(1.25))
+        self.heading.set_attributes(attributes)
+        box.pack_start(self.heading, False, False, 0)
+        self.detail = self.label("Waiting for update status...")
+        box.pack_start(self.detail, False, False, 0)
+        self.bar = Gtk.ProgressBar(show_text=True)
+        self.bar.get_accessible().set_name("Desktop update progress")
+        box.pack_start(self.bar, False, False, 0)
+        self.elapsed = self.label()
+        box.pack_start(self.elapsed, False, False, 0)
+        self.guidance = self.label("You can keep working. Hiding this window does not stop the update.")
+        box.pack_start(self.guidance, False, False, 0)
+        actions = Gtk.ButtonBox(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        actions.set_layout(Gtk.ButtonBoxStyle.END)
+        self.check_button = Gtk.Button(label="Check status")
+        self.check_button.connect("clicked", self.check_status)
+        actions.add(self.check_button)
+        self.log_button = Gtk.Button(label="View log")
+        self.log_button.connect("clicked", self.show_log)
+        actions.add(self.log_button)
+        self.hide_button = Gtk.Button(label="Hide")
+        self.hide_button.connect("clicked", self.hide)
+        actions.add(self.hide_button)
+        box.pack_end(actions, False, False, 0)
+
+    def changed(self, _monitor, file, other, _event):
+        if any(item and item.get_basename() == "status.json" for item in (file, other)):
+            self.reload()
+
+    def reload(self):
+        try:
+            value = read_status(self.state / "status.json")
+        except (OSError, ValueError):
+            self.heading.set_text("Status unavailable")
+            self.detail.set_text("The saved update status could not be read. Check status in Settings before starting another update.")
+            return
+        was_active = self.value.get("state") in ACTIVE
+        self.value = value
+        operation = value.get("operation", "")
+        if operation != self.operation:
+            self.operation = operation
+            started = value.get("startedAt")
+            age = max(0, time.time() - started) if isinstance(started, (int, float)) else 0
+            self.started = time.monotonic() - age
+        active = value["state"] in ACTIVE
+        authorization = active and bool(value.get("authorization"))
+        self.window.set_accept_focus(not authorization)
+        self.heading.set_text("Administrator approval needed" if authorization else TITLES.get(value["state"], "Desktop update"))
+        self.detail.set_text(value["detail"])
+        percent = value["percent"]
+        self.bar.set_fraction(max(0, percent) / 100)
+        self.bar.set_text(str(round(percent)) + "%" if percent >= 0 else "Working..." if active else "")
+        self.guidance.set_text("Approve the system password dialog to continue. This window will remain open." if authorization
+                               else "Log out and back in to activate the updated desktop." if value["state"] == "restart-required"
+                               else "Open Settings > System for recovery guidance. Your update log is available below." if value["state"] in ("failed", "interrupted")
+                               else "You can keep working. Reopen this window from the panel after hiding it." if active
+                               else "You can close this window.")
+        self.hide_button.set_label("Hide" if active else "Close")
+        self.tick()
+        if self.pending_presentation and not authorization:
+            self.pending_presentation = False
+            self.window.show_all()
+            self.window.present()
+        terminal = value["state"] in ("current", "restart-required", "failed", "interrupted")
+        if was_active and terminal and operation and operation not in self.notified:
+            self.notified.add(operation)
+            # The installed libnotify tool speaks to the current shell notification
+            # service. Notification failure cannot affect installation or its UI.
+            self.notifications_pending += 1
+            try:
+                notification = Gio.Subprocess.new(
+                    ["/usr/bin/timeout", "--kill-after=1", "10", "/usr/bin/notify-send", "--app-name=Desktop update", self.heading.get_text(), GLib.markup_escape_text(value["detail"][:2000])],
+                    Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE)
+                notification.wait_async(None, self.notification_finished)
+            except GLib.Error:
+                self.notifications_pending -= 1
+                if not self.window.get_visible() and not self.notifications_pending:
+                    self.quit()
+
+    def notification_finished(self, process, result):
+        try:
+            process.wait_finish(result)
+        except GLib.Error:
+            pass
+        # The service's cgroup must remain alive until notify-send has delivered
+        # its message (or its bounded attempt has ended).
+        self.notifications_pending -= 1
+        if not self.window.get_visible() and self.value.get("state") not in ACTIVE and not self.notifications_pending:
+            self.quit()
+
+    def tick(self):
+        if self.value.get("state") in ACTIVE:
+            seconds = int(max(0, time.monotonic() - self.started))
+            self.elapsed.set_text(f"Elapsed: {seconds // 60}m {seconds % 60:02d}s")
+            if self.value.get("percent", -1) < 0:
+                self.bar.pulse()
+        return True
+
+    def hide(self, *_args):
+        if self.log_window:
+            self.log_window.hide()
+        if self.value.get("state") in ACTIVE or self.notifications_pending:
+            self.window.hide()
+        else:
+            self.quit()
+        return True
+
+    def check_status(self, *_args):
+        self.check_button.set_sensitive(False)
+        try:
+            command = Gio.Subprocess.new(
+                ["/usr/bin/timeout", "--kill-after=2", "15", "/usr/bin/python3", "-I",
+                 str(Path(__file__).with_name("dwm-desktop-update")), "status"],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            command.communicate_utf8_async(None, None, self.status_checked)
+        except GLib.Error:
+            self.check_button.set_sensitive(True)
+            self.guidance.set_text("Status check could not start. Use Settings > System to check the saved operation.")
+
+    def status_checked(self, command, result):
+        self.check_button.set_sensitive(True)
+        try:
+            command.communicate_utf8_finish(result)
+            if not command.get_successful():
+                raise ValueError("Status check failed")
+            self.reload()
+        except (GLib.Error, ValueError):
+            self.guidance.set_text("Status check failed or timed out. Your update is still independent of this window; check its log.")
+
+    def show_log(self, *_args):
+        if self.log_window is None:
+            self.log_window = Gtk.Window(title="Desktop update log", transient_for=self.window)
+            self.log_window.set_default_size(760, 460)
+            self.log_window.connect("delete-event", lambda window, _event: window.hide_on_delete())
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=12)
+            self.log_window.add(box)
+            scroll = Gtk.ScrolledWindow()
+            self.log_text = Gtk.TextView(editable=False, monospace=True, wrap_mode=Gtk.WrapMode.WORD_CHAR)
+            scroll.add(self.log_text)
+            box.pack_start(scroll, True, True, 0)
+            refresh = Gtk.Button(label="Refresh log")
+            refresh.connect("clicked", self.refresh_log)
+            box.pack_end(refresh, False, False, 0)
+        self.refresh_log()
+        self.log_window.show_all()
+        self.log_window.present()
+
+    def refresh_log(self, *_args):
+        try:
+            text = log_tail(self.state, self.value)
+        except (OSError, ValueError) as error:
+            text = "Log unavailable: " + str(error)
+        self.log_text.get_buffer().set_text(text)
+
+
+if __name__ == "__main__":
+    sys.exit(ProgressApp().run(sys.argv))
