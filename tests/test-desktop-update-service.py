@@ -29,15 +29,18 @@ __attribute__((constructor)) static void mark(void) {
     subprocess.run(["/usr/bin/true"], env={**os.environ, "LD_PRELOAD": str(library), "DWM_LOADER_MARKER": str(baseline)}, check=True)
     assert baseline.exists(), "Loader regression fixture did not execute"
     fixture = base / "worker.py"
-    fixture.write_text('''import os, time, json
+    fixture.write_text('''import os, time, json, runpy, sys
 from pathlib import Path
+runpy.run_path(@UPDATE_SCRIPT@)["load_worker_environment"](Path(sys.argv[-1]))
 state = Path(os.environ["XDG_STATE_HOME"])
 (state / "started").write_text("started")
+(state / "proxy-env").write_text(os.environ.get("HTTPS_PROXY", ""))
+assert b"private-proxy-secret" not in Path("/proc/self/cmdline").read_bytes()
 (state / "build-env").write_text(json.dumps({key: os.environ.get(key) for key in ("CC", "CFLAGS", "CPPFLAGS", "LDFLAGS")}))
 (state / "unsafe-env").write_text(json.dumps({key: os.environ.get(key) for key in ("LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "GCONV_PATH", "PYTHONPATH", "BASH_ENV", "UNEXPECTED_INHERITED")}))
 time.sleep(2)
 (state / "finished").write_text("finished")
-''')
+'''.replace("@UPDATE_SCRIPT@", repr(str(repo / "scripts/dwm-desktop-update"))))
     launcher = base / "launcher.py"
     launcher.write_text('''import importlib.machinery, importlib.util, sys
 from pathlib import Path
@@ -64,6 +67,7 @@ update.launch("b" * 40)
            "XDG_CONFIG_HOME": str(base / "config")}
     build_env = {"CC": "test-cc", "CFLAGS": "-O1 -g", "CPPFLAGS": "-DTEST=${LITERAL} -DPRICE=$$5", "LDFLAGS": "-Wl,--as-needed"}
     env.update(build_env)
+    env["HTTPS_PROXY"] = "http://desktop:private-proxy-secret@proxy.invalid:8080"
     try:
         subprocess.run([sys.executable, launcher, repo / "scripts/dwm-desktop-update", fixture, unit,
                         library, base / "worker-preloaded"], env=env, check=True)
@@ -81,6 +85,8 @@ update.launch("b" * 40)
             time.sleep(0.05)
         assert (base / "finished").exists(), "Worker did not survive its initiating process"
         assert json.loads((base / "build-env").read_text()) == build_env, "Build overrides were lost in the service handoff"
+        assert (base / "proxy-env").read_text() == env["HTTPS_PROXY"]
+        assert not list((base / "dwm-titus/desktop-update/operations").glob("*/environment.json"))
         assert not (base / "worker-preloaded").exists(), "Loader code executed before the worker"
         assert all(value is None for value in json.loads((base / "unsafe-env").read_text()).values()), "Startup variables survived sanitization"
         print("Worker service rejects loader and interpreter environment injection: PASS")

@@ -361,8 +361,54 @@ class DesktopUpdate(unittest.TestCase):
         self.command.reset_mock()
         value = update.launch("b" * 40)
         command = self.command.call_args.args[0]
-        self.assertEqual(command[-5:], ["/usr/bin/python3", "-I", self.base / "bin/dwm-desktop-update", "worker", value["operation"]])
+        self.assertEqual(command[-7:-2], ["/usr/bin/python3", "-I", self.base / "bin/dwm-desktop-update", "worker", value["operation"]])
         self.assertFalse((self.state / "operations" / value["operation"] / "worker.py").exists())
+
+    def test_proxy_credentials_use_private_environment_channel(self):
+        credential = "http://desktop:private-secret@proxy.invalid:8080"
+        environment_file = self.state / "environment.json"
+        with patch.dict(os.environ, {"HTTPS_PROXY": credential, "CFLAGS": "-DVALUE=$literal"}):
+            command = update.service_command("test.service", ["worker"], clean_environment=True,
+                                             environment_file=environment_file)
+            activation = update.service_command("activation.service", ["restart"])
+        self.assertNotIn(credential, " ".join(map(str, command + activation)))
+        self.assertEqual(environment_file.stat().st_mode & 0o777, 0o600)
+        with patch.dict(os.environ, {}, clear=True):
+            update.load_worker_environment(environment_file)
+            self.assertEqual(os.environ["HTTPS_PROXY"], credential)
+            self.assertEqual(os.environ["CFLAGS"], "-DVALUE=$literal")
+        self.assertFalse(environment_file.exists())
+        update.write_json(environment_file, {"PATH": "/usr/bin", "LD_PRELOAD": "hostile"})
+        with self.assertRaisesRegex(RuntimeError, "Invalid worker environment"):
+            update.load_worker_environment(environment_file)
+
+    def test_special_files_block_preview_and_copy(self):
+        import socket
+        for kind in ("fifo", "socket"):
+            special = self.data / kind
+            sock = socket.socket(socket.AF_UNIX) if kind == "socket" else None
+            try:
+                sock.bind(str(special)) if sock else os.mkfifo(special)
+                self.assertEqual(update.check(True)["state"], "failed")
+                with self.assertRaisesRegex(RuntimeError, "Unsupported managed file"):
+                    update.copy_private_tree(self.data, self.base / "unsafe-copy")
+                self.assertFalse((self.base / "unsafe-copy").exists())
+            finally:
+                if sock:
+                    sock.close()
+                special.unlink()
+
+    def test_source_user_install_blocks_updates_and_interrupted_recovery(self):
+        with update.source_user_lock(self.state):
+            with self.assertRaises(BlockingIOError):
+                with update.locked(self.state):
+                    pass
+        with update.locked(self.state):
+            with self.assertRaisesRegex(RuntimeError, "active"):
+                update.guard_user_install(self.state, ["/usr/bin/true"])
+        update.write_json(self.state / "status.json", {**update.status_default(), "state": "interrupted"})
+        with self.assertRaisesRegex(RuntimeError, "recover"):
+            update.guard_user_install(self.state, ["/usr/bin/true"])
 
     def test_update_lock_prevents_overlap(self):
         with update.locked(self.state):

@@ -53,17 +53,12 @@ run_as_owner() {
 
 grep -Fq 'Start LightDM now (optional): sudo systemctl start lightdm.service' \
 	"$REPO_DIR/install.sh"
-grep -Fq "sudo make install-system \\" "$REPO_DIR/install.sh"
-grep -Fq "make install-user \\" "$REPO_DIR/install.sh"
-if grep -Fq "sudo make install \\" "$REPO_DIR/install.sh"; then
-	printf 'Installer still runs the user installation stage as root.\n' >&2
-	exit 1
-fi
+grep -Fq 'sudo make install ' "$REPO_DIR/install.sh"
 grep -Fq "runuser -u \"\$\$target_user\" -- env -u DBUS_SESSION_BUS_ADDRESS \\" \
 	"$REPO_DIR/Makefile"
 grep -Fq "HOME=\"\${USER_HOME}\" XDG_RUNTIME_DIR=\"/run/user/\$\$target_uid\" \\" \
 	"$REPO_DIR/Makefile"
-grep -Fq "\$(MAKE) install-user " "$REPO_DIR/Makefile"
+grep -Fq "\$(MAKE) install-user-files " "$REPO_DIR/Makefile"
 grep -Fq 'dwm.desktop not found (run '\''./install.sh'\'')' \
 	"$REPO_DIR/scripts/check-deps.sh"
 grep -Fq 'Run: make && sudo make install-system && make install-user' \

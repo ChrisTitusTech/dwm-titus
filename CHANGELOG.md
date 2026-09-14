@@ -11,6 +11,8 @@ versions from `config.mk`.
 - Add Desktop updates at the top of System Settings, with upstream and installed
   file checks, confirmed installation, persistent progress, and recovery copies.
   Sandbox mutable source commands away from host authorization services.
+  Keep proxy credentials out of process arguments, reject special files before
+  staging, and exclude concurrent source installation through both file phases.
   Build source updates without elevation and restrict authorized system-file
   replacement to the installed manifest. Preserve personal configuration and
   distinguish installed updates from changes requiring a new desktop session.

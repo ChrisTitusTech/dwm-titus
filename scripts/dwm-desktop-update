@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import shutil
 import signal
@@ -25,6 +26,10 @@ SOURCE = "https://github.com/ChrisTitusTech/dwm-titus.git"
 UNIT = "dwm-desktop-update.service"
 ACTIVE = {"starting", "downloading", "dependencies", "building", "backing-up", "installing", "verifying", "activating"}
 CHECK_SECONDS = 60
+WORKER_ENV_KEYS = ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "XDG_RUNTIME_DIR",
+                "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS",
+                "CC", "CFLAGS", "CPPFLAGS", "LDFLAGS", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+                "http_proxy", "https_proxy", "all_proxy", "no_proxy", "GIT_SSL_CAINFO", "SSL_CERT_FILE", "SSL_CERT_DIR")
 
 
 class CommandFailure(RuntimeError):
@@ -186,8 +191,19 @@ def fingerprint(path):
 
 
 def tree_manifest(path):
-    return {str(item.relative_to(path)): fingerprint(item)
-            for item in sorted(path.rglob("*")) if item.is_symlink() or item.is_file()}
+    result = {}
+    for item in sorted(path.rglob("*")):
+        if not stat.S_ISDIR(item.lstat().st_mode):
+            result[str(item.relative_to(path))] = fingerprint(item)
+    return result
+
+
+def validate_user_trees():
+    config, data, _ = paths()
+    for target in (data, config / "quickshell"):
+        if target.is_symlink() or (target.exists() and not target.is_dir()):
+            raise RuntimeError("Managed update directories must be real directories: " + str(target))
+        tree_manifest(target)
 
 
 def source_revision(source):
@@ -246,11 +262,50 @@ def user_receipt_valid(user):
     return True
 
 
-def guard_system_install(destdir, command):
+@contextlib.contextmanager
+def source_user_lock(state, owner=None):
+    uid, gid = os.geteuid(), os.getegid()
+    with contextlib.ExitStack() as cleanup:
+        try:
+            if owner:
+                account = pwd.getpwnam(owner)
+                if account.pw_uid == 0:
+                    raise RuntimeError("User installation requires a non-root desktop user")
+                os.setegid(account.pw_gid)
+                os.seteuid(account.pw_uid)
+            try:
+                stream = cleanup.enter_context(locked(Path(state)))
+            except BlockingIOError as error:
+                raise RuntimeError("Desktop update is active; finish it before source installation") from error
+            if status_read(Path(state))["state"] in ACTIVE | {"interrupted"}:
+                raise RuntimeError("Finish or recover the desktop update before source installation")
+        finally:
+            os.seteuid(uid)
+            os.setegid(gid)
+        yield stream
+
+
+def guard_user_install(state, command):
+    if not command or os.geteuid() == 0:
+        raise RuntimeError("Run user installation as the desktop user")
+    with source_user_lock(state) as stream:
+        return subprocess.run(command, pass_fds=(stream.fileno(),)).returncode
+
+
+def guard_system_install(destdir, command, owner=None, user_state=None):
     if not command:
         raise RuntimeError("Missing source installation command")
     if destdir and Path(destdir).resolve() != Path("/"):
         return subprocess.run(command).returncode
+    with contextlib.ExitStack() as cleanup:
+        descriptors = ()
+        if owner and user_state:
+            stream = cleanup.enter_context(source_user_lock(user_state, owner))
+            descriptors = (stream.fileno(),)
+        return guarded_system_command(command, descriptors)
+
+
+def guarded_system_command(command, descriptors=()):
     state = Path("/var/lib/dwm-titus/desktop-updates")
     previous_umask = os.umask(0o022)
     try:
@@ -267,7 +322,7 @@ def guard_system_install(destdir, command):
             journal = read_json(path)
             if not isinstance(journal, dict) or journal.get("state") not in ("complete", "rolled-back"):
                 raise RuntimeError("Recover desktop update " + path.parent.name + " as its initiating user before source installation")
-        return subprocess.run(command, pass_fds=(stream.fileno(),)).returncode
+        return subprocess.run(command, pass_fds=(*descriptors, stream.fileno())).returncode
 
 
 def installation():
@@ -353,7 +408,7 @@ def locked(state, wait=False):
     ensure_directory(state)
     with (state / "lock").open("a") as stream:
         fcntl.flock(stream, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
-        yield
+        yield stream
 
 
 def status_default():
@@ -507,6 +562,7 @@ def check_bounded(force=False):
         save_status(state, value, state="checking", detail="Checking desktop files and upstream main...", canUpdate=False, percent=-1)
         try:
             validate_update_paths()
+            validate_user_trees()
             if not re.search(r'^ID=["\']?fedora["\']?$', Path("/etc/os-release").read_text(), re.M):
                 raise RuntimeError("Desktop updates support Fedora only")
             manifest_path, manifest = installation()
@@ -566,11 +622,12 @@ def check_bounded(force=False):
             return save_status(state, value, state="failed", detail=str(error), canUpdate=False, percent=-1)
 
 
-def service_command(unit, command, properties=(), prefix=None, clean_environment=False):
+def service_command(unit, command, properties=(), prefix=None, clean_environment=False, environment_file=None):
     unsafe = ("LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_ORIGIN_PATH GLIBC_TUNABLES GCONV_PATH LOCPATH NLSPATH "
               "PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONINSPECT BASH_ENV ENV SHELLOPTS BASHOPTS "
               "GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT GIT_EXEC_PATH GIT_SSH GIT_SSH_COMMAND GIT_ASKPASS SSH_ASKPASS "
-              "MAKEFLAGS MFLAGS GNUMAKEFLAGS MAKEFILES")
+              "MAKEFLAGS MFLAGS GNUMAKEFLAGS MAKEFILES HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY "
+              "http_proxy https_proxy all_proxy no_proxy")
     args = ["/usr/bin/systemd-run", "--user", "--quiet", "--collect", "--unit=" + unit, "--property=Type=exec", "--expand-environment=no",
             "--property=UnsetEnvironment=" + unsafe]
     args.extend("--property=" + value for value in properties)
@@ -586,15 +643,16 @@ def service_command(unit, command, properties=(), prefix=None, clean_environment
     if not search:
         raise RuntimeError("No trusted system command directory is available")
     environment = ["PATH=" + ":".join(search)]
-    for key in ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "XDG_RUNTIME_DIR",
-                "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS",
-                "CC", "CFLAGS", "CPPFLAGS", "LDFLAGS", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-                "http_proxy", "https_proxy", "all_proxy", "no_proxy", "GIT_SSL_CAINFO", "SSL_CERT_FILE", "SSL_CERT_DIR"):
-        if key in os.environ:
+    for key in WORKER_ENV_KEYS:
+        if key in os.environ and (clean_environment or key.lower() not in ("http_proxy", "https_proxy", "all_proxy", "no_proxy")):
             environment.append(key + "=" + os.environ[key])
-    args.extend("--setenv=" + value for value in environment)
     if clean_environment:
-        command = ["/usr/bin/env", "-i", *environment, *command]
+        if environment_file is None:
+            raise RuntimeError("Missing private worker environment file")
+        write_json(Path(environment_file), dict(value.split("=", 1) for value in environment))
+        command = ["/usr/bin/env", "-i", environment[0], *command, "--environment-file", str(environment_file)]
+    else:
+        args.extend("--setenv=" + value for value in environment)
     return [*args, *command]
 
 
@@ -659,8 +717,9 @@ def launch(expected):
                     systemStarted=False, systemApplied=False, activationShells=[])
         try:
             run(service_command(UNIT, ["/usr/bin/python3", "-I", worker, "worker", operation],
-                                prefix=worker.parent.parent, clean_environment=True))
+                                prefix=worker.parent.parent, clean_environment=True, environment_file=directory / "environment.json"))
         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            (directory / "environment.json").unlink(missing_ok=True)
             save_status(state, value, state="failed", detail=str(error))
             raise
     return value
@@ -677,6 +736,7 @@ def exchange(left, right):
 
 
 def copy_private_tree(source, destination, symlinks=True):
+    tree_manifest(source)
     destination.mkdir(mode=0o700)
     for child in source.iterdir():
         target = destination / child.name
@@ -786,6 +846,7 @@ def worker(operation):
             stage = directory / "stage"
             try:
                 validate_update_paths()
+                validate_user_trees()
                 trusted_installation(Path(preview["manifest"]))
                 if digest(Path(preview["manifest"])) != preview["generation"]:
                     raise RuntimeError("Installed files changed since preview; check again")
@@ -1036,11 +1097,35 @@ def recover(operation):
                            detail="Previous desktop files restored. Log out and back in, then check again.")
 
 
+def load_worker_environment(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor) as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_size > 1024 * 1024:
+            raise RuntimeError("Worker environment must be a private owned file")
+        environment = json.load(stream)
+    if (not isinstance(environment, dict) or "PATH" not in environment
+            or any(k not in (*WORKER_ENV_KEYS, "PATH") or not isinstance(v, str) for k, v in environment.items())):
+        raise RuntimeError("Invalid worker environment")
+    for directory in environment["PATH"].split(":"):
+        if not Path(directory).is_absolute():
+            raise RuntimeError("Invalid worker command directory")
+        trusted_directory(Path(directory))
+    path.unlink()
+    os.environ.clear()
+    os.environ.update(environment)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     guard = commands.add_parser("guard-system-install")
     guard.add_argument("--destdir", default="")
+    guard.add_argument("--owner")
+    guard.add_argument("--user-state")
+    user_guard = commands.add_parser("guard-user-install")
+    user_guard.add_argument("state")
+    user_guard.add_argument("install_command", nargs=argparse.REMAINDER)
     guard.add_argument("install_command", nargs=argparse.REMAINDER)
     system = commands.add_parser("record-system")
     system.add_argument("--source-dir", required=True)
@@ -1058,6 +1143,7 @@ def main():
     start.add_argument("revision")
     work = commands.add_parser("worker")
     work.add_argument("operation")
+    work.add_argument("--environment-file")
     recovery = commands.add_parser("recover")
     recovery.add_argument("operation")
     receipts = commands.add_parser("verify-receipts")
@@ -1068,7 +1154,7 @@ def main():
     args = parser.parse_args()
     if args.command == "guard-system-install":
         command = args.install_command
-        return guard_system_install(args.destdir, command[1:] if command and command[0] == "--" else command)
+        return guard_system_install(args.destdir, command[1:] if command and command[0] == "--" else command, args.owner, args.user_state)
     if args.command == "record-system":
         record_system(args)
         return 0
@@ -1080,10 +1166,15 @@ def main():
         return 0
     if os.getuid() == 0:
         raise RuntimeError("Run the desktop updater as the desktop user")
+    if args.command == "guard-user-install":
+        command = args.install_command
+        return guard_user_install(args.state, command[1:] if command and command[0] == "--" else command)
     if args.command == "record-user":
         record_user(args.source_dir)
         return 0
     if args.command == "worker":
+        if args.environment_file:
+            load_worker_environment(Path(args.environment_file))
         return worker(args.operation)
     if args.command == "status":
         with locked(paths()[2]):

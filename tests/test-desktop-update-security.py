@@ -89,6 +89,38 @@ raise SystemExit(1)
                 guard("", ["/usr/bin/true"])
             self.assertEqual(guard(str(self.prefix / "stage"), ["/usr/bin/true"]), 0)
 
+    def test_full_source_install_holds_user_and_system_locks(self):
+        import pwd
+        account = pwd.getpwnam("nobody")
+        self.prefix.chmod(0o755)
+        home = self.prefix / "user-home"
+        home.mkdir(mode=0o700)
+        os.chown(home, account.pw_uid, account.pw_gid)
+        state = home / "state"
+        probe = self.prefix / "both-locks.py"
+        probe.write_text("""import fcntl, os, sys
+for path in sys.argv[1:]:
+    with open(path, 'a') as stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            continue
+        raise SystemExit('Installation lock not held: ' + path)
+raise SystemExit(17)
+""")
+        guard = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))["guard_system_install"]
+        self.assertEqual(guard("", ["/usr/bin/python3", str(probe), str(state / "lock"),
+                                    "/var/lib/dwm-titus/desktop-updates/lock"], "nobody", str(state)), 17)
+        self.assertEqual(state.stat().st_uid, account.pw_uid)
+        self.assertEqual((state / "lock").stat().st_uid, account.pw_uid)
+        self.assertEqual(os.geteuid(), 0)
+        with (state / "lock").open("a") as stream:
+            import fcntl
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(RuntimeError, "active"):
+                guard("", ["/usr/bin/false"], "nobody", str(state))
+        self.assertEqual(os.geteuid(), 0)
+
     def test_preparation_reservation_blocks_source_install_and_other_users(self):
         generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
         result = self.command("begin", generation, self.operation)

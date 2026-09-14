@@ -143,7 +143,11 @@ install:
 	else \
 		$(MAKE) all; \
 	fi
-	$(MAKE) install-system
+	/usr/bin/python3 -I scripts/dwm-desktop-update guard-system-install --destdir "${DESTDIR}" \
+		--owner "${OWNER}" --user-state "${XDG_STATE_HOME}/dwm-titus/desktop-update" -- $(MAKE) install-files
+
+install-files:
+	$(MAKE) install-system-files
 	if [ -z "${DESTDIR}" ]; then \
 		if [ "$$(id -u)" -eq 0 ]; then \
 			target_user="${OWNER}"; \
@@ -158,12 +162,12 @@ install:
 			target_uid="$$(id -u "$$target_user")"; \
 			runuser -u "$$target_user" -- env -u DBUS_SESSION_BUS_ADDRESS \
 				HOME="${USER_HOME}" XDG_RUNTIME_DIR="/run/user/$$target_uid" \
-				$(MAKE) install-user \
+				$(MAKE) install-user-files \
 				USER_HOME="${USER_HOME}" OWNER="$$target_user" \
 				XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
 				XDG_DATA_HOME="${XDG_DATA_HOME}" XDG_STATE_HOME="${XDG_STATE_HOME}"; \
 		else \
-			$(MAKE) install-user; \
+			$(MAKE) install-user-files; \
 		fi; \
 	else \
 		echo "==> DESTDIR set; skipping user configuration."; \
@@ -219,6 +223,9 @@ install-cursors:
 		"${DESTDIR}${CAPITAINE_LICENSE_DIR}/COPYING"
 
 install-user:
+	/usr/bin/python3 -I scripts/dwm-desktop-update guard-user-install "${XDG_STATE_HOME}/dwm-titus/desktop-update" -- $(MAKE) install-user-files
+
+install-user-files:
 	@test -n "${USER_HOME}" || { echo "USER_HOME could not be determined." >&2; exit 1; }
 	@test "$$(id -u)" -ne 0 || { echo "Refusing to install user files as root. Run install-user as the target user." >&2; exit 1; }
 	@echo "==> Installing user files for ${OWNER}..."
@@ -713,7 +720,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
+.PHONY: install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-cursor-reload \
 	check-test-runner \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \

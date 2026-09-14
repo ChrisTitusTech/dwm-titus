@@ -26,7 +26,7 @@ plan and qualification documents.
       IPC responds with four tray items, and running dwm matches the installation.
 - [x] Complete independent local Codex review with no remaining actionable
       findings; address CodeRabbit feedback and repeat affected checks.
-      Final coverage includes 43 backend tests, 36 privileged-helper tests,
+      Final coverage includes 46 backend tests, 37 privileged-helper tests,
       real service lifetime/readiness and hostile-build sandbox checks, plus the
       full repository gate. Hosted review fixes are being revalidated on PR #318.
 - [x] Publish implementation commit `c4ba100` and verify its remote head; open

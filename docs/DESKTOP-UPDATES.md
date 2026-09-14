@@ -86,6 +86,9 @@ Checks have one 60-second backend deadline. The update service executes the
 root-owned installed worker directly. Its service removes loader/interpreter
 startup variables before execution, then gives the worker only explicitly
 allowed session, build, and proxy settings with trusted system command paths.
+Those values reach the worker through a private mode-0600 file that is removed
+after reading; proxy credentials never appear in process arguments. Shell
+activation does not forward proxy settings.
 An unfinished system/user transaction
 blocks other users from superseding its recovery record until the initiating
 worker or recovery flow confirms completion through the installed helper.
@@ -144,11 +147,16 @@ It does not contact upstream or modify the host. A separate
 `scripts/run-tests python3 tests/test-desktop-update-service.py` checks the real
 user-service handoff on a host with an available user systemd manager.
 
-Source installation refuses to replace system files while a desktop update or
+A complete `make install` holds both the target user lock and system lock through
+system and user installation. Direct `make install-user` also takes the user
+lock. The installer and development synchronization use the complete guarded
+installation. Source installation refuses to replace system files while a desktop update or
 recovery transaction is unfinished. Complete recovery as the user who started
 the update before running the source installer. Managed data, Quickshell, and
 recovery directories must be separate, including after resolving symlinks.
 Incomplete or invalid user receipts never count as an up-to-date installation.
+FIFOs, sockets, devices, and other unsupported managed-tree entries are rejected
+before reserving an update and again before copying.
 
 After confirmation, authorization reserves the update before downloads and builds
 so a source installation or another user's update cannot supersede its preview.

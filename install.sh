@@ -742,15 +742,13 @@ fi
 cd "$REPO_DIR"
 make clean
 make
-sudo make install-system \
-	USER_HOME="$HOME" \
-	OWNER="$(id -un)" \
-	DATADIR="/usr/share"
-make install-user \
+sudo make install \
+	DATADIR="/usr/share" \
 	USER_HOME="$HOME" \
 	OWNER="$(id -un)" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
-	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}" \
+	XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 configure_displays_after_install
 
 # ── Done ─────────────────────────────────────────────────
