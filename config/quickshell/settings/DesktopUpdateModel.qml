@@ -23,6 +23,49 @@ Scope {
     readonly property string statusPath: (Quickshell.env("XDG_STATE_HOME")
         || Quickshell.env("HOME") + "/.local/state") + "/dwm-titus/desktop-update/status.json"
 
+    // Validate installation ownership before executing any updater command.
+    readonly property string updaterBootstrap: [
+        "import json, os, stat, sys",
+        "from pathlib import Path",
+        "def trusted(path, directory=False):",
+        "    if not path.is_absolute() or path.resolve() != path:",
+        "        raise ValueError(\"Unsafe updater path\")",
+        "    for entry in (path, *path.parents):",
+        "        info = entry.lstat()",
+        "        if info.st_uid != 0 or info.st_mode & 0o022:",
+        "            raise ValueError(\"Untrusted updater installation\")",
+        "        if entry == path and not (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)):",
+        "            raise ValueError(\"Invalid updater file\")",
+        "        if entry != path and not stat.S_ISDIR(info.st_mode):",
+        "            raise ValueError(\"Invalid updater directory\")",
+        "paths = os.environ.get(\"PATH\", \"\").split(\":\") + [\"/usr/local/bin\", \"/usr/bin\"]",
+        "for directory in dict.fromkeys(paths):",
+        "    worker = Path(directory) / \"dwm-desktop-update\"",
+        "    try:",
+        "        trusted(worker)",
+        "        if not worker.stat().st_mode & 0o111:",
+        "            continue",
+        "        prefix = worker.parent.parent",
+        "        manifest = prefix / \"share/dwm-titus/desktop-install.json\"",
+        "        trusted(manifest)",
+        "        trusted(prefix / \"libexec/dwm-titus/dwm-desktop-update-root\")",
+        "        if json.loads(manifest.read_text())[\"layout\"][\"prefix\"] != str(prefix):",
+        "            continue",
+        "    except (OSError, ValueError, KeyError, TypeError):",
+        "        continue",
+        "    search = []",
+        "    for command_dir in dict.fromkeys((worker.parent, Path(\"/usr/bin\"), Path(\"/usr/local/bin\"))):",
+        "        try:",
+        "            trusted(command_dir, directory=True)",
+        "            search.append(str(command_dir))",
+        "        except (OSError, ValueError):",
+        "            continue",
+        "    os.environ[\"PATH\"] = \":\".join(search)",
+        "    os.execv(\"/usr/bin/python3\", [\"/usr/bin/python3\", \"-I\", str(worker), *sys.argv[1:]])",
+        "sys.exit(\"Trusted desktop updater unavailable. Run the source installer once to enable it.\")",
+    ].join("\n")
+    readonly property var updaterCommand: ["/usr/bin/python3", "-I", "-c", updaterBootstrap]
+
     function accept(text) {
         try {
             const value = JSON.parse(text);
@@ -46,7 +89,7 @@ Scope {
         if (root.busy || root.confirming) return;
         root.commandError = "";
         root.commandPending = true;
-        command.command = ["dwm-desktop-update", "check"].concat(force ? ["--force"] : []);
+        command.command = root.updaterCommand.concat(["check"], force ? ["--force"] : []);
         command.running = true;
     }
 
@@ -71,7 +114,7 @@ Scope {
         root.commandError = "";
         root.dispatching = true;
         root.commandPending = true;
-        command.command = ["dwm-desktop-update", "start", root.confirmedRevision];
+        command.command = root.updaterCommand.concat(["start", root.confirmedRevision]);
         command.running = true;
     }
 
@@ -81,7 +124,7 @@ Scope {
             // status reconciles a worker interrupted while the shell was closed.
             if (!command.running && !root.commandPending && !root.terminating) {
                 root.commandPending = true;
-                command.command = ["dwm-desktop-update", "status"];
+                command.command = root.updaterCommand.concat(["status"]);
                 command.running = true;
             }
         } else root.confirming = false;
@@ -125,7 +168,7 @@ Scope {
             root.dispatching = false;
             root.commandPending = false;
             stateFile.reload();
-            if (command.command[1] === "status" && exitCode === 0 && root.settingsVisible
+            if (command.command[root.updaterCommand.length] === "status" && exitCode === 0 && root.settingsVisible
                 && !root.active && root.status.state !== "interrupted") Qt.callLater(() => root.check(false));
         }
     }

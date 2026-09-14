@@ -22,6 +22,18 @@ cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" "$repo/c
 cp "$repo/tests/qml/DesktopUpdateUi.qml" "$work/qml/shell.qml"
 cp "$repo/tests/fixtures/desktop-update-provider.py" "$work/bin/dwm-desktop-update"
 chmod 755 "$work/bin/dwm-desktop-update"
+# Inject the provider explicitly into this isolated model copy. Production
+# commands validate the root-owned installation instead of resolving a fixture.
+/usr/bin/python3 - "$work" <<'PYTHON'
+import json, sys
+from pathlib import Path
+work = Path(sys.argv[1])
+model = work / "qml/settings/DesktopUpdateModel.qml"
+text = model.read_text().replace(
+    'readonly property var updaterCommand: ["/usr/bin/python3", "-I", "-c", updaterBootstrap]',
+    'readonly property var updaterCommand: ' + json.dumps(["/usr/bin/python3", "-I", str(work / "bin/dwm-desktop-update")]))
+model.write_text(text)
+PYTHON
 Xvfb -displayfd 3 -screen 0 1024x768x24 -nolisten tcp -extension GLX \
 	3>"$work/display" >"$work/xvfb.log" 2>&1 &
 xvfb_pid=$!

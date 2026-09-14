@@ -83,7 +83,10 @@ as part of deliberate backup maintenance; no automatic retention policy deletes
 them.
 
 Checks have one 60-second backend deadline. The update service executes the
-root-owned installed worker directly. Its service removes loader/interpreter
+root-owned installed worker directly. Settings first validates the updater, its
+manifest, helper, and parent directories before executing its absolute path; a
+user-writable command earlier in PATH cannot intercept the update controls.
+The backend inherits only validated system command directories in PATH. Its service removes loader/interpreter
 startup variables before execution, then gives the worker only explicitly
 allowed session, build, and proxy settings with trusted system command paths.
 Those values reach the worker through a private mode-0600 file that is removed

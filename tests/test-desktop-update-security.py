@@ -69,6 +69,61 @@ class Security(unittest.TestCase):
         return self.command("apply", str(self.bundle), generation, self.operation,
                             hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40, uid=uid)
 
+    def test_qml_bootstrap_rejects_path_shadowing_and_untrusted_installation(self):
+        model = (REPO / "config/quickshell/settings/DesktopUpdateModel.qml").read_text()
+        encoded = model.split("readonly property string updaterBootstrap: [\n", 1)[1].split('    ].join', 1)[0]
+        bootstrap = "\n".join(json.loads(line.strip().rstrip(",")) for line in encoded.splitlines())
+        self.prefix.chmod(0o755)
+        worker = self.prefix / "bin/dwm-desktop-update"
+        worker.write_text("import sys\nprint('trusted ' + sys.argv[1])\n")
+        worker.chmod(0o755)
+        poison = self.prefix / "poison"
+        poison.mkdir()
+        fake = poison / "dwm-desktop-update"
+        fake.write_text("#!/usr/bin/python3\nprint('untrusted')\n")
+        fake.chmod(0o755)
+        os.chown(fake, 65534, 65534)
+        args = ["/usr/sbin/runuser", "-u", "nobody", "--", "/usr/bin/env",
+                "PATH=" + str(poison) + ":" + str(worker.parent), "/usr/bin/python3", "-I", "-c", bootstrap, "status"]
+        result = subprocess.run(args, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "trusted status")
+        for invalid in (worker, self.manifest_path, self.helper):
+            mode = invalid.stat().st_mode & 0o777
+            invalid.chmod(0o777)
+            result = subprocess.run(args, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("untrusted", result.stdout)
+            invalid.chmod(mode)
+        # Exercise the real backend's downstream commands with the same poison.
+        worker.write_text((REPO / "scripts/dwm-desktop-update").read_text())
+        home = self.prefix / "desktop-home"
+        status = home / "state/dwm-titus/desktop-update/status.json"
+        status.parent.mkdir(parents=True)
+        status.write_text(json.dumps({"schema": 1, "state": "starting"}))
+        subprocess.run(["chown", "-R", "nobody:nobody", home], check=True)
+        marker = home / "intercepted"
+        for name in ("rpm", "systemctl"):
+            shadow = poison / name
+            shadow.write_text("#!/usr/bin/python3\nfrom pathlib import Path\nPath(" + repr(str(marker)) + ").write_text('intercepted')\n")
+            shadow.chmod(0o755)
+            os.chown(shadow, 65534, 65534)
+        user_args = args[:5] + ["HOME=" + str(home), "XDG_STATE_HOME=" + str(home / "state"),
+                                "XDG_CONFIG_HOME=" + str(home / "config"), "XDG_DATA_HOME=" + str(home / "data")] + args[5:]
+        baseline = user_args[:user_args.index("/usr/bin/python3")] + ["rpm"]
+        subprocess.run(baseline, check=True)
+        self.assertTrue(marker.exists(), "Downstream shadow fixture did not execute")
+        marker.unlink()
+        result = subprocess.run(user_args, text=True, capture_output=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["state"], "interrupted")
+        self.assertFalse(marker.exists(), "Status executed PATH-shadowed systemctl")
+        status.write_text(json.dumps({"schema": 1, "state": "unknown"}))
+        result = subprocess.run(user_args[:-1] + ["check", "--force"], text=True, capture_output=True, timeout=65)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["installed"], "a" * 40)
+        self.assertFalse(marker.exists(), "Check executed PATH-shadowed rpm")
+
     def test_source_install_guard_holds_shared_root_lock(self):
         functions = runpy.run_path(str(REPO / "scripts/dwm-desktop-update"))
         guard = functions["guard_system_install"]
